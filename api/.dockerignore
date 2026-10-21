@@ -14,3 +14,4 @@ tests/
 coverage.xml
 __pycache__
 *.pyc
+jwt_ed25519.pub

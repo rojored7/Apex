@@ -35,6 +35,7 @@ from app.core import db, health
 from app.core.audit import install_audit_listeners
 from app.core.config import Settings, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto.provider import configure_provider, get_key_provider
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
 
@@ -107,13 +108,22 @@ def create_app(
                 logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
                 raise
             logger.info("migraciones al día")
-        with actor_scope(SYSTEM_USER_ID):
-            for nombre, paso in list(_startup_steps):
-                logger.info("arranque: %s", nombre)
-                await paso(settings)
+        # US-023: el proveedor de llaves se abre antes que cualquier paso; sin KEK (o con
+        # permisos abiertos) el proceso termina y el log nunca lleva material.
         try:
+            configure_provider(get_key_provider(settings))
+        except Exception:
+            logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")
+            raise
+        logger.info("proveedor de llaves listo: %s", settings.CRYPTO_PROVIDER)
+        try:
+            with actor_scope(SYSTEM_USER_ID):
+                for nombre, paso in list(_startup_steps):
+                    logger.info("arranque: %s", nombre)
+                    await paso(settings)
             yield
         finally:
+            configure_provider(None)
             await db.dispose_engine()
 
     produccion = settings.is_production

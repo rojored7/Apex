@@ -105,3 +105,39 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
 - Observación: con un solo comando Typer exige un `@app.callback()` para mantener el modo de
   subcomandos (`export-openapi` como argumento). `Page[X]` de Pydantic es una subclase
   parametrizada, no un alias de `typing`: la prueba de arquitectura usa `issubclass`.
+
+### S1-B4 · KeyProvider, tablas crypto y llaves en el volumen (US-023, US-024)
+
+- Rojo: `tests/crypto/test_local_provider.py`, `test_init_keys.py`, `test_provider_startup.py`,
+  `test_crypto_tables.py`, `tests/migrations/test_0003_crypto.py`,
+  `tests/architecture/test_audited_tables.py` sobre stubs: 22 fallos + 8 errores, 3 ok (las de
+  tablas auditadas pasan con solo los modelos), 2 saltadas (modo POSIX, solo fuera de Windows).
+- Verde: `core/crypto/errors.py` (`CryptoError` con `code`, sin bytes), `provider.py`
+  (`KeyInfo`, `KeyProvider` async, `get_key_provider`, `configure_provider`/`current_provider`),
+  `local_provider.py` (`apxw1 || nonce || AES-256-GCM(kek, dek, aad)`, Ed25519 con semilla
+  cruda, `parse_wrapped` puro, `check_key_file` sin leer contenido; permisos solo fuera de
+  `nt`), `core/crypto/models.py` (`CryptoKey`, `CryptoOp`, `CryptoJob` con CHECKs e índices
+  parciales), `core/security.py` mínimo (par JWT Ed25519 en PEM; US-032/033 lo extienden),
+  `cli init-keys [--dir] [--as] [--data-class]` idempotente (A-1: nunca sobrescribe, completa lo
+  que falta; `--data-class` responde 2 hasta US-140), migración `0003_crypto` (tres tablas,
+  `forbid_ops_mutation`, `guard_keys_update` con transiciones, `guard_jobs_mutation`, TRUNCATE
+  cubierto), `Settings.CRYPTO_LOCAL_SIGNING_KEY_PATH`, gancho en el `lifespan` (el proveedor se
+  abre antes de los pasos de arranque; sin KEK el proceso termina con log sin material),
+  `conftest` con llaves reales por sesión (`claves_prueba`), `compose-smoke.sh` corre
+  `tools init-keys` antes de arrancar el api, `.gitignore`/`.dockerignore` con `jwt_ed25519.pub`.
+- Evidencia: 37 ok + 2 saltadas en los seis archivos; suite completa 230 ok + 3 saltadas; ruff y
+  mypy limpios. En el stack de desarrollo (Linux): `tools init-keys` creó `kek.bin` (32 B),
+  `sign-ed25519.key` (32 B), `jwt_ed25519.pem` y `.pub` con `-rw-------` y dueño `apex` (10001);
+  el api arrancó con "proveedor de llaves listo: local" y `/health` 200. Ciclo de `0003`
+  (`downgrade 0002_audit_log` deja el esquema `crypto` sin tablas ni funciones; `upgrade head`).
+- Desviaciones: `init-keys` es idempotente con código 0 (A-1 del plan del sprint) en vez del
+  código 1 del desglose T8 de US-023. Las comprobaciones de modo 600/700 se saltan en Windows
+  (NTFS no tiene modo POSIX) y se verificaron en el contenedor; el directorio del volumen ya
+  existía con 755 (lo crea Docker), así que `mkdir 700` no aplica ahí. `migrations/helpers.py`
+  no es importable desde los archivos de versión (Alembic los carga por ruta): `0003` declara
+  las columnas comunes en el propio archivo. `.claude/worktrees/` queda ignorado: el agente de
+  front trabaja en un worktree dentro del repo y `checkpoint-commit.sh` hace `git add -A`.
+- Seguridad (T16, T9): la KEK no tiene accesor público ni aparece en `repr` ni en excepciones;
+  `init-keys` no acepta material por argumento; `crypto_ops` no tiene columnas de valores;
+  triggers cubren TRUNCATE. Pendiente de EP-13: separar el rol de la aplicación del dueño de los
+  triggers.

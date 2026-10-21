@@ -37,7 +37,7 @@ Todos los comandos se corren desde la raíz del repositorio.
 
 1. `cp .env.example .env` y cambia todos los `cambiar-esto`. Si otro proyecto ocupa el 80, el 8000, el 5432 o el 5433, ajusta `WEB_PORT`, `API_PORT`, `DB_PORT` y `DB_TEST_PORT` (y el puerto de `TEST_DATABASE_URL`).
 2. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build` levanta `db`, `db_test`, `api` y `web`. El `--env-file .env` es obligatorio: Compose interpola los puertos desde la carpeta `infra/`.
-3. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` crea la KEK y la llave JWT en el volumen `keys` (disponible desde el Sprint 1, US-023).
+3. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` crea la KEK, la llave de firma del bus y el par JWT Ed25519 en el volumen `keys`, con modo 600; es idempotente, nunca sobrescribe. Las DEK por clase de dato las crea el api al arrancar (US-025).
 4. `curl http://localhost:${API_PORT:-8000}/health` y `curl http://localhost:${WEB_PORT:-80}/api/v1/health` responden 200 (desde US-020).
 5. Desarrollo en el host: `cd api && uv sync`, `uv run pytest` (usa `TEST_DATABASE_URL` contra `db_test`), `uv run ruff check . && uv run ruff format . && uv run mypy src`.
 

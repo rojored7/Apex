@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.cli import init_keys_files, key_paths_in
 from app.core.audit import install_audit_listeners
 from app.core.config import Settings, load_settings
 
@@ -53,15 +54,25 @@ def test_database_url() -> str:
     return url
 
 
+@pytest.fixture(scope="session")
+def claves_prueba(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Directorio con KEK, llave de firma y par JWT creados por `init-keys` (US-023)."""
+    directorio = tmp_path_factory.mktemp("keys")
+    init_keys_files(key_paths_in(directorio))
+    return directorio
+
+
 @pytest.fixture
-def settings_prueba(tmp_path: Path, test_database_url: str) -> Settings:
-    """`Settings` completa apuntando a `db_test`, sin tocar el `.env` real."""
+def settings_prueba(tmp_path: Path, test_database_url: str, claves_prueba: Path) -> Settings:
+    """`Settings` completa apuntando a `db_test` y a llaves reales, sin tocar el `.env` real."""
+    rutas = key_paths_in(claves_prueba)
     env = tmp_path / ".env"
     env.write_text(
         f"DATABASE_URL={test_database_url}\n"
-        "JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem\n"
+        f"JWT_PRIVATE_KEY_PATH={rutas.jwt_private}\n"
         "CRYPTO_PROVIDER=local\n"
-        "CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin\n"
+        f"CRYPTO_LOCAL_KEK_PATH={rutas.kek}\n"
+        f"CRYPTO_LOCAL_SIGNING_KEY_PATH={rutas.signing_key}\n"
         "UPLOADS_DIR=/data/uploads\n"
         'CORS_ORIGINS=["http://localhost"]\n'
         "LOG_LEVEL=INFO\n"

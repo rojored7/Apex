@@ -42,11 +42,17 @@ esperar_healthy() {
 }
 
 inicio=$(date +%s)
-"${DC[@]}" up -d --build db db_test api
+"${DC[@]}" build api
+"${DC[@]}" up -d --build db db_test
 esperar_healthy db 120
 esperar_healthy db_test 120
+# US-023: sin KEK, llave de firma y par JWT en el volumen keys, el api no arranca.
+# init-keys es idempotente: en un volumen ya poblado no toca nada.
+"${DC[@]}" --profile tools run --rm tools init-keys
+"${DC[@]}" up -d api
 [ "$(campo api State)" = "running" ] || { echo "compose-smoke: api no está en ejecución" >&2; "${DC[@]}" logs --tail 40 api >&2; exit 1; }
 echo "compose-smoke: api en ejecución"
+
 if [ "${SMOKE_ALLOW_UNHEALTHY:-0}" = "1" ]; then
   echo "compose-smoke: SMOKE_ALLOW_UNHEALTHY=1, no se exige api healthy (hasta US-020)"
 else

@@ -1,0 +1,74 @@
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.label {
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.required {
+  margin-left: var(--space-1);
+  color: var(--danger);
+}
+
+.control {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.control:hover {
+  border-color: var(--muted);
+}
+
+.control:focus-visible {
+  border-color: var(--blue-deep);
+  outline: 2px solid var(--blue-deep);
+  outline-offset: 0;
+}
+
+.control:disabled {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.lg {
+  min-height: var(--control-gym);
+  padding: 0 var(--space-4);
+  font: var(--text-button-gym);
+}
+
+.invalid {
+  border-color: var(--danger);
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-caption);
+}
+
+.errorAction {
+  color: var(--blue-deep);
+  font-weight: 600;
+}
+
+.errorAction:focus-visible {
+  outline: 2px solid var(--blue-deep);
+  outline-offset: 2px;
+}

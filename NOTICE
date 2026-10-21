@@ -49,6 +49,10 @@ pydantic-settings
 2.16.1
 MIT
 
+tzdata
+2026.5
+Apache-2.0
+
 uvicorn
 0.54.0
 BSD-3-Clause
@@ -57,7 +61,20 @@ BSD-3-Clause
 
 == web (dependencias directas de producción) ==
 
-(sin web/package.json o sin node_modules; se completa con US-009)
+"module name","license","repository"
+"@tanstack/query-core@5.104.5","MIT","https://github.com/TanStack/query"
+"@tanstack/react-query@5.104.5","MIT","https://github.com/TanStack/query"
+"@types/react@19.3.0","MIT","https://github.com/DefinitelyTyped/DefinitelyTyped"
+"cookie@1.1.1","MIT","https://github.com/jshttp/cookie"
+"csstype@3.2.3","MIT","https://github.com/frenic/csstype"
+"lucide-react@1.61.0","ISC","https://github.com/lucide-icons/lucide"
+"react-dom@19.3.1","MIT","https://github.com/react/react"
+"react-hook-form@7.90.0","MIT","https://github.com/react-hook-form/react-hook-form"
+"react-router@7.18.4","MIT","https://github.com/remix-run/react-router"
+"react@19.3.1","MIT","https://github.com/react/react"
+"scheduler@0.28.0","MIT","https://github.com/react/react"
+"set-cookie-parser@2.7.2","MIT","https://github.com/nfriedly/set-cookie-parser"
+"zod@3.25.76","MIT","https://github.com/colinhacks/zod"
 
 == recursos que no son paquetes ==
 

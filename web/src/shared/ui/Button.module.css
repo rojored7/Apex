@@ -1,0 +1,92 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: var(--text-button);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.button:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.md {
+  min-height: var(--control);
+}
+
+.lg {
+  min-height: var(--control-gym);
+  padding: 0 var(--space-6);
+  font: var(--text-button-gym);
+}
+
+/* Principal: azul de marca con texto negro; en hover pasa a blue-deep con texto blanco. */
+.primary {
+  background: var(--apex-blue);
+  border-color: var(--apex-blue);
+  color: var(--black);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--blue-deep);
+  border-color: var(--blue-deep);
+  color: var(--white);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--blue-tint);
+}
+
+.danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--white);
+}
+
+/* DESIGN-GAP: variante ghost no definida en DESIGN.md */
+.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--blue-deep);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--blue-tint);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.loading {
+  cursor: progress;
+}
+
+.loading:disabled {
+  cursor: progress;
+}

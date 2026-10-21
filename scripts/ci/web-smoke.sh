@@ -17,15 +17,17 @@ BASE="http://localhost:${PUERTO:-80}"
 fallas=0
 ok() { echo "  ok   $1"; }
 falla() { echo "  FALLA $1"; fallas=$((fallas + 1)); }
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 raiz="$(curl -fsS --max-time 10 "$BASE/" || true)"
 if grep -q '<div id="root">' <<< "$raiz"; then ok "/ sirve index.html con #root"; else falla "/ no contiene <div id=\"root\">"; fi
 
-codigo="$(curl -sS -o /tmp/apex-spa.html -w '%{http_code}' --max-time 10 "$BASE/socios/123" || true)"
-if [ "$codigo" = "200" ] && grep -q '<div id="root">' /tmp/apex-spa.html; then ok "/socios/123 responde 200 con index.html"; else falla "/socios/123 respondió $codigo"; fi
+codigo="$(curl -sS -o "$TMP/spa.html" -w '%{http_code}' --max-time 10 "$BASE/socios/123" || true)"
+if [ "$codigo" = "200" ] && grep -q '<div id="root">' "$TMP/spa.html"; then ok "/socios/123 responde 200 con index.html"; else falla "/socios/123 respondió $codigo"; fi
 
-codigo="$(curl -sS -o /tmp/apex-health.out -D /tmp/apex-health.hdr -w '%{http_code}' --max-time 10 "$BASE/api/v1/health" || true)"
-tipo="$(grep -i '^content-type:' /tmp/apex-health.hdr | tr -d '\r' | cut -d' ' -f2- || true)"
+codigo="$(curl -sS -o "$TMP/health.out" -D "$TMP/health.hdr" -w '%{http_code}' --max-time 10 "$BASE/api/v1/health" || true)"
+tipo="$(grep -i '^content-type:' "$TMP/health.hdr" | tr -d '\r' | cut -d' ' -f2- || true)"
 if [ "$codigo" = "200" ]; then
   ok "/api/v1/health responde 200 por el proxy"
 elif [ "$codigo" = "404" ] && grep -qi 'application/json' <<< "$tipo"; then

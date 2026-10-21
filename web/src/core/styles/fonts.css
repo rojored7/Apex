@@ -1,0 +1,36 @@
+/* Fuentes de APEX servidas desde web/public/fonts/ (licencia OFL 1.1, ver OFL-*.txt).
+   Las fuentes se cargan localmente, ver docs/design/DESIGN.md, sección Tipografía:
+   tokens.css se copia sin su @import de Google Fonts y estas @font-face lo reemplazan,
+   para que el panel funcione sin internet. */
+
+@font-face {
+  font-family: "Michroma";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Michroma-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Titillium Web";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/TitilliumWeb-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Titillium Web";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/TitilliumWeb-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Titillium Web";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/TitilliumWeb-Bold.woff2") format("woff2");
+}

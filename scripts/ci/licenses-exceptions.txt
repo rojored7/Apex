@@ -2,3 +2,4 @@
 # Una línea por paquete, con su justificación. Sin comodines. Nunca un paquete
 # GPL, LGPL, AGPL, BSL ni SSPL.
 certifi  # MPL-2.0 sin modificar, transitiva de httpx (certificados raíz de Mozilla)
+axe-core  # MPL-2.0 sin modificar, solo desarrollo (vitest-axe, pruebas de accesibilidad del front; no se distribuye)

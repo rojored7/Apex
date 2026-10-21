@@ -40,7 +40,7 @@ EOF
   echo "== web (dependencias directas de producción) =="
   echo
   if [ -f "$ROOT/web/package.json" ] && [ -d "$ROOT/web/node_modules" ]; then
-    (cd "$ROOT/web" && npx --no-install license-checker --production --direct --csv 2>/dev/null || echo "(license-checker no disponible)")
+    (cd "$ROOT/web" && npx --no-install license-checker --production --direct --excludePrivatePackages --csv 2>/dev/null || echo "(license-checker no disponible)")
   else
     echo "(sin web/package.json o sin node_modules; se completa con US-009)"
   fi

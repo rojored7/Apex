@@ -1,0 +1,45 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+/* La etiqueta no es interactiva; si va dentro de un enlace enfocable, mantiene el foco visible. */
+.tag:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Al día: relleno azul de marca, texto negro. */
+.ok {
+  background: var(--apex-blue);
+  border-color: var(--apex-blue);
+  color: var(--black);
+}
+
+/* Por vencer y pendiente de pago (decisión Q3): borde y texto warning. */
+.warning {
+  background: transparent;
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* Vencido y sin plan: relleno danger, texto blanco. */
+.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--white);
+}
+
+/* Congelado / inactivo: borde line, texto muted. */
+
+/* DESIGN-GAP: estilo de Cancelado no definido; se usa el de Congelado */
+.neutral {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}

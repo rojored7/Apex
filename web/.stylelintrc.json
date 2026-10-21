@@ -2,6 +2,13 @@
   "extends": ["stylelint-config-standard"],
   "ignoreFiles": ["src/core/styles/tokens.css", "src/core/styles/fonts.css", "tests/lint/**", "dist/**", "coverage/**"],
   "rules": {
-    "selector-class-pattern": ["^[a-z][a-zA-Z0-9]*$", { "message": "Las clases de CSS Modules van en camelCase" }]
+    "selector-class-pattern": ["^[a-z][a-zA-Z0-9]*$", { "message": "Las clases de CSS Modules van en camelCase" }],
+    "color-no-hex": true,
+    "color-named": "never",
+    "function-disallowed-list": ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"],
+    "declaration-property-value-allowed-list": {
+      "font-family": ["/^var[(]--/", "inherit"],
+      "font": ["/^var[(]--/", "inherit"]
+    }
   }
 }

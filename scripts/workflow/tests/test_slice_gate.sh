@@ -32,8 +32,10 @@ rm -f "$REPO/.git/apex/slice-gate.ok"
 assert_exit 0 "core/config sin lista en verde" bash "$GATE" core/config
 assert_log_has "pytest tests/core tests/architecture"
 
-# Archivo de prueba inexistente.
+# Archivo de prueba inexistente o con ruta no permitida.
 assert_nonzero "archivo de prueba inexistente falla" bash "$GATE" core/config tests/core/no_existe.py
+assert_nonzero "ruta con .. falla" bash "$GATE" core/config tests/../src/app/core/config.py
+assert_nonzero "ruta que empieza por - falla" bash "$GATE" core/config -tests/core/test_config.py
 
 # Mapeo: architecture no tiene ruta de código; main apunta a main.py.
 printf 'def create_app() -> None:\n    pass\n' > "$REPO/api/src/app/main.py"

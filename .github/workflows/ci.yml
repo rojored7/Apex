@@ -119,6 +119,12 @@ jobs:
         if: steps.front.outputs.existe == 'true'
         working-directory: web
         run: npm run build
+      - name: sin Google Fonts en el build
+        if: steps.front.outputs.existe == 'true'
+        run: |
+          if grep -rq "fonts.googleapis\|fonts.gstatic" web/dist; then
+            echo "el build del front pide fuentes a Google; deben ser locales (US-009)"; exit 1
+          fi
       - name: licencias-web
         if: steps.front.outputs.existe == 'true'
         working-directory: web

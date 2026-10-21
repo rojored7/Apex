@@ -58,6 +58,14 @@ WEB="$ROOT/web"
 
 fallo() { echo "slice-gate: $*" >&2; exit 1; }
 
+# Cada archivo de la lista: sin `..`, sin empezar por `-` (se confundiría con una opción)
+# y sin comillas (van dentro de tsconfig.slice.json).
+validar_archivo() {
+  case "$1" in
+    *..*|-*|*\"*|*\'*) fallo "ruta de prueba no permitida: '$1'" ;;
+  esac
+}
+
 huella() {
   (
     cd "$ROOT"
@@ -110,6 +118,7 @@ gate_api() {
   else
     local f rel
     for f in "${ARCHIVOS[@]}"; do
+      validar_archivo "$f"
       rel="${f#api/}"
       [ -f "$API/$rel" ] || fallo "archivo de prueba inexistente: api/$rel"
       [[ "$rel" == tests/* ]] || fallo "los archivos de prueba del api deben vivir bajo api/tests/: $rel"
@@ -160,6 +169,7 @@ gate_web() {
   )
   local lista=()
   for f in "${ARCHIVOS[@]}"; do
+    validar_archivo "$f"
     rel="${f#web/}"
     [ -f "$WEB/$rel" ] || fallo "archivo inexistente: web/$rel"
     lista+=("$rel"); tocados+=("$rel")

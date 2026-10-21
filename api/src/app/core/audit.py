@@ -406,6 +406,20 @@ def _encrypted_columns(obj: object) -> frozenset[str]:
     )
 
 
+def _bind_value(attr: Any, value: object) -> object:
+    """Una columna cifrada (US-028) se serializa como la base la recibe: el blob.
+
+    `process_bind_param` del tipo rechaza texto en claro, así el hook nunca lo guarda. La
+    auditoría no importa `core.crypto`: reconoce el tipo por `is_encrypted`.
+    """
+    tipo = attr.columns[0].type
+    if getattr(tipo, "is_encrypted", False) and value is not None:
+        procesar = getattr(tipo, "process_bind_param", None)
+        if procesar is not None:
+            return procesar(value, None)
+    return value
+
+
 def _snapshot(obj: object) -> dict[str, object]:
     """Valores cargados del objeto, sin disparar cargas durante el flush."""
     estado = instance_state(obj)
@@ -413,7 +427,7 @@ def _snapshot(obj: object) -> dict[str, object]:
     for attr in estado.mapper.column_attrs:
         valor = estado.attrs[attr.key].loaded_value
         if valor is not NO_VALUE:
-            valores[attr.key] = valor
+            valores[attr.key] = _bind_value(attr, valor)
     return valores
 
 
@@ -428,8 +442,8 @@ def _changes(obj: object) -> tuple[dict[str, object], dict[str, object]]:
         history = estado.attrs[attr.key].history
         if not history.has_changes():
             continue
-        before[attr.key] = history.deleted[0] if history.deleted else None
-        after[attr.key] = history.added[0] if history.added else None
+        before[attr.key] = _bind_value(attr, history.deleted[0] if history.deleted else None)
+        after[attr.key] = _bind_value(attr, history.added[0] if history.added else None)
     return diff_row(before, after)
 
 

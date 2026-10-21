@@ -32,6 +32,12 @@ class CifradoFalso(TypeDecorator[str]):
     cache_ok = True
     is_encrypted = True
 
+    def process_bind_param(self, value: object, dialect: object) -> str | None:
+        return None if value is None else str(value)
+
+    def process_result_value(self, value: str | None, dialect: object) -> str | None:
+        return value
+
 
 class SocioAuditado(CommonColumnsMixin, SoftDeleteMixin, Base):
     __tablename__ = "socios_auditados"

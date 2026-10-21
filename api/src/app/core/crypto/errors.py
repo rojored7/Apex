@@ -20,6 +20,10 @@ CryptoCode = Literal[
     "decrypt_failed",
     "crypto_unavailable",
     "signature_invalid",
+    "plaintext",
+    "id_immutable",
+    "index_manual",
+    "crypto_key_changed",
 ]
 
 

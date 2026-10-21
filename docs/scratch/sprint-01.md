@@ -200,3 +200,30 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   `record_id`), también bajo `batch_scope`, que solo fija el `batch_id`; `verify` inválido se
   registra con `result = error` sin lanzar. La resolución de `--as <email>` a un usuario llega
   con `auth.service` (US-041/US-111): `unit_of_work` usa `SYSTEM_USER_ID` por ahora.
+
+### S1-B7 · Tipos de columna (US-028)
+
+- Rojo: `tests/crypto/{test_secret,test_types,test_types_key_check}.py`,
+  `tests/core/{test_audit_encrypted,test_audit_hook_encrypted}.py` y el modelo de prueba
+  `tests/crypto/models_fixture.py` (cinco `Encrypted`, tres `BlindIndexed`, esquema
+  `test_crypto` creado dentro del savepoint): rojo en la recolección (los stubs levantan al
+  definir el modelo).
+- Verde: `secret.py` (`Secret` pendiente/sellado; `repr`/`str` = `Secret(•••)`; `json`,
+  `pickle` y Pydantic fallan; igualdad solo entre blobs; `canonical_json`), `types.py`
+  (`Encrypted` con `is_encrypted`, solo deja pasar blobs `apx1` válidos también por `INSERT` de
+  Core; `BlindIndexed(data_class, source=...)`; `before_flush` que asigna `id`, rechaza cambios
+  de `id` (`id_immutable`), cifra con `aad = id` según `value_type`, llena el `_idx` en el mismo
+  flush, deja `NULL` en ambas con `None`, rechaza `_idx` a mano (`index_manual`) y comprueba la
+  llave vigente con `SELECT ... FOR SHARE` (`crypto_key_changed`); `reveal(obj, campo,
+  proposito)`), auditoría pasando las columnas `is_encrypted` por `process_bind_param` (sin
+  importar `core.crypto`), listener registrado en `create_app` y `conftest`.
+- Evidencia: 20 ok en el slice; suite completa 336 ok + 3 saltadas; ruff y mypy limpios. En
+  `db_test`: `row_to_json` de la fila no contiene ningún valor en claro y sí cinco blobs
+  `apx1.`; `document_idx` coincide con `blind_index("member.document", "1020304")`; cambiar el
+  teléfono recifra y reindexa en el mismo flush; `date` y `dict` vuelven con su tipo; un blob
+  copiado a otro registro no se abre (`decrypt_failed`); una rotación simulada desde otra
+  sesión hace fallar el flush con `crypto_key_changed`; la auditoría guarda el blob en
+  `before`/`after` y nunca el claro ni `Secret(`; el `SELECT` por índice ciego encuentra al socio.
+- Observación: SQLAlchemy envuelve el error del `TypeDecorator` en `StatementError` con el
+  `CryptoError` original en `orig` (así lo prueba el caso de Core). El tipo falso de
+  `test_audit_hook_db.py` implementa ahora `process_bind_param`, como exige el contrato.

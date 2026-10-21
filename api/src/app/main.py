@@ -41,6 +41,7 @@ from app.core.crypto.errors import CryptoError
 from app.core.crypto.keyring import configure_keyring, current_keyring
 from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
+from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
 
@@ -117,6 +118,7 @@ def create_app(
     db.configure_engine(db.create_engine_from(settings))
     install_audit_listeners()  # US-016: created_by y auditoría en cada flush
     install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
+    install_crypto_type_listeners()  # US-028: cifra los Secret pendientes en cada flush
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

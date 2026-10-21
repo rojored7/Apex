@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     CRYPTO_LOCAL_KEK_PATH: Path | None = None
 
     # Aplicación.
-    ENV: Literal["dev", "production"] = "dev"
+    ENV: Literal["dev", "production"] = "production"  # falla cerrado: /docs solo con ENV=dev
     TZ_DISPLAY: str = "America/Bogota"  # solo para mostrar; el "hoy" lo da core/clock.py (Q28)
     UPLOADS_DIR: Path
     CORS_ORIGINS: list[str]

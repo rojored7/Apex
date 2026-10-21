@@ -56,6 +56,7 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
 REDACTED = "[redacted]"
 _BLOB = re.compile(r"apx1\.[A-Za-z0-9._-]+")
 _JWT = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
+_DSN = re.compile(r"://[^@/\s]+@")  # credenciales dentro de una URL: usuario:clave@
 _ATRIBUTOS_ESTANDAR = set(vars(logging.LogRecord("x", 0, "", 0, "", (), None))) | {
     "message",
     "asctime",
@@ -68,7 +69,7 @@ access_logger = logging.getLogger("app.access")
 
 def redact_text(text: str) -> str:
     """Reemplaza blobs `apx1.` y JWT dentro de un texto libre."""
-    return _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text))
+    return _DSN.sub("://[redacted]@", _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text)))
 
 
 def _redact_value(value: Any) -> Any:

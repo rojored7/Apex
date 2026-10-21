@@ -59,7 +59,8 @@ def settings_prueba(tmp_path: Path, test_database_url: str) -> Settings:
         "CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin\n"
         "UPLOADS_DIR=/data/uploads\n"
         'CORS_ORIGINS=["http://localhost"]\n'
-        "LOG_LEVEL=INFO\n",
+        "LOG_LEVEL=INFO\n"
+        "ENV=dev\n",
         encoding="utf-8",
     )
     return load_settings(env_file=env)

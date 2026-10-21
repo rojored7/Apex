@@ -60,7 +60,7 @@ def test_env_completo_da_campos_tipados(tmp_path: Path) -> None:
     assert isinstance(s.CRYPTO_LOCAL_KEK_PATH, Path)
     assert s.CORS_ORIGINS == ["http://localhost"]
     assert s.LOG_LEVEL == "INFO"
-    assert s.ENV == "dev"
+    assert s.ENV == "production", "falla cerrado: sin ENV, producción"
     assert s.TZ_DISPLAY == "America/Bogota"
     assert isinstance(s.DATABASE_URL, SecretStr)
 
@@ -144,3 +144,10 @@ def test_get_settings_cachea(monkeypatch: pytest.MonkeyPatch) -> None:
     assert primero is get_settings()
     reset_settings_cache()
     assert primero is not get_settings()
+
+
+def test_env_dev_solo_si_se_pide(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, ENV="dev"))
+    assert s.ENV == "dev"
+    assert not s.is_production
+    assert load_settings(env_file=escribir_env(tmp_path)).is_production

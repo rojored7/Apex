@@ -17,7 +17,12 @@ bajar() {
   if [ "${SMOKE_KEEP:-0}" = "1" ]; then
     echo "compose-smoke: SMOKE_KEEP=1, el stack queda arriba"
   else
-    "${DC[@]}" down -v --remove-orphans > /dev/null 2>&1 || true
+    if [ "${CI:-}" != "" ]; then
+      "${DC[@]}" down -v --remove-orphans > /dev/null 2>&1 || true
+    else
+      # Fuera de CI nunca se borran los volúmenes del proyecto apex (pgdata, uploads, keys).
+      "${DC[@]}" down --remove-orphans > /dev/null 2>&1 || true
+    fi
   fi
 }
 trap bajar EXIT

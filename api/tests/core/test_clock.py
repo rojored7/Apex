@@ -39,7 +39,7 @@ def test_to_bogota_date_en_los_bordes(instante: datetime, esperada: date) -> Non
 
 def test_to_bogota_date_rechaza_instante_ingenuo() -> None:
     with pytest.raises(ValueError, match="tzinfo"):
-        to_bogota_date(datetime(2026, 10, 21, 2, 30))  # noqa: DTZ001
+        to_bogota_date(datetime(2026, 10, 21, 2, 30))
 
 
 def test_frozen_clock_fijo_hasta_advance() -> None:
@@ -63,7 +63,7 @@ def test_frozen_clock_normaliza_a_utc_y_rechaza_ingenuos() -> None:
     assert reloj.now_utc() == datetime(2026, 10, 21, 5, 30, tzinfo=UTC)
     assert reloj.now_utc().tzinfo is UTC or reloj.now_utc().utcoffset() == timedelta(0)
     with pytest.raises(ValueError, match="tzinfo"):
-        FrozenClock(datetime(2026, 10, 21))  # noqa: DTZ001
+        FrozenClock(datetime(2026, 10, 21))
 
 
 def test_current_clock_por_defecto_es_el_sistema() -> None:

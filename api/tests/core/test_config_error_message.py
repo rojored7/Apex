@@ -9,7 +9,9 @@ import pytest
 from app.core.config import ConfigError, load_settings, reset_settings_cache
 
 
-def test_dsn_invalido_no_filtra_la_contrasena(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dsn_invalido_no_filtra_la_contrasena(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     reset_settings_cache()
     env = tmp_path / ".env"

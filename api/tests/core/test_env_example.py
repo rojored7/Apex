@@ -1,4 +1,7 @@
-"""`.env.example` documenta toda variable de `Settings` y no trae secretos (US-007 T1 y T2; US-011 T8)."""
+"""`.env.example` documenta toda variable de `Settings` y no trae secretos.
+
+US-007 (T1 y T2) y US-011 (T8).
+"""
 
 from __future__ import annotations
 
@@ -33,7 +36,9 @@ def test_toda_variable_de_settings_esta_documentada() -> None:
 
 def test_toda_clave_ajena_al_api_esta_en_non_api_env_vars() -> None:
     claves = _claves()
-    desconocidas = [c for c in claves if c not in Settings.model_fields and c not in NON_API_ENV_VARS]
+    desconocidas = [
+        c for c in claves if c not in Settings.model_fields and c not in NON_API_ENV_VARS
+    ]
     assert desconocidas == [], f"extra='forbid' rompería el arranque con: {desconocidas}"
 
 

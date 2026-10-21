@@ -105,7 +105,9 @@ def test_secretos_y_database_url_sin_valor_por_defecto() -> None:
 
 
 def test_variables_ajenas_se_aceptan_y_desconocidas_fallan(tmp_path: Path) -> None:
-    s = load_settings(env_file=escribir_env(tmp_path, POSTGRES_PASSWORD="x", WEB_PORT="8180"))
+    s = load_settings(
+        env_file=escribir_env(tmp_path, POSTGRES_PASSWORD="x", WEB_PORT="8180")  # noqa: S106
+    )
     assert s.CRYPTO_PROVIDER == "local"
     with pytest.raises(ConfigError) as excinfo:
         load_settings(env_file=escribir_env(tmp_path, FOO="1"))

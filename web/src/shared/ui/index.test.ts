@@ -11,7 +11,19 @@ describe("kit compartido src/shared/ui", () => {
   });
 
   it("exporta los componentes del Sprint 1", () => {
-    for (const component of [ui.PageHeader, ui.Tabs, ui.KpiCard, ui.SidePanel, ui.ConfirmModal]) {
+    for (const component of [
+      ui.PageHeader,
+      ui.Tabs,
+      ui.KpiCard,
+      ui.SidePanel,
+      ui.ConfirmModal,
+      ui.DataTable,
+      ui.Pagination,
+      ui.FilterBar,
+      ui.Chips,
+      ui.MaskedValue,
+      ui.HistoryAside,
+    ]) {
       expect(typeof component).toBe("function");
     }
   });

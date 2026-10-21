@@ -57,3 +57,47 @@ Los desgloses de US-059 (T8), US-060 (T4) y US-040 (T2) piden reglas nuevas en `
   - US-040 T7 (alinear `member.reveal` y `member.create` en US-066 y US-072): `MaskedValue` de S1-F3 usa `members.reveal`; US-072 es de un sprint posterior y el tipo `Action` impedirá compilar el nombre viejo.
   - `PageHeader` recibe `total` como texto ya formateado (el diseño muestra "342 en total · 269 con membresía") en lugar de un número.
   - `Tabs` recibe el contenido como función `children(activeId)` y pinta un solo `tabpanel` (el de la pestaña activa).
+  - Gate: con `SLICE_BASE=HEAD`, el `tsconfig.slice.json` del gate no incluye `src/test/`, y sin `setup.ts` no existen los tipos de `toHaveNoViolations`. Se pasan `web/src/test/setup.ts` y `web/src/test/vitest-axe.d.ts` en la lista del gate (no son pruebas: solo entran al `include`). Mejora sugerida para `slice-gate.sh` (fuera de mi alcance, no toco `scripts/`): incluir siempre `src/test/**` en el `tsconfig.slice.json`.
+- **Checkpoint:** `dd66f5f`.
+
+## S1-F3 · Tabla y valor enmascarado (US-063, US-066)
+
+- **Rojo** (stubs con valores erróneos o que devuelven `null`): `src/shared/lib/{pagination,audit-labels}.test.ts`, `src/shared/hooks/{useListParams,small-hooks}.test.tsx`, `src/shared/ui/{DataTable,Pagination,FilterBar,Chips,MaskedValue,HistoryAside}.test.tsx`, `src/shared/ui/list.a11y.test.tsx`, `src/shared/ui/masked-history.a11y.test.tsx`, `tests/lint/no-reveal-cache.test.ts` y la ampliación de `src/shared/ui/css-tokens.test.ts`. Resultado: 113 fallaban y 41 pasaban (de 154; pasaban los `axe` sobre stubs vacíos, `no-reveal-cache` sobre el stub y los `css-tokens` de los módulos ya existentes).
+- **Verde:**
+  - `src/shared/lib/pagination.ts`: `PAGE_SIZES = [25, 50, 100]`, `pageToOffset`, `offsetToPage`, `totalPages` (mínimo 1), `rangeLabel` ("Mostrando 101–150 de 312", "Sin resultados", miles con `formatCount`); `DEFAULT_LIMIT` y `clampLimit` se reexportan de `core/api/query.ts` (una sola regla).
+  - `src/shared/lib/audit-labels.ts`: `AuditEntryView`, `SYSTEM_USER_ID`, `ACTION_LABELS` (las ocho de N-08), `ENTITY_LABELS` (N-31), `FIELD_LABELS`, `ENCRYPTED_FIELDS`, `maskValue` (texto del api o "Sin dato"; antepone el tipo de documento solo si falta; nunca un blob), `actionLabel`, `entityLabel`, `actorLabel` ("Sistema" para el usuario técnico) y `summarizeChange` (update: campos que cambiaron con "dato cifrado modificado" para los cifrados o valores `apx1.`; insert: campos creados; reveal: campo mostrado; delete y desconocidas: nada, sin lanzar).
+  - `src/shared/hooks/useListParams.ts`: lee y escribe `q`, filtros declarados (multivalor), `limit`, `offset` y `sort` en `useSearchParams`; valida con Zod (`offset` entero no negativo, `sort` con forma `campo`/`-campo` y en la lista permitida); `limit` pasa por `clampLimit`; búsqueda, filtro, tamaño y orden vuelven `offset` a 0; `params` estable mientras la URL no cambia (sirve de `queryKey`); `parseSort` y `serializeSort` exportados.
+  - `src/shared/hooks/useDebouncedValue.ts` y `useMediaQuery.ts` (`MOBILE_QUERY = "(width < 768px)"`, con `useSyncExternalStore`; falso sin `matchMedia`).
+  - `DataTable`: columnas tipadas, primera columna como `Link` a `rowHref(row)`, `th` ordenables con `<button>` y `aria-sort`, caja con `overflow-x: auto` enfocable (`role="region"`), esqueleto de `min(limit, 10)` filas con `aria-busy`, vacío con mensaje y acción, error con el `message` del `ApiError` en `role="alert"` y "Reintentar", tarjetas por fila por debajo de 768 px, cifras con `tabular-nums`, sin columna "enmascarada" (N-01).
+  - `Pagination`: `nav aria-label="Paginación"`, "Mostrar" con 25/50/100 (y el limit actual si es otro válido), `rangeLabel`, "Página X de Y", Anterior y Siguiente de 44 px deshabilitados en los extremos.
+  - `FilterBar`: `form role="search"`, buscador `type="search"` con 300 ms de espera (`SEARCH_DEBOUNCE_MS`) que sigue a la URL si cambia desde fuera, selects con "Cualquiera", rango de fechas civiles (`fieldset` con Desde/Hasta y `min`/`max`), "Ordenar por" y "Limpiar"; se apila en celular.
+  - `Chips`: `role="group"`, cada chip `<button aria-pressed>` con texto, conteo e icono de verificación en el activo (fondo `--black`; claro en oscuro), tonos `warning` y `danger`, fila desplazable en su caja; modo único o múltiple.
+  - `MaskedValue`: solo `masked` y `onReveal`; "Mostrar" (descrito por la etiqueta) solo con `useCan(revealAction)` (`members.reveal` por defecto) y si hay dato; una llamada por pulsación (bandera en `useRef`), cargando con `aria-busy`, claro en estado local con `aria-live`, "Ocultar", vuelve a enmascararse a los 60 s (`REVEAL_TTL_MS`), se descarta al desmontar e ignora respuestas tardías; 403 da "No tienes permiso para ver este dato", otro `ApiError` su `message` y un error ajeno "No se pudo mostrar el dato. Intenta de nuevo.".
+  - `HistoryAside`: `aside aria-label="Historial"` con "Historial reciente", cada entrada con entidad, acción, resumen, usuario y `<time>` en hora de Bogotá; "Ver más" pide `offset = entries.length`; vacío "Sin cambios registrados", primera carga "Cargando historial" con `aria-busy`, error con "Reintentar".
+  - `src/test/fakeTimers.ts`: puente para usar `vi.useFakeTimers` con Testing Library (el `asyncWrapper` de RTL espera un `setTimeout(0)` y solo lo adelanta si ve un global `jest`); solo falsea `setTimeout` y `clearTimeout`.
+  - `src/shared/ui/index.ts` exporta los seis componentes nuevos.
+- **Criterio diferido (US-066):** `onReveal` se conecta a `POST /members/{id}/reveal` en US-074 (Sprint 3) y el historial a `GET /members/{id}/audit` en US-106 (Sprint 4A). Los componentes quedan probados con dobles.
+- **DESIGN-GAP:** `Chips.tsx` ("Pendiente de pago" no está dibujado; se usa el tono de "Por vencer", Q3), `FilterBar.tsx` (el plegado "Filtros ▾" del portal llega con el portal), `audit-labels.ts` (`AuditEntryOut` aún no está en `docs/openapi.json`; la forma sigue `02_domain_model.md` 2.12), `page.ts` (de S1-F1).
+- **Desviaciones:**
+  - `rangeLabel` usa "Mostrando 101–150 de 312" del desglose; el HTML de referencia dice "1–25 de 342".
+  - La vista de tarjetas se elige con `useMediaQuery` (se pinta una sola vista) en lugar de ocultar con CSS, para no duplicar enlaces ni filas en el árbol de accesibilidad.
+  - La posición de `HistoryAside` (derecha en escritorio, al final en celular) la da la cuadrícula de la ficha (US-073), no el componente.
+  - `HistoryAside` lleva `aria-label="Historial"` y un `h2` visible "Historial reciente" (texto del HTML de referencia).
+- **Gate:** `SLICE_BASE=HEAD bash scripts/workflow/slice-gate.sh web/shared` con los 15 archivos de prueba del Rojo (más `index.test.ts`, `setup.ts` y `vitest-axe.d.ts`), en verde: 15 archivos y 162 pruebas.
+
+## Cierre de los tres slices
+
+Cadena completa en `web/`, sobre el árbol del checkpoint de S1-F3:
+
+- `npm run lint` (ESLint y Stylelint) en verde.
+- `npx tsc --noEmit` sin errores.
+- `npm test -- --run --coverage`: 43 archivos y 583 pruebas en verde (línea base: 10 y 80). Cobertura global de `src/`: 99,63 % líneas y sentencias, 96,21 % ramas y 98,67 % funciones (umbral 80 %).
+- `npm run build` en verde (JS 223,5 kB, 69,4 kB gzip; CSS 2,5 kB).
+- `npm run licenses` en verde: producción 12 MIT y 1 ISC, sin cambios (no entró ninguna dependencia de producción).
+- Dependencia nueva: `openapi-typescript` 7.13.0 (MIT), de desarrollo y en versión exacta. Transitivas nuevas: `@redocly/openapi-core`, `@redocly/ajv`, `@redocly/config`, `agent-base`, `ansi-colors`, `change-case`, `colorette`, `https-proxy-agent`, `index-to-position`, `js-levenshtein`, `pluralize`, `uri-js-replace` (MIT), `type-fest` (MIT o CC0-1.0), `yaml-ast-parser` (Apache-2.0) y `yargs-parser` (ISC).
+
+Pendientes que no son de este encargo:
+
+- Mover las reglas de `tests/lint/restricted-config.ts` a `web/eslint.config.js` (archivo protegido por `config-protection`; decide el usuario).
+- Job de CI `web-contract` (US-059 T10) y el paso `test:tz` (US-060 T6): no se tocó `.github/`; la prueba de contrato y la de zonas horarias ya corren dentro de `npm test`.
+- `slice-gate.sh`: incluir `src/test/**` en `tsconfig.slice.json`.

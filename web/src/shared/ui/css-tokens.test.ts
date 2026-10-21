@@ -7,7 +7,19 @@ import { fileURLToPath } from "node:url";
 
 const DIR = fileURLToPath(new URL("./", import.meta.url));
 const MODULES = readdirSync(DIR).filter((f) => f.endsWith(".module.css"));
-const NEW_IN_SPRINT_1 = ["PageHeader", "Tabs", "KpiCard", "SidePanel", "ConfirmModal"];
+const NEW_IN_SPRINT_1 = [
+  "PageHeader",
+  "Tabs",
+  "KpiCard",
+  "SidePanel",
+  "ConfirmModal",
+  "DataTable",
+  "Pagination",
+  "FilterBar",
+  "Chips",
+  "MaskedValue",
+  "HistoryAside",
+];
 
 const read = (file: string): string => readFileSync(`${DIR}${file}`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 

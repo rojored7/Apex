@@ -50,7 +50,7 @@ Que la integridad y la custodia criptográfica se puedan demostrar ante un terce
   - US-133 y US-134 (Transit y `OpenBaoProvider.sign` y `verify`);
   - US-136 (503 `crypto_unavailable`);
   - US-126 (`core/alerts.py`, G-08).
-- **Sprint 4:**
+- **Sprints 4A y 4B:**
   - US-104 y US-105 (verificación y `0013`);
   - US-113 (worker);
   - US-030 (rotación por CLI y `reencrypt_batch`);
@@ -171,7 +171,7 @@ EP-20 no tiene migraciones.
   - subida de foto, con pruebas de borde de 5.242.880 y 5.242.881 bytes a través de Nginx;
   - descarga de la autorización.
 - Smoke con el perfil `tls`, usando una CA interna, más el smoke en modo LAN.
-- El worker con `--run-once sign_audit`, con OpenBao abierto y con OpenBao sellado (debe reintentar y alertar).
+- `docker compose run --rm worker python -m app.worker.main --run-once sign_audit`, con OpenBao abierto y con OpenBao sellado (debe reintentar y alertar).
 - Seguridad, revisada por `security-reviewer`:
   - adjuntos servidos solo por el api, con rol, `no-store` y `nosniff`;
   - validación por bytes mágicos;

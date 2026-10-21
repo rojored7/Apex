@@ -34,7 +34,7 @@ El check-in nunca bloquea (RN-09, N-38, N-39): siempre registra y advierte en ro
 
 Solo depende de v0.1. Por eso este sprint se puede ejecutar antes que los Sprints 5 y 6 si el negocio lo prioriza.
 
-- **Sprint 4:**
+- **Sprint 4A:**
   - US-108 (contrato del tablero con `attendance_week` y `sessions_today` en `null`);
   - US-113 (worker y `job_runs`).
 - **Sprint 3:**

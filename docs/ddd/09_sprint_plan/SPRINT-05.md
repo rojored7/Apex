@@ -20,7 +20,7 @@ Además el sistema entrega recibos PDF y exportaciones CSV auditadas.
 ## Demo al final del sprint
 
 1. **OpenBao.**
-   - `docker compose up` levanta `openbao` sin puertos publicados.
+   - `docker compose up -d --build` levanta `openbao` sin puertos publicados.
    - `cli migrate-provider --as admin@...` mueve las DEK de `LocalFileProvider` a Transit y se puede reanudar.
    - Al reiniciar, OpenBao queda sellado: `/health` muestra `crypto: sealed` y un `GET /members/{id}` responde 503 `crypto_unavailable`.
    - Después de desellar con 3 de las 5 llaves, todo vuelve.
@@ -39,7 +39,7 @@ Además el sistema entrega recibos PDF y exportaciones CSV auditadas.
 
 ## Dependencias de sprints anteriores
 
-- **Sprint 4 (v0.1 cerrada):**
+- **Sprints 4A y 4B (v0.1 cerrada):**
   - US-113 (worker y `job_runs`);
   - US-094 (vencimientos);
   - US-115 (campo `backup` de `/health`);
@@ -159,7 +159,7 @@ Los rangos reservados (EP-14: 0020–0029; EP-15: 0030–0034; EP-16: 0035–003
   - recibo;
   - exportación.
 - Smoke con OpenBao: migrar proveedor, sellar, ver el 503, desellar y comprobar que todo vuelve. Se guarda la evidencia de `/health` en cada estado.
-- El worker con `--run-once notify` corre dos veces el mismo día sin duplicar avisos.
+- `docker compose run --rm worker python -m app.worker.main --run-once notify` corre dos veces el mismo día sin duplicar avisos.
 - Seguridad, revisada por `security-reviewer`:
   - el token de OpenBao no aparece en los logs ni en `crypto_ops`;
   - `last_error` sin secretos;

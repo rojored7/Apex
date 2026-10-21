@@ -34,7 +34,7 @@ Que el coach programe el WOD del día sobre un catálogo de movimientos y de ben
   - US-156 (`class_sessions`, con la columna `wod_id`);
   - US-157 (lista de sesiones con el filtro `wod_id`);
   - US-159 y US-161 (asistencia con `removed_at`, `classes.service.attendees`).
-- **Sprint 4:** US-108 (contrato del tablero con `wod_today` en `null`).
+- **Sprint 4A:** US-108 (contrato del tablero con `wod_today` en `null`).
 - **Sprint 3:** US-073 (ficha y sus pestañas).
 - **Sprint 2:**
   - US-069 y US-070 (`members.service.names_for` con sexo; no se crea `public_names`);

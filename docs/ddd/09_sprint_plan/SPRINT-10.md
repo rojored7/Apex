@@ -60,7 +60,7 @@ Además se cierra la parte criptográfica:
   - US-121, US-123, US-124, US-125, US-129 y US-131 (reglas, preferencias, `notify`, historial y correo directo);
   - US-133 a US-136 (OpenBao).
   - US-137 (recibo PDF).
-- **Sprint 4:**
+- **Sprints 4A y 4B:**
   - US-114, US-115 y US-116 (backup, `backup_check` y respaldo de la KEK);
   - US-113 (`job_runs`).
 - **Sprints 2 y 3:**

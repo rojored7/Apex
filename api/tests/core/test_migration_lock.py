@@ -13,11 +13,21 @@ import sys
 from pathlib import Path
 
 import asyncpg
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.core.config import Settings
 from app.main import MIGRATION_LOCK_KEY
 
 API_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _head() -> str:
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    assert head is not None
+    return head
 
 
 def _asyncpg_url(settings: Settings) -> str:
@@ -50,7 +60,7 @@ def test_dos_migraciones_simultaneas_terminan_sin_error(settings_prueba: Setting
     procesos = [_alembic(settings_prueba, "upgrade", "head") for _ in range(2)]
     salidas = [proceso.communicate(timeout=120)[0] for proceso in procesos]
     assert [proceso.returncode for proceso in procesos] == [0, 0], salidas
-    assert asyncio.run(_version(settings_prueba)) == ["0001_core_schemas"]
+    assert asyncio.run(_version(settings_prueba)) == [_head()]
 
 
 def test_la_migracion_espera_al_lock_asesor(settings_prueba: Settings) -> None:

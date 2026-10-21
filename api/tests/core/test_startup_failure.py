@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.core.config import Settings
 from app.main import create_app
@@ -17,7 +19,7 @@ API_ROOT = Path(__file__).resolve().parents[2]
 
 MIGRACION_ROTA = '''"""Migración rota de prueba."""
 revision = "9999_rota"
-down_revision = "0001_core_schemas"
+down_revision = "__HEAD__"
 branch_labels = None
 depends_on = None
 
@@ -33,10 +35,16 @@ def downgrade() -> None:
 
 @pytest.fixture
 def migraciones_rotas(tmp_path: Path) -> str:
-    """Copia de migrations/ con una revisión extra que falla sobre 0001."""
+    """Copia de migrations/ con una revisión extra que falla sobre el head real."""
     carpeta = tmp_path / "migraciones"
     shutil.copytree(API_ROOT / "migrations", carpeta, ignore=shutil.ignore_patterns("__pycache__"))
-    (carpeta / "versions" / "9999_rota.py").write_text(MIGRACION_ROTA, encoding="utf-8")
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    assert head is not None
+    (carpeta / "versions" / "9999_rota.py").write_text(
+        MIGRACION_ROTA.replace("__HEAD__", head), encoding="utf-8"
+    )
     return str(carpeta)
 
 

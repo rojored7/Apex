@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column("action", sa.Text(), nullable=False),
         sa.Column("table_name", sa.Text(), nullable=False),
         sa.Column("record_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("subject_member_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("before", postgresql.JSONB(), nullable=True),
         sa.Column("after", postgresql.JSONB(), nullable=True),
         sa.Column("prev_hash", sa.CHAR(64), nullable=False),
@@ -65,6 +66,12 @@ def upgrade() -> None:
         "ix_audit_log_table_seq",
         "audit_log",
         ["table_name", sa.text("seq DESC")],
+        schema="audit",
+    )
+    op.create_index(
+        "ix_audit_log_subject_member_seq",
+        "audit_log",
+        ["subject_member_id", sa.text("seq DESC")],
         schema="audit",
     )
     op.execute(

@@ -12,8 +12,9 @@ Para Uvicorn, `app.main:app` se construye perezosamente (PEP 562): importar
 `create_app` no arranca nada, así US-021 exporta el OpenAPI sin `.env`.
 
 `main.py` es el único lugar que conoce la lista `MODULES`; `core/` no importa
-módulos. Pendiente para S1-B2 (US-016): `install_audit_listeners()` y
-`actor_scope(SYSTEM_USER_ID)` alrededor del arranque.
+módulos. `install_audit_listeners()` (US-016) se instala en `create_app`; los pasos de
+arranque corren bajo `actor_scope(SYSTEM_USER_ID)` porque pueden escribir tablas con
+`created_by` (por ejemplo `ensure_keys`, US-025).
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ from alembic.config import Config
 from fastapi import APIRouter, FastAPI
 
 from app.core import db, health
+from app.core.audit import install_audit_listeners
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.config import Settings, get_settings
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
@@ -93,6 +96,7 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(settings)
     db.configure_engine(db.create_engine_from(settings))
+    install_audit_listeners()  # US-016: created_by y auditoría en cada flush
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -103,9 +107,10 @@ def create_app(
                 logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
                 raise
             logger.info("migraciones al día")
-        for nombre, paso in list(_startup_steps):
-            logger.info("arranque: %s", nombre)
-            await paso(settings)
+        with actor_scope(SYSTEM_USER_ID):
+            for nombre, paso in list(_startup_steps):
+                logger.info("arranque: %s", nombre)
+                await paso(settings)
         try:
             yield
         finally:

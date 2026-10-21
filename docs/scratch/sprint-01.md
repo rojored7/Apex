@@ -53,3 +53,31 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   `base` (antes asumía `0001`). `rows_checked` cuenta hasta la primera ruptura inclusive.
 - Seguridad (T13): escritura solo con `insert()` de Core; trigger cubre TRUNCATE; lock `xact`;
   `digest` no toca `crypto_ops`. Los valores en claro de campos cifrados los evita US-016.
+
+### S1-B2 · Hook de auditoría (US-016)
+
+- Rojo: `tests/core/test_audit_serialize.py`, `test_audit_hook_db.py`, `test_audit_hook_perf.py`,
+  `test_audit_actor_http.py` sobre stubs: 15 fallos + 12 errores.
+- Verde: `core/context.py` completo (`SYSTEM_USER_ID`, `current_actor`, `get_actor`,
+  `actor_scope`, `MissingActorError` con el mensaje de los criterios 7 y 8); en `core/audit.py`
+  `serialize_value`, `serialize_row` (sin técnicas, `"***"` para `__audit_redact__` como pide
+  US-041, guarda `PlaintextInAuditError`), `diff_row`, listeners `before_flush` (`created_by`)
+  y `after_flush` (insert/update/delete, `__audit_exclude__`, `__audit_subject__`, columnas
+  cifradas por `is_encrypted`), `install_audit_listeners()` idempotente sobre `Session`;
+  `record`/`append_entry` toman el actor del contexto si no se les pasa y aceptan
+  `subject_member_id`. `create_app` instala los listeners y corre los pasos de arranque bajo
+  `actor_scope(SYSTEM_USER_ID)`; `tests/conftest.py` los instala una vez.
+- `0002_audit_log` corregida antes de cualquier push: columna `subject_member_id` e índice
+  `ix_audit_log_subject_member_seq` (G-05; el plan del sprint los pone en `0002`). Solo estaba
+  aplicada en las bases locales de desarrollo y prueba, que se bajaron a `base` y volvieron a
+  `head`. `subject_member_id` entra al hash solo cuando no es nulo (US-106 T8).
+- Evidencia: 55 casos de auditoría en verde; 500 inserciones auditadas en una transacción muy
+  por debajo de 5 s; cadena válida tras varios flushes; el actor de una dependencia async llega
+  al commit del teardown de `get_session`; suite completa 165 ok + 1 saltada, cobertura 95 %.
+- Hallazgo de entorno: `localhost` resuelve a `::1` primero y `db_test` solo escucha en IPv4;
+  en Windows el rechazo tarda 2 s, así que `/health` (límite 2 s) devolvía 503 y la suite tardaba
+  117 s. `TEST_DATABASE_URL` pasa a `127.0.0.1` en `.env` y `.env.example` (con nota); la suite
+  baja a 9 s. `test_migrations.py`, `test_migration_lock.py` y `test_startup_failure.py` dejan
+  de asumir `0001` como head.
+- Diferido por plan: `tests/core/test_audit_hook_encrypted.py` con el `Encrypted` real llega en
+  S1-B7; la guarda ya se prueba aquí con un tipo falso que expone `is_encrypted`.

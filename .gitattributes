@@ -1,0 +1,5 @@
+# Fin de línea LF en todo el repo: los scripts y Dockerfiles corren en Linux
+* text=auto eol=lf
+*.png binary
+*.zip binary
+*.xlsx binary

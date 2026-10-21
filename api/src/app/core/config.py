@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     TRUSTED_PROXIES: str = ""  # IPs separadas por coma (US-036)
     COOKIE_SECURE: bool = False
     FRONT_BASE_URL: str = "http://localhost"
+    APP_VERSION: str = "dev"  # SHA corto de git en la imagen (ARG GIT_SHA)
 
     @field_validator("DATABASE_URL")
     @classmethod

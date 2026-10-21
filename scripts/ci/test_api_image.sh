@@ -40,7 +40,7 @@ else
   falla "pytest, ruff o mypy están en la imagen"
 fi
 
-docker run --rm "$IMG" python -c "import app.main; assert app.main.app.title == 'APEX'" && ok "app.main importa" || falla "app.main no importa"
+docker run --rm "$IMG" python -c "import app.main; assert callable(app.main.create_app)" && ok "app.main importa" || falla "app.main no importa"
 
 echo "test_api_image: $fallas fallas"
 [ "$fallas" -eq 0 ]

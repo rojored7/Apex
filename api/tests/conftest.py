@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.core.config import Settings, load_settings
+
 API_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -44,6 +46,23 @@ def test_database_url() -> str:
         )
     assert url.startswith("postgresql+asyncpg://"), url
     return url
+
+
+@pytest.fixture
+def settings_prueba(tmp_path: Path, test_database_url: str) -> Settings:
+    """`Settings` completa apuntando a `db_test`, sin tocar el `.env` real."""
+    env = tmp_path / ".env"
+    env.write_text(
+        f"DATABASE_URL={test_database_url}\n"
+        "JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem\n"
+        "CRYPTO_PROVIDER=local\n"
+        "CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin\n"
+        "UPLOADS_DIR=/data/uploads\n"
+        'CORS_ORIGINS=["http://localhost"]\n'
+        "LOG_LEVEL=INFO\n",
+        encoding="utf-8",
+    )
+    return load_settings(env_file=env)
 
 
 @pytest.fixture(scope="session")

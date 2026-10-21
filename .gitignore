@@ -42,3 +42,10 @@ _entregas/**/*.zip
 # Volcados de base de datos (pg_dump previos a migraciones)
 *.dump
 *.sql.age
+
+# Llaves locales del bus de criptografía y artefactos de pruebas
+*.kek
+api/.coverage
+api/coverage.xml
+web/.vite/
+scripts/workflow/tests/tmp/

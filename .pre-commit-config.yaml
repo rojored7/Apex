@@ -1,0 +1,26 @@
+# pre-commit: ruff (lint y formato), mypy con las dependencias del proyecto y
+# detección de llaves privadas. Instalar con `cd api && uv sync && uv run python -m pre_commit install`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^api/
+      - id: ruff-format
+        files: ^api/
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: ^docs/design/
+      - id: check-merge-conflict
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy --strict (api/src)
+        entry: uv run --directory api mypy src
+        language: system
+        pass_filenames: false
+        files: ^api/

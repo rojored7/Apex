@@ -34,7 +34,7 @@ const ROLE_SELECTORS = [
   // switch (role) { case "admin": ... } y cualquier case "coach":
   `SwitchStatement[discriminant.name=/^role$/i]`,
   `SwitchStatement[discriminant.property.name=/^role$/i]`,
-  `SwitchCase > ${ROLE_LITERAL}.test`,
+  `SwitchCase[test.value=/^(admin|coach|member)$/]`,
 ].map((selector) => ({ selector, message: ROLE_MESSAGE }));
 
 export const RESTRICTED_CONFIG: Linter.Config[] = [

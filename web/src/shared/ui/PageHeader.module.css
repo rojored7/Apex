@@ -1,0 +1,145 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.crumbs {
+  font: var(--text-caption);
+  color: var(--muted);
+}
+
+.crumbList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crumb + .crumb::before {
+  content: "›";
+  margin-right: var(--space-1);
+  color: var(--muted);
+}
+
+.crumbLink {
+  color: var(--blue-deep);
+  text-decoration: none;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.crumbLink:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.titleBlock {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0;
+  font: var(--text-screen-title);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* El total y la insignia no van en Michroma ni en mayúsculas. */
+.total {
+  font: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.badge {
+  font: var(--text-body);
+  text-transform: none;
+}
+
+.description {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.more {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 10;
+  min-width: calc(var(--sidebar) * 0.9);
+  margin: 0;
+  padding: var(--space-1) 0;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  font: var(--text-body);
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus {
+  background: var(--blue-tint);
+}
+
+.menuItem:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+.menuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.menuDanger {
+  color: var(--danger);
+}

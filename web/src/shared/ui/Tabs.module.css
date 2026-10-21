@@ -1,0 +1,59 @@
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* En celular la fila se desplaza dentro de su caja; nunca la página. */
+.list {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  margin-bottom: -1px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font: var(--text-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tab:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+.tab:hover:not(.disabled) {
+  background: var(--blue-tint);
+}
+
+/* Activa: línea inferior azul y texto en negrita (no solo color). */
+.active {
+  border-bottom-color: var(--apex-blue);
+  font-weight: 700;
+}
+
+.disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.until {
+  font: var(--text-caption);
+  color: var(--muted);
+}
+
+.panel:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

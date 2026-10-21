@@ -44,6 +44,7 @@ from app.core.crypto.provider import configure_provider, current_provider, get_k
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
+from app.core.security import configure_security
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
 MODULES: Final[tuple[str, ...]] = ()
@@ -129,9 +130,11 @@ def create_app(
                 logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
                 raise
             logger.info("migraciones al día")
-        # US-023: el proveedor de llaves se abre antes que cualquier paso; sin KEK (o con
-        # permisos abiertos) el proceso termina y el log nunca lleva material.
+        # US-023/US-033: proveedor de llaves y llaves JWT se abren antes que cualquier paso;
+        # sin KEK (o con permisos abiertos) o sin llave JWT el proceso termina y el log nunca
+        # lleva material.
         try:
+            configure_security(settings)
             configure_provider(get_key_provider(settings))
         except Exception:
             logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")

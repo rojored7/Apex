@@ -227,3 +227,29 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
 - Observación: SQLAlchemy envuelve el error del `TypeDecorator` en `StatementError` con el
   `CryptoError` original en `orig` (así lo prueba el caso de Core). El tipo falso de
   `test_audit_hook_db.py` implementa ahora `process_bind_param`, como exige el contrato.
+
+### S1-B8 · Contraseñas y JWT (US-032, US-033)
+
+- Rojo: `tests/core/test_passwords.py` y `tests/core/test_jwt.py` sobre stubs: 4 fallos + 23
+  errores.
+- Verde: `Settings` con `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM`,
+  `PASSWORD_MIN_LENGTH`, `ACCESS_TOKEN_TTL_S`, `REFRESH_TOKEN_TTL_DAYS`, `JWT_LEEWAY_S` (en
+  producción argon2 no baja de los valores por defecto); `core/security.py` con argon2id
+  (`hash_password`, `verify_password`, `needs_rehash`, `dummy_verify`, política N-10 con
+  `common_passwords.txt` de 303 entradas en el paquete), JWT `EdDSA` (`load_jwt_keys` con
+  `StartupError` sin contenido y comprobación de `JWT_PUBLIC_KEY_PATH`, `access_claims` pura,
+  `create_access_token`, `decode_access_token` con `exp`/`iat` comparados contra `core/clock`
+  y tolerancia de 30 s, `TokenExpired`/`TokenInvalid`), refresh opaco (`new_opaque_token`,
+  `hash_opaque_token`, `new_refresh_token`), `configure_security(settings)` llamado en el
+  lifespan antes del proveedor de llaves.
+- Evidencia: 27 ok en los dos archivos; suite completa 363 ok + 3 saltadas; ruff y mypy
+  limpios. Vencido a los 16 min, válido a los 15 min 20 s; otra llave Ed25519, `alg: none`,
+  HS256 con la pública como secreto (forjado a mano porque PyJWT se niega a emitirlo), claims
+  faltantes, `role` ajeno y `sub` no UUID → `TokenInvalid`; llave RSA, archivo vacío o
+  inexistente y pública que no coincide → `StartupError` con el nombre de la variable y sin
+  PEM; ni contraseñas, hashes, tokens ni la privada en `caplog`. El api de desarrollo arranca
+  con la llave JWT del volumen (`/health` 200).
+- Decisión: `exp` e `iat` se validan en el api contra el reloj de `core/clock` (PyJWT solo
+  valida firma y claims obligatorios), así las pruebas usan `FrozenClock` y el api tiene un
+  solo reloj. `jwt`, `cryptography`, `hashlib` y `hmac` entran en `tests/core/test_jwt.py` con
+  `noqa: TID251` solo para forjar tokens de ataque; `src/app` sigue limpio.

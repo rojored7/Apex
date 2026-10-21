@@ -18,12 +18,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import (
+    Field,
     PostgresDsn,
     SecretStr,
     TypeAdapter,
     ValidationError,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -124,6 +126,19 @@ class Settings(BaseSettings):
     FRONT_BASE_URL: str = "http://localhost"
     APP_VERSION: str = "dev"  # SHA corto de git en la imagen (ARG GIT_SHA)
 
+    # Contraseñas (US-032): argon2id con los valores por defecto de argon2-cffi; en producción
+    # no se aceptan por debajo de ellos. Política N-10: longitud mínima y lista de comunes.
+    ARGON2_TIME_COST: int = Field(default=3, gt=0)
+    ARGON2_MEMORY_COST_KIB: int = Field(default=65536, gt=0)
+    ARGON2_PARALLELISM: int = Field(default=4, gt=0)
+    PASSWORD_MIN_LENGTH: int = Field(default=12, gt=0)
+
+    # Sesiones (US-033): access JWT EdDSA de 15 minutos con tolerancia de 30 s (N-14) y
+    # refresh opaco de 7 días en cookie HttpOnly (N-13).
+    ACCESS_TOKEN_TTL_S: int = Field(default=900, gt=0)
+    REFRESH_TOKEN_TTL_DAYS: int = Field(default=7, gt=0)
+    JWT_LEEWAY_S: int = Field(default=30, ge=0)
+
     @field_validator("DATABASE_URL")
     @classmethod
     def _dsn_asyncpg(cls, valor: SecretStr) -> SecretStr:
@@ -149,6 +164,18 @@ class Settings(BaseSettings):
         if not valor.startswith(("http://", "https://")):
             raise ValueError("FRONT_BASE_URL debe empezar por http:// o https://")
         return valor.rstrip("/")
+
+    @model_validator(mode="after")
+    def _argon2_no_mas_debil_que_el_defecto_en_produccion(self) -> Settings:
+        if self.ENV == "production" and (
+            self.ARGON2_TIME_COST < 3
+            or self.ARGON2_MEMORY_COST_KIB < 65536
+            or self.ARGON2_PARALLELISM < 4
+        ):
+            raise ValueError(
+                "ARGON2_* no puede estar por debajo de los valores por defecto en producción"
+            )
+        return self
 
     @property
     def trusted_proxies(self) -> list[str]:

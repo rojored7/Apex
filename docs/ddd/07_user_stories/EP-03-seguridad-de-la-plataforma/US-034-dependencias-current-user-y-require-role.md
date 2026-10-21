@@ -37,6 +37,7 @@ para que el coach no pueda anular pagos, el socio solo vea lo suyo y ningún end
 5. `require_role("admin", "coach")` deja pasar a ambos y rechaza a `member` con 403.
 6. Después de `current_user`, el `user_id` está disponible para la auditoría de esa petición.
 7. Los mensajes de 401 y 403 no revelan si el usuario existe ni por qué falló el token.
+8. Un access token vencido con firma válida recibe 401 `token_expired` (US-043); todo otro 401 usa `unauthorized`, y `invalid_token` queda reservado al 400 de los tokens de un solo uso (contradicciones del desglose).
 
 ## Escenarios BDD
 

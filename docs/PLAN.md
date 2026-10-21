@@ -1,6 +1,8 @@
 # APEX — plan de implementación para Claude Code (backend e infraestructura)
 
-Orden de trabajo. Cada tarea termina con su criterio de salida cumplido y sus pruebas en verde antes de pasar a la siguiente. El front no se construye aquí; solo se deja el contrato de la API documentado en `/docs` (OpenAPI) y el lugar en Nginx para servir `web/dist`.
+Orden de trabajo original del backend. Cada tarea termina con su criterio de salida cumplido y sus pruebas en verde antes de pasar a la siguiente.
+
+**Nota del 21 de octubre de 2026.** Este documento es la referencia original. El plan de trabajo vigente es `docs/ddd/` (dominio, arquitectura, épicas, historias, desglose y sprints en `docs/ddd/09_sprint_plan/`), aprobado en el gate con las decisiones de `docs/ddd/DECISIONES.md`. Donde se contradigan, manda `docs/ddd/`. Decisión D1: el front sí se construye en este repositorio, en `web/`, dentro del mismo flujo; el contrato de la API se exporta a `docs/openapi.json`.
 
 Lee primero `CLAUDE.md`. Lo que diga ahí manda sobre cualquier cosa de este plan.
 
@@ -53,9 +55,9 @@ Criterio de salida: prueba de búsqueda por documento sin descifrar la tabla; pr
 Criterio de salida: no se puede borrar un plan con membresías activas; se desactiva.
 
 ### Tarea 6 — Módulo `memberships`
-1. Tabla `memberships.memberships`: member_id, plan_id, agreed_price_cop (copia del precio del plan), start_date, end_date, classes_remaining, status: active | expiring | expired | frozen | cancelled, frozen_from, frozen_to, cancel_reason. `__audited__ = True`.
-2. Reglas en `service.py` como funciones puras probables sin base de datos: `compute_end_date(start, plan)`, `compute_status(membership, today)`, `freeze(membership, from, to)` extiende `end_date` por los días congelados.
-3. Endpoints: `GET /api/v1/memberships` (filtros: estado, vence antes de, socio), `POST /api/v1/members/{id}/memberships` (vender), `POST /{id}/renew`, `POST /{id}/freeze`, `POST /{id}/cancel`, `GET /{id}`.
+1. Tabla `memberships.memberships`: member_id, plan_id, agreed_price_cop (copia del precio del plan), start_date, end_date, classes_remaining, status: pending_payment | active | expiring | expired | frozen | cancelled, cancel_reason. `__audited__ = True`. Las congelaciones van en la tabla `memberships.membership_freezes`, una fila por congelación (N-25). Restricción `EXCLUDE USING gist` para que las fechas de un socio no se solapen (Q1).
+2. Reglas en `service.py` como funciones puras probables sin base de datos: `compute_end_date(start, plan)`, `compute_status(membership, freezes, today, expiring_days)`, `apply_freeze(membership, freezes, from, to, limits)` extiende `end_date` por los días congelados.
+3. Endpoints: `GET /api/v1/memberships` (filtros: estado, `ends_from`, `ends_to`, socio), `POST /api/v1/members/{id}/memberships` (vender y renovar en una sola operación `sell`, con `first_payment` opcional y `renew: true`; no existe `/renew`, decisiones D5 y Q2), `GET /api/v1/members/{id}/memberships/renewal-preview`, `POST /{id}/freeze`, `POST /{id}/cancel`, `GET /{id}`.
 4. Vista de resumen: `GET /api/v1/memberships/summary` devuelve conteos de al día, vencen en 7 días, vencidos.
 5. Evento `MembershipActivated`, `MembershipExpired`.
 Criterio de salida: pruebas de cálculo de fecha de fin para plan por días y por clases, de cambio de estado al cruzar la fecha, de congelación.
@@ -102,15 +104,16 @@ Criterio de salida: el equipo del front puede generar su cliente desde `openapi.
 
 1. `infra/openbao/config.hcl`, servicio `openbao` en Compose, desellado con llaves fuera del servidor, motor Transit habilitado con una llave por `data_class` y una de firma.
 2. `OpenBaoProvider` implementando `KeyProvider` con la API de Transit. `cli migrate-provider local→openbao`: re-envuelve las DEK, no recifra datos.
-3. Módulo `notifications`: tablas `rules`, `templates`, `notifications`; interfaz `NotificationChannel` con `WebPushChannel` (pywebpush), `EmailChannel` (SMTP/Brevo), `TelegramChannel` (httpx), `WhatsAppLinkChannel` (genera `wa.me` con mensaje). Endpoints de CRUD de reglas y plantillas, historial, y `GET /api/v1/notifications/today` para la pantalla "por avisar hoy".
-4. Job `notify.py`: 3 días antes, el día, 1, 7 y 15 días después; respeta canales activos del socio; registra cada intento.
-5. Tabla `members.push_subscriptions` y endpoints para registrar la suscripción del navegador.
+3. Módulo `notifications`: tablas `rules`, `templates`, `notifications`; interfaz `NotificationChannel` con `EmailChannel` (SMTP/Brevo) y `WhatsAppLinkChannel` (genera `wa.me` con mensaje). Telegram no es canal al socio: es `TelegramAlertSink` (httpx directo) para alertas internas del equipo vía `core/alerts.py` (N-34). Endpoints de CRUD de reglas y plantillas, historial, `GET /api/v1/notifications/today` para la pantalla "por avisar hoy", `GET /notifications/{id}/wa-link` (marca enviado) y `POST /notifications/{id}/skip {reason}`.
+4. Job `notify.py`: 3 días antes, el día, 1, 7 y 15 días después; respeta canales activos del socio y la Ley 1581 (N-33); registra cada intento.
+5. Alertas internas por Telegram: resumen diario de "por avisar hoy", backup fallido, firma atrasada, OpenBao sellado. Web push y `members.push_subscriptions` pasan a v1.0 (Q14).
 
 ## Versión 0.3 — Auditoría firmada y TLS híbrido
 
 1. Job `sign_audit.py`: firma nocturna del último hash de la cadena con ML-DSA desde OpenBao Transit (OpenBao 2.7+). Tabla `audit.signatures`.
 2. Caddy delante de Nginx con TLS automático y grupo de intercambio `X25519MLKEM768`.
-3. Adjuntos: módulo `attachments` con `StorageProvider` (`LocalDisk`, `S3Compatible`), endpoints de subida y descarga con auditoría, cifrado de los sensibles vía bus.
+3. Adjuntos: módulo `attachments` con `StorageProvider` (`LocalDisk`, `S3Compatible`), endpoints de subida y descarga con auditoría (`download`, N-08), cifrado de los sensibles vía bus.
+4. Informe CBOM exportado desde `crypto_keys` (`GET /crypto/cbom` y `cli cbom`), adelantado desde v1.0 (Q26), junto con el router `core/crypto/router.py` (llaves, operaciones, trabajos, rotación).
 
 ## Versión 0.4 — Clases y asistencia
 
@@ -130,5 +133,6 @@ Criterio de salida: el equipo del front puede generar su cliente desde `openapi.
 
 1. Endpoints del portal: mi plan, mis pagos, mis WODs, mis récords, mis datos, mis avisos; el socio solo ve lo suyo (regla en `require_role("member")` + filtro por `member_id` del token).
 2. Resultado auto-registrado por el socio con estado `pending` hasta validación del coach.
-3. Firma de backups con ML-DSA; informe CBOM exportado desde `crypto_keys` (`cli cbom --format cyclonedx`).
+3. Firma de backups con ML-DSA. El CBOM existe desde v0.3; aquí se agrega el formato CycloneDX (`cli cbom --format cyclonedx`, US-197).
 4. Envoltura de llaves con ML-KEM cuando OpenBao Transit lo implemente; si no, `liboqs-python` detrás del mismo `KeyProvider`.
+5. Web push: `WebPushChannel` (pywebpush), tabla `members.push_subscriptions` y `POST /me/push-subscription` (Q14); push de récord al socio (`PersonalRecordSet`).

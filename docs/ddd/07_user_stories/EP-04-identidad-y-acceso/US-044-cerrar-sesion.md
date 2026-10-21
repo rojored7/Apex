@@ -32,7 +32,7 @@ para que la siguiente persona en el computador compartido no pueda usar mi cuent
 
 1. `POST /api/v1/auth/logout` con access token válido (rol `admin`, `coach` o `member`) y cookie de refresh responde 204, marca `revoked_at` (UTC) en ese refresh y borra la cookie.
 2. Solo se revoca el refresh de la sesión actual; otras sesiones del mismo usuario siguen vigentes.
-3. Después del logout, usar ese refresh en `/auth/refresh` responde 401 `invalid_refresh`.
+3. Después del logout, usar ese refresh en `/auth/refresh` responde 401 `unauthorized`.
 4. Sin access token responde 401; con access token válido pero sin cookie responde 204 e igualmente limpia la cookie (idempotente).
 5. El front, tras el 204 o ante cualquier error de red, borra el access token, notifica a las otras pestañas por `BroadcastChannel` y navega a `/login`.
 
@@ -54,7 +54,7 @@ Característica: Cerrar sesión
   Escenario: El refresh revocado ya no sirve
     Dado que el coach cerró sesión
     Cuando alguien intenta renovar con ese refresh
-    Entonces recibe 401 con código "invalid_refresh"
+    Entonces recibe 401 con código "unauthorized"
 
   Escenario: Logout sin sesión
     Cuando se llama "/auth/logout" sin access token

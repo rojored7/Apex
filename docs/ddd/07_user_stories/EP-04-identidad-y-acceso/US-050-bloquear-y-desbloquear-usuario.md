@@ -32,7 +32,7 @@ para cortar su acceso al instante sin darlo de baja
 
 1. `POST /api/v1/users/{id}/lock` (admin) responde 200 con el usuario en estado `locked`, pone `locked_at` en UTC y revoca todos sus refresh tokens en la misma transacción.
 2. Se emiten `UserLocked` y `SessionsRevoked`, y queda auditoría `update` sobre `users`.
-3. Un usuario bloqueado recibe 401 genérico al iniciar sesión y 401 `invalid_refresh` al renovar; un access token emitido antes del bloqueo deja de servir en la siguiente petición (la dependencia `current_user` comprueba `locked_at`).
+3. Un usuario bloqueado recibe 401 genérico al iniciar sesión y 401 `unauthorized` al renovar; un access token emitido antes del bloqueo deja de servir en la siguiente petición (la dependencia `current_user` comprueba `locked_at`).
 4. Bloquear al único admin activo o al propio usuario conectado responde 409 (`last_admin` o `cannot_lock_self`).
 5. Bloquear un usuario ya bloqueado responde 409 `already_locked`; desbloquear uno no bloqueado responde 409 `not_locked`.
 6. `POST /api/v1/users/{id}/unlock` (admin) responde 200, pone `locked_at` en nulo y no restaura sesiones: el usuario debe iniciar sesión otra vez.

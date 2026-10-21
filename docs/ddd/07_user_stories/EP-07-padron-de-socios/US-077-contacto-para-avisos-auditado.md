@@ -19,7 +19,7 @@ para que el módulo de avisos nunca descifre datos por su cuenta y quede rastro 
 
 - **Aggregate / entidades:** `Member` (`Phone`, `Email`).
 - **Reglas que aplica:** RN-13 (descifrado auditado); `03_context_map.md` sección 2 (Notifications → Members, audita con propósito `notify`) y sección 5 (ningún contexto descifra campos que no son suyos); RN-14 (un socio dado de baja no se contacta).
-- **Eventos que emite:** `SensitiveFieldRevealed(member_id, field, user_id = null, purpose)` por cada campo descifrado
+- **Eventos que emite:** `SensitiveFieldRevealed(member_id, field, user_id, purpose)` por cada campo descifrado (`user_id` = `SYSTEM_USER_ID` si lo llama el worker, N-15)
 - **Eventos que consume:** ninguno
 - **Funciones puras:** `members.validate_purpose(purpose) -> None | MemberError`
 
@@ -32,7 +32,7 @@ para que el módulo de avisos nunca descifre datos por su cuenta y quede rastro 
 
 1. `contact_for_notification` devuelve `first_name`, `phone` y `email` en claro solo como valor de retorno de la función; no tiene endpoint HTTP (la prueba de rutas no encuentra ninguna ruta que la exponga).
 2. Un `purpose` fuera de `notify` y `auth_link` lanza `MemberError` y no descifra nada.
-3. Cada llamada deja una entrada de auditoría `reveal` por campo descifrado con `purpose`, `record_id` y `user_id` (nulo si la llama el worker) y una fila en `crypto_ops` con verbo `decrypt`; ninguna contiene el valor.
+3. Cada llamada deja una entrada de auditoría `reveal` por campo descifrado con `purpose`, `record_id` y `user_id` (`SYSTEM_USER_ID` si la llama el worker) y una fila en `crypto_ops` con verbo `decrypt`; ninguna contiene el valor.
 4. Un socio dado de baja o inexistente lanza `MemberNotContactable` sin descifrar.
 5. Un campo vacío se devuelve como `None` y no genera operación de descifrado.
 6. Una prueba de arquitectura verifica que el módulo `notifications` (cuando exista) no importa `core.crypto.bus` para campos de socios: solo llama a este service.

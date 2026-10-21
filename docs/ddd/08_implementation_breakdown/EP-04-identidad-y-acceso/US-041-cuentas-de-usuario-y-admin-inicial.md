@@ -14,7 +14,7 @@ El esquema de `auth`, las restricciones y el comando `seed` están definidos por
 
 ## Resumen
 
-Crea las tres tablas del esquema `auth` (`users`, `refresh_tokens`, `one_time_tokens`) en la migración `0004_auth`, inserta el usuario técnico `system@apex.local` con UUID fijo y deja listos los models de SQLAlchemy y las funciones base de `auth.service`: validación de rol, normalización del correo, `get_principal` (lo usa `current_user` de US-034) y `names_for` (lo usa US-110). Agrega `cli seed`, que crea el primer admin activo a partir de `APEX_SEED_ADMIN_EMAIL` y `APEX_SEED_ADMIN_PASSWORD`. Es idempotente, emite `UserCreated` y deja auditoría sin el hash.
+Crea las tres tablas del esquema `auth` (`users`, `refresh_tokens`, `one_time_tokens`) en la migración `0004_auth`, inserta el usuario técnico `system@apex.local` con UUID fijo y deja listos los models de SQLAlchemy y las funciones base de `auth.service`: validación de rol, normalización del correo, `get_principal` (lo usa `current_user` de US-034) y `names_for` (lo usa US-110). Agrega `cli seed`, que crea el primer admin activo a partir de `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`. Es idempotente, emite `UserCreated` y deja auditoría sin el hash.
 
 ## Correcciones aplicadas por DECISIONES.md
 
@@ -111,7 +111,7 @@ Ninguna.
   - el índice parcial deja repetir un correo si el anterior tiene `deleted_at`;
   - el usuario técnico existe tras `upgrade head` con `is_active = false`. — 1 h
 - [ ] T11 · `api/tests/cli/test_seed_cli.py` con `typer.testing.CliRunner`:
-  - sin `APEX_SEED_ADMIN_PASSWORD`, o con `"corta"`, el código de salida no es 0 y no se crea ningún usuario;
+  - sin `ADMIN_INITIAL_PASSWORD`, o con `"corta"`, el código de salida no es 0 y no se crea ningún usuario;
   - la salida y los logs capturados no contienen la contraseña;
   - `--as dueno@apex.co` atribuye el `created_by` a esa persona. — 1 h
 
@@ -125,7 +125,7 @@ Ninguna.
 - No aplica.
 
 ### DevOps
-- [ ] T13 · Agregar `APEX_SEED_ADMIN_EMAIL`, `APEX_SEED_ADMIN_PASSWORD` (de un solo uso y opcional, solo para el seed) y `FRONT_BASE_URL` a `core/config.py` (US-011) y a `.env.example`. La contraseña es `SecretStr`. — 0.5 h
+- [ ] T13 · Agregar `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` (de un solo uso y opcional, solo para el seed) y `FRONT_BASE_URL` a `core/config.py` (US-011) y a `.env.example`. La contraseña es `SecretStr`. — 0.5 h
 - [ ] T14 · `cli seed` en `api/src/app/cli.py` (typer):
   - lee la configuración, abre la sesión, fija `current_actor`, llama a `auth.service.seed_admin`, hace commit e imprime `creado` u `omitido: ya existe un admin activo` sin datos sensibles;
   - sale con código 2 si falta o es débil la contraseña;
@@ -183,5 +183,5 @@ Ninguna.
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd api && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head`
 - [ ] `psql -c "SELECT email, role, is_active FROM auth.users WHERE id = '00000000-0000-0000-0000-000000000001'"` devuelve `system@apex.local | admin | f`.
-- [ ] `APEX_SEED_ADMIN_EMAIL=dueno@apex.co APEX_SEED_ADMIN_PASSWORD=<16 caracteres> uv run python -m app.cli seed` corrido dos veces deja exactamente un admin activo, y `SELECT after->>'password_hash' FROM audit.audit_log WHERE table_name = 'users'` devuelve `***`.
+- [ ] `ADMIN_EMAIL=dueno@apex.co ADMIN_INITIAL_PASSWORD=<16 caracteres> uv run python -m app.cli seed` corrido dos veces deja exactamente un admin activo, y `SELECT after->>'password_hash' FROM audit.audit_log WHERE table_name = 'users'` devuelve `***`.
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.auth --cov-fail-under=80`

@@ -18,7 +18,7 @@ para que las franjas y el check-in sigan las reglas de mi box sin tocar código
 ## Contexto de dominio
 
 - **Aggregate / entidades:** `SettingsSection` claves `hours` y `classes`.
-- **Reglas que aplica:** Q11 (`classes`: `default_capacity` por defecto 15, `checkin_window_min` por defecto 30, `allow_over_capacity` por defecto true); `settings.validate_section` pura; cada cambio auditado; RN-15 (solo admin).
+- **Reglas que aplica:** Q11 (`classes`: `default_capacity` por defecto 15, `checkin_window_min` por defecto 30; N-38/N-39 elimina `allow_over_capacity`); `settings.validate_section` pura; cada cambio auditado; RN-15 (solo admin).
 - **Eventos que emite:** ninguno
 - **Eventos que consume:** ninguno
 - **Funciones puras:** `settings.validate_section("hours", value)`, `settings.validate_section("classes", value)`
@@ -30,8 +30,8 @@ para que las franjas y el check-in sigan las reglas de mi box sin tocar código
 
 ## Criterios de aceptación
 
-1. `GET /api/v1/settings/classes` sin configuración previa devuelve `{ default_capacity: 15, checkin_window_min: 30, allow_over_capacity: true }`.
-2. `PATCH /api/v1/settings/classes` valida: `default_capacity` entero de 1 a 200; `checkin_window_min` entero de 0 a 240; `allow_over_capacity` booleano; un valor inválido devuelve 422 con `field`.
+1. `GET /api/v1/settings/classes` sin configuración previa devuelve `{ default_capacity: 15, checkin_window_min: 30 }`.
+2. `PATCH /api/v1/settings/classes` valida: `default_capacity` entero de 1 a 100; `checkin_window_min` entero de 0 a 240 (N-18); un valor inválido devuelve 422 con `field`.
 3. `PATCH /api/v1/settings/hours` valida que cada día tenga `closed: true` o `opens_at < closes_at` en formato `HH:MM` (hora local de Bogotá); un día con apertura posterior al cierre devuelve 422.
 4. Solo admin; coach y socio reciben 403.
 5. Cada cambio deja una fila de auditoría con antes y después e incrementa `version`.
@@ -75,7 +75,7 @@ Característica: Horas y parámetros de clases
 ## Supuestos
 
 - Supuesto: la sección `hours` tiene la forma `{ monday..sunday: { closed: bool, opens_at: "HH:MM", closes_at: "HH:MM" } }` en hora de Bogotá; ningún documento fija su contenido. Las horas no restringen la creación de franjas (solo informan) salvo que el gate decida otra cosa.
-- Supuesto: límites de validación (cupo 1 a 200, ventana 0 a 240 minutos) elegidos por sentido común.
+- Supuesto: límites fijados por N-18 (cupo 1 a 100, ventana 0 a 240 minutos).
 
 ## Dependencias
 

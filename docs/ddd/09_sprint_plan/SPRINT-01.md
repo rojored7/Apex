@@ -38,7 +38,7 @@ Al cerrar el sprint existen el usuario técnico y el admin inicial, y el front t
    - `audit.audit_log` tiene `seq` consecutivo y `prev_hash` encadenado.
    - `UPDATE audit.audit_log SET action='x'` falla por el trigger.
    - El blob cifrado aparece en `after`, nunca el valor en claro.
-5. **Usuarios.** `docker compose run --rm tools seed` crea el admin inicial con `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. Existe `system@apex.local`, con `is_active = false` y UUID `00000000-0000-0000-0000-000000000001`.
+5. **Usuarios.** `docker compose run --rm tools seed` crea el admin inicial con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`. Existe `system@apex.local`, con `is_active = false` y UUID `00000000-0000-0000-0000-000000000001`.
 6. **Arquitectura.** `uv run pytest tests/architecture -q` pasa en el host. Una ruta de prueba sin `require_role` hace fallar `test_every_route_has_role.py`.
 7. **Cabeceras.** `curl -I http://localhost:${WEB_PORT:-80}/` muestra:
    - CSP con nonce;

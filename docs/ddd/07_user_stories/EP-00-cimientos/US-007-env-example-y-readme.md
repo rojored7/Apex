@@ -25,13 +25,13 @@ para que un clon limpio llegue a `/health` en verde en 5 minutos sin conocimient
 
 ## Alcance
 
-- **Backend:** `.env.example` con `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH`, `CRYPTO_PROVIDER=local`, `CRYPTO_LOCAL_KEK_PATH`, `TZ_DISPLAY=America/Bogota`, `UPLOADS_DIR=/data/uploads`, `CORS_ORIGINS`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` (un solo uso, US-041), `LOG_LEVEL`; cada variable con comentario de una línea y valores de ejemplo no reales (`cambiar-esto`).
+- **Backend:** `.env.example` con `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (opcional; se deriva de la privada), `CRYPTO_PROVIDER=local`, `CRYPTO_LOCAL_KEK_PATH`, `TZ_DISPLAY=America/Bogota`, `UPLOADS_DIR=/data/uploads`, `CORS_ORIGINS`, `ENV`, `TRUSTED_PROXIES`, `COOKIE_SECURE`, `FRONT_BASE_URL`, `WEB_PORT=80`, `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` (un solo uso, US-041; se borra del `.env` tras el seed), `LOG_LEVEL`; la publicación de `web` en `compose.yml` es `${WEB_PORT:-80}`; cada variable con comentario de una línea y valores de ejemplo no reales (`cambiar-esto`).
 - **Front:** No aplica.
 - **Documentación:** `README.md` con requisitos (Docker, uv, Node), los comandos de la sección "Comandos" de `CLAUDE.md`, cómo crear llaves (`cli init-keys`, US-023) y la advertencia de respaldar la KEK.
 
 ## Criterios de aceptación
 
-1. Toda variable que lee `core/config.py` (US-011) aparece en `.env.example`; una prueba compara los nombres de los campos de `Settings` con las claves del archivo y falla si falta alguna.
+1. Toda variable que lee `core/config.py` (US-011) aparece en `.env.example`; una prueba compara los nombres de los campos de `Settings` con las claves del archivo y falla si falta alguna, salvo las de `NON_API_ENV_VARS` (US-011, que incluye `WEB_PORT`).
 2. Ningún valor de `.env.example` es un secreto real (contraseñas y rutas son marcadores evidentes).
 3. Siguiendo solo el README desde un clon limpio, una persona del equipo llega a `/health` en verde en 5 minutos o menos (medido una vez y anotado en el PR).
 4. El README advierte en negrita que perder la KEK equivale a perder los datos cifrados.

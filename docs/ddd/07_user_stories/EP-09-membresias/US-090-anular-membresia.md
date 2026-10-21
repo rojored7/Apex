@@ -35,7 +35,7 @@ para que deje de contar como vigente, quede cerrada para siempre y se sepa quié
 3. Anular una membresía ya `cancelled` devuelve 409 `code = "membership_already_cancelled"`.
 4. Se puede anular desde `pending_payment`, `active`, `expiring`, `frozen` o `expired`.
 5. Después de anular, ningún cambio de estado posterior la afecta: el job de vencimientos (US-094) la ignora y los handlers de pago (US-086, US-087) no la reactivan.
-6. Los pagos asociados no cambian (sin `UPDATE` en `payments`); registrar un pago nuevo contra ella devuelve 422 (lo valida `payments.service.register`, US-095).
+6. Los pagos asociados no cambian (sin `UPDATE` en `payments`); registrar un pago nuevo contra ella devuelve 409 `membership_cancelled` (lo valida `payments.service.register`, US-095).
 7. Al quedar cancelada, deja de contar para Q1: el socio puede recibir una venta nueva.
 8. Rol `admin`; coach recibe 403 y el botón no se le muestra; sin token 401.
 9. Auditoría `update` con `status`, `cancel_reason` antes y después; se emite `MembershipCancelled`.

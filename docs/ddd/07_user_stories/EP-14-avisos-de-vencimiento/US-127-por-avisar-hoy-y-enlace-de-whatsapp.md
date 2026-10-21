@@ -36,7 +36,7 @@ para avisar a cada socio sin buscar su número ni redactar el texto
 4. Pedir el enlace de un aviso ya `sent` devuelve el enlace de nuevo sin cambiar `sent_at` ni `sent_by` (idempotente) y deja auditoría del descifrado.
 5. Un aviso `skipped` responde 409 en `wa-link`.
 6. Un socio sin teléfono registrado responde 422 con `code = "member_without_phone"`.
-7. Un aviso de canal `email` o `telegram` en estado `failed` también puede enviarse por WhatsApp desde esta pantalla: `wa-link` lo marca `sent` con `channel` original conservado y `sent_by` lleno.
+7. Un aviso de canal `email` en estado `failed` también puede enviarse por WhatsApp desde esta pantalla: `wa-link` lo marca `sent` con `channel` original conservado y `sent_by` lleno.
 8. Admin y coach acceden; un socio recibe 403.
 9. La pantalla abre el `wa.me` en una pestaña nueva solo después de recibir la respuesta 200.
 

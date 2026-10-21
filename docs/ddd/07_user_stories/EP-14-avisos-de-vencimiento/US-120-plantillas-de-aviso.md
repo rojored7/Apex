@@ -84,7 +84,7 @@ Característica: Plantillas de aviso
 ## Supuestos
 
 - Supuesto: no hay borrado de plantillas en v0.2 (no está en el contrato ni en las reglas); una plantilla sin uso simplemente se deja de asignar.
-- Supuesto: `subject` solo lo usa el canal correo; Telegram y WhatsApp usan solo `body`.
+- Supuesto: `subject` solo lo usa el canal correo; WhatsApp usa solo `body`.
 - Supuesto: existe un endpoint de vista previa; el diseño lo sugiere pero ningún documento lo define.
 
 ## Dependencias

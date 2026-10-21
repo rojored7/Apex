@@ -1,4 +1,4 @@
-# US-122 · Como administrador quiero configurar los canales de aviso sin guardar secretos en la base para habilitar correo y Telegram de forma segura
+# US-122 · Como administrador quiero configurar los canales de aviso sin guardar secretos en la base para habilitar correo y WhatsApp de forma segura
 
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Settings (esquema `settings`), consumido por Notifications
@@ -30,13 +30,13 @@ para que el sistema envíe por los canales que el gimnasio usa sin exponer contr
 
 ## Criterios de aceptación
 
-1. La sección `channels` admite exactamente: `email.enabled` (bool), `email.from_name`, `email.reply_to` (correo válido), `telegram.enabled` (bool), `telegram.default_chat_id`, `whatsapp_link.enabled` (bool), `whatsapp_link.country_code` (por defecto `57`).
+1. La sección `channels` admite exactamente: `email.enabled` (bool), `email.from_name`, `email.reply_to` (correo válido), `whatsapp_link.enabled` (bool), `whatsapp_link.country_code` (por defecto `57`). Telegram no es canal de esta sección: es canal interno del equipo para alertas (N-34).
 2. Cualquier campo con nombre que sugiera secreto (`password`, `token`, `api_key`, `secret`, `private_key`) responde 422; el esquema es cerrado (`extra = forbid`).
 3. `PATCH /api/v1/settings/channels` con datos válidos responde 200 y deja auditoría con antes y después; ninguna fila de auditoría contiene un secreto.
 4. `GET /api/v1/settings/channels` incluye por canal un campo de solo lectura `credentials_present` (bool) calculado desde `.env`, nunca el valor del secreto.
 5. Activar `email` sin `SMTP_*` o `BREVO_API_KEY` en `.env` se permite, pero `credentials_present = false` y el envío deja los avisos en `failed` con `last_error = "credenciales ausentes"` (US-125).
 6. Solo `admin`; el coach recibe 403.
-7. `.env.example` agrega `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `BREVO_API_KEY`, `TELEGRAM_BOT_TOKEN` vacíos y documentados.
+7. `.env.example` agrega `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `BREVO_API_KEY`, `TELEGRAM_BOT_TOKEN` (alertas internas, N-34) vacíos y documentados.
 
 ## Escenarios BDD
 

@@ -37,7 +37,7 @@ para que al abrir el gimnasio la lista de "por vencer" y "vencidos" esté correc
 5. Una membresía con ventana de congelación que empieza hoy pasa a `frozen`; la que termina ayer vuelve a `active` o `expiring` según su nueva fecha de fin.
 6. `pending_payment` y `cancelled` nunca cambian en este job.
 7. `today` es `today_bogota()`: con `FrozenClock` en 2026-11-01 02:00 UTC (2026-10-31 21:00 en Bogotá), la membresía que termina el 2026-10-31 sigue `expiring`.
-8. Cada cambio de estado deja auditoría `update` con `user_id` del usuario de sistema del worker (supuesto) y el estado antes y después.
+8. Cada cambio de estado deja auditoría `update` con `user_id` = `SYSTEM_USER_ID` (N-15) y el estado antes y después.
 9. Un fallo en un lote revierte solo ese lote, se registra en el log JSON (sin datos personales) y el job continúa con el siguiente; el job termina con un resumen `{ revisadas, cambiadas, por_vencer, vencidas, errores }` en el log.
 10. Con 1.000 socios el job termina en menos de 60 segundos.
 
@@ -106,7 +106,7 @@ Característica: Job diario de vencimientos
 
 ## Supuestos
 
-- Supuesto: el worker actúa con un usuario técnico `system` (sin login, `is_active = false` para el panel) cuyo id va en `created_by` y en la auditoría; no está definido en el dominio.
+- Supuesto: el worker actúa con `SYSTEM_USER_ID` (`system@apex.local`, sin login, `is_active = false`, fila creada por la migración `0004_auth`; N-15); ese id va en `created_by` y en la auditoría.
 - Supuesto: existe el comando `cli recompute-memberships` para correr el recálculo a demanda (no está en la lista de comandos de `05_service_design.md`).
 
 ## Dependencias

@@ -3,17 +3,21 @@
 Fecha del análisis: 20 de octubre de 2026.
 Documentos comparados: `CLAUDE.md`, `docs/PLAN.md` (plan backend por versiones) y `docs/design/` (DESIGN.md, ROUTES.md, SCREENS-INDEX.md, 37 pantallas).
 
-Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto se cierra editando el documento que corresponda; cuando el backend exporte `docs/openapi.json` (Tarea 12), `ROUTES.md` se reescribe a partir de ese contrato.
+Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto se cierra editando el documento que corresponda; cuando el backend exporte `docs/openapi.json` (US-021), `ROUTES.md` se reescribe a partir de ese contrato.
+
+**Estado al 21 de octubre de 2026.** Las cinco decisiones de la sección 1 se aprobaron en el gate humano (`docs/ddd/GATE.md`) y quedaron registradas en `docs/ddd/DECISIONES.md`. Los puntos cerrados llevan una línea **Resuelto** con la decisión que los cierra; el detalle vive en `docs/ddd/02_domain_model.md` y `docs/ddd/05_service_design.md`.
 
 ## 1. Decisiones que bloquean (resolver antes de codificar)
 
 ### D1. Quién construye el front
+- **Resuelto (gate del 21 de octubre de 2026):** opción (b). Claude Code construye el front en `web/` dentro de este flujo. El "Alcance" de `CLAUDE.md` se reescribió.
 - `CLAUDE.md` (Alcance) dice que Claude Code no crea ni rediseña el front; en este repo solo se integra.
 - La entrega de diseño (`_entregas/2026-10-20-diseno-handoff/README-handoff.md`) dice lo contrario: "Abre Claude Code en el repo y pídele: construye el layout del panel y la pantalla /socios siguiendo docs/design".
 - Opciones: (a) el front lo construye otro flujo y aquí solo se integra en `web/`; (b) Claude Code también construye el front en este repo. Si es (b), hay que reescribir el párrafo de Alcance de `CLAUDE.md`.
 - La sección "Front: diseño aprobado" ya se agregó a `CLAUDE.md` con redacción neutra ("quien construya el front"), así sirve en ambos casos.
 
 ### D2. Convención de paginación
+- **Resuelto (gate del 21 de octubre de 2026):** `limit`/`offset`, máximo 200. `DESIGN.md` y `ROUTES.md` corregidos; `Pagination` calcula `offset = (página - 1) * limit`.
 - `CLAUDE.md` regla de datos 6: `limit` y `offset`, máximo 200.
 - `DESIGN.md` (regla 2 y "Qué NO hacer") y `ROUTES.md`: `page` y `page_size`.
 - Recomendación: mantener `limit`/`offset` en el API (es la regla del archivo que manda) y cambiar las dos menciones en `DESIGN.md` y `ROUTES.md`. El componente Pagination calcula `offset = (página - 1) * limit`. Tamaños de página del diseño: 25, 50, 100.
@@ -23,11 +27,13 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 - Resuelto: `web/`. Ya aplicado en la sección nueva de `CLAUDE.md`. Los logos van a `web/public/brand/`.
 
 ### D4. Orden de construcción
+- **Resuelto (gate del 21 de octubre de 2026):** el front sigue el orden de versiones del backend; `docs/ddd/09_sprint_plan/` fija qué pantallas entran en cada sprint.
 - El front propone: login, socios, planes, membresías y pagos, inicio, clases y check-in, movimientos, WODs y resultados, atleta, avisos, sistema, TV, portal.
 - El backend entrega: v0.1 socios, planes, membresías, pagos, auditoría, usuarios; v0.2 avisos; v0.3 llaves con OpenBao y adjuntos; v0.4 clases; v0.5 WODs, resultados, TV; v0.6 atleta; v1.0 portal.
 - Diferencia: el front pone clases antes que avisos; el backend al revés. Recomendación: el front sigue el orden de versiones del backend (ver sección 6). La pantalla Inicio se construye en v0.1 con los KPIs que existan y se completa en cada versión.
 
 ### D5. Contrato de "vender membresía"
+- **Resuelto (gate del 21 de octubre de 2026):** un solo endpoint `POST /members/{id}/memberships` con `first_payment` opcional y `renew: true` para renovar (operación `sell`); el pago sigue inmutable y la activación ocurre por evento. No existe `POST /memberships/{id}/renew` (Q2).
 - Front (`Membresia_Vender.html`, ROUTES): una sola llamada `POST /memberships` que crea la membresía y el primer pago.
 - Backend (Tareas 6 y 7): `POST /members/{id}/memberships` crea la membresía; `POST /memberships/{id}/payments` registra el pago; la activación ocurre por el evento `PaymentRegistered` cuando los pagos cubren `agreed_price_cop`.
 - Recomendación: mantener los dos endpoints del backend y agregar en el service de memberships una operación `sell(member_id, plan_id, first_payment)` que ejecute ambos en una transacción, expuesta como `POST /members/{id}/memberships` con `first_payment` opcional en el cuerpo. El front hace una llamada; el backend conserva pagos inmutables y el evento.
@@ -35,65 +41,77 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 ## 2. Pantallas que necesitan endpoints o módulos que el plan no tiene
 
 ### Módulo `settings` (pantalla `Config.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** módulo `settings` en v0.1 (EP-05), secciones y rangos en Q11 y N-18; `channels` llega en v0.2 sin secretos (Q12).
 - Front: `GET/PATCH /settings` por sección: gym, hours, payment_methods, channels, classes, memberships, tv, privacy.
 - Plan: no existe ningún módulo de configuración.
 - Impacto: el token de la TV (v0.5), los medios de pago configurables (v0.1), los canales de aviso (v0.2) y el horario del gimnasio dependen de esto.
 - Propuesta: módulo `settings` en v0.1 con una tabla clave-valor por sección (JSON validado con Pydantic por sección), `__audited__ = True`, solo admin. Secciones nuevas se agregan en la versión que las necesita.
 
 ### API de llaves (pantalla `Llaves.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** router `core/crypto/router.py` en v0.3 (EP-18); `crypto_jobs` existe desde v0.1; CBOM adelantado a v0.3 (Q26), CycloneDX en v1.0.
 - Front: `GET /crypto/keys`, `GET /crypto/ops?page`, `GET /crypto/jobs`, `POST /crypto/keys/:id/rotate {reason, confirm:"ROTAR"}`, `GET /crypto/cbom`.
 - Plan: rotación y CBOM solo como comandos de `cli.py` (`rotate-key` en Tarea 2, `cbom` en v1.0). No hay router.
 - Propuesta: router `core/crypto/router.py` solo admin, en v0.3 junto con OpenBao. La rotación por lotes de la Tarea 2 debe guardar su progreso en una tabla `crypto_jobs` para que `GET /crypto/jobs` tenga qué mostrar. CBOM se adelanta de v1.0 a v0.3 o la pantalla muestra el botón deshabilitado hasta entonces.
 
 ### Recuperación y activación de cuenta (pantalla `Login.html`, tarjetas 2 y 3; pantalla `Usuarios.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** `auth.one_time_tokens`, `POST /auth/forgot`, `POST /auth/reset`, `POST /users/{id}/resend-link` (única ruta para el enlace, N-12) y `POST /users/{id}/revoke-sessions`, todo en v0.1; el correo llega en v0.2.
 - Front: `POST /auth/forgot`, `POST /auth/reset` (sirve para "nueva contraseña" y "activar cuenta"), "reenviar enlace", "cerrar sesiones" por usuario.
 - Plan (Tarea 3): login, refresh, logout, me, CRUD de usuarios. Nada de tokens de un solo uso ni de correo.
 - Propuesta: tabla `auth.one_time_tokens` (hash, user_id, purpose: reset o activate, expires_at, used_at) y los dos endpoints en Tarea 3. El envío del enlace por correo necesita el `EmailChannel` de v0.2; en v0.1 el admin copia el enlace desde la pantalla de usuarios. "Cerrar sesiones" es revocar todos los refresh tokens del usuario: `POST /users/{id}/revoke-sessions`.
 
 ### Tablero de inicio (pantalla `Inicio.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** módulo `dashboard` en v0.1 (EP-07); cada campo se llena en su versión y hasta entonces viene `null`; "últimos movimientos" sale de la auditoría (Q10).
 - Front: `GET /dashboard` con socios al día, por vencer, vencidos, ingresos del mes, asistencia de la semana, sesiones de hoy, por avisar hoy, últimos movimientos.
 - Plan: solo `GET /memberships/summary` (Tarea 6) y `GET /payments/report?month=` (Tarea 7).
 - Propuesta: endpoint `GET /dashboard` en un módulo liviano `dashboard` que solo llame a los services de los otros módulos (regla de módulos 2). Cada campo se agrega en la versión que lo hace posible: membresías y pagos en v0.1, por avisar en v0.2, asistencia y sesiones en v0.4, WOD de hoy en v0.5. Hasta entonces el campo viene `null` y el front muestra la tarjeta vacía.
 
 ### Recibo en PDF (pantallas `Pagos.html`, `Portal_Pagos.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** v0.2 con `reportlab` (P4); cada descarga se audita como `download` (N-08).
 - Front: `GET /payments/:id/receipt.pdf` y `GET /me/payments/:id/receipt.pdf`.
 - Plan: no existe.
 - Propuesta: v0.1 o v0.2. Necesita una librería de PDF con licencia permitida: `reportlab` (BSD) sirve; `fpdf2` es LGPL y está prohibida. Usa el logo `apex-logo-light-bg.png`. Cada descarga se audita.
 
 ### Exportar listas (pantallas `Socios_Lista.html`, `Pagos.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** v0.2, CSV con `;` y BOM, solo admin, auditado con el filtro usado (Q15, N-29).
 - Front: botón "Exportar".
 - Plan: no existe.
 - Propuesta: `GET /members/export` y `GET /payments/export` en CSV, solo admin, con auditoría obligatoria porque descifra datos personales en masa. Si no se quiere en v0.1, quitar el botón de la pantalla.
 
 ### Detalles menores de pagos (Tarea 7)
+- **Resuelto (gate del 21 de octubre de 2026):** `GET /payments/{id}`, filtros `q`, `registered_by` y `voided`, `GET /payments/summary?month=` (ese nombre) y `GET /payments/methods` (US-056).
 - Front pide `GET /payments/:id` (modal de detalle), filtro `registered_by`, filtro `status` (anulado o no) y búsqueda `q`. Agregar a la Tarea 7.
 - Front usa `GET /payments/summary?month`; plan usa `GET /payments/report?month=`. Elegir un nombre.
 
 ### Auditoría (pantalla `Auditoria.html`)
+- **Resuelto (gate del 21 de octubre de 2026):** `POST /audit/verify` y `GET /audit/verify/last`; cada verificación se persiste en `audit.verifications` (N-30).
 - Front: `POST /audit/verify`. Plan (Tarea 8): solo `cli verify-audit`.
 - Propuesta: exponer la misma función como endpoint admin; sobre tablas grandes correr en segundo plano y devolver el resultado de la última verificación.
 
 ### Avisos (v0.2)
+- **Resuelto (gate del 21 de octubre de 2026):** ambos endpoints precisados en `docs/PLAN.md` v0.2 y en EP-14.
 - Front pide `POST /notifications/:id/skip {reason}` y que `GET /notifications/:id/wa-link` marque el aviso como enviado. Precisar ambos en la descripción de v0.2.
 
 ### Resultados y portal (v0.5 y v1.0)
+- **Resuelto (gate del 21 de octubre de 2026):** `POST /results/{id}/validate` en v0.5; en el portal el socio edita teléfono, correo, contacto de emergencia, preferencias de canal y contraseña, nunca documento, nombres, sexo ni fecha de nacimiento (Q24).
 - `POST /results/:id/validate` (coach valida lo que envió el socio): v1.0 menciona el estado `pending` pero no el endpoint. Agregarlo.
 - Portal: `POST /me/password`, `PATCH /me` (definir qué campos puede editar el socio: teléfono, correo, contacto de emergencia; nunca documento), `PATCH /me/channels`, `GET /me/summary`. Precisar en v1.0.
 
 ## 3. Datos que el diseño muestra y el modelo no tiene
 
-- `members.sex`: el leaderboard de `WOD_Detalle.html` filtra por sexo (v0.5). Agregar a la tabla desde la Tarea 4 para no hacer una migración con datos después. Valores: `f`, `m`, `x`, opcional.
-- Foto del socio y autorización de tratamiento de datos (`Socio_Form.html`): los archivos van por `attachments` (v0.3). La autorización además necesita una bandera en `members` (`data_consent_at`, `data_consent_version`) para poder consultarla sin abrir el adjunto. La sección `privacy` de Config guarda la versión vigente del texto.
-- `auth.users.member_id`: el portal (v1.0) filtra "lo mío" por el `member_id` del token, pero la tabla `users` de la Tarea 3 no tiene esa columna. Agregarla nula desde v0.1; obligatoria cuando `role = member`.
-- Medios de pago: el plan usa el enum fijo `cash | nequi | breb`; `Config.html` permite configurar medios. Decidir: enum fijo en código (más simple) o lista en `settings.payment_methods`. Recomendación: enum fijo en v0.1; si el gimnasio pide otro medio, se agrega con migración.
-- Horario semanal: front `class-slots`, plan `schedule_templates`. Mismo concepto, unificar el nombre (recomendación: `class_slots`, es el que usa el diseño).
-- RMs y récords: front separa `/athletes/:id/rms` y `/athletes/:id/records`; plan solo tiene `personal_records` (manuales y derivados). Definir: un RM es un `personal_record` con `kind = rm` y `movement_id`; un récord de benchmark es `kind = benchmark` con `wod_id`. Un solo endpoint con filtro `kind`.
-- Filtros de la lista de socios: ROUTES pide `plan` y `last_attendance`; Tarea 4 solo tiene búsqueda y estado. `plan` se puede en v0.1 (consulta vía service de memberships); `last_attendance` solo desde v0.4.
-- Estados derivados de socio en los chips ("Al día", "Por vencer", "Vencidos", "Congelados", "Sin membresía", "Dados de baja"): el socio no tiene estado de membresía propio. Definir en el service de members cómo se calcula (última membresía no cancelada) y exponerlo como `membership_status` en la respuesta de la lista, sin join cruzado fuera del service.
+- **Resuelto:** `members.sex` entra en la migración de socios de v0.1. Detalle original: el leaderboard de `WOD_Detalle.html` filtra por sexo (v0.5). Agregar a la tabla desde la Tarea 4 para no hacer una migración con datos después. Valores: `f`, `m`, `x`, opcional.
+- **Resuelto:** `data_consent_at` y `data_consent_version` desde v0.1, nulos para socios anteriores (Q16). Detalle original: foto del socio y autorización de tratamiento de datos (`Socio_Form.html`): los archivos van por `attachments` (v0.3). La autorización además necesita una bandera en `members` (`data_consent_at`, `data_consent_version`) para poder consultarla sin abrir el adjunto. La sección `privacy` de Config guarda la versión vigente del texto.
+- **Resuelto:** `auth.users.member_id` nulo desde v0.1 y obligatorio con `role = member`. Detalle original: el portal (v1.0) filtra "lo mío" por el `member_id` del token, pero la tabla `users` de la Tarea 3 no tiene esa columna. Agregarla nula desde v0.1; obligatoria cuando `role = member`.
+- **Resuelto:** enum fijo en v0.1 (S8), etiquetas desde Settings. Detalle original: el plan usa el enum fijo `cash | nequi | breb`; `Config.html` permite configurar medios. Decidir: enum fijo en código (más simple) o lista en `settings.payment_methods`. Recomendación: enum fijo en v0.1; si el gimnasio pide otro medio, se agrega con migración.
+- **Resuelto:** `class_slots`. Detalle original: front `class-slots`, plan `schedule_templates`. Mismo concepto, unificar el nombre (recomendación: `class_slots`, es el que usa el diseño).
+- **Resuelto:** `personal_records.kind` (`rm` con `movement_id`, `benchmark` con `benchmark_id`, N-46), un endpoint con filtro `kind`. Detalle original: front separa `/athletes/:id/rms` y `/athletes/:id/records`; plan solo tiene `personal_records` (manuales y derivados). Definir: un RM es un `personal_record` con `kind = rm` y `movement_id`; un récord de benchmark es `kind = benchmark` con `wod_id`. Un solo endpoint con filtro `kind`.
+- **Resuelto:** `plan` en v0.1 vía `status_for` (G-04); `last_attendance` en v0.4 con import perezoso (G-10). Detalle original: ROUTES pide `plan` y `last_attendance`; Tarea 4 solo tiene búsqueda y estado. `plan` se puede en v0.1 (consulta vía service de memberships); `last_attendance` solo desde v0.4.
+- **Resuelto:** `membership_status` lo calcula `memberships.service.status_for` y se expone en la lista; chips con "Pendiente de pago" (Q3) y "Dados de baja" visibles para admin y coach (N-20). Detalle original: estados derivados de socio en los chips ("Al día", "Por vencer", "Vencidos", "Congelados", "Sin membresía", "Dados de baja"): el socio no tiene estado de membresía propio. Definir en el service de members cómo se calcula (última membresía no cancelada) y exponerlo como `membership_status` en la respuesta de la lista, sin join cruzado fuera del service.
 
 ## 4. Mismo concepto, nombre de ruta distinto
 
 Para cada par, el contrato final lo fija el backend en `docs/openapi.json`; luego se corrige `ROUTES.md`.
+
+- **Resuelto (gate del 21 de octubre de 2026):** el contrato quedó fijado en `docs/ddd/05_service_design.md`, sección 4, y `ROUTES.md` ya usa esos nombres: recursos anidados para crear, colecciones planas con filtros para listar, `/payments/summary?month=`, `ends_from` y `ends_to`, y renovar por el mismo endpoint de vender.
 
 - Membresías de un socio: front `GET /members/:id/memberships`; plan `GET /memberships?member=`.
 - Historial de un registro: front `GET /members/:id/audit`; plan `GET /audit?record=`.
@@ -106,6 +124,8 @@ Para cada par, el contrato final lo fija el backend en `docs/openapi.json`; lueg
 Recomendación general: recursos anidados para crear (`POST /members/{id}/memberships`, `POST /memberships/{id}/payments`) y colecciones planas con filtros para listar (`GET /memberships?member=`, `GET /payments?member=`). Es lo que ya hace el plan; el front se adapta.
 
 ## 5. Permisos que el plan debe declarar
+
+- **Resuelto (gate del 21 de octubre de 2026):** cada endpoint declara su rol en `docs/ddd/05_service_design.md`, sección 4. `DELETE /members/{id}`, `POST /memberships/{id}/cancel` y `POST /payments/{id}/void` son solo admin; congelar y revelar son admin y coach (Q6, Q7).
 
 - `ROUTES.md` fija: coach vende membresías y registra pagos pero no anula; no da de baja socios; no ve Planes ni Sistema. Socio solo `/mi/*`.
 - En el plan: Tarea 5 ya dice "solo admin" para planes. Tareas 4, 6 y 7 no dicen quién puede `DELETE /members/{id}`, `POST /memberships/{id}/cancel` ni `POST /payments/{id}/void`. Agregar `require_role("admin")` explícito en esos tres.
@@ -123,6 +143,8 @@ Recomendación general: recursos anidados para crear (`POST /members/{id}/member
 - No se implementan (son referencia): `Mapa`, `P_Lista`, `P_Ficha`, `P_Formulario`.
 
 ## 7. Licencias que faltan en la lista de `CLAUDE.md`
+
+- **Resuelto (gate del 21 de octubre de 2026):** `CLAUDE.md` acepta ahora ISC, OFL-1.1, 0BSD y PSF-2.0, y MPL-2.0 sin modificar también para `certifi` y `axe-core`; la CI corre `license-checker` en `web/` (US-004).
 
 - Iconos Lucide: licencia ISC. Fuentes Michroma y Titillium Web: SIL Open Font License 1.1. Ninguna de las dos está en la lista permitida (MIT, BSD, Apache 2.0, PostgreSQL). Son permisivas; agregar ISC y OFL 1.1 a la lista para que la regla sea exacta.
 - Dependencias del front que el diseño da por hechas: React Router, TanStack Query, React Hook Form, Zod, Vite, Tailwind o CSS modules. Todas MIT.

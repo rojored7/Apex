@@ -25,7 +25,7 @@ para que CI rechace cualquier endpoint sin `require_role` que no esté en la lis
 
 ## Alcance
 
-- **Backend:** la prueba instancia la app, recorre `app.routes` (incluidas las de `include_router`) y para cada `APIRoute` busca en su árbol de dependencias la marca de `require_role`. Lista blanca exacta: `GET /health`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/forgot`, `POST /api/v1/auth/reset`, `GET /api/v1/tv/today` (esta última protegida por token de dispositivo desde v0.5). Rutas de documentación OpenAPI deshabilitadas en producción o en la lista blanca solo si `ENV=dev`.
+- **Backend:** la prueba instancia la app, recorre `app.routes` (incluidas las de `include_router`) y para cada `APIRoute` busca en su árbol de dependencias la marca de `require_role`. Lista blanca exacta: `GET /health`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/forgot`, `POST /api/v1/auth/reset`, `GET /api/v1/tv/today` (esta última protegida por token de dispositivo desde v0.5). Rutas de documentación OpenAPI deshabilitadas en producción o en la lista blanca solo si `ENV=dev` (variable `ENV` de US-011).
 - **Front:** No aplica
 
 ## Criterios de aceptación

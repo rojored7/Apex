@@ -25,12 +25,12 @@ para saber de un vistazo si hay trabajo de avisos sin abrir otra pantalla
 
 ## Alcance
 
-- **Backend:** `notifications.service.today_count(today)`; `dashboard.service.summary` llena `to_notify_today`.
+- **Backend:** `notifications.service.today_count(today)`; `dashboard.service.summary` llena `notifications_today`.
 - **Front:** `KpiCard` "Por avisar" con enlace a `/avisos/hoy`.
 
 ## Criterios de aceptación
 
-1. `GET /api/v1/dashboard` devuelve `to_notify_today` como entero igual al `total` de `GET /notifications/today` para el mismo día; deja de ser `null`.
+1. `GET /api/v1/dashboard` devuelve `notifications_today` como entero igual al `total` de `GET /notifications/today` para el mismo día; deja de ser `null`.
 2. Ningún otro campo del contrato de `/dashboard` cambia de nombre ni de tipo.
 3. La tarjeta enlaza a `/avisos/hoy`; con 0 muestra "0" y el texto "Nadie por avisar".
 4. Admin y coach ven la tarjeta; el rol de `/dashboard` no cambia.
@@ -53,7 +53,7 @@ Característica: KPI por avisar
 
 ## Endpoints
 
-- `GET /api/v1/dashboard` — rol(es): admin, coach — cambia `to_notify_today` de `null` a entero — códigos: 200, 401, 403
+- `GET /api/v1/dashboard` — rol(es): admin, coach — cambia `notifications_today` de `null` a entero — códigos: 200, 401, 403
 
 ## Pantalla
 
@@ -67,7 +67,7 @@ Característica: KPI por avisar
 
 ## Supuestos
 
-- Supuesto: el nombre del campo es `to_notify_today`; lo fija US-108 al definir el contrato (si allí se nombra distinto, manda US-108).
+- Supuesto: el nombre del campo es `notifications_today`, como lo fija US-108 (contradicciones del desglose: clave del tablero).
 
 ## Dependencias
 

@@ -35,7 +35,7 @@ para encontrar a un socio y abrir su ficha sin computador
 3. Cada tarjeta es un único destino enfocable de al menos 44 px de alto que abre `/socios/:id`.
 4. La búsqueda y los chips se comportan igual que en escritorio (mismos parámetros en la URL).
 5. Los datos sensibles no aparecen en la tarjeta (ni enmascarados): solo nombre, estado y plan.
-6. El botón "Nuevo socio" solo aparece si `useCan("member.create")` es verdadero.
+6. El botón "Nuevo socio" solo aparece si `useCan("members.create")` es verdadero.
 
 ## Escenarios BDD
 

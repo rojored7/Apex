@@ -31,9 +31,9 @@ para atender recepción sin interrupciones cada 15 minutos
 ## Criterios de aceptación
 
 1. `POST /api/v1/auth/refresh` con una cookie de refresh vigente responde 200 con un access token nuevo de 15 minutos y una cookie de refresh nueva; en la misma transacción el token anterior queda con `revoked_at` en UTC.
-2. Usar por segunda vez un refresh token ya rotado responde 401 `invalid_refresh` y no emite tokens.
-3. Un refresh vencido (`expires_at` en el pasado), revocado, o de un usuario bloqueado, inactivo o con `deleted_at`, responde 401 `invalid_refresh`.
-4. Sin cookie responde 401 `invalid_refresh`; el cuerpo de la petición se ignora.
+2. Usar por segunda vez un refresh token ya rotado responde 401 `unauthorized`, no emite tokens y revoca todas las sesiones del usuario, porque es señal de robo (N-13).
+3. Un refresh vencido (`expires_at` en el pasado), revocado, o de un usuario bloqueado, inactivo o con `deleted_at`, responde 401 `unauthorized`.
+4. Sin cookie responde 401 `unauthorized`; el cuerpo de la petición se ignora.
 5. Un access token vencido en cualquier endpoint protegido responde 401 con código `token_expired`, distinto de `invalid_token`.
 6. El front, ante `token_expired`, hace como máximo un `POST /auth/refresh` aunque haya varias peticiones en vuelo, y reintenta cada una una sola vez.
 7. Con dos pestañas abiertas, solo una pestaña ejecuta el refresh y la otra recibe el token nuevo por `BroadcastChannel`; ninguna queda deslogueada por usar el token rotado.
@@ -58,12 +58,12 @@ Característica: Renovar la sesión automáticamente
   Escenario: Refresh reutilizado
     Dado un refresh token que ya fue rotado
     Cuando se envía otra vez a "/auth/refresh"
-    Entonces recibe 401 con código "invalid_refresh"
+    Entonces recibe 401 con código "unauthorized"
 
   Escenario: Usuario bloqueado mientras trabajaba
     Dado que el admin bloqueó al coach
     Cuando el front intenta renovar la sesión
-    Entonces recibe 401 con código "invalid_refresh"
+    Entonces recibe 401 con código "unauthorized"
     Y el front lo lleva a "/login?next=/socios"
 
   Escenario: Dos pestañas abiertas
@@ -91,7 +91,7 @@ Característica: Renovar la sesión automáticamente
 
 ## Supuestos
 
-- Supuesto: reutilizar un refresh rotado solo se rechaza; no se revocan las demás sesiones del usuario (detección de reutilización no está definida en los documentos).
+- Decidido (N-13): reutilizar un refresh ya rotado revoca todas las sesiones del usuario, no solo responde 401.
 - Supuesto: la coordinación entre pestañas usa `BroadcastChannel` y un candado en memoria.
 
 ## Dependencias

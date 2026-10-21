@@ -37,7 +37,7 @@ para cargar el padrón existente cifrado, sin duplicados y con un reporte de las
 5. Dos filas del mismo archivo con el mismo documento normalizado: la primera se crea y la segunda queda `rejected` con motivo "documento repetido en el archivo".
 6. `--dry-run` valida y produce el reporte sin escribir nada en la base ni en `crypto_ops`.
 7. El reporte nunca contiene documento, teléfono ni correo completos (solo los últimos 3 dígitos del documento) y los logs del comando tampoco.
-8. Cada socio creado deja su fila de auditoría `insert` con `user_id` del administrador que ejecuta (parámetro `--as <email>` obligatorio) y existe una entrada resumen con número de filas creadas, omitidas y rechazadas.
+8. Cada socio creado deja su fila de auditoría `insert` con `user_id` del usuario de `--as <email>` o, sin él, `SYSTEM_USER_ID` (N-15) y existe una entrada resumen con número de filas creadas, omitidas y rechazadas.
 9. `data_consent_at` queda nulo en los socios importados (Q16) y el resumen del comando lo advierte.
 10. Importar 1.000 filas termina en menos de 2 minutos en el servidor de referencia, con las operaciones del bus registradas por lote (`batch_id`).
 11. `sexo` se mapea a `f`, `m`, `x` o nulo; `contacto_emergencia_nombre` y `contacto_emergencia_telefono` se guardan juntos en `emergency_contact` como JSON cifrado.
@@ -86,7 +86,7 @@ Característica: Importar socios desde Excel
 
 ## Endpoints
 
-- Ninguno. Comando `uv run python -m app.cli import-members <archivo.xlsx> --as <email> [--dry-run]`.
+- Ninguno. Comando `uv run python -m app.cli import-members <archivo.xlsx> [--as <email>] [--dry-run]`.
 
 ## Pantalla
 
@@ -103,7 +103,7 @@ Característica: Importar socios desde Excel
 
 ## Supuestos
 
-- Supuesto: el comando exige `--as <email>` de un usuario admin activo para atribuir `created_by` y la auditoría; Q17 no dice a nombre de quién se importa.
+- Supuesto: el comando acepta `--as <email>` de un usuario admin activo para atribuir `created_by` y la auditoría; sin él, usa `SYSTEM_USER_ID` (N-15). Q17 no dice a nombre de quién se importa.
 - Supuesto: el reporte se escribe junto al archivo de entrada y enmascara el documento a los últimos 3 dígitos.
 - Supuesto: un socio existente por documento no se actualiza con los datos del archivo (solo se omite); Q17 dice "idempotente por documento" sin precisar si actualiza.
 

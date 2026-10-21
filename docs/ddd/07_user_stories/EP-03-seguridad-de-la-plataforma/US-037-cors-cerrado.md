@@ -25,7 +25,7 @@ para que un sitio externo no pueda leer respuestas del API desde el navegador de
 
 ## Alcance
 
-- **Backend:** `CORSMiddleware` con `allow_origins` desde `CORS_ORIGINS` (lista separada por comas), métodos `GET, POST, PATCH, PUT, DELETE`, cabeceras `Authorization, Content-Type`, sin comodín `*`. Si `CORS_ORIGINS` contiene `*`, el arranque falla.
+- **Backend:** `CORSMiddleware` con `allow_origins` desde `CORS_ORIGINS` (lista separada por comas, `list[str]` de US-011), métodos `GET, POST, PATCH, PUT, DELETE`, cabeceras `Authorization, Content-Type`, sin comodín `*`. Si `CORS_ORIGINS` contiene `*`, el arranque falla.
 - **Front:** No aplica
 
 ## Criterios de aceptación

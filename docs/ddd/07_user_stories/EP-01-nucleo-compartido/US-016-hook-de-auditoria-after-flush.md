@@ -25,7 +25,7 @@ para que socios, planes, membresías, pagos, usuarios y configuración queden au
 
 ## Alcance
 
-- **Backend:** variable de contexto `current_actor` (`contextvars`) con el `user_id` de la petición (la fija la dependencia de autenticación de US-034; en CLI y worker se fija explícitamente con un actor de sistema); listener `after_flush` sobre la sesión que recorre `session.new`, `session.dirty` (con cambios reales según `inspect(obj).attrs[...].history`) y `session.deleted` de modelos con `__audited__ = True` y llama `record(...)` de US-015 en la misma transacción; serializa columnas en su forma persistida (los campos `Encrypted` se toman como el blob `apx1....`, nunca el valor descifrado); un borrado lógico (`deleted_at` de nulo a fecha) se registra como `update`; listener `before_flush` que llena `created_by` en inserciones con `current_actor`; acción `insert` en altas.
+- **Backend:** variable de contexto `current_actor` (`contextvars`) con el `user_id` de la petición (la fija la dependencia de autenticación de US-034; en CLI y worker se fija explícitamente con `SYSTEM_USER_ID` o con el usuario de `--as`); listener `after_flush` sobre la sesión que recorre `session.new`, `session.dirty` (con cambios reales según `inspect(obj).attrs[...].history`) y `session.deleted` de modelos con `__audited__ = True` y llama `record(...)` de US-015 en la misma transacción; serializa columnas en su forma persistida (los campos `Encrypted` se toman como el blob `apx1....`, nunca el valor descifrado); un borrado lógico (`deleted_at` de nulo a fecha) se registra como `update`; listener `before_flush` que llena `created_by` en inserciones con `current_actor`; acción `insert` en altas.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -82,7 +82,7 @@ Característica: Auditoría automática por hook
 
 ## Supuestos
 
-- Supuesto: el actor de sistema para worker y CLI es un usuario técnico identificado por un UUID fijo configurable (`SYSTEM_ACTOR_ID`) o el usuario admin que ejecuta el comando; se elige el admin que ejecuta el CLI cuando lo hay y un actor `system` para el worker.
+- Supuesto: worker y CLI actúan con `SYSTEM_USER_ID` (`system@apex.local`, expuesto en `core/context.py`; N-15), o con el usuario de `--as <email>` cuando una persona ejecuta el comando.
 
 ## Dependencias
 

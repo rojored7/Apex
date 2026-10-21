@@ -672,7 +672,7 @@ Seguridad y configuración:
   - Se agregan `ENV`, `TRUSTED_PROXIES`, `COOKIE_SECURE` y `FRONT_BASE_URL`.
   - `DATABASE_URL` es `SecretStr`.
   - La lista `NON_API_ENV_VARS` evita que `extra="forbid"` rompa el arranque.
-  - Las variables del admin inicial se llaman `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` (US-007), no `APEX_SEED_ADMIN_*` (US-041).
+  - Las variables del admin inicial se llaman `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` (DECISIONES E; un solo uso, se borra del `.env` tras el seed), no `SEED_ADMIN_*` (US-007 original) ni `APEX_SEED_ADMIN_*` (US-041 original).
 - **Nombres de permisos del front:** son `members.*` (US-040). US-066 y US-072 los escriben en singular.
 - **Nginx:**
   - sobrescribe `X-Forwarded-For` con `$remote_addr`;

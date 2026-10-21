@@ -18,7 +18,7 @@ Un `.env.example` en la raíz con cada variable del sistema, un comentario de un
 
 ## Correcciones aplicadas por DECISIONES.md
 
-- No se agrega ninguna variable para el actor técnico (`SYSTEM_ACTOR_ID` u otra): el usuario técnico es la constante `SYSTEM_USER_ID` = `00000000-0000-0000-0000-000000000001`, creada por la migración `0004_auth`, no configurable: corregido por DECISIONES N-15. `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` sí se mantienen: son del primer admin humano (US-041), no del usuario técnico.
+- No se agrega ninguna variable para el actor técnico (`SYSTEM_ACTOR_ID` u otra): el usuario técnico es la constante `SYSTEM_USER_ID` = `00000000-0000-0000-0000-000000000001`, creada por la migración `0004_auth`, no configurable: corregido por DECISIONES N-15. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` sí se mantienen: son del primer admin humano (US-041), no del usuario técnico.
 - `TZ_DISPLAY=America/Bogota` se mantiene como la lista de la Tarea 0, con el comentario de que el "hoy" de negocio no depende de esta variable: lo fija `today_bogota()` de `core/clock.py`: corregido por DECISIONES Q28 (aclaración del comentario).
 - Variables que llegan con historias posteriores (`FRONT_BASE_URL` de N-11, `TRUSTED_PROXIES` de N-14, las de canales de N-35 y Q12 en v0.2): no se agregan por adelantado; la prueba de consistencia obliga a cada historia a agregarlas al crear el campo en `Settings`.
 
@@ -72,7 +72,7 @@ Ninguna.
 - No aplica.
 
 ### DevOps
-- [ ] T3 · `.env.example` en la raíz, en bloques comentados: base de datos (`POSTGRES_USER=apex`, `POSTGRES_PASSWORD=cambiar-esto`, `POSTGRES_DB=apex`, `DATABASE_URL=postgresql+asyncpg://apex:cambiar-esto@db:5432/apex`); llaves (`JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem`, `JWT_PUBLIC_KEY_PATH=/run/apex/keys/jwt_ed25519.pub`, `CRYPTO_PROVIDER=local`, `CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin`); aplicación (`TZ_DISPLAY=America/Bogota`, `UPLOADS_DIR=/data/uploads`, `CORS_ORIGINS=http://localhost`, `LOG_LEVEL=INFO`); primer admin (`SEED_ADMIN_EMAIL=admin@ejemplo.local`, `SEED_ADMIN_PASSWORD=cambiar-esto`, comentario "un solo uso, US-041; bórrala del .env después de crear el admin"); un comentario de una línea por variable — 1 h
+- [ ] T3 · `.env.example` en la raíz, en bloques comentados: base de datos (`POSTGRES_USER=apex`, `POSTGRES_PASSWORD=cambiar-esto`, `POSTGRES_DB=apex`, `DATABASE_URL=postgresql+asyncpg://apex:cambiar-esto@db:5432/apex`); llaves (`JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem`, `JWT_PUBLIC_KEY_PATH=/run/apex/keys/jwt_ed25519.pub`, `CRYPTO_PROVIDER=local`, `CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin`); aplicación (`TZ_DISPLAY=America/Bogota`, `UPLOADS_DIR=/data/uploads`, `CORS_ORIGINS=http://localhost`, `LOG_LEVEL=INFO`); primer admin (`ADMIN_EMAIL=admin@ejemplo.local`, `ADMIN_INITIAL_PASSWORD=cambiar-esto`, comentario "un solo uso, US-041; bórrala del .env después de crear el admin"); un comentario de una línea por variable — 1 h
 - [ ] T4 · `README.md` sección "Arranque en 5 minutos": requisitos (Docker Engine con Compose v2, `uv`, Node 22 para el front); pasos desde la raíz del repositorio: `cp .env.example .env` y cambiar los `cambiar-esto`; `docker compose -f infra/compose.yml -f infra/compose.dev.yml up -d --build`; `docker compose -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` (US-023, servicio `tools` de US-005); comprobar `curl http://localhost:8000/health`; comandos de desarrollo de la sección "Comandos" de `CLAUDE.md` (`cd api && uv sync`, `uv run pytest`, `uv run ruff check . && uv run ruff format . && uv run mypy src`); nota para Windows: clonar dentro del sistema de archivos de WSL2 — 1 h
 - [ ] T5 · `README.md` advertencia en negrita: "**Si pierdes la KEK (`kek.bin` del volumen `keys`), pierdes para siempre los datos cifrados de los socios. Respáldala fuera del servidor antes de cargar datos reales.**" con enlace al procedimiento de US-116 cuando exista — 0,5 h
 - [ ] T6 · Medir el arranque siguiendo solo el README desde un clon limpio y anotar el tiempo en el PR (criterio 3; se mide cuando existan US-020 y US-023; antes se anota hasta `api` en ejecución) — 0,5 h
@@ -113,7 +113,7 @@ Ninguna.
 - [ ] `cd api && uv run mypy src`
 - [ ] `cd api && uv run pytest tests/core/test_env_example.py -q` (en verde; "skipped" solo mientras no exista US-011)
 - [ ] `cd api && uv run pytest tests/architecture -q`
-- [ ] `grep -cE "^(DATABASE_URL|JWT_PRIVATE_KEY_PATH|JWT_PUBLIC_KEY_PATH|CRYPTO_PROVIDER|CRYPTO_LOCAL_KEK_PATH|TZ_DISPLAY|UPLOADS_DIR|CORS_ORIGINS|SEED_ADMIN_EMAIL|SEED_ADMIN_PASSWORD|LOG_LEVEL|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB)=" .env.example` devuelve 14
+- [ ] `grep -cE "^(DATABASE_URL|JWT_PRIVATE_KEY_PATH|JWT_PUBLIC_KEY_PATH|CRYPTO_PROVIDER|CRYPTO_LOCAL_KEK_PATH|TZ_DISPLAY|UPLOADS_DIR|CORS_ORIGINS|ADMIN_EMAIL|ADMIN_INITIAL_PASSWORD|LOG_LEVEL|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB)=" .env.example` devuelve 14
 - [ ] `grep -c "SYSTEM_ACTOR_ID\|SYSTEM_USER_ID" .env.example` devuelve 0
 - [ ] `docker compose -f infra/compose.yml -f infra/compose.dev.yml config` termina con código 0 con un `.env` copiado del ejemplo
 - [ ] Tiempo de arranque siguiendo el README anotado en el PR (5 minutos o menos hasta `/health` en 200)

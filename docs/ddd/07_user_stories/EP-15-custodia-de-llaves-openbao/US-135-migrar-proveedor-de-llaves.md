@@ -25,7 +25,7 @@ para re-envolver cada DEK con la KEK de OpenBao, dejar `provider = openbao` en `
 
 ## Alcance
 
-- **Backend:** comando `migrate-provider --from local --to openbao --as <email> [--dry-run]` que crea un `CryptoJob(kind=migrate_provider)`, por cada `CryptoKey` con `provider = local`: desenvuelve con `LocalFileProvider`, envuelve con `OpenBaoProvider`, verifica que el nuevo envoltorio desenvuelve a la misma DEK y actualiza `wrapped_material` y `provider` en una transacción por llave; registra `unwrap` y `wrap` en `crypto_ops` con el mismo `batch_id`; avanza `done/total`; al terminar marca el job `done`. Reanudable: si se interrumpe, la siguiente ejecución continúa con las llaves que siguen en `local`. Nunca toca las columnas cifradas de las tablas de negocio.
+- **Backend:** comando `migrate-provider --from local --to openbao [--as <email>] [--dry-run]` que crea un `CryptoJob(kind=migrate_provider)`, por cada `CryptoKey` con `provider = local`: desenvuelve con `LocalFileProvider`, envuelve con `OpenBaoProvider`, verifica que el nuevo envoltorio desenvuelve a la misma DEK y actualiza `wrapped_material` y `provider` en una transacción por llave; registra `unwrap` y `wrap` en `crypto_ops` con el mismo `batch_id`; avanza `done/total`; al terminar marca el job `done`. Reanudable: si se interrumpe, la siguiente ejecución continúa con las llaves que siguen en `local`. Nunca toca las columnas cifradas de las tablas de negocio.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -35,7 +35,7 @@ para re-envolver cada DEK con la KEK de OpenBao, dejar `provider = openbao` en `
 3. Ejecutar el comando una segunda vez no cambia nada y termina con código 0 con el mensaje "nada que migrar".
 4. Si el proceso se interrumpe a mitad, ninguna llave queda inutilizable (cada llave cambia en su propia transacción y solo después de verificar el nuevo envoltorio) y la siguiente ejecución completa el resto.
 5. El `CryptoJob` registra `total`, `done`, `started_at`, `finished_at` y `error` si lo hubo.
-6. Cada llave migrada deja `unwrap` (local) y `wrap` (openbao) en `crypto_ops` con el mismo `batch_id`, `key_id` y `key_version`, y el comando deja una entrada en auditoría con el usuario de `--as`.
+6. Cada llave migrada deja `unwrap` (local) y `wrap` (openbao) en `crypto_ops` con el mismo `batch_id`, `key_id` y `key_version`, y el comando deja una entrada en auditoría con el usuario de `--as` o, sin él, `SYSTEM_USER_ID` (N-15).
 7. `--dry-run` lista las llaves que se migrarían sin escribir nada.
 8. Antes de empezar, el comando exige confirmación escrita (`MIGRAR`) y recuerda tener un backup reciente y la KEK local respaldada.
 
@@ -62,7 +62,7 @@ Característica: Migrar proveedor de llaves
 
 ## Endpoints
 
-- Ninguno. Comando `uv run python -m app.cli migrate-provider --from local --to openbao --as <email> [--dry-run]`.
+- Ninguno. Comando `uv run python -m app.cli migrate-provider --from local --to openbao [--as <email>] [--dry-run]`.
 
 ## Pantalla
 

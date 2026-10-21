@@ -25,7 +25,7 @@ para comprobar la integridad de la auditoría aunque el front no esté disponibl
 
 ## Alcance
 
-- **Backend:** comando `uv run python -m app.cli verify-audit` (typer) que recorre la cadena completa con `verify_chain`, imprime el resultado y registra la entrada `verify` con `user_id` nulo y origen `cli`.
+- **Backend:** comando `uv run python -m app.cli verify-audit` (typer) que recorre la cadena completa con `verify_chain`, imprime el resultado y registra la entrada `verify` con `user_id` = `SYSTEM_USER_ID` (o el de `--as <email>`, N-15) y origen `cli`.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -33,7 +33,7 @@ para comprobar la integridad de la auditoría aunque el front no esté disponibl
 1. `verify-audit` con la cadena íntegra imprime "Cadena íntegra: N filas verificadas" y sale con código 0.
 2. Con una fila alterada imprime "Cadena rota en el registro seq X" y sale con código 1.
 3. Si la base no está disponible imprime el error y sale con código 2.
-4. Cada ejecución deja una entrada de auditoría `action = "verify"` con `user_id` nulo y `after.source = "cli"`.
+4. Cada ejecución deja una entrada de auditoría `action = "verify"` con `user_id` = `SYSTEM_USER_ID` (o el de `--as`) y `after.source = "cli"`.
 5. El comando siempre recorre la cadena completa (no tiene modo en segundo plano) y la recorre por lotes sin cargar toda la tabla en memoria.
 6. El comando no imprime ningún valor de `before` ni `after`.
 
@@ -64,7 +64,7 @@ Característica: Verificar la cadena desde la línea de comandos
 
 ## Endpoints
 
-- Ninguno. Comando: `cli verify-audit`.
+- Ninguno. Comando: `cli verify-audit [--as <email>]`.
 
 ## Pantalla
 
@@ -81,7 +81,7 @@ Característica: Verificar la cadena desde la línea de comandos
 ## Supuestos
 
 - Supuesto: la función `core.audit.verify_chain` vive en `core/audit.py`; la crea la primera de US-104 o US-105 que se implemente y la otra la reutiliza.
-- Supuesto: la entrada `verify` del CLI lleva `user_id` nulo porque el comando no tiene usuario autenticado.
+- Supuesto: la entrada `verify` del CLI lleva `user_id` = `SYSTEM_USER_ID`, o el usuario de `--as <email>` si se pasa (N-15).
 
 ## Dependencias
 

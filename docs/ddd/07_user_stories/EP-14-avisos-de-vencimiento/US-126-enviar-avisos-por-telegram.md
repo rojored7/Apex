@@ -1,7 +1,7 @@
-# US-126 · Como administrador quiero enviar avisos por Telegram para llegar a los socios que prefieren ese canal
+# US-126 · Como administrador quiero recibir en el chat del equipo, por Telegram, el resumen diario de avisos y las alertas del worker para enterarme sin entrar al sistema
 
 - **Épica:** EP-14 · Avisos de vencimiento
-- **Bounded context:** Notifications (`channels/telegram.py`)
+- **Bounded context:** Notifications (`channels/telegram.py`) y `core/alerts.py` (alerta interna, N-34)
 - **Versión:** v0.2
 - **Actor:** administrador
 - **Tamaño:** 3
@@ -12,26 +12,26 @@
 ## Historia
 
 Como administrador
-quiero que los avisos con canal `telegram` se envíen por el bot del gimnasio
-para cubrir a los socios que no leen el correo
+quiero que el resumen diario de "por avisar hoy" y las alertas del worker (backup fallido, firma atrasada, OpenBao sellado) se envíen al chat del equipo por el bot del gimnasio
+para enterarme sin revisar el sistema
 
 ## Contexto de dominio
 
-- **Aggregate / entidades:** `Notification`; adaptador `TelegramChannel` del puerto `NotificationChannel`.
+- **Aggregate / entidades:** ninguno; adaptador `TelegramAlertSink` del puerto `AlertSink` (G-08).
 - **Reglas que aplica:** licencias (`httpx` directo; prohibido `python-telegram-bot` por LGPL); Q12 (token solo en `.env`); auditoría de envío.
-- **Eventos que emite:** `NotificationSent`, `NotificationFailed`
+- **Eventos que emite:** ninguno (no crea filas de `Notification`, N-34)
 - **Eventos que consume:** ninguno
 - **Funciones puras:** `telegram.build_payload(chat_id, text) -> dict`
 
 ## Alcance
 
-- **Backend:** `TelegramChannel` con `httpx` a `https://api.telegram.org/bot<token>/sendMessage`, registrado en la fase de envío de US-125.
+- **Backend:** `TelegramAlertSink` con `httpx` a `https://api.telegram.org/bot<token>/sendMessage`, registrado en `core/alerts.py` (G-08) al arrancar el worker.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
 
-1. Un aviso `pending` con `channel = telegram` se envía con `chat_id` igual a `settings.channels.telegram.default_chat_id`; respuesta `ok: true` deja `sent` y emite `NotificationSent`.
-2. Una respuesta `ok: false`, un 4xx/5xx o un timeout deja `failed` con `last_error` que no contiene el token del bot ni la URL completa; emite `NotificationFailed`.
+1. El resumen diario y cada alerta interna se envían con `chat_id` igual al chat del equipo configurado en `.env` (supuesto); respuesta `ok: true` deja el envío registrado en el log.
+2. Una respuesta `ok: false`, un 4xx/5xx o un timeout deja el envío registrado como fallido en el log, sin el token del bot ni la URL completa.
 3. Los reintentos siguen la misma política de US-125.
 4. El token se lee de `TELEGRAM_BOT_TOKEN` en `.env`; nunca se guarda en base, auditoría ni logs.
 5. El chequeo de licencias de CI falla si aparece `python-telegram-bot` en las dependencias.
@@ -41,18 +41,18 @@ para cubrir a los socios que no leen el correo
 
 ```gherkin
 # language: es
-Característica: Avisos por Telegram
+Característica: Alertas internas por Telegram
 
-  Escenario: Enviar un aviso por Telegram
-    Dado que Telegram está habilitado con un chat por defecto
-    Y hay un aviso pendiente por Telegram
+  Escenario: Enviar el resumen al chat del equipo
+    Dado que el chat del equipo está configurado
+    Y hay un resumen diario pendiente de enviar
     Cuando el worker corre la fase de envío
-    Entonces el aviso queda "sent"
+    Entonces el resumen queda enviado al chat del equipo
 
   Escenario: Token inválido
     Dado que Telegram responde 401 por token inválido
     Cuando el worker corre la fase de envío
-    Entonces el aviso queda "failed"
+    Entonces el envío queda registrado como fallido
     Y el error registrado no contiene el token
 ```
 
@@ -69,12 +69,12 @@ Característica: Avisos por Telegram
 - **Migración:** no.
 - **Trigger / restricciones:** ninguno.
 - **Funciones puras a probar:** `build_payload` con texto con caracteres especiales.
-- **Pruebas:** canal con `httpx.MockTransport`; prueba de que el token no aparece en `last_error` ni en logs.
+- **Pruebas:** canal con `httpx.MockTransport`; prueba de que el token no aparece en logs.
 - **Archivos principales:** `api/src/app/modules/notifications/channels/telegram.py`.
 
 ## Supuestos
 
-- Supuesto: en v0.2 los avisos por Telegram van al `default_chat_id` del gimnasio (un grupo o canal interno), porque el modelo no guarda un `chat_id` por socio. Si se quiere enviar al socio directo, hace falta un campo nuevo en Members (pregunta abierta).
+- Supuesto: el chat del equipo y el token viven en `.env` (`TELEGRAM_BOT_TOKEN` y un identificador de chat de alertas, nombre a fijar en US-011), no en `settings.channels`, porque Telegram es canal interno y no de socio (N-34). Las alertas no crean filas de `Notification`.
 
 ## Dependencias
 

@@ -211,11 +211,11 @@ v1.0:
 | [US-119](EP-13-puesta-en-marcha-y-continuidad/US-119-adr-iniciales.md) | Como equipo quiero los ADR iniciales de monolito modular, bus de criptografía y pagos inmutables para que las decisiones irreversibles queden escritas y nadie las cambie sin saberlo | EP-13 | ninguno (operación) | v0.1 | ninguna | 2 |
 | [US-120](EP-14-avisos-de-vencimiento/US-120-plantillas-de-aviso.md) | Como administrador quiero mantener plantillas de aviso con variables para que cada recordatorio diga lo correcto sin escribirlo a mano | EP-14 | Notifications | v0.2 | Notif_Reglas (pestaña Plantillas) | 5 |
 | [US-121](EP-14-avisos-de-vencimiento/US-121-reglas-de-aviso.md) | Como administrador quiero definir reglas de aviso relativas al vencimiento para que el sistema sepa cuándo y por qué canal recordar a cada socio | EP-14 | Notifications | v0.2 | Notif_Reglas (/avisos/reglas) | 5 |
-| [US-122](EP-14-avisos-de-vencimiento/US-122-configurar-canales-de-aviso.md) | Como administrador quiero configurar los canales de aviso sin guardar secretos en la base para habilitar correo y Telegram de forma segura | EP-14 | Settings | v0.2 | Config (canales) | 2 |
+| [US-122](EP-14-avisos-de-vencimiento/US-122-configurar-canales-de-aviso.md) | Como administrador quiero configurar los canales de aviso sin guardar secretos en la base para habilitar correo y WhatsApp de forma segura | EP-14 | Settings | v0.2 | Config (canales) | 2 |
 | [US-123](EP-14-avisos-de-vencimiento/US-123-preferencias-de-canal-del-socio.md) | Como coach quiero registrar por qué canales acepta avisos cada socio para no escribirle por donde no quiere | EP-14 | Members | v0.2 | Socio_Ficha (pestaña Avisos) | 3 |
 | [US-124](EP-14-avisos-de-vencimiento/US-124-generar-avisos-del-dia.md) | Como administrador quiero que cada mañana se genere la lista de avisos del día sin duplicados para no olvidar a nadie ni repetir mensajes | EP-14 | Notifications | v0.2 | ninguna | 5 |
 | [US-125](EP-14-avisos-de-vencimiento/US-125-enviar-avisos-por-correo.md) | Como administrador quiero que los avisos por correo se envíen solos y que los fallos queden registrados para que nadie tenga que mandarlos uno por uno | EP-14 | Notifications | v0.2 | ninguna | 5 |
-| [US-126](EP-14-avisos-de-vencimiento/US-126-enviar-avisos-por-telegram.md) | Como administrador quiero enviar avisos por Telegram para llegar a los socios que prefieren ese canal | EP-14 | Notifications | v0.2 | ninguna | 3 |
+| [US-126](EP-14-avisos-de-vencimiento/US-126-enviar-avisos-por-telegram.md) | Como administrador quiero recibir en el chat del equipo, por Telegram, el resumen diario de avisos y las alertas del worker para enterarme sin entrar al sistema | EP-14 | Notifications | v0.2 | ninguna | 3 |
 | [US-127](EP-14-avisos-de-vencimiento/US-127-por-avisar-hoy-y-enlace-de-whatsapp.md) | Como coach quiero ver a quién hay que avisar hoy y abrir el WhatsApp con el mensaje listo para avisar en segundos | EP-14 | Notifications | v0.2 | PorAvisarHoy (/avisos/hoy) | 5 |
 | [US-128](EP-14-avisos-de-vencimiento/US-128-omitir-aviso-con-motivo.md) | Como coach quiero omitir un aviso con motivo para no molestar a un socio que ya sé que va a renovar y dejar el porqué registrado | EP-14 | Notifications | v0.2 | PorAvisarHoy | 2 |
 | [US-129](EP-14-avisos-de-vencimiento/US-129-historial-de-envios.md) | Como administrador quiero consultar el historial de avisos con filtros para saber a quién se le avisó, cuándo, por dónde y con qué resultado | EP-14 | Notifications | v0.2 | Notif_Historial (/avisos/historial) | 3 |
@@ -365,7 +365,10 @@ También tienen riesgo:
 
 ## Preguntas abiertas
 
-### Heredadas, todavía pendientes del gate (`DECISIONES.md`, sección A)
+> **Nota (21 de octubre de 2026):** las preguntas heredadas (sección A) fueron aprobadas en el gate tal como se propusieron.
+> Las nuevas (N-01 a N-50) quedaron decididas en `docs/ddd/DECISIONES.md`, sección D; la lista siguiente se conserva como registro histórico.
+
+### Heredadas, aprobadas en el gate (`DECISIONES.md`, sección A)
 
 - **D1 / S1:** front en `web/`. Hay que reescribir el "Alcance" de `CLAUDE.md`. Afecta todas las historias con front.
 - **D2 / S2:** paginación `limit`/`offset`. Hay que corregir `DESIGN.md` y `ROUTES.md`.
@@ -409,11 +412,11 @@ Identidad, sesiones y plataforma:
   - Variable `TRUSTED_PROXIES` para `X-Forwarded-For`.
   - Nonce de la CSP con `$request_id` y `sub_filter` de Nginx.
 - **N-15 (US-016, US-094, US-111, US-112, US-135, US-156):** cada historia resolvió distinto el actor técnico de los procesos sin usuario:
-  - `SYSTEM_ACTOR_ID` y usuario `system` para el worker;
-  - usuario `seed` para los datos de demostración;
+  - un identificador de actor de sistema configurable por variable y un usuario `system` para el worker;
+  - un usuario propio para los datos de demostración;
   - `--as <email>` en `import-members` y `migrate-provider`.
   
-  Hay que unificarlo en una sola decisión antes de US-016.
+  Resuelto por N-15 de `DECISIONES.md` (sección D): un único usuario técnico `system@apex.local` (`SYSTEM_USER_ID`) y `--as <email>` en los comandos de CLI.
 - **N-16 (US-005, US-020, US-115, US-136):**
   - `/health` se expone en la raíz y también en `/api/v1/health`.
   - El estado del backup es informativo y deja el código en 200.

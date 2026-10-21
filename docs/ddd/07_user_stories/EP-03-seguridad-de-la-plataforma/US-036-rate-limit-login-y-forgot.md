@@ -85,7 +85,7 @@ Característica: Límite de intentos de acceso
 
 ## Supuestos
 
-- Supuesto: variable `TRUSTED_PROXIES` para decidir cuándo confiar en `X-Forwarded-For` (no está en `.env.example`; se agrega).
+- Supuesto: variable `TRUSTED_PROXIES` para decidir cuándo confiar en `X-Forwarded-For` (N-14; se declara en US-011 y en `.env.example`, US-007).
 
 ## Dependencias
 

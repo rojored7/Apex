@@ -25,7 +25,7 @@ para que un error de configuración se vea en el primer segundo y no a mitad de 
 
 ## Alcance
 
-- **Backend:** `core/config.py` con `Settings(BaseSettings)` y `model_config = SettingsConfigDict(env_file=".env", extra="forbid")`; campos tipados (`DATABASE_URL: PostgresDsn`, `JWT_PRIVATE_KEY_PATH: FilePath`, `JWT_PUBLIC_KEY_PATH: FilePath`, `CRYPTO_PROVIDER: Literal["local", "openbao"]`, `CRYPTO_LOCAL_KEK_PATH: Path`, `TZ_DISPLAY: str = "America/Bogota"`, `UPLOADS_DIR: Path`, `CORS_ORIGINS: list[AnyHttpUrl]`, `LOG_LEVEL`); validador que exige `CRYPTO_LOCAL_KEK_PATH` cuando el proveedor es `local`; función `get_settings()` con caché; secretos como `SecretStr` para que `repr` no los muestre.
+- **Backend:** `core/config.py` con `Settings(BaseSettings)` y `model_config = SettingsConfigDict(env_file=".env", extra="forbid")`; campos tipados (`DATABASE_URL: SecretStr`, `JWT_PRIVATE_KEY_PATH: FilePath`, `JWT_PUBLIC_KEY_PATH: FilePath | None = None` (opcional; si falta, se deriva de la privada), `CRYPTO_PROVIDER: Literal["local", "openbao"]`, `CRYPTO_LOCAL_KEK_PATH: Path`, `TZ_DISPLAY: str = "America/Bogota"`, `UPLOADS_DIR: Path`, `CORS_ORIGINS: list[str]`, `LOG_LEVEL`, `ENV`, `TRUSTED_PROXIES`, `COOKIE_SECURE`, `FRONT_BASE_URL`); lista `NON_API_ENV_VARS` (variables que la API no lee y que `extra="forbid"` no debe rechazar: `WEB_PORT` (A-4), `POSTGRES_*`, `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`, que consume la CLI); validador que exige `CRYPTO_LOCAL_KEK_PATH` cuando el proveedor es `local`; función `get_settings()` con caché; secretos como `SecretStr` para que `repr` no los muestre.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -36,6 +36,7 @@ para que un error de configuración se vea en el primer segundo y no a mitad de 
 4. Un valor inválido (por ejemplo `CRYPTO_PROVIDER=aws`) falla con mensaje claro.
 5. Ningún valor secreto aparece al imprimir o loguear `Settings` (se muestran como `**********`).
 6. No hay valores por defecto para secretos ni para `DATABASE_URL`.
+7. Una variable de `NON_API_ENV_VARS` (por ejemplo `WEB_PORT`) no hace fallar el arranque; una variable desconocida sí.
 
 ## Escenarios BDD
 

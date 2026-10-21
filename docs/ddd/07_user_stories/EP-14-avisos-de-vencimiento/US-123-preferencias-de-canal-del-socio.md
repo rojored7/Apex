@@ -30,7 +30,7 @@ para que el sistema respete sus preferencias y no le envíe correos o mensajes q
 
 ## Criterios de aceptación
 
-1. `GET /api/v1/members/{id}/channels` devuelve `email`, `telegram` y `whatsapp_link` con `active` (bool); si el socio no tiene filas, todos vienen `active = true`.
+1. `GET /api/v1/members/{id}/channels` devuelve `email` y `whatsapp_link` con `active` (bool); si el socio no tiene filas, todos vienen `active = true`.
 2. `PATCH /api/v1/members/{id}/channels` con `{ channel, active }` (uno o varios) actualiza y responde 200; un canal desconocido o `push` responde 422 con `field = channel`.
 3. Un socio dado de baja (`deleted_at` no nulo) responde 404.
 4. `members.service.channels_for(member_id)` devuelve solo los canales activos; Notifications no lee la tabla directamente.
@@ -49,7 +49,7 @@ Característica: Preferencias de canal del socio
     Y el socio "Laura Gómez" tiene todos los canales activos
     Cuando desactivo el canal "email" en su ficha
     Entonces la respuesta es 200
-    Y los canales efectivos de Laura son "telegram" y "whatsapp_link"
+    Y el canal efectivo de Laura es "whatsapp_link"
     Y queda una fila de auditoría de la preferencia
 
   Escenario: Rechazar un canal no disponible

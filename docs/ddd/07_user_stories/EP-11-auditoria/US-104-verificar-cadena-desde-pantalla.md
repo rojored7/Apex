@@ -21,17 +21,17 @@ para demostrar, incluso ante la Ley 1581, que el historial no fue alterado
 - **Reglas que aplica:** RN-16 (`hash = SHA-256(prev_hash || canonical(row))`; una fila alterada rompe la cadena; la verificación recorre toda la cadena), `05_service_design.md` (con más de 100.000 filas corre aparte y devuelve la última verificación), la verificación queda registrada como acción `verify`.
 - **Eventos que emite:** ninguno (escribe una entrada `verify` en auditoría).
 - **Eventos que consume:** ninguno.
-- **Funciones puras:** `audit.chain_hash(prev_hash, row)` (de US-015) y `core.audit.verify_chain(rows_iter) -> VerifyResult { ok, rows_checked, broken_seq? }`.
+- **Funciones puras:** `audit.chain_hash(prev_hash, row)` (de US-015) y `core.audit.verify_chain(rows_iter) -> VerifyResult { ok, rows_checked, broken_at_seq? }`.
 
 ## Alcance
 
-- **Backend:** `audit.service.verify()` que recorre la cadena por lotes en orden de `seq`, recalcula cada hash y se detiene en la primera fila rota; si la tabla tiene más de 100.000 filas, lanza la verificación en una tarea en segundo plano y responde 202 con la última verificación conocida; el resultado se registra como entrada `verify` con `after = { ok, rows_checked, broken_seq, started_at, finished_at }`. `GET /audit/verify/last` devuelve la última.
+- **Backend:** `audit.service.verify()` que recorre la cadena por lotes en orden de `seq`, recalcula cada hash y se detiene en la primera fila rota; si la tabla tiene más de 100.000 filas, lanza la verificación en una tarea en segundo plano y responde 202 con la última verificación conocida; el resultado se registra como entrada `verify` con `after = { ok, rows_checked, broken_at_seq, started_at, finished_at }`. `GET /audit/verify/last` devuelve la última.
 - **Front:** botón "Verificar cadena" en `Auditoria` con estado "Verificando...", resultado "Cadena íntegra: N filas verificadas" o "Cadena rota en el registro seq X" con enlace al detalle, y fecha de la última verificación.
 
 ## Criterios de aceptación
 
-1. `POST /api/v1/audit/verify` con 100.000 filas o menos responde 200 con `{ ok, rows_checked, broken_seq, finished_at }` cuando termina.
-2. Con una fila alterada a mano (con el trigger deshabilitado en la prueba) la verificación devuelve `ok = false` y `broken_seq` igual al `seq` exacto alterado.
+1. `POST /api/v1/audit/verify` con 100.000 filas o menos responde 200 con `{ ok, rows_checked, broken_at_seq, finished_at }` cuando termina.
+2. Con una fila alterada a mano (con el trigger deshabilitado en la prueba) la verificación devuelve `ok = false` y `broken_at_seq` igual al `seq` exacto alterado.
 3. Con más de 100.000 filas responde 202 con `{ status: "running", last: <última verificación o null> }` y no bloquea otras peticiones; al terminar, `GET /api/v1/audit/verify/last` devuelve el resultado nuevo.
 4. Una segunda petición mientras hay una verificación en curso devuelve 409 con `code = "verification_running"`.
 5. Cada verificación terminada deja una entrada de auditoría con `action = "verify"`, el usuario que la pidió y el resultado; esa entrada entra a la cadena como cualquier otra.

@@ -115,10 +115,12 @@ Las flechas de dependencia fijan el orden; coincide con las versiones del plan:
 
 - Importar `models` de otro módulo o hacer `JOIN` entre esquemas fuera del `service.py` dueño.
 - Encadenar tres services en un router: cuando una acción interesa a varios contextos se emite un evento.
+  - Precisión aprobada en el gate (G-04): una **lectura** sí puede recorrer aristas que ya existen en este mapa hasta profundidad 2, con consultas por lote, sin escribir ni emitir eventos y llamando a un solo service desde el router. Ejemplo: `members.service.list` pide `memberships.service.status_for(member_ids)`, que devuelve `{status, plan_id, plan_name, end_date}` resolviendo los nombres con `plans.service.names_for`. La prohibición de tres services sigue intacta para escrituras.
+  - Dependencias mutuas entre services (G-03): el sentido minoritario usa un puerto registrado al arrancar si solo valida, o un import perezoso si es lectura de presentación, solo para los pares de la lista blanca (v0.1: memberships ↔ payments, members ↔ memberships, plans ↔ memberships; v0.4: members ↔ classes). Lo vigila `tests/architecture/test_service_import_graph.py`.
 - Que cualquier contexto distinto de Members, Athletes, Attachments y Audit llame al bus de cifrado para campos que no son suyos.
 - Que Payments cambie el estado de una membresía, o que Memberships edite un pago.
 
 ## 6. Preguntas acumuladas para el gate
 
-- **P5:** el correo de login del usuario de portal se guarda en claro en `auth.users.email` (es credencial), aunque `members.email` vaya cifrado. Alternativa: índice ciego también en auth y login por documento. Supuesto: en claro en auth.
+- **P5 (resuelta en el gate del 21 de octubre de 2026):** el correo de login del usuario de portal se guarda en claro en `auth.users.email` (es credencial), aunque `members.email` vaya cifrado. Alternativa descartada: índice ciego también en auth y login por documento.
 - **P6:** ¿Un coach puede ser también socio (entrena en el box)? Supuesto: sí; un usuario `coach` puede tener `member_id` opcional, y el portal se le muestra con el rol de coach ampliado en v1.1 (fuera de alcance ahora).

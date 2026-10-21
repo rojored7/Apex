@@ -46,7 +46,7 @@ Ninguna.
 - No aplica.
 
 ### Service
-- [ ] T1 · En `api/src/app/core/config.py`: marcar como `SecretStr` `POSTGRES_PASSWORD`, `SEED_ADMIN_PASSWORD` y todo campo futuro con sufijo `_PASSWORD`, `_TOKEN` o `_SECRET` (un validador de clase falla si un campo con esos sufijos no es `SecretStr`); `DATABASE_URL` como `PostgresDsn`, con la contraseña oculta en `repr` mediante un `__repr_args__` propio — 1 h
+- [ ] T1 · En `api/src/app/core/config.py`: marcar como `SecretStr` `POSTGRES_PASSWORD`, `ADMIN_INITIAL_PASSWORD` y todo campo futuro con sufijo `_PASSWORD`, `_TOKEN` o `_SECRET` (un validador de clase falla si un campo con esos sufijos no es `SecretStr`); `DATABASE_URL` como `PostgresDsn`, con la contraseña oculta en `repr` mediante un `__repr_args__` propio — 1 h
 - [ ] T2 · Función pura `missing_secrets(settings, exists=Path.is_file) -> list[str]` y `check_secrets_or_exit(settings)`, que lanza `StartupError("Faltan secretos: JWT_PRIVATE_KEY_PATH, ...")` con nombres ordenados; se llama en el lifespan de `create_app()` (US-020) antes de cargar llaves, y en `worker/main.py` — 1 h
 
 ### Schemas
@@ -105,7 +105,7 @@ Ninguna.
 
 ## Riesgos
 - Falsos positivos de gitleaks en fixtures o en la documentación (por ejemplo, ejemplos de PEM en `docs/`) — mitigación: los fixtures de llaves se generan en tiempo de prueba y nunca se versionan; la lista permitida de `.gitleaks.toml` es explícita y revisada.
-- Discrepancia de nombres entre historias: US-007 usa `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`, y US-041 usa `APEX_SEED_ADMIN_EMAIL` y `APEX_SEED_ADMIN_PASSWORD` — mitigación: T4 obliga a que `.env.example` y `Settings` coincidan; hay que fijar un solo nombre (se propone el de US-007, sin prefijo, coherente con el resto de variables).
+- Discrepancia de nombres entre historias, resuelta en DECISIONES E: las variables del admin inicial son `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` (un solo uso); T4 obliga a que `.env.example` y `Settings` coincidan.
 - Modos de archivo en WSL o Windows no fiables — mitigación: un modo más abierto que 600 es solo un aviso en el log de arranque (no bloquea); el modo correcto lo garantiza `cli init-keys` (US-023) y el volumen de US-005.
 
 ## Estimación

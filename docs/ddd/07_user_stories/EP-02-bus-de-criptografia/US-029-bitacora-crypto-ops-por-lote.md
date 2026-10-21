@@ -33,7 +33,7 @@ para tener evidencia de cada uso de llave frente a la Ley 1581 sin que una lista
 1. Cifrar un campo de un socio deja exactamente una fila en `crypto_ops` con `verb = encrypt`, la `data_class`, `key_id`, `key_version`, `record_id` y `result = ok`.
 2. Un lote que descifra 500 documentos deja una sola fila con `batch_id` no nulo y `count = 500`.
 3. Un descifrado que falla (AAD incorrecto) deja una fila `result = error` con el `record_id`, aunque la operación de negocio se revierta (se registra en una transacción aparte o se reintenta el registro tras el rollback).
-4. `user_id` es el usuario del request; en CLI y worker es `NULL` con el `batch_id` del comando.
+4. `user_id` es el usuario del request; en CLI y worker es `SYSTEM_USER_ID` o el de `--as` (N-15), con el `batch_id` del comando.
 5. Ninguna fila contiene material de llave, texto en claro ni blob.
 6. `crypto_ops` es append-only (trigger de US-024): un intento de `UPDATE` falla.
 

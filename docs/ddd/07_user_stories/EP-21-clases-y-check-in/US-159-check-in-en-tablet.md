@@ -18,10 +18,10 @@ para que entre sin esperar y, si está vencido o sin plan, quede marcado en rojo
 ## Contexto de dominio
 
 - **Aggregate / entidades:** `ClassSession` con su entidad interna `Attendance` (`member_id`, `checked_in_at`, `checked_in_by`, `membership_status_at_checkin`, `flagged`).
-- **Reglas que aplica:** RN-09 (el check-in nunca bloquea por estado de membresía: registra y marca); RN-10 (una asistencia por sesión y socio); no hay check-in en sesión `cancelled`; el cupo es advertencia, no bloqueo (el coach decide); Q11 (`checkin_window_min`, `allow_over_capacity`); RN-15.
+- **Reglas que aplica:** RN-09 (el check-in nunca bloquea por estado de membresía: registra y marca); RN-10 (una asistencia por sesión y socio); no hay check-in en sesión `cancelled`; el cupo es advertencia, no bloqueo (el coach decide); Q11 (`checkin_window_min`; N-38/N-39: el check-in nunca responde 409 ni 422 por cupo, hora o membresía); RN-15.
 - **Eventos que emite:** `MemberCheckedIn(member_id, session_id, flagged)`
 - **Eventos que consume:** ninguno
-- **Funciones puras:** `classes.checkin_outcome(membership_status) -> (allowed = True, flagged: bool)`, `classes.within_checkin_window(starts_at, now, window_min) -> bool`, `classes.capacity_outcome(count, capacity, allow_over_capacity) -> CapacityOutcome`
+- **Funciones puras:** `classes.checkin_outcome(membership_status) -> (allowed = True, flagged: bool)`, `classes.within_checkin_window(starts_at, now, window_min) -> bool`, `classes.capacity_outcome(count, capacity) -> CapacityOutcome`
 
 ## Alcance
 
@@ -35,8 +35,8 @@ para que entre sin esperar y, si está vencido o sin plan, quede marcado en rojo
 3. Un socio vencido o sin membresía queda registrado con 201, `flagged = true` y `membership_status_at_checkin` con su estado; ningún estado de membresía produce un error.
 4. Un segundo check-in del mismo socio en la misma sesión devuelve 409 `already_checked_in` (índice único `(session_id, member_id)`), RN-10.
 5. Check-in en una sesión `cancelled` devuelve 409 `session_cancelled`.
-6. Con `allow_over_capacity = true`, el check-in que supera el cupo se registra con 201 y la respuesta trae `over_capacity: true`; la pantalla muestra "Cupo lleno" como advertencia.
-7. Con `allow_over_capacity = false` se aplica el supuesto declarado abajo.
+6. El check-in que supera el cupo se registra con 201, `flags` incluye `over_capacity` y la pantalla muestra "Cupo lleno" como advertencia (N-38/N-39).
+7. Ningún caso de cupo, hora o membresía responde 409 ni 422: el check-in siempre registra y devuelve `flags` (N-38/N-39).
 8. Fuera de la ventana `checkin_window_min` respecto de `starts_at` se aplica el supuesto declarado abajo.
 9. Un socio dado de baja (`deleted_at` no nulo) no aparece en la búsqueda; si se envía su id, 404.
 10. Cada check-in emite `MemberCheckedIn` en la misma transacción, queda auditado (`attendance` con `__audited__ = True`) y guarda `checked_in_at` en UTC y `checked_in_by`.
@@ -67,7 +67,7 @@ Característica: Check-in en la tablet
     Y la API responde 409
 
   Escenario: Clase llena con sobrecupo permitido
-    Dado que la sesión ya tiene 15 asistentes y se permite superar el cupo
+    Dado que la sesión ya tiene 15 asistentes
     Cuando registro a "Laura Gómez"
     Entonces queda registrada
     Y veo la advertencia "Cupo lleno"
@@ -75,7 +75,7 @@ Característica: Check-in en la tablet
 
 ## Endpoints
 
-- `POST /api/v1/attendance` — rol(es): admin, coach — entrada: `{ session_id, member_id, override_capacity?: bool }` — salida: `{ id, flagged, membership_status_at_checkin, over_capacity, attendance_count, capacity }` — códigos: 201, 401, 403, 404, 409, 422
+- `POST /api/v1/attendance` — rol(es): admin, coach — entrada: `{ session_id, member_id }` — salida: `{ id, flagged, flags, membership_status_at_checkin, attendance_count, capacity }` — códigos: 201, 401, 403, 404, 409, 422
 - `GET /api/v1/class-sessions/{id}` — rol(es): admin, coach — códigos: 200, 401, 403, 404
 - `GET /api/v1/members?q=` — rol(es): admin, coach (búsqueda rápida, US-070)
 
@@ -87,14 +87,14 @@ Característica: Check-in en la tablet
 
 - **Migración:** sí; tabla `classes.attendance` con columnas comunes, FK a `class_sessions`, `member_id` UUID sin FK cruzada de esquema (regla de módulos), índice único `(session_id, member_id)`.
 - **Trigger / restricciones:** `CHECK membership_status_at_checkin IN (...)`.
-- **Funciones puras a probar:** `checkin_outcome` (todos los estados), `within_checkin_window` (bordes exactos de la ventana), `capacity_outcome` (cupo justo, cupo superado con y sin permiso).
+- **Funciones puras a probar:** `checkin_outcome` (todos los estados), `within_checkin_window` (bordes exactos de la ventana), `capacity_outcome` (cupo justo, cupo superado).
 - **Pruebas:** puras, service con base real (409, evento, auditoría), router, front (flujo de 3 toques), E2E Playwright: check-in de un socio al día y uno vencido en la misma sesión.
 - **Archivos principales:** `api/src/app/modules/classes/{models,service,router}.py`, `web/src/features/classes/pages/CheckInPage.tsx`.
 
 ## Supuestos
 
-- Supuesto: con `allow_over_capacity = false`, el check-in que supera el cupo devuelve 409 `session_full` y se puede repetir con `override_capacity: true` (el coach decide). Así el cupo sigue siendo decisión del coach y no un bloqueo duro; contradice en parte la invariante "el cupo es advertencia, no bloqueo", por eso va al gate.
-- Supuesto: fuera de la ventana `checkin_window_min` (antes de `starts_at - window` o después de `starts_at + window`) el check-in devuelve 422 `outside_checkin_window`. RN-09 solo prohíbe bloquear por estado de membresía, no por hora; si el gate prefiere que la ventana solo advierta, se cambia a 201 con `outside_window: true`.
+- Supuesto: el check-in que supera el cupo se registra con 201 y `flags` incluye `over_capacity`; `flagged = len(flags) > 0` (N-38/N-39): el cupo es advertencia y no bloqueo, y `allow_over_capacity` se elimina de Settings.
+- Supuesto: fuera de la ventana `checkin_window_min` (antes de `starts_at - window` o después de `starts_at + window`) el check-in se registra con 201 y `flags` incluye `out_of_window` (N-39: nunca 422 por hora).
 - Supuesto: `pending_payment` y `frozen` se marcan `flagged` (el modelo solo nombra vencido y sin plan como ejemplos de marca roja).
 
 ## Dependencias

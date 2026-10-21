@@ -40,6 +40,7 @@ Tres colores de marca y grises de apoyo.
 Estados de membresía:
 - Al día: relleno `--apex-blue`, texto `--black`.
 - Por vencer: borde `--warning`, texto `--warning`.
+- Pendiente de pago: borde `--warning`, texto `--warning`, igual que por vencer. Es el estado `pending_payment` de una membresía vendida sin pago completo (decisión Q3 del gate); aparece en `Membresias` y en los chips de `Socios_Lista`. Las pantallas HTML de referencia aún no lo dibujan: al construirlo en React se anota `// DESIGN-GAP:`.
 - Vencido / Sin plan: relleno `--danger`, texto blanco.
 - Congelado / Inactivo: borde `--line`, texto `--muted`.
 
@@ -104,4 +105,4 @@ Los nombres de clase de los HTML (`w-btn`, `w-tag`, `w-tbl`…) son solo de refe
 - No usar librerías de componentes con su propio estilo (MUI, Ant). Tailwind o CSS modules sobre `tokens.css` está bien.
 - No degradados, no sombras fuertes, no emojis como iconos. Iconos: Lucide (ISC) en 20 px.
 - No scroll horizontal de página: solo las tablas se desplazan dentro de su caja.
-- No "cargar todo": cada lista pide al servidor con `page`, `page_size`, `q`, filtros y `sort`.
+- No "cargar todo": cada lista pide al servidor con `limit`, `offset`, `q`, filtros y `sort` (decisión D2 del gate: `limit` de 1 a 200, por defecto 25; `Pagination` calcula `offset = (página - 1) * limit` con tamaños 25, 50 y 100; la respuesta es `{ items, total, limit, offset }`).

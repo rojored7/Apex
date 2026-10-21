@@ -12,7 +12,7 @@
 ## Historia
 
 Como socio
-quiero ver mis avisos recientes y activar o desactivar los canales correo, Telegram y WhatsApp
+quiero ver mis avisos recientes y activar o desactivar los canales correo y WhatsApp
 para recibir los recordatorios de vencimiento solo por donde me sirve
 
 ## Contexto de dominio
@@ -32,7 +32,7 @@ para recibir los recordatorios de vencimiento solo por donde me sirve
 
 1. `GET /api/v1/me/notifications?limit&offset` devuelve solo avisos del socio de la sesión con `target_date`, `channel`, `status` y `rendered_body`, ordenados por `target_date` descendente; paginado (`limit` 1 a 200, por defecto 25).
 2. Los avisos `skipped` muestran el estado pero no el `skip_reason` (dato interno).
-3. `GET /api/v1/me/channels` devuelve el estado de cada canal (`email`, `telegram`, `whatsapp_link`, y `push` cuando exista suscripción, US-194).
+3. `GET /api/v1/me/channels` devuelve el estado de cada canal (`email`, `whatsapp_link`, y `push` cuando exista suscripción, US-194).
 4. `PATCH /api/v1/me/channels` con `{ channel, active }` actualiza la preferencia y queda auditado; un canal fuera de la lista devuelve 422.
 5. Desactivar `email` hace que el job de avisos no cree ni envíe avisos por correo a ese socio a partir de la siguiente corrida (prueba con `FrozenClock`).
 6. Ninguna ruta acepta `member_id`; anti IDOR probado. Admin y coach reciben 403; sin token, 401.

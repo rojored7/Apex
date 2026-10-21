@@ -35,7 +35,7 @@ para que el coach siempre tenga las clases listas para el check-in sin que nadie
 3. Una sesión ya generada no cambia si después se edita o desactiva su franja (Q23).
 4. Una franja desactivada no genera sesiones nuevas.
 5. No se regenera una sesión `cancelled` existente para la misma franja y hora.
-6. Cada sesión creada emite `SessionGenerated` y queda auditada con `created_by` igual al usuario de sistema del worker.
+6. Cada sesión creada emite `SessionGenerated` y queda auditada con `created_by` = `SYSTEM_USER_ID` (N-15).
 7. `planned_sessions` es pura y se prueba con `FrozenClock` cruzando un cambio de mes.
 8. El job registra en el log JSON cuántas sesiones creó, sin datos personales.
 
@@ -76,7 +76,7 @@ Característica: Generación de sesiones desde el horario
 
 ## Supuestos
 
-- Supuesto: el worker usa un usuario técnico de sistema para `created_by`; no está definido en ningún documento cómo se identifica al worker en la auditoría.
+- Supuesto: el worker usa `SYSTEM_USER_ID` para `created_by` (N-15).
 - Supuesto: el paso de `scheduled` a `done` no se modela aquí; ver US-157.
 
 ## Dependencias

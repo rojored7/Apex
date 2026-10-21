@@ -18,7 +18,7 @@ para que los recordatorios salgan 3 días antes, el día del vencimiento y 1, 7 
 ## Contexto de dominio
 
 - **Aggregate / entidades:** `NotificationRule` (`name`, `trigger`, `offset_days`, `channel`, `template_id`, `is_active`).
-- **Reglas que aplica:** `trigger` solo `membership_expiring` o `membership_expired` (Q13); `offset_days` negativo antes del fin, positivo después; canales de v0.2 solo `email`, `telegram`, `whatsapp_link` (Q14: `push` llega en v1.0, US-194).
+- **Reglas que aplica:** `trigger` solo `membership_expiring` o `membership_expired` (Q13); `offset_days` negativo antes del fin, positivo después; canales de v0.2 solo `email` y `whatsapp_link` (N-34; Q14: `push` llega en v1.0, US-194).
 - **Eventos que emite:** ninguno
 - **Eventos que consume:** ninguno
 - **Funciones puras:** validación de coherencia `trigger`/`offset_days` (ver criterio 3)
@@ -31,7 +31,7 @@ para que los recordatorios salgan 3 días antes, el día del vencimiento y 1, 7 
 ## Criterios de aceptación
 
 1. `POST /api/v1/notification-rules` crea una regla con `name`, `trigger`, `offset_days` (entero), `channel`, `template_id` y `is_active`; responde 201.
-2. `trigger` fuera de `membership_expiring` / `membership_expired` responde 422 con `field = trigger`; `channel` fuera de `email`, `telegram`, `whatsapp_link` responde 422 con `field = channel` (incluido `push` en v0.2).
+2. `trigger` fuera de `membership_expiring` / `membership_expired` responde 422 con `field = trigger`; `channel` fuera de `email` y `whatsapp_link` responde 422 con `field = channel` (incluido `push` en v0.2).
 3. `membership_expiring` exige `offset_days <= 0`; `membership_expired` exige `offset_days >= 1`; lo contrario responde 422 con `field = offset_days`.
 4. `template_id` inexistente responde 422 con `field = template_id`.
 5. No puede haber dos reglas activas con el mismo (`trigger`, `offset_days`, `channel`): la segunda responde 409.

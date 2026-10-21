@@ -30,7 +30,7 @@ para que el sistema aplique las políticas de mi gimnasio sin cambiar el código
 
 ## Criterios de aceptación
 
-1. El esquema tiene `expiring_days` (entero de 1 a 30, por defecto 7), `max_freeze_days_per_membership` (entero de 1 a 180, por defecto 30), `max_freezes_per_membership` (entero de 0 a 10, por defecto 2) y `max_retroactive_days` (entero de 0 a 30, por defecto 7).
+1. El esquema tiene `expiring_days` (entero de 1 a 30, por defecto 7), `max_freeze_days_per_membership` (entero de 0 a 180, por defecto 30), `max_freezes_per_membership` (entero de 0 a 12, por defecto 2) y `max_retroactive_days` (entero de 0 a 30, por defecto 7). Los rangos son los de N-18 (`DECISIONES.md`, sección D); los de `classes` (`default_capacity` de 1 a 100, `checkin_window_min` de 0 a 240) están en US-154.
 2. Un valor decimal, negativo o fuera de rango responde 422 con `field` del campo (por ejemplo `value.expiring_days`).
 3. `settings.service.memberships_policy()` devuelve los cuatro valores; si la sección nunca se guardó devuelve los valores por defecto de `DECISIONES.md`.
 4. Memberships lee estos valores solo a través de `memberships_policy()` y los pasa como parámetro a `compute_status` (US-083) y `apply_freeze` (US-089); ninguna función pura lee la configuración por sí misma.
@@ -54,7 +54,7 @@ Característica: Parámetros de membresías
     Y una membresía que vence en 6 días se calcula como "active" en la siguiente consulta
 
   Escenario: Valor fuera de rango
-    Cuando escribe 0 en "max_freeze_days_per_membership" y guarda
+    Cuando escribe 181 en "max_freeze_days_per_membership" y guarda
     Entonces recibe 422 con field "value.max_freeze_days_per_membership"
 
   Escenario: Valores por defecto sin configurar
@@ -86,7 +86,7 @@ Característica: Parámetros de membresías
 
 ## Supuestos
 
-- Supuesto: los rangos permitidos (1 a 30, 1 a 180, 0 a 10, 0 a 30) no están en los documentos; `DECISIONES.md` solo fija los valores por defecto.
+- Supuesto: los rangos los fija N-18 (`DECISIONES.md`, sección D): 1 a 30, 0 a 180, 0 a 12 y 0 a 30.
 
 ## Dependencias
 

@@ -25,7 +25,7 @@ para tener planes, socios, membresías en todos los estados y pagos con los que 
 
 ## Alcance
 
-- **Backend:** comando `seed --demo` en `cli.py` (typer) que crea, a través de `service.py` de cada módulo (nunca SQL directo): 3 planes (mensual por días, trimestral por días, tiquetera de 12 clases en 60 días), 30 socios ficticios con documentos ficticios y datos cifrados por el bus, membresías en los estados `pending_payment`, `active`, `expiring`, `expired`, `frozen` y `cancelled`, al menos una membresía futura (renovación) y pagos en los tres medios (`cash`, `nequi`, `breb`) con al menos un pago anulado. Usa como `created_by` un usuario de sistema `seed`. Las fechas se calculan relativas a `today_bogota()` para que los estados sean correctos el día que se ejecute.
+- **Backend:** comando `seed --demo` en `cli.py` (typer) que crea, a través de `service.py` de cada módulo (nunca SQL directo): 3 planes (mensual por días, trimestral por días, tiquetera de 12 clases en 60 días), 30 socios ficticios con documentos ficticios y datos cifrados por el bus, membresías en los estados `pending_payment`, `active`, `expiring`, `expired`, `frozen` y `cancelled`, al menos una membresía futura (renovación) y pagos en los tres medios (`cash`, `nequi`, `breb`) con al menos un pago anulado. Usa como `created_by` `SYSTEM_USER_ID` (N-15). Las fechas se calculan relativas a `today_bogota()` para que los estados sean correctos el día que se ejecute.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -35,7 +35,7 @@ para tener planes, socios, membresías en todos los estados y pagos con los que 
 3. Todos los montos (`price_cop`, `agreed_price_cop`, `amount_cop`) son enteros positivos en COP, sin decimales.
 4. Los campos `document`, `phone`, `email`, `birth_date` y `emergency_contact` de los 30 socios quedan cifrados: `SELECT document FROM members.members` no devuelve ningún valor en claro.
 5. Los estados de las membresías coinciden con `compute_status(membership, today_bogota(), expiring_days)` el día de la ejecución.
-6. Cada inserción queda en `audit.audit_log` con `user_id` del usuario de sistema `seed`, y la verificación de la cadena (US-104/US-105) sigue válida después del seed.
+6. Cada inserción queda en `audit.audit_log` con `user_id` = `SYSTEM_USER_ID` (o el de `--as`), y la verificación de la cadena (US-104/US-105) sigue válida después del seed.
 7. Existe al menos un pago anulado (`voided = true`, `void_reason` no vacío) y su membresía quedó en el estado que corresponde a la cobertura restante (RN-03).
 8. Ejecutar el comando una segunda vez no duplica nada: detecta que el seed de demo ya existe (por los documentos ficticios vía índice ciego) y termina con código 0 y el mensaje "seed de demo ya aplicado".
 9. Si la base tiene socios que no son de demo, el comando se niega y termina con código distinto de 0, salvo que se pase `--force-demo-on-non-empty`.
@@ -78,7 +78,7 @@ Característica: Datos de demostración
 
 ## Endpoints
 
-- Ninguno. Comando `uv run python -m app.cli seed --demo [--force-demo-on-non-empty]`.
+- Ninguno. Comando `uv run python -m app.cli seed --demo [--force-demo-on-non-empty] [--as <email>]`.
 
 ## Pantalla
 
@@ -94,7 +94,7 @@ Característica: Datos de demostración
 
 ## Supuestos
 
-- Supuesto: el usuario de sistema `seed` es un `User` con rol `admin`, `is_active = false` (no puede iniciar sesión) y se crea si no existe; sirve como `created_by` de los datos sembrados.
+- Supuesto: el usuario técnico es `SYSTEM_USER_ID` (`system@apex.local`, rol `admin`, `is_active = false`, fila creada por la migración `0004_auth`); sirve como `created_by` de los datos sembrados (N-15). No existe un usuario `seed`.
 - Supuesto: la detección de "seed ya aplicado" se hace por los documentos ficticios con prefijo `999`; la bandera `--force-demo-on-non-empty` no está en los documentos de origen.
 
 ## Dependencias

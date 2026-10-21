@@ -21,7 +21,7 @@ para detectar incluso una reescritura completa de la cadena desde una fila
 - **Reglas que aplica:** RN-16; Q27 (cada firma se verifica con la llave y el algoritmo con que se hizo, aunque la llave esté en `decrypt_only` o rotada).
 - **Eventos que emite:** ninguno (la verificación se registra como acción `verify`)
 - **Eventos que consume:** ninguno
-- **Funciones puras:** `audit.verify_result(chain_ok, broken_seq, signatures_checked, first_bad_signature_seq) -> VerifyResult`
+- **Funciones puras:** `audit.verify_result(chain_ok, broken_at_seq, signatures_checked, first_bad_signature_seq) -> VerifyResult`
 
 ## Alcance
 
@@ -31,7 +31,7 @@ para detectar incluso una reescritura completa de la cadena desde una fila
 ## Criterios de aceptación
 
 1. `POST /api/v1/audit/verify` recorre la cadena (US-104) y además, por cada fila de `audit.signatures`, recalcula `signature_payload(through_seq, hash_en_la_cadena)` y llama `bus.verify("audit.signature", ...)` con la llave de su `key_id`.
-2. El resultado incluye `chain_ok`, `broken_seq` (o `null`), `signatures_checked`, `signatures_valid`, `first_invalid_signature_seq` (o `null`) y `last_valid_signature` (`through_seq`, `signed_at` en UTC, `algorithm`).
+2. El resultado incluye `chain_ok`, `broken_at_seq` (o `null`), `signatures_checked`, `signatures_valid`, `first_invalid_signature_seq` (o `null`) y `last_valid_signature` (`through_seq`, `signed_at` en UTC, `algorithm`).
 3. Si alguien recalcula todos los hashes desde una fila alterada, `chain_ok` puede salir verdadero pero la firma que cubre ese tramo no coincide y `first_invalid_signature_seq` lo señala; el resultado global es "no íntegra".
 4. Una firma hecha con una llave Ed25519 previa a la rotación a ML-DSA-65 se sigue verificando con su llave (Q27).
 5. `GET /api/v1/audit/signatures/latest` devuelve la última firma válida conocida (de la última verificación) y la última firma registrada; solo `admin` (coach recibe 403).

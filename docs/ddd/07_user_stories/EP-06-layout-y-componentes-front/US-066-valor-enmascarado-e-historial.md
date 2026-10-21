@@ -34,7 +34,7 @@ para que la ficha muestre documento, teléfono, correo y demás campos cifrados 
 2. Pulsar "Mostrar" llama a `onReveal` exactamente una vez por pulsación; mientras espera, el botón muestra estado de carga.
 3. El valor en claro no se guarda en caché de TanStack Query, en `localStorage` ni en la URL; se descarta al ocultar, al desmontar o a los 60 segundos.
 4. Si `onReveal` falla con 403, el componente muestra "No tienes permiso para ver este dato" y sigue enmascarado.
-5. El botón "Mostrar" no se renderiza cuando `useCan("member.reveal")` es falso.
+5. El botón "Mostrar" no se renderiza cuando `useCan("members.reveal")` es falso.
 6. `HistoryAside` muestra para cada entrada la fecha formateada con `formatDateTime`, el usuario y la acción (`insert`, `update`, `delete`, `reveal`) en español; nunca intenta descifrar `before` ni `after`.
 7. `HistoryAside` muestra estado vacío "Sin cambios registrados" y estado de error con reintento.
 

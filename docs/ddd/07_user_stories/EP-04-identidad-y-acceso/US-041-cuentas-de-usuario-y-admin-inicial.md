@@ -25,7 +25,7 @@ para poder entrar al sistema el primer día sin tocar la base a mano
 
 ## Alcance
 
-- **Backend:** `models.py` de `auth` con `users`, `refresh_tokens`, `one_time_tokens`; migración de Alembic; `cli seed` que crea el admin inicial con la contraseña de una variable de entorno de un solo uso.
+- **Backend:** `models.py` de `auth` con `users`, `refresh_tokens`, `one_time_tokens`; migración de Alembic; `cli seed` que crea el admin inicial con la contraseña de una variable de entorno de un solo uso (`ADMIN_INITIAL_PASSWORD`). La migración `0004_auth` inserta el usuario técnico `system@apex.local` (N-15).
 - **Front:** No aplica
 
 ## Criterios de aceptación
@@ -35,10 +35,10 @@ para poder entrar al sistema el primer día sin tocar la base a mano
 3. Una restricción `CHECK` en la base impide `role = 'member'` con `member_id` nulo.
 4. `refresh_tokens` guarda solo `token_hash` (nunca el token), `expires_at`, `revoked_at` y `user_agent`; `one_time_tokens` guarda `token_hash`, `purpose` (`activate` o `reset`), `expires_at` y `used_at`.
 5. `users` está marcada con `__audited__ = True`: crear el admin inicial deja una fila en `audit.audit_log` con acción `insert`, y `password_hash` no aparece en `before` ni en `after` (se reemplaza por `"***"`).
-6. `uv run python -m app.cli seed` con `APEX_SEED_ADMIN_EMAIL` y `APEX_SEED_ADMIN_PASSWORD` definidas crea un usuario `admin` activo con la contraseña hasheada con argon2id y emite `UserCreated`.
+6. `uv run python -m app.cli seed` con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` definidas crea un usuario `admin` activo con la contraseña hasheada con argon2id y emite `UserCreated`.
 7. Si ya existe al menos un admin activo no borrado, `cli seed` no crea nada, termina con código 0 y lo informa (idempotente).
-8. Si falta `APEX_SEED_ADMIN_PASSWORD` o tiene menos de 12 caracteres, `cli seed` termina con código distinto de 0 sin escribir en la base.
-9. La contraseña del seed nunca se imprime en logs ni en la salida del comando.
+8. Si falta `ADMIN_INITIAL_PASSWORD` o tiene menos de 12 caracteres, `cli seed` termina con código distinto de 0 sin escribir en la base.
+9. La contraseña del seed nunca se imprime en logs ni en la salida del comando. Tras correr el seed, el operador borra `ADMIN_INITIAL_PASSWORD` del `.env`.
 10. No existe borrado físico de usuarios: no hay ruta ni función de service que ejecute `DELETE` sobre `auth.users`.
 
 ## Escenarios BDD
@@ -52,8 +52,8 @@ Característica: Cuentas de usuario y admin inicial
 
   Escenario: Sembrar el admin inicial en una base vacía
     Dado que no existe ningún usuario en "auth.users"
-    Y la variable "APEX_SEED_ADMIN_EMAIL" vale "dueno@apex.co"
-    Y la variable "APEX_SEED_ADMIN_PASSWORD" tiene 16 caracteres
+    Y la variable "ADMIN_EMAIL" vale "dueno@apex.co"
+    Y la variable "ADMIN_INITIAL_PASSWORD" tiene 16 caracteres
     Cuando el operador ejecuta "cli seed"
     Entonces existe un usuario "dueno@apex.co" con rol "admin" activo
     Y su "password_hash" empieza por "$argon2id$"
@@ -67,7 +67,7 @@ Característica: Cuentas de usuario y admin inicial
 
   Escenario: Contraseña de seed demasiado corta
     Dado que no existe ningún usuario
-    Y la variable "APEX_SEED_ADMIN_PASSWORD" vale "corta"
+    Y la variable "ADMIN_INITIAL_PASSWORD" vale "corta"
     Cuando el operador ejecuta "cli seed"
     Entonces el comando termina con código distinto de 0
     Y no se crea ningún usuario
@@ -95,7 +95,7 @@ Característica: Cuentas de usuario y admin inicial
 
 ## Supuestos
 
-- Supuesto: el comando lee `APEX_SEED_ADMIN_EMAIL` y `APEX_SEED_ADMIN_PASSWORD` (nombres no definidos en los documentos) y exige al menos 12 caracteres de contraseña; la política de contraseñas no está definida en ningún documento.
+- Supuesto: el comando lee `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` (nombres fijados en `DECISIONES.md`, sección E) y exige al menos 12 caracteres de contraseña; la política la fija N-10 (12 caracteres mínimo).
 - Supuesto: en v0.1 `admin` y `coach` tienen `member_id` nulo (coach que también es socio es P6, v1.1).
 
 ## Dependencias

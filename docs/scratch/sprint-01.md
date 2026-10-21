@@ -31,3 +31,25 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   cabeceras corre dentro del job `images` (vía `compose-smoke.sh`), no en un job `smoke-headers`
   aparte: los nombres de los checks obligatorios no cambian. La prueba del HTML construido corre en
   entorno node y construye con la API de Vite a un directorio temporal.
+
+### S1-B1 · Tabla de auditoría y cadena de hashes (US-015 + T1 de US-027)
+
+- Paso previo: `pg_dump -Fc` de la base de desarrollo antes de `0002` en
+  `docs/scratch/sprint-01-antes-0002.dump` (3,6 KB; ignorado por git por `*.dump`).
+- Rojo: `tests/crypto/test_digest.py`, `tests/core/test_audit_chain.py`, `test_audit_log_db.py`,
+  `test_audit_concurrency.py` sobre stubs con `NotImplementedError`: 20 fallos + 10 errores (la
+  tabla no existía). `test_core_import_direction.py` (T11) ya existía desde US-014.
+- Verde: `core/crypto/digest.py` (`sha256_hex`, solo `hashlib`), `core/audit.py` (`canonical`
+  con la especificación irreversible en el docstring, `chain_hash`, `verify_chain`, `AuditEntry`,
+  `append_entry` con `pg_advisory_xact_lock(4_270_002)` y `seq = último + 1`, `record`),
+  migración `0002_audit_log` (CHECKs de acción con `download`, hex de 64, espejo; 4 índices;
+  `audit.forbid_mutation()` con triggers de fila y de TRUNCATE).
+- Evidencia: `slice-gate.sh core/audit` (46 ok, 1 saltada), `slice-gate.sh crypto` (23 ok);
+  cobertura 100 % de `audit.py` y `digest.py`; ciclo de Alembic en la base de desarrollo
+  (`upgrade head` → `downgrade -1` → `upgrade head`, `current` = `0002_audit_log (head)`);
+  `TRUNCATE audit.audit_log` en psql rechazado por `audit.forbid_mutation()`; 10 transacciones
+  concurrentes dejan `seq` 1..10 y cadena válida; `grep hashlib audit.py` vacío.
+- Ajustes: `test_migrations.py` ahora compara con el head del `ScriptDirectory` y baja hasta
+  `base` (antes asumía `0001`). `rows_checked` cuenta hasta la primera ruptura inclusive.
+- Seguridad (T13): escritura solo con `insert()` de Core; trigger cubre TRUNCATE; lock `xact`;
+  `digest` no toca `crypto_ops`. Los valores en claro de campos cifrados los evita US-016.

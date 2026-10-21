@@ -1,4 +1,5 @@
-"""La migración 0001 crea los nueve esquemas y btree_gist, y baja limpia (US-012, T10)."""
+"""La migración 0001 crea los nueve esquemas y btree_gist, y toda la cadena baja limpia hasta
+la base vacía y vuelve a head (US-012, T10; cada sprint agrega migraciones)."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ import asyncio
 import asyncpg
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.core.db import APP_SCHEMAS
 
@@ -40,19 +42,25 @@ def _estado(url: str) -> tuple[list[str], bool, str | None]:
     return asyncio.run(consultar())
 
 
+def _head(alembic_config: Config) -> str:
+    head = ScriptDirectory.from_config(alembic_config).get_current_head()
+    assert head is not None
+    return head
+
+
 def test_upgrade_head_crea_esquemas_extension_y_version(
     alembic_config: Config, migrated_database: str
 ) -> None:
     esquemas, gist, version = _estado(migrated_database)
     assert esquemas == sorted(APP_SCHEMAS)
     assert gist is True
-    assert version == "0001_core_schemas"
+    assert version == _head(alembic_config)
 
 
-def test_downgrade_de_0001_sobre_base_vacia_y_vuelta_a_head(
+def test_downgrade_a_base_vacia_y_vuelta_a_head(
     alembic_config: Config, migrated_database: str
 ) -> None:
-    command.downgrade(alembic_config, "-1")
+    command.downgrade(alembic_config, "base")
     esquemas, gist, version = _estado(migrated_database)
     assert esquemas == []
     assert gist is False
@@ -62,4 +70,4 @@ def test_downgrade_de_0001_sobre_base_vacia_y_vuelta_a_head(
     esquemas, gist, version = _estado(migrated_database)
     assert esquemas == sorted(APP_SCHEMAS)
     assert gist is True
-    assert version == "0001_core_schemas"
+    assert version == _head(alembic_config)

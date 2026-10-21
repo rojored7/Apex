@@ -18,6 +18,10 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
 
+  web:
+    build:
+      network: host
+
   db:
     ports:
       - "${DB_PORT:-5432}:5432"

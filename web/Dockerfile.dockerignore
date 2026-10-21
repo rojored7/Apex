@@ -1,0 +1,24 @@
+# Se aplica al contexto raíz cuando el Dockerfile es web/Dockerfile (BuildKit).
+# Solo entran web/ e infra/nginx/default.conf.
+.git
+.github
+.env
+.env.*
+keys/
+*.pem
+*.key
+*.kek
+api/
+docs/
+scripts/
+_entregas/
+infra/compose*.yml
+infra/backup/
+infra/openbao/
+web/node_modules
+web/dist
+web/coverage
+web/test-results
+web/playwright-report
+web/.vite
+**/node_modules

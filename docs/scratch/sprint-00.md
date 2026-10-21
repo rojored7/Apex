@@ -53,3 +53,10 @@ Rama: `chore/sprint-00-cimientos` (desde `main` en `dc12c57`). Gate humano aprob
 - **Desviación:** el servicio `backup` no se declara todavía (lo crea US-114 en el Sprint 4B); solo el volumen `backups`, como fija el desglose de US-005. `.env.example` incluye ya `ENV`, `TRUSTED_PROXIES`, `COOKIE_SECURE`, `FRONT_BASE_URL`, `TEST_DATABASE_URL` y los cuatro puertos; US-011 debe poner `TEST_DATABASE_URL`, `API_PORT`, `DB_PORT` y `DB_TEST_PORT` en `NON_API_ENV_VARS` junto con `WEB_PORT`.
 - El barrido de archivos sensibles de la imagen excluye `site-packages`: `certifi/cacert.pem` y el parser de llaves de `cryptography` contienen `.pem` y la cadena `BEGIN PRIVATE KEY` de forma legítima (coincide con la nota de US-039).
 - Diferidos (según el plan): healthcheck `healthy` real con US-020; `tools init-keys` en S1-B4; medición T6 de US-007 en la validación del Sprint 1; `profiles: ["worker"]` hasta US-113; protección de `main` y CI en verde cuando una persona empuje.
+
+## S0-W0-5 · Nginx e imagen del front (US-006)
+
+- Rojo: `test_nginx_conf.sh` sin `default.conf` y `web-smoke.sh` con 5 fallas sin `web`. Verde: `test_nginx_conf.sh` 10 de 10 (`nginx -t` por stdin, 5 MB, `server_tokens off`, `X-Forwarded-For` con `$remote_addr`, `X-Request-ID`, proxy sin URI, fallback del SPA, log sin query strings); `compose-smoke.sh` con `web` en 27 s y `web-smoke.sh` 5 de 5 (`/` y `/socios/123` con `#root`, `/api/v1/health` llega al api como 404 JSON hasta US-020, 413 con 5 MB + 1, `Server: nginx` sin versión).
+- `web/Dockerfile` sirve `web/index.html` provisional mientras no exista `package.json` (rama condicional que US-009 retira). Contexto de build en la raíz con `web/Dockerfile.dockerignore`. En desarrollo el build de `web` también usa la red del host.
+- Stack local: `apex-web-1` healthy en 8180, `apex-api-1` en 8181, `apex-db-1` en 5442, `apex-db_test-1` en 5443.
+- Diferidos (plan): build real y `/api/v1/health` con 200 en la validación del sprint (US-009, US-020); cabeceras y CSP en el Sprint 1 (US-038).

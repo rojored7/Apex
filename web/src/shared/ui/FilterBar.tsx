@@ -59,14 +59,16 @@ function SearchInput({
   const [text, setText] = useState(query);
   const [syncedQuery, setSyncedQuery] = useState(query);
   const [syncedReset, setSyncedReset] = useState(resetToken);
+  const debounced = useDebouncedValue(text, SEARCH_DEBOUNCE_MS);
   // La URL manda: si la búsqueda cambia desde fuera (Limpiar, atrás), el campo la sigue.
+  // El eco de lo que este campo acaba de emitir (query === debounced) no pisa lo que se
+  // siguió escribiendo mientras la URL se actualizaba.
   if (query !== syncedQuery || resetToken !== syncedReset) {
     setSyncedQuery(query);
     setSyncedReset(resetToken);
-    setText(query);
+    if (query !== debounced || resetToken !== syncedReset) setText(query);
   }
 
-  const debounced = useDebouncedValue(text, SEARCH_DEBOUNCE_MS);
   const latest = useRef({ query, onQueryChange });
   useEffect(() => {
     latest.current = { query, onQueryChange };

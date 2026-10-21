@@ -17,6 +17,11 @@ export interface RequestOptions {
   body?: unknown;
   /** Señal del que llama (por ejemplo la de TanStack Query) para cancelar la petición. */
   signal?: AbortSignal;
+  /**
+   * No invoca el gancho del 401 (login, refresh y logout): evita que el refresh se llame a
+   * sí mismo o que un 401 de credenciales malas dispare un refresh inútil.
+   */
+  skipAuthRetry?: boolean;
 }
 
 export type UnauthorizedResult = "retry" | "fail";
@@ -50,7 +55,17 @@ function buildHeaders(hasBody: boolean): Headers {
   return headers;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, external: AbortSignal | undefined): Promise<Response> {
+interface RawResponse {
+  status: number;
+  ok: boolean;
+  text: string;
+}
+
+/**
+ * fetch más la lectura del cuerpo bajo el mismo timeout y la misma cancelación: un cuerpo
+ * que se queda colgado también vence, y un fallo al leerlo es network_error.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit, external: AbortSignal | undefined): Promise<RawResponse> {
   const controller = new AbortController();
   // Objeto mutable: el temporizador lo marca fuera del flujo que TypeScript sigue.
   const state = { timedOut: false };
@@ -65,7 +80,9 @@ async function fetchWithTimeout(url: string, init: RequestInit, external: AbortS
   else external?.addEventListener("abort", forwardAbort, { once: true });
 
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const text = response.status === 204 ? "" : await response.text();
+    return { status: response.status, ok: response.ok, text };
   } catch (error) {
     if (state.timedOut) throw new ApiError({ status: 0, code: "timeout", message: GENERIC_MESSAGES.timeout });
     if (external?.aborted) throw error;
@@ -76,14 +93,12 @@ async function fetchWithTimeout(url: string, init: RequestInit, external: AbortS
   }
 }
 
-async function readSuccess<T>(response: Response): Promise<T> {
-  if (response.status === 204) return undefined as T;
-  const text = await response.text();
-  if (text === "") return undefined as T;
+function readSuccess({ status, text }: RawResponse): unknown {
+  if (text === "") return undefined;
   try {
-    return JSON.parse(text) as T;
+    return JSON.parse(text) as unknown;
   } catch {
-    throw new ApiError({ status: response.status, code: "network_error", message: GENERIC_MESSAGES.network_error });
+    throw new ApiError({ status, code: "network_error", message: GENERIC_MESSAGES.network_error });
   }
 }
 
@@ -96,10 +111,10 @@ async function request<T>(method: Method, path: string, options: RequestOptions,
     ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
   };
   const response = await fetchWithTimeout(buildUrl(path, options.query), init, options.signal);
-  if (response.ok) return readSuccess<T>(response);
+  if (response.ok) return readSuccess(response) as T;
 
-  const error = parseApiError(response.status, await response.text());
-  if (response.status === 401 && !retried && unauthorizedHandler) {
+  const error = parseApiError(response.status, response.text);
+  if (response.status === 401 && !retried && !options.skipAuthRetry && unauthorizedHandler) {
     const outcome = await unauthorizedHandler(error);
     if (outcome === "retry") return request<T>(method, path, options, true);
   }

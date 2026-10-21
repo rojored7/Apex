@@ -51,10 +51,13 @@ function cycleTab(event: KeyboardEvent, container: HTMLElement): void {
   }
   const current = document.activeElement;
   const inside = current instanceof Node && container.contains(current);
-  if (event.shiftKey && (!inside || current === first)) {
+  // Con el foco en el propio contenedor (clic en texto de un diálogo con tabIndex=-1), el
+  // movimiento nativo saldría del diálogo: se trata como inicio o fin.
+  const onContainer = current === container;
+  if (event.shiftKey && (!inside || onContainer || current === first)) {
     event.preventDefault();
     last.focus();
-  } else if (!event.shiftKey && (!inside || current === last)) {
+  } else if (!event.shiftKey && (!inside || onContainer || current === last)) {
     event.preventDefault();
     first.focus();
   }

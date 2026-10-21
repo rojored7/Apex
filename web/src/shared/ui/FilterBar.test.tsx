@@ -100,6 +100,27 @@ describe("FilterBar", () => {
     expect(onQueryChange).not.toHaveBeenCalled();
   });
 
+  it("el eco de la URL no pisa lo que se siguió escribiendo", async () => {
+    const user = fakeTimersUser();
+    const onQueryChange = vi.fn();
+    const { rerender } = render(<FilterBar {...base} query="" onQueryChange={onQueryChange} />);
+    const search = screen.getByRole("searchbox", { name: "Buscar" });
+
+    await user.type(search, "a");
+    act(() => {
+      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+    });
+    expect(onQueryChange).toHaveBeenLastCalledWith("a");
+    await user.type(search, "b");
+    rerender(<FilterBar {...base} query="a" onQueryChange={onQueryChange} />);
+
+    expect(search).toHaveValue("ab");
+    act(() => {
+      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+    });
+    expect(onQueryChange).toHaveBeenLastCalledWith("ab");
+  });
+
   it("una etiqueta de búsqueda propia", () => {
     render(<FilterBar {...base} searchLabel="Buscar socio" />);
 

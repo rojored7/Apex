@@ -49,6 +49,8 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous);
         next.set(param, id);
+        // Una pestaña con su propia lista empieza en la primera página.
+        next.delete("offset");
         return next;
       });
     } else {

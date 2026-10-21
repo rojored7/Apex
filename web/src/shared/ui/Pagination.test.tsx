@@ -39,6 +39,15 @@ describe("Pagination", () => {
     expect(screen.getByRole("button", { name: "Anterior" })).toBeEnabled();
   });
 
+  it("con un offset más allá del final, Anterior lleva a la última página", async () => {
+    const { onPageChange } = setup({ total: 40, limit: 25, offset: 100 });
+
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Anterior" }));
+
+    expect(onPageChange).toHaveBeenCalledWith(2);
+  });
+
   it("sin resultados deshabilita las dos y lo dice", () => {
     setup({ total: 0, limit: 25, offset: 0 });
 

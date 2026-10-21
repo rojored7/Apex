@@ -96,6 +96,23 @@ Cadena completa en `web/`, sobre el árbol del checkpoint de S1-F3:
 - `npm run licenses` en verde: producción 12 MIT y 1 ISC, sin cambios (no entró ninguna dependencia de producción).
 - Dependencia nueva: `openapi-typescript` 7.13.0 (MIT), de desarrollo y en versión exacta. Transitivas nuevas: `@redocly/openapi-core`, `@redocly/ajv`, `@redocly/config`, `agent-base`, `ansi-colors`, `change-case`, `colorette`, `https-proxy-agent`, `index-to-position`, `js-levenshtein`, `pluralize`, `uri-js-replace` (MIT), `type-fest` (MIT o CC0-1.0), `yaml-ast-parser` (Apache-2.0) y `yargs-parser` (ISC).
 
+### Revisión (`typescript-reviewer`) y correcciones
+
+La revisión no encontró hallazgos CRITICAL ni HIGH. Encontró diez MEDIUM. Se corrigieron estos, cada uno con su prueba:
+
+1. `useFocusTrap`: con el foco en el propio contenedor, Mayús+Tab salía del diálogo. Ahora el contenedor cuenta como inicio y como fin.
+2. `FilterBar`: el eco de la URL podía pisar lo que se siguió escribiendo. Ahora no se sincroniza cuando `query === debounced`.
+3. `client.ts`: nueva opción `skipAuthRetry`, para que login, refresh y logout no invoquen el gancho del 401 (evita recursión y refresh inútil).
+4. `client.ts`: el timeout y la cancelación ahora cubren también la lectura del cuerpo. Un fallo al leer el cuerpo da `network_error`.
+5. y 10. `MaskedValue`: el claro queda atado al `label` y `masked` para los que se pidió, y solo se ve mientras siga el permiso. Igual se recomienda `key={id}` en la ficha.
+6. `audit-labels`: las columnas `*_idx` (índice ciego) se tratan como dato cifrado.
+7. `Pagination`: con un offset más allá del final, "Anterior" lleva a la última página.
+8. `Tabs`: cambiar de pestaña borra `offset`.
+
+No se corrigió el 9 ("enviar el motivo recortado"): el desglose de US-065 T5 pide enviarlo tal cual.
+
+Tras las correcciones: 43 archivos y 593 pruebas en verde, cobertura 99,63 % líneas y 96,25 % ramas, lint, tsc, build y licencias en verde.
+
 Pendientes que no son de este encargo:
 
 - Mover las reglas de `tests/lint/restricted-config.ts` a `web/eslint.config.js` (archivo protegido por `config-protection`; decide el usuario).

@@ -33,7 +33,8 @@ export interface MaskedValueProps {
 type RevealState =
   | { status: "masked" }
   | { status: "loading" }
-  | { status: "revealed"; plain: string }
+  /** `source` ata el claro al registro y campo para los que se pidió. */
+  | { status: "revealed"; plain: string; source: string }
   | { status: "error"; message: string };
 
 function errorMessage(error: unknown): string {
@@ -64,15 +65,20 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
 
   const shown = maskValue(kind, masked, documentType);
   const hasValue = shown !== NO_VALUE_LABEL;
+  // Si el componente se reutiliza para otro registro (otro masked o label) o se pierde el
+  // permiso, el claro anterior deja de mostrarse aunque el temporizador no haya vencido.
+  // Aun así, quien lo use en una ficha debe pasar key={id del registro}.
+  const source = JSON.stringify([label, masked]);
 
   const reveal = async (): Promise<void> => {
     if (busy.current) return;
     busy.current = true;
+    const requestedFor = source;
     setState({ status: "loading" });
     try {
       const plain = await onReveal();
       if (!mounted.current) return;
-      setState({ status: "revealed", plain });
+      setState({ status: "revealed", plain, source: requestedFor });
       clearTimer();
       timer.current = setTimeout(() => {
         setState({ status: "masked" });
@@ -89,7 +95,7 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
     setState({ status: "masked" });
   };
 
-  const isRevealed = state.status === "revealed";
+  const isRevealed = state.status === "revealed" && state.source === source && canReveal;
 
   return (
     <div className={styles.field}>

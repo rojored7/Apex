@@ -156,6 +156,43 @@ describe("MaskedValue", () => {
     expect(await screen.findByText("No se pudo mostrar el dato. Intenta de nuevo.")).toBeInTheDocument();
   });
 
+  it("si el componente pasa a otro registro, el claro anterior no se muestra", async () => {
+    const user = fakeTimersUser();
+    const { rerender } = asRole(
+      "coach",
+      <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+
+    rerender(
+      <RoleProvider value="coach">
+        <MaskedValue label="Documento" masked="CC •••• 9031" onReveal={() => Promise.resolve("CC 5559031")} />
+      </RoleProvider>,
+    );
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+    expect(screen.getByText("CC •••• 9031")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mostrar" })).toBeInTheDocument();
+  });
+
+  it("si se pierde el permiso, el claro deja de mostrarse", async () => {
+    const user = fakeTimersUser();
+    const ui = (role: Role) => (
+      <RoleProvider value={role}>
+        <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />
+      </RoleProvider>
+    );
+    const { rerender } = render(ui("coach"));
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+
+    rerender(ui("member"));
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+    expect(screen.getByText("CC •••• 4417")).toBeInTheDocument();
+  });
+
   it("sin permiso members.reveal no hay botón", () => {
     asRole("member", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("x")} />);
 

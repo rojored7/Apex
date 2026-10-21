@@ -48,7 +48,8 @@ export function Pagination({ total, limit, offset, onPageChange, onLimitChange }
         variant="secondary"
         disabled={total === 0 || page <= 1}
         onClick={() => {
-          onPageChange(page - 1);
+          // Con un offset viejo más allá del final, "Anterior" lleva a la última página.
+          onPageChange(Math.min(page - 1, pages));
         }}
       >
         <ChevronLeft size={20} aria-hidden="true" />

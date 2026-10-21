@@ -110,8 +110,11 @@ export function actorLabel(entry: AuditEntryView): string {
   return entry.actor_name?.trim() ? entry.actor_name : "Usuario";
 }
 
+/** Columnas de índice ciego (`<campo>_idx`): HMAC del valor, nunca se muestran. */
+const BLIND_INDEX = /_idx$/;
+
 function isSensitive(field: string, ...values: unknown[]): boolean {
-  return ENCRYPTED_FIELDS.includes(field) || values.some(isBlob);
+  return ENCRYPTED_FIELDS.includes(field) || BLIND_INDEX.test(field) || values.some(isBlob);
 }
 
 function plain(field: string, value: unknown): string | null {

@@ -169,6 +169,35 @@ describe("cliente HTTP", () => {
     expect(await pending).toMatchObject({ status: 0, code: "timeout" });
   });
 
+  it("un cuerpo que se queda colgado también vence con timeout", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation((_input, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init?.signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("aborted", "AbortError"));
+          });
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    });
+
+    const pending = api.get("/lento").catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+
+    expect(await pending).toMatchObject({ status: 0, code: "timeout" });
+  });
+
+  it("un fallo al leer el cuerpo es network_error", async () => {
+    fetchMock.mockResolvedValue({
+      status: 200,
+      ok: true,
+      text: () => Promise.reject(new TypeError("conexión cortada")),
+    } as unknown as Response);
+
+    await expect(api.get("/x")).rejects.toMatchObject({ status: 0, code: "network_error" });
+  });
+
   it("una cancelación del que llama se propaga como AbortError, no como ApiError", async () => {
     const controller = new AbortController();
     fetchMock.mockImplementation(
@@ -265,6 +294,16 @@ describe("401 y el gancho onUnauthorized", () => {
     expect(results).toHaveLength(3);
     expect(handler).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("con skipAuthRetry (login, refresh) un 401 no invoca el gancho", async () => {
+    const handler = vi.fn<UnauthorizedHandler>(() => Promise.resolve("retry"));
+    registerOnUnauthorized(handler);
+    fetchMock.mockResolvedValue(envelope(401, "unauthorized", "Credenciales inválidas"));
+
+    await expect(api.post("/auth/login", { body: {}, skipAuthRetry: true })).rejects.toMatchObject({ status: 401 });
+    expect(handler).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("un 401 no invoca el gancho para otros códigos de estado", async () => {

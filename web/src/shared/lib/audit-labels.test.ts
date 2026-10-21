@@ -126,6 +126,13 @@ describe("summarizeChange", () => {
     expect(lines).toEqual(["notes: a → b", "extra: dato cifrado modificado"]);
   });
 
+  it("las columnas de índice ciego (_idx) nunca muestran el HMAC", () => {
+    const lines = summarizeChange(entry({ before: { phone_idx: "a1b2c3" }, after: { phone_idx: "d4e5f6" } }));
+
+    expect(lines).toEqual(["phone_idx: dato cifrado modificado"]);
+    expect(summarizeChange(entry({ action: "insert", after: { document_idx: "a1b2" } }))).toEqual(["document_idx: dato cifrado"]);
+  });
+
   it("un valor compuesto se resume sin volcarlo", () => {
     expect(summarizeChange(entry({ before: { tags: ["a"] }, after: { tags: ["a", "b"] } }))).toEqual(["tags: modificado"]);
   });

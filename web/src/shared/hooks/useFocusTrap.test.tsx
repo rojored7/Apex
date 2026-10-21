@@ -148,6 +148,21 @@ describe("useFocusTrap", () => {
     expect(box).toHaveFocus();
   });
 
+  it("con el foco en el propio contenedor, Tab y Mayús+Tab no se escapan", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("button", { name: "Abrir" }));
+    const panel = screen.getByTestId("Panel");
+    panel.tabIndex = -1;
+
+    panel.focus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Panel último" })).toHaveFocus();
+    panel.focus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Panel primero" })).toHaveFocus();
+  });
+
   it("inactiva no toca el foco ni el body", () => {
     render(<Inactive />);
 

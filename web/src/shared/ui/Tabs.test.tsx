@@ -63,6 +63,16 @@ describe("Tabs", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/socios/1?tab=pagos&q=x");
   });
 
+  it("cambiar de pestaña vuelve a la primera página de su lista", async () => {
+    const user = userEvent.setup();
+    renderQuery("/socios/1?tab=pagos&offset=50");
+
+    await user.click(screen.getByRole("tab", { name: "Membresías" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/socios/1?tab=membresias");
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+  });
+
   it("las flechas saltan la pestaña no disponible y dan la vuelta", async () => {
     const user = userEvent.setup();
     renderQuery("/socios/1?tab=pagos");

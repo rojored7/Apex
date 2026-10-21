@@ -55,6 +55,6 @@ EOF
   echo
   echo "axe-core · MPL-2.0 · pruebas de accesibilidad del front (US-010)"
   echo "certifi · MPL-2.0 · certificados raíz, transitiva de httpx (runtime del api; ver scripts/ci/licenses-exceptions.txt)"
-} > "$SALIDA"
+} | tr -d '\r' > "$SALIDA"
 
 echo "notice.sh: NOTICE regenerado ($(wc -l < "$SALIDA") líneas)"

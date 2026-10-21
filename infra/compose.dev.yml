@@ -1,0 +1,39 @@
+# Capa de desarrollo (US-005). Se apila sobre compose.yml desde la raíz:
+#   docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build
+# Recarga en caliente del api, puertos publicados en el host (parametrizados porque
+# otros proyectos pueden ocupar 80, 8000, 5432 o 5433) y db_test efímera para pytest.
+services:
+  api:
+    build:
+      # Solo en desarrollo: el build usa la red del host. En Docker Desktop con WSL2
+      # el bridge puede quedar sin salida a internet y pip no alcanza PyPI.
+      network: host
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src"]
+    environment:
+      # Los eventos de archivos no cruzan de NTFS a WSL2; se usa polling.
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ../api/src:/app/src
+      - ../api/migrations:/app/migrations
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  db:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  db_test:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: apex
+      POSTGRES_PASSWORD: apex-test
+      POSTGRES_DB: apex_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "${DB_TEST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apex -d apex_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 12

@@ -1,0 +1,16 @@
+.venv
+.venv*
+.env
+.env.*
+keys/
+*.key
+*.pem
+*.kek
+tests/
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+__pycache__
+*.pyc

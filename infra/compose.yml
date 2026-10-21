@@ -1,0 +1,92 @@
+# Stack de producción de APEX (US-005, US-006). Se invoca desde la raíz del repo:
+#   docker compose --env-file .env -f infra/compose.yml up -d --build
+# `--env-file .env` es obligatorio: Compose interpola ${WEB_PORT:-80} desde la carpeta
+# de este archivo, no desde la raíz (CRITICA-2 N-4). Los secretos entran solo por
+# env_file; nunca se escriben aquí. db no publica puerto en producción.
+name: apex
+
+services:
+  db:
+    image: postgres:16
+    env_file: ../.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    image: apex-api:local
+    env_file: ../.env
+    volumes:
+      - keys:/run/apex/keys:ro
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # La imagen slim no trae curl; /health existe desde US-020.
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  worker:
+    image: apex-api:local
+    command: ["python", "-m", "app.worker.main"]
+    env_file: ../.env
+    volumes:
+      - keys:/run/apex/keys:ro
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    # Hasta que exista app/worker/main.py (US-113, Sprint 4A) el worker solo arranca
+    # con --profile worker; US-113 quita esta línea.
+    profiles: ["worker"]
+    restart: unless-stopped
+
+  tools:
+    # Comandos del CLI: docker compose run --rm tools init-keys | seed | rotate-key ...
+    # Única vía con escritura sobre el volumen keys.
+    image: apex-api:local
+    entrypoint: ["python", "-m", "app.cli"]
+    env_file: ../.env
+    volumes:
+      - keys:/run/apex/keys
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    image: apex-web:local
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/index.html"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  keys:
+  backups:

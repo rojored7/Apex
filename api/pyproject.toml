@@ -77,3 +77,6 @@ addopts = "-ra --strict-markers"
 [tool.coverage.run]
 source = ["app"]
 branch = true
+# M-6 (US-008): hasta el Sprint 3 el CLI y el worker quedan fuera de la cobertura
+# global; el Sprint 4A (US-113) quita estas dos líneas.
+omit = ["*/app/cli.py", "*/app/worker/*"]

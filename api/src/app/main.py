@@ -35,7 +35,9 @@ from app.core import db, health
 from app.core.audit import install_audit_listeners
 from app.core.config import Settings, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
-from app.core.crypto.provider import configure_provider, get_key_provider
+from app.core.crypto.bootstrap import ensure_keys
+from app.core.crypto.keyring import configure_keyring
+from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
 
@@ -118,11 +120,16 @@ def create_app(
         logger.info("proveedor de llaves listo: %s", settings.CRYPTO_PROVIDER)
         try:
             with actor_scope(SYSTEM_USER_ID):
+                # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.
+                async with db.get_sessionmaker()() as session, session.begin():
+                    keyring = await ensure_keys(session, current_provider())
+                logger.info("llaves del bus cargadas: %s", keyring)
                 for nombre, paso in list(_startup_steps):
                     logger.info("arranque: %s", nombre)
                     await paso(settings)
             yield
         finally:
+            configure_keyring(None)
             configure_provider(None)
             await db.dispose_engine()
 

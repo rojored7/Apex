@@ -12,6 +12,13 @@ CryptoCode = Literal[
     "unknown_provider",
     "unsupported",
     "key_missing",
+    "key_retired",
+    "unknown_data_class",
+    "no_index",
+    "empty_value",
+    "blob_invalid",
+    "decrypt_failed",
+    "crypto_unavailable",
 ]
 
 

@@ -141,3 +141,33 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   `init-keys` no acepta material por argumento; `crypto_ops` no tiene columnas de valores;
   triggers cubren TRUNCATE. Pendiente de EP-13: separar el rol de la aplicación del dueño de los
   triggers.
+
+### S1-B5 · Cifrado AES-256-GCM e índice ciego (US-025, US-026)
+
+- Rojo: `tests/crypto/{test_blob,test_registry,test_normalize,test_bus_encrypt,test_bootstrap,
+  test_bus_no_leak,test_blind_index}.py` sobre stubs: 37 fallos + 15 errores; fixtures nuevas en
+  `tests/crypto/conftest.py` (`proveedor_local`, `sin_llaves`, `bus_listo`).
+- Verde: `registry.py` (cinco clases de v0.1 con `index_kind` y `value_type`, `override_registry`
+  solo para pruebas), `blob.py` (`apx1` de cinco partes, base64url sin relleno, errores sin el
+  blob), `aead.py` (único `AESGCM` fuera del proveedor; un solo mensaje para AAD y alteración),
+  `mac.py` (`hmac` solo aquí), `normalize.py` (N-02: `generic`, `phone` con el `57` solo a 12
+  dígitos, `email`), `keyring.py` (`LoadedKey` con `bytearray` sin `repr`, `active_for`, `get`,
+  `load_all`, `refresh_if_stale`, `ensure_loaded`, keyring del proceso), `bootstrap.py`
+  (`ensure_keys` con `INSERT ... ON CONFLICT (purpose, data_class) WHERE state = 'active' DO
+  NOTHING`, DEK y llaves `index`, `created_by = SYSTEM_USER_ID`), `bus.py` (`encrypt`, `decrypt`,
+  `blind_index`, `aad_for`, `digest`), `docs/adr/ADR-002-criptografia.md` en borrador (envoltura,
+  blob y AAD, normalización), `create_app` corre `ensure_keys` bajo `actor_scope(SYSTEM_USER_ID)`
+  antes de los pasos de arranque y retira el keyring al apagar.
+- Evidencia: 90 ok + 2 saltadas en `tests/crypto`; suite completa 287 ok + 3 saltadas; ruff y
+  mypy limpios. Stack de desarrollo: al reiniciar el api, "llaves del bus cargadas:
+  Keyring(llaves=8, activas=8)"; en `crypto.crypto_keys` hay 5 llaves `encrypt` (A256GCM) y 3
+  `index` (HMAC-SHA256), todas `active`, `version` 1, `created_by` = `SYSTEM_USER_ID`,
+  `wrapped_material` de 65 bytes con prefijo `apxw1` y sin material en claro; `/health` 200.
+  Dos `ensure_keys` concurrentes en dos sesiones reales dejan una sola llave por clase.
+- Observaciones: el predicado del índice parcial en `ON CONFLICT` debe ir literal (con un
+  parámetro ligado PostgreSQL no reconoce el índice). La marca de frescura del keyring usa
+  conteo, `max(updated_at)` y la firma `id:state` (dentro de una misma transacción dos cambios
+  de estado comparten `now()`). "Con una KEK equivocada el api no arranca" se demuestra con
+  `test_otra_kek_no_abre_la_envuelta` (unwrap falla) y no contra el volumen de desarrollo, porque
+  reemplazar la KEK destruiría las DEK reales. `oplog.record` y `refresh_if_stale` por unidad de
+  trabajo llegan en S1-B6 (US-029).

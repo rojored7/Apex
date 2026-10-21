@@ -2,7 +2,7 @@
 
 Sistema web para administrar un gimnasio de CrossFit en Colombia: socios, planes, membresías, pagos, vencimientos, avisos, clases, WODs, resultados y perfil del atleta. Repositorio privado.
 
-Estado al 21 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado y el Sprint 0 (cimientos) está en curso en la rama `chore/sprint-00-cimientos`. El arranque en cinco minutos del stack se escribe al cerrar ese sprint (US-007).
+Estado al 21 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado y el Sprint 0 (cimientos) está terminado y verificado en la rama `chore/sprint-00-cimientos`, pendiente de push, PR y merge a `main`. La evidencia está en `docs/scratch/sprint-00.md`. El siguiente es el Sprint 1 (`docs/ddd/09_sprint_plan/SPRINT-01.md`).
 
 ## Qué hay en el repositorio y en qué orden leerlo
 

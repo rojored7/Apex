@@ -47,5 +47,6 @@ def test_sin_secretos_reales() -> None:
     for clave, valor in claves.items():
         if clave.endswith(("PASSWORD", "SECRET", "TOKEN", "KEY")):
             assert valor == "" or "cambiar-esto" in valor, f"{clave} parece llevar un valor real"
-    assert "BEGIN PRIVATE KEY" not in EJEMPLO.read_text(encoding="utf-8")
+    # Concatenado para que detect-private-key no marque la propia prueba.
+    assert ("BEGIN " + "PRIVATE KEY") not in EJEMPLO.read_text(encoding="utf-8")
     assert "cambiar-esto" in claves["DATABASE_URL"]

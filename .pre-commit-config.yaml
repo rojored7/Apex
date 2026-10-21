@@ -13,6 +13,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: detect-private-key
+        # Las historias y el cuaderno citan la cabecera de una llave privada como criterio
+        # de verificación; el código y la configuración sí se revisan.
+        exclude: ^docs/
       - id: end-of-file-fixer
         exclude: ^docs/design/
       - id: check-merge-conflict

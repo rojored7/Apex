@@ -114,3 +114,32 @@ Rama: `chore/sprint-00-cimientos` (desde `main` en `dc12c57`). Gate humano aprob
 - Desviaciones aceptadas: regex de los lint con `[(]` en vez de `\(`; controles de lint adicionales (`bad-rgb`, `BadInlineHex`, `GoodInline`) con aserción del nombre de regla; `src/main.tsx` fuera de la cobertura (lo cubre el smoke de Playwright); `Field` con `size` y `errorAction` solo con rutas internas; texto "Año, Bogotá, ÑANDÚ" en la página mínima para verificar tildes.
 - `npm audit --omit=dev` sin vulnerabilidades; en desarrollo una moderada en vitest 3 (la corrección exige Vite 7, fuera de la historia) y una alta en `braces` vía stylelint: deuda para una historia de versiones.
 - Cierre del orquestador: `axe-core` en `scripts/ci/licenses-exceptions.txt`, `NOTICE` regenerado con las dependencias directas del front, paso de CI que falla si `web/dist` pide Google Fonts, `web/Dockerfile` definitivo (`npm ci && npm run build`).
+
+## Validación del Sprint 0 (verify-delivery)
+
+### Pilar 1 · contra el plan (`docs/ddd/09_sprint_plan/SPRINT-00.md`)
+
+- T-DOC: entregada (`c71e312`); verificación por grep limpia.
+- S0-W0-0: entregada; línea base en este cuaderno (puertos ajustados, Docker sin red en el bridge, github.com intermitente).
+- S0-W0-1 (US-001, US-002): entregada (`22bd9f8`). Diferido a persona: protección de `main` en GitHub (T8) y push.
+- S0-W0-2 (US-008): entregada (`a322edc`); `scripts/workflow/tests/run.sh` 5 de 5. Desviación: `--cov-omit` no existe en pytest-cov; la exclusión vive en `pyproject.toml`.
+- S0-W0-3 (US-003, US-004): entregada (`a4275b6`); CI escrita, se valida en GitHub al empujar (persona).
+- S0-W0-4 (US-005, US-007): entregada (`ac8ee77`); imagen y Compose verificados en vivo. Diferidos del plan: `tools init-keys` (S1-B4), medición T6 (Sprint 1), `profiles: ["worker"]` (US-113).
+- S0-W0-5 (US-006): entregada (`6fa4052`); criterio diferido "build real y 200 real de `/api/v1/health`" cerrado en esta validación (smoke con la imagen real del front: 5 de 5, `/api/v1/health` 200 por Nginx). Cabeceras y CSP: Sprint 1 (US-038).
+- S0-B1 (US-011, US-013): entregada (`970d4f4`). Desviación: `JWT_PRIVATE_KEY_PATH` es `Path`, no `FilePath`.
+- S0-B2 (US-012): entregada (`224322b`); ciclo de Alembic por CLI y por pruebas; lock asesor desde S0-B4.
+- S0-B3 (US-017, US-018): entregada (`1e3000c`); `core/context.py` solo con `request_id_var` (US-016 lo completa).
+- S0-B4 (US-014, US-020): entregada (`2ae54fc`, `4a49cb1`); `install_audit_listeners` y `actor_scope` quedan para S1-B2 como fija el plan.
+- S0-F1 y S0-F2 (US-009, US-010): entregadas (`e75c74a`, `898578a`, `3e95d96`).
+- Seguridad: revisión hecha, cero CRITICAL y cero HIGH; MEDIUM y LOW corregidos en `fb42c42` salvo la deuda anotada arriba.
+- Pendiente de persona (A-02): `git push -u origin chore/sprint-00-cimientos`, PR hacia `main`, CI en verde en GitHub, protección de `main`, merge.
+
+### Pilar 2 · contra el sistema real
+
+- `run-gates.sh 0`: api 106 pruebas y 1 saltada con dueña, cobertura global 93,23 % (umbral 80 %); front 75 pruebas, cobertura 100 %, build de Vite ok.
+- `scripts/workflow/tests/run.sh`: 5 de 5. `check-licenses-api.sh`, `test_licenses.sh`, `npm run licenses` (12 MIT, 1 ISC), `NOTICE` regenerado sin diferencias.
+- Stack de desarrollo (`compose.yml` + `compose.dev.yml`): `compose-smoke.sh` en 55 s con `db`, `db_test`, `api` y `web` healthy; `web-smoke.sh` 5 de 5 con el build real; `test_api_image.sh` 0 fallas; `test_nginx_conf.sh` 10 de 10; `test_compose_config.sh` 14 de 14.
+- Stack de producción (`compose.yml` solo, imágenes locales): `api` y `web` healthy, `db` sin puerto publicado, `/api/v1/health` 200 por Nginx en 8180. Se volvió al stack de desarrollo.
+- Repetición: migraciones al arrancar corridas en cada reinicio del api (idempotentes, lock asesor); `compose-smoke.sh` corrido tres veces; `/health` con la base detenida 503 en 2,05 s y recuperación a 200.
+- Playwright `smoke.spec.ts` 1 de 1 (fuentes locales, sin peticiones externas). `pre-commit run --all-files` en verde cuando github.com volvió a responder (hooks remotos clonados); `detect-private-key` excluye `docs/`, donde las historias citan la cabecera de una llave como criterio.
+- No verificado aquí: la CI en GitHub Actions y la protección de `main` (requieren el push de una persona).

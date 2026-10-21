@@ -31,7 +31,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import Settings
-from app.core.context import request_id_var
+from app.core.context import current_actor, request_id_var
 
 SENSITIVE_KEYS: frozenset[str] = frozenset(
     {
@@ -155,6 +155,9 @@ class RequestLogMiddleware:
         # Nunca se reutiliza un X-Request-ID del cliente: evita inyectar texto en los logs.
         request_id = uuid4().hex
         token = request_id_var.set(request_id)
+        # US-034: current_user fija el actor y no lo resetea (el commit de get_session corre
+        # en su teardown y lo necesita); se limpia aquí, cuando la petición ya terminó.
+        token_actor = current_actor.set(None)
         inicio = time.perf_counter()
         estado = {"status": 500}
 
@@ -167,6 +170,7 @@ class RequestLogMiddleware:
         try:
             await self.app(scope, receive, send_con_id)
         finally:
+            current_actor.reset(token_actor)
             duracion_ms = round((time.perf_counter() - inicio) * 1000, 2)
             ruta = scope.get("route")
             path = getattr(ruta, "path_format", None) or getattr(ruta, "path", None)

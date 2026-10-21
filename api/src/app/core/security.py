@@ -326,3 +326,202 @@ def configure_security(settings: Settings) -> None:
     configure_jwt(
         load_jwt_keys(settings), ttl_s=settings.ACCESS_TOKEN_TTL_S, leeway_s=settings.JWT_LEEWAY_S
     )
+
+
+# US-034 (current_user, require_role) y US-035 (rutas con rol) ------------------------
+#
+# `PrincipalLoader` es un puerto que define core y que `modules/auth/service.py` implementa y
+# registra al importarse (como `events.subscribe`), para que core nunca importe un módulo.
+# `current_user` lee `Authorization: Bearer`, decodifica, rechaza `SYSTEM_USER_ID` (N-15),
+# pide al cargador el estado vigente (rol de la base, no del claim) y fija `current_actor`
+# sin resetearlo: el commit de `get_session` corre en su teardown y lo necesita; lo limpia
+# `RequestLogMiddleware` al terminar la petición. Toda 401 lleva `WWW-Authenticate: Bearer`
+# y el mismo mensaje genérico; `token_expired` solo para un access vencido con firma válida.
+# `PUBLIC_ROUTES` es la única lista blanca (sin decorador `@public`); la prueba de arquitectura
+# `test_every_route_has_role.py` exige rol en todo lo demás, y la TV solo entra con la marca
+# `__apex_device_token__` (N-44, US-175).
+
+from collections.abc import Awaitable, Callable  # noqa: E402
+from typing import Protocol  # noqa: E402
+
+from fastapi import Depends, FastAPI, Request  # noqa: E402
+from fastapi.dependencies.models import Dependant  # noqa: E402
+from fastapi.routing import APIRoute  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.core.clock import get_clock  # noqa: E402
+from app.core.context import SYSTEM_USER_ID, current_actor  # noqa: E402
+from app.core.db import get_session  # noqa: E402
+from app.core.errors import ForbiddenError, UnauthorizedError  # noqa: E402
+
+SESSION_INVALID_MESSAGE: Final = "Sesión no válida."
+
+
+@dataclass(frozen=True)
+class Principal:
+    user_id: UUID
+    role: Role
+    member_id: UUID | None
+
+
+class PrincipalLoader(Protocol):
+    async def __call__(self, session: AsyncSession, user_id: UUID) -> Principal | None: ...
+
+
+_principal_loader: PrincipalLoader | None = None
+
+
+def register_principal_loader(loader: PrincipalLoader) -> None:
+    global _principal_loader
+    _principal_loader = loader
+
+
+def get_principal_loader() -> PrincipalLoader:
+    if _principal_loader is None:
+        raise RuntimeError("no hay PrincipalLoader registrado (módulo auth)")
+    return _principal_loader
+
+
+def _reset_principal_loader_for_tests() -> None:
+    global _principal_loader
+    _principal_loader = None
+
+
+def role_allowed(user_role: Role, allowed: frozenset[Role]) -> bool:
+    return user_role in allowed
+
+
+def _bearer_token(request: Request) -> str:
+    cabecera = request.headers.get("Authorization", "")
+    partes = cabecera.split()
+    if len(partes) != 2 or partes[0].lower() != "bearer" or not partes[1]:
+        raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    return partes[1]
+
+
+async def current_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Principal:
+    token = _bearer_token(request)
+    try:
+        claims = decode_access_token(token, get_clock())
+    except TokenExpired:
+        raise UnauthorizedError("token_expired", SESSION_INVALID_MESSAGE) from None
+    except TokenInvalid:
+        raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE) from None
+    if claims.sub == SYSTEM_USER_ID:
+        raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    principal = await get_principal_loader()(session, claims.sub)
+    if principal is None:
+        raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    current_actor.set(principal.user_id)
+    return principal
+
+
+def require_role(*roles: Role) -> Callable[..., Awaitable[Principal]]:
+    """Dependencia por ruta: exige `current_user` y uno de `roles`; marca `__apex_roles__`."""
+    if not roles:
+        raise ValueError("require_role exige al menos un rol")
+    desconocidos = [r for r in roles if r not in ROLES]
+    if desconocidos:
+        raise ValueError(f"rol desconocido: {', '.join(desconocidos)}")
+    permitidos: frozenset[Role] = frozenset(roles)
+
+    async def _dependencia(principal: Principal = Depends(current_user)) -> Principal:  # noqa: B008
+        if not role_allowed(principal.role, permitidos):
+            raise ForbiddenError("forbidden")
+        return principal
+
+    _dependencia.__apex_roles__ = permitidos  # type: ignore[attr-defined]
+    return _dependencia
+
+
+PUBLIC_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        ("GET", "/health"),  # chequeo de salud en la raíz (Compose, Nginx)
+        ("GET", "/api/v1/health"),  # el mismo chequeo por el proxy (N-16)
+        ("POST", "/api/v1/auth/login"),  # obtener la sesión (con límite de intentos, US-036)
+        ("POST", "/api/v1/auth/refresh"),  # renovar con la cookie HttpOnly (N-13)
+        ("POST", "/api/v1/auth/forgot"),  # pedir enlace de restablecimiento (US-048)
+        ("POST", "/api/v1/auth/reset"),  # restablecer con token de un solo uso (US-048)
+        ("GET", "/api/v1/tv/today"),  # pantalla de TV con X-Device-Token (N-44, US-175)
+    }
+)
+DEVICE_TOKEN_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset({("GET", "/api/v1/tv/today")})
+
+
+@dataclass(frozen=True)
+class RouteInfo:
+    """Una ruta efectiva: método, ruta completa y su árbol de dependencias."""
+
+    methods: frozenset[str]
+    path: str
+    dependant: Dependant
+
+
+def _dependant_has(dependant: Dependant, marca: str) -> bool:
+    for dep in dependant.dependencies:
+        if getattr(dep.call, marca, None) or _dependant_has(dep, marca):
+            return True
+    return False
+
+
+def effective_routes(app: FastAPI) -> tuple[list[RouteInfo], list[str]]:
+    """Rutas HTTP efectivas y, aparte, lo que no es una ruta de FastAPI.
+
+    FastAPI 0.157 incluye los routers de forma perezosa (`_IncludedRouter` con sus
+    candidatos efectivos), así que se recorre ese árbol en vez de confiar en `app.routes`.
+    """
+    rutas: list[RouteInfo] = []
+    otras: list[str] = []
+
+    def visitar(elemento: object) -> None:
+        if isinstance(elemento, APIRoute):
+            rutas.append(
+                RouteInfo(frozenset(elemento.methods or set()), elemento.path, elemento.dependant)
+            )
+            return
+        contextos = getattr(elemento, "effective_route_contexts", None)
+        if callable(contextos):
+            for contexto in contextos():
+                original = contexto.original_route
+                rutas.append(
+                    RouteInfo(
+                        frozenset(getattr(original, "methods", None) or set()),
+                        str(contexto.path),
+                        contexto.dependant,
+                    )
+                )
+            return
+        otras.append(f"* {getattr(elemento, 'path', repr(elemento))} ({type(elemento).__name__})")
+
+    for elemento in app.routes:
+        visitar(elemento)
+    return rutas, otras
+
+
+def route_has_role_dependency(route: APIRoute | RouteInfo) -> bool:
+    return _dependant_has(route.dependant, "__apex_roles__")
+
+
+def _route_has_device_token(route: RouteInfo) -> bool:
+    return _dependant_has(route.dependant, "__apex_device_token__")
+
+
+def unprotected_routes(app: FastAPI) -> list[str]:
+    """`"MÉTODO ruta"` de cada ruta sin rol que no esté en la lista blanca; también cualquier
+    ruta que no sea de FastAPI (no pasa por dependencias)."""
+    rutas, salida = effective_routes(app)
+    for ruta in rutas:
+        if route_has_role_dependency(ruta):
+            continue
+        for metodo in sorted(ruta.methods):
+            if metodo in {"HEAD", "OPTIONS"}:
+                continue
+            par = (metodo, ruta.path)
+            if par in DEVICE_TOKEN_ROUTES and not _route_has_device_token(ruta):
+                salida.append(f"{metodo} {ruta.path}")
+            elif par not in PUBLIC_ROUTES:
+                salida.append(f"{metodo} {ruta.path}")
+    return sorted(salida)

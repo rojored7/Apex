@@ -44,7 +44,7 @@ from app.core.crypto.provider import configure_provider, current_provider, get_k
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
-from app.core.security import configure_security
+from app.core.security import configure_security, get_principal_loader
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
 MODULES: Final[tuple[str, ...]] = ()
@@ -140,6 +140,12 @@ def create_app(
             logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")
             raise
         logger.info("proveedor de llaves listo: %s", settings.CRYPTO_PROVIDER)
+        # US-034: cerrado por defecto; sin cargador de principal nadie puede autenticar.
+        try:
+            get_principal_loader()
+        except RuntimeError:
+            logger.error("no hay PrincipalLoader registrado (módulo auth); el api no arranca")
+            raise
         try:
             with actor_scope(SYSTEM_USER_ID):
                 # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.

@@ -163,7 +163,10 @@ def _responder(status: int, body: ErrorBody) -> JSONResponse:
 
 
 async def _handler_dominio(request: Request, exc: DomainError) -> JSONResponse:
-    return _responder(exc.status, exc.body())
+    respuesta = _responder(exc.status, exc.body())
+    if exc.status == 401:
+        respuesta.headers["WWW-Authenticate"] = "Bearer"  # US-034: toda 401 lleva el esquema
+    return respuesta
 
 
 async def _handler_validacion(request: Request, exc: RequestValidationError) -> JSONResponse:

@@ -253,3 +253,34 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   valida firma y claims obligatorios), así las pruebas usan `FrozenClock` y el api tiene un
   solo reloj. `jwt`, `cryptography`, `hashlib` y `hmac` entran en `tests/core/test_jwt.py` con
   `noqa: TID251` solo para forjar tokens de ataque; `src/app` sigue limpio.
+
+### S1-B9 · `current_user`, `require_role` y prueba de rutas (US-034, US-035)
+
+- Rojo: `tests/core/test_require_role.py`, `tests/core/test_docs_disabled.py`,
+  `tests/architecture/test_every_route_has_role.py`, `tests/architecture/test_route_guard_unit.py`,
+  más `tests/core/_routes.py` (router de prueba) y `tests/core/_principal_double.py` (doble del
+  puerto, M-2): rojo en la recolección (el registro del doble en `conftest` era un stub).
+- Verde: en `core/security.py` `Principal`, puerto `PrincipalLoader` con `register_principal_loader`
+  / `get_principal_loader` (G-02), `role_allowed`, `current_user` (Bearer exacto, `token_expired`
+  solo para vencido con firma válida, `SYSTEM_USER_ID` rechazado antes de ir a la base, rol vigente
+  de la base y no del claim, fija `current_actor` sin resetearlo), `require_role(*roles)` con
+  `__apex_roles__` y validación al definir, `PUBLIC_ROUTES` (7 entradas comentadas),
+  `effective_routes` (recorre `effective_route_contexts()` de los routers perezosos de FastAPI
+  0.157), `route_has_role_dependency` y `unprotected_routes` (también reporta `Route`/`Mount` y la
+  TV sin `__apex_device_token__`, N-44); toda 401 lleva `WWW-Authenticate: Bearer`
+  (`core/errors.py`); `RequestLogMiddleware` limpia el actor al terminar la petición (después del
+  commit de `get_session`); el lifespan exige un cargador registrado (cerrado por defecto).
+- Evidencia: 21 ok en los cuatro archivos; suite completa 384 ok + 3 saltadas; ruff y mypy
+  limpios. Admin 200 / coach 403 / member 403 en `staff`; sin cabecera, `Basic`, Bearer vacío y
+  dos tokens → 401 `unauthorized`; vencido → 401 `token_expired`; otra llave, `SYSTEM_USER_ID`,
+  inexistente y dado de baja → 401 con cuerpos idénticos; el claim `admin` de un coach no sirve;
+  el actor es visible en el handler y el `contextvar` queda vacío después; 10 peticiones
+  concurrentes no mezclan actores. El api de desarrollo deja de arrancar ("Application startup
+  failed") hasta que `auth` registre el cargador real en S1-B11: es la conducta cerrada por
+  defecto que pide US-034.
+- Desviaciones: `tests/auth/test_principal_loader.py` y `slice-gate.sh auth` pasan a S1-B11 (no
+  existe `auth.users` hasta `0004_auth`). `ENV` sigue siendo `dev | production` (decisión del
+  Sprint 0) en vez de `dev | test | prod`. La base de prueba se limpia de llaves, bitácoras y
+  auditoría al empezar cada sesión de pytest (`migrated_database`), porque las llaves se envuelven
+  con la KEK temporal de la sesión. Observación: `UUID(int=1)` es `SYSTEM_USER_ID`; los usuarios
+  de prueba empiezan en 101.

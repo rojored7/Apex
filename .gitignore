@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .venv/
+.venv*/
+scripts/ci/tmp.*/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

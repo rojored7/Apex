@@ -15,6 +15,8 @@ Crea el commit `chore(checkpoint): <mensaje>` con `git add -A` si:
   - existe .git/apex/slice-gate.ok, escrito por slice-gate.sh;
   - la huella del árbol de trabajo coincide con la del sello (nada cambió después del gate).
 Borra el sello al terminar. No hace push.
+Si CHECKPOINT_TRAILER está definida, su texto va como segundo párrafo del mensaje
+(por ejemplo, una línea Co-Authored-By).
 EOF
 }
 
@@ -53,6 +55,10 @@ ACTUAL="$(huella)"
 
 cd "$ROOT"
 git add -A
-git commit -q -m "chore(checkpoint): $MENSAJE"
+if [ -n "${CHECKPOINT_TRAILER:-}" ]; then
+  git commit -q -m "chore(checkpoint): $MENSAJE" -m "$CHECKPOINT_TRAILER"
+else
+  git commit -q -m "chore(checkpoint): $MENSAJE"
+fi
 rm -f "$SELLO"
 echo "checkpoint-commit: $(git rev-parse --short HEAD) chore(checkpoint): $MENSAJE"

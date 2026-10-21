@@ -38,7 +38,7 @@ pre-commit install
 
 ## Dependencias y licencias
 
-Solo se aceptan las licencias de la sección "Licencias" de `CLAUDE.md`. Al agregar una dependencia, actualizar `NOTICE` con su licencia. La CI corre `pip-licenses` en `api/` y `license-checker` en `web/` y falla si entra algo fuera de la lista.
+Solo se aceptan las licencias de la sección "Licencias" de `CLAUDE.md`. Toda dependencia nueva actualiza `NOTICE` con `bash scripts/ci/notice.sh` (la CI compara el archivo y falla si quedó desactualizado). Si la dependencia es MPL-2.0, se usa sin modificar y se agrega a `scripts/ci/licenses-exceptions.txt` con su justificación. La CI corre `bash scripts/ci/check-licenses-api.sh` sobre el runtime del api (lista blanca estricta: una licencia desconocida, `UNKNOWN` o `UNLICENSED`, también falla) y `npm run licenses` en `web/`.
 
 ## Secretos
 

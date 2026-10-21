@@ -1,0 +1,4 @@
+# Paquetes MPL-2.0 aceptados solo sin modificar (CLAUDE.md, "Licencias").
+# Una línea por paquete, con su justificación. Sin comodines. Nunca un paquete
+# GPL, LGPL, AGPL, BSL ni SSPL.
+certifi  # MPL-2.0 sin modificar, transitiva de httpx (certificados raíz de Mozilla)

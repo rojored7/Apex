@@ -1,0 +1,188 @@
+# CI de APEX (US-003, US-004, US-008). Jobs: api, web, images, scripts.
+# Los nombres de los jobs son los checks obligatorios de la protección de main;
+# no se renombran.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  api:
+    name: api
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apex
+          POSTGRES_PASSWORD: apex-ci
+          POSTGRES_DB: apex_test
+        options: >-
+          --health-cmd "pg_isready -U apex"
+          --health-interval 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      # Contraseña de CI sin valor fuera de este workflow; nunca un secreto real.
+      TEST_DATABASE_URL: postgresql+asyncpg://apex:apex-ci@localhost:5432/apex_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - name: dependencias
+        working-directory: api
+        run: uv sync --frozen
+      - name: lint
+        working-directory: api
+        run: uv run ruff check .
+      - name: formato
+        working-directory: api
+        run: uv run ruff format --check .
+      - name: tipos
+        working-directory: api
+        run: uv run mypy src
+      - name: pruebas con PostgreSQL 16 y cobertura
+        working-directory: api
+        run: uv run pytest --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
+      - name: resumen de cobertura
+        if: always()
+        working-directory: api
+        run: |
+          if [ -f coverage.xml ]; then
+            rate="$(grep -o 'line-rate="[0-9.]*"' coverage.xml | head -1 | cut -d'"' -f2)"
+            echo "### Cobertura del api: $(awk "BEGIN { printf \"%.1f\", ${rate:-0} * 100 }") %" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-api
+          path: api/coverage.xml
+          if-no-files-found: ignore
+      - name: licencias-api
+        run: |
+          bash scripts/ci/check-licenses-api.sh
+          bash scripts/ci/test_licenses.sh
+      - name: NOTICE al día
+        run: |
+          bash scripts/ci/notice.sh
+          git diff --exit-code NOTICE
+
+  web:
+    name: web
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: detectar front
+        id: front
+        run: |
+          if [ -f web/package.json ]; then echo "existe=true" >> "$GITHUB_OUTPUT"; else echo "existe=false" >> "$GITHUB_OUTPUT"; echo "sin web/package.json: el job web no hace nada todavía"; fi
+      - uses: actions/setup-node@v4
+        if: steps.front.outputs.existe == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: dependencias
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm ci
+      - name: lint
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm run lint
+      - name: tipos
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npx tsc --noEmit
+      - name: pruebas
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm test -- --run
+      - name: build
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm run build
+      - name: licencias-web
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm run licenses --if-present
+      - name: playwright de humo
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: |
+          if npm run e2e --if-present --silent -- --help > /dev/null 2>&1 || grep -q '"e2e"' package.json; then
+            npx playwright install --with-deps chromium
+            npm run e2e
+          else
+            echo "sin script e2e todavía (US-009)"
+          fi
+
+  images:
+    name: images
+    runs-on: ubuntu-24.04
+    needs: [api]
+    steps:
+      - uses: actions/checkout@v4
+      - name: detectar Dockerfiles
+        id: img
+        run: |
+          [ -f api/Dockerfile ] && echo "api=true" >> "$GITHUB_OUTPUT" || echo "api=false" >> "$GITHUB_OUTPUT"
+          [ -f web/Dockerfile ] && echo "web=true" >> "$GITHUB_OUTPUT" || echo "web=false" >> "$GITHUB_OUTPUT"
+          [ -f scripts/ci/compose-smoke.sh ] && echo "smoke=true" >> "$GITHUB_OUTPUT" || echo "smoke=false" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.img.outputs.api == 'true' || steps.img.outputs.web == 'true'
+      - name: build api
+        if: steps.img.outputs.api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: api
+          file: api/Dockerfile
+          push: false
+          load: true
+          tags: apex-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: prueba de la imagen del api
+        if: steps.img.outputs.api == 'true'
+        run: bash scripts/ci/test_api_image.sh apex-api:ci
+      - name: build web
+        if: steps.img.outputs.web == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: web/Dockerfile
+          push: false
+          load: true
+          tags: apex-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: smoke de Compose
+        if: steps.img.outputs.smoke == 'true'
+        run: |
+          cp .env.example .env
+          bash scripts/ci/compose-smoke.sh
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: pruebas de los scripts de gate
+        run: bash scripts/workflow/tests/run.sh

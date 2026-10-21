@@ -64,6 +64,10 @@ def indexing_specs() -> list[DataClassSpec]:
     return [s for s in _active.values() if s.index_kind is not None]
 
 
+def signing_specs() -> list[DataClassSpec]:
+    return [s for s in _active.values() if s.sign]
+
+
 @contextmanager
 def override_registry(specs: Mapping[str, DataClassSpec]) -> Iterator[None]:
     """Solo para pruebas: sustituye el registro dentro del bloque."""

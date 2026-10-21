@@ -171,3 +171,32 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   `test_otra_kek_no_abre_la_envuelta` (unwrap falla) y no contra el volumen de desarrollo, porque
   reemplazar la KEK destruiría las DEK reales. `oplog.record` y `refresh_if_stale` por unidad de
   trabajo llegan en S1-B6 (US-029).
+
+### S1-B6 · Firma y bitácora por lote (US-027, US-029)
+
+- Rojo: `tests/crypto/{test_signature_format,test_sign,test_oplog_aggregate,test_oplog}.py` y la
+  ampliación de `tests/architecture/test_core_import_direction.py` (absorbe el grafo de US-029:
+  `context.py` solo biblioteca estándar, `db.py` sin `audit`/`crypto`, sin ciclos entre módulos
+  de `core` a nivel de módulo): 17 fallos + 12 errores.
+- Verde: `signature.py` (`apx1.<key_id>.<alg>.<sig_b64url>`), `bus.sign`/`bus.verify` async vía
+  `KeyProvider` (la privada nunca sale; `verify` acepta `active`, `decrypt_only` y `retired`,
+  Q27; una firma de otra clase lanza `key_missing`), llaves `sign` como referencia
+  `local:sign-ed25519` en `crypto_keys` (`ensure_keys` las crea para clases con `sign=True`;
+  ninguna de negocio en v0.1), `oplog.py` (buffer por unidad de trabajo en `ContextVar`,
+  `record`, `aggregate_ops`, `batch`, `before_commit` que inserta en la misma transacción,
+  `after_soft_rollback` que conserva `error` y `decrypt` por conexión aparte,
+  `flush_standalone`), verbos cableados en `encrypt`/`decrypt`/`blind_index`/`sign`/`verify`,
+  `unwrap` en el keyring y `wrap` en `ensure_keys`; `purpose` y `record_id` como argumentos con
+  nombre; `batch_scope` en `context.py`; `refresh_keyring` como dependencia de los routers de
+  módulos (no de `/health`); `unit_of_work(actor)` en `cli.py`; listeners instalados en
+  `create_app` y `conftest`.
+- Evidencia: 35 ok en los cinco archivos; suite completa 316 ok + 3 saltadas; ruff y mypy
+  limpios. Transacciones reales: cifrar deja una fila `encrypt` con `record_id` y el actor; 500
+  descifrados en `bus.batch` dejan una fila `count = 500` con `batch_id` y `purpose = mask`; un
+  descifrado con AAD ajeno seguido de rollback deja una fila `error` con su `record_id`; ninguna
+  fila contiene blob ni texto (`row_to_json`); sin actor el commit falla con "falta el actor".
+  Stack de desarrollo: al arrancar, `crypto_ops` recibe 8 filas `unwrap` con `SYSTEM_USER_ID`.
+- Decisiones de implementación: fuera de `bus.batch` cada operación es una fila (conserva su
+  `record_id`), también bajo `batch_scope`, que solo fija el `batch_id`; `verify` inválido se
+  registra con `result = error` sin lanzar. La resolución de `--as <email>` a un usuario llega
+  con `auth.service` (US-041/US-111): `unit_of_work` usa `SYSTEM_USER_ID` por ahora.

@@ -19,6 +19,7 @@ CryptoCode = Literal[
     "blob_invalid",
     "decrypt_failed",
     "crypto_unavailable",
+    "signature_invalid",
 ]
 
 

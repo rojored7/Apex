@@ -14,17 +14,34 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID, uuid4
 
 import typer
 from pydantic import SecretStr
 
 from app.core.config import Settings, get_settings
+from app.core.context import SYSTEM_USER_ID, actor_scope, batch_scope
 
 PACKAGE_NAME = "apex-api"
+
+
+@contextmanager
+def unit_of_work(actor: str | None) -> Iterator[UUID]:
+    """Actor y lote de un comando (N-15, US-029): `--as <email>` o `SYSTEM_USER_ID`.
+
+    Resolver el correo a un usuario llega con `auth.service` (US-041, US-111); hasta
+    entonces el valor de `--as` solo se anota en el log.
+    """
+    lote = uuid4()
+    with actor_scope(SYSTEM_USER_ID), batch_scope(lote):
+        yield lote
+
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 

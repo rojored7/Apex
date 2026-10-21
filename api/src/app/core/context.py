@@ -20,7 +20,9 @@ Reglas de propagación:
   corre antes, y si reseteara el actor ahí el commit se quedaría sin actor.
 - Las rutas sin token que escriben tablas auditadas (login con bloqueo, `reset` y
   activación de contraseña, EP-04) fijan el actor de forma explícita con `actor_scope`.
-- Worker y CLI: `with actor_scope(SYSTEM_USER_ID):` o el actor de `--as`.
+- Worker y CLI: `with actor_scope(SYSTEM_USER_ID):` o el actor de `--as`, y
+  `batch_scope(uuid4())` por comando o job: las operaciones del bus comparten `batch_id`
+  en `crypto_ops` (US-029).
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ SYSTEM_USER_ID: Final[UUID] = UUID("00000000-0000-0000-0000-000000000001")
 
 request_id_var: ContextVar[str | None] = ContextVar("apex_request_id", default=None)
 current_actor: ContextVar[UUID | None] = ContextVar("apex_actor", default=None)
+current_batch: ContextVar[UUID | None] = ContextVar("apex_batch", default=None)
 
 MISSING_ACTOR_MESSAGE: Final = "falta el actor: fije actor_scope(SYSTEM_USER_ID) o --as <email>"
 
@@ -62,3 +65,13 @@ def actor_scope(user_id: UUID) -> Iterator[None]:
         yield
     finally:
         current_actor.reset(token)
+
+
+@contextmanager
+def batch_scope(batch_id: UUID) -> Iterator[None]:
+    """Fija el lote de la unidad de trabajo (comando del CLI, job del worker)."""
+    token = current_batch.set(batch_id)
+    try:
+        yield
+    finally:
+        current_batch.reset(token)

@@ -29,14 +29,17 @@ from typing import Any, Final
 
 from alembic import command
 from alembic.config import Config
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import db, health
 from app.core.audit import install_audit_listeners
 from app.core.config import Settings, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.bootstrap import ensure_keys
-from app.core.crypto.keyring import configure_keyring
+from app.core.crypto.errors import CryptoError
+from app.core.crypto.keyring import configure_keyring, current_keyring
+from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
@@ -70,10 +73,23 @@ def load_module_services() -> None:
         importlib.import_module(f"app.modules.{modulo}.service")
 
 
+async def refresh_keyring(session: AsyncSession = Depends(db.get_session)) -> None:  # noqa: B008
+    """US-029 T8: al abrir la sesión de la petición, recarga las llaves si otro proceso rotó.
+
+    Solo en los routers de módulos: `/health` no abre sesión aquí para seguir respondiendo
+    503 (y no 500) con la base caída.
+    """
+    try:
+        keyring = current_keyring()
+    except CryptoError:
+        return
+    await keyring.refresh_if_stale(session, current_provider())
+
+
 def include_module_routers(router: APIRouter) -> None:
     for modulo in MODULES:
         mod = importlib.import_module(f"app.modules.{modulo}.router")
-        router.include_router(mod.router)
+        router.include_router(mod.router, dependencies=[Depends(refresh_keyring)])
 
 
 def alembic_config(settings: Settings, script_location: str | None = None) -> Config:
@@ -100,6 +116,7 @@ def create_app(
     configure_logging(settings)
     db.configure_engine(db.create_engine_from(settings))
     install_audit_listeners()  # US-016: created_by y auditoría en cada flush
+    install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

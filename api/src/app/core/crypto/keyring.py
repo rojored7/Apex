@@ -20,6 +20,7 @@ from sqlalchemy import String, cast, func, literal_column, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.crypto import oplog
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.models import CryptoKey
 from app.core.crypto.provider import KeyProvider
@@ -72,9 +73,20 @@ class Keyring:
             if existente is not None:
                 existente.state = fila.state
             else:
-                if fila.state not in LOADABLE_STATES:
+                if fila.purpose == "sign":
+                    # La privada vive en el proveedor: la fila guarda su referencia y se
+                    # conserva en todos los estados porque la pública sigue verificando (Q27).
+                    material = bytearray(fila.wrapped_material)
+                elif fila.state in LOADABLE_STATES:
+                    material = bytearray(await provider.unwrap(fila.wrapped_material))
+                    oplog.record(
+                        "unwrap",
+                        data_class=fila.data_class,
+                        key_id=fila.id,
+                        key_version=fila.version,
+                    )
+                else:
                     continue
-                material = bytearray(await provider.unwrap(fila.wrapped_material))
                 existente = LoadedKey(
                     key_id=fila.id,
                     purpose=fila.purpose,

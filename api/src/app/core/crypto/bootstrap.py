@@ -19,13 +19,15 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import SYSTEM_USER_ID
+from app.core.crypto import oplog
 from app.core.crypto.keyring import Keyring, configure_keyring
+from app.core.crypto.local_provider import SIGNING_KEY_REF
 from app.core.crypto.models import CryptoKey
 from app.core.crypto.provider import KeyProvider
-from app.core.crypto.registry import encrypting_specs, indexing_specs
+from app.core.crypto.registry import encrypting_specs, indexing_specs, signing_specs
 
 DEK_LEN = 32
-_ALGORITHM = {"encrypt": "A256GCM", "index": "HMAC-SHA256"}
+_ALGORITHM = {"encrypt": "A256GCM", "index": "HMAC-SHA256", "sign": "Ed25519"}
 
 
 async def _active_pairs(session: AsyncSession) -> set[tuple[str, str]]:
@@ -36,18 +38,25 @@ async def _active_pairs(session: AsyncSession) -> set[tuple[str, str]]:
 
 
 async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
-    deseadas = [("encrypt", s.name) for s in encrypting_specs()] + [
-        ("index", s.name) for s in indexing_specs()
-    ]
+    deseadas = (
+        [("encrypt", s.name) for s in encrypting_specs()]
+        + [("index", s.name) for s in indexing_specs()]
+        + [("sign", s.name) for s in signing_specs()]
+    )
     activas = await _active_pairs(session)
     for purpose, data_class in deseadas:
         if (purpose, data_class) in activas:
             continue
-        envuelta = await provider.wrap(os.urandom(DEK_LEN))
+        if purpose == "sign":
+            # La privada de firma vive en el proveedor: se guarda la referencia (US-027).
+            envuelta = SIGNING_KEY_REF.encode("ascii")
+        else:
+            envuelta = await provider.wrap(os.urandom(DEK_LEN))
+        key_id = uuid4()
         stmt = (
             insert(CryptoKey)
             .values(
-                id=uuid4(),
+                id=key_id,
                 purpose=purpose,
                 data_class=data_class,
                 algorithm=_ALGORITHM[purpose],
@@ -64,7 +73,9 @@ async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
                 index_where=text("state = 'active'"),
             )
         )
-        await session.execute(stmt)
+        resultado = await session.execute(stmt)
+        if getattr(resultado, "rowcount", 0) == 1 and purpose != "sign":
+            oplog.record("wrap", data_class=data_class, key_id=key_id, key_version=1)
 
 
 async def ensure_keys(session: AsyncSession, provider: KeyProvider) -> Keyring:

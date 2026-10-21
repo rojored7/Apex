@@ -27,12 +27,14 @@ from sqlalchemy.ext.asyncio import (
 from app.cli import init_keys_files, key_paths_in
 from app.core.audit import install_audit_listeners
 from app.core.config import Settings, load_settings
+from app.core.crypto.oplog import install_oplog_listeners
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
 # US-016: los listeners de auditoría viven en la clase Session; en el api los instala
 # create_app y aquí se instalan una vez para toda la suite.
 install_audit_listeners()
+install_oplog_listeners()  # US-029: igual que create_app
 
 
 def alembic_config_for(url: str) -> Config:

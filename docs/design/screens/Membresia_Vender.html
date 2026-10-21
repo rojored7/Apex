@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vender o renovar membresía</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-in{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:0 12px;background:#fff;font:inherit;color:#0E0E0E;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#0E0E0E;color:#fff}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5B6670;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-step{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600}
+.w-step i{width:28px;height:28px;border-radius:50%;border:2px solid #0E0E0E;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:13px}
+.w-step.done i{background:#0E0E0E;color:#fff}
+.w-opt{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #8a8a8a;border-radius:6px;cursor:pointer;font-size:14px}
+.w-opt.on{border:2px solid #009FE3;background:#E5F5FC}
+.w-pay{display:inline-flex;align-items:center;justify-content:center;min-height:56px;padding:0 20px;border:1px solid #0E0E0E;border-radius:6px;font-weight:700;font-size:16px;background:#fff;flex:1 1 120px}
+.w-pay.on{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-li{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #ddd;font-size:14px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: 3 · Vender / renovar membresía · Módulo: D · Socios, planes, membresías y pagos · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Carlos R. · Coach</span>
+    <a href="Login.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #ddd; box-sizing: border-box">
+      <a href="Inicio.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.html">Socios</a>
+      <a href="Membresias.html" class="on">Membresías</a>
+      <a href="Pagos.html">Pagos</a>
+      <a href="Planes.html">Planes</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.html">Clases</a>
+      <a href="WOD_Lista.html">WODs</a>
+      <a href="Movimientos.html">Movimientos</a>
+      <div class="w-grp">Avisos</div>
+      <a href="Notif_Reglas.html">Reglas y plantillas</a>
+      <a href="Notif_Historial.html">Historial de envíos</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div class="w-note"><a href="Membresias.html">Membresías</a> › Vender</div>
+      <h1 class="w-h1">Vender membresía</h1>
+      <div style="display: flex; flex-wrap: wrap; gap: 24px">
+        <span class="w-step done"><i>1</i>Socio</span><span class="w-step done"><i>2</i>Plan y fechas</span><span class="w-step"><i>3</i>Pago</span>
+      </div>
+      <div class="w-note">Los tres pasos van en una sola página; "Renovar" desde la ficha entra con el socio y el plan ya elegidos.</div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <div style="flex: 999 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+          <div class="w-box" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+            <h2 class="w-h2">1 · Socio</h2>
+            <input class="w-in" type="search" aria-label="Buscar socio" placeholder="Buscar por nombre, documento o teléfono">
+            <div class="w-opt on"><span class="w-tag dk">✓</span><div><b>Laura Gómez</b><div class="w-note">Mensual vigente hasta 28 oct 2026 · la nueva empieza el 29 oct</div></div></div>
+            <a href="Socio_Form.html" style="font-size: 13px">¿No está? Crear socio nuevo</a>
+          </div>
+
+          <div class="w-box" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+            <h2 class="w-h2">2 · Plan y fechas</h2>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+              <div class="w-opt on"><div><b>Mensual</b><div class="w-note">30 días · $ 120.000</div></div></div>
+              <div class="w-opt"><div><b>Trimestral</b><div class="w-note">90 días · $ 320.000</div></div></div>
+              <div class="w-opt"><div><b>12 clases</b><div class="w-note">60 días para usarlas · $ 110.000</div></div></div>
+              <div class="w-opt"><div><b>Clase suelta</b><div class="w-note">1 clase · $ 15.000</div></div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+              <div><label class="w-lbl" for="fi">Inicio *</label><input class="w-in" id="fi" type="date" value="2026-10-29"></div>
+              <div><label class="w-lbl" for="ff">Fin (calculado)</label><input class="w-in" id="ff" type="text" value="27 nov 2026" readonly></div>
+              <div><label class="w-lbl" for="pr">Precio pactado *</label><input class="w-in" id="pr" type="text" value="$ 120.000"></div>
+            </div>
+            <div class="w-note">El precio se copia del plan y se puede ajustar (descuento). Queda guardado en la membresía, no en el plan.</div>
+          </div>
+
+          <div class="w-box" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+            <h2 class="w-h2">3 · Pago</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px">
+              <span class="w-pay on">Efectivo</span><span class="w-pay">Nequi</span><span class="w-pay">Bre-B</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+              <div><label class="w-lbl" for="v">Valor recibido *</label><input class="w-in" id="v" type="text" value="$ 120.000"></div>
+              <div><label class="w-lbl" for="rf">Referencia (Nequi / Bre-B)</label><input class="w-in" id="rf" type="text" placeholder="N.º de transacción" disabled></div>
+              <div><label class="w-lbl" for="fp">Fecha del pago *</label><input class="w-in" id="fp" type="date" value="2026-10-20"></div>
+            </div>
+            <div class="w-note">Si el valor es menor al precio, queda como abono y la membresía muestra el saldo pendiente. Recibo por correo si el socio tiene correo.</div>
+          </div>
+        </div>
+
+        <aside class="w-box" style="flex: 1 1 280px; max-width: 100%; padding: 20px; background: #fafafa; display: flex; flex-direction: column; gap: 8px">
+          <h2 class="w-h2">Resumen</h2>
+          <div class="w-li"><span>Socio</span><b>Laura Gómez</b></div>
+          <div class="w-li"><span>Plan</span><b>Mensual</b></div>
+          <div class="w-li"><span>Vigencia</span><b>29 oct – 27 nov</b></div>
+          <div class="w-li"><span>Precio</span><b>$ 120.000</b></div>
+          <div class="w-li"><span>Pago</span><b>$ 120.000 · Efectivo</b></div>
+          <div class="w-li"><span>Saldo</span><b>$ 0</b></div>
+          <div class="w-li"><span>Registra</span><b>Carlos R.</b></div>
+          <a class="w-btn pri" href="Socio_Ficha.html" style="margin-top: 8px; min-height: 52px">Confirmar venta y pago</a>
+          <a class="w-btn" href="Membresias.html">Cancelar</a>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

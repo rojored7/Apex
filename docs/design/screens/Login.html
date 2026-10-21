@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APEX · Iniciar sesión</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-in{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:0 12px;background:#fff;font:inherit;color:#0E0E0E;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:6px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: Acceso · Módulo: C · Acceso e inicio del administrador · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 32px 16px; background: #f3f3f3; display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; align-items: flex-start">
+
+  <form class="w-box" style="flex: 0 1 400px; padding: 32px; display: flex; flex-direction: column; gap: 16px">
+    <div style="text-align: center">
+      <img src="../assets/logo/apex-logo-light-bg.png" alt="APEX Hybrid Training" style="height: 56px; width: auto; display: block; margin: 0 auto">
+      <div class="w-note">[NOMBRE DEL GIMNASIO]</div>
+    </div>
+    <h1 class="w-h2" style="font-size: 20px">Iniciar sesión</h1>
+    <div><label class="w-lbl" for="e">Correo</label><input class="w-in" id="e" type="email" autocomplete="username"></div>
+    <div><label class="w-lbl" for="p">Contraseña</label><input class="w-in" id="p" type="password" autocomplete="current-password"></div>
+    <a class="w-btn pri" href="Inicio.html" style="width: 100%">Entrar</a>
+    <a href="Login.html" style="font-size: 13px; text-align: center">Olvidé mi contraseña</a>
+    <div class="w-note" style="text-align: center">Si eres socio, entras al portal. Si eres coach o admin, al panel.</div>
+  </form>
+
+  <div style="flex: 0 1 320px; display: flex; flex-direction: column; gap: 20px">
+    <div class="w-box" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+      <h2 class="w-h2">Olvidé mi contraseña</h2>
+      <div><label class="w-lbl" for="e2">Correo</label><input class="w-in" id="e2" type="email"></div>
+      <button class="w-btn pri" type="button">Enviar enlace</button>
+      <div class="w-note">Mensaje igual exista o no la cuenta: "Si el correo está registrado, recibirás un enlace".</div>
+    </div>
+    <div class="w-box" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+      <h2 class="w-h2">Nueva contraseña · Activar cuenta</h2>
+      <div class="w-note">Misma pantalla para el enlace de recuperación y para el enlace de activación que el admin envía al socio.</div>
+      <div><label class="w-lbl" for="n1">Nueva contraseña</label><input class="w-in" id="n1" type="password"></div>
+      <div><label class="w-lbl" for="n2">Repetir contraseña</label><input class="w-in" id="n2" type="password"></div>
+      <button class="w-btn pri" type="button">Guardar y entrar</button>
+    </div>
+    <div class="w-note">Tras 5 intentos fallidos el botón se bloquea un minuto (rate limit del plan).</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+/* APEX Hybrid Training — tokens de diseño
+   Fuente de verdad: docs/design/tokens.json. Este archivo se importa una vez en el front
+   (src/core/styles/tokens.css) y todo componente usa las variables, nunca colores literales. */
+
+@import url("https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap");
+
+:root {
+  /* Marca (no cambian con el tema) */
+  --apex-blue: #009FE3;   /* botón principal (texto negro), estado al día, acentos. Nunca texto pequeño sobre blanco */
+  --black: #0E0E0E;
+  --white: #FFFFFF;
+
+  /* Tema claro */
+  --blue-deep: #0077AD;   /* enlaces y texto azul sobre claro; hover del botón principal */
+  --blue-tint: #E5F5FC;   /* fila o tarjeta resaltada */
+  --ink: #0E0E0E;         /* texto principal */
+  --surface: #F2F4F6;     /* fondo de página */
+  --card: #FFFFFF;        /* tarjetas, tablas, paneles, modales */
+  --line: #C9D1D7;        /* bordes */
+  --muted: #5B6670;       /* texto secundario, etiquetas */
+  --danger: #C92A1F;      /* anular, dar de baja, estado vencido */
+  --warning: #B45309;     /* estado por vencer, avisos pendientes */
+
+  /* Tipografía */
+  --font-display: "Michroma", "Eurostile", system-ui, sans-serif;   /* títulos de pantalla, secciones del menú, TV. Mayúsculas, frases cortas */
+  --font-ui: "Titillium Web", "Segoe UI", Roboto, system-ui, sans-serif; /* todo lo demás */
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-tv-title: 400 84px/88px var(--font-display);
+  --text-brand: 400 18px/24px var(--font-display);
+  --text-screen-title: 400 22px/28px var(--font-display);
+  --text-section-title: 400 13px/18px var(--font-display);
+  --text-kpi: 700 34px/38px var(--font-ui);
+  --text-h2: 700 17px/24px var(--font-ui);
+  --text-body: 400 15px/22px var(--font-ui);
+  --text-button: 700 15px/20px var(--font-ui);
+  --text-button-gym: 700 18px/24px var(--font-ui);
+  --text-label: 600 13px/18px var(--font-ui);
+  --text-caption: 400 12px/16px var(--font-ui);
+
+  /* Espacios, radios, tamaños */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-pill: 999px;
+  --control: 44px;      /* alto mínimo de botones y campos en el panel */
+  --control-gym: 56px;  /* alto mínimo en check-in y registro de resultados */
+  --sidebar: 232px;
+  color-scheme: light;
+}
+
+/* Tema oscuro: por preferencia del sistema o por data-theme="dark" en <html> */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --blue-deep: #33B5EA; --blue-tint: #0B2A3A; --ink: #F2F4F6; --surface: #161819;
+    --card: #1F2224; --line: #30363B; --muted: #9AA5AE; --danger: #FF6B5E; --warning: #F5A524;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --blue-deep: #33B5EA; --blue-tint: #0B2A3A; --ink: #F2F4F6; --surface: #161819;
+  --card: #1F2224; --line: #30363B; --muted: #9AA5AE; --danger: #FF6B5E; --warning: #F5A524;
+  color-scheme: dark;
+}
+
+/* Las pantallas de gimnasio (check-in, resultados) y la TV arrancan en oscuro:
+   <html data-theme="dark"> en esas rutas. */
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

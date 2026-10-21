@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APEX · Inicio del administrador</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-ph{background:#e6e6e6;border:1px dashed #8a8a8a;border-radius:6px;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#0E0E0E;color:#fff}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5B6670;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-kpi{font-size:34px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.w-k{display:flex;flex-direction:column;gap:6px;padding:16px;text-decoration:none}
+.w-li{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #ddd;font-size:14px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: 15 · Inicio del administrador · Módulo: C · Acceso e inicio del administrador · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-note">mar 20 oct · 14:32 Bogotá</span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #ddd; box-sizing: border-box">
+      <a href="Inicio.html" class="on">Inicio</a>
+      <div class="w-grp">Hoy</div>
+      <a href="Sesiones.html">Clases de hoy</a>
+      <a href="WOD_Detalle.html">WOD de hoy</a>
+      <a href="PorAvisarHoy.html">Por avisar hoy</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.html">Socios</a>
+      <a href="Membresias.html">Membresías</a>
+      <a href="Pagos.html">Pagos</a>
+      <a href="Planes.html">Planes</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.html">Clases</a>
+      <a href="WOD_Lista.html">WODs</a>
+      <a href="Movimientos.html">Movimientos</a>
+      <div class="w-grp">Avisos</div>
+      <a href="Notif_Reglas.html">Reglas y plantillas</a>
+      <a href="Notif_Historial.html">Historial de envíos</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Usuarios.html">Usuarios y roles</a>
+      <a href="Auditoria.html">Auditoría</a>
+      <a href="Llaves.html">Llaves de cifrado</a>
+      <a href="Config.html">Configuración</a>
+      <div class="w-grp">Pantalla</div>
+      <a href="TV.html">Abrir pantalla TV ↗</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <h1 class="w-h1">Hola, Ana · martes 20 de octubre</h1>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn pri" href="Socio_Form.html">+ Nuevo socio</a>
+        <a class="w-btn" href="Membresia_Vender.html">Vender membresía</a>
+        <a class="w-btn" href="Pagos.html">Registrar pago</a>
+        <a class="w-btn" href="CheckIn.html">Check-in</a>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <a class="w-box w-k" href="Membresias.html"><span class="w-note">Socios al día</span><span class="w-kpi">210</span><span class="w-note">de 269 con membresía</span></a>
+        <a class="w-box w-k" href="Membresias.html" style="border: 2px solid #009FE3; background: #E5F5FC"><span class="w-note">Vencen en 7 días</span><span class="w-kpi">18</span><span class="w-note">3 vencen hoy</span></a>
+        <a class="w-box w-k" href="Membresias.html"><span class="w-note">Vencidos</span><span class="w-kpi">41</span><span class="w-note">12 hace más de 15 días</span></a>
+        <a class="w-box w-k" href="Pagos.html"><span class="w-note">Ingresos de octubre</span><span class="w-kpi">$ 18.240.000</span><span class="w-note">vs sept: $ 17.100.000</span></a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+        <div class="w-box" style="flex: 1 1 300px; min-width: 0; padding: 16px">
+          <div style="display: flex; align-items: center; gap: 8px"><h2 class="w-h2" style="flex: 1 1 auto">Hoy en el box</h2><a href="Sesiones.html" style="font-size: 13px">Ver sesiones</a></div>
+          <div class="w-li"><span>06:00 · Coach Carlos</span><span>8 / 12 <a href="CheckIn.html">Check-in</a></span></div>
+          <div class="w-li"><span>07:00 · Coach Carlos</span><span>12 / 12 <a href="CheckIn.html">Check-in</a></span></div>
+          <div class="w-li"><span>17:00 · Coach María</span><span>3 / 12 <a href="CheckIn.html">Check-in</a></span></div>
+          <div class="w-li"><span>18:00 · Coach María</span><span>0 / 12 <a href="CheckIn.html">Check-in</a></span></div>
+          <div style="margin-top: 10px; font-size: 14px"><b>WOD de hoy:</b> "Helen" · 3 rondas por tiempo · <a href="WOD_Detalle.html">Ver</a> · <a href="Resultados_Registro.html">Registrar resultados</a></div>
+        </div>
+        <div class="w-box" style="flex: 1 1 300px; min-width: 0; padding: 16px">
+          <div style="display: flex; align-items: center; gap: 8px"><h2 class="w-h2" style="flex: 1 1 auto">Por avisar hoy</h2><a href="PorAvisarHoy.html" style="font-size: 13px">Abrir lista</a></div>
+          <div class="w-li"><span>Vencen hoy</span><span>3 · 1 sin push</span></div>
+          <div class="w-li"><span>Vencen en 3 días</span><span>6 · 4 sin push</span></div>
+          <div class="w-li"><span>Vencidos hace 1 / 7 / 15 días</span><span>2 / 4 / 1</span></div>
+          <div class="w-li"><span>Sin entrenar 10+ días (retención)</span><span>5</span></div>
+          <div class="w-note" style="margin-top: 10px">9 pendientes de enviar por WhatsApp</div>
+        </div>
+        <div class="w-box" style="flex: 1 1 300px; min-width: 0; padding: 16px">
+          <div style="display: flex; align-items: center; gap: 8px"><h2 class="w-h2" style="flex: 1 1 auto">Asistencia de la semana</h2><span class="w-note">lun 19 – dom 25</span></div>
+          <div class="w-ph" style="height: 120px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #555">[gráfico de barras · asistentes por día]</div>
+          <div class="w-li"><span>Promedio por clase</span><span>9,4</span></div>
+          <div class="w-li"><span>Socios distintos esta semana</span><span>132</span></div>
+        </div>
+      </div>
+
+      <div class="w-box" style="padding: 16px">
+        <div style="display: flex; align-items: center; gap: 8px"><h2 class="w-h2" style="flex: 1 1 auto">Últimos movimientos</h2><a href="Auditoria.html" style="font-size: 13px">Ver auditoría</a></div>
+        <div class="w-li"><span>Carlos registró pago $120.000 (Nequi) · Laura Gómez</span><span class="w-note">14:10</span></div>
+        <div class="w-li"><span>Ana vendió Mensual a Diego Mora</span><span class="w-note">11:52</span></div>
+        <div class="w-li"><span>Sistema marcó 3 membresías como vencidas</span><span class="w-note">07:00</span></div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal del socio · mis WODs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:8px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 16px;border:1px solid #0E0E0E;border-radius:8px;background:#fff;color:#0E0E0E;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-in{min-height:52px;border:2px solid #8a8a8a;border-radius:8px;padding:0 14px;background:#fff;font:inherit;font-size:24px;font-weight:700;color:#0E0E0E;box-sizing:border-box;width:100%;text-align:center}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-note{font-size:12px;color:#5B6670}
+.w-tab{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;font-size:11px;text-decoration:none;color:#444}
+.w-tab.on{color:#0077AD;font-weight:700}
+.w-tab i{width:24px;height:24px;border:2px solid currentColor;border-radius:6px;display:block}
+.w-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ddd;text-decoration:none}
+.w-row b{font-size:15px}
+.w-lvl{display:inline-flex;align-items:center;justify-content:center;min-height:48px;flex:1 1 0;border:2px solid #0E0E0E;border-radius:8px;font-size:16px;font-weight:800}
+.w-lvl.on{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+<style>body{display:flex;justify-content:center;background:#555}body>div{flex:0 0 390px}</style>
+<!-- Pantalla: 17 · Portal · mis WODs · Módulo: J · Pantalla de TV y portal del socio · fija 390×844 -->
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #fff">
+  <header style="padding: 14px 16px 8px; display: flex; align-items: center; gap: 8px"><div style="font-size: 22px; font-weight: 800; flex: 1 1 auto">WODs</div><a href="Portal_WODs.html" style="font-size: 13px">Buscar</a></header>
+  <main style="flex: 1 1 auto; overflow: hidden; padding: 0 16px; display: flex; flex-direction: column; gap: 12px">
+
+    <div class="w-box" style="padding: 14px 16px; border-width: 2px; display: flex; flex-direction: column; gap: 8px">
+      <div class="w-note">Hoy · martes 20</div>
+      <div style="font-size: 20px; font-weight: 800">Helen <span class="w-tag">Benchmark</span> <span class="w-tag">Tiempo</span></div>
+      <div style="font-size: 14px">3 rondas: run 400 m · 21 KB swing 24/16 kg · 12 pull-up · límite 20:00</div>
+      <div class="w-note">Tu mejor Helen: 12:10 RX (12 mar)</div>
+      <div style="border-top: 1px solid #ddd; padding-top: 10px; display: flex; flex-direction: column; gap: 8px">
+        <div class="w-note">Registrar mi resultado (el coach lo valida)</div>
+        <label for="t" class="w-note">Tiempo (mm:ss)</label><input class="w-in" id="t" type="text" placeholder="00:00" inputmode="numeric">
+        <div style="display: flex; gap: 8px"><span class="w-lvl on">RX</span><span class="w-lvl">RX+</span><span class="w-lvl">Escalado</span></div>
+        <a class="w-btn pri" href="Portal_WODs.html">Enviar</a>
+        <div class="w-note">Si ya lo registró el coach, aquí ves tu resultado y "Pedir corrección".</div>
+      </div>
+    </div>
+
+    <div class="w-note">Mi historial · filtro: fecha, movimiento, solo benchmarks</div>
+    <div style="display: flex; flex-direction: column">
+      <a class="w-row" href="Portal_WODs.html"><div style="flex: 1 1 auto"><b>Fuerza · Back Squat</b><div class="w-note">lun 19 oct · 5×5</div></div><span><b>85 kg</b> · PR</span></a>
+      <a class="w-row" href="Portal_WODs.html"><div style="flex: 1 1 auto"><b>Chipper 18-10</b><div class="w-note">dom 18 oct · tiempo</div></div><span><b>22:14</b> · Esc.</span></a>
+      <a class="w-row" href="Portal_WODs.html"><div style="flex: 1 1 auto"><b>AMRAP 12</b><div class="w-note">vie 16 oct · rondas y reps</div></div><span><b>7 + 12</b> · RX</span></a>
+      <a class="w-row" href="Portal_WODs.html"><div style="flex: 1 1 auto"><b>Grace</b> <span class="w-tag">Benchmark</span><div class="w-note">mié 14 oct · tiempo</div></div><span><b>4:58</b> · RX</span></a>
+    </div>
+    <button class="w-btn" type="button" style="margin-top: auto">Cargar más</button>
+  </main>
+  <nav style="display: flex; border-top: 1px solid #8a8a8a; padding-bottom: 8px" aria-label="Menú del portal">
+    <a class="w-tab" href="Portal_Inicio.html"><i></i>Inicio</a>
+    <a class="w-tab" href="Portal_Pagos.html"><i></i>Pagos</a>
+    <a class="w-tab on" href="Portal_WODs.html"><i></i>WODs</a>
+    <a class="w-tab" href="Portal_Progreso.html"><i></i>Progreso</a>
+    <a class="w-tab" href="Portal_Datos.html"><i></i>Yo</a>
+  </nav>
+</div>
+</body>
+</html>

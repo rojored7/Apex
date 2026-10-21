@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal del socio · mis avisos · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:8px;background:#1F2224;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 16px;border:1px solid #30363B;border-radius:8px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-tab{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;font-size:11px;text-decoration:none;color:#B5BEC5}
+.w-tab.on{color:#33B5EA;font-weight:700}
+.w-tab i{width:24px;height:24px;border:2px solid currentColor;border-radius:6px;display:block}
+.w-chk{display:flex;gap:10px;align-items:center;font-size:14px;padding:8px 0}
+.w-msg{padding:10px 0;border-bottom:1px solid #30363B;font-size:14px}
+.w-msg.new{font-weight:600}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+<style>body{display:flex;justify-content:center;background:#555}body>div{flex:0 0 390px}</style>
+<!-- Pantalla: 17 · Portal · mis avisos · Módulo: J · Pantalla de TV y portal del socio · fija 390×844 -->
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #1F2224">
+  <header style="padding: 14px 16px 8px; display: flex; align-items: center; gap: 10px"><a href="Portal_Datos.dark.html" aria-label="Volver" style="font-size: 22px; text-decoration: none">‹</a><div style="font-size: 22px; font-weight: 800">Mis avisos</div></header>
+  <main style="flex: 1 1 auto; overflow: hidden; padding: 0 16px; display: flex; flex-direction: column; gap: 12px">
+
+    <div class="w-box" style="padding: 14px 16px; border-width: 2px; display: flex; flex-direction: column; gap: 8px">
+      <b>Notificaciones en este celular</b>
+      <div class="w-note">Estado: <span class="w-tag">no activadas</span>. Actívalas para recibir el aviso de vencimiento y el WOD del día sin costo.</div>
+      <a class="w-btn pri" href="Portal_Avisos.dark.html">Activar notificaciones</a>
+      <div class="w-note">En iPhone primero hay que "Agregar a pantalla de inicio" y abrir la app desde ahí; se muestra una guía de 3 pasos si se detecta Safari.</div>
+    </div>
+
+    <div class="w-box" style="padding: 8px 16px">
+      <b style="display: block; padding: 6px 0">Por dónde quiero que me avisen</b>
+      <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Notificación en el celular (push)</label>
+      <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Correo</label>
+      <label class="w-chk"><input type="checkbox" style="width: 20px; height: 20px"> Telegram</label>
+      <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> WhatsApp del box (lo envía el coach)</label>
+      <div class="w-note" style="padding-bottom: 6px">Los avisos de vencimiento siempre llegan por algún canal; lo que eliges es cuál.</div>
+    </div>
+
+    <div>
+      <b style="display: block; padding: 4px 0">Recibidos</b>
+      <div class="w-msg new">Tu plan Mensual vence el 28 de octubre.<div class="w-note">hoy 07:00 · push</div></div>
+      <div class="w-msg">Recibo de tu pago de $120.000 (Nequi).<div class="w-note">2 oct · correo</div></div>
+      <div class="w-msg">Tu plan Mensual vence el 28 de septiembre.<div class="w-note">25 sep · push</div></div>
+      <div class="w-msg" style="border-bottom: 0">¡Bienvenida a APEX! Aquí tienes tu horario…<div class="w-note">12 mar · correo</div></div>
+    </div>
+    <button class="w-btn" type="button" style="margin-top: auto">Cargar más</button>
+  </main>
+  <nav style="display: flex; border-top: 1px solid #8a8a8a; padding-bottom: 8px" aria-label="Menú del portal">
+    <a class="w-tab" href="Portal_Inicio.dark.html"><i></i>Inicio</a>
+    <a class="w-tab" href="Portal_Pagos.dark.html"><i></i>Pagos</a>
+    <a class="w-tab" href="Portal_WODs.dark.html"><i></i>WODs</a>
+    <a class="w-tab" href="Portal_Progreso.dark.html"><i></i>Progreso</a>
+    <a class="w-tab on" href="Portal_Datos.dark.html"><i></i>Yo</a>
+  </nav>
+</div>
+</body>
+</html>

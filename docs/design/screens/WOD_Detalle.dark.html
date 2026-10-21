@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WOD · detalle y leaderboard · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-tbl{width:100%;border-collapse:collapse;min-width:720px}
+.w-tbl th,.w-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #30363B;font-size:14px;vertical-align:middle}
+.w-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#9AA5AE}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#161819;color:#F2F4F6}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9AA5AE;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #8a8a8a}
+.w-tabs a{padding:10px 14px;text-decoration:none;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.w-tabs a.on{border-bottom-color:#009FE3;font-weight:700}
+.w-chip{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid #4A5157;border-radius:999px;font-size:13px;text-decoration:none}
+.w-chip.on{background:#161819;color:#F2F4F6;border-color:#F2F4F6}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: 7 y 8 · WOD · detalle y leaderboard · Módulo: F · Movimientos, WODs y resultados · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Carlos R. · Coach</span>
+    <a href="Login.dark.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #30363B; box-sizing: border-box">
+      <a href="Inicio.dark.html">Inicio</a>
+      <div class="w-grp">Hoy</div>
+      <a href="Sesiones.dark.html">Clases de hoy</a>
+      <a href="WOD_Detalle.dark.html" class="on">WOD de hoy</a>
+      <a href="PorAvisarHoy.dark.html">Por avisar hoy</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.dark.html">Clases</a>
+      <a href="WOD_Lista.dark.html">WODs</a>
+      <a href="Movimientos.dark.html">Movimientos</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.dark.html">Socios</a>
+      <a href="Membresias.dark.html">Membresías</a>
+      <a href="Pagos.dark.html">Pagos</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div class="w-note"><a href="WOD_Lista.dark.html">WODs</a> › Helen · mar 20 oct</div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <div>
+          <h1 class="w-h1">Helen <span class="w-tag dk">Benchmark</span> <span class="w-tag">Por tiempo</span></h1>
+          <div class="w-note">Martes 20 de octubre · 4 sesiones · 20 resultados de 31 asistentes</div>
+        </div>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn pri" href="Resultados_Registro.dark.html">Registrar resultados</a>
+        <a class="w-btn" href="WOD_Form.dark.html">Editar</a>
+        <a class="w-btn" href="TV.html">Ver en TV ↗</a>
+        <button class="w-btn" type="button">Más ▾</button>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <div class="w-box" style="flex: 1 1 280px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+          <h2 class="w-h2">El WOD</h2>
+          <div style="font-size: 14px"><b>3 rondas por tiempo · límite 20:00</b></div>
+          <div style="font-size: 14px">1 · Run 400 m</div>
+          <div style="font-size: 14px">2 · Kettlebell swing · 21 reps · 24 / 16 kg</div>
+          <div style="font-size: 14px">3 · Pull-up · 12 reps</div>
+          <div class="w-note" style="margin-top: 6px">Escalado sugerido: KB 16/12 kg, pull-up con banda o ring row.</div>
+          <div class="w-note">Veces hecho en el box: 4 · última: 12 mar 2026 · <a href="Atleta_Perfil.dark.html">comparar</a></div>
+        </div>
+
+        <div style="flex: 999 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+          <div class="w-tabs">
+            <a href="WOD_Detalle.dark.html" class="on">Leaderboard</a>
+            <a href="WOD_Detalle.dark.html">Todos los resultados (31)</a>
+            <a href="WOD_Detalle.dark.html">Por validar (2)</a>
+            <a href="Auditoria.dark.html">Historial</a>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+            <a class="w-chip on" href="WOD_Detalle.dark.html">RX</a><a class="w-chip" href="WOD_Detalle.dark.html">RX+</a><a class="w-chip" href="WOD_Detalle.dark.html">Escalado</a>
+            <span class="w-note">·</span>
+            <a class="w-chip on" href="WOD_Detalle.dark.html">Mujeres</a><a class="w-chip" href="WOD_Detalle.dark.html">Hombres</a>
+            <span style="flex: 1 1 auto"></span>
+            <input class="w-in" type="search" aria-label="Buscar atleta" placeholder="Buscar atleta" style="width: 200px; min-height: 36px">
+          </div>
+          <div class="w-box" style="overflow-x: auto">
+            <table class="w-tbl">
+              <thead><tr><th>#</th><th>Atleta</th><th>Tiempo</th><th>Nivel</th><th>vs. su anterior</th><th>Registró</th><th style="text-align: right">Acción</th></tr></thead>
+              <tbody>
+                <tr><td><b>1</b></td><td><a href="Socio_Ficha.dark.html">Valentina Ríos</a></td><td><b>9:58</b></td><td>RX</td><td>−0:31</td><td>Carlos · 07:48</td><td style="text-align: right"><a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+                <tr><td><b>2</b></td><td><a href="Socio_Ficha.dark.html">Mariana Soto</a></td><td><b>10:44</b></td><td>RX</td><td>primera vez</td><td>Carlos · 07:49</td><td style="text-align: right"><a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+                <tr><td><b>3</b></td><td><a href="Socio_Ficha.dark.html">Laura Gómez</a></td><td><b>11:42</b></td><td>RX</td><td>−0:28 · PR</td><td>Carlos · 18:04</td><td style="text-align: right"><a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+                <tr><td><b>4</b></td><td><a href="Socio_Ficha.dark.html">Paula Lema</a></td><td><b>12:30</b></td><td>RX</td><td>+0:12</td><td>María · 18:10</td><td style="text-align: right"><a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+                <tr style="color: #9AA5AE"><td>—</td><td><a href="Socio_Ficha.dark.html">Sara Nieto</a></td><td>DNF · 2 rondas + 15 reps</td><td>RX</td><td>—</td><td>María · 18:11</td><td style="text-align: right"><a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+                <tr style="background: #242729"><td>—</td><td><a href="Socio_Ficha.dark.html">Ana Botero</a> <span class="w-tag">enviado por la socia</span></td><td>13:05</td><td>RX</td><td>—</td><td>Ana B. (portal) · 19:30</td><td style="text-align: right"><a href="WOD_Detalle.dark.html">Validar</a> · <a href="Resultados_Registro.dark.html">Corregir</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="w-note">Orden: tiempo menor primero; quien no terminó va al final ordenado por reps. Para rondas y reps: más rondas, luego más reps. Para carga: mayor carga. Un resultado enviado desde el portal no entra al leaderboard hasta que el coach lo valide.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

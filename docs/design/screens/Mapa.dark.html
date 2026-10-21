@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APEX · Mapa de navegación · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.m-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.m-colh{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:16px;font-weight:400;margin:0;padding:12px 16px;background:#161819;color:#F2F4F6;border-radius:8px;text-transform:uppercase}
+.m-sec{border:1px solid #4A5157;border-radius:8px;padding:12px 14px;background:#1F2224;display:flex;flex-direction:column;gap:6px}
+.m-sec h3{margin:0 0 4px;font-size:15px;font-weight:800;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.m-sec a{font-size:13px;text-decoration:none;padding:4px 8px;border:1px solid #4A5157;border-radius:5px;display:block}
+.m-sec a:hover{border-color:#F2F4F6}
+.m-sub{font-size:12px;color:#B5BEC5;padding-left:10px}
+.m-role{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid #9AA5AE;white-space:nowrap}
+.m-role.a{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.m-flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+.m-step{border:1px solid #009FE3;border-radius:6px;padding:8px 12px;background:#1F2224;font-weight:600}
+.m-step.sys{border-style:dashed;font-weight:400;background:#2C3033}
+.m-arr{font-size:18px;color:#B5BEC5}
+.m-fl{font-size:13px;font-weight:800;min-width:150px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+<style>body{display:flex;justify-content:center;background:#555}body>div{flex:0 0 2000px}</style>
+<!-- Pantalla: Mapa de navegación completo · Módulo: A · Mapa de navegación (todos los roles) · fija 2000×1560 -->
+</head>
+<body>
+<div style="width: 2000px; height: 1560px; box-sizing: border-box; padding: 40px; display: flex; flex-direction: column; gap: 24px">
+
+  <div style="display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap">
+    <div style="display: flex; align-items: center; gap: 16px"><img src="../assets/logo/apex-logo-light-bg.png" alt="APEX Hybrid Training" style="height: 48px; width: auto"><h1 style="margin: 0; font-family: 'Michroma','Eurostile',system-ui,sans-serif; font-size: 24px; font-weight: 400; text-transform: uppercase">Mapa de navegación</h1></div>
+    <span style="font-size: 14px; color: #B5BEC5">Cada caja es una pantalla; haz clic para ver su wireframe. Etiquetas: <span class="m-role a">admin</span> <span class="m-role">coach</span> <span class="m-role">socio</span></span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 300px 1fr 1fr 1fr 340px; gap: 20px; align-items: start">
+
+    <div class="m-col">
+      <h2 class="m-colh">1 · Acceso</h2>
+      <div class="m-sec">
+        <h3>Entrar</h3>
+        <a href="Login.dark.html">Iniciar sesión (correo + contraseña)</a>
+        <div class="m-sub">Según el rol, lleva al panel o al portal</div>
+        <a href="Login.dark.html">Olvidé mi contraseña → enlace por correo</a>
+        <a href="Login.dark.html">Nueva contraseña</a>
+        <a href="Login.dark.html">Activar cuenta de socio (enlace que envía el admin)</a>
+      </div>
+      <div class="m-sec">
+        <h3>Pantalla pública <span class="m-role">TV del box</span></h3>
+        <a href="TV.html">16 · WOD del día + leaderboard</a>
+        <div class="m-sub">Sin interacción. Se abre con un enlace con token desde Configuración.</div>
+      </div>
+      <div class="m-sec" style="background: #242729">
+        <h3>Reglas que aplican a todo</h3>
+        <div class="m-sub">· Toda lista tiene búsqueda, filtros, orden y paginación.</div>
+        <div class="m-sub">· Crear y editar usan el mismo formulario.</div>
+        <div class="m-sub">· Dar de baja y anular piden confirmación; anular pide motivo.</div>
+        <div class="m-sub">· Cada ficha tiene pestaña Historial (auditoría del registro).</div>
+        <div class="m-sub">· Pesos COP sin decimales; fechas y horas en Bogotá.</div>
+      </div>
+    </div>
+
+    <div class="m-col">
+      <h2 class="m-colh">2 · Panel · operación <span style="font-size:13px;font-weight:500">admin y coach</span></h2>
+      <div class="m-sec">
+        <h3>Inicio <span class="m-role a">admin</span><span class="m-role">coach</span></h3>
+        <a href="Inicio.dark.html">15 · Resumen del día y accesos rápidos</a>
+        <div class="m-sub">Al día · por vencer · vencidos · ingresos del mes · asistencia de la semana</div>
+      </div>
+      <div class="m-sec">
+        <h3>Hoy</h3>
+        <a href="Sesiones.dark.html">Clases de hoy</a>
+        <a href="CheckIn.dark.html">→ Check-in de una sesión (tablet, botones grandes)</a>
+        <a href="WOD_Detalle.dark.html">WOD de hoy</a>
+        <a href="Resultados_Registro.dark.html">→ Registrar resultados (tablet, botones grandes)</a>
+        <a href="WOD_Detalle.dark.html">→ Leaderboard del día</a>
+        <a href="PorAvisarHoy.dark.html">Por avisar hoy (enlaces de WhatsApp)</a>
+      </div>
+      <div class="m-sec">
+        <h3>Socios</h3>
+        <a href="Socios_Lista.dark.html">1 · Lista de socios</a>
+        <a href="Socio_Ficha.dark.html">1 · Ficha del socio</a>
+        <div class="m-sub">Pestañas: Datos · Membresías · Pagos · Asistencia · Resultados · Atleta · Avisos · Adjuntos · Historial</div>
+        <a href="Socio_Form.dark.html">1 · Nuevo socio / Editar socio</a>
+        <a href="P_Formulario.dark.html">1 · Dar de baja (confirmación)</a>
+      </div>
+      <div class="m-sec">
+        <h3>Membresías y pagos</h3>
+        <a href="Membresias.dark.html">3 · Lista de membresías por estado</a>
+        <a href="Membresia_Vender.dark.html">3 · Vender / renovar (termina registrando el pago)</a>
+        <a href="Membresias.dark.html">3 · Congelar · Anular (modales desde la lista o la ficha)</a>
+        <a href="Pagos.dark.html">4 · Lista de pagos</a>
+        <a href="Pagos.dark.html">4 · Registrar pago · Detalle · Anular con motivo</a>
+        <div class="m-sub">Un pago nunca se edita: se anula y se crea otro.</div>
+      </div>
+      <div class="m-sec">
+        <h3>Planes <span class="m-role a">admin</span></h3>
+        <a href="Planes.dark.html">2 · Lista de planes + crear / editar en panel lateral</a>
+        <a href="Planes.dark.html">2 · Activar / desactivar</a>
+      </div>
+    </div>
+
+    <div class="m-col">
+      <h2 class="m-colh">3 · Panel · entrenamiento <span style="font-size:13px;font-weight:500">admin y coach</span></h2>
+      <div class="m-sec">
+        <h3>Clases</h3>
+        <a href="Sesiones.dark.html">5 · Sesiones de la semana (calendario)</a>
+        <a href="Horario.dark.html">5 · Horario semanal configurable (plantilla)</a>
+        <a href="CheckIn.dark.html">5 · Sesión → Check-in y asistencia</a>
+        <div class="m-sub">El check-in valida la membresía; si está vencida deja entrar y lo marca.</div>
+      </div>
+      <div class="m-sec">
+        <h3>WODs</h3>
+        <a href="WOD_Lista.dark.html">7 · Calendario de WODs</a>
+        <a href="WOD_Form.dark.html">7 · Nuevo WOD / Editar (movimientos, reps, cargas RX)</a>
+        <a href="WOD_Detalle.dark.html">7 · Detalle del WOD → resultados y leaderboard</a>
+        <a href="WOD_Lista.dark.html">7 · Benchmarks (filtro del calendario)</a>
+      </div>
+      <div class="m-sec">
+        <h3>Resultados</h3>
+        <a href="Resultados_Registro.dark.html">8 · Registrar resultados de una sesión</a>
+        <a href="WOD_Detalle.dark.html">8 · Corregir un resultado (queda en auditoría)</a>
+        <a href="WOD_Detalle.dark.html">8 · Validar resultados enviados por socios</a>
+      </div>
+      <div class="m-sec">
+        <h3>Movimientos</h3>
+        <a href="Movimientos.dark.html">6 · Catálogo + crear / editar en panel lateral</a>
+      </div>
+      <div class="m-sec">
+        <h3>Atleta (dentro de la ficha del socio)</h3>
+        <a href="Atleta_Perfil.dark.html">9 · Medidas corporales en el tiempo</a>
+        <a href="Atleta_Perfil.dark.html">9 · RMs por movimiento</a>
+        <a href="Atleta_Perfil.dark.html">9 · Récords automáticos y manuales</a>
+        <a href="Atleta_Perfil.dark.html">9 · Comparación de benchmarks</a>
+      </div>
+    </div>
+
+    <div class="m-col">
+      <h2 class="m-colh">4 · Panel · avisos y sistema</h2>
+      <div class="m-sec">
+        <h3>Avisos <span class="m-role a">admin</span><span class="m-role">coach</span></h3>
+        <a href="PorAvisarHoy.dark.html">10 · Por avisar hoy</a>
+        <a href="Notif_Reglas.dark.html">10 · Reglas (cuándo avisar)</a>
+        <a href="Notif_Reglas.dark.html">10 · Plantillas de mensaje</a>
+        <a href="Notif_Historial.dark.html">10 · Historial de envíos (canal y resultado)</a>
+      </div>
+      <div class="m-sec">
+        <h3>Sistema <span class="m-role a">solo admin</span></h3>
+        <a href="Usuarios.dark.html">11 · Usuarios del sistema y roles</a>
+        <a href="Auditoria.dark.html">12 · Auditoría (quién cambió qué)</a>
+        <a href="Llaves.dark.html">13 · Llaves de cifrado (inventario, bitácora, rotar)</a>
+        <a href="Config.dark.html">14 · Configuración del gimnasio</a>
+        <div class="m-sub">Nombre · horario · medios de pago · canales de aviso · cupo por defecto · enlace de la TV</div>
+      </div>
+      <div class="m-sec" style="background: #242729">
+        <h3>Qué ve cada rol</h3>
+        <div class="m-sub"><b>Admin:</b> todo.</div>
+        <div class="m-sub"><b>Coach:</b> Inicio, Hoy, Socios (ver, crear, editar), Membresías y Pagos (vender y registrar; no anular), Clases, WODs, Movimientos, Atleta, Avisos. No ve Sistema.</div>
+        <div class="m-sub"><b>Socio:</b> solo el portal.</div>
+      </div>
+    </div>
+
+    <div class="m-col">
+      <h2 class="m-colh">5 · Portal <span style="font-size:13px;font-weight:500">socio</span></h2>
+      <div class="m-sec">
+        <h3>Menú inferior (5 pestañas)</h3>
+        <a href="Portal_Inicio.dark.html">17 · Inicio: mi plan y vencimiento, próxima clase, WOD de hoy</a>
+        <a href="Portal_Pagos.dark.html">17 · Pagos: historial y recibo</a>
+        <a href="Portal_WODs.dark.html">17 · WODs: mis resultados, registrar el mío</a>
+        <a href="Portal_Progreso.dark.html">17 · Progreso: récords, RMs, medidas, benchmarks</a>
+        <a href="Portal_Datos.dark.html">17 · Yo: mis datos, unidad kg/lb, foto</a>
+        <a href="Portal_Avisos.dark.html">17 · Yo → Mis avisos y permiso de push</a>
+      </div>
+      <div class="m-sec" style="background: #242729">
+        <h3>Nota</h3>
+        <div class="m-sub">Es la misma web. En celular se instala como PWA para recibir push; en escritorio se ve centrada a 600 px de ancho.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="border-top: 2px solid #0E0E0E; padding-top: 16px; display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0 0 4px; font-size: 20px; font-weight: 800">Flujos principales</h2>
+    <div class="m-flow"><span class="m-fl">F1 · Alta y venta</span><span class="m-step">Nuevo socio</span><span class="m-arr">→</span><span class="m-step">Guardar</span><span class="m-arr">→</span><span class="m-step">Vender membresía</span><span class="m-arr">→</span><span class="m-step">Registrar pago</span><span class="m-arr">→</span><span class="m-step sys">membresía activa · recibo por correo · auditoría</span></div>
+    <div class="m-flow"><span class="m-fl">F2 · Renovación</span><span class="m-step">Inicio: por vencer</span><span class="m-arr">→</span><span class="m-step">Ficha del socio</span><span class="m-arr">→</span><span class="m-step">Renovar</span><span class="m-arr">→</span><span class="m-step">Registrar pago</span><span class="m-arr">→</span><span class="m-step sys">nueva vigencia desde el fin de la anterior</span></div>
+    <div class="m-flow"><span class="m-fl">F3 · Clase</span><span class="m-step">Clases de hoy</span><span class="m-arr">→</span><span class="m-step">Check-in (valida membresía)</span><span class="m-arr">→</span><span class="m-step">Registrar resultados</span><span class="m-arr">→</span><span class="m-step">Leaderboard</span><span class="m-arr">→</span><span class="m-step sys">TV del box · récord automático si supera el anterior</span></div>
+    <div class="m-flow"><span class="m-fl">F4 · Avisos</span><span class="m-step sys">worker 7:00 am</span><span class="m-arr">→</span><span class="m-step sys">push · correo</span><span class="m-arr">→</span><span class="m-step">Por avisar hoy (lo que no llegó)</span><span class="m-arr">→</span><span class="m-step">Enlace WhatsApp</span><span class="m-arr">→</span><span class="m-step">Marcar enviado</span><span class="m-arr">→</span><span class="m-step sys">historial de envíos</span></div>
+    <div class="m-flow"><span class="m-fl">F5 · Corregir un pago</span><span class="m-step">Detalle del pago</span><span class="m-arr">→</span><span class="m-step">Anular con motivo</span><span class="m-arr">→</span><span class="m-step">Registrar pago nuevo</span><span class="m-arr">→</span><span class="m-step sys">ambos quedan en el historial y en auditoría</span></div>
+    <div class="m-flow"><span class="m-fl">F6 · Rotar una llave</span><span class="m-step">Llaves de cifrado</span><span class="m-arr">→</span><span class="m-step">Rotar (confirmar)</span><span class="m-arr">→</span><span class="m-step sys">worker recifra por lotes · versión anterior queda "solo descifrar"</span><span class="m-arr">→</span><span class="m-step">Bitácora y auditoría</span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Llaves de cifrado · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-btn.dan{border-color:#C92A1F;color:#C92A1F}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#D5DBE0;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-tag.warn{border:2px solid #8a1c1c;color:#8a1c1c}
+.w-tbl{width:100%;border-collapse:collapse;min-width:900px}
+.w-tbl th,.w-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #30363B;font-size:13px;vertical-align:middle}
+.w-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#9AA5AE}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#161819;color:#F2F4F6}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9AA5AE;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #8a8a8a}
+.w-tabs a{padding:10px 14px;text-decoration:none;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.w-tabs a.on{border-bottom-color:#009FE3;font-weight:700}
+.w-kpi{font-size:26px;font-weight:800}
+.w-mono{font-family:ui-monospace,monospace;font-size:12px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: 13 · Llaves de cifrado · Módulo: I · Sistema (solo admin) · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.dark.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #30363B; box-sizing: border-box">
+      <a href="Inicio.dark.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.dark.html">Socios</a>
+      <a href="Membresias.dark.html">Membresías</a>
+      <a href="Pagos.dark.html">Pagos</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Usuarios.dark.html">Usuarios y roles</a>
+      <a href="Auditoria.dark.html">Auditoría</a>
+      <a href="Llaves.dark.html" class="on">Llaves de cifrado</a>
+      <a href="Config.dark.html">Configuración</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <div>
+          <h1 class="w-h1">Llaves de cifrado</h1>
+          <div class="w-note">Proveedor activo: OpenBao Transit · conectado · sellado: no · Este inventario es el CBOM del sistema.</div>
+        </div>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn" href="Llaves.dark.html">Exportar CBOM</a>
+        <a class="w-btn" href="Llaves.dark.html">Verificar estado del proveedor</a>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <div class="w-box" style="padding: 12px 16px"><div class="w-note">Llaves activas</div><div class="w-kpi">8</div></div>
+        <div class="w-box" style="padding: 12px 16px; border: 2px solid #009FE3; background: #0B2A3A"><div class="w-note">Rotación vencida o próxima (30 días)</div><div class="w-kpi">2</div></div>
+        <div class="w-box" style="padding: 12px 16px"><div class="w-note">Recifrados en curso</div><div class="w-kpi">1</div></div>
+        <div class="w-box" style="padding: 12px 16px"><div class="w-note">Operaciones hoy</div><div class="w-kpi">1.204</div></div>
+      </div>
+
+      <div class="w-tabs">
+        <a href="Llaves.dark.html" class="on">Inventario</a>
+        <a href="Llaves.dark.html">Bitácora de operaciones</a>
+        <a href="Llaves.dark.html">Tareas de recifrado</a>
+      </div>
+
+      <div class="w-box" style="overflow-x: auto">
+        <table class="w-tbl">
+          <thead><tr><th>Propósito</th><th>Algoritmo</th><th>Dónde vive</th><th>Versión</th><th>Creada</th><th>Última rotación</th><th>Límite</th><th>Estado</th><th style="text-align: right">Acción</th></tr></thead>
+          <tbody>
+            <tr><td><b>KEK (llave maestra)</b></td><td>AES-256 (Transit)</td><td>OpenBao</td><td>v4</td><td>2 mar 2026</td><td>18 oct 2026</td><td>16 ene 2027</td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>DEK · member.document</b></td><td>AES-256-GCM</td><td>envuelta · tabla crypto_keys</td><td>v2</td><td>2 mar 2026</td><td>2 mar 2026</td><td><span class="w-tag warn">vence 2 mar 2027</span></td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>DEK · member.contact</b> <span class="w-note">(teléfono, correo, emergencia)</span></td><td>AES-256-GCM</td><td>envuelta</td><td>v3</td><td>2 mar 2026</td><td>19 oct 2026</td><td>19 oct 2027</td><td><span class="w-tag">Recifrando 62 %</span></td><td style="text-align: right"><a href="Llaves.dark.html">Ver tarea</a></td></tr>
+            <tr style="color: #9AA5AE"><td>DEK · member.contact</td><td>AES-256-GCM</td><td>envuelta</td><td>v2</td><td>2 mar 2026</td><td>—</td><td>—</td><td><span class="w-tag">Solo descifrar</span></td><td style="text-align: right"><a href="Llaves.dark.html">Ver</a></td></tr>
+            <tr><td><b>DEK · athlete.metrics</b></td><td>AES-256-GCM</td><td>envuelta</td><td>v1</td><td>9 sep 2026</td><td>9 sep 2026</td><td>9 sep 2027</td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>DEK · attachment.sensitive</b></td><td>AES-256-GCM</td><td>envuelta</td><td>v1</td><td>2 mar 2026</td><td>2 mar 2026</td><td>2 mar 2027</td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>Índice ciego</b></td><td>HMAC-SHA-256</td><td>envuelta</td><td>v1</td><td>2 mar 2026</td><td>2 mar 2026</td><td>2 mar 2027</td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>Firma JWT</b></td><td>Ed25519</td><td>OpenBao</td><td>v7</td><td>2 mar 2026</td><td>1 oct 2026</td><td><span class="w-tag warn">30 oct 2026</span></td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+            <tr><td><b>Firma de auditoría</b></td><td>ML-DSA-65 (FIPS 204)</td><td>OpenBao</td><td>v1</td><td>14 ago 2026</td><td>14 ago 2026</td><td>14 ago 2028</td><td><span class="w-tag dk">Activa</span></td><td style="text-align: right"><a href="Llaves.dark.html">Rotar</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="w-note">Nunca se muestra material de llave: solo metadatos y, cuando aplica, la huella de la parte pública. Una llave no se borra; pasa a "solo descifrar", luego "retirada" y, cuando ya no hay datos con esa versión, "destruida".</div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+        <div class="w-box" style="flex: 1 1 320px; padding: 20px; border-width: 2px; display: flex; flex-direction: column; gap: 12px">
+          <h2 class="w-h2">Modal · Rotar DEK · member.document</h2>
+          <p style="margin: 0; font-size: 14px">Se crea la versión v3 y el worker recifra en segundo plano los 342 documentos por lotes. Mientras tanto v2 queda en "solo descifrar". No hay corte de servicio.</p>
+          <div><label class="w-lbl" for="k1">Motivo *</label><select class="w-in" id="k1"><option>Rotación programada</option><option>Sospecha de exposición</option><option>Cambio de algoritmo</option></select></div>
+          <div><label class="w-lbl" for="k2">Escribe ROTAR para confirmar *</label><input class="w-in" id="k2" type="text"></div>
+          <div style="display: flex; gap: 10px; justify-content: flex-end"><button class="w-btn" type="button">Volver</button><button class="w-btn dan" type="button">Rotar llave</button></div>
+        </div>
+        <div class="w-box" style="flex: 1 1 320px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+          <h2 class="w-h2">Pestaña · Bitácora de operaciones (inmutable, paginada)</h2>
+          <div class="w-mono" style="border-bottom: 1px solid #30363B; padding: 6px 0">20 oct 10:30 · ana · decrypt · member.document · key v2 · socio #310 · ok</div>
+          <div class="w-mono" style="border-bottom: 1px solid #30363B; padding: 6px 0">20 oct 07:00 · worker · encrypt lote · member.contact · v2→v3 · 1.000 filas · ok</div>
+          <div class="w-mono" style="border-bottom: 1px solid #30363B; padding: 6px 0">20 oct 02:00 · worker · sign · audit_chain · ML-DSA v1 · ok</div>
+          <div class="w-mono" style="border-bottom: 1px solid #30363B; padding: 6px 0">19 oct 18:00 · ana · rotate · member.contact · v2→v3 · motivo: programada</div>
+          <div class="w-mono" style="padding: 6px 0">19 oct 17:58 · api · verify · jwt_sign · v7 · ok</div>
+          <div class="w-note">Filtros: fecha, usuario o servicio, verbo, clase de dato, llave, resultado. Nunca aparece texto en claro.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

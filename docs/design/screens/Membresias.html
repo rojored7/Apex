@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Membresías · lista y acciones</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-btn.dan{border-color:#C92A1F;color:#C92A1F}
+.w-in{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:0 12px;background:#fff;font:inherit;color:#0E0E0E;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-tbl{width:100%;border-collapse:collapse;min-width:860px}
+.w-tbl th,.w-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #ccc;font-size:14px;vertical-align:middle}
+.w-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5B6670}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#0E0E0E;color:#fff}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5B6670;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-chip{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid #8a8a8a;border-radius:999px;font-size:13px;text-decoration:none}
+.w-chip.on{background:#0E0E0E;color:#fff;border-color:#0E0E0E}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: 3 · Membresías · lista y acciones · Módulo: D · Socios, planes, membresías y pagos · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #ddd; box-sizing: border-box">
+      <a href="Inicio.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.html">Socios</a>
+      <a href="Membresias.html" class="on">Membresías</a>
+      <a href="Pagos.html">Pagos</a>
+      <a href="Planes.html">Planes</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.html">Clases</a>
+      <a href="WOD_Lista.html">WODs</a>
+      <a href="Movimientos.html">Movimientos</a>
+      <div class="w-grp">Avisos</div>
+      <a href="Notif_Reglas.html">Reglas y plantillas</a>
+      <a href="Notif_Historial.html">Historial de envíos</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Usuarios.html">Usuarios y roles</a>
+      <a href="Auditoria.html">Auditoría</a>
+      <a href="Config.html">Configuración</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <h1 class="w-h1">Membresías</h1>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn" href="Membresias.html">Exportar</a>
+        <a class="w-btn pri" href="Membresia_Vender.html">+ Vender membresía</a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <a class="w-chip" href="Membresias.html">Activas 210</a>
+        <a class="w-chip on" href="Membresias.html">Por vencer (7 días) 18</a>
+        <a class="w-chip" href="Membresias.html">Vencidas 41</a>
+        <a class="w-chip" href="Membresias.html">Congeladas 4</a>
+        <a class="w-chip" href="Membresias.html">Anuladas</a>
+        <a class="w-chip" href="Membresias.html">Historial completo</a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end">
+        <div style="flex: 2 1 240px"><label class="w-lbl" for="q">Buscar socio</label><input class="w-in" id="q" type="search" placeholder="Nombre o documento"></div>
+        <div style="flex: 1 1 160px"><label class="w-lbl" for="f1">Plan</label><select class="w-in" id="f1"><option>Cualquiera</option></select></div>
+        <div style="flex: 1 1 160px"><label class="w-lbl" for="f2">Vence entre</label><input class="w-in" id="f2" type="date"></div>
+        <div style="flex: 1 1 160px"><label class="w-lbl" for="f3">y</label><input class="w-in" id="f3" type="date"></div>
+      </div>
+
+      <div class="w-box" style="overflow-x: auto">
+        <table class="w-tbl">
+          <thead><tr><th>Socio</th><th>Plan</th><th>Inicio</th><th>Fin</th><th>Clases restantes</th><th>Pagado</th><th>Estado</th><th style="text-align: right">Acciones</th></tr></thead>
+          <tbody>
+            <tr><td><a href="Socio_Ficha.html"><b>Laura Gómez</b></a></td><td>Mensual · $120.000</td><td>29 sep</td><td><b>28 oct</b></td><td>—</td><td>$120.000 ✓</td><td><span class="w-tag">Vence en 8 días</span></td><td style="text-align: right"><a href="Membresia_Vender.html">Renovar</a> · <a href="Membresias.html">Congelar</a> · <a href="Membresias.html">Anular</a></td></tr>
+            <tr><td><a href="Socio_Ficha.html"><b>Andrés Ruiz</b></a></td><td>12 clases · $110.000</td><td>1 sep</td><td>31 oct</td><td><b>2 de 12</b></td><td>$110.000 ✓</td><td><span class="w-tag">Por vencer</span></td><td style="text-align: right"><a href="Membresia_Vender.html">Renovar</a> · <a href="Membresias.html">Congelar</a> · <a href="Membresias.html">Anular</a></td></tr>
+            <tr><td><a href="Socio_Ficha.html"><b>Sofía Pardo</b></a></td><td>Mensual · $120.000</td><td>25 sep</td><td><b>24 oct</b></td><td>—</td><td>$60.000 de $120.000 · abono</td><td><span class="w-tag">Vence en 4 días</span></td><td style="text-align: right"><a href="Pagos.html">Registrar saldo</a> · <a href="Membresia_Vender.html">Renovar</a></td></tr>
+            <tr><td><a href="Socio_Ficha.html"><b>Juan Pérez</b></a></td><td>Trimestral · $320.000</td><td>22 jul</td><td><b>20 oct</b></td><td>—</td><td>$320.000 ✓</td><td><span class="w-tag dk">Vence hoy</span></td><td style="text-align: right"><a href="Membresia_Vender.html">Renovar</a> · <a href="Membresias.html">Congelar</a> · <a href="Membresias.html">Anular</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <label class="w-note" for="pg">Mostrar</label>
+        <select class="w-in" id="pg" style="width: auto; min-height: 36px"><option>25</option><option>50</option></select>
+        <span class="w-note">1–18 de 18</span>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+        <div class="w-box" style="flex: 1 1 300px; padding: 20px; border-width: 2px; display: flex; flex-direction: column; gap: 12px">
+          <h2 class="w-h2">Modal · Congelar membresía de Laura Gómez</h2>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+            <div><label class="w-lbl" for="c1">Desde *</label><input class="w-in" id="c1" type="date"></div>
+            <div><label class="w-lbl" for="c2">Hasta *</label><input class="w-in" id="c2" type="date"></div>
+          </div>
+          <div><label class="w-lbl" for="c3">Motivo</label><input class="w-in" id="c3" type="text" placeholder="Viaje, lesión…"></div>
+          <div class="w-note">La fecha de fin se corre los mismos días. Máximo de días congelados por membresía: lo define Configuración.</div>
+          <div style="display: flex; gap: 10px; justify-content: flex-end"><button class="w-btn" type="button">Volver</button><button class="w-btn pri" type="button">Congelar</button></div>
+        </div>
+        <div class="w-box" style="flex: 1 1 300px; padding: 20px; border-width: 2px; display: flex; flex-direction: column; gap: 12px">
+          <h2 class="w-h2">Modal · ¿Anular la membresía de Laura Gómez?</h2>
+          <p style="margin: 0; font-size: 14px">La membresía deja de contar desde hoy. Los pagos asociados no se tocan: si hay que devolver dinero, se anula el pago aparte.</p>
+          <div><label class="w-lbl" for="a1">Motivo *</label><textarea class="w-in" id="a1" rows="2" style="padding: 10px 12px"></textarea></div>
+          <div style="display: flex; gap: 10px; justify-content: flex-end"><button class="w-btn" type="button">Volver</button><button class="w-btn dan" type="button">Sí, anular</button></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

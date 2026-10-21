@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#D5DBE0;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-tbl{width:100%;border-collapse:collapse;min-width:900px}
+.w-tbl th,.w-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #30363B;font-size:13px;vertical-align:top}
+.w-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#9AA5AE}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#161819;color:#F2F4F6}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9AA5AE;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-diff{font-family:ui-monospace,monospace;font-size:12px;line-height:1.5}
+.w-diff .o{color:#C92A1F;text-decoration:line-through}
+.w-diff .n{font-weight:700}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: 12 · Auditoría · Módulo: I · Sistema (solo admin) · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.dark.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #30363B; box-sizing: border-box">
+      <a href="Inicio.dark.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.dark.html">Socios</a>
+      <a href="Membresias.dark.html">Membresías</a>
+      <a href="Pagos.dark.html">Pagos</a>
+      <a href="Planes.dark.html">Planes</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Usuarios.dark.html">Usuarios y roles</a>
+      <a href="Auditoria.dark.html" class="on">Auditoría</a>
+      <a href="Llaves.dark.html">Llaves de cifrado</a>
+      <a href="Config.dark.html">Configuración</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <div>
+          <h1 class="w-h1">Auditoría</h1>
+          <div class="w-note">Cadena de hashes verificada · última firma nocturna: hoy 02:00 (ML-DSA) · <a href="Auditoria.dark.html">Verificar ahora</a></div>
+        </div>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn" href="Auditoria.dark.html">Exportar rango</a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end">
+        <div style="flex: 1 1 140px"><label class="w-lbl" for="f1">Desde</label><input class="w-in" id="f1" type="date" value="2026-10-13"></div>
+        <div style="flex: 1 1 140px"><label class="w-lbl" for="f2">Hasta</label><input class="w-in" id="f2" type="date" value="2026-10-20"></div>
+        <div style="flex: 1 1 160px"><label class="w-lbl" for="f3">Usuario</label><select class="w-in" id="f3"><option>Todos</option><option>Ana</option><option>Carlos</option><option>María</option><option>sistema (worker)</option></select></div>
+        <div style="flex: 1 1 160px"><label class="w-lbl" for="f4">Entidad</label><select class="w-in" id="f4"><option>Todas</option><option>Socio</option><option>Membresía</option><option>Pago</option><option>Resultado</option><option>Llave</option><option>Configuración</option></select></div>
+        <div style="flex: 1 1 140px"><label class="w-lbl" for="f5">Acción</label><select class="w-in" id="f5"><option>Todas</option><option>Crear</option><option>Cambiar</option><option>Anular</option><option>Descargar adjunto</option><option>Descifrar dato</option></select></div>
+        <div style="flex: 2 1 220px"><label class="w-lbl" for="q">Registro</label><input class="w-in" id="q" type="search" placeholder="Nombre del socio o id del registro"></div>
+      </div>
+
+      <div class="w-box" style="overflow-x: auto">
+        <table class="w-tbl">
+          <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad · registro</th><th>Qué cambió (anterior → nuevo)</th><th style="text-align: right">Ver</th></tr></thead>
+          <tbody>
+            <tr><td>20 oct 18:04</td><td>Carlos</td><td>Crear</td><td>Resultado · <a href="WOD_Detalle.dark.html">Helen · Laura Gómez</a></td><td class="w-diff">segundos: <span class="n">702</span> · nivel: <span class="n">RX</span></td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>20 oct 14:10</td><td>Carlos</td><td>Crear</td><td>Pago · <a href="Pagos.dark.html">#4812</a></td><td class="w-diff">valor: <span class="n">120000</span> · medio: <span class="n">nequi</span> · membresía: #2210</td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>20 oct 11:52</td><td>Ana</td><td>Cambiar</td><td>Socio · <a href="Socio_Ficha.dark.html">Laura Gómez</a></td><td class="w-diff">teléfono: <span class="o">310•••221</span> → <span class="n">311•••908</span></td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>20 oct 10:30</td><td>Ana</td><td>Descifrar dato</td><td>Socio · <a href="Socio_Ficha.dark.html">Laura Gómez</a> · documento</td><td class="w-diff">(solo se registra el hecho, no el valor)</td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>20 oct 07:00</td><td>sistema</td><td>Cambiar</td><td>Membresía · #2187 · Juan Pérez</td><td class="w-diff">estado: <span class="o">por_vencer</span> → <span class="n">vence_hoy</span></td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>19 oct 18:30</td><td>Carlos</td><td>Anular</td><td>Pago · <a href="Pagos.dark.html">#4809</a> · Sofía Pardo</td><td class="w-diff">anulado: <span class="o">no</span> → <span class="n">sí</span> · motivo: "duplicado"</td><td style="text-align: right"><a href="Auditoria.dark.html">Detalle</a></td></tr>
+            <tr><td>18 oct 02:00</td><td>sistema</td><td>Rotar</td><td>Llave · KEK v3 → v4</td><td class="w-diff">lote: 6 DEK reenvueltas · ok</td><td style="text-align: right"><a href="Llaves.dark.html">Detalle</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <label class="w-note" for="pg">Mostrar</label>
+        <select class="w-in" id="pg" style="width: auto; min-height: 36px"><option>50</option><option>100</option></select>
+        <span class="w-note">1–50 de 3.418</span>
+        <span style="flex: 1 1 auto"></span>
+        <button class="w-btn" type="button" style="min-height: 36px">‹ Anterior</button>
+        <button class="w-btn" type="button" style="min-height: 36px">Siguiente ›</button>
+      </div>
+
+      <div class="w-box" style="padding: 16px; display: flex; flex-wrap: wrap; gap: 20px">
+        <div style="flex: 1 1 300px">
+          <h2 class="w-h2">Detalle de una entrada (modal)</h2>
+          <div class="w-note" style="margin: 6px 0 10px">#88412 · 20 oct 2026 11:52:08 · Ana Pineda · desde 181.•••.•••.12 · hash ok · hash anterior ok</div>
+          <div class="w-diff">
+            <div>Socio #310 · Laura Gómez · acción: cambiar</div>
+            <div>telefono: <span class="o">[cifrado · ver]</span> → <span class="n">[cifrado · ver]</span></div>
+            <div>updated_at: <span class="o">2026-09-20T15:02Z</span> → <span class="n">2026-10-20T16:52Z</span></div>
+          </div>
+        </div>
+        <div style="flex: 1 1 300px; font-size: 13px; line-height: 1.5">
+          <b>Reglas.</b> Solo lectura: nada se edita ni se borra desde aquí. Los valores de campos cifrados se muestran enmascarados y se descifran uno a uno pidiendo "ver", lo cual queda a su vez registrado. La misma vista filtrada por registro es la pestaña Historial de cada ficha. "Verificar ahora" recorre la cadena de hashes y muestra si hay alguna fila rota.
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

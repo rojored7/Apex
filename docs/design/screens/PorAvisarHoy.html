@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Por avisar hoy</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-in{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:0 12px;background:#fff;font:inherit;color:#0E0E0E;box-sizing:border-box;width:100%}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#0E0E0E;color:#fff}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5B6670;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-chip{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid #8a8a8a;border-radius:999px;font-size:13px;text-decoration:none}
+.w-chip.on{background:#0E0E0E;color:#fff;border-color:#0E0E0E}
+.w-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #ccc}
+.w-row.sent{background:#f3f3f3;color:#555}
+.w-msg{flex:2 1 320px;font-size:13px;color:#333;border-left:3px solid #ccc;padding-left:10px;min-width:0}
+.w-wa{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border:2px solid #0E0E0E;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px}
+.w-wa.pri{background:#0E0E0E;color:#fff}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: 10 · Por avisar hoy · Módulo: H · Notificaciones · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Carlos R. · Coach</span>
+    <a href="Login.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #ddd; box-sizing: border-box">
+      <a href="Inicio.html">Inicio</a>
+      <div class="w-grp">Hoy</div>
+      <a href="Sesiones.html">Clases de hoy</a>
+      <a href="WOD_Detalle.html">WOD de hoy</a>
+      <a href="PorAvisarHoy.html" class="on">Por avisar hoy</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.html">Socios</a>
+      <a href="Membresias.html">Membresías</a>
+      <a href="Pagos.html">Pagos</a>
+      <div class="w-grp">Avisos</div>
+      <a href="Notif_Reglas.html">Reglas y plantillas</a>
+      <a href="Notif_Historial.html">Historial de envíos</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <div>
+          <h1 class="w-h1">Por avisar hoy · martes 20 de octubre</h1>
+          <div class="w-note">Lista generada a las 7:00. 23 avisos: 14 llegaron por push o correo, 9 esperan WhatsApp.</div>
+        </div>
+        <span style="flex: 1 1 auto"></span>
+        <button class="w-btn" type="button">Regenerar lista</button>
+        <a class="w-btn" href="Notif_Historial.html">Historial</a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+        <a class="w-chip on" href="PorAvisarHoy.html">Pendientes de WhatsApp 9</a>
+        <a class="w-chip" href="PorAvisarHoy.html">Ya avisados 14</a>
+        <a class="w-chip" href="PorAvisarHoy.html">Todos 23</a>
+        <span class="w-note">·</span>
+        <a class="w-chip" href="PorAvisarHoy.html">Vence hoy</a><a class="w-chip" href="PorAvisarHoy.html">Vence en 3 días</a><a class="w-chip" href="PorAvisarHoy.html">Vencidos</a><a class="w-chip" href="PorAvisarHoy.html">Sin entrenar 10+ días</a>
+      </div>
+
+      <div class="w-box">
+        <div class="w-row">
+          <div style="flex: 1 1 200px"><b><a href="Socio_Ficha.html">Juan Pérez</a></b><div class="w-note">Vence hoy · Trimestral · 320 ••• 441</div><span class="w-tag">push: sin suscripción</span></div>
+          <div class="w-msg">Hola Juan, tu plan Trimestral en APEX vence hoy, 20 de octubre. Renuévalo en el box o por Nequi al 3xx xxx xxxx y te lo activamos al instante. ¡Nos vemos en clase!</div>
+          <div style="display: flex; gap: 8px; align-items: center"><a class="w-wa pri" href="PorAvisarHoy.html">Abrir WhatsApp</a><button class="w-btn" type="button" style="min-height: 48px">Omitir</button></div>
+        </div>
+        <div class="w-row">
+          <div style="flex: 1 1 200px"><b><a href="Socio_Ficha.html">Camila Torres</a></b><div class="w-note">Vencida hace 5 días · Mensual · 300 ••• 102</div><span class="w-tag">correo: rebotó</span></div>
+          <div class="w-msg">Hola Camila, tu plan Mensual venció el 15 de octubre. Te extrañamos en el box: renueva cuando quieras y seguimos. ¿Te reservamos cupo esta semana?</div>
+          <div style="display: flex; gap: 8px; align-items: center"><a class="w-wa pri" href="PorAvisarHoy.html">Abrir WhatsApp</a><button class="w-btn" type="button" style="min-height: 48px">Omitir</button></div>
+        </div>
+        <div class="w-row">
+          <div style="flex: 1 1 200px"><b><a href="Socio_Ficha.html">Andrés Ruiz</a></b><div class="w-note">Quedan 2 clases · 315 ••• 774</div><span class="w-tag">push: falló</span></div>
+          <div class="w-msg">Hola Andrés, te quedan 2 clases de tu plan de 12. Cuando quieras renovar, en el box te ayudamos.</div>
+          <div style="display: flex; gap: 8px; align-items: center"><a class="w-wa pri" href="PorAvisarHoy.html">Abrir WhatsApp</a><button class="w-btn" type="button" style="min-height: 48px">Omitir</button></div>
+        </div>
+        <div class="w-row sent">
+          <div style="flex: 1 1 200px"><b><a href="Socio_Ficha.html">Sofía Pardo</a></b><div class="w-note">Vence en 4 días · saldo $60.000</div><span class="w-tag dk">WhatsApp · enviado 08:12 por Carlos</span></div>
+          <div class="w-msg">Hola Sofía, tu plan vence el 24 de octubre y tienes un saldo de $60.000 pendiente…</div>
+          <div style="display: flex; gap: 8px; align-items: center"><a class="w-wa" href="PorAvisarHoy.html">Reenviar</a></div>
+        </div>
+        <div class="w-row sent">
+          <div style="flex: 1 1 200px"><b><a href="Socio_Ficha.html">Laura Gómez</a></b><div class="w-note">Vence en 8 días</div><span class="w-tag dk">push · entregado 07:00</span></div>
+          <div class="w-msg">Hola Laura, tu plan Mensual vence el 28 de octubre…</div>
+          <div style="display: flex; gap: 8px; align-items: center"><a class="w-wa" href="PorAvisarHoy.html">WhatsApp igual</a></div>
+        </div>
+      </div>
+
+      <div class="w-box" style="padding: 12px 16px; background: #fafafa; font-size: 13px; line-height: 1.5">
+        <b>Cómo funciona.</b> "Abrir WhatsApp" lanza wa.me con el mensaje ya escrito; al tocarlo, el aviso queda marcado como "enviado por WhatsApp" con hora y usuario, y la fila baja a gris. "Omitir" pide un motivo corto (ya pagó, no contactar) y también queda en el historial. En celular cada fila es una tarjeta y el botón de WhatsApp ocupa todo el ancho. El teléfono nunca se muestra completo: el enlace lo arma el servidor.
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

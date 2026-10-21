@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lista de socios en celular · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-ph{background:#2C3033;border:1px dashed #8a8a8a;border-radius:6px;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #30363B;text-decoration:none}
+.w-row b{display:block;font-size:15px}
+.w-row span.s{font-size:12px;color:#B5BEC5}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+<style>body{display:flex;justify-content:center;background:#555}body>div{flex:0 0 390px}</style>
+<!-- Pantalla: Patrón · Lista en celular · Módulo: B · Patrones comunes: listar, ver, crear, editar, dar de baja · fija 390×844 -->
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #1F2224">
+  <header class="topbar" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px">
+    <button class="w-btn" type="button" aria-label="Abrir menú" style="min-height: 40px; padding: 0 12px; color: #fff; border-color: #fff">☰</button>
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX" style="height: 24px">
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana · Admin</span>
+  </header>
+  <main style="flex: 1 1 auto; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <h1 style="margin: 0; font-size: 22px; flex: 1 1 auto">Socios <span class="w-note" style="font-weight: 400">342</span></h1>
+      <a class="w-btn pri" href="Socio_Form.dark.html">+ Nuevo</a>
+    </div>
+    <div style="display: flex; gap: 8px">
+      <input class="w-in" type="search" aria-label="Buscar socio" placeholder="Buscar nombre, documento, teléfono">
+      <button class="w-btn" type="button" style="padding: 0 12px">Filtros ▾</button>
+    </div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <span class="w-tag dk">Al día 210</span><span class="w-tag">Por vencer 18</span><span class="w-tag">Vencidos 41</span><span class="w-tag">Inactivos 73</span>
+    </div>
+    <div style="display: flex; flex-direction: column">
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Laura Gómez</b><span class="s">Mensual · vence 28 oct</span></div><span class="w-tag dk">Al día</span></a>
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Andrés Ruiz</b><span class="s">12 clases · quedan 2</span></div><span class="w-tag">Por vencer</span></a>
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Camila Torres</b><span class="s">Mensual · venció 15 oct</span></div><span class="w-tag">Vencido</span></a>
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Diego Mora</b><span class="s">Trimestral · vence 2 dic</span></div><span class="w-tag dk">Al día</span></a>
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Elena Vargas</b><span class="s">Sin membresía</span></div><span class="w-tag">Inactivo</span></a>
+      <a class="w-row" href="Socio_Ficha.dark.html"><div class="w-ph" style="width: 44px; height: 44px; border-radius: 50%"></div><div style="flex: 1 1 auto"><b>Felipe Castro</b><span class="s">Mensual · vence 30 oct</span></div><span class="w-tag dk">Al día</span></a>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; margin-top: auto">
+      <button class="w-btn" type="button" style="flex: 1 1 auto">‹ Anterior</button>
+      <span class="w-note">1–25 de 342</span>
+      <button class="w-btn" type="button" style="flex: 1 1 auto">Siguiente ›</button>
+    </div>
+  </main>
+  <div class="w-note" style="padding: 8px 16px; border-top: 1px solid #30363B">En celular la tabla se vuelve lista de tarjetas: nombre, dato clave y estado. Los filtros se pliegan en un botón. La paginación se mantiene.</div>
+</div>
+</body>
+</html>

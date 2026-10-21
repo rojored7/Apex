@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantalla de TV del gimnasio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#fff;background:#0E0E0E}
+.tv-row{display:grid;grid-template-columns:72px minmax(0, 1fr) 200px 120px;gap:16px;align-items:center;padding:14px 20px;border-bottom:1px solid #444;font-size:30px}
+.tv-row b{font-size:34px}
+.tv-h{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:16px;text-transform:uppercase;letter-spacing:.1em;color:#009FE3}
+.tv-pill{display:inline-block;padding:4px 16px;border:2px solid #009FE3;color:#009FE3;border-radius:999px;font-size:20px;font-weight:700}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+<style>body{display:flex;justify-content:center;background:#555}body>div{flex:0 0 1920px}</style>
+<!-- Pantalla: 16 · Pantalla de TV · Módulo: J · Pantalla de TV y portal del socio · fija 1920×1080 -->
+</head>
+<body>
+<div style="width: 1920px; height: 1080px; box-sizing: border-box; padding: 48px 64px; display: flex; flex-direction: column; gap: 32px; background: #0E0E0E; color: #fff">
+
+  <header style="display: flex; align-items: baseline; gap: 32px">
+    <img src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training" style="height: 72px; width: auto; display: block">
+    <div style="font-size: 28px; color: #bbb">Martes 20 de octubre</div>
+    <span style="flex: 1 1 auto"></span>
+    <div style="font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; color: #009FE3">17:42</div>
+  </header>
+
+  <div style="flex: 1 1 auto; display: grid; grid-template-columns: 1fr 1.3fr; gap: 48px; min-height: 0">
+
+    <section style="display: flex; flex-direction: column; gap: 20px; border-right: 2px solid #444; padding-right: 48px">
+      <div class="tv-h">WOD del día</div>
+      <div style="font-family: 'Michroma','Eurostile',system-ui,sans-serif; font-size: 84px; line-height: 1; text-transform: uppercase">Helen</div>
+      <div style="display: flex; gap: 12px"><span class="tv-pill">Benchmark</span><span class="tv-pill">Por tiempo</span><span class="tv-pill">Límite 20:00</span></div>
+      <div style="font-size: 40px; font-weight: 800; margin-top: 16px">3 rondas</div>
+      <div style="font-size: 38px; line-height: 1.5">
+        <div>Run 400 m</div>
+        <div>21 Kettlebell swing · <b>24 / 16 kg</b></div>
+        <div>12 Pull-up</div>
+      </div>
+      <div style="margin-top: auto; font-size: 24px; color: #bbb; line-height: 1.4">Escalado: KB 16/12 kg · pull-up con banda o ring row</div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; min-height: 0">
+      <div style="display: flex; align-items: baseline; gap: 20px">
+        <div class="tv-h">Leaderboard</div>
+        <span style="flex: 1 1 auto"></span>
+        <span class="tv-pill" style="background: #fff; color: #0E0E0E">RX · Mujeres</span>
+        <span class="tv-pill">RX · Hombres</span>
+        <span class="tv-pill">Escalado</span>
+      </div>
+      <div style="font-size: 20px; color: #bbb">Rota cada 12 segundos entre los tres grupos · 20 resultados · se actualiza solo</div>
+      <div style="display: flex; flex-direction: column">
+        <div class="tv-row"><b>1</b><span>Valentina Ríos</span><b>9:58</b><span style="color: #bbb; font-size: 24px">−0:31</span></div>
+        <div class="tv-row"><b>2</b><span>Mariana Soto</span><b>10:44</b><span style="color: #bbb; font-size: 24px">1.ª vez</span></div>
+        <div class="tv-row"><b>3</b><span>Laura Gómez</span><b>11:42</b><span style="color: #bbb; font-size: 24px">PR</span></div>
+        <div class="tv-row"><b>4</b><span>Paula Lema</span><b>12:30</b><span style="color: #bbb; font-size: 24px">+0:12</span></div>
+        <div class="tv-row"><b>5</b><span>Daniela Osorio</span><b>12:51</b><span style="color: #bbb; font-size: 24px">−1:04</span></div>
+        <div class="tv-row"><b>6</b><span>Carolina Pinto</span><b>13:08</b><span style="color: #bbb; font-size: 24px">1.ª vez</span></div>
+        <div class="tv-row"><b>7</b><span>Juliana Mesa</span><b>13:40</b><span style="color: #bbb; font-size: 24px">−0:09</span></div>
+        <div class="tv-row" style="border-bottom: 0"><b>8</b><span>Sara Nieto</span><b style="font-size: 28px">DNF · 2 + 15</b><span></span></div>
+      </div>
+      <div style="margin-top: auto; font-size: 20px; color: #bbb">Si hay más de 8 por grupo, la lista avanza sola de a 8 · Sin resultados aún: muestra "Registra tu resultado con el coach"</div>
+    </section>
+  </div>
+
+  <footer style="display: flex; justify-content: space-between; font-size: 22px; color: #bbb">
+    <span>Próxima clase 18:00 · Coach María · 0 / 12</span>
+    <span>Solo nombre y puntaje: nunca datos personales en la TV</span>
+  </footer>
+</div>
+</body>
+</html>

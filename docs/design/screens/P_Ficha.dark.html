@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrón · Ficha con historial · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-ph{background:#2C3033;border:1px dashed #8a8a8a;border-radius:6px;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#161819;color:#F2F4F6}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9AA5AE;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #8a8a8a}
+.w-tabs a{padding:10px 14px;text-decoration:none;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.w-tabs a.on{border-bottom-color:#009FE3;font-weight:700}
+.w-dl{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 24px;font-size:14px}
+.w-dl div span{display:block;font-size:12px;color:#B5BEC5}
+.w-call{position:relative;outline:2px dashed #b45309;outline-offset:4px}
+.w-num{position:absolute;top:-14px;left:-14px;width:26px;height:26px;border-radius:50%;background:#b45309;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.w-ev{font-size:13px;padding:8px 0;border-bottom:1px solid #30363B}
+.w-ev b{display:block}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: Patrón · Ficha con historial · Módulo: B · Patrones comunes: listar, ver, crear, editar, dar de baja · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.dark.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #30363B; box-sizing: border-box">
+      <a href="Inicio.dark.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="P_Lista.dark.html" class="on">[Entidad]</a>
+      <a href="Membresias.dark.html">Membresías</a>
+      <a href="Pagos.dark.html">Pagos</a>
+      <a href="Planes.dark.html">Planes</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.dark.html">Clases</a>
+      <a href="WOD_Lista.dark.html">WODs</a>
+      <a href="Movimientos.dark.html">Movimientos</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Auditoria.dark.html">Auditoría</a>
+      <a href="Config.dark.html">Configuración</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div class="w-note"><a href="P_Lista.dark.html">[Entidad]</a> › Nombre del registro</div>
+
+      <div class="w-call" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <span class="w-num">1</span>
+        <div class="w-ph" style="width: 56px; height: 56px; border-radius: 50%"></div>
+        <div>
+          <h1 class="w-h1">Nombre del registro <span class="w-tag dk">Activo</span></h1>
+          <div class="w-note">Dato clave · otro dato · creado el 12 mar 2026</div>
+        </div>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn pri" href="Membresia_Vender.dark.html">Acción principal</a>
+        <a class="w-btn" href="P_Formulario.dark.html">Editar</a>
+        <button class="w-btn" type="button" aria-label="Más acciones">Más ▾</button>
+      </div>
+      <div class="w-note" style="margin-top: -8px">El menú "Más" contiene lo que es raro o delicado: Dar de baja, Anular, Reactivar. Siempre con confirmación.</div>
+
+      <div class="w-tabs w-call" style="margin-top: 4px">
+        <span class="w-num">2</span>
+        <a href="P_Ficha.dark.html" class="on">Datos</a>
+        <a href="P_Ficha.dark.html">Pestaña 2</a>
+        <a href="P_Ficha.dark.html">Pestaña 3</a>
+        <a href="P_Ficha.dark.html">Adjuntos</a>
+        <a href="P_Ficha.dark.html">Historial</a>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <div class="w-box w-call" style="flex: 999 1 420px; min-width: 0; padding: 20px">
+          <span class="w-num">3</span>
+          <h2 class="w-h2" style="margin-bottom: 14px">Datos</h2>
+          <div class="w-dl">
+            <div><span>Campo</span>Valor</div>
+            <div><span>Campo</span>Valor</div>
+            <div><span>Campo cifrado (documento)</span>•••• 4417 <a href="P_Ficha.dark.html" style="font-size: 12px">Mostrar</a></div>
+            <div><span>Campo</span>Valor</div>
+            <div><span>Campo</span>Valor</div>
+            <div><span>Campo</span>Valor</div>
+          </div>
+          <div class="w-note" style="margin-top: 14px">"Mostrar" descifra el dato y deja constancia en la bitácora de cifrado de quién lo vio.</div>
+        </div>
+
+        <aside class="w-box w-call" style="flex: 1 1 280px; max-width: 100%; padding: 16px; background: #242729">
+          <span class="w-num">4</span>
+          <h2 class="w-h2">Historial del registro</h2>
+          <div class="w-note" style="margin-bottom: 8px">Lo mismo que muestra Auditoría, filtrado a este registro.</div>
+          <div class="w-ev"><b>Cambió teléfono</b>Ana P. · hoy 10:14<br>anterior: 310 ••• 221 → nuevo: 311 ••• 908</div>
+          <div class="w-ev"><b>Registró pago $120.000</b>Carlos (coach) · 2 oct 2026</div>
+          <div class="w-ev"><b>Creó el registro</b>Ana P. · 12 mar 2026</div>
+          <a href="Auditoria.dark.html" style="font-size: 13px; display: inline-block; margin-top: 10px">Ver todo en Auditoría →</a>
+        </aside>
+      </div>
+
+      <div class="w-box" style="padding: 12px 16px; background: #242729; font-size: 13px; line-height: 1.5">
+        <b>Cómo se lee este patrón.</b> 1 · Cabecera fija: nombre, estado, y a la derecha una sola acción principal, Editar y "Más". 2 · Pestañas por tema; la última siempre es Historial. 3 · Contenido de la pestaña en una caja. 4 · En escritorio el historial reciente se ve al lado; en celular baja al final. Los datos cifrados se muestran enmascarados hasta que se pide verlos.
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

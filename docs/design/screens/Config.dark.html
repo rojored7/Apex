@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuración del gimnasio · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-ph{background:#2C3033;border:1px dashed #8a8a8a;border-radius:6px;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#D5DBE0;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#161819;color:#F2F4F6}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9AA5AE;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-chk{display:flex;gap:10px;align-items:center;font-size:14px}
+.w-g2{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 16px}
+.w-sec{padding:20px;display:flex;flex-direction:column;gap:12px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: 14 · Configuración del gimnasio · Módulo: I · Sistema (solo admin) · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Ana P. · Admin</span>
+    <a href="Login.dark.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #30363B; box-sizing: border-box">
+      <a href="Inicio.dark.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.dark.html">Socios</a>
+      <a href="Membresias.dark.html">Membresías</a>
+      <a href="Pagos.dark.html">Pagos</a>
+      <a href="Planes.dark.html">Planes</a>
+      <div class="w-grp">Sistema · solo admin</div>
+      <a href="Usuarios.dark.html">Usuarios y roles</a>
+      <a href="Auditoria.dark.html">Auditoría</a>
+      <a href="Llaves.dark.html">Llaves de cifrado</a>
+      <a href="Config.dark.html" class="on">Configuración</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <h1 class="w-h1">Configuración del gimnasio</h1>
+        <span class="w-note">Cada sección se guarda por separado y queda en auditoría.</span>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <nav aria-label="Secciones" style="flex: 0 1 200px; display: flex; flex-direction: column; gap: 2px; font-size: 14px">
+          <a href="Config.dark.html" style="padding: 8px 10px; background: #F2F4F6; color: #F2F4F6; border-radius: 6px; text-decoration: none">1 · Gimnasio</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">2 · Horario de atención</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">3 · Medios de pago</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">4 · Canales de aviso</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">5 · Clases y cupos</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">6 · Membresías</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">7 · Pantalla TV</a>
+          <a href="Config.dark.html" style="padding: 8px 10px; text-decoration: none">8 · Datos personales</a>
+        </nav>
+
+        <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; max-width: 860px">
+          <section class="w-box w-sec">
+            <h2 class="w-h2">1 · Gimnasio</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+              <div class="w-ph" style="width: 96px; height: 96px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #B5BEC5; flex: 0 0 auto">logo</div>
+              <div class="w-g2" style="flex: 1 1 360px">
+                <div><label class="w-lbl" for="g1">Nombre *</label><input class="w-in" id="g1" type="text" value="[NOMBRE DEL GIMNASIO]"></div>
+                <div><label class="w-lbl" for="g2">Teléfono del box (WhatsApp Business)</label><input class="w-in" id="g2" type="tel"></div>
+                <div><label class="w-lbl" for="g3">Dirección</label><input class="w-in" id="g3" type="text"></div>
+                <div><label class="w-lbl" for="g4">Zona horaria</label><input class="w-in" id="g4" type="text" value="America/Bogota" readonly></div>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+
+          <section class="w-box w-sec">
+            <h2 class="w-h2">2 · Horario de atención</h2>
+            <div class="w-note">Lo ve el socio en el portal. El horario de clases se configura en Clases › Horario semanal.</div>
+            <div class="w-g2">
+              <div><label class="w-lbl" for="h1">Lunes a viernes</label><input class="w-in" id="h1" type="text" value="05:30 – 21:00"></div>
+              <div><label class="w-lbl" for="h2">Sábado</label><input class="w-in" id="h2" type="text" value="07:30 – 12:00"></div>
+              <div><label class="w-lbl" for="h3">Domingo y festivos</label><input class="w-in" id="h3" type="text" value="Cerrado"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+
+          <section class="w-box w-sec">
+            <h2 class="w-h2">3 · Medios de pago</h2>
+            <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Efectivo</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center"><label class="w-chk" style="flex: 0 0 auto"><input type="checkbox" checked style="width: 20px; height: 20px"> Nequi</label><input class="w-in" type="tel" aria-label="Número de Nequi" placeholder="Número que se muestra en los avisos" style="flex: 1 1 240px"></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center"><label class="w-chk" style="flex: 0 0 auto"><input type="checkbox" checked style="width: 20px; height: 20px"> Bre-B</label><input class="w-in" type="text" aria-label="Llave Bre-B" placeholder="Llave Bre-B del box" style="flex: 1 1 240px"></div>
+            <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Exigir referencia en Nequi y Bre-B</label>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+
+          <section class="w-box w-sec">
+            <h2 class="w-h2">4 · Canales de aviso</h2>
+            <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Web push (PWA) · claves VAPID generadas · <a href="Config.dark.html" style="font-size: 13px">Regenerar</a></label>
+            <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Correo · proveedor: Brevo · remitente configurado · <a href="Config.dark.html" style="font-size: 13px">Probar envío</a></label>
+            <label class="w-chk"><input type="checkbox" style="width: 20px; height: 20px"> Telegram · bot no configurado</label>
+            <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> WhatsApp manual (lista "Por avisar hoy")</label>
+            <div class="w-g2">
+              <div><label class="w-lbl" for="c1">Hora del worker diario</label><input class="w-in" id="c1" type="time" value="07:00"></div>
+              <div><label class="w-lbl" for="c2">Firma de los mensajes</label><input class="w-in" id="c2" type="text" value="Equipo [NOMBRE DEL GIMNASIO]"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+
+          <section class="w-box w-sec">
+            <h2 class="w-h2">5 · Clases y cupos · 6 · Membresías</h2>
+            <div class="w-g2">
+              <div><label class="w-lbl" for="k1">Cupo por defecto por clase</label><input class="w-in" id="k1" type="number" value="12"></div>
+              <div><label class="w-lbl" for="k2">Días hacia adelante que se generan sesiones</label><input class="w-in" id="k2" type="number" value="14"></div>
+              <div><label class="w-lbl" for="k3">Check-in vencido: permitir y marcar</label><select class="w-in" id="k3"><option>Sí (recomendado)</option><option>Solo con aprobación del coach</option></select></div>
+              <div><label class="w-lbl" for="k4">Días de gracia antes de marcar "vencido"</label><input class="w-in" id="k4" type="number" value="0"></div>
+              <div><label class="w-lbl" for="k5">Máximo de días congelados por membresía</label><input class="w-in" id="k5" type="number" value="30"></div>
+              <div><label class="w-lbl" for="k6">Unidad de carga por defecto</label><select class="w-in" id="k6"><option>kg</option><option>lb</option></select></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+
+          <section class="w-box w-sec">
+            <h2 class="w-h2">7 · Pantalla TV · 8 · Datos personales</h2>
+            <div class="w-g2">
+              <div><label class="w-lbl" for="t1">Enlace de la TV (con token, sin inicio de sesión)</label><input class="w-in" id="t1" type="text" value="https://…/tv?token=••••" readonly></div>
+              <div style="display: flex; gap: 8px; align-items: end"><a class="w-btn" href="TV.html">Abrir</a><button class="w-btn" type="button">Regenerar token</button></div>
+              <div><label class="w-lbl" for="t2">Qué muestra</label><select class="w-in" id="t2"><option>WOD del día + leaderboard</option><option>Solo WOD</option></select></div>
+              <div><label class="w-lbl" for="t3">Texto de autorización de datos (Ley 1581)</label><textarea class="w-in" id="t3" rows="2" style="padding: 10px 12px">Autorizo a [NOMBRE DEL GIMNASIO] el tratamiento de mis datos personales…</textarea></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end"><button class="w-btn pri" type="button">Guardar</button></div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catálogo de movimientos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#0E0E0E;background:#fff}
+a{color:#0077AD}a:hover{color:#0E0E0E}
+.w-box{border:1px solid #C9D1D7;border-radius:6px;background:#fff;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #0E0E0E;border-radius:6px;background:#fff;color:#0E0E0E;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#0077AD;color:#fff;border-color:#0077AD}
+.w-in{min-height:44px;border:1px solid #8a8a8a;border-radius:6px;padding:0 12px;background:#fff;font:inherit;color:#0E0E0E;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #555;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-tag.dk{background:#009FE3;color:#0E0E0E;border-color:#009FE3}
+.w-tbl{width:100%;border-collapse:collapse;min-width:640px}
+.w-tbl th,.w-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #ccc;font-size:14px;vertical-align:middle}
+.w-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5B6670}
+.w-nav a{display:block;padding:10px 12px;border-radius:6px;text-decoration:none;font-size:14px}
+.w-nav a.on{background:#0E0E0E;color:#fff}
+.w-grp{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5B6670;padding:14px 12px 4px}
+.w-note{font-size:12px;color:#5B6670}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-chip{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid #8a8a8a;border-radius:999px;font-size:13px;text-decoration:none}
+.w-chip.on{background:#0E0E0E;color:#fff;border-color:#0E0E0E}
+.w-chk{display:flex;gap:10px;align-items:center;font-size:14px}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #E5F5FC}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#0E0E0E;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#0E0E0E}.w-tab.on{color:#0077AD}
+
+</style>
+
+<!-- Pantalla: 6 · Catálogo de movimientos · Módulo: F · Movimientos, WODs y resultados · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+  <header class="topbar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 0 20px; min-height: 56px">
+    <img class="w-logo" src="../assets/logo/apex-logo-dark-bg.png" alt="APEX Hybrid Training">
+    <span class="w-note">[NOMBRE DEL GIMNASIO]</span>
+    <span style="flex: 1 1 auto"></span>
+    <span class="w-tag">Carlos R. · Coach</span>
+    <a href="Login.html" style="font-size: 13px">Salir</a>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; flex: 1 1 auto">
+    <nav class="w-nav" aria-label="Menú principal" style="flex: 1 1 232px; max-width: 100%; padding: 12px; border-right: 1px solid #ddd; box-sizing: border-box">
+      <a href="Inicio.html">Inicio</a>
+      <div class="w-grp">Gestión</div>
+      <a href="Socios_Lista.html">Socios</a>
+      <a href="Membresias.html">Membresías</a>
+      <a href="Pagos.html">Pagos</a>
+      <div class="w-grp">Entrenamiento</div>
+      <a href="Sesiones.html">Clases</a>
+      <a href="WOD_Lista.html">WODs</a>
+      <a href="Movimientos.html" class="on">Movimientos</a>
+      <div class="w-grp">Avisos</div>
+      <a href="Notif_Reglas.html">Reglas y plantillas</a>
+      <a href="Notif_Historial.html">Historial de envíos</a>
+    </nav>
+    <main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+      <section style="flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+          <h1 class="w-h1">Movimientos <span class="w-note" style="font-weight: 400">· 64</span></h1>
+          <span style="flex: 1 1 auto"></span>
+          <a class="w-btn pri" href="Movimientos.html">+ Nuevo movimiento</a>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <a class="w-chip on" href="Movimientos.html">Todos</a><a class="w-chip" href="Movimientos.html">Fuerza</a><a class="w-chip" href="Movimientos.html">Gimnástico</a><a class="w-chip" href="Movimientos.html">Mono-estructural</a><a class="w-chip" href="Movimientos.html">Inactivos</a>
+        </div>
+        <input class="w-in" type="search" aria-label="Buscar movimiento" placeholder="Buscar por nombre o alias (sentadilla, squat…)">
+        <div class="w-box" style="overflow-x: auto">
+          <table class="w-tbl">
+            <thead><tr><th>Movimiento</th><th>Categoría</th><th>Unidad de carga</th><th>Tipos de récord</th><th>Usado en WODs</th><th style="text-align: right">Acción</th></tr></thead>
+            <tbody>
+              <tr><td><b>Back Squat</b><div class="w-note">alias: sentadilla trasera</div></td><td>Fuerza</td><td>kg</td><td>1RM · 3RM · 5RM</td><td>38</td><td style="text-align: right"><a href="Movimientos.html">Editar</a></td></tr>
+              <tr><td><b>Thruster</b></td><td>Fuerza</td><td>kg</td><td>1RM</td><td>21</td><td style="text-align: right"><a href="Movimientos.html">Editar</a></td></tr>
+              <tr><td><b>Pull-up</b><div class="w-note">alias: dominada</div></td><td>Gimnástico</td><td>peso corporal</td><td>máx. reps</td><td>52</td><td style="text-align: right"><a href="Movimientos.html">Editar</a></td></tr>
+              <tr><td><b>Run 400 m</b></td><td>Mono-estructural</td><td>—</td><td>—</td><td>44</td><td style="text-align: right"><a href="Movimientos.html">Editar</a></td></tr>
+              <tr><td><b>Row (cal)</b></td><td>Mono-estructural</td><td>—</td><td>—</td><td>19</td><td style="text-align: right"><a href="Movimientos.html">Editar</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="w-note">Un movimiento usado en WODs no se borra: se desactiva y deja de aparecer al crear WODs. El histórico guarda su propia copia.</div>
+      </section>
+
+      <aside class="w-box" style="flex: 1 1 320px; max-width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: -4px 0 0 #ddd">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <h2 class="w-h2" style="flex: 1 1 auto">Nuevo movimiento</h2>
+          <a class="w-btn" href="Movimientos.html" aria-label="Cerrar" style="min-height: 36px; padding: 0 10px">✕</a>
+        </div>
+        <div><label class="w-lbl" for="m1">Nombre *</label><input class="w-in" id="m1" type="text" placeholder="Deadlift"></div>
+        <div><label class="w-lbl" for="m2">Alias (para buscar)</label><input class="w-in" id="m2" type="text" placeholder="peso muerto"></div>
+        <div><label class="w-lbl" for="m3">Categoría *</label><select class="w-in" id="m3"><option>Fuerza</option><option>Gimnástico</option><option>Mono-estructural</option></select></div>
+        <div><label class="w-lbl" for="m4">Unidad de carga *</label><select class="w-in" id="m4"><option>kg</option><option>lb</option><option>Peso corporal</option><option>Sin carga</option></select></div>
+        <div>
+          <span class="w-lbl">Récords que se registran</span>
+          <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> 1RM</label>
+          <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> 3RM</label>
+          <label class="w-chk"><input type="checkbox" style="width: 20px; height: 20px"> 5RM</label>
+          <label class="w-chk"><input type="checkbox" style="width: 20px; height: 20px"> Máx. repeticiones</label>
+        </div>
+        <label class="w-chk"><input type="checkbox" checked style="width: 20px; height: 20px"> Activo</label>
+        <div style="display: flex; gap: 10px; justify-content: flex-end"><a class="w-btn" href="Movimientos.html">Cancelar</a><a class="w-btn pri" href="Movimientos.html">Guardar</a></div>
+      </aside>
+    </main>
+  </div>
+</div>
+</body>
+</html>

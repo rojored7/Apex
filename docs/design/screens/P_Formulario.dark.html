@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrón · Crear, editar y dar de baja · oscuro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
+
+body{margin:0;font-family:"Titillium Web","Segoe UI",Roboto,system-ui,sans-serif;color:#F2F4F6;background:#1F2224}
+a{color:#33B5EA}a:hover{color:#F2F4F6}
+.w-box{border:1px solid #30363B;border-radius:6px;background:#1F2224;box-sizing:border-box}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #30363B;border-radius:6px;background:#1F2224;color:#F2F4F6;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;box-sizing:border-box}
+.w-btn.pri{background:#009FE3;color:#0E0E0E;border-color:#009FE3}.w-btn.pri:hover{background:#33B5EA;color:#fff;border-color:#33B5EA}
+.w-btn.dan{border-color:#C92A1F;color:#C92A1F}
+.w-in{min-height:44px;border:1px solid #4A5157;border-radius:6px;padding:0 12px;background:#161819;font:inherit;color:#F2F4F6;box-sizing:border-box;width:100%}
+.w-lbl{display:block;font-size:13px;font-weight:600;color:#D5DBE0;margin-bottom:6px}
+.w-tag{display:inline-block;padding:2px 10px;border:1px solid #9AA5AE;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.w-note{font-size:12px;color:#9AA5AE}
+.w-h1{font-family:"Michroma","Eurostile",system-ui,sans-serif;font-size:20px;font-weight:400;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.w-h2{font-size:16px;font-weight:700;margin:0}
+.w-err{font-size:12px;color:#C92A1F;margin-top:4px}
+.w-call{position:relative;outline:2px dashed #b45309;outline-offset:4px}
+.w-num{position:absolute;top:-14px;left:-14px;width:26px;height:26px;border-radius:50%;background:#b45309;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.w-in:focus,.w-in:focus-visible{outline:none;border-color:#009FE3;box-shadow:0 0 0 2px #0B2A3A}.w-btn:focus-visible,a:focus-visible{outline:2px solid #009FE3;outline-offset:2px}.topbar{background:#000;color:#fff}.topbar a{color:#fff}.topbar .w-note{color:#C9D1D7}.topbar .w-tag{color:#fff;border-color:#8a949c}.w-logo{height:28px;width:auto;display:block}.w-nav a,.w-tabs a,.w-chip,.w-sub a,.w-tab,.m-sec a,.w-k,.w-sum,.w-row,.w-pay,.w-a{color:#F2F4F6}.w-tab.on{color:#33B5EA}
+
+</style>
+
+<!-- Pantalla: Patrón · Crear / editar / dar de baja · Módulo: B · Patrones comunes: listar, ver, crear, editar, dar de baja · fluida (escritorio, responsive) -->
+</head>
+<body>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 24px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+
+  <section style="flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <div class="w-note">Variante A · formulario largo = página completa (socio, WOD, configuración)</div>
+    <div class="w-note"><a href="P_Lista.dark.html">[Entidad]</a> › Nuevo [registro]</div>
+    <div class="w-call" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+      <span class="w-num">1</span>
+      <h1 class="w-h1">Nuevo [registro]</h1>
+      <span class="w-note">Mismo formulario para editar; cambia el título y los valores vienen llenos.</span>
+    </div>
+
+    <form class="w-box w-call" style="padding: 20px; display: flex; flex-direction: column; gap: 20px">
+      <span class="w-num">2</span>
+      <fieldset style="border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px">
+        <legend class="w-h2" style="margin-bottom: 8px">Sección 1 · Datos básicos</legend>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px">
+          <div><label class="w-lbl" for="a1">Nombre *</label><input class="w-in" id="a1" type="text"></div>
+          <div><label class="w-lbl" for="a2">Documento *</label><input class="w-in" id="a2" type="text"><div class="w-err">Ya existe un registro con este documento. <a href="P_Ficha.dark.html">Ver</a></div></div>
+          <div><label class="w-lbl" for="a3">Teléfono (WhatsApp) *</label><input class="w-in" id="a3" type="tel" placeholder="+57 3xx xxx xxxx"></div>
+          <div><label class="w-lbl" for="a4">Correo</label><input class="w-in" id="a4" type="email"></div>
+        </div>
+      </fieldset>
+      <fieldset style="border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px">
+        <legend class="w-h2" style="margin-bottom: 8px">Sección 2 · [Tema]</legend>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px">
+          <div><label class="w-lbl" for="b1">Campo</label><input class="w-in" id="b1" type="text"></div>
+          <div><label class="w-lbl" for="b2">Lista</label><select class="w-in" id="b2"><option>Opción</option></select></div>
+          <div style="grid-column: 1 / -1"><label class="w-lbl" for="b3">Notas</label><textarea class="w-in" id="b3" rows="3" style="padding: 10px 12px"></textarea></div>
+        </div>
+      </fieldset>
+      <div class="w-call" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; border-top: 1px solid #30363B; padding-top: 16px">
+        <span class="w-num">3</span>
+        <span class="w-note">* obligatorio · los cambios se guardan al pulsar Guardar, no antes</span>
+        <span style="flex: 1 1 auto"></span>
+        <a class="w-btn" href="P_Lista.dark.html">Cancelar</a>
+        <a class="w-btn pri" href="P_Ficha.dark.html">Guardar</a>
+      </div>
+    </form>
+  </section>
+
+  <section style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+    <div>
+      <div class="w-note" style="margin-bottom: 8px">Variante B · formulario corto = panel lateral sobre la lista (plan, movimiento, usuario, regla)</div>
+      <div class="w-box w-call" style="padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: -4px 0 0 #30363B">
+        <span class="w-num">4</span>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <h2 class="w-h2" style="flex: 1 1 auto">Nuevo plan</h2>
+          <button class="w-btn" type="button" aria-label="Cerrar" style="min-height: 36px; padding: 0 10px">✕</button>
+        </div>
+        <div><label class="w-lbl" for="c1">Nombre *</label><input class="w-in" id="c1" type="text"></div>
+        <div><label class="w-lbl" for="c2">Precio (COP) *</label><input class="w-in" id="c2" type="text" placeholder="$ 120.000"></div>
+        <div><label class="w-lbl" for="c3">Duración *</label><select class="w-in" id="c3"><option>Por días</option><option>Por clases</option></select></div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px">
+          <button class="w-btn" type="button">Cancelar</button>
+          <button class="w-btn pri" type="button">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="w-note" style="margin-bottom: 8px">Variante C · confirmación de baja o anulación (modal centrado)</div>
+      <div class="w-box w-call" style="padding: 20px; display: flex; flex-direction: column; gap: 12px; border-width: 2px">
+        <span class="w-num">5</span>
+        <h2 class="w-h2">¿Anular el pago de $120.000?</h2>
+        <p style="margin: 0; font-size: 14px">El pago quedará marcado como anulado y seguirá visible en el historial. Esto no se puede deshacer.</p>
+        <div><label class="w-lbl" for="d1">Motivo *</label><textarea class="w-in" id="d1" rows="2" style="padding: 10px 12px" placeholder="Por ejemplo: se registró dos veces"></textarea></div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end">
+          <button class="w-btn" type="button">Volver</button>
+          <button class="w-btn dan" type="button">Sí, anular</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="w-box" style="padding: 12px 16px; background: #242729; font-size: 13px; line-height: 1.5">
+      <b>Cómo se lee este patrón.</b> 1 · Crear y editar comparten el mismo formulario. 2 · Campos en dos columnas en escritorio, una en celular; el error aparece debajo del campo y, si es un duplicado, enlaza al registro existente. 3 · Botones al final: Cancelar a la izquierda, Guardar a la derecha, siempre visibles. 4 · Si el formulario cabe en una pantalla corta, se abre como panel lateral sin salir de la lista. 5 · Dar de baja, anular y congelar son modales con una pregunta clara; anular exige motivo.
+    </div>
+  </section>
+</div>
+</body>
+</html>

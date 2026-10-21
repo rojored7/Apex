@@ -9,4 +9,22 @@ describe("kit compartido src/shared/ui", () => {
     expect(ui.statusTone("expired")).toBe("danger");
     expect(ui.cx("a", false, "b")).toBe("a b");
   });
+
+  it("exporta los componentes del Sprint 1", () => {
+    for (const component of [
+      ui.PageHeader,
+      ui.Tabs,
+      ui.KpiCard,
+      ui.SidePanel,
+      ui.ConfirmModal,
+      ui.DataTable,
+      ui.Pagination,
+      ui.FilterBar,
+      ui.Chips,
+      ui.MaskedValue,
+      ui.HistoryAside,
+    ]) {
+      expect(typeof component).toBe("function");
+    }
+  });
 });

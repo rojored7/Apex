@@ -10,9 +10,7 @@ from alembic.config import Config
 
 from app.core.db import APP_SCHEMAS
 
-ESQUEMAS_SQL = (
-    "SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[]) ORDER BY nspname"
-)
+ESQUEMAS_SQL = "SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[]) ORDER BY nspname"
 
 
 def _asyncpg_url(url: str) -> str:

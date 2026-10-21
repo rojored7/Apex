@@ -18,7 +18,7 @@ from app.core.db import Base, CommonColumnsMixin, configure_sessionmaker, get_se
 
 class FilaDePeticion(CommonColumnsMixin, Base):
     __tablename__ = "filas_de_peticion"
-    __table_args__ = {"schema": "worker"}
+    __table_args__ = {"schema": "worker"}  # noqa: RUF012
 
     nota: Mapped[str] = mapped_column()
 

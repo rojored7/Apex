@@ -1,58 +1,139 @@
-"""Base de datos async, columnas comunes y sesión por petición (US-012). Stub: S0-B2."""
+"""Base de datos async, columnas comunes y sesión por petición (US-012).
+
+- Un esquema por módulo (`APP_SCHEMAS`); las tablas nacen solo por migraciones.
+- `Base` con convención de nombres y `TIMESTAMPTZ` para todo `datetime`
+  (CLAUDE.md, datos 2).
+- `CommonColumnsMixin`: `id` UUID asignado al construir el objeto (US-028 cifra con
+  `aad = id` antes del flush), `created_at`, `updated_at`, `created_by` NOT NULL
+  (siempre hay actor: una persona o `SYSTEM_USER_ID`; lo llena US-016).
+- `SoftDeleteMixin`: solo socios, planes y usuarios (RN-14).
+- `get_session`: una transacción por petición. El commit ocurre al salir de la
+  dependencia, antes de enviar la respuesta, así un error de commit (trigger,
+  restricción) llega al cliente como envelope de error (US-017).
+
+Este módulo no importa ningún módulo de negocio ni `core/audit.py`; los listeners
+de auditoría los registra `core/audit.py` sobre la clase de sesión (US-016).
+"""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any
-from uuid import UUID
+from typing import Any, ClassVar
+from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, Mapped
+from sqlalchemy import TIMESTAMP, MetaData, event, func
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 
-APP_SCHEMAS: tuple[str, ...] = ()
+APP_SCHEMAS: tuple[str, ...] = (
+    "audit",
+    "crypto",
+    "auth",
+    "settings",
+    "members",
+    "plans",
+    "memberships",
+    "payments",
+    "worker",
+)
+
+NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
 
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    type_annotation_map: ClassVar[dict[Any, Any]] = {
+        datetime: TIMESTAMP(timezone=True),
+        UUID: postgresql.UUID(as_uuid=True),
+    }
 
 
 class CommonColumnsMixin:
-    id: Mapped[UUID]
-    created_at: Mapped[datetime]
-    updated_at: Mapped[datetime]
-    created_by: Mapped[UUID]
+    """`id`, `created_at`, `updated_at`, `created_by` (CLAUDE.md, datos 3)."""
 
-    def __init__(self, **kwargs: Any) -> None:
-        raise NotImplementedError
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    # Sin FK a auth.users: el núcleo no se acopla a auth (0004_auth llega después).
+    created_by: Mapped[UUID] = mapped_column(nullable=False)
+
+
+@event.listens_for(CommonColumnsMixin, "init", propagate=True)
+def _asignar_id_al_construir(target: Any, args: Any, kwargs: dict[str, Any]) -> None:
+    """El UUID existe antes del flush: el AAD del cifrado es el id del registro."""
+    if kwargs.get("id") is None:
+        kwargs["id"] = uuid4()
 
 
 class SoftDeleteMixin:
-    deleted_at: Mapped[datetime | None]
+    """Borrado lógico (RN-14): solo socios, planes y usuarios."""
+
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 
 
 def create_engine_from(settings: Settings) -> AsyncEngine:
-    raise NotImplementedError
+    return create_async_engine(
+        settings.DATABASE_URL.get_secret_value(),
+        pool_pre_ping=True,
+        hide_parameters=True,
+        echo=False,
+    )
+
+
+_engine: AsyncEngine | None = None
+_sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_engine() -> AsyncEngine:
-    raise NotImplementedError
+    global _engine
+    if _engine is None:
+        _engine = create_engine_from(get_settings())
+    return _engine
 
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
-    raise NotImplementedError
+    global _sessionmaker
+    if _sessionmaker is None:
+        _sessionmaker = async_sessionmaker(get_engine(), expire_on_commit=False)
+    return _sessionmaker
 
 
 def configure_sessionmaker(factory: async_sessionmaker[AsyncSession] | None) -> None:
-    raise NotImplementedError
+    """Inyección para pruebas y arranque: `None` vuelve al engine de `Settings`."""
+    global _sessionmaker
+    _sessionmaker = factory
 
 
 async def dispose_engine() -> None:
-    raise NotImplementedError
+    global _engine, _sessionmaker
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _sessionmaker = None
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    raise NotImplementedError
-    yield  # pragma: no cover
+    """Dependencia: `session: AsyncSession = Depends(get_session)`.
+
+    Abre una transacción, cede la sesión y hace commit al salir; cualquier
+    excepción revierte. El commit corre antes de enviar la respuesta.
+    """
+    async with get_sessionmaker()() as session, session.begin():
+        yield session

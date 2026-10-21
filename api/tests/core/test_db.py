@@ -14,7 +14,7 @@ from app.core.db import APP_SCHEMAS, Base, CommonColumnsMixin, SoftDeleteMixin
 
 class CosaDePrueba(CommonColumnsMixin, SoftDeleteMixin, Base):
     __tablename__ = "cosas_de_prueba"
-    __table_args__ = {"schema": "worker"}
+    __table_args__ = {"schema": "worker"}  # noqa: RUF012
 
     nombre: Mapped[str] = mapped_column()
 
@@ -87,7 +87,9 @@ async def test_aislamiento_a_inserta(session: AsyncSession) -> None:
     await _crear_tabla(session)
     session.add(CosaDePrueba(nombre="de la prueba a", created_by=uuid4()))
     await session.flush()
-    total = await session.scalar(select(CosaDePrueba).where(CosaDePrueba.nombre == "de la prueba a"))
+    total = await session.scalar(
+        select(CosaDePrueba).where(CosaDePrueba.nombre == "de la prueba a")
+    )
     assert total is not None
 
 

@@ -1,0 +1,9 @@
+.box {
+  color: var(--ink);
+  background: var(--card);
+  font: var(--text-body);
+}
+
+.title {
+  font-family: var(--font-display);
+}

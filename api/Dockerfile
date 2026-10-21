@@ -20,6 +20,9 @@ COPY migrations ./migrations
 RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
+# SHA corto de git que publica /health como `version` (US-020).
+ARG GIT_SHA=dev
+ENV APP_VERSION=$GIT_SHA
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/* \

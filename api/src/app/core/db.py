@@ -46,6 +46,11 @@ APP_SCHEMAS: tuple[str, ...] = (
     "worker",
 )
 
+# Lock asesor de las migraciones (bigint fijo; distinto del de la cadena de auditoría, US-015).
+MIGRATION_LOCK_KEY: int = 4_270_001
+# Tiempo máximo para abrir una conexión; /health usa además su propio límite de 2 s.
+CONNECT_TIMEOUT_S = 5
+
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -94,11 +99,19 @@ def create_engine_from(settings: Settings) -> AsyncEngine:
         pool_pre_ping=True,
         hide_parameters=True,
         echo=False,
+        connect_args={"timeout": CONNECT_TIMEOUT_S},
     )
 
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
+
+
+def configure_engine(engine: AsyncEngine | None) -> None:
+    """Fija el engine del proceso (`create_app`, pruebas). `None` vuelve a `Settings`."""
+    global _engine, _sessionmaker
+    _engine = engine
+    _sessionmaker = None
 
 
 def get_engine() -> AsyncEngine:

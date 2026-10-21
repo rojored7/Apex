@@ -38,7 +38,9 @@ def test_core_no_importa_modulos() -> None:
 def test_crypto_no_importa_audit_y_audit_solo_toma_digest() -> None:
     violaciones: list[str] = []
     for path in sorted((CORE / "crypto").rglob("*.py")) if (CORE / "crypto").is_dir() else []:
-        violaciones += [f"{path.name}: {n}" for n in _imports(path) if n.startswith("app.core.audit")]
+        violaciones += [
+            f"{path.name}: {n}" for n in _imports(path) if n.startswith("app.core.audit")
+        ]
     audit = CORE / "audit.py"
     if audit.is_file():
         violaciones += [

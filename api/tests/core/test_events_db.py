@@ -30,7 +30,9 @@ class PedidoCreado(DomainEvent):
 @pytest.fixture(autouse=True)
 async def _tabla(session: AsyncSession) -> None:
     clear_subscribers()
-    await session.run_sync(lambda s: Base.metadata.create_all(s.connection(), tables=[Pedido.__table__]))
+    await session.run_sync(
+        lambda s: Base.metadata.create_all(s.connection(), tables=[Pedido.__table__])
+    )
 
 
 async def _cuenta(session: AsyncSession) -> int:

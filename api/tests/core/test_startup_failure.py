@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ API_ROOT = Path(__file__).resolve().parents[2]
 
 MIGRACION_ROTA = '''"""Migración rota de prueba."""
 revision = "9999_rota"
-down_revision = None
+down_revision = "0001_core_schemas"
 branch_labels = None
 depends_on = None
 
@@ -32,10 +33,9 @@ def downgrade() -> None:
 
 @pytest.fixture
 def migraciones_rotas(tmp_path: Path) -> str:
+    """Copia de migrations/ con una revisión extra que falla sobre 0001."""
     carpeta = tmp_path / "migraciones"
-    (carpeta / "versions").mkdir(parents=True)
-    (carpeta / "env.py").write_text((API_ROOT / "migrations" / "env.py").read_text(encoding="utf-8"), encoding="utf-8")
-    (carpeta / "script.py.mako").write_text("", encoding="utf-8")
+    shutil.copytree(API_ROOT / "migrations", carpeta, ignore=shutil.ignore_patterns("__pycache__"))
     (carpeta / "versions" / "9999_rota.py").write_text(MIGRACION_ROTA, encoding="utf-8")
     return str(carpeta)
 
@@ -62,7 +62,7 @@ def test_uvicorn_termina_con_codigo_distinto_de_cero(
         "CORS_ORIGINS": '["http://localhost"]',
         "APEX_TEST_MIGRATIONS": migraciones_rotas,
     }
-    resultado = subprocess.run(  # noqa: S603
+    resultado = subprocess.run(
         [
             sys.executable,
             "-m",

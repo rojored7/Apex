@@ -1,13 +1,16 @@
-"""Entorno de Alembic, async y multiesquema (US-012, T7).
+"""Entorno de Alembic, async y multiesquema (US-012, T7; US-020, T5).
 
-- La URL sale de `sqlalchemy.url` si se fijó (pruebas, `-x`), y si no, de
-  `Settings.DATABASE_URL`.
+- La URL sale de `-x url=...` (CLI en el host), de `sqlalchemy.url` si se fijó
+  (pruebas, `create_app`) y, si no, de `Settings.DATABASE_URL`.
 - `include_schemas=True` e `include_name` limitado a `APP_SCHEMAS`.
 - Los `models` de cada módulo se importan aquí (no en `core/`) para que
   `target_metadata` los conozca; cada historia agrega su línea.
-- Si `config.attributes["connection"]` trae una conexión sync (desde
-  `create_app()` con `run_sync`, US-020), se usa directo; si no, se abre un engine
-  async propio.
+- Lock asesor `MIGRATION_LOCK_KEY` (`pg_advisory_lock`) tomado antes de migrar y
+  liberado en `finally`: el api, el worker y el CLI nunca migran a la vez. Como el
+  lock abre la transacción de la conexión, las migraciones corren en modo de
+  transacción externa y se confirman con `commit()` explícito.
+- Si `config.attributes["connection"]` trae una conexión sync, se usa directo; si
+  no, se abre un engine async propio.
 """
 
 from __future__ import annotations
@@ -17,10 +20,10 @@ from logging.config import fileConfig
 from typing import Any
 
 from alembic import context
-from sqlalchemy import Connection, pool
+from sqlalchemy import Connection, pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.core.db import APP_SCHEMAS, Base
+from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 
 # Models de cada módulo (se agregan en su historia):
 # from app.modules.members import models as _members
@@ -33,7 +36,6 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    # Prioridad: `-x url=...` (CLI en el host), `sqlalchemy.url` (pruebas), Settings.
     x_url = context.get_x_argument(as_dictionary=True).get("url")
     if x_url:
         return x_url
@@ -52,22 +54,33 @@ def include_name(name: str | None, type_: str, parent_names: dict[str, Any]) -> 
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        include_schemas=True,
-        include_name=include_name,
-        compare_type=True,
-    )
-    with context.begin_transaction():
-        context.run_migrations()
+    connection.execute(text("SELECT pg_advisory_lock(:clave)"), {"clave": MIGRATION_LOCK_KEY})
+    try:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_schemas=True,
+            include_name=include_name,
+            compare_type=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.execute(text("SELECT pg_advisory_unlock(:clave)"), {"clave": MIGRATION_LOCK_KEY})
+        connection.commit()
 
 
 async def run_async_migrations() -> None:
     engine = create_async_engine(_url(), poolclass=pool.NullPool)
-    async with engine.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await engine.dispose()
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(do_run_migrations)
+    finally:
+        await engine.dispose()
 
 
 def run_migrations_offline() -> None:

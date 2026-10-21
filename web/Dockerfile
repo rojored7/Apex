@@ -13,4 +13,5 @@ RUN npm run build
 FROM nginx:stable-alpine
 COPY --from=build /web/dist /usr/share/nginx/html
 COPY infra/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY infra/nginx/snippets/ /etc/nginx/snippets/
 EXPOSE 80

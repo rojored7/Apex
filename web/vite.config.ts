@@ -3,6 +3,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  // US-038: cada <script> y <link> del build lleva nonce="__CSP_NONCE__"; Nginx lo
+  // reemplaza por $request_id con sub_filter. El polyfill de modulepreload inyecta un
+  // script en línea, incompatible con la CSP.
+  html: { cspNonce: "__CSP_NONCE__" },
+  build: { modulePreload: { polyfill: false } },
   test: {
     globals: true,
     environment: "jsdom",

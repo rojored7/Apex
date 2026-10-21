@@ -57,5 +57,7 @@ if [ -f web/Dockerfile ] && [ -f scripts/ci/web-smoke.sh ]; then
   "${DC[@]}" up -d --build web
   esperar_healthy web 60
   bash scripts/ci/web-smoke.sh
+  # US-038: cabeceras de seguridad y CSP con nonce contra el stack construido.
+  [ -f scripts/smoke/headers.sh ] && bash scripts/smoke/headers.sh
 fi
 echo "compose-smoke: verde en $(( $(date +%s) - inicio ))s"

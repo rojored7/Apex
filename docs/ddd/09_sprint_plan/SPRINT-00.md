@@ -159,7 +159,7 @@ Hasta que exista US-008 (S0-W0-2), cada slice se verifica a mano con los comando
     - `.github/workflows/ci.yml` con los jobs `api` (PostgreSQL 16 de servicio y `TEST_DATABASE_URL`), `images`, `web` y `scripts`;
     - `pip-licenses --allow-only` con la lista ampliada (refinamiento de US-004);
     - `NOTICE`.
-  - **Gate:** `slice-gate.sh architecture tests/test_ci_database.py`.
+  - **Gate:** `bash scripts/ci/test_licenses.sh` (lista de licencias) y `bash scripts/workflow/tests/run.sh`. `tests/test_ci_database.py` **no** corre aquí: necesita `db_test`, que nace en S0-W0-4, así que pasa al gate de ese slice (CRITICA-2 N-1).
   - CI se valida cuando una persona empuja la rama y abre el PR (A-02).
   - **Criterio diferido, se cierra en la validación de este sprint:** el paso `licencias-web` necesita `web/package.json` (US-009).
 - **Slice S0-W0-4 · Imagen del api, Compose y entorno.** Historias: US-005 y US-007.
@@ -173,6 +173,8 @@ Hasta que exista US-008 (S0-W0-2), cada slice se verifica a mano con los comando
   - **Verde, `api/Dockerfile` multi-stage con uv:**
     - etapas `builder` y `runtime`;
     - en las dos: `COPY alembic.ini migrations ./`, además de `pyproject.toml`, `uv.lock` y `src` (B-3);
+    - este slice crea `api/alembic.ini` y `api/migrations/env.py` + `script.py.mako` mínimos, sin carpeta `versions/` poblada, para que el `COPY` y `alembic heads` (vacío, código 0) funcionen desde ya; US-012 (S0-B2) los completa con `0001_core_schemas` (CRITICA-2 N-2);
+    - la prueba de imagen vive en `scripts/ci/test_api_image.sh`; US-005 se alinea a esa ruta (CRITICA-2 O-2);
     - el runtime no tiene `uv`, y su `PATH` apunta a `/app/.venv/bin`;
     - por eso, dentro de los contenedores, los comandos van sin `uv run`.
   - **Verde, `infra/compose.yml`:**
@@ -187,7 +189,7 @@ Hasta que exista US-008 (S0-W0-2), cada slice se verifica a mano con los comando
     - `scripts/ci/compose-smoke.sh`;
     - `.env.example` con los nombres de US-011, más `WEB_PORT`;
     - README de arranque.
-  - **Gate:** `slice-gate.sh main tests/test_main_placeholder.py` y `bash scripts/ci/test_api_image.sh`.
+  - **Gate:** `slice-gate.sh main tests/test_main_placeholder.py tests/test_ci_database.py` (con `db_test` ya levantada y `TEST_DATABASE_URL` definida; CRITICA-2 N-1) y `bash scripts/ci/test_api_image.sh`.
     - `tests/core/test_env_example.py` **no** forma parte de este gate (A-3): compara contra `Settings` y entra en S0-B1.
   - **Criterios diferidos:**
     - el healthcheck `healthy` con la app real se cierra en este sprint con US-020;

@@ -153,7 +153,7 @@ Ruta crítica de historias en v0.1:
 ## Convención de comandos
 
 - Todos los comandos se corren desde la raíz del repositorio.
-- En las demos, `docker compose` abrevia `docker compose -f infra/compose.yml -f infra/compose.dev.yml`. El Sprint 4B usa solo `infra/compose.yml`, porque es el stack de producción.
+- En las demos, `docker compose` abrevia `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml`. El `--env-file .env` es obligatorio: Compose interpola variables como `${WEB_PORT:-80}` desde la carpeta de los archivos (`infra/`), no desde la raíz (CRITICA-2 N-4). El Sprint 4B usa solo `infra/compose.yml`, porque es el stack de producción, con el mismo `--env-file`.
 - Todas las demos levantan el stack con `docker compose up -d --build` (M-7).
 - **Dentro de los contenedores no hay `uv` (B-3).** El runtime trae `PATH=/app/.venv/bin`:
   - `docker compose exec api alembic current`;
@@ -219,7 +219,7 @@ Un sprint no se cierra con un criterio diferido sin escribir, ni con una prueba 
 
 **Qué corre:**
 - api: `uv run ruff check`, `uv run ruff format --check` y `uv run mypy` sobre la ruta de código del módulo, y después `uv run pytest` sobre la lista de archivos más `tests/architecture`;
-- front: `npx eslint` y `npx tsc --noEmit` solo sobre los archivos que el slice toca (`git diff --name-only` contra la base del slice, más la lista de archivos), y después `npx vitest run` sobre la lista de archivos.
+- front: `npx eslint` solo sobre los archivos que el slice toca (`git diff --name-only` contra la base del slice, más la lista de archivos); `npx tsc --noEmit -p tsconfig.slice.json`, donde el script genera `tsconfig.slice.json` temporal que extiende `tsconfig.json` con `include` = archivos del slice (pasar archivos sueltos a `tsc` ignora `tsconfig.json`; CRITICA-2 O-1); y después `npx vitest run` sobre la lista de archivos.
 
 **Mapeo de módulos** (se escribe como lista para respetar la regla de formato: sin tablas fuera del índice):
 - api:

@@ -79,12 +79,13 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
 
 ### Wave 0 · Infraestructura (`devops-wsl2-docker`)
 
-- **Slice S4A-W0-1 · Worker en Compose.** Son las tareas DevOps de US-113.
-  - Se quita `profiles: ["worker"]`; el worker usa la misma imagen con otro comando.
-  - El worker reintenta la conexión a la base.
-  - Healthcheck del worker por `job_runs`.
+- **Slice S4A-W0-1 · Worker en Compose (solo preparación).** Son las tareas DevOps de US-113 que no necesitan código del worker.
+  - Se define el servicio `worker` con la misma imagen y el comando `python -m app.worker.main`, reintento de conexión a la base y healthcheck por `job_runs`, **pero se conserva `profiles: ["worker"]`**: todavía no existe `app/worker/main.py` y el contenedor entraría en bucle de reinicios (CRITICA-2 N-3).
+  - Gate: `docker compose config` valida el archivo; smoke de Compose **sin** el perfil `worker`.
+- **Slice S4A-W0-2 · Activar el worker.** Se ejecuta **después de cerrar S4A-B1**.
+  - Se quita `profiles: ["worker"]`.
   - Cierra el criterio diferido de US-005.
-  - Gate: smoke de Compose con `worker` en marcha.
+  - Gate: smoke de Compose con `worker` en marcha y `healthy`, y `docker compose run --rm worker python -m app.worker.main --run-once expirations` con código 0.
 
 ### Waves 3a/3b · Backend, alternadas por slice
 

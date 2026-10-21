@@ -52,7 +52,9 @@ async def _auditar(engine: AsyncEngine, n: int) -> AuditRow:
         )
 
 
-async def test_dos_transacciones_concurrentes_no_repiten_prev_hash(motor_limpio: AsyncEngine) -> None:
+async def test_dos_transacciones_concurrentes_no_repiten_prev_hash(
+    motor_limpio: AsyncEngine,
+) -> None:
     a, b = await asyncio.gather(_auditar(motor_limpio, 1), _auditar(motor_limpio, 2))
     assert {a.seq, b.seq} == {1, 2}
     assert a.prev_hash != b.prev_hash
@@ -66,7 +68,9 @@ async def test_dos_transacciones_concurrentes_no_repiten_prev_hash(motor_limpio:
     assert verify_chain(filas).ok is True
 
 
-async def test_diez_transacciones_concurrentes_dejan_cadena_valida(motor_limpio: AsyncEngine) -> None:
+async def test_diez_transacciones_concurrentes_dejan_cadena_valida(
+    motor_limpio: AsyncEngine,
+) -> None:
     filas_escritas = await asyncio.gather(*(_auditar(motor_limpio, n) for n in range(10)))
     assert sorted(r.seq for r in filas_escritas) == list(range(1, 11))
     async with motor_limpio.connect() as conn:

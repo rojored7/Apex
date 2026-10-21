@@ -81,3 +81,27 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   de asumir `0001` como head.
 - Diferido por plan: `tests/core/test_audit_hook_encrypted.py` con el `Encrypted` real llega en
   S1-B7; la guarda ya se prueba aquí con un tipo falso que expone `is_encrypted`.
+
+### S1-B3 · Paginación, OpenAPI y fronteras (US-019, US-021, US-022)
+
+- Rojo: `tests/core/test_pagination_db.py`, `test_pagination_router.py`, `test_openapi_export.py`,
+  `tests/architecture/test_list_routes_use_page_params.py`, `test_no_cross_models.py`,
+  `test_find_forbidden_imports.py` sobre stubs: 25 fallos, 7 ok (las validaciones de FastAPI
+  ya funcionaban solas).
+- Verde: `core/pagination.py` (`PageParams` como dataclass con `Annotated[int, Query(...)]`,
+  `Page[T]` con `extra="forbid"`, `SearchQuery` de 100, `paginate` que cuenta sobre la
+  subconsulta y agrega la clave primaria al `ORDER BY`, `to_page`); `cli.py` con Typer (MIT;
+  trae `rich` MIT, `shellingham` ISC y `click` BSD-3: licencias en verde, `NOTICE`
+  regenerado) y `export-openapi` sobre `Settings.model_construct` con marcadores;
+  `tests/architecture/_imports.py` con `find_forbidden_imports` (relativos, dentro de funciones,
+  `TYPE_CHECKING`, alias, `importlib.import_module` literal; `ALLOW_FOREIGN_SCHEMAS = True`
+  por la decisión del gate); `docs/openapi.json` versionado (309 líneas, `info.version` =
+  `0.1.0` del paquete, no `APP_VERSION`); `.gitattributes` con `docs/openapi.json text eol=lf`;
+  CI con los pasos "fronteras entre módulos" y "openapi al día" (falla con `::error::` y el
+  comando a correr).
+- Evidencia: 51 ok + 1 saltada entre los seis archivos y toda `tests/architecture`; dos
+  exportaciones idénticas byte a byte; exportación sin variables del api ni `.env`;
+  `test_docs_openapi_json_esta_al_dia` compara el archivo versionado con la exportación.
+- Observación: con un solo comando Typer exige un `@app.callback()` para mantener el modo de
+  subcomandos (`export-openapi` como argumento). `Page[X]` de Pydantic es una subclase
+  parametrizada, no un alias de `typing`: la prueba de arquitectura usa `issubclass`.

@@ -41,7 +41,9 @@ async def test_500_inserciones_auditadas_en_menos_de_5_s(session: AsyncSession) 
     total = await session.scalar(select(func.count()).select_from(AuditEntry))
     assert total == N
     filas = (
-        await session.execute(select(AuditEntry.__table__).order_by(AuditEntry.__table__.c.seq))
-    ).mappings().all()
+        (await session.execute(select(AuditEntry.__table__).order_by(AuditEntry.__table__.c.seq)))
+        .mappings()
+        .all()
+    )
     assert verify_chain([dict(f) for f in filas]).ok is True
     assert duracion < LIMITE_S, f"{N} inserciones auditadas tardaron {duracion:.2f} s"

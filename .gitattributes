@@ -7,3 +7,4 @@
 *.woff binary
 *.sh text eol=lf
 *.mako text eol=lf
+docs/openapi.json text eol=lf

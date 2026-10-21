@@ -49,6 +49,10 @@ pydantic-settings
 2.16.1
 MIT
 
+typer
+0.27.3
+MIT
+
 tzdata
 2026.5
 Apache-2.0

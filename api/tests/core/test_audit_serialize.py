@@ -64,7 +64,9 @@ def test_serialize_value_tipos_admitidos() -> None:
 
 
 @pytest.mark.parametrize(
-    "valor", [datetime(2026, 1, 1), 1.5, Decimal("1"), b"x"], ids=["ingenuo", "float", "decimal", "bytes"]
+    "valor",
+    [datetime(2026, 1, 1), 1.5, Decimal("1"), b"x"],
+    ids=["ingenuo", "float", "decimal", "bytes"],
 )
 def test_serialize_value_rechaza(valor: object) -> None:
     with pytest.raises(AuditSerializationError):
@@ -100,7 +102,9 @@ def test_serialize_row_acepta_blob_y_nulo_en_columna_cifrada() -> None:
 
 def test_serialize_row_rechaza_texto_en_claro_en_columna_cifrada() -> None:
     with pytest.raises(PlaintextInAuditError) as excinfo:
-        serialize_row({"document": "1020304"}, encrypted=frozenset({"document"}), redacted=frozenset())
+        serialize_row(
+            {"document": "1020304"}, encrypted=frozenset({"document"}), redacted=frozenset()
+        )
     assert "1020304" not in str(excinfo.value)
     assert "document" in str(excinfo.value)
 

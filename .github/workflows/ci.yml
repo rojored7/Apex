@@ -58,6 +58,16 @@ jobs:
       - name: tipos
         working-directory: api
         run: uv run mypy src
+      - name: fronteras entre módulos (tests/architecture)
+        working-directory: api
+        run: uv run pytest tests/architecture -q
+      - name: openapi al día (docs/openapi.json)
+        run: |
+          (cd api && uv run python -m app.cli export-openapi ../docs/openapi.json)
+          if ! git diff --exit-code docs/openapi.json; then
+            echo "::error::docs/openapi.json está desactualizado. Corra: cd api && uv run python -m app.cli export-openapi ../docs/openapi.json"
+            exit 1
+          fi
       - name: pruebas con PostgreSQL 16 y cobertura
         working-directory: api
         run: uv run pytest --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80

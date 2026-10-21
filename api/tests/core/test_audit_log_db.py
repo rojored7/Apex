@@ -82,7 +82,9 @@ async def test_record_devuelve_la_fila_escrita(tabla_vacia: AsyncSession) -> Non
     ],
     ids=["update", "delete", "truncate"],
 )
-async def test_la_base_rechaza_update_delete_y_truncate(tabla_vacia: AsyncSession, sql: str) -> None:
+async def test_la_base_rechaza_update_delete_y_truncate(
+    tabla_vacia: AsyncSession, sql: str
+) -> None:
     await _tres(tabla_vacia)
     with pytest.raises(DBAPIError) as excinfo:
         async with tabla_vacia.begin_nested():

@@ -36,9 +36,7 @@ SYSTEM_USER_ID: Final[UUID] = UUID("00000000-0000-0000-0000-000000000001")
 request_id_var: ContextVar[str | None] = ContextVar("apex_request_id", default=None)
 current_actor: ContextVar[UUID | None] = ContextVar("apex_actor", default=None)
 
-MISSING_ACTOR_MESSAGE: Final = (
-    "falta el actor: fije actor_scope(SYSTEM_USER_ID) o --as <email>"
-)
+MISSING_ACTOR_MESSAGE: Final = "falta el actor: fije actor_scope(SYSTEM_USER_ID) o --as <email>"
 
 
 class MissingActorError(RuntimeError):

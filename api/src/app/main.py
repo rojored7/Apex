@@ -33,8 +33,8 @@ from fastapi import APIRouter, FastAPI
 
 from app.core import db, health
 from app.core.audit import install_audit_listeners
-from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.config import Settings, get_settings
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.errors import ERROR_RESPONSES, register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
 

@@ -68,7 +68,9 @@ async def app(engine: AsyncEngine) -> AsyncIterator[FastAPI]:
         configure_sessionmaker(None)
         await _vaciar_auditoria(engine)
         async with engine.begin() as conn:
-            await conn.run_sync(lambda c: Base.metadata.drop_all(c, tables=[NotaAuditada.__table__]))
+            await conn.run_sync(
+                lambda c: Base.metadata.drop_all(c, tables=[NotaAuditada.__table__])
+            )
 
 
 async def test_el_actor_llega_al_commit_del_teardown(app: FastAPI, engine: AsyncEngine) -> None:

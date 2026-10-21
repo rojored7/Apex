@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, ClassVar
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from sqlalchemy import String, TypeDecorator, select, text
@@ -228,7 +228,12 @@ async def test_record_toma_el_actor_del_contexto(db: AsyncSession) -> None:
     from app.core.audit import record
 
     fila = await record(
-        db, action="reveal", table_name="members", record_id=SOCIO, before=None, after={"field": "document"},
+        db,
+        action="reveal",
+        table_name="members",
+        record_id=SOCIO,
+        before=None,
+        after={"field": "document"},
         subject_member_id=SOCIO,
     )
     assert fila.user_id == ACTOR

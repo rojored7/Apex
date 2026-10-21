@@ -1,4 +1,4 @@
-"""Funciones puras de la cadena de auditoría (US-015 T8): `canonical`, `chain_hash`, `verify_chain`."""
+"""Funciones puras de la cadena (US-015 T8): `canonical`, `chain_hash` y `verify_chain`."""
 
 from __future__ import annotations
 
@@ -71,7 +71,10 @@ def test_canonical_es_independiente_del_orden_de_claves() -> None:
 def test_canonical_fechas_en_utc_con_z_y_seis_decimales() -> None:
     bogota = datetime(2026, 10, 21, 10, 4, 5, 123456, tzinfo=timezone(timedelta(hours=-5)))
     assert canonical({"at": bogota}) == b'{"at":"2026-10-21T15:04:05.123456Z"}'
-    assert canonical({"at": datetime(2026, 1, 1, tzinfo=UTC)}) == b'{"at":"2026-01-01T00:00:00.000000Z"}'
+    assert (
+        canonical({"at": datetime(2026, 1, 1, tzinfo=UTC)})
+        == b'{"at":"2026-01-01T00:00:00.000000Z"}'
+    )
     assert canonical({"d": date(2026, 2, 3)}) == b'{"d":"2026-02-03"}'
 
 
@@ -82,7 +85,9 @@ def test_canonical_uuid_none_bool_y_unicode() -> None:
     assert canonical({"x": None, "y": True, "z": "ñandú á"}) == (
         '{"x":null,"y":true,"z":"ñandú á"}'.encode()
     )
-    assert canonical({"e": Accion.INSERT, "l": [1, "a", None]}) == b'{"e":"insert","l":[1,"a",null]}'
+    assert (
+        canonical({"e": Accion.INSERT, "l": [1, "a", None]}) == b'{"e":"insert","l":[1,"a",null]}'
+    )
 
 
 @pytest.mark.parametrize(

@@ -10,9 +10,9 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
 from app.core.errors import (
+    ERROR_RESPONSES,
     ConflictError,
     DomainError,
-    ERROR_RESPONSES,
     ForbiddenError,
     NotFoundError,
     UnauthorizedError,
@@ -112,7 +112,10 @@ async def test_500_no_filtra_traza_ni_sql(cliente: AsyncClient) -> None:
         r = await cliente.get("/explota")
     assert r.status_code == 500
     assert r.json() == {
-        "error": {"code": "internal_error", "message": "Ocurrió un error inesperado. Intente de nuevo."}
+        "error": {
+            "code": "internal_error",
+            "message": "Ocurrió un error inesperado. Intente de nuevo.",
+        }
     }
     assert "1020304" not in r.text
     assert "super-secreto" not in r.text
@@ -157,7 +160,10 @@ async def test_jerarquia_de_errores(
 
 
 def test_mensajes_por_defecto_en_espanol() -> None:
-    assert "sesión" in UnauthorizedError().message.lower() or "inicia" in UnauthorizedError().message.lower()
+    assert (
+        "sesión" in UnauthorizedError().message.lower()
+        or "inicia" in UnauthorizedError().message.lower()
+    )
     assert ForbiddenError().status == 403
     assert NotFoundError().message
     assert ConflictError("x", "y").code == "x"

@@ -59,8 +59,20 @@ def test_no_toca_claves_sanas_ni_numeros() -> None:
 
 
 def test_lista_de_claves_cubre_los_campos_cifrados_de_v01() -> None:
-    assert {"document", "phone", "email", "birth_date", "emergency_contact"} <= app_logging.SENSITIVE_KEYS
-    assert {"password", "token", "refresh_token", "access_token", "authorization"} <= app_logging.SENSITIVE_KEYS
+    assert {
+        "document",
+        "phone",
+        "email",
+        "birth_date",
+        "emergency_contact",
+    } <= app_logging.SENSITIVE_KEYS
+    assert {
+        "password",
+        "token",
+        "refresh_token",
+        "access_token",
+        "authorization",
+    } <= app_logging.SENSITIVE_KEYS
     assert {"kek", "dek", "secret"} <= app_logging.SENSITIVE_KEYS
 
 

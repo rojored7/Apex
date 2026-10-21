@@ -1,4 +1,6 @@
-"""Toda operación publica `ErrorResponse` en sus 4xx y 5xx; no existe `HTTPValidationError` (US-017, T4 y T8).
+"""Toda operación publica `ErrorResponse` en sus 4xx y 5xx y no existe `HTTPValidationError`.
+
+US-017, T4 y T8.
 
 Hasta US-020 se construye una app de prueba con `responses=ERROR_RESPONSES` y
 `register_error_handlers`; US-020 la reemplaza por `create_app()`.

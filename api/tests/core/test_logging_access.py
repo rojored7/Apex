@@ -34,7 +34,7 @@ def _app() -> FastAPI:
 
 
 def _lineas(salida: str) -> list[dict[str, object]]:
-    return [json.loads(l) for l in salida.splitlines() if l.startswith("{")]
+    return [json.loads(linea) for linea in salida.splitlines() if linea.startswith("{")]
 
 
 async def test_acceso_sin_query_ni_cabeceras_y_request_id(
@@ -67,7 +67,7 @@ async def test_acceso_sin_query_ni_cabeceras_y_request_id(
     assert "eyJ" not in salida
     assert "inyectado" not in salida
     lineas = _lineas(salida)
-    acceso = [l for l in lineas if l.get("message") == "http_request"]
+    acceso = [linea for linea in lineas if linea.get("message") == "http_request"]
     assert len(acceso) == 2
     primera = acceso[0]
     assert primera["path"] == "/api/v1/members"
@@ -76,5 +76,5 @@ async def test_acceso_sin_query_ni_cabeceras_y_request_id(
     assert isinstance(primera["duration_ms"], int | float)
     assert primera["request_id"] == request_id
     assert acceso[1]["path"] in ("/api/v1/members/{member_id}", "/api/v1/members/abc-123")
-    interno = [l for l in lineas if l.get("message") == "buscando socios"]
+    interno = [linea for linea in lineas if linea.get("message") == "buscando socios"]
     assert interno and interno[0]["request_id"] == request_id

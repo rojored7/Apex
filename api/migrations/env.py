@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from logging.config import fileConfig
 from typing import Any
 
@@ -29,7 +30,9 @@ from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 # from app.modules.members import models as _members
 
 config = context.config
-if config.config_file_name is not None:
+# Solo si nadie configuró el logging (CLI en el host): en el api ya está el JSON de US-018
+# y fileConfig reemplazaría el handler raíz.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata

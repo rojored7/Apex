@@ -1786,3 +1786,9 @@ No se corrigió código: no hubo fallos de producto ni de prueba.
   `run-gates.sh` con memoria libre.
 - Observación LOW: `Cache-Control: no-store` duplicado en las respuestas de `/api/` (api y
   Nginx); inocuo, mismo valor.
+
+## Cierre del sprint (orquestador)
+
+- Smoke en vivo del cierre (HEAD `b6650b5`, por Nginx `:8180`, admin del `.env.seed`): `GET /settings/memberships` 200 versión 12 → `PATCH /settings/memberships` (ruta genérica) 200 versión 13 con `expiring_days = 7` y `Cache-Control: no-store`; el mismo PATCH con la versión vieja 409 `version_conflict`; `GET /plans` 200 (17 planes) → `GET /plans/{id}` 200 con el mismo nombre y `no-store`; `GET /plans/{uuid inexistente}` 404 `plan_not_found`; `POST /auth/me/password` 200 con `access_token`, `expires_in`, `token_type`; con 1,2 s entre el login y el cambio, `GET /auth/me` con el access viejo 401 `unauthorized` (H-3) y con el nuevo 200; segundo cambio para revertir 200; login final con la contraseña original 200. V9 del front sobre el árbol fusionado: 110 archivos, 1.763 pruebas, cobertura 99,68 % de líneas, `npm run build` en verde (main 463,25 kB, 142,49 kB gzip).
+- Matriz de `verify-delivery` en `docs/scratch/sprint-02-verify-delivery.md` (Pilar 1 y Pilar 2).
+- Worktrees de agentes retirados; volcados `*.dump` borrados tras la validación.

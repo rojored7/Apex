@@ -26,7 +26,7 @@ Los dos registran y buscan socios. El documento, el teléfono y el correo quedan
 
 Ocho puntos. Las seis comprobaciones de V7 del plan (`docs/ddd/blueprints/sprint-02-plan.md`, sección 7) están en los puntos 4 a 7; los puntos 1, 2, 3 y 8 ya estaban en el archivo.
 
-1. `docker compose up -d --build` y abrir `http://localhost:${WEB_PORT:-80}` (en el entorno local, `http://localhost:8180`). El login se ve bien en tema claro y en tema oscuro.
+1. `docker compose up -d --build` y abrir `http://localhost:${WEB_PORT:-80}` (en el entorno local, `http://localhost:8180`). El login se ve bien en tema claro (siempre claro por `AccessLayout`, F3); el tema oscuro se comprueba en Inicio.
 2. Entrar como admin y crear un coach con `POST /api/v1/users`. La respuesta trae `activation_url` (`<FRONT_BASE_URL>/restablecer/<token>`), válido por 72 h. Abrirlo en otra ventana, fijar una contraseña de 12 o más caracteres (la página vuelve a `/login` sin iniciar sesión, S2-D18) y entrar como coach.
 3. El coach no ve Usuarios ni Configuración. Si entra a `/sistema/configuracion` por la URL, ve "Sin permiso"; la API responde 403 en las rutas de `settings` y `users`.
 4. Límite de intentos y sesiones:
@@ -392,3 +392,11 @@ Actualizado con `git log` hasta `11cf7e9`. Commits que no son checkpoints de sli
   - V5: pruebas `perf` en verde (búsqueda por documento con 1.000 socios en 12,1 ms; 20 logins fallidos concurrentes con p95 de 0,399 s).
   - V9: `run-gates.sh` con `-m "not perf"` en verde: 1.856 pruebas del api, 4 saltadas, 3 deseleccionadas, cobertura de `app` del 95,56 %; front con 1.676 pruebas y 99,71 % de líneas.
 - **Revisión de Fase 4 en curso** (cuatro informes: general, seguridad, Python y TypeScript; resumen en `docs/scratch/sprint-02.md`, "Revisión de Fase 4", y decisiones en `DECISIONES.md`, "Revisión de Fase 4 del Sprint 2"). El backend, el front y la CI con la documentación corrigen en paralelo; el orquestador corre `run-gates.sh` tras fusionar las tres ramas. Falta el paso humano: push, PR con CI en verde y merge.
+
+### Cierre final
+
+- Revisión de Fase 4 corregida en `da97f11` (backend), `dd36384` (front) y `fb2fece`/`31d8f86` (CI y docs), fusionadas en `8aed5fa` y `523d164`, integración en `2e393cd`; revalidación final en `b6650b5`.
+- Números finales: api 1.987 pruebas (4 saltadas, 3 `perf` aparte en verde), cobertura 95,70 %; front 1.763 pruebas, 99,68 % de líneas, build en verde; E2E `stack` 29 de 29 en dos corridas, `preview` 101; gates, pre-commit, licencias, auditorías de dependencias, gitleaks e imagen en verde.
+- Smoke en vivo del cierre (HEAD `b6650b5`, por Nginx `:8180`, admin del `.env.seed`): `GET /settings/memberships` 200 versión 12 → `PATCH /settings/memberships` (ruta genérica) 200 versión 13 con `expiring_days = 7` y `Cache-Control: no-store`; el mismo PATCH con la versión vieja 409 `version_conflict`; `GET /plans` 200 (17 planes) → `GET /plans/{id}` 200 con el mismo nombre y `no-store`; `GET /plans/{uuid inexistente}` 404 `plan_not_found`; `POST /auth/me/password` 200 con `access_token`, `expires_in`, `token_type`; con 1,2 s entre el login y el cambio, `GET /auth/me` con el access viejo 401 `unauthorized` (H-3) y con el nuevo 200; segundo cambio para revertir 200; login final con la contraseña original 200. V9 del front sobre el árbol fusionado: 110 archivos, 1.763 pruebas, cobertura 99,68 % de líneas, `npm run build` en verde (main 463,25 kB, 142,49 kB gzip).
+- Nota a la demo, punto 1: el login se muestra siempre en tema claro (`AccessLayout` fuerza claro, F3); el tema oscuro se comprueba en Inicio y en el panel (capturas de `captures.spec.ts`).
+- Pendiente humano (V12): push de la rama, PR con los seis jobs de CI en verde y merge. El orquestador intenta el push.

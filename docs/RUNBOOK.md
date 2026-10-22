@@ -216,3 +216,10 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Cada búsqueda con `q` deja en `crypto.crypto_ops` entre una y tres filas `index` del mismo lote (`batch_id`), una por clase; una búsqueda solo por nombre o una lista sin `q` no deja ninguna, y nunca hay `decrypt`.
 - Límite: 60 búsquedas con `q` por minuto por usuario (429 `rate_limited` con `Retry-After`); la lista sin `q` no cuenta. El contador vive en memoria y se limpia con `up -d api`.
 - Pruebas de rendimiento (marcador `perf`; 1.000 socios, búsqueda por documento bajo 500 ms con `EXPLAIN` del único parcial, y L-11 de 20 logins fallidos concurrentes con p95 bajo 2 s): `cd api && uv run pytest -m perf -q -s` (con `TEST_DATABASE_URL`). Los gates corren `-m "not perf"` salvo el de B8 y V5.
+
+## Planes (S2-B9)
+
+- `POST /api/v1/plans` solo lo usa el admin. El nombre es único entre los planes no dados de baja sin distinguir mayúsculas ni espacios de los extremos: con "Mensual" creado, "mensual" o "  MENSUAL  " dan 409 `plan_name_duplicated` con `existing_id` (índice `uq_plans_name_alive` sobre `lower(btrim(name))`). Dar de baja un plan (Sprint 4A) libera el nombre.
+- Tipos: `days` (sin `class_count`) y `classes` (con `class_count` de 1 a 1.000). Topes: precio de 1 a 1.000.000.000 COP (entero), duración de 1 a 3.650 días. La base repite las reglas por CHECK (`\d plans.plans`).
+- Alcance del coach: `GET /api/v1/plans?active=true` y `GET /api/v1/plans/{id}` de planes activos; sin `active=true` o sobre un plan inactivo recibe 403 `forbidden`. El admin ve activos e inactivos. Los dados de baja no aparecen nunca (404 en el detalle).
+- La búsqueda `q` no distingue mayúsculas ni tildes. En todas las listas (`/users`, `/members`, `/plans`) un `q` con caracteres de control (por ejemplo `%00`) da 422 con `field="q"`.

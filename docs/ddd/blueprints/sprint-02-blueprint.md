@@ -559,7 +559,7 @@ Archivos a crear:
 - `api/migrations/versions/0007_plans.py` (`down_revision = "0006_members"`), tabla `plans.plans`:
   - columnas comunes y `deleted_at`;
   - `name text`, `price_cop integer`, `kind text`, `duration_days integer`, `class_count integer` (nula), `is_active boolean` (default `true`), todas no nulas salvo `class_count`;
-  - CHECKs: `price_cop > 0`, `duration_days > 0`, `kind IN ('days','classes')`, `(kind = 'classes' AND class_count > 0) OR (kind = 'days' AND class_count IS NULL)`, `btrim(name) <> ''`;
+  - CHECKs: `price_cop > 0`, `duration_days > 0`, `kind IN ('days','classes')`, `(kind = 'classes' AND class_count IS NOT NULL AND class_count > 0) OR (kind = 'days' AND class_count IS NULL)` (corregido en B9: ver DECISIONES S2-B9), `btrim(name) <> ''`;
   - índices `uq_plans_name_alive` (decisión 32) e `ix_plans_active_alive (is_active) WHERE deleted_at IS NULL`;
   - `downgrade`: `drop_table`.
 - `api/tests/migrations/test_0007_plans.py` (CHECKs con `INSERT` crudo: precio 0, `days` con clases, nombre repetido en distinta capitalización).

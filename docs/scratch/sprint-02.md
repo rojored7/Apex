@@ -1281,3 +1281,196 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
 - Deuda conocida (Sprint 4A): la rama de nombre no usa índice (`pg_trgm` o columna normalizada
   si la tabla crece). Pendiente fuera de alcance: el mismo NUL en `q` de `auth.list_users`
   (contrato común `SearchQuery`).
+
+### S2-B9 · Rojo
+
+- Línea base (HEAD `3e7ec24`, árbol limpio): api 1621 ok, 4 saltadas, 3 deseleccionadas
+  (`-m 'not perf'`, 1625 colectadas); `ruff check .` y `mypy src` (60 archivos) limpios.
+- B9.1 fábrica y limpieza:
+  - `api/tests/factories/plans.py`: `make_plan(session, **cambios)` ("Mensual", 120.000, 30 días,
+    `days`, activo; bajo `actor_scope(SYSTEM_USER_ID)`, `flush` y commit del savepoint; sin bus) y
+    `make_plans(session, n)` (`Plan 000`, `Plan 001`, ...); `FACTORIES["plans.plans"]`;
+  - `tests/conftest.py`: `LIMPIAR_PLANS` (con `to_regclass`, inocuo sin la tabla) en
+    `LIMPIEZA_DE_SESION` y en el `finally` de `dos_sesiones`;
+  - `api/tests/plans/{__init__,_apoyo}.py`: `PLANS`, `CAMPOS_PLAN`, `cuerpo`, `tiquetera`,
+    `entrada`, `crear`, `fila_plan`, `cuantos_planes`.
+- B9.2 stubs (`ruff` y `mypy src` limpios, 66 archivos), en `api/src/app/modules/plans/`:
+  - `models.py` completo: `Plan(CommonColumnsMixin, SoftDeleteMixin, Base)`, esquema `plans`,
+    `__audited__`, cinco CHECKs nombrados, `uq_plans_name_alive` sobre
+    `lower(btrim(name)) WHERE deleted_at IS NULL` (`NAME_ALIVE_INDEX`) e `ix_plans_active_alive`;
+  - `schemas.py` y `exceptions.py` completos (contrato): `PlanCreate` (`StrictInt` y topes de
+    S2-D32 como constantes), `PlanOut`, `PlanSnapshot` (dataclass congelada), `PlanListQuery`;
+    `PlanError`, `PlanValidationError` (422), `PlanNameDuplicated` (409, `field="name"`,
+    `existing_id`), `PlanNotFound` (404), `PlanScopeForbidden` (403 `forbidden`);
+  - `service.py`: `PlanCreated(plan_id)` y las firmas de `validate_plan`, `ensure_list_scope`,
+    `ensure_read_scope`, `create`, `list`, `detail`, `get`, `get_including_deleted` y
+    `names_for` con `NotImplementedError`;
+  - `router.py`: `POST /plans` (`require_role("admin")`, 201), `GET /plans` y
+    `GET /plans/{plan_id}` (`require_role("admin", "coach")`, `PageParams`, `q: SearchQuery`,
+    `active`); llama al service;
+  - NO se tocan `MODULES`, `main.py`, `migrations/env.py`, la migración ni `core/pagination.py`.
+- B9.3 pruebas (222 colectadas nuevas en neto):
+  - `tests/plans/test_validate_plan.py` (55): `validate_plan` (`days` con clases, también 0;
+    `classes` sin clases, 0, negativo o 1.001; `duration_days` 0, negativo o 3.651; bordes
+    válidos; mensaje sin el valor) y el contrato de `PlanCreate` (`StrictInt`: `120000.5`,
+    `120000.0`, `"120000"`, `true`; topes; nombre recortado, blanco, 81; `kind`; `extra`);
+  - `tests/plans/test_scope_rules.py` (16): admin todo; coach solo `active=True`; coach sobre
+    inactivo; `member` nunca; `PlanScopeForbidden` es 403 `forbidden`;
+  - `tests/plans/test_service_create.py` (15): "Mensual" y "Tiquetera 12", `created_at` y
+    `updated_at` iguales a la fila (refresh), nombre recortado, fila `insert` de auditoría con
+    `table_name='plans.plans'` y el actor, `PlanCreated`, `HandlerRoto` revierte (sin plan ni
+    auditoría), 409 con `existing_id` para "Mensual", "mensual", "  MENSUAL  " y "MeNsUaL", un
+    dado de baja libera el nombre, carrera con `dos_sesiones` ("Carrera" contra "carrera"), 422
+    `class_count` desde el service;
+  - `tests/plans/test_router_create.py` (25): 201 admin con `price_cop` entero; 403 coach y
+    `member`; 401; 19 casos de 422 con `field` (precio decimal, negativo, cero, texto, booleano,
+    1.000.000.001 y ausente; días 0, 3.651 y texto; clases 0 y 1.001; `days` con clases y
+    `classes` sin clases; nombre blanco y de 81; `kind`; `is_active` y `created_by` extra); 409;
+  - `tests/plans/test_service_list.py` (35): vivos en orden de nombre, `active` True/False, sin
+    dados de baja, coach con y sin `active=True`, `q` (`TRIMES`, `promo`, `promocion` y
+    `PROMOCIÓN` encuentran "Promoción", `ménsual` encuentra "Mensual", recortado, inactivo),
+    `q` vacío, comodines `100%`, `a_b`, `\` y `%`, `q` con `active`, paginación sin repetir,
+    `ORDER BY name ... id` (listener), `get` da `PlanSnapshot` (inactivo sí; baja o inexistente
+    404), `get_including_deleted`, `for_share` con `FOR SHARE` en el SQL y candado real (un
+    `UPDATE` de otra sesión con `lock_timeout` da 55P03), `names_for` en una sentencia con bajas
+    y sin inexistentes, `[]` sin consultar, iterable con repetidos;
+  - `tests/plans/test_router_list.py` (29): admin 200 con el contrato (activos e inactivos),
+    `active=false`, coach `active=true` 200, coach sin parámetro, con `false` o solo `q` 403,
+    búsqueda por HTTP, `member` 403 y 401 en las dos rutas, 422 con `field` (`limit` 500/201/0,
+    `offset` -1, `active=talvez`, `q` de 101), `q` con `\x00`/`\x1f` 422 `field=q`, `limit=200`;
+    detalle: activo 200 para los dos, inactivo 403 coach y 200 admin, baja o inexistente 404
+    `plan_not_found`, id no UUID 422 `field=plan_id`;
+  - `tests/migrations/test_0007_plans.py` (31): padre `0006_members` y head, columnas exactas,
+    defaults, filas válidas (incluidos topes), 13 CHECKs por SQLSTATE, 6 obligatorias, único sin
+    distinguir mayúsculas ni espacios (5 casos), la baja libera el nombre, índices por
+    `pg_indexes`, ciclo;
+  - arquitectura: `test_audited_tables.py` (`plans.plans` requerida y fuera de pendientes; nueva
+    `test_plans_es_requerida_y_su_modulo_esta_en_modules`; el ejemplo de pendiente auditada pasa
+    a `memberships.memberships`), `test_audit_module.py` (`MODULES` con `plans`),
+    `test_service_import_graph.py` (`plans` sin aristas en ningún sentido),
+    `test_list_routes_use_page_params.py` (exige `GET /users`, `/members` y `/plans`).
+- Deuda de B8 que B9 cierra (NUL en `q`): `tests/core/test_pagination_router.py` (+11: `\x00`,
+  `\x1f`, `\x01`, `\x07` dan 422 `field=q`; tilde, espacios, comodines, teléfono, correo y bordes
+  siguen en 200), `tests/auth/test_users_list_router.py` (+3: `GET /users?q=a%00b`, `%00` y
+  `a%1Fb` dan 422, hoy 500) y `tests/members/test_list_review.py` (la prueba que esperaba 200
+  pasa a `test_un_q_con_caracteres_de_control_por_http_da_422_y_no_500`, 2 casos). `SearchQuery`
+  queda como estaba para que fallen en rojo.
+- Prueba reparada por contrato: `tests/migrations/test_0006_members.py::..._y_es_head` pasa a
+  `test_la_revision_existe_cuelga_de_0005b_y_esta_en_la_cadena_de_head` (con `0007` colgando de
+  `0006`, `get_heads() == ["0006_members"]` dejaría de valer; como en B7 con `0005b`).
+- Conteo (`-m 'not perf'`): 1847 colectadas (1850 sin filtro, 3 deseleccionadas); 183 fallan,
+  1660 pasan, 4 saltadas. Las 183: `tests/plans` 139 y `test_0007_plans.py` 31 (por
+  `NotImplementedError` de los stubs, `relation "plans.plans" does not exist`, revisión
+  `0007_plans` inexistente y rutas no montadas que dan 404), deuda del NUL 10 (5 de
+  `SearchQuery`, 3 de `/users` con 500 y 2 de `/members` con 200) y arquitectura 3 (`MODULES`
+  sin `plans`, `plans.plans` requerida sin módulo, `GET /plans` no recogida). Ninguna por import
+  ni fixture. Pasan ya 43 nuevas: 35 de contrato de `PlanCreate`, 1 de `PlanScopeForbidden`, 6
+  de `q` válido y 1 del grafo de services. Regresiones de comportamiento: 0.
+- Validación del Rojo: con un Verde provisional (migración `0007_plans`, service completo,
+  `MODULES` con `plans`, import en `env.py` y `SearchQuery` con `pattern=r"^[^\x00-\x1f]*$"`),
+  revertido después (downgrade de `db_test` a `0006_members` antes de borrar la revisión), la
+  suite dio 1841 ok, 4 saltadas y 2 fallos: `test_docs_openapi_json_esta_al_dia` (esperado,
+  P-API de B9.6) y `test_los_checks_rechazan_por_sql_crudo[classes-sin-clases]`, que destapó un
+  defecto del blueprint (abajo). `db_test` queda en `0006_members`, sin `plans.plans`, socios,
+  usuarios `@test.apex`, llaves, auditoría ni secciones.
+- Decisiones de prueba que el Verde debe respetar:
+  - CHECK de clases: el del blueprint, `(kind = 'classes' AND class_count > 0) OR (kind = 'days'
+    AND class_count IS NULL)`, ACEPTA `classes` con `class_count` nulo (`NULL > 0` es NULL,
+    `TRUE AND NULL` es NULL y un CHECK con NULL pasa). La migración debe usar
+    `(kind = 'classes' AND class_count IS NOT NULL AND class_count > 0) OR (kind = 'days' AND
+    class_count IS NULL)`, como ya dice `models.py`. Anotar en `DECISIONES.md` (S2-B9).
+  - NUL en `q` (deuda de S2-B8, MEDIUM-1): `core/pagination.SearchQuery` rechaza los caracteres
+    de control C0 (`\x00` a `\x1f`) con 422 `field=q` en TODAS las listas (`/users`, `/members`,
+    `/plans`), antes del service; el provisional usó `Query(pattern=r"^[^\x00-\x1f]*$")`. Cambia
+    el OpenAPI de las tres listas (P-API). `classify_query` de `members` conserva su limpieza
+    como defensa en profundidad para quien llame al service directo. Las pruebas no fijan
+    `\x7f` ni el rango C1: si el Verde rechaza toda la categoría `Cc`, también cumple. Anotar en
+    `DECISIONES.md` cerrando el pendiente de S2-B8.
+  - `GET /plans/{plan_id}` necesita `PlanOut` (con `created_at`), que `PlanSnapshot` no trae: el
+    stub agrega `service.detail(session, plan_id, *, role) -> PlanOut` (`get` + `ensure_read_scope`
+    y la fila). Orden: baja o inexistente da 404 antes que el 403 del coach.
+  - `ensure_list_scope` y `ensure_read_scope` cierran también para `member` (la ruta ya lo frena
+    con `require_role`).
+  - La búsqueda pliega mayúsculas y tildes en SQL a los dos lados (`translate(lower(...))`,
+    US-079) y escapa `\`, `%` y `_`; `q` vacío o en blanco no filtra.
+  - `create` recorta el nombre aunque llegue sin validar (`model_copy`); el pre-chequeo y el
+    único comparan `lower(btrim(name))`; `PlanNameDuplicated.existing_id` puede ser `None` en la
+    carrera; `refresh` de `created_at` y `updated_at`; `created_by` lo pone el actor.
+  - `names_for([])` da `{}` sin tocar la base; con ids, una sola sentencia sobre `plans.plans`.
+  - Agregar `from app.modules.plans import models as _plans` en `migrations/env.py`.
+- Desviaciones del encargo:
+  1. `service.detail` no está en el blueprint (ver arriba): sin él, el router tendría que leer el
+     ORM o devolver el snapshot sin fechas.
+  2. La prueba HTTP del NUL de socios vive en `tests/members/test_list_review.py` (ahí estaba la
+     que esperaba 200), no en `test_router_list.py`.
+  3. `GET /plans?q=<NUL>` se fija en 422 `field=q` (el encargo admitía "200 o 422"): es lo que da
+     el contrato común una vez cerrada la deuda.
+  4. `models.py` lleva el CHECK de clases corregido (no el literal del blueprint).
+
+### S2-B9 · Verde
+
+- B9.4 migración `0007_plans` (P-MIG): `pg_dump -Fc` a `docs/scratch/sprint-02-antes-0007_plans.dump`
+  (ignorado por `*.dump`); `stop api`; `api/migrations/versions/0007_plans.py`
+  (`down_revision = "0006_members"`, tabla `plans.plans` con los cinco CHECKs nombrados, el de
+  clases con `class_count IS NOT NULL`, `uq_plans_name_alive` sobre `lower(btrim(name))` donde
+  `deleted_at IS NULL` e `ix_plans_active_alive`; `downgrade` `drop_table`); import de
+  `plans.models` en `migrations/env.py`; contra `db_test` `test_migrations.py` y
+  `test_0007_plans.py` 34 ok; `alembic heads` = `0007_plans (head)`; `start api` healthy;
+  `alembic current` = `0007_plans (head)`; ciclo `downgrade -1` (→ `0006_members`) y
+  `upgrade head` en `apex-db-1`. Hallazgo al entrar: `apex-db-1` ya estaba en `0007_plans` con la
+  tabla del Verde provisional del QA (CHECK de clases sin `IS NOT NULL`, 0 filas) y el api caído
+  en el arranque ("Can't locate revision 0007_plans"); el ciclo la recreó con la definitiva
+  (`ck_plans_class_count_by_kind` con `class_count IS NOT NULL`).
+- B9.5 Verde: `plans/service.py` completo (`validate_plan`, `ensure_list_scope` y
+  `ensure_read_scope` cerrando por defecto, también a `member`; `create` con NFC y recorte,
+  pre-chequeo `lower(btrim(...))` en SQL a los dos lados, `begin_nested()` con traducción del
+  `IntegrityError` de `uq_plans_name_alive`, `refresh` y `PlanCreated`; `list` con
+  `translate(lower(...))` y `ESCAPE '\'`, orden `name, id`; `detail` en una sentencia, 404 antes
+  que 403; `get` con `FOR SHARE` opcional; `get_including_deleted`; `names_for` en una
+  sentencia). `MODULES = ("auth", "settings", "audit", "members", "plans")`.
+  `core/pagination.SearchQuery` con `pattern=SEARCH_PATTERN` (`^[^\x00-\x1f\x7f-\x9f]*$`, toda
+  la categoría `Cc`): cierra la deuda del NUL de S2-B8 en `/users`, `/members` y `/plans`.
+  `members._limpio` solo cambia su docstring (defensa en profundidad).
+- Revisión (`security-reviewer` sobre `git diff 3e7ec24 -- api/src api/migrations` y los nuevos):
+  0 CRITICAL, 0 HIGH, 1 MEDIUM, 4 LOW. Corregidos con prueba MEDIUM-1 (`name` con NUL daba 500;
+  U+200B pasaba el CHECK; NFC) y LOW-1 (`PlanListQuery.q` con `SEARCH_PATTERN`) en
+  `tests/plans/test_plan_review.py` (14 casos, 10 rojos antes del arreglo). Aceptados LOW-2
+  (403 frente a 404 del coach), LOW-3 (`existing_id` solo para el admin) y LOW-4 (búsqueda sin
+  índice). Ver `DECISIONES.md`, S2-B9.
+- B9.6 contrato (P-API): `export-openapi` dos veces idéntico; `docs/openapi.json` (+541 líneas:
+  rutas de planes, `PlanCreate`, `PlanOut`, `Page_PlanOut_` y el `pattern` de `q` en las tres
+  listas) y `web/src/core/api/types.ts` regenerados; `types.contract.test.ts` 5 ok;
+  `tsc --noEmit` limpio. Con este slice el contrato queda definitivo para el front (F6 lo toma
+  por rebase).
+- Números: `-m 'not perf'` 1856 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura `app`
+  96 % (`plans/service.py` 94 %, `schemas.py` 97 %, `router.py` 100 %); `ruff format`,
+  `ruff check` y `mypy src` (66 archivos) limpios.
+- Docs: `DECISIONES.md` sección "S2-B9"; `sprint-02-blueprint.md` S2-B9 con el CHECK corregido y
+  la nota; `docs/RUNBOOK.md` "Planes (S2-B9)". `CLAUDE.md` sin cambios (la carpeta `plans/` ya
+  figura).
+- Docker antes del gate (E1, como B7: el bloque nombra los planes que quedan), sin tocar el
+  árbol; la recarga por bind recogió el código. Por Nginx `:8180` con `Origin` y accesos
+  firmados dentro del contenedor del api (admin y `coach-b7-smoke@test.apex`):
+  - admin `POST /plans` "Mensual" ($ 120.000, `days`, 30) → 201 con `"price_cop":120000`;
+    "mensual" → 409 `plan_name_duplicated` con `field=name` y `existing_id` de "Mensual";
+    "Tiquetera 12" (`classes`, 30 días, 12 clases, $ 150.000) → 201; `classes` sin
+    `class_count` → 422 `field=class_count`; `GET /plans` → 200 con los dos (`total` 2);
+  - coach `GET /plans?active=true` → 200 con los dos; `GET /plans` → 403 `forbidden`;
+    `POST /plans` → 403;
+  - admin `GET /users?q=a%00b` → 422 `field=q` (antes 500: deuda cerrada);
+  - psql: `audit.audit_log` con dos `insert` de `plans.plans` con el admin como `user_id`;
+    `\d plans.plans` con los cinco CHECKs `ck_plans_*` (el de clases con `IS NOT NULL`),
+    `uq_plans_name_alive` UNIQUE sobre `lower(btrim(name)) WHERE deleted_at IS NULL` e
+    `ix_plans_active_alive`; `/api/v1/health` 200.
+- Datos de prueba que quedan (B9 del front y Sprint 3): planes
+  `37aca240-de9b-4857-9dca-da75656309b1` ("Mensual", $ 120.000, `days`, 30 días) y
+  `4ce6c6da-8fc6-4e92-bb56-2930f0e13186` ("Tiquetera 12", $ 150.000, `classes`, 30 días, 12
+  clases), activos.
+- Desviaciones:
+  - E1: el smoke de Docker corrió antes de los gates (como B7 y B8); tras los gates solo se repite
+    `/health`.
+  - `SearchQuery` rechaza toda la categoría `Cc` (también U+007F a U+009F), no solo C0: lo admitían
+    las decisiones del Rojo y coincide con la limpieza de `classify_query`.
+  - El gate que sella lista también `tests/plans/test_plan_review.py` (nació en la revisión).
+  - El script de firma quedó en `/tmp/firmar.py` del contenedor del api (sin secretos; el usuario
+    del contenedor no puede borrar lo que copió `docker cp`); desaparece al recrear el contenedor.

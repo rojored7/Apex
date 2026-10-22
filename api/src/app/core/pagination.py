@@ -4,7 +4,11 @@
   `Annotated[PageParams, Depends()]`. Un valor fuera de rango da 422 con el envelope de
   US-017 y `field = "limit"` u `"offset"`.
 - `Page[T]`: `{items, total, limit, offset}` y nada más (`extra="forbid"`).
-- `SearchQuery`: `q` de hasta 100 caracteres; nunca se registra en logs (US-018).
+- `SearchQuery`: `q` de hasta 100 caracteres y sin caracteres de control (categoría `Cc`:
+  U+0000 a U+001F y U+007F a U+009F). Un NUL lo rechaza PostgreSQL como parámetro y daba 500
+  (revisión S2-B8, MEDIUM-1; cerrado en S2-B9): un valor fuera de contrato da 422 con
+  `field = "q"` en todas las listas, antes de cualquier service. Nunca se registra en logs
+  (US-018).
 - `paginate(session, stmt, params)`: cuenta sobre la subconsulta y aplica `limit` y
   `offset` con orden estable: siempre agrega la clave primaria de la primera entidad
   como último criterio, así filas con la misma clave de orden no se repiten ni se omiten
@@ -28,6 +32,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 DEFAULT_LIMIT: Final = 25
 MAX_LIMIT: Final = 200
 MAX_SEARCH_LENGTH: Final = 100
+# Sin caracteres de control (categoría Unicode `Cc`). Con escapes, para que el patrón publicado
+# en el OpenAPI sea texto imprimible.
+SEARCH_PATTERN: Final = r"^[^\x00-\x1f\x7f-\x9f]*$"
 
 
 @dataclass(frozen=True)
@@ -49,7 +56,11 @@ class Page[T](BaseModel):
 
 SearchQuery = Annotated[
     str | None,
-    Query(max_length=MAX_SEARCH_LENGTH, description="Búsqueda libre; nunca se registra en logs"),
+    Query(
+        max_length=MAX_SEARCH_LENGTH,
+        pattern=SEARCH_PATTERN,
+        description="Búsqueda libre sin caracteres de control; nunca se registra en logs",
+    ),
 ]
 
 

@@ -47,7 +47,7 @@ from app.core.ratelimit import KEY_KINDS, configure_store_limits, rate_limits_fr
 from app.core.security import configure_security, get_principal_loader
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
-MODULES: Final[tuple[str, ...]] = ("auth", "settings", "audit", "members")
+MODULES: Final[tuple[str, ...]] = ("auth", "settings", "audit", "members", "plans")
 API_PREFIX = "/api/v1"
 MIGRATION_LOCK_KEY: Final[int] = db.MIGRATION_LOCK_KEY
 API_ROOT = Path(__file__).resolve().parents[2]

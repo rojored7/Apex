@@ -1067,6 +1067,38 @@
         "title": "Page[MemberRowOut]",
         "type": "object"
       },
+      "Page_PlanOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[PlanOut]",
+        "type": "object"
+      },
       "Page_UserRow_": {
         "additionalProperties": false,
         "properties": {
@@ -1097,6 +1129,125 @@
           "offset"
         ],
         "title": "Page[UserRow]",
+        "type": "object"
+      },
+      "PlanCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "class_count": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Count"
+          },
+          "duration_days": {
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Duration Days",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "days",
+              "classes"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price_cop": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Price Cop",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "price_cop",
+          "kind",
+          "duration_days"
+        ],
+        "title": "PlanCreate",
+        "type": "object"
+      },
+      "PlanOut": {
+        "properties": {
+          "class_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Count"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_days": {
+            "title": "Duration Days",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "days",
+              "classes"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_cop": {
+            "title": "Price Cop",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price_cop",
+          "kind",
+          "duration_days",
+          "class_count",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlanOut",
         "type": "object"
       },
       "PrivacyPatchIn": {
@@ -2473,7 +2624,7 @@
         "operationId": "list_members_api_v1_members_get",
         "parameters": [
           {
-            "description": "Búsqueda libre; nunca se registra en logs",
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
             "in": "query",
             "name": "q",
             "required": false,
@@ -2481,13 +2632,14 @@
               "anyOf": [
                 {
                   "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
                   "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Búsqueda libre; nunca se registra en logs",
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
               "title": "Q"
             }
           },
@@ -2758,6 +2910,390 @@
         "summary": "Create Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/v1/plans": {
+      "get": {
+        "operationId": "list_plans_api_v1_plans_get",
+        "parameters": [
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PlanOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Operación inválida"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "plans"
+        ]
+      },
+      "post": {
+        "operationId": "create_plan_api_v1_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Operación inválida"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          }
+        },
+        "summary": "Create Plan",
+        "tags": [
+          "plans"
+        ]
+      }
+    },
+    "/api/v1/plans/{plan_id}": {
+      "get": {
+        "operationId": "get_plan_api_v1_plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Operación inválida"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          }
+        },
+        "summary": "Get Plan",
+        "tags": [
+          "plans"
         ]
       }
     },
@@ -3628,7 +4164,7 @@
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
-            "description": "Búsqueda libre; nunca se registra en logs",
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
             "in": "query",
             "name": "q",
             "required": false,
@@ -3636,13 +4172,14 @@
               "anyOf": [
                 {
                   "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
                   "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Búsqueda libre; nunca se registra en logs",
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
               "title": "Q"
             }
           },

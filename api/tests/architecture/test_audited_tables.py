@@ -9,7 +9,7 @@ S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit
 `REQUIRED_AUDITED_TABLES_V01` deben existir y estar auditadas; las de `PENDING_AUDITED` todavía
 pueden no existir, pero si ya existen y no declaran `__audited__ = True` la prueba falla. B7 y
 B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01` (S2-B7: `members.members`,
-con `members` en `MODULES`).
+con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`).
 """
 
 from __future__ import annotations
@@ -32,10 +32,15 @@ EXCLUIDAS: dict[str, str] = {
 }
 
 REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
-    {"auth.users", "auth.one_time_tokens", "settings.settings_sections", "members.members"}
+    {
+        "auth.users",
+        "auth.one_time_tokens",
+        "settings.settings_sections",
+        "members.members",
+        "plans.plans",
+    }
 )
 PENDING_AUDITED: dict[str, str] = {
-    "plans.plans": "B9",
     "memberships.memberships": "Sprint 3",
     "payments.payments": "Sprint 3",
 }
@@ -126,7 +131,8 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    assert _incumplidas({**_requeridas_auditadas(), "plans.plans": _Auditada}) == []
+    tablas = {**_requeridas_auditadas(), "memberships.memberships": _Auditada}
+    assert _incumplidas(tablas) == []
 
 
 def test_members_es_requerida_y_declara_su_sujeto() -> None:
@@ -137,6 +143,17 @@ def test_members_es_requerida_y_declara_su_sujeto() -> None:
     tablas = _tablas_de_la_app()
     assert "members.members" in tablas
     assert getattr(tablas["members.members"], "__audit_subject__", None) == "id"
+
+
+def test_plans_es_requerida_y_su_modulo_esta_en_modules() -> None:
+    """S2-B9: `plans.plans` es requerida y se descubre desde `MODULES` (no por el import de una
+    prueba): con `plans` fuera de `MODULES` la tabla no existiría en una corrida aislada."""
+    assert "plans.plans" in REQUIRED_AUDITED_TABLES_V01
+    assert "plans.plans" not in PENDING_AUDITED
+    assert "plans" in MODULES
+    _cargar_modelos(("plans",))
+    tablas = _tablas_de_la_app()
+    assert getattr(tablas["plans.plans"], "__audited__", False) is True
 
 
 def test_una_requerida_ausente_o_sin_audited_falla() -> None:

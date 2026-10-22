@@ -361,7 +361,9 @@ def _es_documento(normalizado: str) -> bool:
 
 def _limpio(q: str | None) -> str:
     """NFC (una tilde combinada se pliega como la precompuesta) y sin caracteres de control
-    (categoría `Cc`: un NUL lo rechaza PostgreSQL y daría 500; revisión S2-B8, MEDIUM-1)."""
+    (categoría `Cc`: un NUL lo rechaza PostgreSQL y daría 500; revisión S2-B8, MEDIUM-1). Desde
+    S2-B9 `SearchQuery` los rechaza con 422 en la ruta; esto queda como defensa en profundidad
+    para quien llame al service directo."""
     sin_control = "".join(c for c in (q or "") if unicodedata.category(c) != "Cc")
     return unicodedata.normalize("NFC", sin_control).strip()
 

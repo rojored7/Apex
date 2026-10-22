@@ -79,6 +79,20 @@ async def test_parametros_invalidos_dan_422_con_el_campo(
     assert r.json()["error"]["field"] == campo
 
 
+@pytest.mark.parametrize("query", ["q=a%00b", "q=%00", "q=a%1Fb"], ids=["nul", "solo-nul", "us"])
+async def test_un_q_con_caracteres_de_control_da_422_con_field_q_y_no_500(
+    query: str, app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> None:
+    """Deuda de S2-B8 (MEDIUM-1, `DECISIONES.md`): el NUL llegaba a PostgreSQL como parámetro del
+    `ILIKE` sobre el correo y daba 500. `core/pagination.SearchQuery` rechaza los caracteres de
+    control en el contrato común de todas las listas (S2-B9)."""
+    admin = await usuario_real("admin")
+    r = await app_http.get(f"{USERS}?{query}", headers=cabeceras(admin))
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "validation_error"
+    assert r.json()["error"]["field"] == "q"
+
+
 async def test_limit_200_es_valido(
     app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
 ) -> None:

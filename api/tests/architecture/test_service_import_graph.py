@@ -125,7 +125,15 @@ def _grafo_real() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
 
 def test_hay_services_que_revisar() -> None:
     grafo, _ = _grafo_real()
-    assert {"auth", "settings"} <= set(grafo)
+    assert {"auth", "settings", "members", "plans"} <= set(grafo)
+
+
+def test_plans_no_agrega_aristas() -> None:
+    """S2-B9: `plans` no importa ningún service ajeno ni nadie importa el suyo todavía (lo hará
+    `memberships` en el Sprint 3, con su decisión)."""
+    grafo, _ = _grafo_real()
+    assert grafo["plans"] == set()
+    assert [a for a, destinos in grafo.items() if "plans" in destinos] == []
 
 
 def test_el_grafo_de_services_es_aciclico() -> None:

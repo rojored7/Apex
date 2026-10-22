@@ -3,7 +3,8 @@
 - MEDIUM-1: un `q` con caracteres de control (`%00`) llegaba a PostgreSQL como parámetro y
   asyncpg lo rechaza (`0x00` no es UTF-8 válido para el servidor): 500 con traza. `classify_query`
   quita los caracteres de control (categoría `Cc`, salvo los espacios, que `strip` y la
-  normalización ya tratan) antes de clasificar; `GET /members?q=a%00b` responde 200.
+  normalización ya tratan) antes de clasificar. Desde S2-B9 `core/pagination.SearchQuery` rechaza
+  esos caracteres en todas las listas: `GET /members?q=a%00b` responde 422 `field=q`.
 - LOW-4: `classify_query` normaliza el término a NFC, así una tilde combinada (`"Jose\\u0301"`)
   se pliega igual que la precompuesta de la columna (`"José"`).
 - Regresión del escape con PostgreSQL real: `\\` no da error ni coincide con todo; `100%` y
@@ -55,17 +56,24 @@ def test_classify_query_normaliza_a_nfc() -> None:
     assert plan.name_pattern == "%José%"
 
 
-async def test_un_q_con_nul_por_http_no_da_500(
+@pytest.mark.parametrize("termino", ["an\x00a", "a\x1fb"], ids=["nul", "us"])
+async def test_un_q_con_caracteres_de_control_por_http_da_422_y_no_500(
     app_http: AsyncClient,
     usuario_real: CrearUsuario,
     cabeceras: Cabeceras,
     session: AsyncSession,
+    termino: str,
 ) -> None:
-    ana = await _socio(session, "Ana", "Ruiz")
+    """S2-B9 (deuda de S2-B8): antes esperaba 200 porque `classify_query` limpiaba el NUL. Desde
+    que `core/pagination.SearchQuery` rechaza los caracteres de control para TODAS las listas, el
+    contrato es 422 `field=q` antes de llegar al service (la limpieza de `classify_query` queda
+    como defensa en profundidad para quien llame al service directamente)."""
+    await _socio(session, "Ana", "Ruiz")
     coach = await usuario_real("coach")
-    r = await app_http.get(MEMBERS, params={"q": "an\x00a"}, headers=cabeceras(coach))
-    assert r.status_code == 200, r.text
-    assert [f["id"] for f in r.json()["items"]] == [ana]
+    r = await app_http.get(MEMBERS, params={"q": termino}, headers=cabeceras(coach))
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "validation_error"
+    assert r.json()["error"]["field"] == "q"
 
 
 async def test_una_tilde_combinada_encuentra_a_la_precompuesta(

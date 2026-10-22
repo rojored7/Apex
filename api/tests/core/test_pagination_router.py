@@ -63,6 +63,37 @@ async def test_q_de_101_caracteres_da_422_con_field_q(cliente: AsyncClient) -> N
     assert r.status_code == 422 and r.json()["error"]["field"] == "q"
 
 
+@pytest.mark.parametrize(
+    "termino",
+    ["a\x00b", "\x00", "a\x1fb", "\x01", "ab\x07"],
+    ids=["nul", "solo-nul", "us", "soh", "bel"],
+)
+async def test_q_con_caracteres_de_control_da_422_con_field_q(
+    cliente: AsyncClient, termino: str
+) -> None:
+    """S2-B9, deuda de S2-B8 (MEDIUM-1): PostgreSQL rechaza un NUL como parámetro y daba 500 en
+    `GET /users`; el contrato común rechaza los caracteres de control C0 antes de llegar a
+    cualquier service."""
+    async with cliente as c:
+        r = await c.get("/items", params={"q": termino})
+    assert r.status_code == 422, r.text
+    error = r.json()["error"]
+    assert error["code"] == "validation_error" and error["field"] == "q"
+
+
+@pytest.mark.parametrize(
+    "termino",
+    ["Gómez", "laura gó", "100%_\\", "+57 300 123 4567", "lucia@correo.co", "  ana  "],
+    ids=["tilde", "espacio", "comodines", "telefono", "correo", "bordes"],
+)
+async def test_q_sin_caracteres_de_control_sigue_siendo_valido(
+    cliente: AsyncClient, termino: str
+) -> None:
+    async with cliente as c:
+        r = await c.get("/items", params={"q": termino})
+    assert r.status_code == 200, r.text
+
+
 async def test_la_respuesta_tiene_exactamente_las_cuatro_claves(cliente: AsyncClient) -> None:
     async with cliente as c:
         r = await c.get("/items", params={"limit": 50, "offset": 10})

@@ -331,3 +331,35 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   y forgot (US-042, US-048); `X-Forwarded-For` en Nginx sigue siendo `$remote_addr` (decisión de
   seguridad del Sprint 0: Nginx es el primer salto); uvicorn corre con un solo worker por
   defecto. `ENV` se mantiene `dev | production`.
+
+### S1-B11 · Cuentas de usuario y admin inicial (US-041; cierra US-034 T5/T9)
+
+- Rojo: `tests/auth/{test_pure_users,test_seed,test_auth_schema,test_principal_loader}.py`,
+  `tests/cli/test_seed_cli.py`, `tests/architecture/test_no_physical_delete_users.py` sobre
+  stubs: 11 fallos + 3 errores.
+- Verde: migración `0004_auth` (`users` con CHECKs de rol, `member_id` para `member` y correo
+  normalizado, índice único parcial `uq_users_email_alive`; `refresh_tokens` con
+  `replaced_by_id`; `one_time_tokens`; INSERT del usuario técnico `system@apex.local`
+  `00000000-0000-0000-0000-000000000001` inactivo y sin contraseña, N-15), `modules/auth`
+  (`models.py` con `__audited__`, `__audit_redact__ = {password_hash}` y `__audit_exclude__ =
+  {last_login_at}`; `exceptions.py`; `schemas.py`; `router.py` vacío; `service.py` con las puras,
+  `seed_admin` que emite `UserCreated`, `load_active_principal` registrado al importarse como
+  cargador real del puerto, `names_for`, `ids_by_email`, `active_admin_id_by_email`),
+  `MODULES = ("auth",)`, `ADMIN_EMAIL`/`ADMIN_INITIAL_PASSWORD` (`SecretStr`) como campos de
+  `Settings`, `cli seed [--as]` (sale con 2 sin correo, sin contraseña o débil; nunca la imprime;
+  `--as` resuelve el correo a un usuario vivo; el actor envuelve el commit).
+- Evidencia: 30 ok en el slice; suite completa 441 ok + 3 saltadas; ruff y mypy limpios. En
+  `db_test`: la base rechaza `member` sin `member_id`, correo con mayúsculas y rol ajeno; el
+  correo se repite solo tras la baja; `seed_admin` deja una fila `insert` con
+  `after.password_hash = "***"` y `user_id = SYSTEM_USER_ID`, emite `UserCreated` y el segundo
+  seed devuelve `skipped`; el usuario técnico no cuenta como admin activo; el cargador devuelve
+  `None` para inactivo, bloqueado, dado de baja, sin contraseña, inexistente y `SYSTEM_USER_ID`.
+  Stack de desarrollo: el api vuelve a arrancar (`alembic current` = `0004_auth (head)`, `/health`
+  200); `tools seed` rechazó el marcador `cambiar-esto` del `.env` ("no cumple la política:
+  too_common"); con una contraseña real (solo en el `.env` local) creó `admin@ejemplo.local`
+  con hash `$argon2id$`, la segunda corrida "omitido: ya existe un admin activo", y
+  `audit.audit_log` muestra `insert auth.users` con `***` en vez del hash.
+- Desviaciones: `validate_password_policy` de auth delega en `core.security` (una sola lista de
+  comunes). `test_require_role` vuelve a registrar el doble después de `create_app`, porque
+  `auth.service` registra el cargador real al importarse. El `cli seed` corre su corrutina en
+  un hilo propio cuando ya hay un loop activo (pruebas async con `CliRunner`).

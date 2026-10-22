@@ -119,8 +119,6 @@ def test_non_api_env_vars_cubre_compose_cli_y_puertos() -> None:
         "POSTGRES_USER",
         "POSTGRES_PASSWORD",
         "POSTGRES_DB",
-        "ADMIN_EMAIL",
-        "ADMIN_INITIAL_PASSWORD",
         "TEST_DATABASE_URL",
         "WEB_PORT",
         "API_PORT",

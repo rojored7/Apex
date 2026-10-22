@@ -22,6 +22,7 @@ from app.core.security import (
     configure_jwt,
     create_access_token,
     generate_jwt_keypair_pem,
+    register_principal_loader,
     require_role,
     role_allowed,
 )
@@ -63,6 +64,7 @@ async def app(settings_prueba: Settings) -> AsyncIterator[FastAPI]:
         }
     )
     aplicacion = create_app(settings_prueba, run_migrations_on_startup=False)
+    register_principal_loader(principal_double)  # create_app importa auth, que registra el real
     aplicacion.include_router(router, prefix=API_PREFIX)
     token_reloj = set_clock(FrozenClock(T0))
     try:

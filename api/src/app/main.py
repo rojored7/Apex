@@ -48,7 +48,7 @@ from app.core.logging import RequestLogMiddleware, configure_logging
 from app.core.security import configure_security, get_principal_loader
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
-MODULES: Final[tuple[str, ...]] = ()
+MODULES: Final[tuple[str, ...]] = ("auth",)
 API_PREFIX = "/api/v1"
 MIGRATION_LOCK_KEY: Final[int] = db.MIGRATION_LOCK_KEY
 API_ROOT = Path(__file__).resolve().parents[2]

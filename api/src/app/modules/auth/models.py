@@ -1,0 +1,90 @@
+"""Tablas del esquema `auth` (US-041 T4): `users`, `refresh_tokens`, `one_time_tokens`.
+
+- `User` se audita con `password_hash` redactado (`"***"`) y `last_login_at` fuera del diff
+  (US-042). `member_id` es un UUID sin FK entre esquemas (S7); la base exige `member_id` para
+  el rol `member`. El correo de login va en claro (P5).
+- `RefreshToken` no se audita: rota cada 15 minutos; `replaced_by_id` detecta reuso (N-13).
+- `OneTimeToken` (activación y restablecimiento, US-047/048) sí se audita.
+Los usuarios nunca se borran físicamente (RN-14; `test_no_physical_delete_users.py`).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import ClassVar
+from uuid import UUID
+
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text, text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.db import Base, CommonColumnsMixin, SoftDeleteMixin
+
+ROLES: tuple[str, ...] = ("admin", "coach", "member")
+OTT_PURPOSES: tuple[str, ...] = ("activate", "reset")
+
+
+class User(CommonColumnsMixin, SoftDeleteMixin, Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'coach', 'member')", name="role"),
+        CheckConstraint("role <> 'member' OR member_id IS NOT NULL", name="member_id_for_member"),
+        CheckConstraint("email = lower(btrim(email))", name="email_normalized"),
+        Index(
+            "uq_users_email_alive",
+            "email",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        {"schema": "auth"},
+    )
+    __audited__: ClassVar[bool] = True
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset({"password_hash"})
+    __audit_exclude__: ClassVar[frozenset[str]] = frozenset({"last_login_at"})
+
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    member_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    def __repr__(self) -> str:  # sin password_hash
+        return f"User(id={self.id}, role={self.role!r})"
+
+
+class RefreshToken(CommonColumnsMixin, Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (Index("ix_refresh_tokens_user_id", "user_id"), {"schema": "auth"})
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("auth.users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    replaced_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("auth.refresh_tokens.id"), nullable=True
+    )
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class OneTimeToken(CommonColumnsMixin, Base):
+    __tablename__ = "one_time_tokens"
+    __table_args__ = (
+        CheckConstraint("purpose IN ('activate', 'reset')", name="purpose"),
+        Index(
+            "ix_ott_user_purpose_open",
+            "user_id",
+            "purpose",
+            postgresql_where=text("used_at IS NULL"),
+        ),
+        {"schema": "auth"},
+    )
+    __audited__: ClassVar[bool] = True
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("auth.users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(nullable=True)

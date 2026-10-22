@@ -17,6 +17,7 @@ EXCLUIDAS: dict[str, str] = {
     "crypto.crypto_keys": "bitácora propia en crypto_ops",
     "crypto.crypto_ops": "bitácora propia",
     "crypto.crypto_jobs": "bitácora propia en crypto_ops",
+    "auth.refresh_tokens": "rota cada 15 minutos; su ciclo lo registran los timestamps (US-041)",
 }
 
 

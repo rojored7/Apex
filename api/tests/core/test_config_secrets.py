@@ -72,9 +72,12 @@ def test_check_secrets_or_exit_nombra_sin_valores(tmp_path: Path, test_database_
 
 
 def test_los_campos_con_sufijo_sensible_son_secretstr() -> None:
+    from typing import get_args
+
     for nombre, campo in Settings.model_fields.items():
         if nombre.endswith(("_PASSWORD", "_TOKEN", "_SECRET")) or nombre == "DATABASE_URL":
-            assert campo.annotation is SecretStr, nombre
+            anotacion = campo.annotation
+            assert anotacion is SecretStr or SecretStr in get_args(anotacion), nombre
 
 
 async def test_el_arranque_no_deja_secretos_en_el_log(

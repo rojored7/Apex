@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Coroutine, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -32,15 +32,24 @@ PACKAGE_NAME = "apex-api"
 
 
 @contextmanager
-def unit_of_work(actor: str | None) -> Iterator[UUID]:
-    """Actor y lote de un comando (N-15, US-029): `--as <email>` o `SYSTEM_USER_ID`.
-
-    Resolver el correo a un usuario llega con `auth.service` (US-041, US-111); hasta
-    entonces el valor de `--as` solo se anota en el log.
-    """
+def unit_of_work(actor_id: UUID | None = None) -> Iterator[UUID]:
+    """Actor y lote de un comando (N-15, US-029): el usuario de `--as` o `SYSTEM_USER_ID`."""
     lote = uuid4()
-    with actor_scope(SYSTEM_USER_ID), batch_scope(lote):
+    with actor_scope(actor_id or SYSTEM_USER_ID), batch_scope(lote):
         yield lote
+
+
+async def resolve_actor(session: Any, email: str | None) -> UUID:
+    """`--as <email>` → id de esa persona (no dada de baja); sin `--as`, el usuario técnico."""
+    if email is None:
+        return SYSTEM_USER_ID
+    from app.modules.auth.service import active_admin_id_by_email
+
+    quien = await active_admin_id_by_email(session, email)
+    if quien is None:
+        typer.echo(f"--as: no existe un usuario con ese correo ({email})", err=True)
+        raise typer.Exit(code=2)
+    return quien
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -209,6 +218,85 @@ def init_keys(
     quien = f" (por {actor})" if actor else ""
     for nombre, resultado in estado.items():
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
+
+
+async def _seed(settings: Settings, actor_email: str | None) -> str:
+    from app.core import db
+    from app.core.audit import install_audit_listeners
+    from app.core.crypto.oplog import install_oplog_listeners
+    from app.core.crypto.types import install_crypto_type_listeners
+    from app.core.security import configure_password_hasher, configure_password_policy
+    from app.modules.auth.service import seed_admin
+
+    install_audit_listeners()
+    install_oplog_listeners()
+    install_crypto_type_listeners()
+    configure_password_hasher(
+        settings.ARGON2_TIME_COST, settings.ARGON2_MEMORY_COST_KIB, settings.ARGON2_PARALLELISM
+    )
+    configure_password_policy(settings.PASSWORD_MIN_LENGTH)
+    db.configure_engine(db.create_engine_from(settings))
+    try:
+        async with db.get_sessionmaker()() as session:
+            async with session.begin():
+                actor = await resolve_actor(session, actor_email)
+            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+            with unit_of_work(actor):
+                async with session.begin():
+                    assert settings.ADMIN_EMAIL is not None  # noqa: S101 - validado antes
+                    assert settings.ADMIN_INITIAL_PASSWORD is not None  # noqa: S101
+                    resultado = await seed_admin(
+                        session,
+                        settings.ADMIN_EMAIL,
+                        settings.ADMIN_INITIAL_PASSWORD.get_secret_value(),
+                        by=actor,
+                    )
+        return resultado.outcome
+    finally:
+        await db.dispose_engine()
+
+
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
+    """`asyncio.run`, o un hilo con su propio loop si ya hay uno activo (pruebas async)."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as ejecutor:
+        return ejecutor.submit(asyncio.run, coro).result()
+
+
+@app.command("seed")
+def seed(actor: Annotated[str | None, typer.Option("--as")] = None) -> None:
+    """Crea el primer admin activo con ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD (idempotente).
+
+    Sale con 2 si falta el correo, falta la contraseña o es débil; nunca imprime la contraseña.
+    """
+
+    from app.core.security import WeakPasswordError, validate_password_policy
+    from app.modules.auth.exceptions import AuthError
+
+    settings = get_settings()
+    if not settings.ADMIN_EMAIL or settings.ADMIN_INITIAL_PASSWORD is None:
+        typer.echo("seed: faltan ADMIN_EMAIL o ADMIN_INITIAL_PASSWORD en el entorno", err=True)
+        raise typer.Exit(code=2)
+    try:
+        validate_password_policy(settings.ADMIN_INITIAL_PASSWORD.get_secret_value())
+    except WeakPasswordError as error:
+        typer.echo(f"seed: ADMIN_INITIAL_PASSWORD no cumple la política ({error.reason})", err=True)
+        raise typer.Exit(code=2) from None
+    try:
+        resultado = _run(_seed(settings, actor))
+    except AuthError as error:
+        typer.echo(f"seed: {error.code}", err=True)
+        raise typer.Exit(code=2) from None
+    if resultado == "created":
+        typer.echo("seed: admin inicial creado")
+    else:
+        typer.echo("seed: omitido: ya existe un admin activo")
 
 
 if __name__ == "__main__":

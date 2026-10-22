@@ -47,8 +47,6 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "POSTGRES_PASSWORD",
         "POSTGRES_DB",
         "TEST_DATABASE_URL",
-        "ADMIN_EMAIL",
-        "ADMIN_INITIAL_PASSWORD",
         "WEB_PORT",
         "API_PORT",
         "DB_PORT",
@@ -145,6 +143,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_TTL_S: int = Field(default=900, gt=0)
     REFRESH_TOKEN_TTL_DAYS: int = Field(default=7, gt=0)
     JWT_LEEWAY_S: int = Field(default=30, ge=0)
+
+    # Seed del primer admin (US-041): de un solo uso; se borra del .env tras el primer arranque.
+    ADMIN_EMAIL: str | None = None
+    ADMIN_INITIAL_PASSWORD: SecretStr | None = None
 
     @field_validator("DATABASE_URL")
     @classmethod

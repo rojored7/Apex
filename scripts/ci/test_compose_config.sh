@@ -18,13 +18,15 @@ cd "$ROOT"
 PROD="$(docker compose --env-file .env --profile worker --profile tools -f infra/compose.yml config --format json)"
 DEV="$(docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml config --format json)"
 COMPOSE_YML="$(cat infra/compose.yml)"
+# V4 del Sprint 2: perfil E2E del borde (infra/compose.e2e.yml); vacío si el archivo falta.
+E2E="$(docker compose --env-file .env -f infra/compose.yml -f infra/compose.e2e.yml config --format json 2>/dev/null || echo "{}")"
 # Sin resolver los env_file: conserva la lista de archivos y su `required`.
 CRUDO="$(docker compose --env-file .env --profile worker --profile tools -f infra/compose.yml config --no-env-resolution --format json)"
 COMPOSE_VERSION="$(docker compose version --short 2>/dev/null | tr -d '\r' || true)"
 IGNORA_SEED="$(git check-ignore -q .env.seed && echo si || echo no)"
 IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo no)"
 
-PROD="$PROD" DEV="$DEV" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
+PROD="$PROD" DEV="$DEV" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
 import json
 import os
@@ -118,6 +120,20 @@ if seed_ejemplo.is_file():
 check(claves_seed == {"ADMIN_EMAIL": "", "ADMIN_INITIAL_PASSWORD": ""}, f".env.seed.example con ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD vacias (L-9) ({sorted(claves_seed)})")
 check(os.environ["IGNORA_SEED"] == "si", "git ignora .env.seed")
 check(os.environ["IGNORA_SEED_EJEMPLO"] == "no", "git versiona .env.seed.example (!.env.seed.example)")
+# V4 del Sprint 2 (perfil E2E del borde): solo compose.e2e.yml monta la zona de limit_req
+# alternativa sobre la de la imagen, en solo lectura; producción y desarrollo no la montan.
+ZONA_E2E = "/etc/nginx/snippets/auth-zone.conf"
+def montajes(servicio):
+    return [v for v in (servicio.get("volumes") or []) if isinstance(v, dict)]
+e2e = (json.loads(os.environ["E2E"]).get("services") or {})
+for nombre, doc in (("producción", prod), ("desarrollo", dev)):
+    check(not any(v.get("target") == ZONA_E2E for v in montajes(doc.get("web", {}))), f"web en {nombre} no monta la zona E2E del borde")
+zona = [v for v in montajes(e2e.get("web", {})) if v.get("target") == ZONA_E2E]
+check(
+    len(zona) == 1 and zona[0].get("read_only") is True and str(zona[0].get("source", "")).replace("\\", "/").endswith("infra/nginx/e2e/auth-zone.conf"),
+    "compose.e2e.yml monta infra/nginx/e2e/auth-zone.conf en solo lectura sobre la zona de la imagen",
+)
+check({"api", "web", "db"} <= set(e2e), "compose.e2e.yml se apila sobre compose.yml (api, web y db)")
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)
 EOF

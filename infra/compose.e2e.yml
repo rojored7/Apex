@@ -1,0 +1,10 @@
+# Perfil E2E del borde (V4 del Sprint 2, E5). Se apila SOLO mientras corren las specs del
+# proyecto stack de Playwright (job e2e-stack de CI y validación local), nunca en producción:
+#   docker compose --env-file .env -f infra/compose.yml [-f infra/compose.dev.yml] -f infra/compose.e2e.yml up -d web
+# Monta sobre la zona de limit_req de la imagen (60r/m, snippets/auth-zone.conf) otra con un
+# tope alto. Los topes del api se suben aparte en .env (LOGIN_IP_LIMIT=1000 y demás, E5).
+# Al terminar: `up -d web` sin este archivo para volver a la zona de producción.
+services:
+  web:
+    volumes:
+      - ./nginx/e2e/auth-zone.conf:/etc/nginx/snippets/auth-zone.conf:ro

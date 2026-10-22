@@ -76,6 +76,7 @@ apex/
   infra/
     compose.yml
     compose.dev.yml
+    compose.e2e.yml      # solo E2E (V4): zona de limit_req alta para Nginx
     nginx/default.conf
     backup/              # Dockerfile y script de pg_dump cifrado
     openbao/             # config.hcl (desde v0.2)

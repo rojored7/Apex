@@ -113,6 +113,19 @@ if grep -Fq "return 429 '{\"error\":{\"code\":\"rate_limited\",\"message\":\"Dem
 if grep -Eq '^\s*add_header\s+Retry-After\s+"60"\s+always;' <<< "$lim_loc"; then ok "@rate_limited con Retry-After 60"; else falla "@rate_limited sin Retry-After 60"; fi
 if grep -Eq '^\s*default_type\s+application/json;' <<< "$lim_loc"; then ok "@rate_limited con application/json"; else falla "@rate_limited sin default_type application/json"; fi
 
+# V4 del Sprint 2 (perfil E2E del borde): la zona de limit_req vive en snippets/auth-zone.conf,
+# incluida en el contexto http por default.conf; la imagen lleva la de producción (60r/m) y
+# solo infra/compose.e2e.yml monta encima infra/nginx/e2e/auth-zone.conf (fuera de snippets/,
+# así que nunca entra en la imagen) con un tope alto para las specs del proyecto stack.
+E2E_ZONE="$DIR/e2e/auth-zone.conf"
+if grep -Eq '^include\s+snippets/auth-zone\.conf;' "$CONF"; then ok "default.conf incluye snippets/auth-zone.conf en el contexto http"; else falla "default.conf no incluye snippets/auth-zone.conf fuera de server"; fi
+if grep -Eq '^\s*limit_req_zone\s+\$binary_remote_addr\s+zone=apex_auth:10m\s+rate=60r/m;' "$SNIP/auth-zone.conf" 2>/dev/null; then ok "snippets/auth-zone.conf: apex_auth a 60r/m (producción)"; else falla "snippets/auth-zone.conf sin limit_req_zone apex_auth a 60r/m"; fi
+if grep -Eq 'limit_req_zone' "$CONF"; then falla "default.conf repite limit_req_zone (debe vivir solo en snippets/auth-zone.conf)"; else ok "default.conf sin limit_req_zone propia"; fi
+if [ -f "$E2E_ZONE" ] && grep -Eq '^\s*limit_req_zone\s+\$binary_remote_addr\s+zone=apex_auth:10m\s+rate=[0-9]+r/m;' "$E2E_ZONE" && ! grep -Eq 'rate=60r/m' "$E2E_ZONE"; then ok "e2e/auth-zone.conf: misma zona apex_auth con otro tope"; else falla "infra/nginx/e2e/auth-zone.conf ausente o sin la zona apex_auth con un tope distinto de 60r/m"; fi
+if grep -q 'infra/nginx/e2e' "$ROOT/web/Dockerfile"; then falla "web/Dockerfile copia infra/nginx/e2e (el perfil E2E no puede entrar en la imagen)"; else ok "web/Dockerfile no copia infra/nginx/e2e"; fi
+NGINX_T_E2E="$PREPARA && cp /tmp/n/e2e/auth-zone.conf /etc/nginx/snippets/auth-zone.conf && nginx -t"
+if [ -f "$E2E_ZONE" ] && tar -C "$DIR" -c default.conf snippets e2e | docker run --rm -i --add-host api:127.0.0.1 nginx:stable-alpine sh -c "$NGINX_T_E2E" > /dev/null 2>&1; then ok "nginx -t acepta la configuración con el perfil E2E del borde"; else falla "nginx -t rechaza la configuración con e2e/auth-zone.conf"; fi
+
 # Prueba funcional con Nginx real (el api resuelve a 127.0.0.1:8000, cerrado: el proxy da
 # 502, lo que basta para el log y el limitador). El token y la búsqueda no llegan al log.
 TOKEN="TOKENPRUEBA${RANDOM}$$"

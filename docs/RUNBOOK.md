@@ -26,7 +26,8 @@ Cada capa responde 429 `rate_limited` con `Retry-After`, el mismo cuerpo para cu
 (no enumera cuentas). Los valores por defecto son los de producción; se cambian en `.env`.
 
 1. **Borde (Nginx).** `limit_req` de `/api/v1/auth/`: 60 por minuto por IP con ráfaga de 30
-   (`infra/nginx/default.conf`). Fijo para todos los entornos.
+   (zona en `infra/nginx/snippets/auth-zone.conf`, incluida por `infra/nginx/default.conf`). La
+   imagen lleva siempre ese valor; solo el perfil E2E lo sube (ver abajo).
 2. **Por IP en el api** (`core/ratelimit.rate_limit`). IPv4 exacta e IPv6 agrupada por /64.
    Ventana de 60 s: `LOGIN_IP_LIMIT=5` (`LOGIN_IP_WINDOW_S=60`), `REFRESH_IP_LIMIT=60`,
    `LOGOUT_IP_LIMIT=30`, `RESET_IP_LIMIT=10`, `FORGOT_IP_LIMIT=5`. La IP real sale de
@@ -58,7 +59,14 @@ límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador
   `cli unlock-user` (ver "Ciclo de vida de las cuentas"). `up -d api` limpia solo la memoria;
   el bloqueo sigue.
 - Perfil E2E (E5): durante la validación V4 el `.env` sube los topes (por ejemplo
-  `LOGIN_IP_LIMIT=1000`), se aplica con `up -d api` y se restaura al terminar.
+  `LOGIN_IP_LIMIT=1000`), se aplica con `up -d api` y se restaura al terminar. El borde se sube
+  apilando `infra/compose.e2e.yml` (monta `infra/nginx/e2e/auth-zone.conf`, 6000r/m, sobre la
+  zona de la imagen): `$DC -f infra/compose.e2e.yml up -d web`; se vuelve a producción con
+  `$DC up -d web`. Comprobación: `docker exec apex-web-1 grep limit_req_zone
+  /etc/nginx/snippets/auth-zone.conf` debe decir `rate=60r/m` fuera de V4. Todo el tráfico del
+  host llega a Nginx con la misma IP (la puerta de enlace de la red de Compose) y cada carga de
+  la SPA hace `POST /auth/refresh` y `GET /auth/me`: sin este perfil la suite `stack` recibe
+  429 del borde en segundos.
 
 ### Refresh: rotación, gracia del reuso y tope absoluto
 

@@ -31,4 +31,11 @@ regexes = [
   '''apex-test''',
   '''apex-ci''',
   '''export-no-secret''',
+  # Sprint 2: contraseñas y tokens ficticios de las pruebas (api/tests, web/src/**/*.test.tsx,
+  # web/tests/e2e). Se permiten por valor exacto, no por ruta, para que un secreto real en una
+  # prueba siga saltando.
+  '''Clave-segura-2026''',
+  '''Clave-nueva-segura-2026''',
+  '''Zanahoria-Lunar-42x''',
+  '''Qm9uaXRvLXRva2VuLWRlLXVuLXNvbG8tdXNvXzEyMzQ1Ng''',
 ]

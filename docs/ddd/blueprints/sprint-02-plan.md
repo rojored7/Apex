@@ -1402,7 +1402,3 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **Migraciones:** 4.
 - **Endpoints:** 29.
 - **Decisiones del bloque "Sprint 2":** 53 (S2-D1 a S2-D53).
-
----
-
-Ruta del archivo: `C:\Users\PC\Proyectos\Apex\docs\ddd\blueprints\sprint-02-plan.md`. Hay que crearlo con el contenido de arriba, porque no pude escribirlo yo.

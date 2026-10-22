@@ -13,7 +13,7 @@ import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { DEFAULT_GYM_NAME } from "../api";
 import { loginSchema, type LoginForm } from "../schemas";
-import styles from "./LoginCard.module.css";
+import styles from "./AccessCard.module.css";
 
 export type LoginField = keyof LoginForm;
 

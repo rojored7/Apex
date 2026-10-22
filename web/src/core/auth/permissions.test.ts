@@ -1,7 +1,8 @@
 // US-040 T1: tabla de verdad completa de la matriz de permisos. La matriz esperada es una
 // copia literal del desglose (con N-20, Q6, Q7, Q8, Q15, Q25 y N-29 aplicados): si alguien
 // cambia permissions.ts sin cambiar esta copia, la prueba falla.
-import { ACTIONS, MATRIX, ROLE_LABELS, ROLES, can, type Action, type Role } from "./permissions";
+import type { components } from "../api/types";
+import { ACTIONS, DEFAULT_STAFF_ROLE, MATRIX, ROLE_LABELS, ROLES, STAFF_ROLES, can, type Action, type Role, type StaffRole } from "./permissions";
 
 const ADMIN_ONLY = [
   "members.delete",
@@ -132,5 +133,21 @@ describe("matriz de permisos del front (US-040)", () => {
   it("la matriz no se puede modificar en tiempo de ejecución", () => {
     expect(Object.isFrozen(MATRIX)).toBe(true);
     expect(Object.isFrozen(MATRIX["payments.void"])).toBe(true);
+  });
+});
+
+describe("STAFF_ROLES (S2-F4a, L-2)", () => {
+  it("son los roles del equipo, sin socio, con coach por defecto", () => {
+    expect([...STAFF_ROLES]).toEqual(["coach", "admin"]);
+    expect(STAFF_ROLES).not.toContain("member");
+    expect(DEFAULT_STAFF_ROLE).toBe("coach");
+    expect(Object.isFrozen(STAFF_ROLES)).toBe(true);
+  });
+
+  it("coinciden con CreateUserIn.role del contrato", () => {
+    type Contract = components["schemas"]["CreateUserIn"]["role"];
+    const same: [Contract] extends [StaffRole] ? ([StaffRole] extends [Contract] ? true : false) : false = true;
+
+    expect(same).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 // US-063 T6 y T8: buscador con espera de 300 ms, selects, rango de fechas, ordenar y Limpiar.
+import { readFileSync } from "node:fs";
 import { act, render, screen } from "@testing-library/react";
 import { fakeTimersUser, restoreRtlTimers, useRtlFakeTimers } from "../../test/fakeTimers";
 import { MemoryRouter, useLocation } from "react-router";
@@ -162,5 +163,15 @@ describe("FilterBar con la URL", () => {
     });
 
     expect(seen).toEqual(["?offset=75", "?q=p%C3%A9rez"]);
+  });
+});
+
+describe("FilterBar · celular (S2-F4a)", () => {
+  it("al apilarse en columna, buscador, selects y rango miden su contenido (sin base de flex como alto)", () => {
+    const css = readFileSync("src/shared/ui/FilterBar.module.css", "utf8");
+    const mobile = css.slice(css.indexOf("@media (width < 768px)"));
+
+    expect(mobile).toContain("flex-direction: column");
+    expect(mobile).toMatch(/\.search,\s*\.select,\s*\.range\s*\{\s*flex: 0 0 auto;/);
   });
 });

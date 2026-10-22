@@ -31,5 +31,5 @@ export type { TopBarNavButton, TopBarProps, TopBarUser } from "./TopBar";
 export { SideNav } from "./SideNav";
 export type { SideNavProps } from "./SideNav";
 export { cx } from "./cx";
-export { STATUS_LABELS, STATUS_TONES, statusLabel, statusTone } from "./statusLabel";
-export type { MembershipStatusView, StatusTone } from "./statusLabel";
+export { ACCOUNT_LABELS, ACCOUNT_TONES, STATUS_LABELS, STATUS_TONES, accountLabel, accountTone, statusLabel, statusTone } from "./statusLabel";
+export type { AccountStatusView, MembershipStatusView, StatusTone } from "./statusLabel";

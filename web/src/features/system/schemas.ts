@@ -6,6 +6,9 @@
 import type { FieldValues, Path, UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { isApiError } from "../../core/api/errors";
+import { pageSchema } from "../../core/api/page";
+import { ROLES, STAFF_ROLES } from "../../core/auth/permissions";
+import type { AccountStatusView } from "../../shared/ui/statusLabel";
 
 /** `^\d+(-\d)?$` del api: dígitos y, opcional, un guion con el dígito de verificación. */
 export const NIT_PATTERN = /^\d+(-\d)?$/;
@@ -98,3 +101,43 @@ export function applyApiFieldError<T extends FieldValues>(
   form.setError(name as Path<T>, { type: "server", message: messages[name] ?? error.message }, { shouldFocus: true });
   return true;
 }
+
+// S2-F4a · US-046, US-047: fila de la lista de usuarios (UserRow del contrato de B3) y alta
+// de un usuario del equipo (CreateUserIn: solo admin o coach hasta el portal, L-2).
+/** Tope del correo en el api (EmailAddress, hasta 254). */
+const EMAIL_MAX_LENGTH = 254;
+
+export const ACCOUNT_STATUSES = ["active", "pending_activation", "locked", "inactive", "deleted"] as const satisfies readonly AccountStatusView[];
+
+
+export const userRowSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().min(1),
+  role: z.enum(ROLES),
+  status: z.enum(ACCOUNT_STATUSES),
+  member_id: z.string().nullable(),
+  last_login_at: z.string().nullable(),
+  created_at: z.string(),
+  active_sessions: z.number().int().nonnegative(),
+});
+
+export const usersPageSchema = pageSchema(userRowSchema);
+
+export const USER_EMAIL_MESSAGES = {
+  required: "Escribe el correo del usuario.",
+  tooLong: `El correo admite hasta ${String(EMAIL_MAX_LENGTH)} caracteres.`,
+  invalid: "Escribe un correo válido, por ejemplo ana@correo.com.",
+} as const;
+
+export const createUserSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, USER_EMAIL_MESSAGES.required)
+    .max(EMAIL_MAX_LENGTH, USER_EMAIL_MESSAGES.tooLong)
+    .email(USER_EMAIL_MESSAGES.invalid),
+  role: z.enum(STAFF_ROLES, { errorMap: () => ({ message: "Elige un rol: Coach o Admin." }) }),
+});
+
+export type UserRowView = z.infer<typeof userRowSchema>;
+export type CreateUserForm = z.infer<typeof createUserSchema>;

@@ -4,13 +4,15 @@
 // - Errores: 401 genérico, 429 con cuenta atrás de Retry-After (botón bloqueado), 422 al campo,
 //   403 de Origin, red y 5xx con mensajes "qué pasó y qué hacer".
 // - Avisos por la razón del cierre anterior: H-1 (cierre no confirmado) y sesión vencida.
+// - S2-F4a: el aviso de contraseña guardada que deja ResetPage (loginNotice.ts) va primero.
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { isApiError } from "../../../core/api/errors";
 import { CHANGE_PASSWORD_PATH, homeFor, safeNext } from "../../../core/auth/routeAccess";
 import { getSession, useSession, type ClearReason, type SessionUser } from "../../../core/auth/session";
 import { LOGIN_MESSAGES, loginErrorMessage, useLogin } from "../api";
 import { LoginCard, type LoginField, type LoginOutcome } from "../components/LoginCard";
+import { loginNoticeFrom } from "../loginNotice";
 import type { LoginForm } from "../schemas";
 
 const TICK_MS = 1_000;
@@ -44,6 +46,8 @@ export default function LoginPage() {
   const [arrivedWith] = useState(() => getSession().user);
   const { reason } = useSession();
   const [params] = useSearchParams();
+  // S2-F4a: aviso que deja otra pantalla (ResetPage) en el estado de la navegación.
+  const flash = loginNoticeFrom(useLocation().state);
   const navigate = useNavigate();
   const login = useLogin();
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -89,7 +93,7 @@ export default function LoginPage() {
       onSubmit={onSubmit}
       pending={login.isPending}
       error={errorText}
-      notice={reason ? NOTICES[reason] : undefined}
+      notice={flash ?? (reason ? NOTICES[reason] : undefined)}
       waitS={waitS}
     />
   );

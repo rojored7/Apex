@@ -36,3 +36,34 @@ export function statusLabel(status: MembershipStatusView): string {
 export function statusTone(status: MembershipStatusView): StatusTone {
   return STATUS_TONES[status];
 }
+
+/**
+ * S2-D24: estado de una cuenta de usuario (`UserRow.status` del contrato de B3, cinco valores).
+ */
+export type AccountStatusView = "active" | "pending_activation" | "locked" | "inactive" | "deleted";
+
+export const ACCOUNT_LABELS = Object.freeze({
+  active: "Activo",
+  pending_activation: "Pendiente de activación",
+  locked: "Bloqueado",
+  inactive: "Inactivo",
+  deleted: "Dado de baja",
+} as const satisfies Record<AccountStatusView, string>);
+
+/** Tonos de la decisión 24 del blueprint: bloqueado es error, pendiente es advertencia. */
+export const ACCOUNT_TONES = Object.freeze({
+  active: "ok",
+  pending_activation: "warning",
+  locked: "danger",
+  // DESIGN.md: "Congelado / Inactivo: borde --line, texto --muted".
+  inactive: "neutral",
+  deleted: "neutral",
+} as const satisfies Record<AccountStatusView, StatusTone>);
+
+export function accountLabel(status: AccountStatusView): string {
+  return ACCOUNT_LABELS[status];
+}
+
+export function accountTone(status: AccountStatusView): StatusTone {
+  return ACCOUNT_TONES[status];
+}

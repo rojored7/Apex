@@ -47,6 +47,29 @@ describe("Field", () => {
     expect(screen.getByRole("link", { name: "Ver socio" })).toHaveAttribute("href", "/socios/123");
   });
 
+  it("S2-F4a: con onNavigate el clic navega dentro de la SPA en lugar de recargar", async () => {
+    const onNavigate = vi.fn();
+    render(<Field label="Correo" name="email" error="Ya existe." errorAction={{ href: "/sistema/usuarios?usuario=1", text: "Ver", onNavigate }} />);
+    const link = screen.getByRole("link", { name: "Ver" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+
+    link.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(onNavigate).toHaveBeenCalledWith("/sistema/usuarios?usuario=1");
+    await userEvent.setup().click(link);
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it("sin onNavigate el clic sigue el enlace normal", () => {
+    render(<Field label="Correo" name="email" error="Ya existe." errorAction={{ href: "/x", text: "Ver" }} />);
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+
+    screen.getByRole("link", { name: "Ver" }).dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(false);
+  });
+
   it.each(["https://malo.example/x", "//malo.example/x", "javascript:alert(1)", "/\\malo.example"])(
     "errorAction con %s no renderiza enlace",
     (href) => {

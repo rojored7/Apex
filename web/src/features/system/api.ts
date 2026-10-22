@@ -8,10 +8,13 @@
 // - 409 version_conflict: isConflict y sin reintento (las mutaciones no se reintentan);
 //   reload() limpia el conflicto y vuelve a leer, sin sobrescribir lo de la otra persona.
 // - Nada se guarda en localStorage: la única copia local es la caché de TanStack Query.
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { ApiError, isApiError } from "../../core/api/errors";
+import type { Page } from "../../core/api/page";
+import { listParams } from "../../core/api/query";
+import { usersPageSchema, type CreateUserForm, type UserRowView } from "./schemas";
 
 export type SettingsKey = "gym" | "privacy" | "memberships";
 
@@ -151,4 +154,68 @@ export function useSettingsSection<K extends SettingsKey>(key: K): SettingsSecti
   };
 
   return { query, save, isSaving: mutation.isPending, isConflict: isVersionConflict(mutation.error), reload };
+}
+
+// ---------------------------------------------------------------------------------------
+// S2-F4a · US-046, US-047: lista y alta de usuarios.
+// - useUsers(params): GET /users con la clave ["users", params]; la página se valida con Zod.
+//   Mientras llega la página siguiente se ve la anterior (placeholderData).
+// - useCreateUser(): POST /users → 201 con el enlace de activación. L-7: gcTime 0; quien la
+//   usa llama reset() al cerrar, así el enlace no queda en la caché. Invalida ["users"].
+export interface UsersParams {
+  limit: number;
+  offset: number;
+  q?: string;
+  role?: string;
+  status?: string;
+}
+
+export interface CreatedUser {
+  id: string;
+  email: string;
+  activationUrl: string;
+  expiresAt: string;
+}
+
+export const USERS_QUERY_KEY = ["users"] as const;
+
+export function usersQueryKey(params: UsersParams): readonly ["users", UsersParams] {
+  return ["users", params];
+}
+
+const createdUserSchema = z.object({
+  user: z.object({ id: z.string().min(1), email: z.string().min(1) }),
+  // Solo http(s): el enlace se muestra y se copia, nunca se interpreta.
+  activation_url: z.string().regex(/^https?:\/\/\S+$/),
+  expires_at: z.string().datetime({ offset: true }),
+});
+
+function invalidResponse(): ApiError {
+  return new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
+}
+
+export function useUsers(params: UsersParams): UseQueryResult<Page<UserRowView>> {
+  return useQuery({
+    queryKey: usersQueryKey(params),
+    queryFn: async ({ signal }) => {
+      const parsed = usersPageSchema.safeParse(await api.get<unknown>("/users", { query: listParams({ ...params }), signal }));
+      if (!parsed.success) throw invalidResponse();
+      return parsed.data;
+    },
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCreateUser(): UseMutationResult<CreatedUser, Error, CreateUserForm> {
+  const queryClient = useQueryClient();
+  return useMutation<CreatedUser, Error, CreateUserForm>({
+    mutationFn: async ({ email, role }) => {
+      const parsed = createdUserSchema.safeParse(await api.post<unknown>("/users", { body: { email, role } }));
+      if (!parsed.success) throw invalidResponse();
+      const { user, activation_url, expires_at } = parsed.data;
+      return { id: user.id, email: user.email, activationUrl: activation_url, expiresAt: expires_at };
+    },
+    gcTime: 0,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY }),
+  });
 }

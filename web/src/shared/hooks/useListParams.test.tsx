@@ -216,3 +216,83 @@ describe("useListParams en una pantalla", () => {
     expect(JSON.parse(screen.getByTestId("params").textContent)).toEqual({ limit: 50, offset: 100 });
   });
 });
+
+// S2-D41 (M-8): con `localQuery` la búsqueda vive en estado local y nunca en la URL.
+describe("useListParams con localQuery", () => {
+  function setupLocal(initial: string) {
+    let search = "";
+    function Wrapper({ children }: { children: ReactNode }) {
+      return <MemoryRouter initialEntries={[initial]}>{children}</MemoryRouter>;
+    }
+    const hook = renderHook(
+      () => {
+        search = useLocation().search;
+        return useListParams({ filters: FILTERS, localQuery: true });
+      },
+      { wrapper: Wrapper },
+    );
+    return { result: hook.result, search: () => search };
+  }
+
+  it("setQuery pasa q al api, vuelve offset a 0 y no escribe q en la URL", () => {
+    const { result, search } = setupLocal("/sistema/usuarios?status=active&offset=50");
+
+    act(() => {
+      result.current.setQuery("  ana@apex.test ");
+    });
+
+    expect(result.current.q).toBe("ana@apex.test");
+    expect(result.current.params).toEqual({ q: "ana@apex.test", status: ["active"], limit: 25, offset: 0 });
+    expect(search()).toBe("?status=active");
+    expect(search()).not.toContain("q=");
+  });
+
+  it("un q que llegue en la URL se ignora (nunca viaja al api)", () => {
+    const { result } = setupLocal("/sistema/usuarios?q=7319582046&role=coach");
+
+    expect(result.current.q).toBe("");
+    expect(result.current.params).toEqual({ limit: 25, offset: 0 });
+  });
+
+  it("una búsqueda vacía quita q de los parámetros", () => {
+    const { result } = setupLocal("/sistema/usuarios");
+
+    act(() => {
+      result.current.setQuery("ana");
+    });
+    act(() => {
+      result.current.setQuery("   ");
+    });
+
+    expect(result.current.params).toEqual({ limit: 25, offset: 0 });
+  });
+
+  it("limpiar borra la búsqueda local y los filtros de la URL", () => {
+    const { result, search } = setupLocal("/sistema/usuarios?status=locked&limit=50");
+
+    act(() => {
+      result.current.setQuery("ana");
+    });
+    act(() => {
+      result.current.clear();
+    });
+
+    expect(result.current.q).toBe("");
+    expect(result.current.params).toEqual({ limit: 50, offset: 0 });
+    expect(search()).toBe("?limit=50");
+  });
+
+  it("params es estable mientras ni la URL ni la búsqueda cambian", () => {
+    const { result } = setupLocal("/sistema/usuarios");
+
+    act(() => {
+      result.current.setQuery("ana");
+    });
+    const first = result.current.params;
+    act(() => {
+      result.current.setQuery("ana");
+    });
+
+    expect(result.current.params).toBe(first);
+  });
+});

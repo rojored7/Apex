@@ -31,6 +31,13 @@ describe("Catalog", () => {
     for (const tag of tags) expect(tag.textContent.trim().length).toBeGreaterThan(0);
   });
 
+  it("S2-F4a: StatusTag muestra los cinco estados de cuenta con texto", () => {
+    render(<CatalogApp search="" />);
+    const tags = within(screen.getByRole("region", { name: "StatusTag" })).getAllByText(/./, { selector: "[data-account]" });
+
+    expect(tags.map((tag) => tag.textContent)).toEqual(["Activo", "Pendiente de activación", "Bloqueado", "Inactivo", "Dado de baja"]);
+  });
+
   it("enlaza a los cuatro layouts de muestra", () => {
     render(<CatalogApp search="" />);
     const nav = screen.getByRole("navigation", { name: "Layouts de muestra" });

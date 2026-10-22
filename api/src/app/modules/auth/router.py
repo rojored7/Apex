@@ -18,6 +18,9 @@ decorador (S2-D3).
   `POST /users/{user_id}/resend-link` (admin, `no_store`, 200 `IssuedLinkOut`). Forgot y reset no
   usan la cookie: no llevan `require_same_origin` (S2-D38 la exige solo a login, refresh y
   logout).
+- S2-B5: `GET`, `PATCH` y `DELETE /users/{user_id}` (204) y `POST /users/{user_id}/lock`,
+  `/unlock` (200 `UserOut`) y `/revoke-sessions` (200 `RevokeSessionsOut`); todas solo admin
+  con `no_store`.
 Las rutas no hacen `select`: leen la cookie, llaman al service y devuelven. `Settings` sale de
 `request.app.state.settings` (cookie `Secure`, orígenes y política).
 """
@@ -37,7 +40,7 @@ from app.core.db import get_session
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import client_ip, rate_limit
 from app.core.security import Principal, require_role
-from app.modules.auth import service
+from app.modules.auth import rules, service
 from app.modules.auth.cookies import (
     clear_cookie_header,
     clear_refresh_cookie,
@@ -60,7 +63,10 @@ from app.modules.auth.schemas import (
     MeOut,
     RefreshOut,
     ResetIn,
+    RevokeSessionsOut,
     Role,
+    UpdateUserIn,
+    UserOut,
     UserRow,
     UserStatus,
 )
@@ -248,6 +254,55 @@ async def resend_link(
         by=principal.user_id,
         front_base_url=_settings(request).FRONT_BASE_URL,
     )
+
+
+# S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051) -------------------------------
+
+
+@router.get("/users/{user_id}", response_model=UserOut, dependencies=[Depends(no_store)])
+async def get_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
+    return rules.user_out(await service.get_user(session, user_id))
+
+
+@router.patch("/users/{user_id}", response_model=UserOut, dependencies=[Depends(no_store)])
+async def update_user(
+    user_id: UUID, body: UpdateUserIn, principal: Admin, session: Session
+) -> UserOut:
+    usuario = await service.update_user(
+        session, user_id, email=body.email, role=body.role, by=principal.user_id
+    )
+    return rules.user_out(usuario)
+
+
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    dependencies=[Depends(no_store)],
+)
+async def delete_user(user_id: UUID, principal: Admin, session: Session) -> None:
+    # Sin `Response` propia: FastAPI arma el 204 con las cabeceras de `no_store`.
+    await service.delete_user(session, user_id, by=principal.user_id)
+
+
+@router.post("/users/{user_id}/lock", response_model=UserOut, dependencies=[Depends(no_store)])
+async def lock_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
+    return rules.user_out(await service.lock(session, user_id, by=principal.user_id))
+
+
+@router.post("/users/{user_id}/unlock", response_model=UserOut, dependencies=[Depends(no_store)])
+async def unlock_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
+    return rules.user_out(await service.unlock(session, user_id, by=principal.user_id))
+
+
+@router.post(
+    "/users/{user_id}/revoke-sessions",
+    response_model=RevokeSessionsOut,
+    dependencies=[Depends(no_store)],
+)
+async def revoke_sessions(user_id: UUID, principal: Admin, session: Session) -> RevokeSessionsOut:
+    revocadas = await service.revoke_sessions(session, user_id, by=principal.user_id)
+    return RevokeSessionsOut(revoked=revocadas)
 
 
 __all__ = ["router", "service"]

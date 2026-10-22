@@ -5,6 +5,7 @@ solo en la cookie `HttpOnly`. `CreateUserIn.role` admite solo `admin` y `coach`,
 `member_id`, hasta el portal (L-2, S2-D42). `POST /auth/me/password` responde
 `AccessTokenOut` con un access nuevo (S2-D37, H-3). `CreateUserOut.activation_url` viaja una
 sola vez (blueprint 7.2). S2-B4: `ResetIn`, `ForgotIn` e `IssuedLinkOut` (`extra="forbid"`).
+S2-B5: `UpdateUserIn` (`extra="forbid"`; un campo ausente o nulo no cambia) y `RevokeSessionsOut`.
 """
 
 from __future__ import annotations
@@ -161,3 +162,23 @@ class IssuedLinkOut(BaseModel):
     url: str
     purpose: OneTimePurposeOut
     expires_at: datetime
+
+
+# S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051) -------------------------------
+
+
+class UpdateUserIn(BaseModel):
+    """`PATCH /users/{user_id}`: correo y rol; un campo ausente o nulo no cambia (US-049)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailAddress | None = None
+    role: Role | None = None
+
+
+class RevokeSessionsOut(BaseModel):
+    """`POST /users/{user_id}/revoke-sessions`: cuántos refresh se revocaron (puede ser 0)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revoked: int

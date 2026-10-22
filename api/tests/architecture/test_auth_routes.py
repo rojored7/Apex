@@ -7,6 +7,8 @@ exactamente `{"admin"}` (marca `__apex_roles__` de `require_role`); `me` y `me/p
 admiten los tres roles. No existe ninguna ruta `/activation-link` (N-12) ni `/auth/activate`
 (S2-D47). Las marcas se leen del árbol de dependencias de las rutas efectivas
 (`core.security.effective_routes`), igual que `test_every_route_has_role.py`.
+S2-B5 suma las seis rutas del ciclo de vida: la lista bajo `/api/v1/users` es exacta
+(`RUTAS_USERS`) y todas llevan `no_store`.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from fastapi.dependencies.models import Dependant
 from app.core.config import Settings
 from app.core.security import RouteInfo, effective_routes, route_has_role_dependency
 from app.main import create_app
-from app.modules.auth.cookies import require_same_origin
+from app.modules.auth.cookies import no_store, require_same_origin
 
 AUTH = "/api/v1/auth/"
 USERS = "/api/v1/users"
@@ -85,13 +87,37 @@ def test_las_cinco_publicas_llevan_su_propio_rate_limit(app: FastAPI) -> None:
         assert bucket in _marcas(pares[par], "__apex_rate_limit__"), par
 
 
+RUTAS_USERS = {
+    ("GET", USERS),
+    ("POST", USERS),
+    ("POST", f"{USERS}/{{user_id}}/resend-link"),
+    # S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051).
+    ("GET", f"{USERS}/{{user_id}}"),
+    ("PATCH", f"{USERS}/{{user_id}}"),
+    ("DELETE", f"{USERS}/{{user_id}}"),
+    ("POST", f"{USERS}/{{user_id}}/lock"),
+    ("POST", f"{USERS}/{{user_id}}/unlock"),
+    ("POST", f"{USERS}/{{user_id}}/revoke-sessions"),
+}
+
+
+def test_las_rutas_bajo_users_son_exactamente_las_del_plan(app: FastAPI) -> None:
+    bajo_users = {par for par in _pares(app) if par[1].startswith(USERS)}
+    assert bajo_users == RUTAS_USERS
+
+
 def test_toda_ruta_bajo_users_exige_exactamente_admin(app: FastAPI) -> None:
     pares = _pares(app)
     bajo_users = {par: r for par, r in pares.items() if par[1].startswith(USERS)}
-    assert ("POST", "/api/v1/users/{user_id}/resend-link") in bajo_users
-    assert {("GET", USERS), ("POST", USERS)} <= set(bajo_users)
+    assert RUTAS_USERS <= set(bajo_users)
     for par, ruta in bajo_users.items():
         assert _roles(ruta) == {frozenset({"admin"})}, par
+
+
+def test_las_rutas_de_ciclo_de_vida_no_se_cachean(app: FastAPI) -> None:
+    pares = _pares(app)
+    for par in RUTAS_USERS:
+        assert no_store in set(_calls(pares[par].dependant)), par
 
 
 def test_logout_es_publico_por_cookie_con_origen(app: FastAPI) -> None:

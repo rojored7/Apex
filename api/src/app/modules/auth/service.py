@@ -35,6 +35,13 @@ US-043 y US-044).
 - S2-B4 (US-048, US-052): `reset`, `forgot` (H-2: no escribe nada; tope por cuenta
   `FORGOT_ACCOUNT_*`), `resend_link` (L-13) e `issue_link` (el mismo enlace sin L-13, solo
   para `cli issue-reset-link`).
+- S2-B5 (US-049, US-050, US-051): `get_user` (incluye borrados; el técnico da 404),
+  `update_user` (correo único entre no borrados y rol con `validate_user_role` y `LastAdmin`),
+  `delete_user` (baja lógica, `revoke_all` y `SessionsRevoked(reason="delete")`), `lock`
+  (`UserLocked(reason="admin")` y `SessionsRevoked(reason="lock")` en una transacción),
+  `unlock` (limpia `locked_at`, `failed_login_count` y los contadores en memoria con
+  `ratelimit.forget`; S2-D10) y `revoke_sessions` (`SessionsRevoked(reason="admin")` también
+  con 0; H-3).
 Los logs nunca llevan el correo tecleado ni la clave del límite. `hash_password` y
 `verify_password` cuestan CPU: se envuelven en `anyio.to_thread.run_sync`.
 """
@@ -83,6 +90,8 @@ from app.modules.auth.exceptions import (
     InvalidCurrentPassword,
     InvalidRefresh,
     InvalidToken,
+    LastAdmin,
+    NotLocked,
     UserNotEligible,
 )
 from app.modules.auth.models import OneTimeToken, RefreshToken, User
@@ -419,6 +428,12 @@ async def _register_failure(
     now = current_clock().now_utc()
     if not password_ok and user.password_hash is not None:
         motivo: LoginFailureReason = "bad_password"
+        if is_active_admin(user):
+            # Revisión S2-B5 (MEDIUM-1): el candado de admins, ANTES del `UPDATE` del contador
+            # (orden admins → usuario de `lock` y `delete_user`), serializa dos bloqueos
+            # automáticos simultáneos; el segundo ve el conjunto reducido y queda exento.
+            admins = await tokens.lock_active_admins(session)
+            exempt = rules.would_remove_last_admin(admins, user.id, new_role=None, deleting=True)
         fallos = await tokens.increment_failures(session, user.id)
         if user.locked_at is None and should_auto_lock(
             fallos, policy.lock_after, is_last_admin=exempt
@@ -543,7 +558,8 @@ async def login(
 
 
 async def _locked_refresh_row(session: AsyncSession, token: str | None) -> RefreshToken | None:
-    """La fila del refresh con `FOR UPDATE`: dos refresh simultáneos se serializan."""
+    """La fila del refresh con `FOR UPDATE`, sin el usuario (solo `logout`, que revoca esa
+    fila y nada más; `refresh` usa `_locked_refresh_and_owner`)."""
     if not token:
         return None
     try:
@@ -577,22 +593,54 @@ async def _revoke_family_for_reuse(
     logger.warning("reuso de refresh: sesiones revocadas", extra={"user_id": str(fila.user_id)})
 
 
+async def _locked_refresh_and_owner(
+    session: AsyncSession, token: str | None
+) -> tuple[RefreshToken, User] | None:
+    """El refresh y su dueño con `FOR UPDATE`, en el orden usuario → token del módulo (S2-B5;
+    cierra B3 MEDIUM-2): el `user_id` se lee sin candado, luego se bloquea el usuario y después
+    la fila del token, leída fresca. Así una revocación (`revoke_sessions`, `lock`, `delete`,
+    `change_password`), que toma el usuario antes que sus refresh, y una rotación se
+    serializan en el usuario, y ningún sucesor creado durante la revocación sobrevive."""
+    if not token:
+        return None
+    try:
+        token_hash = hash_opaque_token(token)
+    except TokenInvalid:
+        return None
+    dueno = await session.scalar(
+        select(RefreshToken.user_id).where(RefreshToken.token_hash == token_hash)
+    )
+    if dueno is None:
+        return None
+    usuario = await session.scalar(
+        select(User)
+        .where(User.id == dueno)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    fila = await session.scalar(
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == token_hash)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if usuario is None or fila is None:
+        return None
+    return fila, usuario
+
+
 async def refresh(
     session: AsyncSession, token: str | None, *, user_agent: str | None, policy: AuthPolicy
 ) -> RefreshResult:
-    fila = await _locked_refresh_row(session, token)
-    if fila is None:
+    encontrado = await _locked_refresh_and_owner(session, token)
+    if encontrado is None:
         raise InvalidRefresh()
+    fila, usuario = encontrado
     now = current_clock().now_utc()
     if is_reuse(fila, now, policy.reuse_grace):
         await _revoke_family_for_reuse(session, fila, now)
         raise InvalidRefresh()
-    usuario = await session.scalar(
-        select(User).where(User.id == fila.user_id).execution_options(populate_existing=True)
-    )
-    if usuario is None or not is_refresh_usable(
-        fila, usuario, now, absolute_ttl=policy.refresh_absolute_ttl
-    ):
+    if not is_refresh_usable(fila, usuario, now, absolute_ttl=policy.refresh_absolute_ttl):
         error = InvalidRefresh()
         if fila.revoked_at is not None and fila.replaced_by_id is not None:
             # M-2: concurrencia benigna; la otra petición ya puso la cookie nueva y borrarla
@@ -1003,6 +1051,170 @@ async def active_admin_id_by_email(session: AsyncSession, email: str) -> UUID | 
     )
 
 
+# Ciclo de vida del usuario (S2-B5) --------------------------------------------------------
+
+
+async def get_user(session: AsyncSession, user_id: UUID) -> User:
+    """US-049: la cuenta, incluidas las borradas (con su estado); técnico o inexistente dan
+    `UserNotFound`."""
+    return await tokens.get_alive_or_404(session, user_id, include_deleted=True)
+
+
+async def _check_email_free(session: AsyncSession, usuario: User, correo: str) -> None:
+    """Pre-chequeo de `update_user`: otra cuenta viva con ese correo da `EmailTaken`."""
+    existente = await _alive_user_id(session, correo)
+    if existente is not None and existente != usuario.id:
+        raise EmailTaken(field="email", existing_id=existente)
+
+
+def _check_role_change(usuario: User, new_role: Role, active_admins: frozenset[UUID]) -> None:
+    validate_user_role(new_role, usuario.member_id)
+    if rules.would_remove_last_admin(active_admins, usuario.id, new_role=new_role, deleting=False):
+        raise LastAdmin()
+
+
+async def update_user(
+    session: AsyncSession,
+    user_id: UUID,
+    *,
+    email: str | None,
+    role: Role | None,
+    by: UUID,
+) -> User:
+    """US-049: `UserNotFound` si está borrada (o es el técnico); correo normalizado y único entre
+    no borrados (`EmailTaken` con `existing_id`; la carrera la decide `uq_users_email_alive` en
+    un `begin_nested()`); si cambia el rol, `validate_user_role` con el `member_id` actual y
+    `LastAdmin` si dejaría el sistema sin admin activo. `None` no cambia el campo.
+
+    Candados: con `role`, primero los admins activos (`lock_active_admins`, `ORDER BY id`) y
+    luego la cuenta; así dos degradaciones o una degradación y una baja se serializan."""
+    admins = await tokens.lock_active_admins(session) if role is not None else frozenset()
+    usuario = await tokens.get_alive_or_404(session, user_id, for_update=True)
+    nuevo_rol = role if role is not None and role != usuario.role else None
+    correo = normalize_login_email(email) if email is not None else None
+    nuevo_correo = correo if correo is not None and correo != usuario.email else None
+    if nuevo_rol is not None:
+        _check_role_change(usuario, nuevo_rol, admins)
+    if nuevo_correo is not None:
+        await _check_email_free(session, usuario, nuevo_correo)
+    if nuevo_rol is None and nuevo_correo is None:
+        return usuario
+    try:
+        async with session.begin_nested():
+            if nuevo_rol is not None:
+                usuario.role = nuevo_rol
+            if nuevo_correo is not None:
+                usuario.email = nuevo_correo
+            await session.flush()
+    except IntegrityError as error:
+        if not _is_email_conflict(error) or nuevo_correo is None:
+            raise
+        ganador = await _alive_user_id(session, nuevo_correo)
+        raise EmailTaken(field="email", existing_id=ganador) from None
+    if nuevo_correo is not None:
+        # Revisión S2-B5 (LOW-3): un enlace entregado al correo anterior deja de servir.
+        await tokens.close_open_one_time_tokens(session, usuario.id, now=current_clock().now_utc())
+    logger.info(
+        "cuenta editada",
+        extra={
+            "user_id": str(usuario.id),
+            "by": str(by),
+            "cambio_rol": nuevo_rol is not None,
+            "cambio_correo": nuevo_correo is not None,
+        },
+    )
+    return usuario
+
+
+async def delete_user(session: AsyncSession, user_id: UUID, *, by: UUID) -> None:
+    """US-049: baja lógica (`deleted_at = now`, nunca `session.delete`); `LastAdmin` si es el
+    último admin activo; `revoke_all` en la misma transacción y
+    `SessionsRevoked(reason="delete", revoked=n)`. Candados: admins activos y luego la cuenta
+    (dos bajas simultáneas de los dos últimos admins dejan exactamente uno)."""
+    admins = await tokens.lock_active_admins(session)
+    usuario = await tokens.get_alive_or_404(session, user_id, for_update=True)
+    if rules.would_remove_last_admin(admins, usuario.id, new_role=None, deleting=True):
+        raise LastAdmin()
+    now = current_clock().now_utc()
+    usuario.deleted_at = now  # por ORM: queda el `update` auditado por el actor
+    await session.flush()
+    revocadas = await tokens.revoke_all(session, usuario.id, now=now)
+    await events.emit(
+        SessionsRevoked(user_id=usuario.id, by=by, revoked=revocadas, reason="delete"), session
+    )
+    logger.info(
+        "cuenta dada de baja",
+        extra={"user_id": str(usuario.id), "by": str(by), "sesiones_revocadas": revocadas},
+    )
+
+
+async def lock(session: AsyncSession, user_id: UUID, *, by: UUID) -> User:
+    """US-050: `get_alive_or_404`, `lock_active_admins`, `lock_precondition`, `locked_at = now`,
+    `revoke_all`, `UserLocked(reason="admin")` y `SessionsRevoked(reason="lock")`. Todo en una
+    transacción: si un handler falla no queda nada aplicado. Candados: admins activos y luego
+    la cuenta (el orden de `delete_user` y `update_user`)."""
+    admins = await tokens.lock_active_admins(session)
+    usuario = await tokens.get_alive_or_404(session, user_id, for_update=True)
+    rules.lock_precondition(
+        usuario,
+        by,
+        is_last_admin=rules.would_remove_last_admin(
+            admins, usuario.id, new_role=None, deleting=True
+        ),
+    )
+    now = current_clock().now_utc()
+    usuario.locked_at = now  # por ORM: queda el `update` auditado por el actor
+    await session.flush()
+    revocadas = await tokens.revoke_all(session, usuario.id, now=now)
+    await events.emit(UserLocked(user_id=usuario.id, by=by, reason="admin"), session)
+    await events.emit(
+        SessionsRevoked(user_id=usuario.id, by=by, revoked=revocadas, reason="lock"), session
+    )
+    logger.info(
+        "cuenta bloqueada por un admin",
+        extra={"user_id": str(usuario.id), "by": str(by), "sesiones_revocadas": revocadas},
+    )
+    return usuario
+
+
+async def unlock(session: AsyncSession, user_id: UUID, *, by: UUID) -> User:
+    """US-050 (S2-D10, H-4.5): `NotLocked` si no está bloqueada; `locked_at = None`,
+    `failed_login_count = 0`, `ratelimit.forget` de los contadores por cuenta y cierre de los
+    enlaces abiertos (revisión S2-B4). Las sesiones siguen revocadas; sin eventos de dominio.
+
+    Los contadores en memoria se olvidan al final, tras escribir en la base: son del proceso
+    del api (el CLI corre en otro y no los alcanza; RUNBOOK)."""
+    usuario = await tokens.get_alive_or_404(session, user_id, for_update=True)
+    if usuario.locked_at is None:
+        raise NotLocked()
+    now = current_clock().now_utc()
+    usuario.locked_at = None  # por ORM: queda el `update` auditado por el actor
+    usuario.failed_login_count = 0  # fuera de la auditoría (L-10)
+    await session.flush()
+    await tokens.close_open_one_time_tokens(session, usuario.id, now=now)
+    await ratelimit.forget(ACCOUNT_BUCKET, usuario.email)
+    await ratelimit.forget(ACCOUNT_GLOBAL_BUCKET, usuario.email, kind="account-global")
+    logger.info("cuenta desbloqueada", extra={"user_id": str(usuario.id), "by": str(by)})
+    return usuario
+
+
+async def revoke_sessions(session: AsyncSession, user_id: UUID, *, by: UUID) -> int:
+    """US-051 (H-3): revoca todos los refresh, fija `tokens_valid_after` y emite
+    `SessionsRevoked(reason="admin", revoked=n)` también con `n = 0`. No bloquea la cuenta.
+    Bloquea primero el usuario y luego sus refresh (orden usuario → token, como `refresh`)."""
+    usuario = await tokens.get_alive_or_404(session, user_id, for_update=True)
+    now = current_clock().now_utc()
+    revocadas = await tokens.revoke_all(session, usuario.id, now=now)
+    await events.emit(
+        SessionsRevoked(user_id=usuario.id, by=by, revoked=revocadas, reason="admin"), session
+    )
+    logger.info(
+        "sesiones cerradas por un admin",
+        extra={"user_id": str(usuario.id), "by": str(by), "sesiones_revocadas": revocadas},
+    )
+    return revocadas
+
+
 register_principal_loader(load_active_principal)
 
 __all__ = [
@@ -1018,12 +1230,15 @@ __all__ = [
     "change_password",
     "configure_sleeper",
     "create_user",
+    "delete_user",
     "forgot",
+    "get_user",
     "ids_by_email",
     "is_active_admin",
     "issue_link",
     "list_users",
     "load_active_principal",
+    "lock",
     "login",
     "logout",
     "me",
@@ -1032,7 +1247,10 @@ __all__ = [
     "refresh",
     "resend_link",
     "reset",
+    "revoke_sessions",
     "seed_admin",
+    "unlock",
+    "update_user",
     "user_status",
     "validate_password_policy",
     "validate_user_role",

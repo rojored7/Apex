@@ -7,7 +7,7 @@
   en tablas, así que no necesita actor.
 
 Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `issue-reset-link --as`
-(S2-B4, L-13), `import-members`,
+(S2-B4, L-13), `unlock-user [--as]` (S2-B5), `import-members`,
 `rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta `--as <email>` (N-15).
 """
 
@@ -395,6 +395,61 @@ async def _issue_reset_link(
                 except (UserNotFound, UserNotEligible):
                     return None
         return salida.url, salida.purpose, salida.expires_at.isoformat()
+    finally:
+        await db.dispose_engine()
+
+
+@app.command("unlock-user")
+def unlock_user(
+    email: str,
+    actor: Annotated[str | None, typer.Option("--as")] = None,
+) -> None:
+    """Desbloquea la cuenta de `email` (S2-B5, US-050; S2-D10): limpia `locked_at` y
+    `failed_login_count` con `service.unlock` y deja el `update` auditado con el actor de `--as`
+    o, sin él, `SYSTEM_USER_ID`. Corre en otro proceso que el api: los contadores en memoria del
+    api se limpian con `up -d api` (docs/RUNBOOK.md). Sale con 2, con el mismo mensaje y sin
+    repetir el correo, si la cuenta no existe, está borrada o no está bloqueada.
+    """
+    settings = get_settings()
+    if not _run(_unlock_user(settings, email, actor)):
+        typer.echo(_UNLOCK_REJECTED, err=True)
+        raise typer.Exit(code=2)
+    typer.echo("unlock-user: cuenta desbloqueada")
+
+
+# El mismo texto para una cuenta no bloqueada, inexistente o borrada: no revela si existe.
+_UNLOCK_REJECTED = "unlock-user: no hay una cuenta bloqueada con ese correo"
+
+
+async def _unlock_user(settings: Settings, email: str, actor_email: str | None) -> bool:
+    """`True` si desbloqueó; `False` si la cuenta no existe, está borrada o no está bloqueada.
+    Sale con 2 (por `resolve_actor`) si `--as` no es una persona activa."""
+    from app.core import db
+    from app.core.audit import install_audit_listeners
+    from app.core.crypto.oplog import install_oplog_listeners
+    from app.core.crypto.types import install_crypto_type_listeners
+    from app.modules.auth.exceptions import NotLocked, UserNotFound
+    from app.modules.auth.service import ids_by_email, normalize_login_email, unlock
+
+    install_audit_listeners()
+    install_oplog_listeners()
+    install_crypto_type_listeners()
+    db.configure_engine(db.create_engine_from(settings))
+    try:
+        async with db.get_sessionmaker()() as session:
+            async with session.begin():
+                actor = await resolve_actor(session, actor_email)
+                objetivo = (await ids_by_email(session, [email])).get(normalize_login_email(email))
+            if objetivo is None:
+                return False
+            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+            with unit_of_work(actor):
+                try:
+                    async with session.begin():
+                        await unlock(session, objetivo, by=actor)
+                except (UserNotFound, NotLocked):
+                    return False
+        return True
     finally:
         await db.dispose_engine()
 

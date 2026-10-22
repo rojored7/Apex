@@ -44,9 +44,10 @@ límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador
 - Las capas 2 a 4 viven en la memoria del proceso del api (un solo proceso, sin `--workers`).
   `$DC up -d api` recrea el contenedor y los vacía. No usar `restart` tras editar `.env`:
   `env_file` solo se lee al crear el contenedor.
-- El bloqueo persistente (capa 5) está en la base: lo levanta `cli unlock-user`, que llega en
-  S2-B5 y limpia `locked_at`, `failed_login_count` y los contadores en memoria de esa cuenta.
-  Mientras tanto, `up -d api` limpia solo la memoria; el bloqueo sigue.
+- El bloqueo persistente (capa 5) está en la base: lo levanta el botón "Desbloquear" del panel
+  (`POST /users/{id}/unlock`, que también olvida los contadores en memoria de esa cuenta) o
+  `cli unlock-user` (ver "Ciclo de vida de las cuentas"). `up -d api` limpia solo la memoria;
+  el bloqueo sigue.
 - Perfil E2E (E5): durante la validación V4 el `.env` sube los topes (por ejemplo
   `LOGIN_IP_LIMIT=1000`), se aplica con `up -d api` y se restaura al terminar.
 
@@ -141,3 +142,46 @@ IP (`FORGOT_IP_LIMIT`) y 5 por hora por correo desde cualquier IP (`forgot-accou
 `FORGOT_ACCOUNT_LIMIT` / `FORGOT_ACCOUNT_WINDOW_S=3600` en `auth/service.py`), ambos en memoria
 (`$DC up -d api` los vacía). Toda respuesta dura al menos `LOGIN_MIN_DURATION_MS`, y el log
 (`forgot recibido`) no lleva el correo.
+
+## Ciclo de vida de las cuentas (S2-B5)
+
+### Desbloquear una cuenta
+
+Desde el panel, "Desbloquear" (`POST /users/{id}/unlock`, solo admin). Desde el servidor, por
+ejemplo cuando el bloqueado es el único admin:
+
+```
+$DC build api   # solo si cambió cli.py desde la última imagen
+$DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona activa>
+```
+
+- Qué limpia: `locked_at` y `failed_login_count` (deja el `update` auditado con la persona de
+  `--as` o, sin `--as`, con el usuario técnico) y cierra los enlaces de activación o
+  restablecimiento que quedaron abiertos (un enlace emitido antes del bloqueo no revive).
+- Qué no toca: las sesiones siguen cerradas (el bloqueo las revocó y fijó
+  `tokens_valid_after`); la persona vuelve a entrar con su contraseña.
+- Contadores en memoria: el botón del panel los olvida en el proceso del api (límite por
+  cuenta y su tope global). El CLI corre en otro proceso y no los alcanza: si la cuenta sigue
+  recibiendo 429 tras el CLI, `$DC up -d api` los vacía (todos).
+- `--as` debe ser una persona en estado `active`; si no, sale con 2 y lo dice.
+- Sale con 2 y el mismo mensaje, sin repetir el correo, si la cuenta no está bloqueada, no
+  existe o está borrada (no revela cuál). Una segunda invocación sobre la misma cuenta sale
+  con 2.
+
+### Bloquear, cerrar sesiones y dar de baja
+
+- "Bloquear" (`POST /users/{id}/lock`) fija `locked_at`, cierra todas las sesiones y corta los
+  access ya emitidos en la siguiente petición. Un admin no se bloquea a sí mismo (409
+  `cannot_lock_self`).
+- "Cerrar sesiones" (`POST /users/{id}/revoke-sessions`) revoca todos los refresh y corta los
+  access sin bloquear: la persona vuelve a entrar con su contraseña. Responde
+  `{"revoked": n}`.
+- "Dar de baja" (`DELETE /users/{id}`) es una baja lógica: la fila queda con `deleted_at`, en
+  la auditoría y visible en el detalle con estado `deleted`; nunca se borra. Cierra sus
+  sesiones y libera el correo para una cuenta nueva. Una segunda baja da 404.
+- Último admin: ninguna baja, bloqueo ni cambio de rol puede dejar el sistema sin un admin
+  activo (409 `last_admin`). Un admin pendiente de activación, bloqueado o el usuario técnico
+  no cuentan. Para retirar al último admin, primero crear y activar otro.
+- Cambiar el correo de una cuenta (`PATCH /users/{id}`) cierra los enlaces de activación o
+  restablecimiento abiertos: si la cuenta seguía pendiente, se le reenvía uno nuevo al correo
+  corregido ("Reenviar enlace").

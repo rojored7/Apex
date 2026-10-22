@@ -17,6 +17,9 @@
   `include_deleted`, borrado); `for_update` bloquea la fila del usuario.
 - `close_open_one_time_tokens` (revisión S2-B4, MEDIUM-1): cierra por ORM todos los enlaces
   abiertos del usuario tras fijar o cambiar su contraseña.
+- `lock_active_admins` (S2-B5): `SELECT id` de los admins activos (rol admin, `is_active`, sin
+  `locked_at` ni `deleted_at`, con hash, distintos de `SYSTEM_USER_ID`) `ORDER BY id FOR
+  UPDATE`: serializa bajas, cambios de rol y bloqueos que podrían dejar el sistema sin admin.
 Orden de candados en todo el módulo: usuario → tokens de un solo uso.
 """
 
@@ -188,3 +191,23 @@ async def get_alive_or_404(
     if usuario is None:
         raise UserNotFound()
     return usuario
+
+
+async def lock_active_admins(session: AsyncSession) -> frozenset[UUID]:
+    """Ids de los admins activos con `FOR UPDATE`, en orden de id (S2-B5). Dos bajas o
+    bloqueos simultáneos de los dos últimos admins se serializan: el segundo lee el conjunto ya
+    reducido y da `LastAdmin`."""
+    ids = await session.scalars(
+        select(User.id)
+        .where(
+            User.role == "admin",
+            User.id != SYSTEM_USER_ID,
+            User.is_active.is_(True),
+            User.locked_at.is_(None),
+            User.deleted_at.is_(None),
+            User.password_hash.is_not(None),
+        )
+        .order_by(User.id)
+        .with_for_update()
+    )
+    return frozenset(ids.all())

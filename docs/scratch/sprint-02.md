@@ -663,3 +663,186 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - El gate que sella lista también `tests/auth/test_one_time_token_closure.py` (nació en la
     revisión).
   - `change_password` (B3) cambia: cierra los enlaces abiertos (MEDIUM-1).
+
+### S2-B5 · Rojo
+
+- Línea base (HEAD `6240359`, árbol limpio): api 1124 ok y 4 saltadas (`-m 'not perf'`);
+  `ruff check .` y `mypy src` (51 archivos) limpios.
+- B5.1 stubs (firmas tipadas, `NotImplementedError`; `ruff` y `mypy src` limpios):
+  - `auth/exceptions.py` completas (contrato): `LastAdmin` (409 `last_admin`), `CannotLockSelf`
+    (409 `cannot_lock_self`), `AlreadyLocked` (409 `already_locked`) y `NotLocked` (409
+    `not_locked`), con mensaje en español y sin datos de la cuenta.
+  - `auth/schemas.py` completos: `UpdateUserIn(email: EmailAddress | None = None, role: Role |
+    None = None)` con `extra="forbid"` y `RevokeSessionsOut(revoked: int)`.
+  - `auth/rules.py`: stubs `would_remove_last_admin(active_admin_ids, target_id, *, new_role,
+    deleting)` y `lock_precondition(user, by_id, *, is_last_admin)`.
+  - `auth/tokens.py`: stub `lock_active_admins(session) -> frozenset[UUID]`.
+  - `auth/service.py`: stubs `get_user`, `update_user(session, user_id, *, email, role, by)`,
+    `delete_user(session, user_id, *, by)`, `lock`, `unlock` y `revoke_sessions(...) -> int`
+    (en `__all__`). `UserLocked` y `SessionsRevoked` ya existían desde B2.
+  - `auth/router.py` cableado completo, todas con `Admin` y `no_store`: `GET /users/{user_id}`
+    y `PATCH` (200 `UserOut` por `rules.user_out`), `DELETE` (204 sin `Response` propia, para que
+    FastAPI conserve el `Cache-Control` de `no_store`), `POST /users/{user_id}/lock` y `/unlock`
+    (200 `UserOut`) y `/revoke-sessions` (200 `RevokeSessionsOut`).
+  - `cli.py`: comando `unlock-user <correo> [--as <correo>]` stub (`NotImplementedError`).
+- B5.2 pruebas (156 casos nuevos): `tests/auth/test_pure_last_admin.py` (13),
+  `test_update_delete_user.py` (29), `test_user_detail_router.py` (31), `test_pure_lock.py` (13),
+  `test_lock_unlock.py` (19), `test_lock_router.py` (20), `test_revoke_sessions.py` (10),
+  `test_revoke_sessions_router.py` (11), `tests/cli/test_unlock_cli.py` (8) y
+  `tests/architecture/test_auth_routes.py` (+2: lista exacta `RUTAS_USERS` y `no_store` en todas;
+  "toda ruta bajo /users es admin" ahora exige las nueve). Ayuda nueva `tests/auth/_ciclo.py`
+  (`ruta`, `como`, `entrar`, `sesiones_vivas`, `EVENTOS_DE_CUENTA`).
+- Conteo: 1284 colectadas; 130 fallan, 1150 pasan, 4 saltadas. Las 129 de B5: 121 por
+  `NotImplementedError` de los stubs (incluidas las tres carreras con `dos_sesiones`, que usan
+  `return_exceptions=True` y fallan por aserción con el `NotImplementedError` dentro) y 8 del CLI
+  por comportamiento (el stub sale con 1). Ningún error de import ni de fixture. La 130 es la
+  regresión por contrato que cierra el Verde con P-API: `test_docs_openapi_json_esta_al_dia`.
+  Pasan ya sobre los stubs 27 casos de contrato declarado: 401 sin token, 403 de coach y socio,
+  422 de id mal formado y de cuerpo (`extra="forbid"`, rol o correo inválidos), los cuatro
+  errores 409 y los dos casos nuevos de `test_auth_routes`. El recorrido de `test_require_role`
+  (403 `password_change_required`) ya cubre las seis rutas y pasa. `db_test` queda sin usuarios
+  `@test.apex`, sin refresh, sin tokens de un solo uso y sin secciones de settings.
+- Decisiones de prueba que el Verde debe respetar:
+  - `would_remove_last_admin`: verdadero solo si `target_id` está en el conjunto, el conjunto es
+    de uno y hay baja o `new_role` distinto de `admin`. `new_role=None` sin baja,
+    `new_role="admin"` o un objetivo fuera del conjunto (coach, pendiente, bloqueado, técnico)
+    dan falso.
+  - `lock_active_admins`: rol admin, `is_active`, sin `locked_at` ni `deleted_at`, con hash, sin
+    el técnico (que en `db_test` es `admin` inactivo). `FOR UPDATE` probado con `SET LOCAL
+    lock_timeout` en la segunda sesión (espera `DBAPIError`).
+  - `get_user`: incluye borradas; técnico e inexistente `UserNotFound`.
+  - `update_user`: técnico, inexistente o borrada `UserNotFound`; correo normalizado; el propio
+    correo con otra caja no choca; el de una borrada se puede tomar; `EmailTaken(field="email",
+    existing_id=<la otra>)` sin el correo en el mensaje; carrera de dos cuentas al mismo correo:
+    una gana y la otra `EmailTaken` (`existing_id` nulo o el ganador). Rol: `validate_user_role`
+    con el `member_id` actual (coach a member `member_id_required`; member a coach
+    `member_id_not_allowed`); degradar al último admin activo da `LastAdmin` (un admin pendiente
+    o bloqueado no lo releva). Cuerpo vacío (`{}`): 200 sin cambios y sin fila de auditoría. Un
+    `update` auditado por el actor con `before`/`after` de lo que cambió. El cargador ve el rol
+    nuevo: un admin degradado recibe 403 en `GET /users` con su token anterior.
+  - `delete_user`: técnico, inexistente o borrada `UserNotFound` (la segunda baja da 404: DELETE
+    no es idempotente); baja lógica `deleted_at = ahora` sin `session.delete` (espía) y sin fila
+    `delete` en la auditoría, con un `update` del actor; `LastAdmin` para el último admin activo
+    (el técnico no cuenta); `revoke_all` en la misma transacción (`revoked_at = ahora`,
+    `tokens_valid_after = ahora truncado`); `SessionsRevoked(user_id, by, revoked=n,
+    reason="delete")` siempre, también con n = 0; si un handler de `SessionsRevoked` lanza, no
+    queda `deleted_at`, ni corte, ni revocación; el correo queda libre para `create_user`; la
+    cuenta deja de autenticar (401 en `/auth/me`). Dos bajas concurrentes de los dos únicos
+    admins: exactamente una.
+  - `lock`: borrada, técnico, inexistente `UserNotFound`; orden de errores `CannotLockSelf`,
+    `AlreadyLocked`, `LastAdmin`. `LastAdmin` solo se alcanza por el service (con `by` del
+    técnico o de un coach): por HTTP quien bloquea ya es otro admin activo. Éxito: `locked_at =
+    ahora` por el ORM (un `update` auditado por el admin), `revoke_all`, y los eventos en este
+    orden: `UserLocked(user_id, by, reason="admin")` y `SessionsRevoked(user_id, by, revoked=n,
+    reason="lock")`, también con n = 0. Si un handler de `UserLocked` lanza, no queda nada.
+  - `unlock`: borrada, técnico, inexistente `UserNotFound`; `NotLocked` sin fila de auditoría;
+    `locked_at = None` (un `update` auditado por el admin; `failed_login_count` fuera del diff) y
+    `failed_login_count = 0`; `ratelimit.forget(ACCOUNT_BUCKET, <correo>)` (borra todas las
+    subclaves `correo|red`) y `ratelimit.forget(ACCOUNT_GLOBAL_BUCKET, <correo>,
+    kind="account-global")`, sin tocar las de otra cuenta (verificado con `enforce(limit=1,
+    count=False)`); cierra los enlaces abiertos (`used_at = ahora`, `update` auditado por el
+    admin; decisión S2-B4 MEDIUM-1); las sesiones siguen revocadas y `tokens_valid_after` no
+    cambia; ningún evento de dominio. Tras desbloquear, el access viejo sigue en 401 y uno nuevo
+    entra.
+  - `revoke_sessions`: borrada, técnico, inexistente `UserNotFound`; revoca solo los refresh vivos
+    de ese usuario y devuelve cuántos; `tokens_valid_after` = ahora truncado (probado con
+    `T0 + 1,75 s`, que da `T0 + 1 s`) también sin sesiones; `SessionsRevoked(..., reason="admin")`
+    con n = 0 y con n = 2; no bloquea ni toca `failed_login_count`; el admin que se revoca a sí
+    mismo pierde su refresh (`refresh` da `InvalidRefresh`) y su access. Ruta: 200
+    `{"revoked": n}` sin `Set-Cookie`; un access con `iat` igual al corte pasa y uno anterior da
+    401.
+  - Orden de candados usuario → token: seis rondas de `revoke_sessions` y `refresh` concurrentes
+    (alternando cuál arranca primero) con `dos_sesiones`; al final de cada ronda, cero refresh
+    vivos. El Verde debe hacer que `refresh` bloquee el usuario antes que el token (como `reset`:
+    `user_id` del token sin candado, `FOR UPDATE` del usuario y luego del token con
+    `populate_existing`), o un sucesor creado durante la revocación sobrevive (riesgo de B3
+    MEDIUM-2 diferido a B5).
+  - Rutas: 200 y 204 con `Cache-Control: no-store` (no se mira en los 4xx); 404 `user_not_found`;
+    409 con su código; 422 `validation_error` con id mal formado.
+  - CLI `unlock-user <correo> [--as <correo>]`: normaliza el correo; éxito exit 0 con una línea
+    no vacía; `locked_at` nulo y `failed_login_count = 0`; el `update` auditado lleva
+    `SYSTEM_USER_ID` sin `--as` y la persona de `--as` con él; `--as` inexistente o bloqueado sale
+    con 2 con `--as` en el mensaje (`resolve_actor`) y sin cambios; una cuenta no bloqueada, una
+    inexistente y una borrada salen con 2 y el mismo mensaje, sin repetir el correo y sin
+    auditoría; una segunda invocación sobre la misma cuenta sale con 2. El CLI no puede importar
+    `rules` ni `tokens` (`private_helper`): usa `service.ids_by_email` y `service.unlock`.
+- Desviaciones del encargo:
+  - Ayuda nueva `tests/auth/_ciclo.py` (no estaba en la lista; evita repetir rutas y logins).
+  - `test_auth_routes.py` gana dos casos (lista exacta y `no_store`) además de ampliar la lista.
+  - "DELETE 204 y segundo 404 o idempotente": se eligió 404, coherente con `update_user`, que da
+    404 sobre una borrada.
+  - `SessionsRevoked` de `delete` y `lock` se emite también con 0 (el plan solo lo exigía para
+    `revoke_sessions`): así toda revocación administrativa queda auditada (S2-D49), igual que el
+    bloqueo automático de B2.
+  - `unlock` cierra los enlaces abiertos: lo pide `DECISIONES.md` S2-B4 (MEDIUM-1), no la lista
+    del blueprint.
+  - "Inexistente exit 2 mismo mensaje" del CLI se leyó como un solo mensaje para no bloqueada,
+    inexistente y borrada (no revela si la cuenta existe), igual que `issue-reset-link`.
+  - Las pruebas de "un handler falla" usan una excepción propia (`HandlerRoto`): con
+    `RuntimeError` pasaban sobre los stubs, porque `NotImplementedError` hereda de él.
+
+### S2-B5 · Verde
+
+- B5.3 Verde:
+  - `rules.would_remove_last_admin` (verdadero solo si el objetivo es el único del conjunto y hay
+    baja o un rol distinto de `admin`) y `rules.lock_precondition` (`CannotLockSelf`,
+    `AlreadyLocked`, `LastAdmin`).
+  - `tokens.lock_active_admins`: `SELECT id` de admins activos con hash, sin bloqueo, baja ni el
+    técnico, `ORDER BY id FOR UPDATE`.
+  - `service.get_user` (`get_alive_or_404(include_deleted=True)`), `update_user`, `delete_user`,
+    `lock`, `unlock` y `revoke_sessions`. Candados: admins activos → cuenta → tokens. `unlock`
+    olvida `login-account` (todas las redes) y `login-account-global` al final y cierra los
+    enlaces abiertos.
+  - `refresh` bloquea el usuario antes que el token (`_locked_refresh_and_owner`, el orden de
+    `reset`): cierra el riesgo diferido de B3 MEDIUM-2. `logout` sigue con `_locked_refresh_row`.
+  - `cli unlock-user <correo> [--as]` con `service.ids_by_email` y `service.unlock`; un solo
+    mensaje (exit 2) para no bloqueada, inexistente y borrada, sin el correo.
+- Revisión `security-reviewer` sobre `git diff 6240359 -- api/src` (sin CRITICAL ni HIGH):
+  MEDIUM-1 corregido (el bloqueo automático por fallos toma `lock_active_admins` antes de
+  `increment_failures`; prueba nueva `tests/auth/test_auto_lock_last_admin.py`, roja antes del
+  arreglo), LOW-3 corregido (cambiar el correo cierra los enlaces abiertos; prueba nueva
+  `tests/auth/test_update_user_email_links.py`), LOW-1, LOW-2 y LOW-4 aceptados
+  (`DECISIONES.md` S2-B5).
+- Prueba corregida por error objetivo: `test_revocar_y_refrescar_a_la_vez...` pedía
+  `argon2_rapido` en vez de `seguridad` y, corrida sola, fallaba por llaves JWT sin configurar.
+- Suite: 1287 colectadas; 1283 pasan, 4 saltadas, 0 fallan (`-m 'not perf'`); cobertura de
+  `app` 95 % (`auth/service.py` 96 %, `rules.py` y `tokens.py` 100 %); `ruff format --check`,
+  `ruff check .` y `mypy src` (51 archivos) limpios. Cada archivo de B5 pasa también corrido
+  solo.
+- B5.4 contrato (P-API): `export-openapi` dos veces idéntico; `npm run gen:api`;
+  `types.contract.test.ts` 5 ok; `tsc --noEmit` limpio.
+- Docs: `docs/RUNBOOK.md` (sección "Ciclo de vida de las cuentas": `tools unlock-user <correo>
+  --as <correo>`, qué limpia y qué no, contadores en memoria, baja lógica y último admin; el
+  cambio de correo cierra enlaces) y `DECISIONES.md` (S2-B5).
+- Docker antes del gate (E1, como en B3 y B4: el bloque lleva la evidencia), sin tocar el árbol:
+  `$DC build api` (cambió `cli.py`); la recarga por bind recogió el service. psql: un solo admin
+  real vivo (más el técnico). Por Nginx `:8180` con `Origin` y un access del admin firmado dentro
+  del contenedor del api:
+  - preparación: `tools issue-reset-link coach-b3-smoke@test.apex --as <admin>` y
+    `POST /auth/reset` 204 con una contraseña aleatoria que no se guardó; login del coach 200;
+  - `GET /users/{coach}` 200 `active`; `PATCH {"role":"admin"}` 200 y de vuelta a coach 200;
+  - `POST .../lock` 200 `locked` con `Cache-Control: no-store`; psql: `locked_at` y
+    `tokens_valid_after` llenos, 0 refresh vivos de 2; login del coach 401
+    `invalid_credentials` (el mismo mensaje);
+  - `POST .../unlock` 200 `active`; psql `locked_at` nulo y `failed_login_count = 0`;
+  - `tools unlock-user coach-b3-smoke@test.apex --as <admin>` sobre la cuenta ya desbloqueada:
+    exit 2, "no hay una cuenta bloqueada con ese correo";
+  - login del coach 200; `POST .../revoke-sessions` 200 `{"revoked":1}`;
+  - `POST /users/{admin}/lock` 409 `cannot_lock_self`;
+  - `DELETE` 204 con `Cache-Control: no-store`; segundo 404 `user_not_found`; `GET` 200
+    `deleted`; `POST /users` con el mismo correo 201 (correo liberado);
+  - auditoría: 6 `update` de `auth.users` para el coach (reset, dos `PATCH`, lock, unlock y
+    baja); log del api: 0 coincidencias del correo; `/api/v1/health` 200.
+- Coach de prueba que queda para los slices siguientes: `coach-b3-smoke@test.apex`, cuenta NUEVA
+  (id `2d04a278-7af7-403b-8daa-9838b31076ac`), rol `coach`, `pending_activation`, con un token
+  `activate` abierto 72 h (el token en claro se descartó). La cuenta anterior
+  (`5b123624-...`) queda dada de baja.
+- Observación sin cambio (previa a B5): las respuestas por Nginx llevan `Cache-Control:
+  no-store` dos veces (la pone el api y la repite `infra/nginx/snippets/proxy-api.conf`); mismo
+  valor, sin efecto.
+- Desviaciones:
+  - E1: el smoke de Docker corrió antes de los gates; tras los gates solo se repite `/health`.
+  - El gate que sella lista también `tests/auth/test_auto_lock_last_admin.py` y
+    `tests/auth/test_update_user_email_links.py` (nacieron en la revisión) y los dos de refresh
+    (regresión por el candado usuario → token).
+  - `login` (B2, `_register_failure`) y `update_user` cambian por la revisión (MEDIUM-1, LOW-3).

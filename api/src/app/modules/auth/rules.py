@@ -24,6 +24,10 @@ S2-B3 (US-045, US-046, US-047):
 
 S2-B4 (US-048, US-052): `is_one_time_token_usable(token, user, now)` (S2-D40) y
 `link_purpose_for(user)`.
+
+S2-B5 (US-049, US-050): `would_remove_last_admin(active_admin_ids, target_id, *, new_role,
+deleting)` y `lock_precondition(user, by_id, *, is_last_admin)` (orden fijo de errores:
+`CannotLockSelf`, `AlreadyLocked`, `LastAdmin`).
 """
 
 from __future__ import annotations
@@ -31,15 +35,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, Literal
+from uuid import UUID
 
 from sqlalchemy import ColumnElement, and_
 
 from app.core.context import SYSTEM_USER_ID
 from app.core.security import WeakPasswordError, verify_password
 from app.core.security import validate_password_policy as core_password_policy
-from app.modules.auth.exceptions import AuthError
+from app.modules.auth.exceptions import AlreadyLocked, AuthError, CannotLockSelf, LastAdmin
 from app.modules.auth.models import OneTimeToken, RefreshToken, User
-from app.modules.auth.schemas import UserOut, UserRow, UserStatus
+from app.modules.auth.schemas import Role, UserOut, UserRow, UserStatus
 
 ACTIVATE_TTL: Final = timedelta(hours=72)
 RESET_TTL: Final = timedelta(hours=1)
@@ -211,3 +216,32 @@ def is_one_time_token_usable(token: OneTimeToken, user: User, now: datetime) -> 
 def link_purpose_for(user: User) -> Literal["activate", "reset"]:
     """`activate` si la cuenta no tiene hash; si no, `reset` (blueprint S2-B4)."""
     return "activate" if user.password_hash is None else "reset"
+
+
+# S2-B5 · ciclo de vida del usuario (US-049, US-050) ---------------------------------------
+
+
+def would_remove_last_admin(
+    active_admin_ids: frozenset[UUID],
+    target_id: UUID,
+    *,
+    new_role: Role | None,
+    deleting: bool,
+) -> bool:
+    """Verdadero si dar de baja a `target_id` (o cambiarle el rol a uno que no es `admin`) deja
+    sin admins activos: `target_id` es el único de `active_admin_ids` (de
+    `tokens.lock_active_admins`). Un objetivo que no está en el conjunto nunca lo es."""
+    if target_id not in active_admin_ids or len(active_admin_ids) != 1:
+        return False
+    return deleting or (new_role is not None and new_role != "admin")
+
+
+def lock_precondition(user: User, by_id: UUID, *, is_last_admin: bool) -> None:
+    """Reglas del bloqueo por un admin, en orden fijo: `CannotLockSelf` (`user.id == by_id`),
+    `AlreadyLocked` (`locked_at` lleno) y `LastAdmin` (`is_last_admin`)."""
+    if user.id == by_id:
+        raise CannotLockSelf()
+    if user.locked_at is not None:
+        raise AlreadyLocked()
+    if is_last_admin:
+        raise LastAdmin()

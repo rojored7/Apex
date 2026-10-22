@@ -2,6 +2,7 @@
 
 S2-B3: `EmailTaken` (409) e `InvalidCurrentPassword` (422).
 S2-B4: `InvalidToken` (400), `UserNotEligible` (409) y `UserNotFound` (404).
+S2-B5: `LastAdmin`, `CannotLockSelf`, `AlreadyLocked` y `NotLocked` (409).
 """
 
 from __future__ import annotations
@@ -84,3 +85,36 @@ class UserNotFound(DomainError):
     status = 404
     code = "user_not_found"
     default_message = "No se encontró la cuenta."
+
+
+class LastAdmin(DomainError):
+    """Baja, cambio de rol o bloqueo que dejaría el sistema sin un admin activo (S2-B5, US-049,
+    US-050). El técnico (`SYSTEM_USER_ID`) nunca cuenta como admin activo."""
+
+    status = 409
+    code = "last_admin"
+    default_message = "Debe quedar al menos un administrador activo."
+
+
+class CannotLockSelf(DomainError):
+    """Un admin intenta bloquear su propia cuenta (S2-B5, US-050)."""
+
+    status = 409
+    code = "cannot_lock_self"
+    default_message = "No puedes bloquear tu propia cuenta."
+
+
+class AlreadyLocked(DomainError):
+    """`lock` sobre una cuenta ya bloqueada (S2-B5, US-050)."""
+
+    status = 409
+    code = "already_locked"
+    default_message = "La cuenta ya está bloqueada."
+
+
+class NotLocked(DomainError):
+    """`unlock` sobre una cuenta que no está bloqueada (S2-B5, US-050)."""
+
+    status = 409
+    code = "not_locked"
+    default_message = "La cuenta no está bloqueada."

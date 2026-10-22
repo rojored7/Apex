@@ -1,61 +1,67 @@
 """Ningún archivo de `src/app` fuera del bus importa criptografía (CLAUDE.md, bus regla 8).
 
-Primera versión (US-002): recorre el árbol real con `ast`, independiente de ruff.
-US-023, US-031 y las siguientes la amplían.
+Primera versión (US-002): recorría el árbol con `ast` solo por `import` y `from`. S2-B7 (US-031)
+la pasa al analizador compartido `find_banned_imports` de `_imports.py`, que también reporta
+`importlib.import_module("...")`, `import_module("...")` y `__import__("...")` con literal, y
+agrega un control en un directorio temporal. Complementa la regla `banned-api` de ruff.
 """
 
 from __future__ import annotations
 
-import ast
-from collections.abc import Iterator
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "app"
-BANNED = ("cryptography", "oqs", "hashlib", "hmac", "jwt", "argon2")
+from tests.architecture._imports import BannedImport, find_banned_imports, is_allowed
+
+SRC = Path(__file__).resolve().parents[2] / "src"
+APP = SRC / "app"
 
 
-def _permitido(path: Path) -> bool:
-    rel = path.relative_to(SRC).as_posix()
-    return (
-        rel.startswith("core/crypto/")
-        or rel == "core/security.py"
-        or rel.startswith("core/security/")
-    )
-
-
-def _imports(path: Path) -> Iterator[str]:
-    arbol = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    for nodo in ast.walk(arbol):
-        if isinstance(nodo, ast.Import):
-            for alias in nodo.names:
-                yield alias.name
-        elif isinstance(nodo, ast.ImportFrom) and nodo.module and nodo.level == 0:
-            yield nodo.module
-
-
-def _es_prohibido(nombre: str) -> bool:
-    return any(nombre == b or nombre.startswith(b + ".") for b in BANNED)
+def _hallazgos(raiz: Path, base: Path) -> list[BannedImport]:
+    salida: list[BannedImport] = []
+    for path in sorted(raiz.rglob("*.py")):
+        relativo = path.relative_to(base).as_posix()
+        salida.extend(find_banned_imports(path.read_text(encoding="utf-8"), relativo))
+    return salida
 
 
 def test_sin_imports_de_criptografia_fuera_del_bus() -> None:
-    violaciones = [
-        f"{path.relative_to(SRC).as_posix()}: {nombre}"
-        for path in sorted(SRC.rglob("*.py"))
-        if not _permitido(path)
-        for nombre in _imports(path)
-        if _es_prohibido(nombre)
+    assert [str(h) for h in _hallazgos(APP, SRC)] == []
+
+
+def test_el_recorrido_si_visita_el_bus_y_lo_deja_pasar() -> None:
+    """El bus sí importa primitivas: si el recorrido no lo viera, la prueba no probaría nada."""
+    aead = APP / "core" / "crypto" / "aead.py"
+    assert "cryptography" in aead.read_text(encoding="utf-8")
+    assert is_allowed(aead.relative_to(SRC).as_posix())
+    assert find_banned_imports(aead.read_text(encoding="utf-8"), "app/modules/x/service.py")
+
+
+def test_control_en_un_arbol_temporal_reporta_archivo_y_linea(tmp_path: Path) -> None:
+    """US-031 criterios 1 a 3: el mismo import falla en un módulo y pasa dentro del bus."""
+    servicio = tmp_path / "app" / "modules" / "members" / "service.py"
+    bus = tmp_path / "app" / "core" / "crypto" / "aead.py"
+    seguridad = tmp_path / "app" / "core" / "security.py"
+    for archivo in (servicio, bus, seguridad):
+        archivo.parent.mkdir(parents=True, exist_ok=True)
+        archivo.write_text(
+            '"""m."""\n\nimport hashlib\nfrom cryptography.hazmat.primitives import hashes\n'
+            'def f() -> None:\n    __import__("jwt")\n',
+            encoding="utf-8",
+        )
+    (tmp_path / "app" / "modules" / "members" / "router.py").write_text(
+        'import importlib\nimportlib.import_module("hmac")\n', encoding="utf-8"
+    )
+
+    assert [str(h) for h in _hallazgos(tmp_path / "app", tmp_path)] == [
+        "app/modules/members/router.py:2 importa hmac",
+        "app/modules/members/service.py:3 importa hashlib",
+        "app/modules/members/service.py:4 importa cryptography.hazmat.primitives",
+        "app/modules/members/service.py:6 importa jwt",
     ]
-    assert violaciones == []
-
-
-def test_el_analizador_detecta_un_import_prohibido(tmp_path: Path) -> None:
-    archivo = tmp_path / "service.py"
-    archivo.write_text("import hashlib\nfrom cryptography.hazmat import x\n", encoding="utf-8")
-    assert [n for n in _imports(archivo) if _es_prohibido(n)] == ["hashlib", "cryptography.hazmat"]
 
 
 def test_el_analizador_respeta_core_crypto() -> None:
-    assert _permitido(SRC / "core" / "crypto" / "bus.py")
-    assert _permitido(SRC / "core" / "security.py")
-    assert not _permitido(SRC / "core" / "audit.py")
-    assert not _permitido(SRC / "modules" / "members" / "service.py")
+    assert is_allowed((APP / "core" / "crypto" / "bus.py").relative_to(SRC).as_posix())
+    assert is_allowed((APP / "core" / "security.py").relative_to(SRC).as_posix())
+    assert not is_allowed((APP / "core" / "audit.py").relative_to(SRC).as_posix())
+    assert not is_allowed("app/modules/members/service.py")

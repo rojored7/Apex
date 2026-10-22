@@ -28,9 +28,8 @@ from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 
 # Models de cada módulo (se agregan en su historia):
 from app.modules.auth import models as _auth  # noqa: F401  (US-041 0004_auth, S2-B2 0005b)
+from app.modules.members import models as _members  # noqa: F401  (US-069, 0006_members)
 from app.modules.settings import models as _settings  # noqa: F401  (US-054, 0005_settings)
-
-# from app.modules.members import models as _members
 
 config = context.config
 # Solo si nadie configuró el logging (CLI en el host): en el api ya está el JSON de US-018

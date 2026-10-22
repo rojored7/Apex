@@ -133,3 +133,85 @@ def find_forbidden_imports(
         vistas.add(clave)
         salida.append(Violation(file=file.as_posix(), line=linea, imported=target, rule=rule))
     return salida
+
+
+# Imports prohibidos fuera del bus (S2-B7, US-031; CLAUDE.md, bus regla 8) --------------------
+
+BANNED_MODULES: Final[frozenset[str]] = frozenset(
+    {"cryptography", "oqs", "hashlib", "hmac", "jwt", "argon2"}
+)
+
+
+@dataclass(frozen=True)
+class BannedImport:
+    file: str
+    line: int
+    imported: str
+
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line} importa {self.imported}"
+
+
+def _relative_to_app(path: str) -> str:
+    rel = path.replace("\\", "/").removeprefix("./")
+    rel = rel.removeprefix("src/")
+    return rel.removeprefix("app/")
+
+
+def is_allowed(path: str) -> bool:
+    """`core/crypto/`, `core/security.py` y `core/security/` (relativo a `app/`)."""
+    rel = _relative_to_app(path)
+    return (
+        rel.startswith("core/crypto/")
+        or rel == "core/security.py"
+        or rel.startswith("core/security/")
+    )
+
+
+def _is_banned(name: str) -> bool:
+    return name.split(".", 1)[0] in BANNED_MODULES
+
+
+def _literal_import(nodo: ast.Call) -> str | None:
+    """`importlib.import_module("x")`, `import_module("x")` o `__import__("x")` con literal."""
+    funcion = nodo.func
+    nombre = (
+        funcion.attr
+        if isinstance(funcion, ast.Attribute)
+        else funcion.id
+        if isinstance(funcion, ast.Name)
+        else None
+    )
+    if nombre not in {"import_module", "__import__"} or not nodo.args:
+        return None
+    primero = nodo.args[0]
+    if isinstance(primero, ast.Constant) and isinstance(primero.value, str):
+        return primero.value
+    return None
+
+
+def _all_imports(arbol: ast.AST) -> list[tuple[int, str]]:
+    nombres: list[tuple[int, str]] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            nombres.extend((nodo.lineno, alias.name) for alias in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom):
+            if nodo.level == 0 and nodo.module:
+                nombres.append((nodo.lineno, nodo.module))
+        elif isinstance(nodo, ast.Call):
+            literal = _literal_import(nodo)
+            if literal is not None:
+                nombres.append((nodo.lineno, literal))
+    return sorted(nombres)
+
+
+def find_banned_imports(source: str, path: str) -> list[BannedImport]:
+    """Imports prohibidos de `source` (archivo `path`); vacío si `is_allowed(path)`."""
+    if is_allowed(path):
+        return []
+    arbol = ast.parse(source, filename=path)
+    return [
+        BannedImport(file=path, line=linea, imported=nombre)
+        for linea, nombre in _all_imports(arbol)
+        if _is_banned(nombre)
+    ]

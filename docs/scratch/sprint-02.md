@@ -952,3 +952,188 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   se regenera.
 - Suite (`-m 'not perf'`): 1330 colectadas, 1326 ok, 4 saltadas, 0 fallos; cobertura de `app`
   95 %; `ruff format`, `ruff check` y `mypy src` (54 archivos) limpios.
+
+### S2-B7 · Rojo
+
+- Línea base (HEAD `0fe9df3`, árbol limpio): api 1326 ok y 4 saltadas (`-m 'not perf'`);
+  `ruff check .` y `mypy src` (54 archivos) limpios.
+- B7.1 fábrica y limpieza:
+  - `api/tests/factories/members.py`: `KNOWN` (`"7319582046"`, `"+57 300 765 4321"`,
+    `"Lucia.Gomez@Correo.co"`, `date(1991, 7, 23)`, `{"name": "Rosa", "phone": "3115550199"}`),
+    `KNOWN_NORMALIZED` (claro y normalizado como texto: lo que no puede aparecer en reposo),
+    `make_member(session, **cambios)` (bajo `SYSTEM_USER_ID`, `Secret.from_plain`, `flush` y
+    commit del savepoint; necesita `bus_listo`), `make_members(session, n)` con documentos únicos
+    y `unique_document()`;
+  - `FACTORIES["members.members"] = make_member`;
+  - `tests/conftest.py`: `LIMPIAR_MEMBERS` (con `to_regclass`, inocuo sin la tabla) en
+    `LIMPIEZA_DE_SESION` y en el `finally` de `dos_sesiones`;
+  - `api/tests/members/{__init__,conftest,_apoyo}.py`: `bus_confirmado` (llaves con commit real
+    para la carrera; al salir borra las llaves y las filas de `crypto_ops` desde su inicio),
+    `cuerpo`, `entrada`, `crear`, `fila_socio`, `cuantos_socios`, `operaciones`,
+    `CAMPOS_DETALLE` y `MASCARAS_KNOWN`.
+- B7.2 stubs (`ruff` y `mypy src` limpios, 60 archivos), en `api/src/app/modules/members/`:
+  - `models.py` completo: `Member(CommonColumnsMixin, SoftDeleteMixin, Base)`, esquema `members`,
+    `__audited__`, `__audit_subject__ = "id"`, cinco `Encrypted`, tres `BlindIndexed`, CHECKs,
+    único parcial e índices del blueprint; SIN `notes` y con `document_type` default `CC`;
+  - `schemas.py` y `exceptions.py` completos (contrato): `MemberCreate` (`extra="forbid"`,
+    `str_strip_whitespace`, `data_consent: bool = False`, sin `notes` ni `data_consent_at`),
+    `EmergencyContactIn`, `MemberDetailOut`, `MemberRef`; `MemberError`,
+    `MemberValidationError` (422), `MemberDocumentDuplicated` (409, `field="document"`,
+    `existing_id`), `MemberNotFound` (404);
+  - `service.py`: `MemberCreated(member_id)` y las firmas tipadas de `validate_member_input`,
+    `compute_warnings`, `mask`, `create`, `get_ref`, `ensure_exists`, `id_by_document` y `count`
+    con `NotImplementedError`;
+  - `router.py`: `POST /members` con `require_role("admin", "coach")`, 201 y
+    `response_model=MemberDetailOut`, que llama a `service.create`; las constantes del límite
+    (`members-write`, 60, 60 s) quedan declaradas y el `enforce` lo pone el Verde (B7.5);
+  - `MODULES`, `main.py`, `migrations/env.py` y la migración NO se tocan (Verde);
+  - `tests/architecture/_imports.py`: `BANNED_MODULES`, `BannedImport`, `is_allowed(path)` y
+    `find_banned_imports(source, path)` (`Import`, `ImportFrom` absoluto, `importlib.import_module`,
+    `import_module` y `__import__` con literal, también dentro de funciones y de `TYPE_CHECKING`).
+    Se escribió después de ver en rojo los casos de `test_import_analyzer.py`; queda verde.
+- B7.3 pruebas (180 casos colectados nuevos o reemplazados):
+  - `tests/members/test_member_rules.py` (72): `validate_member_input` (nombres, sexo, fecha; L-3
+    con `"..."`, guiones tipográficos, `"+57"`, `"( ) -"` y correo en blanco), `compute_warnings`,
+    `mask` (`CC •••• 0304`, `••• ••• 4567`, `l•••@•••.co`, `••/••/1991`, `"Registrado"`, `None`) y
+    el contrato de `MemberCreate` (`extra_forbidden` para `notes`, `data_consent_at`,
+    `data_consent_version`, `status` y `document_idx`);
+  - `tests/members/test_service_create.py` (19): mismo índice con y sin puntos, 409 con
+    `existing_id` sin crear nada, un dado de baja no bloquea, carrera con `dos_sesiones` y
+    `bus_confirmado`, fila `insert` con blobs y `subject_member_id`, `MemberCreated`,
+    `HandlerRoto` revierte, M-4 con el reloj movido 3 h, `warnings`, `crypto_ops` solo
+    `encrypt`/`index` y ningún `decrypt`, 422 desde el service, `get_ref`, `ensure_exists`,
+    `id_by_document` y `count`;
+  - `tests/members/test_router_create.py` (21): 201 admin y coach, aviso sin autorización, cuerpo
+    mínimo, 403 member, 401 sin token, 12 casos de 422 con `field` (incluidos `data_consent_at` y
+    `notes`), 409, alta 61 que da 429 con `Retry-After` mientras otro usuario sigue, logs limpios;
+  - arquitectura: `test_members_encrypted_at_rest.py` (4), `test_no_plaintext_at_rest.py` (6),
+    `test_import_analyzer.py` (28), `test_banned_imports.py` reescrita sobre el analizador (4),
+    `test_audited_tables.py` (`members.members` requerida, +1), `test_no_sensitive_in_logs.py`
+    implementada (login real, alta, 409 y 422 con `capsys` y `caplog`; `reveal` aparte con
+    `skip(reason="US-074, S3-B10")`) y `test_audit_module.py` (`MODULES` con `members`);
+  - `tests/core/test_logging_redact.py` (+1): fila cruda, `repr`, extra e `IntegrityError` real;
+  - `tests/migrations/test_0006_members.py` (27): columnas exactas, sin `notes` ni `*_hint`,
+    defaults, CHECKs por SQLSTATE (incluido el claro en cada columna cifrada y los dos pares),
+    nulos, único parcial con una baja que libera el documento, índices por `pg_indexes` y ciclo.
+- Conteo: 1510 colectadas; 127 fallan (todas de B7), 1379 pasan, 4 saltadas. Motivos:
+  `NotImplementedError` de los stubs (66: 52 reglas puras y 14 del service); ruta no montada,
+  404 (22: router y centinela de logs); revisión `0006_members` inexistente (27);
+  `members.members` inexistente, `UndefinedTable` (11: fábrica en service, arquitectura y log);
+  aserción de contrato (1: `MODULES` sin `members`). Ninguna por import ni fixture; ninguna
+  sesión queda colgada. Pasan ya 53 casos nuevos (contrato: schemas, analizador, descubrimiento
+  de columnas, registro, banned imports, tablas auditadas). Regresiones de comportamiento: 0;
+  `test_audit_module::test_modules_de_v01_incluye_audit_despues_de_auth` pasa a rojo a propósito
+  (contrato B7). `docs/openapi.json` sin cambios.
+- Validación del Rojo: con un Verde provisional (migración `0006` con el esquema de la prueba,
+  service completo, `enforce` en el router, `MODULES` con `members` y el import en `env.py`),
+  luego revertido (downgrade de `db_test` a `0005b` antes de borrar la revisión), la suite dio
+  1505 ok, 4 saltadas y 1 fallo esperado (`test_docs_openapi_json_esta_al_dia`, P-API del Verde).
+  `db_test` queda en `0005b_auth_security`, sin socios, usuarios, llaves ni secciones.
+- Decisiones de prueba que el Verde debe respetar:
+  - L-3: `"+57"` se normaliza a `"57"`, no a vacío (`normalize_for_index` solo quita el 57 con
+    12 dígitos); `validate_member_input` necesita una regla de teléfono además del vacío (el
+    provisional usó "menos de 7 dígitos"); `"(601) 555 0199"` y `"3007654321"` pasan.
+  - `mask("document", ...)` usa los 4 últimos caracteres del valor normalizado (`"1.020.304"` da
+    `CC •••• 0304`; `"AB-123456"` con `PA` da `PA •••• 3456`); teléfono: los 4 últimos dígitos;
+    correo: primera letra, `•••@•••.` y la última etiqueta del dominio.
+  - `validate_member_input` revisa también lo que el schema ya filtra (las pruebas usan
+    `model_copy(update=...)`); por HTTP el `field` sale del schema (`first_name`, `sex`,
+    `document_type`, `email`, `data_consent_at`, `notes`) o del service (`birth_date`, documento
+    que se normaliza a vacío, `phone`).
+  - `crypto_ops` del alta: solo `encrypt` (5 con todos los campos) e `index` (al menos 3) con el
+    `record_id` del socio y `user_id` = actor; el pre-chequeo puede llevar o no `record_id`; cero
+    `decrypt` nuevos.
+  - `MemberCreated(member_id=...)` se emite con `events.emit` en la misma transacción; un handler
+    que lanza deja el error y nada escrito tras el rollback.
+  - El límite es `ratelimit.enforce("members-write", str(principal.user_id), limit=60,
+    window_s=60)` antes del service; el 429 lleva `rate_limited` y `Retry-After`.
+  - `test_no_sensitive_in_logs` reinstala `configure_logging` dentro de `capsys` y exige una
+    línea `http_request` en el stdout capturado (si no, no probaría nada).
+  - Agregar `from app.modules.members import models as _members` en `migrations/env.py`.
+- Pruebas existentes reparadas (por el contrato de B7, no por comportamiento):
+  - `tests/migrations/test_0005b_auth_security.py`: `..._y_es_head` pasa a
+    `test_la_revision_existe_cuelga_de_0005_settings_y_esta_en_la_cadena_de_head`; con `0006`
+    colgando de `0005b`, `get_heads() == ["0005b_auth_security"]` dejaría de valer. Ahora exige que
+    esté en la cadena hasta head (la cabeza única sigue en `test_single_head`). Pasa en el Rojo y
+    con el Verde provisional.
+  - `test_audited_tables.py::test_una_pendiente_que_existe_auditada_no_falla` usa `plans.plans`
+    como ejemplo (`members.members` ya es requerida).
+- Desviaciones del encargo:
+  - `no_store` no se exige en `POST /members`: el dependiente vive en `auth/cookies.py`, privado
+    de `auth` (S2-D4, regla `private_helper`), y Nginx ya pone `Cache-Control: no-store` en
+    `/api/` (`proxy-api.conf`). Si el Verde lo quiere, primero debe moverse a `core/`.
+  - Topes de longitud que el blueprint no fija, elegidos para el contrato: nombres 100, teléfono
+    30, parentesco 50 (documento de 3 a 30, como el blueprint).
+  - `test_banned_imports.py` se reescribió sobre `find_banned_imports` (dos analizadores serían
+    deriva); conserva sus casos (árbol real y `core/crypto`) y suma el control en `tmp_path` y la
+    prueba de que el recorrido sí ve el bus.
+  - `test_audited_tables::test_las_requeridas_de_v01_existen...` pasa en la suite completa del
+    Rojo porque las pruebas importan `members.models` al recolectar; sola falla hasta que
+    `MODULES` tenga `members` (lo exige `test_audit_module`).
+  - `test_no_plaintext_at_rest` carga los `models.py` de todos los paquetes de `app.modules` (no
+    solo `MODULES`) para descubrir columnas cifradas aunque el módulo aún no esté montado.
+
+### S2-B7 · Verde
+
+- Producto:
+  - `api/migrations/versions/0006_members.py` (`down_revision = "0005b_auth_security"`): tabla
+    `members.members` del blueprint sin `notes`, `document_type` default `'CC'`,
+    `data_consent_at`/`data_consent_version` nulos, 12 CHECKs nombrados (`ck_members_*`), único
+    parcial `uq_members_document_idx_alive` e índices `ix_members_phone_idx`,
+    `ix_members_email_idx`, `ix_members_alive_last_name`; `downgrade` borra la tabla y deja el
+    esquema (lo crea `0001`). `migrations/env.py` importa `app.modules.members.models`.
+  - `members/service.py`: `validate_member_input` (L-3 con `normalize_for_index`; teléfono con al
+    menos 7 dígitos), `compute_warnings`, `mask`, `create` (pre-chequeo por índice ciego,
+    `Secret.from_plain`, `data_consent_at` del reloj, `begin_nested` + `flush`, traducción del
+    `IntegrityError` del único, `refresh` de `created_at`/`updated_at`, `MemberCreated`,
+    respuesta enmascarada desde la entrada) y `get_ref`, `ensure_exists`, `id_by_document`
+    (`None` si el valor se normaliza a vacío), `count`.
+  - `members/router.py`: `ratelimit.enforce("members-write", user_id, limit=60, window_s=60,
+    kind="user")` antes del service (L-1). `main.py`: `MODULES` con `members`.
+  - Revisión: `Member.__audit_redact__` con los tres índices ciegos (MEDIUM-1); máscara del
+    documento sin cola con menos de 6 caracteres (LOW-2); `data_consent` estricto (LOW-5).
+    Prueba nueva `tests/members/test_member_review.py` (10 casos, rojos antes del arreglo).
+    LOW-3 y LOW-4 aceptados (DECISIONES S2-B7). `core/logging.py` no cambió.
+- Migración por P-MIG: `docs/scratch/sprint-02-antes-0006_members.dump` (ignorado por `*.dump`);
+  `stop api`; ciclo contra `db_test` (35 ok en `test_migrations`, `test_0006_members` y
+  `test_0005b`); `alembic heads` = `0006_members (head)`; `start api` healthy;
+  `alembic current` = `0006_members (head)`; ciclo `downgrade -1` (→ `0005b_auth_security`) y
+  `upgrade head` en `apex-db-1`. Hallazgo al entrar: `apex-db-1` ya estaba en `0006_members` con
+  la tabla del Verde provisional del QA (CHECKs con el nombre duplicado `ck_members_ck_members_*`,
+  0 filas) y el api caído en el arranque por la revisión inexistente; el ciclo la recreó con la
+  migración definitiva (`ck_members_*`).
+- Contrato (P-API): `export-openapi` dos veces idénticas; `npm run gen:api` (+205 líneas en
+  `types.ts`), `types.contract.test.ts` 5 ok y `tsc --noEmit` limpio.
+- Suite (`-m 'not perf'`): 1520 colectadas, 1516 ok, 4 saltadas, 0 fallos; cobertura de `app`
+  95 %; `ruff format`, `ruff check` y `mypy src` (60 archivos) limpios.
+- Docker antes del gate (E1, como B3 a B5: el bloque nombra los socios de prueba), sin tocar el
+  árbol; la recarga por bind recogió el código. Por Nginx `:8180` con `Origin` y un access
+  firmado dentro del contenedor del api:
+  - admin `POST /members` CC `1.020.304.417` → 201 con `CC •••• 4417` (los 4 últimos del
+    normalizado `1020304417`), `••• ••• 0417`, `s•••@•••.apex`, `••/••/1990`, `Registrado`,
+    `warnings: []` y `data_consent_at` del servidor;
+  - el mismo alta → 409 `member_document_duplicated` con `existing_id`; `"1020304417"` sin
+    puntos → 409 igual; sin token → 401 `unauthorized`; teléfono `"+57"` → 422 `field=phone`;
+  - coach nuevo (`POST /users` → `POST /auth/reset` 204 con contraseña aleatoria descartada) →
+    `POST /members` 201 con `warnings: ["data_consent_missing"]`;
+  - 403 de `member`: no se probó en vivo (no hay cuentas `member` hasta el portal, L-2); lo
+    cubren `test_router_create` y `test_every_route_has_role`;
+  - psql: `document`, `phone`, `email` son blobs `apx1.<key_id>.A256GCM.`, `document_idx` HMAC
+    hex; `row_to_json` de la tabla sin ninguno de los valores enviados (0 filas);
+    `crypto.crypto_ops`: por socio 5 (o 3) `encrypt` y 3 `index` con su `record_id` y el actor
+    (admin y coach), más el `index` del pre-chequeo sin `record_id`; ningún `decrypt`;
+    `audit.audit_log`: un `insert` por socio con `subject_member_id`, `user_id` del actor, blob
+    en `after.document` y `after.document_idx = ***`;
+  - log del api: 0 coincidencias de documento, teléfono, correo, contacto, `apx1.` y correo del
+    coach; `/api/v1/health` 200.
+- Datos de prueba que quedan para B8 (listar): socios `2b5b6860-1db1-4699-a7ab-f25c85cc89d7`
+  ("Prueba Smoke Uno", CC `1.020.304.417`, todos los campos, con autorización) y
+  `8fbc42c3-eb59-4403-8e71-6bfba868800e` ("Prueba Smoke Dos", CC `52.000.418`, sin fecha ni
+  contacto ni autorización); coach `coach-b7-smoke@test.apex`
+  (`386a18f6-dff2-4490-b7ce-fb690fb085bd`, activo, contraseña descartada: para entrar,
+  `tools issue-reset-link`).
+- Desviaciones:
+  - E1: el smoke de Docker corrió antes de los gates; tras los gates solo se repite `/health`.
+  - El encargo esperaba `CC •••• 0417` para `1.020.304.417`; la regla que fijan las pruebas
+    (4 últimos del normalizado) da `CC •••• 4417`. Manda la prueba.
+  - El gate que sella lista también `tests/members/test_member_review.py` (nació en la revisión).

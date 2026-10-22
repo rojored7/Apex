@@ -1,7 +1,7 @@
 """El módulo `audit` (S2-B6; US-107; riesgo 6.10, decisión 21; CLAUDE.md, reglas de módulos).
 
-- `MODULES == ("auth", "settings", "audit")`: `audit` va después de `auth`, cuyo `service.py`
-  declara los eventos que escucha.
+- `MODULES == ("auth", "settings", "audit", "members")`: `audit` va después de `auth`, cuyo
+  `service.py` declara los eventos que escucha; S2-B7 agrega `members` al final.
 - `load_module_services()` deja suscritos los cuatro handlers de `audit.service` a sus eventos,
   una sola vez cada uno (se compara por identidad de función).
 - `modules/audit` tiene `router.py` vacío, `service.py` y ningún `models.py` (la tabla vive en
@@ -40,7 +40,8 @@ HANDLERS = (
 
 
 def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
-    assert MODULES == ("auth", "settings", "audit")
+    """S2-B7 suma `members` al final (decisión 21; B9 agrega `plans`)."""
+    assert MODULES == ("auth", "settings", "audit", "members")
 
 
 @pytest.mark.parametrize(("evento", "nombre"), HANDLERS, ids=[n for _, n in HANDLERS])

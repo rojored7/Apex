@@ -2,8 +2,9 @@
 
 `FACTORIES` mapea `esquema.tabla` a su fábrica. Cada fábrica termina con
 `await session.commit()`: con la `session` de savepoint libera el savepoint, así los datos
-quedan fuera de lo que una petición fallida revierte. Socios (B7) y planes (B9) se agregan
-en su slice.
+quedan fuera de lo que una petición fallida revierte. B7 agrega `members.members` (necesita el
+bus listo); planes (B9) entra en su slice. `test_no_plaintext_at_rest.py` exige una fábrica por
+cada tabla con columnas cifradas.
 """
 
 from __future__ import annotations
@@ -11,9 +12,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from tests.factories.members import make_member
 from tests.factories.users import make_one_time_token, make_user
 
 FACTORIES: dict[str, Callable[..., Awaitable[Any]]] = {
     "auth.users": make_user,
     "auth.one_time_tokens": make_one_time_token,
+    "members.members": make_member,
 }

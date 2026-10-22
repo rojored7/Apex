@@ -20,8 +20,8 @@ Kit de S2-B1 (plan del Sprint 2, sección 2; S2-D19 y E6):
 - `usuario_real` (fábrica) y `cabeceras(usuario)`: usuario real en `auth.users` con
   `hash_password` y access token real; cabeceras con `Bearer` y `Origin` del front.
 - `dos_sesiones`: dos `AsyncSession` con commit real (concurrencia); al salir borra lo que
-  dejaron en `settings.settings_sections`, los usuarios `@test.apex` con sus refresh y tokens de
-  un solo uso, y la cola que agregaron a `audit.audit_log`.
+  dejaron en `settings.settings_sections` y `members.members` (S2-B7), los usuarios `@test.apex`
+  con sus refresh y tokens de un solo uso, y la cola que agregaron a `audit.audit_log`.
 
 Kit de S2-B2 (plan del Sprint 2, sección 2, bloque B2; E7 y E9):
 - Al importarse corre `load_module_services()` ANTES de importar y registrar
@@ -181,6 +181,13 @@ LIMPIAR_AUTH = (
     "'00000000-0000-0000-0000-000000000001'",
 )
 
+# S2-B7: los socios que una prueba con commit real (`dos_sesiones`) o una corrida cortada hayan
+# dejado. `members.members` nace en `0006_members`: mientras no exista (Rojo de B7) no se toca.
+LIMPIAR_MEMBERS = (
+    "DO $$ BEGIN IF to_regclass('members.members') IS NOT NULL THEN "
+    "DELETE FROM members.members; END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -193,6 +200,7 @@ LIMPIEZA_DE_SESION = (
     "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
     *LIMPIAR_AUTH,
+    LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
 )
 
 
@@ -554,9 +562,9 @@ async def dos_sesiones(engine: AsyncEngine) -> AsyncIterator[tuple[AsyncSession,
     """Dos sesiones independientes (dos conexiones) con commit real, para `asyncio.gather`.
 
     No se combina con `session`: la transacción externa de esa fixture retiene el candado de la
-    cadena de auditoría. Al salir borra las filas de `settings.settings_sections`, los usuarios
-    `@test.apex` (con sus refresh y tokens de un solo uso) y las filas de auditoría agregadas
-    desde el inicio (la cola de la cadena; el prefijo sigue válido).
+    cadena de auditoría. Al salir borra las filas de `settings.settings_sections`, los socios
+    (S2-B7), los usuarios `@test.apex` (con sus refresh y tokens de un solo uso) y las filas de
+    auditoría agregadas desde el inicio (la cola de la cadena; el prefijo sigue válido).
     """
     async with engine.connect() as conexion:
         ultima_seq = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
@@ -569,6 +577,7 @@ async def dos_sesiones(engine: AsyncEngine) -> AsyncIterator[tuple[AsyncSession,
         await segunda.close()
         async with engine.begin() as conexion:
             await conexion.execute(text(LIMPIAR_SETTINGS))
+            await conexion.execute(text(LIMPIAR_MEMBERS))
             for sql in LIMPIAR_AUTH:
                 await conexion.execute(text(sql))
             await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))

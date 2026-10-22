@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Member */
+        post: operations["create_member_api_v1_members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/gym": {
         parameters: {
             query?: never;
@@ -388,6 +405,15 @@ export interface components {
             expires_at: string;
             user: components["schemas"]["UserOut"];
         };
+        /** EmergencyContactIn */
+        EmergencyContactIn: {
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+            /** Relationship */
+            relationship?: string | null;
+        };
         /**
          * ErrorBody
          * @example {
@@ -546,6 +572,89 @@ export interface components {
              * @enum {string}
              */
             role: "admin" | "coach" | "member";
+        };
+        /** MemberCreate */
+        MemberCreate: {
+            /** Birth Date */
+            birth_date?: string | null;
+            /**
+             * Data Consent
+             * @default false
+             */
+            data_consent: boolean;
+            /** Document */
+            document: string;
+            /**
+             * Document Type
+             * @default CC
+             * @enum {string}
+             */
+            document_type: "CC" | "CE" | "TI" | "PA";
+            /** Email */
+            email?: string | null;
+            emergency_contact?: components["schemas"]["EmergencyContactIn"] | null;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string;
+            /** Phone */
+            phone?: string | null;
+            /** Sex */
+            sex?: ("f" | "m" | "x") | null;
+        };
+        /** MemberDetailOut */
+        MemberDetailOut: {
+            /** Birth Date */
+            birth_date: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Data Consent At */
+            data_consent_at: string | null;
+            /** Data Consent Version */
+            data_consent_version: string | null;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Document */
+            document: string | null;
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "CC" | "CE" | "TI" | "PA";
+            /** Email */
+            email: string | null;
+            /** Emergency Contact */
+            emergency_contact: string | null;
+            /** First Name */
+            first_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Name */
+            last_name: string;
+            /** Membership Status */
+            membership_status?: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Sex */
+            sex: ("f" | "m" | "x") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Warnings */
+            warnings: string[];
         };
         /** MembershipsPatchIn */
         MembershipsPatchIn: {
@@ -1558,6 +1667,102 @@ export interface operations {
             };
             /** @description Degradado */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_member_api_v1_members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDetailOut"];
+                };
+            };
+            /** @description Operación inválida */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

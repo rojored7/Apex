@@ -191,3 +191,16 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Cada login sobre un correo existente (correcto o fallido), cada bloqueo, cada cierre de sesiones y cada cambio de contraseña deja una fila en `audit.audit_log` escrita por el módulo `audit` dentro de la misma transacción. Consulta rápida: `SELECT action, user_id, after FROM audit.audit_log ORDER BY seq DESC LIMIT 10;`. La fila `login` guarda `result`, `reason`, `ip` y `user_agent`, nunca el correo tecleado; un correo inexistente no deja fila.
 - La auditoría es parte de la operación (fail-closed): si la cadena no se puede escribir (base sin espacio, candado de la cadena retenido, trigger), el login responde 500 y el fallo ni siquiera suma al contador; lo mismo pasa con bloquear, cerrar sesiones o cambiar la contraseña. Ante 500 en el login, revisar primero `docker compose logs api` y el estado de `audit.audit_log` antes de tocar las cuentas.
 - Los comandos `seed`, `unlock-user` e `issue-reset-link` del CLI cargan los mismos suscriptores, así que lo que hacen queda auditado igual que desde el api.
+
+## Socios: cifrado en reposo (S2-B7)
+
+- En claro en `members.members`: `first_name` y `last_name` (van al leaderboard), `sex`, `status`, `document_type`, `data_consent_at`, `data_consent_version` y las columnas comunes. No existe `notes` ni ninguna columna `*_hint`.
+- Cifrados por el bus (AES-256-GCM, `aad = id` del socio, blob `apx1.<key_id>.A256GCM.<nonce>.<ciphertext>`): `document`, `phone`, `email`, `birth_date` y `emergency_contact`. Índices ciegos HMAC-SHA-256 en `document_idx`, `phone_idx` y `email_idx` (normalización N-02: el documento sin puntos ni guiones, el teléfono sin el `57` inicial, el correo en minúsculas). La base rechaza por CHECK cualquier texto en esas columnas que no empiece por `apx1.`.
+- La respuesta del api enmascara en memoria (`CC •••• 4417` para `1.020.304.417`, `••• ••• 4321`, `l•••@•••.co`, `••/••/1991`, `Registrado`); el alta no descifra nada.
+- Verificar con psql (no debe aparecer ningún dato legible):
+  - `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml exec db psql -U apex -d apex -c "SELECT document, document_idx, phone, email FROM members.members LIMIT 5;"`: blobs `apx1.` y hashes hexadecimales de 64 caracteres;
+  - `SELECT verb, data_class, record_id, user_id FROM crypto.crypto_ops ORDER BY at DESC LIMIT 10;`: cada alta deja `encrypt` por campo presente e `index` por índice, atribuidos a quien registró;
+  - `SELECT action, table_name, subject_member_id, after->>'document' FROM audit.audit_log WHERE table_name = 'members.members' ORDER BY seq DESC LIMIT 5;`: la fila `insert` lleva el blob, nunca el claro.
+- Un documento repetido entre socios no dados de baja responde 409 `member_document_duplicated` con `existing_id`; el único parcial `uq_members_document_idx_alive` decide aunque dos altas lleguen a la vez. Dar de baja (B9) libera el documento.
+- Límite: 60 altas por minuto por usuario autenticado (429 `rate_limited` con `Retry-After`); el contador vive en memoria y se limpia con `up -d api`.
+- Rotación: en v0.1 no hay rotación de llaves de `member.*`; llega en v0.2 con OpenBao (`cli rotate-key`, US-030), que recifra con la llave nueva sin cambiar el formato del blob.

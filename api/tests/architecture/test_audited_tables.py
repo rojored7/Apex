@@ -8,7 +8,8 @@ S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit
 `tv`, `portal`), así que `_cargar_modelos()` importa `models` solo si `find_spec` lo encuentra.
 `REQUIRED_AUDITED_TABLES_V01` deben existir y estar auditadas; las de `PENDING_AUDITED` todavía
 pueden no existir, pero si ya existen y no declaran `__audited__ = True` la prueba falla. B7 y
-B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01`.
+B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01` (S2-B7: `members.members`,
+con `members` en `MODULES`).
 """
 
 from __future__ import annotations
@@ -31,10 +32,9 @@ EXCLUIDAS: dict[str, str] = {
 }
 
 REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
-    {"auth.users", "auth.one_time_tokens", "settings.settings_sections"}
+    {"auth.users", "auth.one_time_tokens", "settings.settings_sections", "members.members"}
 )
 PENDING_AUDITED: dict[str, str] = {
-    "members.members": "B7",
     "plans.plans": "B9",
     "memberships.memberships": "Sprint 3",
     "payments.payments": "Sprint 3",
@@ -126,7 +126,17 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    assert _incumplidas({**_requeridas_auditadas(), "members.members": _Auditada}) == []
+    assert _incumplidas({**_requeridas_auditadas(), "plans.plans": _Auditada}) == []
+
+
+def test_members_es_requerida_y_declara_su_sujeto() -> None:
+    """S2-B7: `members.members` es requerida y declara `__audit_subject__ = "id"` (llena
+    `subject_member_id`). Que `members` esté en `MODULES` lo exige `test_audit_module.py`."""
+    assert "members.members" in REQUIRED_AUDITED_TABLES_V01
+    _cargar_modelos(("members",))
+    tablas = _tablas_de_la_app()
+    assert "members.members" in tablas
+    assert getattr(tablas["members.members"], "__audit_subject__", None) == "id"
 
 
 def test_una_requerida_ausente_o_sin_audited_falla() -> None:

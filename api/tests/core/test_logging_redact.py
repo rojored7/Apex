@@ -2,6 +2,8 @@
 
 S2-B3: el token de `/restablecer/<token>`, el valor de `apex_refresh=` y las claves
 `activation_url`, `url` y `set-cookie` (blueprint 7.2; sección 2, regla 7).
+S2-B7: un socio real de la fábrica (fila cruda, `repr`, extra e `IntegrityError` forzado) no deja
+ningún valor de `KNOWN` en las líneas JSON (US-018 T8, parte de US-069; A-6).
 """
 
 from __future__ import annotations
@@ -9,9 +11,17 @@ from __future__ import annotations
 import json
 import logging
 
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core import logging as app_logging
 from app.core.context import request_id_var
+from app.core.crypto.keyring import Keyring
 from app.core.logging import JsonFormatter, redact, redact_text
+from app.modules.members.models import ENCRYPTED_FIELDS
+from tests.factories.members import KNOWN_NORMALIZED, make_member
 
 BLOB = "apx1.k1.A256GCM.bm9uY2U.Y2lmcmFkbw"
 JWT = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiIxIn0.firma_x-y"
@@ -193,3 +203,65 @@ def test_redacta_el_enlace_codificado_en_una_url() -> None:
     limpio = redact_text(f"next=%2Frestablecer%2F{TOKEN}&x=1")
     assert TOKEN not in limpio
     assert limpio == "next=%2Frestablecer%2F[redacted]&x=1"
+
+
+# S2-B7 · socio real (cierra la parte de US-069 de US-018 T8; A-6) ---------------------------
+
+
+def _lineas_json(registros: list[logging.LogRecord]) -> list[str]:
+    formato = JsonFormatter()
+    return [formato.format(r) for r in registros]
+
+
+def _registro(msg: str, *args: object, exc: BaseException | None = None) -> logging.LogRecord:
+    exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
+    return logging.LogRecord(
+        name="app.members",
+        level=logging.ERROR if exc else logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg=msg,
+        args=args,
+        exc_info=exc_info,
+    )
+
+
+async def test_un_socio_real_no_deja_valores_conocidos_en_el_log(
+    session: AsyncSession, bus_listo: Keyring
+) -> None:
+    """La fila cruda, el `repr` del modelo y un `IntegrityError` real (documento repetido) pasan
+    por `JsonFormatter` sin ningún valor de `KNOWN` en claro ni normalizado."""
+    socio = await make_member(session)
+    fila = dict(
+        (
+            await session.execute(
+                text("SELECT * FROM members.members WHERE id = :id"), {"id": socio.id}
+            )
+        )
+        .mappings()
+        .one()
+    )
+    registros = [
+        _registro("fila %s", fila),
+        _registro("socio %r", socio),
+        _registro("campos %s", {c: getattr(socio, c) for c in ENCRYPTED_FIELDS}),
+    ]
+    registro_extra = _registro("fila como extra")
+    registro_extra.socio = fila  # type: ignore[attr-defined]
+    registros.append(registro_extra)
+    try:
+        await make_member(session)  # mismo documento vivo: uq_members_document_idx_alive
+    except IntegrityError as error:
+        await session.rollback()
+        registros.append(_registro("falló el alta", exc=error))
+    else:
+        pytest.fail("el documento repetido debía dar IntegrityError")
+
+    lineas = _lineas_json(registros)
+    assert len(lineas) == 5
+    assert "uq_members_document_idx_alive" in lineas[-1]  # la traza sí llegó al log
+    for linea in lineas:
+        assert "\n" not in linea
+        for valor in KNOWN_NORMALIZED:
+            assert valor not in linea, valor
+        assert "apx1." not in linea

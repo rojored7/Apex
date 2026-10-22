@@ -26,7 +26,7 @@ La dirección de dependencia es Members → Attachments, como en el mapa de cont
   - si es hoy o pasada, sin `data_consent_at` responde 422.
   
   Corregido por DECISIONES Q16 y N-18. Confirmar en el gate (ver riesgos).
-- US-149 lee `current_version` con `settings.service.get_section("privacy")` → se usa el campo `policy_version` y la función `settings.service.current_privacy_version()` de US-057, según la definición de la sección `privacy` (`policy_version`, `policy_text`, `retention_years`, `consent_required_from`): corregido por DECISIONES N-18.
+- US-149 lee `current_version` con `settings.service.get_section("privacy")` → se usa el campo `policy_version` y la función `settings.service.current_privacy_version()` de US-057, según la definición de la sección `privacy` (`policy_version`, `policy_text`, `retention_years`, `consent_required_from`): corregido por DECISIONES N-18 y, en Sprint 2, por S2-D45 (ver DECISIONES S2-D45).
 - US-147 criterio 8 valida el dueño "pidiendo a `members.service`" desde `attachments` → la validación ocurre en `members.service` antes de llamar a `attachments.service.store`; `attachments` solo valida `owner_table` contra la lista blanca. Así la dependencia es en un solo sentido, como en `03_context_map.md`. Es una precisión de arquitectura y no cambia el comportamiento.
 - Los socios dados de baja se ven en modo solo lectura para admin y coach, y sus adjuntos siguen descargables (evidencia legal); subir a un socio dado de baja devuelve 404: coherente con DECISIONES N-20.
 - Las llaves y variables de S3 van solo en `.env`, nunca en la base: coherente con DECISIONES Q12 (por analogía con secretos de canales) y con `CLAUDE.md`.

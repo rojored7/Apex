@@ -106,26 +106,30 @@ api/
 
 Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.py`.
 
+Contrato común de listas (S2-B8, S2-B9): `core/pagination.py` define `SearchQuery` (`q` de hasta 100 caracteres, sin caracteres de control de la categoría `Cc`; fuera de contrato, 422 con `field = "q"` antes del service) y `paginate` (`limit` de 1 a 200, 25 por defecto, y `offset`). Toda lista lo usa; la respuesta es `{items, total, limit, offset}`.
+
 ### auth.service
-- `login(email, password, ip) -> TokenPair` — rate limit, argon2 verify, usuario activo y no bloqueado, refresh en tabla.
-- `refresh(refresh_token) -> TokenPair` — rota el refresh (revoca el anterior).
-- `logout(refresh_token) -> None`
-- `me(principal) -> MeOut` — `{id, email, role, member_id, gym_name, must_change_password}`; `gym_name` sale de `settings.service.gym_name()` (respaldo `"APEX"`; S2-D14).
+- `login(email, password, ip) -> TokenPair` — rate limit, argon2 verify, usuario activo y no bloqueado, refresh en tabla. El refresh viaja en la cookie `apex_refresh` (HttpOnly, S2-D38). Emite `LoginAttempted` (S2-D43).
+- `refresh(refresh_token) -> TokenPair` — lee la cookie, rota el refresh (revoca el anterior). Un reuso fuera de la gracia de 10 s revoca la familia y todos los access emitidos (S2-B2, S2-D37).
+- `logout(refresh_token) -> None` — público y por cookie, siempre 204 y borra la cookie (S2-D35, H-1).
+- `me(session, principal) -> MeOut` — `{id, email, role, member_id, gym_name, must_change_password}`; `gym_name` sale de `settings.service.gym_name()` (respaldo `"APEX"`; S2-D14).
 - `change_password(user_id, current, new, current_refresh, policy) -> AccessTokenOut` — primero la actual (422 `invalid_current_password`), luego la política con `field="new_password"` (distinta de la actual); un solo `update` auditado; revoca las demás sesiones salvo la de la cookie, fija `tokens_valid_after` y devuelve un access nuevo (S2-D37). Emite `PasswordChanged` y, si revocó alguna, `SessionsRevoked(reason="password_changed")`.
-- `list_users(q, role, status, page) -> Page[UserRow]` — admin; sin el usuario técnico; sin `status` excluye borrados; `q` con `ILIKE` escapado; orden por correo; `active_sessions` (refresh vigentes y no revocados).
+- `list_users(session, *, q, role, status, ...) -> Page[UserRow]` (paginado con `limit` y `offset`, D2) — admin; sin el usuario técnico; sin `status` excluye borrados; `q` con `ILIKE` escapado; orden por correo; `active_sessions` (refresh vigentes y no revocados).
 - `create_user(email, role, by, front_base_url) -> CreateUserOut` — admin; en v0.1 `role` es `admin` o `coach`, sin `member_id` (L-2, hasta el portal); crea la cuenta sin hash (`pending_activation`), genera `OneTimeToken(activate)` de 72 h (solo su hash) y devuelve una sola vez `activation_url = <FRONT_BASE_URL>/restablecer/<token>`. Un correo de una cuenta viva da 409 `email_taken` con `existing_id`.
-- `forgot(email) -> None` — siempre 204; genera `OneTimeToken(reset)` si existe; en v0.1, hasta que exista el canal de correo, el admin obtiene el enlace con `resend_link` (`POST /users/{id}/resend-link`), que genera un token nuevo e invalida el anterior. No existe `GET /users/{id}/activation-link` (N-12).
-- `reset(token, new_password) -> None`
+- `forgot(session, email, *, ip, policy) -> None` — siempre 204. En v0.1 no escribe nada (S2-D36): normaliza el correo, cuenta por correo y espera el piso de duración. El emisor real llega con US-131 (Sprint 5). Mientras tanto el admin obtiene el enlace con `resend_link` (`POST /users/{id}/resend-link`), que genera un token nuevo e invalida el anterior. No existe `GET /users/{id}/activation-link` (N-12).
+- `reset(token, new_password) -> None` — 204 y sin sesión (S2-D18).
 - `lock(user_id, by)`, `revoke_sessions(user_id, by)`, `resend_link(user_id, by) -> str`
 - Regla: no se puede bloquear ni borrar al último admin activo.
 
 ### settings.service
-- `get_section(key) -> dict`, `update_section(key, value, by) -> dict` — valida con el esquema de la sección y `version` (409 `version_conflict`, N-17); `tv.regenerate_token(by) -> str`.
+- `get_section(session, key) -> SectionOut` y `update_section(session, key, value, version, by) -> SectionOut` — valida con el esquema de la sección y `version` (409 `version_conflict`, N-17). `tv.regenerate_token(by) -> str` es de v0.5.
+- Sprint 2 expone solo `gym`, `privacy` y `memberships` (S2-D15); cualquier otra clave responde 404 `section_not_available`.
 - Secciones de v0.1 (Q11, N-18): `gym`, `hours`, `payment_methods`, `memberships` (`expiring_days` y los límites `max_freeze_days_per_membership`, `max_freezes_per_membership`, `max_retroactive_days`), `classes` (`default_capacity`, `checkin_window_min`), `tv`, `privacy`. `channels` llega en v0.2 y solo guarda lo no secreto (Q12). Una sección futura responde 404 `section_not_available`.
-- `memberships_policy() -> MembershipsPolicy` — lo usa `memberships.service` para `expiring_days` y los límites; `current_privacy_version() -> str` para `privacy.policy_version`.
+- `memberships_policy() -> MembershipsPolicy` — lo usa `memberships.service` para `expiring_days` y los límites; `current_privacy_version() -> str | None` (`None` sin fila, S2-B1) para `privacy.policy_version`; `gym_name() -> str` (respaldo `"APEX"`) para `auth.me`.
 - `payment_methods()` devuelve el enum fijo en v0.1 (S8) decorado con etiquetas de la sección; se expone en `GET /payments/methods` (US-056).
 
 ### members.service
+- Estado al cierre del Sprint 2: implementadas `create`, `list`, `get_ref`, `ensure_exists`, `id_by_document`, `count`, `search_ids` y `names_for`, con las puras `validate_member_input`, `mask` y `classify_query`. `id_by_document` devuelve `None` para un documento que se normaliza a vacío. Lo demás de esta sección es de Sprint 3 en adelante.
 - `list(q, status, membership_status, plan_id, limit, offset, sort) -> Page[MemberRow]` — `q` se normaliza y se busca por `document_idx`, `phone_idx`, `email_idx` o `ILIKE` en nombre; `membership_status` se resuelve pidiendo a `memberships.service.status_for(ids)`.
 - `create(data, by) -> Member` — verifica duplicado por `document_idx` entre no borrados; devuelve el id del existente en el error (`Field` del diseño enlaza al registro).
 - `get(id, by) -> MemberDetail` — campos cifrados enmascarados por defecto.
@@ -135,6 +139,7 @@ Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.
 - `contact_for_notification(id, purpose) -> Contact` — para notifications, audita con propósito.
 
 ### plans.service
+- Estado al cierre del Sprint 2: implementadas `create`, `list`, `detail` (`GET /plans/{id}`), `get` (con `for_share=True` para la venta del Sprint 3), `get_including_deleted`, `names_for` y las puras `validate_plan`, `ensure_list_scope` y `ensure_read_scope`. `get` devuelve `PlanSnapshot`. `update`, `set_active` y `deactivate_or_fail` son de Sprint 4A (US-080 a US-082).
 - `list(q, active, limit, offset)`, `create`, `update`, `set_active(id, bool, by)`, `deactivate_or_fail(id, by)` — consulta `memberships.service.count_active_by_plan`.
 - `validate_plan(kind, duration_days, class_count)` pura.
 
@@ -156,6 +161,7 @@ Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.
 - `receipt_pdf(id, by) -> bytes` (v0.2, audita).
 
 ### audit.service
+- Estado al cierre del Sprint 2: `on_login_attempted`, `on_user_locked`, `on_sessions_revoked` y `on_password_changed` se suscriben a `LoginAttempted`, `UserLocked`, `SessionsRevoked` y `PasswordChanged` al importar el módulo (S2-B6). Escriben en la sesión del emisor. El router de `audit` está vacío en v0.1, así que `list`, `get` y `verify` no tienen ruta todavía.
 - `list(from, to, user_id, table, record_id, action, q, limit, offset)`, `get(seq)`, `verify(by) -> VerifyResult` (admin; corre en hilo aparte si hay más de 100.000 filas), `last_verification()`; cada verificación se persiste en `audit.verifications` con `broken_at_seq` (N-30). `list_for_subject(member_id)` alimenta el historial de la ficha con `members`, `memberships` y `payments` del socio (G-05, N-31); `recent(tables, limit)` alimenta "últimos movimientos" (Q10).
 
 ### dashboard.service
@@ -173,7 +179,9 @@ Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.
 
 Convenciones: JSON; `limit` (1 a 200, por defecto 25) y `offset`; respuesta de lista `{ "items": [...], "total": n, "limit": l, "offset": o }`; errores `{ "error": { "code": "...", "message": "...", "field": "..."? , "existing_id": "..."? } }`; fechas ISO 8601 en UTC; dinero entero.
 
-Público: `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/forgot`, `POST /auth/reset`.
+Público: `GET /health`, `GET /api/v1/health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` (por cookie, S2-D35), `POST /auth/forgot`, `POST /auth/reset` y `GET /api/v1/tv/today` (token de dispositivo `X-Device-Token`; ya está en `PUBLIC_ROUTES` y su router llega con la TV). `PUBLIC_ROUTES` tiene ocho entradas en total.
+
+Estado al cierre del Sprint 2: implementadas las rutas de auth, usuarios, `settings` (solo `gym`, `privacy` y `memberships`), socios (`GET` y `POST`) y planes (`GET` y `POST`) de `docs/openapi.json`, con los nombres de parámetro del contrato (`{user_id}`, `{plan_id}`). Lista exacta en `docs/ddd/09_sprint_plan/SPRINT-02.md`. Lo demás de esta lista es de sprints posteriores.
 
 Admin y coach salvo nota:
 - Auth: `GET /auth/me` y `POST /auth/me/password` (los tres roles, también con `must_change_password`; el segundo responde 200 `AccessTokenOut` con un access nuevo, S2-D37 y S2-D46). `POST /auth/logout` es pública y se autentica por la cookie (H-1).

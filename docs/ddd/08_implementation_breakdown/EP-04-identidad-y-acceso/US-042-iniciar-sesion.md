@@ -107,7 +107,7 @@ Ninguna.
   - store en memoria con `accessToken`, `user` y `expiresAt`, más `setSession`, `clearSession`, `getAccessToken` y `subscribe`;
   - prohibido usar `localStorage` y `sessionStorage`, lo que se verifica con una prueba de búsqueda en `web/src/core/auth`;
   - `homeFor(role)` en `web/src/core/auth/home.ts`, que US-053 reutiliza. — 1.5 h
-- [ ] T12 · Esquema Zod `loginSchema` en `web/src/features/auth/schemas.ts` y hook `useLogin()` con TanStack Query (`useMutation`) en `web/src/features/auth/api.ts`, que llama a `POST /auth/login` con `credentials: "include"` desde `core/api/client.ts`. — 1 h
+- [ ] T12 · Esquema Zod `loginSchema` en `web/src/features/auth/schemas.ts` y hook `useLogin()` con TanStack Query (`useMutation`) en `web/src/features/auth/api.ts`, que llama a `POST /auth/login` con `credentials: "same-origin"` desde `core/api/client.ts`. — 1 h (corregido en Sprint 2, ver DECISIONES S2-D44)
 - [ ] T13 · `web/src/features/auth/pages/LoginPage.tsx` y `components/LoginCard.tsx` con `Field`, `Button` y `react-hook-form`:
   - estados inicial, cargando (botón deshabilitado) y error genérico sobre la tarjeta;
   - ante un error conserva el correo y limpia la contraseña;
@@ -117,7 +117,7 @@ Ninguna.
 - [ ] T15 · Playwright `web/tests/e2e/login.spec.ts`, "login de admin": entra con el admin de seed y ve `/`. — 1.5 h
 
 ### DevOps
-- [ ] T16 · Agregar `COOKIE_SECURE` (bool, por defecto true) a `core/config.py` y a `.env.example`, con una nota de que en v0.1 en LAN sin TLS se pone en false (P7). — 0.25 h
+- [ ] T16 · Agregar `COOKIE_SECURE` (bool, por defecto false en v0.1 por P7) a `core/config.py` y a `.env.example`, con una nota de que en LAN sin TLS se queda en false; con `ENV=production` exige `true` o `ALLOW_INSECURE_COOKIE=true` (validador M-9). — 0.25 h (corregido en Sprint 2, ver DECISIONES S2-D13 y M-9)
 
 ### Seguridad
 - [ ] T17 · Revisión:
@@ -152,7 +152,7 @@ Ninguna.
 - US-036 · Rate limit en login y forgot: la dependencia `rate_limit("login")`.
 - US-016 · Hook de auditoría: `__audit_exclude__` para `last_login_at`.
 - US-107 · Auditoría de eventos de seguridad: se suscribe a `LoginAttempted` y escribe la acción `login`.
-- US-059 · Cliente API y tipos generados: `client.ts` con `credentials: "include"`.
+- US-059 · Cliente API y tipos generados: `client.ts` con `credentials: "same-origin"` (corregido en Sprint 2, ver DECISIONES S2-D44).
 - US-060 y US-062 · Componentes `Field` y `Button` del kit.
 
 ## Endpoints

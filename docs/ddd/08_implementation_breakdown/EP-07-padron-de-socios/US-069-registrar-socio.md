@@ -94,7 +94,7 @@ Ninguna.
 - [ ] T18 · Playwright `web/tests/e2e/members.spec.ts`: "crear socio, buscarlo por teléfono y abrir su ficha" (se completa con US-070 y US-073) — 1 h
 
 ### DevOps
-- [ ] T19 · Regenerar `docs/openapi.json` (US-021) e incluir `0006_members` en el paso de CI `upgrade head → downgrade -1 → upgrade head` — 0.5 h
+- [ ] T19 · Regenerar `docs/openapi.json` (US-021) y cubrir `0006_members` con `api/tests/core/test_migrations.py::test_downgrade_a_base_vacia_y_vuelta_a_head` y `test_single_head`, que ya corren en el job `api`; no hay paso nuevo de CI — 0.5 h (corregido en Sprint 2, ver `docs/ddd/blueprints/sprint-02-plan.md`, P-MIG)
 
 ### Seguridad
 - [ ] T20 · Revisión: lista de redacción de `core/logging.py` con los cinco campos sensibles; que el mensaje de `IntegrityError` no se propague al cliente ni al log; que `existing_id` solo sale para roles admin y coach; que `notes` no se use para datos sensibles (texto de ayuda en el formulario) — 1 h

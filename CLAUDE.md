@@ -33,6 +33,7 @@ apex/
         context.py       # SYSTEM_USER_ID, actor y lote actuales (contextvars), request_id
         security.py      # argon2, JWT Ed25519, Principal, PrincipalLoader, dependencias de rol
         errors.py        # envelope de error y handlers
+        pagination.py    # PageParams, Page y SearchQuery (contrato común de listas)
         validators.py    # tipos de entrada compartidos (EmailAddress)
         ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
         logging.py       # JSON a stdout con redacción
@@ -52,7 +53,7 @@ apex/
         plans/       ...
         memberships/
         payments/
-        audit/       # router (vacío hasta US-074), service (se suscribe a los eventos de auth), schemas al llegar US-074; los models viven en core/audit.py
+        audit/       # router (vacío hasta US-102, Sprint 4A), service (se suscribe a los eventos de auth), schemas al llegar US-102; los models viven en core/audit.py
         dashboard/   # router, schemas, service; sin models
         notifications/ # v0.2
         attachments/   # v0.3
@@ -125,7 +126,7 @@ apex/
 ## Seguridad
 
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
-- Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo login y health.
+- Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo las ocho entradas de `PUBLIC_ROUTES` (`core/security.py`): health (dos), login, refresh, logout (por cookie), forgot, reset y la TV con token de dispositivo.
 - Rate limit en login. CORS solo para el dominio del front.
 - Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.

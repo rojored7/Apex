@@ -70,7 +70,7 @@ Ninguna.
 - [ ] T5 · Que `test_every_route_has_role.py` siga verde: `/auth/logout` declara rol. — 0.1 h
 
 ### Front
-- [ ] T6 · En `web/src/core/auth/session.ts`, función `logout()`: llama a `POST /auth/logout` con `credentials: "include"` y, en `finally`, ejecuta `clearSession()`, publica `logout` en `BroadcastChannel("apex-auth")` y navega a `/login`. Ítem "Cerrar sesión" en el menú de usuario de `web/src/shared/ui/TopBar.tsx`, deshabilitado durante la petición. — 1 h
+- [ ] T6 · En `web/src/core/auth/session.ts`, función `logout()`: llama a `POST /auth/logout` con `credentials: "same-origin"` y, en `finally`, ejecuta `clearSession()`, publica `logout` en `BroadcastChannel("apex-auth")` y navega a `/login`. Ítem "Cerrar sesión" en el menú de usuario de `web/src/shared/ui/TopBar.tsx`, deshabilitado durante la petición. — 1 h (corregido en Sprint 2, ver DECISIONES S2-D44)
 - [ ] T7 · Vitest `web/src/shared/ui/TopBar.logout.test.tsx`: después del 204 y después de un error de red, la sesión queda limpia, se publica el mensaje y se navega a `/login`. — 0.5 h
 
 ### DevOps

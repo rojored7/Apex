@@ -105,7 +105,7 @@ Registra el esquema `PrivacySettings` según N-18 y agrega `settings.service.cur
 - `PATCH /api/v1/settings/privacy` — roles: admin
 
 ## Riesgos
-- US-149 lee la versión con `settings.service.get_section("privacy")` y esta historia ofrece `current_privacy_version()`: son dos contratos distintos para lo mismo — mitigación: queda como canónico `current_privacy_version()`; se reporta para el desglose de EP-19.
+- US-149 lee la versión con `settings.service.get_section("privacy")` y esta historia ofrece `current_privacy_version()`: son dos contratos distintos para lo mismo — mitigación: queda como canónico `current_privacy_version()`; EP-19 ya lo usa (corregido en Sprint 2, ver DECISIONES S2-D45).
 - Si el gate mantiene `effective_from`, cambian el esquema y la pantalla — mitigación: el esquema todavía no tiene datos en producción, así que agregar el campo antes de lanzar v0.1 no exige migración (es JSONB).
 - Front condicionado a D1 — mitigación: el backend es independiente.
 

@@ -9,7 +9,16 @@ DC="docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml
 
 En producción se omite `-f infra/compose.dev.yml`.
 
-## Sesión: login, refresh y logout (S2-B2)
+## Índice
+
+1. [Sesión y límites](#1-sesión-y-límites-s2-b2)
+2. [Cuentas](#2-cuentas): primer admin, enlaces de activación y recuperación, ciclo de vida
+3. [Auditoría de eventos de seguridad](#3-auditoría-de-eventos-de-seguridad-s2-b6)
+4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado
+5. [Planes](#5-planes-s2-b9)
+6. [Rollback por migración](#6-rollback-por-migración)
+
+## 1. Sesión y límites (S2-B2)
 
 ### Capas del límite de intentos
 
@@ -96,6 +105,8 @@ En v0.1 el gimnasio corre en la LAN sin TLS. Con `ENV=production` el api no arra
 (M-9). Ponerla en `true` es aceptar que la contraseña y la cookie del refresh viajan en claro
 por la red local; se quita al activar TLS (v0.3) junto con `COOKIE_SECURE=true`.
 
+## 2. Cuentas
+
 ### Primer admin
 
 `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (solo lo lee el servicio `tools`):
@@ -104,9 +115,9 @@ por la red local; se quita al activar TLS (v0.3) junto con `COOKIE_SECURE=true`.
 dice "omitido". Borrar `.env.seed` después del primer seed. Tras cambiar `cli.py` hay que
 reconstruir la imagen (`$DC build api`) antes de usar `tools`.
 
-## Enlaces de activación y restablecimiento (S2-B4)
+### Enlaces de activación y restablecimiento (S2-B4)
 
-### Recuperar a un admin
+#### Recuperar a un admin
 
 `POST /users/{id}/resend-link` (botón "Reenviar enlace" del panel) responde 409
 `user_not_eligible` sobre la propia cuenta del admin que lo pide y sobre otro admin activo con
@@ -133,7 +144,7 @@ $DC run --rm tools issue-reset-link <correo de la cuenta> --as <correo de un adm
   contador de fallos y, si es `reset`, cierra todas las sesiones de la cuenta. No inicia sesión.
   Una cuenta bloqueada no puede usarlo: primero `cli unlock-user`.
 
-### `forgot` en v0.1
+#### `forgot` en v0.1
 
 `POST /auth/forgot` responde siempre 204 sin cuerpo y en v0.1 **no envía ni crea nada** (H-2,
 S2-D36): no hay canal al socio hasta US-131. Quien olvida la contraseña pide al admin un enlace
@@ -143,9 +154,9 @@ IP (`FORGOT_IP_LIMIT`) y 5 por hora por correo desde cualquier IP (`forgot-accou
 (`$DC up -d api` los vacía). Toda respuesta dura al menos `LOGIN_MIN_DURATION_MS`, y el log
 (`forgot recibido`) no lleva el correo.
 
-## Ciclo de vida de las cuentas (S2-B5)
+### Ciclo de vida de las cuentas (S2-B5)
 
-### Desbloquear una cuenta
+#### Desbloquear una cuenta
 
 Desde el panel, "Desbloquear" (`POST /users/{id}/unlock`, solo admin). Desde el servidor, por
 ejemplo cuando el bloqueado es el único admin:
@@ -168,7 +179,7 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
   existe o está borrada (no revela cuál). Una segunda invocación sobre la misma cuenta sale
   con 2.
 
-### Bloquear, cerrar sesiones y dar de baja
+#### Bloquear, cerrar sesiones y dar de baja
 
 - "Bloquear" (`POST /users/{id}/lock`) fija `locked_at`, cierra todas las sesiones y corta los
   access ya emitidos en la siguiente petición. Un admin no se bloquea a sí mismo (409
@@ -186,13 +197,15 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
   restablecimiento abiertos: si la cuenta seguía pendiente, se le reenvía uno nuevo al correo
   corregido ("Reenviar enlace").
 
-## Auditoría de eventos de seguridad (S2-B6)
+## 3. Auditoría de eventos de seguridad (S2-B6)
 
 - Cada login sobre un correo existente (correcto o fallido), cada bloqueo, cada cierre de sesiones y cada cambio de contraseña deja una fila en `audit.audit_log` escrita por el módulo `audit` dentro de la misma transacción. Consulta rápida: `SELECT action, user_id, after FROM audit.audit_log ORDER BY seq DESC LIMIT 10;`. La fila `login` guarda `result`, `reason`, `ip` y `user_agent`, nunca el correo tecleado; un correo inexistente no deja fila.
 - La auditoría es parte de la operación (fail-closed): si la cadena no se puede escribir (base sin espacio, candado de la cadena retenido, trigger), el login responde 500 y el fallo ni siquiera suma al contador; lo mismo pasa con bloquear, cerrar sesiones o cambiar la contraseña. Ante 500 en el login, revisar primero `docker compose logs api` y el estado de `audit.audit_log` antes de tocar las cuentas.
 - Los comandos `seed`, `unlock-user` e `issue-reset-link` del CLI cargan los mismos suscriptores, así que lo que hacen queda auditado igual que desde el api.
 
-## Socios: cifrado en reposo (S2-B7)
+## 4. Socios
+
+### Cifrado en reposo (S2-B7)
 
 - En claro en `members.members`: `first_name` y `last_name` (van al leaderboard), `sex`, `status`, `document_type`, `data_consent_at`, `data_consent_version` y las columnas comunes. No existe `notes` ni ninguna columna `*_hint`.
 - Cifrados por el bus (AES-256-GCM, `aad = id` del socio, blob `apx1.<key_id>.A256GCM.<nonce>.<ciphertext>`): `document`, `phone`, `email`, `birth_date` y `emergency_contact`. Índices ciegos HMAC-SHA-256 en `document_idx`, `phone_idx` y `email_idx` (normalización N-02: el documento sin puntos ni guiones, el teléfono sin el `57` inicial, el correo en minúsculas). La base rechaza por CHECK cualquier texto en esas columnas que no empiece por `apx1.`.
@@ -201,11 +214,11 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
   - `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml exec db psql -U apex -d apex -c "SELECT document, document_idx, phone, email FROM members.members LIMIT 5;"`: blobs `apx1.` y hashes hexadecimales de 64 caracteres;
   - `SELECT verb, data_class, record_id, user_id FROM crypto.crypto_ops ORDER BY at DESC LIMIT 10;`: cada alta deja `encrypt` por campo presente e `index` por índice, atribuidos a quien registró;
   - `SELECT action, table_name, subject_member_id, after->>'document' FROM audit.audit_log WHERE table_name = 'members.members' ORDER BY seq DESC LIMIT 5;`: la fila `insert` lleva el blob, nunca el claro.
-- Un documento repetido entre socios no dados de baja responde 409 `member_document_duplicated` con `existing_id`; el único parcial `uq_members_document_idx_alive` decide aunque dos altas lleguen a la vez. Dar de baja (B9) libera el documento.
+- Un documento repetido entre socios no dados de baja responde 409 `member_document_duplicated` con `existing_id`; el único parcial `uq_members_document_idx_alive` decide aunque dos altas lleguen a la vez. La baja de socios llega con US-076 (Sprint 3); hasta entonces no hay forma de liberar un documento.
 - Límite: 60 altas por minuto por usuario autenticado (429 `rate_limited` con `Retry-After`); el contador vive en memoria y se limpia con `up -d api`.
 - Rotación: en v0.1 no hay rotación de llaves de `member.*`; llega en v0.2 con OpenBao (`cli rotate-key`, US-030), que recifra con la llave nueva sin cambiar el formato del blob.
 
-## Socios: buscar y listar (S2-B8)
+### Búsqueda y listado (S2-B8)
 
 - `GET /api/v1/members` (admin y coach) pagina con `limit` (1 a 200, 25 por defecto) y `offset`; filtra por `status` (`active`, `inactive`, `deleted`; sin `status` solo los no dados de baja) y ordena con `sort` (`last_name` por defecto, `-` es descendente). Las filas nunca traen documento, teléfono, correo, fecha de nacimiento ni contacto, ni en claro ni enmascarados; listar no descifra nada.
 - La caja de búsqueda `q` (hasta 100 caracteres, nunca se registra en logs) se reparte así:
@@ -217,9 +230,24 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Límite: 60 búsquedas con `q` por minuto por usuario (429 `rate_limited` con `Retry-After`); la lista sin `q` no cuenta. El contador vive en memoria y se limpia con `up -d api`.
 - Pruebas de rendimiento (marcador `perf`; 1.000 socios, búsqueda por documento bajo 500 ms con `EXPLAIN` del único parcial, y L-11 de 20 logins fallidos concurrentes con p95 bajo 2 s): `cd api && uv run pytest -m perf -q -s` (con `TEST_DATABASE_URL`). Los gates corren `-m "not perf"` salvo el de B8 y V5.
 
-## Planes (S2-B9)
+## 5. Planes (S2-B9)
 
 - `POST /api/v1/plans` solo lo usa el admin. El nombre es único entre los planes no dados de baja sin distinguir mayúsculas ni espacios de los extremos: con "Mensual" creado, "mensual" o "  MENSUAL  " dan 409 `plan_name_duplicated` con `existing_id` (índice `uq_plans_name_alive` sobre `lower(btrim(name))`). Dar de baja un plan (Sprint 4A) libera el nombre.
 - Tipos: `days` (sin `class_count`) y `classes` (con `class_count` de 1 a 1.000). Topes: precio de 1 a 1.000.000.000 COP (entero), duración de 1 a 3.650 días. La base repite las reglas por CHECK (`\d plans.plans`).
 - Alcance del coach: `GET /api/v1/plans?active=true` y `GET /api/v1/plans/{id}` de planes activos; sin `active=true` o sobre un plan inactivo recibe 403 `forbidden`. El admin ve activos e inactivos. Los dados de baja no aparecen nunca (404 en el detalle).
 - La búsqueda `q` no distingue mayúsculas ni tildes. En todas las listas (`/users`, `/members`, `/plans`) un `q` con caracteres de control (por ejemplo `%00`) da 422 con `field="q"`.
+
+## 6. Rollback por migración
+
+Regla general:
+1. Bajar la migración primero: `$DC exec api alembic downgrade <revisión anterior>`.
+2. Después revertir el checkpoint del slice con `git revert <sha>`.
+3. Después `$DC restart api`.
+
+Si se revierte primero el código, el archivo de migración desaparece y el arranque falla con "Can't locate revision". Antes de cada migración se guarda un `pg_dump -Fc` (P-MIG, paso 1); restaurar es `pg_restore --clean` sobre `apex-db-1`.
+
+- **`0005_settings`:** `downgrade 0004_auth` borra `settings.settings_sections`; se pierde la configuración de desarrollo. Hay que revertir B1, y también B2 o posteriores si existen, porque `0005b` depende de ella: bajar en cadena `0007 → 0006 → 0005b → 0005`.
+- **`0005b_auth_security`:** `downgrade 0005_settings` quita las cuatro columnas y el CHECK. El código de B2 a B5 las usa: se revierten esos checkpoints en orden inverso. Las sesiones vigentes siguen siendo válidas.
+- **`0006_members`:** `downgrade 0005b_auth_security` borra `members.members` y sus blobs. Las llaves de `crypto_keys` se conservan. Solo hay datos de desarrollo. Se revierten B7 y B8 (y F6 si se fusionó).
+- **`0007_plans`:** `downgrade 0006_members` borra `plans.plans`. Se revierte B9 (y F7).
+- En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.

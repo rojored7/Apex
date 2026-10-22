@@ -9,7 +9,7 @@
   - US-031 de EP-02;
   - la base de EP-07 y EP-08.
 - Tamaño: 26 historias, 87 puntos, 374 h relativas.
-- Rama: `feat/sprint-02-identidad-socios-planes`.
+- Rama: `feat/sprint-02-identidad-config-socios-planes` (S2-D48; el borrador decía `feat/sprint-02-identidad-socios-planes`).
 - Historias del sprint: US-031, US-042, US-043, US-044, US-045, US-046, US-047, US-048, US-049, US-050, US-051, US-052, US-053, US-054, US-055, US-057, US-058, US-061, US-062, US-067, US-068, US-069, US-070, US-078, US-079, US-107.
 
 ## Objetivo
@@ -24,20 +24,22 @@ Los dos registran y buscan socios. El documento, el teléfono y el correo quedan
 
 ## Demo al final del sprint
 
-1. `docker compose up -d --build` y abrir `http://localhost:${WEB_PORT:-80}`. El login se ve bien en tema claro y en tema oscuro.
-2. Entrar como admin y crear un coach. La respuesta trae el enlace de activación, válido por 72 h. Abrirlo en otra ventana, fijar una contraseña de 12 o más caracteres y entrar como coach.
-3. El coach no ve Usuarios ni Configuración. Si entra a `/sistema/configuracion` por la URL, ve "Sin permiso".
+Ocho puntos. Las seis comprobaciones de V7 del plan (`docs/ddd/blueprints/sprint-02-plan.md`, sección 7) están en los puntos 4 a 7; los puntos 1, 2, 3 y 8 ya estaban en el archivo.
+
+1. `docker compose up -d --build` y abrir `http://localhost:${WEB_PORT:-80}` (en el entorno local, `http://localhost:8180`). El login se ve bien en tema claro y en tema oscuro.
+2. Entrar como admin y crear un coach con `POST /api/v1/users`. La respuesta trae `activation_url` (`<FRONT_BASE_URL>/restablecer/<token>`), válido por 72 h. Abrirlo en otra ventana, fijar una contraseña de 12 o más caracteres (la página vuelve a `/login` sin iniciar sesión, S2-D18) y entrar como coach.
+3. El coach no ve Usuarios ni Configuración. Si entra a `/sistema/configuracion` por la URL, ve "Sin permiso"; la API responde 403 en las rutas de `settings` y `users`.
 4. Límite de intentos y sesiones:
-   - el sexto login fallido en un minuto responde 429;
-   - reusar un refresh ya rotado revoca todas las sesiones del usuario (N-13).
-5. El admin guarda los datos del gimnasio, publica la versión de la política y fija `expiring_days = 7`. El TopBar del coach muestra `gym_name`, que viene de `GET /auth/me`.
+   - el sexto intento fallido en un minuto responde 429 `rate_limited` (`LOGIN_IP_LIMIT=5`);
+   - reusar un refresh ya rotado fuera de la gracia de 10 s revoca todas las sesiones del usuario (N-13, M-2); dentro de la gracia responde 401 `invalid_refresh` sin revocar nada.
+5. El admin guarda los datos del gimnasio, publica una versión de la política y fija `expiring_days = 7` (rango de 1 a 30). El TopBar del coach muestra `gym_name`, que viene de `GET /api/v1/auth/me`.
 6. Registrar un socio con CC 1.020.304.417 y buscarlo por documento, por teléfono y por nombre.
    - `SELECT document, document_idx FROM members.members` muestra un blob `apx1.` y un HMAC.
-   - Registrar otro socio con el mismo documento responde 409 con `existing_id`.
+   - Registrar otro socio con el mismo documento responde 409 `member_document_duplicated` con `existing_id`.
 7. Crear el plan "Mensual": $ 120.000, 30 días.
-   - Un nombre repetido responde 409.
-   - El coach solo lista planes activos.
-8. La auditoría muestra filas `login`, `insert` y `update`, con `password_hash` como `<redacted>`.
+   - Un nombre repetido, también en mayúsculas o con espacios en los extremos, responde 409 `plan_name_duplicated` con `existing_id`.
+   - El coach solo lista planes activos: `GET /api/v1/plans?active=true` responde 200 y `GET /api/v1/plans` sin ese filtro responde 403.
+8. La auditoría muestra filas `login`, `insert` y `update` sobre `auth.users` (`table_name = 'auth.users'`), con `password_hash` como `***`.
 
 ## Dependencias de sprints anteriores
 
@@ -276,31 +278,25 @@ En el front, el gate acota lint y tsc a los archivos que toca el slice (A-01).
 
 ## Migraciones que aplica
 
-- `0005_settings` (US-054).
-- `0006_members` (US-069).
-- `0007_plans` (US-078).
+Cadena de cuatro migraciones, con un solo head (`alembic heads`):
+
+- `0005_settings` (US-054), `down_revision = 0004_auth`.
+- `0005b_auth_security` (S2-D9), `down_revision = 0005_settings`: columnas de `auth.users` y `auth.refresh_tokens.family_started_at`.
+- `0006_members` (US-069), `down_revision = 0005b_auth_security`.
+- `0007_plans` (US-078), `down_revision = 0006_members`.
 
 ## Endpoints que expone
 
-29 endpoints.
+29 operaciones nuevas, verificadas contra `docs/openapi.json`. No cuentan `GET /health` ni `GET /api/v1/health`, que son del Sprint 0.
 
-- **Auth:**
-  - `POST /api/v1/auth/login` y `POST /api/v1/auth/forgot`: públicos, en lista blanca, con un límite de 5 por minuto por IP;
-  - `POST /api/v1/auth/refresh` y `POST /api/v1/auth/reset`: públicos;
-  - `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` y `POST /api/v1/auth/me/password`: admin, coach y member.
-- **Users (admin):**
-  - `GET` y `POST /api/v1/users`;
-  - `GET`, `PATCH` y `DELETE /api/v1/users/{id}`;
-  - `POST /api/v1/users/{id}/lock`, `/unlock`, `/resend-link` y `/revoke-sessions`.
-- **Settings (admin):**
-  - `GET` y `PATCH /api/v1/settings/{section}`;
-  - `GET` y `PATCH` de `/settings/gym`, `/settings/privacy` y `/settings/memberships`.
-- **Members (admin y coach):** `POST` y `GET /api/v1/members`.
-- **Plans:**
-  - `POST /api/v1/plans` (admin);
-  - `GET /api/v1/plans` y `GET /api/v1/plans/{id}` (admin y coach).
+- **Públicos, sin Bearer (5):** `POST /api/v1/auth/login` (límites por IP y por cuenta); `POST /api/v1/auth/refresh` (cookie `apex_refresh`); `POST /api/v1/auth/logout` (por cookie, siempre 204; S2-D35); `POST /api/v1/auth/forgot` (siempre 204, no escribe en v0.1; S2-D36); `POST /api/v1/auth/reset` (204, sin sesión).
+- **Cualquier rol con sesión (2):** `GET /api/v1/auth/me` (con `gym_name` y `must_change_password`); `POST /api/v1/auth/me/password` (200 `AccessTokenOut`; S2-D46).
+- **Admin, usuarios (9):** `GET` y `POST /api/v1/users`; `GET`, `PATCH` y `DELETE /api/v1/users/{user_id}`; `POST /api/v1/users/{user_id}/lock`, `/unlock`, `/resend-link` y `/revoke-sessions`. No hay `/activation-link` (N-12).
+- **Admin, configuración (8):** `GET` y `PATCH` de `/api/v1/settings/gym`, `/settings/privacy` y `/settings/memberships` (rutas tipadas, declaradas antes que la genérica); `GET` y `PATCH /api/v1/settings/{section}`, que responde 404 `section_not_available` para cualquier otra clave (S2-D15).
+- **Admin y coach, socios (2):** `GET` y `POST /api/v1/members`.
+- **Planes (3):** `POST /api/v1/plans` (admin); `GET /api/v1/plans` y `GET /api/v1/plans/{plan_id}` (admin y coach; el coach solo ve los activos, S2-D26).
 
-`PATCH`, `activate`, `deactivate` y `DELETE` de planes entran en el Sprint 4A con US-080, US-081 y US-082.
+`PATCH`, la activación, la desactivación y la baja de planes entran en el Sprint 4A con US-080, US-081 y US-082.
 
 ## Tests de arquitectura que deben pasar
 
@@ -328,7 +324,44 @@ Corren en cada gate de slice (A-5).
 5. [MEDIUM] Es el sprint con más trabajo de front (9 slices).
    - Mitigación: el shell (F1 y F2) va antes que cualquier página, y el gate acota lint y tsc a los archivos del slice.
 
+## Trazabilidad: historia → slice → checkpoint
+
+Checkpoints tomados de `git log --oneline 482295f..HEAD`. El front se fusionó desde el worktree del agente; en la columna de front, el hash del merge va entre paréntesis cuando existe. `W0-1` es la infraestructura compartida (`cab02f2`).
+
+| Historia | Backend: slice → checkpoint | Front: slice → checkpoint |
+|---|---|---|
+| US-031 | B7 → `f85f24e` | — |
+| US-042 | B2 → `0b1bfbd` | F3 → `f640248` (merge `07465fc`) |
+| US-043 | B2 → `0b1bfbd` | F3 → `f640248` (merge `07465fc`) |
+| US-044 | B2 → `0b1bfbd` | F3 → `f640248` (merge `07465fc`) |
+| US-045 | B3 → `d287666` | F4a → `20673de` (merge `7324e6e`) |
+| US-046 | B3 → `d287666` | F4a → `20673de` (merge `7324e6e`) |
+| US-047 | B3 → `d287666` | F4a → `20673de` (merge `7324e6e`) |
+| US-048 | B4 → `6240359`; W0-1 (Nginx, enlaces) → `cab02f2` | F4a → `20673de` (merge `7324e6e`) |
+| US-049 | B5 → `3597950` | F4b → `aefaaba` (merge `089adc8`) |
+| US-050 | B5 → `3597950` | F4b → `aefaaba` (merge `089adc8`) |
+| US-051 | B5 → `3597950` | F4b → `aefaaba` (merge `089adc8`) |
+| US-052 | B4 → `6240359` | F4b → `aefaaba` (merge `089adc8`) |
+| US-053 | — | F2 → `8977012` (merge `17f2000`) |
+| US-054 | B1 → `e0ad2d9` | — |
+| US-055 | B1 → `e0ad2d9` | F5 → `8136ef1` (merge `ba984b7`) |
+| US-057 | B1 → `e0ad2d9` | F5 → `8136ef1` (merge `ba984b7`) |
+| US-058 | B1 → `e0ad2d9` | F5 → `8136ef1` (merge `ba984b7`) |
+| US-061 | — | F1 → `cfbfb88` (merge `17f2000`) |
+| US-062 | — | F1 → `cfbfb88` (merge `17f2000`) |
+| US-067 | — | F2 → `8977012` (merge `17f2000`) |
+| US-068 | W0-1 → `cab02f2` | F8 → `2972bb3` (merge `17f2000`) |
+| US-069 | B7 → `f85f24e` | F6 → `571765f` (merge `e1d659b`) |
+| US-070 | B8 → `3e7ec24` | F6 → `571765f` (merge `e1d659b`) |
+| US-078 | B9 → `5df518c` | F7 → pendiente, sin checkpoint |
+| US-079 | B9 → `5df518c` | F7 → pendiente, sin checkpoint |
+| US-107 | B6 → `0fe9df3` | — |
+
+US-053, US-061, US-062 y US-067 son solo de front; US-031 y US-107 son solo de backend. US-078 y US-079 tienen backend (B9) y les falta el front de F7.
+
 ## Definición de hecho del sprint
+
+
 
 - 9 slices de backend y 9 de front confirmados con `checkpoint-commit.sh`.
 - `run-gates.sh` en verde:
@@ -348,3 +381,11 @@ Corren en cada gate de slice (A-5).
   - los logs no contienen correos ni tokens.
 - **Paso humano:** push, PR con CI en verde y merge.
 - `verify-delivery`.
+
+## Estado al cierre del sprint (documentación)
+
+Actualizado con los checkpoints de `git log` hasta `e1d659b`. Después llegaron dos commits `chore` que no son checkpoints de slice: `4cac40b` (salto de línea en `NewUserPanel.module.css`) y `42c8595` (gitleaks). Lo que sigue no está cerrado todavía:
+
+- **Front, F7 (Planes: alta y lista):** sin checkpoint en la rama del sprint. Existe la rama `feat/sprint-02-front-f7` en un worktree, sin fusionar. Hasta que se fusione, `/planes` sigue en `pending` y US-078 y US-079 solo tienen backend.
+- **Validación V1 a V12 (sección 7 del plan):** `docs/scratch/sprint-02.md` no registra ninguna ejecución de V1 a V12. Ese cuaderno tiene evidencia de cada slice, no de la validación del sprint. V4 (E2E contra el stack) tiene pendiente la spec `tests/e2e/stack/settings-gym.spec.ts` contra el stack real, según `docs/scratch/sprint-02-front.md`.
+- **Cifras de la última medición registrada:** `-m 'not perf'` con 1.856 pruebas en verde, 4 saltadas y 0 fallos; cobertura de `app` del 96 % (cierre de S2-B9 en `docs/scratch/sprint-02.md`).

@@ -83,7 +83,7 @@ Ninguna.
 - [ ] T13 · Vitest `web/src/features/plans/components/PlanForm.test.tsx`: campo condicional, validación en cliente, error de campo del API, envío bloqueado si es inválido — 2 h
 
 ### DevOps
-- [ ] T14 · `docs/openapi.json` regenerado e inclusión de `0007_plans` en el paso de CI `upgrade → downgrade -1 → upgrade` — 0.5 h
+- [ ] T14 · `docs/openapi.json` regenerado y cubrir `0007_plans` con `api/tests/core/test_migrations.py::test_downgrade_a_base_vacia_y_vuelta_a_head` y `test_single_head`, que ya corren en el job `api`; no hay paso nuevo de CI — 0.5 h (corregido en Sprint 2, ver `docs/ddd/blueprints/sprint-02-plan.md`, P-MIG)
 
 ### Seguridad
 - [ ] T15 · Revisión: el rol se valida en el API (no solo en el menú); `name` con longitud máxima para evitar abuso; el 409 solo expone `existing_id` al admin — 0.5 h

@@ -14,7 +14,7 @@ El reparto está cerrado por la consolidación de historias: la fila `reveal` la
 
 ## Resumen
 
-Registra en la cadena de auditoría los eventos de seguridad que no son cambios de columnas: `auth.service.login` llama a `core.audit.record(action="login", ...)` con `after = { result: "ok" | "failed" }` (el fallido se confirma aunque la petición responda 401), y `modules/audit/service.py` se suscribe a `UserLocked` y `SessionsRevoked` y escribe una entrada `update` sobre `users` con `after.event`. Agrega `tests/architecture/test_audited_tables.py`, que falla si alguna tabla de v0.1 que debe auditarse no tiene `__audited__ = True`, y una prueba que confirma que el `reveal` de US-074 deja exactamente una entrada sin el valor.
+Registra en la cadena de auditoría los eventos de seguridad que no son cambios de columnas: `auth.service.login` emite el evento `LoginAttempted` y `modules/audit` lo consume con `after = { result: "ok" | "failed" }` (el fallido se confirma aunque la petición responda 401; corregido en Sprint 2, ver DECISIONES S2-D43), y `modules/audit/service.py` se suscribe a `UserLocked` y `SessionsRevoked` y escribe una entrada `update` sobre `users` con `after.event`. Agrega `tests/architecture/test_audited_tables.py`, que falla si alguna tabla de v0.1 que debe auditarse no tiene `__audited__ = True`, y una prueba que confirma que el `reveal` de US-074 deja exactamente una entrada sin el valor.
 
 ## Correcciones aplicadas por DECISIONES.md
 
@@ -26,7 +26,7 @@ Registra en la cadena de auditoría los eventos de seguridad que no son cambios 
 
 - Aggregate `AuditEntry`; RN-13 (mostrar en claro se audita), RN-16 (las entradas de eventos entran a la misma cadena).
 - Eventos consumidos: `UserLocked(user_id, by)` y `SessionsRevoked(user_id, by, reason)` de `auth.service` (catálogo de `02_domain_model.md` sección 3). `SensitiveFieldRevealed` lo sigue emitiendo Members, pero la fila `reveal` la escribe US-074 directamente con `core.audit.record`; aquí no hay handler de `reveal`, para no duplicar la entrada.
-- El login no es un evento: `auth.service.login` llama a `core.audit.record` (está en `core`, que Auth puede usar).
+- El login sí es un evento: `auth.service.login` emite `LoginAttempted` y `audit` se suscribe (S2-D43); no llama a `core.audit.record` directamente.
 - Bloquear a un usuario actualiza `auth.users.locked_at`, columna de una tabla auditada: el hook de US-016 ya deja una entrada `update` con `locked_at`. El handler de `UserLocked` agrega la entrada con `after.event = "UserLocked"`. Quedan dos entradas para un bloqueo (cambio de columna y evento); es coherente con la historia, que pide "una entrada con el evento", y se documenta.
 - Funciones puras: ninguna nueva.
 
@@ -51,7 +51,7 @@ Ninguna.
 - No aplica.
 
 ### Service
-- [ ] T1 · `modules/auth/service.py` (contrato con EP-04): `login` llama a `core.audit.record(action="login", table_name="users", record_id=user.id, user_id=user.id, after={"result": "ok"})` en la transacción del login exitoso; en contraseña incorrecta, usuario bloqueado o inactivo de un correo existente escribe `{"result": "failed"}` en sesión propia confirmada antes de levantar el 401; correo inexistente no escribe nada — 2 h
+- [ ] T1 · `modules/auth/service.py` (contrato con EP-04): `login` emite `LoginAttempted` con `result`, `reason`, `ip` y `user_agent`; `modules/audit/service.py` lo consume y escribe la fila `login` en la misma transacción. En contraseña incorrecta, usuario bloqueado o inactivo de un correo existente, el fallo se confirma con `tokens.commit_failure` antes de levantar el 401; correo inexistente no emite nada — 2 h (corregido en Sprint 2, ver DECISIONES S2-D43)
 - [ ] T2 · Contrato de eventos con EP-04: `UserLocked(user_id, by)` y `SessionsRevoked(user_id, by, reason)` como dataclasses congeladas en `auth/service.py`, emitidos por `lock`, `revoke_sessions`, cambio de contraseña y detección de reuso de refresh (con `by = SYSTEM_USER_ID` en el reuso) — 1 h
 - [ ] T3 · `modules/audit/service.py`: handlers `on_user_locked(event, session)` y `on_sessions_revoked(event, session)` que llaman a `core.audit.record(action="update", table_name="users", record_id=event.user_id, user_id=event.by, after={"event": ..., "reason": ...})`; registro con `core.events.subscribe` al importar; `main.py`, `cli.py` y el worker importan `app.modules.audit.service` para que los handlers existan en todos los procesos — 1,5 h
 

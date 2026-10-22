@@ -190,6 +190,167 @@ Fuente: `08_implementation_breakdown/README.md`. Todas las propuestas del desglo
 
 Fuente: `docs/ddd/blueprints/sprint-02-plan.md` (enmiendas E1 a E9) y el cuaderno `docs/scratch/sprint-02.md`. Cada slice agrega aquí lo que decidió al implementar.
 
+### Sprint 2 · decisiones del blueprint y de la revisión de seguridad (D1–D53)
+
+Fuente: sección 1 de `docs/ddd/blueprints/sprint-02-plan.md`, copiada tal cual, con una línea "Estado al cierre del sprint" donde el slice se desvió. Las secciones por slice (S2-W0-1 y S2-B1 a S2-B9) no cambian.
+
+#### Decisiones del blueprint (D1 a D34) con la opción elegida
+
+- **S2-D1:** `UserStatus` con cinco valores. Orden: `deleted > locked > inactive > pending_activation > active`.
+- **S2-D2:** la auditoría usa `table_name = 'auth.users'` y la redacción `'***'`. Se corrigen la demo y US-045/US-107.
+- **S2-D3:** un router plano por módulo, con la ruta completa en cada decorador. `test_list_routes_use_page_params` recorre `effective_routes(create_app(...))`.
+- **S2-D4:** `auth/service.py` queda como fachada. `auth/rules.py` (puras), `auth/tokens.py` (con sesión) y `auth/cookies.py` son privados del módulo. La regla `private_helper` en `tests/architecture/_imports.py` es obligatoria, no opcional.
+- **S2-D5:** `core/validators.py` define `EmailAddress` sin `email-validator`, que tiene licencia Unlicense y queda fuera de la lista.
+- **S2-D6:** se usan los nombres reales del código:
+  - `dummy_verify`;
+  - `normalize_for_index(value, kind)`;
+  - `active_admin_id_by_email` se renombra a `active_user_id_by_email`, que exige `active` y excluye `SYSTEM_USER_ID` (L-4 del Sprint 1);
+  - las excepciones de dominio no tocan `core/errors.py`.
+  - Estado al cierre del sprint: `active_user_id_by_email` resuelve `--as` (S2-B2); `active_admin_id_by_email` vuelve solo para `issue-reset-link`, con cuenta `active` (S2-B4).
+- **S2-D7:** las escrituras auditadas van por ORM con `SELECT ... FOR UPDATE`. Hay dos excepciones, porque ninguna de las dos se audita:
+  - `revoke_all` (un UPDATE masivo);
+  - el incremento de `failed_login_count` (`UPDATE ... RETURNING`, L-10).
+- **S2-D8:** la auditoría del login va por el evento `LoginAttempted`, con commit explícito antes del 401. El patrón actor_scope + flush + commit vive en una sola función, `auth/tokens.commit_failure(session)`.
+- **S2-D9:** la migración `0005b_auth_security` (padre `0005_settings`) reemplaza la `0008` que sugería el análisis de impacto. Contenido:
+  - `auth.users.must_change_password` (bool, por defecto false);
+  - `auth.users.failed_login_count` (int ≥ 0, por defecto 0);
+  - `auth.users.tokens_valid_after` (timestamptz, nulo; H-3);
+  - `auth.refresh_tokens.family_started_at` (timestamptz NOT NULL, `server_default now()`; L-4).
+- **S2-D10:** el límite por intentos queda corregido por H-4:
+  1. Solo cuentan los fallos. Se comprueba el contador antes de argon2 sin sumar y se suma al fallar.
+  2. Clave `(correo normalizado, ip_bucket_key)`: 10 fallos por 900 s.
+  3. Tope global por cuenta: 100 fallos por 3.600 s.
+  4. Bloqueo persistente (`locked_at`) a los 20 fallos consecutivos.
+  5. Al último admin activo solo le rigen el límite por IP y argon2.
+  6. Settings nuevas: `LOGIN_ACCOUNT_LIMIT=10`, `LOGIN_ACCOUNT_WINDOW_S=900`, `LOGIN_ACCOUNT_GLOBAL_LIMIT=100`, `LOGIN_ACCOUNT_GLOBAL_WINDOW_S=3600`, `LOGIN_LOCK_AFTER=20`.
+  7. `unlock` por API limpia los contadores en memoria de esa cuenta (`ratelimit.forget`). `cli unlock-user` corre en otro proceso; el runbook documenta que `restart api` limpia la memoria.
+  - Estado al cierre del sprint: aplicada con los nombres de E5 y `Settings`; el último admin queda fuera de las capas 3 a 5 y su `failed_login_count` sí sube. Ver S2-B2 y `docs/RUNBOOK.md`, "Sesión y límites".
+- **S2-D11:** `refresh_current(session)` corre dentro de `current_user` tras validar el token. Se quita la dependencia global de `main.include_module_routers` (M-3 del Sprint 1).
+- **S2-D12:** `ADMIN_*` solo en `tools`. `SeedSettings` lee `.env.seed`; se crea `.env.seed.example` con valores vacíos (L-9). `seed` rechaza el literal `cambiar-esto`. `seed_admin` siembra con `must_change_password=true`; `--no-force-change` solo con `ENV=dev`, leído de `Settings`.
+  - Estado al cierre del sprint: `.env.example` ya no trae `ADMIN_*` (solo un comentario); `SeedSettings` lee `.env.seed` y `ADMIN_*` están en `NON_API_ENV_VARS`. Ver S2-B2.
+- **S2-D13 (reemplazada por M-9):** `COOKIE_SECURE=false` por defecto en v0.1. Con `ENV=production` se exige `COOKIE_SECURE=true`, salvo `ALLOW_INSECURE_COOKIE=true` explícito (validador de `Settings`).
+  - Estado al cierre del sprint: sustituida por M-9 (validador de `Settings`); el valor por defecto sigue en `false`. Ver S2-B2.
+- **S2-D14:** `GET /auth/me` consulta la base: usuario más `settings.service.gym_name`.
+- **S2-D15:** las secciones habilitadas son `gym`, `privacy` y `memberships`.
+  - Las demás responden 404 `section_not_available`.
+  - Las rutas tipadas se declaran antes que la genérica.
+  - `PATCH` reemplaza la sección completa.
+  - Estado al cierre del sprint: `gym`, `privacy` y `memberships` son las únicas secciones; el resto responde 404 `section_not_available`. Config se muestra en pestañas (S2-F5). Ver S2-B1.
+- **S2-D16:** sí a `document_type` (`CC`, `CE`, `TI`, `PA`; por defecto `CC`), con dos correcciones de seguridad:
+  - sin columna `notes` (M-5);
+  - `MemberCreate.data_consent: bool`, y el servidor fija `data_consent_at = clock.now_utc()` (M-4).
+  - Estado al cierre del sprint: `data_consent` es booleano (`strict=True`, LOW-5) y el servidor fija `data_consent_at`; `document_type` está en `0006_members`; no hay `notes`. Ver S2-B7 y S2-F6.
+- **S2-D17:** `auth.users` no tiene nombre. La tabla y el panel usan el correo, con `// DESIGN-GAP:`; `display_name` llega con US-110.
+  - Estado al cierre del sprint: Usuarios muestra el correo y no el nombre; `display_name` llega con US-110 (Sprint 4A). Ver S2-F4a.
+- **S2-D18:** activar es `POST /auth/reset`: el token lleva su `purpose`, responde 204 y no inicia sesión. Nace la ruta `/cambiar-clave` con `// DESIGN-GAP:`.
+  - Estado al cierre del sprint: `activate` y `reset` responden 204 sin iniciar sesión. La ruta `/cambiar-clave` (`routeTable.ts`, acceso de sesión) usa `ChangePasswordPage`, que llama a `POST /auth/me/password` con la contraseña actual; no es el formulario de restablecer. Ver S2-B4, S2-F2 y S2-F4a.
+- **S2-D19:** `proveedor_local`, `sin_llaves` y `bus_listo` suben a `tests/conftest.py`. El cliente HTTP de pruebas no corre el lifespan.
+- **S2-D20:** `test_no_sensitive_in_logs.py` se implementa en B7. El caso `reveal` queda como prueba aparte saltada, con dueño S3-B10 (US-074).
+- **S2-D21:** `test_audited_tables` importa `models` solo si `find_spec` lo encuentra. `audit` entra en `MODULES` con `router.py` vacío. Orden final: `("auth","settings","audit","members","plans")`.
+  - Estado al cierre del sprint: `audit` está en `MODULES` con `router.py` vacío; el orden final es `("auth", "settings", "audit", "members", "plans")`. Ver S2-B6. La sección de B6 dice que el router se llena "hasta US-074 (EP-17)"; eso es un error: US-074 es "mostrar dato sensible auditado" (Sprint 3), y las rutas de consulta son US-102 (Sprint 4A).
+- **S2-D22:** se agregan dos dependencias, con `npm run licenses` y `NOTICE`:
+  - sí a `@hookform/resolvers` (MIT), en F3;
+  - `@axe-core/playwright` (MPL-2.0 sin modificar, solo desarrollo), en F5, con su línea en `scripts/ci/licenses-exceptions.txt`.
+  - Estado al cierre del sprint: no se instaló `@hookform/resolvers`; el adaptador propio es `web/src/shared/lib/zodResolver.ts` (S2-F5). `@axe-core/playwright` 4.14.0 entró en S2-F5 (MPL-2.0, solo desarrollo, con su línea en `scripts/ci/licenses-exceptions.txt`); S2-F8 se hizo antes e inyectó `axe-core` directamente.
+- **S2-D23:** `web/src/config/routeTable.ts` es la única tabla de rutas. `homeFor`, `canAccessRoute` y `safeNext` viven en `core/auth/routeAccess.ts` y no comparan roles con literales: `homeFor` usa `can(role, "portal.view")`, una acción nueva que solo tiene `member` en `permissions.ts`. No se amplía el `ignores` de la regla de literales (resuelve la última parte de la condición 6).
+- **S2-D24:** `StatusTag` acepta `account`, con `ACCOUNT_LABELS` y `ACCOUNT_TONES`.
+- **S2-D25:** `InicioPage` mínima, con `// DESIGN-GAP:`, hasta `GET /dashboard` del Sprint 3.
+  - Estado al cierre del sprint: `InicioPage` mínima en S2-F2 con `// DESIGN-GAP:`. El tablero es US-108 del Sprint 4A (`SPRINT-04A.md`, S4A-B8), no del Sprint 3 como decía esta decisión; corregido en `SPRINT-02.md` y `docs/BRECHAS.md`.
+- **S2-D26:** en el front `/planes` es solo para admin (`plans.view`). El API deja al coach `GET /plans?active=true` y `GET /plans/{id}` de planes activos.
+- **S2-D27:** el marcador `perf` se registra en `api/pyproject.toml` (B8). La prueba de 1.000 socios corre en el gate de B8 y en `run-gates.sh`.
+- **S2-D28 (reemplazada por M-2):** gracia de 10 s en el reuso de refresh (`REFRESH_REUSE_GRACE_S=10`). Dentro de la gracia responde 401 `invalid_refresh` sin revocar la familia; fuera de ella es reuso real (N-13).
+  - Estado al cierre del sprint: reemplazada por M-2; la gracia de 10 s es `REFRESH_REUSE_GRACE_S`. Ver S2-B2.
+- **S2-D29 (reemplazada por M-3):**
+  - `Referrer-Policy: no-referrer` en `snippets/security-headers.conf`, para todo el sitio;
+  - no se crea un `location` especial para `/restablecer/`;
+  - `log_format apex` sigue con `$uri`;
+  - una prueba con `curl` demuestra que la línea de log de `/restablecer/<token>` no contiene el token;
+  - ningún `log_format` usa `$request_uri` ni `$args`.
+  - Estado al cierre del sprint: reemplazada por E4 y E9. `no-referrer` va en `location = /index.html` y en `location /`, no en el snippet común, y no hay `location` de `/restablecer/`. Ver S2-W0-1.
+- **S2-D30:** `PASSWORD_MAX_LENGTH = 128` y razón `too_long` (L-5 del Sprint 1). Topes en los schemas:
+  - `max_length=128` en `LoginIn`, `ChangePasswordIn` y `ResetIn.new_password`;
+  - `ResetIn.token` de 20 a 200 caracteres;
+  - `ForgotIn.email` hasta 254.
+- **S2-D31:** `test_reveal_entry.py` usa `uuid4()` (no existe fábrica de socios en B6). En S3-B10 se cambia a la fábrica.
+- **S2-D32:** sí a nombre de plan único sin distinguir mayúsculas: `uq_plans_name_alive` sobre `lower(btrim(name)) WHERE deleted_at IS NULL`, con pre-chequeo igual. Topes:
+  - `price_cop` de 1 a 1.000.000.000;
+  - `duration_days` de 1 a 3.650;
+  - `class_count` de 1 a 1.000.
+  - Estado al cierre del sprint: aplicada en `0007_plans`; el CHECK de clases se corrigió a `IS NOT NULL` (ver S2-B9).
+- **S2-D33:** `session.ts` se reparte entre F2 (almacén y `restoreSession`) y F3 (refresh coordinado, logout y puente con el cliente).
+- **S2-D34:** tras el 201 el alta va a `/socios` con aviso. El 409 enlaza a `/socios/{existing_id}`, que da NotFound hasta S3-B9/S3-F1. Nunca se usa `?q=<documento>`.
+  - Estado al cierre del sprint: el 409 de socios enlaza a `/socios/{existing_id}` ("Ver socio existente"); esa ruta no tiene pantalla hasta S3-B9 y S3-F1 (`// DESIGN-GAP:`). Ver S2-F6.
+
+#### Decisiones de la revisión de seguridad del diseño
+
+- **S2-D35 (H-1):** `POST /auth/logout` se autentica por la cookie, no por el Bearer.
+  - Entra en `PUBLIC_ROUTES`, que pasa a 8 rutas.
+  - Lleva `rate_limit("logout")` y `require_same_origin`.
+  - Revoca el refresh de la cookie si existe, siempre responde 204 y siempre borra la cookie.
+  - En el front, un fallo de red o un 5xx no se presenta como éxito.
+  - Estado al cierre del sprint: las ocho entradas de `PUBLIC_ROUTES` son `GET /health`, `GET /api/v1/health`, las cinco rutas de auth y `GET /api/v1/tv/today` (token de dispositivo, ya presente antes de este sprint). Ver S2-B2.
+- **S2-D36 (H-2):** en v0.1, `forgot` no escribe nada.
+  - Normaliza el correo y aplica `ratelimit.enforce("forgot-account", ...)` además de `rate_limit("forgot")` por IP.
+  - Aplica el piso de duración de S2-D39 y deja un log sin el correo.
+  - Responde siempre 204. El emisor real llega con US-131.
+  - Estado al cierre del sprint: `forgot` no lee ni escribe la base en v0.1; cuenta por correo, espera el piso y responde 204. Ver S2-B4.
+- **S2-D37 (H-3):** `auth.users.tokens_valid_after` corta los access ya emitidos.
+  - Se fija con `date_trunc('second', now)` dentro de `revoke_all`, así lo usan cambio de contraseña, reset, cerrar sesiones, bloqueo, baja y reuso.
+  - `Principal` lo recibe del cargador, y `current_user` responde 401 `unauthorized` si `iat < tokens_valid_after`.
+  - Ventana residual aceptada: menos de 1 s, para tokens emitidos en el mismo segundo antes de la revocación.
+  - `POST /auth/me/password` responde 200 `AccessTokenOut` (`access_token`, `token_type`, `expires_in`) con un access nuevo. El front lo reparte a las demás pestañas por `apex-auth`.
+  - Estado al cierre del sprint: la ventana de menos de 1 s queda aceptada (LOW-3 de S2-B3 y LOW-1 de S2-B5). Ver esas secciones.
+- **S2-D38 (M-1):** dependencia `require_same_origin` en `auth/cookies.py` para login, refresh y logout.
+  - Compara `Origin` (o `Referer` si falta) con `AUTH_ALLOWED_ORIGINS`; si esa lista está vacía, usa el origen de `FRONT_BASE_URL`. También acepta `Sec-Fetch-Site: same-origin|none`.
+  - Sin ninguna de las tres cabeceras responde 403 `forbidden` sin tocar la cookie.
+  - Los scripts de smoke y la fixture `cabeceras` envían `Origin`.
+  - Estado al cierre del sprint: `require_same_origin` solo en login, refresh y logout (las rutas con cookie); `forgot` y `reset` no la llevan. Ver S2-B4.
+- **S2-D39 (M-6):** se nivela el tiempo de login y forgot.
+  - Piso `LOGIN_MIN_DURATION_MS`; se mide en B2 como 1,5 veces la mediana de argon2 más commit dentro del contenedor y se fija su valor por defecto.
+  - Se aplica a toda respuesta 401 de login y a todo forgot, con un `sleeper` inyectable para que las pruebas no duerman.
+  - Un usuario sin hash (pendiente) usa `dummy_verify`, nunca `verify_password(None, ...)`.
+  - Estado al cierre del sprint: `LOGIN_MIN_DURATION_MS=75`, medido en S2-B2 y fijado en `Settings` y `.env.example`.
+- **S2-D40 (M-7):** un solo predicado `rules.account_may_authenticate(user)` y su espejo SQL `rules.AUTH_FILTER`, usados por el cargador, login y refresh.
+  - `is_one_time_token_usable` reutiliza el predicado, excepto la exigencia de hash cuando el propósito es `activate`.
+  - `status_filter` es el espejo SQL de `user_status`. Ambos se prueban en matriz contra los cinco estados.
+- **S2-D41 (M-8):** el `q` de las listas (`/socios` y `/sistema/usuarios`) vive en estado local con debounce y nunca en la URL. En la URL quedan solo filtros, `sort`, `limit` y `offset`.
+- **S2-D42:** los LOW de la revisión del diseño, todos dentro del sprint:
+  - **L-1:** límite por usuario autenticado de 60 por minuto en `POST /members` (B7) y en `GET /members` con `q` (B8).
+  - **L-2:** `CreateUserIn.role` es `Literal["admin","coach"]`, sin `member_id`, hasta el portal (B3).
+  - **L-3:** un documento, teléfono o correo que se normaliza a vacío da 422 con `field` (B7).
+  - **L-4:** tope absoluto de 30 días por familia (`REFRESH_ABSOLUTE_TTL_DAYS=30`, desde `family_started_at`) y purga oportunista en cada login de los refresh del usuario vencidos hace más de 30 días (B2).
+  - **L-5:** `safeNext` rechaza `\` y caracteres de control (F2).
+  - **L-6:** los mensajes de `apex-auth` llevan secuencia monótona, y un `token` se ignora tras un logout (F3).
+  - **L-7:** las mutaciones con `activation_url` usan `gcTime: 0` y `reset()` al cerrar el panel o el modal (F4a, F4b).
+  - **L-8:** `LoginAttempted` lleva `ip` y `user_agent` (hasta 120 caracteres) y la fila `login` los guarda en `after`, nunca el correo tecleado (B2, B6).
+  - **L-9:** el ejemplo de `.env.seed` va vacío y `seed` rechaza el literal del ejemplo (W0-1, B2).
+  - **L-10:** el incremento de fallos es atómico (B2).
+  - **L-11:** un almacén por tipo de clave (`ip`, `account`, `account-global`, `user`), cada uno con tope propio y expulsión O(1) con `OrderedDict` (B2).
+  - **L-12:** `client_max_body_size 16k` en `/api/v1/auth/` (W0-1); `rate_limit` en refresh, reset y logout (B2, B4); un 429 no limpia la sesión del front (F3).
+  - **L-13:** `resend-link` responde 409 `user_not_eligible` sobre la propia cuenta del emisor y sobre otros admins activos con contraseña. Para esos casos, `cli issue-reset-link <correo> --as <correo>` (B4). `PasswordChanged` lleva `via_link_issued_by` (el `created_by` del token) y la auditoría lo registra (B6).
+
+#### Contradicciones de contrato cerradas (exploración e impacto, condición 6)
+
+- **S2-D43:** el login emite `LoginAttempted` y `audit` se suscribe. Se corrige US-107 T1.
+  - Estado al cierre del sprint: el login emite `LoginAttempted`, `audit` se suscribe y la auditoría es fail-closed (MEDIUM-1 de S2-B6). Ver S2-B6.
+- **S2-D44:** el cliente usa `credentials: "same-origin"`. Se corrigen US-042 T12 y US-044 T6.
+  - Estado al cierre del sprint: el cliente usa `credentials: "same-origin"`; los desgloses de US-042 y US-044 están corregidos. Ver S2-F3.
+- **S2-D45:** las funciones canónicas de settings son `settings.service.memberships_policy()`, `current_privacy_version()` y `gym_name()`. Se corrigen las referencias de US-089 y US-149.
+  - Estado al cierre del sprint: `memberships_policy()`, `current_privacy_version()` y `gym_name()` existen en `settings/service.py`; `get_section` queda como lectura de la ruta genérica. Ver S2-B1.
+- **S2-D46:** la ruta canónica en v0.1 es `POST /api/v1/auth/me/password`, no `/me/password`. Se anota en `docs/BRECHAS.md`.
+  - Estado al cierre del sprint: `POST /api/v1/auth/me/password` responde 200 `AccessTokenOut` en `docs/openapi.json`. Ver S2-B3.
+- **S2-D47:** no existe `/auth/activate`; las rutas públicas exactas son `login`, `refresh`, `logout`, `forgot` y `reset`.
+  - Estado al cierre del sprint: `logout` es público y se autentica por la cookie (S2-D35, H-1), no por Bearer como decía el blueprint. Ver S2-B2 y S2-B3.
+- **S2-D48:** la rama real es `feat/sprint-02-identidad-config-socios-planes`. Se corrige `SPRINT-02.md`.
+  - Estado al cierre del sprint: rama real `feat/sprint-02-identidad-config-socios-planes`; `SPRINT-02.md` corregido.
+- **S2-D49:** la revocación de sesiones queda auditada por `SessionsRevoked`, porque `refresh_tokens` no se audita. `last_login_at` sale de la auditoría por `__audit_exclude__`; la fila `login` la deja el evento.
+  - Estado al cierre del sprint: `SessionsRevoked` también se emite con `revoked = 0` en `delete_user` y `lock`, no solo en `revoke_sessions`. Ver S2-B5.
+- **S2-D50:** el login muestra "APEX", porque `gym_name` solo llega autenticado. Va con `// DESIGN-GAP:`.
+- **S2-D51:** el comando de desarrollo de uvicorn sigue sin `--proxy-headers`. La IP real la resuelve `core/ratelimit.client_ip` con `TRUSTED_PROXIES`. Se documenta en el runbook.
+- **S2-D52:** CI gana el job `e2e-stack`. No se renombra ningún check protegido.
+- **S2-D53:** existe `tests/architecture/test_service_import_graph.py` (nace en B3). Exige un grafo acíclico entre los `service.py` (`audit → auth → settings`) y deja la lista blanca de imports perezosos vacía hasta el Sprint 3.
+  - Estado al cierre del sprint: `tests/architecture/test_service_import_graph.py` existe y `LAZY_IMPORT_WHITELIST` está vacía hasta el Sprint 3.
+
 ### S2-W0-1 · Infraestructura
 - **Subred fija `172.30.0.0/24` (M-1).** Verificada libre con `docker network inspect` de las 11 redes del host (las demás usan 172.17 a 172.25 /16); no hizo falta la alternativa `172.31.0.0/24`. `web` (Nginx) queda en `172.30.0.10`, fuera de `ip_range: 172.30.0.128/25`, para que ningún contenedor con IP dinámica pueda tomarla. `TRUSTED_PROXIES=172.30.0.10/32` en `.env.example` y en el `.env` local; `test_compose_config.sh` exige que coincida con `ipv4_address` de `web` y `compose-smoke.sh` lo comprueba contra el contenedor real. Rollback: quitar `networks` e `ipv4_address` de `infra/compose.yml`, volver `TRUSTED_PROXIES` y `down`/`up` del proyecto (sin `-v`).
 - **`.env.seed` solo para `tools` (M-8, D12, L-9).** `tools.env_file: [../.env, {path: ../.env.seed, required: false}]` (Compose v5.0.2, el mínimo es 2.24); api, worker y db no lo leen. `.env.seed.example` va versionado y vacío (`!.env.seed.example` en `.gitignore`; `check-key-files.sh` lo permite y bloquea `.env.seed`). `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` quedan como líneas vacías en `.env.example` solo mientras `Settings` las declare (`test_env_example`); B2 las pasa a `SeedSettings` y las quita. El smoke y el job `e2e-stack` generan un `.env.seed` efímero con contraseña aleatoria.

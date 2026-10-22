@@ -41,6 +41,7 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 ## 2. Pantallas que necesitan endpoints o módulos que el plan no tiene
 
 ### Módulo `settings` (pantalla `Config.html`)
+- **Cierre Sprint 2:** implementado en S2-B1 (`0005_settings`, `settings.service`, rutas `gym`, `privacy` y `memberships`) y en S2-F5 (pestañas). Las demás secciones (`hours`, `payment_methods`, `channels`, `classes`, `tv`) siguen fuera y responden 404 `section_not_available` (S2-D15).
 - **Resuelto (gate del 21 de octubre de 2026):** módulo `settings` en v0.1 (EP-05), secciones y rangos en Q11 y N-18; `channels` llega en v0.2 sin secretos (Q12).
 - Front: `GET/PATCH /settings` por sección: gym, hours, payment_methods, channels, classes, memberships, tv, privacy.
 - Plan: no existe ningún módulo de configuración.
@@ -54,12 +55,14 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 - Propuesta: router `core/crypto/router.py` solo admin, en v0.3 junto con OpenBao. La rotación por lotes de la Tarea 2 debe guardar su progreso en una tabla `crypto_jobs` para que `GET /crypto/jobs` tenga qué mostrar. CBOM se adelanta de v1.0 a v0.3 o la pantalla muestra el botón deshabilitado hasta entonces.
 
 ### Recuperación y activación de cuenta (pantalla `Login.html`, tarjetas 2 y 3; pantalla `Usuarios.html`)
+- **Cierre Sprint 2:** API en S2-B4 (`forgot` sin escritura en v0.1, `reset`, `resend-link`) y S2-B5 (`revoke-sessions`); pantallas en S2-F4a y S2-F4b. El envío del correo sigue sin canal hasta US-131 (Sprint 5).
 - **Resuelto (gate del 21 de octubre de 2026):** `auth.one_time_tokens`, `POST /auth/forgot`, `POST /auth/reset`, `POST /users/{id}/resend-link` (única ruta para el enlace, N-12) y `POST /users/{id}/revoke-sessions`, todo en v0.1; el correo llega en v0.2.
 - Front: `POST /auth/forgot`, `POST /auth/reset` (sirve para "nueva contraseña" y "activar cuenta"), "reenviar enlace", "cerrar sesiones" por usuario.
 - Plan (Tarea 3): login, refresh, logout, me, CRUD de usuarios. Nada de tokens de un solo uso ni de correo.
 - Propuesta: tabla `auth.one_time_tokens` (hash, user_id, purpose: reset o activate, expires_at, used_at) y los dos endpoints en Tarea 3. El envío del enlace por correo necesita el `EmailChannel` de v0.2; en v0.1 el admin copia el enlace desde la pantalla de usuarios. "Cerrar sesiones" es revocar todos los refresh tokens del usuario: `POST /users/{id}/revoke-sessions`.
 
 ### Tablero de inicio (pantalla `Inicio.html`)
+- **Cierre Sprint 2: parcial.** S2-F2 entrega `InicioPage` mínima con `// DESIGN-GAP:`. El tablero con `GET /dashboard` es US-108 del Sprint 4A (`SPRINT-04A.md`, S4A-B8), no del Sprint 3 como decía S2-D25.
 - **Resuelto (gate del 21 de octubre de 2026):** módulo `dashboard` en v0.1 (EP-07); cada campo se llena en su versión y hasta entonces viene `null`; "últimos movimientos" sale de la auditoría (Q10).
 - Front: `GET /dashboard` con socios al día, por vencer, vencidos, ingresos del mes, asistencia de la semana, sesiones de hoy, por avisar hoy, últimos movimientos.
 - Plan: solo `GET /memberships/summary` (Tarea 6) y `GET /payments/report?month=` (Tarea 7).
@@ -159,3 +162,78 @@ Recomendación general: recursos anidados para crear (`POST /members/{id}/member
 - `prototipo.html` pesa 3,1 MB porque incrusta imágenes en base64. Es solo para revisar el diseño; no se incluye en `web/` ni en ninguna imagen Docker.
 - `tokens.json` tiene `"fonts": []` vacío; las familias están en `families`. Es informativo, no afecta.
 - Los textos de las pantallas contienen datos de ejemplo (nombres, cifras, "[NOMBRE DEL GIMNASIO]"). Ninguno es dato real.
+
+## 9. Sprint 2: cierre de brechas y diferencias con el diseño
+
+Estado al cierre del sprint (`docs/ddd/09_sprint_plan/SPRINT-02.md`, sección "Estado al cierre"). Las pantallas del Sprint 2 son Login (tarjeta de acceso), Inicio mínima, Usuarios, Configuración en pestañas y Socios (alta y lista). Planes tiene backend completo; su pantalla (S2-F7) está pendiente.
+
+### Rutas y contratos
+
+- **`/cambiar-clave`:** no tiene pantalla en `docs/design/`. La ruta del front exige sesión (`web/src/config/routeTable.ts`) y usa `ChangePasswordPage`, un formulario con la contraseña actual que llama a `POST /api/v1/auth/me/password`. No es el formulario de restablecer, que usa el enlace de un solo uso. Lo usa quien tiene `must_change_password` verdadero. `// DESIGN-GAP:` (S2-D18, S2-F2, S2-F4a).
+- **`POST /api/v1/auth/me/password`:** ruta canónica en v0.1 (S2-D46). Responde 200 con `AccessTokenOut` y un access nuevo; revoca las demás sesiones (S2-B3).
+- **Inicio (`/`):** `InicioPage` mínima hasta `GET /api/v1/dashboard` (S2-D25). Ver la nota de la sección anterior sobre el Sprint 4A.
+- **Activación y restablecimiento:** responden 204 y no inician sesión. El botón dice "Guardar contraseña", no "Guardar y entrar" (S2-D18).
+- **Login:** muestra "APEX" en lugar de "[NOMBRE DEL GIMNASIO]", porque `gym_name` solo llega con sesión (S2-D50).
+- **Cerrar sesión:** `POST /api/v1/auth/logout` es público y se autentica por la cookie, no por el Bearer (S2-D35).
+
+### Datos
+
+- **Socio, consentimiento:** `data_consent` es booleano. El cliente no envía `data_consent_at`; el servidor fija la fecha con su reloj (M-4, S2-D16).
+- **Socio, notas:** no existe `notes` (M-5). Foto, firma y documento firmado llegan con v0.3.
+- **Socio, tipo de documento:** `document_type` (`CC`, `CE`, `TI`, `PA`; por defecto `CC`) en `0006_members`, sin cifrar (S2-D16).
+- **Socio, nombre:** `first_name` y `last_name` en dos campos (S2-D16).
+- **Usuario, nombre:** `auth.users` no tiene nombre; Usuarios muestra el correo (S2-D17). `display_name` no existe en el código. Ver la contradicción abierta más abajo.
+
+### Pantallas
+
+- **Configuración:** tres pestañas (Gimnasio, Privacidad, Membresías) con `?tab=`, en lugar de las ocho cajas con índice (S2-D15, S2-F5).
+- **Usuarios:** las acciones del ciclo de vida van en cada fila (editar, bloquear, desbloquear, cerrar sesiones, reenviar enlace, dar de baja), no en un panel de `Usuarios.html` (S2-F4b).
+- **Socios, búsqueda:** el término `q` vive en el estado local y nunca en la URL (S2-D41).
+- **Socios, 409:** "Ver socio existente" enlaza a `/socios/{existing_id}`, que no tiene pantalla hasta S3-B9 y S3-F1 (S2-D34).
+
+### Brechas que el sprint cerró
+
+- `settings` (`Config.html`): cerrada en S2-B1 y S2-F5.
+- Recuperación y activación de cuenta: cerrada en la API (S2-B4) y en el front (S2-F4a, S2-F4b). El correo sigue pendiente de US-131.
+- Ruta de cambio de contraseña: cerrada (`POST /api/v1/auth/me/password`, S2-D46).
+- `data_consent`, `notes` y `document_type`: cerradas en el contrato (S2-D16).
+- Tablero de inicio: parcial (ver arriba).
+
+### DESIGN-GAP por pantalla
+
+Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-02-front.md`). Donde el plan no fija sprint, se dice así.
+
+| Pantalla o archivo | Brecha | Se resuelve en |
+|---|---|---|
+| Panel · `SideNav.tsx` | Cajón y modo plegado no dibujados | Sin sprint en el plan |
+| Panel · `SideNav.module.css` | Velo sin token; usa `--black` al 45 % como `SidePanel` | Sin sprint en el plan |
+| Panel · `nav.ts` | "Pantalla · Abrir pantalla TV" no entra; la TV se abre con token | Sprint 8 / EP-23 (US-175) |
+| Portal · `PortalLayout.tsx` y `.module.css` | Contador de avisos; sin token de 600 px ni del alto del menú inferior | Sprint 10 / EP-25 |
+| Tablet · `GymLayout.module.css`, `ZoneShells.tsx` | Sin token de texto ampliado; la salida de la tablet va a `/` | Sin sprint en el plan |
+| Rutas · `routeTable.ts`, `routes.reference.ts`, `ChangePasswordPage` | `/cambiar-clave` sin pantalla en el diseño | Sin sprint; resuelto en código (S2-F2, S2-F4a) |
+| Rutas · `NoPermissionPage.tsx`, `MessagePage.tsx` | El diseño no tiene pantallas de error ni de permiso | Sin sprint en el plan |
+| Rutas · `PendingPage.tsx` | Estado intermedio para `/planes` | Se retira con S2-F7 (pendiente) |
+| Inicio · `InicioPage.tsx` | Tablero de `Inicio.html` hasta `GET /dashboard` | Sprint 4A / US-108 |
+| Kit · `StatusTag.module.css` | Relleno de peligro constante entre temas | Sin sprint en el plan |
+| Kit · `Catalog.tsx` | Estados de cuenta de `StatusTag` | Resuelto en S2-F4a |
+| Login · `LoginCard.tsx` | "[NOMBRE DEL GIMNASIO]" se muestra como "APEX" (S2-D50); avisos de cierre no confirmado y del 429 sin dibujar | Sin sprint en el plan |
+| Configuración · `ConfigPage.tsx` | Pestañas en vez de ocho cajas (S2-D15) | Decisión tomada; las secciones `hours`, `payment_methods`, `channels`, `classes` y `tv` llegan con sus sprints |
+| Configuración · `GymSettingsForm.tsx` | Sin cuadro de logo; "Zona horaria" como nota fija; NIT, ciudad y correo no están en `Config.html` | Logo: v0.3. Lo demás, sin sprint en el plan |
+| Configuración · `PrivacySettingsForm.tsx` | Sección propia en lugar de la caja "TV · Datos personales" | Decisión tomada; sin sprint |
+| Configuración · `MembershipsSettingsForm.tsx` | "Días de gracia", "Check-in vencido" y unidad de carga no están en el contrato de US-058; las clases llegan con US-154 | Clases: Sprint 7 / US-154. Lo demás, sin sprint en el plan |
+| Usuarios · `UsersPage.tsx` | Sin columna de nombre (S2-D17); rol como texto; filtro "Equipo" | Nombre: Sprint 4A / US-110. Filtro "Equipo": sin sprint. La columna de acciones se resolvió en S2-F4b |
+| Usuarios · `NewUserPanel.tsx` | Reutiliza el panel de edición sin nombre; muestra el enlace que la pantalla no dibuja | Sin sprint en el plan |
+| Usuarios · `ChangePasswordPanel.tsx` | Sin pantalla "Mi cuenta" en el diseño | Sin sprint en el plan |
+| Activación · `ResetPage.tsx` | "Guardar contraseña" en lugar de "Guardar y entrar" (S2-D18) | Decisión tomada |
+| Recuperación · `ForgotPage.tsx` | Mensaje fijo de v0.1 (H-2) | Sprint 5 / US-131 (correo) |
+| Usuarios · `UserRowActions.tsx`, `UsersPage.tsx` | Acciones en la fila en lugar del panel del diseño; `DESIGN.md` pide filas sin editar ni borrar | Decisión tomada (S2-F4b); sin sprint |
+| Usuarios · `EditUserPanel.tsx` | Sin nombre (S2-D17); sin tabla de permisos por rol | Nombre: Sprint 4A / US-110. Tabla de permisos: sin sprint |
+| Usuarios · `LinkModal.tsx` | La pantalla no dibuja dónde se ve el enlace reenviado | Sin sprint en el plan |
+| Kit · `shared/ui/Modal.tsx` | `DESIGN.md` solo nombra `ConfirmModal` | Sin sprint en el plan |
+| Socios · `MemberFormFields.tsx` | Sin foto, firma ni documento firmado; sin "Acceso al portal", unidad de cargas ni observaciones de salud; nombre en dos campos; sexo y teléfono opcionales | Foto, firma y autorización: Sprint 6 / US-148 y US-149. Acceso al portal: Sprint 10 / EP-25. Unidad de cargas: sin historia verificada (atleta, EP-24). Observaciones de salud: sin historia en el plan. Nombre y opcionales: S2-D16 y N-19 |
+| Socios · `MemberFormPage.tsx` | Sin "Guardar y vender membresía"; tras guardar vuelve a la lista con aviso | Venta: Sprint 3 / S3-B1 (US-083 y US-084). El aviso es decisión tomada |
+| Socios · `MembersListPage.tsx` | Sin teléfono, plan, vence, asistencia ni columna de acción; sin documento enmascarado (N-01); sin chips ni conteos por estado de membresía; sin filtros de plan y asistencia; sin "Exportar" | Membresía, plan, filtros, chips y conteos: Sprint 3 / US-071. Asistencia: Sprint 7 / EP-21. Exportar: Sprint 5 / EP-16. Documento enmascarado: N-01 (la lista no devuelve datos cifrados) |
+
+### Contradicción abierta
+
+- `docs/ddd/09_sprint_plan/SPRINT-01.md` (refinamientos de US-110) planea `display_name` en `0004`. El código no lo tiene, `0004_auth` tampoco, y S2-D17 lo deja para US-110 del Sprint 4A. No se cambió ninguno de los dos documentos; hay que decidir cuál manda.

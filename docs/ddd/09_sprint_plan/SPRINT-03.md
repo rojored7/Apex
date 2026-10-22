@@ -10,6 +10,8 @@
 - Rama: `feat/sprint-03-membresias-pagos`.
 - Historias del sprint: US-056, US-071, US-072, US-073, US-074, US-075, US-076, US-083, US-084, US-085, US-086, US-087, US-088, US-089, US-090, US-091, US-092, US-093, US-095, US-096, US-097, US-098, US-099, US-100, US-101.
 
+Plan de ejecución: `docs/ddd/blueprints/sprint-03-plan.md` (20 slices, enmiendas E1 a E16). Este documento se corrigió en S3-W0-1 con sus contradicciones de contrato (S3-C1 a S3-C22, `docs/ddd/DECISIONES.md`, "Sprint 3"); donde todavía choquen, manda el plan.
+
 ## Objetivo
 
 Cerrar el ciclo comercial del box en una sola iteración. Membresías y pagos van juntos porque no funcionan uno sin el otro (S5, RN-03). Al terminar, el box puede:
@@ -30,14 +32,14 @@ Antes de empezar: `docker compose up -d --build` y entrar como admin.
 2. **Pago parcial y cobertura.**
    - Con un pago de $ 60.000, la membresía queda en "Pendiente de pago" (Q3).
    - Al registrar otros $ 60.000, pasa a `active`.
-   - Si el pago supera el saldo, la pantalla muestra una advertencia y pide confirmación (Q5).
+   - Si el pago supera el saldo, el API responde 409 `payment_exceeds_balance` sin `confirm_overpayment`; la pantalla muestra la advertencia y reenvía con la confirmación (Q5, S3-D41, S3-C22). Un pago igual en los últimos 120 s responde 409 `payment_possible_duplicate` hasta confirmarlo.
 3. **Anular un pago.** El admin anula el segundo pago con motivo, y la membresía vuelve a `pending_payment`.
-   - `UPDATE payments.payments SET amount_cop = 1` falla por el trigger.
-   - Anular dos veces el mismo pago también falla.
+   - `UPDATE payments.payments SET amount_cop = 1` falla por el trigger (`payments_immutable`).
+   - Anular dos veces el mismo pago responde 409 `payment_already_voided`.
 4. **Renovar antes de vencer.** La nueva membresía empieza el día siguiente al fin de la vigente (Q1). Si se intenta crear una que se solape, la API responde 409 y el `EXCLUDE USING gist` la rechaza también en la base.
 5. **Congelar y anular.**
    - Congelar 10 días extiende el fin.
-   - La tercera congelación responde 409 (Q9).
+   - La tercera congelación responde 409 `freeze_limit_reached` (Q9, D14).
    - Pagar una membresía anulada responde 409 `membership_cancelled`.
 6. **Ficha del socio.**
    - El documento aparece como `CC •••• 4417`, enmascarado en memoria (N-01).
@@ -74,10 +76,14 @@ El orden respeta las migraciones (`0008` → `0009` → `0010` → `0011`) y la 
 
 ### Wave 0 · Infraestructura (`devops-wsl2-docker`)
 
-No hay infraestructura nueva. Solo se verifica la línea base:
-- `docker compose up -d --build`;
-- `docker compose exec api alembic current` en `0007_plans`;
-- `run-gates.sh` en verde sobre `main`.
+Corregido por `docs/ddd/blueprints/sprint-03-plan.md` (S3-C20): la Wave 0 tiene dos slices.
+- **Slice S3-W0-1 · Línea base, imágenes por digest, dependencias de desarrollo, `.env.seed` y documentación.**
+  - Línea base: `docker compose up -d --build`; `docker compose exec api alembic current` en `0007_plans`; `run-gates.sh` en verde sobre la rama.
+  - Imágenes base por digest en los `Dockerfile`, los dos Compose y `test_nginx_conf.sh`, vigiladas por `scripts/ci/test_images_pinned.sh` (S3-D62).
+  - `vitest` y `stylelint` actualizados hacia `npm audit --audit-level=high` en cero (S3-D63); queda un residual sin arreglo publicado (`braces`, vía `stylelint`), registrado en `DECISIONES.md`, "S3-W0-1 · Infraestructura y dependencias".
+  - `.env.seed` local borrado (S3-D64); `*.sql.gz` en `.gitignore` (S3-D58).
+  - Decisiones del sprint en `DECISIONES.md` y correcciones de contrato en los documentos (condiciones 3, 4 y 10).
+- **Slice S3-W0-2 · Tiempos de espera de la base, 503 `busy` y helpers comunes de `core`.** `lock_timeout`, `statement_timeout` e `idle_in_transaction_session_timeout` por `Settings` (S3-D43), 503 `busy` con `Retry-After: 1` (S3-D67), `enforce_user_limit` con topes configurables (S3-D59, S3-D76), `StaffDep` y `AdminDep`, `ID_BATCH` y `chunked()`.
 
 ### Waves 3a/3b · Backend, alternadas por slice
 
@@ -87,10 +93,11 @@ No hay infraestructura nueva. Solo se verifica la línea base:
     - `tests/memberships/test_sell_service.py`;
     - `tests/memberships/test_sell_router.py`.
   - Verde:
-    - funciones puras: `compute_end_date`, `compute_status(membership, today, expiring_days)`, `covers`, `next_start_for_renewal` y `classify_open`;
+    - funciones puras: `compute_end_date`, `compute_status(snapshot, today, expiring_days, freezes)` (cuatro argumentos, `freezes` obligatorio; S3-C12), `covers`, `next_start_for_renewal` y `classify_open`;
     - **migración `0008_memberships`**, con `EXCLUDE USING gist` (Q1) y sin las columnas `frozen_*`;
-    - `sell(..., max_retroactive_days)`, `get_payment_target` y `refs_for`;
+    - `sell(..., enforce_retroactive_limit=True)` (el service lee `memberships_policy`; sin `by` ni `max_retroactive_days` desde el router; S3-C13), `get_payment_target` y `refs_for`;
     - Q4: `classes_remaining` todavía no se descuenta.
+    - `tests/architecture/test_service_import_graph.py` cambia aquí (S3-C19): desde S3-B1 bloquea todos los checkpoints.
   - Gate: `slice-gate.sh memberships <archivos de Rojo>` más el ciclo de Alembic.
 - **Slice S3-B2 · Congelar.** Historia: US-089.
   - Rojo:
@@ -115,9 +122,9 @@ No hay infraestructura nueva. Solo se verifica la línea base:
     - `register`, que hace flush antes de emitir `PaymentRegistered`;
     - `sum_not_voided`;
     - puerto `MembershipGate` (G-03);
-    - sección `payment_methods` y `GET /payments/methods`.
+    - sección `payment_methods` y `GET /payments/methods`, que responde el objeto `PaymentMethodsOut { items }` (S3-C7, D25).
   - Gate: `slice-gate.sh payments` y `slice-gate.sh settings`, cada uno con sus archivos, más el ciclo de Alembic.
-  - La prueba de router de `POST /memberships/{id}/payments` (`tests/payments/test_router_register.py`) pasa a S3-B4, porque necesita el gate real (M-1).
+  - `POST /memberships/{id}/payments` no se publica en este slice (E9, S3-D77): `register` queda como service probado con `gate_doble`; la ruta, su límite y su prueba de router (`tests/payments/test_router_register.py`) nacen en S3-B4, porque necesitan el gate real (M-1).
 - **Slice S3-B4 · Inmutabilidad, venta con primer pago y activación.** Historias: US-096, US-085 y US-086.
   - Paso previo: volcado `docker compose exec db pg_dump -U <usuario> -Fc apex > docs/scratch/sprint-03-antes-0011.dump` antes de aplicar `0011`, que trae el trigger de pagos.
   - Rojo:
@@ -134,9 +141,10 @@ No hay infraestructura nueva. Solo se verifica la línea base:
     - `can_void`;
     - memberships registra `membership_payability` en `set_membership_gate`;
     - `sell` con `first_payment`;
-    - handler de `PaymentRegistered` que activa por cobertura (RN-03).
+    - handler de `PaymentRegistered` que activa por cobertura (RN-03);
+    - se publica `POST /memberships/{id}/payments` (E9, S3-D77).
   - Gate: `slice-gate.sh payments` y `slice-gate.sh memberships`, cada uno con sus archivos, más el ciclo de Alembic.
-    - Desde aquí `test_service_import_graph.py` bloquea todos los checkpoints, porque `tests/architecture` corre en cada gate.
+    - `test_service_import_graph.py` bloquea todos los checkpoints desde S3-B1 (S3-C19); aquí gana la arista `memberships -> payments` y desde aquí también bloquea el gate real.
 - **Slice S3-B5 · Anular pago y revertir la activación.** Historias: US-097 y US-087.
   - Rojo:
     - `tests/payments/test_void_rules.py`, `test_void.py` y `test_router_void.py`;
@@ -157,7 +165,7 @@ No hay infraestructura nueva. Solo se verifica la línea base:
   - Gate: `slice-gate.sh memberships <archivos de Rojo>`.
 - **Slice S3-B7 · Listar membresías y consultas de estado.** Historias: US-091 y US-092.
   - Rojo:
-    - `tests/memberships/test_list_service.py`, incluida la parte `-m slow`;
+    - `tests/memberships/test_list_service.py`; la parte de rendimiento va en `tests/memberships/test_list_perf.py`, con el marcador `-m perf` (S3-C14, D29);
     - `tests/memberships/test_list_router.py`;
     - `tests/memberships/test_status_queries_service.py`;
     - `tests/memberships/test_summary_router.py`;
@@ -169,7 +177,7 @@ No hay infraestructura nueva. Solo se verifica la línea base:
   - Gate: `slice-gate.sh memberships <archivos de Rojo>`.
 - **Slice S3-B8 · Listas, detalle y resumen de pagos.** Historias: US-098, US-099 y US-100.
   - Rojo:
-    - `tests/payments/test_list.py`, `test_list_filters.py`, `test_list_performance.py` y `test_router_list.py`;
+    - `tests/payments/test_list.py`, `test_list_filters.py`, `test_list_perf.py` (marcador `perf`) y `test_router_list.py`;
     - `tests/payments/test_get.py` y `test_router_get.py`;
     - `tests/payments/test_month_bounds.py`, `test_summary.py` y `test_router_summary.py`.
   - Verde:
@@ -224,7 +232,7 @@ No hay infraestructura nueva. Solo se verifica la línea base:
   - Rojo:
     - `src/features/members/components`;
     - `MemberCardList.test.tsx`;
-    - `tests/e2e/members-mobile.spec.ts`.
+    - `tests/e2e/members-mobile.spec.ts` (proyecto `preview`) y `tests/e2e/stack/members-mobile.spec.ts` (proyecto `stack`; S3-D72).
   - Verde:
     - chips, incluido "Pendiente de pago" (`DESIGN-GAP`);
     - selector de plan;
@@ -233,7 +241,7 @@ No hay infraestructura nueva. Solo se verifica la línea base:
 - **Slice S3-F3 · Vender, primer pago y renovar.** Historias: US-084, US-085 y US-088 (front).
   - Rojo:
     - pruebas de venta en `src/features/memberships`;
-    - `tests/e2e/sell-with-payment.spec.ts`.
+    - `tests/e2e/sell-with-payment.spec.ts` (proyecto `preview`); la gemela `tests/e2e/stack/sell-with-payment.spec.ts` se corre en la validación V4 (S3-D78).
   - Verde: `Membresia_Vender` en `/membresias/vender?socio=:id&renovar=1`.
   - Gate: `slice-gate.sh web/memberships <archivos de Rojo>`.
 - **Slice S3-F4 · Registrar y anular pagos.** Historias: US-056, US-095 y US-097 (front).
@@ -250,7 +258,7 @@ No hay infraestructura nueva. Solo se verifica la línea base:
   - Rojo: pruebas de la lista, de congelar, de anular y del resumen.
   - Verde:
     - `Membresias`, con sus modales;
-    - `useMembershipSummary`.
+    - consume `useMembershipSummary`, que nace en S3-F4 en `web/src/shared/data/memberships.ts` (E10, S3-D78).
   - Gate: `slice-gate.sh web/memberships <archivos de Rojo>`.
 - **Slice S3-F6 · Pantalla de pagos.** Historias: US-098, US-099 y US-100 (front).
   - Rojo:
@@ -268,10 +276,10 @@ No hay infraestructura nueva. Solo se verifica la línea base:
 
 ### Validación del sprint
 
-- E2E:
-  - `sell-with-payment.spec.ts`;
-  - `members-mobile.spec.ts`.
-- Pruebas de rendimiento `-m slow` de pagos y membresías.
+- E2E (S3-D72):
+  - proyecto `stack` (`web/tests/e2e/stack/`): `sell-with-payment.spec.ts`, `payment-void.spec.ts`, `member-detail.spec.ts` y `members-mobile.spec.ts`;
+  - proyecto `preview` (`web/tests/e2e/`): `sell-with-payment.spec.ts` y `members-mobile.spec.ts`.
+- Pruebas de rendimiento `-m perf` de pagos y membresías (`tests/payments/test_list_perf.py`, `tests/memberships/test_list_perf.py`; S3-C14). No son gate (S2-D27).
 - Evidencia manual en la base de desarrollo:
   - el `EXCLUDE` rechaza un solapamiento;
   - el trigger rechaza un `UPDATE`;
@@ -316,7 +324,10 @@ No hay infraestructura nueva. Solo se verifica la línea base:
     - `GET /api/v1/payments/methods`;
     - `GET /api/v1/payments/{id}`.
   - Solo admin: `POST /api/v1/payments/{id}/void`.
+  - `GET /api/v1/payments/methods` responde un objeto `{ items }`, no un arreglo (S3-C7).
 - **Settings (solo admin):** `GET` y `PATCH /api/v1/settings/payment_methods`.
+
+"Socios con él" de `Planes.html` no entra en este sprint: queda para US-082 (Sprint 4A; D37).
 
 Además, `GET /api/v1/members` gana los filtros `membership_status` y `plan_id`. Las rutas fijas se registran antes que las que llevan parámetro.
 
@@ -338,7 +349,7 @@ Corren en cada gate de slice (A-5).
 1. [HIGH] Este sprint concentra el nudo de dependencias más denso de v0.1: el bus transaccional, el puerto G-03, el handler de cobertura y el trigger.
    - Mitigación:
      - slices pequeños, en orden estricto;
-     - `test_service_import_graph.py` corre en cada gate desde S3-B4;
+     - `test_service_import_graph.py` corre en cada gate desde S3-B1 (S3-C19);
      - al cerrar cada slice se corre la suite completa de `memberships` y `payments` con `run-gates.sh`.
 2. [HIGH] Si el trigger de `0011` queda mal escrito, puede bloquear anulaciones legítimas o dejar editar la caja.
    - Mitigación:
@@ -358,7 +369,7 @@ Corren en cada gate de slice (A-5).
 - `cd api && uv run pytest tests/architecture -q` en verde.
 - Ciclo de Alembic sobre `0011` y volcado previo guardado.
 - `docs/openapi.json` y los tipos del front regenerados.
-- E2E en verde: `sell-with-payment.spec.ts` y `members-mobile.spec.ts`.
+- E2E en verde: los cuatro del proyecto `stack` y los dos del proyecto `preview` de la validación.
 - Smoke con evidencia SQL de:
   - la activación atómica;
   - la reversión;
@@ -370,6 +381,7 @@ Corren en cada gate de slice (A-5).
   - anular y cancelar son solo para admin;
   - todo `reveal` queda auditado;
   - las listas no devuelven datos cifrados;
-  - los montos van en `int` COP.
+  - los montos van en `int` COP;
+  - cuando la base agota `lock_timeout` o `statement_timeout`, o detecta un interbloqueo, el API responde 503 `busy` con `Retry-After: 1` y nunca 500 (S3-D43, S3-D67).
 - Paso humano: push, PR con CI en verde y merge.
 - `verify-delivery`, con una venta y una anulación reales hechas por la pantalla.

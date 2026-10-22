@@ -1,5 +1,10 @@
 # US-098 · Listar y buscar pagos — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `test_payments_dependencies.py` vive en `test_service_import_graph.py` (S3-C9).
+> - La prueba de rendimiento es `tests/payments/test_list_perf.py` con el marcador `perf`, no `slow` (S3-C14).
+> - `PaymentRow.backdated` y filtro `backdated=true` (S3-D51); `registered_by_name` y `voided_by_name` son el correo parcial hasta US-110 (S3-D57).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-10-pagos/US-098-listar-y-buscar-pagos.md`
 - **Épica:** EP-10 · Registro inmutable de pagos
 - **Bounded context / módulo:** Payments (`api/src/app/modules/payments/`)
@@ -69,13 +74,13 @@ Ninguna.
 
 ### Tests de service con PostgreSQL
 - [ ] T6 · `api/tests/payments/test_list.py` con 40 pagos de octubre (3 anulados): primera página de 25 en orden descendente y `total = 40`; cada filtro; `q` por referencia en minúsculas; `q` por apellido parcial; `member_id` y `membership_id`; sin `before`/`after` ni datos cifrados en la fila; nombres resueltos (los services vecinos se usan reales, no dobles) — 3 h
-- [ ] T7 · `api/tests/payments/test_list_performance.py` (marca `slow`): 10.000 pagos de prueba, `limit=25`, menos de 500 ms medidos en el service; si falla, se agrega el índice de `registered_by` — 1 h
+- [ ] T7 · `api/tests/payments/test_list_perf.py` (marca `perf`): 10.000 pagos de prueba, `limit=25`, menos de 500 ms medidos en el service; si falla, se agrega el índice de `registered_by` — 1 h
 
 ### Tests de router
 - [ ] T8 · `api/tests/payments/test_router_list.py`: 200 admin y coach; 403 member; 401 sin token; 422 `field="limit"` para 0 y 201, `offset=-1`, `method="tarjeta"`; montos enteros en JSON — 1 h
 
 ### Tests de arquitectura
-- [ ] T9 · `api/tests/architecture/test_payments_dependencies.py`: los únicos módulos de negocio que `app.modules.payments` importa son `memberships.service`, `members.service` y `auth.service` (lista blanca), y nunca sus `models` — 0,5 h
+- [ ] T9 · `api/tests/architecture/test_service_import_graph.py`: los únicos módulos de negocio que `app.modules.payments` importa son `memberships.service`, `members.service` y `auth.service` (lista blanca), y nunca sus `models` — 0,5 h
 
 ### Front
 - [ ] T10 · `web/src/features/payments/api.ts`: `usePayments(filters)` con la clave de consulta derivada de los filtros; `web/src/features/payments/schemas.ts`: Zod de los filtros de la URL (`useSearchParams`) — 1 h
@@ -83,7 +88,7 @@ Ninguna.
 - [ ] T12 · `web/src/features/payments/pages/PaymentsPage.test.tsx`: filtros en la URL, paginación, etiqueta "Anulado", estado vacío — 1,5 h
 
 ### DevOps
-- [ ] T13 · Regenerar `docs/openapi.json` y tipos del front; agregar la marca `slow` de T7 a la configuración de pytest y al job de CI — 1 h
+- [ ] T13 · Regenerar `docs/openapi.json` y tipos del front; agregar la marca `perf` de T7 a la configuración de pytest y al job de CI — 1 h
 
 ### Seguridad
 - [ ] T14 · Revisión: rol en el endpoint, `q` parametrizado (sin interpolar en SQL), ningún campo cifrado en la respuesta, `limit` acotado — 0,5 h
@@ -132,7 +137,7 @@ Ninguna.
 - [ ] `cd api && uv run mypy src`
 - [ ] `cd api && uv run pytest tests/payments/test_list_filters.py -q`
 - [ ] `cd api && uv run pytest tests/payments/test_list.py -q`
-- [ ] `cd api && uv run pytest tests/payments/test_list_performance.py -q`
+- [ ] `cd api && uv run pytest tests/payments/test_list_perf.py -q`
 - [ ] `cd api && uv run pytest tests/payments/test_router_list.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd web && npm run lint && npx tsc --noEmit && npm test -- src/features/payments/pages/PaymentsPage.test.tsx`

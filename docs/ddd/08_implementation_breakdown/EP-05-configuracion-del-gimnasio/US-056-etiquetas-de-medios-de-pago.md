@@ -1,5 +1,10 @@
 # US-056 · Etiquetas de medios de pago — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `GET /payments/methods` responde el objeto `PaymentMethodsOut { items }`, no un arreglo (S3-C7, D25).
+> - `settings.service.payment_methods(session)` nace en S3-B3 con el estilo de `memberships_policy` (S3-C17); `label` y `hint` son `SafeText`, las etiquetas son únicas sin distinguir mayúsculas (422 `field="value.<code>.label"`) y la lectura tolera claves ajenas (S3-D55).
+> - El hook `usePaymentMethods()` vive en `web/src/shared/data/paymentMethods.ts` (S3-D65), no en `features/payments/api.ts`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-05-configuracion-del-gimnasio/US-056-etiquetas-de-medios-de-pago.md`
 - **Épica:** EP-05 · Configuración del gimnasio
 - **Bounded context / módulo:** Settings (`api/src/app/modules/settings/`); consumido por Payments (`api/src/app/modules/payments/`); front `web/src/features/system/`
@@ -131,6 +136,6 @@ La estimación supera la referencia de 2 puntos (6 a 10 h) por el endpoint de le
 - [ ] `cd api && uv run pytest tests/settings/test_payment_methods_router.py tests/payments/test_payment_methods_router.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd web && npm run lint && npx tsc --noEmit && npm test -- src/features/system src/features/payments`
-- [ ] `curl -H "Authorization: Bearer <coach>" /api/v1/payments/methods` devuelve `[{"code":"cash",…},{"code":"nequi",…},{"code":"breb",…}]`
+- [ ] `curl -H "Authorization: Bearer <coach>" /api/v1/payments/methods` devuelve `{"items":[{"code":"cash",…},{"code":"nequi",…},{"code":"breb",…}]}` (S3-C7)
 - [ ] `curl -X PATCH /api/v1/settings/payment_methods` con la clave `tarjeta` responde 422 con `"field":"value.tarjeta"`
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.settings --cov=app.modules.payments --cov-fail-under=80` y `cd web && npx vitest run --coverage src/features/system`

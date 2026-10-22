@@ -1,5 +1,10 @@
 # US-092 · Resumen y consultas de estado — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `members.service.active_ids()` no existía: nace en S3-B7 como `active_ids(session) -> frozenset[UUID]`, y `summary` la consume en lotes de 1.000 (S3-C2, S3-D60).
+> - `summary` se resuelve en SQL y se guarda en una caché de proceso de 30 s que se invalida después del commit real (S3-D53, E13).
+> - `today` sale de `current_clock().today_bogota()` (S3-C15); marcador `perf`, no `slow` (S3-C14).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-092-resumen-y-consultas-de-estado.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/`), proveedor de consultas para Members, Plans, Dashboard y Classes
@@ -35,7 +40,7 @@ Función pura `resolve_member_status`, consultas internas `status_for(member_ids
 ## Validación contra la arquitectura
 
 - Módulo dueño: `memberships`. Consultas solo sobre su esquema.
-- Llamada service a service: `members.service.active_ids() -> list[UUID]` (socios no dados de baja) para el resumen. Consumidores de este módulo: `members.service` (US-071: `status_for`, `member_ids_by_status`), `plans.service` (US-082: `count_active_by_plan`), `dashboard.service` (US-108/US-109: `summary`), `classes.service` (US-159, v0.4: `status_for`). Ninguno importa `memberships.models`.
+- Llamada service a service: `members.service.active_ids(session) -> frozenset[UUID]` (socios no dados de baja) para el resumen. Consumidores de este módulo: `members.service` (US-071: `status_for`, `member_ids_by_status`), `plans.service` (US-082: `count_active_by_plan`), `dashboard.service` (US-108/US-109: `summary`), `classes.service` (US-159, v0.4: `status_for`). Ninguno importa `memberships.models`.
 - `status_for` sin N+1: una consulta por lote de hasta 200 ids (más ids se parten en lotes de 200).
 - Rol del endpoint: `require_role("admin", "coach")`. Lectura sin auditoría. Sin datos cifrados.
 - Ruta `/memberships/summary` declarada antes de `/memberships/{membership_id}` (US-091).
@@ -71,7 +76,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T9 · `api/tests/memberships/test_status_queries_service.py`: escenario del BDD (10, 4, 4, 1, 2 con "Laura Gómez" contando como por vencer); `status_for` de 3 socios con uno sin membresías (`none`); `status_for` de 200 ids emite una sola consulta (contador de `before_cursor_execute`); `member_ids_by_status({"expiring"}, plan_id)`; `count_active_by_plan` = 3 con 2 activas, 1 pendiente y 5 vencidas; socio dado de baja (doble de `members.service.active_ids`) no entra al resumen — 3 h
 - [ ] T10 · Prueba de consistencia con datos de demo (US-111): `sum(resumen) + none == len(active_ids)` y cada contador coincide con `GET /memberships?status=...` agrupado por socio — 0.5 h
-- [ ] T11 · Prueba de rendimiento `@pytest.mark.slow`: resumen con 1.000 socios en menos de 300 ms — 0.5 h
+- [ ] T11 · Prueba de rendimiento `@pytest.mark.perf`: resumen con 1.000 socios en menos de 300 ms — 0.5 h
 
 ### Tests de router
 - [ ] T12 · `api/tests/memberships/test_summary_router.py`: 200 con los cinco enteros, 403 `member`, 401 — 1 h

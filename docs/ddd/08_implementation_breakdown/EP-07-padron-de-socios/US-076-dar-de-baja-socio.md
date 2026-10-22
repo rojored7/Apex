@@ -1,5 +1,10 @@
 # US-076 · Dar de baja socio — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Acción de permiso: `members.delete`, no `member.deactivate` (S3-C8).
+> - `deactivate` y `reactivate` toman `core/locks.lock_member` (S3-D54); el evento se llama `MemberDeactivated` (S3-D70).
+> - `test_no_physical_delete.py` reemplaza a `test_no_physical_delete_users.py` (D21).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-076-dar-de-baja-socio.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members (`api/src/app/modules/members/`)

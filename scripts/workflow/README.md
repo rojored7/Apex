@@ -16,10 +16,12 @@ Mapeo de módulos (A-01):
 - `worker`: `api/src/app/worker/`; pruebas en `api/tests/worker`.
 - `cli`: `api/src/app/cli.py`; pruebas en `api/tests/cli`.
 - `architecture`: sin código; `api/tests/architecture`. Con lista, sirve para pruebas en la raíz de `api/tests/`, como `test_ci_database.py`.
-- `<modulo>` (`auth`, `settings`, `members`, ...): `api/src/app/modules/<modulo>/`; pruebas en `api/tests/<modulo>`.
-- `web/<feature>`: `web/src/features/<feature>`. `web/shared`: `web/src/shared`. `web/core`: `web/src/core`. `web/layouts`: `web/src/layouts`. `web/app`: `web/src/App.tsx`, `web/src/routes*`, `web/src/config`, `web/src/styles`, `index.html`, `web/tests/unit`, `web/tests/lint`.
+- `<modulo>` (`auth`, `settings`, `members`, `memberships`, `payments`, ...): `api/src/app/modules/<modulo>/`; pruebas en `api/tests/<modulo>`.
+- `web/<feature>` (`web/members`, `web/memberships`, `web/payments`, ...): `web/src/features/<feature>`. `web/shared`: `web/src/shared`. `web/core`: `web/src/core`. `web/layouts`: `web/src/layouts`. `web/app`: `web/src/App.tsx`, `web/src/routes*`, `web/src/config`, `web/src/styles`, `index.html`, `web/tests/unit`, `web/tests/lint`.
 
 Nombre válido: `^(web/)?[a-z][a-z0-9_-]*(/[a-z][a-z0-9_-]*)*$`. Cada archivo de la lista debe existir bajo `api/tests/` o bajo `web/`.
+
+El mapeo es genérico, sin lista fija de módulos (S3-D61): `memberships`, `payments`, `web/memberships` y `web/payments` funcionan en cuanto existen sus directorios, que crea el Rojo del primer slice de cada uno. Antes, el gate falla con `módulo inexistente: api/src/app/modules/memberships` y no deja sello. Antes de cada línea de gate con lista se hace `ls` de cada archivo (E4 del plan del Sprint 3): un archivo ausente aborta con "archivo inexistente".
 
 En verde escribe `.git/apex/slice-gate.ok` con el módulo y una huella del árbol de trabajo (`git diff HEAD` más los archivos sin seguimiento con su `hash-object`, resumidos con `git hash-object --stdin`).
 
@@ -29,9 +31,11 @@ Crea `chore(checkpoint): <mensaje>` con `git add -A` solo si la rama no es `main
 
 ## run-gates.sh `[wave]`
 
-Suite completa: en `api/`, `ruff check .`, `ruff format --check .`, `mypy src` y `pytest --cov=app --cov-fail-under=80 -q -m "not perf"`; desde la raíz, los scripts de infraestructura `scripts/ci/test_check_key_files.sh`, `test_nginx_conf.sh` y `test_compose_config.sh` (los que existan; los dos últimos necesitan Docker y `uv`); si existe `web/package.json`, en `web/`, `npm run lint`, `npx tsc --noEmit`, `npm test -- --run --coverage` y `npm run build`. Imprime qué gate falló.
+Suite completa: en `api/`, `ruff check .`, `ruff format --check .`, `mypy src` y `pytest --cov=app --cov-fail-under=80 -q -m "not perf"`; desde la raíz, los scripts de infraestructura `scripts/ci/test_check_key_files.sh`, `test_images_pinned.sh`, `test_nginx_conf.sh` y `test_compose_config.sh` (los que existan; `test_images_pinned.sh` es grep puro, sin Docker, y vigila que toda imagen base vaya por digest con fecha, S3-D62; `test_nginx_conf.sh` y `test_compose_config.sh` necesitan Docker y `uv`); si existe `web/package.json`, en `web/`, `npm run lint`, `npx tsc --noEmit`, `npm test -- --run --coverage` y `npm run build`. Imprime qué gate falló.
 
 Política `perf` (S2-D27, revisión de Fase 4 del Sprint 2): las pruebas marcadas `perf` miden con reloj y no son gate. Se corren a mano con `cd api && uv run pytest -m perf -q` (con `TEST_DATABASE_URL`); en la CI van en un paso aparte del job `api` que no bloquea.
+
+Auditoría de dependencias (N-5, S3-D63): el gate de la CI es el de producción, `npm audit --omit=dev --audit-level=high` en el job `web` (y `pip-audit` en el job `api`). Desde el Sprint 3 el job `web` corre también `npm audit --audit-level=high` con las dependencias de desarrollo, en un paso informativo con `continue-on-error: true`: no bloquea, pero un hallazgo nuevo se ve en cada PR. `run-gates.sh` no lo corre (necesita red).
 
 Cobertura (M-6): el umbral es global sobre `app`. Hasta el Sprint 3, `[tool.coverage.run] omit` en `api/pyproject.toml` excluye `src/app/cli.py` y `src/app/worker/*`; esa exclusión se quita en el Sprint 4A (US-113), cuando entran a la cobertura. No existe una opción `--cov-omit` en pytest-cov: la exclusión vive en la configuración de coverage.
 

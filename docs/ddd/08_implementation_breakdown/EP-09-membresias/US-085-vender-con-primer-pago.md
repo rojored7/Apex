@@ -1,5 +1,11 @@
 # US-085 · Vender con primer pago — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `MembershipPayability` lleva `agreed_price_cop` (S3-C21, S3-D41).
+> - `test_payments_does_not_import_memberships.py` no existe como archivo propio: vive en `test_service_import_graph.py` (S3-C9).
+> - El `field` de un 422 del primer pago va con `prefix_field("first_payment", ...)` (`memberships/rules.py`) y `reraise_with_prefix` (`memberships/sell.py`) (S3-D75, E5).
+> - La ruta `POST /memberships/{membership_id}/payments` nace en S3-B4 (S3-D77, E9).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-085-vender-con-primer-pago.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/`) con llamada a Payments (`api/src/app/modules/payments/service.py`) en la misma transacción
@@ -46,10 +52,10 @@ Brecha: ciclo de imports `memberships.service` ↔ `payments.service` sin soluci
 
 - Qué falta: un patrón aprobado para que Payments valide una membresía sin importar `memberships`. Hoy, con imports de módulo en ambos sentidos, Python carga uno de los dos parcialmente y `subscribe(PaymentRegistered, ...)` o `from ... import` falla según el orden de arranque; además US-086 (criterio 8) exige que `payments` no importe nada de `memberships`.
 - Propuesta (inyección del validador, elegida): Payments define el puerto que necesita y Memberships lo registra al importarse, igual que se registran los handlers de eventos (US-014).
-  - En `payments/service.py`: `@dataclass(frozen=True, slots=True) class MembershipPayability: exists: bool; cancelled: bool; member_id: UUID | None` (el `member_id` lo usa US-095 para copiarlo en `payments.member_id`); `MembershipGate = Callable[[AsyncSession, UUID], Awaitable[MembershipPayability]]`; `set_membership_gate(gate: MembershipGate) -> None`; `register` llama al gate y responde 404 si `exists = False` y 409 `membership_cancelled` si `cancelled = True`; si el gate no está registrado lanza un error de configuración (falla cerrado, nunca registra un pago sin validar).
+  - En `payments/service.py`: `@dataclass(frozen=True, slots=True) class MembershipPayability: exists: bool; cancelled: bool; member_id: UUID | None; agreed_price_cop: int | None` (S3-C21; el `member_id` lo usa US-095 para copiarlo en `payments.member_id`); `MembershipGate = Callable[[AsyncSession, UUID], Awaitable[MembershipPayability]]`; `set_membership_gate(gate: MembershipGate) -> None`; `register` llama al gate y responde 404 si `exists = False` y 409 `membership_cancelled` si `cancelled = True`; si el gate no está registrado lanza un error de configuración (falla cerrado, nunca registra un pago sin validar).
   - En `memberships/service.py`, al importar: `payments_service.set_membership_gate(membership_payability)`; `membership_payability(session, id)` lee la fila propia con `SELECT ... FOR UPDATE` (serializa pagos y anulación concurrentes sobre la misma membresía).
   - Grafo resultante: `memberships.service` importa `payments.service` (arriba del archivo, sin imports perezosos); `payments` no importa nada de `memberships`. Sin ciclo.
-  - Pruebas de arquitectura: `api/tests/architecture/test_payments_does_not_import_memberships.py` (AST: ningún archivo de `app/modules/payments/` importa `app.modules.memberships`) y `api/tests/architecture/test_service_import_graph.py` (el grafo de imports de nivel superior entre `app.modules.*.service` es acíclico). Una prueba de arranque verifica que tras `create_app()` (y en `worker/main.py` y `cli.py`) el gate está registrado.
+  - Pruebas de arquitectura: `api/tests/architecture/test_service_import_graph.py` (AST: ningún archivo de `app/modules/payments/` importa `app.modules.memberships`) y `api/tests/architecture/test_service_import_graph.py` (el grafo de imports de nivel superior entre `app.modules.*.service` es acíclico). Una prueba de arranque verifica que tras `create_app()` (y en `worker/main.py` y `cli.py`) el gate está registrado.
   - Documentación: sección "Dependencia inversa entre services por puerto inyectado" en `docs/adr/ADR-001-monolito-modular.md` (US-119), como excepción justificada a la regla 5 de módulos (la interfaz existe para romper el ciclo y para aislar las pruebas de Payments con un doble).
   - Impacto en otra épica: US-095 cambia "pide a `memberships.service.get(membership_id)`" por "usa el `MembershipGate` registrado"; los códigos de respuesta (404, 409 `membership_cancelled`) no cambian.
 - Alternativa descartada 1 (import perezoso en `payments.service.register`): deja a `payments` importando `memberships`, contra el criterio 8 de US-086, y esconde la dependencia a mypy y al análisis estático.
@@ -85,7 +91,7 @@ Brecha: ciclo de imports `memberships.service` ↔ `payments.service` sin soluci
 - [ ] T7 · `api/tests/memberships/test_sell_router.py` (casos nuevos): 201 con `first_payment_id`; 422 con `field = "first_payment.amount_cop"` (decimal, cero) y `"first_payment.method"`; 422 `first_payment.paid_at` en el futuro; 403 `member`; 401 — 1.5 h
 
 ### Tests de arquitectura
-- [ ] T8 · `api/tests/architecture/test_payments_does_not_import_memberships.py`, `api/tests/architecture/test_service_import_graph.py` y `api/tests/architecture/test_gates_registered.py` (tras `create_app()` el gate está registrado; `payments.service.register` sin gate falla cerrado) — 2 h
+- [ ] T8 · `api/tests/architecture/test_service_import_graph.py`, `api/tests/architecture/test_service_import_graph.py` y `api/tests/architecture/test_gates_registered.py` (tras `create_app()` el gate está registrado; `payments.service.register` sin gate falla cerrado) — 2 h
 
 ### Front
 - [ ] T9 · `web/src/features/memberships/components/FirstPaymentSection.tsx`: sección plegable con monto precargado con el precio pactado, medio con las etiquetas de US-056, referencia visible para Nequi y Bre-B, fecha y hora del pago (por defecto ahora, enviada en UTC); botón "Vender y cobrar"; errores por `error.field` con prefijo `first_payment.`; Zod `firstPaymentSchema` en `schemas.ts` (entero > 0) — 3 h
@@ -120,7 +126,7 @@ Brecha: ciclo de imports `memberships.service` ↔ `payments.service` sin soluci
 - `POST /api/v1/members/{id}/memberships` — roles: admin, coach
 
 ## Riesgos
-- El ciclo de imports se resuelve distinto en EP-10: si US-095 importa `memberships.service`, el arranque falla según el orden de imports — mitigación: `test_service_import_graph.py` y `test_payments_does_not_import_memberships.py` rompen CI antes de llegar a producción; coordinar con el desglose de US-095.
+- El ciclo de imports se resuelve distinto en EP-10: si US-095 importa `memberships.service`, el arranque falla según el orden de imports — mitigación: `test_service_import_graph.py` y `test_service_import_graph.py` rompen CI antes de llegar a producción; coordinar con el desglose de US-095.
 - El estado de la respuesta depende de que el handler de US-086 haya actualizado la misma instancia de la sesión — mitigación: el handler usa `session.get(Membership, id, with_for_update=True)`, que devuelve la instancia del mapa de identidad; prueba explícita de que la respuesta trae `active`.
 - Un `paid_at` del front sin zona horaria — mitigación: `AwareDatetime` rechaza fechas ingenuas con 422.
 - Front condicionado a D1.

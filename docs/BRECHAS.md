@@ -233,7 +233,7 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 | Kit · `shared/ui/Modal.tsx` | `DESIGN.md` solo nombra `ConfirmModal` | Sin sprint en el plan |
 | Socios · `MemberFormFields.tsx` | Sin foto, firma ni documento firmado; sin "Acceso al portal", unidad de cargas ni observaciones de salud; nombre en dos campos; sexo y teléfono opcionales | Foto, firma y autorización: Sprint 6 / US-148 y US-149. Acceso al portal: Sprint 10 / EP-25. Unidad de cargas: sin historia verificada (atleta, EP-24). Observaciones de salud: sin historia en el plan. Nombre y opcionales: S2-D16 y N-19 |
 | Socios · `MemberFormPage.tsx` | Sin "Guardar y vender membresía"; tras guardar vuelve a la lista con aviso | Venta: Sprint 3 / S3-B1 (US-083 y US-084). El aviso es decisión tomada |
-| Planes · `PlansPage.tsx` | Sin "Socios con él"; sin "Editar" en la fila; total sin partir en activos e inactivos; duración y clases en columnas propias; filtro "Estado" en vez de "Mostrar" (que ya nombra el tamaño de página) | "Socios con él": Sprint 3. "Editar": Sprint 4A. Lo demás, decisión tomada en S2-F7 |
+| Planes · `PlansPage.tsx` | Sin "Socios con él"; sin "Editar" en la fila; total sin partir en activos e inactivos; duración y clases en columnas propias; filtro "Estado" en vez de "Mostrar" (que ya nombra el tamaño de página) | "Socios con él": Sprint 4A / US-082 (corregido en S3-W0-1, D37: necesita `plans -> memberships`). "Editar": Sprint 4A. Lo demás, decisión tomada en S2-F7 |
 | Planes · `PlanForm.tsx` | Sin descripción ni casilla "Activo": `PlanCreate` no los tiene; el panel solo crea | Edición y activación: Sprint 4A. Descripción: sin historia en el plan |
 | Planes · `PlanDetailPanel.tsx` | `Planes.html` no dibuja un detalle de solo lectura | Edición: Sprint 4A. El detalle de solo lectura es decisión tomada en S2-F7 |
 | Socios · `MembersListPage.tsx` | Sin teléfono, plan, vence, asistencia ni columna de acción; sin documento enmascarado (N-01); sin chips ni conteos por estado de membresía; sin filtros de plan y asistencia; sin "Exportar" | Membresía, plan, filtros, chips y conteos: Sprint 3 / US-071. Asistencia: Sprint 7 / EP-21. Exportar: Sprint 5 / EP-16. Documento enmascarado: N-01 (la lista no devuelve datos cifrados) |
@@ -241,3 +241,39 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 ### Contradicción abierta
 
 - `docs/ddd/09_sprint_plan/SPRINT-01.md` (refinamientos de US-110) planea `display_name` en `0004`. El código no lo tiene, `0004_auth` tampoco, y S2-D17 lo deja para US-110 del Sprint 4A. No se cambió ninguno de los dos documentos; hay que decidir cuál manda.
+
+## 10. Sprint 3: brechas previstas y diferencias con el diseño
+
+Fuente: `docs/ddd/blueprints/sprint-03-plan.md` (D37, S3-D41, S3-D50) y `docs/ddd/DECISIONES.md`, "Sprint 3". Se escribe en S3-W0-1, antes de construir las pantallas; los slices del front (S3-F1 a S3-F7) anotan aquí lo que cierren o lo que aparezca y el cierre del sprint lo confirma contra los `// DESIGN-GAP:` reales de `web/src/`.
+
+### Diferencias deliberadas con el diseño (D37; todas llevan `// DESIGN-GAP:` en el código)
+
+- **Chip "Pendiente de pago" (Q3, D10):** el estado `pending_payment` se guarda y se muestra; `Socios_Lista.html`, `Membresias.html` y la ficha no lo dibujan.
+- **"Precio pactado" de solo lectura (D16):** `SellMembershipIn` no lleva `agreed_price_cop`; el coach no fija el precio.
+- **Fin de vigencia por N-23 (D16):** el fin es inclusivo (`start_date + duration_days`): un plan de 30 días da acceso 31. El front dice "hasta el <fecha>", nunca "30 días", aunque `Membresia_Vender.html` dibuje otra cuenta.
+- **Congelar sin "Motivo" (D14):** `FreezeIn` no tiene `reason` y la tabla no tiene columna; el modal del diseño lo pinta.
+- **Referencia opcional en los tres medios (N-28, D17):** el asterisco de Nequi y Bre-B del diseño se ignora.
+- **Filtro de estado de `Pagos` en "Todos":** para que un pago recién anulado siga visible.
+- **Sin "Exportar" ni recibo PDF:** llegan con v0.2 (EP-16, sección 2 de este archivo).
+- **Conteos de los chips de socios:** salen de `GET /memberships/summary`; el de "Sin membresía" es el total menos la suma de los cinco estados.
+- **Tarjeta de la membresía futura en la ficha:** el diseño solo dibuja la vigente.
+- **Medios de pago fijos:** la pestaña "Medios de pago" tiene tres filas fijas (Efectivo, Nequi, Bre-B) sin casillas de habilitar; agregar un medio exige una actualización (D24).
+- **Ficha sin autorización de datos registrada (Q16):** aviso cuando `data_consent_at` es nulo; el diseño no lo dibuja.
+
+### "Socios con él" de `Planes.html`
+
+No entra en el Sprint 3: necesita la arista `plans -> memberships` y `count_active_by_plan` visible en `PlanOut`. Lo cierra US-082 (Sprint 4A). La fila de `PlansPage.tsx` de la sección 9 quedó corregida.
+
+### Confirmación de sobrepago y de duplicado (S3-D41, S3-C22)
+
+El diseño muestra la advertencia de Q5 como un aviso del front. Desde el Sprint 3 la confirmación vive en el servidor: sin `confirm_overpayment` el API responde 409 `payment_exceeds_balance` (`field="amount_cop"`), y sin `confirm_duplicate` responde 409 `payment_possible_duplicate` cuando hay un pago igual (misma membresía, quien registra, valor, medio y referencia) no anulado en los últimos 120 s. La pantalla muestra el `ConfirmModal` y reenvía con la confirmación. `confirm_*` no se guardan. En la venta con primer pago solo aplica el sobrepago, contra el precio del plan.
+
+### Avisos de datos personales en textos libres (S3-D50)
+
+Bajo los campos "Referencia" (registrar pago, primer pago de la venta) y "Motivo" (anular pago, anular membresía) el front muestra "No escribas teléfonos, documentos ni datos de salud". El diseño no lo dibuja. La referencia además solo admite el patrón de comprobante `^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,63}$`. Residual registrado: la auditoría inmutable conserva el texto escrito; la supresión llega con US-119.
+
+### Rutas y contratos que cambian respecto del diseño o de los desgloses
+
+- `GET /api/v1/payments/methods` responde `{ items }`, no un arreglo (S3-C7).
+- Las pestañas Membresías y Pagos de la ficha son rutas hijas reales: `/socios/:id/membresias` y `/socios/:id/pagos` (S3-D65, E3, E14).
+- El panel de registrar pago se abre desde cualquier pantalla con `?pago=<membership_id>` o `?pago=nuevo&socio=<member_id>` (S3-D65).

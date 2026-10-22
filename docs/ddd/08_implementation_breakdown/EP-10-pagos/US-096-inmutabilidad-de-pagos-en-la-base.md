@@ -1,5 +1,9 @@
 # US-096 · Inmutabilidad de pagos en la base — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Sin `CHECK voided_at >= created_at` (S3-D68): en pruebas `created_at` sale del servidor y `voided_at` del `FrozenClock`. Sí entran `SECURITY INVOKER` y `SET search_path = pg_catalog` en las funciones de trigger.
+> - Los triggers van con `ALTER TABLE ... ENABLE ALWAYS TRIGGER` (S3-D49); el error lleva `CONSTRAINT = payments_immutable` y se traduce a 409 `payment_already_voided` (D13). La limpieza de pruebas cierra con `ENABLE ALWAYS TRIGGER` por nombre (E1).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-10-pagos/US-096-inmutabilidad-de-pagos-en-la-base.md`
 - **Épica:** EP-10 · Registro inmutable de pagos
 - **Bounded context / módulo:** Payments (`api/src/app/modules/payments/`, migración en `api/migrations/versions/`)

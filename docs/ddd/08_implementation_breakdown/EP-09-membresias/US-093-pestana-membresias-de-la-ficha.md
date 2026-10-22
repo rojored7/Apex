@@ -1,5 +1,9 @@
 # US-093 · Pestaña Membresías de la ficha — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `members.service.ref(member_id)` → `get_ref(session, member_id) -> MemberRef` con `is_deleted` (S3-C1); `PageParams` y `set[UUID]` (S3-C6).
+> - La pestaña es una ruta hija real `/socios/:id/membresias` (S3-D65, E3).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-093-pestana-membresias-de-la-ficha.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/router.py`, ruta anidada bajo `/members/{id}`)
@@ -32,7 +36,7 @@ Endpoint `GET /api/v1/members/{id}/memberships` (admin y coach, paginado, orden 
 ## Validación contra la arquitectura
 
 - Ruta en `memberships/router.py` con prefijo `/members/{member_id}`: `members` no importa nada de `memberships` para esta pestaña (la ficha la arma el front con dos llamadas).
-- Existencia del socio por `members.service.ref(member_id)` (incluye dados de baja): 404 solo si no existe.
+- Existencia del socio por `members.service.get_ref(session, member_id)` (incluye dados de baja): 404 solo si no existe.
 - Paginación común (`limit` 1 a 200, 25 por defecto; `{ items, total, limit, offset }`).
 - Rol `require_role("admin", "coach")`. Lectura sin auditoría. Sin datos cifrados en la respuesta.
 

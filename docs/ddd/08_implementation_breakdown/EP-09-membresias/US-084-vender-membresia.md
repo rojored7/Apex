@@ -1,5 +1,12 @@
 # US-084 · Vender membresía — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `members.service.ref(member_id) -> MemberRef | None` no existe: es `get_ref(session, member_id) -> MemberRef`, que lanza `MemberNotFound` y expone `is_deleted` (S3-C1).
+> - `MemberNotFound` no se duplica en `memberships/exceptions.py`: se importa de `members.exceptions` (S3-C10).
+> - `sell(..., enforce_retroactive_limit: bool = True)` en lugar de `max_retroactive_days`; sin `by` ni `clock`: el actor sale de `get_actor()` y la fecha de `current_clock()`; el service lee `memberships_policy` (S3-C13, D3).
+> - `Depends(get_session)`, `Depends(get_clock)` y `current_user.id` → `SessionDep`, `current_clock()` y `principal.user_id` (S3-C5).
+> - `start_date <= hoy + 366` (422 `start_date_too_far`, salvo `renew`; S3-D47); cubeta por usuario `memberships-write` (S3-D42).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-084-vender-membresia.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/`)
@@ -36,7 +43,7 @@ Crear la tabla `memberships.memberships` (migración `0008_memberships`), su mod
 ## Validación contra la arquitectura
 
 - Módulo dueño: `memberships`, esquema `memberships`. Sin FK hacia `members` ni `plans` (fronteras de contexto): la integridad la valida el service.
-- Llamadas service a service (solo lectura, Customer/Supplier y Conformist del mapa de contextos 2): `members.service.ref(member_id)` (existencia, baja y `status`; sin campos cifrados), `plans.service.get(plan_id)` (precio, tipo, duración, clases, activo) y `settings.service.memberships_policy()` (US-058). Nunca se importan sus `models` (US-022 lo verifica). Los services devuelven DTOs inmutables, no instancias ORM.
+- Llamadas service a service (solo lectura, Customer/Supplier y Conformist del mapa de contextos 2): `members.service.get_ref(session, member_id)` (existencia, baja y `status`; sin campos cifrados), `plans.service.get(plan_id)` (precio, tipo, duración, clases, activo) y `settings.service.memberships_policy()` (US-058). Nunca se importan sus `models` (US-022 lo verifica). Los services devuelven DTOs inmutables, no instancias ORM.
 - No es un encadenamiento de tres services de escritura: las tres llamadas son lecturas de validación; el único módulo que escribe es `memberships` (en US-085 se suma `payments`, ver su desglose).
 - Evento `MembershipSold` definido como dataclass congelada pública en `memberships/service.py` (el emisor lo publica; los suscriptores lo importan del service, nunca de `models`) y emitido con `core.events.emit(event, session)` (US-014).
 - Sin bus de criptografía: la membresía no tiene campos cifrados. Lint `banned-api` no aplica. El bloqueo por socio usa `pg_advisory_xact_lock(hashtextextended(member_id::text, 0))`, que es SQL de PostgreSQL y no importa `hashlib`.
@@ -66,7 +73,7 @@ Ninguna.
 - [ ] T7 · `memberships/schemas.py`: `SellMembershipIn(plan_id: UUID, start_date: date | None = None, renew: bool = False, first_payment: FirstPaymentIn | None = None)` con `model_config = ConfigDict(extra="forbid")` (`FirstPaymentIn` lo completa US-085); `MembershipOut` (`id`, `member_id`, `plan_id`, `plan_name`, `agreed_price_cop: int`, `start_date`, `end_date`, `classes_total`, `classes_remaining`, `status`, `freezes: list[FreezeOut] = []`, `cancel_reason`, `cancelled_by`, `cancelled_at`, `created_at`) y `SellMembershipOut(MembershipOut)` con `first_payment_id: UUID | None` — 1.5 h
 
 ### Router
-- [ ] T8 · `memberships/router.py`: `POST /api/v1/members/{member_id}/memberships` con `Depends(require_role("admin", "coach"))`, `Depends(get_session)`, `Depends(get_clock)`; llama a `service.sell(..., by=current_user.id)`; responde 201 `SellMembershipOut`; los errores de dominio salen por el envelope de US-017 (401, 403, 404, 409, 422); registrar el router en `main.py` — 1.5 h
+- [ ] T8 · `memberships/router.py`: `POST /api/v1/members/{member_id}/memberships` con `Depends(require_role("admin", "coach"))`, `SessionDep`, `current_clock()`; llama a `service.sell(..., by=current_user.id)`; responde 201 `SellMembershipOut`; los errores de dominio salen por el envelope de US-017 (401, 403, 404, 409, 422); registrar el router en `main.py` — 1.5 h
 
 ### Tests unitarios puros
 - [ ] T9 · `api/tests/memberships/test_rules.py`: `classify_open` (vigente activa, vigente congelada, futura pendiente, futura activa con `start_date > hoy`, solo vencidas o canceladas → ninguna) y `find_overlap` (adyacentes no solapan, mismo día de fin e inicio sí solapan, canceladas ignoradas por el llamador) — 1 h
@@ -111,7 +118,7 @@ Ninguna.
 - US-034 · `require_role`.
 - US-013 · `Clock` y `today_bogota()`.
 - US-058 · `settings.service.memberships_policy()` (`max_retroactive_days`).
-- US-069 · Registrar socio: debe exponer `members.service.ref(member_id) -> MemberRef | None` (`id`, `first_name`, `last_name`, `status`, `deleted_at`; sin campos cifrados). No está nombrado en EP-07; se agrega a su contrato.
+- US-069 · Registrar socio: debe exponer `members.service.get_ref(session, member_id) -> MemberRef | None` (`id`, `first_name`, `last_name`, `status`, `deleted_at`; sin campos cifrados). No está nombrado en EP-07; se agrega a su contrato.
 - US-078 / US-079 · Planes: `plans.service.get(plan_id)` con `price_cop`, `kind`, `duration_days`, `class_count`, `is_active`, `deleted_at`.
 - US-063 / US-064 · Componentes `Field`, `Button`, `PageHeader` del kit (front).
 

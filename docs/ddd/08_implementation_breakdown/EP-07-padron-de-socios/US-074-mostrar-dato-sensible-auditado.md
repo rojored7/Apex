@@ -1,5 +1,13 @@
 # US-074 · Mostrar dato sensible auditado — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El valor se descifra con `core.crypto.types.reveal(socio, campo, "reveal")` (no existe `bus.op_context`, S3-C3).
+> - La auditoría es `core.audit.record(action="reveal", table_name="members.members", after={"field": campo, "ip": client_ip}, subject_member_id=id)` en la misma transacción (S3-C4, D19).
+> - `SensitiveFieldRevealed` no existe ni se crea (S3-C16): US-107, criterios 1 y 2, se cumplen con `audit.record` directo.
+> - El router no hace `commit()` explícito: `SessionDep` confirma antes de enviar la respuesta (S3-C11).
+> - Límites por usuario `members-reveal` 30/min, `members-reveal-hour` 200/h y `members-reveal-day` 600/día (S3-D44), configurables por `Settings` (S3-D76).
+> - `test_service_import_cycles.py` → `test_service_import_graph.py` (S3-C9).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-074-mostrar-dato-sensible-auditado.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members, con Crypto (bus) y Audit (`api/src/app/modules/members/`)
@@ -52,14 +60,14 @@ Ninguna.
 - No aplica.
 
 ### Service
-- [ ] T1 · Caso de uso `async def reveal(session, member_id: UUID, field: SensitiveField, by: Actor) -> RevealedValue`: carga el socio (incluye dados de baja; `MemberNotFound` si no existe); si el blob es `NULL`, `value = None` sin descifrar; si no, descifra solo ese campo dentro de `bus.op_context(user_id=by.id, record_id=member_id, purpose="reveal")` (el propósito se registra cuando EP-02 integre la columna de la brecha de US-073); escribe `audit.record(session, action="reveal", table_name="members", record_id=member_id, before=None, after={"field": field}, user_id=by.id)`; emite `SensitiveFieldRevealed`; hace `flush` — 3 h
+- [ ] T1 · Caso de uso `async def reveal(session, member_id: UUID, field: SensitiveField, by: Actor) -> RevealedValue`: carga el socio (incluye dados de baja; `MemberNotFound` si no existe); si el blob es `NULL`, `value = None` sin descifrar; si no, descifra solo ese campo dentro de `bus.op_context(user_id=by.id, record_id=member_id, purpose="reveal")` (el propósito se registra cuando EP-02 integre la columna de la brecha de US-073); escribe `audit.record(session, action="reveal", table_name="members.members", record_id=member_id, before=None, after={"field": field}, user_id=by.id)`; emite `SensitiveFieldRevealed`; hace `flush` — 3 h
 - [ ] T2 · Evento `SensitiveFieldRevealed(DomainEvent)` con `member_id`, `field`, `user_id` y `purpose: str | None = None` (US-077 lo usa con `notify` y `auth_link`), declarado en `members/service.py` — 0.5 h
 
 ### Schemas
 - [ ] T3 · `RevealIn { field: Literal["document","phone","email","birth_date","emergency_contact"] }` con `extra="forbid"`; `RevealOut { field, value: str | EmergencyContactOut | None }` (`birth_date` como `AAAA-MM-DD`) — 0.5 h
 
 ### Router
-- [ ] T4 · `POST /api/v1/members/{id}/reveal` con `Depends(require_role("admin", "coach"))`; llama al service, hace `await session.commit()` explícito y solo entonces arma la respuesta con `Cache-Control: no-store`; códigos 200, 401, 403, 404, 422, 500 — 1 h
+- [ ] T4 · `POST /api/v1/members/{id}/reveal` con `Depends(require_role("admin", "coach"))`; llama al service, no hace `commit()` explícito (`SessionDep` confirma antes de enviar) y arma la respuesta con `Cache-Control: no-store`; códigos 200, 401, 403, 404, 422, 500 — 1 h
 
 ### Tests unitarios puros
 - No aplica (sin funciones puras nuevas; el enum lo valida Pydantic y se prueba en T6).
@@ -71,7 +79,7 @@ Ninguna.
 - [ ] T6 · `api/tests/members/test_router_reveal.py`: 200 admin y coach con `{ field, value }`; 422 con `field = "field"` para `"first_name"`; 403 `member` sin fila `reveal`; 401 sin token; 404 inexistente; cabecera `Cache-Control: no-store`; falla simulada del `commit` responde 500 y el cuerpo no contiene el valor; `caplog` sin el valor — 2.5 h
 
 ### Tests de arquitectura
-- No aplica (siguen en verde `test_every_route_has_role.py`, `test_banned_imports.py` y `test_service_import_cycles.py`).
+- No aplica (siguen en verde `test_every_route_has_role.py`, `test_banned_imports.py` y `test_service_import_graph.py`).
 
 ### Front
 - [ ] T7 · `web/src/features/members/api.ts`: `useRevealField(memberId)` como `useMutation` sin escribir en la caché de consultas (`gcTime: 0`, sin `setQueryData`); conexión de `MaskedValue.onReveal` en `MemberDetailPage`; el valor vive en estado local del componente y se limpia al ocultar, al desmontar y a los 60 segundos — 2.5 h

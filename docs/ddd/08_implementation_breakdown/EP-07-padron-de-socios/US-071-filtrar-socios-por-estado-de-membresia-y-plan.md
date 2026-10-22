@@ -1,5 +1,9 @@
 # US-071 · Filtrar socios por estado de membresía y plan — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `test_service_import_cycles.py` no existe: el grafo vive en `tests/architecture/test_service_import_graph.py` (S3-C9, D2), que cambia en S3-B1.
+> - Los filtros `membership_status` y `plan_id` usan conjuntos de ids por import perezoso con `any_`/`all_`, nunca `IN` expandido (D22).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-071-filtrar-socios-por-estado-de-membresia-y-plan.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members, Conformist de Memberships (`api/src/app/modules/members/`)
@@ -74,7 +78,7 @@ La columna `plan_name` de cada fila obliga a que una lectura de `members` compon
 - [ ] T8 · `api/tests/members/test_router_list_filters.py`: 422 de `membership_status = "moroso"` y de `plan_id` no UUID; 200 de coach con `status=deleted` (N-20); `plan_name` presente en cada fila — 1 h
 
 ### Tests de arquitectura
-- [ ] T9 · `api/tests/architecture/test_service_import_cycles.py`: analiza con `ast` cada `app/modules/*/service.py`, arma el grafo de imports de nivel de módulo hacia `app.modules.<x>.service` y falla si tiene ciclos; lista los imports dentro de funciones y falla si alguno no está en `ALLOWED_LAZY = {("members", "memberships")}` (US-082 agrega `("plans", "memberships")`) o si apunta a algo distinto de `service`; además importa cada `service.py` en un subproceso limpio para detectar `ImportError` por ciclo. `test_no_cross_models.py` (US-022) sigue en verde — 1.5 h
+- [ ] T9 · `api/tests/architecture/test_service_import_graph.py`: analiza con `ast` cada `app/modules/*/service.py`, arma el grafo de imports de nivel de módulo hacia `app.modules.<x>.service` y falla si tiene ciclos; lista los imports dentro de funciones y falla si alguno no está en `ALLOWED_LAZY = {("members", "memberships")}` (US-082 agrega `("plans", "memberships")`) o si apunta a algo distinto de `service`; además importa cada `service.py` en un subproceso limpio para detectar `ImportError` por ciclo. `test_no_cross_models.py` (US-022) sigue en verde — 1.5 h
 
 ### Front
 - [ ] T10 · `web/src/features/members/components/MemberStatusChips.tsx` (`Chips` del kit con `aria-pressed`, siete chips con texto; "Dados de baja" para admin y coach) y selector de plan con `usePlans({ active: true })` de `features/plans/api.ts`; columna Membresía con `StatusTag` (texto más color, "Pendiente de pago" con el token `--warning`); chip y plan en la URL; cambiarlos reinicia `offset`; `// DESIGN-GAP:` chip "Pendiente de pago" (Q3) — 2.5 h

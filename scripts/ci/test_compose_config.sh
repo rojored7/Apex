@@ -10,6 +10,7 @@
 # S2-W0-1 (M-1, M-8): red por defecto con subred fija, `web` con IP fija fuera del rango
 # dinámico, TRUSTED_PROXIES de .env.example igual a esa IP /32, `.env.seed` solo en el
 # env_file de `tools` (required: false, Compose >= 2.24) y ADMIN_* fuera de api, worker y db.
+# S3-W0-1 (S3-D62): postgres:16 por el mismo digest en compose.yml y compose.dev.yml.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -30,6 +31,7 @@ PROD="$PROD" DEV="$DEV" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COM
 import ipaddress
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -134,6 +136,15 @@ check(
     "compose.e2e.yml monta infra/nginx/e2e/auth-zone.conf en solo lectura sobre la zona de la imagen",
 )
 check({"api", "web", "db"} <= set(e2e), "compose.e2e.yml se apila sobre compose.yml (api, web y db)")
+# S3-W0-1 (S3-D62): postgres:16 fijado por el mismo digest en los dos compose.
+img_db = str(prod.get("db", {}).get("image", ""))
+img_db_test = str(dev.get("db_test", {}).get("image", ""))
+check(
+    re.fullmatch(r"postgres:16@sha256:[0-9a-f]{64}", img_db) is not None
+    and re.fullmatch(r"postgres:16@sha256:[0-9a-f]{64}", img_db_test) is not None
+    and img_db == img_db_test,
+    f"postgres fijado por digest en los dos compose ({img_db or 'sin db'} / {img_db_test or 'sin db_test'})",
+)
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)
 EOF

@@ -2,7 +2,9 @@
 # compiladores, sin grupo dev y con usuario apex (UID 10001). La misma imagen sirve
 # para api, worker y tools con comandos distintos. Nunca contiene .env ni llaves.
 
-FROM python:3.12-slim AS builder
+# python:3.12-slim por digest (2026-10-22, S3-D62); renovar (docs/RUNBOOK.md §7):
+# docker buildx imagetools inspect python:3.12-slim --format '{{json .Manifest.Digest}}'
+FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2 AS builder
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
@@ -19,7 +21,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 RUN uv sync --frozen --no-dev
 
-FROM python:3.12-slim AS runtime
+# Mismo digest que builder (2026-10-22); renovar:
+# docker buildx imagetools inspect python:3.12-slim --format '{{json .Manifest.Digest}}'
+FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2 AS runtime
 # SHA corto de git que publica /health como `version` (US-020).
 ARG GIT_SHA=dev
 ENV APP_VERSION=$GIT_SHA

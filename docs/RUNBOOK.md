@@ -17,6 +17,10 @@ En producción se omite `-f infra/compose.dev.yml`.
 4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado
 5. [Planes](#5-planes-s2-b9)
 6. [Rollback por migración](#6-rollback-por-migración)
+7. [Imágenes base por digest y su renovación](#7-imágenes-base-por-digest-y-su-renovación-s3-d62)
+8. [Primer admin sin `.env.seed`](#8-primer-admin-sin-envseed-s3-d64)
+9. [Tiempos de espera de la base y 503 `busy`](#9-tiempos-de-espera-de-la-base-y-503-busy-s3-w0-2)
+10. [Membresías y pagos](#10-membresías-y-pagos-sprint-3)
 
 ## 1. Sesión y límites (S2-B2)
 
@@ -167,7 +171,8 @@ al log (S2-W0-1). El costo es que `docker logs apex-web-1` **no** muestra
 `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (solo lo lee el servicio `tools`):
 `$DC run --rm tools seed`. El admin sembrado debe cambiar la contraseña al entrar
 (`must_change_password`); `--no-force-change` solo se acepta con `ENV=dev`. Una segunda corrida
-dice "omitido". Borrar `.env.seed` después del primer seed. Tras cambiar `cli.py` hay que
+dice "omitido". Borrar `.env.seed` después del primer seed; la contraseña queda en el gestor de
+contraseñas del operador y, si se pierde, se recupera sin el archivo (sección 8). Tras cambiar `cli.py` hay que
 reconstruir la imagen (`$DC build api`) antes de usar `tools`.
 
 ### Enlaces de activación y restablecimiento (S2-B4)
@@ -316,3 +321,63 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **`0006_members`:** `downgrade 0005b_auth_security` borra `members.members` y sus blobs. Las llaves de `crypto_keys` se conservan. Solo hay datos de desarrollo. Se revierten B7 y B8 (y F6 si se fusionó).
 - **`0007_plans`:** `downgrade 0006_members` borra `plans.plans`. Se revierte B9 (y F7).
 - En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.
+
+## 7. Imágenes base por digest y su renovación (S3-D62)
+
+Toda imagen base va como `imagen:tag@sha256:<digest>`, con un comentario en la línea de arriba que lleva la fecha de la consulta y el comando de renovación. El tag queda como referencia legible; Docker usa el digest. Lo vigila `scripts/ci/test_images_pinned.sh` (grep puro, sin Docker), que corre en `run-gates.sh` y en el job `scripts` de la CI: falla si un `FROM`, un `image:` (salvo `apex-*:local`) o la imagen de `test_nginx_conf.sh` no lleva `@sha256:` de 64 caracteres hexadecimales o no tiene el comentario con la fecha.
+
+Dónde están:
+- `api/Dockerfile`: `python:3.12-slim` (dos `FROM`: `builder` y `runtime`).
+- `web/Dockerfile`: `node:22-alpine` (`build`) y `nginx:stable-alpine` (imagen final).
+- `infra/compose.yml` (`db`) e `infra/compose.dev.yml` (`db_test`): `postgres:16`.
+- `scripts/ci/test_nginx_conf.sh`: `nginx:stable-alpine` (contenedor desechable de la prueba funcional).
+- `.github/workflows/ci.yml`: el servicio `postgres:16` del job `api` (desde la revisión de Fase 4 del Sprint 2, L3).
+
+Renovación: a mano al abrir cada sprint (sin Dependabot para Docker en este repositorio).
+1. Consultar el digest actual de cada imagen:
+   ```
+   docker buildx imagetools inspect python:3.12-slim --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect node:22-alpine --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect nginx:stable-alpine --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect postgres:16 --format '{{json .Manifest.Digest}}'
+   ```
+   El digest es el del índice multiplataforma, el mismo que resuelve `docker pull imagen:tag`.
+2. Reemplazar el digest y la fecha del comentario en cada sitio de la lista (`postgres:16` en los dos Compose y en `ci.yml` va con el mismo digest).
+3. `bash scripts/ci/test_images_pinned.sh`, `bash scripts/ci/test_compose_config.sh` y `bash scripts/ci/test_nginx_conf.sh`.
+4. Reconstruir y levantar: `$DC build api web && $DC up -d` (en este equipo, ver la nota de `network: host` abajo); esperar los servicios `healthy` y correr `bash scripts/smoke/headers.sh` y `bash scripts/ci/web-smoke.sh`.
+5. Anotar los digests nuevos en el cuaderno del sprint.
+
+Cambiar `postgres:16` a otro digest de la misma mayor no toca los datos del volumen `apex_pgdata`; cambiar de mayor (17) exige `pg_dump` y restauración, y no se hace en una renovación.
+
+Nota de este equipo (Docker Desktop con Compose 5.6 y buildx 0.38, 22 de octubre de 2026): `compose.dev.yml` pide `build.network: host` y Compose construye con `buildx bake`, que ahora exige el permiso `network.host` y Compose no lo pasa (`additional privileges requested: pass "--allow=network.host"`). Mientras Compose no lo resuelva, se construye con buildx directo y se levanta sin construir:
+```
+docker buildx build --load --network host --allow network.host -t apex-api:local -f api/Dockerfile api
+docker buildx build --load --network host --allow network.host -t apex-web:local -f web/Dockerfile .
+$DC up -d --no-build
+```
+En la CI (Linux, sin `compose.dev.yml`) no aplica.
+
+## 8. Primer admin sin `.env.seed` (S3-D64)
+
+`.env.seed` solo existe para el primer `seed` (sección 2) y se borra después: las credenciales del admin no se quedan en disco. Estado desde S3-W0-1 en el equipo de desarrollo: el archivo está borrado, el admin sigue en la base y su contraseña vive en el gestor de contraseñas del operador.
+
+- Pruebas E2E del proyecto `stack` y smoke con sesión: exportar `E2E_ADMIN_EMAIL` y `E2E_ADMIN_PASSWORD` en la shell de la sesión desde el gestor (nunca a un archivo del repositorio, al cuaderno ni a un log). `datosDeBase()` de `web/tests/e2e/helpers/stack.ts` las lee del entorno.
+- Si la contraseña se pierde: `$DC run --rm tools issue-reset-link <correo del admin> --as <correo del admin>` (sección 2, "Recuperar a un admin"). No necesita la contraseña ni el `.env.seed`: imprime una sola vez el enlace de restablecimiento de 1 h; se abre, se fija la contraseña nueva y se guarda en el gestor. Si el admin está bloqueado, primero `cli unlock-user`.
+- Si no queda ningún admin activo: `seed` con un `.env.seed` nuevo y efímero (sección 2), y se borra al terminar.
+- En la CI el job `e2e-stack` crea un `.env.seed` efímero con contraseña aleatoria y lo descarta con el runner.
+
+## 9. Tiempos de espera de la base y 503 `busy` (S3-W0-2)
+
+Esqueleto; lo completa S3-W0-2. Contenido previsto (S3-D43, S3-D67, E7, E16):
+- Variables `DB_LOCK_TIMEOUT_MS` (10.000), `DB_STATEMENT_TIMEOUT_MS` (30.000) y `DB_IDLE_IN_TX_TIMEOUT_MS` (60.000), que `create_engine_from` pasa como `server_settings` de asyncpg al api, al CLI y al worker.
+- `migrations/env.py` usa su propio engine sin esos tiempos: las migraciones no los heredan.
+- `--db-timeouts off` del CLI para `rotate-key`, `sign-audit` y la importación de US-112.
+- Respuesta 503 `busy` con `Retry-After: 1` ante los SQLSTATE 55P03, 57014 y 40P01; cómo diagnosticarla en el log y qué hacer si se repite.
+
+## 10. Membresías y pagos (Sprint 3)
+
+Esqueleto; lo completan S3-B1 a S3-B5. Contenido previsto:
+- Volcado previo a cada migración del sprint (`0008` a `0011`), solo desde Bash y solo de los dos esquemas que el sprint toca (S3-D58, E11): `$DC exec -T db pg_dump -U apex -Fc -n memberships -n payments apex > docs/scratch/sprint-03-antes-<rev>.dump && chmod 600 docs/scratch/sprint-03-antes-<rev>.dump`. `*.dump` y `*.sql.gz` están en `.gitignore`; los volcados se borran al cerrar el sprint.
+- Restauración: `pg_restore --clean` de los dos esquemas sobre `apex-db-1`.
+- Cómo probar los triggers a mano (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`; `tgenabled = 'A'` en `pg_trigger`) y el `EXCLUDE` de membresías.
+- Rollback de `0008` a `0011` (se agrega también a la sección 6).

@@ -1,5 +1,10 @@
 # US-083 · Reglas puras de fechas, estados y cobertura — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `compute_status(snapshot, today, expiring_days, freezes)` lleva cuatro argumentos, con `freezes` obligatorio (S3-C12).
+> - `today` sale de `current_clock().today_bogota()`; no existe `today_bogota()` de módulo (S3-C15).
+> - `test_banned_imports.py` se amplía en S3-B1 a `core/locks.py`, `memberships/*` y `payments/*` (E11).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-083-reglas-puras-de-fechas-y-estados.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/service.py`, solo funciones puras)

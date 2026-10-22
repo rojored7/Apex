@@ -1,5 +1,12 @@
 # US-095 · Registrar pago — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `Clock.now()` no existe: `current_clock().now_utc()` (S3-C15); `SessionDep` y `principal.user_id` (S3-C5).
+> - `MembershipPayability` lleva `agreed_price_cop` (S3-C21).
+> - `register(..., role)`: el rol llega del router; el coach solo registra `paid_at >= ahora - max_retroactive_days` (S3-D51, S3-D74).
+> - `PaymentIn.confirm_overpayment` y `confirm_duplicate` (`StrictBool`, no se guardan): sin ellos, 409 `payment_exceeds_balance` y 409 `payment_possible_duplicate` (S3-D41).
+> - `test_payments_does_not_import_memberships.py` vive en `test_service_import_graph.py` (S3-C9). La ruta se publica en S3-B4 (S3-D77).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-10-pagos/US-095-registrar-pago.md`
 - **Épica:** EP-10 · Registro inmutable de pagos
 - **Bounded context / módulo:** Payments (`api/src/app/modules/payments/`)
@@ -44,7 +51,7 @@ Crea el módulo `payments` completo en su primera versión: tabla `payments.paym
 - Rol: `require_role("admin", "coach")` en el endpoint.
 - Auditoría: `Payment.__audited__ = True`; el hook de US-016 escribe el `insert`.
 - Paginación: no aplica en esta historia (la lista es US-098).
-- Fechas: `paid_at` `TIMESTAMPTZ`; el schema exige zona horaria y el service normaliza a UTC. "Ahora" sale de `core/clock.py` (`Clock.now()`), para poder congelar el reloj en pruebas.
+- Fechas: `paid_at` `TIMESTAMPTZ`; el schema exige zona horaria y el service normaliza a UTC. "Ahora" sale de `core/clock.py` (`current_clock().now_utc()`), para poder congelar el reloj en pruebas.
 
 ## Preguntas abiertas
 
@@ -68,7 +75,7 @@ Ninguna.
 - [ ] T7 · `payments/schemas.py`: `PaymentIn { amount_cop: StrictInt (gt=0, le=2**63-1), method: Literal["cash","nequi","breb"], reference: str | None (strip, max 64), paid_at: AwareDatetime | None }` (reutilizado como `first_payment` por US-085); `PaymentOut { id, membership_id, member_id, amount_cop, method, reference, paid_at, registered_by, voided, void_reason, voided_by, voided_at, created_at }`; configuración `extra="forbid"` — 1 h
 
 ### Router
-- [ ] T8 · `payments/router.py`: `POST /memberships/{id}/payments` con `Depends(require_role("admin", "coach"))`, `id: UUID` en el path, cuerpo `PaymentIn`, `by = current_user.id`, respuesta 201 `PaymentOut`; códigos 201, 401, 403, 404, 409, 422; registro del router en `main.py` — 1 h
+- [ ] T8 · `payments/router.py`: `POST /memberships/{id}/payments` con `Depends(require_role("admin", "coach"))`, `id: UUID` en el path, cuerpo `PaymentIn`, `principal.user_id`, respuesta 201 `PaymentOut`; códigos 201, 401, 403, 404, 409, 422; registro del router en `main.py` — 1 h
 
 ### Tests unitarios puros
 - [ ] T9 · `api/tests/payments/test_rules.py`: `validate_paid_at` (ahora, ahora + 4 min 59 s, ahora + 5 min 1 s, sin zona, un año atrás aceptado) y `normalize_reference` (espacios, vacío, 64 y 65 caracteres); `PaymentIn` con montos 0, -1, 1, 120000, 120000.5, "120000", `true` — 2 h
@@ -80,7 +87,7 @@ Ninguna.
 - [ ] T11 · `api/tests/payments/test_router_register.py`: 201 coach y admin; 403 `member`; 401 sin token; 422 con `field` para `amount_cop`, `method`, `reference`, `paid_at`; 404 y 409 con envelope; monto devuelto como entero JSON — 2 h
 
 ### Tests de arquitectura
-- [ ] T12 · `api/tests/architecture/test_payments_does_not_import_memberships.py` (compartida con US-085): `app.modules.payments` no importa `app.modules.memberships` en ningún nivel; ambos services cargan en un subproceso limpio; `test_no_cross_models.py` (US-022) sigue verde para `payments`; `test_every_route_has_role.py` cubre la ruta nueva — 1 h
+- [ ] T12 · `api/tests/architecture/test_service_import_graph.py` (compartida con US-085): `app.modules.payments` no importa `app.modules.memberships` en ningún nivel; ambos services cargan en un subproceso limpio; `test_no_cross_models.py` (US-022) sigue verde para `payments`; `test_every_route_has_role.py` cubre la ruta nueva — 1 h
 
 ### Front
 - [ ] T13 · `web/src/features/payments/schemas.ts` (Zod: monto entero positivo, medio, referencia máx. 64, fecha opcional) y `web/src/features/payments/api.ts` (`useRegisterPayment(membershipId)` con TanStack Query; invalida `payments`, `payments-summary`, `memberships` y `members` al guardar) — 2 h

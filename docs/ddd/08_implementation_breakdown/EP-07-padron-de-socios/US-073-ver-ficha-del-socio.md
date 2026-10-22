@@ -1,5 +1,11 @@
 # US-073 · Ver ficha del socio — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `bus.op_context(...)` no existe: la puerta es `core.crypto.types.reveal(obj, field, purpose)`; la ficha descifra con propósito `mask` sin `bus.batch` (una fila `decrypt` por campo no vacío con el `record_id` del socio; D20, S3-C3).
+> - "Notas" no existe desde M-5 del Sprint 2 (S3-C18).
+> - `test_service_import_cycles.py` → `test_service_import_graph.py` (S3-C9).
+> - Firma real: `get(session, member_id)`; el actor sale de `get_actor()` y la sesión es `SessionDep` (S3-C5).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-073-ver-ficha-del-socio.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members (`api/src/app/modules/members/`)
@@ -70,7 +76,7 @@ N-01 decide que la ficha descifra en memoria para enmascarar y que esa lectura q
 - [ ] T6 · `api/tests/members/test_router_get.py`: 200 admin y coach, 200 de coach sobre un dado de baja (N-20), 403 `member`, 401 sin token, 404 inexistente, 422 id no UUID, cabecera `no-store`, la respuesta no contiene el documento en claro — 1.5 h
 
 ### Tests de arquitectura
-- [ ] T7 · `api/tests/architecture/test_service_import_cycles.py` (de US-071) cubre el nuevo import perezoso en `get` dentro del par permitido; sin cambios en la lista blanca — 0.5 h
+- [ ] T7 · `api/tests/architecture/test_service_import_graph.py` (de US-071) cubre el nuevo import perezoso en `get` dentro del par permitido; sin cambios en la lista blanca — 0.5 h
 
 ### Front
 - [ ] T8 · `web/src/features/members/api.ts`: `useMember(id)` — 0.5 h

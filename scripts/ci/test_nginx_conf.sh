@@ -17,6 +17,9 @@ ROOT="$(git rev-parse --show-toplevel)"
 DIR="$ROOT/infra/nginx"
 CONF="$DIR/default.conf"
 SNIP="$DIR/snippets"
+# Imagen de Nginx por digest (2026-10-22, S3-D62; la misma de web/Dockerfile); renovar
+# (docs/RUNBOOK.md §7): docker buildx imagetools inspect nginx:stable-alpine --format '{{json .Manifest.Digest}}'
+NGINX_IMAGE="nginx:stable-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951"
 fallas=0
 ok() { echo "  ok   $1"; }
 falla() { echo "  FALLA $1"; fallas=$((fallas + 1)); }
@@ -26,11 +29,11 @@ falla() { echo "  FALLA $1"; fallas=$((fallas + 1)); }
 
 PREPARA='mkdir -p /tmp/n && tar -x -C /tmp/n && cp /tmp/n/default.conf /etc/nginx/conf.d/default.conf && cp -r /tmp/n/snippets /etc/nginx/snippets'
 NGINX_T="$PREPARA && nginx -t"
-if tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 nginx:stable-alpine sh -c "$NGINX_T" > /dev/null 2>&1; then
+if tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$NGINX_T" > /dev/null 2>&1; then
   ok "nginx -t acepta la configuración"
 else
   falla "nginx -t rechaza la configuración"
-  tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 nginx:stable-alpine sh -c "$NGINX_T" 2>&1 | tail -5 || true
+  tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$NGINX_T" 2>&1 | tail -5 || true
 fi
 
 directiva() { # patrón descripción (busca en default.conf y en los snippets)
@@ -124,7 +127,7 @@ if grep -Eq 'limit_req_zone' "$CONF"; then falla "default.conf repite limit_req_
 if [ -f "$E2E_ZONE" ] && grep -Eq '^\s*limit_req_zone\s+\$binary_remote_addr\s+zone=apex_auth:10m\s+rate=[0-9]+r/m;' "$E2E_ZONE" && ! grep -Eq 'rate=60r/m' "$E2E_ZONE"; then ok "e2e/auth-zone.conf: misma zona apex_auth con otro tope"; else falla "infra/nginx/e2e/auth-zone.conf ausente o sin la zona apex_auth con un tope distinto de 60r/m"; fi
 if grep -q 'infra/nginx/e2e' "$ROOT/web/Dockerfile"; then falla "web/Dockerfile copia infra/nginx/e2e (el perfil E2E no puede entrar en la imagen)"; else ok "web/Dockerfile no copia infra/nginx/e2e"; fi
 NGINX_T_E2E="$PREPARA && cp /tmp/n/e2e/auth-zone.conf /etc/nginx/snippets/auth-zone.conf && nginx -t"
-if [ -f "$E2E_ZONE" ] && tar -C "$DIR" -c default.conf snippets e2e | docker run --rm -i --add-host api:127.0.0.1 nginx:stable-alpine sh -c "$NGINX_T_E2E" > /dev/null 2>&1; then ok "nginx -t acepta la configuración con el perfil E2E del borde"; else falla "nginx -t rechaza la configuración con e2e/auth-zone.conf"; fi
+if [ -f "$E2E_ZONE" ] && tar -C "$DIR" -c default.conf snippets e2e | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$NGINX_T_E2E" > /dev/null 2>&1; then ok "nginx -t acepta la configuración con el perfil E2E del borde"; else falla "nginx -t rechaza la configuración con e2e/auth-zone.conf"; fi
 
 # Prueba funcional con Nginx real (el api resuelve a 127.0.0.1:8000, cerrado: el proxy da
 # 502, lo que basta para el log y el limitador). El token y la búsqueda no llegan al log.
@@ -138,7 +141,7 @@ FUNCIONAL+=" && head -c 20000 /dev/zero | curl -s -o /dev/null -w 'BIG %{http_co
 FUNCIONAL+=" && for i in \$(seq 1 45); do curl -s -o /dev/null -w 'CODE %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1/api/v1/auth/login; done"
 FUNCIONAL+=" && curl -s -D - -o /tmp/b429 -X POST -d '{}' http://127.0.0.1/api/v1/auth/login | sed 's/^/H429 /' && sed 's/^/B429 /' /tmp/b429 && echo"
 FUNCIONAL+=" && sleep 0.3 && nginx -s quit; sleep 0.3"
-salida="$(tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 nginx:stable-alpine sh -c "$FUNCIONAL" 2>&1 | tr -d '\r' || true)"
+salida="$(tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$FUNCIONAL" 2>&1 | tr -d '\r' || true)"
 if grep -q '"uri":"/index.html"' <<< "$salida"; then ok "funcional: /restablecer/<token> queda en el log como /index.html"; else falla "funcional: no apareció la línea de /restablecer/ en el access log"; fi
 if grep -q "$TOKEN" <<< "$salida"; then falla "funcional: el token de /restablecer/ aparece en el log"; else ok "funcional: el token de /restablecer/ no aparece en el log"; fi
 if grep -q "$BUSQUEDA" <<< "$salida"; then falla "funcional: el parámetro q aparece en el log"; else ok "funcional: el parámetro q no aparece en el log (ni del SPA ni de /api/)"; fi

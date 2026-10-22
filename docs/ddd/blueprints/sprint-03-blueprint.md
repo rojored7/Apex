@@ -1,5 +1,7 @@
 # Blueprint de implementación · Sprint 3 · Núcleo comercial: membresías, pagos y ficha del socio
 
+> Corregido por `sprint-03-plan.md`, decisiones D3, D12, D13, D17, D19, D21, D26, D27 y S3-D60 a S3-D74 (más S3-D75 a S3-D78 y las enmiendas E1 a E16). Donde este plano y el plan chocan, manda el plan; el registro con la opción final está en `docs/ddd/DECISIONES.md`, "Sprint 3 · decisiones de implementación".
+
 - Rama: `feat/sprint-03-membresias-pagos`, desde `d65056e` (= `main`, cierre del Sprint 2). Última migración aplicada: `0007_plans`.
 - Entradas: `CLAUDE.md`, `SPRINT-03.md`, el blueprint del Sprint 2, `02_domain_model.md`, `03_context_map.md`, `05_service_design.md`, `DECISIONES.md` (Q1 a Q28, N-01 a N-50, G-01 a G-10, S2-D1 a S2-D53, S2-R1 a S2-R11), `BRECHAS.md`, `docs/design/` (DESIGN, ROUTES y las pantallas `Socio_Ficha`, `Socios_Lista`, `Socios_Movil`, `Membresias`, `Membresia_Vender`, `Pagos`), los desgloses de US-056, US-071 a US-076, US-083 a US-093 y US-095 a US-101, `sprint-03-exploracion.md` y el código real de `api/src/app`, `api/tests` y `web/src`.
 - Este archivo es solo un plano. No cambia código. Donde el desglose, el plan del sprint y el código chocan hay una **DECISIÓN** con la opción elegida y el motivo. Las que se acepten se copian a `docs/ddd/DECISIONES.md` (sección "Sprint 3") en el primer checkpoint, igual que hizo el Sprint 2.

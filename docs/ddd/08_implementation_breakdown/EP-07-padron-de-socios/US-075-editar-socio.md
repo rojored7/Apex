@@ -1,5 +1,10 @@
 # US-075 · Editar socio — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Acción de permiso del front y de la auditoría: `members.document.update`, no `member.document.change` (S3-C8).
+> - `MemberPatch` cerrado (`first_name`, `last_name`, `sex`, `birth_date`, `phone`, `email`, `emergency_contact`, `document`, `document_type`, `data_consent`); `ensure_can_change(set_fields, role)` por presencia de `document` o `document_type`; `data_consent` solo `true` (D21, S3-D46).
+> - La excepción 409 `member_deactivated` se llama `MemberIsDeactivated` (S3-D70).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-075-editar-socio.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members (`api/src/app/modules/members/`)
@@ -83,7 +88,7 @@ Ninguna.
 - No aplica (siguen en verde `test_no_cross_models.py`, `test_every_route_has_role.py`, `test_banned_imports.py` y `test_members_encrypted_at_rest.py`).
 
 ### Front
-- [ ] T11 · `MemberFormPage.tsx` en modo edición y `useUpdateMember(id)` en `api.ts`: campos no sensibles precargados; campos sensibles vacíos con su valor enmascarado como ayuda y botón "Cambiar" (el de documento solo con `useCan("member.document.change")`, admin); envía solo los campos modificados (`dirtyFields` de React Hook Form); al guardar invalida `useMember(id)` y las listas; `// DESIGN-GAP:` presentación de campos sensibles en edición — 4 h
+- [ ] T11 · `MemberFormPage.tsx` en modo edición y `useUpdateMember(id)` en `api.ts`: campos no sensibles precargados; campos sensibles vacíos con su valor enmascarado como ayuda y botón "Cambiar" (el de documento solo con `useCan("members.document.update")`, admin); envía solo los campos modificados (`dirtyFields` de React Hook Form); al guardar invalida `useMember(id)` y las listas; `// DESIGN-GAP:` presentación de campos sensibles en edición — 4 h
 - [ ] T12 · Vitest `web/src/features/members/pages/MemberFormPage.edit.test.tsx`: solo envía modificados, nunca muestra valor en claro, "Cambiar" del documento oculto al coach, error 409 con enlace — 2 h
 
 ### DevOps
@@ -107,7 +112,7 @@ Ninguna.
 - US-069 · Registrar socio: `validate_member_input`, `mask`, índice único parcial.
 - US-028 · Tipos de columna Encrypted y BlindIndexed: recifrado y reindexado en el mismo flush.
 - US-016 · Hook de auditoría after_flush: `update` solo con columnas cambiadas.
-- US-040 · Matriz de permisos del front: permiso `member.document.change`.
+- US-040 · Matriz de permisos del front: permiso `members.document.update`.
 
 ## Endpoints
 

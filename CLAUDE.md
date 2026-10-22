@@ -38,6 +38,7 @@ apex/
         search.py        # búsqueda común de las listas: limpieza de q, sin tildes, escape de LIKE
         http.py          # ayudas HTTP comunes a los routers (por ejemplo Cache-Control: no-store)
         ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
+        locks.py         # candados de fila y de aviso (lock_member); única puerta del orden de candados (Sprint 3)
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
         events.py        # bus de eventos interno (en memoria)
@@ -135,6 +136,7 @@ apex/
 - Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
+- 503 `busy` con `Retry-After: 1` cuando la base agota `lock_timeout`, `statement_timeout` o detecta un interbloqueo (Sprint 3, S3-D67); nunca un 500.
 - Archivos subidos: volumen `/data/uploads`, nombre aleatorio, validación por bytes mágicos, tamaño máximo 5 MB, servidos solo por el api con rol y auditoría. Los sensibles pasan por el bus (`attachment.sensitive`).
 
 ## Licencias
@@ -181,7 +183,7 @@ La carpeta `docs/design/` es la fuente de verdad del front. El front vive en `we
 2. Busca la ruta que vas a construir en `docs/design/ROUTES.md`: ahí está la pantalla de referencia, el rol que la ve y los endpoints que consume.
 3. Abre el HTML de esa pantalla en `docs/design/screens/<Clave>.html` y reprodúcelo en React con los mismos textos, la misma estructura, los mismos estados y las mismas acciones. Mira también `<Clave>.dark.html` para el tema oscuro (la TV solo existe en oscuro).
 4. Usa solo las variables de `docs/design/tokens.css` (copiado en `web/src/core/styles/tokens.css`). Ningún color ni fuente literal en componentes.
-5. Los componentes compartidos viven en `web/src/shared/ui/` con los nombres que da `DESIGN.md` (TopBar, SideNav, PageHeader, Button, StatusTag, FilterBar, DataTable, Pagination, Chips, Tabs, KpiCard, SidePanel, ConfirmModal, Field, MaskedValue, HistoryAside). Si uno no existe, créalo ahí antes de usarlo en una pantalla; nunca dupliques estilos por pantalla.
+5. Los componentes compartidos viven en `web/src/shared/ui/` con los nombres que da `DESIGN.md` (TopBar, SideNav, PageHeader, Button, StatusTag, FilterBar, DataTable, Pagination, Chips, Tabs, KpiCard, SidePanel, ConfirmModal, Field, MaskedValue, HistoryAside). Si uno no existe, créalo ahí antes de usarlo en una pantalla; nunca dupliques estilos por pantalla. Los hooks y esquemas que comparten dos features viven en `web/src/shared/data/`; una feature nunca importa de otra.
 6. Toda lista se pagina en el servidor. Todo formulario usa React Hook Form + Zod. Todo dato del servidor pasa por TanStack Query.
 7. Los logos de `docs/design/assets/logo/` se copian a `web/public/brand/`.
 8. Si algo del diseño no se puede cumplir o falta una pantalla, no inventes: deja un comentario `// DESIGN-GAP:` explicando qué falta y sigue con lo demás.

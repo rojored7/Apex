@@ -1,5 +1,10 @@
 # US-091 · Listar membresías — desglose técnico
 
+> **Corregido en S3-W0-1** (`docs/ddd/blueprints/sprint-03-plan.md`, sección 1; registro en `docs/ddd/DECISIONES.md`, "Sprint 3"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `page: Pagination` → `PageParams`; `members.service.search_ids` devuelve `set[UUID]`, no `list` (S3-C6).
+> - La prueba de rendimiento lleva el marcador `perf` (no `slow`) y vive en `tests/memberships/test_list_perf.py` (S3-C14, D29); no es gate.
+> - `status` separado por comas con `Query(max_length=100)`; `q` comparte la cubeta `members-search` (D18, S3-D45).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-091-listar-membresias.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/`)
@@ -33,7 +38,7 @@ Casos de uso `memberships.service.list(...)` y `get(id)` con endpoints `GET /api
 ## Validación contra la arquitectura
 
 - Módulo dueño: `memberships`; todas las consultas son sobre `memberships.memberships` y `memberships.membership_freezes`.
-- Búsqueda `q` por `members.service.search_ids(q) -> list[UUID]` (índice ciego o `ILIKE` en nombre, del lado de Members; nunca se descifra la tabla) y nombres por `members.service.names_for(ids)` y `plans.service.names_for(ids)` en lote: sin `JOIN` entre esquemas ni imports de `models` ajenos.
+- Búsqueda `q` por `members.service.search_ids(q) -> set[UUID]` (índice ciego o `ILIKE` en nombre, del lado de Members; nunca se descifra la tabla) y nombres por `members.service.names_for(ids)` y `plans.service.names_for(ids)` en lote: sin `JOIN` entre esquemas ni imports de `models` ajenos.
 - `paid_cop` por `payments.service.sum_not_voided(session, membership_id)` (dirección permitida por el cierre de la brecha de US-085).
 - Paginación con la dependencia común de US-019 (`limit` 1 a 200, 25 por defecto) y respuesta `{ items, total, limit, offset }`.
 - Rol `require_role("admin", "coach")`.
@@ -53,7 +58,7 @@ Ninguna.
 
 ### Service
 - [ ] T1 · Función pura `parse_status_filter(raw: str | None) -> frozenset[MembershipStatus] | None` (coma separada, sin repetidos; valor desconocido → error con `field = "status"`) y validación `ends_from <= ends_to` (`field = "ends_to"`) — 0.5 h
-- [ ] T2 · `async def list(session, *, statuses, q, plan_id, ends_from, ends_to, member_id, page: Pagination) -> Page[MembershipRow]`: si hay `q`, `ids = await members.service.search_ids(q)` y filtra `member_id = ANY(:ids)` (vacío → página vacía sin consultar más); `count(*)` y `SELECT` ordenado por `end_date, id` con `limit`/`offset`; completa `member_name` y `plan_name` con `names_for` en dos llamadas por página — 3 h
+- [ ] T2 · `async def list(session, *, statuses, q, plan_id, ends_from, ends_to, member_id, page: PageParams) -> Page[MembershipRow]`: si hay `q`, `ids = await members.service.search_ids(q)` y filtra `member_id = ANY(:ids)` (vacío → página vacía sin consultar más); `count(*)` y `SELECT` ordenado por `end_date, id` con `limit`/`offset`; completa `member_name` y `plan_name` con `names_for` en dos llamadas por página — 3 h
 - [ ] T3 · `async def get(session, membership_id) -> MembershipDetail` con congelaciones (`_load_freezes`), datos de cancelación, `plan_name`, `member_name` y `paid_cop = await payments_service.sum_not_voided(...)`; 404 `MembershipNotFound` — 1.5 h
 
 ### Schemas
@@ -67,7 +72,7 @@ Ninguna.
 
 ### Tests de service con PostgreSQL
 - [ ] T7 · `api/tests/memberships/test_list_service.py`: filtro por `expiring` y rango de fin (3 de 3, orden por fin), `pending_payment` (2), combinación con `plan_id` y `member_id`, búsqueda `q` con doble de `members.service.search_ids` y con el real cuando exista, `q` sin coincidencias, nombres completados en lote (contar llamadas: una por service por página), `total` correcto con `offset`; detalle con `paid_cop` ignorando anulados y con congelaciones — 2.5 h
-- [ ] T8 · Prueba de rendimiento marcada `@pytest.mark.slow`: 1.000 socios y 3.000 membresías; `GET /memberships?status=expiring` en menos de 500 ms — 0.75 h
+- [ ] T8 · Prueba de rendimiento marcada `@pytest.mark.perf`: 1.000 socios y 3.000 membresías; `GET /memberships?status=expiring` en menos de 500 ms — 0.75 h
 
 ### Tests de router
 - [ ] T9 · `api/tests/memberships/test_list_router.py`: 200 con forma `{ items, total, limit, offset }`, `limit` 0 y 201 → 422, `status=vigente` → 422 `field = "status"`, rango invertido → 422, detalle 404, 403 `member`, 401 — 1.5 h
@@ -128,7 +133,7 @@ Supera el rango de 3 puntos (10 a 15 h) porque la página reúne filtros en URL 
 - [ ] `cd api && uv run pytest tests/memberships/test_list_service.py -q`
 - [ ] `cd api && uv run pytest tests/memberships/test_list_router.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
-- [ ] `cd api && uv run pytest -m slow tests/memberships/test_list_service.py -q`
+- [ ] `cd api && uv run pytest -m perf tests/memberships/test_list_perf.py -q`
 - [ ] `cd web && npm run lint && npx tsc --noEmit && npm test -- src/features/memberships`
 - [ ] `curl "/api/v1/memberships?status=expiring&ends_from=2026-10-26&ends_to=2026-11-01"` devuelve solo membresías con `end_date` en ese rango, ordenadas; `curl /api/v1/memberships/<id>` trae `paid_cop` entero
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.memberships --cov-fail-under=80`

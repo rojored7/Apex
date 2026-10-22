@@ -31,8 +31,8 @@ class VentaHecha(DomainEvent):
 
 
 @pytest.fixture
-async def tabla(engine: AsyncEngine) -> AsyncIterator[None]:
-    clear_subscribers()
+async def tabla(engine: AsyncEngine, restaurar_bus: None) -> AsyncIterator[None]:
+    clear_subscribers()  # bus vacío solo en esta prueba; `restaurar_bus` lo devuelve (E7)
     async with engine.begin() as c:
         await c.run_sync(lambda conn: Base.metadata.create_all(conn, tables=[Venta.__table__]))
     configure_sessionmaker(async_sessionmaker(engine, expire_on_commit=False))
@@ -40,7 +40,6 @@ async def tabla(engine: AsyncEngine) -> AsyncIterator[None]:
         yield
     finally:
         configure_sessionmaker(None)
-        clear_subscribers()
         async with engine.begin() as c:
             await c.run_sync(lambda conn: Base.metadata.drop_all(conn, tables=[Venta.__table__]))
 

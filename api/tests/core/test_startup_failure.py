@@ -68,6 +68,8 @@ def test_uvicorn_termina_con_codigo_distinto_de_cero(
         "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/kek.bin",
         "UPLOADS_DIR": "/data/uploads",
         "CORS_ORIGINS": '["http://localhost"]',
+        # M-9 (E3): sin ENV es producción, y producción exige la cookie Secure.
+        "COOKIE_SECURE": "true",
         "APEX_TEST_MIGRATIONS": migraciones_rotas,
     }
     resultado = subprocess.run(

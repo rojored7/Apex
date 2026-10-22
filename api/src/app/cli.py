@@ -40,16 +40,25 @@ def unit_of_work(actor_id: UUID | None = None) -> Iterator[UUID]:
 
 
 async def resolve_actor(session: Any, email: str | None) -> UUID:
-    """`--as <email>` → id de esa persona (no dada de baja); sin `--as`, el usuario técnico."""
+    """`--as <email>` → id de esa persona en estado `active`; sin `--as`, el usuario técnico.
+
+    L-4 del Sprint 1: una cuenta inactiva, bloqueada, pendiente o el propio
+    `system@apex.local` no sirven para atribuir una acción; sale con 2 y lo dice.
+    """
     if email is None:
         return SYSTEM_USER_ID
-    from app.modules.auth.service import active_admin_id_by_email
+    from app.modules.auth.service import active_user_id_by_email, ids_by_email
 
-    quien = await active_admin_id_by_email(session, email)
-    if quien is None:
-        typer.echo(f"--as: no existe un usuario con ese correo ({email})", err=True)
-        raise typer.Exit(code=2)
-    return quien
+    quien = await active_user_id_by_email(session, email)
+    if quien is not None:
+        return quien
+    if await ids_by_email(session, [email]):
+        typer.echo(
+            "--as: esa cuenta no está activa (inactiva, bloqueada, pendiente o técnica)", err=True
+        )
+    else:
+        typer.echo("--as: no existe un usuario con ese correo", err=True)
+    raise typer.Exit(code=2)
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -220,7 +229,14 @@ def init_keys(
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
 
 
-async def _seed(settings: Settings, actor_email: str | None) -> str:
+async def _seed(
+    settings: Settings,
+    admin_email: str,
+    admin_password: str,
+    actor_email: str | None,
+    *,
+    force_change: bool,
+) -> str:
     from app.core import db
     from app.core.audit import install_audit_listeners
     from app.core.crypto.oplog import install_oplog_listeners
@@ -243,13 +259,8 @@ async def _seed(settings: Settings, actor_email: str | None) -> str:
             # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
             with unit_of_work(actor):
                 async with session.begin():
-                    assert settings.ADMIN_EMAIL is not None  # noqa: S101 - validado antes
-                    assert settings.ADMIN_INITIAL_PASSWORD is not None  # noqa: S101
                     resultado = await seed_admin(
-                        session,
-                        settings.ADMIN_EMAIL,
-                        settings.ADMIN_INITIAL_PASSWORD.get_secret_value(),
-                        by=actor,
+                        session, admin_email, admin_password, by=actor, force_change=force_change
                     )
         return resultado.outcome
     finally:
@@ -270,26 +281,41 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 
 
 @app.command("seed")
-def seed(actor: Annotated[str | None, typer.Option("--as")] = None) -> None:
+def seed(
+    actor: Annotated[str | None, typer.Option("--as")] = None,
+    no_force_change: Annotated[bool, typer.Option("--no-force-change")] = False,
+) -> None:
     """Crea el primer admin activo con ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD (idempotente).
 
-    Sale con 2 si falta el correo, falta la contraseña o es débil; nunca imprime la contraseña.
+    Las dos variables salen de `.env.seed` o del entorno del servicio tools (`SeedSettings`,
+    M-8), nunca de `Settings`. El admin sembrado debe cambiar la contraseña al entrar; solo con
+    `ENV=dev` se acepta `--no-force-change`. Sale con 2 si falta el correo, falta la
+    contraseña o es débil (L-9: el literal histórico del ejemplo está en la lista de comunes);
+    nunca imprime la contraseña.
     """
 
+    from app.core.config import load_seed_settings
     from app.core.security import WeakPasswordError, validate_password_policy
     from app.modules.auth.exceptions import AuthError
 
     settings = get_settings()
-    if not settings.ADMIN_EMAIL or settings.ADMIN_INITIAL_PASSWORD is None:
-        typer.echo("seed: faltan ADMIN_EMAIL o ADMIN_INITIAL_PASSWORD en el entorno", err=True)
+    if no_force_change and settings.ENV != "dev":
+        typer.echo("seed: --no-force-change solo se acepta con ENV=dev", err=True)
         raise typer.Exit(code=2)
+    semilla = load_seed_settings()
+    if not semilla.ADMIN_EMAIL or semilla.ADMIN_INITIAL_PASSWORD is None:
+        typer.echo("seed: faltan ADMIN_EMAIL o ADMIN_INITIAL_PASSWORD en .env.seed", err=True)
+        raise typer.Exit(code=2)
+    clave = semilla.ADMIN_INITIAL_PASSWORD.get_secret_value()
     try:
-        validate_password_policy(settings.ADMIN_INITIAL_PASSWORD.get_secret_value())
+        validate_password_policy(clave)
     except WeakPasswordError as error:
         typer.echo(f"seed: ADMIN_INITIAL_PASSWORD no cumple la política ({error.reason})", err=True)
         raise typer.Exit(code=2) from None
     try:
-        resultado = _run(_seed(settings, actor))
+        resultado = _run(
+            _seed(settings, semilla.ADMIN_EMAIL, clave, actor, force_change=not no_force_change)
+        )
     except AuthError as error:
         typer.echo(f"seed: {error.code}", err=True)
         raise typer.Exit(code=2) from None

@@ -48,7 +48,8 @@ async def test_base_caida_da_503_en_menos_de_3_segundos(
     env.write_text(
         "DATABASE_URL=postgresql+asyncpg://apex:x@127.0.0.1:1/apex\n"
         "JWT_PRIVATE_KEY_PATH=/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/kek\n"
-        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\n',
+        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\n'
+        "COOKIE_SECURE=true\n",  # sin ENV es producción: M-9 (E3)
         encoding="utf-8",
     )
     caida = load_settings(env_file=env)
@@ -90,7 +91,8 @@ async def test_docs_apagados_en_produccion(settings_prueba: Settings, tmp_path: 
     env.write_text(
         f"DATABASE_URL={settings_prueba.DATABASE_URL.get_secret_value()}\n"
         "JWT_PRIVATE_KEY_PATH=/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/kek\n"
-        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV=production\n',
+        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV=production\n'
+        "COOKIE_SECURE=true\n",  # M-9 (E3)
         encoding="utf-8",
     )
     produccion = load_settings(env_file=env)

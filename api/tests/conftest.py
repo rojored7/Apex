@@ -20,7 +20,18 @@ Kit de S2-B1 (plan del Sprint 2, sección 2; S2-D19 y E6):
 - `usuario_real` (fábrica) y `cabeceras(usuario)`: usuario real en `auth.users` con
   `hash_password` y access token real; cabeceras con `Bearer` y `Origin` del front.
 - `dos_sesiones`: dos `AsyncSession` con commit real (concurrencia); al salir borra lo que
-  dejaron en `settings.settings_sections` y la cola que agregaron a `audit.audit_log`.
+  dejaron en `settings.settings_sections`, los usuarios `@test.apex` con sus refresh y tokens de
+  un solo uso, y la cola que agregaron a `audit.audit_log`.
+
+Kit de S2-B2 (plan del Sprint 2, sección 2, bloque B2; E7 y E9):
+- Al importarse corre `load_module_services()` ANTES de importar y registrar
+  `principal_double`: los services se suscriben al bus y el doble queda registrado al final.
+- `restaurar_bus` (autouse): foto `{tipo: list(handlers)}` del bus y restauración al salir; la
+  prueba que necesita un bus vacío lo vacía ella misma.
+- `reset_rate_limit` (autouse): `ratelimit.reset_store()` antes y después de cada prueba.
+- `capturar_eventos(*tipos)`: suscribe un capturador y al salir quita solo el suyo.
+- `sleeper_nulo`: espía que reemplaza la espera del piso de login (S2-D39) sin dormir.
+- `api_prueba` (la app de `app_http`) y `cliente_desde(ip)`: un cliente con otra IP de socket.
 """
 
 from __future__ import annotations
@@ -38,6 +49,7 @@ from uuid import UUID
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import (
@@ -48,7 +60,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.cli import init_keys_files, key_paths_in
-from app.core import db
+from app.core import db, events, ratelimit
 from app.core.audit import AuditEntry, install_audit_listeners
 from app.core.clock import FrozenClock, reset_clock, set_clock
 from app.core.config import Settings, load_settings
@@ -59,6 +71,7 @@ from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider
 from app.core.crypto.types import install_crypto_type_listeners
+from app.core.events import DomainEvent
 from app.core.security import (
     PrincipalLoader,
     configure_password_hasher,
@@ -66,7 +79,13 @@ from app.core.security import (
     create_access_token,
     register_principal_loader,
 )
-from tests.core._principal_double import principal_double
+from app.main import load_module_services
+
+# E7/E9: los services se importan (y suscriben sus handlers) antes de cualquier foto del bus y
+# antes de registrar el doble; así `register_principal_loader(principal_double)` queda último.
+load_module_services()
+
+from tests.core._principal_double import principal_double  # noqa: E402
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -153,6 +172,15 @@ LIMPIAR_SETTINGS = (
     "DELETE FROM settings.settings_sections; END IF; END $$"
 )
 
+# S2-B2: lo que una prueba con commit real (`dos_sesiones`, CLI) o una corrida cortada haya
+# dejado en `auth`. Nunca toca al usuario técnico ni a cuentas fuera del dominio de prueba.
+LIMPIAR_AUTH = (
+    "DELETE FROM auth.refresh_tokens",
+    "DELETE FROM auth.one_time_tokens",
+    "DELETE FROM auth.users WHERE email LIKE '%@test.apex' AND id <> "
+    "'00000000-0000-0000-0000-000000000001'",
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -164,6 +192,7 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
+    *LIMPIAR_AUTH,
 )
 
 
@@ -236,6 +265,81 @@ async def bus_listo(
         configure_keyring(None)
 
 
+# Bus de eventos y límite de intentos (S2-B2; E7, riesgo 6.6) --------------------------------
+
+
+@pytest.fixture(autouse=True)
+def restaurar_bus() -> Iterator[None]:
+    """Foto del bus antes de la prueba y restauración al salir (E7)."""
+    foto = {tipo: list(handlers) for tipo, handlers in events._subscribers.items()}
+    try:
+        yield
+    finally:
+        events._subscribers.clear()
+        events._subscribers.update(foto)
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit() -> Iterator[None]:
+    """Almacenes del límite vacíos antes y después de cada prueba."""
+    ratelimit.reset_store()
+    try:
+        yield
+    finally:
+        ratelimit.reset_store()
+
+
+CapturarEventos = Callable[..., list[Any]]
+
+
+@pytest.fixture
+def capturar_eventos() -> Iterator[CapturarEventos]:
+    """`recibidos = capturar_eventos(LoginAttempted, SessionsRevoked)`; quita solo lo suyo."""
+    suscritos: list[tuple[type[DomainEvent], Any]] = []
+
+    def capturar(*tipos: type[DomainEvent]) -> list[Any]:
+        recibidos: list[Any] = []
+
+        async def capturador(evento: DomainEvent, sesion: AsyncSession) -> None:
+            recibidos.append(evento)
+
+        for tipo in tipos:
+            events.subscribe(tipo, capturador)
+            suscritos.append((tipo, capturador))
+        return recibidos
+
+    try:
+        yield capturar
+    finally:
+        for tipo, capturador in suscritos:
+            handlers = events._subscribers.get(tipo, [])
+            if capturador in handlers:
+                handlers.remove(capturador)
+
+
+@dataclass
+class SleeperEspia:
+    """Registra cada espera pedida (segundos) sin dormir."""
+
+    llamadas: list[float]
+
+    async def __call__(self, segundos: float) -> None:
+        self.llamadas.append(segundos)
+
+
+@pytest.fixture
+def sleeper_nulo() -> Iterator[SleeperEspia]:
+    """Anula el piso de duración de login y forgot (S2-D39) y deja ver qué se pidió."""
+    from app.modules.auth.service import configure_sleeper
+
+    espia = SleeperEspia(llamadas=[])
+    configure_sleeper(espia)
+    try:
+        yield espia
+    finally:
+        configure_sleeper(None)
+
+
 # Reloj, argon2 y seguridad ---------------------------------------------------------------
 
 
@@ -288,19 +392,20 @@ def cargador_real() -> Iterator[PrincipalLoader]:
 
 
 @pytest.fixture
-async def app_http(
+async def api_prueba(
     seguridad: Settings,
     session: AsyncSession,
     bus_listo: Keyring,
     proveedor_local: LocalFileProvider,
     cargador_real: PrincipalLoader,
     reloj: FrozenClock,
-) -> AsyncIterator[AsyncClient]:
-    """Cliente del api real (sin lifespan) sobre la sesión de la prueba (S2-D19).
+) -> AsyncIterator[FastAPI]:
+    """La app real (sin lifespan) sobre la sesión de la prueba (S2-D19).
 
     El lifespan no corre: su `ensure_keys` confirmaría en otra conexión mientras el savepoint
     de la prueba tiene un `DELETE` abierto sobre `crypto_keys`. Seguridad, proveedor y
-    keyring (`bus_listo`) se configuran aquí a mano.
+    keyring (`bus_listo`) se configuran aquí a mano. `app.state.settings` es la `Settings`
+    que leen las rutas; una prueba puede reemplazarla con `model_copy(update=...)`.
     """
     from app.main import create_app
 
@@ -319,14 +424,40 @@ async def app_http(
 
     aplicacion.dependency_overrides[db.get_session] = sesion_de_la_prueba
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=aplicacion), base_url="http://t"
-        ) as cliente:
-            yield cliente
+        yield aplicacion
     finally:
         aplicacion.dependency_overrides.clear()
         configure_provider(None)
         await db.dispose_engine()
+
+
+@pytest.fixture
+async def app_http(api_prueba: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Cliente HTTP de `api_prueba` (socket `127.0.0.1`)."""
+    async with AsyncClient(transport=ASGITransport(app=api_prueba), base_url="http://t") as c:
+        yield c
+
+
+ClienteDesde = Callable[[str], AsyncClient]
+
+
+@pytest.fixture
+async def cliente_desde(api_prueba: FastAPI) -> AsyncIterator[ClienteDesde]:
+    """`cliente_desde("2001:db8::1")`: cliente de `api_prueba` con esa IP de socket."""
+    abiertos: list[AsyncClient] = []
+
+    def crear(ip: str) -> AsyncClient:
+        cliente = AsyncClient(
+            transport=ASGITransport(app=api_prueba, client=(ip, 40000)), base_url="http://t"
+        )
+        abiertos.append(cliente)
+        return cliente
+
+    try:
+        yield crear
+    finally:
+        for cliente in abiertos:
+            await cliente.aclose()
 
 
 # Usuarios reales y cabeceras ------------------------------------------------------------
@@ -351,10 +482,12 @@ class CrearUsuario(Protocol):
         role: str = "coach",
         *,
         email: str | None = None,
-        password: str = CLAVE_PRUEBA,
+        password: str | None = CLAVE_PRUEBA,
         member_id: UUID | None = None,
         activo: bool = True,
         bloqueado: bool = False,
+        borrado: bool = False,
+        debe_cambiar: bool = False,
     ) -> UsuarioPrueba: ...
 
 
@@ -362,7 +495,9 @@ class CrearUsuario(Protocol):
 def usuario_real(session: AsyncSession, seguridad: Settings, reloj: FrozenClock) -> CrearUsuario:
     """Fábrica: `await usuario_real("admin")` crea el usuario (commit del savepoint) y su token.
 
-    `must_change_password` llega con `0005b_auth_security` (S2-B2) y se agrega entonces.
+    `password=None` deja la cuenta pendiente de activación (sin hash). `debe_cambiar` fija
+    `must_change_password`, columna de `0005b_auth_security` (S2-B2): solo se envía cuando es
+    verdadera, para que las pruebas que no la usan no dependan de la migración.
     """
     from tests.factories.users import make_user
 
@@ -370,11 +505,16 @@ def usuario_real(session: AsyncSession, seguridad: Settings, reloj: FrozenClock)
         role: str = "coach",
         *,
         email: str | None = None,
-        password: str = CLAVE_PRUEBA,
+        password: str | None = CLAVE_PRUEBA,
         member_id: UUID | None = None,
         activo: bool = True,
         bloqueado: bool = False,
+        borrado: bool = False,
+        debe_cambiar: bool = False,
     ) -> UsuarioPrueba:
+        extra: dict[str, Any] = {"must_change_password": True} if debe_cambiar else {}
+        if borrado:
+            extra["deleted_at"] = reloj.now_utc()
         usuario = await make_user(
             session,
             role=role,
@@ -383,9 +523,10 @@ def usuario_real(session: AsyncSession, seguridad: Settings, reloj: FrozenClock)
             member_id=member_id,
             is_active=activo,
             locked_at=reloj.now_utc() if bloqueado else None,
+            **extra,
         )
         token = create_access_token(usuario.id, role, usuario.member_id, reloj)  # type: ignore[arg-type]
-        return UsuarioPrueba(usuario, usuario.id, usuario.email, role, password, token)
+        return UsuarioPrueba(usuario, usuario.id, usuario.email, role, password or "", token)
 
     return crear
 
@@ -413,8 +554,9 @@ async def dos_sesiones(engine: AsyncEngine) -> AsyncIterator[tuple[AsyncSession,
     """Dos sesiones independientes (dos conexiones) con commit real, para `asyncio.gather`.
 
     No se combina con `session`: la transacción externa de esa fixture retiene el candado de la
-    cadena de auditoría. Al salir borra las filas de `settings.settings_sections` y las filas de
-    auditoría agregadas desde el inicio (la cola de la cadena; el prefijo sigue válido).
+    cadena de auditoría. Al salir borra las filas de `settings.settings_sections`, los usuarios
+    `@test.apex` (con sus refresh y tokens de un solo uso) y las filas de auditoría agregadas
+    desde el inicio (la cola de la cadena; el prefijo sigue válido).
     """
     async with engine.connect() as conexion:
         ultima_seq = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
@@ -427,6 +569,8 @@ async def dos_sesiones(engine: AsyncEngine) -> AsyncIterator[tuple[AsyncSession,
         await segunda.close()
         async with engine.begin() as conexion:
             await conexion.execute(text(LIMPIAR_SETTINGS))
+            for sql in LIMPIAR_AUTH:
+                await conexion.execute(text(sql))
             await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
             await conexion.execute(
                 text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq or 0}

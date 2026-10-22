@@ -116,3 +116,54 @@ def test_lee_el_archivo_cuando_no_hay_source(tmp_path: Path) -> None:
     [violacion] = find_forbidden_imports(archivo, module="members")
     assert violacion.rule == "foreign_models" and violacion.line == 1
     assert str(violacion).endswith("importa app.modules.plans.models (foreign_models)")
+
+
+# Regla `private_helper` (S2-D4, E8): `auth/rules.py`, `tokens.py` y `cookies.py` son privados.
+
+
+@pytest.mark.parametrize("helper", ["rules", "tokens", "cookies"])
+def test_helper_privado_de_auth_desde_otro_modulo(helper: str) -> None:
+    fuente = f"from app.modules.auth.{helper} import x\nimport app.modules.auth.{helper}\n"
+    assert _buscar("members/service.py", fuente, module="members") == [
+        f"1:app.modules.auth.{helper}:private_helper",
+        f"2:app.modules.auth.{helper}:private_helper",
+    ]
+
+
+def test_helper_privado_desde_from_paquete_y_relativo() -> None:
+    fuente = (
+        "from app.modules.auth import rules, service\n"
+        "from ..auth.tokens import revoke_all\n"
+        "from ..auth import cookies as c\n"
+    )
+    assert _buscar("settings/service.py", fuente, module="settings") == [
+        "1:app.modules.auth.rules:private_helper",
+        "2:app.modules.auth.tokens:private_helper",
+        "3:app.modules.auth.cookies:private_helper",
+    ]
+
+
+def test_helper_privado_con_importlib() -> None:
+    fuente = 'import importlib\nm = importlib.import_module("app.modules.auth.rules")\n'
+    assert _buscar("plans/service.py", fuente, module="plans") == [
+        "2:app.modules.auth.rules:private_helper"
+    ]
+
+
+def test_el_propio_modulo_usa_sus_helpers_privados() -> None:
+    fuente = (
+        "from app.modules.auth.rules import AuthPolicy\n"
+        "from app.modules.auth import tokens\n"
+        "from .cookies import no_store\n"
+    )
+    assert _buscar("auth/service.py", fuente, module="auth") == []
+    assert _buscar("auth/router.py", fuente, module="auth") == []
+
+
+def test_el_contrato_publico_de_auth_sigue_permitido() -> None:
+    fuente = (
+        "from app.modules.auth import service as auth_service\n"
+        "from app.modules.auth.schemas import UserOut\n"
+        "from app.modules.auth.exceptions import InvalidCredentials\n"
+    )
+    assert _buscar("audit/service.py", fuente, module="audit") == []

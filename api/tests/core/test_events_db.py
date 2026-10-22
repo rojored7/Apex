@@ -28,8 +28,8 @@ class PedidoCreado(DomainEvent):
 
 
 @pytest.fixture(autouse=True)
-async def _tabla(session: AsyncSession) -> None:
-    clear_subscribers()
+async def _tabla(session: AsyncSession, restaurar_bus: None) -> None:
+    clear_subscribers()  # bus vacío solo en esta prueba; `restaurar_bus` lo devuelve (E7)
     await session.run_sync(
         lambda s: Base.metadata.create_all(s.connection(), tables=[Pedido.__table__])
     )

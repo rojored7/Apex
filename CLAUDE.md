@@ -33,6 +33,8 @@ apex/
         context.py       # SYSTEM_USER_ID, actor y lote actuales (contextvars), request_id
         security.py      # argon2, JWT Ed25519, Principal, PrincipalLoader, dependencias de rol
         errors.py        # envelope de error y handlers
+        validators.py    # tipos de entrada compartidos (EmailAddress)
+        ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
         events.py        # bus de eventos interno (en memoria)
@@ -43,7 +45,8 @@ apex/
           digest.py      #   SHA-256 sin dependencias (lo usa core/audit)
           archive.py     #   digest_file() y verify_age_archive() sobre el binario age
       modules/
-        auth/        router.py schemas.py models.py service.py
+        auth/        router.py schemas.py models.py service.py exceptions.py
+                     rules.py tokens.py cookies.py   # ayudas privadas del módulo (S2-D4)
         settings/    router.py schemas.py models.py service.py
         members/     router.py schemas.py models.py service.py
         plans/       ...
@@ -89,7 +92,7 @@ apex/
 
 ## Reglas de módulos
 
-1. Cada módulo tiene `router.py`, `schemas.py`, `service.py` y, si tiene tablas propias, `models.py` (y `exceptions.py` si hace falta). Lógica de negocio solo en `service.py`; los routers validan, llaman al service y devuelven.
+1. Cada módulo tiene `router.py`, `schemas.py`, `service.py` y, si tiene tablas propias, `models.py` (y `exceptions.py` si hace falta). Lógica de negocio solo en `service.py`; los routers validan, llaman al service y devuelven. Un router plano por módulo (S2-D3): un solo `APIRouter` en `router.py`, con la ruta completa en cada decorador (`/auth/login`, no prefijos anidados). Las ayudas privadas de un módulo (en `auth`: `rules.py`, `tokens.py`, `cookies.py`) solo las importa ese módulo (regla `private_helper` de `tests/architecture`).
 2. Un módulo solo llama a otro a través de su `service.py`. Puede importar `schemas.py` y `exceptions.py` de otro módulo; nunca su `models.py` ni su `router.py`. Prohibido hacer joins cruzados fuera de su esquema.
 2 bis. Dependencias mutuas entre services (G-03). Entre dos módulos, el sentido mayoritario llama al `service.py` del otro. El sentido minoritario, si solo valida o consulta, usa un puerto que el módulo dueño registra al arrancar, igual que `subscribe` (por ejemplo `payments.set_membership_gate(memberships.service.payability)`). Si es una lectura de presentación, usa un import perezoso dentro de la función, con comentario, y solo para los pares de la lista blanca de `tests/architecture/test_service_import_graph.py`: en v0.1 `memberships` ↔ `payments`, `members` ↔ `memberships` y `plans` ↔ `memberships`; en v0.4 `members` ↔ `classes`.
 3. Cuando una acción interesa a varios módulos, el origen emite un evento en `core/events.py` (por ejemplo `PaymentRegistered`) y los demás se suscriben. No se encadenan services de tres módulos en un endpoint. Una lectura sí puede recorrer aristas existentes del mapa de contextos hasta profundidad 2, por lote, sin escribir ni emitir eventos (G-04; `docs/ddd/03_context_map.md`, sección 5).
@@ -124,7 +127,7 @@ apex/
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
 - Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo login y health.
 - Rate limit en login. CORS solo para el dominio del front.
-- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` y se borra tras el primer seed. `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
+- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
 - Archivos subidos: volumen `/data/uploads`, nombre aleatorio, validación por bytes mágicos, tamaño máximo 5 MB, servidos solo por el api con rol y auditoría. Los sensibles pasan por el bus (`attachment.sensitive`).

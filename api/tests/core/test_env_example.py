@@ -66,3 +66,53 @@ def test_cors_vacio_y_proxies_documentados() -> None:
     claves = _claves()
     assert claves["CORS_ORIGINS"] == "" and "*" not in claves["CORS_ORIGINS"]
     assert "TRUSTED_PROXIES" in claves and "RATE_LIMIT_MAX_KEYS" in claves
+
+
+# S2-B2 · M-8 (sin ADMIN_*), E3 y E9 (variables nuevas como líneas activas) --------------
+
+NUEVAS_ACTIVAS: dict[str, str] = {
+    "LOGIN_IP_LIMIT": "5",
+    "LOGIN_IP_WINDOW_S": "60",
+    "LOGIN_ACCOUNT_LIMIT": "10",
+    "LOGIN_ACCOUNT_WINDOW_S": "900",
+    "LOGIN_ACCOUNT_GLOBAL_LIMIT": "100",
+    "LOGIN_ACCOUNT_GLOBAL_WINDOW_S": "3600",
+    "LOGIN_LOCK_AFTER": "20",
+    "REFRESH_IP_LIMIT": "60",
+    "RESET_IP_LIMIT": "10",
+    "FORGOT_IP_LIMIT": "5",
+    "LOGOUT_IP_LIMIT": "30",
+    "REFRESH_REUSE_GRACE_S": "10",
+    "REFRESH_ABSOLUTE_TTL_DAYS": "30",
+    "ALLOW_INSECURE_COOKIE": "false",
+    "COOKIE_SECURE": "false",
+}
+
+
+def test_sin_variables_del_primer_admin() -> None:
+    """M-8: `ADMIN_*` viven en `.env.seed` (solo `tools`); el ejemplo del api no las trae."""
+    claves = _claves()
+    assert "ADMIN_EMAIL" not in claves and "ADMIN_INITIAL_PASSWORD" not in claves
+    assert {"ADMIN_EMAIL", "ADMIN_INITIAL_PASSWORD"} <= NON_API_ENV_VARS
+
+
+def test_las_variables_nuevas_van_activas_con_sus_valores() -> None:
+    """E9: `test_env_example` ignora comentarios, así que cada variable nueva es una línea
+    activa con el valor de producción."""
+    claves = _claves()
+    for nombre, valor in NUEVAS_ACTIVAS.items():
+        assert claves.get(nombre) == valor, nombre
+    assert "AUTH_ALLOWED_ORIGINS" in claves
+    assert int(claves["LOGIN_MIN_DURATION_MS"]) > 0
+
+
+def test_allow_insecure_cookie_documenta_el_riesgo_p7() -> None:
+    """E3/E9: el comentario junto a `ALLOW_INSECURE_COOKIE` nombra el riesgo aceptado P7."""
+    lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
+    indices = [i for i, linea in enumerate(lineas) if linea.startswith("ALLOW_INSECURE_COOKIE=")]
+    assert len(indices) == 1, "ALLOW_INSECURE_COOKIE debe ir una vez como línea activa"
+    indice = indices[0]
+    comentario = " ".join(
+        linea for linea in lineas[max(0, indice - 4) : indice] if linea.startswith("#")
+    )
+    assert "P7" in comentario

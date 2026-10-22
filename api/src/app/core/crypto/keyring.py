@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.crypto import oplog
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.models import CryptoKey
-from app.core.crypto.provider import KeyProvider
+from app.core.crypto.provider import KeyProvider, current_provider
 
 LOADABLE_STATES: frozenset[str] = frozenset({"active", "decrypt_only"})
 
@@ -152,3 +152,15 @@ def current_keyring() -> Keyring:
     if _current is None:
         raise CryptoError("crypto_unavailable", "el keyring no está cargado (ensure_keys)")
     return _current
+
+
+async def refresh_current(session: AsyncSession) -> None:
+    """Recarga el keyring del proceso si otro proceso rotó llaves (S2-D11, M-3 del Sprint 1).
+
+    Sin keyring cargado no hace nada. `current_user` la llama solo tras validar el token, así
+    las rutas públicas (login, refresh) y un token inválido no abren `crypto_keys`.
+    """
+    keyring = _current
+    if keyring is None:
+        return
+    await keyring.refresh_if_stale(session, keyring.provider or current_provider())

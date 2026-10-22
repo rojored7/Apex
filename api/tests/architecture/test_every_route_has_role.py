@@ -22,7 +22,8 @@ def _produccion(tmp_path: Path, base: Settings, claves: Path) -> Settings:
         f"DATABASE_URL={base.DATABASE_URL.get_secret_value()}\n"
         f"JWT_PRIVATE_KEY_PATH={rutas.jwt_private}\nCRYPTO_PROVIDER=local\n"
         f"CRYPTO_LOCAL_KEK_PATH={rutas.kek}\nCRYPTO_LOCAL_SIGNING_KEY_PATH={rutas.signing_key}\n"
-        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV=production\n',
+        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV=production\n'
+        "COOKIE_SECURE=true\n",  # M-9 (E3): producción exige la cookie Secure
         encoding="utf-8",
     )
     return load_settings(env_file=archivo)
@@ -59,30 +60,72 @@ def test_las_publicas_registradas_lo_estan_con_el_mismo_metodo(
 
 
 def test_la_lista_blanca_es_la_esperada() -> None:
+    """S2-D35 (H-1): logout se autentica por la cookie y entra en la lista (7 → 8 rutas)."""
     assert PUBLIC_ROUTES == frozenset(
         {
             ("GET", "/health"),
             ("GET", "/api/v1/health"),
             ("POST", "/api/v1/auth/login"),
             ("POST", "/api/v1/auth/refresh"),
+            ("POST", "/api/v1/auth/logout"),
             ("POST", "/api/v1/auth/forgot"),
             ("POST", "/api/v1/auth/reset"),
             ("GET", "/api/v1/tv/today"),
         }
     )
+    assert len(PUBLIC_ROUTES) == 8
+
+
+def test_login_refresh_y_logout_estan_registradas_sin_rol(
+    tmp_path: Path, settings_prueba: Settings, claves_prueba: Path
+) -> None:
+    """S2-B2: las tres rutas de sesión existen por POST y ninguna exige Bearer (H-1)."""
+    from app.core.security import route_has_role_dependency
+
+    app = create_app(
+        _produccion(tmp_path, settings_prueba, claves_prueba), run_migrations_on_startup=False
+    )
+    app.openapi()
+    sesion = {
+        "/api/v1/auth/login",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/logout",
+    }
+    encontradas = {
+        ruta.path: ruta
+        for ruta in effective_routes(app)[0]
+        if ruta.path in sesion and "POST" in ruta.methods
+    }
+    assert set(encontradas) == sesion
+    assert not any(route_has_role_dependency(r) for r in encontradas.values())
 
 
 def test_login_y_forgot_llevan_limite_de_intentos(
     tmp_path: Path, settings_prueba: Settings, claves_prueba: Path
 ) -> None:
-    """US-036 T9: cuando existan, las rutas públicas de auth deben tener `rate_limit`."""
+    """US-036 T9 y L-12: cuando existan, las rutas públicas de auth deben tener `rate_limit`,
+    cada una con su propio bucket (logout incluido, S2-D35)."""
     from app.core.security import _dependant_has
 
     app = create_app(
         _produccion(tmp_path, settings_prueba, claves_prueba), run_migrations_on_startup=False
     )
     app.openapi()
-    objetivo = {"/api/v1/auth/login", "/api/v1/auth/forgot"}
+    objetivo = {
+        "/api/v1/auth/login": "login",
+        "/api/v1/auth/refresh": "refresh",
+        "/api/v1/auth/logout": "logout",
+        "/api/v1/auth/forgot": "forgot",
+        "/api/v1/auth/reset": "reset",
+    }
+    vistas: set[str] = set()
     for ruta in effective_routes(app)[0]:
         if ruta.path in objetivo and "POST" in ruta.methods:
             assert _dependant_has(ruta.dependant, "__apex_rate_limit__"), ruta.path
+            buckets = {
+                getattr(dep.call, "__apex_rate_limit__", None)
+                for dep in ruta.dependant.dependencies
+            }
+            assert objetivo[ruta.path] in buckets, (ruta.path, buckets)
+            vistas.add(ruta.path)
+    assert {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"} <= vistas

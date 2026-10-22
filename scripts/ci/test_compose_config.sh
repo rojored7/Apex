@@ -107,7 +107,7 @@ for svc in ("api", "worker", "db"):
     check(all(nombre != ".env.seed" for nombre, _ in archivos(svc)), f"{svc} no lee .env.seed")
     con_valor = [k for k, v in (prod[svc].get("environment") or {}).items() if k.startswith("ADMIN_") and v]
     check(not con_valor, f"{svc} no recibe ADMIN_* con valor ({con_valor or 'ninguna'})")
-check(all(ejemplo.get(k, None) == "" for k in ("ADMIN_EMAIL", "ADMIN_INITIAL_PASSWORD")), ".env.example deja ADMIN_* vacias (van en .env.seed)")
+check(all(k not in ejemplo for k in ("ADMIN_EMAIL", "ADMIN_INITIAL_PASSWORD")), ".env.example no trae ADMIN_* (van en .env.seed; M-8)")
 seed_ejemplo = Path(os.environ["RAIZ"]) / ".env.seed.example"
 claves_seed = {}
 if seed_ejemplo.is_file():

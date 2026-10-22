@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.clock import FrozenClock, reset_clock, set_clock
 from app.core.config import Settings
 from app.core.context import current_actor
+from app.core.crypto.keyring import Keyring
 from app.core.security import (
     ROLES,
     JwtKeys,
@@ -178,3 +179,81 @@ async def test_dos_peticiones_concurrentes_no_mezclan_actores(app: FastAPI) -> N
         *(pedir(ADMIN, "admin") if i % 2 else pedir(COACH, "coach") for i in range(10))
     )
     assert resultados == [str(COACH) if i % 2 == 0 else str(ADMIN) for i in range(10)]
+
+
+# S2-B2 · S2-D11 (M-3 del Sprint 1) y S2-D37 (H-3) ----------------------------------------
+
+
+class _EspiaKeyring:
+    """Cuenta las llamadas a `Keyring.refresh_if_stale` (lo que hace `refresh_current`)."""
+
+    def __init__(self) -> None:
+        self.llamadas = 0
+
+    def instalar(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        original = Keyring.refresh_if_stale
+        espia = self
+
+        async def contar(keyring: Keyring, session: object, provider: object) -> bool:
+            espia.llamadas += 1
+            return await original(keyring, session, provider)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Keyring, "refresh_if_stale", contar)
+
+
+async def test_refresh_current_solo_tras_un_token_valido(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    espia = _EspiaKeyring()
+    espia.instalar(monkeypatch)
+    assert (await _get(app, "admin", {}))[0] == 401
+    assert (await _get(app, "admin", {"Authorization": "Bearer basura"}))[0] == 401
+    vencido = _token(ADMIN, "admin", en=T0 - timedelta(minutes=20))
+    assert (await _get(app, "admin", _auth(vencido)))[0] == 401
+    assert (await _get(app, "admin", _auth(_token(SYSTEM, "admin"))))[0] == 401
+    assert (await _get(app, "admin", _auth(_token(BAJA, "admin"))))[0] == 401
+    assert espia.llamadas == 0, "ningún token inválido abre el keyring"
+    assert (await _get(app, "admin", _auth(_token(ADMIN, "admin"))))[0] == 200
+    assert espia.llamadas == 1, "un token válido refresca el keyring una vez"
+
+
+async def test_las_rutas_publicas_no_tocan_el_keyring(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, sleeper_nulo: object
+) -> None:
+    """S2-D11: se quita la dependencia global de `include_module_routers`; login y refresh
+    no abren el keyring."""
+    espia = _EspiaKeyring()
+    espia.instalar(monkeypatch)
+    origen = {"Origin": "http://localhost"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        login = await c.post(
+            f"{API_PREFIX}/auth/login",
+            json={"email": "nadie@test.apex", "password": "Zanahoria-Lunar-42x"},
+            headers=origen,
+        )
+        refresh = await c.post(f"{API_PREFIX}/auth/refresh", headers=origen)
+    assert login.status_code == 401 and login.json()["error"]["code"] == "invalid_credentials"
+    assert refresh.status_code == 401 and refresh.json()["error"]["code"] == "invalid_refresh"
+    assert espia.llamadas == 0
+
+
+async def test_access_emitido_antes_de_tokens_valid_after_da_401_unauthorized(
+    app: FastAPI,
+) -> None:
+    """H-3: `iat < tokens_valid_after` → 401 `unauthorized` (no `token_expired`); el `iat`
+    igual o posterior pasa. `tokens_valid_after` va truncado a segundos (E8)."""
+    corte = T0 + timedelta(seconds=1)
+    principal_double.usuarios[ADMIN] = Principal(ADMIN, "admin", None, tokens_valid_after=corte)
+    status, cuerpo, resp = await _get(app, "admin", _auth(_token(ADMIN, "admin", en=T0)))
+    assert status == 401 and cuerpo["error"]["code"] == "unauthorized"
+    assert resp["www-authenticate"] == "Bearer"
+    mismo_segundo = _token(ADMIN, "admin", en=corte + timedelta(milliseconds=900))
+    assert (await _get(app, "admin", _auth(mismo_segundo)))[0] == 200
+    assert (await _get(app, "admin", _auth(_token(ADMIN, "admin", en=corte))))[0] == 200
+
+
+def test_principal_lleva_los_campos_nuevos_con_defaults() -> None:
+    """E8: construcción posicional intacta; los campos nuevos tienen valor por defecto."""
+    principal = Principal(ADMIN, "admin", None)
+    assert principal.must_change_password is False
+    assert principal.tokens_valid_after is None

@@ -41,7 +41,9 @@ SESION = cast(AsyncSession, SesionFalsa())
 
 
 @pytest.fixture(autouse=True)
-def _limpio() -> None:
+def _bus_vacio(restaurar_bus: None) -> None:
+    """Estas pruebas necesitan el bus vacío: lo vacían aquí y `restaurar_bus` (E7) devuelve los
+    handlers de los módulos al terminar."""
     clear_subscribers()
 
 

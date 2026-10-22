@@ -44,7 +44,9 @@ from app.core.config import Settings
 
 Role = Literal["admin", "coach", "member"]
 ROLES: Final[tuple[str, ...]] = ("admin", "coach", "member")
-WeakReason = Literal["too_short", "too_common"]
+WeakReason = Literal["too_short", "too_common", "too_long"]
+# Tope de longitud de contraseña (L-5 del Sprint 1, S2-D30): `too_long` se revisa primero.
+PASSWORD_MAX_LENGTH: Final = 128
 JWT_ALGORITHM: Final = "EdDSA"
 REQUIRED_CLAIMS: Final[tuple[str, ...]] = ("exp", "iat", "sub", "role", "jti")
 OPAQUE_TOKEN_BYTES: Final = 32
@@ -294,6 +296,9 @@ def configure_password_policy(min_length: int) -> None:
 
 
 def validate_password_policy(plain: str) -> None:
+    """Orden fijo: `too_long`, `too_short`, `too_common`. El mensaje nunca lleva la clave."""
+    if len(plain) > PASSWORD_MAX_LENGTH:
+        raise WeakPasswordError("too_long")
     if len(plain) < _min_length:
         raise WeakPasswordError("too_short")
     if plain.lower() in COMMON_PASSWORDS:
@@ -354,7 +359,9 @@ def configure_security(settings: Settings) -> None:
 # `PrincipalLoader` es un puerto que define core y que `modules/auth/service.py` implementa y
 # registra al importarse (como `events.subscribe`), para que core nunca importe un módulo.
 # `current_user` lee `Authorization: Bearer`, decodifica, rechaza `SYSTEM_USER_ID` (N-15),
-# pide al cargador el estado vigente (rol de la base, no del claim) y fija `current_actor`
+# pide al cargador el estado vigente (rol de la base, no del claim), rechaza un access con
+# `iat` anterior a `tokens_valid_after` (H-3), refresca el keyring solo entonces (S2-D11) y fija
+# `current_actor`
 # sin resetearlo: el commit de `get_session` corre en su teardown y lo necesita; lo limpia
 # `RequestLogMiddleware` al terminar la petición. Toda 401 lleva `WWW-Authenticate: Bearer`
 # y el mismo mensaje genérico; `token_expired` solo para un access vencido con firma válida.
@@ -372,6 +379,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
 from app.core.clock import get_clock  # noqa: E402
 from app.core.context import SYSTEM_USER_ID, current_actor  # noqa: E402
+from app.core.crypto.keyring import refresh_current  # noqa: E402
 from app.core.db import get_session  # noqa: E402
 from app.core.errors import ForbiddenError, UnauthorizedError  # noqa: E402
 
@@ -380,9 +388,17 @@ SESSION_INVALID_MESSAGE: Final = "Sesión no válida."
 
 @dataclass(frozen=True)
 class Principal:
+    """Estado vigente del usuario autenticado, leído de la base en cada petición.
+
+    `must_change_password` (M-8) y `tokens_valid_after` (H-3: un access con `iat` anterior se
+    rechaza) llevan valor por defecto para no romper las construcciones posicionales (E8).
+    """
+
     user_id: UUID
     role: Role
     member_id: UUID | None
+    must_change_password: bool = False
+    tokens_valid_after: datetime | None = None
 
 
 class PrincipalLoader(Protocol):
@@ -412,6 +428,14 @@ def role_allowed(user_role: Role, allowed: frozenset[Role]) -> bool:
     return user_role in allowed
 
 
+def issued_before_cutoff(iat: int, tokens_valid_after: datetime | None) -> bool:
+    """H-3 (pura): un access con `iat` anterior al corte ya no vale. Se compara en segundos
+    enteros; un `iat` igual al corte (emitido en el mismo segundo, después) pasa."""
+    if tokens_valid_after is None:
+        return False
+    return iat < int(tokens_valid_after.timestamp())
+
+
 def _bearer_token(request: Request) -> str:
     cabecera = request.headers.get("Authorization", "")
     partes = cabecera.split()
@@ -434,8 +458,9 @@ async def current_user(
     if claims.sub == SYSTEM_USER_ID:
         raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
     principal = await get_principal_loader()(session, claims.sub)
-    if principal is None:
+    if principal is None or issued_before_cutoff(claims.iat, principal.tokens_valid_after):
         raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    await refresh_current(session)
     current_actor.set(principal.user_id)
     return principal
 
@@ -464,6 +489,7 @@ PUBLIC_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("GET", "/api/v1/health"),  # el mismo chequeo por el proxy (N-16)
         ("POST", "/api/v1/auth/login"),  # obtener la sesión (con límite de intentos, US-036)
         ("POST", "/api/v1/auth/refresh"),  # renovar con la cookie HttpOnly (N-13)
+        ("POST", "/api/v1/auth/logout"),  # cerrar sesión por la cookie, no por el Bearer (H-1)
         ("POST", "/api/v1/auth/forgot"),  # pedir enlace de restablecimiento (US-048)
         ("POST", "/api/v1/auth/reset"),  # restablecer con token de un solo uso (US-048)
         ("GET", "/api/v1/tv/today"),  # pantalla de TV con X-Device-Token (N-44, US-175)

@@ -10,6 +10,8 @@ Reglas:
 - (c) `foreign_router`: `app.modules.<y>.router` con `y` distinto del módulo propio;
 - (d) `foreign_non_service`: solo con `ALLOW_FOREIGN_SCHEMAS = False`; `schemas.py` y
   `exceptions.py` ajenos son contrato público del service (decisión del gate, US-022).
+- (e) `private_helper` (S2-D4, E8): un helper privado de otro módulo (`PRIVATE_HELPERS`, por
+  ejemplo `app.modules.auth.rules`, `tokens` y `cookies`); el propio módulo sí los usa.
 """
 
 from __future__ import annotations
@@ -22,8 +24,14 @@ from typing import Final, Literal
 ALLOW_FOREIGN_SCHEMAS: Final = True
 PREFIX: Final = "app.modules."
 FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "exceptions"})
+# Archivos privados por módulo: solo su propio módulo los importa (S2-D4).
+PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
+    "auth": frozenset({"rules", "tokens", "cookies"}),
+}
 
-Rule = Literal["foreign_models", "router_models", "foreign_router", "foreign_non_service"]
+Rule = Literal[
+    "foreign_models", "router_models", "foreign_router", "foreign_non_service", "private_helper"
+]
 
 
 @dataclass(frozen=True)
@@ -95,6 +103,8 @@ def _rule_for(name: str, *, module: str, is_router: bool) -> tuple[str, Rule] | 
         return None
     if owner == module:
         return None
+    if archivo in PRIVATE_HELPERS.get(owner, frozenset()):
+        return target, "private_helper"
     if archivo == "router":
         return target, "foreign_router"
     if archivo not in FOREIGN_ALLOWED or (not ALLOW_FOREIGN_SCHEMAS and archivo != "service"):

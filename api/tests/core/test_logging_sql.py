@@ -19,7 +19,8 @@ def _settings_debug(tmp_path: Path) -> object:
     env.write_text(
         "DATABASE_URL=postgresql+asyncpg://apex:x@db:5432/apex\n"
         "JWT_PRIVATE_KEY_PATH=/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/kek\n"
-        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nLOG_LEVEL=DEBUG\n',
+        'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nLOG_LEVEL=DEBUG\n'
+        "COOKIE_SECURE=true\n",  # sin ENV es producción: M-9 (E3)
         encoding="utf-8",
     )
     return load_settings(env_file=env)

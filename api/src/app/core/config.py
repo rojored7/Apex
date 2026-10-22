@@ -40,9 +40,12 @@ from pydantic_settings import (
 )
 
 # Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
-# pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041).
+# pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041: vive en `.env.seed`
+# y solo lo lee `SeedSettings` en el servicio tools; M-8).
 NON_API_ENV_VARS: frozenset[str] = frozenset(
     {
+        "ADMIN_EMAIL",
+        "ADMIN_INITIAL_PASSWORD",
         "POSTGRES_USER",
         "POSTGRES_PASSWORD",
         "POSTGRES_DB",
@@ -127,6 +130,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     TRUSTED_PROXIES: str = ""  # redes CIDR o IPs separadas por coma (US-036)
     RATE_LIMIT_MAX_KEYS: int = Field(default=10000, gt=0)
+    # Riesgo aceptado P7 (LAN sin TLS): con ENV=production se exige COOKIE_SECURE=true salvo que
+    # esta variable lo autorice de forma explícita (M-9). Va antes de COOKIE_SECURE porque el
+    # validador de esa variable la lee.
+    ALLOW_INSECURE_COOKIE: bool = False
     COOKIE_SECURE: bool = False
     FRONT_BASE_URL: str = "http://localhost"
     APP_VERSION: str = "dev"  # SHA corto de git en la imagen (ARG GIT_SHA)
@@ -144,9 +151,30 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_TTL_DAYS: int = Field(default=7, gt=0)
     JWT_LEEWAY_S: int = Field(default=30, ge=0)
 
-    # Seed del primer admin (US-041): de un solo uso; se borra del .env tras el primer arranque.
-    ADMIN_EMAIL: str | None = None
-    ADMIN_INITIAL_PASSWORD: SecretStr | None = None
+    # Límites de intentos (S2-B2; E5 y E9 del plan; S2-D10, H-4, L-12). Las rutas por IP usan
+    # ventanas de 60 s; el límite por cuenta solo cuenta fallos y su clave es (correo, red /24 o
+    # /64); el bloqueo persistente llega a los `LOGIN_LOCK_AFTER` fallos consecutivos.
+    LOGIN_IP_LIMIT: int = Field(default=5, gt=0)
+    LOGIN_IP_WINDOW_S: int = Field(default=60, gt=0)
+    LOGIN_ACCOUNT_LIMIT: int = Field(default=10, gt=0)
+    LOGIN_ACCOUNT_WINDOW_S: int = Field(default=900, gt=0)
+    LOGIN_ACCOUNT_GLOBAL_LIMIT: int = Field(default=100, gt=0)
+    LOGIN_ACCOUNT_GLOBAL_WINDOW_S: int = Field(default=3600, gt=0)
+    LOGIN_LOCK_AFTER: int = Field(default=20, gt=0)
+    REFRESH_IP_LIMIT: int = Field(default=60, gt=0)
+    RESET_IP_LIMIT: int = Field(default=10, gt=0)
+    FORGOT_IP_LIMIT: int = Field(default=5, gt=0)
+    LOGOUT_IP_LIMIT: int = Field(default=30, gt=0)
+    # Orígenes aceptados por `require_same_origin` en login, refresh y logout (M-1, S2-D38);
+    # vacío = el origen de FRONT_BASE_URL.
+    AUTH_ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = []
+    # Piso de duración de toda respuesta 401 de login y de todo forgot (M-6, S2-D39): 1,5 veces
+    # la mediana de argon2 más commit medida dentro del contenedor en S2-B2 (unos 48 ms, así
+    # 72 ms, redondeado a 75; docs/RUNBOOK.md).
+    LOGIN_MIN_DURATION_MS: int = Field(default=75, gt=0)
+    # Gracia del reuso de refresh (M-2) y tope absoluto de una familia de refresh (L-4).
+    REFRESH_REUSE_GRACE_S: int = Field(default=10, gt=0)
+    REFRESH_ABSOLUTE_TTL_DAYS: int = Field(default=30, gt=0)
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -173,6 +201,23 @@ class Settings(BaseSettings):
         if isinstance(valor, list):
             return parse_origins(",".join(str(v) for v in valor))
         return parse_origins(str(valor) if valor is not None else "")
+
+    @field_validator("AUTH_ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def _origenes_de_sesion(cls, valor: object) -> list[str]:
+        if isinstance(valor, list):
+            return parse_origins(",".join(str(v) for v in valor))
+        return parse_origins(str(valor) if valor is not None else "")
+
+    @field_validator("COOKIE_SECURE")
+    @classmethod
+    def _cookie_segura_en_produccion(cls, valor: bool, info: ValidationInfo) -> bool:
+        entorno = info.data.get("ENV")
+        if isinstance(entorno, str):
+            validate_cookie_security(
+                entorno, valor, bool(info.data.get("ALLOW_INSECURE_COOKIE", False))
+            )
+        return valor
 
     @field_validator("TRUSTED_PROXIES")
     @classmethod
@@ -243,6 +288,40 @@ def _a_config_error(exc: ValidationError) -> ConfigError:
         else:
             invalid.append(nombre)
     return ConfigError(missing=missing, invalid=invalid)
+
+
+def validate_cookie_security(env: str, cookie_secure: bool, allow_insecure: bool) -> None:
+    """Función pura (M-9): en producción la cookie lleva `Secure` salvo excepción explícita."""
+    if env == "production" and not cookie_secure and not allow_insecure:
+        raise ValueError(
+            "COOKIE_SECURE debe ser true en producción "
+            "(o ALLOW_INSECURE_COOKIE=true como riesgo aceptado P7)"
+        )
+
+
+class SeedSettings(BaseSettings):
+    """Variables del primer admin, solo para `cli seed` (servicio `tools`; M-8, S2-D12, L-9).
+
+    Lee `.env.seed` (si no existe, solo el entorno) con `extra="forbid"`.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env.seed",
+        env_file_encoding="utf-8",
+        extra="forbid",
+        case_sensitive=False,
+    )
+
+    ADMIN_EMAIL: str | None = None
+    ADMIN_INITIAL_PASSWORD: SecretStr | None = None
+
+
+def load_seed_settings(env_file: Path | str | None = ".env.seed") -> SeedSettings:
+    """Carga `SeedSettings` (el entorno manda sobre el archivo); `ConfigError` sin valores."""
+    try:
+        return SeedSettings(_env_file=env_file)
+    except ValidationError as exc:
+        raise _a_config_error(exc) from None
 
 
 def load_settings(env_file: Path | str | None = ".env") -> Settings:

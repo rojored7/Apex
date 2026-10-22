@@ -24,6 +24,8 @@ BASE: dict[str, str] = {
     "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/kek.bin",
     "UPLOADS_DIR": "/data/uploads",
     "CORS_ORIGINS": '["http://localhost"]',
+    # M-9 (E3): sin ENV es producción, y producción exige la cookie Secure.
+    "COOKIE_SECURE": "true",
 }
 TODAS = (
     *BASE,
@@ -32,9 +34,26 @@ TODAS = (
     "TZ_DISPLAY",
     "LOG_LEVEL",
     "TRUSTED_PROXIES",
-    "COOKIE_SECURE",
     "FRONT_BASE_URL",
     "FOO",
+    "ALLOW_INSECURE_COOKIE",
+    "AUTH_ALLOWED_ORIGINS",
+    "LOGIN_MIN_DURATION_MS",
+    "LOGIN_IP_LIMIT",
+    "LOGIN_IP_WINDOW_S",
+    "LOGIN_ACCOUNT_LIMIT",
+    "LOGIN_ACCOUNT_WINDOW_S",
+    "LOGIN_ACCOUNT_GLOBAL_LIMIT",
+    "LOGIN_ACCOUNT_GLOBAL_WINDOW_S",
+    "LOGIN_LOCK_AFTER",
+    "REFRESH_IP_LIMIT",
+    "RESET_IP_LIMIT",
+    "FORGOT_IP_LIMIT",
+    "LOGOUT_IP_LIMIT",
+    "REFRESH_REUSE_GRACE_S",
+    "REFRESH_ABSOLUTE_TTL_DAYS",
+    "ADMIN_EMAIL",
+    "ADMIN_INITIAL_PASSWORD",
 )
 
 
@@ -149,3 +168,157 @@ def test_env_dev_solo_si_se_pide(tmp_path: Path) -> None:
     assert s.ENV == "dev"
     assert not s.is_production
     assert load_settings(env_file=escribir_env(tmp_path)).is_production
+
+
+# S2-B2 · variables nuevas, M-9, M-8 y SeedSettings ---------------------------------------
+
+NUEVAS_ENTERAS: dict[str, int] = {
+    "LOGIN_IP_LIMIT": 5,
+    "LOGIN_IP_WINDOW_S": 60,
+    "LOGIN_ACCOUNT_LIMIT": 10,
+    "LOGIN_ACCOUNT_WINDOW_S": 900,
+    "LOGIN_ACCOUNT_GLOBAL_LIMIT": 100,
+    "LOGIN_ACCOUNT_GLOBAL_WINDOW_S": 3600,
+    "LOGIN_LOCK_AFTER": 20,
+    "REFRESH_IP_LIMIT": 60,
+    "RESET_IP_LIMIT": 10,
+    "FORGOT_IP_LIMIT": 5,
+    "LOGOUT_IP_LIMIT": 30,
+    "REFRESH_REUSE_GRACE_S": 10,
+    "REFRESH_ABSOLUTE_TTL_DAYS": 30,
+}
+
+
+def test_las_variables_nuevas_tienen_los_valores_de_produccion(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path))
+    for nombre, valor in NUEVAS_ENTERAS.items():
+        assert getattr(s, nombre) == valor, nombre
+    assert s.LOGIN_MIN_DURATION_MS > 0  # el valor medido lo fija el Verde de B2 (S2-D39)
+    assert s.AUTH_ALLOWED_ORIGINS == []
+    assert s.ALLOW_INSECURE_COOKIE is False
+
+
+@pytest.mark.parametrize("nombre", [*NUEVAS_ENTERAS, "LOGIN_MIN_DURATION_MS"])
+def test_las_variables_nuevas_exigen_mayor_que_cero(tmp_path: Path, nombre: str) -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{nombre: "0"}))
+    assert nombre in excinfo.value.invalid
+
+
+def test_auth_allowed_origins_acepta_lista_y_rechaza_comodin(tmp_path: Path) -> None:
+    s = load_settings(
+        env_file=escribir_env(
+            tmp_path, AUTH_ALLOWED_ORIGINS="http://localhost:8180, http://localhost:5173/"
+        )
+    )
+    assert s.AUTH_ALLOWED_ORIGINS == ["http://localhost:8180", "http://localhost:5173"]
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, AUTH_ALLOWED_ORIGINS="*"))
+    assert "AUTH_ALLOWED_ORIGINS" in excinfo.value.invalid
+
+
+def test_produccion_con_cookie_sin_secure_falla_y_nombra_la_variable(tmp_path: Path) -> None:
+    """M-9 (S2-D13 reemplazada): en producción la cookie lleva `Secure`."""
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, COOKIE_SECURE="false"))
+    assert "COOKIE_SECURE" in str(excinfo.value)
+    with pytest.raises(ConfigError):
+        load_settings(env_file=escribir_env(tmp_path, COOKIE_SECURE=None))  # por defecto false
+
+
+def test_produccion_sin_secure_solo_con_la_excepcion_explicita(tmp_path: Path) -> None:
+    """Riesgo aceptado P7 (LAN sin TLS): `ALLOW_INSECURE_COOKIE=true` lo autoriza."""
+    s = load_settings(
+        env_file=escribir_env(tmp_path, COOKIE_SECURE="false", ALLOW_INSECURE_COOKIE="true")
+    )
+    assert s.is_production and s.COOKIE_SECURE is False and s.ALLOW_INSECURE_COOKIE is True
+    assert load_settings(env_file=escribir_env(tmp_path)).COOKIE_SECURE is True
+
+
+def test_en_dev_la_cookie_sin_secure_se_acepta(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, ENV="dev", COOKIE_SECURE="false"))
+    assert s.ENV == "dev" and s.COOKIE_SECURE is False
+
+
+@pytest.mark.parametrize(
+    ("env", "segura", "excepcion", "falla"),
+    [
+        ("production", False, False, True),
+        ("production", True, False, False),
+        ("production", False, True, False),
+        ("production", True, True, False),
+        ("dev", False, False, False),
+        ("dev", True, False, False),
+    ],
+)
+def test_validate_cookie_security_es_pura(
+    env: str, segura: bool, excepcion: bool, falla: bool
+) -> None:
+    from app.core.config import validate_cookie_security
+
+    if falla:
+        with pytest.raises(ValueError, match="COOKIE_SECURE"):
+            validate_cookie_security(env, segura, excepcion)
+    else:
+        validate_cookie_security(env, segura, excepcion)
+
+
+def test_admin_sale_de_settings_y_entra_en_non_api_env_vars(tmp_path: Path) -> None:
+    """M-8 (S2-D12): `ADMIN_*` solo las lee `SeedSettings` en el servicio `tools`."""
+    assert {"ADMIN_EMAIL", "ADMIN_INITIAL_PASSWORD"} <= NON_API_ENV_VARS
+    assert "ADMIN_EMAIL" not in Settings.model_fields
+    assert "ADMIN_INITIAL_PASSWORD" not in Settings.model_fields
+    s = load_settings(
+        env_file=escribir_env(
+            tmp_path,
+            ADMIN_EMAIL="admin@apex.local",
+            ADMIN_INITIAL_PASSWORD="x",  # noqa: S106
+        )
+    )
+    assert not hasattr(s, "ADMIN_EMAIL")
+
+
+def test_seed_settings_lee_env_seed_y_el_entorno_manda(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import SeedSettings, load_seed_settings
+
+    archivo = tmp_path / ".env.seed"
+    archivo.write_text(
+        "ADMIN_EMAIL=dueno@apex.co\nADMIN_INITIAL_PASSWORD=Zanahoria-Lunar-42x\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    monkeypatch.delenv("ADMIN_INITIAL_PASSWORD", raising=False)
+    semilla = load_seed_settings(archivo)
+    assert isinstance(semilla, SeedSettings)
+    assert semilla.ADMIN_EMAIL == "dueno@apex.co"
+    assert semilla.ADMIN_INITIAL_PASSWORD is not None
+    assert semilla.ADMIN_INITIAL_PASSWORD.get_secret_value() == "Zanahoria-Lunar-42x"
+    assert "Zanahoria" not in repr(semilla)
+    monkeypatch.setenv("ADMIN_EMAIL", "otra@apex.co")
+    assert load_seed_settings(archivo).ADMIN_EMAIL == "otra@apex.co"
+
+
+def test_seed_settings_sin_archivo_lee_solo_el_entorno(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import load_seed_settings
+
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    monkeypatch.delenv("ADMIN_INITIAL_PASSWORD", raising=False)
+    vacio = load_seed_settings(tmp_path / "no-existe.env.seed")
+    assert vacio.ADMIN_EMAIL is None and vacio.ADMIN_INITIAL_PASSWORD is None
+
+
+def test_seed_settings_rechaza_claves_ajenas_sin_mostrar_valores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import load_seed_settings
+
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    archivo = tmp_path / ".env.seed"
+    archivo.write_text("ADMIN_EMAIL=a@apex.co\nDATABASE_URL=valor-secreto-99\n", encoding="utf-8")
+    with pytest.raises(ConfigError) as excinfo:
+        load_seed_settings(archivo)
+    assert "DATABASE_URL" in excinfo.value.invalid
+    assert "valor-secreto-99" not in str(excinfo.value)

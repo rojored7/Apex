@@ -30,3 +30,16 @@ def test_nadie_fuera_de_settings_importa_settings_models() -> None:
         if v.imported.startswith("app.modules.settings.models")
     ]
     assert violaciones == [], "\n".join(violaciones)
+
+
+def test_nadie_fuera_de_auth_importa_sus_helpers_privados() -> None:
+    """S2-D4: `auth/rules.py`, `tokens.py` y `cookies.py` solo los usa el módulo auth."""
+    violaciones = [
+        str(v)
+        for carpeta in sorted(p for p in MODULES_DIR.iterdir() if p.is_dir())
+        if carpeta.name != "auth"
+        for archivo in sorted(carpeta.rglob("*.py"))
+        for v in find_forbidden_imports(archivo, module=carpeta.name)
+        if v.rule == "private_helper"
+    ]
+    assert violaciones == [], "\n".join(violaciones)

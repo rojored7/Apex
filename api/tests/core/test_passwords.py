@@ -99,3 +99,38 @@ def test_sin_contrasena_ni_hash_en_logs(caplog: pytest.LogCaptureFixture) -> Non
             hash_password("corta")
     texto = caplog.text + str(excinfo.value)
     assert CLAVE not in texto and h not in texto and "corta" not in str(excinfo.value)
+
+
+# S2-B2 · L-5 del Sprint 1, S2-D30: tope de 128 caracteres -------------------------------
+
+
+def test_el_tope_de_longitud_es_128() -> None:
+    from app.core.security import PASSWORD_MAX_LENGTH
+
+    assert PASSWORD_MAX_LENGTH == 128
+
+
+def test_128_caracteres_no_comunes_pasa() -> None:
+    clave = "casa-azul-19" + "x" * 116
+    assert len(clave) == 128
+    validate_password_policy(clave)
+    assert hash_password(clave).startswith("$argon2id$")
+
+
+def test_129_caracteres_lanza_too_long_sin_repetir_la_clave() -> None:
+    clave = "casa-azul-19" + "x" * 117
+    assert len(clave) == 129
+    with pytest.raises(WeakPasswordError) as excinfo:
+        validate_password_policy(clave)
+    assert excinfo.value.reason == "too_long"
+    assert clave not in str(excinfo.value)
+    with pytest.raises(WeakPasswordError) as al_hashear:
+        hash_password(clave)
+    assert al_hashear.value.reason == "too_long"
+
+
+def test_too_long_se_revisa_antes_que_too_common() -> None:
+    """Orden del blueprint: `too_long`, luego `too_short`, luego `too_common`."""
+    with pytest.raises(WeakPasswordError) as excinfo:
+        validate_password_policy("123456789012" * 11)  # 132 caracteres de un patrón común
+    assert excinfo.value.reason == "too_long"

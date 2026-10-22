@@ -18,7 +18,8 @@ def _settings(tmp_path: Path, base: Settings, claves: Path, env: str) -> Setting
         f"DATABASE_URL={base.DATABASE_URL.get_secret_value()}\n"
         f"JWT_PRIVATE_KEY_PATH={rutas.jwt_private}\nCRYPTO_PROVIDER=local\n"
         f"CRYPTO_LOCAL_KEK_PATH={rutas.kek}\nCRYPTO_LOCAL_SIGNING_KEY_PATH={rutas.signing_key}\n"
-        f'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV={env}\n',
+        f'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV={env}\n'
+        "COOKIE_SECURE=true\n",  # M-9 (E3): producción exige la cookie Secure
         encoding="utf-8",
     )
     return load_settings(env_file=archivo)

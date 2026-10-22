@@ -212,3 +212,144 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - El PATCH con un valor idéntico al guardado igual sube la versión (cada guardado es una
     versión); la auditoría `update` lleva solo `version` en ese caso porque el hook registra
     las columnas que cambian.
+
+### S2-B2 · Rojo
+
+- Línea base (HEAD `e0ad2d9`, árbol limpio): api 656 ok y 4 saltadas; `ruff check .` y
+  `mypy src` (48 archivos) limpios.
+- B2.1 fixtures (`api/tests/conftest.py`, E7 y E9): `load_module_services()` corre al importarse
+  ANTES del import de `principal_double` y de `register_principal_loader(principal_double)`;
+  autouse `restaurar_bus` (foto `{tipo: list(handlers)}` y restauración) y `reset_rate_limit`;
+  `capturar_eventos(*tipos)` (quita solo su capturador), `sleeper_nulo` (`SleeperEspia` sobre
+  `auth.service.configure_sleeper`), `api_prueba` (la app de `app_http`, con
+  `app.state.settings` reemplazable) y `cliente_desde(ip)` (otra IP de socket, para IPv6);
+  `usuario_real` gana `password=None` (pendiente), `borrado` y `debe_cambiar` (solo envía
+  `must_change_password` si es verdadero); `LIMPIAR_AUTH` (refresh, tokens de un solo uso y
+  usuarios `@test.apex`, nunca `SYSTEM_USER_ID`) en `LIMPIEZA_DE_SESION` y en el `finally` de
+  `dos_sesiones`. Migrados a `restaurar_bus` todos los usuarios de `clear_subscribers()`:
+  `test_events.py` (fixture `_bus_vacio` que vacía el bus dentro de la prueba),
+  `test_events_db.py`, `test_events_router.py` (sin el `clear` final) y `tests/auth/test_seed.py`
+  (usa `capturar_eventos`). `pytest tests/core tests/auth tests/settings`: sin regresiones.
+- E3: `COOKIE_SECURE=true` en todo `Settings` de producción de las pruebas (`test_config.BASE`,
+  `test_health` en dos sitios, `test_every_route_has_role._produccion`, `test_docs_disabled`,
+  `test_logging_access`, `test_logging_sql`; las dos últimas no fijan `ENV` y caen en producción).
+- B2.2 stubs (firmas tipadas, cuerpos `NotImplementedError`): `core/config.py` (las variables
+  enteras nuevas con default y `gt=0`, incluidas `LOGIN_ACCOUNT_GLOBAL_*` de S2-D10;
+  `AUTH_ALLOWED_ORIGINS`, `LOGIN_MIN_DURATION_MS=400` provisional, `ALLOW_INSECURE_COOKIE`;
+  `validate_cookie_security`, `SeedSettings` declarada y `load_seed_settings` stub);
+  `core/security.py` (`PASSWORD_MAX_LENGTH`, `too_long` en `WeakReason`, `Principal` con
+  defaults, `PUBLIC_ROUTES` con logout: 8); `core/crypto/keyring.refresh_current`;
+  `core/ratelimit.py` (`KeyKind`, `ip_bucket_key(ip, ipv4_prefix=24)`, `enforce`, `record`,
+  `forget`, `configure_store_limits`, `store_for`, `rate_limits_from`; `peek`, `add` y `forget`
+  del almacén); `auth/rules.py`, `auth/tokens.py` y `auth/cookies.py` nuevos; `auth/service.py`
+  (eventos, `LoginResult`, `RefreshResult`, `configure_sleeper` real, `login`, `refresh`,
+  `logout`, `active_user_id_by_email`, `seed_admin(force_change=True)`); `exceptions.py`,
+  `schemas.py` y `router.py` plano con las tres rutas y sus dependencias declaradas.
+- B2.3 y B2.4: regla `private_helper` en `tests/architecture/_imports.py` (escrita después de ver
+  en rojo sus 5 casos de `test_find_forbidden_imports.py`; queda verde) y el caso de
+  `test_no_cross_models.py`; `test_every_route_has_role.py` (8 públicas, las tres rutas de sesión
+  registradas sin rol, bucket propio de límite en login, refresh, logout, forgot y reset);
+  pruebas nuevas o ampliadas en `tests/core/{test_passwords,test_ratelimit,test_require_role,
+  test_config,test_env_example}.py`, `tests/crypto/test_refresh_current.py`,
+  `tests/migrations/test_0005b_auth_security.py`, `tests/auth/{test_pure_login,test_pure_refresh,
+  test_auth_filter_matrix,test_login_service,test_login_router,test_refresh_service,
+  test_refresh_router,test_logout_service,test_logout_router}.py`, `tests/auth/test_seed.py` y
+  `tests/cli/test_seed_cli.py`; ayudas en `tests/auth/_sesion.py` y `tests/auth/conftest.py`.
+- Conteo: 854 colectadas; 165 fallan, 685 pasan, 4 saltadas. Motivos de las 165:
+  `NotImplementedError` de los stubs (117); `TypeError` porque `family_started_at` aún no es
+  columna (19, `test_pure_refresh`); `ProgrammingError` por columna de `0005b` inexistente (4);
+  revisión `0005b_auth_security` inexistente (5); aserciones de comportamiento (20:
+  `.env.example` sin variables nuevas y con `ADMIN_*`, M-9 sin validador, `too_long`, IPv6 /64,
+  topes de `app.state`, `iat` contra `tokens_valid_after`, keyring tras un token válido,
+  `SeedSettings` y `--no-force-change` en el CLI, `--as` con cuentas no activas,
+  `docs/openapi.json` desactualizado). Ningún error de import ni de fixture. Pasan ya sobre los
+  stubs 16 casos nuevos (contrato declarado: rutas registradas, defaults de `Settings`,
+  `private_helper`, `Principal`, 128 caracteres, firma inválida; y `cambiar-esto`, que ya está en
+  `common_passwords.txt` desde el Sprint 1). Regresiones de la línea base: 2, ambas por cambio
+  de contrato que cierra el Verde (`test_toda_variable_de_settings_esta_documentada` y
+  `test_docs_openapi_json_esta_al_dia`). `test_la_lista_blanca_es_la_esperada` se actualizó
+  (7 → 8, H-1).
+- Decisiones de prueba que el Verde debe respetar:
+  - Una petición, una transacción: los helpers de servicio confirman tras cada éxito; un 401 de
+    login confirma antes de lanzar (S2-D8) y la prueba hace `rollback` después.
+  - `family_started_at` del primer refresh sale del reloj de la app (`T0`), no de `now()` de SQL,
+    y la rotación lo hereda; la familia muere cuando `family_started_at + 30 d <= ahora`.
+  - `is_reuse`: rotado (`replaced_by_id` no nulo) y `ahora - revoked_at >= 10 s`; a los 9,999 s
+    es gracia. Logout no deja `replaced_by_id`, no es reuso y no fija `tokens_valid_after`.
+  - `tokens_valid_after = ahora truncado a segundos`; un `iat` igual pasa, uno anterior da 401
+    `unauthorized`.
+  - Límite por cuenta con clave `"{correo}|{ip_bucket_key(ip)}"` (/24, /64): se comprueba con
+    `enforce(count=False)` antes de argon2 y se suma con `record` al fallar; tope global por
+    correo (`account-global`); el último admin activo queda fuera de ambos y del bloqueo, pero
+    su `failed_login_count` sí sube. `rate_limit` por IP mantiene la IPv4 exacta
+    (`ipv4_prefix=32`) y agrupa IPv6 por /64; sus topes salen de `app.state.rate_limits`
+    (`rate_limits_from(settings)`).
+  - M-6: exactamente una verificación de argon2 por rama (espía sobre `security._hasher`); el
+    pendiente usa `dummy_verify`; el piso pide al sleeper `0 < espera <= min_duration_ms / 1000`
+    en todo 401 y nada en el éxito.
+  - `LoginAttempted.user_agent` truncado a 120 y la fila de refresh a 255; el evento nunca trae
+    el correo. `SessionsRevoked(by=SYSTEM_USER_ID)` en `lock` y en `refresh_reuse`.
+  - Borrado de la cookie: `apex_refresh` vacía con `Max-Age=0`, `Path=/api/v1/auth`, `HttpOnly`
+    y `SameSite=Strict`; el 403 de origen no emite `Set-Cookie`.
+  - Las rutas leen `Settings` de `request.app.state.settings` (cookie `Secure`, orígenes).
+  - `seed --no-force-change` fuera de dev sale con 2 y el mensaje menciona `ENV=dev`; `--as` con
+    una cuenta no activa sale con 2 y el mensaje menciona `--as`.
+- Desviaciones del encargo:
+  - Las columnas de S2-D9 (`must_change_password`, `failed_login_count`, `tokens_valid_after`,
+    `refresh_tokens.family_started_at`) NO se declaran en los modelos en el Rojo: sin la
+    migración, todo `SELECT` de `User` o `RefreshToken` fallaría con `UndefinedColumn` y rompería
+    unas 200 pruebas ajenas a B2 (settings, CLI, seguridad). Las declara el Verde junto con
+    `0005b`. Sí entra ya `__audit_exclude__` con `failed_login_count` y `tokens_valid_after`
+    (inocuo). `last_login_at` y `locked_at` ya existían desde `0004`.
+  - `ADMIN_*` siguen en `Settings` y fuera de `NON_API_ENV_VARS` en el Rojo porque `cli seed`
+    todavía las lee de ahí (mypy); las pruebas fijan el contrato y el Verde las mueve.
+  - `tests/core/test_validators.py` ya existe y pasa desde B1 (16 casos); no se rehízo.
+  - `main.py` (quitar `refresh_keyring`) y `.env.example` quedan para el Verde (B2.6); sus
+    pruebas están en rojo.
+  - `test_pure_login.py` cubre estado, `account_may_authenticate`, `should_auto_lock` e
+    `is_active_admin`; `is_refresh_usable`, `is_reuse`, el tope de 30 días y `policy_from` van en
+    `test_pure_refresh.py` (sin duplicar).
+  - Casos del blueprint superados por H-1: "logout sin access da 401" y "un token de otro usuario
+    no se revoca" ya no aplican (logout por cookie, sin Bearer).
+
+### S2-B2 · Verde
+
+- Producto: migración `0005b_auth_security` (cuatro columnas de S2-D9 y
+  `ck_users_failed_login_count_non_negative`; `env.py` importa `auth.models`); columnas en
+  `auth/models.py`; `rules.py`, `tokens.py`, `cookies.py`, `service.py` (login con H-4 y M-6,
+  refresh con gracia y tope absoluto, logout por cookie, `seed_admin(force_change)`,
+  `active_user_id_by_email`, cargador con `AUTH_FILTER`) y `router.py` plano; `core/security.py`
+  (`too_long`, corte `tokens_valid_after`, `refresh_current` tras el token), `keyring.refresh_current`,
+  `core/ratelimit.py` (almacenes por tipo con `OrderedDict`, `ip_bucket_key`, `enforce`/`record`/
+  `forget`, `rate_limits_from`), `core/config.py` (`ADMIN_*` a `NON_API_ENV_VARS`, `SeedSettings`,
+  M-9, `AUTH_ALLOWED_ORIGINS`), `main.py` (sin `refresh_keyring`; `app.state.rate_limits` y topes
+  de almacén), `cli.py` (`SeedSettings`, `--no-force-change` solo en dev, `--as` solo activo),
+  `.env.example` (sin `ADMIN_*`, variables nuevas activas, P7 junto a `ALLOW_INSECURE_COOKIE`),
+  `scripts/ci/test_compose_config.sh` (ADMIN_* ausentes). `.env` local con
+  `AUTH_ALLOWED_ORIGINS=http://localhost:8180,http://localhost:5173` y `up -d api` (E8).
+- `LOGIN_MIN_DURATION_MS`: medido dentro de `apex-api-1` (argon2 3/65536/4 + commit, 30 muestras
+  por corrida): medianas 47,8, 46,6 y 58,8 ms → 1,5 × ~48 = 72 → default 75 (`docs/RUNBOOK.md`).
+- Revisión de seguridad (agente, sin CRITICAL ni HIGH): MEDIUM-1 (un rotado dentro de la gracia
+  borraba la cookie nueva) corregido con `InvalidRefresh.clear_cookie` y prueba nueva en
+  `test_refresh_router.py`; LOW-3 (IPv4 mapeada en IPv6) corregido en `ip_bucket_key` con prueba
+  nueva en `test_ratelimit.py`; LOW-1 (ventana < 1 s del corte) y LOW-2 (último admin exento
+  distinguible) quedan como riesgos aceptados en `DECISIONES.md`.
+- Suite: 852 pasan, 4 saltadas, 0 fallos; cobertura de `app` 95 %; `ruff check .`, `ruff format`
+  y `mypy src` (51 archivos) limpios. Contrato: `export-openapi` dos veces idéntico, `gen:api`,
+  `types.contract.test.ts` 5/5 y `tsc --noEmit` limpio.
+- Docker (previo al gate, repetido tras él sin tocar el árbol): dump
+  `docs/scratch/sprint-02-antes-0005b_auth_security.dump`; `stop api` al escribir; `up -d api`
+  aplicó `0005_settings -> 0005b_auth_security`; ciclo `downgrade -1`/`upgrade head` en `apex-db-1`
+  y `alembic current` = `0005b_auth_security (head)`; `build api`; `tools seed` dos veces: "omitido"
+  (el admin del Sprint 1 ya existe); en una base desechable `apex_seedcheck` (creada y borrada en
+  `apex-db-1`): "admin inicial creado", luego "omitido", y el admin con `must_change_password = t`.
+  Smoke por Nginx `:8180`: login 200 con `apex_refresh; HttpOnly; Max-Age=604800;
+  Path=/api/v1/auth; SameSite=strict` y `Cache-Control: no-store`; refresh con `Origin` ajeno 403
+  sin `Set-Cookie`; refresh 200 con cookie rotada; logout 204 con `Max-Age=0`; refresh tras logout
+  401; login con `Origin` ajeno 403 sin `Set-Cookie`; seis fallos seguidos: 401 ×5 y 429
+  (`Retry-After: 60`); psql: `token_hash` de 64 hex y `family_started_at` lleno en ambas filas;
+  `/health` y `/api/v1/health` 200.
+- Desviaciones (detalle en `DECISIONES.md` S2-B2): `tests/core/test_startup_failure.py` gana
+  `COOKIE_SECURE=true` (llamador de E3 que el Rojo no listó: construye `Settings` de producción);
+  dos pruebas nuevas de la revisión; el `logger.warning` del lifespan del blueprint lo reemplaza
+  el validador M-9; `active_admin_id_by_email` se reemplaza por `active_user_id_by_email`.

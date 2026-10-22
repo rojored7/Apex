@@ -20,9 +20,10 @@ from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
 
 from app.core.config import Settings
+from app.core.http import no_store
 from app.core.security import RouteInfo, effective_routes, route_has_role_dependency
 from app.main import create_app
-from app.modules.auth.cookies import no_store, require_same_origin
+from app.modules.auth.cookies import require_same_origin
 
 AUTH = "/api/v1/auth/"
 USERS = "/api/v1/users"

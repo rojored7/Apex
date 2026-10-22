@@ -14,7 +14,8 @@ y S2-B4; H-2 / S2-D36, H-3 / S2-D37, S2-D39, S2-D40, L-13).
 No inicia sesión. Auditoría: `update` de `auth.users` (`password_hash = "***"`) y de
 `auth.one_time_tokens` (`used_at`, `token_hash = "***"`), ambos del propio usuario.
 
-`forgot(session, email, *, ip, policy)` en v0.1 (H-2): no escribe nada (ni filas, ni cierre de
+`forgot(email, *, policy)` en v0.1 (H-2; sin `session` ni `ip` desde la revisión Python, L3):
+no escribe nada (ni filas, ni cierre de
 tokens abiertos, ni auditoría), normaliza el correo, cuenta el intento en
 `ratelimit.enforce("forgot-account", <correo>)` con el tope `FORGOT_ACCOUNT_LIMIT` (5 por
 `FORGOT_ACCOUNT_WINDOW_S`), pide al sleeper la espera del piso `policy.min_duration_ms` exista o
@@ -53,7 +54,7 @@ from tests.auth._cuentas import (
     filas_auditoria,
     tokens_de,
 )
-from tests.auth._sesion import IP_A, IP_B, politica
+from tests.auth._sesion import IP_A, politica
 from tests.conftest import (
     CLAVE_PRUEBA,
     T0,
@@ -422,8 +423,9 @@ async def test_el_log_del_reset_no_lleva_el_token_ni_la_contrasena(
 # forgot (H-2: v0.1 no escribe nada) ---------------------------------------------------------
 
 
-async def _forgot(session: AsyncSession, email: str, *, ip: str = IP_A, **cambios: Any) -> None:
-    assert await service.forgot(session, email, ip=ip, policy=politica(**cambios)) is None
+async def _forgot(session: AsyncSession, email: str, **cambios: Any) -> None:
+    """`session` queda para leer la base después: `forgot` no la usa (H-2)."""
+    assert await service.forgot(email, policy=politica(**cambios)) is None
     await session.commit()
 
 
@@ -510,10 +512,10 @@ async def test_forgot_account_da_429_al_sexto_intento_por_cuenta(
     assert service.FORGOT_ACCOUNT_BUCKET == "forgot-account"
     correo = (await usuario_real("coach")).email if existe else "nadie-limite@test.apex"
     variantes = [correo, correo.upper(), f" {correo} ", correo, correo.title()]
-    for i, variante in enumerate(variantes):
-        await _forgot(session, variante, ip=IP_A if i % 2 else IP_B)
+    for variante in variantes:  # la IP ya no llega al service: el tope es solo por correo
+        await _forgot(session, variante)
     with pytest.raises(TooManyRequestsError) as excinfo:
-        await service.forgot(session, correo, ip="192.0.2.50", policy=politica())
+        await service.forgot(correo, policy=politica())
     await session.rollback()
     assert excinfo.value.status == 429
     assert int(excinfo.value.headers["Retry-After"]) >= 1

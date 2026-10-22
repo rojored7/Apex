@@ -107,3 +107,15 @@ async def test_la_respuesta_tiene_exactamente_las_cuatro_claves(cliente: AsyncCl
 def test_page_rechaza_claves_extra() -> None:
     with pytest.raises(ValueError, match="extra"):
         Page[ItemOut](items=[], total=0, limit=25, offset=0, page=1)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("offset", ["1000001", "99999999999999999999"], ids=["tope+1", "int64+"])
+async def test_offset_por_encima_del_tope_da_422_con_field_offset(
+    cliente: AsyncClient, offset: str
+) -> None:
+    """N-2 (revisión de seguridad V10): un `offset` fuera de int64 daba 500 en PostgreSQL."""
+    async with cliente as c:
+        assert (await c.get("/items", params={"offset": 1_000_000})).status_code == 200
+        r = await c.get("/items", params={"offset": offset})
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["field"] == "offset"

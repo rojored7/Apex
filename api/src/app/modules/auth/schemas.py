@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-from app.core.security import PASSWORD_MAX_LENGTH
+from app.core.security import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.core.validators import EmailAddress
 
 Role = Literal["admin", "coach", "member"]
@@ -87,7 +87,8 @@ class ChangePasswordIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
-    new_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    # M5 de la revisión general: el contrato publica `minLength: 12`, igual que el front.
+    new_password: SecretStr = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class AccessTokenOut(BaseModel):
@@ -143,7 +144,7 @@ class ResetIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     token: str = Field(min_length=RESET_TOKEN_MIN_LENGTH, max_length=RESET_TOKEN_MAX_LENGTH)
-    new_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    new_password: SecretStr = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class ForgotIn(BaseModel):

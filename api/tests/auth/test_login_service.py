@@ -16,7 +16,7 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.clock import FrozenClock
 from app.core.context import SYSTEM_USER_ID, actor_scope
@@ -35,6 +35,7 @@ from tests.auth._sesion import IP_A, IP_A2, IP_B, EspiaArgon2, politica
 from tests.conftest import CLAVE_PRUEBA, T0, CapturarEventos, CrearUsuario, SleeperEspia
 
 ERRADA = "Otra-Clave-Distinta-77"
+RAFAGA = 30
 
 
 async def _login(
@@ -265,19 +266,34 @@ async def test_solo_cuentan_los_fallos(session: AsyncSession, usuario_real: Crea
     assert len(await _refresh_de(session, coach.id)) == 12
 
 
-async def test_diez_fallos_desde_una_red_no_impiden_entrar_desde_otra(
+async def test_diez_fallos_desde_una_ip_no_impiden_entrar_desde_otra(
     session: AsyncSession, usuario_real: CrearUsuario, espia_argon2: EspiaArgon2
 ) -> None:
+    """Revisión de seguridad V10 (N-3): la clave por cuenta es (correo, IPv4 exacta); antes de
+    la revisión era la red /24 y esta prueba fijaba el 429 desde `IP_A2`. Actualizada por
+    decisión del orquestador (docs/scratch/sprint-02-revision-backend.md)."""
     coach = await usuario_real("coach")
     for _ in range(10):
         await _falla(session, coach.email, ip=IP_A)
     espia_argon2.reiniciar()
-    with pytest.raises(TooManyRequestsError):  # misma red /24, aun con la contraseña correcta
-        await _login(session, coach.email, ip=IP_A2)
+    with pytest.raises(TooManyRequestsError):  # la misma IP, aun con la contraseña correcta
+        await _login(session, coach.email, ip=IP_A)
     assert espia_argon2.total == 0, "el 429 por cuenta llega antes de argon2"
     resultado = await _login(session, coach.email, ip=IP_B)
     assert resultado.user.id == coach.id
     assert (await _cuenta(session, coach.id))["failed_login_count"] == 0
+
+
+async def test_dos_ips_del_mismo_24_no_comparten_el_cupo_por_cuenta(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    """N-3: en la LAN del gimnasio (un solo /24) un dispositivo con diez fallos no niega el
+    login de la cuenta a los demás; el tope global por correo y el bloqueo a 20 siguen."""
+    coach = await usuario_real("coach")
+    for _ in range(10):
+        await _falla(session, coach.email, ip=IP_A)
+    resultado = await _login(session, coach.email, ip=IP_A2)  # mismo /24 que IP_A
+    assert resultado.user.id == coach.id
 
 
 async def test_el_limite_por_cuenta_vale_igual_para_un_correo_inexistente(
@@ -426,7 +442,51 @@ async def test_el_login_purga_solo_los_refresh_vencidos_hace_mas_de_30_dias(
     assert len(quedan) == 3  # los dos que quedan y el nuevo
 
 
-# Concurrencia (L-10) ------------------------------------------------------------------------------
+# Concurrencia (L-10; Python M2) -------------------------------------------------------------------
+
+
+async def test_una_rafaga_paralela_no_supera_el_tope_por_cuenta(
+    migrated_database: str, seguridad: object, reloj: FrozenClock, espia_argon2: EspiaArgon2
+) -> None:
+    """Revisión Python M2: el cupo por cuenta se reserva (`hit`) antes de argon2 y se devuelve
+    si el login sale bien. Antes era `peek` + `record` al fallar: 30 peticiones simultáneas
+    pasaban todas el `peek` y cada una pagaba un argon2."""
+    motor = create_async_engine(migrated_database, pool_size=RAFAGA, max_overflow=0)
+    fabrica = async_sessionmaker(motor, expire_on_commit=False)
+    sesiones = [fabrica() for _ in range(RAFAGA)]
+    try:
+        resultados = await asyncio.gather(
+            *(
+                service.login(
+                    s, "rafaga@test.apex", ERRADA, ip=IP_A, user_agent=None, policy=politica()
+                )
+                for s in sesiones
+            ),
+            return_exceptions=True,
+        )
+    finally:
+        for s in sesiones:
+            await s.close()
+        await motor.dispose()
+    rechazos = [r for r in resultados if isinstance(r, TooManyRequestsError)]
+    fallos = [r for r in resultados if isinstance(r, InvalidCredentials)]
+    assert len(fallos) + len(rechazos) == RAFAGA, resultados
+    assert espia_argon2.total <= politica().account_limit
+    assert len(fallos) == espia_argon2.total
+
+
+async def test_un_login_correcto_devuelve_el_cupo_reservado(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    """M2: el éxito no consume el cupo (como antes, cuando solo se sumaban los fallos)."""
+    coach = await usuario_real("coach")
+    for _ in range(9):
+        await _falla(session, coach.email, ip=IP_A)
+    for _ in range(3):  # cada éxito reserva y devuelve: el décimo cupo sigue libre
+        await _login(session, coach.email, ip=IP_A)
+    await _falla(session, coach.email, ip=IP_A)
+    with pytest.raises(TooManyRequestsError):
+        await _login(session, coach.email, ip=IP_A)
 
 
 async def test_dos_fallos_concurrentes_suman_dos(

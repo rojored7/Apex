@@ -23,6 +23,7 @@ from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Str
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, CommonColumnsMixin, SoftDeleteMixin
+from app.core.security import Role
 
 ROLES: tuple[str, ...] = ("admin", "coach", "member")
 OTT_PURPOSES: tuple[str, ...] = ("activate", "reset")
@@ -52,7 +53,7 @@ class User(CommonColumnsMixin, SoftDeleteMixin, Base):
 
     email: Mapped[str] = mapped_column(Text, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    role: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[Role] = mapped_column(Text, nullable=False)  # M9: el Literal de `core.security`
     member_id: Mapped[UUID | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")

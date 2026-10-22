@@ -33,10 +33,11 @@ from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.db import get_session
+from app.core.db import SessionDep
+from app.core.errors import responses_for
+from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import client_ip, rate_limit
 from app.core.security import Principal, require_role
@@ -44,7 +45,6 @@ from app.modules.auth import rules, service
 from app.modules.auth.cookies import (
     clear_cookie_header,
     clear_refresh_cookie,
-    no_store,
     policy_from,
     read_refresh_cookie,
     require_same_origin,
@@ -75,12 +75,16 @@ router = APIRouter(tags=["auth"])
 # Revisión de seguridad S2-B3: cada intento cuesta hasta tres argon2; tope por IP.
 CHANGE_PASSWORD_IP_LIMIT: Final = 10
 
-Session = Annotated[AsyncSession, Depends(get_session)]
+Session = SessionDep  # N-1: commit antes de responder; un solo alias en todo el api
 # M-8: solo "Mi cuenta" admite una cuenta que debe cambiar la contraseña.
 Pending = Annotated[
     Principal, Depends(require_role("admin", "coach", "member", allow_pending_password=True))
 ]
 Admin = Annotated[Principal, Depends(require_role("admin"))]
+
+# M7 (revisión general): cada ruta publica solo los errores que puede devolver.
+_ADMIN = responses_for(401, 403)  # sin sesión; rol ajeno o `password_change_required`
+_ADMIN_SOBRE_CUENTA = responses_for(401, 403, 404)  # y `user_not_found`
 
 
 def _settings(request: Request) -> Settings:
@@ -96,6 +100,7 @@ def _ip(request: Request) -> str:
 @router.post(
     "/auth/login",
     response_model=LoginOut,
+    responses=responses_for(401, 403, 429),
     dependencies=[
         Depends(rate_limit("login")),
         Depends(require_same_origin),
@@ -124,6 +129,7 @@ async def login(body: LoginIn, request: Request, response: Response, session: Se
 @router.post(
     "/auth/refresh",
     response_model=RefreshOut,
+    responses=responses_for(401, 403, 429),
     dependencies=[
         Depends(rate_limit("refresh")),
         Depends(require_same_origin),
@@ -151,6 +157,7 @@ async def refresh(request: Request, response: Response, session: Session) -> Ref
     "/auth/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    responses=responses_for(403, 429),
     dependencies=[Depends(rate_limit("logout")), Depends(require_same_origin)],
 )
 async def logout(request: Request, session: Session) -> Response:
@@ -160,7 +167,9 @@ async def logout(request: Request, session: Session) -> Response:
     return respuesta
 
 
-@router.get("/auth/me", response_model=MeOut, dependencies=[Depends(no_store)])
+@router.get(
+    "/auth/me", response_model=MeOut, responses=responses_for(401), dependencies=[Depends(no_store)]
+)
 async def me(principal: Pending, session: Session) -> MeOut:
     return await service.me(session, principal)
 
@@ -168,6 +177,7 @@ async def me(principal: Pending, session: Session) -> MeOut:
 @router.post(
     "/auth/me/password",
     response_model=AccessTokenOut,
+    responses=responses_for(401, 429),
     dependencies=[
         Depends(rate_limit("change-password", CHANGE_PASSWORD_IP_LIMIT)),
         Depends(no_store),
@@ -186,7 +196,9 @@ async def change_password(
     )
 
 
-@router.get("/users", response_model=Page[UserRow], dependencies=[Depends(no_store)])
+@router.get(
+    "/users", response_model=Page[UserRow], responses=_ADMIN, dependencies=[Depends(no_store)]
+)
 async def list_users(
     principal: Admin,
     session: Session,
@@ -202,6 +214,7 @@ async def list_users(
     "/users",
     response_model=CreateUserOut,
     status_code=status.HTTP_201_CREATED,
+    responses=responses_for(401, 403, 409),
     dependencies=[Depends(no_store)],
 )
 async def create_user(
@@ -220,12 +233,11 @@ async def create_user(
     "/auth/forgot",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    responses=responses_for(429),
     dependencies=[Depends(rate_limit("forgot"))],
 )
-async def forgot(body: ForgotIn, request: Request, session: Session) -> Response:
-    await service.forgot(
-        session, body.email, ip=_ip(request), policy=policy_from(_settings(request))
-    )
+async def forgot(body: ForgotIn, request: Request) -> Response:
+    await service.forgot(body.email, policy=policy_from(_settings(request)))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -233,6 +245,7 @@ async def forgot(body: ForgotIn, request: Request, session: Session) -> Response
     "/auth/reset",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    responses=responses_for(400, 429),
     dependencies=[Depends(rate_limit("reset"))],
 )
 async def reset(body: ResetIn, session: Session) -> Response:
@@ -243,6 +256,7 @@ async def reset(body: ResetIn, session: Session) -> Response:
 @router.post(
     "/users/{user_id}/resend-link",
     response_model=IssuedLinkOut,
+    responses=responses_for(401, 403, 404, 409),
     dependencies=[Depends(no_store)],
 )
 async def resend_link(
@@ -259,12 +273,22 @@ async def resend_link(
 # S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051) -------------------------------
 
 
-@router.get("/users/{user_id}", response_model=UserOut, dependencies=[Depends(no_store)])
+@router.get(
+    "/users/{user_id}",
+    response_model=UserOut,
+    responses=_ADMIN_SOBRE_CUENTA,
+    dependencies=[Depends(no_store)],
+)
 async def get_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
     return rules.user_out(await service.get_user(session, user_id))
 
 
-@router.patch("/users/{user_id}", response_model=UserOut, dependencies=[Depends(no_store)])
+@router.patch(
+    "/users/{user_id}",
+    response_model=UserOut,
+    responses=responses_for(401, 403, 404, 409),
+    dependencies=[Depends(no_store)],
+)
 async def update_user(
     user_id: UUID, body: UpdateUserIn, principal: Admin, session: Session
 ) -> UserOut:
@@ -278,6 +302,7 @@ async def update_user(
     "/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    responses=responses_for(401, 403, 404, 409),
     dependencies=[Depends(no_store)],
 )
 async def delete_user(user_id: UUID, principal: Admin, session: Session) -> None:
@@ -285,12 +310,22 @@ async def delete_user(user_id: UUID, principal: Admin, session: Session) -> None
     await service.delete_user(session, user_id, by=principal.user_id)
 
 
-@router.post("/users/{user_id}/lock", response_model=UserOut, dependencies=[Depends(no_store)])
+@router.post(
+    "/users/{user_id}/lock",
+    response_model=UserOut,
+    responses=responses_for(401, 403, 404, 409),
+    dependencies=[Depends(no_store)],
+)
 async def lock_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
     return rules.user_out(await service.lock(session, user_id, by=principal.user_id))
 
 
-@router.post("/users/{user_id}/unlock", response_model=UserOut, dependencies=[Depends(no_store)])
+@router.post(
+    "/users/{user_id}/unlock",
+    response_model=UserOut,
+    responses=responses_for(401, 403, 404, 409),
+    dependencies=[Depends(no_store)],
+)
 async def unlock_user(user_id: UUID, principal: Admin, session: Session) -> UserOut:
     return rules.user_out(await service.unlock(session, user_id, by=principal.user_id))
 
@@ -298,6 +333,7 @@ async def unlock_user(user_id: UUID, principal: Admin, session: Session) -> User
 @router.post(
     "/users/{user_id}/revoke-sessions",
     response_model=RevokeSessionsOut,
+    responses=_ADMIN_SOBRE_CUENTA,
     dependencies=[Depends(no_store)],
 )
 async def revoke_sessions(user_id: UUID, principal: Admin, session: Session) -> RevokeSessionsOut:

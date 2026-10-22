@@ -7,9 +7,16 @@
   `aad = id` antes del flush), `created_at`, `updated_at`, `created_by` NOT NULL
   (siempre hay actor: una persona o `SYSTEM_USER_ID`; lo llena US-016).
 - `SoftDeleteMixin`: solo socios, planes y usuarios (RN-14).
-- `get_session`: una transacción por petición. El commit ocurre al salir de la
-  dependencia, antes de enviar la respuesta, así un error de commit (trigger,
-  restricción) llega al cliente como envelope de error (US-017).
+- `get_session`: una transacción por petición; se usa SIEMPRE como `SessionDep`
+  (`Depends(get_session, scope="function")`, revisión de seguridad V10, N-1 y N-9). Con ese
+  alcance FastAPI cierra la dependencia al terminar la función de la ruta y la serialización
+  de su respuesta, ANTES de enviarla; así un error de commit (trigger, restricción, el
+  `crypto_ops` de `before_commit`, una conexión caída) llega al cliente como envelope de error
+  (US-017) y nunca sale un 200/201 de una escritura revertida. Con el alcance por defecto
+  (`request`) FastAPI 0.157 confirma después de enviar el cuerpo. Todas las rutas y
+  `current_user` usan el mismo alias: FastAPI cachea la dependencia por (función, alcance) y
+  mezclar las dos formas abriría dos sesiones en una petición
+  (`tests/architecture/test_session_scope.py`).
 
 Este módulo no importa ningún módulo de negocio ni `core/audit.py`; los listeners
 de auditoría los registra `core/audit.py` sobre la clase de sesión (US-016).
@@ -19,11 +26,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar
 from uuid import UUID, uuid4
 
+from fastapi import Depends
 from sqlalchemy import TIMESTAMP, MetaData, event, func
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -69,7 +78,14 @@ class Base(DeclarativeBase):
 
 
 class CommonColumnsMixin:
-    """`id`, `created_at`, `updated_at`, `created_by` (CLAUDE.md, datos 3)."""
+    """`id`, `created_at`, `updated_at`, `created_by` (CLAUDE.md, datos 3).
+
+    `eager_defaults=True` (revisión Python M4): `created_at` y `updated_at` los fija el servidor;
+    el `INSERT`/`UPDATE ... RETURNING` los trae en el mismo viaje, así leerlos tras un flush no
+    lanza `MissingGreenlet` en una sesión async y los services no necesitan `session.refresh`.
+    """
+
+    __mapper_args__: ClassVar[dict[str, Any]] = {"eager_defaults": True}
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
@@ -142,11 +158,24 @@ async def dispose_engine() -> None:
     _sessionmaker = None
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """Dependencia: `session: AsyncSession = Depends(get_session)`.
+def violated_constraint(error: IntegrityError) -> str | None:
+    """Nombre de la restricción o índice único que violó el `INSERT`/`UPDATE` (revisión Python
+    H3): asyncpg lo expone en `constraint_name` de la causa del error del adaptador. `None` si
+    el error no lo trae. Reemplaza el frágil "nombre in str(error.orig)" de cada service."""
+    causa = getattr(error.orig, "__cause__", None)
+    nombre = getattr(causa, "constraint_name", None)
+    return nombre if isinstance(nombre, str) else None
 
-    Abre una transacción, cede la sesión y hace commit al salir; cualquier
-    excepción revierte. El commit corre antes de enviar la respuesta.
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    """Dependencia de sesión; las rutas la piden con `SessionDep`, nunca con `Depends` suelto.
+
+    Abre una transacción, cede la sesión y hace commit al salir; cualquier excepción revierte.
+    Con `scope="function"` (el de `SessionDep`) el commit corre antes de enviar la respuesta.
     """
     async with get_sessionmaker()() as session, session.begin():
         yield session
+
+
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
+"""La sesión de una ruta: commit antes de enviar la respuesta (N-1). Alias único del api."""

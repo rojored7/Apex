@@ -1,5 +1,5 @@
-"""Reglas puras de sesión (S2-B2; S2-D4, privado del módulo auth: solo `service.py`,
-`tokens.py`, `cookies.py` y `router.py` de auth lo importan; regla `private_helper`).
+"""Reglas puras de sesión (S2-B2; S2-D4, privado del módulo auth: solo los archivos de auth lo
+importan; regla `private_helper`).
 
 - `user_status` (S2-D1, precedencia `deleted > locked > inactive > pending_activation >
   active`) y su espejo SQL `status_filter`.
@@ -18,7 +18,6 @@ S2-B3 (US-045, US-046, US-047):
   `current_hash`, la nueva debe ser distinta de la actual.
 - `activation_url(base_url, token)`: `<FRONT_BASE_URL>/restablecer/<token>` (blueprint 7.2);
   `ACTIVATE_TTL` (72 h) y `RESET_TTL` (1 h).
-- `escape_like(q)`: escapa `\\`, `%` y `_` para `ILIKE ... ESCAPE '\'`.
 - `user_row(user, *, active_sessions)` y `user_out(user)`: las salidas con `status` calculado
   por `user_status`; nunca llevan `password_hash`.
 
@@ -28,6 +27,9 @@ S2-B4 (US-048, US-052): `is_one_time_token_usable(token, user, now)` (S2-D40) y
 S2-B5 (US-049, US-050): `would_remove_last_admin(active_admin_ids, target_id, *, new_role,
 deleting)` y `lock_precondition(user, by_id, *, is_last_admin)` (orden fijo de errores:
 `CannotLockSelf`, `AlreadyLocked`, `LastAdmin`).
+
+Revisión Python H1: `normalize_login_email` y `truncate` (antes en `service.py`), compartidas
+por `sessions.py`, `users.py` y `links.py`. `escape_like` se movió a `core/search.py` (H3).
 """
 
 from __future__ import annotations
@@ -68,6 +70,7 @@ class AuthPolicy:
 
 
 def user_status(user: User) -> UserStatus:
+    """Estado calculado con la precedencia de S2-D1."""
     if user.deleted_at is not None:
         return "deleted"
     if user.locked_at is not None:
@@ -99,6 +102,7 @@ def status_filter(status: UserStatus) -> ColumnElement[bool]:
 
 
 def account_may_authenticate(user: User) -> bool:
+    """El único predicado de `puede autenticarse` (M-7); espejo de `AUTH_FILTER`."""
     return user.id != SYSTEM_USER_ID and user_status(user) == "active"
 
 
@@ -107,16 +111,19 @@ AUTH_FILTER: ColumnElement[bool] = and_(User.id != SYSTEM_USER_ID, status_filter
 
 
 def is_active_admin(user: User) -> bool:
+    """Admin que puede autenticarse."""
     return user.role == "admin" and account_may_authenticate(user)
 
 
 def should_auto_lock(failed_count: int, lock_after: int, *, is_last_admin: bool) -> bool:
+    """S2-D10: bloquear a los `lock_after` fallos, nunca al último admin activo."""
     return not is_last_admin and failed_count >= lock_after
 
 
 def is_refresh_usable(
     token: RefreshToken, user: User, now: datetime, *, absolute_ttl: timedelta
 ) -> bool:
+    """Refresh vigente, sin revocar, de una familia joven y de una cuenta activa."""
     return (
         token.revoked_at is None
         and now < token.expires_at
@@ -161,19 +168,8 @@ def activation_url(base_url: str, token: str) -> str:
     return f"{base_url.rstrip('/')}{RESET_PATH}{token}"
 
 
-LIKE_ESCAPE: Final = "\\"
-
-
-def escape_like(value: str) -> str:
-    """Escapa la barra invertida (primero), `%` y `_` para `ILIKE ... ESCAPE '\\'`."""
-    return (
-        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
-        .replace("%", LIKE_ESCAPE + "%")
-        .replace("_", LIKE_ESCAPE + "_")
-    )
-
-
 def user_row(user: User, *, active_sessions: int) -> UserRow:
+    """La fila de `GET /users` (sin `password_hash`)."""
     return UserRow(
         id=user.id,
         email=user.email,
@@ -187,6 +183,7 @@ def user_row(user: User, *, active_sessions: int) -> UserRow:
 
 
 def user_out(user: User) -> UserOut:
+    """La salida de una cuenta (sin `password_hash`)."""
     return UserOut(
         id=user.id,
         email=user.email,
@@ -245,3 +242,16 @@ def lock_precondition(user: User, by_id: UUID, *, is_last_admin: bool) -> None:
         raise AlreadyLocked()
     if is_last_admin:
         raise LastAdmin()
+
+
+# Normalización compartida por sesiones, cuentas y enlaces (revisión Python H1) -------------
+
+
+def normalize_login_email(email: str) -> str:
+    """El correo como se guarda y se busca: sin espacios en los extremos y en minúsculas."""
+    return email.strip().lower()
+
+
+def truncate(value: str | None, limit: int) -> str | None:
+    """`value` cortado a `limit` caracteres (el agente de usuario de L-8); `None` queda igual."""
+    return value[:limit] if value is not None else None

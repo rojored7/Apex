@@ -29,7 +29,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from app.core.validators import EmailAddress
+from app.core.validators import EmailAddress, SafeMultilineText, SafeText
 
 
 class SectionKey(StrEnum):
@@ -51,8 +51,10 @@ ENABLED_SECTIONS: frozenset[SectionKey] = frozenset(
 NIT_PATTERN: Final[str] = r"^\d+(-\d)?$"
 RETENCION_POR_DEFECTO: Final[int] = 5
 
-PolicyVersion = Annotated[str, Field(min_length=1, max_length=20)]
-PolicyText = Annotated[str, Field(min_length=1, max_length=20_000)]
+# Revisión de seguridad V10 (N-2): JSONB rechaza `\u0000` (daba 500) y un U+202E se mostraría
+# en todas las pantallas. Una línea: `SafeText`; la política admite saltos (`SafeMultilineText`).
+PolicyVersion = Annotated[SafeText, Field(min_length=1, max_length=20)]
+PolicyText = Annotated[SafeMultilineText, Field(min_length=1, max_length=20_000)]
 RetentionYears = Annotated[StrictInt, Field(ge=1, le=20)]
 
 
@@ -65,12 +67,12 @@ class SectionValue(BaseModel):
 class GymSettings(SectionValue):
     """Datos del gimnasio (US-055, N-18). `name` sin default: el `"APEX"` vive en los defaults."""
 
-    name: str = Field(min_length=1, max_length=80)
+    name: SafeText = Field(min_length=1, max_length=80)
     nit: str | None = Field(default=None, max_length=15, pattern=NIT_PATTERN)
-    address: str | None = Field(default=None, max_length=120)
-    city: str | None = Field(default=None, max_length=60)
-    phone: str | None = Field(default=None, max_length=20)
-    whatsapp: str | None = Field(default=None, max_length=20)
+    address: SafeText | None = Field(default=None, max_length=120)
+    city: SafeText | None = Field(default=None, max_length=60)
+    phone: SafeText | None = Field(default=None, max_length=20)
+    whatsapp: SafeText | None = Field(default=None, max_length=20)
     email: EmailAddress | None = None
 
 
@@ -83,11 +85,25 @@ class PrivacySettings(SectionValue):
     consent_required_from: date | None = None
 
 
-class PrivacyView(SectionValue):
-    """Salida de `privacy`: la política nunca publicada tiene versión y texto `None`."""
+class GymView(SectionValue):
+    """Salida de `gym`: los mismos campos sin `SafeText` (N-2 valida la ENTRADA); un valor
+    guardado antes del texto seguro se sigue leyendo y se corrige con un `PATCH`."""
 
-    policy_version: PolicyVersion | None = None
-    policy_text: PolicyText | None = None
+    name: str = Field(min_length=1, max_length=80)
+    nit: str | None = None
+    address: str | None = None
+    city: str | None = None
+    phone: str | None = None
+    whatsapp: str | None = None
+    email: str | None = None
+
+
+class PrivacyView(SectionValue):
+    """Salida de `privacy`: la política nunca publicada tiene versión y texto `None`. Sin
+    `SafeText` (solo la entrada lo aplica), como `GymView`."""
+
+    policy_version: str | None = Field(default=None, max_length=20)
+    policy_text: str | None = Field(default=None, max_length=20_000)
     retention_years: RetentionYears = RETENCION_POR_DEFECTO
     consent_required_from: date | None = None
 
@@ -118,9 +134,11 @@ SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.memberships: MembershipsSettings,
 }
 
-# Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`.
+# Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`, y ninguna
+# salida aplica el texto seguro de la entrada (`GymView`, `PrivacyView`).
 SECTION_VIEWS: dict[SectionKey, type[SectionValue]] = {
     **SECTION_REGISTRY,
+    SectionKey.gym: GymView,
     SectionKey.privacy: PrivacyView,
 }
 
@@ -169,7 +187,7 @@ class SectionOut(_SectionMeta):
 
 
 class GymSectionOut(_SectionMeta):
-    value: GymSettings
+    value: GymView
 
 
 class PrivacySectionOut(_SectionMeta):

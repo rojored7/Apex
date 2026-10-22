@@ -81,6 +81,13 @@ def test_fecha_de_nacimiento_de_hoy_o_nula_pasa() -> None:
     validate_member_input(_sin_validar(birth_date=None), HOY)  # no lanza
 
 
+def test_fecha_de_nacimiento_anterior_a_1900_da_422() -> None:
+    """LOW L6 de la revisión Python: tope inferior `1900-01-01` (un año mal tecleado, `0991`)."""
+    assert _campo_rechazado(_sin_validar(birth_date=date(1899, 12, 31))) == "birth_date"
+    assert _campo_rechazado(_sin_validar(birth_date=date(991, 7, 23))) == "birth_date"
+    validate_member_input(_sin_validar(birth_date=date(1900, 1, 1)), HOY)  # no lanza
+
+
 def test_hoy_es_el_que_recibe_no_el_reloj() -> None:
     """`today` viene de `today_bogota()` en el service; la regla no lee el reloj."""
     manana = HOY + timedelta(days=1)

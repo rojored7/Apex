@@ -7,18 +7,20 @@
   en tablas, así que no necesita actor.
 
 Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `issue-reset-link --as`
-(S2-B4, L-13), `unlock-user [--as]` (S2-B5), `import-members`,
-`rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta `--as <email>` (N-15) y
-carga los services de los módulos (`_load_module_services`, S2-B6) para que los eventos que
-emite queden auditados.
+(S2-B4, L-13), `unlock-user --as` (S2-B5; `--as` obligatorio desde la revisión V10, N-4),
+`import-members`, `rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta
+`--as <email>` (N-15) y abre la base con `cli_runtime(settings)` (revisión Python M8): instala
+los listeners de auditoría, bitácora del bus y cifrado, carga los services de los módulos
+(`_load_module_services`, S2-B6) para que los eventos que emite queden auditados, y libera el
+engine al terminar.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from collections.abc import Coroutine, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Coroutine, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -241,6 +243,29 @@ def _load_module_services() -> None:
     main.load_module_services()
 
 
+@asynccontextmanager
+async def cli_runtime(settings: Settings) -> AsyncIterator[Any]:
+    """Preámbulo común de los comandos que escriben (revisión Python M8): listeners de
+    auditoría (US-016), de `crypto_ops` (US-029) y de cifrado (US-028), los services de los
+    módulos (sus suscriptores del bus) y el engine de `Settings`; cede una `AsyncSession` sin
+    transacción abierta y libera el engine al salir, falle o no el comando."""
+    from app.core import db
+    from app.core.audit import install_audit_listeners
+    from app.core.crypto.oplog import install_oplog_listeners
+    from app.core.crypto.types import install_crypto_type_listeners
+
+    install_audit_listeners()
+    install_oplog_listeners()
+    install_crypto_type_listeners()
+    _load_module_services()
+    db.configure_engine(db.create_engine_from(settings))
+    try:
+        async with db.get_sessionmaker()() as session:
+            yield session
+    finally:
+        await db.dispose_engine()
+
+
 async def _seed(
     settings: Settings,
     admin_email: str,
@@ -249,48 +274,40 @@ async def _seed(
     *,
     force_change: bool,
 ) -> str:
-    from app.core import db
-    from app.core.audit import install_audit_listeners
-    from app.core.crypto.oplog import install_oplog_listeners
-    from app.core.crypto.types import install_crypto_type_listeners
     from app.core.security import configure_password_hasher, configure_password_policy
     from app.modules.auth.service import seed_admin
 
-    install_audit_listeners()
-    install_oplog_listeners()
-    install_crypto_type_listeners()
-    _load_module_services()
     configure_password_hasher(
         settings.ARGON2_TIME_COST, settings.ARGON2_MEMORY_COST_KIB, settings.ARGON2_PARALLELISM
     )
     configure_password_policy(settings.PASSWORD_MIN_LENGTH)
-    db.configure_engine(db.create_engine_from(settings))
-    try:
-        async with db.get_sessionmaker()() as session:
+    async with cli_runtime(settings) as session:
+        async with session.begin():
+            actor = await resolve_actor(session, actor_email)
+        # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+        with unit_of_work(actor):
             async with session.begin():
-                actor = await resolve_actor(session, actor_email)
-            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
-            with unit_of_work(actor):
-                async with session.begin():
-                    resultado = await seed_admin(
-                        session, admin_email, admin_password, by=actor, force_change=force_change
-                    )
-        return resultado.outcome
-    finally:
-        await db.dispose_engine()
+                resultado = await seed_admin(
+                    session, admin_email, admin_password, by=actor, force_change=force_change
+                )
+    return resultado.outcome
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
-    """`asyncio.run`, o un hilo con su propio loop si ya hay uno activo (pruebas async)."""
+    """`asyncio.run`, o un hilo con su propio loop si ya hay uno activo (pruebas async). El hilo
+    corre con una copia del contexto de quien llama: el reloj (`set_clock`) y el actor llegan al
+    comando igual que sin hilo."""
     import asyncio
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor
 
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
+    contexto = contextvars.copy_context()
     with ThreadPoolExecutor(max_workers=1) as ejecutor:
-        return ejecutor.submit(asyncio.run, coro).result()
+        return ejecutor.submit(contexto.run, asyncio.run, coro).result()
 
 
 @app.command("seed")
@@ -371,45 +388,43 @@ async def _issue_reset_link(
 ) -> tuple[str, str, str] | None:
     """`(url, propósito, vence)` o `None` si la cuenta no existe o no es elegible. Sale con 2
     (por `resolve_actor` o aquí) si `--as` no es un admin activo."""
-    from app.core import db
-    from app.core.audit import install_audit_listeners
-    from app.core.crypto.oplog import install_oplog_listeners
-    from app.core.crypto.types import install_crypto_type_listeners
     from app.modules.auth.exceptions import UserNotEligible, UserNotFound
+    from app.modules.auth.service import issue_link
+
+    async with cli_runtime(settings) as session:
+        actor, objetivo = await _admin_actor_and_target(session, actor_email, email)
+        if objetivo is None:
+            return None
+        # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+        with unit_of_work(actor):
+            try:
+                async with session.begin():
+                    salida = await issue_link(
+                        session, objetivo, by=actor, front_base_url=settings.FRONT_BASE_URL
+                    )
+            except (UserNotFound, UserNotEligible):
+                return None
+    return salida.url, salida.purpose, salida.expires_at.isoformat()
+
+
+async def _admin_actor_and_target(
+    session: Any, actor_email: str, email: str
+) -> tuple[UUID, UUID | None]:
+    """`(actor, objetivo)` en una transacción de lectura: `--as` debe ser un admin activo (sale
+    con 2 si no) y el objetivo es el id vivo de `email` o `None` (sin revelar si existe)."""
     from app.modules.auth.service import (
         active_admin_id_by_email,
         ids_by_email,
-        issue_link,
         normalize_login_email,
     )
 
-    install_audit_listeners()
-    install_oplog_listeners()
-    install_crypto_type_listeners()
-    _load_module_services()
-    db.configure_engine(db.create_engine_from(settings))
-    try:
-        async with db.get_sessionmaker()() as session:
-            async with session.begin():
-                actor = await resolve_actor(session, actor_email)
-                if await active_admin_id_by_email(session, actor_email) != actor:
-                    typer.echo("--as: debe ser un admin activo", err=True)
-                    raise typer.Exit(code=2)
-                objetivo = (await ids_by_email(session, [email])).get(normalize_login_email(email))
-            if objetivo is None:
-                return None
-            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
-            with unit_of_work(actor):
-                try:
-                    async with session.begin():
-                        salida = await issue_link(
-                            session, objetivo, by=actor, front_base_url=settings.FRONT_BASE_URL
-                        )
-                except (UserNotFound, UserNotEligible):
-                    return None
-        return salida.url, salida.purpose, salida.expires_at.isoformat()
-    finally:
-        await db.dispose_engine()
+    async with session.begin():
+        actor = await resolve_actor(session, actor_email)
+        if await active_admin_id_by_email(session, actor_email) != actor:
+            typer.echo("--as: debe ser un admin activo", err=True)
+            raise typer.Exit(code=2)
+        objetivo = (await ids_by_email(session, [email])).get(normalize_login_email(email))
+    return actor, objetivo
 
 
 @app.command("unlock-user")
@@ -418,11 +433,16 @@ def unlock_user(
     actor: Annotated[str | None, typer.Option("--as")] = None,
 ) -> None:
     """Desbloquea la cuenta de `email` (S2-B5, US-050; S2-D10): limpia `locked_at` y
-    `failed_login_count` con `service.unlock` y deja el `update` auditado con el actor de `--as`
-    o, sin él, `SYSTEM_USER_ID`. Corre en otro proceso que el api: los contadores en memoria del
-    api se limpian con `up -d api` (docs/RUNBOOK.md). Sale con 2, con el mismo mensaje y sin
-    repetir el correo, si la cuenta no existe, está borrada o no está bloqueada.
+    `failed_login_count` con `service.unlock` y deja el `update` auditado con el actor de `--as`,
+    obligatorio y admin activo como en `issue-reset-link` (revisión de seguridad V10, N-4: sin él
+    el desbloqueo quedaba atribuido al usuario técnico). Corre en otro proceso que el api: los
+    contadores en memoria del api se limpian con `up -d api` (docs/RUNBOOK.md). Sale con 2 si
+    falta `--as` o no es un admin activo, y con el mismo mensaje y sin repetir el correo si la
+    cuenta no existe, está borrada o no está bloqueada.
     """
+    if actor is None:
+        typer.echo("unlock-user: --as <correo de un admin activo> es obligatorio", err=True)
+        raise typer.Exit(code=2)
     settings = get_settings()
     if not _run(_unlock_user(settings, email, actor)):
         typer.echo(_UNLOCK_REJECTED, err=True)
@@ -434,38 +454,24 @@ def unlock_user(
 _UNLOCK_REJECTED = "unlock-user: no hay una cuenta bloqueada con ese correo"
 
 
-async def _unlock_user(settings: Settings, email: str, actor_email: str | None) -> bool:
+async def _unlock_user(settings: Settings, email: str, actor_email: str) -> bool:
     """`True` si desbloqueó; `False` si la cuenta no existe, está borrada o no está bloqueada.
-    Sale con 2 (por `resolve_actor`) si `--as` no es una persona activa."""
-    from app.core import db
-    from app.core.audit import install_audit_listeners
-    from app.core.crypto.oplog import install_oplog_listeners
-    from app.core.crypto.types import install_crypto_type_listeners
+    Sale con 2 (por `resolve_actor` o aquí) si `--as` no es un admin activo."""
     from app.modules.auth.exceptions import NotLocked, UserNotFound
-    from app.modules.auth.service import ids_by_email, normalize_login_email, unlock
+    from app.modules.auth.service import unlock
 
-    install_audit_listeners()
-    install_oplog_listeners()
-    install_crypto_type_listeners()
-    _load_module_services()
-    db.configure_engine(db.create_engine_from(settings))
-    try:
-        async with db.get_sessionmaker()() as session:
-            async with session.begin():
-                actor = await resolve_actor(session, actor_email)
-                objetivo = (await ids_by_email(session, [email])).get(normalize_login_email(email))
-            if objetivo is None:
+    async with cli_runtime(settings) as session:
+        actor, objetivo = await _admin_actor_and_target(session, actor_email, email)
+        if objetivo is None:
+            return False
+        # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+        with unit_of_work(actor):
+            try:
+                async with session.begin():
+                    await unlock(session, objetivo, by=actor)
+            except (UserNotFound, NotLocked):
                 return False
-            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
-            with unit_of_work(actor):
-                try:
-                    async with session.begin():
-                        await unlock(session, objetivo, by=actor)
-                except (UserNotFound, NotLocked):
-                    return False
-        return True
-    finally:
-        await db.dispose_engine()
+    return True
 
 
 if __name__ == "__main__":

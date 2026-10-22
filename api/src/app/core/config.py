@@ -18,7 +18,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 from urllib.parse import urlsplit
 
 from pydantic import (
@@ -58,6 +58,9 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
 )
 
 _DSN = TypeAdapter(PostgresDsn)
+# Piso de la política N-10 en producción (M5 de la revisión general). `core/security.py` lo
+# expone como `PASSWORD_MIN_LENGTH` y los schemas de contraseña nueva lo usan como `min_length`.
+PASSWORD_MIN_LENGTH_FLOOR: Final[int] = 12
 _ESQUEMA = "postgresql+asyncpg"
 
 
@@ -143,7 +146,7 @@ class Settings(BaseSettings):
     ARGON2_TIME_COST: int = Field(default=3, gt=0)
     ARGON2_MEMORY_COST_KIB: int = Field(default=65536, gt=0)
     ARGON2_PARALLELISM: int = Field(default=4, gt=0)
-    PASSWORD_MIN_LENGTH: int = Field(default=12, gt=0)
+    PASSWORD_MIN_LENGTH: int = Field(default=PASSWORD_MIN_LENGTH_FLOOR, gt=0)
 
     # Sesiones (US-033): access JWT EdDSA de 15 minutos con tolerancia de 30 s (N-14) y
     # refresh opaco de 7 días en cookie HttpOnly (N-13).
@@ -168,10 +171,10 @@ class Settings(BaseSettings):
     # Orígenes aceptados por `require_same_origin` en login, refresh y logout (M-1, S2-D38);
     # vacío = el origen de FRONT_BASE_URL.
     AUTH_ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = []
-    # Piso de duración de toda respuesta 401 de login y de todo forgot (M-6, S2-D39): 1,5 veces
-    # la mediana de argon2 más commit medida dentro del contenedor en S2-B2 (unos 48 ms, así
-    # 72 ms, redondeado a 75; docs/RUNBOOK.md).
-    LOGIN_MIN_DURATION_MS: int = Field(default=75, gt=0)
+    # Piso de duración de toda respuesta 401 de login y de todo forgot (M-6, S2-D39). Revisión de
+    # seguridad V10 (N-7): 75 ms (1,5 veces la mediana de S2-B2) quedaba por debajo de la rama de
+    # cuenta existente bajo contención del candado de auditoría; el piso es el p99, 150 ms.
+    LOGIN_MIN_DURATION_MS: int = Field(default=150, gt=0)
     # Gracia del reuso de refresh (M-2) y tope absoluto de una familia de refresh (L-4).
     REFRESH_REUSE_GRACE_S: int = Field(default=10, gt=0)
     REFRESH_ABSOLUTE_TTL_DAYS: int = Field(default=30, gt=0)
@@ -216,6 +219,18 @@ class Settings(BaseSettings):
         if isinstance(entorno, str):
             validate_cookie_security(
                 entorno, valor, bool(info.data.get("ALLOW_INSECURE_COOKIE", False))
+            )
+        return valor
+
+    @field_validator("PASSWORD_MIN_LENGTH")
+    @classmethod
+    def _contrasena_minima_en_produccion(cls, valor: int, info: ValidationInfo) -> int:
+        """M5 de la revisión general: en producción nunca por debajo de `PASSWORD_MIN_LENGTH`
+        de `core/security.py` (12, N-10); en dev se admite menos para pruebas manuales."""
+        if info.data.get("ENV") == "production" and valor < PASSWORD_MIN_LENGTH_FLOOR:
+            raise ValueError(
+                f"PASSWORD_MIN_LENGTH no puede ser menor que {PASSWORD_MIN_LENGTH_FLOOR} "
+                "en producción"
             )
         return valor
 

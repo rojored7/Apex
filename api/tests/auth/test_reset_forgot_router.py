@@ -163,7 +163,13 @@ async def test_reset_con_contrasena_debil_da_422_y_no_gasta_el_token(
     coach = await usuario_real("coach")
     claro, _ = await make_one_time_token(session, coach, "reset", expires_in=timedelta(hours=1))
     r = await app_http.post(RESET, json={"token": claro, "new_password": "corta"})
-    assert r.status_code == 422, r.text
+    assert r.status_code == 422, r.text  # M5: `minLength: 12` del contrato
+    assert (r.json()["error"]["code"], r.json()["error"]["field"]) == (
+        "validation_error",
+        "new_password",
+    )
+    r = await app_http.post(RESET, json={"token": claro, "new_password": "Cambiar-Esto"})
+    assert r.status_code == 422, r.text  # la política sigue: una común
     assert (r.json()["error"]["code"], r.json()["error"]["field"]) == (
         "weak_password",
         "new_password",

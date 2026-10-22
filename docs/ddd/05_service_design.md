@@ -19,6 +19,18 @@ Reglas de dependencia:
 - `service` de A → `service` de B. Nunca `models` de B.
 - `service` → `core.events.emit(...)`. Handlers registrados en `modules/<x>/service.py` al importar el módulo (`core/events.subscribe`).
 - `models` → `core.db.Base`, `core.crypto.types`. Nada más.
+- Un `service.py` grande se parte en archivos privados del módulo y queda como fachada que
+  reexporta lo público (revisión Python H1 del Sprint 2: `auth/service.py` reexporta
+  `events.py`, `sessions.py`, `users.py` y `links.py`). Otro módulo sigue importando solo
+  `service.py`; los archivos nuevos entran en `PRIVATE_HELPERS` de
+  `tests/architecture/_imports.py`, y el grafo de `test_service_import_graph.py` revisa todos
+  los archivos del módulo. Ningún archivo de `api/src` pasa de 800 líneas ni ninguna función de
+  50 (`tests/architecture/test_file_and_function_size.py`).
+- Sesión por petición: las rutas y `current_user` piden la sesión con `SessionDep`
+  (`Annotated[AsyncSession, Depends(get_session, scope="function")]`, `core/db.py`). Con ese
+  alcance el commit corre antes de enviar la respuesta y un error de commit sale como envelope
+  (revisión de seguridad V10, N-1); `tests/architecture/test_session_scope.py` lo exige en
+  todas las rutas. Nunca `Depends(get_session)` suelto: mezclar alcances abre dos sesiones.
 
 Puertos (interfaces `Protocol`) y sus adaptadores:
 
@@ -47,7 +59,15 @@ api/
                                  verify-audit, sign-audit, migrate-provider, cbom
     core/
       config.py                  Settings (pydantic-settings) desde .env; extra="forbid"; NON_API_ENV_VARS
-      db.py                      engine async, async_session, Base, CommonColumnsMixin
+      db.py                      engine async, get_session, SessionDep (scope="function", N-1),
+                                 Base, CommonColumnsMixin (eager_defaults, M4),
+                                 violated_constraint(error) (nombre de la restricción, H3)
+      http.py                    no_store: Cache-Control no-store en toda ruta con rol (M6)
+      search.py                  LIKE_ESCAPE, escape_like, contains_pattern, strip_accents,
+                                 sql_fold (translate con la tabla completa de tildes),
+                                 clean_query (H3 de la revisión Python del Sprint 2)
+      validators.py              EmailAddress, SafeText y SafeMultilineText (NFC, sin Cc/Cf; N-2)
+      pagination.py              PageParams (offset <= 1.000.000, N-2), Page, SearchQuery, paginate
       clock.py                   Clock Protocol, SystemClock, FrozenClock, today_bogota()
       context.py                 SYSTEM_USER_ID, current_actor, current_batch, request_id_var,
                                  actor_scope(), batch_scope() (solo biblioteca estándar; G-01)
@@ -55,10 +75,12 @@ api/
                                  new_opaque_token(), hash_opaque_token()
       jobs.py                    JobRun (worker.job_runs), claim_run, finish_run, last_run (G-06)
       alerts.py                  AlertSink, register_sink, alert, LogAlertSink (G-08)
-      ratelimit.py               limitador por IP (login, forgot)
+      ratelimit.py               limitador por IP (login, forgot) y por clave; reserve/release
+                                 atómicos para el límite por cuenta del login (M2)
       events.py                  bus en memoria
       audit.py                   record(), hook after_flush, chain_hash
-      errors.py                  envelope de error, handlers de excepciones
+      errors.py                  envelope de error, handlers de excepciones; responses_for(*codes)
+                                 para declarar en el OpenAPI solo los errores de cada ruta (M7)
       logging.py                 JSON a stdout, filtro de campos sensibles
       crypto/
         registry.py              registro de data_class (constantes, N-04) y puerto Reencryptor (G-09)
@@ -74,7 +96,8 @@ api/
         router.py                /crypto/* solo admin (v0.3)
         service.py               rotate, reencrypt por lotes, cbom
     modules/
-      auth/        router schemas models service exceptions
+      auth/        router schemas models service exceptions; privados: rules tokens cookies
+                   events sessions users links (service.py es la fachada, H1)
       settings/    router schemas models service
       members/     router schemas models service exceptions
       plans/       router schemas models service exceptions
@@ -106,26 +129,31 @@ api/
 
 Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.py`.
 
-Contrato común de listas (S2-B8, S2-B9): `core/pagination.py` define `SearchQuery` (`q` de hasta 100 caracteres, sin caracteres de control de la categoría `Cc`; fuera de contrato, 422 con `field = "q"` antes del service) y `paginate` (`limit` de 1 a 200, 25 por defecto, y `offset`). Toda lista lo usa; la respuesta es `{items, total, limit, offset}`.
+Contrato común de listas (S2-B8, S2-B9): `core/pagination.py` define `SearchQuery` (`q` de hasta 100 caracteres, sin caracteres de control de la categoría `Cc`; fuera de contrato, 422 con `field = "q"` antes del service) y `paginate` (`limit` de 1 a 200, 25 por defecto, y `offset` de 0 a 1.000.000: un entero fuera de int64 daba 500, N-2). Toda lista lo usa; la respuesta es `{items, total, limit, offset}`.
 
 ### auth.service
-- `login(email, password, ip) -> TokenPair` — rate limit, argon2 verify, usuario activo y no bloqueado, refresh en tabla. El refresh viaja en la cookie `apex_refresh` (HttpOnly, S2-D38). Emite `LoginAttempted` (S2-D43).
+
+Fachada (revisión Python H1): `sessions.py` (login, refresh, logout, cargador del principal),
+`users.py` (seed, lecturas para otros módulos, "Mi cuenta" y ciclo de vida), `links.py` (reset,
+forgot, issue/resend) y `events.py`; `service.py` los reexporta con `__all__`.
+- `login(email, password, ip) -> TokenPair` — rate limit, argon2 verify, usuario activo y no bloqueado, refresh en tabla. Límite por cuenta con clave (correo, IPv4 exacta o /64; N-3, antes /24) y tope global por correo, reservados de forma atómica antes de argon2 y devueltos si el login sale bien (M2). El refresh viaja en la cookie `apex_refresh` (HttpOnly, S2-D38). Emite `LoginAttempted` (S2-D43).
 - `refresh(refresh_token) -> TokenPair` — lee la cookie, rota el refresh (revoca el anterior). Un reuso fuera de la gracia de 10 s revoca la familia y todos los access emitidos (S2-B2, S2-D37).
 - `logout(refresh_token) -> None` — público y por cookie, siempre 204 y borra la cookie (S2-D35, H-1).
 - `me(session, principal) -> MeOut` — `{id, email, role, member_id, gym_name, must_change_password}`; `gym_name` sale de `settings.service.gym_name()` (respaldo `"APEX"`; S2-D14).
-- `change_password(user_id, current, new, current_refresh, policy) -> AccessTokenOut` — primero la actual (422 `invalid_current_password`), luego la política con `field="new_password"` (distinta de la actual); un solo `update` auditado; revoca las demás sesiones salvo la de la cookie, fija `tokens_valid_after` y devuelve un access nuevo (S2-D37). Emite `PasswordChanged` y, si revocó alguna, `SessionsRevoked(reason="password_changed")`.
+- `change_password(user_id, current, new, current_refresh, policy) -> AccessTokenOut` — primero la actual (422 `invalid_current_password`), luego la política con `field="new_password"` (distinta de la actual); los tres argon2 corren sin candado y el `FOR UPDATE` final exige que el hash no haya cambiado (si otro cambio ganó, 422 `invalid_current_password`; M1); un solo `update` auditado; revoca las demás sesiones salvo la de la cookie, fija `tokens_valid_after` y devuelve un access nuevo (S2-D37). Emite `PasswordChanged` y, si revocó alguna, `SessionsRevoked(reason="password_changed")`.
 - `list_users(session, *, q, role, status, ...) -> Page[UserRow]` (paginado con `limit` y `offset`, D2) — admin; sin el usuario técnico; sin `status` excluye borrados; `q` con `ILIKE` escapado; orden por correo; `active_sessions` (refresh vigentes y no revocados).
 - `create_user(email, role, by, front_base_url) -> CreateUserOut` — admin; en v0.1 `role` es `admin` o `coach`, sin `member_id` (L-2, hasta el portal); crea la cuenta sin hash (`pending_activation`), genera `OneTimeToken(activate)` de 72 h (solo su hash) y devuelve una sola vez `activation_url = <FRONT_BASE_URL>/restablecer/<token>`. Un correo de una cuenta viva da 409 `email_taken` con `existing_id`.
-- `forgot(session, email, *, ip, policy) -> None` — siempre 204. En v0.1 no escribe nada (S2-D36): normaliza el correo, cuenta por correo y espera el piso de duración. El emisor real llega con US-131 (Sprint 5). Mientras tanto el admin obtiene el enlace con `resend_link` (`POST /users/{id}/resend-link`), que genera un token nuevo e invalida el anterior. No existe `GET /users/{id}/activation-link` (N-12).
+- `forgot(email, *, policy) -> None` — siempre 204 (sin `session` ni `ip` desde la revisión Python, L3). En v0.1 no escribe nada (S2-D36): normaliza el correo, cuenta por correo y espera el piso de duración. El emisor real llega con US-131 (Sprint 5). Mientras tanto el admin obtiene el enlace con `resend_link` (`POST /users/{id}/resend-link`), que genera un token nuevo e invalida el anterior. No existe `GET /users/{id}/activation-link` (N-12).
 - `reset(token, new_password) -> None` — 204 y sin sesión (S2-D18).
 - `lock(user_id, by)`, `revoke_sessions(user_id, by)`, `resend_link(user_id, by) -> str`
+- `update_user(user_id, *, email, role, by)` — el correo de otro admin activo con contraseña no se cambia (409 `user_not_eligible`, regla L-13 en el correo; N-8). El propio admin sí cambia el suyo.
 - Regla: no se puede bloquear ni borrar al último admin activo.
 
 ### settings.service
 - `get_section(session, key) -> SectionOut` y `update_section(session, key, value, version, by) -> SectionOut` — valida con el esquema de la sección y `version` (409 `version_conflict`, N-17). `tv.regenerate_token(by) -> str` es de v0.5.
 - Sprint 2 expone solo `gym`, `privacy` y `memberships` (S2-D15); cualquier otra clave responde 404 `section_not_available`.
 - Secciones de v0.1 (Q11, N-18): `gym`, `hours`, `payment_methods`, `memberships` (`expiring_days` y los límites `max_freeze_days_per_membership`, `max_freezes_per_membership`, `max_retroactive_days`), `classes` (`default_capacity`, `checkin_window_min`), `tv`, `privacy`. `channels` llega en v0.2 y solo guarda lo no secreto (Q12). Una sección futura responde 404 `section_not_available`.
-- `memberships_policy() -> MembershipsPolicy` — lo usa `memberships.service` para `expiring_days` y los límites; `current_privacy_version() -> str | None` (`None` sin fila, S2-B1) para `privacy.policy_version`; `gym_name() -> str` (respaldo `"APEX"`) para `auth.me`.
+- `memberships_policy() -> MembershipsPolicy` — lo usa `memberships.service` para `expiring_days` y los límites; `current_privacy_version() -> str | None` (`None` sin fila, S2-B1) para `privacy.policy_version`; `gym_name() -> str` (respaldo `"APEX"`, también si lo guardado ya no valida: M3) para `auth.me`.
 - `payment_methods()` devuelve el enum fijo en v0.1 (S8) decorado con etiquetas de la sección; se expone en `GET /payments/methods` (US-056).
 
 ### members.service

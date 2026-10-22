@@ -13,15 +13,15 @@
 
 from __future__ import annotations
 
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from app.core.pagination import MAX_SEARCH_LENGTH, SEARCH_PATTERN
+from app.core.validators import SafeText
 
 PlanKind = Literal["days", "classes"]
 
@@ -32,30 +32,19 @@ DURATION_DAYS_MIN: Final[int] = 1
 DURATION_DAYS_MAX: Final[int] = 3_650
 CLASS_COUNT_MIN: Final[int] = 1
 CLASS_COUNT_MAX: Final[int] = 1_000
-_CATEGORIAS_PROHIBIDAS: Final = frozenset({"Cc", "Cf"})
 
 
 class PlanCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    # `SafeText` (revisión S2-B9 M1, unificado en la revisión del Sprint 2): NFC (así
+    # "Promoción" compuesta y descompuesta chocan en `uq_plans_name_alive`), sin `Cc` ni `Cf`
+    # (un NUL daba 500 y un U+200B pasaba el CHECK `btrim(name) <> ''`) y algo visible.
+    name: SafeText = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     price_cop: StrictInt = Field(ge=PRICE_COP_MIN, le=PRICE_COP_MAX)
     kind: PlanKind
     duration_days: StrictInt = Field(ge=DURATION_DAYS_MIN, le=DURATION_DAYS_MAX)
     class_count: StrictInt | None = Field(default=None, ge=CLASS_COUNT_MIN, le=CLASS_COUNT_MAX)
-
-    @field_validator("name")
-    @classmethod
-    def _nombre_visible(cls, valor: str) -> str:
-        """NFC (así "Promoción" compuesta y descompuesta chocan en `uq_plans_name_alive`), sin
-        caracteres de control ni de formato (`Cc`, `Cf`: un NUL daba 500 y un U+200B pasaba el
-        CHECK `btrim(name) <> ''`) y con al menos un carácter visible (revisión S2-B9, M1)."""
-        nombre = unicodedata.normalize("NFC", valor).strip()
-        if any(unicodedata.category(c) in _CATEGORIAS_PROHIBIDAS for c in nombre):
-            raise ValueError("El nombre tiene caracteres no permitidos.")
-        if not nombre or nombre.isspace():
-            raise ValueError("El nombre es obligatorio.")
-        return nombre
 
 
 class PlanOut(BaseModel):

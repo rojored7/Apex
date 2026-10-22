@@ -343,3 +343,29 @@ def test_ip_bucket_key_trata_la_ipv4_mapeada_como_ipv4() -> None:
     assert ip_bucket_key("::ffff:203.0.113.9") == "203.0.113.0/24"
     assert ip_bucket_key("::ffff:203.0.113.9", ipv4_prefix=32) == "203.0.113.9/32"
     assert ip_bucket_key("::ffff:198.51.100.7", ipv4_prefix=32) == "198.51.100.7/32"
+
+
+async def test_reserve_es_atomica_y_release_devuelve_el_cupo() -> None:
+    """Revisión Python M2: `reserve` comprueba y suma bajo el mismo candado; `release` quita la
+    marca de esa reserva (y solo una); una marca ya ausente devuelve `False`."""
+    import asyncio
+
+    from app.core.errors import TooManyRequestsError
+    from app.core.ratelimit import release, reserve
+
+    token = set_clock(FrozenClock(T0))
+    try:
+        resultados = await asyncio.gather(
+            *(reserve("login-account", "ana@apex.co", limit=3, window_s=900) for _ in range(10)),
+            return_exceptions=True,
+        )
+        marcas = [r for r in resultados if isinstance(r, float)]
+        assert len(marcas) == 3
+        assert sum(isinstance(r, TooManyRequestsError) for r in resultados) == 7
+        assert await release("login-account", "ana@apex.co", marcas[0]) is True
+        await reserve("login-account", "ana@apex.co", limit=3, window_s=900)  # cupo devuelto
+        with pytest.raises(TooManyRequestsError):
+            await reserve("login-account", "ana@apex.co", limit=3, window_s=900)
+        assert await release("login-account", "otra@apex.co", marcas[0]) is False
+    finally:
+        reset_clock(token)

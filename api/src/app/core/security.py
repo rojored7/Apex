@@ -40,13 +40,16 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.core.clock import Clock
-from app.core.config import Settings
+from app.core.config import PASSWORD_MIN_LENGTH_FLOOR, Settings
 
 Role = Literal["admin", "coach", "member"]
 ROLES: Final[tuple[str, ...]] = ("admin", "coach", "member")
 WeakReason = Literal["too_short", "too_common", "too_long"]
 # Tope de longitud de contraseña (L-5 del Sprint 1, S2-D30): `too_long` se revisa primero.
 PASSWORD_MAX_LENGTH: Final = 128
+# Mínimo del contrato (M5 de la revisión general): `min_length` de `new_password` en el OpenAPI y
+# piso de `Settings.PASSWORD_MIN_LENGTH` en producción; la política efectiva es la de `Settings`.
+PASSWORD_MIN_LENGTH: Final = PASSWORD_MIN_LENGTH_FLOOR
 JWT_ALGORITHM: Final = "EdDSA"
 REQUIRED_CLAIMS: Final[tuple[str, ...]] = ("exp", "iat", "sub", "role", "jti")
 OPAQUE_TOKEN_BYTES: Final = 32
@@ -279,7 +282,7 @@ def _load_common_passwords() -> frozenset[str]:
 COMMON_PASSWORDS: Final[frozenset[str]] = _load_common_passwords()
 
 _hasher = PasswordHasher(type=Type.ID)
-_min_length = 12
+_min_length = PASSWORD_MIN_LENGTH
 
 
 def configure_password_hasher(time_cost: int, memory_cost_kib: int, parallelism: int) -> None:
@@ -361,9 +364,10 @@ def configure_security(settings: Settings) -> None:
 # `current_user` lee `Authorization: Bearer`, decodifica, rechaza `SYSTEM_USER_ID` (N-15),
 # pide al cargador el estado vigente (rol de la base, no del claim), rechaza un access con
 # `iat` anterior a `tokens_valid_after` (H-3), refresca el keyring solo entonces (S2-D11) y fija
-# `current_actor`
-# sin resetearlo: el commit de `get_session` corre en su teardown y lo necesita; lo limpia
-# `RequestLogMiddleware` al terminar la petición. Toda 401 lleva `WWW-Authenticate: Bearer`
+# `current_actor` sin resetearlo: el commit de `SessionDep` corre en su teardown (al terminar la
+# función de la ruta, antes de responder; N-1) y lo necesita; lo limpia `RequestLogMiddleware`
+# al terminar la petición. `current_user` pide la sesión con el mismo `SessionDep` que las rutas:
+# una sola sesión por petición. Toda 401 lleva `WWW-Authenticate: Bearer`
 # y el mismo mensaje genérico; `token_expired` solo para un access vencido con firma válida.
 # `PUBLIC_ROUTES` es la única lista blanca (sin decorador `@public`); la prueba de arquitectura
 # `test_every_route_has_role.py` exige rol en todo lo demás, y la TV solo entra con la marca
@@ -380,7 +384,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 from app.core.clock import get_clock  # noqa: E402
 from app.core.context import SYSTEM_USER_ID, current_actor  # noqa: E402
 from app.core.crypto.keyring import refresh_current  # noqa: E402
-from app.core.db import get_session  # noqa: E402
+from app.core.db import SessionDep  # noqa: E402
 from app.core.errors import ForbiddenError, UnauthorizedError  # noqa: E402
 
 SESSION_INVALID_MESSAGE: Final = "Sesión no válida."
@@ -447,7 +451,7 @@ def _bearer_token(request: Request) -> str:
 
 async def current_user(
     request: Request,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    session: SessionDep,
 ) -> Principal:
     token = _bearer_token(request)
     try:

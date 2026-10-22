@@ -15,10 +15,11 @@ from __future__ import annotations
 from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import ratelimit
-from app.core.db import get_session
+from app.core.db import SessionDep
+from app.core.errors import responses_for
+from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.security import Principal, require_role
 from app.modules.members import service
@@ -32,7 +33,10 @@ from app.modules.members.schemas import (
     MemberStatusFilter,
 )
 
-router = APIRouter(tags=["members"])
+# M6: datos de personas (nombres y máscaras): ninguna respuesta se guarda en caché.
+router = APIRouter(
+    tags=["members"], dependencies=[Depends(no_store)], responses=responses_for(401, 403, 429)
+)
 
 MEMBERS_WRITE_BUCKET: Final = "members-write"
 MEMBERS_WRITE_LIMIT: Final = 60
@@ -42,10 +46,12 @@ MEMBERS_SEARCH_LIMIT: Final = 60
 MEMBERS_SEARCH_WINDOW_S: Final = 60
 
 Staff = Annotated[Principal, Depends(require_role("admin", "coach"))]
-Session = Annotated[AsyncSession, Depends(get_session)]
+Session = SessionDep  # N-1: commit antes de responder; un solo alias en todo el api
 
 
-@router.post("/members", status_code=201, response_model=MemberDetailOut)
+@router.post(
+    "/members", status_code=201, response_model=MemberDetailOut, responses=responses_for(409)
+)
 async def create_member(body: MemberCreate, principal: Staff, session: Session) -> MemberDetailOut:
     await ratelimit.enforce(
         MEMBERS_WRITE_BUCKET,

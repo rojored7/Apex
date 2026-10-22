@@ -155,11 +155,17 @@ async def issue_one_time_token(
 
 
 async def close_open_one_time_tokens(session: AsyncSession, user_id: UUID, *, now: datetime) -> int:
-    """Cierra por ORM (`used_at = now`, `update` auditado) todos los enlaces abiertos del
-    usuario, de cualquier propósito: tras fijar o cambiar la contraseña ninguno debe servir."""
+    """Cierra por ORM (`used_at = now`, `update` auditado) los enlaces abiertos y vigentes del
+    usuario, de cualquier propósito: tras fijar o cambiar la contraseña ninguno debe servir. Los
+    vencidos ya no sirven y no se tocan (revisión Python M10: cada uno dejaba una fila de
+    auditoría sin valor)."""
     abiertos = await session.scalars(
         select(OneTimeToken)
-        .where(OneTimeToken.user_id == user_id, OneTimeToken.used_at.is_(None))
+        .where(
+            OneTimeToken.user_id == user_id,
+            OneTimeToken.used_at.is_(None),
+            OneTimeToken.expires_at > now,
+        )
         .with_for_update()
     )
     cerrados = 0

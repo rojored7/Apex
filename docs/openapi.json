@@ -41,7 +41,7 @@
           "new_password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 1,
+            "minLength": 12,
             "title": "New Password",
             "type": "string",
             "writeOnly": true
@@ -264,7 +264,7 @@
             "title": "Updated By"
           },
           "value": {
-            "$ref": "#/components/schemas/GymSettings"
+            "$ref": "#/components/schemas/GymView"
           },
           "version": {
             "minimum": 0.0,
@@ -370,6 +370,89 @@
           "name"
         ],
         "title": "GymSettings",
+        "type": "object"
+      },
+      "GymView": {
+        "additionalProperties": false,
+        "description": "Salida de `gym`: los mismos campos sin `SafeText` (N-2 valida la ENTRADA); un valor\nguardado antes del texto seguro se sigue leyendo y se corrige con un `PATCH`.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "nit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nit"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "whatsapp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Whatsapp"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "GymView",
         "type": "object"
       },
       "HealthOut": {
@@ -1363,7 +1446,7 @@
       },
       "PrivacyView": {
         "additionalProperties": false,
-        "description": "Salida de `privacy`: la política nunca publicada tiene versión y texto `None`.",
+        "description": "Salida de `privacy`: la política nunca publicada tiene versión y texto `None`. Sin\n`SafeText` (solo la entrada lo aplica), como `GymView`.",
         "properties": {
           "consent_required_from": {
             "anyOf": [
@@ -1381,7 +1464,6 @@
             "anyOf": [
               {
                 "maxLength": 20000,
-                "minLength": 1,
                 "type": "string"
               },
               {
@@ -1394,7 +1476,6 @@
             "anyOf": [
               {
                 "maxLength": 20,
-                "minLength": 1,
                 "type": "string"
               },
               {
@@ -1446,7 +1527,7 @@
           "new_password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 1,
+            "minLength": 12,
             "title": "New Password",
             "type": "string",
             "writeOnly": true
@@ -1799,56 +1880,6 @@
           "204": {
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin sesión válida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -1857,7 +1888,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -1910,16 +1941,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -1940,26 +1961,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -1968,7 +1969,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -2004,26 +2005,6 @@
           "204": {
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin sesión válida"
-          },
           "403": {
             "content": {
               "application/json": {
@@ -2033,36 +2014,6 @@
               }
             },
             "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
           },
           "429": {
             "content": {
@@ -2105,16 +2056,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -2124,56 +2065,6 @@
               }
             },
             "description": "Sin sesión válida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
           },
           "500": {
             "content": {
@@ -2216,16 +2107,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -2236,36 +2117,6 @@
             },
             "description": "Sin sesión válida"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -2274,7 +2125,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -2317,16 +2168,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -2346,36 +2187,6 @@
               }
             },
             "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
           },
           "429": {
             "content": {
@@ -2431,46 +2242,6 @@
             },
             "description": "Operación inválida"
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin sesión válida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -2479,7 +2250,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -2522,76 +2293,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin sesión válida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
-          },
           "500": {
             "content": {
               "application/json": {
@@ -2606,7 +2307,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/HealthOut"
                 }
               }
             },
@@ -2700,6 +2401,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 1000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -2716,16 +2418,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
           },
           "401": {
             "content": {
@@ -2747,26 +2439,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -2775,7 +2447,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -2826,16 +2498,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -2856,16 +2518,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -2884,7 +2536,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -2971,6 +2623,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 1000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -2987,16 +2640,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
           },
           "401": {
             "content": {
@@ -3018,26 +2661,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -3046,17 +2669,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3097,16 +2710,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3127,16 +2730,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -3155,17 +2748,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3210,16 +2793,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3250,16 +2823,6 @@
             },
             "description": "No encontrado"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -3268,17 +2831,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3311,16 +2864,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3340,46 +2883,6 @@
               }
             },
             "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
           },
           "500": {
             "content": {
@@ -3420,16 +2923,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3450,16 +2943,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -3478,17 +2961,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3521,16 +2994,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3550,46 +3013,6 @@
               }
             },
             "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
           },
           "500": {
             "content": {
@@ -3630,16 +3053,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3660,16 +3073,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -3688,17 +3091,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3731,16 +3124,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3760,46 +3143,6 @@
               }
             },
             "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
           },
           "500": {
             "content": {
@@ -3840,16 +3183,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3870,16 +3203,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -3898,17 +3221,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -3952,16 +3265,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -3992,16 +3295,6 @@
             },
             "description": "No encontrado"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4010,17 +3303,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4072,16 +3355,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4130,17 +3403,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4245,6 +3508,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 1000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -4261,16 +3525,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
           },
           "401": {
             "content": {
@@ -4292,26 +3546,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4320,17 +3554,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4371,16 +3595,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4401,16 +3615,6 @@
             },
             "description": "Sin permiso"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
           "409": {
             "content": {
               "application/json": {
@@ -4429,17 +3633,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4477,16 +3671,6 @@
           "204": {
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4535,17 +3719,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4588,16 +3762,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4628,16 +3792,6 @@
             },
             "description": "No encontrado"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -4646,17 +3800,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4709,16 +3853,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4767,17 +3901,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4822,16 +3946,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4880,17 +3994,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -4935,16 +4039,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -4993,17 +4087,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -5048,16 +4132,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -5088,16 +4162,6 @@
             },
             "description": "No encontrado"
           },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
           "422": {
             "content": {
               "application/json": {
@@ -5106,17 +4170,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -5161,16 +4215,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
           "401": {
             "content": {
               "application/json": {
@@ -5219,17 +4263,7 @@
                 }
               }
             },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -5262,76 +4296,6 @@
             },
             "description": "Successful Response"
           },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Operación inválida"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin sesión válida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Sin permiso"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "No encontrado"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflicto con el estado actual"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Petición inválida"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Demasiados intentos"
-          },
           "500": {
             "content": {
               "application/json": {
@@ -5346,7 +4310,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/HealthOut"
                 }
               }
             },

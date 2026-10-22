@@ -322,3 +322,30 @@ def test_seed_settings_rechaza_claves_ajenas_sin_mostrar_valores(
         load_seed_settings(archivo)
     assert "DATABASE_URL" in excinfo.value.invalid
     assert "valor-secreto-99" not in str(excinfo.value)
+
+
+# Revisión del Sprint 2: N-7 (piso de login al p99) y M5 de la general (contraseña mínima) ----
+
+
+def test_el_piso_de_login_por_defecto_es_150_ms(tmp_path: Path) -> None:
+    """N-7 (revisión V10): 75 ms era 1,5 veces la mediana; bajo contención del candado de
+    auditoría la rama de cuenta existente lo superaba. El piso por defecto es el p99, 150 ms."""
+    assert load_settings(env_file=escribir_env(tmp_path)).LOGIN_MIN_DURATION_MS == 150
+
+
+@pytest.mark.parametrize("minimo", ["1", "8", "11"])
+def test_en_produccion_la_contrasena_minima_no_baja_de_12(tmp_path: Path, minimo: str) -> None:
+    """M5 de la revisión general: `PASSWORD_MIN_LENGTH=1` en el `.env` rompía N-10."""
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{"PASSWORD_MIN_LENGTH": minimo}))
+    assert "PASSWORD_MIN_LENGTH" in str(excinfo.value)
+
+
+def test_en_dev_la_contrasena_minima_puede_bajar_y_en_produccion_subir(tmp_path: Path) -> None:
+    from app.core.security import PASSWORD_MIN_LENGTH
+
+    assert PASSWORD_MIN_LENGTH == 12
+    dev = load_settings(env_file=escribir_env(tmp_path, ENV="dev", **{"PASSWORD_MIN_LENGTH": "4"}))
+    assert dev.PASSWORD_MIN_LENGTH == 4
+    prod = load_settings(env_file=escribir_env(tmp_path, **{"PASSWORD_MIN_LENGTH": "16"}))
+    assert prod.PASSWORD_MIN_LENGTH == 16

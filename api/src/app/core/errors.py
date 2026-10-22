@@ -8,6 +8,12 @@ nunca repite el valor recibido.
 Cada módulo define sus errores en `exceptions.py` heredando de `DomainError`.
 Este archivo solo importa FastAPI, Starlette, Pydantic, `logging` y
 `core/context.py`.
+
+OpenAPI (M7 de la revisión general del Sprint 2): cada router o ruta declara solo los errores
+que puede devolver con `responses_for(401, 403, ...)`; el gancho del esquema agrega `500` a toda
+operación y convierte en `ErrorResponse` los códigos del catálogo (también el `422` que FastAPI
+pone a las rutas con parámetros o cuerpo). Antes la app declaraba los ocho códigos en las 31
+operaciones, incluido `/health`.
 """
 
 from __future__ import annotations
@@ -135,11 +141,21 @@ _DESCRIPCIONES = {
     429: "Demasiados intentos",
 }
 
-# Para `FastAPI(responses=ERROR_RESPONSES)` o `include_router(..., responses=ERROR_RESPONSES)`.
+# Catálogo completo (pruebas y apps de prueba). El api real declara por ruta con `responses_for`.
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     codigo: {"model": ErrorResponse, "description": descripcion}
     for codigo, descripcion in _DESCRIPCIONES.items()
 }
+
+
+def responses_for(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """`responses=` de una ruta o router con solo esos códigos del catálogo (M7). Un código fuera
+    del catálogo es un error de programación: `ValueError` al importar el router."""
+    desconocidos = [c for c in codes if c not in _DESCRIPCIONES]
+    if desconocidos:
+        raise ValueError(f"código de error fuera del catálogo: {desconocidos}")
+    return {c: dict(ERROR_RESPONSES[c]) for c in codes}
+
 
 _CODIGOS_HTTP: dict[int, tuple[str, str]] = {
     401: ("unauthorized", "Inicia sesión para continuar."),
@@ -214,7 +230,9 @@ def register_error_handlers(app: FastAPI) -> None:
 
 
 def _publicar_error_response(app: FastAPI) -> None:
-    """Reemplaza `HTTPValidationError` por `ErrorResponse` y lo declara en todo 4xx y 5xx."""
+    """Reemplaza `HTTPValidationError` por `ErrorResponse` en los códigos del catálogo que la
+    ruta declara (o el `422` automático de FastAPI) y agrega `500` a toda operación. Un código
+    fuera del catálogo (el `503` de `/health`, con `HealthOut`) queda como lo declaró la ruta."""
 
     def openapi() -> dict[str, Any]:
         if app.openapi_schema:
@@ -243,12 +261,11 @@ def _publicar_error_response(app: FastAPI) -> None:
                     continue
                 respuestas = operacion["responses"]
                 for codigo in list(respuestas):
-                    if codigo[0] in "45":
-                        descripcion = respuestas[codigo].get("description") or _DESCRIPCIONES.get(
-                            int(codigo), "Error"
+                    if codigo.isdigit() and int(codigo) in _DESCRIPCIONES:
+                        descripcion = (
+                            respuestas[codigo].get("description") or _DESCRIPCIONES[int(codigo)]
                         )
                         respuestas[codigo] = {"description": descripcion, **contenido}
-                respuestas.setdefault("422", {"description": _DESCRIPCIONES[422], **contenido})
                 respuestas.setdefault("500", {"description": _DESCRIPCIONES[500], **contenido})
         app.openapi_schema = esquema
         return esquema

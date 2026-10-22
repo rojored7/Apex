@@ -4,7 +4,8 @@
   por `user_status` (precedencia `deleted > locked > inactive > pending_activation > active`);
   nunca trae `password_hash` ni tokens.
 - `rules.user_out(user)`: `UserOut` con `status` y `must_change_password`.
-- `rules.escape_like(q)`: escapa la barra invertida, `%` y `_` (el `q` de la lista va con
+- `core.search.escape_like(q)` (antes `rules.escape_like`; revisión Python H3): escapa la barra
+  invertida, `%` y `_` (el `q` de la lista va con
   `ILIKE ... ESCAPE '\\'`).
 La matriz SQL contra Python de `status_filter` vive en `test_auth_filter_matrix.py`.
 """
@@ -17,8 +18,9 @@ from uuid import uuid4
 import pytest
 
 from app.core.context import SYSTEM_USER_ID
+from app.core.search import escape_like
 from app.modules.auth.models import User
-from app.modules.auth.rules import escape_like, user_out, user_row
+from app.modules.auth.rules import user_out, user_row
 from app.modules.auth.schemas import UserOut, UserRow
 from tests.auth._cuentas import CAMPOS_USER_OUT, CAMPOS_USER_ROW
 from tests.conftest import T0

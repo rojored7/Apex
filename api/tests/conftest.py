@@ -123,7 +123,16 @@ def test_database_url() -> str:
             "(db_test de infra/compose.dev.yml); no se saltan."
         )
     assert url.startswith("postgresql+asyncpg://"), url
+    if not es_base_de_prueba(url):
+        # LOW L9 de la revisión Python: `LIMPIEZA_DE_SESION` y `dos_sesiones` borran tablas
+        # enteras; nunca contra una base que no sea la de prueba.
+        pytest.fail("TEST_DATABASE_URL debe apuntar a una base cuyo nombre contenga 'test'.")
     return url
+
+
+def es_base_de_prueba(url: str) -> bool:
+    """Pura: el nombre de la base (el camino del DSN) contiene `test`."""
+    return "test" in urlsplit(url).path.lstrip("/").lower()
 
 
 @pytest.fixture(scope="session")

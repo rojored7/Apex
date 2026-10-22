@@ -209,15 +209,27 @@ async def test_la_actual_errada_da_422_invalid_current_password(
     assert (await app_http.get(ME, headers=_bearer(coach.token))).status_code == 200
 
 
-async def test_una_nueva_de_once_caracteres_da_422_weak_password(
+async def test_una_nueva_de_once_caracteres_da_422_en_el_contrato(
     app_http: AsyncClient, usuario_real: CrearUsuario
 ) -> None:
+    """M5 de la revisión general: `new_password` publica `minLength: 12`; una de 11 la rechaza
+    el schema (`validation_error`), antes de la política (`weak_password`)."""
     coach = await usuario_real("coach")
     r = await _cambiar(app_http, coach.token, nueva="Once-letra1")
     assert r.status_code == 422
-    assert r.json()["error"]["code"] == "weak_password"
+    assert r.json()["error"]["code"] == "validation_error"
     assert r.json()["error"]["field"] == "new_password"
     assert "Once-letra1" not in r.text
+
+
+async def test_una_nueva_comun_da_422_weak_password(
+    app_http: AsyncClient, usuario_real: CrearUsuario
+) -> None:
+    coach = await usuario_real("coach")
+    r = await _cambiar(app_http, coach.token, nueva="Cambiar-Esto")
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "weak_password"
+    assert r.json()["error"]["field"] == "new_password"
 
 
 async def test_una_nueva_igual_a_la_actual_da_422_weak_password(

@@ -500,7 +500,7 @@ export interface components {
             updated_at: string | null;
             /** Updated By */
             updated_by: string | null;
-            value: components["schemas"]["GymSettings"];
+            value: components["schemas"]["GymView"];
             /** Version */
             version: number;
         };
@@ -509,6 +509,27 @@ export interface components {
          * @description Datos del gimnasio (US-055, N-18). `name` sin default: el `"APEX"` vive en los defaults.
          */
         GymSettings: {
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name: string;
+            /** Nit */
+            nit?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Whatsapp */
+            whatsapp?: string | null;
+        };
+        /**
+         * GymView
+         * @description Salida de `gym`: los mismos campos sin `SafeText` (N-2 valida la ENTRADA); un valor
+         *     guardado antes del texto seguro se sigue leyendo y se corrige con un `PATCH`.
+         */
+        GymView: {
             /** Address */
             address?: string | null;
             /** City */
@@ -881,7 +902,8 @@ export interface components {
         };
         /**
          * PrivacyView
-         * @description Salida de `privacy`: la política nunca publicada tiene versión y texto `None`.
+         * @description Salida de `privacy`: la política nunca publicada tiene versión y texto `None`. Sin
+         *     `SafeText` (solo la entrada lo aplica), como `GymView`.
          */
         PrivacyView: {
             /** Consent Required From */
@@ -1076,52 +1098,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin sesión válida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1172,15 +1149,6 @@ export interface operations {
                     "application/json": components["schemas"]["LoginOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -1199,25 +1167,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1262,53 +1212,8 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin sesión válida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin permiso */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1354,62 +1259,8 @@ export interface operations {
                     "application/json": components["schemas"]["MeOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1450,15 +1301,6 @@ export interface operations {
                     "application/json": components["schemas"]["AccessTokenOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -1468,34 +1310,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1542,15 +1357,6 @@ export interface operations {
                     "application/json": components["schemas"]["RefreshOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -1562,33 +1368,6 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1645,43 +1424,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Sin sesión válida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1728,69 +1471,6 @@ export interface operations {
                     "application/json": components["schemas"]["HealthOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin sesión válida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Error inesperado */
             500: {
                 headers: {
@@ -1806,7 +1486,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["HealthOut"];
                 };
             };
         };
@@ -1836,15 +1516,6 @@ export interface operations {
                     "application/json": components["schemas"]["Page_MemberRowOut_"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -1863,25 +1534,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1932,15 +1585,6 @@ export interface operations {
                     "application/json": components["schemas"]["MemberDetailOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -1959,15 +1603,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -1977,7 +1612,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2030,15 +1665,6 @@ export interface operations {
                     "application/json": components["schemas"]["Page_PlanOut_"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2057,35 +1683,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2126,15 +1725,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlanOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2153,15 +1743,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -2171,17 +1752,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2220,15 +1792,6 @@ export interface operations {
                     "application/json": components["schemas"]["PlanOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2256,26 +1819,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2312,15 +1857,6 @@ export interface operations {
                     "application/json": components["schemas"]["GymSectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2332,42 +1868,6 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2408,15 +1908,6 @@ export interface operations {
                     "application/json": components["schemas"]["GymSectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2435,15 +1926,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -2453,17 +1935,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2500,15 +1973,6 @@ export interface operations {
                     "application/json": components["schemas"]["MembershipsSectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2520,42 +1984,6 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2596,15 +2024,6 @@ export interface operations {
                     "application/json": components["schemas"]["MembershipsSectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2623,15 +2042,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -2641,17 +2051,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2688,15 +2089,6 @@ export interface operations {
                     "application/json": components["schemas"]["PrivacySectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2708,42 +2100,6 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2784,15 +2140,6 @@ export interface operations {
                     "application/json": components["schemas"]["PrivacySectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2811,15 +2158,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -2829,17 +2167,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2878,15 +2207,6 @@ export interface operations {
                     "application/json": components["schemas"]["SectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -2914,26 +2234,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2976,15 +2278,6 @@ export interface operations {
                     "application/json": components["schemas"]["SectionOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3021,17 +2314,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3075,15 +2359,6 @@ export interface operations {
                     "application/json": components["schemas"]["Page_UserRow_"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3102,35 +2377,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3171,15 +2419,6 @@ export interface operations {
                     "application/json": components["schemas"]["CreateUserOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3198,15 +2437,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Conflicto con el estado actual */
             409: {
                 headers: {
@@ -3216,17 +2446,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3265,15 +2486,6 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3301,26 +2513,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3357,15 +2551,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3402,17 +2587,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3455,15 +2631,6 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3500,17 +2667,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3549,15 +2707,6 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3594,17 +2743,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3643,15 +2783,6 @@ export interface operations {
                     "application/json": components["schemas"]["IssuedLinkOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3688,17 +2819,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3737,15 +2859,6 @@ export interface operations {
                     "application/json": components["schemas"]["RevokeSessionsOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3773,26 +2886,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3831,15 +2926,6 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Sin sesión válida */
             401: {
                 headers: {
@@ -3876,17 +2962,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Petición inválida */
+            /** @description Validation Error */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3923,69 +3000,6 @@ export interface operations {
                     "application/json": components["schemas"]["HealthOut"];
                 };
             };
-            /** @description Operación inválida */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin sesión válida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Sin permiso */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflicto con el estado actual */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Petición inválida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Demasiados intentos */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description Error inesperado */
             500: {
                 headers: {
@@ -4001,7 +3015,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["HealthOut"];
                 };
             };
         };

@@ -1,9 +1,11 @@
 """Grafo de imports entre los `service.py` de los módulos (S2-D53; CLAUDE.md, reglas de
 módulos 2 bis y 3; G-03 y G-04).
 
-- Nodo: cada `app/modules/<m>/service.py`. Arista `a → b`: el service de `a` importa
+- Nodo: cada módulo `app/modules/<m>/`. Arista `a → b`: algún archivo de `a` importa
   `app.modules.b.service` (en cualquier forma: `import`, `from ... import service`, relativo,
-  dentro de una función o `importlib.import_module("...")` literal).
+  dentro de una función o `importlib.import_module("...")` literal). Desde la revisión Python
+  H1 se revisan todos los archivos del módulo, no solo `service.py`: el de auth se partió en
+  `sessions.py`, `users.py` y `links.py`, y la arista `auth → settings` vive en `users.py`.
 - El grafo es acíclico. El sentido minoritario de una dependencia mutua usa un puerto que el
   dueño registra al arrancar, o un import perezoso de la lista blanca.
 - Aristas permitidas en v0.1 (mapa de contextos): `audit → auth` y `auth → settings`
@@ -115,17 +117,27 @@ def find_cycle(grafo: dict[str, set[str]]) -> list[str] | None:
 def _grafo_real() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     grafo: dict[str, set[str]] = {}
     perezosas: dict[str, set[str]] = {}
-    for archivo in sorted(MODULES_DIR.glob("*/service.py")):
-        modulo = archivo.parent.name
-        arriba, lazy = service_edges(archivo.read_text(encoding="utf-8"), modulo)
-        grafo[modulo] = arriba | lazy
-        perezosas[modulo] = lazy
+    for servicio in sorted(MODULES_DIR.glob("*/service.py")):
+        modulo = servicio.parent.name
+        grafo[modulo], perezosas[modulo] = set(), set()
+        for archivo in sorted(servicio.parent.glob("*.py")):
+            arriba, lazy = service_edges(archivo.read_text(encoding="utf-8"), modulo)
+            grafo[modulo] |= arriba | lazy
+            perezosas[modulo] |= lazy
     return grafo, perezosas
 
 
 def test_hay_services_que_revisar() -> None:
     grafo, _ = _grafo_real()
     assert {"auth", "settings", "members", "plans"} <= set(grafo)
+
+
+def test_las_aristas_del_mapa_se_ven_tras_partir_auth() -> None:
+    """Control (revisión Python H1): `auth → settings` está en `users.py`, no en `service.py`;
+    si el grafo mirara solo `service.py` la arista desaparecería sin que nada fallara."""
+    grafo, _ = _grafo_real()
+    assert "settings" in grafo["auth"]
+    assert "auth" in grafo["audit"]
 
 
 def test_plans_no_agrega_aristas() -> None:

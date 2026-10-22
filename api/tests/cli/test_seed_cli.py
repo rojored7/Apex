@@ -315,7 +315,10 @@ async def test_unlock_user_carga_los_services_de_los_modulos(
     await _usuario_con_commit(
         entorno, "espia-unlock@test.apex", role="coach", locked_at=datetime(2026, 10, 1, tzinfo=UTC)
     )
-    resultado = runner.invoke(app, ["unlock-user", "espia-unlock@test.apex"])
+    await _usuario_con_commit(entorno, "jefe-espia-unlock@test.apex", role="admin")
+    resultado = runner.invoke(  # N-4: `--as` obligatorio
+        app, ["unlock-user", "espia-unlock@test.apex", "--as", "jefe-espia-unlock@test.apex"]
+    )
     assert resultado.exit_code == 0, resultado.output
     assert espia_carga.llamadas >= 1
 

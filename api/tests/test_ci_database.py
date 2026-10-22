@@ -29,3 +29,20 @@ async def test_database_url_apunta_a_postgres16() -> None:
     finally:
         await conexion.close()
     assert str(version).startswith("16."), version
+
+
+@pytest.mark.parametrize(
+    ("url", "esperado"),
+    [
+        ("postgresql+asyncpg://apex:x@127.0.0.1:5443/apex_test", True),
+        ("postgresql+asyncpg://apex:x@localhost:5432/test_apex", True),
+        ("postgresql+asyncpg://apex:x@db:5432/apex", False),
+        ("postgresql+asyncpg://test:x@db:5432/apex", False),  # el usuario no cuenta
+        ("postgresql+asyncpg://apex:x@test-host:5432/apex", False),  # el host tampoco
+    ],
+)
+def test_la_limpieza_solo_corre_contra_una_base_de_prueba(url: str, esperado: bool) -> None:
+    """LOW L9 de la revisión Python: la guarda de `test_database_url` mira el nombre de la base."""
+    from tests.conftest import es_base_de_prueba
+
+    assert es_base_de_prueba(url) is esperado

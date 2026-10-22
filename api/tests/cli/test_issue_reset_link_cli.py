@@ -28,10 +28,11 @@ from typer.testing import CliRunner
 
 from app.cli import app, key_paths_in
 from app.core.audit import AuditEntry
+from app.core.clock import FrozenClock
 from app.core.config import Settings, reset_settings_cache
 from app.core.security import configure_password_hasher, hash_opaque_token
 from app.modules.auth.models import OneTimeToken, User
-from tests.conftest import CLAVE_PRUEBA, LIMPIAR_AUTH
+from tests.conftest import CLAVE_PRUEBA, LIMPIAR_AUTH, T0
 from tests.factories.users import make_user
 
 runner = CliRunner()
@@ -105,7 +106,7 @@ def _invocar(*args: str) -> Any:
 
 
 async def test_sobre_el_propio_admin_imprime_la_url_una_sola_vez(
-    entorno: AsyncEngine, caplog: pytest.LogCaptureFixture
+    entorno: AsyncEngine, caplog: pytest.LogCaptureFixture, reloj: FrozenClock
 ) -> None:
     admin = await _usuario(entorno, "jefa-cli@test.apex", role="admin", password=CLAVE_PRUEBA)
     with caplog.at_level(logging.DEBUG):
@@ -126,8 +127,8 @@ async def test_sobre_el_propio_admin_imprime_la_url_una_sola_vez(
     assert fila.purpose == "reset"
     assert fila.token_hash == hash_opaque_token(token)
     assert fila.created_by == admin.id
-    ahora = datetime.now(UTC)
-    assert abs(fila.expires_at - (ahora + timedelta(hours=1))) < timedelta(minutes=5)
+    # LOW de la revisión Python: el reloj congelado llega al CLI (`_run` copia el contexto).
+    assert fila.expires_at == T0 + timedelta(hours=1)
 
 
 async def test_deja_el_insert_auditado_por_el_admin_sin_el_token(entorno: AsyncEngine) -> None:

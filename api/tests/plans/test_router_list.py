@@ -239,3 +239,15 @@ async def test_un_id_que_no_es_uuid_da_422_con_field_plan_id(
     r = await app_http.get(f"{PLANS}/no-es-uuid", headers=cabeceras(admin))
     assert r.status_code == 422, r.text
     assert r.json()["error"]["field"] == "plan_id"
+
+
+async def test_offset_fuera_de_int64_da_422_field_offset(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> None:
+    """N-2 (revisión de seguridad V10): antes llegaba a PostgreSQL y daba 500."""
+    admin = await usuario_real("admin")
+    r = await app_http.get(
+        PLANS, headers=cabeceras(admin), params={"offset": "99999999999999999999"}
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["field"] == "offset"

@@ -105,3 +105,27 @@ async def test_reset_y_reenvio_concurrentes_no_se_interbloquean(
     assert resultados[0] == "reset" or isinstance(resultados[0], InvalidToken), resultados
     abiertos = [t for t in await tokens_de(primera, coach.id) if t.used_at is None]
     assert len(abiertos) == 1  # solo el del reenvío
+
+
+async def test_el_cierre_ignora_los_enlaces_ya_vencidos(
+    session: AsyncSession, usuario_real: CrearUsuario, reloj: FrozenClock
+) -> None:
+    """Revisión Python M10: un enlace vencido ya no sirve; cerrarlo solo agregaba una fila de
+    auditoría por cada uno. Se cierran únicamente los abiertos y vigentes (`expires_at > now`)."""
+    coach = await usuario_real("coach")
+    _, vencido = await make_one_time_token(session, coach, "reset", expires_in=timedelta(hours=-1))
+    _, vigente = await make_one_time_token(session, coach, "reset", expires_in=timedelta(hours=1))
+    with actor_scope(coach.id):
+        await service.change_password(
+            session, coach.id, CLAVE_PRUEBA, NUEVA, current_refresh=None, policy=politica()
+        )
+        await session.commit()
+    por_id = {t.id: t for t in await tokens_de(session, coach.id)}
+    assert por_id[vigente.id].used_at == T0
+    assert por_id[vencido.id].used_at is None
+    updates = [
+        f
+        for f in await filas_auditoria(session, "auth.one_time_tokens", vencido.id)
+        if f["action"] == "update"
+    ]
+    assert updates == []

@@ -2,9 +2,10 @@
 
 Puras:
 - `validate_member_input(data, today)`: nombres no vacíos, `sex` en `f`/`m`/`x` o nulo,
-  `birth_date <= today` (`today` es `today_bogota()`), documento o correo que no se normalicen
-  a vacío y teléfono con al menos `PHONE_MIN_DIGITS` dígitos tras normalizar (L-3: `"+57"` se
-  normaliza a `"57"`). Lanza `MemberValidationError` con `field` y sin repetir el valor.
+  `1900-01-01 <= birth_date <= today` (`today` es `today_bogota()`), documento o correo
+  que no se normalicen a vacío y teléfono con al menos `PHONE_MIN_DIGITS` dígitos tras
+  normalizar (L-3: `"+57"` se normaliza a `"57"`). Lanza
+  `MemberValidationError` con `field` y sin repetir el valor.
 - `compute_warnings(data)`: `["data_consent_missing"]` sin autorización, `[]` con ella.
 - `mask(field, value, *, document_type=None)`: enmascarado en memoria del valor de entrada
   (`CC •••• 0304`, `••• ••• 4567`, `l•••@•••.co`, `••/••/1991`, `"Registrado"`); `None` da
@@ -67,8 +68,10 @@ from app.core.crypto import bus
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.normalize import IndexKind, normalize_for_index
 from app.core.crypto.secret import PlainValue, Secret
+from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.pagination import Page, PageParams, paginate, to_page
+from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.members.exceptions import (
     MemberDocumentDuplicated,
     MemberNotFound,
@@ -92,6 +95,7 @@ MaskValue = str | date | Mapping[str, Any] | None
 
 DOCUMENT_DATA_CLASS: Final = "member.document"
 DOCUMENT_ALIVE_INDEX: Final = "uq_members_document_idx_alive"
+BIRTH_DATE_MIN: Final = date(1900, 1, 1)  # LOW L6: un año mal tecleado (`0991`) no pasa
 PHONE_MIN_DIGITS: Final = 7  # L-3: "+57" queda en "57"; un fijo local tiene 7 dígitos
 MASK_TAIL: Final = 4
 DOCUMENT_MIN_MASKED: Final = 6  # al menos 2 caracteres ocultos además de la cola
@@ -99,13 +103,12 @@ DOTS: Final = "•••"
 EMERGENCY_CONTACT_MASK: Final = "Registrado"
 PHONE_DATA_CLASS: Final = "member.phone"
 EMAIL_DATA_CLASS: Final = "member.email"
-LIKE_ESCAPE: Final = "\\"
 
 _MENSAJES: Final[Mapping[str, str]] = {
     "first_name": "El nombre es obligatorio.",
     "last_name": "El apellido es obligatorio.",
     "sex": "El sexo debe ser f, m o x.",
-    "birth_date": "La fecha de nacimiento no puede ser futura.",
+    "birth_date": "La fecha de nacimiento debe estar entre 1900 y hoy.",
     "document": "El documento no tiene caracteres válidos.",
     "phone": "El teléfono no tiene suficientes dígitos.",
     "email": "El correo no es válido.",
@@ -134,12 +137,15 @@ def _normalizado(valor: str, kind: IndexKind) -> str:
 
 
 def validate_member_input(data: MemberCreate, today: date) -> None:
+    """Reglas del alta que el schema no expresa (L-3; LOW L6 de la revisión Python: fecha de
+    nacimiento entre `BIRTH_DATE_MIN` y `today`). Lanza `MemberValidationError` con `field` y
+    sin repetir el valor."""
     for campo in ("first_name", "last_name"):
         if not str(getattr(data, campo) or "").strip():
             raise _invalido(campo)
     if data.sex is not None and data.sex not in SEXES:
         raise _invalido("sex")
-    if data.birth_date is not None and data.birth_date > today:
+    if data.birth_date is not None and not BIRTH_DATE_MIN <= data.birth_date <= today:
         raise _invalido("birth_date")
     if not _normalizado(data.document, "generic"):
         raise _invalido("document")
@@ -150,6 +156,7 @@ def validate_member_input(data: MemberCreate, today: date) -> None:
 
 
 def compute_warnings(data: MemberCreate) -> builtins.list[str]:
+    """Avisos del alta: `data_consent_missing` sin autorización (M-4)."""
     return [] if data.data_consent else [DATA_CONSENT_MISSING]
 
 
@@ -207,9 +214,11 @@ def _contacto(data: MemberCreate) -> dict[str, Any] | None:
 
 
 def _build(data: MemberCreate, actor: UUID) -> Member:
+    """El `Member` del alta; los nombres en NFC aunque el que llama no pase por el schema
+    (Python H2: así "José" compuesto y descompuesto se buscan y ordenan igual)."""
     return Member(
-        first_name=data.first_name,
-        last_name=data.last_name,
+        first_name=unicodedata.normalize("NFC", data.first_name),
+        last_name=unicodedata.normalize("NFC", data.last_name),
         sex=data.sex,
         status="active",
         document_type=data.document_type,
@@ -255,20 +264,21 @@ async def _insert(session: AsyncSession, socio: Member, document: str) -> None:
             session.add(socio)
             await session.flush()
     except IntegrityError as error:
-        if DOCUMENT_ALIVE_INDEX not in str(error.orig):
+        if violated_constraint(error) != DOCUMENT_ALIVE_INDEX:
             raise
         logger.info("members: alta concurrente con el mismo documento")
         raise MemberDocumentDuplicated(await id_by_document(session, document)) from None
 
 
 async def create(session: AsyncSession, data: MemberCreate) -> MemberDetailOut:
+    """Alta de un socio (US-069): valida, rechaza el documento repetido, cifra y emite
+    `MemberCreated`; responde enmascarado desde la entrada, sin descifrar."""
     validate_member_input(data, current_clock().today_bogota())
     existente = await id_by_document(session, data.document)
     if existente is not None:
         raise MemberDocumentDuplicated(existente)
     socio = _build(data, get_actor())
-    await _insert(session, socio, data.document)
-    await session.refresh(socio, attribute_names=["created_at", "updated_at"])
+    await _insert(session, socio, data.document)  # `eager_defaults`: fechas ya cargadas (M4)
     await events.emit(MemberCreated(member_id=socio.id), session)
     logger.info("members: socio creado", extra={"member_id": str(socio.id)})
     return _detail(socio, data)
@@ -278,6 +288,7 @@ async def create(session: AsyncSession, data: MemberCreate) -> MemberDetailOut:
 
 
 async def get_ref(session: AsyncSession, member_id: UUID) -> MemberRef:
+    """Contrato para otros módulos: el socio (incluye dados de baja) o `MemberNotFound`."""
     consulta = select(
         Member.id, Member.first_name, Member.last_name, Member.status, Member.deleted_at
     ).where(Member.id == member_id)
@@ -296,6 +307,7 @@ async def get_ref(session: AsyncSession, member_id: UUID) -> MemberRef:
 async def ensure_exists(
     session: AsyncSession, member_id: UUID, *, include_deleted: bool = False
 ) -> None:
+    """`MemberNotFound` si no existe (o está dado de baja, salvo `include_deleted`)."""
     consulta = select(Member.id).where(Member.id == member_id)
     if not include_deleted:
         consulta = consulta.where(Member.deleted_at.is_(None))
@@ -318,6 +330,7 @@ async def id_by_document(session: AsyncSession, document: str) -> UUID | None:
 
 
 async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:
+    """Socios vivos (o todos con `include_deleted`)."""
     consulta = select(func.count()).select_from(Member)
     if not include_deleted:
         consulta = consulta.where(Member.deleted_at.is_(None))
@@ -341,17 +354,6 @@ class QueryPlan:
 PLAN_VACIO: Final = QueryPlan(
     q=None, name_pattern=None, by_document=None, by_phone=None, by_email=None
 )
-_ACENTOS: Final = "áéíóúüñ"  # se pliegan a ASCII en SQL, en columna y término (como US-079)
-_SIN_ACENTOS: Final = "aeiouun"
-
-
-def _escape_like(value: str) -> str:
-    """Escapa la barra invertida (primero), `%` y `_` para `ILIKE ... ESCAPE '\\'`."""
-    return (
-        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
-        .replace("%", LIKE_ESCAPE + "%")
-        .replace("_", LIKE_ESCAPE + "_")
-    )
 
 
 def _es_documento(normalizado: str) -> bool:
@@ -359,17 +361,10 @@ def _es_documento(normalizado: str) -> bool:
     return normalizado.isascii() and normalizado.isalnum() and any(c.isdigit() for c in normalizado)
 
 
-def _limpio(q: str | None) -> str:
-    """NFC (una tilde combinada se pliega como la precompuesta) y sin caracteres de control
-    (categoría `Cc`: un NUL lo rechaza PostgreSQL y daría 500; revisión S2-B8, MEDIUM-1). Desde
-    S2-B9 `SearchQuery` los rechaza con 422 en la ruta; esto queda como defensa en profundidad
-    para quien llame al service directo."""
-    sin_control = "".join(c for c in (q or "") if unicodedata.category(c) != "Cc")
-    return unicodedata.normalize("NFC", sin_control).strip()
-
-
 def classify_query(q: str | None) -> QueryPlan:
-    termino = _limpio(q)
+    """El plan de búsqueda de `q` (`core.search.clean_query`: NFC, sin `Cc`, recortado; defensa
+    en profundidad, `SearchQuery` ya rechaza los controles con 422)."""
+    termino = clean_query(q)
     if not termino:
         return PLAN_VACIO
     documento = _normalizado(termino, "generic")
@@ -377,7 +372,7 @@ def classify_query(q: str | None) -> QueryPlan:
     correo = _normalizado(termino, "email") if "@" in termino else ""
     return QueryPlan(
         q=termino,
-        name_pattern="%" + _escape_like(termino) + "%",
+        name_pattern=contains_pattern(termino),
         by_document=documento if _es_documento(documento) else None,
         by_phone=telefono if len(telefono) >= PHONE_MIN_DIGITS else None,
         by_email=correo or None,
@@ -411,10 +406,6 @@ def _vivo_o_baja(*, deleted: bool) -> ColumnElement[bool]:
     return Member.deleted_at.is_not(None) if deleted else Member.deleted_at.is_(None)
 
 
-def _sin_acentos(valor: ColumnElement[str]) -> ColumnElement[str]:
-    return func.translate(func.lower(valor), _ACENTOS, _SIN_ACENTOS)
-
-
 def _ramas(
     plan: QueryPlan, indices: _Indices, deleted_cond: ColumnElement[bool] | None
 ) -> builtins.list[Select[UUID]]:
@@ -428,8 +419,8 @@ def _ramas(
     if indices.email is not None:
         condiciones.append(Member.email_idx == indices.email)
     if plan.name_pattern is not None:
-        nombre = _sin_acentos(Member.first_name + " " + Member.last_name)
-        patron = _sin_acentos(literal(plan.name_pattern, Text))  # valor ligado
+        nombre = sql_fold(Member.first_name + " " + Member.last_name)
+        patron = sql_fold(literal(plan.name_pattern, Text))  # valor ligado
         condiciones.append(nombre.ilike(patron, escape=LIKE_ESCAPE))
     ramas: builtins.list[Select[UUID]] = []
     for condicion in condiciones:
@@ -485,6 +476,7 @@ def _fila(socio: Member) -> MemberRowOut:
 async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan builtins.list)
     session: AsyncSession, filters: MemberListQuery, page: PageParams
 ) -> Page[MemberRowOut]:
+    """US-070: la página de socios filtrada; nunca descifra (N-01)."""
     estado = _filtro_de_estado(filters.status)
     consulta = (
         select(Member)

@@ -21,7 +21,7 @@ from app.modules.settings.exceptions import (
     SettingsValidationError,
     VersionConflict,
 )
-from app.modules.settings.schemas import GymSettings, SectionKey, SectionOut
+from app.modules.settings.schemas import GymView, SectionKey, SectionOut
 from app.modules.settings.service import get, get_section, gym_name, update_section
 from tests.settings._apoyo import (
     ADMIN_ID,
@@ -161,11 +161,12 @@ async def test_secciones_no_habilitadas_dan_section_not_available(
 async def test_get_interno_devuelve_el_modelo_con_defaults_y_luego_lo_guardado(
     db: AsyncSession,
 ) -> None:
+    """La lectura interna usa el esquema de salida (`GymView`, sin el texto seguro de N-2)."""
     antes = await get(db, SectionKey.gym)
-    assert isinstance(antes, GymSettings) and antes.model_dump(mode="json") == GYM_DEFAULTS
+    assert isinstance(antes, GymView) and antes.model_dump(mode="json") == GYM_DEFAULTS
     await _guardar(db, GYM_OK, 0)
     despues = await get(db, SectionKey.gym)
-    assert isinstance(despues, GymSettings) and despues.model_dump(mode="json") == GYM_OK
+    assert isinstance(despues, GymView) and despues.model_dump(mode="json") == GYM_OK
 
 
 async def test_gym_name_tiene_respaldo_apex_y_luego_el_nombre_guardado(db: AsyncSession) -> None:

@@ -14,9 +14,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import SessionDep
+from app.core.errors import responses_for
+from app.core.http import no_store
 from app.core.security import Principal, require_role
 from app.modules.settings import service
 from app.modules.settings.schemas import (
@@ -31,10 +32,14 @@ from app.modules.settings.schemas import (
     SectionPatchIn,
 )
 
-router = APIRouter(tags=["settings"])
+router = APIRouter(  # M6 y M7
+    tags=["settings"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
+)
+_PATCH = responses_for(409)  # `VersionConflict`
+_GENERICA = responses_for(404)  # `SectionNotAvailable`
 
 Admin = Annotated[Principal, Depends(require_role("admin"))]
-Session = Annotated[AsyncSession, Depends(get_session)]
+Session = SessionDep  # N-1: commit antes de responder; un solo alias en todo el api
 
 
 @router.get("/settings/gym", response_model=GymSectionOut)
@@ -42,7 +47,7 @@ async def get_gym(principal: Admin, session: Session) -> SectionOut:
     return await service.get_section(session, SectionKey.gym)
 
 
-@router.patch("/settings/gym", response_model=GymSectionOut)
+@router.patch("/settings/gym", response_model=GymSectionOut, responses=_PATCH)
 async def patch_gym(body: GymPatchIn, principal: Admin, session: Session) -> SectionOut:
     return await service.update_section(
         session, SectionKey.gym, body.value.model_dump(mode="json"), body.version, principal.user_id
@@ -54,7 +59,7 @@ async def get_privacy(principal: Admin, session: Session) -> SectionOut:
     return await service.get_section(session, SectionKey.privacy)
 
 
-@router.patch("/settings/privacy", response_model=PrivacySectionOut)
+@router.patch("/settings/privacy", response_model=PrivacySectionOut, responses=_PATCH)
 async def patch_privacy(body: PrivacyPatchIn, principal: Admin, session: Session) -> SectionOut:
     return await service.update_section(
         session,
@@ -70,7 +75,7 @@ async def get_memberships(principal: Admin, session: Session) -> SectionOut:
     return await service.get_section(session, SectionKey.memberships)
 
 
-@router.patch("/settings/memberships", response_model=MembershipsSectionOut)
+@router.patch("/settings/memberships", response_model=MembershipsSectionOut, responses=_PATCH)
 async def patch_memberships(
     body: MembershipsPatchIn, principal: Admin, session: Session
 ) -> SectionOut:
@@ -86,12 +91,12 @@ async def patch_memberships(
 # Genéricas: después de las tipadas (el orden de declaración importa).
 
 
-@router.get("/settings/{section}", response_model=SectionOut)
+@router.get("/settings/{section}", response_model=SectionOut, responses=_GENERICA)
 async def get_section(section: str, principal: Admin, session: Session) -> SectionOut:
     return await service.get_section(session, section)
 
 
-@router.patch("/settings/{section}", response_model=SectionOut)
+@router.patch("/settings/{section}", response_model=SectionOut, responses={**_GENERICA, **_PATCH})
 async def patch_section(
     section: str, body: SectionPatchIn, principal: Admin, session: Session
 ) -> SectionOut:

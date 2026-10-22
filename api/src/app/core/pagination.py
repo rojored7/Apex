@@ -1,8 +1,9 @@
 """Contrato de paginación (US-019; regla de datos 6, decisión D2).
 
-- `PageParams`: `limit` (1..200, 25 por defecto) y `offset` (>= 0), como dependencia
+- `PageParams`: `limit` (1..200, 25 por defecto) y `offset` (0..`MAX_OFFSET`), como dependencia
   `Annotated[PageParams, Depends()]`. Un valor fuera de rango da 422 con el envelope de
-  US-017 y `field = "limit"` u `"offset"`.
+  US-017 y `field = "limit"` u `"offset"`. `MAX_OFFSET` (un millón) existe porque un entero
+  fuera de int64 llegaba a PostgreSQL y daba 500 (revisión de seguridad V10, N-2).
 - `Page[T]`: `{items, total, limit, offset}` y nada más (`extra="forbid"`).
 - `SearchQuery`: `q` de hasta 100 caracteres y sin caracteres de control (categoría `Cc`:
   U+0000 a U+001F y U+007F a U+009F). Un NUL lo rechaza PostgreSQL como parámetro y daba 500
@@ -32,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 DEFAULT_LIMIT: Final = 25
 MAX_LIMIT: Final = 200
 MAX_SEARCH_LENGTH: Final = 100
+MAX_OFFSET: Final = 1_000_000
 # Sin caracteres de control (categoría Unicode `Cc`). Con escapes, para que el patrón publicado
 # en el OpenAPI sea texto imprimible.
 SEARCH_PATTERN: Final = r"^[^\x00-\x1f\x7f-\x9f]*$"
@@ -42,7 +44,7 @@ class PageParams:
     """Parámetros de página; FastAPI los lee de la query string al usarse con `Depends()`."""
 
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT
-    offset: Annotated[int, Query(ge=0)] = 0
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0
 
 
 class Page[T](BaseModel):

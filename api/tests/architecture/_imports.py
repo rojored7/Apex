@@ -11,7 +11,9 @@ Reglas:
 - (d) `foreign_non_service`: solo con `ALLOW_FOREIGN_SCHEMAS = False`; `schemas.py` y
   `exceptions.py` ajenos son contrato público del service (decisión del gate, US-022).
 - (e) `private_helper` (S2-D4, E8): un helper privado de otro módulo (`PRIVATE_HELPERS`, por
-  ejemplo `app.modules.auth.rules`, `tokens` y `cookies`); el propio módulo sí los usa.
+  ejemplo `app.modules.auth.rules`, `tokens` y `cookies`, y desde la revisión Python H1 los
+  archivos en que se partió el service: `events`, `sessions`, `users` y `links`); el propio
+  módulo sí los usa. Otro módulo ve los eventos y casos de uso por `auth.service`.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ PREFIX: Final = "app.modules."
 FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "exceptions"})
 # Archivos privados por módulo: solo su propio módulo los importa (S2-D4).
 PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
-    "auth": frozenset({"rules", "tokens", "cookies"}),
+    "auth": frozenset({"rules", "tokens", "cookies", "events", "sessions", "users", "links"}),
 }
 
 Rule = Literal[

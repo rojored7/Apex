@@ -14,9 +14,12 @@
   (`configure_store_limits`, desde `RATE_LIMIT_MAX_KEYS`): llenar el de cuentas con correos
   aleatorios no expulsa las claves por IP.
 - `ip_bucket_key(ip, ipv4_prefix=24)`: red de la IP (IPv4 /24 por defecto, IPv6 siempre /64);
-  el límite por cuenta la usa con /24 (E9) y `rate_limit` con `ipv4_prefix=32` (IPv4 exacta).
-- `enforce` (comprueba y, con `count=True`, registra), `record` (registra sin comprobar: los
-  fallos de H-4) y `forget` (borra la clave y sus subclaves `clave|...`; unlock, S2-D10).
+  `rate_limit` y el límite por cuenta la usan con `ipv4_prefix=32` (IPv4 exacta; el límite por
+  cuenta pasó de /24 a /32 en la revisión de seguridad V10, N-3).
+- `enforce` (comprueba y, con `count=True`, registra), `record` (registra sin comprobar),
+  `reserve`/`release` (reserva atómica de un cupo y su devolución: el límite por cuenta del
+  login, revisión Python M2) y `forget` (borra la clave y sus subclaves `clave|...`; unlock,
+  S2-D10).
 - `rate_limit(bucket, limit=5, window_s=60)`: dependencia por ruta (corre antes del handler,
   así el login no evalúa la contraseña con 429) que lanza `TooManyRequestsError` con
   `Retry-After` y mensaje genérico; lleva la marca `__apex_rate_limit__` que lee la prueba de
@@ -135,6 +138,15 @@ class SlidingWindowStore:
                 return allow((), now, limit, window_s)
             return allow(self._historia(key, now, window_s), now, limit, window_s)
 
+    async def release(self, key: tuple[str, str], stamp: float) -> bool:
+        """Quita una marca `stamp` de la clave (la de una reserva); `False` si ya no estaba."""
+        async with self._lock:
+            historia = self._marcas.get(key)
+            if historia is None or stamp not in historia:
+                return False
+            historia.remove(stamp)
+            return True
+
     async def add(self, key: tuple[str, str], now: float, window_s: int) -> None:
         """Registra una marca sin comprobar el tope (los fallos de login, H-4)."""
         async with self._lock:
@@ -226,6 +238,26 @@ async def enforce(
             extra["rate_key"] = key
         logger.warning("rate limit", extra=extra)
         raise TooManyRequestsError(espera)
+
+
+async def reserve(
+    bucket: str, key: str, *, limit: int, window_s: int, kind: KeyKind = "account"
+) -> float:
+    """Reserva un cupo de forma atómica (comprueba y registra bajo el mismo candado) y devuelve
+    la marca para `release`; sin cupo lanza `TooManyRequestsError` (log solo con el bucket).
+    Revisión Python M2: una ráfaga paralela no puede pasar toda la comprobación antes de que
+    alguna sume."""
+    ahora = _ahora()
+    permitido, espera = await store_for(kind).hit((bucket, key), ahora, limit, window_s)
+    if not permitido:
+        logger.warning("rate limit", extra={"bucket": bucket, "retry_after": espera})
+        raise TooManyRequestsError(espera)
+    return ahora
+
+
+async def release(bucket: str, key: str, stamp: float, *, kind: KeyKind = "account") -> bool:
+    """Devuelve el cupo de una reserva (`stamp` de `reserve`); `False` si ya no estaba."""
+    return await store_for(kind).release((bucket, key), stamp)
 
 
 async def record(bucket: str, key: str, *, window_s: int, kind: KeyKind = "account") -> None:

@@ -15,7 +15,8 @@ Vive en un archivo neutro para que `core/audit.py`, `core/crypto` (US-029) y
 Reglas de propagación:
 - Por HTTP, `current_user` (US-034) es una dependencia `async def` que llama a
   `current_actor.set(user.id)` y **no** lo resetea en un teardown. Cada petición corre en
-  su propia tarea con su propio contexto, y el commit de `get_session` ocurre en el
+  su propia tarea con su propio contexto, y el commit de `get_session` (pedida como
+  `SessionDep`, alcance de función: antes de enviar la respuesta, N-1) ocurre en el
   teardown de esa dependencia; como `current_user` depende de `get_session`, su teardown
   corre antes, y si reseteara el actor ahí el commit se quedaría sin actor.
 - Las rutas sin token que escriben tablas auditadas (login con bloqueo, `reset` y

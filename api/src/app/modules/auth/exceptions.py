@@ -72,7 +72,8 @@ class InvalidToken(DomainError):
 
 class UserNotEligible(DomainError):
     """`resend-link` sobre una cuenta bloqueada o borrada, sobre la propia cuenta del emisor o
-    sobre otro admin activo con contraseña (S2-B4, US-052; L-13)."""
+    sobre otro admin activo con contraseña (S2-B4, US-052; L-13), y `PATCH /users/{id}` que
+    cambia el correo de otro admin activo con contraseña (revisión de seguridad V10, N-8)."""
 
     status = 409
     code = "user_not_eligible"

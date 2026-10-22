@@ -4,7 +4,7 @@ S2-D4, privado del módulo auth).
 - `apex_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Max-Age` de
   `REFRESH_TOKEN_TTL_DAYS` y `Secure` según `COOKIE_SECURE`; se borra con los mismos atributos
   (`Max-Age=0`).
-- `no_store`: `Cache-Control: no-store` en las respuestas de auth.
+- `no_store` se movió a `core/http.py` (revisión Python M6): lo usan todas las rutas con rol.
 - `require_same_origin`: `Origin` (o `Referer`) contra `AUTH_ALLOWED_ORIGINS` o el origen de
   `FRONT_BASE_URL`; sin ninguno de los dos acepta `Sec-Fetch-Site: same-origin|none`; si no,
   403 `forbidden` sin tocar la cookie (S2-D38).
@@ -76,10 +76,6 @@ def policy_from(settings: Settings) -> AuthPolicy:
         lock_after=settings.LOGIN_LOCK_AFTER,
         min_duration_ms=settings.LOGIN_MIN_DURATION_MS,
     )
-
-
-async def no_store(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
 
 
 def _origin_of(url: str) -> str | None:

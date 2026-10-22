@@ -1,12 +1,13 @@
-"""`cli unlock-user <correo> [--as <correo>]` (S2-B5; US-050; S2-D10, H-4.5; N-15, L-4 del
-Sprint 1).
+"""`cli unlock-user <correo> --as <correo>` (S2-B5; US-050; S2-D10, H-4.5; N-15, L-4 del
+Sprint 1; revisión de seguridad V10, N-4).
 
 Contrato:
 - desbloquea con `service.unlock`: `locked_at` nulo y `failed_login_count = 0`; sale con 0 y
   dice que la cuenta quedó desbloqueada;
-- deja el `update` auditado de `auth.users` con el actor de `--as` o, sin `--as`,
-  `SYSTEM_USER_ID` (N-15);
-- `--as` con una cuenta que no está activa (o inexistente) sale con 2 y lo dice (`resolve_actor`);
+- `--as` es obligatorio y debe ser un admin activo, como en `issue-reset-link` (N-4: sin él el
+  desbloqueo quedaba atribuido al usuario técnico); deja el `update` auditado de `auth.users`
+  con ese actor. Sin `--as` sale con 2 sin tocar nada;
+- `--as` con una cuenta que no está activa, inexistente o que no es admin sale con 2 y lo dice;
 - una cuenta no bloqueada, una inexistente o una borrada salen con 2 y el MISMO mensaje, sin
   repetir el correo y sin tocar nada.
 Los contadores en memoria del api viven en otro proceso: los limpia `up -d api` (RUNBOOK).
@@ -37,6 +38,7 @@ from tests.factories.users import make_user
 
 runner = CliRunner()
 BLOQUEO = datetime(2026, 10, 1, tzinfo=UTC)
+JEFE = "jefe-cli-unlock@test.apex"  # el admin activo del `--as` por defecto (N-4)
 
 
 async def _limpiar(engine: AsyncEngine) -> None:
@@ -72,6 +74,7 @@ async def entorno(
     monkeypatch.setenv("ARGON2_PARALLELISM", "1")
     reset_settings_cache()
     await _limpiar(engine)
+    await _usuario(engine, JEFE, role="admin")
     try:
         yield engine
     finally:
@@ -122,7 +125,9 @@ async def _updates(engine: AsyncEngine, user_id: UUID) -> list[dict[str, Any]]:
 
 
 def _invocar(*args: str) -> Any:
-    return runner.invoke(app, ["unlock-user", *args])
+    """`unlock-user` con `--as JEFE` salvo que la prueba pase el suyo."""
+    actor = [] if "--as" in args else ["--as", JEFE]
+    return runner.invoke(app, ["unlock-user", *args, *actor])
 
 
 async def test_desbloquea_y_limpia_el_contador(entorno: AsyncEngine) -> None:
@@ -142,12 +147,22 @@ async def test_normaliza_el_correo(entorno: AsyncEngine) -> None:
     assert (await _fila(entorno, bloqueado.id))["locked_at"] is None
 
 
-async def test_sin_as_audita_al_usuario_tecnico(entorno: AsyncEngine) -> None:
+async def test_sin_as_sale_con_2_y_no_toca_nada(entorno: AsyncEngine) -> None:
+    """N-4: antes se atribuía a `SYSTEM_USER_ID`; ahora `--as` es obligatorio."""
     bloqueado = await _bloqueado(entorno, "tec-cli@test.apex")
-    r = _invocar("tec-cli@test.apex")
+    r = runner.invoke(app, ["unlock-user", "tec-cli@test.apex"])
+    assert r.exit_code == 2, r.output
+    assert "--as" in r.output
+    assert (await _fila(entorno, bloqueado.id))["locked_at"] == BLOQUEO
+    assert await _updates(entorno, bloqueado.id) == []
+
+
+async def test_el_update_auditado_lleva_el_actor_y_nunca_al_tecnico(entorno: AsyncEngine) -> None:
+    bloqueado = await _bloqueado(entorno, "aud-cli@test.apex")
+    r = _invocar("aud-cli@test.apex")
     assert r.exit_code == 0, r.output
     (fila,) = await _updates(entorno, bloqueado.id)
-    assert fila["user_id"] == SYSTEM_USER_ID
+    assert fila["user_id"] != SYSTEM_USER_ID
     assert fila["before"]["locked_at"] is not None
     assert fila["after"]["locked_at"] is None
 
@@ -161,11 +176,18 @@ async def test_con_as_audita_a_esa_persona(entorno: AsyncEngine) -> None:
     assert fila["user_id"] == admin.id
 
 
-@pytest.mark.parametrize("quien", ["inexistente", "bloqueado"])
-async def test_as_con_una_cuenta_no_activa_sale_con_2(quien: str, entorno: AsyncEngine) -> None:
+@pytest.mark.parametrize("quien", ["inexistente", "bloqueado", "coach"])
+async def test_as_con_una_cuenta_no_activa_o_que_no_es_admin_sale_con_2(
+    quien: str, entorno: AsyncEngine
+) -> None:
     bloqueado = await _bloqueado(entorno, "obj-as-unlock@test.apex")
     await _usuario(entorno, "jefe-bloq-unlock@test.apex", role="admin", locked_at=BLOQUEO)
-    actor = {"inexistente": "nadie-unlock@test.apex", "bloqueado": "jefe-bloq-unlock@test.apex"}
+    await _usuario(entorno, "coach-as-unlock@test.apex", role="coach")
+    actor = {
+        "inexistente": "nadie-unlock@test.apex",
+        "bloqueado": "jefe-bloq-unlock@test.apex",
+        "coach": "coach-as-unlock@test.apex",
+    }
     r = _invocar("obj-as-unlock@test.apex", "--as", actor[quien])
     assert r.exit_code == 2, (quien, r.output)
     assert "--as" in r.output

@@ -10,8 +10,8 @@ L-1, L-3).
 - el alta 61 de un mismo usuario en un minuto da 429 `rate_limited` con `Retry-After` y otro
   usuario no se ve afectado (L-1);
 - ningún log lleva el documento, el teléfono, el correo, el token ni un blob.
-`Cache-Control: no-store` no se exige aquí: el dependiente `no_store` es privado de `auth`
-(`auth.cookies`, S2-D4) y Nginx ya lo pone en todo `/api/` (`proxy-api.conf`, W0-1).
+`Cache-Control: no-store` lo exige `tests/architecture/test_no_store_routes.py` (revisión Python
+M6: `core.http.no_store` en el router de socios); Nginx también lo pone en `/api/`.
 """
 
 from __future__ import annotations

@@ -13,7 +13,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base, CommonColumnsMixin, configure_sessionmaker, get_session
+from app.core.db import (
+    Base,
+    CommonColumnsMixin,
+    SessionDep,
+    configure_sessionmaker,
+    get_session,
+)
+from app.core.errors import register_error_handlers
 
 
 class FilaDePeticion(CommonColumnsMixin, Base):
@@ -77,3 +84,91 @@ async def test_el_commit_ocurre_al_responder(engine: AsyncEngine, tabla: None) -
         respuesta = await cliente.post("/ok")
     assert respuesta.status_code == 200
     assert await _contar(engine) == 1
+
+
+# N-1 (revisión de seguridad V10): el commit corre ANTES de enviar el cuerpo ----------------
+
+
+async def _orden_de_commit_y_respuesta(app: FastAPI) -> list[str]:
+    """Llama la app por ASGI con un `send` espía y registra cuándo confirma la sesión frente al
+    `http.response.body` (httpx.ASGITransport espera toda la app y no lo distingue)."""
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session as SyncSession
+
+    orden: list[str] = []
+
+    def _al_confirmar(_sesion: SyncSession) -> None:
+        orden.append("commit")
+
+    event.listen(SyncSession, "after_commit", _al_confirmar)
+    alcance = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/escribe",
+        "raw_path": b"/escribe",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 1),
+        "server": ("pruebas", 80),
+    }
+
+    async def recibir() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def enviar(mensaje: dict[str, object]) -> None:
+        if mensaje["type"] == "http.response.body":
+            orden.append("response-body")
+
+    try:
+        await app(alcance, recibir, enviar)
+    finally:
+        event.remove(SyncSession, "after_commit", _al_confirmar)
+    return orden
+
+
+async def test_session_dep_confirma_antes_de_enviar_el_cuerpo(
+    engine: AsyncEngine, tabla: None
+) -> None:
+    app = FastAPI()
+
+    @app.post("/escribe")
+    async def escribe(session: SessionDep) -> dict[str, str]:
+        session.add(FilaDePeticion(nota="antes de responder", created_by=uuid4()))
+        return {"estado": "ok"}
+
+    assert await _orden_de_commit_y_respuesta(app) == ["commit", "response-body"]
+    assert await _contar(engine) == 1
+
+
+async def test_un_error_de_commit_llega_al_cliente_como_envelope(
+    engine: AsyncEngine, tabla: None
+) -> None:
+    """US-017: con el commit antes de responder, un fallo al confirmar es un 500 del envelope
+    (antes salía un 200 de una escritura revertida)."""
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session as SyncSession
+
+    app = FastAPI()
+    register_error_handlers(app)
+
+    @app.post("/escribe")
+    async def escribe(session: SessionDep) -> dict[str, str]:
+        session.add(FilaDePeticion(nota="no debe quedar", created_by=uuid4()))
+        return {"estado": "ok"}
+
+    def _falla_al_confirmar(_sesion: SyncSession) -> None:
+        raise RuntimeError("fallo simulado en before_commit")
+
+    event.listen(SyncSession, "before_commit", _falla_al_confirmar)
+    try:
+        transporte = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transporte, base_url="http://pruebas") as cliente:
+            respuesta = await cliente.post("/escribe")
+    finally:
+        event.remove(SyncSession, "before_commit", _falla_al_confirmar)
+    assert respuesta.status_code == 500
+    assert respuesta.json()["error"]["code"] == "internal_error"
+    assert await _contar(engine) == 0

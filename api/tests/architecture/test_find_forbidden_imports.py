@@ -118,10 +118,13 @@ def test_lee_el_archivo_cuando_no_hay_source(tmp_path: Path) -> None:
     assert str(violacion).endswith("importa app.modules.plans.models (foreign_models)")
 
 
-# Regla `private_helper` (S2-D4, E8): `auth/rules.py`, `tokens.py` y `cookies.py` son privados.
+# Regla `private_helper` (S2-D4, E8): `auth/rules.py`, `tokens.py` y `cookies.py` son privados;
+# desde la revisión Python H1 también `events.py`, `sessions.py`, `users.py` y `links.py`.
 
 
-@pytest.mark.parametrize("helper", ["rules", "tokens", "cookies"])
+@pytest.mark.parametrize(
+    "helper", ["rules", "tokens", "cookies", "events", "sessions", "users", "links"]
+)
 def test_helper_privado_de_auth_desde_otro_modulo(helper: str) -> None:
     fuente = f"from app.modules.auth.{helper} import x\nimport app.modules.auth.{helper}\n"
     assert _buscar("members/service.py", fuente, module="members") == [
@@ -158,6 +161,7 @@ def test_el_propio_modulo_usa_sus_helpers_privados() -> None:
     )
     assert _buscar("auth/service.py", fuente, module="auth") == []
     assert _buscar("auth/router.py", fuente, module="auth") == []
+    assert _buscar("auth/users.py", "from .sessions import login\n", module="auth") == []
 
 
 def test_el_contrato_publico_de_auth_sigue_permitido() -> None:

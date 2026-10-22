@@ -15,6 +15,10 @@ S2-B8 (US-070; N-01, N-20, S2-D41):
   `status` (`active`, `inactive` o `deleted`; admin y coach ven a los dados de baja, N-20) y
   `sort` con seis valores (`-` es descendente), `last_name` por defecto.
 - `MemberName`: dataclass congelada que devuelve `service.names_for` a otros módulos.
+
+Revisión del Sprint 2 (seguridad N-2, Python H2): `first_name`, `last_name` y el `name` y
+`relationship` del contacto de emergencia son `SafeText` (NFC, sin `Cc` ni `Cf`, algo visible):
+un NUL daba 500 y un U+200B o U+202E pasaban el CHECK y se mostraban en las listas.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.pagination import MAX_SEARCH_LENGTH
-from app.core.validators import EmailAddress
+from app.core.validators import EmailAddress, SafeText
 
 DocumentType = Literal["CC", "CE", "TI", "PA"]
 Sex = Literal["f", "m", "x"]
@@ -51,16 +55,16 @@ _ENTRADA = ConfigDict(extra="forbid", str_strip_whitespace=True)
 class EmergencyContactIn(BaseModel):
     model_config = _ENTRADA
 
-    name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    name: SafeText = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     phone: str = Field(min_length=1, max_length=PHONE_MAX_LENGTH)
-    relationship: str | None = Field(default=None, max_length=RELATIONSHIP_MAX_LENGTH)
+    relationship: SafeText | None = Field(default=None, max_length=RELATIONSHIP_MAX_LENGTH)
 
 
 class MemberCreate(BaseModel):
     model_config = _ENTRADA
 
-    first_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
-    last_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    first_name: SafeText = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    last_name: SafeText = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     document_type: DocumentType = "CC"
     document: str = Field(min_length=DOCUMENT_MIN_LENGTH, max_length=DOCUMENT_MAX_LENGTH)
     phone: str | None = Field(default=None, max_length=PHONE_MAX_LENGTH)

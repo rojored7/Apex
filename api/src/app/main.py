@@ -41,7 +41,7 @@ from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
 from app.core.crypto.types import install_crypto_type_listeners
-from app.core.errors import ERROR_RESPONSES, register_error_handlers
+from app.core.errors import register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
 from app.core.ratelimit import KEY_KINDS, configure_store_limits, rate_limits_from
 from app.core.security import configure_security, get_principal_loader
@@ -98,71 +98,48 @@ def run_migrations(settings: Settings, script_location: str | None = None) -> No
     command.upgrade(alembic_config(settings, script_location), "head")
 
 
-def create_app(
-    settings: Settings | None = None,
-    *,
-    run_migrations_on_startup: bool = True,
-    migrations_script_location: str | None = None,
-) -> FastAPI:
-    settings = settings or get_settings()
-    configure_logging(settings)
-    db.configure_engine(db.create_engine_from(settings))
-    install_audit_listeners()  # US-016: created_by y auditoría en cada flush
-    install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
-    install_crypto_type_listeners()  # US-028: cifra los Secret pendientes en cada flush
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if run_migrations_on_startup:
-            try:
-                await asyncio.to_thread(run_migrations, settings, migrations_script_location)
-            except Exception:
-                logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
-                raise
-            logger.info("migraciones al día")
-        # US-023/US-033: proveedor de llaves y llaves JWT se abren antes que cualquier paso;
-        # sin KEK (o con permisos abiertos) o sin llave JWT el proceso termina y el log nunca
-        # lleva material.
+async def _startup(
+    settings: Settings, *, run_migrations_on_startup: bool, migrations_script_location: str | None
+) -> None:
+    """Arranque del lifespan (revisión Python M7: sale de `create_app`). Migraciones, secretos,
+    seguridad y proveedor de llaves, el cargador del principal, el keyring y los pasos
+    registrados. Cualquier fallo se registra (sin material) y se relanza: el api no acepta
+    tráfico."""
+    if run_migrations_on_startup:
         try:
-            check_secrets_or_exit(settings)  # US-039: nombres de variable, nunca valores
-            configure_security(settings)
-            configure_provider(get_key_provider(settings))
+            await asyncio.to_thread(run_migrations, settings, migrations_script_location)
         except Exception:
-            logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")
+            logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
             raise
-        logger.info("proveedor de llaves listo: %s", settings.CRYPTO_PROVIDER)
-        # US-034: cerrado por defecto; sin cargador de principal nadie puede autenticar.
-        try:
-            get_principal_loader()
-        except RuntimeError:
-            logger.error("no hay PrincipalLoader registrado (módulo auth); el api no arranca")
-            raise
-        try:
-            with actor_scope(SYSTEM_USER_ID):
-                # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.
-                async with db.get_sessionmaker()() as session, session.begin():
-                    keyring = await ensure_keys(session, current_provider())
-                logger.info("llaves del bus cargadas: %s", keyring)
-                for nombre, paso in list(_startup_steps):
-                    logger.info("arranque: %s", nombre)
-                    await paso(settings)
-            yield
-        finally:
-            configure_keyring(None)
-            configure_provider(None)
-            await db.dispose_engine()
+        logger.info("migraciones al día")
+    # US-023/US-033: proveedor de llaves y llaves JWT se abren antes que cualquier paso; sin KEK
+    # (o con permisos abiertos) o sin llave JWT el proceso termina y el log nunca lleva material.
+    try:
+        check_secrets_or_exit(settings)  # US-039: nombres de variable, nunca valores
+        configure_security(settings)
+        configure_provider(get_key_provider(settings))
+    except Exception:
+        logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")
+        raise
+    logger.info("proveedor de llaves listo: %s", settings.CRYPTO_PROVIDER)
+    # US-034: cerrado por defecto; sin cargador de principal nadie puede autenticar.
+    try:
+        get_principal_loader()
+    except RuntimeError:
+        logger.error("no hay PrincipalLoader registrado (módulo auth); el api no arranca")
+        raise
+    with actor_scope(SYSTEM_USER_ID):
+        # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.
+        async with db.get_sessionmaker()() as session, session.begin():
+            keyring = await ensure_keys(session, current_provider())
+        logger.info("llaves del bus cargadas: %s", keyring)
+        for nombre, paso in list(_startup_steps):
+            logger.info("arranque: %s", nombre)
+            await paso(settings)
 
-    produccion = settings.is_production
-    app = FastAPI(
-        title="APEX API",
-        version=settings.APP_VERSION,
-        lifespan=lifespan,
-        responses=ERROR_RESPONSES,
-        docs_url=None if produccion else "/docs",
-        redoc_url=None if produccion else "/redoc",
-        openapi_url=None if produccion else "/openapi.json",
-    )
-    app.state.settings = settings
+
+def _install_middleware(app: FastAPI, settings: Settings) -> None:
+    """Envelope de errores, log de acceso, límites (US-036) y CORS cerrado (US-037)."""
     register_error_handlers(app)
     app.add_middleware(RequestLogMiddleware)
     # US-036: redes de confianza y tope del limitador, leídos por rate_limit().
@@ -180,6 +157,48 @@ def create_app(
             max_age=600,
         )
         logger.info("CORS habilitado para: %s", ", ".join(settings.CORS_ORIGINS))
+
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    run_migrations_on_startup: bool = True,
+    migrations_script_location: str | None = None,
+) -> FastAPI:
+    """La app del api: logs, engine, listeners del bus y la auditoría, middleware, services de
+    los módulos y routers bajo `/api/v1` (y `/health` también en la raíz)."""
+    settings = settings or get_settings()
+    configure_logging(settings)
+    db.configure_engine(db.create_engine_from(settings))
+    install_audit_listeners()  # US-016: created_by y auditoría en cada flush
+    install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
+    install_crypto_type_listeners()  # US-028: cifra los Secret pendientes en cada flush
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            await _startup(
+                settings,
+                run_migrations_on_startup=run_migrations_on_startup,
+                migrations_script_location=migrations_script_location,
+            )
+            yield
+        finally:
+            configure_keyring(None)
+            configure_provider(None)
+            await db.dispose_engine()
+
+    produccion = settings.is_production
+    app = FastAPI(
+        title="APEX API",
+        version=settings.APP_VERSION,
+        lifespan=lifespan,  # los errores los declara cada ruta con `responses_for` (M7)
+        docs_url=None if produccion else "/docs",
+        redoc_url=None if produccion else "/redoc",
+        openapi_url=None if produccion else "/openapi.json",
+    )
+    app.state.settings = settings
+    _install_middleware(app, settings)
     load_module_services()
 
     api = APIRouter(prefix=API_PREFIX)

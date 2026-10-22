@@ -12,11 +12,12 @@ Puras:
 Con sesión:
 - `create(session, data)`: recorta el nombre, `validate_plan`, pre-chequea el nombre entre los
   vivos con `lower(btrim(name))`, inserta dentro de `begin_nested()` (la carrera la decide
-  `uq_plans_name_alive` y su `IntegrityError` se traduce a `PlanNameDuplicated`), `refresh` de
-  `created_at`/`updated_at` y emite `PlanCreated` en la misma transacción.
+  `uq_plans_name_alive` y su `IntegrityError` se traduce a `PlanNameDuplicated`; las fechas
+  llegan con `eager_defaults`, M4) y emite `PlanCreated` en la misma transacción.
 - `list(session, *, q, active, page, role)`: aplica `ensure_list_scope`; excluye los dados de
-  baja; `q` sin tildes ni mayúsculas con `translate(lower(name), 'áéíóúüñ', 'aeiouun')` en
-  columna y término, comodines escapados; `active` filtra; orden `name, id`; `paginate`.
+  baja; `q` sin tildes ni mayúsculas con `core.search.sql_fold` en columna y término (tabla
+  completa desde la revisión Python H3), comodines escapados; `active` filtra; orden
+  `name, id`; `paginate`.
 - `detail(session, plan_id, *, role)`: lee el plan vivo (404 antes que el 403 del coach) y
   aplica `ensure_read_scope`; la respuesta de `GET /plans/{plan_id}`.
 - Contratos para otros módulos: `get(session, plan_id, *, for_share=False)` (`PlanNotFound` si
@@ -34,15 +35,17 @@ from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Text, func, literal, select
+from sqlalchemy import ColumnElement, Row, Text, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from app.core import events
 from app.core.context import get_actor
+from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.pagination import Page, PageParams, paginate, to_page
+from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.core.security import Role
 from app.modules.plans.exceptions import (
     PlanNameDuplicated,
@@ -65,9 +68,6 @@ logger = logging.getLogger("app.plans")
 
 type _Texto = ColumnElement[str] | InstrumentedAttribute[str]
 
-LIKE_ESCAPE: Final = "\\"
-_ACENTOS: Final = "áéíóúüñ"  # se pliegan a ASCII en SQL, en columna y término (US-079)
-_SIN_ACENTOS: Final = "aeiouun"
 
 _MENSAJES: Final[Mapping[str, str]] = {
     "kind": "El tipo de plan debe ser days o classes.",
@@ -91,6 +91,7 @@ def _invalido(campo: str, clave: str | None = None) -> PlanValidationError:
 
 
 def validate_plan(kind: str, duration_days: int, class_count: int | None) -> None:
+    """Regla que cruza `kind` y `class_count` (US-078); `PlanValidationError` con `field`."""
     if kind not in KINDS:
         raise _invalido("kind")
     if not DURATION_DAYS_MIN <= duration_days <= DURATION_DAYS_MAX:
@@ -104,6 +105,7 @@ def validate_plan(kind: str, duration_days: int, class_count: int | None) -> Non
 
 
 def ensure_list_scope(role: Role, active: bool | None) -> None:
+    """S2-D26: el admin lista todo; el coach solo con `active=True`."""
     if role == "admin":
         return
     if role == "coach" and active is True:
@@ -112,6 +114,7 @@ def ensure_list_scope(role: Role, active: bool | None) -> None:
 
 
 def ensure_read_scope(role: Role, plan: PlanSnapshot) -> None:
+    """S2-D26: el admin lee todo; el coach solo planes activos."""
     if role == "admin":
         return
     if role == "coach" and plan.is_active:
@@ -125,10 +128,6 @@ def ensure_read_scope(role: Role, plan: PlanSnapshot) -> None:
 def _nombre_normalizado(valor: _Texto) -> ColumnElement[str]:
     """La forma que compara `uq_plans_name_alive`: `lower(btrim(...))`."""
     return func.lower(func.btrim(valor))
-
-
-def _sin_acentos(valor: _Texto) -> ColumnElement[str]:
-    return func.translate(func.lower(valor), _ACENTOS, _SIN_ACENTOS)
 
 
 def _vivo() -> ColumnElement[bool]:
@@ -163,7 +162,8 @@ _COLUMNAS_SNAPSHOT: Final = (
 )
 
 
-def _snapshot(fila: Any) -> PlanSnapshot:
+def _snapshot(fila: Plan | Row[*tuple[Any, ...]]) -> PlanSnapshot:
+    """El contrato para otros módulos desde el ORM o desde una fila de `_COLUMNAS_SNAPSHOT`."""
     return PlanSnapshot(
         id=fila.id,
         name=fila.name,
@@ -194,13 +194,15 @@ async def _insert(session: AsyncSession, plan: Plan) -> None:
             session.add(plan)
             await session.flush()
     except IntegrityError as error:
-        if NAME_ALIVE_INDEX not in str(error.orig):
+        if violated_constraint(error) != NAME_ALIVE_INDEX:
             raise
         logger.info("plans: alta concurrente con el mismo nombre")
         raise PlanNameDuplicated(await _id_por_nombre(session, plan.name)) from None
 
 
 async def create(session: AsyncSession, data: PlanCreate) -> PlanOut:
+    """Alta de un plan (US-078): nombre en NFC, `validate_plan`, único entre vivos y
+    `PlanCreated` en la misma transacción."""
     nombre = unicodedata.normalize("NFC", data.name).strip()
     validate_plan(data.kind, data.duration_days, data.class_count)
     existente = await _id_por_nombre(session, nombre)
@@ -215,27 +217,10 @@ async def create(session: AsyncSession, data: PlanCreate) -> PlanOut:
         is_active=True,
         created_by=get_actor(),
     )
-    await _insert(session, plan)
-    await session.refresh(plan, attribute_names=["created_at", "updated_at"])
+    await _insert(session, plan)  # `eager_defaults`: fechas ya cargadas (M4)
     await events.emit(PlanCreated(plan_id=plan.id), session)
     logger.info("plans: plan creado", extra={"plan_id": str(plan.id)})
     return _out(plan)
-
-
-def _termino(q: str | None) -> str:
-    """NFC, sin caracteres de control (defensa en profundidad: el router ya los rechaza con
-    `SearchQuery`) y recortado."""
-    sin_control = "".join(c for c in (q or "") if unicodedata.category(c) != "Cc")
-    return unicodedata.normalize("NFC", sin_control).strip()
-
-
-def _escape_like(value: str) -> str:
-    """Escapa la barra invertida (primero), `%` y `_` para `ILIKE ... ESCAPE '\\'`."""
-    return (
-        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
-        .replace("%", LIKE_ESCAPE + "%")
-        .replace("_", LIKE_ESCAPE + "_")
-    )
 
 
 async def list(  # nombre del contrato del blueprint B9 (las anotaciones usan builtins.list)
@@ -246,31 +231,33 @@ async def list(  # nombre del contrato del blueprint B9 (las anotaciones usan bu
     page: PageParams,
     role: Role,
 ) -> Page[PlanOut]:
+    """US-079: la página de planes vivos con `q` y `active`."""
     ensure_list_scope(role, active)
     consulta = select(Plan).where(_vivo())
     if active is not None:
         consulta = consulta.where(Plan.is_active == active)
-    termino = _termino(q)
+    termino = clean_query(q)  # core/search (H3)
     if termino:
-        patron = _sin_acentos(literal("%" + _escape_like(termino) + "%", Text))  # valor ligado
-        consulta = consulta.where(_sin_acentos(Plan.name).ilike(patron, escape=LIKE_ESCAPE))
+        patron = sql_fold(literal(contains_pattern(termino), Text))  # valor ligado
+        consulta = consulta.where(sql_fold(Plan.name).ilike(patron, escape=LIKE_ESCAPE))
     planes, total = await paginate(session, consulta.order_by(Plan.name), page)
     return to_page([_out(p) for p in planes], total, page)
 
 
 async def detail(session: AsyncSession, plan_id: UUID, *, role: Role) -> PlanOut:
+    """`GET /plans/{plan_id}`: 404 si no está vivo (antes que el 403 del coach)."""
     plan = await session.scalar(select(Plan).where(Plan.id == plan_id, _vivo()))
     if plan is None:
         raise PlanNotFound()
     ensure_read_scope(role, _snapshot(plan))
-    salida = _out(plan)
-    return salida
+    return _out(plan)
 
 
 # Contratos para otros módulos -----------------------------------------------------------
 
 
 async def get(session: AsyncSession, plan_id: UUID, *, for_share: bool = False) -> PlanSnapshot:
+    """Contrato para otros módulos: el plan vivo (`FOR SHARE` opcional) o `PlanNotFound`."""
     consulta = select(*_COLUMNAS_SNAPSHOT).where(Plan.id == plan_id, _vivo())
     if for_share:
         consulta = consulta.with_for_update(read=True)
@@ -281,6 +268,7 @@ async def get(session: AsyncSession, plan_id: UUID, *, for_share: bool = False) 
 
 
 async def get_including_deleted(session: AsyncSession, plan_id: UUID) -> PlanSnapshot:
+    """Como `get`, también dados de baja."""
     consulta = select(*_COLUMNAS_SNAPSHOT).where(Plan.id == plan_id)
     fila = (await session.execute(consulta)).first()
     if fila is None:

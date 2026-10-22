@@ -6,7 +6,8 @@
   del paquete, no `APP_VERSION`, para que la salida no cambie con cada commit. No escribe
   en tablas, así que no necesita actor.
 
-Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `import-members`,
+Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `issue-reset-link --as`
+(S2-B4, L-13), `import-members`,
 `rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta `--as <email>` (N-15).
 """
 
@@ -323,6 +324,79 @@ def seed(
         typer.echo("seed: admin inicial creado")
     else:
         typer.echo("seed: omitido: ya existe un admin activo")
+
+
+@app.command("issue-reset-link")
+def issue_reset_link(
+    email: str,
+    actor: Annotated[str | None, typer.Option("--as")] = None,
+) -> None:
+    """Emite el enlace de activación o restablecimiento de `email` y lo imprime una sola vez
+    (S2-B4, L-13): la salida para recuperar a un admin, incluida la propia cuenta de quien lo
+    invoca, que `POST /users/{id}/resend-link` rechaza. `--as` es obligatorio y debe ser un
+    admin activo; deja el `insert` auditado con su `created_by`. Sale con 2 si falta `--as`, si
+    no es un admin activo o si la cuenta no puede recibir el enlace (sin revelar si existe).
+    """
+    if actor is None:
+        typer.echo("issue-reset-link: --as <correo de un admin activo> es obligatorio", err=True)
+        raise typer.Exit(code=2)
+    settings = get_settings()
+    salida = _run(_issue_reset_link(settings, email, actor))
+    if salida is None:
+        typer.echo(_LINK_REJECTED, err=True)
+        raise typer.Exit(code=2)
+    url, purpose, expires_at = salida
+    typer.echo(f"issue-reset-link: enlace de {purpose} válido hasta {expires_at}")
+    typer.echo(url)
+
+
+# El mismo texto para un correo inexistente, borrado o no elegible: no revela si existe.
+_LINK_REJECTED = "issue-reset-link: esa cuenta no puede recibir un enlace"
+
+
+async def _issue_reset_link(
+    settings: Settings, email: str, actor_email: str
+) -> tuple[str, str, str] | None:
+    """`(url, propósito, vence)` o `None` si la cuenta no existe o no es elegible. Sale con 2
+    (por `resolve_actor` o aquí) si `--as` no es un admin activo."""
+    from app.core import db
+    from app.core.audit import install_audit_listeners
+    from app.core.crypto.oplog import install_oplog_listeners
+    from app.core.crypto.types import install_crypto_type_listeners
+    from app.modules.auth.exceptions import UserNotEligible, UserNotFound
+    from app.modules.auth.service import (
+        active_admin_id_by_email,
+        ids_by_email,
+        issue_link,
+        normalize_login_email,
+    )
+
+    install_audit_listeners()
+    install_oplog_listeners()
+    install_crypto_type_listeners()
+    db.configure_engine(db.create_engine_from(settings))
+    try:
+        async with db.get_sessionmaker()() as session:
+            async with session.begin():
+                actor = await resolve_actor(session, actor_email)
+                if await active_admin_id_by_email(session, actor_email) != actor:
+                    typer.echo("--as: debe ser un admin activo", err=True)
+                    raise typer.Exit(code=2)
+                objetivo = (await ids_by_email(session, [email])).get(normalize_login_email(email))
+            if objetivo is None:
+                return None
+            # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
+            with unit_of_work(actor):
+                try:
+                    async with session.begin():
+                        salida = await issue_link(
+                            session, objetivo, by=actor, front_base_url=settings.FRONT_BASE_URL
+                        )
+                except (UserNotFound, UserNotEligible):
+                    return None
+        return salida.url, salida.purpose, salida.expires_at.isoformat()
+    finally:
+        await db.dispose_engine()
 
 
 if __name__ == "__main__":

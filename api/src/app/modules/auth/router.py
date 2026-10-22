@@ -13,6 +13,11 @@ decorador (S2-D3).
   access nuevo (S2-D37) y lee la cookie `apex_refresh` para dejar viva esa sesión.
 - `GET /users` (admin, `PageParams`, `q`, `role`, `status`; `no_store`) y `POST /users`
   (admin, 201 `CreateUserOut` con `activation_url`; `no_store`).
+- S2-B4: `POST /auth/forgot` (público, `rate_limit("forgot")`, siempre 204 sin cuerpo; H-2),
+  `POST /auth/reset` (público, `rate_limit("reset")`, 204; L-12) y
+  `POST /users/{user_id}/resend-link` (admin, `no_store`, 200 `IssuedLinkOut`). Forgot y reset no
+  usan la cookie: no llevan `require_same_origin` (S2-D38 la exige solo a login, refresh y
+  logout).
 Las rutas no hacen `select`: leen la cookie, llaman al service y devuelven. `Settings` sale de
 `request.app.state.settings` (cookie `Secure`, orígenes y política).
 """
@@ -22,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from ipaddress import IPv4Network, IPv6Network
 from typing import Annotated, Final
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,10 +53,13 @@ from app.modules.auth.schemas import (
     ChangePasswordIn,
     CreateUserIn,
     CreateUserOut,
+    ForgotIn,
+    IssuedLinkOut,
     LoginIn,
     LoginOut,
     MeOut,
     RefreshOut,
+    ResetIn,
     Role,
     UserRow,
     UserStatus,
@@ -196,6 +205,46 @@ async def create_user(
         session,
         email=body.email,
         role=body.role,
+        by=principal.user_id,
+        front_base_url=_settings(request).FRONT_BASE_URL,
+    )
+
+
+@router.post(
+    "/auth/forgot",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    dependencies=[Depends(rate_limit("forgot"))],
+)
+async def forgot(body: ForgotIn, request: Request, session: Session) -> Response:
+    await service.forgot(
+        session, body.email, ip=_ip(request), policy=policy_from(_settings(request))
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/auth/reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    dependencies=[Depends(rate_limit("reset"))],
+)
+async def reset(body: ResetIn, session: Session) -> Response:
+    await service.reset(session, body.token, body.new_password.get_secret_value())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/users/{user_id}/resend-link",
+    response_model=IssuedLinkOut,
+    dependencies=[Depends(no_store)],
+)
+async def resend_link(
+    user_id: UUID, request: Request, principal: Admin, session: Session
+) -> IssuedLinkOut:
+    return await service.resend_link(
+        session,
+        user_id,
         by=principal.user_id,
         front_base_url=_settings(request).FRONT_BASE_URL,
     )

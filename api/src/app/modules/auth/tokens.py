@@ -13,6 +13,11 @@
   `update` auditado) los tokens abiertos del mismo usuario y propósito, crea el nuevo con
   `expires_at = now + ACTIVATE_TTL | RESET_TTL` y solo su `hash_opaque_token`; devuelve el token
   en claro, que nunca se guarda ni se registra.
+- `get_alive_or_404` (S2-B4): el usuario o `UserNotFound` (técnico, inexistente y, sin
+  `include_deleted`, borrado); `for_update` bloquea la fila del usuario.
+- `close_open_one_time_tokens` (revisión S2-B4, MEDIUM-1): cierra por ORM todos los enlaces
+  abiertos del usuario tras fijar o cambiar su contraseña.
+Orden de candados en todo el módulo: usuario → tokens de un solo uso.
 """
 
 from __future__ import annotations
@@ -25,8 +30,9 @@ from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.core.context import get_actor
+from app.core.context import SYSTEM_USER_ID, get_actor
 from app.core.security import hash_opaque_token, new_opaque_token
+from app.modules.auth.exceptions import UserNotFound
 from app.modules.auth.models import OneTimeToken, RefreshToken, User
 from app.modules.auth.rules import ACTIVATE_TTL, RESET_TTL
 
@@ -143,3 +149,42 @@ async def issue_one_time_token(
     session.add(fila)
     await session.flush()
     return claro, fila
+
+
+async def close_open_one_time_tokens(session: AsyncSession, user_id: UUID, *, now: datetime) -> int:
+    """Cierra por ORM (`used_at = now`, `update` auditado) todos los enlaces abiertos del
+    usuario, de cualquier propósito: tras fijar o cambiar la contraseña ninguno debe servir."""
+    abiertos = await session.scalars(
+        select(OneTimeToken)
+        .where(OneTimeToken.user_id == user_id, OneTimeToken.used_at.is_(None))
+        .with_for_update()
+    )
+    cerrados = 0
+    for abierto in abiertos.all():
+        abierto.used_at = now
+        cerrados += 1
+    await session.flush()
+    return cerrados
+
+
+async def get_alive_or_404(
+    session: AsyncSession,
+    user_id: UUID,
+    *,
+    include_deleted: bool = False,
+    for_update: bool = False,
+) -> User:
+    """El usuario leído fresco de la base (S2-B4). El técnico (`SYSTEM_USER_ID`) y los
+    inexistentes dan `UserNotFound`; un borrado también, salvo con `include_deleted=True`.
+    `for_update` serializa dos emisiones de enlace sobre la misma cuenta."""
+    if user_id == SYSTEM_USER_ID:
+        raise UserNotFound()
+    consulta = select(User).where(User.id == user_id)
+    if not include_deleted:
+        consulta = consulta.where(User.deleted_at.is_(None))
+    if for_update:
+        consulta = consulta.with_for_update()
+    usuario = await session.scalar(consulta.execution_options(populate_existing=True))
+    if usuario is None:
+        raise UserNotFound()
+    return usuario

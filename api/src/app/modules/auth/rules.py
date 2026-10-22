@@ -21,13 +21,16 @@ S2-B3 (US-045, US-046, US-047):
 - `escape_like(q)`: escapa `\\`, `%` y `_` para `ILIKE ... ESCAPE '\'`.
 - `user_row(user, *, active_sessions)` y `user_out(user)`: las salidas con `status` calculado
   por `user_status`; nunca llevan `password_hash`.
+
+S2-B4 (US-048, US-052): `is_one_time_token_usable(token, user, now)` (S2-D40) y
+`link_purpose_for(user)`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Literal
 
 from sqlalchemy import ColumnElement, and_
 
@@ -35,7 +38,7 @@ from app.core.context import SYSTEM_USER_ID
 from app.core.security import WeakPasswordError, verify_password
 from app.core.security import validate_password_policy as core_password_policy
 from app.modules.auth.exceptions import AuthError
-from app.modules.auth.models import RefreshToken, User
+from app.modules.auth.models import OneTimeToken, RefreshToken, User
 from app.modules.auth.schemas import UserOut, UserRow, UserStatus
 
 ACTIVATE_TTL: Final = timedelta(hours=72)
@@ -187,3 +190,24 @@ def user_out(user: User) -> UserOut:
         status=user_status(user),
         must_change_password=user.must_change_password,
     )
+
+
+# S2-B4 · enlaces de un solo uso (US-048, US-052) ------------------------------------------
+
+# `account_may_authenticate` sin la exigencia de hash: los dos estados que un `activate` admite.
+_MAY_ACTIVATE: Final[frozenset[UserStatus]] = frozenset({"active", "pending_activation"})
+
+
+def is_one_time_token_usable(token: OneTimeToken, user: User, now: datetime) -> bool:
+    """S2-D40: sin usar, `expires_at > now` y `account_may_authenticate(user)`, salvo la
+    exigencia de hash cuando el propósito es `activate` (un pendiente solo activa)."""
+    if token.used_at is not None or not now < token.expires_at:
+        return False
+    if token.purpose == "activate":
+        return user.id != SYSTEM_USER_ID and user_status(user) in _MAY_ACTIVATE
+    return account_may_authenticate(user)
+
+
+def link_purpose_for(user: User) -> Literal["activate", "reset"]:
+    """`activate` si la cuenta no tiene hash; si no, `reset` (blueprint S2-B4)."""
+    return "activate" if user.password_hash is None else "reset"

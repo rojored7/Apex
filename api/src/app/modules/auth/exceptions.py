@@ -1,6 +1,7 @@
 """Errores del módulo auth con el envelope de US-017 (contrato público, importable).
 
 S2-B3: `EmailTaken` (409) e `InvalidCurrentPassword` (422).
+S2-B4: `InvalidToken` (400), `UserNotEligible` (409) y `UserNotFound` (404).
 """
 
 from __future__ import annotations
@@ -54,3 +55,32 @@ class InvalidCurrentPassword(DomainError):
     status = 422
     code = "invalid_current_password"
     default_message = "La contraseña actual no es correcta."
+
+
+INVALID_TOKEN_MESSAGE = "El enlace ya no es válido. Pide uno nuevo al administrador."  # noqa: S105
+
+
+class InvalidToken(DomainError):
+    """`POST /auth/reset` con un token inexistente, usado, vencido o de una cuenta que ya no
+    puede usarlo (S2-B4, US-048): el mismo 400 y el mismo texto para todas las causas."""
+
+    status = 400
+    code = "invalid_token"
+    default_message = INVALID_TOKEN_MESSAGE
+
+
+class UserNotEligible(DomainError):
+    """`resend-link` sobre una cuenta bloqueada o borrada, sobre la propia cuenta del emisor o
+    sobre otro admin activo con contraseña (S2-B4, US-052; L-13)."""
+
+    status = 409
+    code = "user_not_eligible"
+    default_message = "Esta cuenta no puede recibir un enlace nuevo."
+
+
+class UserNotFound(DomainError):
+    """Cuenta inexistente o el usuario técnico (`SYSTEM_USER_ID`, N-15) (S2-B4)."""
+
+    status = 404
+    code = "user_not_found"
+    default_message = "No se encontró la cuenta."

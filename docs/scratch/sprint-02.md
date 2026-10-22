@@ -501,3 +501,165 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - E1: el smoke de Docker corrió antes de los gates, porque este bloque debe nombrar al coach de prueba y el árbol no se puede tocar después del gate. Tras los gates solo se repite `/health`, sin escribir.
   - El gate que sella lista también `tests/auth/test_change_password_limits.py` (nació en la revisión).
   - `paginate` cambia de firma en `core/` (tipado, sin cambio de comportamiento).
+
+### S2-B4 · Rojo
+
+- Línea base (HEAD `07465fc`, árbol limpio): api 992 ok y 4 saltadas (`-m 'not perf'`);
+  `ruff check .` y `mypy src` (51 archivos) limpios.
+- B4.1 stubs (firmas tipadas, `NotImplementedError`; `ruff` y `mypy src` limpios):
+  - `auth/exceptions.py` completas (contrato): `InvalidToken` (400 `invalid_token`, constante
+    `INVALID_TOKEN_MESSAGE` = "El enlace ya no es válido. Pide uno nuevo al administrador."),
+    `UserNotEligible` (409 `user_not_eligible`) y `UserNotFound` (404 `user_not_found`).
+  - `auth/schemas.py` completos: `ResetIn(token 20–200, new_password SecretStr 1–128)`,
+    `ForgotIn(email: EmailAddress)` (ya trae el tope de 254), `IssuedLinkOut(url, purpose:
+    Literal["activate","reset"], expires_at)`, todos `extra="forbid"`.
+  - `auth/rules.py`: stubs `is_one_time_token_usable(token, user, now)` y `link_purpose_for(user)`.
+  - `auth/tokens.py`: stub `get_alive_or_404(session, user_id, *, include_deleted=False) -> User`.
+  - `auth/service.py`: constantes reales `FORGOT_ACCOUNT_BUCKET = "forgot-account"`,
+    `FORGOT_ACCOUNT_LIMIT = 5`, `FORGOT_ACCOUNT_WINDOW_S = 3600`; stubs `reset(session, token,
+    new_password) -> None`, `forgot(session, email, *, ip, policy) -> None`,
+    `resend_link(session, user_id, *, by, front_base_url) -> IssuedLinkOut` e
+    `issue_link(session, user_id, *, by, front_base_url) -> IssuedLinkOut` (sin L-13, para el CLI).
+  - `auth/router.py` cableado completo: `POST /auth/forgot` (`rate_limit("forgot")`, 204 vacío),
+    `POST /auth/reset` (`rate_limit("reset")`, 204 vacío) y `POST /users/{user_id}/resend-link`
+    (admin, `no_store`, 200 `IssuedLinkOut`, `FRONT_BASE_URL` de `app.state.settings`).
+  - `cli.py`: comando `issue-reset-link <correo> --as <correo>` stub que no imprime nada.
+  - `core/security.PUBLIC_ROUTES` ya tenía forgot y reset (8 rutas): verificado, sin cambios.
+- B4.2 pruebas (129 casos nuevos): `tests/auth/test_pure_one_time_token.py` (26),
+  `test_reset_forgot.py` (35), `test_reset_forgot_router.py` (25), `test_resend_link.py` (17),
+  `test_resend_link_router.py` (9), `tests/architecture/test_auth_routes.py` (7) y
+  `tests/cli/test_issue_reset_link_cli.py` (10).
+- Conteo: 1125 colectadas; 109 fallan, 1012 pasan, 4 saltadas. Las 108 de B4: 98 por
+  `NotImplementedError` de los stubs y 10 por aserción de comportamiento (el CLI stub sale con 0
+  y no imprime la URL). Ningún error de import ni de fixture. La 109 es la regresión por contrato
+  que cierra el Verde con P-API: `test_docs_openapi_json_esta_al_dia` (rutas nuevas;
+  `docs/openapi.json` no se toca en el Rojo). Pasan ya sobre los stubs 21 casos de contrato
+  declarado: los 7 de `test_auth_routes`, los 422 de `ForgotIn` y `ResetIn` (10) y 401, 403 de
+  coach y socio y 422 de id mal formado en `resend-link` (4). `db_test` queda sin usuarios
+  `@test.apex`, sin refresh y sin tokens de un solo uso.
+- Contradicción resuelta: el blueprint (S2-B4) dice que las públicas de auth son "login,
+  refresh, forgot y reset"; manda la revisión de seguridad (H-1, S2-D35, S2-D47):
+  `test_auth_routes.py` espera exactamente login, refresh, logout, forgot y reset, las cinco con
+  `__apex_rate_limit__` de su propio bucket.
+- Decisiones de prueba que el Verde debe respetar:
+  - `is_one_time_token_usable`: `used_at is None`, `now < expires_at` (igual a `now` ya no
+    sirve; `now + 1 s` sí) y `account_may_authenticate(user)`, salvo que con `activate` no se
+    exige hash. Consecuencia probada: un pendiente solo es usable con `activate`; un activo con
+    hash también puede usar un `activate` vigente; bloqueado, borrado, inactivo y técnico nunca.
+    `link_purpose_for` mira solo el hash (bloqueado o borrado no cambian el propósito).
+  - `get_alive_or_404`: lee fresco; técnico e inexistente `UserNotFound` también con
+    `include_deleted=True`; un borrado solo vuelve con `include_deleted=True`.
+  - `reset`: el orden del blueprint. Todo fallo del token (inexistente, usado, vencido,
+    bloqueado, borrado, inactivo, o `reset` sobre un pendiente) es `InvalidToken` con el mismo
+    mensaje y sin `field`; la política va con `field="new_password"` y deja el token sin usar
+    (la prueba hace rollback y luego lo usa con éxito). Éxito: `used_at = ahora`, hash nuevo,
+    `must_change_password = False`, `failed_login_count = 0`. Con `reset`: `revoke_all` siempre
+    (`tokens_valid_after = ahora truncado`, también sin sesiones) y `SessionsRevoked(user_id,
+    by=user_id, revoked=n, reason="password_reset")` solo si n > 0. `PasswordChanged(user_id,
+    by=user_id, via=<propósito>, via_link_issued_by=<created_by del token>)`. Devuelve `None`
+    y no crea refresh (no inicia sesión). Auditoría: un solo `update` de `auth.users` del propio
+    usuario (`password_hash = "***"` en `before` y `after`) y un `update` del token con
+    `before.used_at = null`, `after.used_at` lleno y `token_hash = "***"`. Concurrencia: dos
+    `reset` con `dos_sesiones` dan un éxito y un `InvalidToken` (`FOR UPDATE`).
+  - `forgot(session, email, *, ip, policy)`: firma coherente con `login` (desviación: el
+    encargo decía `sleeper`; la espera usa el sleeper de `configure_sleeper`, que ya anula
+    `sleeper_nulo`, y el piso sale de `policy.min_duration_ms`). No escribe nada: ni filas, ni
+    cierre del `reset` abierto, ni auditoría, ni cambios en `auth.users`, para ninguna cuenta
+    (activa, bloqueada, pendiente, inactiva, borrada o inexistente). Exactamente una llamada al
+    sleeper con `0 < espera <= min_duration_ms / 1000` exista o no el correo. Tope por cuenta:
+    `ratelimit.enforce(FORGOT_ACCOUNT_BUCKET, <correo normalizado>, limit=5, window_s=3600)`
+    con `count=True` (todo intento cuenta, exista o no la cuenta y desde cualquier IP); el sexto
+    lanza `TooManyRequestsError` con `Retry-After`; otro correo no se frena; la ventana se
+    libera a los 3600 s. Deja al menos un registro de log y ninguno lleva el correo ni su parte
+    local.
+  - `resend_link`: técnico o inexistente `UserNotFound`; bloqueado o borrado `UserNotEligible`
+    sin crear tokens; L-13: `user_id == by` y otro admin activo con hash dan `UserNotEligible`
+    sin cerrar su `reset` abierto; un admin pendiente sí recibe `activate`. Emite con
+    `issue_one_time_token` (cierra el abierto del mismo propósito, aunque esté vencido, con
+    `used_at = ahora`); `url` = `rules.activation_url(front_base_url, token)` (quita las barras
+    finales); `expires_at` 72 h o 1 h. Auditoría: `insert` del token nuevo y `update` del
+    cerrado atribuidos al admin, sin el token, su hash ni la URL; el log tampoco los lleva.
+  - Ruta `resend-link`: el parámetro se llama `user_id` (`{id}` sombrearía el builtin, A002);
+    200 con `Cache-Control: no-store` y sin `Set-Cookie`; 404 `user_not_found`, 409
+    `user_not_eligible`, 422 con id mal formado; dos reenvíos seguidos dejan inválido el primero.
+  - Rutas `forgot` y `reset`: 204 con cuerpo vacío y sin `Set-Cookie`; sin `Authorization` ni
+    `Origin` (no usan cookie: NO llevan `require_same_origin`; S2-D38 solo cubre login, refresh y
+    logout; anotado). Las cabeceras de `forgot` (salvo `date`) son idénticas exista o no la
+    cuenta. `FORGOT_IP_LIMIT = 5`: el sexto por IP da 429. `RESET_IP_LIMIT = 10` (E5, manda
+    sobre el "sexto" del encargo): el undécimo por IP da 429. El límite por cuenta de forgot se
+    ve también por HTTP desde seis IP distintas.
+  - CLI `issue-reset-link <correo> --as <correo>`: `FRONT_BASE_URL` de `Settings` (la prueba la
+    pone con barra final); imprime una sola URL `<base sin barra>/restablecer/<token>` y el
+    token una sola vez, sin el hash; propósito de `link_purpose_for` (el propio admin y otro
+    admin activo: `reset` a 1 h; un pendiente: `activate`); `created_by` y actor de la
+    auditoría = el admin de `--as`; sin `--as`, con un coach, un admin bloqueado o un correo
+    inexistente en `--as`: sale con 2, el mensaje menciona `--as` y no hay filas; un correo
+    objetivo inexistente sale con 2 con el MISMO mensaje que una cuenta borrada, sin repetir el
+    correo y sin filas; dos invocaciones dejan un solo token abierto. El CLI no puede importar
+    `rules` ni `tokens` (`private_helper`): usa `service.issue_link`.
+- Desviaciones del encargo:
+  - `forgot` recibe `policy` en vez de `sleeper` (ver arriba).
+  - `service.issue_link` nuevo (no estaba en la lista): el CLI necesita emitir sin L-13 y solo
+    puede llamar al `service.py`.
+  - El "sexto por IP" de `reset` es el undécimo: E5 fija `RESET_IP_LIMIT=10`.
+  - `FORGOT_ACCOUNT_WINDOW_S = 3600` (el encargo no fijaba la ventana).
+  - Ninguna prueba existente cambió: `test_every_route_has_role.py` ya esperaba 8 públicas y su
+    caso de límites ya listaba forgot y reset.
+
+### S2-B4 · Verde
+
+- Producto (B4.3):
+  - `auth/rules`: `is_one_time_token_usable` (sin usar, `now < expires_at`; `reset` exige
+    `account_may_authenticate`, `activate` admite `active` o `pending_activation` fuera del
+    técnico) y `link_purpose_for` (solo el hash).
+  - `auth/tokens`: `get_alive_or_404(include_deleted, for_update)` y
+    `close_open_one_time_tokens` (revisión, MEDIUM-1). Orden de candados usuario → token.
+  - `auth/service`: `reset` (token resuelto sin candado, `FOR UPDATE` del usuario y luego del
+    token, `InvalidToken` único, política con `field="new_password"`, hash, `used_at`, cierre de
+    los demás enlaces, `revoke_all` + `SessionsRevoked` solo con `reset`, `PasswordChanged` con
+    `via_link_issued_by`); `forgot` sin leer ni escribir la base (tope `forgot-account`, piso,
+    log sin correo); `issue_link` y `resend_link` (elegibles `active`/`pending_activation`, L-13
+    en `resend_link`, `actor_scope(by)` para `created_by` y auditoría); `active_admin_id_by_email`
+    para el CLI; `change_password` ahora también cierra los enlaces abiertos.
+  - `cli issue-reset-link`: `--as` obligatorio de un admin activo, objetivo por `ids_by_email`,
+    mismo mensaje y exit 2 para inexistente, borrado o no elegible; imprime la URL una vez.
+- Pruebas del Rojo corregidas por error objetivo (no por comportamiento):
+  - `test_reset_forgot.py::test_la_auditoria_deja_los_dos_updates_del_usuario_sin_el_token`
+    esperaba `after.token_hash` en un `update`; `core/audit.diff_row` audita solo columnas
+    cambiadas y `token_hash` no cambia. Ahora: si aparece, va `"***"` (el volcado sigue sin el
+    token ni su hash).
+  - `test_reset_forgot_router.py::_sin_fecha` también descarta `x-request-id`, que es distinto
+    en cada petición (las demás cabeceras siguen idénticas exista o no la cuenta).
+- Revisión de seguridad (antes del gate que sella): sin CRITICAL ni HIGH. MEDIUM-1 y LOW-1
+  corregidos con pruebas nuevas en `tests/auth/test_one_time_token_closure.py` (3 casos); LOW-2,
+  LOW-3, LOW-4 e INFO aceptados en `DECISIONES.md` (S2-B4).
+- Suite con `-m 'not perf'`: 1128 colectadas; 1124 pasan y 4 saltadas. Cobertura de `app` 95 %.
+  `ruff format`, `ruff check` y `mypy src` (51 archivos) limpios.
+- Contrato (P-API): `export-openapi` dos veces idéntico; `npm run gen:api`,
+  `types.contract.test.ts` (5) y `tsc --noEmit` en verde. Rutas nuevas: `POST /auth/forgot`,
+  `POST /auth/reset` y `POST /users/{user_id}/resend-link`.
+- Docs: `docs/RUNBOOK.md` (recuperar a un admin con `tools issue-reset-link`, `forgot` sin envío
+  hasta US-131 y sus límites) y `DECISIONES.md` (S2-B4). `CLAUDE.md` sin cambios.
+- Docker antes del gate (E1, como en B3: el bloque lleva la evidencia), sin tocar el árbol:
+  `$DC build api` (cambió `cli.py`); la recarga por bind recogió el service. Por Nginx `:8180`:
+  - `tools issue-reset-link coach-b3-smoke@test.apex --as <admin>`: exit 0, una URL
+    `http://localhost:8180/restablecer/<token de 43>`, propósito `activate` (el coach seguía
+    pendiente);
+  - `GET` de esa URL: 200 con `Referrer-Policy: no-referrer`;
+  - `POST /auth/reset`: 204; segundo uso: 400 `invalid_token`;
+  - login del coach con la contraseña nueva: 200; psql: hash presente, activo, sin bloqueo,
+    `must_change_password = f` (el coach queda `active`);
+  - `POST /auth/forgot` del coach: 204 y psql sin token `reset` nuevo (0 antes, 0 después);
+    del segundo al sexto: 204 ×4 y 429; tras liberar la ventana por IP (62 s), el mismo correo
+    sigue en 429 y otro correo da 204 (tope por cuenta, no por IP);
+  - `POST /users/{id}/resend-link` con el access del admin: sobre el coach 200
+    `purpose=reset`; sobre el propio admin 409 `user_not_eligible`;
+  - psql: todas las filas de `one_time_tokens` con `token_hash` de 64 hex, 0 filas con el token
+    en claro, 0 filas de auditoría con el token; log del api: 0 coincidencias del token y 0 del
+    correo del coach; `/api/v1/health` 200.
+- Desviaciones:
+  - E1: el smoke de Docker corrió antes de los gates (el bloque debe llevar la evidencia y el
+    árbol no se toca tras el gate). Tras los gates solo se repite `/health`, sin escribir.
+  - El gate que sella lista también `tests/auth/test_one_time_token_closure.py` (nació en la
+    revisión).
+  - `change_password` (B3) cambia: cierra los enlaces abiertos (MEDIUM-1).

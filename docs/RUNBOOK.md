@@ -102,3 +102,42 @@ por la red local; se quita al activar TLS (v0.3) junto con `COOKIE_SECURE=true`.
 (`must_change_password`); `--no-force-change` solo se acepta con `ENV=dev`. Una segunda corrida
 dice "omitido". Borrar `.env.seed` después del primer seed. Tras cambiar `cli.py` hay que
 reconstruir la imagen (`$DC build api`) antes de usar `tools`.
+
+## Enlaces de activación y restablecimiento (S2-B4)
+
+### Recuperar a un admin
+
+`POST /users/{id}/resend-link` (botón "Reenviar enlace" del panel) responde 409
+`user_not_eligible` sobre la propia cuenta del admin que lo pide y sobre otro admin activo con
+contraseña (L-13): un admin no puede tomar la cuenta de otro desde el panel. Para esos casos,
+y para el admin que olvidó su contraseña, se usa el CLI desde el servidor:
+
+```
+$DC build api   # solo si cambió cli.py desde la última imagen
+$DC run --rm tools issue-reset-link <correo de la cuenta> --as <correo de un admin activo>
+```
+
+- `--as` es obligatorio y debe ser un admin en estado `active`; puede ser la misma cuenta (un
+  admin que recuerda su contraseña pero quiere rotarla) u otro admin. Si no hay ningún admin
+  activo, primero `cli unlock-user` (S2-B5) o, sin admins, `seed`.
+- Imprime una sola vez la URL `<FRONT_BASE_URL>/restablecer/<token>`: con contraseña es un
+  enlace `reset` de 1 h; sin contraseña (pendiente), uno `activate` de 72 h. Cerrar el
+  terminal después de copiarla; la base guarda solo el hash del token.
+- Cierra el enlace abierto anterior del mismo propósito: el último emitido es el único que
+  sirve. Deja el `insert` auditado con el admin de `--as` como autor.
+- Sale con 2, sin crear nada, si falta `--as`, si no es un admin activo o si la cuenta no puede
+  recibir el enlace (no existe, está borrada, bloqueada o inactiva: el mismo mensaje, que no
+  revela cuál).
+- Usar el enlace (`POST /auth/reset`) fija la contraseña, limpia `must_change_password` y el
+  contador de fallos y, si es `reset`, cierra todas las sesiones de la cuenta. No inicia sesión.
+  Una cuenta bloqueada no puede usarlo: primero `cli unlock-user`.
+
+### `forgot` en v0.1
+
+`POST /auth/forgot` responde siempre 204 sin cuerpo y en v0.1 **no envía ni crea nada** (H-2,
+S2-D36): no hay canal al socio hasta US-131. Quien olvida la contraseña pide al admin un enlace
+nuevo ("Reenviar enlace" en el panel; para admins, el CLI de arriba). Límites: 5 por minuto por
+IP (`FORGOT_IP_LIMIT`) y 5 por hora por correo desde cualquier IP (`forgot-account`, constante
+`FORGOT_ACCOUNT_LIMIT` / `FORGOT_ACCOUNT_WINDOW_S=3600` en `auth/service.py`), ambos en memoria
+(`$DC up -d api` los vacía). Toda respuesta dura al menos `LOGIN_MIN_DURATION_MS`, y el log
+(`forgot recibido`) no lleva el correo.

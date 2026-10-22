@@ -4,7 +4,7 @@
 solo en la cookie `HttpOnly`. `CreateUserIn.role` admite solo `admin` y `coach`, sin
 `member_id`, hasta el portal (L-2, S2-D42). `POST /auth/me/password` responde
 `AccessTokenOut` con un access nuevo (S2-D37, H-3). `CreateUserOut.activation_url` viaja una
-sola vez (blueprint 7.2).
+sola vez (blueprint 7.2). S2-B4: `ResetIn`, `ForgotIn` e `IssuedLinkOut` (`extra="forbid"`).
 """
 
 from __future__ import annotations
@@ -126,4 +126,38 @@ class CreateUserOut(BaseModel):
 
     user: UserOut
     activation_url: str
+    expires_at: datetime
+
+
+# S2-B4 · activación, recuperación y reenvío (US-048, US-052) ------------------------------
+
+OneTimePurposeOut = Literal["activate", "reset"]
+RESET_TOKEN_MIN_LENGTH = 20
+RESET_TOKEN_MAX_LENGTH = 200
+
+
+class ResetIn(BaseModel):
+    """`POST /auth/reset`: el token del enlace y la contraseña nueva (activa o restablece)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=RESET_TOKEN_MIN_LENGTH, max_length=RESET_TOKEN_MAX_LENGTH)
+    new_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+class ForgotIn(BaseModel):
+    """`POST /auth/forgot`: solo el correo (hasta 254); la respuesta es siempre 204 (H-2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailAddress
+
+
+class IssuedLinkOut(BaseModel):
+    """`POST /users/{id}/resend-link` (y `cli issue-reset-link`): el enlace viaja una sola vez."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    purpose: OneTimePurposeOut
     expires_at: datetime

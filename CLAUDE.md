@@ -52,7 +52,7 @@ apex/
         plans/       ...
         memberships/
         payments/
-        audit/       # router, schemas, service; los models viven en core/audit.py
+        audit/       # router (vacío hasta US-074), service (se suscribe a los eventos de auth), schemas al llegar US-074; los models viven en core/audit.py
         dashboard/   # router, schemas, service; sin models
         notifications/ # v0.2
         attachments/   # v0.3

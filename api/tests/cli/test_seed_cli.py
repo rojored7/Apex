@@ -1,10 +1,13 @@
 """`cli seed` (US-041 T11, T14; S2-B2: M-8, L-9, L-4): códigos de salida, sin contraseña en
-la salida, `SeedSettings`, `must_change_password`, `--no-force-change` y `--as` solo activo."""
+la salida, `SeedSettings`, `must_change_password`, `--no-force-change` y `--as` solo activo.
+
+S2-B6: `seed`, `unlock-user` e `issue-reset-link` llaman a `load_module_services()` (import
+perezoso de `app.main`) para que los suscriptores del bus existan en el proceso del CLI."""
 
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,11 +16,13 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from typer.testing import CliRunner
 
+from app import main as app_main
 from app.cli import app, key_paths_in
 from app.core.config import Settings, reset_settings_cache
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.security import configure_password_hasher
 from app.modules.auth.models import User
+from tests.factories.users import make_user
 
 runner = CliRunner()
 CLAVE = "Zanahoria-Lunar-42x"
@@ -263,3 +268,64 @@ async def test_as_con_cuenta_inactiva_bloqueada_o_tecnica_sale_con_2(
         assert resultado.exit_code == 2, (correo, resultado.output)
         assert "--as" in resultado.output
     assert await _admins(entorno) == []
+
+
+# S2-B6 · los comandos que escriben tablas auditadas cargan los services (suscriptores) ------
+
+
+class EspiaCarga:
+    """Envuelve `app.main.load_module_services`: cuenta las llamadas y delega en la real."""
+
+    def __init__(self, real: Callable[[], None]) -> None:
+        self.real = real
+        self.llamadas = 0
+
+    def __call__(self) -> None:
+        self.llamadas += 1
+        self.real()
+
+
+@pytest.fixture
+def espia_carga(monkeypatch: pytest.MonkeyPatch) -> EspiaCarga:
+    """El CLI importa `load_module_services` de `app.main` de forma perezosa (S2-B6): el espía
+    se pone en el módulo para que el import dentro del comando lo vea."""
+    espia = EspiaCarga(app_main.load_module_services)
+    monkeypatch.setattr(app_main, "load_module_services", espia)
+    return espia
+
+
+async def _usuario_con_commit(engine: AsyncEngine, email: str, **cambios: object) -> User:
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        return await make_user(session, email=email, password=CLAVE, **cambios)
+
+
+async def test_seed_carga_los_services_de_los_modulos(
+    entorno: AsyncEngine, monkeypatch: pytest.MonkeyPatch, espia_carga: EspiaCarga
+) -> None:
+    monkeypatch.setenv("ADMIN_INITIAL_PASSWORD", CLAVE)
+    reset_settings_cache()
+    resultado = runner.invoke(app, ["seed"])
+    assert resultado.exit_code == 0, resultado.output
+    assert espia_carga.llamadas >= 1
+
+
+async def test_unlock_user_carga_los_services_de_los_modulos(
+    entorno: AsyncEngine, argon2_rapido: None, espia_carga: EspiaCarga
+) -> None:
+    await _usuario_con_commit(
+        entorno, "espia-unlock@test.apex", role="coach", locked_at=datetime(2026, 10, 1, tzinfo=UTC)
+    )
+    resultado = runner.invoke(app, ["unlock-user", "espia-unlock@test.apex"])
+    assert resultado.exit_code == 0, resultado.output
+    assert espia_carga.llamadas >= 1
+
+
+async def test_issue_reset_link_carga_los_services_de_los_modulos(
+    entorno: AsyncEngine, argon2_rapido: None, espia_carga: EspiaCarga
+) -> None:
+    await _usuario_con_commit(entorno, "espia-link@test.apex", role="admin")
+    resultado = runner.invoke(
+        app, ["issue-reset-link", "espia-link@test.apex", "--as", "espia-link@test.apex"]
+    )
+    assert resultado.exit_code == 0, resultado.output
+    assert espia_carga.llamadas >= 1

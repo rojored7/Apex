@@ -39,7 +39,14 @@ from app.modules.auth.exceptions import AuthError, EmailTaken, LastAdmin, UserNo
 from app.modules.auth.models import User
 from app.modules.auth.service import SessionsRevoked
 from tests.auth._ciclo import EVENTOS_DE_CUENTA, como, entrar, sesiones_vivas
-from tests.auth._cuentas import avanzar, etiqueta, fila_usuario, filas_auditoria, filas_refresh
+from tests.auth._cuentas import (
+    avanzar,
+    es_update_del_hook,
+    etiqueta,
+    fila_usuario,
+    filas_auditoria,
+    filas_refresh,
+)
 from tests.conftest import CLAVE_PRUEBA, T0, CapturarEventos, CrearUsuario, UsuarioPrueba
 from tests.factories.users import make_user
 
@@ -324,7 +331,7 @@ async def test_la_baja_es_logica_y_no_usa_session_delete(
     assert fila["deleted_at"] == T1
     auditoria = await filas_auditoria(session, "auth.users", coach.id)
     assert "delete" not in [f["action"] for f in auditoria]
-    (update,) = [f for f in auditoria if f["action"] == "update"]
+    (update,) = [f for f in auditoria if es_update_del_hook(f)]
     assert update["user_id"] == admin.id
     assert update["before"]["deleted_at"] is None
     assert update["after"]["deleted_at"] is not None

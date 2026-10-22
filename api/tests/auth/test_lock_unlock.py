@@ -48,7 +48,14 @@ from app.modules.auth.service import (
     UserLocked,
 )
 from tests.auth._ciclo import EVENTOS_DE_CUENTA, como, entrar, sesiones_vivas
-from tests.auth._cuentas import avanzar, fila_usuario, filas_auditoria, filas_refresh, tokens_de
+from tests.auth._cuentas import (
+    avanzar,
+    es_update_del_hook,
+    fila_usuario,
+    filas_auditoria,
+    filas_refresh,
+    tokens_de,
+)
 from tests.auth._sesion import IP_A, IP_B
 from tests.conftest import T0, CapturarEventos, CrearUsuario, UsuarioPrueba
 from tests.factories.users import make_one_time_token
@@ -99,7 +106,7 @@ async def test_lock_fija_locked_at_y_lo_audita_por_el_admin(
     fila = await fila_usuario(session, coach.id)
     assert fila["locked_at"] == T1
     updates = [
-        f for f in await filas_auditoria(session, "auth.users", coach.id) if f["action"] == "update"
+        f for f in await filas_auditoria(session, "auth.users", coach.id) if es_update_del_hook(f)
     ]
     assert len(updates) == 1
     assert updates[0]["user_id"] == admin.id

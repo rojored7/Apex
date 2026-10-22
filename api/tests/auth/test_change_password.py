@@ -33,7 +33,14 @@ from app.modules.auth import service
 from app.modules.auth.exceptions import AuthError, InvalidCurrentPassword
 from app.modules.auth.schemas import AccessTokenOut
 from app.modules.auth.service import PasswordChanged, SessionsRevoked
-from tests.auth._cuentas import NUEVA, avanzar, fila_usuario, filas_auditoria, filas_refresh
+from tests.auth._cuentas import (
+    NUEVA,
+    avanzar,
+    es_update_del_hook,
+    fila_usuario,
+    filas_auditoria,
+    filas_refresh,
+)
 from tests.auth._sesion import IP_A, politica
 from tests.conftest import CLAVE_PRUEBA, T0, CapturarEventos, CrearUsuario, UsuarioPrueba
 
@@ -189,9 +196,7 @@ async def test_la_auditoria_registra_el_update_con_el_hash_redactado(
     avanzar(reloj, 1)
     await _cambiar(session, usuario)
     updates = [
-        f
-        for f in await filas_auditoria(session, "auth.users", usuario.id)
-        if f["action"] == "update"
+        f for f in await filas_auditoria(session, "auth.users", usuario.id) if es_update_del_hook(f)
     ]
     assert len(updates) == 1, updates
     fila = updates[0]

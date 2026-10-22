@@ -8,7 +8,9 @@
 
 Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `issue-reset-link --as`
 (S2-B4, L-13), `unlock-user [--as]` (S2-B5), `import-members`,
-`rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta `--as <email>` (N-15).
+`rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta `--as <email>` (N-15) y
+carga los services de los módulos (`_load_module_services`, S2-B6) para que los eventos que
+emite queden auditados.
 """
 
 from __future__ import annotations
@@ -230,6 +232,15 @@ def init_keys(
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
 
 
+def _load_module_services() -> None:
+    """Importa el `service.py` de cada módulo para que los suscriptores del bus (la auditoría
+    de `audit`, S2-B6) existan en el proceso del CLI. Import perezoso de `app.main`: el CLI
+    arranca rápido y `export-openapi` no lo necesita."""
+    from app import main
+
+    main.load_module_services()
+
+
 async def _seed(
     settings: Settings,
     admin_email: str,
@@ -248,6 +259,7 @@ async def _seed(
     install_audit_listeners()
     install_oplog_listeners()
     install_crypto_type_listeners()
+    _load_module_services()
     configure_password_hasher(
         settings.ARGON2_TIME_COST, settings.ARGON2_MEMORY_COST_KIB, settings.ARGON2_PARALLELISM
     )
@@ -374,6 +386,7 @@ async def _issue_reset_link(
     install_audit_listeners()
     install_oplog_listeners()
     install_crypto_type_listeners()
+    _load_module_services()
     db.configure_engine(db.create_engine_from(settings))
     try:
         async with db.get_sessionmaker()() as session:
@@ -434,6 +447,7 @@ async def _unlock_user(settings: Settings, email: str, actor_email: str | None) 
     install_audit_listeners()
     install_oplog_listeners()
     install_crypto_type_listeners()
+    _load_module_services()
     db.configure_engine(db.create_engine_from(settings))
     try:
         async with db.get_sessionmaker()() as session:

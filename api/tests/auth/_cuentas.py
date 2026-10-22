@@ -91,3 +91,10 @@ async def filas_auditoria(
     if record_id is not None:
         consulta = consulta.where(t.c.record_id == record_id)
     return [dict(f) for f in (await session.execute(consulta)).mappings().all()]
+
+
+def es_update_del_hook(fila: dict[str, Any]) -> bool:
+    """Un `update` que dejó el hook ORM, no un handler de `audit` (S2-B6): las filas de los
+    eventos (`UserLocked`, `SessionsRevoked`, `PasswordChanged`) también son `update`, pero
+    llevan `after.event` (blueprint 7.5: "dos filas por bloqueo, a propósito")."""
+    return fila["action"] == "update" and "event" not in (fila["after"] or {})

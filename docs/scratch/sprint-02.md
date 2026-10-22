@@ -846,3 +846,109 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
     `tests/auth/test_update_user_email_links.py` (nacieron en la revisión) y los dos de refresh
     (regresión por el candado usuario → token).
   - `login` (B2, `_register_failure`) y `update_user` cambian por la revisión (MEDIUM-1, LOW-3).
+
+### S2-B6 · Rojo
+
+- Línea base (HEAD `3597950`, árbol limpio): api 1283 ok y 4 saltadas (`-m 'not perf'`);
+  `ruff check .` y `mypy src` (51 archivos) limpios.
+- B6.1 stubs (`ruff` y `mypy src` limpios, 54 archivos):
+  - `api/src/app/modules/audit/__init__.py` (sin `models.py`: la tabla vive en `core/audit.py`);
+  - `router.py`: `router = APIRouter()` vacío (decisión 21);
+  - `service.py`: `on_login_attempted`, `on_user_locked`, `on_sessions_revoked` y
+    `on_password_changed(event, session) -> None` tipados con `NotImplementedError`, SIN
+    suscribirse al bus. Importa de `auth.service` solo las cuatro clases de evento.
+  - `MODULES` y `cli.py` no se tocan (son del Verde).
+- B6.2 pruebas (41 casos nuevos):
+  - `tests/audit/__init__.py`;
+  - `tests/audit/test_security_events.py` (14): fila `login` ok y failed (la segunda sobrevive al
+    rollback), correo inexistente sin filas, cinco fallidos con `account_limit=5` y el sexto 429
+    sin fila, `lock` y `revoke_sessions` del admin, reuso de refresh y bloqueo automático con
+    `SYSTEM_USER_ID`, `PasswordChanged` por `reset` (con `via_link_issued_by`) y por `change`,
+    volcado sin contraseña, hash, refresh, su hash ni correo, `HandlerRoto` que revierte la fila
+    `UserLocked` ya escrita y `verify_chain` íntegra;
+  - `tests/auth/test_router_login_audit.py` (4): por HTTP desde `cliente_desde(IP_A)`, login ok y
+    fallido con `ip` y `user_agent`, la fila del 401 sobrevive, sin el correo tecleado, cinco 401 y
+    el sexto 429 (límite por IP) con cinco filas;
+  - `tests/audit/test_reveal_entry.py` (1): `record(action="reveal", ...)` con `uuid4()`, sin
+    `skip` (DECISIÓN 31);
+  - `tests/architecture/test_audited_tables.py` (+10): `_cargar_modelos(modulos)` con `find_spec`,
+    `REQUIRED_AUDITED_TABLES_V01`, `PENDING_AUDITED`, `_incumplidas()` y sus controles con clases
+    falsas (pendiente presente sin `__audited__` falla; ausente o auditada no falla; requerida
+    ausente o sin auditar falla);
+  - `tests/architecture/test_audit_module.py` (9): `MODULES == ("auth","settings","audit")`, los
+    cuatro handlers suscritos una vez tras `load_module_services()` (identidad de función),
+    `router` vacío y sin `models.py`, `audit` sin imports prohibidos (`find_forbidden_imports`),
+    `auth` sin ningún import de `audit` y el control del analizador;
+  - `tests/cli/test_seed_cli.py` (+3): `seed`, `unlock-user` e `issue-reset-link` con éxito llaman
+    a `load_module_services()` (espía sobre `app.main`, que delega en la real).
+- Conteo: 1328 colectadas; 25 fallan, 1299 pasan, 4 saltadas. Las 25 son de B6 y todas por
+  aserción de comportamiento (sin filas de evento, `MODULES` sin `audit`, handlers no suscritos,
+  el CLI no carga los services); ninguna por `NotImplementedError`, import o fixture. Pasan ya
+  16 nuevas: el correo inexistente sin filas, `reveal` (contrato de Sprint 1), las 10 de
+  `test_audited_tables` y 4 de `test_audit_module` (router vacío, sin models, direcciones de
+  import y control). Regresiones de la línea base: 0. `docs/openapi.json` sin cambios
+  (`git diff --exit-code`). `db_test` queda sin usuarios, refresh, tokens, secciones ni filas de
+  auditoría.
+- Validación del Rojo: con una implementación provisional del Verde (handlers con `record`,
+  `MODULES` con `audit` y `load_module_services()` perezoso en los tres comandos), luego
+  revertida, la suite completa dio 1324 ok y 4 saltadas.
+- Decisiones de prueba que el Verde debe respetar:
+  - `on_login_attempted`: `record(action="login", table_name="auth.users",
+    record_id=user_id, before=None, after={result, reason, ip, user_agent}, user_id=user_id)`;
+    las claves de `after` son un subconjunto de esas cuatro (`reason` puede faltar o ser nula en
+    el éxito); `user_agent` el del evento (ya truncado a 120). Nunca el correo.
+  - `on_user_locked`: `action="update"`, `record_id=user_id`, `user_id=by`, `after ==
+    {"event": "UserLocked", "reason": ...}` exacto. `on_sessions_revoked`: igual, `after ==
+    {"event": "SessionsRevoked", "reason": ..., "revoked": n}` exacto.
+  - `on_password_changed`: `action="update"`, `user_id=by`, `after.event = "PasswordChanged"`,
+    `after.via` y `after.via_link_issued_by` (texto del UUID o `null`). L-13 manda sobre el
+    blueprint 7.5 ("PasswordChanged sin suscriptores en v0.1").
+  - Las filas de evento son `update` con `after.event`; el hook ORM sigue dejando su propio
+    `update` (dos filas por bloqueo, a propósito). Ayuda nueva `es_update_del_hook(fila)` en
+    `tests/auth/_cuentas.py`.
+  - Los handlers se suscriben al importar `audit.service`; `load_module_services()` los deja una
+    sola vez cada uno.
+  - `cli.py`: `load_module_services()` por import perezoso de `app.main` dentro de los comandos
+    (el espía se pone en el atributo de `app.main`).
+- Pruebas existentes reparadas (por el contrato de B6, no por comportamiento): cuatro pruebas que
+  contaban "todos los `update` de `auth.users`" esperando solo la fila del hook ahora filtran con
+  `es_update_del_hook` (siguen exigiendo exactamente una): `test_change_password.py::
+  test_la_auditoria_registra_el_update_con_el_hash_redactado`, `test_lock_unlock.py::
+  test_lock_fija_locked_at_y_lo_audita_por_el_admin`, `test_reset_forgot.py::
+  test_la_auditoria_deja_los_dos_updates_del_usuario_sin_el_token` y
+  `test_update_delete_user.py::test_la_baja_es_logica_y_no_usa_session_delete`. Pasan igual en
+  el Rojo; con el Verde provisional fallaban (2 o 3 `update` por las filas de evento).
+- Desviaciones del encargo:
+  - La prueba de `MODULES` y de suscripción vive en `tests/architecture/test_audit_module.py`
+    (junto con las de dirección de imports), no en un `test_modules_loaded.py`.
+  - El "sexto da 429" del service usa `account_limit=5` (el límite por cuenta corta antes de
+    argon2); por HTTP es el límite por IP (`LOGIN_IP_LIMIT=5`).
+  - La prueba de `HandlerRoto` falla en un handler de `SessionsRevoked` (posterior a
+    `UserLocked`) y mira dentro de la transacción que la fila `UserLocked` ya existía: con el
+    handler en `UserLocked` pasaría ya sobre los stubs (lo cubre `test_lock_unlock.py`).
+  - `tests/audit/` no tiene `conftest.py`: el piso de login se anula con
+    `pytestmark = usefixtures("sleeper_nulo")`.
+  - `LIMPIEZA_DE_SESION` ya incluía `audit.audit_log` (verificado); la cadena se verifica entera
+    dentro del savepoint de la prueba.
+
+### S2-B6 · Verde
+
+- Producto:
+  - `api/src/app/modules/audit/service.py`: `on_login_attempted` (`login`, `after = {result,
+    reason, ip, user_agent}`, `user_id` del propio usuario), `on_user_locked`,
+    `on_sessions_revoked` y `on_password_changed` (`update` con `after.event`, `user_id = by`;
+    `via_link_issued_by` como texto o `null`), con `core.audit.record` y suscritos con
+    `events.subscribe` al final del módulo (idempotente).
+  - `api/src/app/main.py`: `MODULES = ("auth", "settings", "audit")`.
+  - `api/src/app/cli.py`: `_load_module_services()` (import perezoso de `app.main`) en `_seed`,
+    `_issue_reset_link` y `_unlock_user`, tras instalar los listeners.
+- Revisión (`security-reviewer`): sin CRITICAL ni HIGH; dos MEDIUM fijados con prueba
+  (`tests/audit/test_security_events_review.py`, 2 casos: auditoría caída revierte el fallo
+  entero; el último admin exento sigue cortado por IP) y nota en `docs/RUNBOOK.md`; cuatro LOW
+  aceptados (DECISIONES S2-B6).
+- Docs: `CLAUDE.md` (estructura de `audit/`), `docs/ddd/DECISIONES.md` (S2-B6),
+  `docs/RUNBOOK.md` (sección S2-B6).
+- Contrato: `export-openapi` y `git diff --exit-code docs/openapi.json` en verde; `types.ts` no
+  se regenera.
+- Suite (`-m 'not perf'`): 1330 colectadas, 1326 ok, 4 saltadas, 0 fallos; cobertura de `app`
+  95 %; `ruff format`, `ruff check` y `mypy src` (54 archivos) limpios.

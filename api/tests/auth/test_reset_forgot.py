@@ -45,7 +45,14 @@ from app.modules.auth import service
 from app.modules.auth.exceptions import AuthError, InvalidToken
 from app.modules.auth.models import OneTimeToken
 from app.modules.auth.service import PasswordChanged, SessionsRevoked
-from tests.auth._cuentas import NUEVA, avanzar, fila_usuario, filas_auditoria, tokens_de
+from tests.auth._cuentas import (
+    NUEVA,
+    avanzar,
+    es_update_del_hook,
+    fila_usuario,
+    filas_auditoria,
+    tokens_de,
+)
 from tests.auth._sesion import IP_A, IP_B, politica
 from tests.conftest import (
     CLAVE_PRUEBA,
@@ -373,7 +380,7 @@ async def test_la_auditoria_deja_los_dos_updates_del_usuario_sin_el_token(
     await _reset(session, claro)
 
     del_usuario = [
-        f for f in await filas_auditoria(session, "auth.users", coach.id) if f["action"] == "update"
+        f for f in await filas_auditoria(session, "auth.users", coach.id) if es_update_del_hook(f)
     ]
     assert len(del_usuario) == 1
     assert del_usuario[0]["user_id"] == coach.id

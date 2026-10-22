@@ -185,3 +185,9 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Cambiar el correo de una cuenta (`PATCH /users/{id}`) cierra los enlaces de activación o
   restablecimiento abiertos: si la cuenta seguía pendiente, se le reenvía uno nuevo al correo
   corregido ("Reenviar enlace").
+
+## Auditoría de eventos de seguridad (S2-B6)
+
+- Cada login sobre un correo existente (correcto o fallido), cada bloqueo, cada cierre de sesiones y cada cambio de contraseña deja una fila en `audit.audit_log` escrita por el módulo `audit` dentro de la misma transacción. Consulta rápida: `SELECT action, user_id, after FROM audit.audit_log ORDER BY seq DESC LIMIT 10;`. La fila `login` guarda `result`, `reason`, `ip` y `user_agent`, nunca el correo tecleado; un correo inexistente no deja fila.
+- La auditoría es parte de la operación (fail-closed): si la cadena no se puede escribir (base sin espacio, candado de la cadena retenido, trigger), el login responde 500 y el fallo ni siquiera suma al contador; lo mismo pasa con bloquear, cerrar sesiones o cambiar la contraseña. Ante 500 en el login, revisar primero `docker compose logs api` y el estado de `audit.audit_log` antes de tocar las cuentas.
+- Los comandos `seed`, `unlock-user` e `issue-reset-link` del CLI cargan los mismos suscriptores, así que lo que hacen queda auditado igual que desde el api.

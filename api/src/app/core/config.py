@@ -174,6 +174,14 @@ class Settings(BaseSettings):
             return parse_origins(",".join(str(v) for v in valor))
         return parse_origins(str(valor) if valor is not None else "")
 
+    @field_validator("TRUSTED_PROXIES")
+    @classmethod
+    def _redes_de_confianza(cls, valor: str) -> str:
+        for parte in valor.split(","):
+            if parte.strip():
+                ip_network(parte.strip(), strict=False)  # ValueError si no es red ni IP
+        return valor
+
     @field_validator("FRONT_BASE_URL")
     @classmethod
     def _url_http(cls, valor: str) -> str:

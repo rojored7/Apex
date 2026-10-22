@@ -363,3 +363,61 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   comunes). `test_require_role` vuelve a registrar el doble después de `create_app`, porque
   `auth.service` registra el cargador real al importarse. El `cli seed` corre su corrutina en
   un hilo propio cuando ya hay un loop activo (pruebas async con `CliRunner`).
+
+## Validación del sprint (2026-10-22)
+
+- `run-gates.sh`: api 441 ok + 3 saltadas (cobertura global de `app` 94 %); web 593 ok en 43
+  archivos (cobertura 99,6 %), tras regenerar `web/src/core/api/types.ts` porque el contrato
+  cambió con el 429 de S1-B10. `tests/architecture`: 49 ok. `pre-commit --all-files` en verde.
+  `scripts/workflow/tests`: 5 de 5. `test_nginx_conf` y `test_compose_config`: 0 fallas.
+- Playwright: 3 de 3 (`smoke.spec.ts` y los dos casos de `csp.spec.ts`).
+- Smoke de Compose (`compose-smoke.sh`): `init-keys` idempotente, api y web healthy, `web-smoke`
+  5 de 5, cabeceras 19 de 19, verde en 39 s.
+- Medición T6 de US-007 (A-6): desde una copia limpia del repositorio (`git archive`), con un
+  proyecto de Compose aparte y puertos libres: `.env.example` → `.env`, build, `init-keys`,
+  `up -d`, `/health` 200 directo y por Nginx en **50 s** (el README promete 5 minutos). En ese
+  stack el seed creó el admin y el api cargó 8 llaves del bus. Luego `down -v`.
+- Demo del sprint cumplida: llaves con modo 600 en el volumen (S1-B4), DEK creadas al arrancar
+  y envueltas con `apxw1` (S1-B5), cifrado con blob `apx1` y bitácora por lote (S1-B5/B6/B7),
+  cadena de auditoría con trigger (S1-B1/B2), usuarios y seed (S1-B11), prueba de rutas con rol
+  (S1-B9), cabeceras y CSP (S1-W0-1), front con kit y tipos generados (S1-F1 a F3).
+- gitleaks sobre los 43 commits: sin hallazgos. `check-image-secrets.sh` 4 de 4.
+
+### Revisión de seguridad (`security-reviewer`, solo lectura)
+
+0 CRITICAL, 1 HIGH, 8 MEDIUM, 8 LOW. Corregido en este mismo cierre:
+- **H-1** la privada JWT no se comprobaba al arrancar: `load_jwt_keys` exige archivo regular y
+  modo sin bits de grupo u otros (fuera de NTFS), como la KEK; pruebas
+  `test_jwt_key_insecure_permissions` (POSIX) y `test_jwt_key_debe_ser_archivo_regular`.
+- **M-4** el buffer de `crypto_ops` nacía perezoso y un handler `def` (hilo) lo perdería:
+  `RequestLogMiddleware` lo crea al inicio de cada petición (`oplog.begin_unit_of_work`).
+- **M-5** `kek.bin`, `sign-ed25519.key` y `jwt_ed25519.pem` en `.gitignore`; `api/.dockerignore`
+  con patrones `**/`; `scripts/ci/check-key-files.sh` (CI y pre-commit) bloquea esos nombres y
+  cualquier `.env`, porque gitleaks no detecta bytes crudos sin cabecera PEM (probado: ni por
+  contenido ni con regla por ruta).
+- **M-6** allowlist de gitleaks acotado a `docs/ddd`, `docs/design`, `BRECHAS` y `PLAN` (los
+  cuadernos de `docs/scratch` ya se escanean); imagen fijada por digest
+  (`zricethezav/gitleaks@sha256:c00b6bd0…`).
+- **M-1 (parte)** `TRUSTED_PROXIES` se valida al cargar `Settings` (falla con `ConfigError`);
+  `.env.example` advierte que `172.16.0.0/12` cubre toda la red de Docker.
+- **L-2** un token opaco no ASCII es `TokenInvalid`, no un 500. **L-6** `OneTimeToken` redacta
+  `token_hash` en la auditoría.
+
+Deuda anotada, con dueño por sprint:
+- M-1 (resto): red con subred fija e IP del proxy en Compose, `TRUSTED_PROXIES` solo esa IP
+  (Sprint 2, con US-042/US-036 al cablear `rate_limit("login")`).
+- M-2 y M-3: límite por cuenta y bloqueo `locked_at`, IPv6 por /64, `limit_req` en Nginx,
+  `refresh_keyring` solo tras validar el token (Sprint 2, antes de abrir el login).
+- M-7: separar `apex_owner` (migraciones) de `apex_app` (sin DDL ni DISABLE TRIGGER), antes de
+  v0.2, junto con `sign-audit` (EP-17).
+- M-8: `ADMIN_*` solo en el servicio `tools` y `must_change_password` (Sprint 2, US-042/045).
+- L-1, L-3, L-4, L-5, L-7, L-8: endurecimiento (cabeceras `no-store` en `/api/`, `form-action`,
+  `generate_kek()` en el bus, `--as` solo con usuarios activos, tope de longitud de contraseña,
+  `read_only`/`cap_drop`/digests de imágenes, `COOKIE_SECURE` con TLS en EP-20).
+
+### Pendiente humano (A-02)
+
+Push de `main`, `chore/sprint-00-cimientos` y `feat/sprint-01-nucleo-cripto-seguridad`; PR a
+`main`; CI en verde (jobs `api`, `web`, `images`, `scripts`, `secrets-scan`); merge. Decidir si
+las reglas de ESLint que viven en `web/tests/lint/restricted-config.ts` pasan a
+`web/eslint.config.js` (hook `config-protection`).

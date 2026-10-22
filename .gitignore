@@ -53,5 +53,9 @@ web/.vite/
 scripts/workflow/tests/tmp/
 # Pública JWT que genera init-keys junto a la privada (volumen keys, nunca en el repo)
 jwt_ed25519.pub
+# Material crudo de init-keys (KEK y semilla de firma): nunca en el repo
+kek.bin
+sign-ed25519.key
+jwt_ed25519.pem
 # Worktrees de agentes de Claude Code (copias del repo; nunca se versionan)
 .claude/worktrees/

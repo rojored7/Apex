@@ -11,10 +11,17 @@ description = "Llave privada en PEM"
 regex = '''-----BEGIN (RSA |EC |OPENSSH |ENCRYPTED |DSA |)PRIVATE KEY-----'''
 keywords = ["PRIVATE KEY"]
 
+# Los archivos de llave crudos (kek.bin, sign-ed25519.key) no tienen cabecera PEM y gitleaks
+# no los reconoce por contenido ni por ruta: los bloquea scripts/ci/check-key-files.sh (CI y
+# pre-commit).
+
 [allowlist]
-description = "Fixtures y documentación que mencionan el formato sin contener material"
+description = "Documentación del plan y del diseño, y fixtures de CI que citan el formato sin material"
 paths = [
-  '''docs/.*''',
+  '''docs/ddd/.*''',
+  '''docs/design/.*''',
+  '''docs/BRECHAS\.md''',
+  '''docs/PLAN\.md''',
   '''\.gitleaks\.toml''',
   '''scripts/ci/check-image-secrets\.sh''',
   '''scripts/ci/test_api_image\.sh''',

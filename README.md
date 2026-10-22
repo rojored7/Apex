@@ -2,7 +2,7 @@
 
 Sistema web para administrar un gimnasio de CrossFit en Colombia: socios, planes, membresías, pagos, vencimientos, avisos, clases, WODs, resultados y perfil del atleta. Repositorio privado.
 
-Estado al 21 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado y el Sprint 0 (cimientos) está terminado y verificado en la rama `chore/sprint-00-cimientos`, pendiente de push, PR y merge a `main`. La evidencia está en `docs/scratch/sprint-00.md`. El siguiente es el Sprint 1 (`docs/ddd/09_sprint_plan/SPRINT-01.md`).
+Estado al 22 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado, el Sprint 0 (cimientos) está fusionado en `main` y el Sprint 1 (auditoría, bus de criptografía y seguridad de plataforma) está construido en la rama `feat/sprint-01-nucleo-cripto-seguridad`, con sus quince slices confirmados, pendiente de push, PR y merge. La evidencia está en `docs/scratch/sprint-00.md`, `sprint-01.md` y `sprint-01-front.md`. El siguiente es el Sprint 2 (`docs/ddd/09_sprint_plan/SPRINT-02.md`).
 
 ## Qué hay en el repositorio y en qué orden leerlo
 
@@ -38,8 +38,9 @@ Todos los comandos se corren desde la raíz del repositorio.
 1. `cp .env.example .env` y cambia todos los `cambiar-esto`. Si otro proyecto ocupa el 80, el 8000, el 5432 o el 5433, ajusta `WEB_PORT`, `API_PORT`, `DB_PORT` y `DB_TEST_PORT` (y el puerto de `TEST_DATABASE_URL`).
 2. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build` levanta `db`, `db_test`, `api` y `web`. El `--env-file .env` es obligatorio: Compose interpola los puertos desde la carpeta `infra/`.
 3. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` crea la KEK, la llave de firma del bus y el par JWT Ed25519 en el volumen `keys`, con modo 600; es idempotente, nunca sobrescribe. Las DEK por clase de dato las crea el api al arrancar (US-025).
-4. `curl http://localhost:${API_PORT:-8000}/health` y `curl http://localhost:${WEB_PORT:-80}/api/v1/health` responden 200 (desde US-020).
-5. Desarrollo en el host: `cd api && uv sync`, `uv run pytest` (usa `TEST_DATABASE_URL` contra `db_test`), `uv run ruff check . && uv run ruff format . && uv run mypy src`.
+4. `curl http://localhost:${API_PORT:-8000}/health` y `curl http://localhost:${WEB_PORT:-80}/api/v1/health` responden 200. Al arrancar, el api aplica las migraciones y crea las llaves de datos (DEK) que falten.
+5. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools seed` crea el primer administrador con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`. Rechaza el marcador `cambiar-esto` y cualquier contraseña corta o común; es idempotente. Borra `ADMIN_INITIAL_PASSWORD` del `.env` después del primer arranque.
+6. Desarrollo en el host: `cd api && uv sync`, `uv run pytest` (usa `TEST_DATABASE_URL` contra `db_test`), `uv run ruff check . && uv run ruff format . && uv run mypy src`.
 
 **Si pierdes la KEK (`kek.bin` del volumen `keys`), pierdes para siempre los datos cifrados de los socios. Respáldala fuera del servidor antes de cargar datos reales** (procedimiento de exportación en US-116, Sprint 4B).
 

@@ -7,6 +7,7 @@ import hashlib  # noqa: TID251 - construye un token de ataque HS256
 import hmac  # noqa: TID251
 import json
 import logging
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -190,3 +191,32 @@ def test_sin_llaves_configuradas() -> None:
     configure_jwt(None)
     with pytest.raises(StartupError):
         create_access_token(uuid4(), "admin", None, FrozenClock(T0))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="NTFS no conserva el modo POSIX")
+def test_jwt_key_insecure_permissions(tmp_path: Path, test_database_url: str) -> None:
+    """H-1 de la revisión del Sprint 1: la privada JWT con 644 no arranca, como la KEK."""
+    rutas = key_paths_in(tmp_path / "keys")
+    init_keys_files(rutas)
+    rutas.jwt_private.chmod(0o644)
+    settings = Settings.model_construct(
+        DATABASE_URL=test_database_url,
+        JWT_PRIVATE_KEY_PATH=rutas.jwt_private,
+        CRYPTO_PROVIDER="local",
+    )
+    with pytest.raises(StartupError, match="permisos inseguros") as excinfo:
+        load_jwt_keys(settings)
+    assert "BEGIN" not in str(excinfo.value)
+
+
+def test_jwt_key_debe_ser_archivo_regular(tmp_path: Path, test_database_url: str) -> None:
+    settings = Settings.model_construct(
+        DATABASE_URL=test_database_url, JWT_PRIVATE_KEY_PATH=tmp_path, CRYPTO_PROVIDER="local"
+    )
+    with pytest.raises(StartupError, match="archivo regular"):
+        load_jwt_keys(settings)
+
+
+def test_hash_opaque_token_rechaza_no_ascii() -> None:
+    with pytest.raises(TokenInvalid):
+        hash_opaque_token("token-con-ñ")

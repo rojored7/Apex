@@ -32,6 +32,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import Settings
 from app.core.context import current_actor, request_id_var
+from app.core.crypto.oplog import begin_unit_of_work
 
 SENSITIVE_KEYS: frozenset[str] = frozenset(
     {
@@ -158,6 +159,7 @@ class RequestLogMiddleware:
         # US-034: current_user fija el actor y no lo resetea (el commit de get_session corre
         # en su teardown y lo necesita); se limpia aquí, cuando la petición ya terminó.
         token_actor = current_actor.set(None)
+        begin_unit_of_work()  # US-029: buffer de crypto_ops creado aquí, visible desde hilos
         inicio = time.perf_counter()
         estado = {"status": 500}
 

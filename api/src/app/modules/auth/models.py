@@ -82,6 +82,7 @@ class OneTimeToken(CommonColumnsMixin, Base):
         {"schema": "auth"},
     )
     __audited__: ClassVar[bool] = True
+    __audit_redact__: ClassVar[frozenset[str]] = frozenset({"token_hash"})
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("auth.users.id"), nullable=False)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)

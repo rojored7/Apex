@@ -36,7 +36,7 @@ if [ -z "$bajo_app" ]; then ok "sin .pem, .key ni .kek bajo /app"; else falla "m
 
 if [ "${SKIP_GITLEAKS:-0}" = "1" ]; then
   echo "  (gitleaks omitido: SKIP_GITLEAKS=1)"
-elif MSYS_NO_PATHCONV=1 docker run --rm -v "$TMP:/scan:ro" -v "$ROOT/.gitleaks.toml:/gitleaks.toml:ro" zricethezav/gitleaks:latest dir /scan --config /gitleaks.toml --no-banner --redact > "$TMP/.gitleaks.log" 2>&1; then
+elif MSYS_NO_PATHCONV=1 docker run --rm -v "$TMP:/scan:ro" -v "$ROOT/.gitleaks.toml:/gitleaks.toml:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /scan --config /gitleaks.toml --no-banner --redact > "$TMP/.gitleaks.log" 2>&1; then
   ok "gitleaks dir sin hallazgos"
 else
   falla "gitleaks dir encontró secretos (ver salida)"

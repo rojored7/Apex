@@ -23,10 +23,13 @@ Es, junto con `core/crypto`, el único lugar que importa `cryptography`, `jwt`, 
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
+import stat
 from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
+from pathlib import Path
 from typing import Any, Final, Literal
 from uuid import UUID, uuid4
 
@@ -122,9 +125,24 @@ def _public_pem(privada: Ed25519PrivateKey) -> bytes:
     )
 
 
+def _check_private_key_file(ruta: Path) -> None:
+    """Archivo regular y sin permisos de grupo u otros (fuera de NTFS), como la KEK (H-1)."""
+    try:
+        st = ruta.stat()
+    except OSError:
+        raise StartupError(
+            f"JWT_PRIVATE_KEY_PATH: archivo inexistente o ilegible ({ruta})"
+        ) from None
+    if not stat.S_ISREG(st.st_mode):
+        raise StartupError(f"JWT_PRIVATE_KEY_PATH: no es un archivo regular ({ruta})")
+    if os.name != "nt" and stat.S_IMODE(st.st_mode) & 0o077:
+        raise StartupError(f"JWT_PRIVATE_KEY_PATH: permisos inseguros en {ruta}: debe ser 600")
+
+
 def load_jwt_keys(settings: Settings) -> JwtKeys:
     """Lee la privada del volumen `keys` y deriva la pública. Falla sin mostrar contenido."""
     ruta = settings.JWT_PRIVATE_KEY_PATH
+    _check_private_key_file(ruta)
     try:
         private_pem = ruta.read_bytes()
     except OSError:
@@ -237,7 +255,10 @@ def new_opaque_token() -> str:
 
 def hash_opaque_token(token: str) -> str:
     """SHA-256 hexadecimal del token: lo único que se persiste (N-13)."""
-    return hashlib.sha256(token.encode("ascii")).hexdigest()
+    try:
+        return hashlib.sha256(token.encode("ascii")).hexdigest()
+    except UnicodeEncodeError:
+        raise TokenInvalid from None
 
 
 def new_refresh_token() -> tuple[str, str]:

@@ -143,6 +143,16 @@ def batch(verb: str, data_class: str | None) -> Iterator[BatchHandle]:
         _buffer_list().extend(aggregate_ops(lote.rows))
 
 
+def begin_unit_of_work() -> None:
+    """Crea el buffer de la unidad de trabajo en el contexto actual (M-4 de la revisión).
+
+    Si se creara perezosamente dentro de un handler `def` (hilo del threadpool), el `set`
+    quedaría en una copia del contexto y `before_commit` no vería las filas.
+    """
+    _buffer.set([])
+    _batch.set(None)
+
+
 def pending_rows() -> list[OpRow]:
     return list(_buffer.get() or [])
 

@@ -21,6 +21,11 @@ repos:
       - id: check-merge-conflict
   - repo: local
     hooks:
+      - id: check-key-files
+        name: sin archivos de llave ni .env (US-039)
+        entry: bash scripts/ci/check-key-files.sh
+        language: system
+        files: '(^|/)(kek\.bin|sign-ed25519\.key|jwt_ed25519\.(pem|pub)|\.env(\..*)?|.*\.kek)$'
       - id: mypy
         name: mypy --strict (api/src)
         entry: uv run --directory api mypy src

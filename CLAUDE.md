@@ -35,6 +35,8 @@ apex/
         errors.py        # envelope de error y handlers
         pagination.py    # PageParams, Page y SearchQuery (contrato común de listas)
         validators.py    # tipos de entrada compartidos (EmailAddress)
+        search.py        # búsqueda común de las listas: limpieza de q, sin tildes, escape de LIKE
+        http.py          # ayudas HTTP comunes a los routers (por ejemplo Cache-Control: no-store)
         ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
@@ -48,6 +50,7 @@ apex/
       modules/
         auth/        router.py schemas.py models.py service.py exceptions.py
                      rules.py tokens.py cookies.py   # ayudas privadas del módulo (S2-D4)
+                     sessions.py users.py links.py events.py   # privados tras la fachada service.py (Fase 4 del Sprint 2)
         settings/    router.py schemas.py models.py service.py
         members/     router.py schemas.py models.py service.py
         plans/       ...
@@ -94,10 +97,10 @@ apex/
 
 ## Reglas de módulos
 
-1. Cada módulo tiene `router.py`, `schemas.py`, `service.py` y, si tiene tablas propias, `models.py` (y `exceptions.py` si hace falta). Lógica de negocio solo en `service.py`; los routers validan, llaman al service y devuelven. Un router plano por módulo (S2-D3): un solo `APIRouter` en `router.py`, con la ruta completa en cada decorador (`/auth/login`, no prefijos anidados). Las ayudas privadas de un módulo (en `auth`: `rules.py`, `tokens.py`, `cookies.py`) solo las importa ese módulo (regla `private_helper` de `tests/architecture`).
+1. Cada módulo tiene `router.py`, `schemas.py`, `service.py` y, si tiene tablas propias, `models.py` (y `exceptions.py` si hace falta). Lógica de negocio solo en `service.py`; los routers validan, llaman al service y devuelven. Un router plano por módulo (S2-D3): un solo `APIRouter` en `router.py`, con la ruta completa en cada decorador (`/auth/login`, no prefijos anidados). Las ayudas privadas de un módulo (en `auth`: `rules.py`, `tokens.py`, `cookies.py`, `sessions.py`, `users.py`, `links.py`, `events.py`) solo las importa ese módulo (regla `private_helper` de `tests/architecture`). Un `service.py` que pasa de 800 líneas se parte en archivos privados como estos y queda como fachada: es lo único que importan los demás módulos.
 2. Un módulo solo llama a otro a través de su `service.py`. Puede importar `schemas.py` y `exceptions.py` de otro módulo; nunca su `models.py` ni su `router.py`. Prohibido hacer joins cruzados fuera de su esquema.
 2 bis. Dependencias mutuas entre services (G-03). Entre dos módulos, el sentido mayoritario llama al `service.py` del otro. El sentido minoritario, si solo valida o consulta, usa un puerto que el módulo dueño registra al arrancar, igual que `subscribe` (por ejemplo `payments.set_membership_gate(memberships.service.payability)`). Si es una lectura de presentación, usa un import perezoso dentro de la función, con comentario, y solo para los pares de la lista blanca de `tests/architecture/test_service_import_graph.py`: en v0.1 `memberships` ↔ `payments`, `members` ↔ `memberships` y `plans` ↔ `memberships`; en v0.4 `members` ↔ `classes`.
-3. Cuando una acción interesa a varios módulos, el origen emite un evento en `core/events.py` (por ejemplo `PaymentRegistered`) y los demás se suscriben. No se encadenan services de tres módulos en un endpoint. Una lectura sí puede recorrer aristas existentes del mapa de contextos hasta profundidad 2, por lote, sin escribir ni emitir eventos (G-04; `docs/ddd/03_context_map.md`, sección 5).
+3. Cuando una acción interesa a varios módulos, el origen emite un evento por el bus de `core/events.py` (por ejemplo `PaymentRegistered`) y los demás se suscriben. El tipo del evento se define en el módulo emisor y se exporta desde su `service.py`; `core/events.py` es solo el bus (decisión L7, `docs/ddd/DECISIONES.md`, revisión de Fase 4 del Sprint 2). No se encadenan services de tres módulos en un endpoint. Una lectura sí puede recorrer aristas existentes del mapa de contextos hasta profundidad 2, por lote, sin escribir ni emitir eventos (G-04; `docs/ddd/03_context_map.md`, sección 5).
 4. `core/` es compartido y ningún módulo lo modifica desde su dominio.
 5. SOLID en versión ligera: interfaces solo donde hay algo que intercambiar (`KeyProvider`, `NotificationChannel`, `StorageProvider`). No se crean entidades de dominio separadas de los modelos ni repositorios abstractos por tabla.
 
@@ -141,10 +144,10 @@ Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, O
 ## Calidad y Git
 
 - `ruff` (lint y formato) y `mypy --strict` en `src/`. `pre-commit` corre ambos.
-- `pytest` con PostgreSQL de prueba en Docker (`compose.dev.yml`, `TEST_DATABASE_URL` obligatoria). Toda regla de negocio en `service.py` tiene prueba. Cobertura global de `app` de al menos 80 %.
+- `pytest` con PostgreSQL de prueba en Docker (`compose.dev.yml`, `TEST_DATABASE_URL` obligatoria). Toda regla de negocio en `service.py` tiene prueba. Cobertura global de `app` de al menos 80 %. Las pruebas marcadas `perf` miden con reloj y no son gate: `run-gates.sh` y la CI corren `-m "not perf"`, y la CI las corre aparte sin bloquear (S2-D27).
 - Cada slice se trabaja en TDD: primero pruebas en rojo sobre stubs, luego implementación hasta pasar `scripts/workflow/slice-gate.sh <modulo> [pruebas...]`, y se confirma con `scripts/workflow/checkpoint-commit.sh`. `tests/architecture` corre en todos los gates. Cada wave cierra con `scripts/workflow/run-gates.sh`.
 - Rama `main` protegida; ramas `feat/`, `fix/`, `chore/`; commits en Conventional Commits. Los scripts nunca hacen push: el push y el PR los hace una persona al cerrar cada sprint.
-- CI en cada PR: lint, mypy, pruebas, licencias, build de imágenes.
+- CI en cada PR: lint, mypy, pruebas, licencias, auditoría de dependencias de producción, build de imágenes y E2E contra el stack.
 - Logs en JSON a stdout. Healthcheck en `/health`.
 
 ## Comandos

@@ -21,8 +21,20 @@ assert_log_has "ruff check ."
 assert_log_has "ruff format --check ."
 assert_log_has "mypy src"
 assert_log_has "pytest --cov=app --cov-fail-under=80"
+assert_log_has "-m not perf"
 assert_log_lacks "npm"
 assert_log_lacks "npx"
+
+# Scripts de infraestructura (M1, revisión de Fase 4): corren los que existan y un fallo
+# detiene la suite.
+mkdir -p scripts/ci
+printf '#!/usr/bin/env bash\necho "script test_nginx_conf" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/test_nginx_conf.sh
+clear_log
+assert_exit 0 "script de infraestructura en verde" bash "$RUN"
+assert_log_has "script test_nginx_conf"
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_nginx_conf.sh
+assert_nonzero "script de infraestructura en rojo falla" bash "$RUN"
+rm -rf scripts
 
 # Con uv que falla en la cobertura termina distinto de 0.
 stub_tool_fail_on uv "cov-fail-under" 1

@@ -29,7 +29,9 @@ Crea `chore(checkpoint): <mensaje>` con `git add -A` solo si la rama no es `main
 
 ## run-gates.sh `[wave]`
 
-Suite completa: en `api/`, `ruff check .`, `ruff format --check .`, `mypy src` y `pytest --cov=app --cov-fail-under=80`; si existe `web/package.json`, en `web/`, `npm run lint`, `npx tsc --noEmit`, `npm test -- --run --coverage` y `npm run build`. Imprime qué gate falló.
+Suite completa: en `api/`, `ruff check .`, `ruff format --check .`, `mypy src` y `pytest --cov=app --cov-fail-under=80 -q -m "not perf"`; desde la raíz, los scripts de infraestructura `scripts/ci/test_check_key_files.sh`, `test_nginx_conf.sh` y `test_compose_config.sh` (los que existan; los dos últimos necesitan Docker y `uv`); si existe `web/package.json`, en `web/`, `npm run lint`, `npx tsc --noEmit`, `npm test -- --run --coverage` y `npm run build`. Imprime qué gate falló.
+
+Política `perf` (S2-D27, revisión de Fase 4 del Sprint 2): las pruebas marcadas `perf` miden con reloj y no son gate. Se corren a mano con `cd api && uv run pytest -m perf -q` (con `TEST_DATABASE_URL`); en la CI van en un paso aparte del job `api` que no bloquea.
 
 Cobertura (M-6): el umbral es global sobre `app`. Hasta el Sprint 3, `[tool.coverage.run] omit` en `api/pyproject.toml` excluye `src/app/cli.py` y `src/app/worker/*`; esa exclusión se quita en el Sprint 4A (US-113), cuando entran a la cobertura. No existe una opción `--cov-omit` en pytest-cov: la exclusión vive en la configuración de coverage.
 

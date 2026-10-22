@@ -1635,3 +1635,50 @@ en este bloque: el admin del E2E sale de `.env.seed` solo en la shell.
   la demo (este con sus sesiones revocadas), socios "Demo …" y los de las specs, planes
   "Trimestral <marca>", "Mensual <marca>", "mensual" y "Tiquetera 12", política `demo-<marca>`,
   `gym_name` "APEX CrossFit Demo <marca>".
+
+## Revisión de Fase 4
+
+Cuatro revisiones de solo lectura sobre `482295f..981836a`, después de la validación V2–V9 (los informes completos quedaron en el scratchpad de la sesión del orquestador, fuera del repo). Decisiones en `docs/ddd/DECISIONES.md`, "Revisión de Fase 4 del Sprint 2".
+
+### Conteos por informe
+
+- General: WARNING. 0 CRITICAL, 2 HIGH, 8 MEDIUM, 7 LOW, más 8 contradicciones entre documentos y código.
+- Seguridad (V10): sin bloqueo. 0 CRITICAL, 0 HIGH, 3 MEDIUM y 6 LOW nuevos (N-1 a N-9); los H, M y L del diseño y la deuda del Sprint 1 quedan cerrados, H-4 y M-6 con reserva (N-3 y N-7).
+- Python: BLOCK. 0 CRITICAL, 3 HIGH, 11 MEDIUM, 9 LOW.
+- TypeScript: aprobar con cambios. 0 CRITICAL, 1 HIGH, 6 MEDIUM, 8 LOW.
+- Total: 0 CRITICAL, 6 HIGH, 28 MEDIUM, 30 LOW (con solapes: M6 general = H1 de Python; M6 de TypeScript = contradicción 4).
+
+### Qué corrige cada agente
+
+- **Backend** (árbol principal, `api/` y `.env.example`): H1 de Python y M6 general (partir `auth/service.py` en `sessions.py`, `users.py`, `links.py` y `events.py` tras la fachada), H2 y H3 de Python (`core/search.py`, nombres sin Cc/Cf), N-1 (commit antes de la respuesta), N-2 (texto seguro y tope de `offset`), N-3, N-4, N-7 (piso de login a 150 ms), N-8 (L-13 en el cambio de correo de admins), M5 general (piso de `PASSWORD_MIN_LENGTH`), M7 general (errores por ruta en OpenAPI), los MEDIUM de Python y `core/http.py`.
+- **Front** (worktree propio, `web/src` y `web/tests`): H1 de TypeScript (`errorElement`), M1 a M5 de TypeScript, L1 general (retirar `PendingPage.tsx` y la rama `pending`) y los LOW de TypeScript.
+- **CI y documentación** (worktree `revision-ci-docs`, rama `feat/sprint-02-revision-ci-docs`):
+  - CI y scripts (`ci(sprint-02)`): H1 restante (sin `--pass-with-no-tests`, siempre `--no-force-change`, `E2E_ADMIN_*` al `$GITHUB_ENV` con `add-mask` antes de usarlas), M1 (`test_nginx_conf.sh` y `test_compose_config.sh` en `images` y en `run-gates.sh`, con `test_check_key_files.sh`), M2 (cobertura del front), M3 (deriva de `types.ts`), M4 (`-m "not perf"` y paso `perf` informativo), N-5 (`npm audit` y `pip-audit`), L3 (`timeout-minutes`, acciones por SHA, `postgres:16` del servicio por digest).
+  - Documentación (`docs(sprint-02)`): H2 (`README.md` con `.env.seed` y estado al día), M8, L4, L5, N-6, N-7 y N-8 en `docs/RUNBOOK.md`, contradicciones 1 a 8, L2 (`scripts/ci/README.md`, `web/README.md`, `CONTRIBUTING.md`), L6 (detalle de rutas a `docs/ddd/blueprints/sprint-02-rutas-front.md`), L7 (decisión), `CLAUDE.md` y este bloque.
+
+### Verificación de la rama de CI y documentación
+
+- `bash -n` de `scripts/ci/*.sh`, `scripts/workflow/*.sh` y `scripts/workflow/tests/*.sh`: limpio.
+- `bash scripts/workflow/tests/run.sh`: 5 de 5 archivos en verde; `test_run_gates.sh` 19 ok (nuevas: `-m not perf`, script de infraestructura en verde y en rojo).
+- `bash scripts/ci/test_nginx_conf.sh`: 0 fallas. `bash scripts/ci/test_compose_config.sh`: 0 fallas. `bash scripts/ci/test_check_key_files.sh`: 0 fallas.
+- `uvx --from yamllint yamllint -d relaxed .github/workflows/ci.yml`: sin errores (solo avisos de largo de línea, como antes); `js-yaml` carga los seis jobs, todos con `timeout-minutes`.
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilidades. `pip-audit` 2.10.1 sobre `uv export --frozen --no-dev --no-emit-project` (403 líneas con hashes): sin vulnerabilidades conocidas.
+- `npm run gen:api` y `git diff --exit-code src/core/api/types.ts`: sin deriva.
+- SHA de las acciones con `git ls-remote` a los tags; digest de `postgres:16` con `docker buildx imagetools inspect`.
+- `run-gates.sh` no se corrió completo aquí: lo corre el orquestador tras fusionar las tres ramas.
+
+### Aceptados, con motivo
+
+- Dependencias de desarrollo del front con hallazgos de `npm audit` (vitest, tinypool, stylelint y transitivas): herramientas de prueba que no se distribuyen; el gate es solo producción. El front las actualiza en el Sprint 3.
+- `e2e-stack` sin la caché de GHA del job `images`: aísla el job a costa de unos minutos.
+- Imágenes base por digest solo en el servicio de CI: el resto vive en `api/`, `web/`, `infra/` y `scripts/ci/test_nginx_conf.sh`, fuera de esta rama; dueño y digests en `DECISIONES.md`.
+- L5 de Python (`list()` sombrea el builtin): es el nombre del contrato.
+- M5 de Python (búsqueda por nombre sin índice): con cientos o pocos miles de socios responde en milisegundos; `pg_trgm` o columna normalizada en el Sprint 4A (`docs/RUNBOOK.md`, sección 4).
+- Los aceptados de seguridad que ya estaban en `DECISIONES.md` (S2-D37, S2-B2, S2-B3 MEDIUM-3, S2-D10.4, S2-B6): el informe de seguridad los confirma y no los repite.
+
+### Deuda con dueño que sale de esta revisión
+
+- Imágenes base por digest y su renovación: primer slice de infraestructura del Sprint 3 (a más tardar S4B-W0-2).
+- N-6, verificar `remote_addr` en el servidor del gimnasio, y remedir el p99 del login (N-7) en ese hardware: S4B-W0-2.
+- `omit` de `cli.py` y `worker/` en la cobertura: Sprint 4A (US-113).
+- Higiene al cerrar el sprint (orquestador): `git worktree remove` de los worktrees de agentes ya fusionados (incluido el bloqueado) y borrar `docs/scratch/*.dump`.

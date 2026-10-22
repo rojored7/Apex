@@ -2,7 +2,7 @@
 
 Sistema web para administrar un gimnasio de CrossFit en Colombia: socios, planes, membresías, pagos, vencimientos, avisos, clases, WODs, resultados y perfil del atleta. Repositorio privado.
 
-Estado al 22 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado, el Sprint 0 (cimientos) está fusionado en `main` y el Sprint 1 (auditoría, bus de criptografía y seguridad de plataforma) está construido en la rama `feat/sprint-01-nucleo-cripto-seguridad`, con sus quince slices confirmados, pendiente de push, PR y merge. La evidencia está en `docs/scratch/sprint-00.md`, `sprint-01.md` y `sprint-01-front.md`. El siguiente es el Sprint 2 (`docs/ddd/09_sprint_plan/SPRINT-02.md`).
+Estado al 22 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado y los Sprints 0 (cimientos) y 1 (auditoría, bus de criptografía y seguridad de plataforma) están fusionados en `main`. El Sprint 2 (identidad, configuración, socios y planes; `docs/ddd/09_sprint_plan/SPRINT-02.md`) está en cierre en la rama `feat/sprint-02-identidad-config-socios-planes`: sus 18 slices (B1 a B9 y F1 a F8) tienen checkpoint y entregan login con refresh por cookie y límites de intentos, usuarios del equipo con activación y recuperación por enlace, configuración del gimnasio, alta y búsqueda de socios con los datos personales cifrados, y alta y lista de planes. La validación V2 a V9 está en verde y la revisión de Fase 4 corrige lo que encontró antes del push, el PR y el merge. La evidencia está en `docs/scratch/sprint-00.md`, `sprint-01.md`, `sprint-01-front.md`, `sprint-02.md` y `sprint-02-front.md`.
 
 ## Qué hay en el repositorio y en qué orden leerlo
 
@@ -39,7 +39,10 @@ Todos los comandos se corren desde la raíz del repositorio.
 2. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build` levanta `db`, `db_test`, `api` y `web`. El `--env-file .env` es obligatorio: Compose interpola los puertos desde la carpeta `infra/`.
 3. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` crea la KEK, la llave de firma del bus y el par JWT Ed25519 en el volumen `keys`, con modo 600; es idempotente, nunca sobrescribe. Las DEK por clase de dato las crea el api al arrancar (US-025).
 4. `curl http://localhost:${API_PORT:-8000}/health` y `curl http://localhost:${WEB_PORT:-80}/api/v1/health` responden 200. Al arrancar, el api aplica las migraciones y crea las llaves de datos (DEK) que falten.
-5. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools seed` crea el primer administrador con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`. Rechaza el marcador `cambiar-esto` y cualquier contraseña corta o común; es idempotente. Borra `ADMIN_INITIAL_PASSWORD` del `.env` después del primer arranque.
+5. Primer administrador. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` no van en `.env`: van en `.env.seed`, que solo lee el servicio `tools` (M-8).
+   1. `cp .env.seed.example .env.seed` y llena las dos variables (contraseña de 12 o más caracteres).
+   2. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools seed` crea el admin, que debe cambiar la contraseña al entrar. Rechaza el marcador `cambiar-esto` y cualquier contraseña corta o común; es idempotente (una segunda corrida dice "omitido").
+   3. Borra `.env.seed` (`rm .env.seed`) en cuanto el seed termine: nunca se versiona y no hace falta para arrancar.
 6. Desarrollo en el host: `cd api && uv sync`, `uv run pytest` (usa `TEST_DATABASE_URL` contra `db_test`), `uv run ruff check . && uv run ruff format . && uv run mypy src`.
 
 **Si pierdes la KEK (`kek.bin` del volumen `keys`), pierdes para siempre los datos cifrados de los socios. Respáldala fuera del servidor antes de cargar datos reales** (procedimiento de exportación en US-116, Sprint 4B).

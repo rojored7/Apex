@@ -25,6 +25,11 @@ export const FEATURES = [
 
 export type Feature = (typeof FEATURES)[number];
 
+/** Una ruta (o entrada del menú) está habilitada si no declara feature o si la suya lo está. */
+export function isRouteEnabled(route: { feature?: Feature | undefined }, enabled: ReadonlySet<Feature>): boolean {
+  return route.feature === undefined || enabled.has(route.feature);
+}
+
 /** Features del Sprint 2 (decisión 25 del blueprint). */
 export const ENABLED_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   "auth",

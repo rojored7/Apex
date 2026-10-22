@@ -69,7 +69,7 @@ test("el front carga sin violaciones de CSP", async ({ page }) => {
   expect(csp).not.toContain("unsafe-inline");
   expect(csp).not.toContain("unsafe-eval");
 
-  await expect(page.getByRole("heading", { level: 1, name: "APEX" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
   const violations = await page.evaluate(() => window.__cspViolations);
   expect(violations).toEqual([]);
 });
@@ -80,7 +80,7 @@ test("un script en línea sin nonce queda bloqueado", async ({ page }) => {
   await serveLikeNginx(page, (html) => html.replace("</body>", "<script>window.__inlineRan = true;</script></body>"));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "APEX" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
 
   const result = await page.evaluate(() => ({ ran: window.__inlineRan === true, violations: window.__cspViolations }));
   expect(result.ran).toBe(false);

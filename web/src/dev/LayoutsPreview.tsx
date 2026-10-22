@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { FEATURES } from "../config/features";
-import { ROLES, type Role } from "../core/auth";
+import { ROLE_LABELS, ROLES, type Role } from "../core/auth";
 import { GymLayout } from "../layouts/GymLayout";
 import { buildNavItems } from "../layouts/nav";
 import { PanelLayout } from "../layouts/PanelLayout";
@@ -18,7 +18,6 @@ import styles from "./preview.module.css";
 export const VIEWS = ["panel", "portal", "gym", "tv"] as const;
 export type PreviewView = (typeof VIEWS)[number];
 
-const SAMPLE_ROLE_LABELS: Readonly<Record<Role, string>> = { admin: "Admin", coach: "Coach", member: "Socio" };
 const ALL_FEATURES = new Set(FEATURES);
 
 export interface PreviewParams {
@@ -40,7 +39,7 @@ function PanelSample({ role, theme }: { role: Role; theme: ForcedTheme }) {
   return (
     <MemoryRouter initialEntries={["/socios"]}>
       <PanelLayout
-        user={{ email: `${role}@apex.test`, roleLabel: SAMPLE_ROLE_LABELS[role] }}
+        user={{ email: `${role}@apex.test`, roleLabel: ROLE_LABELS[role] }}
         gymName="Box de muestra"
         navGroups={buildNavItems(role, ALL_FEATURES)}
         onChangePassword={() => undefined}

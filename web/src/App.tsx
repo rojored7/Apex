@@ -1,10 +1,24 @@
-import styles from "./App.module.css";
+// S2-F2: raíz de la app. TanStack Query, el rol de la sesión para useCan/<Can> y el router
+// creado desde config/routeTable.ts. El router se crea una sola vez por montaje.
+import { QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
+import { RouterProvider } from "react-router";
+import { queryClient } from "./core/api/queryClient";
+import { SessionRoleProvider } from "./core/auth/SessionRole";
+import { createAppRouter, type AppRouter } from "./routes";
 
-export function App() {
+export interface AppProps {
+  /** Router ya creado (pruebas); por defecto, el del navegador. */
+  router?: AppRouter;
+}
+
+export function App({ router }: AppProps) {
+  const [appRouter] = useState(() => router ?? createAppRouter());
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>APEX</h1>
-      <p className={styles.note}>Año, Bogotá, ÑANDÚ</p>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <SessionRoleProvider>
+        <RouterProvider router={appRouter} />
+      </SessionRoleProvider>
+    </QueryClientProvider>
   );
 }

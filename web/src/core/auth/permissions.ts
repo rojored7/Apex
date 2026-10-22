@@ -55,7 +55,14 @@ const TABLE = {
   "me.progress.view": MEMBER,
   "me.profile.update": MEMBER,
   "me.notifications.manage": MEMBER,
+  // S2-D23: entrada al portal; homeFor la usa en lugar de comparar el rol con un literal.
+  "portal.view": MEMBER,
+  // S2-F2: /clases/horario es solo admin (ROUTES.md, "Clases").
+  "classes.schedule": ADMIN,
 } as const satisfies Record<string, readonly Role[]>;
+
+/** Etiqueta visible de cada rol (TopBar, listas de usuarios). */
+export const ROLE_LABELS: Readonly<Record<Role, string>> = Object.freeze({ admin: "Admin", coach: "Coach", member: "Socio" });
 
 export type Action = keyof typeof TABLE;
 

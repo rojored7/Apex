@@ -1,7 +1,7 @@
 // US-061 T1: el menú lateral sale de una función pura filtrada por can() y por las
 // features habilitadas (criterios 1 a 3).
 import { ENABLED_FEATURES, FEATURES, type Feature } from "../config/features";
-import { ACTIONS } from "../core/auth";
+import { canAccessRoute, findRoute } from "../core/auth/routeAccess";
 import { NAV_CATALOG, buildNavItems, type NavGroup } from "./nav";
 
 const labels = (groups: NavGroup[]): string[] => groups.flatMap((g) => g.items.map((i) => i.label));
@@ -81,12 +81,21 @@ describe("buildNavItems", () => {
     expect(groups[0]?.items.map((i) => i.label)).toEqual(["Inicio"]);
   });
 
-  it("cada entrada del catálogo declara una acción de la matriz y una feature conocida", () => {
+  it("cada entrada del catálogo apunta a una ruta de la tabla con su misma feature (S2-F2)", () => {
     expect(NAV_CATALOG.length).toBeGreaterThan(0);
     for (const item of NAV_CATALOG) {
-      expect(ACTIONS).toContain(item.action);
+      const route = findRoute(item.to);
+      expect(route, item.to).not.toBeNull();
+      expect(route?.feature).toBe(item.feature);
       expect(FEATURES).toContain(item.feature);
-      expect(item.to.startsWith("/")).toBe(true);
+    }
+  });
+
+  it("filtra con canAccessRoute: la visibilidad sigue al acceso de la ruta", () => {
+    const enabled = new Set<Feature>(FEATURES);
+    for (const role of ["admin", "coach", "member"] as const) {
+      const visible = new Set(labels(buildNavItems(role, enabled)));
+      for (const item of NAV_CATALOG) expect(visible.has(item.label)).toBe(canAccessRoute(role, item.to));
     }
   });
 });

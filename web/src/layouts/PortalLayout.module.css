@@ -1,0 +1,98 @@
+/* US-062 T2: portal en una columna con menú inferior fijo. Solo variables de tokens.css.
+   DESIGN-GAP: tokens.css no define el ancho de la columna del portal (600 px en DESIGN.md)
+   ni el alto del menú inferior; se declaran aquí como propiedades del layout. */
+.shell {
+  --portal-column: 600px;
+  --portal-tabs-height: calc(var(--control) + var(--space-5));
+
+  box-sizing: border-box;
+  max-width: var(--portal-column);
+  min-height: 100vh;
+  margin: 0 auto;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.logo {
+  display: block;
+  width: auto;
+  height: 22px;
+}
+
+.gym {
+  overflow: hidden;
+  color: var(--muted);
+  font: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--space-2) var(--space-4) 0;
+  padding-bottom: calc(var(--portal-tabs-height) + env(safe-area-inset-bottom) + var(--space-4));
+}
+
+.tabs {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  box-sizing: border-box;
+  max-width: var(--portal-column);
+  height: calc(var(--portal-tabs-height) + env(safe-area-inset-bottom));
+  margin: 0 auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+
+.tabList {
+  display: flex;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tabItem {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: 100%;
+  min-height: var(--control);
+  padding: var(--space-1);
+  border-top: 3px solid transparent;
+  color: var(--ink);
+  font: var(--text-label);
+  text-decoration: none;
+}
+
+.tab:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+/* Activo: texto azul, peso 700 y línea superior (no solo color). */
+.active {
+  border-top-color: var(--apex-blue);
+  color: var(--blue-deep);
+  font-weight: 700;
+}

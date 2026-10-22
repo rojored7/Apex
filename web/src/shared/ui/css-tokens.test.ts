@@ -20,12 +20,15 @@ const NEW_IN_SPRINT_1 = [
   "MaskedValue",
   "HistoryAside",
 ];
+// US-061: barra superior y menú lateral.
+const NEW_IN_SPRINT_2 = ["TopBar", "SideNav"];
+const WITH_FOCUS = [...NEW_IN_SPRINT_1, ...NEW_IN_SPRINT_2];
 
 const read = (file: string): string => readFileSync(`${DIR}${file}`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 describe("CSS Modules del kit compartido", () => {
   it("incluye los módulos del Sprint 1", () => {
-    for (const name of NEW_IN_SPRINT_1) expect(MODULES).toContain(`${name}.module.css`);
+    for (const name of WITH_FOCUS) expect(MODULES).toContain(`${name}.module.css`);
   });
 
   it.each(MODULES)("%s no tiene colores ni fuentes literales", (file) => {
@@ -37,7 +40,7 @@ describe("CSS Modules del kit compartido", () => {
     expect(css).not.toMatch(/\bfont\s*:(?!\s*(var\(|inherit))/);
   });
 
-  it.each(NEW_IN_SPRINT_1.map((n) => `${n}.module.css`))("%s tiene foco visible con borde azul de tokens", (file) => {
+  it.each(WITH_FOCUS.map((n) => `${n}.module.css`))("%s tiene foco visible con borde azul de tokens", (file) => {
     expect(read(file)).toMatch(/:focus-visible[^{]*\{[^}]*(outline|box-shadow)\s*:[^;]*var\(--(blue-deep|apex-blue)\)/);
   });
 });

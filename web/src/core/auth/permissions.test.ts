@@ -1,7 +1,7 @@
 // US-040 T1: tabla de verdad completa de la matriz de permisos. La matriz esperada es una
 // copia literal del desglose (con N-20, Q6, Q7, Q8, Q15, Q25 y N-29 aplicados): si alguien
 // cambia permissions.ts sin cambiar esta copia, la prueba falla.
-import { ACTIONS, MATRIX, ROLES, can, type Action, type Role } from "./permissions";
+import { ACTIONS, MATRIX, ROLE_LABELS, ROLES, can, type Action, type Role } from "./permissions";
 
 const ADMIN_ONLY = [
   "members.delete",
@@ -18,6 +18,8 @@ const ADMIN_ONLY = [
   "settings.manage",
   "crypto.manage",
   "notifications.rules.edit",
+  // S2-F2: /clases/horario es solo admin (ROUTES.md, "Clases").
+  "classes.schedule",
 ] as const;
 
 const STAFF = [
@@ -50,7 +52,12 @@ const MEMBER_ONLY = [
   "me.progress.view",
   "me.profile.update",
   "me.notifications.manage",
+  // S2-D23: homeFor usa can(role, "portal.view") en lugar de comparar el rol con un literal.
+  "portal.view",
 ] as const;
+
+/** Acciones del portal del socio: las me.* más la entrada al portal (S2-D23). */
+const isPortalAction = (action: string): boolean => action.startsWith("me.") || action === "portal.view";
 
 type Entry = [string, readonly string[]];
 
@@ -95,11 +102,21 @@ describe("matriz de permisos del front (US-040)", () => {
   });
 
   it("criterio 3: admin tiene todo el panel y nada del portal", () => {
-    for (const action of ACTIONS) expect(can("admin", action)).toBe(!action.startsWith("me."));
+    for (const action of ACTIONS) expect(can("admin", action)).toBe(!isPortalAction(action));
   });
 
-  it("criterio 4: member solo tiene acciones me.*", () => {
-    for (const action of ACTIONS) expect(can("member", action)).toBe(action.startsWith("me."));
+  it("criterio 4: member solo tiene acciones del portal (me.* y portal.view)", () => {
+    for (const action of ACTIONS) expect(can("member", action)).toBe(isPortalAction(action));
+  });
+
+  it("S2-D23: portal.view distingue al socio sin comparar el rol con un literal", () => {
+    expect(ROLES.filter((role) => can(role, "portal.view"))).toEqual(["member"]);
+    expect(can("coach", "classes.schedule")).toBe(false);
+  });
+
+  it("ROLE_LABELS da la etiqueta visible de cada rol", () => {
+    expect(ROLE_LABELS).toEqual({ admin: "Admin", coach: "Coach", member: "Socio" });
+    expect(Object.isFrozen(ROLE_LABELS)).toBe(true);
   });
 
   it("criterio 5: niega por defecto sin rol, con acción desconocida o con rol desconocido", () => {

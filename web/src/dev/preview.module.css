@@ -1,0 +1,93 @@
+/* Estilos de las páginas de muestra (catalog.html). Solo variables de tokens.css. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.screenTitle {
+  margin: 0;
+  font: var(--text-screen-title);
+  text-transform: uppercase;
+}
+
+.greeting {
+  margin: 0;
+  font: var(--text-kpi);
+}
+
+.card {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.cardTitle {
+  margin: 0 0 var(--space-2);
+  font: var(--text-h2);
+}
+
+.index {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.linkList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Sobre --surface, --blue-deep no llega a 4,5:1 en claro: los enlaces van en --ink subrayados. */
+.linkList a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.linkList a:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.navSample {
+  max-width: var(--sidebar);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+@media (width < 768px) {
+  .index {
+    padding: var(--space-4);
+  }
+}
+
+.tvLabel {
+  margin: 0;
+  color: var(--apex-blue);
+  font: var(--text-section-title);
+  text-transform: uppercase;
+}
+
+.tvTitle {
+  margin: 0;
+  font: var(--text-tv-title);
+  text-transform: uppercase;
+}

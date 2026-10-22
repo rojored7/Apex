@@ -1,0 +1,10 @@
+/* US-067 T5: la 404 va fuera de los layouts (ruta comodín), sobre --surface. */
+.page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--space-8) var(--space-4);
+  background: var(--surface);
+}

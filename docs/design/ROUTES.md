@@ -10,11 +10,12 @@ Convenciones fijadas en el gate del 21 de octubre de 2026 (`docs/ddd/DECISIONES.
 - `/recuperar` → `Login.html` (tarjeta "Olvidé mi contraseña"). POST `/auth/forgot`.
 - `/restablecer/:token` → `Login.html` (tarjeta "Nueva contraseña / Activar cuenta"). POST `/auth/reset`.
 - `/tv?token=…` → `TV.html`. GET `/tv/today` cada 30 s. Sin sesión; el token lo da Configuración.
+- `/cambiar-clave` → sin pantalla propia (`// DESIGN-GAP:`; usa la tarjeta "Nueva contraseña" de `Login.html`). Con sesión, cualquier rol. POST `/auth/me/password`. Toda ruta con sesión lleva aquí mientras `must_change_password` sea verdadero (S2-D18).
 
 ## Panel (layout: TopBar + SideNav) — admin y coach
 
 Inicio
-- `/` → `Inicio.html`. GET `/dashboard` (socios al día, por vencer, vencidos, ingresos del mes, asistencia semana, sesiones de hoy, por avisar, últimos movimientos).
+- `/` → `Inicio.html`. GET `/dashboard` (socios al día, por vencer, vencidos, ingresos del mes, asistencia semana, sesiones de hoy, por avisar, últimos movimientos). Hasta que exista GET `/dashboard` (Sprint 3), Inicio es mínima: saludo con el correo y accesos a Socios y, para admin, Planes, Usuarios y Configuración (`// DESIGN-GAP:`, S2-D25).
 
 Socios (módulo 1)
 - `/socios` → `Socios_Lista.html` (celular: `Socios_Movil.html`). GET `/members?q&status&plan&last_attendance&sort&limit&offset` (`last_attendance` solo desde v0.4; la lista trae `membership_status` resuelto y nunca datos cifrados).
@@ -80,3 +81,4 @@ Sistema (módulos 11 a 14) — solo admin
 - Admin: todo.
 - Coach: ve y usa Inicio, Hoy, Socios (ver, crear, editar), Membresías y Pagos (vender y registrar; no anular), Clases, WODs, Movimientos, Atleta, Avisos. No ve Sistema ni Planes. El front oculta los botones; el API vuelve a verificar.
 - Socio: solo `/mi/*`.
+- La tabla única de rutas del front es `web/src/config/routeTable.ts` (S2-D23): ruta, feature, acceso (acción de `web/src/core/auth/permissions.ts`) y layout. `web/src/config/routes.reference.ts` es su copia escrita a mano desde este archivo y una prueba exige que coincidan: si cambia una ruta aquí, cambian los dos. `/clases/horario` usa la acción `classes.schedule` (solo admin) y el inicio por rol sale de `portal.view` (solo socio).

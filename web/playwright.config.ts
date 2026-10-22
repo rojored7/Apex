@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // S2-W0-1: dos proyectos.
-// - `preview`: el build servido por `vite preview` (sin api); lo arranca webServer.
+// - `preview`: el build servido por `vite preview` (sin api); lo arranca webServer con
+//   build:catalog, que genera el mismo index.html de producción más catalog.html (layouts y
+//   kit de muestra de US-061, US-062 y US-068), que solo existe para estas pruebas.
 // - `stack`: el stack de Compose (Nginx + api + db) en E2E_BASE_URL. Con esa variable no se
 //   arranca ningún webServer: el stack ya está arriba (job e2e-stack de CI o 8180 local).
 const PORT = 4173;
@@ -28,7 +30,7 @@ export default defineConfig({
   ...(STACK_URL === undefined
     ? {
         webServer: {
-          command: `npm run build && npm run preview -- --port ${String(PORT)} --strictPort`,
+          command: `npm run build:catalog && npm run preview -- --port ${String(PORT)} --strictPort`,
           port: PORT,
           reuseExistingServer: !process.env.CI,
           timeout: 180_000,

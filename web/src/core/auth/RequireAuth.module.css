@@ -1,0 +1,12 @@
+/* US-053 T4: estado de carga mientras se restaura la sesión. Solo variables de tokens.css. */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--surface);
+  color: var(--muted);
+  font: var(--text-body);
+}

@@ -1,0 +1,24 @@
+/* US-068 T4: conmutador de tema, pensado para la barra negra de la TopBar (texto --white en
+   los dos temas). Solo variables de tokens.css. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--black);
+  color: var(--white);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--white);
+}
+
+.toggle:focus-visible {
+  outline: 3px solid var(--apex-blue);
+  outline-offset: 2px;
+}

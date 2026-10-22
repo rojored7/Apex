@@ -1,6 +1,8 @@
+// S2-F2 (reescrita): la app arranca con el router, sin sesión termina en /login con las
+// fuentes locales y sin peticiones a otros orígenes.
 import { expect, test } from "@playwright/test";
 
-test("la página mínima carga APEX con fuentes locales y sin peticiones externas", async ({ page }) => {
+test("sin sesión la app carga /login con fuentes locales y sin peticiones externas", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => {
     requests.push(request.url());
@@ -8,8 +10,9 @@ test("la página mínima carga APEX con fuentes locales y sin peticiones externa
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { level: 1, name: "APEX" })).toBeVisible();
-  await expect(page.getByText("Año, Bogotá, ÑANDÚ")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "APEX Hybrid Training" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/login");
 
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;

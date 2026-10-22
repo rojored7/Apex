@@ -1,0 +1,149 @@
+/* US-061 T5: menú lateral. Solo variables de tokens.css. */
+.nav {
+  box-sizing: border-box;
+  padding: var(--space-3);
+  background: var(--card);
+}
+
+.inline {
+  width: var(--sidebar);
+  flex: 0 0 var(--sidebar);
+  border-right: 1px solid var(--line);
+}
+
+.groups,
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group + .group {
+  margin-top: var(--space-2);
+}
+
+.groupTitle {
+  margin: 0;
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  color: var(--muted);
+  font: var(--text-section-title);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: var(--text-body);
+  text-decoration: none;
+}
+
+.link:hover {
+  background: var(--blue-tint);
+}
+
+.link:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Activo: fondo invertido más barra lateral y peso 700 (no solo color). En oscuro --ink es
+   claro y --surface oscuro: fondo claro con texto oscuro, como pide DESIGN.md. */
+.active,
+.active:hover {
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 700;
+  box-shadow: inset 4px 0 0 var(--apex-blue);
+}
+
+.icon {
+  flex: 0 0 auto;
+}
+
+/* Tablet (768 a 1023 px): menú plegado a iconos; el texto sigue para lectores de pantalla. */
+@media (768px <= width < 1024px) {
+  .inline {
+    width: calc(var(--control) + var(--space-3) * 2);
+    flex-basis: calc(var(--control) + var(--space-3) * 2);
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .inline .groupTitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .inline .link {
+    justify-content: center;
+    padding: var(--space-2);
+  }
+
+  .inline .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Cajón de celular. DESIGN-GAP: sin token de velo; --black al 45 % como SidePanel. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--black) 45%, transparent);
+}
+
+.drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--sidebar), 85vw);
+  overflow-y: auto;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.drawer:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+.close {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  margin: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.close:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

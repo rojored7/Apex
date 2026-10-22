@@ -1,11 +1,12 @@
 // US-053 T4 y T7: sin sesión se va a /login?next=<ruta>; al recargar se restaura una sola
 // vez (un refresh y un me); con must_change_password se va a /cambiar-clave (S2-D18).
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { mockApi } from "../../test/server";
 import { signInAs, signOutForTests } from "../../test/session";
 import { RequireAuth } from "./RequireAuth";
+import { clearSession } from "./session";
 
 const ME = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -91,5 +92,32 @@ describe("RequireAuth", () => {
 
     expect(await screen.findByRole("heading", { name: "Cambiar contraseña" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/cambiar-clave");
+  });
+});
+
+describe("RequireAuth tras cerrar la sesión (S2-F3)", () => {
+  it.each(["logout", "logout_unconfirmed"] as const)("con la razón %s va a /login sin next", async (reason) => {
+    signInAs("coach");
+    const router = setup("/socios");
+    expect(screen.getByRole("heading", { name: "Socios" })).toBeInTheDocument();
+
+    act(() => {
+      clearSession(reason);
+    });
+
+    expect(await screen.findByRole("heading", { name: "Pantalla de login" })).toBeInTheDocument();
+    expect(`${router.state.location.pathname}${router.state.location.search}`).toBe("/login");
+  });
+
+  it("con la sesión vencida conserva next para volver", async () => {
+    signInAs("coach");
+    const router = setup("/socios?estado=activo");
+
+    act(() => {
+      clearSession("expired");
+    });
+
+    expect(await screen.findByRole("heading", { name: "Pantalla de login" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe(`?next=${encodeURIComponent("/socios?estado=activo")}`);
   });
 });

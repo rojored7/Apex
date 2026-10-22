@@ -1,7 +1,7 @@
 // @vitest-environment node
 // US-059 T1: el envelope { error: { code, message, field?, existing_id? } } del api se
 // convierte en ApiError; lo que no es envelope da network_error con mensaje en español.
-import { ApiError, GENERIC_MESSAGES, isApiError, parseApiError } from "./errors";
+import { ApiError, GENERIC_MESSAGES, isApiError, parseApiError, parseRetryAfter } from "./errors";
 
 describe("parseApiError", () => {
   it("lee un envelope completo con field y existing_id", () => {
@@ -80,5 +80,31 @@ describe("parseApiError", () => {
   it("los mensajes genéricos están en español", () => {
     expect(GENERIC_MESSAGES.network_error).toBe("No pudimos conectar con el servidor. Intenta de nuevo.");
     expect(GENERIC_MESSAGES.timeout).toBe("El servidor tardó demasiado en responder. Intenta de nuevo.");
+  });
+});
+
+describe("Retry-After (S2-F3, 429 del login y del refresh)", () => {
+  const NOW = Date.UTC(2026, 9, 22, 15, 0, 0);
+
+  it.each([
+    ["30", 30],
+    [" 5 ", 5],
+    ["0", 0],
+    ["Thu, 22 Oct 2026 15:00:45 GMT", 45],
+    ["Thu, 22 Oct 2026 14:59:00 GMT", 0],
+  ])("'%s' son %d s", (value, expected) => {
+    expect(parseRetryAfter(value, NOW)).toBe(expected);
+  });
+
+  it.each([null, undefined, "", "-3", "1.5", "pronto", "99999999999"])("'%s' no es un valor válido", (value) => {
+    expect(parseRetryAfter(value, NOW)).toBeUndefined();
+  });
+
+  it("parseApiError guarda los segundos de espera", () => {
+    const body = { error: { code: "rate_limited", message: "Demasiadas solicitudes" } };
+
+    expect(parseApiError(429, body, "12").retryAfterS).toBe(12);
+    expect(parseApiError(429, body).retryAfterS).toBeUndefined();
+    expect(parseApiError(429, "no es json", "12")).toMatchObject({ code: "network_error", retryAfterS: 12 });
   });
 });

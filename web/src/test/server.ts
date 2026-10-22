@@ -11,6 +11,8 @@ import { RoleProvider, type Role } from "../core/auth";
 export interface MockReply {
   status: number;
   body?: unknown;
+  /** Cabeceras extra de la respuesta (por ejemplo `Retry-After` de un 429, S2-F3). */
+  headers?: Record<string, string>;
 }
 
 export type MockHandler = MockReply | ((call: RecordedCall) => MockReply | Promise<MockReply>);
@@ -21,6 +23,8 @@ export interface RecordedCall {
   url: string;
   headers: Headers;
   body: unknown;
+  /** `credentials` del `RequestInit` (S2-D44: siempre "same-origin"). */
+  credentials: RequestCredentials | undefined;
 }
 
 export interface ApiMock {
@@ -48,7 +52,14 @@ export function mockApi(handlers: Record<string, MockHandler>): ApiMock {
     const pathname = new URL(url, "http://apex.test").pathname;
     const path = pathname.startsWith(API_PREFIX) ? pathname.slice(API_PREFIX.length) : pathname;
     const method = (init?.method ?? "GET").toUpperCase();
-    const call: RecordedCall = { method, path, url, headers: new Headers(init?.headers), body: parseBody(init) };
+    const call: RecordedCall = {
+      method,
+      path,
+      url,
+      headers: new Headers(init?.headers),
+      body: parseBody(init),
+      credentials: init?.credentials,
+    };
     calls.push(call);
     const handler = handlers[`${method} ${path}`];
     const reply: MockReply =
@@ -60,7 +71,7 @@ export function mockApi(handlers: Record<string, MockHandler>): ApiMock {
     const text = reply.body === undefined ? null : JSON.stringify(reply.body);
     return new Response(reply.status === 204 ? null : text, {
       status: reply.status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...reply.headers },
     });
   };
   vi.stubGlobal("fetch", vi.fn(fake));

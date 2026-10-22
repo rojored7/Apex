@@ -21,3 +21,13 @@ describe("src/core/auth", () => {
     }
   });
 });
+
+describe("src/core/auth · S2-F3", () => {
+  it("exporta el refresh coordinado, el cierre de sesión y el puente con el cliente", () => {
+    expect(auth.AUTH_CHANNEL).toBe("apex-auth");
+    expect(auth.REFRESH_LOCK).toBe("apex-refresh");
+    for (const fn of [auth.refreshAccessToken, auth.refreshCurrentUser, auth.adoptAccessToken, auth.logout, auth.installSessionBridge]) {
+      expect(typeof fn).toBe("function");
+    }
+  });
+});

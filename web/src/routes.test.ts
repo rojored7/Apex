@@ -57,13 +57,13 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("en el Sprint 2 Inicio y Configuración (S2-F5) tienen página; las del sprint que faltan quedan pendientes", () => {
-    expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual(["/", "/sistema/configuracion"]);
+  it("en el Sprint 2 Login (S2-F3), Inicio y Configuración (S2-F5) tienen página; las del sprint que faltan quedan pendientes", () => {
+    expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual(["/login", "/", "/sistema/configuracion"]);
     expect(
       ROUTE_TABLE.filter((r) => r.pending)
         .map((r) => r.path)
         .sort(),
-    ).toEqual(["/cambiar-clave", "/login", "/planes", "/recuperar", "/restablecer/:token", "/sistema/usuarios", "/socios", "/socios/nuevo"].sort());
+    ).toEqual(["/cambiar-clave", "/planes", "/recuperar", "/restablecer/:token", "/sistema/usuarios", "/socios", "/socios/nuevo"].sort());
     for (const route of ROUTE_TABLE.filter((r) => r.load || r.pending)) expect(ENABLED_FEATURES.has(route.feature as never)).toBe(true);
   });
 });

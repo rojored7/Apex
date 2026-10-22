@@ -6,7 +6,7 @@ Convenciones fijadas en el gate del 21 de octubre de 2026 (`docs/ddd/DECISIONES.
 
 ## Acceso (sin sesión)
 
-- `/login` → `Login.html`. POST `/auth/login`. Según el rol redirige a `/` (admin, coach) o `/mi` (socio).
+- `/login` → `Login.html` (S2-F3, `features/auth/pages/LoginPage.tsx`). POST `/auth/login` (cookie `apex_refresh` HttpOnly, `Path=/api/v1/auth`; el access queda solo en memoria); luego GET `/auth/me` para el nombre del gimnasio. Con `must_change_password` va a `/cambiar-clave`; si no, a `next` cuando `safeNext` lo acepta para el rol, o al inicio del rol: `/` (admin, coach) o `/mi` (socio). Errores: 401 siempre "Correo o contraseña incorrectos"; 429 con la cuenta atrás de `Retry-After` y el botón bloqueado; 403 de `Origin`, red y 5xx con mensaje genérico. Avisa al llegar si el cierre anterior no lo confirmó el servidor (H-1) o si la sesión venció. Bajo el logo dice "APEX" (`// DESIGN-GAP:`, S2-D50: `gym_name` solo llega con sesión). "Cerrar sesión" del TopBar: POST `/auth/logout` (por la cookie) y, pase lo que pase, limpia la sesión de todas las pestañas (`apex-auth`) y vuelve aquí.
 - `/recuperar` → `Login.html` (tarjeta "Olvidé mi contraseña"). POST `/auth/forgot`.
 - `/restablecer/:token` → `Login.html` (tarjeta "Nueva contraseña / Activar cuenta"). POST `/auth/reset`.
 - `/tv?token=…` → `TV.html`. GET `/tv/today` cada 30 s. Sin sesión; el token lo da Configuración.

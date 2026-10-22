@@ -116,7 +116,7 @@ describe("UsersPage · estructura (Usuarios.html)", () => {
     expect(within(filters).getByRole("searchbox", { name: "Buscar" })).toHaveAttribute("placeholder", "Correo");
     expect(within(filters).getByRole("combobox", { name: "Rol" })).toBeInTheDocument();
     expect(within(filters).getByRole("combobox", { name: "Estado" })).toBeInTheDocument();
-    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Correo", "Rol", "Estado", "Último acceso", "Sesiones abiertas"]);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Correo", "Rol", "Estado", "Último acceso", "Sesiones abiertas", "Acción"]);
   });
 
   it("cada fila trae correo como enlace, rol, estado con texto, último acceso en Bogotá y sesiones", async () => {
@@ -125,8 +125,8 @@ describe("UsersPage · estructura (Usuarios.html)", () => {
     const link = await screen.findByRole("link", { name: "ana@apex.test" });
     expect(link).toHaveAttribute("href", "/sistema/usuarios?usuario=11111111-1111-4111-8111-111111111111");
     const [, ana, carlos, luis] = within(table()).getAllByRole("row");
-    expect(within(ana as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["ana@apex.test", "Admin", "Activo", "21 oct 2026, 2:30 p. m.", "2"]);
-    expect(within(carlos as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["carlos@apex.test", "Coach", "Pendiente de activación", "Nunca", "0"]);
+    expect(within(ana as HTMLElement).getAllByRole("cell").slice(0, 5).map((c) => c.textContent)).toEqual(["ana@apex.test", "Admin", "Activo", "21 oct 2026, 2:30 p. m.", "2"]);
+    expect(within(carlos as HTMLElement).getAllByRole("cell").slice(0, 5).map((c) => c.textContent)).toEqual(["carlos@apex.test", "Coach", "Pendiente de activación", "Nunca", "0"]);
     expect(within(luis as HTMLElement).getByText("Bloqueado")).toHaveAttribute("data-account", "locked");
     expect(within(luis as HTMLElement).getByText("12 ago 2026, 6:10 p. m.")).toBeInTheDocument();
   });

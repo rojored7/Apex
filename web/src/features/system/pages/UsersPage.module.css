@@ -11,3 +11,51 @@
   color: var(--muted);
   font: var(--text-caption);
 }
+
+/* S2-F4b: aviso del resultado de una acción de la fila. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.notice > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background: var(--card);
+}
+
+.dismiss:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* La fecha y la hora del último acceso no se parten ("2:30 p. m."). */
+.nowrap {
+  white-space: nowrap;
+}

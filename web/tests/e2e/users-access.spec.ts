@@ -95,12 +95,12 @@ test("la búsqueda va al api y nunca a la URL; los filtros sí", async ({ page }
   const api = await fakeApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/sistema/usuarios");
-  await expect(page.getByRole("link", { name: "luis@apex.test" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "luis@apex.test", exact: true })).toBeVisible();
 
   await page.getByRole("searchbox", { name: "Buscar" }).fill("luis");
-  await expect(page.getByRole("link", { name: "admin@apex.test" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "admin@apex.test", exact: true })).toHaveCount(0);
   await expect.poll(() => api.listQueries.some((s) => s.includes("q=luis"))).toBe(true);
-  await expect(page.getByRole("link", { name: "luis@apex.test" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "luis@apex.test", exact: true })).toBeVisible();
   expect(page.url()).not.toContain("luis");
 
   await page.getByRole("combobox", { name: "Rol" }).selectOption("coach");

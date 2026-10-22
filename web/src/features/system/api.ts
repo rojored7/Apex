@@ -14,7 +14,7 @@ import { api } from "../../core/api/client";
 import { ApiError, isApiError } from "../../core/api/errors";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
-import { usersPageSchema, type CreateUserForm, type UserRowView } from "./schemas";
+import { LINK_PURPOSES, userOutSchema, usersPageSchema, type CreateUserForm, type LinkPurpose, type UserRowView, type UserView } from "./schemas";
 
 export type SettingsKey = "gym" | "privacy" | "memberships";
 
@@ -22,6 +22,7 @@ export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga par
 const INVALID_RESPONSE_MESSAGE = "La respuesta del servidor no es válida. Recarga la página e intenta de nuevo.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
 const CONFLICT_STATUS = 409;
+const HTTP_NOT_FOUND = 404;
 
 // Los campos opcionales del api llegan como null; `default(null)` cubre una clave ausente.
 const text = z.string().nullable().default(null);
@@ -218,4 +219,116 @@ export function useCreateUser(): UseMutationResult<CreatedUser, Error, CreateUse
     gcTime: 0,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY }),
   });
+}
+
+// ---------------------------------------------------------------------------------------
+// S2-F4b · US-049 a US-052: detalle, edición, baja, bloqueo, sesiones y reenvío del enlace.
+// - useUser(id): GET /users/{id} (incluye cuentas dadas de baja) con la clave
+//   ["users", "detail", id], dentro de ["users"]: toda mutación de cuentas la invalida.
+// - Las mutaciones validan la respuesta con Zod (una forma inesperada es un error, no un
+//   éxito) e invalidan ["users"] al salir bien.
+// - useResendLink(): L-7, gcTime 0; quien la usa llama reset() al cerrar, así el enlace no
+//   queda en la caché. Solo enlaces http(s).
+export interface UpdateUserChanges {
+  email?: string;
+  role?: UserView["role"];
+}
+
+export interface IssuedLink {
+  url: string;
+  purpose: LinkPurpose;
+  expiresAt: string;
+}
+
+export interface UserTarget {
+  id: string;
+}
+
+export function userQueryKey(id: string): readonly ["users", "detail", string] {
+  return ["users", "detail", id];
+}
+
+const userPath = (id: string, action?: string): string => `/users/${encodeURIComponent(id)}${action ? `/${action}` : ""}`;
+
+const revokedSchema = z.object({ revoked: z.number().int().nonnegative() });
+
+const issuedLinkSchema = z.object({
+  url: z.string().regex(/^https?:\/\/\S+$/),
+  purpose: z.enum(LINK_PURPOSES),
+  expires_at: z.string().datetime({ offset: true }),
+});
+
+function parseOr<T>(schema: z.ZodType<T>, raw: unknown): T {
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) throw invalidResponse();
+  return parsed.data;
+}
+
+/** Mutación de una cuenta que, al salir bien, invalida toda la familia ["users"]. */
+function useUserMutation<TData, TVariables>(
+  mutationFn: (variables: TVariables) => Promise<TData>,
+  options: { gcTime?: number } = {},
+): UseMutationResult<TData, Error, TVariables> {
+  const queryClient = useQueryClient();
+  return useMutation<TData, Error, TVariables>({
+    mutationFn,
+    ...options,
+    // Sin esperar la relectura: cerrar las propias sesiones termina la sesión enseguida
+    // (S2-D37) y la lista se relee en segundo plano.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+    },
+    // 404 y 409 dicen que la lista quedó vieja (otra persona la cambió): se relee.
+    onError: (error) => {
+      if (isApiError(error) && (error.status === HTTP_NOT_FOUND || error.status === CONFLICT_STATUS)) void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+    },
+  });
+}
+
+export function useUser(id: string | null): UseQueryResult<UserView> {
+  return useQuery({
+    queryKey: userQueryKey(id ?? ""),
+    queryFn: async ({ signal }) => parseOr(userOutSchema, await api.get<unknown>(userPath(id ?? ""), { signal })),
+    enabled: Boolean(id),
+    // Volver a la ventana no debe pisar lo que se está editando; y cada apertura lee la cuenta
+    // del servidor (sin copia vieja en caché que luego cambie bajo el formulario).
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+  });
+}
+
+export function useUpdateUser(): UseMutationResult<UserView, Error, UserTarget & { changes: UpdateUserChanges }> {
+  return useUserMutation(async ({ id, changes }: UserTarget & { changes: UpdateUserChanges }) =>
+    parseOr(userOutSchema, await api.patch<unknown>(userPath(id), { body: changes })),
+  );
+}
+
+export function useDeleteUser(): UseMutationResult<undefined, Error, UserTarget> {
+  return useUserMutation(async ({ id }: UserTarget) => {
+    await api.delete<unknown>(userPath(id));
+    return undefined;
+  });
+}
+
+export function useLockUser(): UseMutationResult<UserView, Error, UserTarget> {
+  return useUserMutation(async ({ id }: UserTarget) => parseOr(userOutSchema, await api.post<unknown>(userPath(id, "lock"))));
+}
+
+export function useUnlockUser(): UseMutationResult<UserView, Error, UserTarget> {
+  return useUserMutation(async ({ id }: UserTarget) => parseOr(userOutSchema, await api.post<unknown>(userPath(id, "unlock"))));
+}
+
+/** Devuelve cuántas sesiones cerró el api ({revoked}). */
+export function useRevokeSessions(): UseMutationResult<number, Error, UserTarget> {
+  return useUserMutation(async ({ id }: UserTarget) => parseOr(revokedSchema, await api.post<unknown>(userPath(id, "revoke-sessions"))).revoked);
+}
+
+export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget> {
+  return useUserMutation(
+    async ({ id }: UserTarget) => {
+      const { url, purpose, expires_at } = parseOr(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
+      return { url, purpose, expiresAt: expires_at };
+    },
+    { gcTime: 0 },
+  );
 }

@@ -1,0 +1,40 @@
+/* S2-F4b: acciones de una fila de Usuarios. Solo tokens.css; 44 px de alto (--control). */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.edit {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--blue-deep);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.edit:hover {
+  background: var(--blue-tint);
+  text-decoration: underline;
+}
+
+.edit:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.button {
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+
+/* En celular la fila es una tarjeta: las acciones empiezan a la izquierda, a todo el ancho. */
+@media (width < 768px) {
+  .actions {
+    justify-content: flex-start;
+  }
+}

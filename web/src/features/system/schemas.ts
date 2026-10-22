@@ -141,3 +141,25 @@ export const createUserSchema = z.object({
 
 export type UserRowView = z.infer<typeof userRowSchema>;
 export type CreateUserForm = z.infer<typeof createUserSchema>;
+
+// S2-F4b · US-049 a US-052: detalle de una cuenta (UserOut de B5, incluye dadas de baja),
+// edición (UpdateUserIn: correo y rol) y enlace reenviado (IssuedLinkOut).
+export const userOutSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().min(1),
+  role: z.enum(ROLES),
+  status: z.enum(ACCOUNT_STATUSES),
+  member_id: z.string().nullable(),
+  must_change_password: z.boolean(),
+});
+
+export const LINK_PURPOSES = ["activate", "reset"] as const;
+export type LinkPurpose = (typeof LINK_PURPOSES)[number];
+
+export const editUserSchema = z.object({
+  email: createUserSchema.shape.email,
+  role: z.enum(ROLES),
+});
+
+export type UserView = z.infer<typeof userOutSchema>;
+export type EditUserForm = z.infer<typeof editUserSchema>;

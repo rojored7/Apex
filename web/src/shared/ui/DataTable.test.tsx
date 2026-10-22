@@ -1,5 +1,5 @@
 // US-063 T4 y T8: tabla de lista con estados de carga, vacío y error, orden accesible y
-// vista de tarjetas en celular.
+// vista de tarjetas en celular (S2-F4b: columnas `wide` a todo el ancho de la tarjeta).
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -174,5 +174,18 @@ describe("DataTable", () => {
     expect(within(cards[0] as HTMLElement).getByRole("link", { name: "Laura Gómez" })).toHaveAttribute("href", "/socios/1");
     expect(within(cards[0] as HTMLElement).getByText("Plan vigente")).toBeInTheDocument();
     expect(within(cards[0] as HTMLElement).getByText("Mensual")).toBeInTheDocument();
+  });
+
+  it("en celular un campo wide ocupa todo el ancho de la tarjeta (S2-F4b)", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined })),
+    );
+    renderTable({ columns: [...COLUMNS, { key: "actions", header: "Acción", render: () => "Editar", wide: true }] });
+
+    const [card] = within(screen.getByRole("list", { name: "Socios" })).getAllByRole("listitem");
+    const field = (label: string) => within(card as HTMLElement).getByText(label).parentElement;
+    expect(field("Acción")).toHaveClass("cardFieldWide");
+    expect(field("Plan vigente")).not.toHaveClass("cardFieldWide");
   });
 });

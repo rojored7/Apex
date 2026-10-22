@@ -1,0 +1,29 @@
+/* S2-F4a/F4b: campo del enlace con "Copiar". Solo tokens.css. */
+.copyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.copyRow > :first-child {
+  flex: 1 1 calc(var(--space-4) * 14);
+  min-width: 0;
+}
+
+.status {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.warning {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

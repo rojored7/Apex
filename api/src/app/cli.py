@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 from uuid import UUID, uuid4
 
 import typer
@@ -69,9 +69,47 @@ async def resolve_actor(session: Any, email: str | None) -> UUID:
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 
+DB_TIMEOUTS_CHOICES: Final = ("on", "off")
+
+
+@dataclass
+class _RuntimeOptions:
+    """Opciones globales del proceso del CLI que `cli_runtime` consulta (E7)."""
+
+    db_timeouts: bool = True
+
+
+_runtime_options = _RuntimeOptions()
+
+
 @app.callback()
-def main() -> None:
-    """Comandos de APEX. Con un solo comando, Typer exige el callback para usar subcomandos."""
+def main(
+    db_timeouts: Annotated[
+        str,
+        typer.Option(
+            "--db-timeouts",
+            help="off pone en 0 los tres DB_*_TIMEOUT_MS (rotate-key, sign-audit, importación).",
+        ),
+    ] = "on",
+) -> None:
+    """Comandos de APEX. `--db-timeouts off` va antes del comando (S3-D43, E7)."""
+    if db_timeouts not in DB_TIMEOUTS_CHOICES:
+        raise typer.BadParameter(
+            f"use {' u '.join(DB_TIMEOUTS_CHOICES)}", param_hint="--db-timeouts"
+        )
+    # Cada invocación fija el estado de nuevo: un `off` anterior no se arrastra.
+    _runtime_options.db_timeouts = db_timeouts == "on"
+
+
+def _sin_tiempos_de_espera(settings: Settings) -> Settings:
+    """Copia de `settings` con los tres `DB_*_TIMEOUT_MS` en 0 (`--db-timeouts off`, E7)."""
+    return settings.model_copy(
+        update={
+            "DB_LOCK_TIMEOUT_MS": 0,
+            "DB_STATEMENT_TIMEOUT_MS": 0,
+            "DB_IDLE_IN_TX_TIMEOUT_MS": 0,
+        }
+    )
 
 
 def export_settings() -> Settings:
@@ -248,7 +286,9 @@ async def cli_runtime(settings: Settings) -> AsyncIterator[Any]:
     """Preámbulo común de los comandos que escriben (revisión Python M8): listeners de
     auditoría (US-016), de `crypto_ops` (US-029) y de cifrado (US-028), los services de los
     módulos (sus suscriptores del bus) y el engine de `Settings`; cede una `AsyncSession` sin
-    transacción abierta y libera el engine al salir, falle o no el comando."""
+    transacción abierta y libera el engine al salir, falle o no el comando. Con
+    `--db-timeouts off` el engine sale de una copia con los tres tiempos en 0 (E7); el
+    `Settings` recibido no se muta."""
     from app.core import db
     from app.core.audit import install_audit_listeners
     from app.core.crypto.oplog import install_oplog_listeners
@@ -258,7 +298,8 @@ async def cli_runtime(settings: Settings) -> AsyncIterator[Any]:
     install_oplog_listeners()
     install_crypto_type_listeners()
     _load_module_services()
-    db.configure_engine(db.create_engine_from(settings))
+    efectivos = settings if _runtime_options.db_timeouts else _sin_tiempos_de_espera(settings)
+    db.configure_engine(db.create_engine_from(efectivos))
     try:
         async with db.get_sessionmaker()() as session:
             yield session

@@ -21,7 +21,7 @@ nunca pagina `models` de otro módulo (regla de módulos 2).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Final
 
@@ -34,6 +34,8 @@ DEFAULT_LIMIT: Final = 25
 MAX_LIMIT: Final = 200
 MAX_SEARCH_LENGTH: Final = 100
 MAX_OFFSET: Final = 1_000_000
+# Tamaño de lote de ids para `= ANY(:ids)` en consultas entre módulos (S3-D59, D-5).
+ID_BATCH: Final = 200
 # Sin caracteres de control (categoría Unicode `Cc`). Con escapes, para que el patrón publicado
 # en el OpenAPI sea texto imprimible.
 SEARCH_PATTERN: Final = r"^[^\x00-\x1f\x7f-\x9f]*$"
@@ -98,3 +100,12 @@ async def paginate[T](
 
 def to_page[T](items: Sequence[T], total: int, params: PageParams) -> Page[T]:
     return Page[T](items=list(items), total=total, limit=params.limit, offset=params.offset)
+
+
+def chunked[T](items: Sequence[T], size: int = ID_BATCH) -> Iterator[Sequence[T]]:
+    """Lotes consecutivos de `items` de a `size` (el último puede ser menor), en orden.
+
+    `ValueError` con `size <= 0` (sin el control, `size=0` sería un bucle infinito)."""
+    if size <= 0:
+        raise ValueError(f"chunked exige size > 0 (size={size})")
+    return (items[inicio : inicio + size] for inicio in range(0, len(items), size))

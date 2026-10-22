@@ -39,6 +39,7 @@ from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from ipaddress import IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from typing import TYPE_CHECKING, Final, Literal
+from uuid import UUID
 
 from fastapi import Request
 
@@ -151,6 +152,14 @@ class SlidingWindowStore:
         """Registra una marca sin comprobar el tope (los fallos de login, H-4)."""
         async with self._lock:
             self._historia(key, now, window_s).append(now)
+
+    async def count(self, key: tuple[str, str], now: float, window_s: int) -> int:
+        """Marcas de la clave dentro de la ventana; una clave ausente no se crea (S3-D44)."""
+        async with self._lock:
+            historia = self._marcas.get(key)
+            if historia is None:
+                return 0
+            return sum(1 for t in historia if now - t < window_s)
 
     async def forget(self, key: tuple[str, str]) -> int:
         """Borra la clave y sus subclaves `clave|...` del mismo bucket; devuelve cuántas."""
@@ -300,3 +309,56 @@ def rate_limit(
 
     _dependencia.__apex_rate_limit__ = bucket  # type: ignore[attr-defined]
     return _dependencia
+
+
+# Topes por usuario autenticado (S3-D59, S3-D76; E10 y E15) ---------------------------------
+
+USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
+    "members-write": (60, 60),
+    "members-search": (60, 60),
+    "members-detail": (120, 60),
+    "members-reveal": (30, 60),
+    "members-reveal-hour": (200, 3600),
+    "members-reveal-day": (600, 86400),
+    "memberships-write": (30, 60),
+    "payments-write": (30, 60),
+    "admin-write": (30, 60),
+}
+"""Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
+vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
+
+PII_SEARCH_BUCKET: Final = "members-search"
+"""Bucket de toda búsqueda libre sobre datos de personas (`q` en socios, membresías y pagos)."""
+
+
+def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
+    """Las claves de `USER_LIMITS` con los topes de las `USER_*` de `Settings` (E15) y las
+    ventanas del catálogo."""
+    topes = {
+        "members-write": settings.USER_MEMBERS_WRITE_LIMIT_PER_MIN,
+        "members-search": settings.USER_SEARCH_LIMIT_PER_MIN,
+        "members-detail": settings.USER_DETAIL_LIMIT_PER_MIN,
+        "members-reveal": settings.USER_REVEAL_LIMIT_PER_MIN,
+        "members-reveal-hour": settings.USER_REVEAL_LIMIT_PER_HOUR,
+        "members-reveal-day": settings.USER_REVEAL_LIMIT_PER_DAY,
+        "memberships-write": settings.USER_WRITE_LIMIT_PER_MIN,
+        "payments-write": settings.USER_WRITE_LIMIT_PER_MIN,
+        "admin-write": settings.USER_ADMIN_WRITE_LIMIT_PER_MIN,
+    }
+    return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
+
+
+async def enforce_user_limit(request: Request, bucket: str, user_id: UUID) -> None:
+    """Límite por usuario (`kind="user"`) con el tope de `request.app.state.user_limits`;
+    `KeyError` si `bucket` no está en el catálogo. Lanza `TooManyRequestsError`. El log del
+    429 guarda solo el bucket (nunca el usuario)."""
+    if bucket not in USER_LIMITS:
+        raise KeyError(bucket)
+    topes: Mapping[str, tuple[int, int]] = getattr(request.app.state, "user_limits", USER_LIMITS)
+    tope, ventana = topes[bucket]
+    await enforce(bucket, str(user_id), limit=tope, window_s=ventana, kind="user")
+
+
+async def usage(bucket: str, key: str, *, window_s: int, kind: KeyKind = "user") -> int:
+    """Intentos registrados de `(bucket, key)` dentro de la ventana (S3-D44); no crea la clave."""
+    return await store_for(kind).count((bucket, key), _ahora(), window_s)

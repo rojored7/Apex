@@ -1277,6 +1277,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     change_password_api_v1_auth_me_password_post: {
@@ -1330,6 +1339,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1561,6 +1579,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_member_api_v1_members_post: {
@@ -1639,6 +1666,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_plans_api_v1_plans_get: {
@@ -1694,6 +1730,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1770,6 +1815,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_plan_api_v1_plans__plan_id__get: {
@@ -1837,6 +1891,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_gym_api_v1_settings_gym_get: {
@@ -1877,6 +1940,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1953,6 +2025,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_memberships_api_v1_settings_memberships_get: {
@@ -1993,6 +2074,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2069,6 +2159,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_privacy_api_v1_settings_privacy_get: {
@@ -2109,6 +2208,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2185,6 +2293,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_section_api_v1_settings__section__get: {
@@ -2245,6 +2362,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2332,6 +2458,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_users_api_v1_users_get: {
@@ -2388,6 +2523,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2464,6 +2608,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_user_api_v1_users__user_id__get: {
@@ -2524,6 +2677,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2598,6 +2760,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2685,6 +2856,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     lock_user_api_v1_users__user_id__lock_post: {
@@ -2754,6 +2934,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2837,6 +3026,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     revoke_sessions_api_v1_users__user_id__revoke_sessions_post: {
@@ -2897,6 +3095,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2973,6 +3180,15 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

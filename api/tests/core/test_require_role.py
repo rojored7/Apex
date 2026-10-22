@@ -363,3 +363,68 @@ async def test_todas_las_rutas_autenticadas_exigen_el_cambio_salvo_mi_cuenta(
     assert fallas == [], "\n".join(fallas)
     me = await app_http.get("/api/v1/auth/me", headers=cabeceras(por_rol["coach"]))
     assert me.status_code == 200, me.text
+
+
+# S3-W0-2 · `StaffDep` y `AdminDep` (S3-D59, D-2) ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("usuario", "rol", "esperado"),
+    [(ADMIN, "admin", 200), (COACH, "coach", 200), (MEMBER, "member", 403)],
+    ids=["admin", "coach", "member"],
+)
+async def test_staff_dep_admite_admin_y_coach_y_rechaza_member(
+    app: FastAPI, usuario: UUID, rol: str, esperado: int
+) -> None:
+    status, cuerpo, _ = await _get(app, "staff-dep", _auth(_token(usuario, rol)))
+    assert status == esperado, cuerpo
+    if esperado == 200:
+        assert cuerpo == {"user_id": str(usuario), "role": rol}
+    else:
+        assert cuerpo["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize(
+    ("usuario", "rol", "esperado"),
+    [(ADMIN, "admin", 200), (COACH, "coach", 403), (MEMBER, "member", 403)],
+    ids=["admin", "coach", "member"],
+)
+async def test_admin_dep_solo_admite_admin(
+    app: FastAPI, usuario: UUID, rol: str, esperado: int
+) -> None:
+    status, cuerpo, _ = await _get(app, "admin-dep", _auth(_token(usuario, rol)))
+    assert status == esperado, cuerpo
+    if esperado == 403:
+        assert cuerpo["error"]["code"] == "forbidden"
+
+
+async def test_staff_dep_y_admin_dep_sin_token_dan_401(app: FastAPI) -> None:
+    for ruta in ("staff-dep", "admin-dep"):
+        status, cuerpo, resp = await _get(app, ruta)
+        assert status == 401 and cuerpo["error"]["code"] == "unauthorized", ruta
+        assert resp["www-authenticate"] == "Bearer"
+
+
+def test_staff_dep_y_admin_dep_llevan_la_marca_de_require_role() -> None:
+    """`test_every_route_has_role` reconoce los alias: su dependencia es un `require_role`."""
+    from typing import get_args
+
+    from fastapi.params import Depends as DependsParam
+
+    from app.core.security import AdminDep, StaffDep
+
+    def marca(alias: object) -> frozenset[str]:
+        dependencias = [a for a in get_args(alias) if isinstance(a, DependsParam)]
+        assert len(dependencias) == 1
+        return dependencias[0].dependency.__apex_roles__  # type: ignore[union-attr]
+
+    assert get_args(StaffDep)[0] is Principal and get_args(AdminDep)[0] is Principal
+    assert marca(StaffDep) == frozenset({"admin", "coach"})
+    assert marca(AdminDep) == frozenset({"admin"})
+
+
+def test_las_rutas_con_los_alias_se_ven_con_rol(app: FastAPI) -> None:
+    app.openapi()
+    por_ruta = {r.path: r for r in effective_routes(app)[0]}
+    for ruta in (f"{API_PREFIX}/_t/staff-dep", f"{API_PREFIX}/_t/admin-dep"):
+        assert route_has_role_dependency(por_ruta[ruta]), ruta

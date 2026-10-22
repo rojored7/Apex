@@ -43,7 +43,12 @@ from app.core.crypto.provider import configure_provider, current_provider, get_k
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
-from app.core.ratelimit import KEY_KINDS, configure_store_limits, rate_limits_from
+from app.core.ratelimit import (
+    KEY_KINDS,
+    configure_store_limits,
+    rate_limits_from,
+    user_limits_from,
+)
 from app.core.security import configure_security, get_principal_loader
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
@@ -145,6 +150,7 @@ def _install_middleware(app: FastAPI, settings: Settings) -> None:
     # US-036: redes de confianza y tope del limitador, leídos por rate_limit().
     app.state.trusted_proxies = settings.trusted_proxies
     app.state.rate_limits = rate_limits_from(settings)  # topes por IP de las rutas (E5)
+    app.state.user_limits = user_limits_from(settings)  # topes por usuario (E10, E15)
     configure_store_limits(dict.fromkeys(KEY_KINDS, settings.RATE_LIMIT_MAX_KEYS))  # L-11
     # US-037: CORS cerrado; solo si hay orígenes, exactos y sin credenciales.
     if settings.CORS_ORIGINS:

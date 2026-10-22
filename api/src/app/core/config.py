@@ -61,6 +61,9 @@ _DSN = TypeAdapter(PostgresDsn)
 # Piso de la política N-10 en producción (M5 de la revisión general). `core/security.py` lo
 # expone como `PASSWORD_MIN_LENGTH` y los schemas de contraseña nueva lo usan como `min_length`.
 PASSWORD_MIN_LENGTH_FLOOR: Final[int] = 12
+# Máximo de `lock_timeout`, `statement_timeout` e `idle_in_transaction_session_timeout` en
+# PostgreSQL (INT_MAX, en ms); un valor mayor haría fallar cada conexión (S3-W0-2).
+DB_TIMEOUT_MAX_MS: Final[int] = 2_147_483_647
 _ESQUEMA = "postgresql+asyncpg"
 
 
@@ -178,6 +181,25 @@ class Settings(BaseSettings):
     # Gracia del reuso de refresh (M-2) y tope absoluto de una familia de refresh (L-4).
     REFRESH_REUSE_GRACE_S: int = Field(default=10, gt=0)
     REFRESH_ABSOLUTE_TTL_DAYS: int = Field(default=30, gt=0)
+
+    # Tiempos de espera de la base (S3-D43, H-3): pasan como `server_settings` de asyncpg en
+    # `create_engine_from`. `0` desactiva; solo el CLI con `--db-timeouts off` (E7).
+    # Techo: el máximo de un parámetro entero de PostgreSQL (fuera de él la conexión falla).
+    DB_LOCK_TIMEOUT_MS: int = Field(default=10000, ge=0, le=DB_TIMEOUT_MAX_MS)
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, ge=0, le=DB_TIMEOUT_MAX_MS)
+    DB_IDLE_IN_TX_TIMEOUT_MS: int = Field(default=60000, ge=0, le=DB_TIMEOUT_MAX_MS)
+
+    # Topes por usuario autenticado (S3-D76, E10; correspondencia de E15 en
+    # `ratelimit.user_limits_from`): `USER_WRITE_*` alimenta `memberships-write` y
+    # `payments-write`; `USER_ADMIN_WRITE_*`, `admin-write`; las demás, una a una.
+    USER_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_ADMIN_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_MEMBERS_WRITE_LIMIT_PER_MIN: int = Field(default=60, gt=0)
+    USER_SEARCH_LIMIT_PER_MIN: int = Field(default=60, gt=0)
+    USER_DETAIL_LIMIT_PER_MIN: int = Field(default=120, gt=0)
+    USER_REVEAL_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_REVEAL_LIMIT_PER_HOUR: int = Field(default=200, gt=0)
+    USER_REVEAL_LIMIT_PER_DAY: int = Field(default=600, gt=0)
 
     @field_validator("DATABASE_URL")
     @classmethod

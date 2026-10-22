@@ -349,3 +349,67 @@ def test_en_dev_la_contrasena_minima_puede_bajar_y_en_produccion_subir(tmp_path:
     assert dev.PASSWORD_MIN_LENGTH == 4
     prod = load_settings(env_file=escribir_env(tmp_path, **{"PASSWORD_MIN_LENGTH": "16"}))
     assert prod.PASSWORD_MIN_LENGTH == 16
+
+
+# S3-W0-2 · tiempos de espera de la base (S3-D43) y topes por usuario (S3-D76, E10) ---------
+
+DB_TIMEOUTS: dict[str, int] = {
+    "DB_LOCK_TIMEOUT_MS": 10000,
+    "DB_STATEMENT_TIMEOUT_MS": 30000,
+    "DB_IDLE_IN_TX_TIMEOUT_MS": 60000,
+}
+USER_TOPES: dict[str, int] = {
+    "USER_WRITE_LIMIT_PER_MIN": 30,
+    "USER_ADMIN_WRITE_LIMIT_PER_MIN": 30,
+    "USER_MEMBERS_WRITE_LIMIT_PER_MIN": 60,
+    "USER_SEARCH_LIMIT_PER_MIN": 60,
+    "USER_DETAIL_LIMIT_PER_MIN": 120,
+    "USER_REVEAL_LIMIT_PER_MIN": 30,
+    "USER_REVEAL_LIMIT_PER_HOUR": 200,
+    "USER_REVEAL_LIMIT_PER_DAY": 600,
+}
+
+
+def test_tiempos_de_espera_y_topes_por_usuario_con_sus_valores_por_defecto(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for nombre in (*DB_TIMEOUTS, *USER_TOPES):
+        monkeypatch.delenv(nombre, raising=False)
+    s = load_settings(env_file=escribir_env(tmp_path))
+    for nombre, valor in {**DB_TIMEOUTS, **USER_TOPES}.items():
+        assert getattr(s, nombre) == valor, nombre
+
+
+@pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))
+def test_los_tiempos_de_espera_aceptan_cero_y_rechazan_negativos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str
+) -> None:
+    monkeypatch.delenv(nombre, raising=False)
+    assert getattr(load_settings(env_file=escribir_env(tmp_path, **{nombre: "0"})), nombre) == 0
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{nombre: "-1"}))
+    assert nombre in excinfo.value.invalid
+
+
+@pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))
+def test_los_tiempos_de_espera_tienen_el_techo_de_postgresql(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str
+) -> None:
+    """Revisión de seguridad de W0-2 (LOW): más de INT_MAX ms haría fallar cada conexión."""
+    monkeypatch.delenv(nombre, raising=False)
+    tope = load_settings(env_file=escribir_env(tmp_path, **{nombre: "2147483647"}))
+    assert getattr(tope, nombre) == 2_147_483_647
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{nombre: "2147483648"}))
+    assert nombre in excinfo.value.invalid
+
+
+@pytest.mark.parametrize("nombre", list(USER_TOPES))
+def test_los_topes_por_usuario_exigen_mayor_que_cero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str
+) -> None:
+    monkeypatch.delenv(nombre, raising=False)
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{nombre: "0"}))
+    assert nombre in excinfo.value.invalid
+    assert getattr(load_settings(env_file=escribir_env(tmp_path, **{nombre: "7"})), nombre) == 7

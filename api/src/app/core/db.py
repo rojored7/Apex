@@ -24,15 +24,16 @@ de auditoría los registra `core/audit.py` sobre la clase de sesión (US-016).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any, ClassVar, Final
 from uuid import UUID, uuid4
 
 from fastapi import Depends
 from sqlalchemy import TIMESTAMP, MetaData, event, func
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -42,6 +43,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.config import Settings, get_settings
+from app.core.errors import DomainError
+
+logger = logging.getLogger("app.db")
 
 APP_SCHEMAS: tuple[str, ...] = (
     "audit",
@@ -115,7 +119,10 @@ def create_engine_from(settings: Settings) -> AsyncEngine:
         pool_pre_ping=True,
         hide_parameters=True,
         echo=False,
-        connect_args={"timeout": CONNECT_TIMEOUT_S},
+        connect_args={
+            "timeout": CONNECT_TIMEOUT_S,
+            "server_settings": server_settings_from(settings),
+        },
     )
 
 
@@ -167,14 +174,73 @@ def violated_constraint(error: IntegrityError) -> str | None:
     return nombre if isinstance(nombre, str) else None
 
 
+BUSY_SQLSTATES: Final[frozenset[str]] = frozenset({"55P03", "57014", "40P01"})
+"""`lock_not_available`, `query_canceled` (statement_timeout) y `deadlock_detected` (S3-D67)."""
+BUSY_MESSAGE: Final = "La base de datos está ocupada; intenta de nuevo en un momento."
+BUSY_RETRY_AFTER_S: Final = 1
+
+
+class DatabaseBusy(DomainError):
+    """503 `busy` (S3-D67): la base no dio el candado o cortó la sentencia a tiempo.
+
+    Lleva `Cache-Control: no-store` en sus propias cabeceras: la respuesta la arma
+    `_handler_dominio` y las cabeceras de la dependencia `no_store` no llegan a un error.
+    """
+
+    status = 503
+    code = "busy"
+    default_message = BUSY_MESSAGE
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.headers = {"Retry-After": str(BUSY_RETRY_AFTER_S), "Cache-Control": "no-store"}
+
+
+def _milisegundos(valor: int) -> str:
+    return "0" if valor == 0 else f"{valor}ms"
+
+
+def server_settings_from(settings: Settings) -> dict[str, str]:
+    """`server_settings` de asyncpg con los tres tiempos de espera (S3-D43); `"0"` desactiva."""
+    return {
+        "lock_timeout": _milisegundos(settings.DB_LOCK_TIMEOUT_MS),
+        "statement_timeout": _milisegundos(settings.DB_STATEMENT_TIMEOUT_MS),
+        "idle_in_transaction_session_timeout": _milisegundos(settings.DB_IDLE_IN_TX_TIMEOUT_MS),
+    }
+
+
+def sqlstate_of(error: BaseException) -> str | None:
+    """SQLSTATE del error de asyncpg que envuelve un `DBAPIError` (`error.orig.sqlstate`)."""
+    sqlstate = getattr(getattr(error, "orig", None), "sqlstate", None)
+    return sqlstate if isinstance(sqlstate, str) else None
+
+
+def translate_busy(error: BaseException) -> DatabaseBusy | None:
+    """`DatabaseBusy` si el SQLSTATE está en `BUSY_SQLSTATES`; `None` en otro caso."""
+    return DatabaseBusy() if sqlstate_of(error) in BUSY_SQLSTATES else None
+
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Dependencia de sesión; las rutas la piden con `SessionDep`, nunca con `Depends` suelto.
 
     Abre una transacción, cede la sesión y hace commit al salir; cualquier excepción revierte.
     Con `scope="function"` (el de `SessionDep`) el commit corre antes de enviar la respuesta.
+
+    El `try` abarca todo el `async with`, también el commit del `__aexit__` de `session.begin()`
+    (E7): un candado no obtenido (55P03), una sentencia cortada (57014) o un deadlock (40P01),
+    en el cuerpo o al confirmar, salen como `DatabaseBusy` (503 `busy`, S3-D67) encadenado con
+    `from`; cualquier otro error sale intacto (la misma instancia). El 503 deja un `WARNING`
+    `db busy` con solo el SQLSTATE (nunca la sentencia ni sus parámetros) y ninguna traza.
     """
-    async with get_sessionmaker()() as session, session.begin():
-        yield session
+    try:
+        async with get_sessionmaker()() as session, session.begin():
+            yield session
+    except DBAPIError as error:
+        busy = translate_busy(error)
+        if busy is None:
+            raise
+        logger.warning("db busy", extra={"sqlstate": sqlstate_of(error)})
+        raise busy from error
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]

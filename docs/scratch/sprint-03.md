@@ -155,3 +155,142 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   Nota menor: un `FROM --platform=...`, `FROM scratch` o un `FROM <etapa>` daría un rojo ruidoso en
   `test_images_pinned.sh` (hoy no existe ninguno).
 - Checkpoint `452453b` (`chore(checkpoint): chore(sprint-03): S3-W0-1 ...`); `git status` limpio después.
+
+### S3-W0-2 · Rojo (stubs W0-2.1 y pruebas W0-2.2)
+
+- Línea base: HEAD `a072305`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL` en verde
+  (1.987 ok, 4 saltadas, 3 deseleccionadas); `ruff check` y `mypy src` limpios.
+- Rojo: 2.078 recolectadas; **47 fallan** (todas de W0-2 y por comportamiento: `NotImplementedError`
+  de los stubs, `KeyError: 'cache-control'`, 500 en lugar de 503, `.env.example` sin las once
+  variables, `members/router.py` con `ratelimit.enforce`), 2.027 ok (1.986 de la línea base, porque
+  una previa de `test_env_example` pasa a rojo, y 41 nuevas que ya pasan sobre los stubs), 4
+  saltadas. 87 pruebas nuevas en total (46 en rojo y 41 en verde). `ruff format`, `ruff check` y `mypy src` limpios.
+  `db_test` sin residuos (planes, socios, usuarios `@test.apex` y sesiones `idle in transaction` en 0).
+  - Fallan: `tests/core/test_db_timeouts.py` 18 de 24; `tests/core/test_ratelimit.py` 9 de las 10
+    nuevas; `tests/core/test_pagination_chunks.py` 9 de 10; `tests/core/test_env_example.py` 3 (una es
+    la previa `test_toda_variable_de_settings_esta_documentada`, porque `.env.example` no se tocó, E3
+    del Sprint 2); `tests/architecture/test_user_limits_catalog.py` 3 de 6;
+    `tests/core/test_errors_busy.py` 2 de 5; `tests/cli/test_db_timeouts_cli.py` 2 de 7;
+    `tests/architecture/test_error_responses_in_openapi.py` 1 de las 2 nuevas.
+  - Verdes sobre los stubs (41; el stub ya es el comportamiento: constantes y alias): las 12 nuevas
+    de `test_config.py`, las 9 de `StaffDep` y `AdminDep` en `test_require_role.py`, 6 de
+    `test_db_timeouts.py` (`BUSY_SQLSTATES`, `DatabaseBusy`, el control del engine sin tiempos, el AST
+    de `env.py` y los dos `athrow` que no se traducen), 3 de `test_errors_busy.py`, el catálogo
+    `USER_LIMITS`, 5 del CLI, "las operaciones sin rol no declaran 503", 3 de
+    `test_user_limits_catalog.py` (dos son controles del analizador) e `ID_BATCH == 200`.
+- Verde desechable (revertido; solo para validar el Rojo): con una implementación mínima de W0-2.3 la
+  suite da 2.073 ok y 1 falla, `test_docs_openapi_json_esta_al_dia` (el `503` nuevo; lo cierra P-API,
+  W0-2.5). Encontró la trampa de la decisión 4.
+- Stubs: `core/config.py` (tres `DB_*_TIMEOUT_MS` con `ge=0` y ocho `USER_*_LIMIT_*` con `gt=0`,
+  definitivos); `core/db.py` (`BUSY_SQLSTATES`, `BUSY_MESSAGE`, `BUSY_RETRY_AFTER_S` y `DatabaseBusy`
+  definitivos; `server_settings_from`, `sqlstate_of` y `translate_busy` con `NotImplementedError`);
+  `core/ratelimit.py` (`USER_LIMITS` y `PII_SEARCH_BUCKET` definitivos; `user_limits_from`,
+  `enforce_user_limit` y `usage` con `NotImplementedError`); `core/security.py` (`StaffDep` y
+  `AdminDep` definitivos); `core/pagination.py` (`ID_BATCH`; `chunked` con `NotImplementedError`);
+  `cli.py` (`--db-timeouts` en `@app.callback()`, acepta cualquier texto y no hace nada;
+  `DB_TIMEOUTS_CHOICES` y `_runtime_options` sin usar todavía). Sin cambio de comportamiento:
+  `get_session`, `create_engine_from`, `_publicar_error_response`, `main.create_app`, `.env.example` y
+  los routers quedan como estaban.
+- Archivos de prueba: nuevos `tests/core/test_db_timeouts.py`, `tests/core/test_errors_busy.py`,
+  `tests/core/test_pagination_chunks.py`, `tests/cli/test_db_timeouts_cli.py` y
+  `tests/architecture/test_user_limits_catalog.py`; ampliados `tests/core/test_config.py`,
+  `tests/core/test_env_example.py`, `tests/core/test_ratelimit.py`, `tests/core/test_require_role.py`
+  (con dos rutas nuevas en `tests/core/_routes.py`) y
+  `tests/architecture/test_error_responses_in_openapi.py`.
+- Importadores de lo que se tocó (grep de `app.core.<m>`): `core/db` 37 archivos (entre ellos
+  `migrations/env.py`, `cli.py`, `core/audit.py`, `core/security.py`, `core/health.py`, `main.py` y los
+  `models`, `router` y `service` de auth, members, plans y settings); `core/config` 39;
+  `core/ratelimit` 9 (`main.py`, `auth/links.py`, `auth/router.py`, `auth/sessions.py`,
+  `auth/users.py`, `members/router.py` y 3 de pruebas); `core/security` 63; `core/pagination` 17;
+  `app.cli` 16. `core/db.py` ahora importa `core/errors.DomainError` (sin ciclo: `errors` solo importa
+  `core/context`; `test_core_import_direction` en verde).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. `server_settings_from` da `"<n>ms"` y `"0"` exacto para cero; el engine de `create_engine_from`
+   responde `SHOW` = `10s`, `30s` y `1min`. `sqlstate_of` lee `error.orig.sqlstate` y devuelve `None`
+   para todo lo que no tenga `orig` o `sqlstate` (también un `ValueError`).
+2. `get_session`: el `try/except DBAPIError` abarca todo el `async with` (E7) y re-lanza
+   `DatabaseBusy` con `raise ... from error` (la prueba mira `__cause__`); un `IntegrityError` o un
+   `DomainError` salen intactos (la misma instancia). El caso "al confirmar" deja un `UPDATE` ORM
+   pendiente que sale en el flush del commit.
+3. El 503 lleva `Cache-Control: no-store` aunque la respuesta la arme `_handler_dominio` (las cabeceras
+   de la dependencia `no_store` no llegan a una respuesta de error); por ejemplo
+   `DatabaseBusy.headers = {"Retry-After": "1", "Cache-Control": "no-store"}`. Las pruebas de
+   `translate_busy` solo exigen `headers["Retry-After"] == "1"`. Sin traza `ERROR` en el log.
+4. OpenAPI: el `503` NO entra en `_DESCRIPCIONES` ni en `ERROR_RESPONSES` (si entra, el `503` de
+   `/health` pasa a `ErrorResponse` y fallan `test_health_no_declara_errores_*` y la prueba nueva). Hoy
+   ninguna operación del contrato declara `security`, así que "seguridad declarada" se decide sobre las
+   rutas: dependencia con la marca `__apex_roles__` (como `route_has_role_dependency`). `errors.py` no
+   puede importar `security.py` a nivel de módulo (ciclo `security -> db -> errors`): marca por duck
+   typing o import perezoso. Las públicas (login, refresh, logout, forgot, reset) no declaran `503`.
+5. `user_limits_from` sigue E15 (`USER_WRITE` a `memberships-write` y `payments-write`;
+   `USER_ADMIN_WRITE` a `admin-write`; `USER_MEMBERS_WRITE` a `members-write`; `USER_SEARCH` a
+   `members-search`; `USER_DETAIL` a `members-detail`; las tres `USER_REVEAL_*` a las tres
+   `members-reveal*`) y conserva las ventanas del catálogo. `enforce_user_limit` usa `kind="user"`, la
+   clave `str(user_id)`, el tope de `request.app.state.user_limits`, `KeyError` para un bucket fuera de
+   `USER_LIMITS`, y no escribe el usuario en el log. `usage` no crea la clave al consultar.
+6. `chunked` devuelve un iterador, conserva el orden y da `ValueError` (mensaje con `size`) para un
+   tamaño `<= 0` (decisión de prueba: sin ella `size=0` sería un bucle infinito).
+7. CLI (E7): `--db-timeouts` acepta solo `on` u `off` (otro valor sale con 2); el callback fija el
+   estado en cada invocación (un `off` no se arrastra a la siguiente); `cli_runtime` construye el engine
+   con una copia (`model_copy`) del `Settings` recibido con los tres en 0, sin mutar el original. La
+   prueba parchea `app.core.db.create_engine_from` solo alrededor de `cli_runtime` (`export-openapi`
+   también construye un engine dentro de `create_app`).
+8. `test_user_limits_catalog` acepta como bucket un literal del catálogo o el nombre
+   `PII_SEARCH_BUCKET` (Name o Attribute). `CLAVES_SIN_RUTA_TODAVIA` lista los siete buckets cuya ruta
+   no existe; cada slice que publica la ruta de uno lo saca en su Rojo (E2): B1 y B2
+   `memberships-write`, B4 `payments-write`, B5 `admin-write`, B9b `members-detail`, B10 los tres de
+   `members-reveal`.
+9. `app.state.user_limits` lo fija `create_app`; como `app_http` usa `create_app`, no hace falta tocar
+   `tests/conftest.py`.
+
+#### Desviaciones del Rojo
+
+- `app_rota` (`tests/core/_app_rota.py`) no se usa: es la fábrica de arranque fallido de US-020 y no
+  sirve para el handler de 503. El 503 se prueba con la app real (`api_prueba`, cliente con
+  `raise_app_exceptions=False`) y con una app mínima con el `get_session` real (E16).
+- `.env.example` sin tocar (E3 del Sprint 2): por eso también falla la prueba previa
+  `test_toda_variable_de_settings_esta_documentada`; la cierran las once líneas del Verde.
+- `test_user_limits_catalog` agrega en forma progresiva la regla de S3-D69 "toda clave tiene al menos
+  una ruta" (`CLAVES_SIN_RUTA_TODAVIA`), porque W0-2 solo cablea `members-write` y `members-search`.
+
+### S3-W0-2 · Verde (W0-2.3 a W0-2.6)
+
+- Verde: `core/db.py` (`server_settings_from`, `sqlstate_of`, `translate_busy`; `create_engine_from`
+  con `server_settings`; `get_session` con el `try` sobre todo el `async with`, commit incluido, y
+  `raise DatabaseBusy from error`; `DatabaseBusy.headers` con `Retry-After: 1` y
+  `Cache-Control: no-store`); `core/errors.py` (`503` `ErrorResponse` con `MENSAJE_503` en toda
+  operación con `__apex_roles__`, import perezoso de `security`); `core/ratelimit.py`
+  (`user_limits_from` con la correspondencia de E15, `enforce_user_limit`, `usage` y
+  `SlidingWindowStore.count`, que no crea la clave); `core/pagination.chunked`;
+  `main.create_app` fija `app.state.user_limits`; `cli.py` (`--db-timeouts` solo `on`/`off`,
+  `typer.BadParameter` y exit 2 en otro valor, estado fijado en cada invocación, `cli_runtime` con
+  `model_copy` de los tres en 0); `members/router.py` con `enforce_user_limit(request,
+  "members-write", ...)`, `enforce_user_limit(request, PII_SEARCH_BUCKET, ...)` y `StaffDep`;
+  `plans/router.py` con `StaffDep` y `AdminDep`; `.env.example` con las once líneas activas.
+  `migrations/env.py`, `tests/conftest.py` y las pruebas del Rojo sin cambios.
+- Revisión de seguridad (`security-reviewer`, sobre `git diff a072305 -- api/src .env.example`):
+  sin CRITICAL ni HIGH. Aplicados con prueba: LOW-1 (`WARNING` `db busy` con solo `sqlstate`,
+  `test_get_session_deja_un_warning_con_solo_el_sqlstate`) y el techo `le=2147483647` de los
+  `DB_*_TIMEOUT_MS` (`test_los_tiempos_de_espera_tienen_el_techo_de_postgresql`, 3 casos). No
+  aplicados, con motivo y dueño en `DECISIONES.md` "S3-W0-2": piso de `DB_*` en producción
+  (MEDIUM; el plan y el Rojo fijan `ge=0`; decide el orquestador en V), techo de `USER_*` (V4 los
+  sube ×100 con `ENV=production`), `25P03` como 503 (MEDIUM-1; S3-D67 fija el conjunto) y el
+  `crypto_ops` del rollback (MEDIUM-2; no se silencia una fila de la bitácora).
+  Comprobado por el revisor: `current_user` usa `SessionDep` (se traduce), los listeners de
+  auditoría hacen rollback completo, `pg_advisory_xact_lock(4270002)` respeta `lock_timeout`,
+  `--db-timeouts off` no es alcanzable desde el api (nadie importa `app.cli`).
+- Suite (`-m 'not perf'`): 2.082 recolectadas, **2.078 ok, 0 fallos, 4 saltadas**, 3
+  deseleccionadas (las 47 del Rojo en verde, más 4 nuevas de la revisión); cobertura de `app`
+  96 %; `ruff format`, `ruff check` y `mypy src` (72 archivos) limpios.
+  `scripts/ci/test_compose_config.sh`: 0 fallas con el `.env.example` nuevo.
+- Contrato (P-API): `export-openapi` dos veces con el mismo SHA-256 (`e2b7db2d…`), +240 líneas en
+  `docs/openapi.json` (el `503` en las 24 operaciones con rol; login, refresh, logout, forgot y
+  reset sin `503`; `/health` y `/api/v1/health` con su `503` `HealthOut`); `npm run gen:api`
+  (+216 líneas en `types.ts`), `types.contract.test.ts` 5 ok, `tsc --noEmit` y `npm run lint`
+  limpios.
+- Docs: `docs/RUNBOOK.md` §9 completa; `DECISIONES.md` sección "S3-W0-2".
+- Desviaciones: ninguna prueba del Rojo cambió; se agregaron 4 casos por la revisión. La
+  evidencia de los gates, Docker y H-3 va en el commit `docs(sprint-03): evidencia de S3-W0-2`
+  (E8).

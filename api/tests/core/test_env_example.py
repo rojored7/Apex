@@ -116,3 +116,42 @@ def test_allow_insecure_cookie_documenta_el_riesgo_p7() -> None:
         linea for linea in lineas[max(0, indice - 4) : indice] if linea.startswith("#")
     )
     assert "P7" in comentario
+
+
+# S3-W0-2 · tiempos de espera de la base (S3-D43) y topes por usuario (S3-D76, E10) ---------
+
+ACTIVAS_S3_W0_2: dict[str, str] = {
+    "DB_LOCK_TIMEOUT_MS": "10000",
+    "DB_STATEMENT_TIMEOUT_MS": "30000",
+    "DB_IDLE_IN_TX_TIMEOUT_MS": "60000",
+    "USER_WRITE_LIMIT_PER_MIN": "30",
+    "USER_ADMIN_WRITE_LIMIT_PER_MIN": "30",
+    "USER_MEMBERS_WRITE_LIMIT_PER_MIN": "60",
+    "USER_SEARCH_LIMIT_PER_MIN": "60",
+    "USER_DETAIL_LIMIT_PER_MIN": "120",
+    "USER_REVEAL_LIMIT_PER_MIN": "30",
+    "USER_REVEAL_LIMIT_PER_HOUR": "200",
+    "USER_REVEAL_LIMIT_PER_DAY": "600",
+}
+
+
+def test_las_once_variables_de_s3_w0_2_van_activas_con_sus_valores() -> None:
+    """E10: las once variables nuevas son líneas activas (no comentadas) con el valor por
+    defecto de `Settings`; V4 las multiplica por 100 en el bloque E2E (E15)."""
+    claves = _claves()
+    faltan = {n: claves.get(n) for n, v in ACTIVAS_S3_W0_2.items() if claves.get(n) != v}
+    assert faltan == {}, f"valores distintos o ausentes en .env.example: {faltan}"
+    for nombre, valor in ACTIVAS_S3_W0_2.items():
+        assert Settings.model_fields[nombre].default == int(valor), nombre
+
+
+def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
+    """W0-2.3: el comentario de las `DB_*` dice que 0 desactiva y que es solo para el CLI con
+    `--db-timeouts off`."""
+    lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
+    indices = [i for i, linea in enumerate(lineas) if linea.startswith("DB_LOCK_TIMEOUT_MS=")]
+    assert len(indices) == 1, "DB_LOCK_TIMEOUT_MS debe ir una vez como línea activa"
+    comentario = " ".join(
+        linea for linea in lineas[max(0, indices[0] - 6) : indices[0]] if linea.startswith("#")
+    )
+    assert "0" in comentario and "--db-timeouts off" in comentario

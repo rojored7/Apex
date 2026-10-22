@@ -2075,6 +2075,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Me",
@@ -2146,6 +2156,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Change Password",
@@ -2468,6 +2488,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "List Members",
@@ -2557,6 +2587,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Create Member",
@@ -2680,6 +2720,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "List Plans",
@@ -2759,6 +2809,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Create Plan",
@@ -2842,6 +2902,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get Plan",
@@ -2893,6 +2963,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get Gym",
@@ -2972,6 +3052,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Patch Gym",
@@ -3023,6 +3113,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get Memberships",
@@ -3102,6 +3202,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Patch Memberships",
@@ -3153,6 +3263,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get Privacy",
@@ -3232,6 +3352,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Patch Privacy",
@@ -3314,6 +3444,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get Section",
@@ -3414,6 +3554,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Patch Section",
@@ -3565,6 +3715,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "List Users",
@@ -3644,6 +3804,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Create User",
@@ -3730,6 +3900,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Delete User",
@@ -3811,6 +3991,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Get User",
@@ -3912,6 +4102,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Update User",
@@ -4005,6 +4205,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Lock User",
@@ -4098,6 +4308,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Resend Link",
@@ -4181,6 +4401,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Revoke Sessions",
@@ -4274,6 +4504,16 @@
               }
             },
             "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
           }
         },
         "summary": "Unlock User",

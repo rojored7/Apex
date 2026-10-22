@@ -368,11 +368,41 @@ En la CI (Linux, sin `compose.dev.yml`) no aplica.
 
 ## 9. Tiempos de espera de la base y 503 `busy` (S3-W0-2)
 
-Esqueleto; lo completa S3-W0-2. Contenido previsto (S3-D43, S3-D67, E7, E16):
-- Variables `DB_LOCK_TIMEOUT_MS` (10.000), `DB_STATEMENT_TIMEOUT_MS` (30.000) y `DB_IDLE_IN_TX_TIMEOUT_MS` (60.000), que `create_engine_from` pasa como `server_settings` de asyncpg al api, al CLI y al worker.
-- `migrations/env.py` usa su propio engine sin esos tiempos: las migraciones no los heredan.
-- `--db-timeouts off` del CLI para `rotate-key`, `sign-audit` y la importación de US-112.
-- Respuesta 503 `busy` con `Retry-After: 1` ante los SQLSTATE 55P03, 57014 y 40P01; cómo diagnosticarla en el log y qué hacer si se repite.
+Una transacción detenida (un `psql` de soporte con `BEGIN` abierto, una sentencia que no termina) congela todas las escrituras auditadas: cada una pide el candado de la cadena de auditoría (`pg_advisory_xact_lock(4270002)`, `core/audit.py`) y esperaría sin fin. Los tres tiempos de espera acotan esa espera (H-3, S3-D43) y la respuesta es un 503 `busy` corto, no un 500 ni un cuelgue (S3-D67).
+
+### Qué hace cada tiempo de espera
+
+`create_engine_from` (`core/db.py`) los pasa como `server_settings` de asyncpg a cada conexión del pool; valen para toda sentencia del api, del CLI y del worker:
+- `DB_LOCK_TIMEOUT_MS` (10.000, `lock_timeout`): máximo que una sentencia espera un candado (fila con `FOR UPDATE`, tabla, candado asesor). Agotado: SQLSTATE `55P03`.
+- `DB_STATEMENT_TIMEOUT_MS` (30.000, `statement_timeout`): máximo que dura una sentencia. Agotado: `57014`.
+- `DB_IDLE_IN_TX_TIMEOUT_MS` (60.000, `idle_in_transaction_session_timeout`): una conexión que deja una transacción abierta sin hacer nada más de ese tiempo es cerrada por PostgreSQL y sus candados se liberan. El pool la descarta (`pool_pre_ping`).
+- Un deadlock (`40P01`) también se responde como `busy`.
+- Rango: de `0` a `2147483647` (el máximo de PostgreSQL; fuera de él `Settings` no arranca). `0` desactiva el tiempo correspondiente. Solo lo usa el CLI con `--db-timeouts off`; en el api no se baja a 0 (`.env.example`).
+
+Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from`): `SHOW lock_timeout` ahí da `0`. Los del api los comprueba `tests/core/test_db_timeouts.py` (`SHOW lock_timeout` = `10s` sobre un engine de `create_engine_from`).
+
+### Cómo se ve un 503 `busy`
+
+- Respuesta: `503` con `{"error": {"code": "busy", "message": "La base de datos está ocupada; intenta de nuevo en un momento."}}`, `Retry-After: 1` y `Cache-Control: no-store`. El front lo trata como cualquier 5xx: reintentar en un momento.
+- La traduce `get_session` (el `try` abarca también el commit, E7) a `DatabaseBusy`, que responde `_handler_dominio`: en el log salen un `WARNING` `db busy` del logger `app.db` con solo el campo `sqlstate` (`55P03`, `57014` o `40P01`; nunca la sentencia ni sus parámetros) y la línea de acceso con `status` 503, **sin** traza ni registro de nivel `ERROR`. Un `500 internal_error` con traza sigue siendo un fallo real del api, nunca una espera agotada.
+- Buscar en los logs: `$DC logs --since 10m api | grep 'db busy'` (el `sqlstate` dice si fue candado, sentencia larga o deadlock) o `grep '"status": 503'` (línea `http_request`, con la ruta). Las rutas públicas con sesión (login, refresh, logout, forgot, reset) también pueden responder 503 `busy` aunque el contrato no lo declare (E16, riesgo aceptado).
+
+### Qué hacer si se repite
+
+1. Buscar quién retiene el candado:
+   ```
+   $DC exec -T db psql -U apex -d apex -c "SELECT pid, usename, application_name, state, wait_event_type, wait_event, now() - xact_start AS en_tx, left(query, 80) AS query FROM pg_stat_activity WHERE datname = 'apex' ORDER BY xact_start NULLS LAST"
+   ```
+   Las que esperan aparecen con `wait_event_type = 'Lock'`; la que bloquea suele estar `idle in transaction` o con un `xact_start` viejo. Para ver quién bloquea a quién: `SELECT pid, pg_blocking_pids(pid) FROM pg_stat_activity WHERE wait_event_type = 'Lock'`.
+2. Si la bloqueante es una sesión de soporte (un `psql` olvidado), cerrarla desde su terminal con `ROLLBACK`; si no hay acceso a ella, `SELECT pg_terminate_backend(<pid>)` sobre ese `pid` (solo la de soporte; nunca la de una migración en curso). `idle_in_transaction_session_timeout` la cierra igual a los 60 s.
+3. Si la bloqueante es una sentencia del api que no termina, `statement_timeout` la corta a los 30 s; si se repite, revisar la consulta (plan, índice) antes de subir el valor.
+4. No subir `DB_LOCK_TIMEOUT_MS` para "arreglar" un 503 repetido: se esconde la causa y el api vuelve a colgarse.
+
+### CLI, worker y migraciones (E7)
+
+- `rotate-key`, `sign-audit`, `seed`, `issue-reset-link`, `unlock-user` y los jobs del worker (Sprint 4A) usan `create_engine_from` y heredan los tres tiempos. Un comando corto que choca con un candado falla con el `DBAPIError` del SQLSTATE (sin traducir: no es una petición HTTP) y se reintenta.
+- Los comandos largos (`rotate-key` sobre muchas filas, `sign-audit`, la importación de US-112) se corren con la opción global, antes del comando: `$DC run --rm tools --db-timeouts off rotate-key ...`. `--db-timeouts` solo acepta `on` (por defecto) u `off`; otro valor sale con código 2. `off` vale solo para esa invocación del CLI y se aplica sobre una copia del `Settings`; el api no tiene forma de activarlo.
+- Las migraciones de Alembic no reciben los tiempos: `migrations/env.py` arma su propio engine sin `server_settings` (no usa `create_engine_from`; lo vigila `tests/core/test_db_timeouts.py`). Una migración larga no se corta por `statement_timeout`.
 
 ## 10. Membresías y pagos (Sprint 3)
 

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID, uuid4
 
 import jwt
@@ -496,6 +496,13 @@ def require_role(
 
     _dependencia.__apex_roles__ = permitidos  # type: ignore[attr-defined]
     return _dependencia
+
+
+# Alias de rol que usan los routers (S3-D59, D-2): una sola definición en todo el api.
+StaffDep = Annotated[Principal, Depends(require_role("admin", "coach"))]
+"""Principal de una ruta de personal (admin o coach)."""
+AdminDep = Annotated[Principal, Depends(require_role("admin"))]
+"""Principal de una ruta solo de admin."""
 
 
 PUBLIC_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(

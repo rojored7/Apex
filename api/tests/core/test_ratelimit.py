@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_network
 from typing import Annotated
+from uuid import UUID
 
 import pytest
 from fastapi import Depends, FastAPI, Request
@@ -369,3 +370,170 @@ async def test_reserve_es_atomica_y_release_devuelve_el_cupo() -> None:
         assert await release("login-account", "otra@apex.co", marcas[0]) is False
     finally:
         reset_clock(token)
+
+
+# S3-W0-2 · topes por usuario (S3-D59, S3-D76; E10, E15) y `usage` (S3-D44) ----------------
+
+USUARIO = UUID(int=501)
+OTRO = UUID(int=502)
+CATALOGO = {
+    "members-write": (60, 60),
+    "members-search": (60, 60),
+    "members-detail": (120, 60),
+    "members-reveal": (30, 60),
+    "members-reveal-hour": (200, 3600),
+    "members-reveal-day": (600, 86400),
+    "memberships-write": (30, 60),
+    "payments-write": (30, 60),
+    "admin-write": (30, 60),
+}
+
+
+def _peticion(user_limits: dict[str, tuple[int, int]]) -> Request:
+    """Una `Request` cuya app lleva `state.user_limits`, como la de `create_app` (E10)."""
+    aplicacion = FastAPI()
+    aplicacion.state.user_limits = user_limits
+    return Request({"type": "http", "app": aplicacion, "headers": [], "client": ("10.1.1.1", 1)})
+
+
+@pytest.fixture
+def reloj_t0() -> Iterator[FrozenClock]:
+    reloj = FrozenClock(T0)
+    token = set_clock(reloj)
+    try:
+        yield reloj
+    finally:
+        reset_clock(token)
+
+
+def test_user_limits_es_el_catalogo_del_plan() -> None:
+    from app.core.ratelimit import PII_SEARCH_BUCKET, USER_LIMITS
+
+    assert USER_LIMITS == CATALOGO
+    assert PII_SEARCH_BUCKET == "members-search"
+    assert PII_SEARCH_BUCKET in USER_LIMITS
+
+
+def test_user_limits_from_con_los_valores_por_defecto_es_el_catalogo() -> None:
+    from app.cli import export_settings
+    from app.core.ratelimit import USER_LIMITS, user_limits_from
+
+    assert user_limits_from(export_settings()) == USER_LIMITS
+
+
+def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventanas() -> None:
+    """E15: `USER_WRITE_*` alimenta `memberships-write` y `payments-write`;
+    `USER_ADMIN_WRITE_*`, `admin-write`; las demás, una a una."""
+    from app.cli import export_settings
+    from app.core.ratelimit import user_limits_from
+
+    ajustes = export_settings().model_copy(
+        update={
+            "USER_WRITE_LIMIT_PER_MIN": 11,
+            "USER_ADMIN_WRITE_LIMIT_PER_MIN": 12,
+            "USER_MEMBERS_WRITE_LIMIT_PER_MIN": 13,
+            "USER_SEARCH_LIMIT_PER_MIN": 14,
+            "USER_DETAIL_LIMIT_PER_MIN": 15,
+            "USER_REVEAL_LIMIT_PER_MIN": 16,
+            "USER_REVEAL_LIMIT_PER_HOUR": 17,
+            "USER_REVEAL_LIMIT_PER_DAY": 18,
+        }
+    )
+    assert user_limits_from(ajustes) == {
+        "members-write": (13, 60),
+        "members-search": (14, 60),
+        "members-detail": (15, 60),
+        "members-reveal": (16, 60),
+        "members-reveal-hour": (17, 3600),
+        "members-reveal-day": (18, 86400),
+        "memberships-write": (11, 60),
+        "payments-write": (11, 60),
+        "admin-write": (12, 60),
+    }
+
+
+async def test_enforce_user_limit_la_llamada_31_de_memberships_write_da_429(
+    reloj_t0: FrozenClock,
+) -> None:
+    from app.core.errors import TooManyRequestsError
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit
+
+    peticion = _peticion(dict(USER_LIMITS))
+    for _ in range(30):
+        await enforce_user_limit(peticion, "memberships-write", USUARIO)
+    with pytest.raises(TooManyRequestsError) as excinfo:
+        await enforce_user_limit(peticion, "memberships-write", USUARIO)
+    assert excinfo.value.status == 429 and excinfo.value.code == "rate_limited"
+    assert int(excinfo.value.headers["Retry-After"]) == 60  # las 30 marcas son de T0
+    # Otro usuario y otro bucket tienen su propio cupo.
+    await enforce_user_limit(peticion, "memberships-write", OTRO)
+    await enforce_user_limit(peticion, "payments-write", USUARIO)
+    reloj_t0.advance(minutes=1)
+    await enforce_user_limit(peticion, "memberships-write", USUARIO)  # la ventana se liberó
+
+
+async def test_enforce_user_limit_cuenta_en_el_almacen_de_usuarios(reloj_t0: FrozenClock) -> None:
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit, store_for
+
+    await enforce_user_limit(_peticion(dict(USER_LIMITS)), "admin-write", USUARIO)
+    assert len(store_for("user")) == 1
+    assert len(store_for("account")) == 0 and len(store_for("ip")) == 0
+
+
+async def test_enforce_user_limit_toma_el_tope_de_app_state(reloj_t0: FrozenClock) -> None:
+    from app.core.errors import TooManyRequestsError
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit
+
+    peticion = _peticion({**USER_LIMITS, "members-write": (2, 60)})
+    await enforce_user_limit(peticion, "members-write", USUARIO)
+    await enforce_user_limit(peticion, "members-write", USUARIO)
+    with pytest.raises(TooManyRequestsError):
+        await enforce_user_limit(peticion, "members-write", USUARIO)
+
+
+async def test_enforce_user_limit_con_un_bucket_fuera_del_catalogo_da_key_error(
+    reloj_t0: FrozenClock,
+) -> None:
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit
+
+    with pytest.raises(KeyError):
+        await enforce_user_limit(_peticion(dict(USER_LIMITS)), "inventado", USUARIO)
+
+
+async def test_enforce_user_limit_no_escribe_el_usuario_en_el_log(
+    reloj_t0: FrozenClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.core.errors import TooManyRequestsError
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit
+
+    peticion = _peticion({**USER_LIMITS, "members-reveal": (1, 60)})
+    await enforce_user_limit(peticion, "members-reveal", USUARIO)
+    with caplog.at_level(logging.WARNING, logger="app.ratelimit"):
+        with pytest.raises(TooManyRequestsError):
+            await enforce_user_limit(peticion, "members-reveal", USUARIO)
+    assert caplog.records, "el 429 deja un aviso"
+    assert str(USUARIO) not in caplog.text
+    assert all(getattr(r, "bucket", None) == "members-reveal" for r in caplog.records)
+
+
+async def test_usage_cuenta_dentro_de_la_ventana_y_cero_fuera(reloj_t0: FrozenClock) -> None:
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit, store_for, usage
+
+    peticion = _peticion(dict(USER_LIMITS))
+    for _ in range(3):
+        await enforce_user_limit(peticion, "members-reveal-hour", USUARIO)
+    assert await usage("members-reveal-hour", str(USUARIO), window_s=3600) == 3
+    assert await usage("members-reveal-hour", str(OTRO), window_s=3600) == 0
+    claves = len(store_for("user"))
+    assert await usage("members-reveal-day", str(USUARIO), window_s=86400) == 0
+    assert len(store_for("user")) == claves  # consultar no crea la clave
+    reloj_t0.advance(hours=1)
+    assert await usage("members-reveal-hour", str(USUARIO), window_s=3600) == 0
+
+
+async def test_usage_respeta_el_tipo_de_almacen(reloj_t0: FrozenClock) -> None:
+    from app.core.ratelimit import enforce, usage
+
+    await enforce("login-account", "ana@apex.co", limit=5, window_s=900)
+    assert await usage("login-account", "ana@apex.co", window_s=900, kind="account") == 1
+    assert await usage("login-account", "ana@apex.co", window_s=900) == 0  # kind="user"

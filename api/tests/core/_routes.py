@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.core.context import current_actor
-from app.core.security import Principal, require_role
+from app.core.security import AdminDep, Principal, StaffDep, require_role
 
 router = APIRouter(prefix="/_t")
 
@@ -46,3 +46,14 @@ async def pendiente(
 ) -> dict[str, bool]:
     """Como `GET /auth/me`: admite una cuenta que debe cambiar la contraseña (M-8, S2-B3)."""
     return {"must_change_password": principal.must_change_password}
+
+
+# S3-W0-2 (S3-D59, D-2): los alias comunes de rol que usan los routers nuevos.
+@router.get("/staff-dep")
+async def staff_dep(principal: StaffDep) -> dict[str, str]:
+    return {"user_id": str(principal.user_id), "role": principal.role}
+
+
+@router.get("/admin-dep")
+async def admin_dep(principal: AdminDep) -> dict[str, str]:
+    return {"user_id": str(principal.user_id), "role": principal.role}

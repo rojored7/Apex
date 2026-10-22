@@ -7,13 +7,17 @@ nunca repite el valor recibido.
 
 Cada módulo define sus errores en `exceptions.py` heredando de `DomainError`.
 Este archivo solo importa FastAPI, Starlette, Pydantic, `logging` y
-`core/context.py`.
+`core/context.py` a nivel de módulo; el gancho de OpenAPI importa `core/security.py` de forma
+perezosa (el ciclo `security -> db -> errors` impide hacerlo arriba).
 
 OpenAPI (M7 de la revisión general del Sprint 2): cada router o ruta declara solo los errores
 que puede devolver con `responses_for(401, 403, ...)`; el gancho del esquema agrega `500` a toda
 operación y convierte en `ErrorResponse` los códigos del catálogo (también el `422` que FastAPI
 pone a las rutas con parámetros o cuerpo). Antes la app declaraba los ocho códigos en las 31
-operaciones, incluido `/health`.
+operaciones, incluido `/health`. S3-W0-2 (S3-D67 corregida por E16): toda operación con seguridad
+declarada (una dependencia con la marca `__apex_roles__`) recibe además `503` `ErrorResponse`
+(`busy`); el `503` no entra en el catálogo, así `/health` conserva su `503` `HealthOut` y las
+públicas no lo declaran.
 """
 
 from __future__ import annotations
@@ -36,6 +40,8 @@ logger = logging.getLogger("app.errors")
 
 PREFIJOS_LOC = frozenset({"body", "query", "path", "header", "cookie"})
 MENSAJE_500 = "Ocurrió un error inesperado. Intente de nuevo."
+MENSAJE_503 = "Base de datos ocupada"
+"""Descripción OpenAPI del `503` `busy` de las operaciones con rol (fuera de `_DESCRIPCIONES`)."""
 
 
 class ErrorBody(BaseModel):
@@ -229,10 +235,25 @@ def register_error_handlers(app: FastAPI) -> None:
     _publicar_error_response(app)
 
 
+def _operaciones_con_rol(app: FastAPI) -> set[tuple[str, str]]:
+    """`(método en minúsculas, ruta)` de cada operación con `require_role` en su árbol de
+    dependencias (marca `__apex_roles__`). Import perezoso: `security` importa `db`, que importa
+    este módulo."""
+    from app.core.security import effective_routes, route_has_role_dependency
+
+    return {
+        (metodo.lower(), ruta.path)
+        for ruta in effective_routes(app)[0]
+        if route_has_role_dependency(ruta)
+        for metodo in ruta.methods
+    }
+
+
 def _publicar_error_response(app: FastAPI) -> None:
     """Reemplaza `HTTPValidationError` por `ErrorResponse` en los códigos del catálogo que la
-    ruta declara (o el `422` automático de FastAPI) y agrega `500` a toda operación. Un código
-    fuera del catálogo (el `503` de `/health`, con `HealthOut`) queda como lo declaró la ruta."""
+    ruta declara (o el `422` automático de FastAPI) y agrega `500` a toda operación y `503`
+    (`busy`) a las que tienen rol. Un código fuera del catálogo (el `503` de `/health`, con
+    `HealthOut`) queda como lo declaró la ruta."""
 
     def openapi() -> dict[str, Any]:
         if app.openapi_schema:
@@ -255,8 +276,9 @@ def _publicar_error_response(app: FastAPI) -> None:
                 "application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}
             }
         }
-        for operaciones in esquema.get("paths", {}).values():
-            for operacion in operaciones.values():
+        con_rol = _operaciones_con_rol(app)
+        for ruta, operaciones in esquema.get("paths", {}).items():
+            for metodo, operacion in operaciones.items():
                 if not isinstance(operacion, dict) or "responses" not in operacion:
                     continue
                 respuestas = operacion["responses"]
@@ -267,6 +289,8 @@ def _publicar_error_response(app: FastAPI) -> None:
                         )
                         respuestas[codigo] = {"description": descripcion, **contenido}
                 respuestas.setdefault("500", {"description": _DESCRIPCIONES[500], **contenido})
+                if (metodo, ruta) in con_rol:
+                    respuestas.setdefault("503", {"description": MENSAJE_503, **contenido})
         app.openapi_schema = esquema
         return esquema
 

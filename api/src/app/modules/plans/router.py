@@ -22,7 +22,7 @@ from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
-from app.core.security import Principal, require_role
+from app.core.security import AdminDep, StaffDep
 from app.modules.plans import service
 from app.modules.plans.schemas import PlanCreate, PlanOut
 
@@ -30,19 +30,17 @@ router = APIRouter(  # M6 y M7
     tags=["plans"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
 )
 
-Admin = Annotated[Principal, Depends(require_role("admin"))]
-Staff = Annotated[Principal, Depends(require_role("admin", "coach"))]
 Session = SessionDep  # N-1: commit antes de responder; un solo alias en todo el api
 
 
 @router.post("/plans", status_code=201, response_model=PlanOut, responses=responses_for(409))
-async def create_plan(body: PlanCreate, principal: Admin, session: Session) -> PlanOut:
+async def create_plan(body: PlanCreate, principal: AdminDep, session: Session) -> PlanOut:
     return await service.create(session, body)
 
 
 @router.get("/plans", response_model=Page[PlanOut])
 async def list_plans(
-    principal: Staff,
+    principal: StaffDep,
     session: Session,
     page: Annotated[PageParams, Depends()],
     q: SearchQuery = None,
@@ -52,5 +50,5 @@ async def list_plans(
 
 
 @router.get("/plans/{plan_id}", response_model=PlanOut, responses=responses_for(404))
-async def get_plan(plan_id: UUID, principal: Staff, session: Session) -> PlanOut:
+async def get_plan(plan_id: UUID, principal: StaffDep, session: Session) -> PlanOut:
     return await service.detail(session, plan_id, role=principal.role)

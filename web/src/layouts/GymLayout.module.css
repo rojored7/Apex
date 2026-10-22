@@ -1,0 +1,71 @@
+/* US-062 T3: tablet del box en oscuro, controles de 56 px. Solo variables de tokens.css. */
+.root {
+  --control: var(--control-gym);
+
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--ink);
+
+  /* DESIGN-GAP: tokens.css no trae un texto de cuerpo ampliado para la tablet (el buscador
+     de 20 px de CheckIn.html); los controles usan --text-button-gym vía Button size="lg". */
+  font: var(--text-body);
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 3px solid var(--apex-blue);
+  background: var(--card);
+}
+
+.exit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-height: var(--control-gym);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font: var(--text-button-gym);
+  text-decoration: none;
+}
+
+.exit:hover {
+  background: var(--blue-tint);
+}
+
+.exit:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font: var(--text-kpi);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.content {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: var(--space-5) var(--space-6);
+}

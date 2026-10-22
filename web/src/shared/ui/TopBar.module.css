@@ -1,0 +1,156 @@
+/* US-061 T4: barra superior negra (Inicio.html .topbar). Solo variables de tokens.css.
+   La barra es negra en los dos temas, así que el texto usa --white y la línea --line. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  box-sizing: border-box;
+  min-height: calc(var(--control) + var(--space-3));
+  padding: var(--space-1) var(--space-5);
+  background: var(--black);
+  color: var(--white);
+}
+
+.logo {
+  display: block;
+  width: auto;
+  height: 28px;
+}
+
+.gym,
+.clock {
+  font: var(--text-caption);
+  color: var(--white);
+  opacity: 0.85;
+}
+
+.gym {
+  overflow: hidden;
+  max-width: 40ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.userTag,
+.userButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--white);
+  font: var(--text-label);
+}
+
+.userButton {
+  min-height: var(--control);
+  cursor: pointer;
+}
+
+.userText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userButton:hover {
+  border-color: var(--white);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--white);
+  cursor: pointer;
+}
+
+.userButton:focus-visible,
+.iconButton:focus-visible {
+  outline: 3px solid var(--apex-blue);
+  outline-offset: 2px;
+}
+
+.userMenu {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.menuItem {
+  min-height: var(--control);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: var(--text-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus {
+  background: var(--blue-tint);
+}
+
+.menuItem:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+.menuItem[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: progress;
+}
+
+/* Celular: sin reloj ni nombre del gimnasio para que la barra no desborde a 320 px. */
+@media (width < 768px) {
+  .bar {
+    padding: var(--space-1) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .clock,
+  .gym {
+    display: none;
+  }
+
+  .userText {
+    max-width: 18ch;
+  }
+}

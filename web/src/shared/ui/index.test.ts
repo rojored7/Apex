@@ -27,4 +27,9 @@ describe("kit compartido src/shared/ui", () => {
       expect(typeof component).toBe("function");
     }
   });
+
+  it("exporta la barra superior y el menú lateral del Sprint 2 (US-061)", () => {
+    expect(typeof ui.TopBar).toBe("function");
+    expect(typeof ui.SideNav).toBe("function");
+  });
 });

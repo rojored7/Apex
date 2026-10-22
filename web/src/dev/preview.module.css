@@ -1,0 +1,54 @@
+/* Estilos de las páginas de muestra (catalog.html). Solo variables de tokens.css. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.screenTitle {
+  margin: 0;
+  font: var(--text-screen-title);
+  text-transform: uppercase;
+}
+
+.greeting {
+  margin: 0;
+  font: var(--text-kpi);
+}
+
+.card {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.cardTitle {
+  margin: 0 0 var(--space-2);
+  font: var(--text-h2);
+}
+
+.index {
+  padding: var(--space-6);
+}
+
+.tvLabel {
+  margin: 0;
+  color: var(--apex-blue);
+  font: var(--text-section-title);
+  text-transform: uppercase;
+}
+
+.tvTitle {
+  margin: 0;
+  font: var(--text-tv-title);
+  text-transform: uppercase;
+}

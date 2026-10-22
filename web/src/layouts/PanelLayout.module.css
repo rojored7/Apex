@@ -1,0 +1,60 @@
+/* US-061 T3: grid del panel. Solo variables de tokens.css. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.main {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--space-6);
+}
+
+.main:focus {
+  outline: none;
+}
+
+.main:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: -3px;
+}
+
+/* "Saltar al contenido": oculto hasta recibir el foco. */
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 60;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--blue-deep);
+  font: var(--text-button);
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+.skip:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+@media (width < 768px) {
+  .main {
+    padding: var(--space-4);
+  }
+}

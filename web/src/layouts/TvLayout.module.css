@@ -1,0 +1,23 @@
+/* US-062 T4: TV de 1920 × 1080, oscura, sin cursor ni desplazamiento. Solo variables de
+   tokens.css; el fondo es --black en cualquier tema (TV.html). */
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--black);
+  cursor: none;
+}
+
+.stage {
+  box-sizing: border-box;
+  width: 1920px;
+  height: 1080px;
+  padding: var(--space-8) calc(var(--space-8) * 2);
+  overflow: hidden;
+  background: var(--black);
+  color: var(--white);
+  font: var(--text-body);
+  cursor: none;
+  transform-origin: top left;
+  user-select: none;
+}

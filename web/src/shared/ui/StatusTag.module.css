@@ -28,11 +28,15 @@
   color: var(--warning);
 }
 
-/* Vencido y sin plan: relleno danger, texto blanco. */
+/* Vencido y sin plan: relleno danger. El texto es --surface, casi blanco en claro (5,3:1 sobre
+   --danger) y casi negro en oscuro, donde --danger se aclara (6,9:1); con --white, en oscuro
+   quedaba en 2,6:1 (axe en tests/e2e/kit.spec.ts, US-068).
+   DESIGN-GAP: los .dark.html pintan este estado con el rojo del tema claro y texto blanco;
+   tokens.css no tiene un relleno de peligro que no cambie con el tema. */
 .danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: var(--white);
+  color: var(--surface);
 }
 
 /* Congelado / inactivo: borde line, texto muted. */

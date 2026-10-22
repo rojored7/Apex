@@ -3,7 +3,9 @@
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
+import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
+import { resetThemeForTests } from "../core/theme/theme";
 import { signInAs, signOutForTests } from "../test/session";
 import { AccessLayout } from "./AccessLayout";
 import { PanelShell } from "./PanelShell";
@@ -38,6 +40,17 @@ describe("PanelShell", () => {
 
     const nav = screen.getByRole("navigation", { name: "Menú principal" });
     expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inicio", "Socios"]);
+  });
+
+  it("lleva el conmutador de tema (US-068) y aplica el claro por defecto del panel", async () => {
+    signInAs("admin");
+    inRouter(<PanelShell />);
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+    await userEvent.setup().click(within(screen.getByRole("banner")).getByRole("button", { name: "Cambiar a tema oscuro" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    localStorage.clear();
+    resetThemeForTests();
   });
 
   it("sin sesión pinta el marco sin usuario", () => {

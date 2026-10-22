@@ -63,8 +63,12 @@
   color: var(--danger);
 }
 
-.more {
+/* "Ver más" va sobre --surface, donde --blue-deep (botón ghost) queda en 4,4:1 en claro; con
+   --ink y subrayado cumple 4,5:1 en los dos temas (axe en tests/e2e/kit.spec.ts, US-068). */
+.aside .more {
   align-self: flex-start;
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .more:focus-visible {

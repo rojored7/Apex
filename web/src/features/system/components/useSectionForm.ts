@@ -10,7 +10,7 @@
 //   reemplaza lo escrito (es lo que el admin pidió). 422 con campo: el error va bajo el campo.
 //   Otro error: aviso general con el mensaje del api. Sin borradores en localStorage.
 import { useEffect, useRef, useState } from "react";
-import { useForm, type DefaultValues, type FieldError, type FieldErrors, type FieldValues, type UseFormReturn } from "react-hook-form";
+import { useForm, type DefaultValues, type FieldValues, type UseFormReturn } from "react-hook-form";
 import type { ZodType, ZodTypeDef } from "zod";
 import { isApiError } from "../../../core/api/errors";
 import { zodResolver } from "../../../shared/lib/zodResolver";
@@ -115,12 +115,6 @@ export function useSectionForm<K extends SettingsKey, TForm extends FieldValues>
     submitValues,
     frame: { isSaving: api.isSaving, isConflict: api.isConflict, isReloading, saved: saved && !isDirty, formError, onReload },
   };
-}
-
-/** `{ error }` para Field solo cuando hay mensaje (exactOptionalPropertyTypes). */
-export function errorOf<T extends FieldValues>(errors: FieldErrors<T>, name: keyof T & string): { error?: string } {
-  const message = (errors[name] as FieldError | undefined)?.message;
-  return typeof message === "string" && message !== "" ? { error: message } : {};
 }
 
 /** Texto del formulario a null cuando queda vacío. */

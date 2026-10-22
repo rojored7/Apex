@@ -18,7 +18,8 @@ function setup(initial: string) {
     () => {
       navigateRef = useNavigate();
       search = useLocation().search;
-      return useListParams({ filters: FILTERS, sorts: SORTS });
+      // Modo URL explícito: estas pruebas son de q en la URL (por defecto va en memoria).
+      return useListParams({ filters: FILTERS, sorts: SORTS, localQuery: false });
     },
     { wrapper: Wrapper },
   );
@@ -188,7 +189,7 @@ describe("useListParams", () => {
 
 describe("useListParams en una pantalla", () => {
   function Screen() {
-    const list = useListParams({ filters: FILTERS });
+    const list = useListParams({ filters: FILTERS, localQuery: false });
     return (
       <>
         <output data-testid="params">{JSON.stringify(list.params)}</output>
@@ -219,7 +220,7 @@ describe("useListParams en una pantalla", () => {
 
 // S2-D41 (M-8): con `localQuery` la búsqueda vive en estado local y nunca en la URL.
 describe("useListParams con localQuery", () => {
-  function setupLocal(initial: string) {
+  function setupLocal(initial: string, config: { localQuery?: boolean } = { localQuery: true }) {
     let search = "";
     function Wrapper({ children }: { children: ReactNode }) {
       return <MemoryRouter initialEntries={[initial]}>{children}</MemoryRouter>;
@@ -227,12 +228,24 @@ describe("useListParams con localQuery", () => {
     const hook = renderHook(
       () => {
         search = useLocation().search;
-        return useListParams({ filters: FILTERS, localQuery: true });
+        return useListParams({ filters: FILTERS, ...config });
       },
       { wrapper: Wrapper },
     );
     return { result: hook.result, search: () => search };
   }
+
+  it("L1 (revisión del Sprint 2): sin decir nada, la búsqueda vive en memoria (S2-D41 por defecto)", () => {
+    const { result, search } = setupLocal("/socios?q=7319582046&status=active", {});
+
+    expect(result.current.q).toBe("");
+    act(() => {
+      result.current.setQuery("ana");
+    });
+
+    expect(result.current.params).toEqual({ q: "ana", status: ["active"], limit: 25, offset: 0 });
+    expect(search()).not.toContain("q=");
+  });
 
   it("setQuery pasa q al api, vuelve offset a 0 y no escribe q en la URL", () => {
     const { result, search } = setupLocal("/sistema/usuarios?status=active&offset=50");

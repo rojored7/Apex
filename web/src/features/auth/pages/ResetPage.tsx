@@ -27,7 +27,6 @@ const RESET_PREFIX = "/restablecer/";
 /** Lo que queda en la barra tras sacar el token. */
 export const RESET_BARE_PATH = "/restablecer";
 
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 function InvalidLink() {
   return (
@@ -103,7 +102,7 @@ export default function ResetPage() {
         required
         autoFocus
         hint={PASSWORD_MESSAGES.policy}
-        {...fieldError(errors.newPassword?.message)}
+        error={errors.newPassword?.message}
         {...register("newPassword")}
       />
       <Field
@@ -111,7 +110,7 @@ export default function ResetPage() {
         type="password"
         autoComplete="new-password"
         required
-        {...fieldError(errors.confirmPassword?.message)}
+        error={errors.confirmPassword?.message}
         {...register("confirmPassword")}
       />
       <Button type="submit" className={styles.submit} loading={reset.isPending}>

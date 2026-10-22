@@ -5,10 +5,9 @@
 // - `access`: "public" (sin sesión), "session" (cualquier rol con sesión) o la acción de la
 //   matriz de US-040. El front oculta; cada endpoint vuelve a verificar el rol (RN-15).
 // - `load`: la página se descarga solo al visitar la ruta (US-067, criterio 3).
-// - `pending`: la pantalla llega en otro slice de este sprint (F3 a F7); la ruta existe, pasa
-//   por las guardas y muestra "Disponible pronto". Cada slice cambia `pending` por `load`.
-// - Sin `load` ni `pending` (versiones futuras, o /socios/:id hasta S3-F1, S2-D34) la ruta no
-//   se registra y da 404 sin descargar nada.
+// - Sin `load` (versiones futuras, o /socios/:id hasta S3-F1, S2-D34) la ruta no se registra
+//   y da 404 sin descargar nada. L1 de la revisión general del Sprint 2: se quitó `pending`
+//   (PendingPage, "Disponible pronto"), código muerto desde S2-F7.
 import type { ComponentType } from "react";
 import type { Action } from "../core/auth/permissions";
 import type { Feature } from "./features";
@@ -23,13 +22,11 @@ export interface RouteDef {
   feature?: Feature;
   access: RouteAccess;
   layout: RouteLayout;
-  /** Página diferida; sin `load` y sin `pending` la ruta no se registra (404). */
+  /** Página diferida; sin `load` la ruta no se registra (404). */
   load?: () => Promise<{ default: ComponentType }>;
-  /** La pantalla llega en otro slice de este sprint: se muestra "Disponible pronto". */
-  pending?: boolean;
 }
 
-type Extra = Pick<RouteDef, "load" | "pending">;
+type Extra = Pick<RouteDef, "load">;
 
 const route = (path: string, title: string, feature: Feature, access: RouteAccess, layout: RouteLayout, extra: Extra = {}): RouteDef =>
   Object.freeze({ path, title, feature, access, layout, ...extra });

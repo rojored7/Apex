@@ -7,15 +7,14 @@
 //   de otro admin activo con contraseña. El front no ve si hay contraseña: toma rol admin
 //   (`can(role, "users.manage")`) y `status === "active"`; un admin pendiente de activación sí
 //   recibe enlace. Si el api igual responde 409 user_not_eligible, el modal lo explica.
-import { ApiError, GENERIC_MESSAGES, isApiError } from "../../core/api/errors";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { ApiError, isApiError } from "../../core/api/errors";
+import { HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY } from "../../core/api/status";
+import { connectionMessage, TOO_MANY_MESSAGE } from "../../shared/lib/apiMessages";
 import { can } from "../../core/auth/permissions";
 import type { UserRowView } from "./schemas";
 
 export type RowAction = "edit" | "revoke" | "resend" | "lock" | "unlock" | "delete";
-
-const HTTP_FORBIDDEN = 403;
-const HTTP_NOT_FOUND = 404;
-const HTTP_TOO_MANY = 429;
 
 export const USER_ACTION_MESSAGES = {
   lastAdmin: "Debe quedar al menos un administrador activo. Nombra a otro administrador antes de hacer este cambio.",
@@ -26,23 +25,23 @@ export const USER_ACTION_MESSAGES = {
     "Esta cuenta no puede recibir un enlace nuevo. Si está bloqueada, desbloquéala primero; el enlace de un administrador activo se genera desde la consola del servidor.",
   notFound: "No encontramos esta cuenta: puede que otra persona ya la haya dado de baja. Cierra y recarga la lista.",
   forbidden: "Solo un administrador puede hacer esto. Si lo necesitas, pídeselo a uno.",
-  tooMany: "Demasiados intentos. Espera un momento y vuelve a intentarlo.",
+  tooMany: TOO_MANY_MESSAGE,
   failed: "No pudimos completar la acción. Intenta de nuevo en un momento.",
 } as const;
 
 const BY_CODE: Partial<Record<string, string>> = {
-  last_admin: USER_ACTION_MESSAGES.lastAdmin,
-  cannot_lock_self: USER_ACTION_MESSAGES.cannotLockSelf,
-  already_locked: USER_ACTION_MESSAGES.alreadyLocked,
-  not_locked: USER_ACTION_MESSAGES.notLocked,
-  user_not_eligible: USER_ACTION_MESSAGES.notEligible,
+  [API_ERROR_CODES.lastAdmin]: USER_ACTION_MESSAGES.lastAdmin,
+  [API_ERROR_CODES.cannotLockSelf]: USER_ACTION_MESSAGES.cannotLockSelf,
+  [API_ERROR_CODES.alreadyLocked]: USER_ACTION_MESSAGES.alreadyLocked,
+  [API_ERROR_CODES.notLocked]: USER_ACTION_MESSAGES.notLocked,
+  [API_ERROR_CODES.userNotEligible]: USER_ACTION_MESSAGES.notEligible,
 };
 
 /** El error de una acción sobre una cuenta en palabras de la pantalla. */
 export function userActionMessage(error: unknown): string {
   if (!isApiError(error)) return USER_ACTION_MESSAGES.failed;
-  if (error.code === "invalid_response") return error.message;
-  if (error.status === 0) return error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
   const byCode = BY_CODE[error.code];
   if (byCode) return byCode;
   if (error.status === HTTP_NOT_FOUND) return USER_ACTION_MESSAGES.notFound;
@@ -54,7 +53,7 @@ export function userActionMessage(error: unknown): string {
 /** El mismo error con el mensaje de la pantalla (ConfirmModal muestra `message`). */
 export function toUserActionError(error: unknown): ApiError {
   const message = userActionMessage(error);
-  if (!isApiError(error)) return new ApiError({ status: 0, code: "unknown", message });
+  if (!isApiError(error)) return new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message });
   return new ApiError({ status: error.status, code: error.code, message, field: error.field, existingId: error.existingId, retryAfterS: error.retryAfterS });
 }
 

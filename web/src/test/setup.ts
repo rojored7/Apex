@@ -30,3 +30,11 @@ function isNativeSignal(signal: AbortSignal): boolean {
 }
 
 globalThis.Request = TestRequest;
+
+// L7 (revisión del Sprint 2): jsdom no implementa canvas y avisa "Not implemented:
+// HTMLCanvasElement.prototype.getContext" cada vez que axe prueba `color-contrast`. Un
+// getContext que devuelve null es lo que responde un navegador sin ese contexto: axe lo
+// trata como "no se puede medir" (el contraste lo mide la prueba de Playwright con axe).
+if (typeof HTMLCanvasElement !== "undefined") {
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { configurable: true, value: () => null });
+}

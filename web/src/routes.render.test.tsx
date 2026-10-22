@@ -1,7 +1,7 @@
 // US-067 T6 y US-053 T7: el router real (createMemoryRouter) monta cada zona en su layout,
 // una ruta deshabilitada da 404 sin descargar su código y no existe /hoy.
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { RouterProvider } from "react-router";
 import { ENABLED_FEATURES, type Feature } from "./config/features";
 import type { RouteDef } from "./config/routeTable";
@@ -9,6 +9,9 @@ import { SessionRoleProvider } from "./core/auth/SessionRole";
 import { createAppRouter, type AppRouterOptions } from "./routes";
 import { testQueryClient } from "./test/server";
 import { signInAs, signOutForTests } from "./test/session";
+import { reloadPage } from "./pages/reload";
+
+vi.mock("./pages/reload", () => ({ reloadPage: vi.fn() }));
 
 function Page({ text }: { text: string }) {
   return <h1>{text}</h1>;
@@ -19,9 +22,18 @@ const loadClases = vi.fn(async () => Promise.resolve({ default: () => <Page text
 const loadMi = vi.fn(async () => Promise.resolve({ default: () => <Page text="Mi inicio" /> }));
 const loadCheckin = vi.fn(async () => Promise.resolve({ default: () => <Page text="Lista de llegada" /> }));
 const loadTv = vi.fn(async () => Promise.resolve({ default: () => <Page text="Leaderboard" /> }));
+const loadLogin = vi.fn(async () => Promise.resolve({ default: () => <Page text="Iniciar sesión" /> }));
+// H1: tras un despliegue el chunk viejo da 404 y el import dinámico rechaza.
+const loadStale = vi.fn(async () => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/PlansPage-viejo.js")));
+function Broken(): never {
+  throw new Error("Fallo al pintar");
+}
+const loadBroken = vi.fn(async () => Promise.resolve({ default: Broken }));
 
 const TABLE: RouteDef[] = [
-  { path: "/login", title: "Iniciar sesión", feature: "auth", access: "public", layout: "access", pending: true },
+  { path: "/login", title: "Iniciar sesión", feature: "auth", access: "public", layout: "access", load: loadLogin },
+  { path: "/planes", title: "Planes", feature: "plans", access: "plans.view", layout: "panel", load: loadStale },
+  { path: "/sistema/usuarios", title: "Usuarios", feature: "users", access: "users.manage", layout: "panel", load: loadBroken },
   { path: "/socios", title: "Socios", feature: "members", access: "members.view", layout: "panel", load: loadSocios },
   { path: "/clases", title: "Clases", feature: "classes", access: "classes.view", layout: "panel", load: loadClases },
   { path: "/clases/:id/checkin", title: "Check-in", feature: "classes", access: "classes.view", layout: "gym", load: loadCheckin },
@@ -46,6 +58,7 @@ const WITH_FUTURE = new Set<Feature>([...ENABLED_FEATURES, "classes", "portal", 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -80,12 +93,40 @@ describe("router de la app", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "No encontrada" })).toBeInTheDocument();
   });
 
-  it("una ruta pendiente muestra Disponible pronto con su título", async () => {
-    signOutForTests();
-    renderAt("/login");
+  it("H1: un chunk que ya no existe muestra Algo salió mal con Recargar y recarga sola una vez", async () => {
+    signInAs("admin");
+    renderAt("/planes");
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeInTheDocument();
-    expect(screen.getByText(/disponible pronto/i)).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No pudimos abrir esta pantalla");
+    expect(screen.getByRole("heading", { level: 1, name: "Algo salió mal" })).toBeInTheDocument();
+    const reload = screen.getByRole("button", { name: "Recargar" });
+    // El aviso queda dentro del panel: el menú y la barra siguen (errorElement de la zona).
+    expect(screen.getByRole("navigation", { name: "Menú principal" })).toBeInTheDocument();
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(vi.mocked(reloadPage)).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    renderAt("/planes");
+    await screen.findByRole("alert");
+    expect(vi.mocked(reloadPage)).toHaveBeenCalledTimes(1);
+
+    screen.getByRole("button", { name: "Recargar" }).click();
+    expect(vi.mocked(reloadPage)).toHaveBeenCalledTimes(2);
+    expect(reload).not.toBeInTheDocument();
+  });
+
+  it("H1: un error al pintar muestra el mismo aviso sin recargar solo", async () => {
+    // React y React Router informan el error capturado en console.error: aquí es lo esperado.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    signInAs("admin");
+    renderAt("/sistema/usuarios");
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recargar" })).toBeInTheDocument();
+    expect(screen.queryByText("Fallo al pintar")).not.toBeInTheDocument();
+    expect(vi.mocked(reloadPage)).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("la tablet del box monta GymLayout con el título de la ruta", async () => {

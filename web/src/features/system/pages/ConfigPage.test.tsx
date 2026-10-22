@@ -2,13 +2,15 @@
 // por pestaña, confirmación al salir con cambios sin guardar (useBlocker + ConfirmModal y
 // beforeunload), guardar una sección no recarga las otras y nada se guarda en localStorage.
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Link, Outlet, RouterProvider } from "react-router";
 import { axe } from "vitest-axe";
 import { createQueryClient } from "../../../core/api/queryClient";
 import { RoleProvider } from "../../../core/auth";
+import { clearSession } from "../../../core/auth/session";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
+import { signInAs, signOutForTests } from "../../../test/session";
 import { gymSection, membershipsSection, privacySection } from "../../../test/settings";
 import ConfigPage from "./ConfigPage";
 
@@ -41,6 +43,7 @@ function renderPage(entry = PATH, handlers: Record<string, MockHandler> = {}, cl
         children: [
           { path: PATH, element: <ConfigPage /> },
           { path: "/", element: <h1>Inicio</h1> },
+          { path: "/login", element: <h1>Iniciar sesión</h1> },
         ],
       },
     ],
@@ -60,9 +63,14 @@ function renderPage(entry = PATH, handlers: Record<string, MockHandler> = {}, cl
 const tab = (name: string) => screen.getByRole("tab", { name });
 const nameInput = () => screen.findByRole("textbox", { name: /Nombre/ });
 
+beforeEach(() => {
+  signInAs("admin");
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  signOutForTests();
 });
 
 describe("ConfigPage", () => {
@@ -156,6 +164,21 @@ describe("ConfigPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Descartar cambios" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: "Inicio" })).toBeInTheDocument();
+  });
+
+  it("L4 (revisión del Sprint 2): con cambios sin guardar y la sesión cerrada, ir a /login no pide confirmación", async () => {
+    const { router, user } = renderPage();
+    await user.type(await nameInput(), " Norte");
+
+    act(() => {
+      clearSession("expired");
+    });
+    await act(async () => {
+      await router.navigate("/login", { replace: true });
+    });
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("después de guardar ya no pide confirmación", async () => {

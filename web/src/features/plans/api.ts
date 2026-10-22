@@ -10,10 +10,9 @@
 //   traduce planErrors.ts.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { api } from "../../core/api/client";
-import { ApiError } from "../../core/api/errors";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
-import { INVALID_RESPONSE_MESSAGE } from "./planErrors";
+import { parseResponse } from "../../core/api/response";
 import { planRowSchema, plansPageSchema, type PlanCreateBody, type PlanRowView } from "./schemas";
 
 export interface PlansParams {
@@ -33,24 +32,10 @@ export function planQueryKey(id: string): readonly ["plans", "detail", string] {
   return ["plans", "detail", id];
 }
 
-function invalidResponse(): ApiError {
-  return new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
-}
-
-function parsePlan(body: unknown): PlanRowView {
-  const parsed = planRowSchema.safeParse(body);
-  if (!parsed.success) throw invalidResponse();
-  return parsed.data;
-}
-
 export function usePlans(params: PlansParams): UseQueryResult<Page<PlanRowView>> {
   return useQuery({
     queryKey: plansQueryKey(params),
-    queryFn: async ({ signal }) => {
-      const parsed = plansPageSchema.safeParse(await api.get<unknown>("/plans", { query: listParams({ ...params }), signal }));
-      if (!parsed.success) throw invalidResponse();
-      return parsed.data;
-    },
+    queryFn: async ({ signal }) => parseResponse(plansPageSchema, await api.get<unknown>("/plans", { query: listParams({ ...params }), signal })),
     placeholderData: keepPreviousData,
   });
 }
@@ -58,7 +43,7 @@ export function usePlans(params: PlansParams): UseQueryResult<Page<PlanRowView>>
 export function usePlan(id: string | null): UseQueryResult<PlanRowView> {
   return useQuery({
     queryKey: planQueryKey(id ?? ""),
-    queryFn: async ({ signal }) => parsePlan(await api.get<unknown>(`/plans/${encodeURIComponent(id ?? "")}`, { signal })),
+    queryFn: async ({ signal }) => parseResponse(planRowSchema, await api.get<unknown>(`/plans/${encodeURIComponent(id ?? "")}`, { signal })),
     enabled: Boolean(id),
   });
 }
@@ -66,7 +51,7 @@ export function usePlan(id: string | null): UseQueryResult<PlanRowView> {
 export function useCreatePlan(): UseMutationResult<PlanRowView, Error, PlanCreateBody> {
   const queryClient = useQueryClient();
   return useMutation<PlanRowView, Error, PlanCreateBody>({
-    mutationFn: async (body) => parsePlan(await api.post<unknown>("/plans", { body })),
+    mutationFn: async (body) => parseResponse(planRowSchema, await api.post<unknown>("/plans", { body })),
     onSuccess: () => {
       // Sin esperar la relectura: el panel se cierra enseguida y la lista se actualiza sola.
       void queryClient.invalidateQueries({ queryKey: PLANS_QUERY_KEY });

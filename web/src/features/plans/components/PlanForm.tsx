@@ -36,7 +36,6 @@ export interface PlanFormProps {
 export const NEW_PLAN_TITLE = "Nuevo plan";
 
 const resolver = zodResolver(planFormSchema);
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
   const formId = useId();
@@ -120,7 +119,7 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
             {generalError}
           </p>
         ) : null}
-        <Field label="Nombre" autoComplete="off" required {...fieldError(errors.name?.message)} {...nameAction} {...register("name")} />
+        <Field label="Nombre" autoComplete="off" required error={errors.name?.message} {...nameAction} {...register("name")} />
         <Controller
           control={control}
           name="price"
@@ -131,7 +130,7 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
               inputMode="numeric"
               autoComplete="off"
               required
-              {...fieldError(errors.price?.message)}
+              error={errors.price?.message}
               name={field.name}
               ref={field.ref}
               value={field.value}
@@ -142,7 +141,7 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
             />
           )}
         />
-        <Field label="Tipo de duración" name="kind" required {...fieldError(errors.kind?.message)}>
+        <Field label="Tipo de duración" name="kind" required error={errors.kind?.message}>
           {(fieldControl) => (
             <select {...fieldControl} {...register("kind")}>
               {PLAN_KINDS.map((value) => (
@@ -155,11 +154,11 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
         </Field>
         {kind === "classes" ? (
           <div className={styles.pair}>
-            <Field label="Número de clases" inputMode="numeric" autoComplete="off" required {...fieldError(errors.class_count?.message)} {...register("class_count")} />
-            <Field label="Días para usarlas" inputMode="numeric" autoComplete="off" required {...fieldError(errors.duration_days?.message)} {...register("duration_days")} />
+            <Field label="Número de clases" inputMode="numeric" autoComplete="off" required error={errors.class_count?.message} {...register("class_count")} />
+            <Field label="Días para usarlas" inputMode="numeric" autoComplete="off" required error={errors.duration_days?.message} {...register("duration_days")} />
           </div>
         ) : (
-          <Field label="Duración en días" inputMode="numeric" autoComplete="off" required {...fieldError(errors.duration_days?.message)} {...register("duration_days")} />
+          <Field label="Duración en días" inputMode="numeric" autoComplete="off" required error={errors.duration_days?.message} {...register("duration_days")} />
         )}
         <p className={styles.note}>Las membresías ya vendidas guardan su propio precio: cambiar el precio de un plan no cambia lo vendido.</p>
       </form>

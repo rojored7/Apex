@@ -18,7 +18,7 @@ import { useSettingsSection, type PrivacyInput, type PrivacyView, type SettingsS
 import { POLICY_TEXT_MAX, privacySettingsSchema, type PrivacySettingsForm as PrivacyForm } from "../schemas";
 import styles from "./SettingsForm.module.css";
 import { SectionLoadState, SettingsFormFrame, type SettingsFormProps } from "./SettingsFormFrame";
-import { blankToNull, errorOf, useSectionForm } from "./useSectionForm";
+import { blankToNull, useSectionForm } from "./useSectionForm";
 
 const FIELD_MESSAGES: Partial<Record<keyof PrivacyForm, string>> = {
   policy_version: "El servidor no aceptó la versión. Revísala y vuelve a guardar.",
@@ -94,7 +94,7 @@ function PrivacyFields({ section, api, onDirtyChange }: SettingsFormProps & { se
           required
           hint="Cambia la versión cada vez que cambies el texto. Ejemplo: 2026-10."
           autoComplete="off"
-          {...errorOf(errors, "policy_version")}
+          error={errors.policy_version?.message}
           {...register("policy_version")}
         />
         <Field
@@ -106,7 +106,7 @@ function PrivacyFields({ section, api, onDirtyChange }: SettingsFormProps & { se
           max={20}
           step={1}
           hint="Entre 1 y 20. Por defecto: 5."
-          {...errorOf(errors, "retention_years")}
+          error={errors.retention_years?.message}
           {...register("retention_years")}
         />
         <div className={styles.wide}>
@@ -115,7 +115,7 @@ function PrivacyFields({ section, api, onDirtyChange }: SettingsFormProps & { se
             name="policy_text"
             required
             hint={`${formatCount(textLength)} de ${formatCount(POLICY_TEXT_MAX)} caracteres`}
-            {...errorOf(errors, "policy_text")}
+            error={errors.policy_text?.message}
           >
             {(control) => <textarea {...control} {...register("policy_text")} className={cx(control.className, styles.textarea)} rows={8} />}
           </Field>
@@ -124,7 +124,7 @@ function PrivacyFields({ section, api, onDirtyChange }: SettingsFormProps & { se
           label="Autorización obligatoria desde"
           type="date"
           hint="Desde esta fecha cada socio nuevo debe aceptar la política. Déjalo vacío si aún no aplica."
-          {...errorOf(errors, "consent_required_from")}
+          error={errors.consent_required_from?.message}
           {...register("consent_required_from")}
         />
       </SettingsFormFrame>

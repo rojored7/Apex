@@ -1,7 +1,7 @@
 // S2-F2: contenedores que leen la sesión y entregan sus datos a los layouts presentacionales
 // (PanelShell, PortalShell, TvShell) y el marco de las pantallas de acceso.
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import userEvent from "@testing-library/user-event";
@@ -57,6 +57,8 @@ describe("PanelShell", () => {
     expect(document.documentElement.dataset.theme).toBe("light");
     await userEvent.setup().click(within(screen.getByRole("banner")).getByRole("button", { name: "Cambiar a tema oscuro" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
+    // L7 (revisión del Sprint 2): desmontar antes de reiniciar el tema (avisa a los suscriptores).
+    cleanup();
     localStorage.clear();
     resetThemeForTests();
   });

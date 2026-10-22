@@ -22,11 +22,13 @@
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
-import { ApiError, GENERIC_MESSAGES, isApiError } from "../../../core/api/errors";
+import type { ApiError } from "../../../core/api/errors";
+import { HTTP_FORBIDDEN } from "../../../core/api/status";
 import { ROLE_LABELS, ROLES, type Role } from "../../../core/auth/permissions";
 import { useSession } from "../../../core/auth/session";
 import { formatCount, formatDateTime } from "../../../core/i18n/format";
 import { useListParams } from "../../../shared/hooks/useListParams";
+import { toScreenError } from "../../../shared/lib/apiMessages";
 import { Button } from "../../../shared/ui/Button";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
@@ -55,8 +57,6 @@ export const USERS_MESSAGES = {
   failed: "No pudimos cargar los usuarios. Intenta de nuevo en un momento.",
 } as const;
 
-const HTTP_FORBIDDEN = 403;
-
 /** El primer valor de la URL si es uno de los permitidos; si no, ninguno. */
 function pickOne<T extends string>(values: readonly string[], allowed: readonly T[]): T | undefined {
   const [first] = values;
@@ -65,12 +65,7 @@ function pickOne<T extends string>(values: readonly string[], allowed: readonly 
 
 /** El error de la lista en palabras de la pantalla ("qué pasó y qué hacer"). */
 function listError(error: unknown): ApiError | null {
-  if (!error) return null;
-  if (!isApiError(error)) return new ApiError({ status: 0, code: "unknown", message: USERS_MESSAGES.failed });
-  if (error.code === "invalid_response") return error;
-  if (error.status === 0) return new ApiError({ status: 0, code: error.code, message: error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error });
-  const message = error.status === HTTP_FORBIDDEN ? USERS_MESSAGES.forbidden : USERS_MESSAGES.failed;
-  return new ApiError({ status: error.status, code: error.code, message });
+  return toScreenError(error, (e) => (e.status === HTTP_FORBIDDEN ? USERS_MESSAGES.forbidden : USERS_MESSAGES.failed), USERS_MESSAGES.failed);
 }
 
 const BASE_COLUMNS: Column<UserRowView>[] = [

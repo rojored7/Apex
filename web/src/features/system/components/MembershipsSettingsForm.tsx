@@ -8,7 +8,7 @@ import { Field } from "../../../shared/ui/Field";
 import { useSettingsSection, type MembershipsSettings, type SettingsSection, type SettingsSectionApi } from "../api";
 import { membershipsSettingsSchema, type MembershipsSettingsForm as MembershipsForm } from "../schemas";
 import { SectionLoadState, SettingsFormFrame, type SettingsFormProps } from "./SettingsFormFrame";
-import { errorOf, useSectionForm } from "./useSectionForm";
+import { useSectionForm } from "./useSectionForm";
 
 interface IntegerField {
   name: keyof MembershipsForm;
@@ -107,7 +107,7 @@ function MembershipsFields({ section, api, onDirtyChange }: SettingsFormProps & 
           max={field.max}
           step={1}
           hint={`${field.explanation} Entre ${String(field.min)} y ${String(field.max)}. Por defecto: ${String(field.fallback)}.`}
-          {...errorOf(formState.errors, field.name)}
+          error={formState.errors[field.name]?.message}
           {...register(field.name)}
         />
       ))}

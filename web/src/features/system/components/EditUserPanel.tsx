@@ -13,7 +13,9 @@
 import { useEffect, useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../../core/api/errorCodes";
 import { isApiError } from "../../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE } from "../../../core/api/status";
 import { ROLE_LABELS, STAFF_ROLES } from "../../../core/auth/permissions";
 import { refreshCurrentUser, useSession } from "../../../core/auth/session";
 import { zodResolver } from "../../../shared/lib/zodResolver";
@@ -48,13 +50,7 @@ export const EDIT_USER_MESSAGES = {
   lastAdmin: "Debe quedar al menos un administrador activo. Nombra a otro administrador antes de quitarle el rol a esta cuenta.",
 } as const;
 
-const HTTP_NOT_FOUND = 404;
-const HTTP_CONFLICT = 409;
-const HTTP_UNPROCESSABLE = 422;
-
 type UpdateMutation = ReturnType<typeof useUpdateUser>;
-
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 /** Solo lo que cambió respecto de la cuenta leída (el correo se compara ya recortado). */
 function changesOf(account: UserView, values: EditUserForm): UpdateUserChanges {
@@ -68,12 +64,12 @@ function changesOf(account: UserView, values: EditUserForm): UpdateUserChanges {
 function loadErrorMessage(error: unknown): string {
   if (!isApiError(error)) return EDIT_USER_MESSAGES.loadFailed;
   if (error.status === HTTP_NOT_FOUND) return EDIT_USER_MESSAGES.notFound;
-  if (error.code === "invalid_response" || error.status === 0) return userActionMessage(error);
+  if (error.code === CLIENT_ERROR_CODES.invalidResponse || error.status === 0) return userActionMessage(error);
   return EDIT_USER_MESSAGES.loadFailed;
 }
 
 function saveErrorMessage(error: unknown): string {
-  return isApiError(error) && error.code === "last_admin" ? EDIT_USER_MESSAGES.lastAdmin : userActionMessage(error);
+  return isApiError(error) && error.code === API_ERROR_CODES.lastAdmin ? EDIT_USER_MESSAGES.lastAdmin : userActionMessage(error);
 }
 
 const isStaffRole = (role: UserView["role"]): boolean => (STAFF_ROLES as readonly string[]).includes(role);
@@ -118,7 +114,7 @@ function EditForm({ account, formId, save, onDirtyChange, onSaved }: EditFormPro
     try {
       onSaved(await save.mutateAsync({ id: account.id, changes }));
     } catch (error) {
-      if (isApiError(error) && error.status === HTTP_CONFLICT && error.code === "email_taken") {
+      if (isApiError(error) && error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.emailTaken) {
         setExistingId(error.existingId ?? null);
         form.setError("email", { type: "server", message: EDIT_USER_MESSAGES.emailTaken }, { shouldFocus: true });
         return;
@@ -159,12 +155,12 @@ function EditForm({ account, formId, save, onDirtyChange, onSaved }: EditFormPro
         autoComplete="off"
         inputMode="email"
         required
-        {...fieldError(errors.email?.message)}
+        error={errors.email?.message}
         {...existingAction}
         {...register("email")}
       />
       {isStaffRole(account.role) ? (
-        <Field label="Rol" name="role" required {...fieldError(errors.role?.message)}>
+        <Field label="Rol" name="role" required error={errors.role?.message}>
           {(control) => (
             <select {...control} {...register("role")}>
               {STAFF_ROLES.map((role) => (

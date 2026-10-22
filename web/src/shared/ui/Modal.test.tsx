@@ -36,6 +36,12 @@ describe("Modal", () => {
     expect(dialog).not.toHaveAttribute("aria-busy");
   });
 
+  it("L8 (revisión del Sprint 2): el cuerpo es la descripción accesible del diálogo", () => {
+    renderModal();
+
+    expect(screen.getByRole("dialog", { name: "Reenviar enlace" })).toHaveAccessibleDescription("Contenido del diálogo.");
+  });
+
   it("Escape cierra", async () => {
     const { onClose, user } = renderModal();
 

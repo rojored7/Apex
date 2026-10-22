@@ -5,7 +5,7 @@
 // horaria" como campo de solo lectura; no están en el contrato de `gym`. La zona se informa
 // como nota (es fija, America/Bogota). NIT, ciudad y correo no están en Config.html y sí en
 // el contrato (US-055).
-import { getAccessToken, getSession, setSession } from "../../../core/auth/session";
+import { getSession, updateSessionUser } from "../../../core/auth/session";
 import { TZ_DISPLAY } from "../../../config/locale";
 import { cx } from "../../../shared/ui/cx";
 import { Field } from "../../../shared/ui/Field";
@@ -13,7 +13,7 @@ import { useSettingsSection, type GymSettings, type SettingsSection, type Settin
 import { gymSettingsSchema, type GymSettingsForm as GymForm } from "../schemas";
 import styles from "./SettingsForm.module.css";
 import { SectionLoadState, SettingsFormFrame, type SettingsFormProps } from "./SettingsFormFrame";
-import { blankToNull, errorOf, useSectionForm } from "./useSectionForm";
+import { blankToNull, useSectionForm } from "./useSectionForm";
 
 const FIELD_MESSAGES: Partial<Record<keyof GymForm, string>> = {
   name: "El servidor no aceptó el nombre. Revísalo y vuelve a guardar.",
@@ -49,12 +49,13 @@ function toInput(values: GymForm): GymSettings {
   };
 }
 
-/** El TopBar lee el nombre del gimnasio de la sesión (gym_name de GET /auth/me). */
+/**
+ * El TopBar lee el nombre del gimnasio de la sesión (gym_name de GET /auth/me). M2 (revisión
+ * del Sprint 2): updateSessionUser no invalida un refresh ni una lectura de me en vuelo.
+ */
 function syncGymName(saved: SettingsSection<"gym">): void {
-  const { status, user } = getSession();
-  const token = getAccessToken();
-  if (status !== "authenticated" || !user || !token || user.gymName === saved.value.name) return;
-  setSession({ accessToken: token, user: { ...user, gymName: saved.value.name } });
+  if (getSession().user?.gymName === saved.value.name) return;
+  updateSessionUser({ gymName: saved.value.name });
 }
 
 function GymFields({ section, api, onDirtyChange }: SettingsFormProps & { section: SettingsSection<"gym">; api: SettingsSectionApi<"gym"> }) {
@@ -80,24 +81,24 @@ function GymFields({ section, api, onDirtyChange }: SettingsFormProps & { sectio
       }}
       {...frame}
     >
-      <Field label="Nombre" required autoComplete="organization" {...errorOf(errors, "name")} {...register("name")} />
+      <Field label="Nombre" required autoComplete="organization" error={errors.name?.message} {...register("name")} />
       <Field
         label="NIT"
         hint="Solo dígitos y, si tiene, un guion con el dígito de verificación."
         inputMode="numeric"
-        {...errorOf(errors, "nit")}
+        error={errors.nit?.message}
         {...register("nit")}
       />
-      <Field label="Dirección" autoComplete="street-address" {...errorOf(errors, "address")} {...register("address")} />
-      <Field label="Ciudad" autoComplete="address-level2" {...errorOf(errors, "city")} {...register("city")} />
-      <Field label="Teléfono" type="tel" autoComplete="tel" {...errorOf(errors, "phone")} {...register("phone")} />
-      <Field label="WhatsApp Business" type="tel" hint="El número desde el que el box escribe a los socios." {...errorOf(errors, "whatsapp")} {...register("whatsapp")} />
+      <Field label="Dirección" autoComplete="street-address" error={errors.address?.message} {...register("address")} />
+      <Field label="Ciudad" autoComplete="address-level2" error={errors.city?.message} {...register("city")} />
+      <Field label="Teléfono" type="tel" autoComplete="tel" error={errors.phone?.message} {...register("phone")} />
+      <Field label="WhatsApp Business" type="tel" hint="El número desde el que el box escribe a los socios." error={errors.whatsapp?.message} {...register("whatsapp")} />
       <Field
         label="Correo de contacto"
         type="email"
         autoComplete="email"
         hint="Se guarda en minúsculas."
-        {...errorOf(errors, "email")}
+        error={errors.email?.message}
         {...register("email")}
       />
       <p className={cx(styles.note, styles.wide)}>{`Zona horaria: ${TZ_DISPLAY}. Es fija para todo el sistema.`}</p>

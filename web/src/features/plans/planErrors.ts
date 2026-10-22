@@ -5,19 +5,11 @@
 // - createErrorMessage, listError y detailError: el resto (403, 404, 429 con la espera, 5xx, red,
 //   respuesta inválida) como mensaje general.
 import type { FieldPath } from "react-hook-form";
-import { ApiError, GENERIC_MESSAGES, isApiError } from "../../core/api/errors";
-import { waitText } from "../members/memberErrors";
+import { API_ERROR_CODES } from "../../core/api/errorCodes";
+import { isApiError, type ApiError } from "../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE, isClientErrorStatus } from "../../core/api/status";
+import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { PLAN_MESSAGES, type PlanFormValues } from "./schemas";
-
-const HTTP_CLIENT_ERROR = 400;
-const HTTP_FORBIDDEN = 403;
-const HTTP_NOT_FOUND = 404;
-const HTTP_CONFLICT = 409;
-const HTTP_UNPROCESSABLE = 422;
-const HTTP_TOO_MANY = 429;
-const HTTP_SERVER_ERROR = 500;
-
-export const INVALID_RESPONSE_MESSAGE = "La respuesta del servidor no es válida. Recarga la página e intenta de nuevo.";
 
 export const CREATE_MESSAGES = {
   forbidden: "Solo un administrador puede crear planes. Si lo necesitas, pídeselo a uno.",
@@ -57,18 +49,12 @@ export interface PlanFieldError {
 /** El error que va bajo un campo, o null si es un error general. */
 export function fieldErrorOf(error: unknown): PlanFieldError | null {
   if (!isApiError(error)) return null;
-  if (error.status === HTTP_CONFLICT && (error.code === "plan_name_duplicated" || error.field === "name")) {
+  if (error.status === HTTP_CONFLICT && (error.code === API_ERROR_CODES.planNameDuplicated || error.field === "name")) {
     return { path: "name", message: PLAN_MESSAGES.duplicated, existingId: error.existingId ?? null };
   }
   if (error.status !== HTTP_UNPROCESSABLE || !error.field) return null;
   const target = FIELD_ERRORS[error.field];
   return target ? { ...target, existingId: null } : null;
-}
-
-function connectionMessage(error: ApiError): string | null {
-  if (error.code === "invalid_response") return error.message;
-  if (error.status === 0) return error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
-  return null;
 }
 
 /** Mensaje general de un alta fallida. */
@@ -82,16 +68,9 @@ export function createErrorMessage(error: unknown): string {
   return CREATE_MESSAGES.generic;
 }
 
-function asScreenError(error: unknown, message: (error: ApiError) => string, fallback: string): ApiError | null {
-  if (!error) return null;
-  if (!isApiError(error)) return new ApiError({ status: 0, code: "unknown", message: fallback });
-  const connection = connectionMessage(error);
-  return new ApiError({ status: error.status, code: error.code, message: connection ?? message(error) });
-}
-
 /** El error de la lista como ApiError con el mensaje de la pantalla (lo pinta DataTable). */
 export function listError(error: unknown): ApiError | null {
-  return asScreenError(
+  return toScreenError(
     error,
     (e) => (e.status === HTTP_FORBIDDEN ? LIST_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? LIST_MESSAGES.tooMany(waitText(e.retryAfterS)) : LIST_MESSAGES.failed),
     LIST_MESSAGES.failed,
@@ -100,12 +79,12 @@ export function listError(error: unknown): ApiError | null {
 
 /** ¿Puede salir bien al reintentar? Un 4xx (permiso, no existe) no; un 5xx, la red o lo ajeno sí. */
 export function isTransientError(error: unknown): boolean {
-  return !(isApiError(error) && error.status >= HTTP_CLIENT_ERROR && error.status < HTTP_SERVER_ERROR);
+  return !(isApiError(error) && isClientErrorStatus(error.status));
 }
 
 /** El mensaje del detalle fallido: 403 del coach sobre un inactivo (S2-D26), 404 y el resto. */
 export function detailErrorMessage(error: unknown): string {
-  const screen = asScreenError(
+  const screen = toScreenError(
     error,
     (e) => (e.status === HTTP_FORBIDDEN ? DETAIL_MESSAGES.forbidden : e.status === HTTP_NOT_FOUND ? DETAIL_MESSAGES.notFound : DETAIL_MESSAGES.failed),
     DETAIL_MESSAGES.failed,

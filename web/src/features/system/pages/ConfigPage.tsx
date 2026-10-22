@@ -5,12 +5,15 @@
 //   ConfirmModal (useBlocker de React Router). Recargar o cerrar la pestaña del navegador usa
 //   el aviso del propio navegador (beforeunload).
 // - Sin borradores en localStorage: lo no guardado vive solo en el formulario.
+// - L4 (revisión del Sprint 2): sin sesión autenticada no se bloquea nada; si la sesión se
+//   cierra con cambios sin guardar, el <Navigate> de RequireAuth a /login no queda atrapado.
 // DESIGN-GAP: Config.html muestra las ocho secciones como cajas apiladas con un índice
 // lateral; el blueprint F5 las pasa a pestañas y el Sprint 2 solo habilita Gimnasio,
 // Privacidad y Membresías (S2-D15: horario, medios de pago, canales, clases y TV llegan en
 // sus versiones y no se muestran).
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useBeforeUnload, useBlocker, type BlockerFunction } from "react-router";
+import { useSession } from "../../../core/auth/session";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { Tabs, type TabItem } from "../../../shared/ui/Tabs";
@@ -37,11 +40,12 @@ export default function ConfigPage() {
   const [dirty, setDirty] = useState(false);
   // Se marca al pulsar "Descartar cambios"; ConfirmModal llama a onClose justo después.
   const discard = useRef(false);
+  const isSignedIn = useSession().status === "authenticated";
 
   const shouldBlock = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) =>
-      dirty && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
-    [dirty],
+      isSignedIn && dirty && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
+    [dirty, isSignedIn],
   );
   const blocker = useBlocker(shouldBlock);
 

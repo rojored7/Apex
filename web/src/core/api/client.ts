@@ -9,6 +9,7 @@
 // - Nunca escribe en console ni registra cuerpos o tokens.
 import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { toQueryString, type QueryParams } from "./query";
+import { HTTP_UNAUTHORIZED } from "./status";
 
 export const API_BASE = "/api/v1";
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -121,7 +122,7 @@ async function request<T>(method: Method, path: string, options: RequestOptions,
   if (response.ok) return readSuccess(response) as T;
 
   const error = parseApiError(response.status, response.text, response.retryAfter);
-  if (response.status === 401 && !retried && !options.skipAuthRetry && unauthorizedHandler) {
+  if (response.status === HTTP_UNAUTHORIZED && !retried && !options.skipAuthRetry && unauthorizedHandler) {
     const outcome = await unauthorizedHandler(error, { accessToken: token });
     if (outcome === "retry") return request<T>(method, path, options, true);
   }

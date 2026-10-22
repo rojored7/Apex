@@ -4,10 +4,11 @@
 // - Sobre la propia cuenta (S2-D37) termina en clearSession() y /login: el api ya cortó el
 //   access token de esta pestaña.
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
-import { getSession } from "../../../core/auth/session";
+import { getSession, installSessionBridge } from "../../../core/auth/session";
+import { installTabDoubles, posted, resetTabDoubles } from "../../../test/authChannel";
 import { setViewportWidth } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { apiError, findRow, renderUsersPage, USERS } from "../../../test/users";
+import { apiError, findRow, pageNotice, renderUsersPage, USERS } from "../../../test/users";
 
 beforeEach(() => {
   setViewportWidth(1440);
@@ -48,7 +49,7 @@ describe("UsersPage · cerrar sesiones (US-051)", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mock.callsTo(`POST /users/${USERS.coach.id}/revoke-sessions`)).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent(`Se cerraron 4 sesiones de ${USERS.coach.email}.`);
+    expect(pageNotice()).toHaveTextContent(`Se cerraron 4 sesiones de ${USERS.coach.email}.`);
     expect(getSession().status).toBe("authenticated");
   });
 
@@ -86,6 +87,22 @@ describe("UsersPage · cerrar sesiones (US-051)", () => {
     expect(mock.callsTo(`POST /users/${USERS.own.id}/revoke-sessions`)).toHaveLength(1);
     expect(getSession().status).toBe("anonymous");
     expect(screen.getByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
+  });
+
+  it("L3 (revisión del Sprint 2): sobre uno mismo publica logout para que las demás pestañas también salgan", async () => {
+    installTabDoubles();
+    const uninstall = installSessionBridge();
+    const { router, user } = renderUsersPage("/sistema/usuarios", { handlers: { [`POST /users/${USERS.own.id}/revoke-sessions`]: { status: 200, body: { revoked: 2 } } } });
+
+    const dialog = await openRevoke(user, USERS.own.email, /^Cerrar sesiones \(2\)/);
+    await user.click(within(dialog).getByRole("button", { name: "Cerrar sesiones" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+
+    expect(posted.map((m) => (m.data as { type: string }).type)).toContain("logout");
+    uninstall();
+    resetTabDoubles();
   });
 
   it("si falla sobre uno mismo la sesión sigue y el error se explica", async () => {
@@ -131,6 +148,6 @@ describe("UsersPage · cerrar sesiones (US-051)", () => {
 
     await user.click(screen.getByRole("button", { name: "Cerrar aviso" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("");
+    expect(pageNotice()).toHaveTextContent("");
   });
 });

@@ -2,10 +2,14 @@
 // Caja con desplazamiento propio, cabecera en mayúsculas, primera columna como enlace a la
 // ficha y sin botones de editar o borrar en las filas. Estados de carga, vacío y error.
 // N-01: no existe un tipo de columna "enmascarada"; las listas no muestran datos cifrados.
+// M4 (revisión del Sprint 2): una región role="status" visualmente oculta y estable (existe en
+// todos los estados) anuncia "Cargando…", "N resultados" o "Sin resultados" al buscar, filtrar o
+// paginar. Con error queda vacía: el aviso de error ya es role="alert".
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { isApiError } from "../../core/api/errors";
+import { formatCount } from "../../core/i18n/format";
 import type { SortState } from "../hooks/useListParams";
 import { MOBILE_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { Button } from "./Button";
@@ -134,7 +138,35 @@ function Cards<T>({ caption, columns, rows, rowKey, rowHref }: Pick<DataTablePro
   );
 }
 
-export function DataTable<T>({
+export const LIST_STATUS = {
+  loading: "Cargando…",
+  empty: "Sin resultados",
+  count: (count: number): string => (count === 1 ? "1 resultado" : `${formatCount(count)} resultados`),
+} as const;
+
+function statusText(error: unknown, isLoading: boolean, isEmpty: boolean, count: number, hasRows: boolean): string {
+  if (error) return "";
+  if (isLoading) return LIST_STATUS.loading;
+  // Sin filas todavía (consulta deshabilitada) no hay nada que anunciar.
+  if (!hasRows) return "";
+  return isEmpty ? LIST_STATUS.empty : LIST_STATUS.count(count);
+}
+
+export function DataTable<T>(props: DataTableProps<T>) {
+  const { error, isLoading = false, rows, total } = props;
+  const items = rows ?? [];
+  const isEmpty = total === 0 || items.length === 0;
+  return (
+    <>
+      <p role="status" className={styles.srOnly}>
+        {statusText(error, isLoading, isEmpty, total ?? items.length, rows !== undefined)}
+      </p>
+      <DataTableContent {...props} />
+    </>
+  );
+}
+
+function DataTableContent<T>({
   caption,
   columns,
   rows,
@@ -208,7 +240,6 @@ export function DataTable<T>({
               ))}
         </tbody>
       </table>
-      {isLoading ? <span className={styles.srOnly}>Cargando</span> : null}
     </div>
   );
 }

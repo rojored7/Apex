@@ -11,18 +11,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
+import { invalidResponseError, parseResponse } from "../../core/api/response";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
 import { LINK_PURPOSES, userOutSchema, usersPageSchema, type CreateUserForm, type LinkPurpose, type UserRowView, type UserView } from "./schemas";
 
 export type SettingsKey = "gym" | "privacy" | "memberships";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
-const INVALID_RESPONSE_MESSAGE = "La respuesta del servidor no es válida. Recarga la página e intenta de nuevo.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
-const CONFLICT_STATUS = 409;
-const HTTP_NOT_FOUND = 404;
 
 // Los campos opcionales del api llegan como null; `default(null)` cubre una clave ausente.
 const text = z.string().nullable().default(null);
@@ -109,12 +109,13 @@ export function settingsQueryKey(key: SettingsKey): readonly ["settings", Settin
 }
 
 export function isVersionConflict(error: unknown): boolean {
-  return isApiError(error) && error.status === CONFLICT_STATUS && error.code === "version_conflict";
+  return isApiError(error) && error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.versionConflict;
 }
 
 function parseSection<K extends SettingsKey>(key: K, raw: unknown): SettingsSection<K> {
+  // parseResponse no sirve aquí: el esquema depende de K y TypeScript no reduce la unión.
   const parsed = SECTION_SCHEMAS[key].safeParse(raw);
-  if (!parsed.success) throw new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
+  if (!parsed.success) throw invalidResponseError();
   return parsed.data;
 }
 
@@ -141,7 +142,7 @@ export function useSettingsSection<K extends SettingsKey>(key: K): SettingsSecti
 
   const save = (value: SectionInput<K>, version?: number): Promise<SettingsSection<K>> => {
     const current = query.data;
-    if (!current) return Promise.reject(new ApiError({ status: 0, code: "not_loaded", message: NOT_LOADED_MESSAGE }));
+    if (!current) return Promise.reject(new ApiError({ status: 0, code: CLIENT_ERROR_CODES.notLoaded, message: NOT_LOADED_MESSAGE }));
     return mutation.mutateAsync({ value, version: version ?? current.version });
   };
 
@@ -191,19 +192,14 @@ const createdUserSchema = z.object({
   expires_at: z.string().datetime({ offset: true }),
 });
 
-function invalidResponse(): ApiError {
-  return new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
-}
-
 export function useUsers(params: UsersParams): UseQueryResult<Page<UserRowView>> {
   return useQuery({
     queryKey: usersQueryKey(params),
-    queryFn: async ({ signal }) => {
-      const parsed = usersPageSchema.safeParse(await api.get<unknown>("/users", { query: listParams({ ...params }), signal }));
-      if (!parsed.success) throw invalidResponse();
-      return parsed.data;
-    },
+    queryFn: async ({ signal }) => parseResponse(usersPageSchema, await api.get<unknown>("/users", { query: listParams({ ...params }), signal })),
     placeholderData: keepPreviousData,
+    // L2 (revisión del Sprint 2), como useMembers: una búsqueda por correo no se queda en la
+    // caché al dejar de usarse ni se repite al volver a la ventana.
+    ...(params.q ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
   });
 }
 
@@ -211,13 +207,14 @@ export function useCreateUser(): UseMutationResult<CreatedUser, Error, CreateUse
   const queryClient = useQueryClient();
   return useMutation<CreatedUser, Error, CreateUserForm>({
     mutationFn: async ({ email, role }) => {
-      const parsed = createdUserSchema.safeParse(await api.post<unknown>("/users", { body: { email, role } }));
-      if (!parsed.success) throw invalidResponse();
-      const { user, activation_url, expires_at } = parsed.data;
+      const { user, activation_url, expires_at } = parseResponse(createdUserSchema, await api.post<unknown>("/users", { body: { email, role } }));
       return { id: user.id, email: user.email, activationUrl: activation_url, expiresAt: expires_at };
     },
     gcTime: 0,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY }),
+    // M3 (revisión del Sprint 2): sin esperar la relectura; el enlace se muestra enseguida.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+    },
   });
 }
 
@@ -258,12 +255,6 @@ const issuedLinkSchema = z.object({
   expires_at: z.string().datetime({ offset: true }),
 });
 
-function parseOr<T>(schema: z.ZodType<T>, raw: unknown): T {
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) throw invalidResponse();
-  return parsed.data;
-}
-
 /** Mutación de una cuenta que, al salir bien, invalida toda la familia ["users"]. */
 function useUserMutation<TData, TVariables>(
   mutationFn: (variables: TVariables) => Promise<TData>,
@@ -280,7 +271,7 @@ function useUserMutation<TData, TVariables>(
     },
     // 404 y 409 dicen que la lista quedó vieja (otra persona la cambió): se relee.
     onError: (error) => {
-      if (isApiError(error) && (error.status === HTTP_NOT_FOUND || error.status === CONFLICT_STATUS)) void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+      if (isApiError(error) && (error.status === HTTP_NOT_FOUND || error.status === HTTP_CONFLICT)) void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
     },
   });
 }
@@ -288,7 +279,7 @@ function useUserMutation<TData, TVariables>(
 export function useUser(id: string | null): UseQueryResult<UserView> {
   return useQuery({
     queryKey: userQueryKey(id ?? ""),
-    queryFn: async ({ signal }) => parseOr(userOutSchema, await api.get<unknown>(userPath(id ?? ""), { signal })),
+    queryFn: async ({ signal }) => parseResponse(userOutSchema, await api.get<unknown>(userPath(id ?? ""), { signal })),
     enabled: Boolean(id),
     // Volver a la ventana no debe pisar lo que se está editando; y cada apertura lee la cuenta
     // del servidor (sin copia vieja en caché que luego cambie bajo el formulario).
@@ -299,7 +290,7 @@ export function useUser(id: string | null): UseQueryResult<UserView> {
 
 export function useUpdateUser(): UseMutationResult<UserView, Error, UserTarget & { changes: UpdateUserChanges }> {
   return useUserMutation(async ({ id, changes }: UserTarget & { changes: UpdateUserChanges }) =>
-    parseOr(userOutSchema, await api.patch<unknown>(userPath(id), { body: changes })),
+    parseResponse(userOutSchema, await api.patch<unknown>(userPath(id), { body: changes })),
   );
 }
 
@@ -311,22 +302,22 @@ export function useDeleteUser(): UseMutationResult<undefined, Error, UserTarget>
 }
 
 export function useLockUser(): UseMutationResult<UserView, Error, UserTarget> {
-  return useUserMutation(async ({ id }: UserTarget) => parseOr(userOutSchema, await api.post<unknown>(userPath(id, "lock"))));
+  return useUserMutation(async ({ id }: UserTarget) => parseResponse(userOutSchema, await api.post<unknown>(userPath(id, "lock"))));
 }
 
 export function useUnlockUser(): UseMutationResult<UserView, Error, UserTarget> {
-  return useUserMutation(async ({ id }: UserTarget) => parseOr(userOutSchema, await api.post<unknown>(userPath(id, "unlock"))));
+  return useUserMutation(async ({ id }: UserTarget) => parseResponse(userOutSchema, await api.post<unknown>(userPath(id, "unlock"))));
 }
 
 /** Devuelve cuántas sesiones cerró el api ({revoked}). */
 export function useRevokeSessions(): UseMutationResult<number, Error, UserTarget> {
-  return useUserMutation(async ({ id }: UserTarget) => parseOr(revokedSchema, await api.post<unknown>(userPath(id, "revoke-sessions"))).revoked);
+  return useUserMutation(async ({ id }: UserTarget) => parseResponse(revokedSchema, await api.post<unknown>(userPath(id, "revoke-sessions"))).revoked);
 }
 
 export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget> {
   return useUserMutation(
     async ({ id }: UserTarget) => {
-      const { url, purpose, expires_at } = parseOr(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
+      const { url, purpose, expires_at } = parseResponse(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
       return { url, purpose, expiresAt: expires_at };
     },
     { gcTime: 0 },

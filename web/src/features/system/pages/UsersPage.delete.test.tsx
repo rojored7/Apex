@@ -8,7 +8,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { setViewportWidth } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { apiError, findRow, renderUsersPage, USERS } from "../../../test/users";
+import { apiError, findRow, pageNotice, renderUsersPage, USERS } from "../../../test/users";
 
 const CONSEQUENCE = "La cuenta pierde el acceso de inmediato. Su historial se conserva.";
 
@@ -48,7 +48,7 @@ describe("UsersPage · dar de baja (US-050)", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mock.callsTo(`DELETE /users/${USERS.coach.id}`)).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent(`Se dio de baja a ${USERS.coach.email}.`);
+    expect(pageNotice()).toHaveTextContent(`Se dio de baja a ${USERS.coach.email}.`);
     await waitFor(() => {
       expect(mock.callsTo("GET /users").length).toBeGreaterThan(before);
     });
@@ -124,7 +124,7 @@ describe("UsersPage · dar de baja (US-050)", () => {
     await user.click(within(dialog).getByRole("button", { name: /^Dar de baja/ }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("No pudimos completar la acción. Intenta de nuevo en un momento.");
-    expect(screen.getByRole("status")).toHaveTextContent("");
+    expect(pageNotice()).toHaveTextContent("");
   });
 
   it("la lista con las acciones no tiene violaciones de accesibilidad", async () => {

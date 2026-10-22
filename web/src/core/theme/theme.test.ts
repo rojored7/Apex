@@ -1,7 +1,7 @@
 // US-068 T1 (criterio 3): el tema se resuelve por zona y preferencia guardada, y un
 // localStorage que lanza (modo privado, sitio bloqueado) no rompe nada: cae a la preferencia
 // en memoria o a la del sistema.
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { setViewportWidth } from "../../test/server";
 import {
   THEME_STORAGE_KEY,
@@ -51,6 +51,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // L7 (revisión del Sprint 2): desmontar antes de reiniciar; resetThemeForTests avisa a los
+  // suscriptores y un hook todavía montado se actualizaría fuera de act(...).
+  cleanup();
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
   localStorage.clear();

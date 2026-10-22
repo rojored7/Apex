@@ -15,6 +15,9 @@
 //   Si el api no lo confirmó (red, 5xx) la razón es `logout_unconfirmed` (H-1).
 // - installSessionBridge(): conecta el token y el gancho del 401 con core/api/client.ts y abre
 //   el canal. main.tsx la llama antes de montar.
+// Revisión del Sprint 2: un refresh de red relee me (M1, otra cuenta en la cookie cierra esta
+// sesión); updateSessionUser cambia el usuario sin invalidar operaciones en vuelo (M2);
+// endSession publica `logout` y limpia cuando el api ya cortó la sesión (L3).
 // Este archivo es, con permissions.ts, el único donde se permite comparar un rol con un
 // literal (tests/lint/restricted-config.ts).
 import { useSyncExternalStore } from "react";
@@ -22,6 +25,8 @@ import { z } from "zod";
 import { api, registerOnUnauthorized, setAccessTokenGetter, type UnauthorizedHandler } from "../api/client";
 import { isApiError } from "../api/errors";
 import { queryClient } from "../api/queryClient";
+import { API_ERROR_CODES } from "../api/errorCodes";
+import { HTTP_UNAUTHORIZED } from "../api/status";
 import { ROLES, type Role } from "./permissions";
 import { hasRefreshLock, openTabSync, withRefreshLock, type AuthMessage, type OutgoingAuthMessage, type TabSync } from "./tabSync";
 
@@ -97,6 +102,11 @@ let bridge: { uninstall: () => void } | null = null;
  * un cierre de sesión durante el refresh no se deshace con su respuesta tardía.
  */
 let generation = 0;
+/**
+ * Sube con cada updateSessionUser (M2 de la revisión del Sprint 2): una lectura de me que salió
+ * antes de un cambio local del usuario no lo pisa al volver.
+ */
+let userRevision = 0;
 const listeners = new Set<() => void>();
 
 function emit(next: SessionState): void {
@@ -142,6 +152,18 @@ export function clearSession(reason: ClearReason): void {
   applyAnonymous(reason);
 }
 
+/**
+ * M2 (revisión del Sprint 2): cambia datos del usuario de la sesión abierta (por ejemplo el
+ * nombre del gimnasio tras guardarlo) sin tocar `generation`: un refresh o una lectura de me
+ * en vuelo siguen valiendo. Sin sesión no hace nada.
+ */
+export function updateSessionUser(patch: Pick<SessionUser, "gymName">): void {
+  const { status, user } = state;
+  if (status !== "authenticated" || user === null) return;
+  userRevision += 1;
+  emit({ status, user: { ...user, ...patch } });
+}
+
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -185,16 +207,22 @@ const settle = (): Promise<void> =>
  * POST /auth/refresh, se publica el nuevo y se retiene el candado un instante. Devuelve el
  * token, o null si la sesión cambió mientras tanto (login, cierre o reinicio).
  */
-async function obtainFreshToken(stale: string | null, startedAt: number): Promise<string | null> {
+interface FreshToken {
+  token: string;
+  /** `true` si salió de POST /auth/refresh en esta pestaña; `false` si ya lo había dejado otra. */
+  fromNetwork: boolean;
+}
+
+async function obtainFreshToken(stale: string | null, startedAt: number): Promise<FreshToken | null> {
   return withRefreshLock(async () => {
     if (startedAt !== generation) return null;
-    if (accessToken !== null && accessToken !== stale) return accessToken;
+    if (accessToken !== null && accessToken !== stale) return { token: accessToken, fromNetwork: false };
     const out = refreshOutSchema.parse(await api.post<unknown>("/auth/refresh", { skipAuthRetry: true }));
     if (startedAt !== generation) return null;
     accessToken = out.access_token;
     publish({ type: "token", accessToken: out.access_token, expiresIn: out.expires_in });
     await settle();
-    return out.access_token;
+    return { token: out.access_token, fromNetwork: true };
   });
 }
 
@@ -203,12 +231,12 @@ async function restore(): Promise<boolean> {
   const startedAt = generation;
   const current = (): boolean => startedAt === generation;
   try {
-    const token = await obtainFreshToken(accessToken, startedAt);
-    if (token === null || !current()) return false;
+    const fresh = await obtainFreshToken(accessToken, startedAt);
+    if (fresh === null || !current()) return false;
     const me = meOutSchema.parse(await api.get<unknown>("/auth/me", { skipAuthRetry: true }));
     if (!current()) return false;
     // Un token más nuevo pudo llegar por el canal mientras se leía me: se conserva ese.
-    applySession(accessToken ?? token, toSessionUser(me));
+    applySession(accessToken ?? fresh.token, toSessionUser(me));
     return true;
   } catch {
     if (current()) applyAnonymous("restore_failed");
@@ -225,14 +253,58 @@ export function restoreSession(): Promise<boolean> {
   return pending;
 }
 
+const sameUser = (a: SessionUser, b: SessionUser): boolean =>
+  a.id === b.id && a.email === b.email && a.role === b.role && a.memberId === b.memberId && a.gymName === b.gymName && a.mustChangePassword === b.mustChangePassword;
+
+/**
+ * Aplica una lectura de me que empezó en `startedAt`/`revision` con `user` en la sesión.
+ * Devuelve false si me es de otra cuenta (y cierra la sesión). Si la sesión cambió entretanto no
+ * escribe; si el usuario se cambió en local (updateSessionUser), lo conserva; si nada cambió,
+ * no emite (los consumidores de useSession no se repintan).
+ */
+function applyMe(me: z.infer<typeof meOutSchema>, startedAt: number, revision: number, user: SessionUser): boolean {
+  if (startedAt !== generation) return true;
+  // Otro usuario: la cookie ya es de otra cuenta (otra pestaña entró con ella).
+  if (me.id !== user.id) {
+    clearSession("unauthorized");
+    return false;
+  }
+  if (revision !== userRevision || state.user === null) return true;
+  const next = toSessionUser(me);
+  if (!sameUser(next, state.user)) emit({ status: "authenticated", user: next });
+  return true;
+}
+
+/**
+ * M1 (revisión del Sprint 2): la cookie es del navegador; si otra pestaña entró con otra cuenta,
+ * el token recién emitido es de ella. Antes de reintentar la petición original se lee me (sin
+ * gancho del 401: evita esperar al propio refresh) y, si el id cambió, la sesión se cierra y la
+ * petición falla sin salir con el token ajeno. Si me no responde (429, red) se sigue (L-12).
+ */
+async function confirmSameAccount(startedAt: number): Promise<boolean> {
+  const user = state.user;
+  if (user === null) return false;
+  const revision = userRevision;
+  try {
+    const me = meOutSchema.parse(await api.get<unknown>("/auth/me", { skipAuthRetry: true }));
+    return applyMe(me, startedAt, revision, user);
+  } catch {
+    return true;
+  }
+}
+
 async function runRefresh(): Promise<boolean> {
   const startedAt = generation;
   try {
-    return (await obtainFreshToken(accessToken, startedAt)) !== null;
+    const fresh = await obtainFreshToken(accessToken, startedAt);
+    if (fresh === null) return false;
+    // Un token que dejó otra pestaña lo valida onTabMessage al recibirlo.
+    if (fresh.fromNetwork && !(await confirmSameAccount(startedAt))) return false;
+    return startedAt === generation;
   } catch (error) {
     // Solo un 401 dice que la cookie ya no sirve; 429, 5xx, red o una forma inesperada no
     // cierran la sesión (L-12): la petición original falla y se puede reintentar.
-    if (startedAt === generation && isApiError(error) && error.status === 401) clearSession("expired");
+    if (startedAt === generation && isApiError(error) && error.status === HTTP_UNAUTHORIZED) clearSession("expired");
     return false;
   }
 }
@@ -267,16 +339,11 @@ export async function refreshCurrentUser(): Promise<void> {
   const user = state.user;
   if (state.status !== "authenticated" || user === null) return;
   const startedAt = generation;
+  const revision = userRevision;
   try {
     const me = meOutSchema.parse(await api.get<unknown>("/auth/me"));
     // La misma generación implica la misma sesión abierta (login y cierre la suben).
-    if (startedAt !== generation) return;
-    // Otro usuario: la cookie ya es de otra cuenta (otra pestaña entró con ella).
-    if (me.id !== user.id) {
-      clearSession("unauthorized");
-      return;
-    }
-    emit({ status: "authenticated", user: toSessionUser(me) });
+    applyMe(me, startedAt, revision, user);
   } catch {
     // L-12: el usuario se queda como estaba.
   }
@@ -294,6 +361,16 @@ async function runLogout(): Promise<LogoutResult> {
   publish({ type: "logout" });
   clearSession(serverConfirmed ? "logout" : "logout_unconfirmed");
   return { serverConfirmed };
+}
+
+/**
+ * L3 (revisión del Sprint 2): termina la sesión cuando el api ya la cortó por otra vía (por
+ * ejemplo al cerrar las propias sesiones desde Usuarios): publica `logout` en el canal para
+ * que las demás pestañas también salgan, y limpia esta. No llama a POST /auth/logout.
+ */
+export function endSession(): void {
+  publish({ type: "logout" });
+  clearSession("logout");
 }
 
 /** Cierra la sesión en el api (cookie) y en todas las pestañas; dos clics hacen un solo POST. */
@@ -316,7 +393,9 @@ function onTabMessage(message: AuthMessage): void {
   if (state.status === "anonymous") return;
   accessToken = message.accessToken;
   // La cookie es del navegador: si otra pestaña entró con otra cuenta, el token es de ella.
-  // Se relee me y, si el usuario cambió, esta pestaña cierra su sesión.
+  // Se relee me y, si el usuario cambió, esta pestaña cierra su sesión. Ventana aceptada
+  // (revisión del Sprint 2): una petición que sale mientras llega me usa ya este token; el
+  // refresh de red de esta pestaña sí valida antes de reintentar (confirmSameAccount).
   if (state.status === "authenticated") void refreshCurrentUser();
 }
 
@@ -325,7 +404,7 @@ const onUnauthorized: UnauthorizedHandler = async (error, { accessToken: used })
   // Otra petición (o un login) ya cambió el token mientras esta volvía con el 401: la respuesta
   // habla del token viejo, así que se reintenta sin refresh y sin cerrar la sesión nueva.
   if (accessToken !== null && accessToken !== used) return "retry";
-  if (error.code !== "token_expired") {
+  if (error.code !== API_ERROR_CODES.tokenExpired) {
     clearSession("unauthorized");
     return "fail";
   }

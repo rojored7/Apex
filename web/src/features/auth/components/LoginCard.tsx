@@ -32,7 +32,6 @@ export interface LoginCardProps {
 }
 
 /** `error` solo cuando hay mensaje (exactOptionalPropertyTypes). */
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 export function LoginCard({ onSubmit, pending, error, notice, waitS }: LoginCardProps) {
   const {
@@ -74,8 +73,8 @@ export function LoginCard({ onSubmit, pending, error, notice, waitS }: LoginCard
           {error}
         </p>
       ) : null}
-      <Field label="Correo" type="email" autoComplete="username" inputMode="email" autoFocus {...fieldError(errors.email?.message)} {...register("email")} />
-      <Field label="Contraseña" type="password" autoComplete="current-password" {...fieldError(errors.password?.message)} {...register("password")} />
+      <Field label="Correo" type="email" autoComplete="username" inputMode="email" autoFocus error={errors.email?.message} {...register("email")} />
+      <Field label="Contraseña" type="password" autoComplete="current-password" error={errors.password?.message} {...register("password")} />
       <Button type="submit" className={styles.submit} loading={pending} disabled={waiting}>
         {pending ? "Entrando…" : "Entrar"}
       </Button>

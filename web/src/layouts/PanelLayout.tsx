@@ -21,6 +21,8 @@ export interface PanelLayoutProps {
   onLogout?: (() => void) | undefined;
   logoutPending?: boolean | undefined;
   themeToggle?: ReactNode;
+  /** S2-F4a: avisos de la sesión (por ejemplo "Contraseña actualizada") sobre el contenido. */
+  banner?: ReactNode;
   children?: ReactNode;
 }
 
@@ -33,7 +35,7 @@ function focusMain(event: MouseEvent<HTMLAnchorElement>): void {
   main.focus();
 }
 
-export function PanelLayout({ user, gymName, navGroups, onChangePassword, onLogout, logoutPending, themeToggle, children }: PanelLayoutProps) {
+export function PanelLayout({ user, gymName, navGroups, onChangePassword, onLogout, logoutPending, themeToggle, banner, children }: PanelLayoutProps) {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navId = `menu-principal-${useId().replace(/:/g, "")}`;
@@ -78,6 +80,7 @@ export function PanelLayout({ user, gymName, navGroups, onChangePassword, onLogo
           <SideNav id={navId} groups={navGroups} />
         )}
         <main id={MAIN_ID} tabIndex={-1} className={styles.main}>
+          {banner}
           {children ?? <Outlet />}
         </main>
       </div>

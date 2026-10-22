@@ -1,11 +1,13 @@
 // US-067 T6 y US-053 T7: el router real (createMemoryRouter) monta cada zona en su layout,
 // una ruta deshabilitada da 404 sin descargar su código y no existe /hoy.
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import { RouterProvider } from "react-router";
 import { ENABLED_FEATURES, type Feature } from "./config/features";
 import type { RouteDef } from "./config/routeTable";
 import { SessionRoleProvider } from "./core/auth/SessionRole";
 import { createAppRouter, type AppRouterOptions } from "./routes";
+import { testQueryClient } from "./test/server";
 import { signInAs, signOutForTests } from "./test/session";
 
 function Page({ text }: { text: string }) {
@@ -30,9 +32,12 @@ const TABLE: RouteDef[] = [
 function renderAt(path: string, options: AppRouterOptions = {}) {
   const router = createAppRouter({ table: TABLE, initialEntries: [path], ...options });
   render(
-    <SessionRoleProvider>
-      <RouterProvider router={router} />
-    </SessionRoleProvider>,
+    // S2-F4a: el panel monta "Mi cuenta", que usa TanStack Query (como App).
+    <QueryClientProvider client={testQueryClient()}>
+      <SessionRoleProvider>
+        <RouterProvider router={router} />
+      </SessionRoleProvider>
+    </QueryClientProvider>,
   );
   return router;
 }

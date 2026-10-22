@@ -3,8 +3,7 @@
 // vacío, error, deshabilitado, abierto) y enlaces a los cuatro layouts de muestra. Lo recorren
 // tests/e2e/kit.spec.ts (axe, desborde y capturas en claro y oscuro) y src/dev/Catalog.test.tsx.
 // Parámetros: ?tema=light|dark fija el tema inicial; ?vista=... muestra un layout (LayoutsPreview).
-// DESIGN-GAP: los estados de cuenta de StatusTag (Activo, Bloqueado, Pendiente de activación,
-// Dado de baja; S2-D24) llegan con S2-F4a y se suman aquí entonces.
+// S2-F4a: StatusTag también con los cinco estados de cuenta de usuario (S2-D24).
 import { useState, type ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { FEATURES } from "../config/features";
@@ -26,7 +25,7 @@ import { PageHeader } from "../shared/ui/PageHeader";
 import { Pagination } from "../shared/ui/Pagination";
 import { SideNav } from "../shared/ui/SideNav";
 import { SidePanel } from "../shared/ui/SidePanel";
-import { STATUS_LABELS, type MembershipStatusView } from "../shared/ui/statusLabel";
+import { ACCOUNT_LABELS, STATUS_LABELS, type AccountStatusView, type MembershipStatusView } from "../shared/ui/statusLabel";
 import { StatusTag } from "../shared/ui/StatusTag";
 import { Tabs } from "../shared/ui/Tabs";
 import { TopBar } from "../shared/ui/TopBar";
@@ -241,6 +240,11 @@ export function Catalog() {
               <div className={styles.row}>
                 {(Object.keys(STATUS_LABELS) as MembershipStatusView[]).map((status) => (
                   <StatusTag key={status} status={status} />
+                ))}
+              </div>
+              <div className={styles.row}>
+                {(Object.keys(ACCOUNT_LABELS) as AccountStatusView[]).map((account) => (
+                  <StatusTag key={account} account={account} />
                 ))}
               </div>
             </Section>

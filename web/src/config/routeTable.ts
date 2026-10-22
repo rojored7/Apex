@@ -37,14 +37,14 @@ const route = (path: string, title: string, feature: Feature, access: RouteAcces
 const PENDING: Extra = { pending: true };
 
 export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
-  // Acceso (sin sesión). Login llega en S2-F3; recuperación y restablecimiento, en S2-F4a.
+  // Acceso (sin sesión): login (S2-F3), recuperación y restablecimiento (S2-F4a).
   route("/login", "Iniciar sesión", "auth", "public", "access", { load: () => import("../features/auth/pages/LoginPage") }),
-  route("/recuperar", "Olvidé mi contraseña", "auth", "public", "access", PENDING),
-  route("/restablecer/:token", "Nueva contraseña", "auth", "public", "access", PENDING),
+  route("/recuperar", "Olvidé mi contraseña", "auth", "public", "access", { load: () => import("../features/auth/pages/ForgotPage") }),
+  route("/restablecer/:token", "Nueva contraseña", "auth", "public", "access", { load: () => import("../features/auth/pages/ResetPage") }),
   route("/tv", "Pantalla del gimnasio", "tv", "public", "tv"),
-  // DESIGN-GAP (S2-D18): cambio de contraseña obligatorio con la tarjeta de ResetPage; no está
+  // DESIGN-GAP (S2-D18, S2-F4a): cambio de contraseña obligatorio con la tarjeta de ResetPage; no está
   // en las pantallas de docs/design/screens/.
-  route("/cambiar-clave", "Cambiar contraseña", "auth", "session", "access", PENDING),
+  route("/cambiar-clave", "Cambiar contraseña", "auth", "session", "access", { load: () => import("../features/auth/pages/ChangePasswordPage") }),
 
   // Panel. Inicio mínima hasta GET /dashboard (S2-D25).
   route("/", "Inicio", "dashboard", "dashboard.view", "panel", { load: () => import("../features/dashboard/pages/InicioPage") }),
@@ -72,7 +72,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel"),
   route("/avisos/reglas", "Reglas y plantillas", "notifications", "notifications.view", "panel"),
   route("/avisos/historial", "Historial de envíos", "notifications", "notifications.view", "panel"),
-  route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", PENDING),
+  // S2-F4a: lista y alta; la gestión (editar, bloquear, sesiones, reenviar) llega en S2-F4b.
+  route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", { load: () => import("../features/system/pages/UsersPage") }),
   route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel"),
   route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel"),
   // S2-F5: Gimnasio, Privacidad y Membresías (S2-D15).

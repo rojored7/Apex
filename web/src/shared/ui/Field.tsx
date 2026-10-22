@@ -7,6 +7,11 @@ export interface FieldErrorAction {
   /** Solo rutas internas que empiezan por "/"; cualquier otra se descarta. */
   href: string;
   text: string;
+  /**
+   * S2-F4a: navegación dentro de la SPA (p. ej. `useNavigate`). Sin él, el enlace recarga la
+   * página, y con ella se pierde el access en memoria y se renueva la sesión.
+   */
+  onNavigate?: (href: string) => void;
 }
 
 /** Atributos que el control propio (children) debe recibir para quedar asociado y accesible. */
@@ -81,7 +86,15 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
           {action ? (
             <>
               {" "}
-              <a className={styles.errorAction} href={action.href}>
+              <a
+                className={styles.errorAction}
+                href={action.href}
+                onClick={(event) => {
+                  if (!action.onNavigate) return;
+                  event.preventDefault();
+                  action.onNavigate(action.href);
+                }}
+              >
                 {action.text}
               </a>
             </>

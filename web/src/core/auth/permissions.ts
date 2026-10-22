@@ -7,6 +7,14 @@
 export const ROLES = ["admin", "coach", "member"] as const;
 export type Role = (typeof ROLES)[number];
 
+/**
+ * S2-F4a (L-2): roles que se crean desde Usuarios (cuentas del equipo; el socio entra con el
+ * portal), en el orden del select, y el que se propone por defecto (el de menos permisos).
+ */
+export const STAFF_ROLES = Object.freeze(["coach", "admin"] as const satisfies readonly Role[]);
+export type StaffRole = (typeof STAFF_ROLES)[number];
+export const DEFAULT_STAFF_ROLE: StaffRole = "coach";
+
 const ADMIN: readonly Role[] = ["admin"];
 const STAFF: readonly Role[] = ["admin", "coach"];
 const MEMBER: readonly Role[] = ["member"];

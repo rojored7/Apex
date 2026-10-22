@@ -1,7 +1,16 @@
 // S2-F3 · US-042: contrato de POST /auth/login (LoginOut de B2) y mensajes de error.
 import { ApiError, GENERIC_MESSAGES } from "../../core/api/errors";
 import type { LoginOut } from "./api";
-import { loginErrorMessage, sessionFromLogin } from "./api";
+import {
+  commonErrorMessage,
+  INVALID_RESPONSE_MESSAGE,
+  isInvalidLink,
+  loginErrorMessage,
+  PASSWORD_ERRORS,
+  passwordErrorMessage,
+  passwordFieldError,
+  sessionFromLogin,
+} from "./api";
 import { loginSchema } from "./schemas";
 
 const OUT: LoginOut = {
@@ -77,5 +86,59 @@ describe("loginSchema", () => {
     const result = loginSchema.safeParse(values);
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toBe(message);
+  });
+});
+
+// S2-F4a: errores de los formularios de contraseña (cambio, restablecimiento).
+describe("passwordFieldError", () => {
+  const unprocessable = (field: string, message = "x"): ApiError => new ApiError({ status: 422, code: "weak_password", message, field });
+
+  it("current_password va a la contraseña actual con un mensaje propio", () => {
+    expect(passwordFieldError(unprocessable("current_password"))).toEqual({ field: "currentPassword", message: PASSWORD_ERRORS.currentWrong });
+  });
+
+  it("new_password usa el motivo del api y pide otra", () => {
+    expect(passwordFieldError(unprocessable("new_password", "La contraseña es demasiado débil."))).toEqual({
+      field: "newPassword",
+      message: "La contraseña es demasiado débil. Elige otra.",
+    });
+  });
+
+  it("un motivo sin punto final (o vacío) usa el mensaje genérico de contraseña rechazada", () => {
+    expect(passwordFieldError(unprocessable("new_password", "weak"))?.message).toBe(PASSWORD_ERRORS.rejected);
+    expect(passwordFieldError(unprocessable("new_password", "  "))?.message).toBe(PASSWORD_ERRORS.rejected);
+  });
+
+  it("otro campo, otro código HTTP o un error ajeno no marcan nada", () => {
+    expect(passwordFieldError(unprocessable("token"))).toBeNull();
+    expect(passwordFieldError(new ApiError({ status: 400, code: "invalid_token", message: "x", field: "new_password" }))).toBeNull();
+    expect(passwordFieldError(new Error("x"))).toBeNull();
+  });
+});
+
+describe("passwordErrorMessage y commonErrorMessage", () => {
+  it("400 invalid_token es el enlace vencido", () => {
+    const error = new ApiError({ status: 400, code: "invalid_token", message: "x" });
+
+    expect(isInvalidLink(error)).toBe(true);
+    expect(passwordErrorMessage(error)).toBe(PASSWORD_ERRORS.invalidLink);
+  });
+
+  it("red, timeout, 429, 5xx y respuesta inválida tienen su mensaje", () => {
+    expect(passwordErrorMessage(new ApiError({ status: 0, code: "network_error", message: "x" }))).toBe(GENERIC_MESSAGES.network_error);
+    expect(passwordErrorMessage(new ApiError({ status: 0, code: "timeout", message: "x" }))).toBe(GENERIC_MESSAGES.timeout);
+    expect(passwordErrorMessage(new ApiError({ status: 429, code: "rate_limited", message: "x", retryAfterS: 9 }))).toBe(
+      "Demasiados intentos. Espera 9 s y vuelve a intentarlo.",
+    );
+    expect(passwordErrorMessage(new ApiError({ status: 429, code: "rate_limited", message: "x" }))).toBe("Demasiados intentos. Espera un momento y vuelve a intentarlo.");
+    expect(passwordErrorMessage(new ApiError({ status: 503, code: "network_error", message: "x" }))).toBe("El servidor tuvo un problema. Intenta de nuevo en un momento.");
+    expect(passwordErrorMessage(new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE }))).toBe(INVALID_RESPONSE_MESSAGE);
+  });
+
+  it("cualquier otro error da el genérico de contraseña", () => {
+    expect(passwordErrorMessage(new ApiError({ status: 403, code: "forbidden", message: "x" }))).toBe(PASSWORD_ERRORS.generic);
+    expect(passwordErrorMessage(new Error("x"))).toBe(PASSWORD_ERRORS.generic);
+    expect(commonErrorMessage(new Error("x"))).toBeNull();
+    expect(commonErrorMessage(new ApiError({ status: 404, code: "not_found", message: "x" }))).toBeNull();
   });
 });

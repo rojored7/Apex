@@ -1,11 +1,13 @@
 // S2-F2: contenedores que leen la sesión y entregan sus datos a los layouts presentacionales
 // (PanelShell, PortalShell, TvShell) y el marco de las pantallas de acceso.
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { resetThemeForTests } from "../core/theme/theme";
+import { mockApi, testQueryClient } from "../test/server";
 import { signInAs, signOutForTests } from "../test/session";
 import { AccessLayout } from "./AccessLayout";
 import { PanelShell } from "./PanelShell";
@@ -13,6 +15,7 @@ import { GymShell, PortalShell, TvShell } from "./ZoneShells";
 
 afterEach(() => {
   signOutForTests();
+  vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
 });
 
@@ -20,7 +23,12 @@ function inRouter(element: ReactNode, path = "/") {
   const router = createMemoryRouter([{ element, children: [{ path: "*", element: <h1>Contenido</h1>, handle: { title: "Check-in" } }] }], {
     initialEntries: [path],
   });
-  return render(<RouterProvider router={router} />);
+  // S2-F4a: PanelShell monta el panel "Mi cuenta", que usa TanStack Query.
+  return render(
+    <QueryClientProvider client={testQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 describe("PanelShell", () => {
@@ -51,6 +59,27 @@ describe("PanelShell", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     localStorage.clear();
     resetThemeForTests();
+  });
+
+  it("S2-F4a: 'Mi cuenta' del menú de usuario abre el panel con los datos y el cambio de contraseña", async () => {
+    mockApi({
+      "GET /auth/me": {
+        status: 200,
+        body: { id: "00000000-0000-4000-8000-000000000001", email: "admin@apex.test", role: "admin", member_id: null, gym_name: "Box Norte", must_change_password: false },
+      },
+    });
+    signInAs("admin");
+    inRouter(<PanelShell />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /admin@apex\.test/ }));
+    await user.click(within(screen.getByRole("menu", { name: "Menú de usuario" })).getByRole("menuitem", { name: "Mi cuenta" }));
+
+    const panel = await screen.findByRole("dialog", { name: "Mi cuenta" });
+    expect(await within(panel).findByText("Box Norte")).toBeInTheDocument();
+    expect(within(panel).getByLabelText(/^Contraseña actual/)).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog", { name: "Mi cuenta" })).not.toBeInTheDocument();
   });
 
   it("sin sesión pinta el marco sin usuario", () => {

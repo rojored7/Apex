@@ -1,0 +1,126 @@
+/* S2-F5: caja de cada sección de Configuración (Config.html, .w-box.w-sec y .w-g2).
+   Solo variables de tokens.css. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 860px;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.title {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.textarea {
+  min-height: calc(var(--control) * 4);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.saved {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.conflict,
+.loadError {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.loadError {
+  max-width: 860px;
+  border-color: var(--danger);
+}
+
+.alertText {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}
+
+.loading {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.current {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+@media (width < 768px) {
+  .card {
+    padding: var(--space-4);
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

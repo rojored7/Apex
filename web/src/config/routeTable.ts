@@ -76,7 +76,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", PENDING),
   route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel"),
   route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel"),
-  route("/sistema/configuracion", "Configuración", "settings", "settings.manage", "panel", PENDING),
+  // S2-F5: Gimnasio, Privacidad y Membresías (S2-D15).
+  route("/sistema/configuracion", "Configuración", "settings", "settings.manage", "panel", { load: () => import("../features/system/pages/ConfigPage") }),
 
   // Portal del socio (v1.0).
   route("/mi", "Inicio", "portal", "me.home.view", "portal"),

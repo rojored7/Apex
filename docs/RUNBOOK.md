@@ -218,7 +218,7 @@ ejemplo cuando el bloqueado es el único admin:
 
 ```
 $DC build api   # solo si cambió cli.py desde la última imagen
-$DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona activa>
+$DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin activo>
 ```
 
 - Qué limpia: `locked_at` y `failed_login_count` (deja el `update` auditado con la persona de
@@ -254,9 +254,13 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - El correo de otro admin activo no se cambia desde el panel (L-13 aplicado al cambio de
   correo, N-8): responde 409, la misma regla que "Reenviar enlace". Si no, un admin podría
   poner su propio correo en la cuenta de otro y tomarla con la recuperación cuando `forgot`
-  envíe correos (US-131). El backend lo implementa en esta revisión (Fase 4 del Sprint 2);
-  el código exacto del 409 y la vía para corregir el correo de un admin quedan en
-  `docs/openapi.json` y en esta sección cuando se fusione.
+  envíe correos (US-131). Implementado en la revisión de Fase 4 del Sprint 2 (S2-R3): el 409 es
+  `user_not_eligible`; el propio admin sí puede cambiar su correo, y el de un admin pendiente
+  de activación o bloqueado también se puede corregir (su enlace abierto se cierra).
+
+- **`Cache-Control: no-store` duplicada.** Las rutas autenticadas la envían desde el api
+  (`core/http.no_store`) y Nginx la vuelve a poner en `/api/` (`proxy-api.conf`). Son el mismo
+  valor; no tiene efecto y no hay que "corregirlo" quitando una de las dos.
 
 ## 3. Auditoría de eventos de seguridad (S2-B6)
 

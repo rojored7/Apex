@@ -514,3 +514,49 @@ Fuente: los cuatro informes de la revisión posterior a la validación (general,
 - **N-8 · L-13 en el cambio de correo.** `PATCH /users/{id}` no puede cambiar el correo de otro admin activo (409), la misma regla que `resend-link`: cuando `forgot` envíe correos (US-131) sería una toma de cuenta. Dueño: backend, en esta revisión; `docs/RUNBOOK.md`, sección 2, lo documenta.
 - **L3 · Acciones e imágenes fijadas.** En `ci.yml` las seis acciones van por SHA de commit con la versión en comentario (`actions/checkout` v4.4.0, `actions/setup-node` v4.4.0, `astral-sh/setup-uv` v6.8.0, `actions/upload-artifact` v4.6.2, `docker/setup-buildx-action` v3.12.0, `docker/build-push-action` v6.19.2), cada job tiene `timeout-minutes` y el servicio `postgres:16` del job `api` va por digest. Quedan por digest, fuera del alcance de esta rama: `python:3.12-slim` (`api/Dockerfile`), `node:22-alpine` y `nginx:stable-alpine` (`web/Dockerfile`), `postgres:16` (`infra/compose.yml` y `infra/compose.dev.yml`) y `nginx:stable-alpine` (`scripts/ci/test_nginx_conf.sh`). Digests del 22 de octubre: `postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`, `nginx:stable-alpine@sha256:c59d1f8b1e0e42da75be973424cd72e23f7f8adfb54e982f4d1cd0216a5a5576`, `node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914`. Dueño: el primer slice de infraestructura del Sprint 3 (o, a más tardar, S4B-W0-2), junto con la decisión de cómo se renuevan (Dependabot o a mano, con el comando del comentario de `ci.yml`). También aceptado: `e2e-stack` reconstruye las imágenes sin la caché de GHA del job `images`; cuesta minutos y aísla el job, se revisa si el tiempo de CI molesta.
 - **Recordatorio M-6 (cobertura).** `api/pyproject.toml` sigue con `omit = ["*/app/cli.py", "*/app/worker/*"]`. `cli.py` creció unas 215 líneas en el Sprint 2, con pruebas, pero fuera del 80 %. El `omit` se quita en el Sprint 4A (US-113, S4A-B1), como dice `scripts/workflow/README.md`.
+
+### Decisiones del cierre backend de la revisión (S2-R1 a S2-R11)
+
+Tomadas al corregir los hallazgos de seguridad (N-1 a N-9) y de Python (H1 a H3, M1 a M11); evidencia en `docs/scratch/sprint-02-revision-backend.md`.
+
+- **S2-R1 (N-3).** El límite por cuenta del login usa la IPv4 exacta (`/32`, `/64` en IPv6),
+  igual que `rate_limit`. Motivo: en la LAN del gimnasio (P7) todos comparten un /24 y un
+  dispositivo con diez fallos negaba el login de las cuentas no exentas. La rotación dentro del
+  /24 la siguen frenando el tope global por correo (100/h) y el bloqueo a 20 fallos. La prueba de
+  B2 que fijaba el 429 desde otra IP del mismo /24 se actualizó por esta decisión.
+- **S2-R2 (M2).** El cupo por cuenta y el global se reservan de forma atómica antes de argon2 y se
+  devuelven si el login sale bien; un 429 del global devuelve la reserva de la cuenta. El efecto
+  visible es el mismo (solo cuentan los fallos), sin la carrera de `peek` + `record`.
+- **S2-R3 (N-8).** `PATCH /users/{id}` no cambia el correo de OTRO admin activo con contraseña
+  (409 `user_not_eligible`), la regla L-13 aplicada al correo. El propio admin sí puede cambiar el
+  suyo (ya conoce su contraseña; no hay toma de cuenta). Un admin pendiente de activación o
+  bloqueado sí se corrige (su enlace de activación se cierra al cambiar el correo, LOW-3 de B5).
+- **S2-R4 (M1).** Si otro cambio de contraseña ganó la carrera entre la verificación (sin
+  candado) y el `FOR UPDATE`, se responde 422 `invalid_current_password` (la "actual" tecleada
+  ya no lo es) sin sumar al tope por usuario: no es un intento de adivinar. Se prefirió a un 409
+  nuevo para no agregar un código al contrato por un caso que el front trata igual.
+- **S2-R5 (M11).** `refresh_current` no se cachea. Medición (500 llamadas tras 20 de
+  calentamiento): desde el host contra `db_test`, mediana 0,707 ms, p95 0,788, p99 0,936
+  (`SELECT 1` del mismo camino: 0,541 ms de mediana, casi todo es ida y vuelta); dentro del
+  contenedor del api contra `db`, la consulta de marca (`_marca`) da mediana 0,407 ms, p95 0,567,
+  p99 0,655. Por debajo de 1 ms: un TTL de 5 s solo agregaría una ventana en que una rotación de
+  otro proceso no se ve.
+- **S2-R6 (M5 general).** El piso de `PASSWORD_MIN_LENGTH` en producción es 12
+  (`PASSWORD_MIN_LENGTH_FLOOR` en `core/config.py`, expuesto como `core.security.PASSWORD_MIN_LENGTH`)
+  y el contrato publica `minLength: 12` en `new_password`. Consecuencia: una contraseña nueva de
+  menos de 12 caracteres la rechaza el schema con 422 `validation_error` (`field=new_password`),
+  antes de la política; `weak_password` queda para la lista de comunes y "igual a la actual". El
+  front ya valida 12 con Zod.
+- **S2-R7 (N-2).** Texto libre en dos tipos: `SafeText` (una línea: sin `Cc` ni `Cf`) y
+  `SafeMultilineText` (la política de privacidad: admite tabulador y saltos; de `Cf` solo rechaza
+  los controles bidireccionales, para no romper el pegado desde un procesador con guion suave o
+  ZWJ). `offset` tiene tope de 1.000.000.
+- **S2-R8 (N-1).** Toda ruta y `current_user` piden la sesión con `SessionDep`
+  (`scope="function"`); el commit corre antes de enviar la respuesta. Nunca `Depends(get_session)`
+  suelto (mezclar alcances abre dos sesiones); lo exige `test_session_scope.py`.
+- **S2-R9 (N-4).** `cli unlock-user` exige `--as` de un admin activo. RUNBOOK §2 ya dice "de un admin activo".
+- **S2-R10 (H1).** Un `service.py` que crece se parte en archivos privados del módulo y queda
+  como fachada con `__all__`; otros módulos siguen importando solo `service.py`. Topes: 800
+  líneas por archivo y 50 por función (`test_file_and_function_size.py`).
+- **S2-R11 (M7 general).** Los errores del OpenAPI se declaran por ruta con `responses_for`; el
+  gancho agrega `500` a todas y no toca códigos fuera del catálogo (`503` de `/health`).

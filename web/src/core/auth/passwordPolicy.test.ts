@@ -19,11 +19,6 @@ const contract = z.object({
 
 const { schemas } = contract.parse(JSON.parse(readFileSync(OPENAPI, "utf8"))).components;
 
-// TODO(revisión del Sprint 2, M5 general): el backend sube `minLength` de new_password a 12 en
-// paralelo. Mientras docs/openapi.json diga 1 se acepta ese valor viejo; tras fusionar el
-// cambio del backend, quitar LEGACY_OPENAPI_MIN_LENGTH y dejar la comparación estricta.
-const LEGACY_OPENAPI_MIN_LENGTH = 1;
-
 describe.each([
   ["ChangePasswordIn", schemas.ChangePasswordIn.properties.new_password],
   ["ResetIn", schemas.ResetIn.properties.new_password],
@@ -33,7 +28,7 @@ describe.each([
   });
 
   it("el mínimo es el del contrato", () => {
-    expect([PASSWORD_LIMITS.min, LEGACY_OPENAPI_MIN_LENGTH]).toContain(field.minLength);
+    expect(field.minLength).toBe(PASSWORD_LIMITS.min);
   });
 });
 

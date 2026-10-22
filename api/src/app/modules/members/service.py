@@ -17,20 +17,48 @@ Con sesión:
   `begin_nested()`; emite `MemberCreated`; responde enmascarado sin descifrar nada. El actor sale
   de `current_actor`.
 - Contratos para otros módulos: `get_ref`, `ensure_exists`, `id_by_document`, `count`.
+
+Buscar y listar (S2-B8, US-070; RN-13, RN-14, N-01, N-20, L-1):
+- `classify_query(q) -> QueryPlan` (pura): `q` en NFC, sin caracteres de control y
+  recortado; `name_pattern` = `%<q>%` con la barra invertida, `%` y `_` escapados
+  (`LIKE_ESCAPE`); `by_document` = el documento
+  normalizado (`generic`) cuando no queda vacío, tiene al menos un dígito y solo letras y
+  dígitos; `by_phone` = el teléfono normalizado con al menos `PHONE_MIN_DIGITS` dígitos;
+  `by_email` = el correo normalizado si `q` tiene `@`. Captura `CryptoError("empty_value")`.
+  `q` vacío o en blanco da el plan vacío (todo `None`).
+- `list(session, filters, page)`: dentro de `bus.batch("index", None)` calcula con
+  `bus.blind_index` solo los índices del plan; `UNION` de subconsultas de ids (una por índice y
+  una por `ILIKE` sobre `first_name || ' ' || last_name`, sin tildes ni mayúsculas); `status`
+  (`deleted` = `deleted_at IS NOT NULL`; `active`/`inactive` = vivos con ese estado; sin
+  filtro = vivos), `sort` y `paginate`. Nunca descifra (cero `decrypt` en `crypto_ops`).
+- `search_ids(session, q, include_deleted=False)` y `names_for(session, ids)`: una consulta
+  cada una; `names_for` incluye dados de baja (contratos de US-091 y US-110).
 """
 
 from __future__ import annotations
 
+import builtins
 import logging
-from collections.abc import Mapping
+import unicodedata
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final, Literal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import (
+    ColumnElement,
+    CompoundSelect,
+    Select,
+    Text,
+    func,
+    literal,
+    select,
+    union,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.core import events
 from app.core.clock import current_clock
@@ -40,6 +68,7 @@ from app.core.crypto.errors import CryptoError
 from app.core.crypto.normalize import IndexKind, normalize_for_index
 from app.core.crypto.secret import PlainValue, Secret
 from app.core.events import DomainEvent
+from app.core.pagination import Page, PageParams, paginate, to_page
 from app.modules.members.exceptions import (
     MemberDocumentDuplicated,
     MemberNotFound,
@@ -50,7 +79,10 @@ from app.modules.members.schemas import (
     DATA_CONSENT_MISSING,
     MemberCreate,
     MemberDetailOut,
+    MemberListQuery,
+    MemberName,
     MemberRef,
+    MemberRowOut,
 )
 
 logger = logging.getLogger("app.members")
@@ -65,6 +97,9 @@ MASK_TAIL: Final = 4
 DOCUMENT_MIN_MASKED: Final = 6  # al menos 2 caracteres ocultos además de la cola
 DOTS: Final = "•••"
 EMERGENCY_CONTACT_MASK: Final = "Registrado"
+PHONE_DATA_CLASS: Final = "member.phone"
+EMAIL_DATA_CLASS: Final = "member.email"
+LIKE_ESCAPE: Final = "\\"
 
 _MENSAJES: Final[Mapping[str, str]] = {
     "first_name": "El nombre es obligatorio.",
@@ -114,7 +149,7 @@ def validate_member_input(data: MemberCreate, today: date) -> None:
         raise _invalido("email")
 
 
-def compute_warnings(data: MemberCreate) -> list[str]:
+def compute_warnings(data: MemberCreate) -> builtins.list[str]:
     return [] if data.data_consent else [DATA_CONSENT_MISSING]
 
 
@@ -287,3 +322,208 @@ async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:
     if not include_deleted:
         consulta = consulta.where(Member.deleted_at.is_(None))
     return int(await session.scalar(consulta) or 0)
+
+
+# Buscar y listar (S2-B8) --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class QueryPlan:
+    """Qué busca un término: patrón de nombre y valores normalizados para cada índice ciego."""
+
+    q: str | None
+    name_pattern: str | None
+    by_document: str | None
+    by_phone: str | None
+    by_email: str | None
+
+
+PLAN_VACIO: Final = QueryPlan(
+    q=None, name_pattern=None, by_document=None, by_phone=None, by_email=None
+)
+_ACENTOS: Final = "áéíóúüñ"  # se pliegan a ASCII en SQL, en columna y término (como US-079)
+_SIN_ACENTOS: Final = "aeiouun"
+
+
+def _escape_like(value: str) -> str:
+    """Escapa la barra invertida (primero), `%` y `_` para `ILIKE ... ESCAPE '\\'`."""
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
+
+
+def _es_documento(normalizado: str) -> bool:
+    """CC, CE, TI y PA: solo letras y dígitos ASCII y al menos un dígito (S2-B8, decisión 1)."""
+    return normalizado.isascii() and normalizado.isalnum() and any(c.isdigit() for c in normalizado)
+
+
+def _limpio(q: str | None) -> str:
+    """NFC (una tilde combinada se pliega como la precompuesta) y sin caracteres de control
+    (categoría `Cc`: un NUL lo rechaza PostgreSQL y daría 500; revisión S2-B8, MEDIUM-1)."""
+    sin_control = "".join(c for c in (q or "") if unicodedata.category(c) != "Cc")
+    return unicodedata.normalize("NFC", sin_control).strip()
+
+
+def classify_query(q: str | None) -> QueryPlan:
+    termino = _limpio(q)
+    if not termino:
+        return PLAN_VACIO
+    documento = _normalizado(termino, "generic")
+    telefono = _normalizado(termino, "phone")
+    correo = _normalizado(termino, "email") if "@" in termino else ""
+    return QueryPlan(
+        q=termino,
+        name_pattern="%" + _escape_like(termino) + "%",
+        by_document=documento if _es_documento(documento) else None,
+        by_phone=telefono if len(telefono) >= PHONE_MIN_DIGITS else None,
+        by_email=correo or None,
+    )
+
+
+@dataclass(frozen=True)
+class _Indices:
+    document: str | None
+    phone: str | None
+    email: str | None
+
+
+def _indices(plan: QueryPlan) -> _Indices:
+    """Índices ciegos del plan en un único lote de `crypto_ops`; ninguno si no hay valores."""
+    pares = (
+        (DOCUMENT_DATA_CLASS, plan.by_document),
+        (PHONE_DATA_CLASS, plan.by_phone),
+        (EMAIL_DATA_CLASS, plan.by_email),
+    )
+    if all(valor is None for _, valor in pares):
+        return _Indices(None, None, None)
+    with bus.batch("index", None):
+        document, phone, email = (
+            None if valor is None else bus.blind_index(clase, valor) for clase, valor in pares
+        )
+    return _Indices(document, phone, email)
+
+
+def _vivo_o_baja(*, deleted: bool) -> ColumnElement[bool]:
+    return Member.deleted_at.is_not(None) if deleted else Member.deleted_at.is_(None)
+
+
+def _sin_acentos(valor: ColumnElement[str]) -> ColumnElement[str]:
+    return func.translate(func.lower(valor), _ACENTOS, _SIN_ACENTOS)
+
+
+def _ramas(
+    plan: QueryPlan, indices: _Indices, deleted_cond: ColumnElement[bool] | None
+) -> builtins.list[Select[UUID]]:
+    """Una subconsulta de ids por índice y una por nombre. Cada una lleva su condición de baja
+    para que la de documento use el único parcial `uq_members_document_idx_alive`."""
+    condiciones: builtins.list[ColumnElement[bool]] = []
+    if indices.document is not None:
+        condiciones.append(Member.document_idx == indices.document)
+    if indices.phone is not None:
+        condiciones.append(Member.phone_idx == indices.phone)
+    if indices.email is not None:
+        condiciones.append(Member.email_idx == indices.email)
+    if plan.name_pattern is not None:
+        nombre = _sin_acentos(Member.first_name + " " + Member.last_name)
+        patron = _sin_acentos(literal(plan.name_pattern, Text))  # valor ligado
+        condiciones.append(nombre.ilike(patron, escape=LIKE_ESCAPE))
+    ramas: builtins.list[Select[UUID]] = []
+    for condicion in condiciones:
+        rama = select(Member.id).where(condicion)
+        ramas.append(rama if deleted_cond is None else rama.where(deleted_cond))
+    return ramas
+
+
+def _ids_que_coinciden(
+    plan: QueryPlan, deleted_cond: ColumnElement[bool] | None
+) -> CompoundSelect[UUID] | Select[UUID]:
+    ramas = _ramas(plan, _indices(plan), deleted_cond)
+    return ramas[0] if len(ramas) == 1 else union(*ramas)
+
+
+def _filtro_de_estado(estado: str | None) -> builtins.list[ColumnElement[bool]]:
+    """`deleted` = dados de baja (también inactivos); `active`/`inactive` = vivos con ese
+    estado; sin filtro = vivos (N-20: igual para admin y coach). El primero es la condición de
+    baja que repite cada rama de la búsqueda."""
+    if estado == "deleted":
+        return [_vivo_o_baja(deleted=True)]
+    if estado is None:
+        return [_vivo_o_baja(deleted=False)]
+    return [_vivo_o_baja(deleted=False), Member.status == estado]
+
+
+_ORDEN: Final[Mapping[str, tuple[ColumnElement[Any], ...]]] = {
+    "last_name": (Member.last_name.asc(), Member.first_name.asc()),
+    "-last_name": (Member.last_name.desc(), Member.first_name.desc()),
+    "first_name": (Member.first_name.asc(), Member.last_name.asc()),
+    "-first_name": (Member.first_name.desc(), Member.last_name.desc()),
+    "created_at": (Member.created_at.asc(),),
+    "-created_at": (Member.created_at.desc(),),
+}
+
+
+def _fila(socio: Member) -> MemberRowOut:
+    """Solo columnas en claro (N-01): ni el blob ni la máscara."""
+    return MemberRowOut.model_validate(
+        {
+            "id": socio.id,
+            "first_name": socio.first_name,
+            "last_name": socio.last_name,
+            "sex": socio.sex,
+            "status": socio.status,
+            "deleted_at": socio.deleted_at,
+            "membership_status": None,
+            "plan_name": None,
+        }
+    )
+
+
+async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan builtins.list)
+    session: AsyncSession, filters: MemberListQuery, page: PageParams
+) -> Page[MemberRowOut]:
+    estado = _filtro_de_estado(filters.status)
+    consulta = (
+        select(Member)
+        .options(
+            load_only(
+                Member.first_name,
+                Member.last_name,
+                Member.sex,
+                Member.status,
+                Member.deleted_at,
+            )
+        )
+        .where(*estado)
+    )
+    plan = classify_query(filters.q)
+    if plan.q is not None:
+        consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
+    socios, total = await paginate(session, consulta.order_by(*_ORDEN[filters.sort]), page)
+    return to_page([_fila(s) for s in socios], total, page)
+
+
+async def search_ids(session: AsyncSession, q: str, *, include_deleted: bool = False) -> set[UUID]:
+    """Ids de los socios que coinciden con `q`, en una sentencia; `q` en blanco da `set()`."""
+    plan = classify_query(q)
+    if plan.q is None:
+        return set()
+    condicion = None if include_deleted else _vivo_o_baja(deleted=False)
+    return set(await session.scalars(_ids_que_coinciden(plan, condicion)))
+
+
+async def names_for(session: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, MemberName]:
+    """Nombre y sexo de cada id existente, incluidos los dados de baja, en una consulta."""
+    buscados = builtins.list(dict.fromkeys(ids))
+    if not buscados:
+        return {}
+    consulta = select(Member.id, Member.first_name, Member.last_name, Member.sex).where(
+        Member.id.in_(buscados)
+    )
+    return {
+        fila.id: MemberName(
+            id=fila.id, first_name=fila.first_name, last_name=fila.last_name, sex=fila.sex
+        )
+        for fila in await session.execute(consulta)
+    }

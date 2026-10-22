@@ -147,7 +147,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Members */
+        get: operations["list_members_api_v1_members_get"];
         put?: never;
         /** Create Member */
         post: operations["create_member_api_v1_members_post"];
@@ -656,6 +657,34 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * MemberRowOut
+         * @description Fila de la lista de socios: nada sensible, ni enmascarado (N-01).
+         */
+        MemberRowOut: {
+            /** Deleted At */
+            deleted_at: string | null;
+            /** First Name */
+            first_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Name */
+            last_name: string;
+            /** Membership Status */
+            membership_status?: string | null;
+            /** Plan Name */
+            plan_name?: string | null;
+            /** Sex */
+            sex: ("f" | "m" | "x") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+        };
         /** MembershipsPatchIn */
         MembershipsPatchIn: {
             value: components["schemas"]["MembershipsSettings"];
@@ -698,6 +727,17 @@ export interface components {
              * @default 7
              */
             max_retroactive_days: number;
+        };
+        /** Page[MemberRowOut] */
+        Page_MemberRowOut_: {
+            /** Items */
+            items: components["schemas"]["MemberRowOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** Page[UserRow] */
         Page_UserRow_: {
@@ -1667,6 +1707,105 @@ export interface operations {
             };
             /** @description Degradado */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_members_api_v1_members_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre; nunca se registra en logs */
+                q?: string | null;
+                status?: ("active" | "inactive" | "deleted") | null;
+                sort?: "last_name" | "-last_name" | "first_name" | "-first_name" | "created_at" | "-created_at";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MemberRowOut_"];
+                };
+            };
+            /** @description Operación inválida */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

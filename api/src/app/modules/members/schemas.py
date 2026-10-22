@@ -6,6 +6,15 @@
 - `MemberDetailOut`: los cinco campos sensibles van enmascarados (`str | None`), calculados en
   memoria; nunca el blob ni el claro.
 - `MemberRef`: dataclass congelada para otros módulos (nunca el ORM).
+
+S2-B8 (US-070; N-01, N-20, S2-D41):
+- `MemberRowOut`: la fila de `GET /members`. Sin ningún campo sensible, ni en claro ni
+  enmascarado (N-01): nombres, sexo, estado y `deleted_at`. `membership_status` y `plan_name`
+  van `None` hasta el Sprint 3 (US-071).
+- `MemberListQuery`: filtros de la lista. `q` de hasta 100 caracteres (nunca se registra),
+  `status` (`active`, `inactive` o `deleted`; admin y coach ven a los dados de baja, N-20) y
+  `sort` con seis valores (`-` es descendente), `last_name` por defecto.
+- `MemberName`: dataclass congelada que devuelve `service.names_for` a otros módulos.
 """
 
 from __future__ import annotations
@@ -17,11 +26,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.pagination import MAX_SEARCH_LENGTH
 from app.core.validators import EmailAddress
 
 DocumentType = Literal["CC", "CE", "TI", "PA"]
 Sex = Literal["f", "m", "x"]
 MemberStatus = Literal["active", "inactive"]
+MemberStatusFilter = Literal["active", "inactive", "deleted"]
+MemberSort = Literal[
+    "last_name", "-last_name", "first_name", "-first_name", "created_at", "-created_at"
+]
+DEFAULT_MEMBER_SORT: Final[MemberSort] = "last_name"
 
 NAME_MAX_LENGTH: Final[int] = 100
 DOCUMENT_MIN_LENGTH: Final[int] = 3
@@ -87,3 +102,36 @@ class MemberRef:
     last_name: str
     status: str
     is_deleted: bool
+
+
+class MemberRowOut(BaseModel):
+    """Fila de la lista de socios: nada sensible, ni enmascarado (N-01)."""
+
+    id: UUID
+    first_name: str
+    last_name: str
+    sex: Sex | None
+    status: MemberStatus
+    deleted_at: datetime | None
+    membership_status: str | None = None
+    plan_name: str | None = None
+
+
+class MemberListQuery(BaseModel):
+    """Filtros de `service.list`; el router los arma desde la query string."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
+    status: MemberStatusFilter | None = None
+    sort: MemberSort = DEFAULT_MEMBER_SORT
+
+
+@dataclass(frozen=True)
+class MemberName:
+    """Nombre de un socio para otros módulos (incluye dados de baja; nunca el ORM)."""
+
+    id: UUID
+    first_name: str
+    last_name: str
+    sex: str | None

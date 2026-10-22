@@ -1137,3 +1137,147 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - El encargo esperaba `CC •••• 0417` para `1.020.304.417`; la regla que fijan las pruebas
     (4 últimos del normalizado) da `CC •••• 4417`. Manda la prueba.
   - El gate que sella lista también `tests/members/test_member_review.py` (nació en la revisión).
+
+### S2-B8 · Rojo
+
+- Línea base (HEAD `f85f24e`, árbol limpio): api 1516 ok y 4 saltadas (`-m 'not perf'`, 1520
+  colectadas); `ruff check .` y `mypy src` (60 archivos) limpios.
+- B8.1 marcador y stubs (`ruff format`, `ruff check` y `mypy src` limpios, 60 archivos):
+  - `api/pyproject.toml`: marcador `perf` en `markers` (S2-D27). Con `--strict-markers`, sin él
+    `test_list_perf.py` no colectaría. E8: el `up -d --build api` se hace una sola vez al cerrar
+    B8 (no en el Rojo);
+  - `members/schemas.py` completo: `MemberStatusFilter`, `MemberSort` (6 valores),
+    `DEFAULT_MEMBER_SORT = "last_name"`, `MemberRowOut` (id, nombres, sexo, estado, `deleted_at`,
+    `membership_status` y `plan_name` en `None`; nada sensible, N-01), `MemberListQuery`
+    (`extra="forbid"`, congelado, `q` hasta `MAX_SEARCH_LENGTH`), `MemberName` (dataclass
+    congelada con `sex`);
+  - `members/service.py`: `QueryPlan(q, name_pattern, by_document, by_phone, by_email)`
+    (dataclass congelada, completa), constantes `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`,
+    `LIKE_ESCAPE = "\\"`, y las firmas de `classify_query`, `list`, `search_ids` y `names_for`
+    con `NotImplementedError`. `list` se llama como en el blueprint: dentro del módulo las
+    anotaciones usan `builtins.list` (`compute_warnings`), si no mypy resuelve `list[...]` a la
+    función;
+  - `members/router.py`: `GET /members` con `require_role("admin", "coach")`,
+    `Annotated[PageParams, Depends()]`, `q: SearchQuery`, `status` (alias de `member_status`),
+    `sort`, `response_model=Page[MemberRowOut]`; `ratelimit.enforce("members-search",
+    str(user_id), limit=60, window_s=60, kind="user")` solo si `q` no está vacío (L-1); arma
+    `MemberListQuery` y llama a `service.list`.
+- B8.2 pruebas (97 casos nuevos; 94 corren sin `perf`):
+  - `tests/members/test_classify_query.py` (31): documento con puntos, guiones y espacios;
+    pasaporte; teléfono con espacios, `+57` y paréntesis al mismo valor; 7 dígitos sí, 6 no;
+    correo en mayúsculas; correo con dígitos no es documento; nombres (`góm`, `Góm`,
+    `Laura Gómez`, `gom`) solo dan patrón; patrón recortado; `%`, `_`, `\` escapados; `...`,
+    `+57`, `--`, `( )` sin índices; `None`/vacío/blanco dan el plan vacío; plan inmutable; los
+    valores del plan dan el mismo índice ciego que el término (con `bus_listo`);
+  - `tests/members/test_service_list.py` (34): documento con puntos, teléfono con y sin `+57`,
+    correo en mayúsculas (Laura y la de `KNOWN`), sin coincidencias; nombre `góm`, `Góm`,
+    `GÓMEZ`, `gom` y `laura gó`; varios por nombre; `%` y `_` no son comodines; sin `status`
+    excluye bajas; `deleted`, `active`, `inactive`; una baja no aparece al buscarla salvo con
+    `deleted`; cada `sort` (con `created_at` explícito) y el orden por defecto; paginación
+    `limit`/`offset`/`total` sin repetir; filas con exactamente `CAMPOS_FILA` y sin claro,
+    blob ni máscara; cero `decrypt`, de 1 a 3 `index` por búsqueda (una por clase, mismo
+    `batch_id` no nulo, actor) y ninguno por nombre o sin `q`; `search_ids` en una sentencia
+    (listener `before_cursor_execute` sin `SAVEPOINT`/`RELEASE`) y con o sin bajas;
+    `names_for` en una sentencia, con bajas, sin el id inexistente, `[]` da `{}` e iterable;
+  - `tests/members/test_router_list.py` (26): 200 admin y coach con el contrato y 25 por
+    defecto; `status=deleted` para los dos (N-20); búsqueda por documento, teléfono, correo y
+    nombre por HTTP; filas sin sensibles, `*_idx`, `*_hint`, claro ni máscara; 403 `member`
+    (con y sin `q`); 401; 422 con `field` para `limit` 500/201/0/-1, `offset` -1, `sort`
+    `foo`/`document`, `status` `foo` y `q` de 101; `limit=200` y `q` de 100 válidos; cada
+    `sort` 200; 5 sin `q`, 60 con `q` y la 61 da 429 `rate_limited` con `Retry-After`, sin
+    `q` y con `q=""` siguen en 200 y otro usuario sigue; el `q` (documento, teléfono, correo y
+    un nombre) no aparece en stdout JSON (`capsys` con `configure_logging`) ni en `caplog`,
+    tampoco tras un 422;
+  - `tests/members/test_list_perf.py` (3, `pytestmark = pytest.mark.perf`): 999 socios con
+    `make_members` más Laura, `ANALYZE`; tras un calentamiento `GET /members?q=1.020.304`
+    < 500 ms; `EXPLAIN (FORMAT JSON)` de cada consulta con `document_idx` que el service envía
+    (capturada con el listener y reenviada con `exec_driver_sql`) usa
+    `uq_members_document_idx_alive`; L-11: 20 cuentas, 20 logins fallidos concurrentes, cada uno
+    en su sesión de un motor con pool de 22 (`motor_amplio`), `rollback` como `get_session`,
+    p95 < 2 s y cada cuenta con `failed_login_count = 1`; `dos_sesiones` siembra y limpia;
+  - `tests/architecture/test_list_rows_without_sensitive_fields.py` (3): rutas efectivas
+    (`effective_routes`) `GET` bajo `/api/v1/members` con respuesta `Page_...`; lee la fila en
+    `app.openapi()` y falla con `document`, `phone`, `email`, `birth_date`,
+    `emergency_contact`, `*_idx` o `*_hint`; exige ver `GET /api/v1/members`; control con
+    `_FilaFalsa` (detecta 3), `_FilaLimpia`, un detalle y una lista fuera del prefijo.
+- Conteo (`-m 'not perf'`): 1614 colectadas (1617 sin filtro, 3 deseleccionadas); 80 fallan,
+  1530 pasan, 4 saltadas. Las 80: 79 nuevas por `NotImplementedError` de los stubs
+  (`classify_query` 30, `list` 46, `names_for` 2, `search_ids` 1) y
+  `test_openapi_export::test_docs_openapi_json_esta_al_dia` (la ruta nueva cambia el contrato;
+  P-API en B8.4). Pasan ya 15 nuevas de contrato: 401, 403, los 9 casos de 422, `LIKE_ESCAPE`
+  y las 3 de arquitectura. Ninguna por import ni fixture; ninguna sesión colgada.
+  `-m 'not perf'` excluye `test_list_perf.py`; sin la variable se colecciona y da 2 fallos
+  (`NotImplementedError` de `list`) y 1 pasa (L-11: mide B2, ya implementado).
+- Validación del Rojo: con un Verde provisional del service (luego revertido desde la copia del
+  stub) las 94 nuevas pasan, las 3 `perf` pasan (búsqueda 14,5 ms; L-11 p50 0,411 s, p95
+  0,421 s por el piso de 400 ms) y la suite da 1609 ok, 4 saltadas y solo el fallo esperado de
+  `docs/openapi.json`. `db_test` queda sin socios, usuarios `@test.apex`, llaves ni auditoría.
+- Decisiones de prueba que el Verde debe respetar:
+  - `QueryPlan` guarda VALORES NORMALIZADOS (no índices): `list` los pasa a
+    `bus.blind_index(data_class, valor)`, que vuelve a normalizar (idempotente). Así
+    `classify_query` sigue pura.
+  - `name_pattern = "%" + escape(q.strip()) + "%"` con `LIKE_ESCAPE = "\\"` (escapar primero la
+    barra). Las aserciones exactas usan términos en minúscula ASCII: el Verde puede plegar
+    mayúsculas y tildes en SQL sobre columna y término.
+  - `by_document` solo si el normalizado `generic` no queda vacío, tiene al menos un dígito y
+    solo letras y dígitos ASCII (desviación 1).
+  - Nombre sin tildes ni mayúsculas: `"gom"` y `"GÓMEZ"` encuentran a "Gómez" (`ILIKE` solo no
+    basta: `'Gómez' ILIKE '%gom%'` es falso en `db_test`, `en_US.utf8`). El provisional usó
+    `translate(lower(first_name || ' ' || last_name), 'áéíóúüñ', 'aeiouun')` a los dos lados,
+    como US-079; sin migración.
+  - La rama de documento debe llevar `deleted_at IS NULL` en la misma subconsulta para que el
+    plan use el único parcial (lo exige el `EXPLAIN`).
+  - `index` dentro de un único `bus.batch("index", None)` por llamada: una fila por clase con el
+    mismo `batch_id`; una búsqueda por nombre o sin `q` no calcula ningún índice.
+  - `status=deleted` = `deleted_at IS NOT NULL` (también inactivos); `active`/`inactive` = vivos
+    con ese estado; sin `status` = vivos. Admin y coach por igual (N-20).
+  - `search_ids(q)` con `q` en blanco da `set()`; `names_for([])` da `{}`; ambas una sola
+    sentencia SQL cuando hay algo que buscar; `names_for` acepta cualquier iterable.
+  - El límite cuenta solo con `q` no vacío; `q=""` no cuenta.
+  - `MemberRowOut` tiene exactamente `id, first_name, last_name, sex, status, deleted_at,
+    membership_status, plan_name`.
+- Desviaciones del encargo:
+  1. `by_document`: el blueprint dice "si `normalize_for_index(q, "generic")` no queda vacío";
+     con eso `"góm"` (→ `gom`) y `"+57"` (el `+` se conserva) darían índice de documento, y el
+     encargo pide que `"góm"` dé solo `name_pattern` y `"+57"` ningún índice. Se agregó "al menos
+     un dígito y solo letras y dígitos" (los documentos CC, CE, TI y PA siempre los tienen). La
+     búsqueda no cambia (un nombre nunca coincide con un índice de documento) y ahorra un HMAC
+     por búsqueda de nombre. Debe anotarse en `DECISIONES.md` al cerrar B8.
+  2. `"1.020.304"` también activa `by_phone` (tiene 7 dígitos): la caja es única y la regla de 7
+     dígitos del blueprint lo implica; hay una prueba que lo fija.
+  3. Nombre sin tildes (`"gom"`): el encargo dice "por `"góm"` sin tilde"; se toma como el término
+     sin tilde (precedente US-079). Si no se quiere, quitar los casos `gom` de
+     `test_service_list.py`.
+  4. El `enforce` del límite ya queda en el router (no solo como stub), porque no depende del
+     service; las pruebas del 429 fallan igual en el Rojo por `list`.
+  5. L-11 pasa en el Rojo: mide el login de B2, ya implementado; se deja en el archivo `perf` como
+     pide el plan.
+
+### S2-B8 · Verde
+
+- B8.3 `members/service.py`: `classify_query` (NFC, sin caracteres de control, recortado;
+  `name_pattern` escapado; `by_document` solo letras y dígitos ASCII con al menos un dígito;
+  `by_phone` con 7 o más dígitos; `by_email` si hay `@`), `_indices` (un único
+  `bus.batch("index", None)`, solo si hay algún valor), `_ramas` (una subconsulta de ids por
+  índice y una por nombre con `translate(lower(...))` a los dos lados y `ESCAPE '\'`, cada una
+  con su condición de baja), `list` (`select(Member)` con `load_only` de las columnas en claro,
+  filtro de estado, `id IN (UNION ...)`, orden de `sort` con desempate por el otro nombre y
+  `paginate`), `search_ids` (una sentencia) y `names_for` (una sentencia; `[]` da `{}` sin
+  consulta). Router y schemas sin cambios respecto del Rojo.
+- B8.4 contrato: `export-openapi` dos veces idéntico; `docs/openapi.json` (+300 líneas: ruta y
+  `Page_MemberRowOut_`) y `web/src/core/api/types.ts` regenerados;
+  `types.contract.test.ts` 5 ok; `tsc --noEmit` limpio.
+- Revisión (`security-reviewer`): 0 CRITICAL, 0 HIGH, 2 MEDIUM, 4 LOW. Corregidos con prueba
+  MEDIUM-1 (`q` con NUL daba 500) y LOW-4 (NFC) en `tests/members/test_list_review.py`
+  (11 casos, 8 rojos antes del arreglo, incluida la regresión del escape `\`, `100%` y `a_b`
+  contra PostgreSQL). Aceptados MEDIUM-2, LOW-1, LOW-2 y LOW-3 (`DECISIONES.md`, S2-B8).
+- Docs: `DECISIONES.md` sección "S2-B8" (las cuatro decisiones del orquestador, forma de la
+  consulta, revisión); `docs/RUNBOOK.md` "Socios: buscar y listar (S2-B8)" (qué usa índice y
+  qué no; `uv run pytest -m perf`).
+- Números: `-m 'not perf'` 1621 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura `app`
+  96 % (`members/service.py` 97 %). `-m perf` 3 ok: búsqueda por documento con 1.000 socios
+  13,5 ms; L-11 p50 0,407 s, p95 0,417 s. `ruff format`, `ruff check` y `mypy src` (60
+  archivos) limpios.
+- Deuda conocida (Sprint 4A): la rama de nombre no usa índice (`pg_trgm` o columna normalizada
+  si la tabla crece). Pendiente fuera de alcance: el mismo NUL en `q` de `auth.list_users`
+  (contrato común `SearchQuery`).

@@ -204,3 +204,15 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Un documento repetido entre socios no dados de baja responde 409 `member_document_duplicated` con `existing_id`; el único parcial `uq_members_document_idx_alive` decide aunque dos altas lleguen a la vez. Dar de baja (B9) libera el documento.
 - Límite: 60 altas por minuto por usuario autenticado (429 `rate_limited` con `Retry-After`); el contador vive en memoria y se limpia con `up -d api`.
 - Rotación: en v0.1 no hay rotación de llaves de `member.*`; llega en v0.2 con OpenBao (`cli rotate-key`, US-030), que recifra con la llave nueva sin cambiar el formato del blob.
+
+## Socios: buscar y listar (S2-B8)
+
+- `GET /api/v1/members` (admin y coach) pagina con `limit` (1 a 200, 25 por defecto) y `offset`; filtra por `status` (`active`, `inactive`, `deleted`; sin `status` solo los no dados de baja) y ordena con `sort` (`last_name` por defecto, `-` es descendente). Las filas nunca traen documento, teléfono, correo, fecha de nacimiento ni contacto, ni en claro ni enmascarados; listar no descifra nada.
+- La caja de búsqueda `q` (hasta 100 caracteres, nunca se registra en logs) se reparte así:
+  - documento (solo letras y dígitos con al menos un dígito, tras quitar puntos, guiones y espacios): índice ciego, usa el único parcial `uq_members_document_idx_alive`;
+  - teléfono (7 o más dígitos, con o sin `+57`): índice ciego, usa `ix_members_phone_idx`;
+  - correo (si tiene `@`): índice ciego, usa `ix_members_email_idx`;
+  - nombre y apellido, siempre: `ILIKE` sin mayúsculas ni tildes (`translate(lower(...))`) con `%`, `_` y `\` escapados. Esta rama NO usa índice (recorre la tabla de socios vivos); con cientos o pocos miles de socios responde en milisegundos. Si la tabla crece mucho, la deuda anotada para el Sprint 4A es un índice `pg_trgm` o una columna normalizada.
+- Cada búsqueda con `q` deja en `crypto.crypto_ops` entre una y tres filas `index` del mismo lote (`batch_id`), una por clase; una búsqueda solo por nombre o una lista sin `q` no deja ninguna, y nunca hay `decrypt`.
+- Límite: 60 búsquedas con `q` por minuto por usuario (429 `rate_limited` con `Retry-After`); la lista sin `q` no cuenta. El contador vive en memoria y se limpia con `up -d api`.
+- Pruebas de rendimiento (marcador `perf`; 1.000 socios, búsqueda por documento bajo 500 ms con `EXPLAIN` del único parcial, y L-11 de 20 logins fallidos concurrentes con p95 bajo 2 s): `cd api && uv run pytest -m perf -q -s` (con `TEST_DATABASE_URL`). Los gates corren `-m "not perf"` salvo el de B8 y V5.

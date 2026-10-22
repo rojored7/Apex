@@ -1,0 +1,100 @@
+// S2-F5 (US-055, US-057, US-058): esquemas de los tres formularios de Configuración con los
+// mismos rangos que el api (api/src/app/modules/settings/schemas.py, N-18) y mensajes en
+// español que dicen qué pasó y qué hacer. Los formularios trabajan con texto (lo que da un
+// <input>); los formularios convierten a null y a enteros al armar el PATCH.
+// applyApiFieldError lleva un 422 con `field = "value.<campo>"` al campo del formulario.
+import type { FieldValues, Path, UseFormReturn } from "react-hook-form";
+import { z } from "zod";
+import { isApiError } from "../../core/api/errors";
+
+/** `^\d+(-\d)?$` del api: dígitos y, opcional, un guion con el dígito de verificación. */
+export const NIT_PATTERN = /^\d+(-\d)?$/;
+export const POLICY_TEXT_MAX = 20_000;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DIGITS = /^\d+$/;
+const emailFormat = z.string().email();
+
+const maxText = (max: number, message: string) => z.string().trim().max(max, message);
+
+function isCalendarDate(value: string): boolean {
+  const match = ISO_DATE.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+/** Entero escrito en un campo de texto o número, dentro de [min, max]. */
+function integerText(min: number, max: number) {
+  return z
+    .string()
+    .trim()
+    .min(1, "Escribe un número.")
+    .regex(DIGITS, "Escribe un número entero, sin decimales ni signos.")
+    .refine((value) => !DIGITS.test(value) || (Number(value) >= min && Number(value) <= max), `Escribe un número entre ${String(min)} y ${String(max)}.`);
+}
+
+export const gymSettingsSchema = z.object({
+  name: z.string().trim().min(1, "Escribe el nombre del gimnasio.").max(80, "El nombre admite hasta 80 caracteres."),
+  nit: z
+    .string()
+    .trim()
+    .max(15, "El NIT admite hasta 15 caracteres.")
+    .refine(
+      (value) => value === "" || value.length > 15 || NIT_PATTERN.test(value),
+      "El NIT no es válido. Usa solo dígitos y, si tiene, un guion con el dígito de verificación: 901234567-8.",
+    ),
+  address: maxText(120, "La dirección admite hasta 120 caracteres."),
+  city: maxText(60, "La ciudad admite hasta 60 caracteres."),
+  phone: maxText(20, "El teléfono admite hasta 20 caracteres."),
+  whatsapp: maxText(20, "El WhatsApp admite hasta 20 caracteres."),
+  email: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || emailFormat.safeParse(value).success, "El correo no es válido. Escríbelo completo, por ejemplo box@ejemplo.com."),
+});
+
+export const privacySettingsSchema = z.object({
+  policy_version: z.string().trim().min(1, "Escribe la versión de la política, por ejemplo 2026-10.").max(20, "La versión admite hasta 20 caracteres."),
+  policy_text: z
+    .string()
+    .trim()
+    .min(1, "Escribe o pega el texto de la política.")
+    .max(POLICY_TEXT_MAX, "El texto supera los 20.000 caracteres. Acórtalo antes de guardar."),
+  retention_years: integerText(1, 20),
+  consent_required_from: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || isCalendarDate(value), "Escribe una fecha válida o deja el campo vacío."),
+});
+
+export const membershipsSettingsSchema = z.object({
+  expiring_days: integerText(1, 30),
+  max_freeze_days_per_membership: integerText(0, 180),
+  max_freezes_per_membership: integerText(0, 12),
+  max_retroactive_days: integerText(0, 30),
+});
+
+export type GymSettingsForm = z.infer<typeof gymSettingsSchema>;
+export type PrivacySettingsForm = z.infer<typeof privacySettingsSchema>;
+export type MembershipsSettingsForm = z.infer<typeof membershipsSettingsSchema>;
+
+const VALUE_PREFIX = "value.";
+const UNPROCESSABLE = 422;
+
+/**
+ * Marca en el formulario el campo de un 422 del api (`field = "value.<campo>"`). Usa el
+ * mensaje propio del campo si se da (el del api nombra el campo en inglés) y, si no, el del
+ * api. Devuelve false si el error no es de un campo de este formulario.
+ */
+export function applyApiFieldError<T extends FieldValues>(
+  form: Pick<UseFormReturn<T>, "setError" | "getValues">,
+  error: unknown,
+  messages: Partial<Record<string, string>> = {},
+): boolean {
+  if (!isApiError(error) || error.status !== UNPROCESSABLE || !error.field) return false;
+  const name = error.field.startsWith(VALUE_PREFIX) ? error.field.slice(VALUE_PREFIX.length) : error.field;
+  if (!Object.prototype.hasOwnProperty.call(form.getValues(), name)) return false;
+  form.setError(name as Path<T>, { type: "server", message: messages[name] ?? error.message }, { shouldFocus: true });
+  return true;
+}

@@ -65,7 +65,7 @@ Sistema (módulos 11 a 14) — solo admin
 - `/sistema/usuarios` → `Usuarios.html`. GET/POST/PATCH `/users`. Bloquear (POST `/users/:id/lock`, `/unlock`), reenviar enlace (POST `/users/:id/resend-link`, única forma de obtener el enlace), cerrar sesiones (POST `/users/:id/revoke-sessions`).
 - `/sistema/auditoria` → `Auditoria.html`. GET `/audit?from&to&user&entity&action&q&limit&offset`. Verificar cadena: POST `/audit/verify`; última verificación: GET `/audit/verify/last`.
 - `/sistema/llaves` → `Llaves.html`. GET `/crypto/keys`, GET `/crypto/ops?limit&offset`, GET `/crypto/jobs`. Rotar: POST `/crypto/keys/:id/rotate` {reason, confirm:"ROTAR"}. Exportar CBOM: GET `/crypto/cbom`.
-- `/sistema/configuracion` → `Config.html`. GET/PATCH `/settings` por sección (gym, hours, payment_methods, channels, classes, memberships, tv, privacy).
+- `/sistema/configuracion` → `Config.html`. GET/PATCH `/settings` por sección (gym, hours, payment_methods, channels, classes, memberships, tv, privacy). Desde S2-F5 la pantalla existe con pestañas en `?tab=` (`gimnasio`, `privacidad`, `membresias`) para las tres secciones del Sprint 2 (S2-D15): GET `/settings/{gym|privacy|memberships}` y PATCH con `{ value, version }` (409 `version_conflict` con "Recargar"; 422 con `field = "value.<campo>"`). Las demás secciones se muestran cuando llegue su versión (`// DESIGN-GAP:`).
 
 ## Portal del socio (layout: una columna + menú inferior) — rol socio
 

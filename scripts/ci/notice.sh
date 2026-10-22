@@ -51,9 +51,10 @@ EOF
   echo "Titillium Web (fuente) · SIL Open Font License 1.1 · web/public/fonts/"
   echo "Lucide (iconos) · ISC · paquete lucide-react en web/"
   echo
-  echo "== herramientas de desarrollo con MPL-2.0, sin modificar (no se distribuyen) =="
+  echo "== herramientas de desarrollo y CI, sin modificar (no se distribuyen) =="
   echo
   echo "axe-core · MPL-2.0 · pruebas de accesibilidad del front (US-010)"
+  echo "gitleaks · MIT · escaneo de secretos en CI, como imagen de Docker (US-039)"
   echo "certifi · MPL-2.0 · certificados raíz, transitiva de httpx (runtime del api; ver scripts/ci/licenses-exceptions.txt)"
 } | tr -d '\r' > "$SALIDA"
 

@@ -14,6 +14,7 @@ from app.core.config import Settings, load_settings
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
+from app.core.security import StartupError
 from app.main import create_app
 
 SOLO_POSIX = pytest.mark.skipif(os.name == "nt", reason="NTFS no conserva el modo POSIX")
@@ -93,7 +94,7 @@ async def test_el_lifespan_falla_sin_kek_y_el_log_no_lleva_material(
     kek = rutas.kek.read_bytes()
     rutas.kek.unlink()
     app = create_app(settings, run_migrations_on_startup=False)
-    with caplog.at_level(logging.DEBUG), pytest.raises(CryptoError, match="kek_missing"):
+    with caplog.at_level(logging.DEBUG), pytest.raises(StartupError, match="CRYPTO_LOCAL_KEK_PATH"):
         async with app.router.lifespan_context(app):
             pass
     assert kek.hex() not in caplog.text
@@ -102,10 +103,9 @@ async def test_el_lifespan_falla_sin_kek_y_el_log_no_lleva_material(
         current_provider()
 
 
-async def test_el_lifespan_registra_el_proveedor(tmp_path: Path, test_database_url: str) -> None:
-    settings = _settings(tmp_path, test_database_url)
-    init_keys_files(key_paths_in(tmp_path / "keys"))
-    app = create_app(settings, run_migrations_on_startup=False)
+async def test_el_lifespan_registra_el_proveedor(settings_prueba: Settings) -> None:
+    # Con las llaves de la sesión: las DEK de db_test están envueltas con esa KEK.
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
     async with app.router.lifespan_context(app):
         assert isinstance(current_provider(), LocalFileProvider)
     configure_provider(None)

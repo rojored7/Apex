@@ -284,3 +284,50 @@ lo bloquea el clasificador de permisos de la sesión: queda como paso humano.
   auditoría al empezar cada sesión de pytest (`migrated_database`), porque las llaves se envuelven
   con la KEK temporal de la sesión. Observación: `UUID(int=1)` es `SYSTEM_USER_ID`; los usuarios
   de prueba empiezan en 101.
+
+
+### Front S1-F1 a S1-F3 · fusionados desde el worktree del agente
+
+- Merge `6511f47` de la rama `worktree-agent-a970a230434bd76be` (cuatro checkpoints: `b7ade37`,
+  `dd66f5f`, `628114a`, `cfdabb4`; 79 archivos, solo `web/` y `docs/scratch/sprint-01-front.md`).
+- Verificado en la rama fusionada: `npm ci`, lint, `tsc`, 593 pruebas en 43 archivos, cobertura
+  99,63 % de líneas (96,25 % ramas), build de Vite y licencias (12 MIT, 1 ISC) en verde.
+- El agente no rodeó el hook `config-protection`: las reglas de ESLint de US-059/060/040 viven en
+  `web/tests/lint/restricted-config.ts` y las aplica Vitest sobre `src/`. Pendiente de la persona:
+  moverlas a `web/eslint.config.js` si lo autoriza. Usó `credentials: "same-origin"` (US-059,
+  N-13). Dependencia nueva: `openapi-typescript` 7.13.0 (MIT, desarrollo). Seis `DESIGN-GAP`
+  (velo y ancho del panel sin token, chip "Pendiente de pago", plegado de filtros del portal,
+  esquemas de lista y de auditoría aún fuera de `docs/openapi.json`). Detalle en
+  `docs/scratch/sprint-01-front.md`.
+
+### S1-B10 · Límite de intentos, CORS y secretos (US-036, US-037, US-039)
+
+- Rojo: `tests/core/test_ratelimit.py`, `test_cors.py`, `test_config_secrets.py` y ampliaciones de
+  `test_env_example.py` (sin PEM ni valores base64 largos, `CORS_ORIGINS` vacío) y de
+  `test_every_route_has_role.py` (login y forgot con `__apex_rate_limit__` cuando existan):
+  29 fallos + 4 errores.
+- Verde: `core/ratelimit.py` (`allow` pura con ventana deslizante y `Retry-After`, `client_ip`
+  que solo cree en `X-Forwarded-For` desde una red de `TRUSTED_PROXIES`, `SlidingWindowStore`
+  con tope de claves y `asyncio.Lock`, dependencia `rate_limit(bucket)` con marca
+  `__apex_rate_limit__`), `TooManyRequestsError` 429 `rate_limited` con `Retry-After` (el
+  handler de dominio aplica `headers`), `parse_origins` y `CORS_ORIGINS` sin decodificar (lista
+  por comas o JSON; `*` y `null` fallan al arrancar con el nombre de la variable),
+  `CORSMiddleware` solo con orígenes y sin credenciales, `Settings.trusted_proxies` como redes,
+  `RATE_LIMIT_MAX_KEYS`, `missing_secrets`/`check_secrets_or_exit` (solo nombres de variable)
+  antes de cargar llaves en el lifespan, `scripts/ci/check-image-secrets.sh` (export de la
+  imagen, `.env`, llaves por contenido, `.pem`/`.key`/`.kek` bajo `/app`, `gitleaks dir`),
+  `.gitleaks.toml`, job `secrets-scan` (gitleaks sobre todo el historial) y paso de imagen en
+  CI, `gitleaks` en `NOTICE`, `.env.example` con `TRUSTED_PROXIES=172.16.0.0/12` documentado.
+- Evidencia: 47 ok en el slice; suite completa 424 ok + 3 saltadas; ruff y mypy limpios.
+  Sexto intento 429 e intento liberado 61 s después; buckets e IPs independientes; cliente no
+  confiable no rota con `X-Forwarded-For`; 429 idéntico para cualquier correo. Preflight solo
+  para el origen exacto; con `CORS_ORIGINS` vacío ningún preflight recibe la cabecera.
+  `repr`/`dump` de `Settings` muestran `**********`; el arranque sin KEK falla con
+  "Faltan secretos: CRYPTO_LOCAL_KEK_PATH" y el log no lleva valores. `check-image-secrets.sh`
+  contra `apex-api:local`: 4 de 4 ok (excluye el parser PEM de `cryptography`, que contiene la
+  cabecera como constante, y los certificados de CA). `gitleaks git` sobre los 41 commits: sin
+  hallazgos. `docs/openapi.json` regenerado (entra el 429).
+- Decisiones: la dependencia de `rate_limit` se declara en `auth.router` cuando existan login
+  y forgot (US-042, US-048); `X-Forwarded-For` en Nginx sigue siendo `$remote_addr` (decisión de
+  seguridad del Sprint 0: Nginx es el primer salto); uvicorn corre con un solo worker por
+  defecto. `ENV` se mantiene `dev | production`.

@@ -177,6 +177,16 @@
             },
             "description": "Petición inválida"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -277,6 +287,16 @@
               }
             },
             "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
           },
           "500": {
             "content": {

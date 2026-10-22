@@ -50,3 +50,19 @@ def test_sin_secretos_reales() -> None:
     # Concatenado para que detect-private-key no marque la propia prueba.
     assert ("BEGIN " + "PRIVATE KEY") not in EJEMPLO.read_text(encoding="utf-8")
     assert "cambiar-esto" in claves["DATABASE_URL"]
+
+
+def test_ningun_valor_de_ejemplo_parece_real() -> None:
+    """US-039 T4: sin PEM y sin valores largos en base64 (32 bytes o más)."""
+    import re
+
+    for clave, valor in _claves().items():
+        assert not re.fullmatch(r"[A-Za-z0-9+/=_-]{43,}", valor), f"{clave} parece un secreto real"
+    texto = EJEMPLO.read_text(encoding="utf-8")
+    assert "-----BEGIN" not in texto
+
+
+def test_cors_vacio_y_proxies_documentados() -> None:
+    claves = _claves()
+    assert claves["CORS_ORIGINS"] == "" and "*" not in claves["CORS_ORIGINS"]
+    assert "TRUSTED_PROXIES" in claves and "RATE_LIMIT_MAX_KEYS" in claves

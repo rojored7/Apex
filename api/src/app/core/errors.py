@@ -75,6 +75,7 @@ class DomainError(Exception):
         self.field = field
         self.existing_id = existing_id
         self.status = status or type(self).status
+        self.headers: dict[str, str] = {}
         super().__init__(self.message)
 
     def body(self) -> ErrorBody:
@@ -93,6 +94,16 @@ class ForbiddenError(DomainError):
     status = 403
     code = "forbidden"
     default_message = "No tienes permiso para esta acción."
+
+
+class TooManyRequestsError(DomainError):
+    status = 429
+    code = "rate_limited"
+    default_message = "Demasiados intentos. Espera un momento."
+
+    def __init__(self, retry_after_s: int) -> None:
+        super().__init__()
+        self.headers = {"Retry-After": str(max(1, retry_after_s))}
 
 
 class NotFoundError(DomainError):
@@ -121,6 +132,7 @@ _DESCRIPCIONES = {
     409: "Conflicto con el estado actual",
     422: "Petición inválida",
     500: "Error inesperado",
+    429: "Demasiados intentos",
 }
 
 # Para `FastAPI(responses=ERROR_RESPONSES)` o `include_router(..., responses=ERROR_RESPONSES)`.
@@ -166,6 +178,8 @@ async def _handler_dominio(request: Request, exc: DomainError) -> JSONResponse:
     respuesta = _responder(exc.status, exc.body())
     if exc.status == 401:
         respuesta.headers["WWW-Authenticate"] = "Bearer"  # US-034: toda 401 lleva el esquema
+    for nombre, valor in exc.headers.items():  # US-036: Retry-After en el 429
+        respuesta.headers[nombre] = valor
     return respuesta
 
 

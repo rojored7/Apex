@@ -30,11 +30,12 @@ from typing import Any, Final
 from alembic import command
 from alembic.config import Config
 from fastapi import APIRouter, Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import db, health
 from app.core.audit import install_audit_listeners
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, check_secrets_or_exit, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.errors import CryptoError
@@ -134,6 +135,7 @@ def create_app(
         # sin KEK (o con permisos abiertos) o sin llave JWT el proceso termina y el log nunca
         # lleva material.
         try:
+            check_secrets_or_exit(settings)  # US-039: nombres de variable, nunca valores
             configure_security(settings)
             configure_provider(get_key_provider(settings))
         except Exception:
@@ -174,6 +176,20 @@ def create_app(
     app.state.settings = settings
     register_error_handlers(app)
     app.add_middleware(RequestLogMiddleware)
+    # US-036: redes de confianza y tope del limitador, leídos por rate_limit().
+    app.state.trusted_proxies = settings.trusted_proxies
+    app.state.rate_limit_max_keys = settings.RATE_LIMIT_MAX_KEYS
+    # US-037: CORS cerrado; solo si hay orígenes, exactos y sin credenciales.
+    if settings.CORS_ORIGINS:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.CORS_ORIGINS,
+            allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
+            allow_credentials=False,
+            max_age=600,
+        )
+        logger.info("CORS habilitado para: %s", ", ".join(settings.CORS_ORIGINS))
     load_module_services()
 
     api = APIRouter(prefix=API_PREFIX)

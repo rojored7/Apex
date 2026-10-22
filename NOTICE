@@ -86,7 +86,8 @@ Michroma (fuente) · SIL Open Font License 1.1 · web/public/fonts/
 Titillium Web (fuente) · SIL Open Font License 1.1 · web/public/fonts/
 Lucide (iconos) · ISC · paquete lucide-react en web/
 
-== herramientas de desarrollo con MPL-2.0, sin modificar (no se distribuyen) ==
+== herramientas de desarrollo y CI, sin modificar (no se distribuyen) ==
 
 axe-core · MPL-2.0 · pruebas de accesibilidad del front (US-010)
+gitleaks · MIT · escaneo de secretos en CI, como imagen de Docker (US-039)
 certifi · MPL-2.0 · certificados raíz, transitiva de httpx (runtime del api; ver scripts/ci/licenses-exceptions.txt)

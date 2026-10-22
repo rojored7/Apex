@@ -13,9 +13,13 @@ arranque, esas claves se quitan del origen dotenv antes de validar: están en
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from functools import lru_cache
+from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     Field,
@@ -30,6 +34,7 @@ from pydantic import (
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
+    NoDecode,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -119,9 +124,11 @@ class Settings(BaseSettings):
     ENV: Literal["dev", "production"] = "production"  # falla cerrado: /docs solo con ENV=dev
     TZ_DISPLAY: str = "America/Bogota"  # solo para mostrar; el "hoy" lo da core/clock.py (Q28)
     UPLOADS_DIR: Path
-    CORS_ORIGINS: list[str]
+    # Orígenes exactos separados por coma (o lista JSON); vacío = sin CORS; nunca `*` (US-037).
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = []
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    TRUSTED_PROXIES: str = ""  # IPs separadas por coma (US-036)
+    TRUSTED_PROXIES: str = ""  # redes CIDR o IPs separadas por coma (US-036)
+    RATE_LIMIT_MAX_KEYS: int = Field(default=10000, gt=0)
     COOKIE_SECURE: bool = False
     FRONT_BASE_URL: str = "http://localhost"
     APP_VERSION: str = "dev"  # SHA corto de git en la imagen (ARG GIT_SHA)
@@ -158,6 +165,13 @@ class Settings(BaseSettings):
             validate_crypto_provider(proveedor, valor)
         return valor
 
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _origenes(cls, valor: object) -> list[str]:
+        if isinstance(valor, list):
+            return parse_origins(",".join(str(v) for v in valor))
+        return parse_origins(str(valor) if valor is not None else "")
+
     @field_validator("FRONT_BASE_URL")
     @classmethod
     def _url_http(cls, valor: str) -> str:
@@ -178,8 +192,13 @@ class Settings(BaseSettings):
         return self
 
     @property
-    def trusted_proxies(self) -> list[str]:
-        return [ip.strip() for ip in self.TRUSTED_PROXIES.split(",") if ip.strip()]
+    def trusted_proxies(self) -> list[IPv4Network | IPv6Network]:
+        """Redes de confianza para `X-Forwarded-For` (US-036); una IP suelta es una red /32."""
+        return [
+            ip_network(parte.strip(), strict=False)
+            for parte in self.TRUSTED_PROXIES.split(",")
+            if parte.strip()
+        ]
 
     @property
     def is_production(self) -> bool:
@@ -232,3 +251,68 @@ def get_settings() -> Settings:
 def reset_settings_cache() -> None:
     """Solo para pruebas."""
     get_settings.cache_clear()
+
+
+# US-037: orígenes CORS -----------------------------------------------------------------
+
+
+def parse_origins(value: str) -> list[str]:
+    """Orígenes exactos `esquema://host[:puerto]`, sin ruta ni barra final, sin duplicados.
+
+    Acepta una lista separada por comas o una lista JSON. `*` y `null` fallan.
+    """
+    texto = value.strip()
+    if not texto:
+        return []
+    partes: list[str]
+    if texto.startswith("["):
+        cargado = json.loads(texto)
+        if not isinstance(cargado, list):
+            raise ValueError("CORS_ORIGINS debe ser una lista de orígenes")
+        partes = [str(p) for p in cargado]
+    else:
+        partes = texto.split(",")
+    salida: list[str] = []
+    for parte in partes:
+        origen = parte.strip()
+        if not origen:
+            continue
+        if origen in {"*", "null"}:
+            raise ValueError("CORS_ORIGINS no admite '*' ni 'null'")
+        url = urlsplit(origen)
+        if url.scheme not in {"http", "https"} or not url.netloc:
+            raise ValueError(f"CORS_ORIGINS: origen inválido: {origen}")
+        if url.path not in {"", "/"} or url.query or url.fragment:
+            raise ValueError(f"CORS_ORIGINS: un origen no lleva ruta ni query: {origen}")
+        normalizado = f"{url.scheme}://{url.netloc}"
+        if normalizado not in salida:
+            salida.append(normalizado)
+    return salida
+
+
+# US-039: secretos obligatorios al arrancar ------------------------------------------
+
+
+def missing_secrets(settings: Settings, exists: Callable[[Path], bool] = Path.is_file) -> list[str]:
+    """Nombres de variable cuyo secreto o archivo falta (nunca valores), ordenados."""
+    faltan: list[str] = []
+    dsn = settings.DATABASE_URL.get_secret_value()
+    if "@" not in dsn or ":" not in dsn.split("@", 1)[0].split("://", 1)[-1]:
+        faltan.append("DATABASE_URL")
+    if not exists(settings.JWT_PRIVATE_KEY_PATH):
+        faltan.append("JWT_PRIVATE_KEY_PATH")
+    if settings.CRYPTO_PROVIDER == "local":
+        if settings.CRYPTO_LOCAL_KEK_PATH is None or not exists(settings.CRYPTO_LOCAL_KEK_PATH):
+            faltan.append("CRYPTO_LOCAL_KEK_PATH")
+        if not exists(settings.CRYPTO_LOCAL_SIGNING_KEY_PATH):
+            faltan.append("CRYPTO_LOCAL_SIGNING_KEY_PATH")
+    return sorted(faltan)
+
+
+def check_secrets_or_exit(settings: Settings) -> None:
+    """Lanza `StartupError("Faltan secretos: A, B")` con solo nombres de variable."""
+    from app.core.security import StartupError  # import perezoso: security importa config
+
+    faltan = missing_secrets(settings)
+    if faltan:
+        raise StartupError("Faltan secretos: " + ", ".join(faltan))

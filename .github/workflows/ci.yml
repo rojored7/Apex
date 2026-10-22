@@ -178,6 +178,9 @@ jobs:
       - name: prueba de la imagen del api
         if: steps.img.outputs.api == 'true'
         run: bash scripts/ci/test_api_image.sh apex-api:ci
+      - name: secretos en la imagen del api (US-039)
+        if: steps.img.outputs.api == 'true'
+        run: bash scripts/ci/check-image-secrets.sh apex-api:ci
       - name: build web
         if: steps.img.outputs.web == 'true'
         uses: docker/build-push-action@v6
@@ -202,3 +205,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: pruebas de los scripts de gate
         run: bash scripts/workflow/tests/run.sh
+
+  secrets-scan:
+    # US-039: gitleaks (MIT) sobre todo el historial del PR con .gitleaks.toml.
+    name: secrets-scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks sobre el historial
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:latest \
+            git /repo --config /repo/.gitleaks.toml --no-banner --redact --log-opts="--all"

@@ -1,0 +1,27 @@
+# gitleaks (MIT) · US-039. Reglas por defecto más la de llaves privadas; la lista permitida
+# cubre solo los textos de prueba que citan una cabecera PEM sin ser una llave.
+title = "APEX"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "apex-private-key"
+description = "Llave privada en PEM"
+regex = '''-----BEGIN (RSA |EC |OPENSSH |ENCRYPTED |DSA |)PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY"]
+
+[allowlist]
+description = "Fixtures y documentación que mencionan el formato sin contener material"
+paths = [
+  '''docs/.*''',
+  '''\.gitleaks\.toml''',
+  '''scripts/ci/check-image-secrets\.sh''',
+  '''scripts/ci/test_api_image\.sh''',
+]
+regexes = [
+  '''cambiar-esto''',
+  '''apex-test''',
+  '''apex-ci''',
+  '''export-no-secret''',
+]

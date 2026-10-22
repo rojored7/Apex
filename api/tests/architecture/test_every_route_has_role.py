@@ -70,3 +70,19 @@ def test_la_lista_blanca_es_la_esperada() -> None:
             ("GET", "/api/v1/tv/today"),
         }
     )
+
+
+def test_login_y_forgot_llevan_limite_de_intentos(
+    tmp_path: Path, settings_prueba: Settings, claves_prueba: Path
+) -> None:
+    """US-036 T9: cuando existan, las rutas públicas de auth deben tener `rate_limit`."""
+    from app.core.security import _dependant_has
+
+    app = create_app(
+        _produccion(tmp_path, settings_prueba, claves_prueba), run_migrations_on_startup=False
+    )
+    app.openapi()
+    objetivo = {"/api/v1/auth/login", "/api/v1/auth/forgot"}
+    for ruta in effective_routes(app)[0]:
+        if ruta.path in objetivo and "POST" in ruta.methods:
+            assert _dependant_has(ruta.dependant, "__apex_rate_limit__"), ruta.path

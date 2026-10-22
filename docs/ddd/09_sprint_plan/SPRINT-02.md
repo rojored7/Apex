@@ -350,14 +350,14 @@ Checkpoints tomados de `git log --oneline 482295f..HEAD`. El front se fusionó d
 | US-061 | — | F1 → `cfbfb88` (merge `17f2000`) |
 | US-062 | — | F1 → `cfbfb88` (merge `17f2000`) |
 | US-067 | — | F2 → `8977012` (merge `17f2000`) |
-| US-068 | W0-1 → `cab02f2` | F8 → `2972bb3` (merge `17f2000`) |
+| US-068 | W0-1 → `cab02f2`; V4 (perfil E2E del borde, job `e2e-stack`) → `961e0d6` | F8 → `2972bb3` (merge `17f2000`); V4 (specs del stack, `PageHeader` a 320 px) → `11cf7e9` |
 | US-069 | B7 → `f85f24e` | F6 → `571765f` (merge `e1d659b`) |
 | US-070 | B8 → `3e7ec24` | F6 → `571765f` (merge `e1d659b`) |
-| US-078 | B9 → `5df518c` | F7 → pendiente, sin checkpoint |
-| US-079 | B9 → `5df518c` | F7 → pendiente, sin checkpoint |
+| US-078 | B9 → `5df518c` | F7 → `e662449` (merge `981836a`) |
+| US-079 | B9 → `5df518c` | F7 → `e662449` (merge `981836a`) |
 | US-107 | B6 → `0fe9df3` | — |
 
-US-053, US-061, US-062 y US-067 son solo de front; US-031 y US-107 son solo de backend. US-078 y US-079 tienen backend (B9) y les falta el front de F7.
+US-053, US-061, US-062 y US-067 son solo de front; US-031 y US-107 son solo de backend. US-078 y US-079 tienen backend (B9) y front (F7, fusionado en `981836a`; `/planes` ya carga la página en `routeTable.ts`).
 
 ## Definición de hecho del sprint
 
@@ -365,7 +365,7 @@ US-053, US-061, US-062 y US-067 son solo de front; US-031 y US-107 son solo de b
 
 - 9 slices de backend y 9 de front confirmados con `checkpoint-commit.sh`.
 - `run-gates.sh` en verde:
-  - cobertura global de `app` en 80 % o más, con `--cov-omit` documentado;
+  - cobertura global de `app` en 80 % o más, con el `omit` de coverage documentado (M-6; pytest-cov no tiene `--cov-omit`);
   - front: lint, tsc, test y build.
 - `cd api && uv run pytest tests/architecture -q` en verde.
 - Ciclo de Alembic sobre `0007`.
@@ -384,8 +384,11 @@ US-053, US-061, US-062 y US-067 son solo de front; US-031 y US-107 son solo de b
 
 ## Estado al cierre del sprint (documentación)
 
-Actualizado con los checkpoints de `git log` hasta `e1d659b`. Después llegaron dos commits `chore` que no son checkpoints de slice: `4cac40b` (salto de línea en `NewUserPanel.module.css`) y `42c8595` (gitleaks). Lo que sigue no está cerrado todavía:
+Actualizado con `git log` hasta `11cf7e9`. Commits que no son checkpoints de slice: `4cac40b` (salto de línea en `NewUserPanel.module.css`), `42c8595` (gitleaks), `b960086` y `434d82e` (documentación).
 
-- **Front, F7 (Planes: alta y lista):** sin checkpoint en la rama del sprint. Existe la rama `feat/sprint-02-front-f7` en un worktree, sin fusionar. Hasta que se fusione, `/planes` sigue en `pending` y US-078 y US-079 solo tienen backend.
-- **Validación V1 a V12 (sección 7 del plan):** `docs/scratch/sprint-02.md` no registra ninguna ejecución de V1 a V12. Ese cuaderno tiene evidencia de cada slice, no de la validación del sprint. V4 (E2E contra el stack) tiene pendiente la spec `tests/e2e/stack/settings-gym.spec.ts` contra el stack real, según `docs/scratch/sprint-02-front.md`.
-- **Cifras de la última medición registrada:** `-m 'not perf'` con 1.856 pruebas en verde, 4 saltadas y 0 fallos; cobertura de `app` del 96 % (cierre de S2-B9 en `docs/scratch/sprint-02.md`).
+- **Slices:** los 9 de backend (B1 a B9) y los 9 de front (F1 a F8, con F4 en F4a y F4b) tienen checkpoint. F7 (Planes: alta y lista) es `e662449`, fusionado en `981836a`; `/planes` ya carga `PlansPage` (`load` en `routeTable.ts`) y US-078 y US-079 tienen backend y front.
+- **Validación V2 a V9 en verde** (`docs/scratch/sprint-02.md`, "Validación del sprint"; decisiones en `DECISIONES.md`, S2-V). Checkpoints de la validación: `961e0d6` (perfil E2E del borde con `infra/compose.e2e.yml` y job `e2e-stack` con topes y admin del seed) y `11cf7e9` (`PageHeader` sin desborde a 320 px, specs del stack reparadas y evidencia).
+  - V4: `--project=stack` con 29 ok y 0 fallos en dos corridas seguidas; `--project=preview` con 101 ok.
+  - V5: pruebas `perf` en verde (búsqueda por documento con 1.000 socios en 12,1 ms; 20 logins fallidos concurrentes con p95 de 0,399 s).
+  - V9: `run-gates.sh` con `-m "not perf"` en verde: 1.856 pruebas del api, 4 saltadas, 3 deseleccionadas, cobertura de `app` del 95,56 %; front con 1.676 pruebas y 99,71 % de líneas.
+- **Revisión de Fase 4 en curso** (cuatro informes: general, seguridad, Python y TypeScript; resumen en `docs/scratch/sprint-02.md`, "Revisión de Fase 4", y decisiones en `DECISIONES.md`, "Revisión de Fase 4 del Sprint 2"). El backend, el front y la CI con la documentación corrigen en paralelo; el orquestador corre `run-gates.sh` tras fusionar las tres ramas. Falta el paso humano: push, PR con CI en verde y merge.

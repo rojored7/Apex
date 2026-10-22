@@ -25,7 +25,7 @@ chore(checkpoint): S0-B1 core/config y core/clock
 1. Pruebas primero, en rojo, sobre stubs vacíos. Commit `test(<modulo>): ... (rojo)`.
 2. Implementación hasta pasar `bash scripts/workflow/slice-gate.sh <modulo> [archivos de prueba...]`. Las pruebas de `api/tests/architecture` corren siempre.
 3. `bash scripts/workflow/checkpoint-commit.sh "<slice>: <historias>"`. Solo funciona con el gate vigente y nunca sobre `main`.
-4. Al cerrar una wave: `bash scripts/workflow/run-gates.sh` (api con cobertura global de `app` de al menos 80 %; front con lint, tsc, test y build).
+4. Al cerrar una wave: `bash scripts/workflow/run-gates.sh` (api con cobertura global de `app` de al menos 80 % y `-m "not perf"`; scripts de infraestructura de `scripts/ci/`; front con lint, tsc, test con cobertura y build).
 
 ## Herramientas locales
 
@@ -42,4 +42,4 @@ Solo se aceptan las licencias de la sección "Licencias" de `CLAUDE.md`. Toda de
 
 ## Secretos
 
-Nunca se versiona un `.env`, una llave `.pem`, `.key` o `.kek`. Si un secreto llegó a un commit, se rota de inmediato y se avisa.
+Nunca se versiona un `.env`, un `.env.seed` (ni ningún `.env.*` salvo `.env.example` y `.env.seed.example`), una llave `.pem`, `.key` o `.kek`; `scripts/ci/check-key-files.sh` lo bloquea en pre-commit y en CI. `.env.seed` lleva solo `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` del primer seed, lo lee únicamente el servicio `tools` y se borra después del seed. Si un secreto llegó a un commit, se rota de inmediato y se avisa.

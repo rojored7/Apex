@@ -165,7 +165,7 @@ Recomendación general: recursos anidados para crear (`POST /members/{id}/member
 
 ## 9. Sprint 2: cierre de brechas y diferencias con el diseño
 
-Estado al cierre del sprint (`docs/ddd/09_sprint_plan/SPRINT-02.md`, sección "Estado al cierre"). Las pantallas del Sprint 2 son Login (tarjeta de acceso), Inicio mínima, Usuarios, Configuración en pestañas y Socios (alta y lista). Planes tiene backend completo; su pantalla (S2-F7) está pendiente.
+Estado al cierre del sprint (`docs/ddd/09_sprint_plan/SPRINT-02.md`, sección "Estado al cierre"). Las pantallas del Sprint 2 son Login (tarjeta de acceso), Inicio mínima, Usuarios, Configuración en pestañas, Socios (alta y lista) y Planes (alta y lista, S2-F7: checkpoint `e662449`, fusionado en `981836a`). `/planes` carga `PlansPage` (`load` en `routeTable.ts`) y es solo para admin en el front (S2-D26).
 
 ### Rutas y contratos
 
@@ -198,6 +198,7 @@ Estado al cierre del sprint (`docs/ddd/09_sprint_plan/SPRINT-02.md`, sección "E
 - Ruta de cambio de contraseña: cerrada (`POST /api/v1/auth/me/password`, S2-D46).
 - `data_consent`, `notes` y `document_type`: cerradas en el contrato (S2-D16).
 - Tablero de inicio: parcial (ver arriba).
+- Planes (`Planes.html`): alta y lista cerradas en S2-B9 y S2-F7; edición y baja llegan con el Sprint 4A.
 
 ### DESIGN-GAP por pantalla
 
@@ -212,7 +213,7 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 | Tablet · `GymLayout.module.css`, `ZoneShells.tsx` | Sin token de texto ampliado; la salida de la tablet va a `/` | Sin sprint en el plan |
 | Rutas · `routeTable.ts`, `routes.reference.ts`, `ChangePasswordPage` | `/cambiar-clave` sin pantalla en el diseño | Sin sprint; resuelto en código (S2-F2, S2-F4a) |
 | Rutas · `NoPermissionPage.tsx`, `MessagePage.tsx` | El diseño no tiene pantallas de error ni de permiso | Sin sprint en el plan |
-| Rutas · `PendingPage.tsx` | Estado intermedio para `/planes` | Se retira con S2-F7 (pendiente) |
+| Rutas · `PendingPage.tsx` | Estado intermedio para `/planes` | Cerrada: F7 dejó `/planes` en `load` y la revisión de Fase 4 (L1) retira `PendingPage.tsx` y la rama `pending` de `routeTable.ts` y `routes.tsx` |
 | Inicio · `InicioPage.tsx` | Tablero de `Inicio.html` hasta `GET /dashboard` | Sprint 4A / US-108 |
 | Kit · `StatusTag.module.css` | Relleno de peligro constante entre temas | Sin sprint en el plan |
 | Kit · `Catalog.tsx` | Estados de cuenta de `StatusTag` | Resuelto en S2-F4a |
@@ -232,6 +233,9 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 | Kit · `shared/ui/Modal.tsx` | `DESIGN.md` solo nombra `ConfirmModal` | Sin sprint en el plan |
 | Socios · `MemberFormFields.tsx` | Sin foto, firma ni documento firmado; sin "Acceso al portal", unidad de cargas ni observaciones de salud; nombre en dos campos; sexo y teléfono opcionales | Foto, firma y autorización: Sprint 6 / US-148 y US-149. Acceso al portal: Sprint 10 / EP-25. Unidad de cargas: sin historia verificada (atleta, EP-24). Observaciones de salud: sin historia en el plan. Nombre y opcionales: S2-D16 y N-19 |
 | Socios · `MemberFormPage.tsx` | Sin "Guardar y vender membresía"; tras guardar vuelve a la lista con aviso | Venta: Sprint 3 / S3-B1 (US-083 y US-084). El aviso es decisión tomada |
+| Planes · `PlansPage.tsx` | Sin "Socios con él"; sin "Editar" en la fila; total sin partir en activos e inactivos; duración y clases en columnas propias; filtro "Estado" en vez de "Mostrar" (que ya nombra el tamaño de página) | "Socios con él": Sprint 3. "Editar": Sprint 4A. Lo demás, decisión tomada en S2-F7 |
+| Planes · `PlanForm.tsx` | Sin descripción ni casilla "Activo": `PlanCreate` no los tiene; el panel solo crea | Edición y activación: Sprint 4A. Descripción: sin historia en el plan |
+| Planes · `PlanDetailPanel.tsx` | `Planes.html` no dibuja un detalle de solo lectura | Edición: Sprint 4A. El detalle de solo lectura es decisión tomada en S2-F7 |
 | Socios · `MembersListPage.tsx` | Sin teléfono, plan, vence, asistencia ni columna de acción; sin documento enmascarado (N-01); sin chips ni conteos por estado de membresía; sin filtros de plan y asistencia; sin "Exportar" | Membresía, plan, filtros, chips y conteos: Sprint 3 / US-071. Asistencia: Sprint 7 / EP-21. Exportar: Sprint 5 / EP-16. Documento enmascarado: N-01 (la lista no devuelve datos cifrados) |
 
 ### Contradicción abierta

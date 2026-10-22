@@ -27,7 +27,9 @@ Cada capa responde 429 `rate_limited` con `Retry-After`, el mismo cuerpo para cu
 
 1. **Borde (Nginx).** `limit_req` de `/api/v1/auth/`: 60 por minuto por IP con ráfaga de 30
    (zona en `infra/nginx/snippets/auth-zone.conf`, incluida por `infra/nginx/default.conf`). La
-   imagen lleva siempre ese valor; solo el perfil E2E lo sube (ver abajo).
+   imagen lleva siempre ese valor; solo el perfil E2E lo sube (ver abajo). El valor se revisa
+   en el Sprint 10, cuando el portal del socio (v1.0) sume tráfico de sesión desde los
+   celulares de la misma red: 60 por minuto por IP puede quedar corto detrás de un NAT (L5).
 2. **Por IP en el api** (`core/ratelimit.rate_limit`). IPv4 exacta e IPv6 agrupada por /64.
    Ventana de 60 s: `LOGIN_IP_LIMIT=5` (`LOGIN_IP_WINDOW_S=60`), `REFRESH_IP_LIMIT=60`,
    `LOGOUT_IP_LIMIT=30`, `RESET_IP_LIMIT=10`, `FORGOT_IP_LIMIT=5`. La IP real sale de
@@ -67,6 +69,28 @@ límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador
   host llega a Nginx con la misma IP (la puerta de enlace de la red de Compose) y cada carga de
   la SPA hace `POST /auth/refresh` y `GET /auth/me`: sin este perfil la suite `stack` recibe
   429 del borde en segundos.
+- `scripts/smoke/headers.sh` agota a propósito el `limit_req` de la IP desde la que corre (su
+  ráfaga de 45 POST prueba el 429 del borde). Si después se corre `npm run e2e:stack` sin el
+  perfil E2E, o se prueba el login a mano, las primeras peticiones a `/api/v1/auth/` reciben
+  429: esperar 60 segundos (L4).
+
+### IP real en el borde (N-6)
+
+Nginx limita por `$binary_remote_addr` y pasa `X-Forwarded-For $remote_addr` al api, que
+solo lo cree si el socket es de `TRUSTED_PROXIES`. Todo depende de que `remote_addr` sea la IP
+del cliente:
+
+- En Docker Desktop (Windows, macOS) y con el `userland-proxy` de Docker, `remote_addr` es la
+  puerta de enlace de la red de Compose (en V4, `172.30.0.128`), no el cliente: todos
+  comparten los 60r/m del borde y los 5 logins por minuto del api. Es lo que pasa en
+  desarrollo y en CI, y por eso existe el perfil E2E.
+- En el servidor del gimnasio (Linux con Docker Engine) se verifica al instalar, desde otro
+  equipo de la LAN: abrir `/login` y mirar el access log,
+  `docker logs --tail 5 apex-web-1 | grep -o '"remote_addr":"[^"]*"'`. Debe aparecer la IP del
+  equipo. Si aparece la puerta de enlace, poner `"userland-proxy": false` en
+  `/etc/docker/daemon.json`, reiniciar Docker y repetir; si sigue igual, no abrir el sistema
+  hasta resolverlo, porque un solo equipo agotaría el límite de todos. Dueño: S4B-W0-2
+  (despliegue en el servidor).
 
 ### Refresh: rotación, gracia del reuso y tope absoluto
 
@@ -92,19 +116,24 @@ límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador
 ### Piso de duración del login (`LOGIN_MIN_DURATION_MS`)
 
 Toda respuesta 401 de login dura al menos `LOGIN_MIN_DURATION_MS` (M-6, S2-D39), así un correo
-existente y uno inexistente tardan lo mismo. El valor es 1,5 veces la mediana de
-`verify_password` (argon2id 3 / 65536 KiB / 4) más el commit de una escritura, medida dentro
-del contenedor `api` (un script desechable copiado con `docker cp` y corrido con
-`docker exec -w /app apex-api-1 python`: `verify_password` en un hilo con los parámetros de
-`Settings` y luego un `UPDATE` de una fila de `auth.users` con commit; 30 muestras por corrida
-tras 2 de calentamiento):
+existente y uno inexistente tardan lo mismo. El valor es **150 ms (p99)**: debe quedar por
+encima del p99 de la rama de cuenta existente (`verify_password` con argon2id 3 / 65536 KiB / 4,
+el commit de una escritura y la fila de auditoría, que espera el candado global de la cadena),
+no de su mediana. Con un piso por debajo del p99, bajo contención la cuenta existente pasa del
+piso y vuelve a tardar más que la inexistente (N-7).
 
-- medición del 2026-10-22 (S2-B2): medianas de 47,8, 46,6 y 58,8 ms en tres corridas; 1,5 veces
-  unos 48 ms da 72 ms, redondeado a **75 ms** (valor por defecto en `Settings` y
-  `.env.example`).
+- Medición del 2026-10-22 (S2-B2), dentro del contenedor `api` (script desechable copiado con
+  `docker cp` y corrido con `docker exec -w /app apex-api-1 python`: `verify_password` en un
+  hilo con los parámetros de `Settings` y luego un `UPDATE` de una fila de `auth.users` con
+  commit; 30 muestras por corrida tras 2 de calentamiento): medianas de 47,8, 46,6 y 58,8 ms.
+  De ahí salió el primer valor, 75 ms (1,5 veces la mediana).
+- Revisión de Fase 4 del Sprint 2 (N-7): el piso sube a 150 ms, por encima del p99 esperado
+  bajo contención (V5: 20 logins fallidos concurrentes con p95 de 0,399 s de extremo a extremo,
+  donde manda la cola de argon2 y no el piso). El backend cambia el valor por defecto en
+  `Settings` y `.env.example` en esta misma revisión.
 
-Remedir si cambian los parámetros de argon2 o el hardware del servidor y ajustar
-`LOGIN_MIN_DURATION_MS` en `.env`.
+Remedir el p99 (no la mediana) si cambian los parámetros de argon2 o el hardware del servidor,
+con carga concurrente, y ajustar `LOGIN_MIN_DURATION_MS` en `.env`.
 
 ### Cookie sin TLS (riesgo aceptado P7)
 
@@ -112,6 +141,24 @@ En v0.1 el gimnasio corre en la LAN sin TLS. Con `ENV=production` el api no arra
 `COOKIE_SECURE=false` salvo que `ALLOW_INSECURE_COOKIE=true` lo autorice de forma explícita
 (M-9). Ponerla en `true` es aceptar que la contraseña y la cookie del refresh viajan en claro
 por la red local; se quita al activar TLS (v0.3) junto con `COOKIE_SECURE=true`.
+
+### Fallos de Nginx hacia el api (`error_log crit`, M8)
+
+`infra/nginx/default.conf` tiene `error_log /dev/stderr crit`: desde el nivel `error`, Nginx
+escribe la línea de la petición con su query string (tokens, búsquedas) y eso no puede llegar
+al log (S2-W0-1). El costo es que `docker logs apex-web-1` **no** muestra
+`connect() failed`, `upstream timed out` ni `no live upstreams` cuando el api cae. Ante 502 o
+504 en el panel:
+
+1. Access log de Nginx: `docker logs --tail 50 apex-web-1 | grep '"status":50[24]'`. Un
+   `"upstream_time":"-"` o vacío es que no hubo conexión con el api.
+2. Estado y log del api: `$DC ps api` (debe estar `healthy`) y `$DC logs --tail 100 api`.
+3. Conexión desde Nginx: `docker exec apex-web-1 wget -qO- http://api:8000/health`.
+4. Solo si lo anterior no alcanza y en una ventana corta: bajar el nivel dentro del contenedor
+   con `docker exec apex-web-1 sed -i 's#error_log /dev/stderr crit;#error_log /dev/stderr error;#' /etc/nginx/conf.d/default.conf`
+   y `docker exec apex-web-1 nginx -s reload`, reproducir el fallo y volver a la imagen con
+   `$DC up -d --force-recreate web`. Mientras dure, el log puede traer tokens o búsquedas: no
+   copiarlo a ningún lado y descartarlo.
 
 ## 2. Cuentas
 
@@ -204,6 +251,12 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
 - Cambiar el correo de una cuenta (`PATCH /users/{id}`) cierra los enlaces de activación o
   restablecimiento abiertos: si la cuenta seguía pendiente, se le reenvía uno nuevo al correo
   corregido ("Reenviar enlace").
+- El correo de otro admin activo no se cambia desde el panel (L-13 aplicado al cambio de
+  correo, N-8): responde 409, la misma regla que "Reenviar enlace". Si no, un admin podría
+  poner su propio correo en la cuenta de otro y tomarla con la recuperación cuando `forgot`
+  envíe correos (US-131). El backend lo implementa en esta revisión (Fase 4 del Sprint 2);
+  el código exacto del 409 y la vía para corregir el correo de un admin quedan en
+  `docs/openapi.json` y en esta sección cuando se fusione.
 
 ## 3. Auditoría de eventos de seguridad (S2-B6)
 
@@ -236,7 +289,7 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de una persona
   - nombre y apellido, siempre: `ILIKE` sin mayúsculas ni tildes (`translate(lower(...))`) con `%`, `_` y `\` escapados. Esta rama NO usa índice (recorre la tabla de socios vivos); con cientos o pocos miles de socios responde en milisegundos. Si la tabla crece mucho, la deuda anotada para el Sprint 4A es un índice `pg_trgm` o una columna normalizada.
 - Cada búsqueda con `q` deja en `crypto.crypto_ops` entre una y tres filas `index` del mismo lote (`batch_id`), una por clase; una búsqueda solo por nombre o una lista sin `q` no deja ninguna, y nunca hay `decrypt`.
 - Límite: 60 búsquedas con `q` por minuto por usuario (429 `rate_limited` con `Retry-After`); la lista sin `q` no cuenta. El contador vive en memoria y se limpia con `up -d api`.
-- Pruebas de rendimiento (marcador `perf`; 1.000 socios, búsqueda por documento bajo 500 ms con `EXPLAIN` del único parcial, y L-11 de 20 logins fallidos concurrentes con p95 bajo 2 s): `cd api && uv run pytest -m perf -q -s` (con `TEST_DATABASE_URL`). Los gates corren `-m "not perf"` salvo el de B8 y V5.
+- Pruebas de rendimiento (marcador `perf`; 1.000 socios, búsqueda por documento bajo 500 ms con `EXPLAIN` del único parcial, y L-11 de 20 logins fallidos concurrentes con p95 bajo 2 s): `cd api && uv run pytest -m perf -q -s` (con `TEST_DATABASE_URL`). No son gate (S2-D27, revisión de Fase 4): `run-gates.sh` y el job `api` de la CI corren `-m "not perf"`, y la CI las corre en un paso aparte que informa sin bloquear (`continue-on-error`, 10 minutos). Se corrieron en el gate de B8 y en V5.
 
 ## 5. Planes (S2-B9)
 

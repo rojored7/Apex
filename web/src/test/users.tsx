@@ -105,3 +105,13 @@ export async function findRow(email: string): Promise<HTMLElement> {
   if (!tr) throw new Error(`sin fila para ${email}`);
   return tr;
 }
+
+/**
+ * El aviso de la página (role="status"). DataTable tiene además su propia región viva oculta
+ * con el total (M4 de la revisión del Sprint 2), que se reconoce por la clase srOnly.
+ */
+export function pageNotice(): HTMLElement {
+  const notices = screen.getAllByRole("status").filter((element) => !element.classList.contains("srOnly"));
+  if (notices.length !== 1) throw new Error(`Se esperaba un aviso de página y hay ${String(notices.length)}.`);
+  return notices[0] as HTMLElement;
+}

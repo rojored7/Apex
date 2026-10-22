@@ -218,6 +218,28 @@ describe("LoginPage · éxito", () => {
   });
 });
 
+describe("LoginPage · sesión que todavía carga (L5, revisión del Sprint 2)", () => {
+  it("con la sesión cargando muestra Cargando…, la restaura y con cookie válida va al inicio", async () => {
+    resetSessionForTests();
+    const { router } = renderLogin("/login", { "POST /auth/refresh": { status: 200, body: { access_token: "access-cookie", token_type: "bearer", expires_in: 900 } } });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Cargando…");
+    expect(screen.queryByRole("textbox", { name: "Correo" })).not.toBeInTheDocument();
+
+    expect(await screen.findByRole("heading", { name: "Inicio del panel" })).toBeInTheDocument();
+    expect(where(router)).toBe("/");
+  });
+
+  it("si la cookie no sirve, termina de cargar y muestra el formulario", async () => {
+    resetSessionForTests();
+    const { mock } = renderLogin("/login", { "POST /auth/refresh": { status: 401, body: { error: { code: "invalid_refresh", message: "Sesión inválida" } } } });
+
+    expect(await screen.findByRole("textbox", { name: "Correo" })).toBeInTheDocument();
+    expect(mock.callsTo("POST /auth/refresh")).toHaveLength(1);
+    expect(screen.queryByText("Cargando…")).not.toBeInTheDocument();
+  });
+});
+
 describe("LoginPage · enviando", () => {
   it("deshabilita el botón y anuncia la espera mientras dura la petición", async () => {
     let release: (reply: MockReply) => void = () => undefined;

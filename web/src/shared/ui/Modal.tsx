@@ -2,6 +2,8 @@
 // reenviado de Usuarios). Mismo velo, caja y trampa de foco que ConfirmModal; título, cuerpo
 // libre y una fila de acciones. Escape cierra, salvo mientras `busy` (una petición en curso
 // no se abandona a medias). El contenido se monta al abrir: cada apertura empieza limpia.
+// L8 (revisión del Sprint 2): el cuerpo es la descripción accesible (aria-describedby), como la
+// consecuencia en ConfirmModal.
 // DESIGN-GAP: DESIGN.md solo nombra ConfirmModal; este es su hermano para contenido.
 import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -21,6 +23,7 @@ export interface ModalProps {
 
 function ModalContent({ title, busy = false, onClose, actions, children }: Omit<ModalProps, "open">) {
   const titleId = useId();
+  const bodyId = useId();
   const dialogRef = useFocusTrap<HTMLDivElement>(true, {
     onEscape: () => {
       if (!busy) onClose();
@@ -28,11 +31,13 @@ function ModalContent({ title, busy = false, onClose, actions, children }: Omit<
   });
   return (
     <div className={styles.backdrop}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy ? true : undefined} tabIndex={-1} className={styles.modal}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId} aria-busy={busy ? true : undefined} tabIndex={-1} className={styles.modal}>
         <h2 id={titleId} className={styles.title}>
           {title}
         </h2>
-        <div className={styles.body}>{children}</div>
+        <div id={bodyId} className={styles.body}>
+          {children}
+        </div>
         <div className={styles.actions}>{actions}</div>
       </div>
     </div>

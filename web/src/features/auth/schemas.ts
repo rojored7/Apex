@@ -2,10 +2,13 @@
 // contraseña de 1 a 128. El correo se recorta (el api lo normaliza); la contraseña no, porque
 // un espacio puede ser parte de ella. Mensajes en español: qué pasó y qué hacer.
 // S2-F4a: cambio de contraseña, restablecimiento y recuperación (al final).
+// Revisión del Sprint 2 (M5 general): los topes de la contraseña salen de PASSWORD_LIMITS
+// (core/auth/passwordPolicy.ts), que una prueba compara con docs/openapi.json.
 import { z } from "zod";
+import { PASSWORD_LIMITS } from "../../core/auth/passwordPolicy";
 
 export const EMAIL_MAX_LENGTH = 254;
-export const PASSWORD_MAX_LENGTH = 128;
+const PASSWORD_MAX_LENGTH = PASSWORD_LIMITS.max;
 
 export const loginSchema = z.object({
   email: z
@@ -25,7 +28,7 @@ export type LoginForm = z.infer<typeof loginSchema>;
 // S2-F4a · US-045, US-048: cambio de contraseña, restablecimiento y recuperación.
 // Política del api (N-10, S2-D30): de 12 a 128 caracteres; el api además rechaza las comunes
 // y, al cambiarla, la igual a la actual. Las contraseñas nunca se recortan.
-export const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = PASSWORD_LIMITS.min;
 
 export const PASSWORD_MESSAGES = {
   currentRequired: "Escribe tu contraseña actual.",

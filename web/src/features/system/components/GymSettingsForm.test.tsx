@@ -4,8 +4,9 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
-import { getSession } from "../../../core/auth/session";
-import { mockApi, renderWithProviders, type MockReply } from "../../../test/server";
+import { api } from "../../../core/api/client";
+import { getAccessToken, getSession, installSessionBridge } from "../../../core/auth/session";
+import { mockApi, renderWithProviders, type MockHandler, type MockReply } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import { CONFLICT_REPLY, deferred, fieldErrorReply, gymSection, SERVER_ERROR_REPLY } from "../../../test/settings";
 import { settingsQueryKey } from "../api";
@@ -18,7 +19,7 @@ afterEach(() => {
   signOutForTests();
 });
 
-async function renderLoaded(handlers: Record<string, MockReply | (() => MockReply | Promise<MockReply>)> = {}, onDirtyChange = vi.fn()) {
+async function renderLoaded(handlers: Record<string, MockHandler> = {}, onDirtyChange = vi.fn()) {
   const mock = mockApi({ "GET /settings/gym": { status: 200, body: gymSection() }, ...handlers });
   const user = userEvent.setup();
   const view = renderWithProviders(<GymSettingsForm onDirtyChange={onDirtyChange} />, { role: "admin" });
@@ -258,6 +259,33 @@ describe("GymSettingsForm", () => {
     await screen.findByText("Cambios guardados");
 
     expect(getSession().user?.gymName).toBe("APEX Norte");
+  });
+
+  it("M2 (revisión del Sprint 2): guardar el nombre con un refresh en vuelo no descarta el refresh", async () => {
+    const uninstall = installSessionBridge();
+    const refresh = deferred<MockReply>();
+    signInAs("admin", { gymName: "APEX" });
+    const { user } = await renderLoaded({
+      "PATCH /settings/gym": { status: 200, body: gymSection({ name: "APEX Norte" }, 1) },
+      "GET /otra": (call) =>
+        call.headers.get("Authorization") === "Bearer access-nuevo"
+          ? { status: 200, body: { ok: true } }
+          : { status: 401, body: { error: { code: "token_expired", message: "Token vencido" } } },
+      "POST /auth/refresh": () => refresh.promise,
+    });
+    const request = api.get("/otra");
+
+    const name = screen.getByRole("textbox", { name: /Nombre/ });
+    await user.clear(name);
+    await user.type(name, "APEX Norte");
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await screen.findByText("Cambios guardados");
+    refresh.resolve({ status: 200, body: { access_token: "access-nuevo", token_type: "bearer", expires_in: 900 } });
+
+    await expect(request).resolves.toEqual({ ok: true });
+    expect(getAccessToken()).toBe("access-nuevo");
+    expect(getSession().user?.gymName).toBe("APEX Norte");
+    uninstall();
   });
 
   it("sin cambios sin guardar, una lectura con versión nueva actualiza el formulario", async () => {

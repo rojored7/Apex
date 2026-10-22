@@ -5,14 +5,13 @@
 // - staleTime de 30 s. S2-F3 vacía este cliente al cerrar la sesión.
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "./errors";
+import { isClientErrorStatus } from "./status";
 
 export const QUERY_STALE_TIME_MS = 30_000;
 const MAX_RETRIES = 2;
-const CLIENT_ERROR_MIN = 400;
-const SERVER_ERROR_MIN = 500;
 
 export function shouldRetry(failureCount: number, error: unknown): boolean {
-  if (error instanceof ApiError && error.status >= CLIENT_ERROR_MIN && error.status < SERVER_ERROR_MIN) return false;
+  if (error instanceof ApiError && isClientErrorStatus(error.status)) return false;
   return failureCount < MAX_RETRIES;
 }
 

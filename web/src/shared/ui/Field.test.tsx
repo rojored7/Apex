@@ -23,6 +23,16 @@ describe("Field", () => {
     expect(input).toHaveAttribute("aria-describedby", hint.id);
   });
 
+  it("M5 (revisión del Sprint 2): error indefinido (el message de RHF sin error) no marca nada", () => {
+    const message: string | undefined = undefined;
+    render(<Field label="Documento" name="document" error={message} />);
+    const input = screen.getByLabelText("Documento");
+
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(input).not.toHaveAttribute("aria-describedby");
+    expect(input).not.toHaveClass("invalid");
+  });
+
   it("con error marca aria-invalid y apunta al mensaje", () => {
     render(<Field label="Documento" name="document" hint="Sin puntos" error="Ya existe un socio con este documento." />);
     const input = screen.getByLabelText("Documento");

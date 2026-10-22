@@ -17,7 +17,6 @@ import { forgotSchema, type ForgotForm } from "../schemas";
 
 export const FORGOT_DONE = "Pídele al administrador tu enlace de recuperación.";
 
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 export default function ForgotPage() {
   const forgot = useForgotPassword();
@@ -58,7 +57,7 @@ export default function ForgotPage() {
         Olvidé mi contraseña
       </h1>
       <p className={styles.lead}>En esta versión el enlace no llega por correo: te lo entrega el administrador del gimnasio.</p>
-      <Field label="Correo" type="email" autoComplete="username" inputMode="email" autoFocus {...fieldError(errors.email?.message)} {...register("email")} />
+      <Field label="Correo" type="email" autoComplete="username" inputMode="email" autoFocus error={errors.email?.message} {...register("email")} />
       <Button type="submit" className={styles.submit} loading={forgot.isPending}>
         {forgot.isPending ? "Enviando…" : "Enviar enlace"}
       </Button>

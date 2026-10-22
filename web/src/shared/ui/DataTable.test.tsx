@@ -72,7 +72,7 @@ describe("DataTable", () => {
 
     const region = screen.getByRole("region", { name: "Socios" });
     expect(region).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByText("Cargando")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Cargando…");
     expect(screen.getAllByTestId("skeleton-row")).toHaveLength(10);
   });
 
@@ -187,5 +187,50 @@ describe("DataTable", () => {
     const field = (label: string) => within(card as HTMLElement).getByText(label).parentElement;
     expect(field("Acción")).toHaveClass("cardFieldWide");
     expect(field("Plan vigente")).not.toHaveClass("cardFieldWide");
+  });
+});
+
+describe("DataTable · región viva del resultado (M4, revisión del Sprint 2)", () => {
+  function Harness(props: Partial<DataTableProps<Row>>) {
+    return (
+      <MemoryRouter>
+        <DataTable<Row> caption="Socios" columns={COLUMNS} rows={ROWS} total={ROWS.length} rowKey={(r) => r.id} rowHref={(r) => `/socios/${r.id}`} {...props} />
+      </MemoryRouter>
+    );
+  }
+
+  it("anuncia la carga, el total y la lista vacía en la misma región, sin desmontarla", () => {
+    const view = render(<Harness isLoading rows={undefined} total={undefined} />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Cargando…");
+    expect(status).toHaveClass("srOnly");
+
+    view.rerender(<Harness total={42} />);
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("42 resultados");
+
+    view.rerender(<Harness rows={[]} total={0} />);
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("Sin resultados");
+  });
+
+  it("un solo resultado va en singular y en celular también se anuncia", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: true, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    render(<Harness rows={[ROWS[0] as Row]} total={1} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("1 resultado");
+    expect(screen.getByRole("status")).not.toHaveTextContent("1 resultados");
+  });
+
+  it("sin filas todavía (consulta deshabilitada) no anuncia Sin resultados", () => {
+    render(<Harness rows={undefined} total={undefined} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("");
+  });
+
+  it("con error la región queda vacía: el aviso de error ya se anuncia", () => {
+    render(<Harness rows={undefined} error={new ApiError({ status: 500, code: "internal_error", message: "Error interno" })} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("");
   });
 });

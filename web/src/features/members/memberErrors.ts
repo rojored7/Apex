@@ -5,14 +5,11 @@
 // - createErrorMessage y listError: el resto (403, 429 con la espera, 5xx, red, respuesta
 //   inválida) como mensaje general.
 import type { FieldPath } from "react-hook-form";
-import { ApiError, GENERIC_MESSAGES, isApiError } from "../../core/api/errors";
+import { API_ERROR_CODES } from "../../core/api/errorCodes";
+import { isApiError, type ApiError } from "../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { MEMBER_MESSAGES, type MemberFormValues } from "./schemas";
-
-const HTTP_FORBIDDEN = 403;
-const HTTP_CONFLICT = 409;
-const HTTP_UNPROCESSABLE = 422;
-const HTTP_TOO_MANY = 429;
-const HTTP_SERVER_ERROR = 500;
 
 export const CREATE_MESSAGES = {
   duplicated: "Ya existe un socio con este documento.",
@@ -56,24 +53,12 @@ export interface MemberFieldError {
 /** El error que va bajo un campo, o null si es un error general. */
 export function fieldErrorOf(error: unknown): MemberFieldError | null {
   if (!isApiError(error)) return null;
-  if (error.status === HTTP_CONFLICT && (error.code === "member_document_duplicated" || error.field === "document")) {
+  if (error.status === HTTP_CONFLICT && (error.code === API_ERROR_CODES.memberDocumentDuplicated || error.field === "document")) {
     return { path: "document", message: CREATE_MESSAGES.duplicated, existingId: error.existingId ?? null };
   }
   if (error.status !== HTTP_UNPROCESSABLE || !error.field) return null;
   const target = FIELD_ERRORS[error.field];
   return target ? { ...target, existingId: null } : null;
-}
-
-/** "30 segundos", "1 segundo" o "un momento" (sin Retry-After). */
-export function waitText(seconds: number | undefined): string {
-  if (seconds === undefined || seconds <= 0) return "un momento";
-  return seconds === 1 ? "1 segundo" : `${String(seconds)} segundos`;
-}
-
-function connectionMessage(error: ApiError): string | null {
-  if (error.code === "invalid_response") return error.message;
-  if (error.status === 0) return error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
-  return null;
 }
 
 /** Mensaje general de un alta fallida. */
@@ -89,11 +74,9 @@ export function createErrorMessage(error: unknown): string {
 
 /** El error de la lista como ApiError con el mensaje de la pantalla (lo pinta DataTable). */
 export function listError(error: unknown): ApiError | null {
-  if (!error) return null;
-  if (!isApiError(error)) return new ApiError({ status: 0, code: "unknown", message: LIST_MESSAGES.failed });
-  const connection = connectionMessage(error);
-  if (connection) return new ApiError({ status: error.status, code: error.code, message: connection });
-  const message =
-    error.status === HTTP_FORBIDDEN ? LIST_MESSAGES.forbidden : error.status === HTTP_TOO_MANY ? LIST_MESSAGES.tooMany(waitText(error.retryAfterS)) : LIST_MESSAGES.failed;
-  return new ApiError({ status: error.status, code: error.code, message });
+  return toScreenError(
+    error,
+    (e) => (e.status === HTTP_FORBIDDEN ? LIST_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? LIST_MESSAGES.tooMany(waitText(e.retryAfterS)) : LIST_MESSAGES.failed),
+    LIST_MESSAGES.failed,
+  );
 }

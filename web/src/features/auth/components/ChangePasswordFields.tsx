@@ -11,7 +11,6 @@ export interface ChangePasswordFieldsProps {
 }
 
 /** `error` solo cuando hay mensaje (exactOptionalPropertyTypes). */
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 export function ChangePasswordFields({ form, autoFocus = false }: ChangePasswordFieldsProps) {
   const {
@@ -26,7 +25,7 @@ export function ChangePasswordFields({ form, autoFocus = false }: ChangePassword
         autoComplete="current-password"
         required
         autoFocus={autoFocus}
-        {...fieldError(errors.currentPassword?.message)}
+        error={errors.currentPassword?.message}
         {...register("currentPassword")}
       />
       <Field
@@ -35,7 +34,7 @@ export function ChangePasswordFields({ form, autoFocus = false }: ChangePassword
         autoComplete="new-password"
         required
         hint={PASSWORD_MESSAGES.policy}
-        {...fieldError(errors.newPassword?.message)}
+        error={errors.newPassword?.message}
         {...register("newPassword")}
       />
       <Field
@@ -43,7 +42,7 @@ export function ChangePasswordFields({ form, autoFocus = false }: ChangePassword
         type="password"
         autoComplete="new-password"
         required
-        {...fieldError(errors.confirmPassword?.message)}
+        error={errors.confirmPassword?.message}
         {...register("confirmPassword")}
       />
     </>

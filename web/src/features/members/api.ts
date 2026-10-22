@@ -9,9 +9,9 @@
 //   `field`, 429 con `retryAfterS`) y los traduce memberErrors.ts.
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { api } from "../../core/api/client";
-import { ApiError } from "../../core/api/errors";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
+import { parseResponse } from "../../core/api/response";
 import { DATA_CONSENT_MISSING, memberDetailSchema, membersPageSchema, type MemberCreateBody, type MemberRowView } from "./schemas";
 
 export interface MembersParams {
@@ -31,24 +31,15 @@ export interface CreatedMember {
 }
 
 export const MEMBERS_QUERY_KEY = ["members"] as const;
-export const INVALID_RESPONSE_MESSAGE = "La respuesta del servidor no es válida. Recarga la página e intenta de nuevo.";
 
 export function membersQueryKey(params: MembersParams): readonly ["members", MembersParams] {
   return ["members", params];
 }
 
-function invalidResponse(): ApiError {
-  return new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
-}
-
 export function useMembers(params: MembersParams): UseQueryResult<Page<MemberRowView>> {
   return useQuery({
     queryKey: membersQueryKey(params),
-    queryFn: async ({ signal }) => {
-      const parsed = membersPageSchema.safeParse(await api.get<unknown>("/members", { query: listParams({ ...params }), signal }));
-      if (!parsed.success) throw invalidResponse();
-      return parsed.data;
-    },
+    queryFn: async ({ signal }) => parseResponse(membersPageSchema, await api.get<unknown>("/members", { query: listParams({ ...params }), signal })),
     placeholderData: keepPreviousData,
     // S2-D41: una búsqueda (documento, teléfono, correo) no se queda en la caché al dejar de
     // usarse ni se repite al volver a la ventana (gastaría el límite members-search).
@@ -60,9 +51,7 @@ export function useCreateMember(): UseMutationResult<CreatedMember, Error, Membe
   const queryClient = useQueryClient();
   return useMutation<CreatedMember, Error, MemberCreateBody>({
     mutationFn: async (body) => {
-      const parsed = memberDetailSchema.safeParse(await api.post<unknown>("/members", { body }));
-      if (!parsed.success) throw invalidResponse();
-      const { id, first_name, last_name, warnings } = parsed.data;
+      const { id, first_name, last_name, warnings } = parseResponse(memberDetailSchema, await api.post<unknown>("/members", { body }));
       return { id, firstName: first_name, lastName: last_name, consentMissing: warnings.includes(DATA_CONSENT_MISSING) };
     },
     gcTime: 0,

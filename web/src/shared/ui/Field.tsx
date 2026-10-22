@@ -28,7 +28,8 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   label: string;
   name: string;
   hint?: string;
-  error?: string;
+  /** Mensaje bajo el campo; `undefined` o vacío no marca error (el `message` de RHF tal cual). */
+  error?: string | undefined;
   errorAction?: FieldErrorAction;
   required?: boolean;
   /** `md` 44 px (panel); `lg` 56 px (check-in y registro de resultados). */

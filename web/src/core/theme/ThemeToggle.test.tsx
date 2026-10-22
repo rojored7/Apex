@@ -1,5 +1,5 @@
 // US-068 T4: botón de 44 px con texto accesible que alterna el tema del panel.
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { readFileSync } from "node:fs";
@@ -14,6 +14,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // L7 (revisión del Sprint 2): desmontar antes de reiniciar el tema (avisa a los suscriptores).
+  cleanup();
   localStorage.clear();
   resetThemeForTests();
 });

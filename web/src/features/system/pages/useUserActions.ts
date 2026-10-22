@@ -4,11 +4,11 @@
 //   frase y la acción con su texto. "Dar de baja" va en `danger` (DESIGN.md: solo anular y dar
 //   de baja); las demás en `primary`.
 // - Un error se queda en el modal con el mensaje de userActionMessage() (por código).
-// - Cerrar las sesiones propias (S2-D37) termina en clearSession() y /login: el api ya cortó
-//   el access token de esta pestaña.
+// - Cerrar las sesiones propias (S2-D37) termina en endSession() y /login: el api ya cortó el
+//   access token de esta pestaña y el canal avisa a las demás (L3 de la revisión del Sprint 2).
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
-import { clearSession } from "../../../core/auth/session";
+import { endSession } from "../../../core/auth/session";
 import { formatCount } from "../../../core/i18n/format";
 import { useDeleteUser, useLockUser, useRevokeSessions, useUnlockUser } from "../api";
 import type { ButtonAction } from "../components/UserRowActions";
@@ -107,7 +107,7 @@ export function useUserActions(currentUserId: string | null): UserActionsApi {
       case "revoke": {
         const revoked = await revoke.mutateAsync(target);
         if (row.id === currentUserId) {
-          clearSession("logout");
+          endSession();
           void navigate("/login", { replace: true });
           return;
         }

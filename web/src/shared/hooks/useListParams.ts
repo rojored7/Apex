@@ -2,7 +2,8 @@
 // estado). Recargar conserva la vista y "atrás" restaura la anterior. Un limit fuera de
 // 1..200 vuelve a 25, cambiar búsqueda, filtro, orden o tamaño vuelve offset a 0, y solo
 // pasan al api las claves declaradas (T11: nada desconocido llega al servidor).
-// S2-D41: con `localQuery` la búsqueda vive en memoria y nunca en la URL.
+// S2-D41: con `localQuery` (por defecto desde la revisión del Sprint 2, L1) la búsqueda vive en
+// memoria y nunca en la URL; con `localQuery` en falso la deja en la URL (solo pruebas del modo URL).
 // La espera de 300 ms de la búsqueda la hace FilterBar; la cancelación de la petición
 // anterior la hace la feature con el `signal` de TanStack Query.
 import { useCallback, useMemo, useState } from "react";
@@ -45,7 +46,7 @@ export interface ListParamsConfig<F extends string> {
   /** Campos por los que se puede ordenar; sin lista, cualquiera bien formado. */
   sorts?: readonly string[];
   /**
-   * S2-D41 (M-8): la búsqueda vive en estado local y nunca en la URL (documento, teléfono o
+   * S2-D41 (M-8), por defecto `true`: la búsqueda vive en estado local y nunca en la URL (documento, teléfono o
    * correo no quedan en el historial ni en los logs). Un `q` que llegue en la URL se ignora.
    */
   localQuery?: boolean;
@@ -102,7 +103,7 @@ function parseState<F extends string>(
   return { params, q, filters, sort, page: offsetToPage(offset, limit) };
 }
 
-export function useListParams<F extends string = never>({ filters = [], sorts, localQuery = false }: ListParamsConfig<F> = {}): ListParamsApi<F> {
+export function useListParams<F extends string = never>({ filters = [], sorts, localQuery = true }: ListParamsConfig<F> = {}): ListParamsApi<F> {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.toString();
   const filtersKey = filters.join("\n");

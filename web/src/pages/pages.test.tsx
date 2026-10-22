@@ -7,7 +7,7 @@ import { axe } from "vitest-axe";
 import { RoleProvider, type Role } from "../core/auth";
 import { NoPermissionPage } from "../core/auth/NoPermissionPage";
 import { NotFound } from "./NotFound";
-import { PendingPage } from "./PendingPage";
+import { CHUNK_RELOAD_KEY, CHUNK_RELOAD_WINDOW_MS, claimChunkReload, isChunkLoadError } from "./RouteError";
 import { RouteLoading } from "./RouteLoading";
 
 function withRole(role: Role | null, ui: ReactElement) {
@@ -62,16 +62,37 @@ describe("RouteLoading", () => {
   });
 });
 
-describe("PendingPage", () => {
-  it("muestra el título de la pantalla y que llega pronto", () => {
-    withRole("admin", <PendingPage title="Socios" />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Socios" })).toBeInTheDocument();
-    expect(screen.getByText("Esta pantalla estará disponible pronto.")).toBeInTheDocument();
+describe("RouteError · recarga única tras un chunk perdido (H1, revisión del Sprint 2)", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.restoreAllMocks();
   });
 
-  it("es accesible", async () => {
-    const { container } = withRole("admin", <PendingPage title="Planes" />);
-    expect(await axe(container)).toHaveNoViolations();
+  it.each([
+    [new TypeError("Failed to fetch dynamically imported module: /assets/a.js"), true],
+    [new TypeError("error loading dynamically imported module"), true],
+    [new TypeError("Importing a module script failed."), true],
+    [Object.assign(new Error("x"), { name: "ChunkLoadError" }), true],
+    [new Error("Fallo al pintar"), false],
+    ["Failed to fetch dynamically imported module", false],
+    [null, false],
+  ])("isChunkLoadError(%s) es %s", (error, expected) => {
+    expect(isChunkLoadError(error)).toBe(expected);
+  });
+
+  it("reserva una sola recarga dentro de la ventana y otra después", () => {
+    expect(claimChunkReload(1_000)).toBe(true);
+    expect(sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBe("1000");
+    expect(claimChunkReload(1_000 + CHUNK_RELOAD_WINDOW_MS - 1)).toBe(false);
+    expect(claimChunkReload(1_000 + CHUNK_RELOAD_WINDOW_MS)).toBe(true);
+  });
+
+  it("sin almacenamiento (modo privado) no recarga sola", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("bloqueado", "SecurityError");
+    });
+
+    expect(claimChunkReload(1_000)).toBe(false);
   });
 });

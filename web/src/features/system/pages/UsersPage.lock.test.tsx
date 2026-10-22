@@ -7,7 +7,7 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { setViewportWidth } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { apiError, findRow, renderUsersPage, userOut, USERS } from "../../../test/users";
+import { apiError, findRow, pageNotice, renderUsersPage, userOut, USERS } from "../../../test/users";
 
 const LOCK_CONSEQUENCE = /Cierra todas sus sesiones y le impide entrar hasta que lo desbloquees/;
 
@@ -46,7 +46,7 @@ describe("UsersPage · bloquear (US-051)", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mock.callsTo(`POST /users/${USERS.coach.id}/lock`)).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent(`${USERS.coach.email} quedó bloqueado.`);
+    expect(pageNotice()).toHaveTextContent(`${USERS.coach.email} quedó bloqueado.`);
   });
 
   it("no aparece en la propia fila", async () => {
@@ -103,7 +103,7 @@ describe("UsersPage · desbloquear (US-051)", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mock.callsTo(`POST /users/${USERS.locked.id}/unlock`)).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent(`${USERS.locked.email} quedó desbloqueado.`);
+    expect(pageNotice()).toHaveTextContent(`${USERS.locked.email} quedó desbloqueado.`);
   });
 
   it("409 not_locked se explica dentro del modal", async () => {

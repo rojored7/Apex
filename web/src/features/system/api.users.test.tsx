@@ -7,8 +7,9 @@ import type { ReactNode } from "react";
 import { isApiError } from "../../core/api/errors";
 import type { components } from "../../core/api/types";
 import { mockApi, testQueryClient } from "../../test/server";
-import { userOut, USERS } from "../../test/users";
+import { pageReply, userOut, USERS } from "../../test/users";
 import {
+  useCreateUser,
   useDeleteUser,
   useLockUser,
   useResendLink,
@@ -16,6 +17,7 @@ import {
   useUnlockUser,
   useUpdateUser,
   useUser,
+  useUsers,
   userQueryKey,
   usersQueryKey,
   type UpdateUserChanges,
@@ -194,5 +196,63 @@ describe("mutaciones de cuentas", () => {
     });
 
     expect(client.getQueryState(usersQueryKey({ limit: 25, offset: 0 }))?.isInvalidated).toBe(false);
+  });
+});
+
+describe("lista y alta de usuarios · revisión del Sprint 2", () => {
+  const LIST = { limit: 25, offset: 0 };
+  const CREATED = { user: { id: "nuevo", email: "nuevo@apex.test" }, activation_url: "https://apex.test/activar/abc", expires_at: "2026-10-24T19:30:00Z" };
+
+  it("M3: useCreateUser termina sin esperar la relectura de GET /users", async () => {
+    let releaseList: (() => void) | null = null;
+    let listCalls = 0;
+    mockApi({
+      "GET /users": async (call) => {
+        listCalls += 1;
+        if (listCalls > 1) await new Promise<void>((resolve) => (releaseList = resolve));
+        return pageReply(call);
+      },
+      "POST /users": { status: 201, body: CREATED },
+    });
+    const client = testQueryClient();
+    const { result } = renderHook(() => ({ list: useUsers(LIST), create: useCreateUser() }), { wrapper: wrapperFor(client) });
+    await waitFor(() => {
+      expect(result.current.list.isSuccess).toBe(true);
+    });
+
+    act(() => {
+      result.current.create.mutate({ email: "nuevo@apex.test", role: "coach" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.create.data?.activationUrl).toBe(CREATED.activation_url);
+    });
+    expect(listCalls).toBe(2);
+    expect(result.current.list.isFetching).toBe(true);
+    (releaseList as (() => void) | null)?.();
+  });
+
+  it("L2: con búsqueda useUsers no deja la consulta en caché ni la repite al volver a la ventana", () => {
+    mockApi({ "GET /users": (call) => pageReply(call) });
+    const client = testQueryClient();
+
+    renderHook(() => useUsers({ ...LIST, q: "ana@apex.test" }), { wrapper: wrapperFor(client) });
+
+    const query = client.getQueryCache().find({ queryKey: usersQueryKey({ ...LIST, q: "ana@apex.test" }) });
+    const options = query?.options;
+    expect(options?.gcTime).toBe(0);
+    expect(query?.observers[0]?.options.refetchOnWindowFocus).toBe(false);
+  });
+
+  it("L2: sin búsqueda conserva la caché por defecto", () => {
+    mockApi({ "GET /users": (call) => pageReply(call) });
+    const client = testQueryClient();
+
+    renderHook(() => useUsers(LIST), { wrapper: wrapperFor(client) });
+
+    const query = client.getQueryCache().find({ queryKey: usersQueryKey(LIST) });
+    const options = query?.options;
+    expect(options?.gcTime).not.toBe(0);
+    expect(query?.observers[0]?.options.refetchOnWindowFocus).not.toBe(false);
   });
 });

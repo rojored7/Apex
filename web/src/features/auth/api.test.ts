@@ -1,9 +1,9 @@
 // S2-F3 · US-042: contrato de POST /auth/login (LoginOut de B2) y mensajes de error.
 import { ApiError, GENERIC_MESSAGES } from "../../core/api/errors";
+import { INVALID_RESPONSE_MESSAGE } from "../../core/api/response";
 import type { LoginOut } from "./api";
 import {
   commonErrorMessage,
-  INVALID_RESPONSE_MESSAGE,
   isInvalidLink,
   loginErrorMessage,
   PASSWORD_ERRORS,

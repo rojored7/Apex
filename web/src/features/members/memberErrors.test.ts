@@ -1,6 +1,6 @@
 // S2-F6: traducción de los errores del api de socios a la pantalla.
 import { ApiError } from "../../core/api/errors";
-import { createErrorMessage, fieldErrorOf, listError, waitText } from "./memberErrors";
+import { createErrorMessage, fieldErrorOf, listError } from "./memberErrors";
 
 const error = (status: number, code: string, extra: Partial<ConstructorParameters<typeof ApiError>[0]> = {}) => new ApiError({ status, code, message: "Mensaje del api.", ...extra });
 
@@ -33,17 +33,6 @@ describe("fieldErrorOf", () => {
     ["emergency_contact.relationship", "emergency_contact.relationship", "Revisa este dato e intenta de nuevo."],
   ])("el 422 de %s va a %s", (field, path, message) => {
     expect(fieldErrorOf(error(422, "validation_error", { field }))).toEqual({ path, message, existingId: null });
-  });
-});
-
-describe("waitText", () => {
-  it.each([
-    [undefined, "un momento"],
-    [0, "un momento"],
-    [1, "1 segundo"],
-    [45, "45 segundos"],
-  ])("%s → %s", (seconds, text) => {
-    expect(waitText(seconds)).toBe(text);
   });
 });
 

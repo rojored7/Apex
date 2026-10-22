@@ -70,15 +70,14 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/sistema/usuarios",
       "/sistema/configuracion",
     ]);
-    expect(ROUTE_TABLE.filter((r) => r.pending).map((r) => r.path)).toEqual([]);
-    for (const route of ROUTE_TABLE.filter((r) => r.load || r.pending)) expect(ENABLED_FEATURES.has(route.feature as never)).toBe(true);
+    for (const route of ROUTE_TABLE.filter((r) => r.load)) expect(ENABLED_FEATURES.has(route.feature as never)).toBe(true);
   });
 });
 
 describe("árbol de routes.tsx", () => {
-  it("con las features del Sprint 2 registra solo las rutas habilitadas con página o pendientes", () => {
+  it("con las features del Sprint 2 registra solo las rutas habilitadas con página", () => {
     const registered = leaves(buildRoutes()).map((l) => l.path).sort();
-    const expected = ROUTE_TABLE.filter((r) => (r.load || r.pending) && r.feature !== undefined && ENABLED_FEATURES.has(r.feature))
+    const expected = ROUTE_TABLE.filter((r) => r.load && r.feature !== undefined && ENABLED_FEATURES.has(r.feature))
       .map((r) => r.path)
       .sort();
 
@@ -99,9 +98,9 @@ describe("árbol de routes.tsx", () => {
     expect(inicio?.lazy).toBe(true);
   });
 
-  it("con todas las features habilitadas registra las rutas con página o pendientes de la tabla", () => {
+  it("con todas las features habilitadas registra las rutas con página de la tabla", () => {
     const registered = leaves(buildRoutes(ROUTE_TABLE, new Set(FEATURES))).map((l) => l.path);
-    expect(registered.length).toBe(ROUTE_TABLE.filter((r) => r.load || r.pending).length);
+    expect(registered.length).toBe(ROUTE_TABLE.filter((r) => r.load).length);
   });
 
   it("termina en una ruta comodín de NotFound", () => {

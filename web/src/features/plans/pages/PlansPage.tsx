@@ -18,6 +18,10 @@
 // - "Duración" y "Clases" van en columnas propias (blueprint F7); Planes.html las junta.
 // - El filtro se llama "Estado" y no "Mostrar" (Planes.html): "Mostrar" ya es el tamaño de página
 //   de Pagination y dos controles con el mismo nombre confunden al lector de pantalla.
+// - La rama sin `plans.manage` (contradicción 7 de la revisión general del Sprint 2) hoy no se
+//   alcanza: `plans.view` es solo admin en el front (S2-D26) aunque el api deja al coach leer los
+//   planes activos (SPRINT-02.md). Se conserva, con sus pruebas, para que abrir /planes al coach
+//   sea solo un cambio de la matriz y no deje la pantalla pidiendo inactivos (403).
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";

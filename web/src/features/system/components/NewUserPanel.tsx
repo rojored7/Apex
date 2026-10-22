@@ -12,9 +12,12 @@
 import { useId, useState } from "react";
 import { useNavigate } from "react-router";
 import { useForm } from "react-hook-form";
-import { GENERIC_MESSAGES, isApiError } from "../../../core/api/errors";
+import { API_ERROR_CODES } from "../../../core/api/errorCodes";
+import { isApiError } from "../../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../../core/api/status";
 import { DEFAULT_STAFF_ROLE, ROLE_LABELS, STAFF_ROLES } from "../../../core/auth/permissions";
 import { formatDateTime } from "../../../core/i18n/format";
+import { connectionMessage, TOO_MANY_MESSAGE } from "../../../shared/lib/apiMessages";
 import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
@@ -38,25 +41,17 @@ const NEW_USER_MESSAGES = {
   emailRejected: "El servidor no aceptó este correo. Revísalo e intenta de nuevo.",
   roleRejected: "Elige un rol: Coach o Admin.",
   forbidden: "Solo un administrador puede crear usuarios. Si lo necesitas, pídeselo a uno.",
-  tooMany: "Demasiados intentos. Espera un momento y vuelve a intentarlo.",
+  tooMany: TOO_MANY_MESSAGE,
   server: "No pudimos crear el usuario. Intenta de nuevo en un momento.",
   generic: "No pudimos crear el usuario. Revisa los datos e intenta de nuevo.",
 } as const;
 
 const DEFAULTS: CreateUserForm = { email: "", role: DEFAULT_STAFF_ROLE };
 
-const HTTP_FORBIDDEN = 403;
-const HTTP_CONFLICT = 409;
-const HTTP_UNPROCESSABLE = 422;
-const HTTP_TOO_MANY = 429;
-const HTTP_SERVER_ERROR = 500;
-
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
-
 function generalMessage(error: unknown): string {
   if (!isApiError(error)) return NEW_USER_MESSAGES.generic;
-  if (error.code === "invalid_response") return error.message;
-  if (error.status === 0) return error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
   if (error.status === HTTP_FORBIDDEN) return NEW_USER_MESSAGES.forbidden;
   if (error.status === HTTP_TOO_MANY) return NEW_USER_MESSAGES.tooMany;
   if (error.status >= HTTP_SERVER_ERROR) return NEW_USER_MESSAGES.server;
@@ -113,7 +108,7 @@ export function NewUserPanel({ open, onClose }: NewUserPanelProps) {
     try {
       await create.mutateAsync(values);
     } catch (error) {
-      if (isApiError(error) && error.status === HTTP_CONFLICT && (error.field === "email" || error.code === "email_taken")) {
+      if (isApiError(error) && error.status === HTTP_CONFLICT && (error.field === "email" || error.code === API_ERROR_CODES.emailTaken)) {
         setExistingId(error.existingId ?? null);
         form.setError("email", { type: "server", message: NEW_USER_MESSAGES.emailTaken }, { shouldFocus: true });
         return;
@@ -157,11 +152,11 @@ export function NewUserPanel({ open, onClose }: NewUserPanelProps) {
             autoComplete="off"
             inputMode="email"
             required
-            {...fieldError(errors.email?.message)}
+            error={errors.email?.message}
             {...(existingId && errors.email ? { errorAction: { href: userHref(existingId), text: "Ver el usuario existente", onNavigate: goToExisting } } : {})}
             {...register("email")}
           />
-          <Field label="Rol" name="role" required {...fieldError(errors.role?.message)}>
+          <Field label="Rol" name="role" required error={errors.role?.message}>
             {(control) => (
               <select {...control} {...register("role")}>
                 {STAFF_ROLES.map((role) => (

@@ -9,7 +9,7 @@ import { axe } from "vitest-axe";
 import { getSession } from "../../../core/auth/session";
 import { setViewportWidth } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { apiError, findRow, OWN_ID, renderUsersPage, userOut, USERS } from "../../../test/users";
+import { apiError, findRow, OWN_ID, pageNotice, renderUsersPage, userOut, USERS } from "../../../test/users";
 
 const at = (id: string, extra = ""): string => `/sistema/usuarios?${extra}usuario=${id}`;
 const panel = () => screen.getByRole("dialog", { name: "Editar usuario" });
@@ -154,7 +154,7 @@ describe("EditUserPanel · guardar (US-049)", () => {
     });
     expect(mock.callsTo(`PATCH /users/${USERS.coach.id}`).map((c) => c.body)).toEqual([{ email: "carlos.r@apex.test" }]);
     expect(router.state.location.search).toBe("");
-    expect(screen.getByRole("status")).toHaveTextContent("Cambios guardados para carlos.r@apex.test.");
+    expect(pageNotice()).toHaveTextContent("Cambios guardados para carlos.r@apex.test.");
     await waitFor(() => {
       expect(mock.callsTo("GET /users").length).toBeGreaterThan(before);
     });

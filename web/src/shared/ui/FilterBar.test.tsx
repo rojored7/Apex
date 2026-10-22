@@ -138,7 +138,7 @@ describe("FilterBar con la URL", () => {
   });
 
   function Screen({ onParams }: { onParams: (search: string) => void }) {
-    const list = useListParams({ filters: ["plan"] as const });
+    const list = useListParams({ filters: ["plan"] as const, localQuery: false });
     const location = useLocation();
     onParams(location.search);
     return <FilterBar query={list.q} onQueryChange={list.setQuery} onClear={list.clear} />;

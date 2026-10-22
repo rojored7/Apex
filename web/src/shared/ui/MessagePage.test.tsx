@@ -18,10 +18,33 @@ describe("MessagePage", () => {
     expect(screen.getByRole("link", { name: "Ir al inicio" })).toHaveAttribute("href", "/");
   });
 
+  it("H1 (revisión del Sprint 2): con alert el mensaje se anuncia y children pone la acción", () => {
+    render(
+      <MemoryRouter>
+        <MessagePage title="Algo salió mal" message="No pudimos abrir esta pantalla." alert>
+          <button type="button">Recargar</button>
+        </MessagePage>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos abrir esta pantalla.");
+    expect(screen.getByRole("button", { name: "Recargar" })).toBeInTheDocument();
+  });
+
+  it("sin alert el mensaje no es una alerta", () => {
+    render(
+      <MemoryRouter>
+        <MessagePage title="No encontrada" message="Revisa el enlace." />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("sin enlace no pinta ninguno", () => {
     render(
       <MemoryRouter>
-        <MessagePage title="Disponible pronto" message="Vuelve más tarde." />
+        <MessagePage title="Sin permiso" message="Vuelve más tarde." />
       </MemoryRouter>,
     );
 

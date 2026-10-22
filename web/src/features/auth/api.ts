@@ -8,10 +8,14 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
-import { ApiError, GENERIC_MESSAGES, isApiError } from "../../core/api/errors";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { ApiError, isApiError } from "../../core/api/errors";
+import { parseResponse } from "../../core/api/response";
+import { HTTP_BAD_REQUEST, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNAUTHORIZED, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import type { components } from "../../core/api/types";
 import { ROLES } from "../../core/auth/permissions";
 import { adoptAccessToken, getSession, refreshCurrentUser, setSession, type SessionPayload, type SessionUser } from "../../core/auth/session";
+import { connectionMessage, TOO_MANY_MESSAGE } from "../../shared/lib/apiMessages";
 import type { ForgotForm, LoginForm } from "./schemas";
 
 export type LoginOut = components["schemas"]["LoginOut"];
@@ -34,17 +38,12 @@ const loginOutSchema = z.object({
 export const LOGIN_MESSAGES = {
   invalidCredentials: "Correo o contraseña incorrectos. Revísalos e intenta de nuevo.",
   tooManyWait: (seconds: number) => `Demasiados intentos. Espera ${String(seconds)} s y vuelve a intentarlo.`,
-  tooMany: "Demasiados intentos. Espera un momento y vuelve a intentarlo.",
+  tooMany: TOO_MANY_MESSAGE,
   canRetry: "Ya puedes intentarlo de nuevo.",
   invalidData: "Revisa el correo y la contraseña e intenta de nuevo.",
   server: "El servidor tuvo un problema. Intenta de nuevo en un momento.",
   generic: "No pudimos iniciar sesión desde esta página. Recárgala e intenta de nuevo.",
 } as const;
-
-const HTTP_UNAUTHORIZED = 401;
-const HTTP_TOO_MANY = 429;
-const HTTP_UNPROCESSABLE = 422;
-const HTTP_SERVER_ERROR = 500;
 
 /** LoginOut validado → sesión. Lanza si la respuesta no tiene la forma del contrato. */
 export function sessionFromLogin(out: unknown): SessionPayload {
@@ -115,8 +114,6 @@ const accessTokenOutSchema = z.object({
   expires_in: z.number().int().positive(),
 });
 
-export const INVALID_RESPONSE_MESSAGE = "La respuesta del servidor no es válida. Recarga la página e intenta de nuevo.";
-
 export const PASSWORD_ERRORS = {
   currentWrong: "La contraseña actual no es correcta. Revísala e intenta de nuevo.",
   invalidLink: "El enlace ya no es válido. Pide uno nuevo al administrador.",
@@ -124,26 +121,14 @@ export const PASSWORD_ERRORS = {
   generic: "No pudimos guardar la contraseña. Recarga la página e intenta de nuevo.",
 } as const;
 
-const HTTP_BAD_REQUEST = 400;
-
-function invalidResponse(): ApiError {
-  return new ApiError({ status: 0, code: "invalid_response", message: INVALID_RESPONSE_MESSAGE });
-}
-
-function parseOrThrow<T extends z.ZodTypeAny>(schema: T, raw: unknown): z.infer<T> {
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) throw invalidResponse();
-  return parsed.data as z.infer<T>;
-}
-
 /**
  * Mensaje de los errores que no dependen de la pantalla: sin respuesta (red o timeout), 429
  * con la espera, 5xx y una respuesta con forma inesperada. `null` si el error es de otro tipo.
  */
 export function commonErrorMessage(error: unknown): string | null {
   if (!isApiError(error)) return null;
-  if (error.code === "invalid_response") return error.message;
-  if (error.status === 0) return error.code === "timeout" ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
   if (error.status === HTTP_TOO_MANY) {
     return error.retryAfterS !== undefined && error.retryAfterS > 0 ? LOGIN_MESSAGES.tooManyWait(error.retryAfterS) : LOGIN_MESSAGES.tooMany;
   }
@@ -152,7 +137,7 @@ export function commonErrorMessage(error: unknown): string | null {
 }
 
 export function isInvalidLink(error: unknown): boolean {
-  return isApiError(error) && error.status === HTTP_BAD_REQUEST && error.code === "invalid_token";
+  return isApiError(error) && error.status === HTTP_BAD_REQUEST && error.code === API_ERROR_CODES.invalidToken;
 }
 
 export type PasswordFieldName = "currentPassword" | "newPassword";
@@ -171,14 +156,14 @@ export function passwordFieldError(error: unknown): { field: PasswordFieldName; 
 /** Error general de un formulario de contraseña: "qué pasó y qué hacer". */
 export function passwordErrorMessage(error: unknown): string {
   if (isInvalidLink(error)) return PASSWORD_ERRORS.invalidLink;
-  if (isApiError(error) && error.code === "session_changed") return error.message;
+  if (isApiError(error) && error.code === CLIENT_ERROR_CODES.sessionChanged) return error.message;
   return commonErrorMessage(error) ?? PASSWORD_ERRORS.generic;
 }
 
 export function useMe({ enabled = true }: { enabled?: boolean } = {}): UseQueryResult<MeView> {
   return useQuery<MeView>({
     queryKey: ME_QUERY_KEY,
-    queryFn: async ({ signal }) => parseOrThrow(meSchema, await api.get<unknown>("/auth/me", { signal })),
+    queryFn: async ({ signal }) => parseResponse(meSchema, await api.get<unknown>("/auth/me", { signal })),
     enabled,
   });
 }
@@ -194,9 +179,9 @@ async function changePassword({ currentPassword, newPassword }: ChangePasswordIn
   // La sesión que pidió el cambio: si al volver es otra (o ninguna), el token no es de ella.
   const requestedBy = getSession().user?.id;
   const raw = await api.post<unknown>("/auth/me/password", { body: { current_password: currentPassword, new_password: newPassword } });
-  const out = parseOrThrow(accessTokenOutSchema, raw);
+  const out = parseResponse(accessTokenOutSchema, raw);
   const { user } = getSession();
-  if (!user || user.id !== requestedBy) throw new ApiError({ status: 0, code: "session_changed", message: SESSION_CHANGED_MESSAGE });
+  if (!user || user.id !== requestedBy) throw new ApiError({ status: 0, code: CLIENT_ERROR_CODES.sessionChanged, message: SESSION_CHANGED_MESSAGE });
   setSession({ accessToken: out.access_token, user: { ...user, mustChangePassword: false } });
   adoptAccessToken(out.access_token, out.expires_in);
   return undefined;

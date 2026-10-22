@@ -21,6 +21,7 @@ import {
   REFRESH_LOCK,
   adoptAccessToken,
   clearSession,
+  endSession,
   getAccessToken,
   getSession,
   installSessionBridge,
@@ -30,6 +31,7 @@ import {
   resetSessionForTests,
   restoreSession,
   setSession,
+  updateSessionUser,
 } from "./session";
 
 type SessionModule = typeof import("./session");
@@ -479,6 +481,27 @@ describe("varias pestañas (apex-auth y apex-refresh)", () => {
     expect(b.session.getAccessToken()).toBe(NEW);
   });
 
+  it("M1 (revisión del Sprint 2): solo la pestaña que pidió el refresh a la red relee me desde el refresh", async () => {
+    installTabDoubles();
+    const server = mockApi({ "GET /socios": protectedReply, "POST /auth/refresh": REFRESH_OK, "GET /auth/me": { status: 200, body: ME } });
+    const a = await openTab();
+    const b = await openTab();
+    signInTab(a);
+    signInTab(b);
+
+    await Promise.all([a.client.api.get("/socios"), b.client.api.get("/socios")]);
+    await vi.waitFor(() => {
+      expect(server.callsTo("GET /auth/me").length).toBeGreaterThanOrEqual(2);
+    });
+    await flush();
+
+    // Una lectura por el refresh de red y otra por el token recibido en el canal; ninguna más.
+    expect(server.callsTo("POST /auth/refresh")).toHaveLength(1);
+    expect(server.callsTo("GET /auth/me")).toHaveLength(2);
+    expect(a.session.getSession().status).toBe("authenticated");
+    expect(b.session.getSession().status).toBe("authenticated");
+  });
+
   it("sin navigator.locks rigen la promesa única y el canal", async () => {
     installTabDoubles({ locks: false });
     const server = mockApi({ "GET /socios": protectedReply, "POST /auth/refresh": REFRESH_OK });
@@ -741,5 +764,101 @@ describe("correcciones de la revisión (S2-F3)", () => {
     });
 
     expect(server.callsTo("GET /auth/me")[0]?.headers.get("Authorization")).toBe("Bearer de-otra-cuenta");
+  });
+});
+
+describe("correcciones de la revisión del Sprint 2", () => {
+  it("M1: un refresh de red relee me y, si la cookie es de otra cuenta, cierra esta sesión sin reintentar la petición", async () => {
+    const server = mockApi({
+      "GET /socios": protectedReply,
+      "POST /auth/refresh": REFRESH_OK,
+      "GET /auth/me": { status: 200, body: { ...ME, id: "00000000-0000-4000-8000-0000000000ff", email: "otra@apex.test" } },
+    });
+    signIn();
+
+    await expect(api.get("/socios")).rejects.toMatchObject({ status: 401 });
+
+    expect(getSession()).toMatchObject({ status: "anonymous", reason: "unauthorized" });
+    // La petición original nunca sale con el token de la otra cuenta.
+    expect(server.callsTo("GET /socios").map(bearer)).toEqual([`Bearer ${OLD}`]);
+    expect(server.callsTo("GET /auth/me")[0]?.headers.get("Authorization")).toBe(`Bearer ${NEW}`);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("M1: si me es de la misma cuenta, la sesión sigue con el token nuevo", async () => {
+    const server = mockApi({ "GET /socios": protectedReply, "POST /auth/refresh": REFRESH_OK, "GET /auth/me": { status: 200, body: ME } });
+    signIn();
+
+    await api.get("/socios");
+
+    await vi.waitFor(() => {
+      expect(server.callsTo("GET /auth/me")).toHaveLength(1);
+    });
+    await flush();
+    expect(getSession().status).toBe("authenticated");
+    expect(getAccessToken()).toBe(NEW);
+  });
+
+  it("M2: updateSessionUser cambia el usuario sin descartar un refresh en vuelo", async () => {
+    const gate = deferred<MockReply>();
+    mockApi({ "GET /socios": protectedReply, "POST /auth/refresh": () => gate.promise });
+    signIn();
+
+    const request = api.get("/socios");
+    await vi.waitFor(() => {
+      expect(getAccessToken()).toBe(OLD);
+    });
+    await flush();
+    updateSessionUser({ gymName: "Box Sur" });
+    gate.resolve(REFRESH_OK);
+
+    await expect(request).resolves.toEqual({ ok: true });
+    expect(getSession().user?.gymName).toBe("Box Sur");
+    expect(getAccessToken()).toBe(NEW);
+  });
+
+  it("M2: una lectura de me que salió antes de updateSessionUser no pisa el cambio", async () => {
+    const gate = deferred<MockReply>();
+    mockApi({ "GET /auth/me": () => gate.promise });
+    setSession({ accessToken: OLD, user: testUser("admin", { id: ME.id, gymName: "Box Norte" }) });
+
+    const pending = refreshCurrentUser();
+    await flush();
+    updateSessionUser({ gymName: "Box Sur" });
+    gate.resolve({ status: 200, body: ME });
+    await pending;
+
+    expect(getSession().user?.gymName).toBe("Box Sur");
+  });
+
+  it("M2: una lectura de me igual al usuario no emite un usuario nuevo", async () => {
+    mockApi({ "GET /auth/me": { status: 200, body: ME } });
+    setSession({ accessToken: OLD, user: testUser("admin", { id: ME.id, email: ME.email, gymName: ME.gym_name }) });
+    const before = getSession();
+
+    await refreshCurrentUser();
+
+    expect(getSession()).toBe(before);
+  });
+
+  it("M2: updateSessionUser sin sesión no hace nada", () => {
+    clearSession("logout");
+
+    updateSessionUser({ gymName: "Box Sur" });
+
+    expect(getSession()).toEqual({ status: "anonymous", user: null, reason: "logout" });
+  });
+
+  it("L3: endSession publica logout a las demás pestañas y limpia esta", () => {
+    installTabDoubles();
+    uninstall?.();
+    uninstall = installSessionBridge();
+    signIn();
+
+    endSession();
+
+    expect(posted.map((m) => (m.data as { type: string }).type)).toContain("logout");
+    expect(getSession()).toEqual({ status: "anonymous", user: null, reason: "logout" });
+    expect(getAccessToken()).toBeNull();
   });
 });

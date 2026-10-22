@@ -19,6 +19,7 @@ export {
   REFRESH_LOCK,
   adoptAccessToken,
   clearSession,
+  endSession,
   getAccessToken,
   getSession,
   installSessionBridge,
@@ -28,6 +29,7 @@ export {
   restoreSession,
   setSession,
   subscribe,
+  updateSessionUser,
   useSession,
 } from "./session";
 export type { ClearReason, LogoutResult, SessionPayload, SessionState, SessionStatus, SessionUser } from "./session";

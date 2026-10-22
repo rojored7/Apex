@@ -28,7 +28,6 @@ export const CONSENT_LABEL = "El socio autorizó el tratamiento de datos";
 export const EXISTING_LINK_TEXT = "Ver socio existente";
 const CONSENT_HINT_ID = "member-consent-hint";
 
-const fieldError = (message: string | undefined): { error?: string } => (message ? { error: message } : {});
 
 export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFieldsProps) {
   const {
@@ -42,9 +41,9 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
       <fieldset className={styles.section}>
         <legend className={styles.legend}>1 · Identificación</legend>
         <div className={styles.grid}>
-          <Field label="Nombres" required autoComplete="off" maxLength={MEMBER_LIMITS.name} {...fieldError(errors.first_name?.message)} {...register("first_name")} />
-          <Field label="Apellidos" required autoComplete="off" maxLength={MEMBER_LIMITS.name} {...fieldError(errors.last_name?.message)} {...register("last_name")} />
-          <Field label="Tipo de documento" name="document_type" required {...fieldError(errors.document_type?.message)}>
+          <Field label="Nombres" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.first_name?.message} {...register("first_name")} />
+          <Field label="Apellidos" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.last_name?.message} {...register("last_name")} />
+          <Field label="Tipo de documento" name="document_type" required error={errors.document_type?.message}>
             {(control) => (
               <select {...control} {...register("document_type")}>
                 {DOCUMENT_TYPES.map((type) => (
@@ -60,11 +59,11 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
             required
             autoComplete="off"
             hint="Se cifra al guardar. Si ya existe, se avisa con enlace al socio."
-            {...fieldError(errors.document?.message)}
+            error={errors.document?.message}
             {...existing}
             {...register("document")}
           />
-          <Field label="Sexo (leaderboard)" name="sex" {...fieldError(errors.sex?.message)}>
+          <Field label="Sexo (leaderboard)" name="sex" error={errors.sex?.message}>
             {(control) => (
               <select {...control} {...register("sex")}>
                 <option value="">Sin indicar</option>
@@ -76,7 +75,7 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
               </select>
             )}
           </Field>
-          <Field label="Fecha de nacimiento" type="date" {...fieldError(errors.birth_date?.message)} {...register("birth_date")} />
+          <Field label="Fecha de nacimiento" type="date" error={errors.birth_date?.message} {...register("birth_date")} />
         </div>
       </fieldset>
 
@@ -89,24 +88,24 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
             inputMode="tel"
             autoComplete="off"
             placeholder="+57 3xx xxx xxxx"
-            {...fieldError(errors.phone?.message)}
+            error={errors.phone?.message}
             {...register("phone")}
           />
-          <Field label="Correo" type="email" inputMode="email" autoComplete="off" {...fieldError(errors.email?.message)} {...register("email")} />
+          <Field label="Correo" type="email" inputMode="email" autoComplete="off" error={errors.email?.message} {...register("email")} />
         </div>
       </fieldset>
 
       <fieldset className={styles.section}>
         <legend className={styles.legend}>3 · Contacto de emergencia</legend>
         <div className={styles.grid}>
-          <Field label="Nombre del contacto" autoComplete="off" {...fieldError(errors.emergency_contact?.name?.message)} {...register("emergency_contact.name")} />
-          <Field label="Parentesco" autoComplete="off" {...fieldError(errors.emergency_contact?.relationship?.message)} {...register("emergency_contact.relationship")} />
+          <Field label="Nombre del contacto" autoComplete="off" error={errors.emergency_contact?.name?.message} {...register("emergency_contact.name")} />
+          <Field label="Parentesco" autoComplete="off" error={errors.emergency_contact?.relationship?.message} {...register("emergency_contact.relationship")} />
           <Field
             label="Teléfono del contacto"
             type="tel"
             inputMode="tel"
             autoComplete="off"
-            {...fieldError(errors.emergency_contact?.phone?.message)}
+            error={errors.emergency_contact?.phone?.message}
             {...register("emergency_contact.phone")}
           />
         </div>

@@ -5,19 +5,22 @@
 //   403 de Origin, red y 5xx con mensajes "qué pasó y qué hacer".
 // - Avisos por la razón del cierre anterior: H-1 (cierre no confirmado) y sesión vencida.
 // - S2-F4a: el aviso de contraseña guardada que deja ResetPage (loginNotice.ts) va primero.
+// - L5 (revisión del Sprint 2): si la sesión todavía carga (recarga en /login con la cookie
+//   vigente), la restaura y muestra "Cargando…"; con sesión va al inicio del rol y sin ella
+//   muestra el formulario. La sesión que abre este formulario navega por su cuenta.
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { isApiError } from "../../../core/api/errors";
+import { HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../../core/api/status";
 import { CHANGE_PASSWORD_PATH, homeFor, safeNext } from "../../../core/auth/routeAccess";
-import { getSession, useSession, type ClearReason, type SessionUser } from "../../../core/auth/session";
+import { restoreSession, useSession, type ClearReason, type SessionUser } from "../../../core/auth/session";
+import { RouteLoading } from "../../../pages/RouteLoading";
 import { LOGIN_MESSAGES, loginErrorMessage, useLogin } from "../api";
 import { LoginCard, type LoginField, type LoginOutcome } from "../components/LoginCard";
 import { loginNoticeFrom } from "../loginNotice";
 import type { LoginForm } from "../schemas";
 
 const TICK_MS = 1_000;
-const HTTP_TOO_MANY = 429;
-const HTTP_UNPROCESSABLE = 422;
 
 const NOTICES: Partial<Record<ClearReason, string>> = {
   logout_unconfirmed: "No se pudo cerrar la sesión en el servidor. Si usas un equipo compartido, cierra el navegador.",
@@ -42,9 +45,9 @@ function isLoginField(value: string | undefined): value is LoginField {
 }
 
 export default function LoginPage() {
-  // La sesión que ya existía al llegar; la que abre este formulario navega por su cuenta.
-  const [arrivedWith] = useState(() => getSession().user);
-  const { reason } = useSession();
+  const { status, user: sessionUser, reason } = useSession();
+  // La sesión que abre este formulario navega por su cuenta (destinationFor), no al inicio.
+  const [submitted, setSubmitted] = useState(false);
   const [params] = useSearchParams();
   // S2-F4a: aviso que deja otra pantalla (ResetPage) en el estado de la navegación.
   const flash = loginNoticeFrom(useLocation().state);
@@ -52,6 +55,10 @@ export default function LoginPage() {
   const login = useLogin();
   const [failure, setFailure] = useState<Failure | null>(null);
   const [waitS, setWaitS] = useState(0);
+
+  useEffect(() => {
+    if (status === "loading") void restoreSession();
+  }, [status]);
 
   useEffect(() => {
     if (waitS <= 0) return undefined;
@@ -63,10 +70,12 @@ export default function LoginPage() {
     };
   }, [waitS]);
 
-  if (arrivedWith) return <Navigate to={homeFor(arrivedWith.role)} replace />;
+  if (status === "loading") return <RouteLoading />;
+  if (sessionUser && !submitted) return <Navigate to={homeFor(sessionUser.role)} replace />;
 
   const onSubmit = async (values: LoginForm): Promise<LoginOutcome> => {
     setFailure(null);
+    setSubmitted(true);
     try {
       const user = await login.mutateAsync(values);
       void navigate(destinationFor(user, params.get("next")), { replace: true });

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint . && stylelint \"src/**/*.css\"",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=preview",
+    "e2e:stack": "playwright test --project=stack",
     "gen:api": "openapi-typescript ../docs/openapi.json -o src/core/api/types.ts",
     "generate:api": "npm run gen:api",
     "licenses": "license-checker --production --excludePrivatePackages --onlyAllow \"MIT;BSD-2-Clause;BSD-3-Clause;Apache-2.0;ISC;0BSD;OFL-1.1;MIT-0;BlueOak-1.0.0;CC0-1.0;Unlicense\" --summary"

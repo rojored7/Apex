@@ -82,6 +82,7 @@ apex/
     openapi.json         # contrato exportado del API
     adr/                 # ADR-001-arquitectura.md, ADR-002-criptografia.md, ...
   .env.example
+  .env.seed.example      # ADMIN_* del primer seed; la copia .env.seed solo la lee tools
   .pre-commit-config.yaml
   .github/workflows/ci.yml
 ```
@@ -123,7 +124,7 @@ apex/
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
 - Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo login y health.
 - Rate limit en login. CORS solo para el dominio del front.
-- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
+- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` y se borra tras el primer seed. `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
 - Archivos subidos: volumen `/data/uploads`, nombre aleatorio, validación por bytes mágicos, tamaño máximo 5 MB, servidos solo por el api con rol y auditoría. Los sensibles pasan por el bus (`attachment.sensitive`).

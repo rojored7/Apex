@@ -6,6 +6,9 @@
 # SMOKE_ALLOW_UNHEALTHY=1 (solo mientras no exista /health, US-020), api en healthy.
 # Si existe web/Dockerfile levanta web y corre scripts/ci/web-smoke.sh. Al final
 # baja el stack con sus volúmenes, salvo SMOKE_KEEP=1.
+# S2-W0-1: con api healthy corre `tools seed` leyendo ADMIN_* de .env.seed (si no existe,
+# crea uno efímero con una contraseña aleatoria y lo borra al salir; uno existente no se
+# toca) y comprueba que web tiene la IP fija de TRUSTED_PROXIES.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -13,7 +16,9 @@ cd "$ROOT"
 [ -f .env ] || cp .env.example .env
 DC=(docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml)
 
+SEED_EFIMERO=0
 bajar() {
+  if [ "$SEED_EFIMERO" = "1" ]; then rm -f "$ROOT/.env.seed"; fi
   if [ "${SMOKE_KEEP:-0}" = "1" ]; then
     echo "compose-smoke: SMOKE_KEEP=1, el stack queda arriba"
   else
@@ -59,9 +64,30 @@ else
   esperar_healthy api 90
 fi
 
+# M-8: ADMIN_* solo llegan a tools por .env.seed. Seed idempotente: con un admin activo
+# responde "omitido".
+if [ ! -f .env.seed ]; then
+  SEED_EFIMERO=1
+  ( umask 077
+    printf 'ADMIN_EMAIL=admin@smoke.apex.local\nADMIN_INITIAL_PASSWORD=%s\n' "$(head -c 24 /dev/urandom | base64 | tr -d '/+=\n')" > .env.seed )
+  echo "compose-smoke: .env.seed efímero creado (se borra al salir)"
+fi
+"${DC[@]}" --profile tools run --rm tools seed
+if "${DC[@]}" exec -T api sh -c 'env | grep -q "^ADMIN_[A-Z_]*=."'; then
+  echo "compose-smoke: el api recibe ADMIN_* con valor (deben ir solo en .env.seed)" >&2; exit 1
+fi
+echo "compose-smoke: api sin ADMIN_*"
+
 if [ -f web/Dockerfile ] && [ -f scripts/ci/web-smoke.sh ]; then
   "${DC[@]}" up -d --build web
   esperar_healthy web 60
+  # M-1: la IP de web es la única de TRUSTED_PROXIES.
+  ip_web="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$("${DC[@]}" ps -q web)" | tr -d '\r')"
+  confianza="$(grep -E '^TRUSTED_PROXIES=' .env | cut -d= -f2 | tr -d '\r')"
+  if [ "$confianza" != "$ip_web/32" ]; then
+    echo "compose-smoke: web está en $ip_web y TRUSTED_PROXIES=$confianza (deben coincidir)" >&2; exit 1
+  fi
+  echo "compose-smoke: web en $ip_web = TRUSTED_PROXIES"
   bash scripts/ci/web-smoke.sh
   # US-038: cabeceras de seguridad y CSP con nonce contra el stack construido.
   [ -f scripts/smoke/headers.sh ] && bash scripts/smoke/headers.sh

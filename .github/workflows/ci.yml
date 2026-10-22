@@ -1,6 +1,6 @@
-# CI de APEX (US-003, US-004, US-008). Jobs: api, web, images, scripts.
-# Los nombres de los jobs son los checks obligatorios de la protección de main;
-# no se renombran.
+# CI de APEX (US-003, US-004, US-008). Jobs: api, web, images, scripts, secrets-scan y,
+# desde S2-W0-1 (US-068), e2e-stack. Los nombres de los jobs son los checks obligatorios
+# de la protección de main; no se renombran, solo se agregan.
 name: ci
 
 on:
@@ -198,6 +198,82 @@ jobs:
           cp .env.example .env
           bash scripts/ci/compose-smoke.sh
 
+  e2e-stack:
+    # S2-W0-1 (US-068 DevOps, S2-D52): Playwright (proyecto stack) contra el stack de
+    # producción de Compose construido aquí (Nginx + api + db), con capturas en 320, 768,
+    # 1024 y 1440 px en claro y oscuro subidas como artefacto.
+    name: e2e-stack
+    runs-on: ubuntu-24.04
+    needs: [images]
+    env:
+      DC: docker compose --env-file .env -f infra/compose.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: entorno y .env.seed efímero
+        run: |
+          cp .env.example .env
+          umask 077
+          {
+            echo "ADMIN_EMAIL=admin@ci.apex.local"
+            echo "ADMIN_INITIAL_PASSWORD=$(openssl rand -hex 16)"
+          } > .env.seed
+      - name: build y llaves
+        run: |
+          $DC build
+          $DC up -d db
+          $DC --profile tools run --rm tools init-keys
+      - name: levantar el stack
+        run: $DC up -d --build
+      - name: esperar api y web healthy
+        run: |
+          for svc in api web; do
+            for i in $(seq 1 40); do
+              estado="$(docker inspect -f '{{.State.Health.Status}}' "$($DC ps -q "$svc")" 2>/dev/null || true)"
+              [ "$estado" = "healthy" ] && { echo "$svc healthy"; break; }
+              [ "$i" = "40" ] && { $DC logs --tail 60 "$svc"; exit 1; }
+              sleep 3
+            done
+          done
+      - name: seed del primer admin
+        run: |
+          # --no-force-change nace en S2-B2; hasta entonces el seed corre sin él.
+          ayuda="$($DC --profile tools run --rm tools seed --help)"
+          if grep -q -- '--no-force-change' <<< "$ayuda"; then
+            $DC --profile tools run --rm tools seed --no-force-change
+          else
+            $DC --profile tools run --rm tools seed
+          fi
+      - name: dependencias del front
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: playwright contra el stack
+        working-directory: web
+        env:
+          E2E_BASE_URL: http://localhost:80
+        run: npm run e2e:stack -- --pass-with-no-tests
+      - name: capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stack-captures
+          path: web/test-results/captures/
+          if-no-files-found: warn
+      - name: logs del stack
+        if: failure()
+        run: $DC logs --tail 200
+      - name: bajar el stack
+        if: always()
+        run: |
+          $DC down -v --remove-orphans
+          rm -f .env.seed
+
   scripts:
     name: scripts
     runs-on: ubuntu-24.04
@@ -215,7 +291,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: sin archivos de llave ni .env versionados
-        run: bash scripts/ci/check-key-files.sh
+        run: |
+          bash scripts/ci/test_check_key_files.sh
+          bash scripts/ci/check-key-files.sh
       - name: gitleaks sobre el historial
         run: |
           docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \

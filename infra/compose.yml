@@ -3,6 +3,9 @@
 # `--env-file .env` es obligatorio: Compose interpola ${WEB_PORT:-80} desde la carpeta
 # de este archivo, no desde la raíz (CRITICA-2 N-4). Los secretos entran solo por
 # env_file; nunca se escriben aquí. db no publica puerto en producción.
+# S2-W0-1: red por defecto con subred fija y `web` (Nginx) con IP fija, para que
+# TRUSTED_PROXIES confíe solo en esa IP /32 (M-1); ADMIN_* solo llega a `tools` por
+# .env.seed (M-8), nunca a api, worker ni db.
 name: apex
 
 services:
@@ -56,10 +59,15 @@ services:
 
   tools:
     # Comandos del CLI: docker compose run --rm tools init-keys | seed | rotate-key ...
-    # Única vía con escritura sobre el volumen keys.
+    # Única vía con escritura sobre el volumen keys y único servicio que lee .env.seed
+    # (ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD; se borra tras el primer seed). Opcional:
+    # init-keys y los demás comandos no lo necesitan (Compose >= 2.24).
     image: apex-api:local
     entrypoint: ["python", "-m", "app.cli"]
-    env_file: ../.env
+    env_file:
+      - ../.env
+      - path: ../.env.seed
+        required: false
     volumes:
       - keys:/run/apex/keys
       - uploads:/data/uploads
@@ -75,6 +83,10 @@ services:
     image: apex-web:local
     ports:
       - "${WEB_PORT:-80}:80"
+    networks:
+      default:
+        # Fuera del ip_range dinámico: ningún otro contenedor puede tomarla.
+        ipv4_address: 172.30.0.10
     depends_on:
       api:
         condition: service_started
@@ -84,6 +96,15 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # Verificada libre en este host (docker network inspect) el 2026-10-21; si choca
+        # con otra red, usar 172.31.0.0/24 y mover web y TRUSTED_PROXIES con ella.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
 
 volumes:
   pgdata:

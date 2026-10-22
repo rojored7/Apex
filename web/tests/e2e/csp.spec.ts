@@ -11,7 +11,7 @@ const MARKER = "__CSP_NONCE__";
 const NONCE = "0123456789abcdef0123456789abcdef";
 const CSP =
   `default-src 'self'; script-src 'self' 'nonce-${NONCE}'; style-src 'self'; img-src 'self' data:; ` +
-  "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'";
+  "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
 
 const REAL_BASE = process.env.CSP_BASE_URL;
 

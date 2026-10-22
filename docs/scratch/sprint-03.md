@@ -294,3 +294,36 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - Desviaciones: ninguna prueba del Rojo cambió; se agregaron 4 casos por la revisión. La
   evidencia de los gates, Docker y H-3 va en el commit `docs(sprint-03): evidencia de S3-W0-2`
   (E8).
+
+### Evidencia de S3-W0-2 (después del sello; E8)
+
+- Gates W0-2.6 con `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo de los 21 archivos, seguidos y
+  sin editar entre ellos, todos en verde al primer intento (cada uno con `tests/architecture`):
+  1 `core/config` 241 ok; 2 `core/ratelimit` 212; 3 `core/security` 200; 4 `core/pagination`
+  184; 5 `core/errors` 193; 6 `members` 216 y `plans` 224; 7 `cli` 189; 8 `architecture` 172;
+  9 (sella) `core/db` 204. Una saltada en cada uno (`test_no_sensitive_in_logs`, US-074).
+- Docker (sin tocar el árbol): la recarga por bind recogió el código; imagen del api
+  reconstruida por `cli.py` (`docker buildx build --load --network host --allow network.host -t
+  apex-api:local -f api/Dockerfile api`) y `$DC up -d --no-build api` → `healthy` en 6 s,
+  `migraciones al día`, sin errores; `/api/v1/health` 200 por `:8180`; `alembic current` =
+  `0007_plans (head)`. Un engine de `create_engine_from` dentro del contenedor responde
+  `lock_timeout=10s`, `statement_timeout=30s`, `idle_in_transaction_session_timeout=1min`.
+- Demostración de H-3 por Nginx `:8180`, con un access del admin firmado dentro del contenedor del
+  api (no hay `.env.seed`, S3-D64):
+  - psql en `apex-db-1`: `BEGIN; SELECT pg_advisory_xact_lock(4270002);` (`AUDIT_CHAIN_LOCK_KEY`
+    de `core/audit.py`) a las 20:55:08.1 UTC, retenido 20 s con `pg_sleep(20)` y `ROLLBACK` a las
+    20:55:28.2;
+  - `POST /api/v1/members` a las 20:55:10.9 → **503** `{"error": {"code": "busy", "message":
+    "La base de datos está ocupada; intenta de nuevo en un momento."}}` en **10,02 s**, con
+    `Retry-After: 1` y `Cache-Control: no-store`; log del api: `WARNING` `app.db` `db busy` con
+    `sqlstate: 55P03` y la línea `http_request` `status: 503`, `duration_ms: 10018.75`, ningún
+    `ERROR` ni traza;
+  - tras el `ROLLBACK`, el mismo `POST` a las 20:55:28.2 → **201** en 0,03 s (socio de prueba
+    "Demo Hache Tres", CC terminado en 4599, `active`, queda en la base de desarrollo).
+  - Observación previa al slice: por `:8180` toda respuesta del api lleva dos `Cache-Control:
+    no-store` (el del api y el `add_header ... always` de `infra/nginx/snippets/proxy-api.conf`);
+    pasa igual con `GET /plans`, no lo introduce W0-2 y es inocuo (mismo valor).
+- `$DC run --rm tools --db-timeouts off export-openapi /tmp/o.json` → `openapi: escrito`, código
+  0; `--db-timeouts quizas` → "Invalid value for --db-timeouts", código 2. `pg_stat_activity`
+  sin sesiones `idle in transaction` al terminar.
+- Checkpoint `5e84bab`; `git status` limpio después.

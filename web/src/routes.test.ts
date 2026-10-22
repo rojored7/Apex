@@ -57,13 +57,19 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("en el Sprint 2 el acceso (S2-F3, S2-F4a), Inicio, Usuarios (S2-F4a) y Configuración (S2-F5) tienen página; las del sprint que faltan quedan pendientes", () => {
-    expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual(["/login", "/recuperar", "/restablecer/:token", "/cambiar-clave", "/", "/sistema/usuarios", "/sistema/configuracion"]);
-    expect(
-      ROUTE_TABLE.filter((r) => r.pending)
-        .map((r) => r.path)
-        .sort(),
-    ).toEqual(["/planes", "/socios", "/socios/nuevo"].sort());
+  it("en el Sprint 2 el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Usuarios (S2-F4a) y Configuración (S2-F5) tienen página; las del sprint que faltan quedan pendientes", () => {
+    expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual([
+      "/login",
+      "/recuperar",
+      "/restablecer/:token",
+      "/cambiar-clave",
+      "/",
+      "/socios",
+      "/socios/nuevo",
+      "/sistema/usuarios",
+      "/sistema/configuracion",
+    ]);
+    expect(ROUTE_TABLE.filter((r) => r.pending).map((r) => r.path)).toEqual(["/planes"]);
     for (const route of ROUTE_TABLE.filter((r) => r.load || r.pending)) expect(ENABLED_FEATURES.has(route.feature as never)).toBe(true);
   });
 });

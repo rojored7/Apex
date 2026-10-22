@@ -1,0 +1,62 @@
+/* S2-F6: secciones de Socio_Form.html (fieldset + legend .w-h2, rejilla .w-g2, casilla .w-chk).
+   Solo variables de tokens.css. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--control);
+  color: var(--ink);
+  font: var(--text-body);
+  cursor: pointer;
+}
+
+.checkbox {
+  flex: 0 0 auto;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--blue-deep);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+@media (width < 768px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

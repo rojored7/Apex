@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-type ModuleName = "Button" | "Field" | "StatusTag";
+type ModuleName = "Button" | "Field" | "StatusTag" | "PageHeader";
 
 function readModule(name: ModuleName): string {
   return readFileSync(fileURLToPath(new URL(`./${name}.module.css`, import.meta.url)), "utf8");
@@ -50,5 +50,19 @@ describe("estilos de los componentes base", () => {
   it("marca los dos huecos de diseño conocidos", () => {
     expect(readModule("Button")).toContain("/* DESIGN-GAP: variante ghost no definida en DESIGN.md */");
     expect(readModule("StatusTag")).toContain("/* DESIGN-GAP: estilo de Cancelado no definido; se usa el de Congelado */");
+  });
+
+  it("un enlace con aspecto de botón (acción con href de PageHeader) no lleva subrayado", () => {
+    expect(ruleBodies(readModule("Button"), /^\s*\.button\s*$/).join(";")).toMatch(/text-decoration\s*:\s*none/);
+  });
+
+  // S2-F6: --blue-deep sobre --surface da 4,48:1 (menos de 4,5:1, WCAG AA); jsdom no lo mide.
+  it("las migas de PageHeader no usan --blue-deep en reposo sobre --surface", () => {
+    const css = readModule("PageHeader");
+    const rest = ruleBodies(css, /\.crumbLink\s*$/).join(";");
+
+    expect(rest).toMatch(/color\s*:\s*var\(--ink\)/);
+    expect(rest).not.toMatch(/--blue-deep/);
+    expect(rest).toMatch(/text-decoration\s*:\s*underline/);
   });
 });

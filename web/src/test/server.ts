@@ -25,6 +25,8 @@ export interface RecordedCall {
   body: unknown;
   /** `credentials` del `RequestInit` (S2-D44: siempre "same-origin"). */
   credentials: RequestCredentials | undefined;
+  /** S2-F6: la señal con la que salió la petición (cancelación de TanStack Query). */
+  signal: AbortSignal | null;
 }
 
 export interface ApiMock {
@@ -59,6 +61,7 @@ export function mockApi(handlers: Record<string, MockHandler>): ApiMock {
       headers: new Headers(init?.headers),
       body: parseBody(init),
       credentials: init?.credentials,
+      signal: init?.signal ?? null,
     };
     calls.push(call);
     const handler = handlers[`${method} ${path}`];

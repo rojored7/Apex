@@ -1,0 +1,96 @@
+/* S2-F6: Socios_Lista.html (lista de socios). Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+/* Aviso del alta: borde azul; si falta la autorización, la segunda línea va con --warning. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.noticeText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.noticeText > p {
+  margin: 0;
+}
+
+.warning {
+  padding-left: var(--space-2);
+  border-left: var(--space-1) solid var(--warning);
+  font-weight: 600;
+}
+
+.dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background: var(--card);
+}
+
+.dismiss:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* "Registrar el primer socio": enlace con el aspecto del botón principal. */
+.firstMember {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--apex-blue);
+  border-radius: var(--radius-md);
+  background: var(--apex-blue);
+  color: var(--black);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.firstMember:hover {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--white);
+}
+
+.firstMember:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

@@ -7,6 +7,9 @@
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font: var(--text-button);
+
+  /* S2-F6: las acciones con href de PageHeader son <a> con este aspecto: sin el subrayado del enlace. */
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color 120ms ease,

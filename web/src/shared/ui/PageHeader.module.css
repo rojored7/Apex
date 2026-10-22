@@ -25,13 +25,16 @@
   color: var(--muted);
 }
 
+/* S2-F6: las migas van sobre --surface, donde --blue-deep da 4,48:1 (axe lo marca en claro).
+   El enlace va en --ink subrayado; el azul queda para el hover. */
 .crumbLink {
-  color: var(--blue-deep);
-  text-decoration: none;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .crumbLink:hover {
-  text-decoration: underline;
+  color: var(--blue-deep);
 }
 
 .crumbLink:focus-visible {

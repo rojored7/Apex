@@ -48,8 +48,9 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
 
   // Panel. Inicio mínima hasta GET /dashboard (S2-D25).
   route("/", "Inicio", "dashboard", "dashboard.view", "panel", { load: () => import("../features/dashboard/pages/InicioPage") }),
-  route("/socios", "Socios", "members", "members.view", "panel", PENDING),
-  route("/socios/nuevo", "Nuevo socio", "members", "members.create", "panel", PENDING),
+  // S2-F6: lista (US-070) y alta (US-069).
+  route("/socios", "Socios", "members", "members.view", "panel", { load: () => import("../features/members/pages/MembersListPage") }),
+  route("/socios/nuevo", "Nuevo socio", "members", "members.create", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   // S2-D34: la ficha y la edición llegan con S3-B9 y S3-F1; hasta entonces dan 404.
   route("/socios/:id", "Ficha del socio", "members", "members.view", "panel"),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel"),

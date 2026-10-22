@@ -1,0 +1,79 @@
+/* S2-F6: Socio_Form.html (caja del formulario de 920 px y barra de acciones). Solo tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  box-sizing: border-box;
+  max-width: 920px;
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.note {
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* Cancelar es un enlace con el aspecto del botón secundario (borde negro). */
+.cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.cancel:hover {
+  background: var(--blue-tint);
+}
+
+.cancel:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+@media (width < 768px) {
+  .form {
+    padding: var(--space-4);
+  }
+}

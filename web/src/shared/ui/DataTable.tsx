@@ -19,6 +19,8 @@ export interface Column<T> {
   render: (row: T) => ReactNode;
   sortable?: boolean;
   align?: "start" | "end";
+  /** En celular, la tarjeta da a este campo todo el ancho (S2-F4b: las acciones de la fila). */
+  wide?: boolean;
 }
 
 export interface DataTableProps<T> {
@@ -120,7 +122,7 @@ function Cards<T>({ caption, columns, rows, rowKey, rowHref }: Pick<DataTablePro
           ) : null}
           <dl className={styles.cardFields}>
             {rest.map((column) => (
-              <div key={column.key} className={styles.cardField}>
+              <div key={column.key} className={cx(styles.cardField, column.wide && styles.cardFieldWide)}>
                 <dt className={styles.cardLabel}>{column.header}</dt>
                 <dd className={styles.cardValue}>{column.render(row)}</dd>
               </div>

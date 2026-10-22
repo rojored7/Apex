@@ -20,6 +20,7 @@ import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { SidePanel } from "../../../shared/ui/SidePanel";
 import { useCreateUser, type CreatedUser } from "../api";
+import { LinkField } from "./LinkField";
 import { userHref } from "../userLinks";
 import { createUserSchema, type CreateUserForm } from "../schemas";
 import styles from "./NewUserPanel.module.css";
@@ -40,8 +41,6 @@ const NEW_USER_MESSAGES = {
   tooMany: "Demasiados intentos. Espera un momento y vuelve a intentarlo.",
   server: "No pudimos crear el usuario. Intenta de nuevo en un momento.",
   generic: "No pudimos crear el usuario. Revisa los datos e intenta de nuevo.",
-  copied: "Enlace copiado.",
-  copyFailed: "No pudimos copiar el enlace. Selecciónalo y cópialo a mano.",
 } as const;
 
 const DEFAULTS: CreateUserForm = { email: "", role: DEFAULT_STAFF_ROLE };
@@ -64,42 +63,11 @@ function generalMessage(error: unknown): string {
   return NEW_USER_MESSAGES.generic;
 }
 
-type CopyState = "idle" | "copied" | "failed";
-
 function CreatedLink({ created }: { created: CreatedUser }) {
-  const [copy, setCopy] = useState<CopyState>("idle");
-  const onCopy = async (): Promise<void> => {
-    try {
-      // Sin portapapeles (contexto inseguro) `clipboard` no existe y también cae en el catch.
-      await navigator.clipboard.writeText(created.activationUrl);
-      setCopy("copied");
-    } catch {
-      setCopy("failed");
-    }
-  };
   return (
     <div className={styles.created}>
       <p className={styles.done}>{`Usuario creado: ${created.email}`}</p>
-      <div className={styles.copyRow}>
-        <Field
-          label="Enlace de activación"
-          name="activation_url"
-          readOnly
-          value={created.activationUrl}
-          onFocus={(event) => {
-            event.currentTarget.select();
-          }}
-        />
-        <Button variant="secondary" onClick={() => void onCopy()}>
-          Copiar
-        </Button>
-      </div>
-      {copy !== "idle" ? (
-        <p className={styles.status} role="status">
-          {copy === "copied" ? NEW_USER_MESSAGES.copied : NEW_USER_MESSAGES.copyFailed}
-        </p>
-      ) : null}
-      <p className={styles.warning}>{LINK_HANDOFF}</p>
+      <LinkField label="Enlace de activación" name="activation_url" url={created.activationUrl} handoff={LINK_HANDOFF} />
       {/* formatDateTime ya termina en "a. m." o "p. m.": no lleva otro punto. */}
       <p className={styles.note}>{`Vence el ${formatDateTime(created.expiresAt)} Al cerrar este panel ya no se puede volver a ver.`}</p>
     </div>

@@ -1,0 +1,30 @@
+/* S2-F4b: reenvío del enlace (Usuarios). Solo tokens.css. */
+.text {
+  margin: 0;
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.purpose {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+  font-weight: 700;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

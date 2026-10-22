@@ -1,0 +1,38 @@
+/* S2-F4b: panel de edición de Usuarios.html. Solo tokens.css. */
+.form,
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.done {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.warning,
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.error {
+  border-color: var(--danger);
+}

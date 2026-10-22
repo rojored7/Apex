@@ -33,3 +33,5 @@ export type { SideNavProps } from "./SideNav";
 export { cx } from "./cx";
 export { ACCOUNT_LABELS, ACCOUNT_TONES, STATUS_LABELS, STATUS_TONES, accountLabel, accountTone, statusLabel, statusTone } from "./statusLabel";
 export type { AccountStatusView, MembershipStatusView, StatusTone } from "./statusLabel";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";

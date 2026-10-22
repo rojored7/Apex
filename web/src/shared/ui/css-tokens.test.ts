@@ -20,8 +20,8 @@ const NEW_IN_SPRINT_1 = [
   "MaskedValue",
   "HistoryAside",
 ];
-// US-061: barra superior y menú lateral.
-const NEW_IN_SPRINT_2 = ["TopBar", "SideNav"];
+// US-061: barra superior y menú lateral; S2-F4b: diálogo de contenido (Modal).
+const NEW_IN_SPRINT_2 = ["TopBar", "SideNav", "Modal"];
 const WITH_FOCUS = [...NEW_IN_SPRINT_1, ...NEW_IN_SPRINT_2];
 
 const read = (file: string): string => readFileSync(`${DIR}${file}`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");

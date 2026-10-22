@@ -1,0 +1,51 @@
+/* S2-F4b: diálogo de contenido (mismo velo y caja que ConfirmModal). Solo tokens.css.
+   DESIGN-GAP: tokens.css no define un color de velo para modales; se usa --black al 45 %. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--black) 45%, transparent);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: calc(var(--sidebar) * 2.5);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+}
+
+.modal:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.title {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

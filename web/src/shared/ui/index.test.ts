@@ -32,4 +32,8 @@ describe("kit compartido src/shared/ui", () => {
     expect(typeof ui.TopBar).toBe("function");
     expect(typeof ui.SideNav).toBe("function");
   });
+
+  it("exporta el diálogo de contenido de S2-F4b", () => {
+    expect(typeof ui.Modal).toBe("function");
+  });
 });

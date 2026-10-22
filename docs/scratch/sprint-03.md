@@ -145,3 +145,13 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - Desviaciones: `npm audit` de desarrollo con 7 high residuales sin arreglo publicado (arriba);
   digest de `nginx:stable-alpine` distinto del anotado en L3; build local por buildx directo en
   lugar de `$DC build`.
+
+### Evidencia de S3-W0-1 (posterior al sello, E8)
+
+- Gate que sella: `slice-gate.sh web/app tests/unit/playwright-config.test.ts tests/unit/index-html.test.ts tests/unit/no-role-literals.test.ts tests/lint/boundaries.test.ts`
+  en verde al primer intento: eslint 0 errores (1 aviso previo: `tests/lint/boundaries.test.ts` está en
+  el patrón de ignorados de eslint), `tsc -p tsconfig.slice.json` limpio, vitest 4 archivos y 24 pruebas.
+- Revisión de los scripts por `code-reviewer` antes del sello: sin hallazgos CRITICAL, HIGH ni MEDIUM.
+  Nota menor: un `FROM --platform=...`, `FROM scratch` o un `FROM <etapa>` daría un rojo ruidoso en
+  `test_images_pinned.sh` (hoy no existe ninguno).
+- Checkpoint `452453b` (`chore(checkpoint): chore(sprint-03): S3-W0-1 ...`); `git status` limpio después.

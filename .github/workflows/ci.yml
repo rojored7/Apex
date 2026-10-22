@@ -1,6 +1,10 @@
 # CI de APEX (US-003, US-004, US-008). Jobs: api, web, images, scripts, secrets-scan y,
 # desde S2-W0-1 (US-068), e2e-stack. Los nombres de los jobs son los checks obligatorios
 # de la protección de main; no se renombran, solo se agregan.
+# Revisión de Fase 4 del Sprint 2 (L3): toda acción va fijada por el SHA de su commit, con la
+# versión en el comentario, y todo job tiene `timeout-minutes`. Para subir una acción:
+# `git ls-remote https://github.com/<dueño>/<acción> refs/tags/<versión>` y cambiar SHA y
+# comentario juntos.
 name: ci
 
 on:
@@ -24,9 +28,12 @@ jobs:
   api:
     name: api
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        # postgres:16 fijado por digest (L3); se renueva con
+        # `docker buildx imagetools inspect postgres:16`.
+        image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
         env:
           POSTGRES_USER: apex
           POSTGRES_PASSWORD: apex-ci
@@ -41,8 +48,8 @@ jobs:
       # Contraseña de CI sin valor fuera de este workflow; nunca un secreto real.
       TEST_DATABASE_URL: postgresql+asyncpg://apex:apex-ci@localhost:5432/apex_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: api/uv.lock
@@ -70,7 +77,14 @@ jobs:
           fi
       - name: pruebas con PostgreSQL 16 y cobertura
         working-directory: api
-        run: uv run pytest --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
+        # Política `perf` (M4, S2-D27): las pruebas con reloj quedan fuera del gate y corren
+        # en el paso siguiente, que informa sin bloquear.
+        run: uv run pytest -m "not perf" --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
+      - name: pruebas de rendimiento (perf, informativas)
+        working-directory: api
+        continue-on-error: true
+        timeout-minutes: 10
+        run: uv run pytest -m perf -q
       - name: resumen de cobertura
         if: always()
         working-directory: api
@@ -79,12 +93,18 @@ jobs:
             rate="$(grep -o 'line-rate="[0-9.]*"' coverage.xml | head -1 | cut -d'"' -f2)"
             echo "### Cobertura del api: $(awk "BEGIN { printf \"%.1f\", ${rate:-0} * 100 }") %" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: coverage-api
           path: api/coverage.xml
           if-no-files-found: ignore
+      - name: auditoría de dependencias del api (pip-audit, N-5)
+        working-directory: api
+        # Dependencias de runtime fijadas en uv.lock, con hashes; sin el proyecto propio.
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements.txt -o "$RUNNER_TEMP/requirements-audit.txt"
+          uvx pip-audit@2.10.1 --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements-audit.txt"
       - name: licencias-api
         run: |
           bash scripts/ci/check-licenses-api.sh
@@ -97,13 +117,14 @@ jobs:
   web:
     name: web
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: detectar front
         id: front
         run: |
           if [ -f web/package.json ]; then echo "existe=true" >> "$GITHUB_OUTPUT"; else echo "existe=false" >> "$GITHUB_OUTPUT"; echo "sin web/package.json: el job web no hace nada todavía"; fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.front.outputs.existe == 'true'
         with:
           node-version: 22
@@ -121,10 +142,23 @@ jobs:
         if: steps.front.outputs.existe == 'true'
         working-directory: web
         run: npx tsc --noEmit
-      - name: pruebas
+      - name: tipos del api al día (src/core/api/types.ts, M3)
         if: steps.front.outputs.existe == 'true'
         working-directory: web
-        run: npm test -- --run
+        run: |
+          npm run gen:api
+          if ! git diff --exit-code src/core/api/types.ts; then
+            echo "::error::web/src/core/api/types.ts no coincide con docs/openapi.json. Corra: cd web && npm run gen:api"
+            exit 1
+          fi
+      - name: pruebas con cobertura (M2)
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm test -- --run --coverage
+      - name: auditoría de dependencias de producción (npm audit, N-5)
+        if: steps.front.outputs.existe == 'true'
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
       - name: build
         if: steps.front.outputs.existe == 'true'
         working-directory: web
@@ -153,20 +187,26 @@ jobs:
   images:
     name: images
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: [api]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: detectar Dockerfiles
         id: img
         run: |
           [ -f api/Dockerfile ] && echo "api=true" >> "$GITHUB_OUTPUT" || echo "api=false" >> "$GITHUB_OUTPUT"
           [ -f web/Dockerfile ] && echo "web=true" >> "$GITHUB_OUTPUT" || echo "web=false" >> "$GITHUB_OUTPUT"
           [ -f scripts/ci/compose-smoke.sh ] && echo "smoke=true" >> "$GITHUB_OUTPUT" || echo "smoke=false" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         if: steps.img.outputs.api == 'true' || steps.img.outputs.web == 'true'
+      # test_compose_config.sh lee el JSON de `docker compose config` con el Python del api.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
       - name: build api
         if: steps.img.outputs.api == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: api
           file: api/Dockerfile
@@ -183,7 +223,7 @@ jobs:
         run: bash scripts/ci/check-image-secrets.sh apex-api:ci
       - name: build web
         if: steps.img.outputs.web == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: web/Dockerfile
@@ -192,6 +232,13 @@ jobs:
           tags: apex-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: configuración de Nginx y de Compose (M1)
+        # Antes del smoke: `nginx -t` y el contrato de infra/nginx (contenedor desechable), y
+        # `docker compose config` de producción, desarrollo y E2E (copia .env.example a .env
+        # si falta).
+        run: |
+          bash scripts/ci/test_nginx_conf.sh
+          bash scripts/ci/test_compose_config.sh
       - name: smoke de Compose
         if: steps.img.outputs.smoke == 'true'
         run: |
@@ -204,6 +251,7 @@ jobs:
     # 1024 y 1440 px en claro y oscuro subidas como artefacto.
     name: e2e-stack
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     needs: [images]
     env:
       # V4 del Sprint 2 (E5): perfil E2E del borde. compose.e2e.yml monta sobre la zona de
@@ -211,8 +259,8 @@ jobs:
       # a Nginx desde la misma IP y la suite agota los 60r/m con ráfaga 30 en segundos.
       DC: docker compose --env-file .env -f infra/compose.yml -f infra/compose.e2e.yml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -226,10 +274,18 @@ jobs:
             -e 's/^LOGIN_ACCOUNT_GLOBAL_LIMIT=.*/LOGIN_ACCOUNT_GLOBAL_LIMIT=10000/' .env
           grep -E '^(LOGIN|REFRESH|RESET|FORGOT|LOGOUT)_[A-Z_]*(LIMIT|AFTER)=' .env
           umask 077
+          clave="$(openssl rand -hex 16)"
+          # La máscara va antes de cualquier uso: desde aquí el valor sale como *** en el log.
+          echo "::add-mask::$clave"
           {
             echo "ADMIN_EMAIL=admin@ci.apex.local"
-            echo "ADMIN_INITIAL_PASSWORD=$(openssl rand -hex 16)"
+            echo "ADMIN_INITIAL_PASSWORD=$clave"
           } > .env.seed
+          # datosDeBase() (web/tests/e2e/helpers/stack.ts) exige el admin del seed (H1, V3).
+          {
+            echo "E2E_ADMIN_EMAIL=admin@ci.apex.local"
+            echo "E2E_ADMIN_PASSWORD=$clave"
+          } >> "$GITHUB_ENV"
       - name: build y llaves
         run: |
           $DC build
@@ -248,14 +304,9 @@ jobs:
             done
           done
       - name: seed del primer admin
-        run: |
-          # --no-force-change nace en S2-B2; hasta entonces el seed corre sin él.
-          ayuda="$($DC --profile tools run --rm tools seed --help)"
-          if grep -q -- '--no-force-change' <<< "$ayuda"; then
-            $DC --profile tools run --rm tools seed --no-force-change
-          else
-            $DC --profile tools run --rm tools seed
-          fi
+        # --no-force-change (S2-B2) solo se acepta con ENV=dev, el valor de .env.example: las
+        # specs no pasan por el cambio obligatorio de contraseña.
+        run: $DC --profile tools run --rm tools seed --no-force-change
       - name: dependencias del front
         working-directory: web
         run: |
@@ -265,16 +316,12 @@ jobs:
         working-directory: web
         env:
           E2E_BASE_URL: http://localhost:80
-        # datosDeBase() exige el admin del seed (V3 del plan): sale del .env.seed efímero.
-        run: |
-          E2E_ADMIN_EMAIL="$(grep -E '^ADMIN_EMAIL=' ../.env.seed | cut -d= -f2-)"
-          E2E_ADMIN_PASSWORD="$(grep -E '^ADMIN_INITIAL_PASSWORD=' ../.env.seed | cut -d= -f2-)"
-          echo "::add-mask::$E2E_ADMIN_PASSWORD"
-          export E2E_ADMIN_EMAIL E2E_ADMIN_PASSWORD
-          npm run e2e:stack -- --pass-with-no-tests
+        # E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD llegan por $GITHUB_ENV (paso del .env.seed).
+        # Sin --pass-with-no-tests: una suite vacía es un fallo, no un verde (H1).
+        run: npm run e2e:stack
       - name: capturas
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-stack-captures
           path: web/test-results/captures/
@@ -291,8 +338,9 @@ jobs:
   scripts:
     name: scripts
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: pruebas de los scripts de gate
         run: bash scripts/workflow/tests/run.sh
 
@@ -300,8 +348,9 @@ jobs:
     # US-039: gitleaks (MIT) sobre todo el historial del PR con .gitleaks.toml.
     name: secrets-scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: sin archivos de llave ni .env versionados

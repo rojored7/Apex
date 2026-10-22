@@ -3,6 +3,9 @@
 - `redact`: por clave (`SENSITIVE_KEYS`, sin distinguir mayúsculas) y por forma del
   valor (blobs `apx1.` y JWT), recursiva, también dentro del texto del mensaje y
   de la traza.
+- S2-B3 (blueprint 7.2): el token de un enlace `/restablecer/<token>` y el valor de la
+  cookie `apex_refresh=<valor>` (los atributos de la cookie se conservan); las claves
+  `activation_url`, `url` y `set-cookie` se redactan enteras.
 - `JsonFormatter`: una línea JSON por registro con `timestamp` UTC, `level`,
   `logger`, `message`, `request_id` y los extras.
 - `configure_logging`: idempotente; apaga el log de acceso de Uvicorn (lo reemplaza
@@ -52,12 +55,19 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "dek",
         "secret",
         "database_url",
+        "activation_url",
+        "url",
+        "set-cookie",
     }
 )
 REDACTED = "[redacted]"
 _BLOB = re.compile(r"apx1\.[A-Za-z0-9._-]+")
 _JWT = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
 _DSN = re.compile(r"://[^@/\s]+@")  # credenciales dentro de una URL: usuario:clave@
+# Enlace de un solo uso: el segmento que sigue a `/restablecer/` es el token (blueprint 7.2).
+_RESET_LINK = re.compile(r"(/restablecer/|%2Frestablecer%2F)[^\s/?#\"'&<>%]+", re.IGNORECASE)
+# Valor de la cookie del refresh, hasta el primer separador de atributos.
+_REFRESH_COOKIE = re.compile(r"(apex_refresh=)[^;\s,\"']+")
 _ATRIBUTOS_ESTANDAR = set(vars(logging.LogRecord("x", 0, "", 0, "", (), None))) | {
     "message",
     "asctime",
@@ -69,8 +79,11 @@ access_logger = logging.getLogger("app.access")
 
 
 def redact_text(text: str) -> str:
-    """Reemplaza blobs `apx1.` y JWT dentro de un texto libre."""
-    return _DSN.sub("://[redacted]@", _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text)))
+    """Reemplaza blobs `apx1.`, JWT, credenciales de URL, tokens de `/restablecer/` y el valor
+    de `apex_refresh=` dentro de un texto libre."""
+    limpio = _DSN.sub("://[redacted]@", _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text)))
+    limpio = _RESET_LINK.sub(rf"\g<1>{REDACTED}", limpio)
+    return _REFRESH_COOKIE.sub(rf"\g<1>{REDACTED}", limpio)
 
 
 def _redact_value(value: Any) -> Any:

@@ -35,3 +35,14 @@ async def actor(
         "actor": str(valor) if valor else None,
         "member_id": str(principal.member_id) if principal.member_id else None,
     }
+
+
+@router.get("/pendiente")
+async def pendiente(
+    principal: Annotated[
+        Principal,
+        Depends(require_role("admin", "coach", "member", allow_pending_password=True)),
+    ],
+) -> dict[str, bool]:
+    """Como `GET /auth/me`: admite una cuenta que debe cambiar la contraseña (M-8, S2-B3)."""
+    return {"must_change_password": principal.must_change_password}

@@ -384,6 +384,7 @@ from app.core.db import get_session  # noqa: E402
 from app.core.errors import ForbiddenError, UnauthorizedError  # noqa: E402
 
 SESSION_INVALID_MESSAGE: Final = "Sesión no válida."
+PASSWORD_CHANGE_REQUIRED_MESSAGE: Final = "Debes cambiar tu contraseña para continuar."  # noqa: S105
 
 
 @dataclass(frozen=True)
@@ -465,8 +466,16 @@ async def current_user(
     return principal
 
 
-def require_role(*roles: Role) -> Callable[..., Awaitable[Principal]]:
-    """Dependencia por ruta: exige `current_user` y uno de `roles`; marca `__apex_roles__`."""
+def require_role(
+    *roles: Role, allow_pending_password: bool = False
+) -> Callable[..., Awaitable[Principal]]:
+    """Dependencia por ruta: exige `current_user` y uno de `roles`; marca `__apex_roles__`.
+
+    `allow_pending_password` (M-8, S2-B3): solo `GET /auth/me` y `POST /auth/me/password` lo
+    piden; las demás rutas responden 403 `password_change_required` a un principal con
+    `must_change_password`. FastAPI resuelve las dependencias antes de validar el cuerpo, así
+    que el 403 sale primero. El rol se revisa antes: un rol ajeno sigue siendo `forbidden`.
+    """
     if not roles:
         raise ValueError("require_role exige al menos un rol")
     desconocidos = [r for r in roles if r not in ROLES]
@@ -477,6 +486,8 @@ def require_role(*roles: Role) -> Callable[..., Awaitable[Principal]]:
     async def _dependencia(principal: Principal = Depends(current_user)) -> Principal:  # noqa: B008
         if not role_allowed(principal.role, permitidos):
             raise ForbiddenError("forbidden")
+        if principal.must_change_password and not allow_pending_password:
+            raise ForbiddenError("password_change_required", PASSWORD_CHANGE_REQUIRED_MESSAGE)
         return principal
 
     _dependencia.__apex_roles__ = permitidos  # type: ignore[attr-defined]

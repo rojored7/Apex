@@ -25,6 +25,13 @@ US-043 y US-044).
 - `logout` por la cookie (H-1): revoca solo ese refresh, sin `replaced_by_id`.
 - `configure_sleeper`: la espera del piso de duración es inyectable; las pruebas la sustituyen
   por un espía que no duerme.
+- S2-B3 (US-045, US-046, US-047): `me` (usuario vigente más
+  `settings.service.gym_name`, S2-D14), `change_password` (verifica la actual, política con
+  `field="new_password"`, `revoke_all(except_id=<refresh de la cookie>)` que fija
+  `tokens_valid_after` y devuelve un access nuevo; H-3, S2-D37), `list_users` (sin el técnico,
+  `q` escapado, orden por correo, `active_sessions`) y `create_user` (admin o coach sin hash,
+  token `activate` de 72 h, `EmailTaken`; L-2). Evento `PasswordChanged` con
+  `via_link_issued_by` (L-13).
 Los logs nunca llevan el correo tecleado ni la clave del límite. `hash_password` y
 `verify_password` cuestan CPU: se envuelven en `anyio.to_thread.run_sync`.
 """
@@ -36,18 +43,23 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Final, Literal
 from uuid import UUID
 
 import anyio
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events, ratelimit
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.errors import UnauthorizedError
 from app.core.events import DomainEvent
+from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.security import (
+    SESSION_INVALID_MESSAGE,
     Principal,
     TokenInvalid,
     WeakPasswordError,
@@ -60,9 +72,14 @@ from app.core.security import (
     register_principal_loader,
     verify_password,
 )
-from app.core.security import validate_password_policy as _core_password_policy
-from app.modules.auth import tokens
-from app.modules.auth.exceptions import AuthError, InvalidCredentials, InvalidRefresh
+from app.modules.auth import rules, tokens
+from app.modules.auth.exceptions import (
+    AuthError,
+    EmailTaken,
+    InvalidCredentials,
+    InvalidCurrentPassword,
+    InvalidRefresh,
+)
 from app.modules.auth.models import RefreshToken, User
 from app.modules.auth.rules import (
     AUTH_FILTER,
@@ -74,7 +91,19 @@ from app.modules.auth.rules import (
     should_auto_lock,
     user_status,
 )
-from app.modules.auth.schemas import Role, UserSummary
+from app.modules.auth.schemas import (
+    AccessTokenOut,
+    CreateUserOut,
+    MeOut,
+    Role,
+    StaffRole,
+    UserRow,
+    UserStatus,
+    UserSummary,
+)
+
+# Arista `auth → settings` del grafo de services (S2-D53): import a nivel de módulo.
+from app.modules.settings import service as settings_service
 
 logger = logging.getLogger("app.auth")
 
@@ -100,9 +129,14 @@ RevokeReason = Literal[
 ]
 USER_AGENT_EVENT_MAX: Final = 120  # L-8: el evento guarda el agente truncado
 USER_AGENT_ROW_MAX: Final = 255  # columna `refresh_tokens.user_agent`
+EMAIL_ALIVE_INDEX: Final = "uq_users_email_alive"
 PURGE_EXPIRED_AFTER: Final = timedelta(days=30)  # L-4: purga oportunista en cada login
 ACCOUNT_BUCKET: Final = "login-account"
 ACCOUNT_GLOBAL_BUCKET: Final = "login-account-global"
+# Fallos de la contraseña actual en `POST /auth/me/password`, por usuario (revisión S2-B3).
+CHANGE_PASSWORD_BUCKET: Final = "change-password-user"  # noqa: S105 - nombre de bucket
+CHANGE_PASSWORD_USER_LIMIT: Final = 5
+CHANGE_PASSWORD_USER_WINDOW_S: Final = 900
 _REASON_BY_STATUS: Final[dict[str, LoginFailureReason]] = {
     "locked": "locked",
     "inactive": "inactive",
@@ -134,6 +168,20 @@ class UserLocked(DomainEvent):
     user_id: UUID
     by: UUID
     reason: Literal["admin", "too_many_failures"]
+
+
+PasswordChangeVia = Literal["change", "activate", "reset"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class PasswordChanged(DomainEvent):
+    """Contraseña nueva (US-046, US-048). `via_link_issued_by` es el `created_by` del enlace
+    con que se fijó (L-13); `None` en un cambio desde "Mi cuenta"."""
+
+    user_id: UUID
+    by: UUID
+    via: PasswordChangeVia
+    via_link_issued_by: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -179,16 +227,8 @@ def normalize_login_email(email: str) -> str:
 
 
 def validate_password_policy(password: str, *, current_hash: str | None = None) -> None:
-    try:
-        _core_password_policy(password)
-    except WeakPasswordError as error:
-        raise AuthError(
-            "weak_password", "La contraseña es demasiado débil.", field="password"
-        ) from error
-    if current_hash is not None and verify_password(current_hash, password):
-        raise AuthError(
-            "weak_password", "La contraseña nueva debe ser distinta de la actual.", field="password"
-        )
+    """La de `rules` con `field="password"` (seed y CLI); cambio y reset usan `new_password`."""
+    rules.validate_password_policy(password, current_hash=current_hash)
 
 
 def truncate(value: str | None, limit: int) -> str | None:
@@ -583,22 +623,227 @@ async def logout(session: AsyncSession, token: str | None) -> None:
         await session.flush()
 
 
+# Mi cuenta y usuarios (S2-B3) -------------------------------------------------------------
+
+
+async def _fresh_user(
+    session: AsyncSession, user_id: UUID, *, for_update: bool = False
+) -> User | None:
+    """El usuario leído de la base; `for_update` serializa dos cambios de contraseña."""
+    consulta = select(User).where(User.id == user_id)
+    if for_update:
+        consulta = consulta.with_for_update()
+    return await session.scalar(consulta.execution_options(populate_existing=True))
+
+
+async def me(session: AsyncSession, principal: Principal) -> MeOut:
+    """S2-D14: el usuario vigente (el cargador ya lo validó) y el nombre del gimnasio."""
+    usuario = await _fresh_user(session, principal.user_id)
+    if usuario is None:  # el cargador lo acaba de leer; solo una carrera llega aquí
+        raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    return MeOut(
+        id=usuario.id,
+        email=usuario.email,
+        role=usuario.role,
+        member_id=usuario.member_id,
+        gym_name=await settings_service.gym_name(session),
+        must_change_password=usuario.must_change_password,
+    )
+
+
+async def _own_refresh_id(session: AsyncSession, user_id: UUID, token: str | None) -> UUID | None:
+    """Id del refresh de la cookie si es del mismo usuario; otro o ilegible no protege nada."""
+    if not token:
+        return None
+    try:
+        token_hash = hash_opaque_token(token)
+    except TokenInvalid:
+        return None
+    return await session.scalar(
+        select(RefreshToken.id).where(
+            RefreshToken.token_hash == token_hash, RefreshToken.user_id == user_id
+        )
+    )
+
+
+async def change_password(
+    session: AsyncSession,
+    user_id: UUID,
+    current_password: str,
+    new_password: str,
+    *,
+    current_refresh: str | None,
+    policy: AuthPolicy,
+) -> AccessTokenOut:
+    """US-046 (H-3, S2-D37, M-8): actual, política, hash nuevo, corte y access nuevo.
+
+    Orden fijo: la actual primero (`InvalidCurrentPassword`), luego la política con
+    `field="new_password"` (incluida "distinta de la actual"). Un solo `update` auditado de
+    `auth.users`; `revoke_all` deja viva la sesión de la cookie y fija `tokens_valid_after`
+    aunque no haya otras sesiones.
+    """
+    clave = str(user_id)
+    await ratelimit.enforce(  # antes de argon2 y sin sumar (como el límite por cuenta)
+        CHANGE_PASSWORD_BUCKET,
+        clave,
+        limit=CHANGE_PASSWORD_USER_LIMIT,
+        window_s=CHANGE_PASSWORD_USER_WINDOW_S,
+        kind="user",
+        count=False,
+    )
+    usuario = await _fresh_user(session, user_id, for_update=True)
+    if not await _verify(usuario, current_password) or usuario is None:
+        await ratelimit.record(
+            CHANGE_PASSWORD_BUCKET, clave, window_s=CHANGE_PASSWORD_USER_WINDOW_S, kind="user"
+        )
+        logger.info("cambio de contraseña rechazado", extra={"user_id": clave})
+        raise InvalidCurrentPassword(field="current_password")
+    await anyio.to_thread.run_sync(
+        partial(
+            rules.validate_password_policy,
+            new_password,
+            current_hash=usuario.password_hash,
+            field="new_password",
+        )
+    )
+    nuevo_hash = await anyio.to_thread.run_sync(hash_password, new_password)
+    now = current_clock().now_utc()
+    usuario.password_hash = nuevo_hash
+    usuario.must_change_password = False
+    usuario.failed_login_count = 0
+    await session.flush()
+    conservar = await _own_refresh_id(session, user_id, current_refresh)
+    revocadas = await tokens.revoke_all(session, user_id, now=now, except_id=conservar)
+    await events.emit(
+        PasswordChanged(user_id=user_id, by=user_id, via="change", via_link_issued_by=None),
+        session,
+    )
+    if revocadas:
+        await events.emit(
+            SessionsRevoked(
+                user_id=user_id, by=user_id, revoked=revocadas, reason="password_changed"
+            ),
+            session,
+        )
+    logger.info(
+        "contraseña cambiada", extra={"user_id": str(user_id), "sesiones_revocadas": revocadas}
+    )
+    acceso = create_access_token(usuario.id, usuario.role, usuario.member_id, current_clock())  # type: ignore[arg-type]
+    return AccessTokenOut(access_token=acceso, expires_in=policy.access_ttl_s)
+
+
+async def _active_sessions(session: AsyncSession, user_ids: Sequence[UUID]) -> dict[UUID, int]:
+    """Refresh vigentes (`expires_at > ahora`, reloj de la app) y no revocados, por usuario."""
+    if not user_ids:
+        return {}
+    now = current_clock().now_utc()
+    filas = await session.execute(
+        select(RefreshToken.user_id, func.count())
+        .where(
+            RefreshToken.user_id.in_(list(user_ids)),
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now,
+        )
+        .group_by(RefreshToken.user_id)
+    )
+    return {user_id: int(total) for user_id, total in filas.all()}
+
+
+async def list_users(
+    session: AsyncSession,
+    *,
+    q: str | None,
+    role: Role | None,
+    status: UserStatus | None,
+    page: PageParams,
+) -> Page[UserRow]:
+    """US-045: sin el técnico; sin `status` excluye borrados; `q` sobre el correo con `ILIKE`
+    escapado; orden por correo; `active_sessions` en una sola consulta agregada por página."""
+    consulta = select(User).where(User.id != SYSTEM_USER_ID)
+    consulta = consulta.where(
+        User.deleted_at.is_(None) if status is None else rules.status_filter(status)
+    )
+    if role is not None:
+        consulta = consulta.where(User.role == role)
+    if q:
+        patron = "%" + rules.escape_like(q) + "%"  # valor ligado, nunca texto SQL
+        consulta = consulta.where(User.email.ilike(patron, escape=rules.LIKE_ESCAPE))
+    usuarios, total = await paginate(session, consulta.order_by(User.email.asc()), page)
+    sesiones = await _active_sessions(session, [u.id for u in usuarios])
+    filas = [rules.user_row(u, active_sessions=sesiones.get(u.id, 0)) for u in usuarios]
+    return to_page(filas, total, page)
+
+
+async def _alive_user_id(session: AsyncSession, email: str) -> UUID | None:
+    return await session.scalar(
+        select(User.id).where(User.email == email, User.deleted_at.is_(None))
+    )
+
+
+def _is_email_conflict(error: IntegrityError) -> bool:
+    return EMAIL_ALIVE_INDEX in str(error.orig)
+
+
+async def create_user(
+    session: AsyncSession, *, email: str, role: StaffRole, by: UUID, front_base_url: str
+) -> CreateUserOut:
+    """US-047 (L-2): admin o coach sin hash (`pending_activation`), token `activate` de 72 h y
+    `activation_url`, que viaja una sola vez y nunca se registra. El correo de una cuenta viva
+    da `EmailTaken`; la carrera la decide `uq_users_email_alive` dentro de un savepoint."""
+    correo = normalize_login_email(email)
+    existente = await _alive_user_id(session, correo)
+    if existente is not None:
+        raise EmailTaken(field="email", existing_id=existente)
+    usuario = User(
+        email=correo,
+        password_hash=None,
+        role=role,
+        member_id=None,
+        is_active=True,
+        must_change_password=False,
+        created_by=by,
+    )
+    try:
+        async with session.begin_nested():
+            session.add(usuario)
+            await session.flush()
+    except IntegrityError as error:
+        if not _is_email_conflict(error):
+            raise
+        ganador = await _alive_user_id(session, correo)
+        raise EmailTaken(field="email", existing_id=ganador) from None
+    now = current_clock().now_utc()
+    claro, fila = await tokens.issue_one_time_token(session, usuario.id, "activate", now=now)
+    await events.emit(UserCreated(user_id=usuario.id, role=role, by=by), session)
+    logger.info("cuenta creada", extra={"user_id": str(usuario.id), "role": role})
+    return CreateUserOut(
+        user=rules.user_out(usuario),
+        activation_url=rules.activation_url(front_base_url, claro),
+        expires_at=fila.expires_at,
+    )
+
+
 register_principal_loader(load_active_principal)
 
 __all__ = [
     "LoginAttempted",
     "LoginResult",
+    "PasswordChanged",
     "RefreshResult",
     "SessionsRevoked",
     "UserCreated",
     "UserLocked",
     "active_user_id_by_email",
+    "change_password",
     "configure_sleeper",
+    "create_user",
     "ids_by_email",
     "is_active_admin",
+    "list_users",
     "load_active_principal",
     "login",
     "logout",
+    "me",
     "names_for",
     "normalize_login_email",
     "refresh",

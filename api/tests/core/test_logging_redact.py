@@ -1,4 +1,8 @@
-"""Redacción por clave y por forma del valor, y JSON de una línea (US-018, T1, T2 y T5)."""
+"""Redacción por clave y por forma del valor, y JSON de una línea (US-018, T1, T2 y T5).
+
+S2-B3: el token de `/restablecer/<token>`, el valor de `apex_refresh=` y las claves
+`activation_url`, `url` y `set-cookie` (blueprint 7.2; sección 2, regla 7).
+"""
 
 from __future__ import annotations
 
@@ -110,3 +114,82 @@ def test_formatter_produce_json_en_una_linea_con_traza() -> None:
     assert datos["document"] == "[redacted]"
     assert "Traceback" in datos["exception"]
     assert "eyJ" not in linea
+
+
+# S2-B3 · enlaces de un solo uso y cookie del refresh (blueprint 7.2, sección 2 regla 7) ------
+
+# Forma base64url de 43+ caracteres, como `new_opaque_token()`; no es un secreto real.
+TOKEN = "Qm9uaXRvLXRva2VuLWRlLXVuLXNvbG8tdXNvXzEyMzQ1Ng"  # noqa: S105
+
+
+def test_redacta_el_token_de_la_ruta_restablecer_en_el_texto() -> None:
+    texto = f"enlace http://localhost:8180/restablecer/{TOKEN} entregado"
+    limpio = redact_text(texto)
+    assert TOKEN not in limpio
+    assert "http://localhost:8180/restablecer/[redacted] entregado" in limpio
+
+
+def test_redacta_la_ruta_restablecer_con_query_o_fragmento() -> None:
+    limpio = redact_text(f"GET /restablecer/{TOKEN}?a=1#x")
+    assert TOKEN not in limpio
+    assert limpio.startswith("GET /restablecer/[redacted]")
+
+
+def test_redacta_el_valor_de_la_cookie_apex_refresh() -> None:
+    texto = f"Set-Cookie: apex_refresh={TOKEN}; HttpOnly; Path=/api/v1/auth; SameSite=strict"
+    limpio = redact_text(texto)
+    assert TOKEN not in limpio
+    assert "apex_refresh=[redacted]; HttpOnly; Path=/api/v1/auth" in limpio
+
+
+def test_las_claves_nuevas_estan_en_la_lista() -> None:
+    assert {"activation_url", "url", "set-cookie"} <= app_logging.SENSITIVE_KEYS
+
+
+def test_redacta_activation_url_url_y_set_cookie_por_clave() -> None:
+    entrada = {
+        "activation_url": f"http://localhost:8180/restablecer/{TOKEN}",
+        "URL": "http://localhost:8180/socios",
+        "Set-Cookie": f"apex_refresh={TOKEN}",
+        "set-cookie": "otra=1",
+        "ruta": "/api/v1/users",
+    }
+    assert redact(entrada) == {
+        "activation_url": "[redacted]",
+        "URL": "[redacted]",
+        "Set-Cookie": "[redacted]",
+        "set-cookie": "[redacted]",
+        "ruta": "/api/v1/users",
+    }
+
+
+def test_el_token_bajo_una_clave_sana_tambien_se_redacta() -> None:
+    datos = redact({"detalle": f"abrió /restablecer/{TOKEN}", "lista": [f"apex_refresh={TOKEN}"]})
+    assert TOKEN not in json.dumps(datos)
+
+
+def test_el_formatter_no_deja_pasar_el_enlace() -> None:
+    record = logging.LogRecord(
+        name="app.auth",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="enlace %s",
+        args=(f"http://localhost:8180/restablecer/{TOKEN}",),
+        exc_info=None,
+    )
+    record.cabecera = f"apex_refresh={TOKEN}"  # type: ignore[attr-defined]
+    linea = JsonFormatter().format(record)
+    assert TOKEN not in linea
+    assert "/restablecer/[redacted]" in json.loads(linea)["message"]
+
+
+def test_no_toca_rutas_parecidas_sin_token() -> None:
+    assert redact_text("/api/v1/auth/reset y /restablecer") == "/api/v1/auth/reset y /restablecer"
+
+
+def test_redacta_el_enlace_codificado_en_una_url() -> None:
+    """Revisión de seguridad S2-B3 (LOW-5): `%2Frestablecer%2F<token>` dentro de un parámetro."""
+    limpio = redact_text(f"next=%2Frestablecer%2F{TOKEN}&x=1")
+    assert TOKEN not in limpio
+    assert limpio == "next=%2Frestablecer%2F[redacted]&x=1"

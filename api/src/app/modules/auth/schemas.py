@@ -1,8 +1,15 @@
-"""Schemas públicos de auth (US-041 T7; S2-B2 US-042/043/044). `UserOut` nunca expone
-`password_hash` y ninguna salida trae el refresh: viaja solo en la cookie `HttpOnly`."""
+"""Schemas públicos de auth (US-041 T7; S2-B2 US-042/043/044; S2-B3 US-045/046/047).
+
+`UserOut` y `UserRow` nunca exponen `password_hash` y ninguna salida trae el refresh: viaja
+solo en la cookie `HttpOnly`. `CreateUserIn.role` admite solo `admin` y `coach`, sin
+`member_id`, hasta el portal (L-2, S2-D42). `POST /auth/me/password` responde
+`AccessTokenOut` con un access nuevo (S2-D37, H-3). `CreateUserOut.activation_url` viaja una
+sola vez (blueprint 7.2).
+"""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -12,6 +19,8 @@ from app.core.security import PASSWORD_MAX_LENGTH
 from app.core.validators import EmailAddress
 
 Role = Literal["admin", "coach", "member"]
+# L-2: el alta de cuentas por el panel no crea socios hasta el portal (v1.0).
+StaffRole = Literal["admin", "coach"]
 # S2-D1: orden de precedencia `deleted > locked > inactive > pending_activation > active`.
 UserStatus = Literal["active", "inactive", "locked", "pending_activation", "deleted"]
 
@@ -24,6 +33,7 @@ class UserOut(BaseModel):
     role: Role
     member_id: UUID | None
     status: UserStatus
+    must_change_password: bool
 
 
 class UserSummary(BaseModel):
@@ -57,3 +67,63 @@ class RefreshOut(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"  # noqa: S105 - tipo de token, no un secreto
     expires_in: int
+
+
+class MeOut(BaseModel):
+    """`GET /auth/me` (S2-D14): el usuario vigente y el nombre del gimnasio."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    email: str
+    role: Role
+    member_id: UUID | None
+    gym_name: str
+    must_change_password: bool
+
+
+class ChangePasswordIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    new_password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+class AccessTokenOut(BaseModel):
+    """Access nuevo tras cambiar la contraseña (S2-D37): el anterior queda cortado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"  # noqa: S105 - tipo de token, no un secreto
+    expires_in: int
+
+
+class UserRow(BaseModel):
+    """Fila de `GET /users`; `active_sessions` cuenta refresh vigentes y no revocados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    email: str
+    role: Role
+    status: UserStatus
+    member_id: UUID | None
+    last_login_at: datetime | None
+    created_at: datetime
+    active_sessions: int
+
+
+class CreateUserIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailAddress
+    role: StaffRole
+
+
+class CreateUserOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user: UserOut
+    activation_url: str
+    expires_at: datetime

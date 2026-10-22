@@ -9,18 +9,28 @@
   (L-4), salvo los que un refresh más nuevo aún vigente referencia por `replaced_by_id`.
 - `increment_failures`: `UPDATE ... RETURNING failed_login_count` atómico (L-10); la columna
   está en `__audit_exclude__`, así que saltarse el hook no pierde auditoría.
+- `issue_one_time_token` (S2-B3, blueprint 7.2): cierra por ORM (`used_at = now`, queda el
+  `update` auditado) los tokens abiertos del mismo usuario y propósito, crea el nuevo con
+  `expires_at = now + ACTIVATE_TTL | RESET_TTL` y solo su `hash_opaque_token`; devuelve el token
+  en claro, que nunca se guarda ni se registra.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Final, Literal
 from uuid import UUID
 
 from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.modules.auth.models import RefreshToken, User
+from app.core.context import get_actor
+from app.core.security import hash_opaque_token, new_opaque_token
+from app.modules.auth.models import OneTimeToken, RefreshToken, User
+from app.modules.auth.rules import ACTIVATE_TTL, RESET_TTL
+
+OneTimePurpose = Literal["activate", "reset"]
 
 
 def cutoff_of(now: datetime) -> datetime:
@@ -100,3 +110,36 @@ async def record_success(session: AsyncSession, user_id: UUID, *, now: datetime)
         .values(last_login_at=now, failed_login_count=0)
         .execution_options(synchronize_session=False)
     )
+
+
+_TTL_BY_PURPOSE: Final[dict[str, timedelta]] = {"activate": ACTIVATE_TTL, "reset": RESET_TTL}
+
+
+async def issue_one_time_token(
+    session: AsyncSession, user_id: UUID, purpose: OneTimePurpose, *, now: datetime
+) -> tuple[str, OneTimeToken]:
+    """A lo sumo un token abierto por usuario y propósito. `created_by` es el actor vigente
+    (`get_actor`): quien crea la cuenta o pide el enlace; la auditoría lo exige igual."""
+    actor = get_actor()
+    abiertos = await session.scalars(
+        select(OneTimeToken)
+        .where(
+            OneTimeToken.user_id == user_id,
+            OneTimeToken.purpose == purpose,
+            OneTimeToken.used_at.is_(None),
+        )
+        .with_for_update()
+    )
+    for anterior in abiertos.all():
+        anterior.used_at = now  # por ORM: queda el `update` auditado
+    claro = new_opaque_token()
+    fila = OneTimeToken(
+        user_id=user_id,
+        token_hash=hash_opaque_token(claro),
+        purpose=purpose,
+        expires_at=now + _TTL_BY_PURPOSE[purpose],
+        created_by=actor,
+    )
+    session.add(fila)
+    await session.flush()
+    return claro, fila

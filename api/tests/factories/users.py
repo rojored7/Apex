@@ -1,17 +1,18 @@
-"""Fábrica de `auth.users` (S2-B1). `make_one_time_token` llega en S2-B3."""
+"""Fábricas de `auth.users` (S2-B1) y `auth.one_time_tokens` (S2-B3, `make_one_time_token`)."""
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 import anyio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
-from app.core.security import hash_password
-from app.modules.auth.models import User
+from app.core.security import hash_opaque_token, hash_password, new_opaque_token
+from app.modules.auth.models import OneTimeToken, User
 
 DOMINIO_PRUEBA = "test.apex"
 
@@ -51,3 +52,39 @@ async def make_user(
         await session.flush()
         await session.commit()
     return usuario
+
+
+class _ConId(Protocol):
+    @property
+    def id(self) -> UUID: ...
+
+
+async def make_one_time_token(
+    session: AsyncSession,
+    user: _ConId,
+    purpose: str,
+    *,
+    expires_in: timedelta,
+    used_at: datetime | None = None,
+    created_by: UUID = SYSTEM_USER_ID,
+) -> tuple[str, OneTimeToken]:
+    """Inserta un token de un solo uso (solo su hash) y confirma; devuelve `(claro, fila)`.
+
+    `expires_at = reloj de la app + expires_in` (un `expires_in` negativo deja uno vencido).
+    `user` es un `User` o un `UsuarioPrueba` (basta `.id`). No pasa por
+    `issue_one_time_token`: así las pruebas de ese caso de uso tienen datos previos propios.
+    """
+    claro = new_opaque_token()
+    fila = OneTimeToken(
+        user_id=user.id,
+        token_hash=hash_opaque_token(claro),
+        purpose=purpose,
+        expires_at=current_clock().now_utc() + expires_in,
+        used_at=used_at,
+        created_by=created_by,
+    )
+    with actor_scope(created_by):
+        session.add(fila)
+        await session.flush()
+        await session.commit()
+    return claro, fila

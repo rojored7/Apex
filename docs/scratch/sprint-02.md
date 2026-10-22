@@ -353,3 +353,151 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   `COOKIE_SECURE=true` (llamador de E3 que el Rojo no listó: construye `Settings` de producción);
   dos pruebas nuevas de la revisión; el `logger.warning` del lifespan del blueprint lo reemplaza
   el validador M-9; `active_admin_id_by_email` se reemplaza por `active_user_id_by_email`.
+
+### S2-B3 · Rojo
+
+- Línea base (HEAD `ba984b7`, árbol limpio): api 852 ok y 4 saltadas (`-m 'not perf'`);
+  `ruff check .` y `mypy src` (51 archivos) limpios. `FRONT_BASE_URL=http://localhost:8180` en el
+  `.env` local (B3.1, solo verificado).
+- B3.1 fábrica: `make_one_time_token(session, user, purpose, *, expires_in, used_at=None,
+  created_by=SYSTEM_USER_ID)` en `tests/factories/users.py` (`expires_at` = reloj de la app +
+  `expires_in`; guarda solo `hash_opaque_token`; devuelve `(claro, fila)`; commit como
+  `make_user`) y `FACTORIES["auth.one_time_tokens"]`.
+- B3.1 stubs (firmas tipadas, `NotImplementedError`; `ruff` y `mypy src` limpios):
+  - `core/security.require_role(*roles, allow_pending_password=False)`: parámetro aceptado, sin
+    cambiar el comportamiento (la marca `__apex_roles__` no cambia).
+  - `auth/rules.py`: `ACTIVATE_TTL = 72 h`, `RESET_TTL = 1 h` y `RESET_PATH` (constantes reales);
+    stubs `validate_password_policy(password, *, current_hash=None, field="password")`,
+    `activation_url(base_url, token)`, `escape_like(value)`, `user_row(user, *, active_sessions)`
+    y `user_out(user)`.
+  - `auth/tokens.issue_one_time_token(session, user_id, purpose, *, now) -> (claro, OneTimeToken)`
+    y el alias `OneTimePurpose`.
+  - `auth/exceptions.py`: `EmailTaken` (409 `email_taken`) e `InvalidCurrentPassword` (422
+    `invalid_current_password`), completas (son contrato).
+  - `auth/schemas.py` completos: `StaffRole = Literal["admin","coach"]`, `UserOut` +
+    `must_change_password`, `MeOut`, `ChangePasswordIn` (ambos `SecretStr` de 1 a 128),
+    `AccessTokenOut`, `UserRow` (con `active_sessions`), `CreateUserIn(email, role: StaffRole)`
+    sin `member_id` (`extra="forbid"`, L-2) y `CreateUserOut(user, activation_url, expires_at)`.
+  - `auth/service.py`: evento `PasswordChanged(user_id, by, via, via_link_issued_by=None)` y
+    stubs `me(session, principal) -> MeOut`, `change_password(session, user_id, current, new, *,
+    current_refresh, policy) -> AccessTokenOut`, `list_users(session, *, q, role, status, page)
+    -> Page[UserRow]` y `create_user(session, *, email, role, by, front_base_url) ->
+    CreateUserOut`.
+  - `auth/router.py` plano: `GET /auth/me` y `POST /auth/me/password` (tres roles con
+    `allow_pending_password=True`, `no_store`; el segundo responde 200 `AccessTokenOut` y pasa la
+    cookie `apex_refresh` como `current_refresh`), `GET /users` (admin, `PageParams`, `q`,
+    `role`, `status` por alias, `no_store`) y `POST /users` (admin, 201, `no_store`, pasa
+    `FRONT_BASE_URL` de `app.state.settings`). `core/logging.py` sin cambios.
+- B3.2 pruebas: los 9 archivos de `tests/auth/` (`test_pure_password_policy`, `test_pure_links`,
+  `test_pure_user_status`, `test_change_password`, `test_me_router`, `test_list_users`,
+  `test_users_list_router`, `test_create_user`, `test_create_user_router`) con la ayuda
+  `tests/auth/_cuentas.py`; `tests/core/test_require_role.py` (403 `password_change_required` con
+  el doble, `allow_pending_password` sobre la ruta nueva `/_t/pendiente` de
+  `tests/core/_routes.py`, y el recorrido de TODAS las rutas efectivas con rol, con usuarios
+  reales `debe_cambiar` del rol que la ruta admite); `tests/core/test_logging_redact.py` (8 casos);
+  `tests/architecture/test_list_routes_use_page_params.py` reescrita sobre `effective_routes` y
+  `app.openapi()`; `tests/architecture/test_service_import_graph.py` nueva.
+- Conteo: 992 colectadas; 103 fallan, 885 pasan, 4 saltadas. Las 102 del Rojo de B3: 94 por
+  `NotImplementedError` de los stubs (rules, tokens, service; incluye el recorrido de
+  `test_require_role`, que se corta en `GET /auth/me`) y 8 por aserción de comportamiento
+  (7 de redacción en `test_logging_redact` y el 403 `password_change_required` con el doble).
+  Ningún error de import ni de fixture. La 103 es la regresión por cambio de contrato que cierra
+  el Verde con P-API: `test_docs_openapi_json_esta_al_dia` (rutas nuevas; `docs/openapi.json` no
+  se toca en el Rojo). Pasan ya sobre los stubs 34 casos nuevos de contrato declarado: 401 sin
+  token, 403 de coach y socio en `/users`, 422 con `field` de `PageParams`, `q`, `role`,
+  `status`, `role=member` (L-2), `member_id` de más, correo inválido, 129 caracteres y campo de
+  más en `me/password`, los TTL, la marca de roles, el grafo de services y la lista paginada.
+  `db_test` queda sin usuarios `@test.apex`, sin refresh y sin tokens de un solo uso.
+- Decisiones de prueba que el Verde debe respetar:
+  - `require_role`: con `must_change_password` y sin `allow_pending_password`, 403
+    `{"code": "password_change_required", "message": "Debes cambiar tu contraseña para
+    continuar."}`, sin `field`, antes de validar el cuerpo (el recorrido manda `{}` a los POST y
+    PATCH y espera 403; `POST /auth/me/password` con `{}` llega a la validación: 422).
+  - `rules.validate_password_policy`: `AuthError` 422 `weak_password` con el `field` pedido
+    (por defecto `password`), mensaje sin la clave; la longitud se revisa antes que la igualdad
+    con `current_hash`. `service.validate_password_policy` (B2, `field="password"` fijo) sigue
+    vigente para `seed_admin` y `test_pure_users.py`.
+  - `change_password`: primero la actual (`InvalidCurrentPassword`, `field="current_password"`),
+    luego la política con `field="new_password"`; un solo `update` auditado de `auth.users`
+    (`password_hash = "***"` en `before` y `after`, `must_change_password` de true a false);
+    `failed_login_count = 0`; `tokens_valid_after = ahora truncado` también sin otras sesiones;
+    eventos en este orden: `PasswordChanged(user_id, by=user_id, via="change",
+    via_link_issued_by=None)` y, solo si revocó alguna, `SessionsRevoked(by=user_id,
+    reason="password_changed")`; devuelve `AccessTokenOut` con `iat = ahora` y `expires_in` de la
+    política (900). La ruta no emite `Set-Cookie`.
+  - `GET /auth/me`: `{id, email, role, member_id, gym_name, must_change_password}` con
+    `gym_name` de `settings.service.gym_name` (respaldo `"APEX"`).
+  - `list_users`: sin `SYSTEM_USER_ID`; sin `status` excluye borrados; `status_filter` por estado;
+    `q` con `ILIKE` sobre el correo, `%` a cada lado de `escape_like(q)` y `ESCAPE` con la barra
+    invertida; orden `email ASC`; `active_sessions` = refresh con `revoked_at IS NULL AND
+    expires_at > ahora` (reloj de la app; `expires_at == ahora` no cuenta). `escape_like`
+    antepone la barra invertida a la barra invertida, `%` y `_`.
+  - `user_row` y `user_out`: exactamente los campos del contrato (`CAMPOS_USER_ROW` y
+    `CAMPOS_USER_OUT` de `_cuentas.py`).
+  - `create_user`: correo normalizado; `password_hash` nulo, `is_active` true,
+    `must_change_password = False`, `created_by = by`; un token `activate` con
+    `expires_at = ahora + 72 h` y `created_by = by`; dos `insert` de auditoría atribuidos al actor
+    (la prueba de servicio abre `actor_scope(admin)`, como haría `current_user`), sin el token ni
+    su hash; `UserCreated(role, by)`; `EmailTaken` con `existing_id` y mensaje sin el correo; una
+    cuenta borrada libera el correo; en la carrera con `dos_sesiones` una alta gana y la otra da
+    `EmailTaken` (su `existing_id` puede ser nulo o el de la ganadora). Ni el token ni la URL en
+    ningún registro de log.
+  - `activation_url`: quita las barras finales de la base, conserva su ruta y agrega
+    `/restablecer/<token>` sin escapar.
+  - `issue_one_time_token`: cierra por ORM los abiertos del mismo propósito con `used_at = now`
+    (un `update` auditado por token cerrado), nunca los del otro propósito.
+  - Redacción: `redact_text` cambia el token de `/restablecer/<token>` por
+    `/restablecer/[redacted]` (con o sin esquema, query o fragmento) y el valor de
+    `apex_refresh=<v>` por `apex_refresh=[redacted]` conservando los atributos; `SENSITIVE_KEYS`
+    suma `activation_url`, `url` y `set-cookie`; `/restablecer` sin token no cambia.
+  - Grafo de services: aristas permitidas `audit → auth` y `auth → settings`; el import de
+    `settings.service` en `auth.service` va a nivel de módulo (un import perezoso fallaría: la
+    lista blanca está vacía).
+- Desviaciones del encargo:
+  - `effective_route_contexts()` no existe en `tests/core/_routes.py` (ese archivo es el router
+    de prueba `/_t/...`); el recorrido usa `app.core.security.effective_routes`, que ya recorre
+    `effective_route_contexts` de FastAPI.
+  - Helpers puros nuevos que no estaban en la lista: `rules.escape_like`, `rules.user_row` y
+    `rules.user_out` (cubren "`q="_"` escapado" y "sin `password_hash`" en puro); constante
+    `RESET_PATH`.
+  - `create_user` recibe `front_base_url` (la URL se arma en el service con
+    `rules.activation_url`) y no `member_id` (L-2 manda sobre el blueprint). `change_password`
+    recibe `policy` para el `expires_in` del access nuevo.
+  - Los casos de `issue_one_time_token` viven en `test_create_user.py` (no hay archivo propio en
+    la lista del plan).
+  - `test_every_route_has_role.py` y los conteos no cambian: ninguna prueba existente contaba
+    rutas; `PUBLIC_ROUTES` sigue en 8.
+
+### S2-B3 · Verde
+
+- Producto (B3.3):
+  - `core/security.require_role`: tras el rol, 403 `password_change_required` ("Debes cambiar tu contraseña para continuar.", sin `field`) si `must_change_password` y la ruta no pide `allow_pending_password`; constante `PASSWORD_CHANGE_REQUIRED_MESSAGE`.
+  - `core/logging`: `_RESET_LINK` (`/restablecer/<token>` y `%2Frestablecer%2F<token>`), `_REFRESH_COOKIE` (`apex_refresh=<v>`) y claves `activation_url`, `url`, `set-cookie`.
+  - `core/pagination.paginate`: firma `Select[T]` (SQLAlchemy 2.1).
+  - `auth/rules`: `validate_password_policy(field=...)`, `activation_url`, `LIKE_ESCAPE`, `escape_like`, `user_row` y `user_out`.
+  - `auth/tokens.issue_one_time_token`: cierra los abiertos del mismo propósito con `FOR UPDATE` y por ORM, con `update` auditado. Crea el nuevo con el TTL del propósito, guarda solo el hash y pone `created_by = get_actor()`.
+  - `auth/service`:
+    - `me` con `settings_service.gym_name`; el import va a nivel de módulo, arista `auth → settings`.
+    - `change_password` con `FOR UPDATE`, tope por usuario y `revoke_all(except_id=<refresh propio de la cookie>)`.
+    - `list_users` con `paginate` más `active_sessions` agregado por página.
+    - `create_user` con `begin_nested` y `EmailTaken`.
+    - `service.validate_password_policy` delega en `rules`.
+  - `auth/router`: `POST /auth/me/password` con `rate_limit("change-password", 10)`.
+- Revisión de seguridad (antes del gate que sella): sin CRITICAL. HIGH-1 corregido (límites de `me/password`), MEDIUM-2 en parte (`FOR UPDATE`), LOW-5 corregido. MEDIUM-3, LOW-4 y el resto de MEDIUM-2 quedan aceptados en `DECISIONES.md` (S2-B3). Pruebas nuevas: `tests/auth/test_change_password_limits.py` (3 casos) y un caso de enlace codificado en `tests/core/test_logging_redact.py`.
+- Suite con `-m 'not perf'`: 996 colectadas; 992 pasan y 4 saltadas (las 3 de NTFS y `test_no_sensitive_in_logs`). Cobertura de `app` 95 %. `ruff format`, `ruff check` y `mypy src` (51 archivos) limpios.
+- Contrato (P-API): `export-openapi` dos veces idéntico; `npm run gen:api`, `types.contract.test.ts` (5) y `tsc --noEmit` en verde. El límite nuevo no cambió el OpenAPI.
+- Docs: `05_service_design.md` (`Principal` con `must_change_password` y `tokens_valid_after`, `me` con `gym_name`, `change_password`, `list_users`, `create_user` sin `member_id`, rutas tipadas de settings, `me/password` 200) y `DECISIONES.md` (S2-B3). `CLAUDE.md` sin cambios: no hay cambio estructural.
+- Docker antes del gate, sin tocar el árbol (la recarga por bind recogió `service.py`, `router.py` y `logging.py`; no hay migración). Smoke por Nginx `:8180` con `Origin`:
+  - login del admin 200;
+  - `GET /auth/me` 200 con `gym_name = "APEX"` y `must_change_password = false`;
+  - `GET /users?limit=25&offset=0` 200 con el admin `active` y `active_sessions = 1`;
+  - `POST /users` (coach) 201 con `activation_url` que empieza por `http://localhost:8180/restablecer/` (token de 43), `pending_activation` y `expires_at` a 72 h;
+  - el `POST /users` repetido da 409 `email_taken` con `field` y `existing_id`;
+  - en psql, la fila `activate` guarda solo un hash de 64 hex y ninguna fila tiene el token en claro;
+  - el log del api no contiene el token (0 coincidencias; el service nunca escribe la URL);
+  - `/api/v1/health` 200.
+- Coach de prueba que queda para B4 (activación): `coach-b3-smoke@test.apex`, rol `coach`, `pending_activation`, con un token `activate` abierto hasta 72 h después del smoke. B4 lo activa con `resend-link` (el token en claro ya se descartó).
+- Desviaciones:
+  - E1: el smoke de Docker corrió antes de los gates, porque este bloque debe nombrar al coach de prueba y el árbol no se puede tocar después del gate. Tras los gates solo se repite `/health`, sin escribir.
+  - El gate que sella lista también `tests/auth/test_change_password_limits.py` (nació en la revisión).
+  - `paginate` cambia de firma en `core/` (tipado, sin cambio de comportamiento).

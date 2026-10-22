@@ -1,11 +1,18 @@
-"""`role_allowed`, `require_role` y `current_user` con un PrincipalLoader doble (US-034 T8, T10)."""
+"""`role_allowed`, `require_role` y `current_user` con un PrincipalLoader doble (US-034 T8, T10).
+
+S2-B3 (M-8): `require_role(..., allow_pending_password=False)` responde 403
+`password_change_required` a un principal con `must_change_password`; el recorrido de todas las
+rutas autenticadas usa la app real y usuarios reales (kit `app_http`).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from itertools import combinations
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -22,12 +29,15 @@ from app.core.security import (
     Principal,
     configure_jwt,
     create_access_token,
+    effective_routes,
     generate_jwt_keypair_pem,
     register_principal_loader,
     require_role,
     role_allowed,
+    route_has_role_dependency,
 )
 from app.main import API_PREFIX, create_app
+from tests.conftest import Cabeceras, CrearUsuario
 from tests.core._principal_double import principal_double
 from tests.core._routes import router
 
@@ -257,3 +267,99 @@ def test_principal_lleva_los_campos_nuevos_con_defaults() -> None:
     principal = Principal(ADMIN, "admin", None)
     assert principal.must_change_password is False
     assert principal.tokens_valid_after is None
+
+
+# S2-B3 · M-8: `must_change_password` corta todo salvo "Mi cuenta" --------------------------
+
+PENDIENTE_MENSAJE = "Debes cambiar tu contraseña para continuar."
+# Rutas exentas de M-8 (blueprint S2-B3); `POST /auth/logout` es pública desde H-1.
+EXENTAS = frozenset({("GET", "/api/v1/auth/me"), ("POST", "/api/v1/auth/me/password")})
+
+
+async def test_must_change_password_da_403_password_change_required(app: FastAPI) -> None:
+    principal_double.usuarios[ADMIN] = Principal(ADMIN, "admin", None, must_change_password=True)
+    status, cuerpo, _ = await _get(app, "admin", _auth(_token(ADMIN, "admin")))
+    assert status == 403
+    assert cuerpo["error"] == {
+        "code": "password_change_required",
+        "message": PENDIENTE_MENSAJE,
+    }
+
+
+async def test_allow_pending_password_deja_pasar_la_cuenta_pendiente(app: FastAPI) -> None:
+    principal_double.usuarios[COACH] = Principal(COACH, "coach", None, must_change_password=True)
+    status, cuerpo, _ = await _get(app, "pendiente", _auth(_token(COACH, "coach")))
+    assert status == 200 and cuerpo == {"must_change_password": True}
+
+
+async def test_sin_must_change_password_nada_cambia(app: FastAPI) -> None:
+    assert (await _get(app, "admin", _auth(_token(ADMIN, "admin"))))[0] == 200
+    assert (await _get(app, "pendiente", _auth(_token(ADMIN, "admin"))))[0] == 200
+
+
+def test_allow_pending_password_conserva_la_marca_de_roles() -> None:
+    """La marca `__apex_roles__` no cambia: `test_every_route_has_role` sigue en pie."""
+    dep = require_role("admin", "coach", allow_pending_password=True)
+    assert dep.__apex_roles__ == frozenset({"admin", "coach"})  # type: ignore[attr-defined]
+
+
+def _roles_de(dependant: Any) -> frozenset[str]:
+    for dep in dependant.dependencies:
+        marca = getattr(dep.call, "__apex_roles__", None)
+        if marca:
+            return frozenset(marca)
+        anidada = _roles_de(dep)
+        if anidada:
+            return anidada
+    return frozenset()
+
+
+def _ruta_concreta(plantilla: str) -> str:
+    """Reemplaza los parámetros de ruta por valores válidos (`section` → `gym`, ids → UUID)."""
+
+    def valor(m: re.Match[str]) -> str:
+        return "gym" if m.group(1) == "section" else str(uuid4())
+
+    return re.sub(r"\{(\w+)(?::\w+)?\}", valor, plantilla)
+
+
+async def test_todas_las_rutas_autenticadas_exigen_el_cambio_salvo_mi_cuenta(
+    api_prueba: FastAPI,
+    app_http: AsyncClient,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+) -> None:
+    """Recorre las rutas efectivas de la app real (`effective_routes`, S2-D3) con un principal
+    real con `must_change_password=True` del rol que la ruta admite: toda ruta con rol responde
+    403 `password_change_required` antes de validar el cuerpo, salvo `GET /auth/me` (200) y
+    `POST /auth/me/password` (llega a la validación: 422)."""
+    api_prueba.openapi()
+    por_rol = {rol: await usuario_real(rol, debe_cambiar=True) for rol in ROLES}
+    vistas: set[tuple[str, str]] = set()
+    fallas: list[str] = []
+    for ruta in effective_routes(api_prueba)[0]:
+        if not route_has_role_dependency(ruta):
+            continue
+        roles = _roles_de(ruta.dependant)
+        usuario = por_rol["admin" if "admin" in roles else sorted(roles)[0]]
+        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"}):
+            vistas.add((metodo, ruta.path))
+            r = await app_http.request(
+                metodo,
+                _ruta_concreta(ruta.path),
+                headers=cabeceras(usuario),
+                json={} if metodo in {"POST", "PUT", "PATCH"} else None,
+            )
+            codigo = r.json().get("error", {}).get("code") if r.content else None
+            if (metodo, ruta.path) in EXENTAS:
+                if r.status_code == 403:
+                    fallas.append(f"{metodo} {ruta.path}: exenta pero 403 {codigo}")
+                continue
+            if r.status_code != 403 or codigo != "password_change_required":
+                fallas.append(f"{metodo} {ruta.path}: {r.status_code} {codigo}")
+    assert EXENTAS <= vistas, "las rutas exentas deben existir"
+    assert {("GET", "/api/v1/users"), ("POST", "/api/v1/users")} <= vistas
+    assert ("GET", "/api/v1/settings/gym") in vistas
+    assert fallas == [], "\n".join(fallas)
+    me = await app_http.get("/api/v1/auth/me", headers=cabeceras(por_rol["coach"]))
+    assert me.status_code == 200, me.text

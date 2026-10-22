@@ -10,18 +10,37 @@
   puede autenticarse), `is_reuse` (rotado y fuera de la gracia de M-2) y `should_auto_lock`
   (S2-D10, H-4: el último admin activo nunca se bloquea).
 - `AuthPolicy`: los parámetros de sesión salidos de `Settings` (`cookies.policy_from`).
+
+S2-B3 (US-045, US-046, US-047):
+- `validate_password_policy(password, *, current_hash=None, field="password")`: la política de
+  `core.security` (L-5: `too_long` en 129, `too_short`, `too_common`) traducida a `AuthError`
+  422 `weak_password` con el `field` pedido (`new_password` en cambio y reset); con
+  `current_hash`, la nueva debe ser distinta de la actual.
+- `activation_url(base_url, token)`: `<FRONT_BASE_URL>/restablecer/<token>` (blueprint 7.2);
+  `ACTIVATE_TTL` (72 h) y `RESET_TTL` (1 h).
+- `escape_like(q)`: escapa `\\`, `%` y `_` para `ILIKE ... ESCAPE '\'`.
+- `user_row(user, *, active_sessions)` y `user_out(user)`: las salidas con `status` calculado
+  por `user_status`; nunca llevan `password_hash`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Final
 
 from sqlalchemy import ColumnElement, and_
 
 from app.core.context import SYSTEM_USER_ID
+from app.core.security import WeakPasswordError, verify_password
+from app.core.security import validate_password_policy as core_password_policy
+from app.modules.auth.exceptions import AuthError
 from app.modules.auth.models import RefreshToken, User
-from app.modules.auth.schemas import UserStatus
+from app.modules.auth.schemas import UserOut, UserRow, UserStatus
+
+ACTIVATE_TTL: Final = timedelta(hours=72)
+RESET_TTL: Final = timedelta(hours=1)
+RESET_PATH: Final = "/restablecer/"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -105,4 +124,66 @@ def is_reuse(token: RefreshToken, now: datetime, grace: timedelta) -> bool:
         token.revoked_at is not None
         and token.replaced_by_id is not None
         and now - token.revoked_at >= grace
+    )
+
+
+# S2-B3 · contraseñas, enlaces y salidas ------------------------------------------------
+
+
+def validate_password_policy(
+    password: str, *, current_hash: str | None = None, field: str = "password"
+) -> None:
+    """N-10 y L-5: `too_long` (129), `too_short`, `too_common`, en ese orden, y luego (con
+    `current_hash`) distinta de la actual. La igualdad cuesta un argon2: solo se revisa si la
+    longitud y la lista ya pasaron. El mensaje nunca repite la contraseña."""
+    try:
+        core_password_policy(password)
+    except WeakPasswordError as error:
+        raise AuthError(
+            "weak_password", "La contraseña es demasiado débil.", field=field
+        ) from error
+    if current_hash is not None and verify_password(current_hash, password):
+        raise AuthError(
+            "weak_password", "La contraseña nueva debe ser distinta de la actual.", field=field
+        )
+
+
+def activation_url(base_url: str, token: str) -> str:
+    """`<base sin barras finales>/restablecer/<token>`; el token es base64url y no se escapa."""
+    return f"{base_url.rstrip('/')}{RESET_PATH}{token}"
+
+
+LIKE_ESCAPE: Final = "\\"
+
+
+def escape_like(value: str) -> str:
+    """Escapa la barra invertida (primero), `%` y `_` para `ILIKE ... ESCAPE '\\'`."""
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
+
+
+def user_row(user: User, *, active_sessions: int) -> UserRow:
+    return UserRow(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        status=user_status(user),
+        member_id=user.member_id,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+        active_sessions=active_sessions,
+    )
+
+
+def user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        member_id=user.member_id,
+        status=user_status(user),
+        must_change_password=user.must_change_password,
     )

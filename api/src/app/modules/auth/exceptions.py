@@ -1,4 +1,7 @@
-"""Errores del módulo auth con el envelope de US-017 (contrato público, importable)."""
+"""Errores del módulo auth con el envelope de US-017 (contrato público, importable).
+
+S2-B3: `EmailTaken` (409) e `InvalidCurrentPassword` (422).
+"""
 
 from __future__ import annotations
 
@@ -33,3 +36,21 @@ class InvalidRefresh(DomainError):
     code = "invalid_refresh"
     default_message = "La sesión ya no es válida. Inicia sesión de nuevo."
     clear_cookie: bool = True
+
+
+class EmailTaken(DomainError):
+    """Alta con un correo de una cuenta no borrada (S2-B3, US-047). Lleva `field="email"` y
+    `existing_id`; una cuenta borrada libera el correo (`uq_users_email_alive`)."""
+
+    status = 409
+    code = "email_taken"
+    default_message = "Ya existe una cuenta con este correo."
+
+
+class InvalidCurrentPassword(DomainError):
+    """`POST /auth/me/password` con la contraseña actual errada (S2-B3, US-046). Lleva
+    `field="current_password"` y no cambia nada."""
+
+    status = 422
+    code = "invalid_current_password"
+    default_message = "La contraseña actual no es correcta."

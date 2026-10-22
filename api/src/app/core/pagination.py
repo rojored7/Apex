@@ -74,7 +74,7 @@ def _with_stable_order(stmt: Select[Any]) -> Select[Any]:
 
 
 async def paginate[T](
-    session: AsyncSession, stmt: Select[tuple[T]], params: PageParams
+    session: AsyncSession, stmt: Select[T], params: PageParams
 ) -> tuple[list[T], int]:
     """`(items, total)` de una página. `total` respeta los filtros y no depende de la página."""
     total = await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))

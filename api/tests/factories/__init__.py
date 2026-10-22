@@ -11,8 +11,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from tests.factories.users import make_user
+from tests.factories.users import make_one_time_token, make_user
 
 FACTORIES: dict[str, Callable[..., Awaitable[Any]]] = {
     "auth.users": make_user,
+    "auth.one_time_tokens": make_one_time_token,
 }

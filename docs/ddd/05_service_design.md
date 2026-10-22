@@ -28,7 +28,7 @@ Puertos (interfaces `Protocol`) y sus adaptadores:
 | `NotificationChannel` | `modules/notifications/channels/base.py` | `EmailChannel`, `WhatsAppLinkChannel` (v0.2), `WebPushChannel` (v1.0, Q14). Telegram no es canal al socio (N-34) |
 | `StorageProvider` | `modules/attachments/storage/base.py` | `LocalDiskStorage` (v0.3), `S3CompatibleStorage` (v0.3) |
 | `Clock` | `core/clock.py` | `SystemClock`, `FrozenClock` (tests) |
-| `PrincipalLoader` (G-02) | `core/security.py`, con `Principal(user_id, role, member_id)` y `register_principal_loader()` | `auth.service.get_principal`, registrado en `create_app()`; el arranque falla sin cargador; el rol vale el de la base; `SYSTEM_USER_ID` se rechaza |
+| `PrincipalLoader` (G-02) | `core/security.py`, con `Principal(user_id, role, member_id, must_change_password=False, tokens_valid_after=None)` y `register_principal_loader()` | `auth.service.load_active_principal`, registrado al importarse `auth.service`; el arranque falla sin cargador; el rol vale el de la base; `SYSTEM_USER_ID` se rechaza. `current_user` responde 401 `unauthorized` si el `iat` del access es anterior a `tokens_valid_after` (H-3, S2-D37), y `require_role` responde 403 `password_change_required` a un principal con `must_change_password`, salvo en las rutas con `allow_pending_password=True` (`GET /auth/me` y `POST /auth/me/password`; M-8) |
 | `AlertSink` (G-08) | `core/alerts.py`, con `register_sink()` y `alert(kind, text)` | `LogAlertSink` (v0.1, por defecto); `TelegramAlertSink` en `modules/notifications/channels/telegram.py` (v0.2), registrado en `main.py` y `worker/main.py` |
 | `Reencryptor` (G-09) | `core/crypto/registry.py`, con `count_pending` y `reencrypt_batch` | cada módulo con blobs fuera de columnas lo registra al importarse; `attachments` en v0.3. Hasta entonces, rotar `attachment.sensitive` responde 409 `rotation_not_supported` |
 
@@ -110,8 +110,10 @@ Firmas en pseudocódigo Python; los tipos exactos van en `schemas.py` y `models.
 - `login(email, password, ip) -> TokenPair` — rate limit, argon2 verify, usuario activo y no bloqueado, refresh en tabla.
 - `refresh(refresh_token) -> TokenPair` — rota el refresh (revoca el anterior).
 - `logout(refresh_token) -> None`
-- `me(user) -> UserOut`
-- `create_user(data, by) -> User` — admin; si `role = member` exige `member_id`; genera `OneTimeToken(activate)` y devuelve el enlace.
+- `me(principal) -> MeOut` — `{id, email, role, member_id, gym_name, must_change_password}`; `gym_name` sale de `settings.service.gym_name()` (respaldo `"APEX"`; S2-D14).
+- `change_password(user_id, current, new, current_refresh, policy) -> AccessTokenOut` — primero la actual (422 `invalid_current_password`), luego la política con `field="new_password"` (distinta de la actual); un solo `update` auditado; revoca las demás sesiones salvo la de la cookie, fija `tokens_valid_after` y devuelve un access nuevo (S2-D37). Emite `PasswordChanged` y, si revocó alguna, `SessionsRevoked(reason="password_changed")`.
+- `list_users(q, role, status, page) -> Page[UserRow]` — admin; sin el usuario técnico; sin `status` excluye borrados; `q` con `ILIKE` escapado; orden por correo; `active_sessions` (refresh vigentes y no revocados).
+- `create_user(email, role, by, front_base_url) -> CreateUserOut` — admin; en v0.1 `role` es `admin` o `coach`, sin `member_id` (L-2, hasta el portal); crea la cuenta sin hash (`pending_activation`), genera `OneTimeToken(activate)` de 72 h (solo su hash) y devuelve una sola vez `activation_url = <FRONT_BASE_URL>/restablecer/<token>`. Un correo de una cuenta viva da 409 `email_taken` con `existing_id`.
 - `forgot(email) -> None` — siempre 204; genera `OneTimeToken(reset)` si existe; en v0.1, hasta que exista el canal de correo, el admin obtiene el enlace con `resend_link` (`POST /users/{id}/resend-link`), que genera un token nuevo e invalida el anterior. No existe `GET /users/{id}/activation-link` (N-12).
 - `reset(token, new_password) -> None`
 - `lock(user_id, by)`, `revoke_sessions(user_id, by)`, `resend_link(user_id, by) -> str`
@@ -174,9 +176,9 @@ Convenciones: JSON; `limit` (1 a 200, por defecto 25) y `offset`; respuesta de l
 Público: `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/forgot`, `POST /auth/reset`.
 
 Admin y coach salvo nota:
-- Auth: `POST /auth/logout`, `GET /auth/me`, `POST /auth/me/password`.
+- Auth: `GET /auth/me` y `POST /auth/me/password` (los tres roles, también con `must_change_password`; el segundo responde 200 `AccessTokenOut` con un access nuevo, S2-D37 y S2-D46). `POST /auth/logout` es pública y se autentica por la cookie (H-1).
 - Usuarios (admin): `GET/POST /users`, `GET/PATCH/DELETE /users/{id}`, `POST /users/{id}/lock`, `POST /users/{id}/unlock`, `POST /users/{id}/revoke-sessions`, `POST /users/{id}/resend-link` (única ruta para obtener un enlace, N-12).
-- Settings (admin): `GET /settings/{section}`, `PATCH /settings/{section}`, `POST /settings/tv/regenerate-token`.
+- Settings (admin): rutas tipadas `GET/PATCH /settings/gym`, `/settings/privacy` y `/settings/memberships` (declaradas antes que la genérica), y `GET /settings/{section}`, `PATCH /settings/{section}`, `POST /settings/tv/regenerate-token`.
 - Members: `GET /members`, `POST /members`, `GET /members/{id}`, `PATCH /members/{id}`, `DELETE /members/{id}` (admin), `POST /members/{id}/reactivate` (admin, N-20), `POST /members/{id}/reveal` `{field}` (admin y coach, Q6), `GET /members/{id}/memberships`, `GET /members/{id}/memberships/renewal-preview`, `GET /members/{id}/payments`, `GET /members/{id}/audit`, `POST /members/{id}/memberships` (sell: `first_payment` opcional y `renew: true` para renovar; D5 y Q2), `GET /members/export` (admin, v0.2).
 - Plans (admin): `GET/POST /plans`, `GET/PATCH /plans/{id}`, `POST /plans/{id}/activate`, `POST /plans/{id}/deactivate`. Coach: solo `GET /plans?active=true` para vender.
 - Memberships: `GET /memberships`, `GET /memberships/summary`, `GET /memberships/{id}`, `POST /memberships/{id}/freeze` (admin y coach), `POST /memberships/{id}/cancel` (admin), `POST /memberships/{id}/payments` (409 `membership_cancelled` si está anulada). No existe una ruta `/renew` sobre membresías (Q2).

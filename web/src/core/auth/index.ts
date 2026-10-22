@@ -14,8 +14,23 @@ export {
   homeFor,
   safeNext,
 } from "./routeAccess";
-export { clearSession, getAccessToken, getSession, restoreSession, setSession, subscribe, useSession } from "./session";
-export type { ClearReason, SessionPayload, SessionState, SessionStatus, SessionUser } from "./session";
+export {
+  AUTH_CHANNEL,
+  REFRESH_LOCK,
+  adoptAccessToken,
+  clearSession,
+  getAccessToken,
+  getSession,
+  installSessionBridge,
+  logout,
+  refreshAccessToken,
+  refreshCurrentUser,
+  restoreSession,
+  setSession,
+  subscribe,
+  useSession,
+} from "./session";
+export type { ClearReason, LogoutResult, SessionPayload, SessionState, SessionStatus, SessionUser } from "./session";
 export { SessionRoleProvider } from "./SessionRole";
 export { RequireAuth } from "./RequireAuth";
 export { RequireRole } from "./RequireRole";

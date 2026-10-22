@@ -29,8 +29,17 @@ interface LoginBody {
   must_change_password?: boolean;
 }
 
+/**
+ * S2-F3: login, refresh y logout exigen `Origin` del front (S2-D38, `require_same_origin`);
+ * el APIRequestContext de Playwright no lo envía solo, así que va explícito.
+ */
+export function sameOriginHeaders(): Record<string, string> {
+  const base = process.env.E2E_BASE_URL;
+  return base ? { Origin: new URL(base).origin } : {};
+}
+
 async function login(request: APIRequestContext, credentials: Credentials): Promise<LoginBody> {
-  const response = await request.post(`${API}/auth/login`, { data: credentials });
+  const response = await request.post(`${API}/auth/login`, { data: credentials, headers: sameOriginHeaders() });
   if (!response.ok()) throw new Error(`El login de ${credentials.email} respondió ${String(response.status())}.`);
   const body = (await response.json()) as LoginBody;
   if (body.must_change_password) throw new Error(`${credentials.email} debe cambiar su contraseña antes de los E2E (V3 del plan).`);

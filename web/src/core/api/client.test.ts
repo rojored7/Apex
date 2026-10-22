@@ -315,3 +315,52 @@ describe("401 y el gancho onUnauthorized", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe("429 y Retry-After (S2-F3)", () => {
+  it("un 429 lleva los segundos de Retry-After en el ApiError y no invoca el gancho", async () => {
+    const handler = vi.fn(() => Promise.resolve("retry" as const));
+    registerOnUnauthorized(handler);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "rate_limited", message: "Demasiadas solicitudes" } }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": "42" },
+      }),
+    );
+
+    await expect(api.post("/auth/login", { body: {}, skipAuthRetry: true })).rejects.toMatchObject({
+      status: 429,
+      code: "rate_limited",
+      retryAfterS: 42,
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("sin Retry-After el ApiError no trae espera", async () => {
+    fetchMock.mockResolvedValue(envelope(429, "rate_limited", "Demasiadas solicitudes"));
+
+    await expect(api.get("/x")).rejects.toMatchObject({ status: 429, retryAfterS: undefined });
+  });
+});
+
+describe("contexto del gancho del 401 (S2-F3)", () => {
+  it("el gancho recibe el access token con el que salió la petición", async () => {
+    const handler = vi.fn<UnauthorizedHandler>(() => Promise.resolve("fail"));
+    registerOnUnauthorized(handler);
+    setAccessTokenGetter(() => "usado");
+    fetchMock.mockResolvedValue(envelope(401, "token_expired", "Token vencido"));
+
+    await expect(api.get("/x")).rejects.toMatchObject({ code: "token_expired" });
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ code: "token_expired" }), { accessToken: "usado" });
+  });
+
+  it("sin token el contexto lleva null", async () => {
+    const handler = vi.fn<UnauthorizedHandler>(() => Promise.resolve("fail"));
+    registerOnUnauthorized(handler);
+    fetchMock.mockResolvedValue(envelope(401, "unauthorized", "No autorizado"));
+
+    await expect(api.get("/x")).rejects.toMatchObject({ status: 401 });
+
+    expect(handler.mock.calls[0]?.[1]).toEqual({ accessToken: null });
+  });
+});

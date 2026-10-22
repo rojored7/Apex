@@ -37,9 +37,8 @@ const route = (path: string, title: string, feature: Feature, access: RouteAcces
 const PENDING: Extra = { pending: true };
 
 export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
-  // Acceso (sin sesión). Las pantallas de login, recuperación y restablecimiento llegan en
-  // S2-F3 y S2-F4a.
-  route("/login", "Iniciar sesión", "auth", "public", "access", PENDING),
+  // Acceso (sin sesión). Login llega en S2-F3; recuperación y restablecimiento, en S2-F4a.
+  route("/login", "Iniciar sesión", "auth", "public", "access", { load: () => import("../features/auth/pages/LoginPage") }),
   route("/recuperar", "Olvidé mi contraseña", "auth", "public", "access", PENDING),
   route("/restablecer/:token", "Nueva contraseña", "auth", "public", "access", PENDING),
   route("/tv", "Pantalla del gimnasio", "tv", "public", "tv"),

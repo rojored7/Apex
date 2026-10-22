@@ -5,6 +5,7 @@
 //   "same-origin" (nunca "include": no hay orígenes cruzados en v0.1, P7).
 // - Ante un 401 invoca el gancho registrado (US-043 hace ahí el refresh compartido) como
 //   máximo una vez por petición; si responde "retry" se repite la petición una sola vez.
+// - S2-F3: un 429 lleva en el ApiError los segundos de `Retry-After` (retryAfterS).
 // - Nunca escribe en console ni registra cuerpos o tokens.
 import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { toQueryString, type QueryParams } from "./query";
@@ -25,7 +26,11 @@ export interface RequestOptions {
 }
 
 export type UnauthorizedResult = "retry" | "fail";
-export type UnauthorizedHandler = (error: ApiError) => Promise<UnauthorizedResult>;
+/** S2-F3: el access token con el que salió la petición que recibió el 401 (o null). */
+export interface UnauthorizedContext {
+  accessToken: string | null;
+}
+export type UnauthorizedHandler = (error: ApiError, context: UnauthorizedContext) => Promise<UnauthorizedResult>;
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -47,10 +52,9 @@ function buildUrl(path: string, query: QueryParams | undefined): string {
   return `${API_BASE}${path}${qs ? `?${qs}` : ""}`;
 }
 
-function buildHeaders(hasBody: boolean): Headers {
+function buildHeaders(hasBody: boolean, token: string | null): Headers {
   const headers = new Headers({ Accept: "application/json" });
   if (hasBody) headers.set("Content-Type", "application/json");
-  const token = accessTokenGetter?.();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return headers;
 }
@@ -59,6 +63,8 @@ interface RawResponse {
   status: number;
   ok: boolean;
   text: string;
+  /** Cabecera `Retry-After` (429); `null` si no viene. */
+  retryAfter: string | null;
 }
 
 /**
@@ -82,7 +88,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, external: AbortS
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     const text = response.status === 204 ? "" : await response.text();
-    return { status: response.status, ok: response.ok, text };
+    return { status: response.status, ok: response.ok, text, retryAfter: response.headers.get("Retry-After") };
   } catch (error) {
     if (state.timedOut) throw new ApiError({ status: 0, code: "timeout", message: GENERIC_MESSAGES.timeout });
     if (external?.aborted) throw error;
@@ -104,18 +110,19 @@ function readSuccess({ status, text }: RawResponse): unknown {
 
 async function request<T>(method: Method, path: string, options: RequestOptions, retried: boolean): Promise<T> {
   const hasBody = options.body !== undefined;
+  const token = accessTokenGetter?.() ?? null;
   const init: RequestInit = {
     method,
     credentials: "same-origin",
-    headers: buildHeaders(hasBody),
+    headers: buildHeaders(hasBody, token),
     ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
   };
   const response = await fetchWithTimeout(buildUrl(path, options.query), init, options.signal);
   if (response.ok) return readSuccess(response) as T;
 
-  const error = parseApiError(response.status, response.text);
+  const error = parseApiError(response.status, response.text, response.retryAfter);
   if (response.status === 401 && !retried && !options.skipAuthRetry && unauthorizedHandler) {
-    const outcome = await unauthorizedHandler(error);
+    const outcome = await unauthorizedHandler(error, { accessToken: token });
     if (outcome === "retry") return request<T>(method, path, options, true);
   }
   throw error;

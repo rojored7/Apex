@@ -10,6 +10,7 @@
   color: var(--ink);
 }
 
+/* S2-F3: la caja de Login.html (borde --line, fondo --card, relleno de 32 px). */
 .card {
   display: flex;
   flex-direction: column;
@@ -18,6 +19,16 @@
   box-sizing: border-box;
   width: 100%;
   max-width: calc(var(--sidebar) * 2 - var(--space-8));
+  padding: var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+@media (width < 400px) {
+  .card {
+    padding: var(--space-6) var(--space-4);
+  }
 }
 
 .logo {

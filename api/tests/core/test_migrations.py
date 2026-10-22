@@ -71,3 +71,9 @@ def test_downgrade_a_base_vacia_y_vuelta_a_head(
     assert esquemas == sorted(APP_SCHEMAS)
     assert gist is True
     assert version == _head(alembic_config)
+
+
+def test_single_head(alembic_config: Config) -> None:
+    """Una sola cabeza en la cadena (condición 5 del impacto del Sprint 2; S2-B1)."""
+    heads = ScriptDirectory.from_config(alembic_config).get_heads()
+    assert len(heads) == 1, heads

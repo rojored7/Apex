@@ -17,7 +17,6 @@ from app.core.crypto.keyring import Keyring
 from app.core.crypto.secret import Secret
 from app.core.crypto.types import Encrypted, install_crypto_type_listeners
 from app.core.db import Base, CommonColumnsMixin
-from tests.crypto.conftest import bus_listo, proveedor_local, sin_llaves  # noqa: F401
 
 
 class NotaCifrada(CommonColumnsMixin, Base):
@@ -29,7 +28,7 @@ class NotaCifrada(CommonColumnsMixin, Base):
 
 
 @pytest.fixture
-async def db(bus_listo: Keyring, session: AsyncSession) -> AsyncIterator[AsyncSession]:  # noqa: F811
+async def db(bus_listo: Keyring, session: AsyncSession) -> AsyncIterator[AsyncSession]:
     install_audit_listeners()
     install_crypto_type_listeners()
     await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))

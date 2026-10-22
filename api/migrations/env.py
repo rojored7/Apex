@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 
 # Models de cada módulo (se agregan en su historia):
+from app.modules.settings import models as _settings  # noqa: F401  (US-054, 0005_settings)
+
 # from app.modules.members import models as _members
 
 config = context.config

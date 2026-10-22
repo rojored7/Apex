@@ -98,3 +98,117 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - Las specs `login`, `users-activation`, `role-guards`, `settings-gym` y `refresh-two-tabs` del
     proyecto `stack` se crean en sus slices; el proyecto toma todo `tests/e2e/stack/**`.
   - El gate de cierre incluye además `web/tests/unit/playwright-config.test.ts`.
+
+### S2-B1 · Configuración del gimnasio (US-054, US-055 back, US-057, US-058)
+
+- Rojo (Wave 3a; corrido sobre stubs, sin la migración `0005_settings`):
+  - B1.1 kit de fixtures en `api/tests/conftest.py`: `proveedor_local`, `sin_llaves` y
+    `bus_listo` movidas desde `tests/crypto/conftest.py` (que conserva solo
+    `limpiar_llaves_con_commit`; `tests/core/test_audit_encrypted.py` y
+    `test_audit_hook_encrypted.py` dejan de importarlas), `reloj` (`FrozenClock`
+    `2026-10-21T15:00:00Z`), `argon2_rapido`, `seguridad` (`configure_security` y argon2 en
+    mínimos), `cargador_real`, `app_http` (sin lifespan; `get_session` sustituido por la
+    `session` de la prueba con commit o rollback), `usuario_real` (fábrica sobre
+    `tests/factories/users.py::make_user`, usuario real con `hash_password` y token real),
+    `cabeceras(usuario)` (`Bearer` y `Origin` de `FRONT_BASE_URL`) y `dos_sesiones` (E6: dos
+    sesiones con commit real; al salir borra `settings.settings_sections` y la cola de
+    auditoría que agregaron). `LIMPIEZA_DE_SESION` incluye `settings.settings_sections` con
+    un `DO $$ ... to_regclass(...)` para no romper la suite mientras la tabla no exista.
+    `tests/factories/__init__.py` con `FACTORIES = {"auth.users": make_user}`.
+  - B1.2 stubs `api/src/app/modules/settings/{__init__,models,schemas,exceptions,service,router}.py`:
+    modelo `SettingsSection` completo (auditado, `CHECK key_valid`, `version_non_negative`,
+    `uq_settings_sections_key`), excepciones completas, `SectionKey`, `ENABLED_SECTIONS`,
+    `MembershipsPolicy` y las entradas y salidas del API fijas; esquemas de valor vacíos,
+    `SECTION_REGISTRY = {}` y `SECTION_DEFAULTS = {}`; service con `NotImplementedError`;
+    router plano con las 8 rutas y `require_role("admin")`, aún fuera de `MODULES`.
+    `test_single_head` en `tests/core/test_migrations.py`.
+  - B1.3 pruebas: `tests/settings/` (`_apoyo.py` y los 11 archivos del plan),
+    `tests/architecture/test_settings_no_secrets.py`, `tests/migrations/test_0005_settings.py`
+    y el caso `test_nadie_fuera_de_settings_importa_settings_models` en
+    `test_no_cross_models.py`.
+  - Conteo: `pytest tests/settings tests/architecture/test_settings_no_secrets.py`: 190
+    fallas y 1 ok (el control del detector de secretos, que prueba la propia prueba). Motivos:
+    `NotImplementedError` de las puras y casos de uso (validate_section 79, update_section
+    12, ensure_enabled 11, get_section 8, defaults_for 6, check_version 5, memberships_policy
+    2, get, gym_name, current_privacy_version), 404 `not_found` del router no montado (52),
+    `SECTION_REGISTRY` vacío (6). `test_0005_settings.py`: 4 fallas (la tabla no existe).
+    Ningún error de import ni de fixture. Suite completa: 194 fallas, 446 ok, 4 saltadas; sin
+    contar el Rojo, 445 ok (443 de la línea base, `test_single_head` y el caso nuevo de
+    `test_no_cross_models`). `ruff check .`, `ruff format --check .` y `mypy src` limpios.
+  - Control del kit (prueba desechable, borrada): con `MODULES` parchado a `("auth","settings")`,
+    coach 403, sin token 401 y admin llega al service (el `NotImplementedError` sube como
+    excepción porque `ASGITransport` relanza los errores de la app).
+- Supuestos que el Verde debe respetar:
+  - El coach recibe 403 también en `GET /settings/gym` (plan B1.3: "el coach recibe 403 en
+    las 8 rutas"; S2-D14: el coach ve el nombre del gimnasio por `GET /auth/me`).
+  - `field` del 422 en forma `value.<campo>`, tanto desde `validate_section` como desde la
+    validación del cuerpo en las rutas tipadas; el `message` nunca repite el valor.
+  - `SECTION_DEFAULTS`: `gym` = `name "APEX"` y los otros seis en `None`; `privacy` =
+    `policy_version`, `policy_text` y `consent_required_from` en `None`, `retention_years 5`;
+    `memberships` = 7, 30, 2, 7. `defaults_for` devuelve una copia.
+  - `gym.email` se normaliza a minúsculas sin espacios (D5); NIT hasta 15 con
+    `^\d+(-\d)?$`; `retention_years` y los cuatro de memberships son enteros estrictos
+    (rechazan `"7"`, `7.5`, `7.0` y `True`).
+  - `get_section` de una sección nunca guardada: `version 0`, `updated_at` y `updated_by`
+    nulos; `update_section` deja `created_by` y `updated_by` = actor; auditoría `insert` con
+    `before` nulo y `after` con `key`, `value` y `version`; `update` con `before`/`after` de
+    `value` y `version`; `subject_member_id` nulo; `table_name = 'settings.settings_sections'`.
+  - Primer guardado con `version != 0` y versión vieja: 409 `version_conflict` con el mensaje
+    "Otra persona cambió esta sección. Recarga para ver los cambios." y sin `field`.
+  - Restricciones de la migración con los nombres de `NAMING_CONVENTION`:
+    `pk_settings_sections`, `ck_settings_sections_key_valid`,
+    `ck_settings_sections_version_non_negative` e índice `uq_settings_sections_key`; sin FK.
+  - El Verde agrega `settings` a `MODULES`, el import de `settings.models` en
+    `migrations/env.py` y regenera `docs/openapi.json` (P-API).
+- Verde (Wave 3b):
+  - `api/src/app/core/validators.py` (nuevo): `EmailAddress` (D5) sin `email-validator`, con
+    `check_email_shape` pura; pruebas en `api/tests/core/test_validators.py` (16 casos).
+  - `modules/settings/schemas.py`: esquemas de `gym`, `privacy` (`PrivacySettings` y
+    `PrivacyView`) y `memberships` (cuatro `StrictInt`), `SECTION_REGISTRY` con las tres
+    habilitadas, `SECTION_VIEWS` (lectura: `privacy` con `PrivacyView`) y `SECTION_DEFAULTS`.
+  - `modules/settings/service.py`: puras (`validate_section` con `field = "value.<loc>"` y
+    mensaje "El campo value.<x> no es válido.", `check_version`, `defaults_for` con
+    `deepcopy`, `ensure_enabled`), `get_section`, `update_section` (`FOR UPDATE` con
+    `populate_existing`; primer guardado en `begin_nested()` con el `IntegrityError` de
+    `uq_settings_sections_key` traducido a 409; `refresh` de `updated_at` tras el flush; log
+    solo con `settings_key` y `settings_version`), `get`, `memberships_policy`,
+    `current_privacy_version` y `gym_name` (respaldo "APEX").
+  - `router.py`: solo el docstring (las 8 rutas del stub ya cumplían el contrato).
+  - `api/migrations/versions/0005_settings.py`; import de `settings.models` en
+    `migrations/env.py`; `MODULES = ("auth", "settings")` en `main.py`.
+  - Contrato: `docs/openapi.json` (dos exportaciones idénticas) y `web/src/core/api/types.ts`
+    regenerados; `types.contract.test.ts` 5/5 y `npx tsc --noEmit` limpio.
+- Evidencia:
+  - `pytest tests/settings tests/migrations tests/architecture tests/core/test_validators.py`:
+    262 ok, 1 saltada (`test_no_sensitive_in_logs`, dueño B7). Suite completa: 656 ok,
+    4 saltadas, 0 fallas. Cobertura global de `app` 95 % (`settings/service.py` 96 %,
+    `schemas.py` 100 %, `router.py` 100 %, `core/validators.py` 100 %).
+  - `ruff format .`, `ruff check .` y `mypy src` (48 archivos) limpios.
+  - Alembic contra `db_test`: `upgrade head` → `downgrade 0004_auth` → `upgrade head`;
+    `alembic heads` = `0005_settings (head)` (uno solo).
+  - Stack (P-MIG): `pg_dump -Fc` en `docs/scratch/sprint-02-antes-0005_settings.dump`
+    (ignorado), `stop api` mientras se escribía la migración, `start api` → `healthy`, el log
+    muestra `Running upgrade 0004_auth -> 0005_settings` y `migraciones al día`;
+    `alembic current` = `0005_settings (head)`; ciclo `downgrade -1` → `upgrade head` en
+    `apex-db-1`; `\d settings.settings_sections` con `pk_settings_sections`,
+    `uq_settings_sections_key`, `ck_settings_sections_key_valid` y
+    `ck_settings_sections_version_non_negative`, sin FK y sin filas; `/health` 200
+    `{"status":"ok","db":"ok"}`.
+  - Escritura real por Nginx (`:8180`) con un token de acceso del admin de desarrollo
+    (firmado dentro del contenedor del api; el login real llega en B2): `GET /settings/gym`
+    defaults en versión 0; `PATCH` versión 0 → 1; `PATCH` con versión 0 otra vez → 409
+    `version_conflict` con el mensaje exacto; `PATCH` versión 1 → 2; `GET /settings/tv` → 404
+    `section_not_available`; `"7"` en `expiring_days` → 422 `value.expiring_days`; sin token
+    → 401. En psql: una fila `gym` en versión 2 con `updated_by` del admin y dos filas de
+    auditoría (`insert` con `after.version = 1` y `update` con `after.version = 2`) con el
+    `user_id` del admin. La fila queda en la base de desarrollo como configuración real.
+- Desviaciones:
+  - `tests/migrations/test_0005_settings.py`: la consulta de `pg_constraint` pasa a
+    `contype::text AS contype`. La prueba estaba objetivamente mal: asyncpg devuelve el tipo
+    `"char"` como `bytes` (`b'p'`) y la comparación con `'p'` nunca podía pasar. No cambia lo
+    que se verifica.
+  - `SECTION_VIEWS` (no estaba en el blueprint): necesario para leer `privacy` sin publicar
+    con `get`; anotado en `DECISIONES.md`.
+  - El PATCH con un valor idéntico al guardado igual sube la versión (cada guardado es una
+    versión); la auditoría `update` lleva solo `version` en ese caso porque el hook registra
+    las columnas que cambian.

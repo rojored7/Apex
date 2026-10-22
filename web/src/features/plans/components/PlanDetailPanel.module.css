@@ -1,0 +1,55 @@
+/* S2-F7: detalle de solo lectura de un plan. Solo variables de tokens.css. */
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: var(--space-4);
+  width: 100%;
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fact > dt {
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.fact > dd {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.number {
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

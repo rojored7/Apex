@@ -56,6 +56,14 @@ describe("estilos de los componentes base", () => {
     expect(ruleBodies(readModule("Button"), /^\s*\.button\s*$/).join(";")).toMatch(/text-decoration\s*:\s*none/);
   });
 
+  // S2-F7: en oscuro --blue-deep es #33B5EA y el blanco encima da 2,4:1 (axe en el hover de
+  // "Crear plan"). DESIGN.md, Temas: en oscuro el botón principal sigue con texto negro.
+  it("en oscuro el hover del botón principal mantiene el texto negro", () => {
+    const dark = ruleBodies(readModule("Button"), /:root\[data-theme="dark"\]\s+\.primary:hover/).join(";");
+
+    expect(dark).toMatch(/color\s*:\s*var\(--black\)/);
+  });
+
   // S2-F6: --blue-deep sobre --surface da 4,48:1 (menos de 4,5:1, WCAG AA); jsdom no lo mide.
   it("las migas de PageHeader no usan --blue-deep en reposo sobre --surface", () => {
     const css = readModule("PageHeader");

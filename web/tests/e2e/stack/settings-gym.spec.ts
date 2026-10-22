@@ -5,7 +5,7 @@
 // Idempotente: valores únicos por corrida (V4 corre las specs dos veces seguidas).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { crearCoach, loginComo } from "../helpers/stack";
+import { crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const PATH = "/sistema/configuracion";
@@ -70,6 +70,7 @@ test.describe("configuración del gimnasio contra el stack", () => {
     for (const id of ["gimnasio", "privacidad", "membresias"]) {
       await page.goto(`${PATH}?tab=${id}`);
       await expect(page.getByRole("button", { name: "Guardar" })).toBeVisible();
+      await esperarTransiciones(page);
       const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
       expect(result.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
     }

@@ -68,6 +68,10 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--ink);
+
+  /* V4 del Sprint 2: un título sin espacios (el correo del saludo de Inicio, "Hola, admin@...")
+     desbordaba 96 px a 320 px en el stack. Se parte donde haga falta antes que desbordar. */
+  overflow-wrap: anywhere;
 }
 
 /* El total y la insignia no van en Michroma ni en mayúsculas. */

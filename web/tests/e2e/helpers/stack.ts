@@ -71,6 +71,18 @@ export async function crearCoach(page: Page, admin: Credentials = datosDeBase())
   return { email, password };
 }
 
+/**
+ * V4: espera a que terminen las transiciones y animaciones CSS en curso antes de medir con axe.
+ * Tras un clic el puntero queda sobre el botón y su hover (120 ms, Button.module.css) pasa por
+ * colores intermedios: axe mide el contraste a mitad de camino (4,22:1) aunque el estado final
+ * cumpla. Espera por evento (`Animation.finished`), sin pausas fijas.
+ */
+export async function esperarTransiciones(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
+
 export const VIEWPORTS: readonly number[] = [320, 768, 1024, 1440];
 export const THEMES: readonly Theme[] = ["light", "dark"];
 const CAPTURE_HEIGHT = 900;

@@ -7,7 +7,7 @@
 // Idempotente: correo y contraseña únicos por corrida (V4 corre las specs dos veces).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { loginComo } from "../helpers/stack";
+import { esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -16,6 +16,7 @@ const COACH_EMAIL = `coach-activa-${RUN}@apex.test`;
 const COACH_PASSWORD = `Coach-activa-${RUN}-e2e!`;
 
 async function axeViolations(page: Page): Promise<string[]> {
+  await esperarTransiciones(page);
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   return result.violations.map((v) => `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
 }

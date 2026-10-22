@@ -4,7 +4,7 @@
 // ../login-form.spec.ts. Idempotente: no crea datos (V4 corre las specs dos veces).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { datosDeBase } from "../helpers/stack";
+import { datosDeBase, esperarTransiciones } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 
@@ -24,6 +24,7 @@ test.describe("login contra el stack", () => {
   test("el admin entra, ve Inicio con su gimnasio y la recarga conserva la sesión", async ({ page }) => {
     const admin = datosDeBase();
     await page.goto("/login");
+    await esperarTransiciones(page);
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
     expect(axe.violations).toEqual([]);
 

@@ -1474,3 +1474,164 @@ saltadas; web 593 ok en 43 archivos; stack `apex` en 8180/8181/5442/5443, los cu
   - El gate que sella lista también `tests/plans/test_plan_review.py` (nació en la revisión).
   - El script de firma quedó en `/tmp/firmar.py` del contenedor del api (sin secretos; el usuario
     del contenedor no puede borrar lo que copió `docker cp`); desaparece al recrear el contenedor.
+
+## Validación del sprint (V2–V9)
+
+Rama en `981836a` al entrar (B1–B9 y F1–F8 fusionados, árbol limpio). Alias
+`DC="docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml"`. Informes
+de Playwright, capturas y logs en el scratchpad de la sesión (fuera del repo). Sin credenciales
+en este bloque: el admin del E2E sale de `.env.seed` solo en la shell.
+
+### V2 · Stack desde cero de código
+- `$DC build api web` (25 s) y `$DC up -d`: api y web recreados; `tools init-keys`: KEK, firma y
+  par JWT "ya existe". api y web `healthy`.
+- `alembic current` = `0007_plans (head)`; `downgrade -1` → `0006_members`; `upgrade head` →
+  `0007_plans (head)`; `uv run alembic heads`: una sola cabeza (`0007_plans`).
+- `curl` por 8180: `/api/v1/health` 200 `{"status":"ok","db":"ok","version":"dev"}`; `/` 200.
+- Efecto anotado: el `downgrade` de `0007_plans` borra `plans.plans`, así que los planes de B9
+  ("Mensual" `37aca240-…` y "Tiquetera 12" `4ce6c6da-…`) desaparecieron. "Tiquetera 12" se
+  recreó por el api (`03cb58f6-13bb-4f66-84ec-81b5ade2e215`, $ 150.000, `classes`, 30 días, 12
+  clases). Un spec de diagnóstico creó por error el plan "mensual" ($ 320.000, 90 días,
+  `37f1e7d4-9952-4201-b2b8-0a2a4c733a0d`); no hay edición ni baja de planes en S2, así que queda
+  y "Mensual" responde 409. La demo (V7) creó "Mensual <marca>" ($ 120.000, 30 días).
+
+### V3 · Datos reales
+- `auth.users` vivos: `admin@ejemplo.local` (admin), `coach-b3-smoke@test.apex` y
+  `coach-b7-smoke@test.apex` (coach), `system@apex.local`; todos con `must_change_password = f`
+  (las specs no necesitan cambiar la contraseña).
+- `settings.settings_sections`: `gym` versión 2. `members.members`: 2. `plans.plans`: 0 (por el
+  ciclo de V2).
+
+### Smoke de producción previo a V4 (E5)
+- `.env` local sin líneas de límites (rigen los defaults de `Settings`: `LOGIN_IP_LIMIT=5`…).
+- Seis logins fallidos por 8180 con `Origin`: cinco 401 `invalid_credentials` y el sexto 429
+  `rate_limited`.
+- `scripts/ci/web-smoke.sh`: 5 ok, 0 fallas. `scripts/smoke/headers.sh`: 29 ok, 0 fallas (la
+  ráfaga de 45 POST dio 45 respuestas 429: la zona ya estaba gastada por el smoke anterior).
+
+### V4 · E2E contra el stack
+- Perfil E2E en `.env` (bloque marcado, al final): `LOGIN_IP_LIMIT=1000`,
+  `LOGIN_ACCOUNT_LIMIT=1000`, `LOGIN_ACCOUNT_GLOBAL_LIMIT=10000`, `LOGIN_LOCK_AFTER=1000`,
+  `REFRESH_IP_LIMIT=1000`, `RESET_IP_LIMIT=1000`, `FORGOT_IP_LIMIT=1000`, `LOGOUT_IP_LIMIT=1000`;
+  `$DC up -d api` y comprobado con `env` dentro del contenedor.
+- Corridas antes de corregir (`--project=stack`, 25 pruebas):
+  - 1 (8 workers): 5 ok, 17 fallos, 3 sin correr. 2 (8 workers, zona repuesta): 7 ok, 15 fallos.
+    3 (`--workers=1`): 11 ok, 11 fallos, 3 sin correr.
+  - Causas: (a) 429 del borde de Nginx (`limit_req` 60r/m, ráfaga 30) aun con el perfil del api:
+    todo el host llega a Nginx con una IP (`172.30.0.128`, la puerta de enlace) y cada carga de
+    la SPA hace `POST /auth/refresh` y `GET /auth/me`; en serie, 46 peticiones a
+    `/api/v1/auth/` en 20 s (log de Nginx). Cada spec, sola, pasaba. (b) `captures.spec.ts`
+    esperaba el `h1` "APEX" de la página estática de W0-1 (desde F3 `/` lleva a `/login`).
+    (c) `plans.spec.ts`: axe `color-contrast` 4,22:1 en "Crear plan" medido a mitad de la
+    transición de hover (120 ms); el estado final cumple (blanco sobre `#0077ad`).
+- Correcciones (clasificación):
+  - Entorno/prueba (a): zona `apex_auth` a `infra/nginx/snippets/auth-zone.conf` (60r/m, la de
+    la imagen) e `infra/compose.e2e.yml`, que monta `infra/nginx/e2e/auth-zone.conf` (6000r/m)
+    solo en V4 y en el job `e2e-stack`. Rojo primero: `test_nginx_conf.sh` 5 fallas y
+    `test_compose_config.sh` 2 fallas; Verde: 0 y 0 (la ráfaga funcional sigue con 31 pasan y 14
+    reciben 429). `$DC build web` y `$DC -f infra/compose.e2e.yml up -d web`.
+  - Prueba (b): `captures.spec.ts` captura el login (siempre claro: `AccessLayout` fuerza el
+    claro, así que solo cuatro capturas) y el Inicio con sesión en claro y oscuro (la elección
+    del panel vive en `apex.theme`; `prefers-color-scheme` solo no lo oscurece). Asegura
+    `data-theme` y que no haya desborde.
+  - Prueba (c): `esperarTransiciones(page)` en `helpers/stack.ts` (espera `Animation.finished`)
+    antes de cada axe en las seis specs que lo usan.
+  - Producto: el saludo "Hola, admin@ejemplo.local" desbordaba 96 px a 320 px (texto sin puntos de
+    corte; `scrollWidth` 416). `PageHeader.module.css` `.title` con `overflow-wrap: anywhere`;
+    tras `$DC build web`, `scrollWidth` 320. Lo vigila `captures.spec.ts`.
+  - CI: el job `e2e-stack` corría sin el perfil E2E del api (cinco logins por minuto) y sin
+    `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD` (`datosDeBase()` lanza). Ahora `sed` sube los topes en
+    la copia del `.env`, `DC` apila `compose.e2e.yml` y el paso de Playwright exporta el admin del
+    `.env.seed` efímero con `add-mask`.
+  - No adoptado: `storageState` de E5 (el refresh rota y su reuso fuera de la gracia revoca todas
+    las sesiones del usuario). Ver `DECISIONES.md`, S2-V.
+- Resultado final, dos corridas seguidas (`E2E_BASE_URL=http://localhost:8180`, 8 workers):
+  **29 ok, 0 fallos, 0 saltadas** en cada una (7,0 s y 6,7 s), 0 respuestas 429 en el log de
+  Nginx. Pasaron en las dos: `captures` (cabeceras, 4 login, 8 Inicio), `login` (4),
+  `logout-expired` (1), `members` (1), `plans` (2), `refresh-two-tabs` (1), `settings-gym` (5),
+  `users-activation` (1), `users-manage` (1). 12 capturas: `login-light-{320,768,1024,1440}` e
+  `inicio-{light,dark}-{320,768,1024,1440}`.
+- `--project=preview` completo: **101 ok, 0 fallos** (24 s).
+- Spec `role-guards` del stack: no existe (la de `vite preview` cubre la matriz con el api
+  simulado; en el stack lo cubren `settings-gym`, `plans` y `users-activation` con coach real).
+- Restauración: bloque del perfil borrado; `.env` idéntico byte a byte a la copia previa
+  (`cmp`); `$DC up -d api web` (web sin `compose.e2e.yml`): 0 variables de límites en el api y
+  `rate=60r/m` en `/etc/nginx/snippets/auth-zone.conf`. Sexto login fallido otra vez: cinco 401
+  y 429 `rate_limited`.
+
+### V5 · Rendimiento
+- `uv run pytest -m perf tests/members/test_list_perf.py -q` (con `TEST_DATABASE_URL`): 3 ok en
+  20 s (dos corridas). Búsqueda por documento con 1.000 socios: 12,1 ms; `EXPLAIN` con
+  `uq_members_document_idx_alive` (aserción de la prueba); L-11, 20 logins fallidos
+  concurrentes: p50 0,390 s, p95 0,399 s, máx. 0,401 s.
+
+### V6 · Smoke con evidencia SQL
+- `members.members`: `document` = `apx1.cfcd75b0-b1b6-4…` (blob de 106 caracteres),
+  `document_idx` = `04504d1e3db9b0fa6f4d…` (HMAC).
+- `audit.audit_log` de `auth.users`, últimas 10 por `seq`: `login` (695, 689, 688, 687, 683),
+  `update` (694, 692, 686, 684) e `insert` (690); `password_hash` = `***` en las filas que lo
+  traen y vacío en las demás. Totales: 54 `insert`, 282 `login`, 170 `update`; 0 filas con un
+  `password_hash` distinto de `***` en toda la auditoría.
+- `auth.one_time_tokens.token_hash` = `412d10e382ad18ac991b…` (64 hex: hash).
+- `crypto.crypto_ops` por verbo: `encrypt` 30, `index` 52, `unwrap` 1288, **0 `decrypt`**.
+- `core.audit.verify_chain` sobre `audit.audit_log` completa en orden de `seq` (script por stdin
+  en el contenedor del api; no hay comando del CLI): `ok=True`, 695 de 695 filas, sin ruptura.
+
+### V7 · Demo (8 puntos de `SPRINT-02.md`, por la API en 8180)
+1. `GET /login` 200 con `#root` y CSP con nonce; capturas del login en los cuatro anchos (el
+   login es siempre claro por diseño, así que "en tema oscuro" no aplica).
+2. Admin `POST /users` (coach) 201 con `activation_url` `http://localhost:8180/restablecer/<token>`
+   y vencimiento a 72 h; `POST /auth/reset` 204 sin abrir sesión; el mismo enlace otra vez 400
+   `invalid_token`; login del coach 200.
+3. Coach: `GET /settings/gym`, `/settings/privacy` y `/users` → 403 `forbidden` ("Sin permiso" en
+   la pantalla lo prueba `settings-gym.spec.ts`).
+4. Sexto intento fallido → 429 `rate_limited` (antes y después de V4). Refresh del coach 200;
+   reuso del rotado dentro de la gracia → 401 `invalid_refresh` y la sesión sigue (refresh 200);
+   reuso del rotado a los 11 s → 401 `invalid_refresh` y el refresh vigente queda revocado (401).
+5. `PATCH /settings/gym` 200 (versión 14 → 15), `PATCH /settings/privacy` 200 con la versión
+   nueva, `expiring_days=31` → 422 `field=value.expiring_days`, `expiring_days=7` → 200; el
+   `GET /auth/me` del coach trae `gym_name` actualizado.
+6. CC 1.020.304.417 ya existía (corrida anterior): `POST` → 409 `member_document_duplicated` con
+   `existing_id`; búsqueda por documento → 1. Con un socio nuevo (201): búsqueda por documento,
+   teléfono y apellido → 1 cada una. SQL del blob `apx1.` y el HMAC en V6.
+7. "Mensual <marca>" ($ 120.000, 30 días) 201 con `price_cop=120000`; en mayúsculas, con espacios
+   en los extremos y "Mensual" → 409 `plan_name_duplicated` con `existing_id`; coach
+   `GET /plans?active=true` 200 (15, todos activos) y `GET /plans` 403.
+8. Auditoría de `auth.users` con `login`, `insert` y `update` y `password_hash` `***` (V6).
+
+### V8 · Repetición
+- `tools seed` dos veces: "omitido: ya existe un admin activo" las dos.
+- `tools init-keys` dos veces: las tres llaves "ya existe".
+- `export-openapi` dos veces: idénticas entre sí e idénticas a `docs/openapi.json`.
+- `SMOKE_KEEP=1 bash scripts/ci/compose-smoke.sh` (con el `.env.seed` local existente): verde en
+  47 s; db, db_test, api y web healthy, seed omitido, api sin `ADMIN_*`, web en `172.30.0.10` =
+  `TRUSTED_PROXIES`, `web-smoke` 0 fallas, `headers` 0 fallas.
+
+### V9 · Gates completos
+- `PYTEST_ADDOPTS="-m 'not perf'" bash scripts/workflow/run-gates.sh`: verde en 247 s. api: ruff,
+  formato y mypy limpios; 1856 ok, 4 saltadas, 3 deseleccionadas; cobertura `app` 95,56 %. web:
+  lint, tsc, 1676 pruebas en 105 archivos (cobertura 99,71 % de líneas) y build.
+- `uv run pytest tests/architecture -q`: 142 ok, 1 saltada (US-074, S3-B10).
+- `uvx pre-commit run --all-files`: la primera pasada falló en `end-of-file-fixer` (un archivo
+  editado en V4 quedó sin salto final; el hook lo arregló); la segunda, verde.
+- `bash scripts/workflow/tests/run.sh`: 5 de 5 archivos en verde.
+- `bash scripts/ci/check-licenses-api.sh`: todas en la lista; `npm run licenses`: MIT 12, ISC 1.
+- gitleaks sobre el historial: 68 commits, "no leaks found".
+- `check-image-secrets.sh apex-api:local`: 0 fallas (incluye `gitleaks dir`);
+  `test_api_image.sh apex-api:local`: 0 fallas.
+- Además: `test_nginx_conf.sh` 0 fallas, `test_compose_config.sh` 0 fallas,
+  `test_check_key_files.sh` 0 fallas, `bash -n` de `scripts/ci/*.sh` limpio.
+
+### Commits de la validación
+- `961e0d6` fix(infra): perfil E2E del borde (zona `limit_req` montable) y job `e2e-stack` con
+  topes y admin del seed (`test_nginx_conf.sh`, `test_compose_config.sh`; docs `DECISIONES.md`
+  S2-V, `RUNBOOK.md`, `CLAUDE.md`, `.env.example`).
+- El siguiente checkpoint: `PageHeader` sin desborde y specs del stack reparadas, más este bloque.
+
+### Estado al terminar
+- `.env` de producción restaurado (idéntico a la copia previa). Stack `apex` arriba: db, db_test,
+  api y web healthy en 8180/8181/5442/5443; web con la zona de producción (60r/m).
+- Datos de prueba nuevos: coaches `coach-*@apex.test` de las specs y `coach-demo-*@test.apex` de
+  la demo (este con sus sesiones revocadas), socios "Demo …" y los de las specs, planes
+  "Trimestral <marca>", "Mensual <marca>", "mensual" y "Tiquetera 12", política `demo-<marca>`,
+  `gym_name` "APEX CrossFit Demo <marca>".

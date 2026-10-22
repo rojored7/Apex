@@ -1682,3 +1682,107 @@ Cuatro revisiones de solo lectura sobre `482295f..981836a`, después de la valid
 - N-6, verificar `remote_addr` en el servidor del gimnasio, y remedir el p99 del login (N-7) en ese hardware: S4B-W0-2.
 - `omit` de `cli.py` y `worker/` en la cobertura: Sprint 4A (US-113).
 - Higiene al cerrar el sprint (orquestador): `git worktree remove` de los worktrees de agentes ya fusionados (incluido el bloqueado) y borrar `docs/scratch/*.dump`.
+
+## Revalidación final (tras la revisión de Fase 4)
+
+Rama en `2e393cd` al entrar, árbol limpio. Mismo alias `DC`; para V4 se apila
+`infra/compose.e2e.yml` como el job `e2e-stack`. Logs e informes en el scratchpad de la sesión
+(fuera del repo). Sin credenciales en este bloque: el admin sale de `.env.seed` solo en la shell.
+No se corrigió código: no hubo fallos de producto ni de prueba.
+
+### 1 · Stack
+- `$DC build api web` (14 s, en caché: el árbol es el de `2e393cd`) y `$DC up -d`: web
+  recreado; contenedores con las imágenes recién construidas (`apex-api:local` `35e9313c4a31`,
+  `apex-web:local` `0922ec9b5bb0`). api, web, db y db_test `healthy`.
+- `$DC exec api alembic current` = `0007_plans (head)`. Por 8180: `/api/v1/health` 200
+  `{"status":"ok","db":"ok","version":"dev"}`; `/` 200.
+
+### 2 · Smoke de producción
+- Admin `POST /auth/login` 200. Login con NUL en el correo → 422 `validation_error`
+  `field=email`. `GET /users?offset=99999999999999999999` → 422 `field=offset`.
+  `GET /members?limit=1` 200 con `Cache-Control: no-store` y `Pragma: no-cache` (la cabecera
+  llega dos veces, una del api y otra de Nginx, con el mismo valor). `POST /auth/me/password`
+  con una nueva de 11 caracteres → 422 `field=new_password`.
+- Seis logins fallidos (cuenta inexistente) con la ventana limpia: cinco 401
+  `invalid_credentials` y el sexto 429 `rate_limited`. Nota de orden: el límite por IP del login
+  cuenta toda petición, también las 422 (la dependencia corre antes del handler); la primera
+  tanda, pegada a las comprobaciones anteriores, dio 429 en el cuarto. Se repitió tras 65 s.
+- `scripts/ci/web-smoke.sh`: 0 fallas. `scripts/smoke/headers.sh`: la primera corrida, menos de
+  60 s después de los seis fallidos, dio 1 falla (`Retry-After = '48'`: el último 429 de la
+  ráfaga lo respondió el api con su ventana aún gastada, no Nginx; entorno, orden de la
+  prueba manual). Repetida con la ventana libre: 29 ok, 0 fallas (ráfaga: 40 respuestas 429,
+  envelope `rate_limited`, `Retry-After = 60`).
+
+### 3 · V4 · E2E contra el stack
+- `.env` copiado al scratchpad; bloque marcado al final con `LOGIN_IP_LIMIT`,
+  `LOGIN_ACCOUNT_LIMIT`, `LOGIN_LOCK_AFTER`, `REFRESH_IP_LIMIT`, `RESET_IP_LIMIT`,
+  `FORGOT_IP_LIMIT`, `LOGOUT_IP_LIMIT` = 1000 y `LOGIN_ACCOUNT_GLOBAL_LIMIT=10000`.
+  `$DC -f infra/compose.e2e.yml up -d api web`: 8 variables de límites en el api y
+  `rate=6000r/m` en `/etc/nginx/snippets/auth-zone.conf`.
+- `npm ci`; `--project=stack` lista 29 pruebas en 9 archivos.
+- `E2E_BASE_URL=http://localhost:8180`, `E2E_ADMIN_*` desde `.env.seed`:
+  - Corrida 1: **29 ok, 0 fallos, 0 saltadas, 0 flaky** (10,1 s).
+  - Corrida 2: **29 ok, 0 fallos, 0 saltadas, 0 flaky** (6,7 s).
+  - En las dos: `captures` 13, `login` 4, `logout-expired` 1, `members` 1, `plans` 2,
+    `refresh-two-tabs` 1, `settings-gym` 5, `users-activation` 1, `users-manage` 1. 12
+    capturas en `web/test-results/captures/`. 0 respuestas 429 en el log de Nginx.
+- `--project=preview`: **101 ok, 0 fallos** (23,4 s).
+- Restauración: bloque borrado; `cmp` del `.env` con la copia: idéntico. `$DC up -d api web`
+  sin el override: 0 variables de límites en el api, `rate=60r/m` en Nginx; seis fallidos:
+  `401 401 401 401 401 429`.
+
+### 4 · V5 · Rendimiento
+- `uv run pytest -m perf -q` (con `TEST_DATABASE_URL`), dos corridas: 3 ok, 1991
+  deseleccionadas, 20,5 s y 20,8 s. Búsqueda por documento con 1.000 socios: 19,8 ms y 14,9 ms;
+  L-11 (20 logins fallidos concurrentes): p50 0,406/0,403 s, p95 0,414/0,413 s, máx.
+  0,415/0,414 s. Sin `TEST_DATABASE_URL` las tres fallan a propósito (no se saltan).
+
+### 5 · V6 · Evidencia SQL
+- `members.members` (tres más recientes): `document` = `apx1.cfcd75b0-b1b6-4…` (102
+  caracteres), `document_idx` = `d7aabd2b15078f0921b2…` (HMAC).
+- `audit.audit_log` de `auth.users`, últimas 10 por `seq` (846 a 834): `login`, `update` e
+  `insert`; `password_hash` = `***` en las filas que lo traen (843, 841, 836) y vacío en las
+  demás. Totales: 65 `insert`, 344 `login`, 207 `update`; 0 filas en toda la auditoría con un
+  `password_hash` distinto de `***`.
+- `auth.one_time_tokens.token_hash` = `5627c6b321daa2652095…` (64 hex).
+- `crypto.crypto_ops` por verbo: `encrypt` 36, `index` 72, `unwrap` 1704, **0 `decrypt`**.
+- `verify_chain` (script por stdin en el contenedor del api, `select * … order by seq`):
+  `ok=True`, 846 de 846 filas, sin ruptura.
+
+### 6 · V8 · Repetición
+- `tools seed` x2: "omitido: ya existe un admin activo". `tools init-keys` x2: KEK, firma y par
+  JWT "ya existe".
+- `export-openapi` x2: idénticas entre sí (`cmp`) e idénticas a `docs/openapi.json`.
+- `SMOKE_KEEP=1 bash scripts/ci/compose-smoke.sh`: verde en 38 s (`web-smoke` y `headers` 0
+  fallas).
+
+### 7 · V9 · Gates
+- `bash scripts/workflow/run-gates.sh`: la sesión lo detuvo por falta de memoria del equipo
+  mientras corrían las pruebas del front; no se relanzó (la herramienta lo prohíbe sin pedirlo).
+  Lo que alcanzó a correr, en verde: api ruff, formato y `mypy` (72 archivos) limpios; pytest
+  `-m "not perf"` **1987 ok, 4 saltadas, 3 deseleccionadas** (212 s), cobertura `app`
+  **95,70 %**; sección de scripts: `test_check_key_files.sh`, `test_nginx_conf.sh` y
+  `test_compose_config.sh` 0 fallas cada uno; web `npm run lint` y `npx tsc --noEmit` limpios.
+  **Sin verificar en esta corrida:** `npm test -- --run --coverage` (matado a mitad, el
+  "FALLÓ el gate 'web pruebas'" es del proceso matado, no de una prueba: 0 pruebas en rojo en
+  el log) y `npm run build`.
+- `uv run pytest tests/architecture -q`: 161 ok, 1 saltada (US-074, S3-B10).
+- `uvx pre-commit run --all-files`: todos los hooks `Passed` a la primera, sin cambios.
+- `bash scripts/workflow/tests/run.sh`: 5 de 5 archivos en verde.
+- `check-licenses-api.sh`: todas en la lista; `npm run licenses`: MIT 12, ISC 1.
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilidades. `pip-audit` 2.10.1 sobre
+  `uv export --frozen --no-dev --no-emit-project --format requirements.txt` (403 líneas):
+  sin vulnerabilidades conocidas.
+- gitleaks (imagen por digest de `ci.yml`, `--log-opts=--all`): 77 commits escaneados, "no
+  leaks found".
+- `check-image-secrets.sh apex-api:local` y `test_api_image.sh apex-api:local`
+  (`DOCKER_BUILD_NETWORK=host`): 0 fallas cada uno.
+- `npm run gen:api` y `git diff --exit-code src/core/api/types.ts`: sin deriva.
+
+### Estado al terminar
+- `.env` idéntico a la copia previa; stack `apex` arriba sin `compose.e2e.yml` (db, db_test,
+  api y web healthy en 8180/8181/5442/5443, zona de Nginx 60r/m).
+- Pendiente: `npm test -- --run --coverage` y `npm run build` del front en una corrida de
+  `run-gates.sh` con memoria libre.
+- Observación LOW: `Cache-Control: no-store` duplicado en las respuestas de `/api/` (api y
+  Nginx); inocuo, mismo valor.

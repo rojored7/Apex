@@ -34,7 +34,6 @@ type Extra = Pick<RouteDef, "load" | "pending">;
 const route = (path: string, title: string, feature: Feature, access: RouteAccess, layout: RouteLayout, extra: Extra = {}): RouteDef =>
   Object.freeze({ path, title, feature, access, layout, ...extra });
 
-const PENDING: Extra = { pending: true };
 
 export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // Acceso (sin sesión): login (S2-F3), recuperación y restablecimiento (S2-F4a).
@@ -55,8 +54,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/socios/:id", "Ficha del socio", "members", "members.view", "panel"),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel"),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
-  // S2-D26: /planes es solo admin en el front.
-  route("/planes", "Planes", "plans", "plans.view", "panel", PENDING),
+  // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
+  route("/planes", "Planes", "plans", "plans.view", "panel", { load: () => import("../features/plans/pages/PlansPage") }),
   route("/membresias", "Membresías", "memberships", "memberships.view", "panel"),
   route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel"),
   route("/pagos", "Pagos", "payments", "payments.view", "panel"),

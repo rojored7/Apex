@@ -50,6 +50,12 @@
   color: var(--white);
 }
 
+/* S2-F7: en oscuro el botón principal no cambia de texto (DESIGN.md, Temas): --blue-deep es claro
+   y el blanco encima no llega a 4,5:1. Mismo selector que Chips (applyTheme fija data-theme). */
+:root[data-theme="dark"] .primary:hover:not(:disabled) {
+  color: var(--black);
+}
+
 .secondary {
   background: transparent;
   border-color: var(--ink);

@@ -1,3 +1,28 @@
+# Enmiendas de la iteración 3 (tras plan-critic, veredicto APROBADO CON OBSERVACIONES)
+
+Estas enmiendas MANDAN sobre cualquier paso del plan y sobre las enmiendas E1–E11 donde las contradigan. Cada una se aplica en el slice indicado, antes del gate que sella; ninguna cambia el alcance ni el conteo de 165 pasos. Detalle y evidencia en `docs/ddd/blueprints/sprint-03-critica-2.md`.
+
+## E12 · Gate de F3 (F3.6 paso 2)
+Quitar `src/shared/data/memberships.test.ts` de la línea de gate de F3; queda con `members`, `plans` y `paymentMethods`. Ese archivo lo crea y lo corre F4 (F4.5 paso 1). Regla general reforzada: `ls` de cada archivo de cada línea de gate antes de correrla.
+
+## E13 · Invalidación de la caché del resumen (B7, `memberships/queries.py`, S3-D53)
+`after_commit` se dispara también al liberar un SAVEPOINT (`SessionTransaction.commit` con `self.nested`). El listener empieza con `if session.in_nested_transaction(): return` (alternativa: `after_transaction_end` con `transaction.parent is None`); el ejecutor confirma el método con una prueba, no lo asume. Se agrega un listener `after_soft_rollback` que limpia `apex.summary_dirty`. `test_summary_cache.py` suma el caso: `sell` (con `begin_nested`) con caché cebada; la caché sigue sirviendo tras el `flush` y la liberación del SAVEPOINT y se invalida solo tras el `commit` real.
+
+## E14 · Rutas hijas sin duplicar el path (F3.1 y F1.1)
+La hija índice no repite el path del padre: `RouteDef` gana una clave `id` (o se usa `(parent, path)`), y `routes.test.ts:33-35` pasa a unicidad por esa clave. `strip` y `REFERENCE_ROUTES` incluyen `parent`; la lista de `load` de `routes.test.ts:61` se actualiza. F1.2 se corrige: `routes.reference.ts` SÍ cambia. En F3.1 se quita la afirmación sobre `nav.ts` y su prueba (`NAV_CATALOG` es estático, no se deriva de `ROUTE_TABLE`) y se sustituye por una prueba de que `NAV_CATALOG` no tiene entradas con `:`.
+
+## E15 · Topes `USER_*` en la CI (W0-2.1 y V4)
+W0-2.1 escribe la correspondencia exacta: `USER_WRITE_LIMIT_PER_MIN` alimenta `memberships-write` y `payments-write`; `USER_ADMIN_WRITE_LIMIT_PER_MIN` alimenta `admin-write`; las demás son una a una. V4 añade un cambio en `.github/workflows/ci.yml` (job `e2e-stack`, junto al `sed` que sube `LOGIN_*`): fijar las ocho `USER_*` a valores altos y ampliar el `grep` de verificación para que las incluya. Obligatorio antes de V12; `scripts/ci/test_compose_config.sh` y cualquier prueba que lea el `.env` de CI siguen en verde.
+
+## E16 · 503 `busy` y `/health` (W0-2.2, W0-2.3, E7, S3-D67)
+La prueba nueva de `test_error_responses_in_openapi` afirma: toda operación con `require_role` declara `500` y `503` como `ErrorResponse`; `/health` y `/api/v1/health` mantienen su `503` como `HealthOut`; las públicas no declaran `503` como `ErrorResponse`. S3-D67 queda como "toda operación con seguridad declarada" (las públicas con sesión pueden responder 503 `busy` sin declararlo; se anota en DECISIONES). `tests/core/test_errors_busy.py` suma un caso con `get_session` real (sin override) y un 55P03 al confirmar que debe dar 503 `busy`. `--db-timeouts off` se implementa como `@app.callback()` de typer con estado de módulo que `cli_runtime` consulta, y se prueba con `create_engine_from` parcheado. Donde el cuerpo del plan diga `layouts/PanelLayout.tsx` como host del panel de pagos, léase `layouts/PanelShell.tsx` (E10).
+
+## Observaciones menores que el ejecutor aplica en su slice
+- El listener de caché limpia la marca también en `after_soft_rollback` (E13).
+- `test_triggers_siempre_activos` ejecuta solo `LIMPIAR_MEMBERSHIPS` y `LIMPIAR_PAYMENTS`, no toda `LIMPIEZA_DE_SESION` (B1).
+- `test_no_trigger_tampering` prohíbe `TRUNCATE` y `DISABLE TRIGGER` en cualquier cadena de `app/`, docstrings incluidos: los docstrings de `payments` evitan esas palabras (B1, B3).
+- Línea base de W0-1.1: HEAD `7b51d3c` (o el HEAD real al arrancar); las puertas corren sobre HEAD.
+
 # Enmiendas de la iteración 2 (tras `plan-critic`, veredicto RECHAZADO; `sprint-03-critica-1.md`)
 
 Estas enmiendas MANDAN sobre cualquier paso del plan que las contradiga. El ejecutor de cada slice las lee primero. El cuerpo del plan ya está corregido para no contradecirlas; si queda una contradicción, gana la enmienda.

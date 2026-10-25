@@ -27,7 +27,7 @@ web/playwright-report/
 keys/
 
 # Datos locales
-data/
+/data/
 backups/
 
 # IDE y SO

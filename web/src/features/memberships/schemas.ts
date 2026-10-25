@@ -14,7 +14,7 @@
 import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { addDaysCivil, bogotaInputToUtc, parseCop } from "../../core/i18n/format";
-import { MEMBERSHIP_STATUSES } from "../../shared/data/memberships";
+import { membershipOutShape } from "../../shared/data/memberships";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
 import { cleanReference, METHODS_WITH_REFERENCE, PAID_AT_FUTURE_TOLERANCE_MS, PAYMENT_METHOD_CODES, referenceError, type PaymentMethodCode } from "../../shared/data/schemas/payment";
 import { FREEZE_FORM_MESSAGES, SELL_MESSAGES } from "./membershipErrors";
@@ -160,39 +160,11 @@ export function toSellBody(values: SellFormValues, options: SellBodyOptions = {}
 // S3-F4: la lista de estados vive en shared/data/memberships.ts (la usa también el panel de pagos).
 export { MEMBERSHIP_STATUSES, type MembershipStatus } from "../../shared/data/memberships";
 
-const freezeOutSchema = z
-  .object({
-    id: z.string().min(1),
-    frozen_from: z.string(),
-    frozen_to: z.string(),
-    days: z.number().int(),
-    created_at: z.string(),
-  })
-  .strict();
+// S3-F7: MembershipOut vive en shared/data/memberships.ts (lo pide useMemberMemberships); aquí se
+// reexporta y la venta lo extiende con el primer pago.
+export { membershipOutSchema, type MembershipOutView } from "../../shared/data/memberships";
 
-const membershipShape = {
-  id: z.string().min(1),
-  member_id: z.string().min(1),
-  member_name: z.string(),
-  plan_id: z.string().min(1),
-  plan_name: z.string(),
-  status: z.enum(MEMBERSHIP_STATUSES),
-  start_date: z.string(),
-  end_date: z.string(),
-  agreed_price_cop: copAmount,
-  paid_cop: copAmount,
-  classes_total: z.number().int().nullable(),
-  classes_remaining: z.number().int().nullable(),
-  cancel_reason: z.string().nullable(),
-  cancelled_at: z.string().nullable(),
-  freezes: z.array(freezeOutSchema),
-  created_at: z.string(),
-};
-
-export const membershipOutSchema = z.object(membershipShape).strict();
-export type MembershipOutView = z.infer<typeof membershipOutSchema>;
-
-export const sellMembershipOutSchema = z.object({ ...membershipShape, first_payment_id: z.string().nullable() }).strict();
+export const sellMembershipOutSchema = z.object({ ...membershipOutShape, first_payment_id: z.string().nullable() }).strict();
 export type SellMembershipOutView = z.infer<typeof sellMembershipOutSchema>;
 
 export const renewalPreviewSchema = z

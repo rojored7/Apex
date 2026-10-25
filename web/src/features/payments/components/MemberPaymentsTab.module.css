@@ -1,0 +1,110 @@
+/* S3-F7: pestaña Pagos de la ficha (la tabla de Pagos.html sin la columna Socio). Solo variables de
+   tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* "Ocultar anulados": casilla con el alto mínimo del panel. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  color: var(--ink);
+  font: var(--text-label);
+  cursor: pointer;
+}
+
+.toggle input {
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--blue-deep);
+  cursor: pointer;
+}
+
+.toggle input:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* S3-D51: el mismo distintivo de Pagos.html ("Retroactivo"). */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-pill);
+  color: var(--warning);
+  font: var(--text-caption);
+  white-space: nowrap;
+}
+
+.reason {
+  color: var(--muted);
+  font: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+
+/* "Anular": acción de texto en rojo con el alto mínimo del panel (DESIGN.md: anular en danger). */
+.void {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--danger);
+  font: var(--text-button);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.void:hover {
+  background: var(--surface);
+}
+
+.void:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.loading {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+@media (width >= 768px) {
+  .nowrap {
+    white-space: nowrap;
+  }
+}

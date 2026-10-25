@@ -5,6 +5,7 @@
 // `index`), nunca como hoja plana; hereda feature y layout (y el acceso si no declara uno); la
 // clave de una ruta es (parent, path) y el oráculo compara también el anidamiento.
 // S3-F1: /socios/:id (con su hija índice "Datos") y /socios/:id/editar se registran con página.
+// S3-F7: /socios/:id/membresias y /socios/:id/pagos son hijas con su feature (memberships, payments).
 import type { RouteObject } from "react-router";
 import { ENABLED_FEATURES, FEATURES, type Feature } from "./config/features";
 import { childRoute, fullPathOf, ROUTE_TABLE, routeKey, type RouteDef } from "./config/routeTable";
@@ -67,7 +68,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), la ficha con su pestaña Datos y la edición (S3-F1), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
+  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), la ficha con sus pestañas Datos (S3-F1), Membresías y Pagos (S3-F7) y la edición (S3-F1), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
     expect(ROUTE_TABLE.filter((r) => r.load).map(fullPathOf)).toEqual([
       "/login",
       "/recuperar",
@@ -78,6 +79,8 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/socios/nuevo",
       "/socios/:id",
       "/socios/:id",
+      "/socios/:id/membresias",
+      "/socios/:id/pagos",
       "/socios/:id/editar",
       "/planes",
       "/membresias",
@@ -120,7 +123,8 @@ describe("árbol de routes.tsx", () => {
     const ficha = find(routes, (r) => r.path === "/socios/:id");
 
     expect(ficha?.lazy).toBeDefined();
-    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index"]);
+    // S3-F7: Membresías y Pagos se suman como hijas con nombre después de la índice.
+    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias", "/socios/:id/pagos"]);
     expect(ficha?.children?.[0]?.handle).toEqual({ feature: "members", access: "members.view", layout: "panel", title: "Datos" });
     const editar = find(routes, (r) => r.path === "/socios/:id/editar");
     expect(editar?.handle).toEqual({ feature: "members", access: "members.update", layout: "panel", title: "Editar socio" });
@@ -222,5 +226,47 @@ describe("rutas hijas (S3-F3, E3 y E14) con una tabla de prueba", () => {
 
     expect(table).not.toEqual(oracle);
     expect(table).toEqual([oracle[0], { ...oracle[1], parent: "/socios/:id" }]);
+  });
+});
+
+describe("pestañas Membresías y Pagos de la ficha (S3-F7, S3-D65, E3)", () => {
+  function find(routes: RouteObject[], test: (r: RouteObject) => boolean): RouteObject | undefined {
+    for (const route of routes) {
+      if (test(route)) return route;
+      const inner = route.children ? find(route.children, test) : undefined;
+      if (inner) return inner;
+    }
+    return undefined;
+  }
+  const fichaChildren = (enabled: ReadonlySet<Feature>): RouteObject[] => find(buildRoutes(ROUTE_TABLE, enabled), (r) => r.path === "/socios/:id")?.children ?? [];
+
+  it("son hijas de /socios/:id con su feature, su acceso y su página diferida", () => {
+    const children = ROUTE_TABLE.filter((r) => r.parent === "/socios/:id" && r.path !== "");
+
+    expect(children.map(strip)).toEqual([
+      { path: "/socios/:id/membresias", feature: "memberships", access: "memberships.view", layout: "panel", parent: "/socios/:id" },
+      { path: "/socios/:id/pagos", feature: "payments", access: "payments.view", layout: "panel", parent: "/socios/:id" },
+    ]);
+    for (const child of children) expect(child.load).toBeDefined();
+    const [membresias, pagos] = fichaChildren(ENABLED_FEATURES).slice(1);
+    expect(membresias?.handle).toEqual({ feature: "memberships", access: "memberships.view", layout: "panel", title: "Membresías del socio" });
+    expect(pagos?.handle).toEqual({ feature: "payments", access: "payments.view", layout: "panel", title: "Pagos del socio" });
+    expect(membresias?.lazy).toBeDefined();
+  });
+
+  it("una hija cuya feature no está habilitada no se registra; el padre y las demás sí", () => {
+    const withoutPayments = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "payments"));
+    const withoutMemberships = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "memberships"));
+
+    expect(fichaChildren(withoutPayments).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias"]);
+    expect(fichaChildren(withoutMemberships).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/pagos"]);
+    expect(leaves(buildRoutes(ROUTE_TABLE, withoutPayments)).map((l) => l.path)).not.toContain("/socios/:id/pagos");
+  });
+
+  it("childRoute toma la feature propia de la hija y sin ella hereda la del padre", () => {
+    const parent: RouteDef = { path: "/socios/:id", title: "Ficha", feature: "members", access: "members.view", layout: "panel" };
+
+    expect(childRoute(parent, "/socios/:id/pagos", "Pagos", { feature: "payments" }).feature).toBe("payments");
+    expect(childRoute(parent, "/socios/:id/x", "X").feature).toBe("members");
   });
 });

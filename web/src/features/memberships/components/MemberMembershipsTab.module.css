@@ -1,0 +1,217 @@
+/* S3-F7: pestaña Membresías de la ficha (cajas .w-box de Socio_Ficha.html y la tabla de
+   Membresias.html). Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+/* La vigente manda: borde izquierdo azul, como el chip activo de DESIGN.md. */
+.current {
+  border-left: var(--space-1) solid var(--apex-blue);
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.plan {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+  overflow-wrap: anywhere;
+}
+
+.when {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.days {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+  font-weight: 700;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Las congelaciones usan toda la fila. */
+.factWide {
+  grid-column: 1 / -1;
+}
+
+.label {
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.value {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.freezes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.none {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reason {
+  color: var(--muted);
+  font: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+
+.alert {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}
+
+.loading {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+/* Aviso de congelar o anular: borde azul, como en Membresías. */
+.notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.notice:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+@media (width >= 768px) {
+  .nowrap {
+    white-space: nowrap;
+  }
+}
+
+@media (width < 1024px) {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width < 768px) {
+  .card {
+    padding: var(--space-4);
+  }
+
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

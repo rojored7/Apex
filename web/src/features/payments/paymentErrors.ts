@@ -183,3 +183,21 @@ export function paymentDetailMessage(error: unknown): string {
 export function isMonthOutOfRange(error: unknown): boolean {
   return isApiError(error) && error.status === HTTP_UNPROCESSABLE && error.field === "month";
 }
+
+// S3-F7 · US-101 (front): errores de la pestaña Pagos de la ficha (GET /members/{id}/payments).
+export const MEMBER_TAB_MESSAGES = {
+  notFound: "No encontramos a este socio. Vuelve a la lista de socios.",
+  forbidden: "No tienes permiso para ver los pagos. Si lo necesitas, pídeselo a un administrador.",
+  generic: "No pudimos cargar los pagos de este socio. Intenta de nuevo.",
+} as const;
+
+function memberTabMessage(error: ApiError): string {
+  if (error.status === HTTP_NOT_FOUND) return MEMBER_TAB_MESSAGES.notFound;
+  if (error.status === HTTP_FORBIDDEN) return MEMBER_TAB_MESSAGES.forbidden;
+  return MEMBER_TAB_MESSAGES.generic;
+}
+
+/** El error de la pestaña como ApiError con el mensaje de la pantalla, o null. */
+export function memberTabError(error: unknown): ApiError | null {
+  return toScreenError(error, memberTabMessage, MEMBER_TAB_MESSAGES.generic);
+}

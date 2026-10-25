@@ -7,6 +7,8 @@
 //   queda saldo a favor.
 // - planTermsText: lo que dice cada plan en el selector ("30 días · $ 120.000").
 import { addDaysCivil, EMPTY_VALUE, formatCop, formatCount, formatDate } from "../../../core/i18n/format";
+import { can, type Role } from "../../../core/auth/permissions";
+import type { MembershipStatus } from "../../../shared/data/memberships";
 import type { PlanKind } from "../../../shared/data/plans";
 
 export interface PlanTerms {
@@ -105,4 +107,85 @@ export function freezePreview(from: string, to: string, endDate: string): Freeze
   if (newEndDate === null) return null;
   const count = days === 1 ? "Es 1 día" : `Son ${formatCount(days)} días`;
   return { days, newEndDate, text: `${count}; la membresía terminará el ${formatDate(newEndDate)}` };
+}
+
+// S3-F7 · US-093 (front): la pestaña Membresías de la ficha.
+// - splitMemberships(memberships, today): la vigente (empezó y recibe pagos o cuenta: al día, por
+//   vencer, congelada o pendiente de pago) y la futura (no anulada, empieza después de hoy). Un socio
+//   tiene a lo sumo una de cada (B1, `classify_open`); si llegaran más, se toma la primera del orden
+//   del api (`start_date` descendente).
+// - membershipActions(memberships, role, today, memberDeleted): qué botones lleva la pestaña. Renovar
+//   si no hay futura y hay vigente o la última no anulada está vencida; Vender si no hay vigente ni
+//   futura; Registrar saldo sobre la vigente o la futura que recibe pagos y debe plata; Congelar solo
+//   (admin y coach) la vigente al día o por vencer; Anular (solo admin) sobre la
+//   vigente o la futura. Nada para un socio dado de baja (su ficha es de solo lectura, N-20). El rol se
+//   mira con la matriz de US-040 (`can`); el api vuelve a verificar (RN-15).
+// - daysLeftText(today, endDate): "Quedan 8 días", "Queda 1 día", "Vence hoy" o "Venció".
+
+export interface MembershipFacts {
+  id: string;
+  status: MembershipStatus;
+  start_date: string;
+  end_date: string;
+  agreed_price_cop: number;
+  paid_cop: number;
+}
+
+export interface MembershipSplit<T extends MembershipFacts> {
+  current: T | null;
+  future: T | null;
+}
+
+export interface MembershipActions {
+  renew: boolean;
+  sell: boolean;
+  payIds: readonly string[];
+  freezeIds: readonly string[];
+  cancelIds: readonly string[];
+}
+
+export const NO_MEMBERSHIP_ACTIONS: MembershipActions = Object.freeze({ renew: false, sell: false, payIds: [], freezeIds: [], cancelIds: [] });
+
+/** Estados de una membresía que ya empezó y sigue abierta (la "vigente"). */
+const CURRENT_STATUSES: readonly MembershipStatus[] = ["active", "expiring", "frozen", "pending_payment"];
+/** Congelar solo al día o por vencer (el api da 409 `membership_not_freezable` en las demás). */
+const FREEZABLE_STATUSES: readonly MembershipStatus[] = ["active", "expiring"];
+
+export function splitMemberships<T extends MembershipFacts>(memberships: readonly T[], today: string): MembershipSplit<T> {
+  // "AAAA-MM-DD" se compara bien como texto.
+  const current = memberships.find((m) => m.start_date <= today && CURRENT_STATUSES.includes(m.status)) ?? null;
+  const future = memberships.find((m) => m.start_date > today && m.status !== "cancelled") ?? null;
+  return { current, future };
+}
+
+/** La última no anulada (el api ordena por `start_date` descendente) está vencida. */
+function lastIsExpired(memberships: readonly MembershipFacts[]): boolean {
+  return memberships.find((m) => m.status !== "cancelled")?.status === "expired";
+}
+
+export function membershipActions(memberships: readonly MembershipFacts[], role: Role | null, today: string, memberDeleted: boolean): MembershipActions {
+  if (memberDeleted) return NO_MEMBERSHIP_ACTIONS;
+  const { current, future } = splitMemberships(memberships, today);
+  const canSell = can(role, "memberships.sell");
+  // Las de las tarjetas, en el orden del api (la futura primero).
+  const open = memberships.filter((m) => m === current || m === future);
+  const ids = (allowed: boolean, test: (m: MembershipFacts) => boolean): string[] => (allowed ? open.filter(test).map((m) => m.id) : []);
+  return {
+    renew: canSell && future === null && (current !== null || lastIsExpired(memberships)),
+    sell: canSell && current === null && future === null,
+    payIds: ids(can(role, "payments.register"), (m) => m.paid_cop < m.agreed_price_cop),
+    // Revisión S3-F7 (M4): solo la vigente; congelar una futura cae fuera de su vigencia (422).
+    freezeIds: ids(can(role, "memberships.freeze"), (m) => m === current && FREEZABLE_STATUSES.includes(m.status)),
+    cancelIds: ids(can(role, "memberships.cancel"), () => true),
+  };
+}
+
+export function daysLeftText(today: string, endDate: string): string {
+  const todayMs = civilMs(today);
+  const endMs = civilMs(endDate);
+  if (todayMs === null || endMs === null) return EMPTY_VALUE;
+  const days = Math.round((endMs - todayMs) / MS_PER_DAY);
+  if (days < 0) return "Venció";
+  if (days === 0) return "Vence hoy";
+  return days === 1 ? "Queda 1 día" : `Quedan ${formatCount(days)} días`;
 }

@@ -151,6 +151,25 @@ describe("SellPage en modo renovar", () => {
     expect(within(region).getByText("La membresía de Laura Gómez quedó registrada.")).toBeInTheDocument();
   });
 
+  it("S3-F7 (pendiente de S3-F1): sin el nombre en la navegación lo pide a GET /members/{id} y deja de decir 'Socio elegido'", async () => {
+    const detailKey = `GET /members/${MEMBERS.laura.id}`;
+    const { mock } = renderSell(RENEW, { handlers: { [detailKey]: { status: 200, body: { id: MEMBERS.laura.id, first_name: "Laura", last_name: "Gómez", document: "CC •••• 4417" } } } });
+
+    await vi.waitFor(() => {
+      expect(summaryValue("Socio")).toBe("Laura Gómez");
+    });
+    expect(mock.callsTo(detailKey)).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: "Renovar membresía" })).toBeInTheDocument();
+  });
+
+  it("S3-F7: con el nombre en la navegación no pide GET /members/{id}", async () => {
+    const { mock, user } = renderSell(RENEW, { state: STATE });
+    await pickPlan(user, "Mensual");
+
+    expect(summaryValue("Socio")).toBe("Laura Gómez");
+    expect(mock.callsTo(`GET /members/${MEMBERS.laura.id}`)).toHaveLength(0);
+  });
+
   it("un socio que no es un id válido se ignora: vuelve a la venta normal con buscador", () => {
     renderSell("/membresias/vender?socio=no-es-un-id&renovar=1");
 

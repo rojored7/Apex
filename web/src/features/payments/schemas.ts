@@ -15,10 +15,10 @@
 // Las reglas de entrada que comparte la venta con primer pago viven en shared/data (S3-D65) y aquí
 // se reexportan.
 import { z } from "zod";
-import { pageSchema } from "../../core/api/page";
 import type { components } from "../../core/api/types";
 import { bogotaInputToUtc, parseCop } from "../../core/i18n/format";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
+import { paymentRowShape } from "../../shared/data/payments";
 import {
   cleanReference,
   METHODS_WITH_REFERENCE,
@@ -165,30 +165,9 @@ export type PaymentOutView = z.infer<typeof paymentOutSchema>;
 // PaymentRow y PaymentDetail (contrato de B8, D26). Las fechas de la membresía son civiles
 // ("AAAA-MM-DD"); `registered_by_name` y `voided_by_name` son el correo parcial ("l•••@dominio",
 // S3-D57) y llegan en null si la cuenta ya no existe.
-const paymentRowShape = {
-  id: z.string().min(1),
-  membership_id: z.string().min(1),
-  member_id: z.string().min(1),
-  member_first_name: z.string(),
-  member_last_name: z.string(),
-  plan_name: z.string(),
-  membership_start_date: z.string(),
-  membership_end_date: z.string(),
-  amount_cop: copInt,
-  method: paymentMethodCodeSchema,
-  reference: z.string().nullable(),
-  paid_at: z.string(),
-  registered_by: z.string().min(1),
-  registered_by_name: z.string().nullable(),
-  voided: z.boolean(),
-  void_reason: z.string().nullable(),
-  /** S3-D51: registrado más de 24 h después de `paid_at`. */
-  backdated: z.boolean(),
-};
-
-export const paymentRowSchema = z.object(paymentRowShape).strict();
-export type PaymentRowView = z.infer<typeof paymentRowSchema>;
-export const paymentsPageSchema = pageSchema(paymentRowSchema);
+// S3-F7: la fila (PaymentRow) vive en shared/data/payments.ts (la pide useMemberPayments); aquí se
+// reexporta y el detalle la extiende.
+export { paymentRowSchema, paymentsPageSchema, type PaymentRowView } from "../../shared/data/payments";
 
 export const paymentDetailSchema = z
   .object({

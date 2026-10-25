@@ -43,6 +43,11 @@ const route = (path: string, title: string, feature: Feature, access: RouteAcces
 export interface ChildExtra {
   /** Sin él, la hija hereda el acceso del padre. */
   access?: RouteAccess;
+  /**
+   * S3-F7: la feature propia de la hija (la pestaña Membresías de la ficha es de `memberships`). Sin
+   * ella hereda la del padre. Con la suya deshabilitada la hija no se registra (routes.tsx).
+   */
+  feature?: Feature;
   load?: RouteDef["load"];
 }
 
@@ -51,11 +56,11 @@ export interface ChildExtra {
  * hija índice (la que se pinta en la ruta del padre).
  */
 export function childRoute(parent: RouteDef, path: string, title: string, extra: ChildExtra = {}): RouteDef {
-  const { access = parent.access, load } = extra;
+  const { access = parent.access, feature = parent.feature, load } = extra;
   return Object.freeze({
     path,
     title,
-    ...(parent.feature ? { feature: parent.feature } : {}),
+    ...(feature ? { feature } : {}),
     access,
     layout: parent.layout,
     parent: parent.path,
@@ -79,7 +84,7 @@ export function fullPathOf(def: RouteKeyFields): string {
   return def.path === "" && def.parent !== undefined ? def.parent : def.path;
 }
 
-/** S3-F1: la ficha del socio, padre de sus pestañas (Datos aquí; Membresías y Pagos en S3-F7). */
+/** S3-F1: la ficha del socio, padre de sus pestañas (Datos, Membresías y Pagos; S3-F7). */
 const MEMBER_DETAIL = route("/socios/:id", "Ficha del socio", "members", "members.view", "panel", {
   load: () => import("../features/members/pages/MemberDetailPage"),
 });
@@ -100,9 +105,20 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/socios", "Socios", "members", "members.view", "panel", { load: () => import("../features/members/pages/MembersListPage") }),
   route("/socios/nuevo", "Nuevo socio", "members", "members.create", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   // S3-F1 (US-073 a US-076, S2-D34): la ficha pinta sus pestañas en su <Outlet />; "Datos" es la
-  // hija índice (E14: no repite el path). Membresías y Pagos llegan como hijas en S3-F7.
+  // hija índice (E14: no repite el path). S3-F7 (S3-D65): Membresías y Pagos son hijas con su feature
+  // y su acceso; la página vive en su feature y solo la tabla cruza.
   MEMBER_DETAIL,
   childRoute(MEMBER_DETAIL, "", "Datos", { load: () => import("../features/members/components/MemberDataTab") }),
+  childRoute(MEMBER_DETAIL, "/socios/:id/membresias", "Membresías del socio", {
+    feature: "memberships",
+    access: "memberships.view",
+    load: () => import("../features/memberships/components/MemberMembershipsTab"),
+  }),
+  childRoute(MEMBER_DETAIL, "/socios/:id/pagos", "Pagos del socio", {
+    feature: "payments",
+    access: "payments.view",
+    load: () => import("../features/payments/components/MemberPaymentsTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).

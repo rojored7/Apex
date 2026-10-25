@@ -12,6 +12,8 @@ import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { SessionRoleProvider } from "../core/auth";
 import MemberDataTab from "../features/members/components/MemberDataTab";
+import MemberMembershipsTab from "../features/memberships/components/MemberMembershipsTab";
+import MemberPaymentsTab from "../features/payments/components/MemberPaymentsTab";
 import { MemberSensitiveField, type MemberSensitiveFieldProps } from "../features/members/components/MemberSensitiveField";
 import MemberDetailPage from "../features/members/pages/MemberDetailPage";
 import MemberFormPage from "../features/members/pages/MemberFormPage";
@@ -92,6 +94,12 @@ export const apiError = (status: number, code: string, extra: Record<string, unk
   ...(headers ? { headers } : {}),
 });
 
+/** Una página vacía con el limit y el offset pedidos (pestañas de S3-F7). */
+export function emptyPage(call: RecordedCall): MockReply {
+  const url = new URL(call.url, "http://apex.test");
+  return ok({ items: [], total: 0, limit: Number(url.searchParams.get("limit")), offset: Number(url.searchParams.get("offset")) });
+}
+
 /** Respuesta del reveal simulado: el valor en claro del campo pedido. */
 export function revealReply(call: RecordedCall): MockReply {
   const field = (call.body as { field: keyof typeof REVEALED }).field;
@@ -125,12 +133,24 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
   const mock = mockApi({
     [`GET ${DETAIL_PATH}`]: ok(memberDetailBody()),
     [`POST ${REVEAL_PATH}`]: revealReply,
+    // S3-F7: las pestañas Membresías y Pagos (rutas hijas) piden lo suyo; por defecto, vacías.
+    [`GET ${DETAIL_PATH}/memberships`]: emptyPage,
+    [`GET ${DETAIL_PATH}/payments`]: emptyPage,
+    "GET /payments/methods": ok({ items: [] }),
     ...handlers,
   });
   const router = createMemoryRouter(
     [
       { path: "/socios", element: shell(<h1>Lista de socios</h1>) },
-      { path: "/socios/:id", element: shell(<MemberDetailPage />), children: [{ index: true, element: <MemberDataTab /> }] },
+      {
+        path: "/socios/:id",
+        element: shell(<MemberDetailPage />),
+        children: [
+          { index: true, element: <MemberDataTab /> },
+          { path: "/socios/:id/membresias", element: <MemberMembershipsTab /> },
+          { path: "/socios/:id/pagos", element: <MemberPaymentsTab /> },
+        ],
+      },
       { path: "/socios/:id/editar", element: shell(<MemberFormPage />) },
       { path: "/membresias/vender", element: shell(<h1>Vender membresía</h1>) },
     ],

@@ -135,6 +135,25 @@ describe("RegisterPaymentPanel · preselección", () => {
     expect(within(paymentPanel()).getByRole("link", { name: "Vender una membresía" })).toHaveAttribute("href", `/membresias/vender?socio=${LAURA}`);
   });
 
+  it("S3-F7: un socio de la URL sin membresías abiertas se nombra con GET /members/{id} (no 'Socio elegido')", async () => {
+    const { mock } = renderPaymentPanel(`/socios?pago=nuevo&socio=${LAURA}`, {
+      handlers: { "GET /memberships": membershipRowsPage([]), [`GET /members/${LAURA}`]: { status: 200, body: { id: LAURA, first_name: "Laura", last_name: "Gómez" } } },
+    });
+    await findPaymentPanel();
+
+    expect(await within(paymentPanel()).findByText("Laura Gómez")).toBeInTheDocument();
+    expect(within(paymentPanel()).queryByText("Socio elegido")).not.toBeInTheDocument();
+    expect(mock.callsTo(`GET /members/${LAURA}`)).toHaveLength(1);
+  });
+
+  it("S3-F7: con membresías abiertas el nombre sale de ellas y no se pide GET /members/{id}", async () => {
+    const { mock } = renderPaymentPanel(`/socios?pago=nuevo&socio=${LAURA}`);
+    await findPaymentPanel();
+
+    expect(await within(paymentPanel()).findByText("Laura Gómez")).toBeInTheDocument();
+    expect(mock.callsTo(`GET /members/${LAURA}`)).toHaveLength(0);
+  });
+
   it("si las membresías no cargan, lo dice con Reintentar", async () => {
     const { user, mock } = renderPaymentPanel(`/socios?pago=nuevo&socio=${LAURA}`, { handlers: { "GET /memberships": apiError(500, "internal_error") } });
     await findPaymentPanel();

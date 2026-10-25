@@ -12,6 +12,7 @@ import { useRef, useState } from "react";
 import { useWatch } from "react-hook-form";
 import { Link, useLocation } from "react-router";
 import { formatCop, parseCop } from "../../../core/i18n/format";
+import { useMemberName } from "../../../shared/data/members";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { cx } from "../../../shared/ui/cx";
@@ -58,15 +59,19 @@ function Steps({ memberDone, planDone }: { memberDone: boolean; planDone: boolea
 interface SellFormProps {
   params: SellParams;
   initialMemberName: string | null;
+  /** S3-F7: el nombre que llegó de GET /members/{id} cuando la navegación no lo trajo. */
+  fallbackName: string | null;
   onSellAnother: () => void;
 }
 
-function SellForm({ params, initialMemberName, onSellAnother }: SellFormProps) {
+function SellForm({ params, initialMemberName, fallbackName, onSellAnother }: SellFormProps) {
   const alertRef = useRef<HTMLDivElement>(null);
   const planGroupRef = useRef<HTMLFieldSetElement>(null);
   const state = useSellForm(params, initialMemberName, { alertRef, planGroupRef });
   const methods = usePaymentMethodOptions();
-  const { form, member, plan, dates, alert } = state;
+  const { form, plan, dates, alert } = state;
+  // S3-F7: el socio fijado por la URL sin nombre en la navegación toma el de GET /members/{id}.
+  const member = state.member && state.member.name === null && state.member.id === params.memberId && fallbackName !== null ? { ...state.member, name: fallbackName } : state.member;
   const { errors } = form.formState;
   const withPayment = useWatch({ control: form.control, name: "withPayment" });
   const method = useWatch({ control: form.control, name: "method" });
@@ -151,6 +156,9 @@ export default function SellPage() {
   const location = useLocation();
   const params = readSellParams(location.search);
   const memberName = memberNameFromState(location.state);
+  // S3-F7 (pendiente de S3-F1): sin el nombre en la navegación (un enlace directo o la ficha) se
+  // pide; con él, no.
+  const fetchedName = useMemberName(params.memberId !== null && memberName === null ? params.memberId : null);
   // "Vender otra membresía" vuelve a montar el formulario limpio.
   const [round, setRound] = useState(0);
   const title = params.renew ? RENEW_TITLE : SELL_TITLE;
@@ -161,6 +169,7 @@ export default function SellPage() {
         key={`${location.search}#${String(round)}`}
         params={params}
         initialMemberName={memberName}
+        fallbackName={fetchedName.data ?? null}
         onSellAnother={() => {
           setRound((value) => value + 1);
         }}

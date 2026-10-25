@@ -3,7 +3,8 @@
 import { childRoute, fullPathOf, type RouteDef } from "../../config/routeTable";
 import { REFERENCE_ROUTES } from "../../config/routes.reference";
 import { ROLES, can, type Role } from "./permissions";
-import { canAccess, canAccessRoute, findRoute, homeFor, safeNext } from "./routeAccess";
+import type { Feature } from "../../config/features";
+import { canAccess, canAccessRoute, findRoute, homeFor, isPageAvailable, safeNext } from "./routeAccess";
 
 const concrete = (path: string): string => path.replace(":id", "42").replace(":token", "abc123");
 
@@ -155,5 +156,46 @@ describe("revisión S3-F3 (HIGH 1): una estática raíz gana a la hija índice d
   it("/socios/nuevo resuelve la raíz estática aunque exista la hija índice de /socios/:id", () => {
     expect(findRoute("/socios/nuevo", [FICHA, DATOS, NUEVO])).toBe(NUEVO);
     expect(findRoute("/socios/42", [FICHA, DATOS, NUEVO])).toBe(DATOS);
+  });
+});
+
+// S3-F7 (S3-D65): la ficha deshabilita una pestaña cuya ruta hija no abre una página para el rol.
+describe("isPageAvailable", () => {
+  const page = async () => Promise.resolve({ default: () => null });
+  const FICHA: RouteDef = { path: "/socios/:id", title: "Ficha", feature: "members", access: "members.view", layout: "panel", load: page };
+  const MEMBRESIAS = childRoute(FICHA, "/socios/:id/membresias", "Membresías", { feature: "memberships", access: "memberships.view", load: page });
+  const PAGOS = childRoute(FICHA, "/socios/:id/pagos", "Pagos", { feature: "payments", access: "payments.view", load: page });
+  const SIN_PAGINA = childRoute(FICHA, "/socios/:id/historial", "Historial", { access: "audit.view" });
+  const TABLE: readonly RouteDef[] = [FICHA, MEMBRESIAS, PAGOS, SIN_PAGINA];
+  const ALL = new Set<Feature>(["members", "memberships", "payments"]);
+
+  it("con la ruta registrada y el acceso del rol, sí", () => {
+    expect(isPageAvailable("admin", "/socios/42/membresias", TABLE, ALL)).toBe(true);
+    expect(isPageAvailable("coach", "/socios/42/pagos", TABLE, ALL)).toBe(true);
+    expect(isPageAvailable("admin", "/socios/42", TABLE, ALL)).toBe(true);
+  });
+
+  it("sin página, con la feature de la hija o la del padre deshabilitada, o con un rol sin acceso, no", () => {
+    expect(isPageAvailable("admin", "/socios/42/historial", TABLE, ALL)).toBe(false);
+    expect(isPageAvailable("admin", "/socios/42/pagos", TABLE, new Set<Feature>(["members", "memberships"]))).toBe(false);
+    expect(isPageAvailable("admin", "/socios/42/membresias", TABLE, new Set<Feature>(["memberships", "payments"]))).toBe(false);
+    expect(isPageAvailable("member", "/socios/42/pagos", TABLE, ALL)).toBe(false);
+    expect(isPageAvailable(null, "/socios/42/pagos", TABLE, ALL)).toBe(false);
+    expect(isPageAvailable("admin", "/no-existe", TABLE, ALL)).toBe(false);
+  });
+
+  it("una hija cuyo padre no tiene página no está disponible", () => {
+    const sinPadre: RouteDef = { path: "/socios/:id", title: "Ficha", feature: "members", access: "members.view", layout: "panel" };
+    const hija = childRoute(sinPadre, "/socios/:id/pagos", "Pagos", { feature: "payments", access: "payments.view", load: page });
+
+    expect(isPageAvailable("admin", "/socios/42/pagos", [sinPadre, hija], ALL)).toBe(false);
+  });
+
+  it("con la tabla real: Membresías y Pagos de la ficha están disponibles para admin y coach", () => {
+    for (const role of ["admin", "coach"] as const) {
+      expect(isPageAvailable(role, "/socios/42/membresias")).toBe(true);
+      expect(isPageAvailable(role, "/socios/42/pagos")).toBe(true);
+    }
+    expect(isPageAvailable("admin", "/socios/42/atleta")).toBe(false);
   });
 });

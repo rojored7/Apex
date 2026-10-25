@@ -1,0 +1,7 @@
+/* S3-F5: resumen de socios por estado en Membresias.html. Solo tokens.css.
+   Cinco tarjetas en una fila en escritorio; se reacomodan en celular sin desbordar. */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--sidebar) * 0.6), 1fr));
+  gap: var(--space-3);
+}

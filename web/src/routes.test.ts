@@ -66,7 +66,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Planes (S2-F7), Vender (S3-F3), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
+  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
     expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual([
       "/login",
       "/recuperar",
@@ -76,6 +76,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/socios",
       "/socios/nuevo",
       "/planes",
+      "/membresias",
       "/membresias/vender",
       "/sistema/usuarios",
       "/sistema/configuracion",

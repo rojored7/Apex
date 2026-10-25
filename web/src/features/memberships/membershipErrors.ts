@@ -8,13 +8,13 @@
 // - isOverpaymentError: 409 `payment_exceeds_balance` (S3-D41) no es un error para el usuario: abre
 //   la confirmación del sobrepago.
 import type { FieldPath } from "react-hook-form";
-import { API_ERROR_CODES } from "../../core/api/errorCodes";
-import { isApiError, type ApiError } from "../../core/api/errors";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { ApiError, isApiError } from "../../core/api/errors";
 import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
-import { connectionMessage, waitText } from "../../shared/lib/apiMessages";
+import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { REFERENCE_MESSAGES } from "../../shared/data/schemas/payment";
 import { memberHref, renewHref } from "./membershipLinks";
-import type { SellFormValues } from "./schemas";
+import type { FreezeFormValues, SellFormValues } from "./schemas";
 
 export const SELL_MESSAGES = {
   memberRequired: "Elige el socio al que le vendes la membresía.",
@@ -140,4 +140,143 @@ export function sellAlert(error: unknown, context: SellAlertContext): SellAlert 
 /** ¿Es el 409 de la vista previa que impide renovar (ya hay una renovación por empezar)? */
 export function isFutureMembershipError(error: unknown): boolean {
   return isApiError(error) && error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.futureMembershipExists;
+}
+
+// S3-F5 · US-089 a US-092 (front): errores de la lista, de congelar y de anular.
+// - listError: el error de GET /memberships en palabras de la pantalla (lo pinta DataTable).
+// - freezeFieldError: los 422 de FreezeIn bajo su fecha (`frozen_from`, `frozen_to`; D14 y S3-B2).
+// - freezeAlert: los 409 de estado y de límites (con los días que quedan, tomados del mensaje del
+//   api: "Quedan N días de congelación para esta membresía.") y el resto como aviso del modal.
+// - toCancelError: el error de anular como ApiError con el mensaje de la pantalla (ConfirmModal lo
+//   pinta bajo el motivo si `field = "reason"` o en su alerta).
+/** Los errores del formulario de congelar (freezeFormSchema) y el 422 equivalente del api. */
+export const FREEZE_FORM_MESSAGES = {
+  fromRequired: "Escribe desde qué fecha se congela.",
+  fromInvalid: "Escribe una fecha de inicio válida.",
+  toRequired: "Escribe hasta qué fecha se congela.",
+  toInvalid: "Escribe una fecha final válida.",
+  inverted: "La fecha final no puede ser anterior a la inicial.",
+} as const;
+
+export const LIST_MESSAGES = {
+  forbidden: "No tienes permiso para ver las membresías. Si lo necesitas, pídeselo a un administrador.",
+  invalidFilters: "Revisa los filtros: alguna fecha o estado no es válido. Límpialos e intenta de nuevo.",
+  tooMany: (wait: string) => `Hiciste muchas búsquedas seguidas. Espera ${wait} e intenta de nuevo.`,
+  generic: "No pudimos cargar las membresías. Intenta de nuevo.",
+} as const;
+
+export const FREEZE_MESSAGES = {
+  notFreezable: "Esta membresía ya no se puede congelar: solo se congelan las membresías al día o por vencer.",
+  alreadyScheduled: "Esta membresía ya tiene una congelación en curso o programada. Congélala de nuevo cuando esa termine.",
+  limitReached: "Esta membresía ya usó todas las congelaciones que permite el gimnasio.",
+  daysLeft: (days: number) =>
+    days === 0
+      ? "Esta membresía ya no tiene días de congelación disponibles."
+      : `${days === 1 ? "Queda 1 día" : `Quedan ${String(days)} días`} de congelación para esta membresía. Elige un rango más corto.`,
+  daysExceeded: "El rango supera los días de congelación que le quedan a esta membresía. Elige un rango más corto.",
+  overlapsFuture: "Con esta congelación la membresía se cruzaría con la siguiente del socio. Elige menos días.",
+  tooRetroactive: "La congelación no puede empezar tan atrás. Elige una fecha más reciente.",
+  outsideValidity: "La congelación tiene que empezar dentro de la vigencia de la membresía.",
+  memberInactive: "Este socio no está activo. Reactívalo antes de congelar su membresía.",
+  notFound: "No encontramos esta membresía. Actualiza la lista e intenta de nuevo.",
+  forbidden: "No tienes permiso para congelar membresías. Si lo necesitas, pídeselo a un administrador.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos congelar la membresía. Intenta de nuevo en un momento.",
+  generic: "No pudimos congelar la membresía. Revisa las fechas e intenta de nuevo.",
+} as const;
+
+export const CANCEL_MESSAGES = {
+  alreadyCancelled: "Otra persona ya anuló esta membresía. Actualizamos la lista.",
+  reasonInvalid: "Escribe un motivo de 5 a 500 caracteres, sin caracteres invisibles.",
+  notFound: "No encontramos esta membresía. Actualiza la lista e intenta de nuevo.",
+  forbidden: "Solo un administrador puede anular membresías.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos anular la membresía. Intenta de nuevo en un momento.",
+  generic: "No pudimos anular la membresía. Intenta de nuevo.",
+} as const;
+
+function listMessage(error: ApiError): string {
+  if (error.status === HTTP_FORBIDDEN) return LIST_MESSAGES.forbidden;
+  if (error.status === HTTP_UNPROCESSABLE) return LIST_MESSAGES.invalidFilters;
+  if (error.status === HTTP_TOO_MANY) return LIST_MESSAGES.tooMany(waitText(error.retryAfterS));
+  return LIST_MESSAGES.generic;
+}
+
+/** El error de la lista de membresías como ApiError con el mensaje de la pantalla, o null. */
+export function listError(error: unknown): ApiError | null {
+  return toScreenError(error, listMessage, LIST_MESSAGES.generic);
+}
+
+export interface FreezeFieldError {
+  path: FieldPath<FreezeFormValues>;
+  message: string;
+}
+
+const FREEZE_FIELD_CODES: Readonly<Record<string, FreezeFieldError>> = {
+  [API_ERROR_CODES.freezeTooRetroactive]: { path: "frozenFrom", message: FREEZE_MESSAGES.tooRetroactive },
+  [API_ERROR_CODES.freezeOutsideValidity]: { path: "frozenFrom", message: FREEZE_MESSAGES.outsideValidity },
+};
+
+/** El 422 de congelar que va bajo una fecha, o null si es un aviso del modal. */
+export function freezeFieldError(error: unknown): FreezeFieldError | null {
+  if (!isApiError(error) || error.status !== HTTP_UNPROCESSABLE) return null;
+  const byCode = FREEZE_FIELD_CODES[error.code];
+  if (byCode) return byCode;
+  if (error.field === "frozen_to") return { path: "frozenTo", message: error.code === API_ERROR_CODES.validationError ? FREEZE_FORM_MESSAGES.inverted : FREEZE_FORM_MESSAGES.toInvalid };
+  if (error.field === "frozen_from") return { path: "frozenFrom", message: FREEZE_FORM_MESSAGES.fromInvalid };
+  return null;
+}
+
+const DAYS_LEFT = /^Quedan? (\d+) días? de congelación/;
+
+/** "Quedan 5 días de congelación…" del api (S3-B2): los días que quedan, o null si no los dice. */
+export function freezeDaysLeft(message: string): number | null {
+  const match = DAYS_LEFT.exec(message);
+  return match ? Number(match[1]) : null;
+}
+
+const FREEZE_CONFLICTS: Readonly<Record<string, string>> = {
+  [API_ERROR_CODES.membershipNotFreezable]: FREEZE_MESSAGES.notFreezable,
+  [API_ERROR_CODES.freezeAlreadyScheduled]: FREEZE_MESSAGES.alreadyScheduled,
+  [API_ERROR_CODES.freezeLimitReached]: FREEZE_MESSAGES.limitReached,
+  [API_ERROR_CODES.overlapsFutureMembership]: FREEZE_MESSAGES.overlapsFuture,
+};
+
+function freezeConflict(error: ApiError): string {
+  if (error.code === API_ERROR_CODES.freezeDaysExceeded) {
+    const days = freezeDaysLeft(error.message);
+    return days === null ? FREEZE_MESSAGES.daysExceeded : FREEZE_MESSAGES.daysLeft(days);
+  }
+  return FREEZE_CONFLICTS[error.code] ?? FREEZE_MESSAGES.generic;
+}
+
+/** El aviso del modal de congelar. */
+export function freezeAlert(error: unknown): string {
+  if (!isApiError(error)) return FREEZE_MESSAGES.generic;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
+  if (error.status === HTTP_CONFLICT) return freezeConflict(error);
+  if (error.code === API_ERROR_CODES.memberInactive) return FREEZE_MESSAGES.memberInactive;
+  if (error.status === HTTP_NOT_FOUND) return FREEZE_MESSAGES.notFound;
+  if (error.status === HTTP_FORBIDDEN) return FREEZE_MESSAGES.forbidden;
+  if (error.status === HTTP_TOO_MANY) return FREEZE_MESSAGES.tooMany(waitText(error.retryAfterS));
+  if (error.status >= HTTP_SERVER_ERROR) return FREEZE_MESSAGES.server;
+  return FREEZE_MESSAGES.generic;
+}
+
+function cancelMessage(error: ApiError): string {
+  if (error.code === API_ERROR_CODES.membershipAlreadyCancelled) return CANCEL_MESSAGES.alreadyCancelled;
+  if (error.status === HTTP_UNPROCESSABLE && error.field === "reason") return CANCEL_MESSAGES.reasonInvalid;
+  if (error.status === HTTP_NOT_FOUND) return CANCEL_MESSAGES.notFound;
+  if (error.status === HTTP_FORBIDDEN) return CANCEL_MESSAGES.forbidden;
+  if (error.status === HTTP_TOO_MANY) return CANCEL_MESSAGES.tooMany(waitText(error.retryAfterS));
+  if (error.status >= HTTP_SERVER_ERROR) return CANCEL_MESSAGES.server;
+  return CANCEL_MESSAGES.generic;
+}
+
+/** El error de anular con el mensaje de la pantalla; conserva status, code y field. */
+export function toCancelError(error: unknown): ApiError {
+  if (!isApiError(error)) return new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: CANCEL_MESSAGES.generic });
+  const message = connectionMessage(error) ?? cancelMessage(error);
+  return new ApiError({ status: error.status, code: error.code, message, ...(error.field ? { field: error.field } : {}) });
 }

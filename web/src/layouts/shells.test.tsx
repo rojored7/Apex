@@ -11,6 +11,16 @@ import { mockApi, testQueryClient } from "../test/server";
 import { signInAs, signOutForTests } from "../test/session";
 import { AccessLayout } from "./AccessLayout";
 import { PanelShell } from "./PanelShell";
+import { ENABLED_FEATURES, type Feature } from "../config/features";
+
+// S3-F4 (E10): el host del panel de pagos se reemplaza por un marcador para saber si se descargó
+// (la fábrica de vi.mock corre solo cuando alguien importa el módulo, es decir, con el import
+// perezoso de PanelShell).
+const paymentHost = vi.hoisted(() => ({ loaded: vi.fn() }));
+vi.mock("../features/payments/components/RegisterPaymentPanelHost", () => {
+  paymentHost.loaded();
+  return { RegisterPaymentPanelHost: () => <p>Panel de pagos montado</p> };
+});
 import { GymShell, PortalShell, TvShell } from "./ZoneShells";
 
 afterEach(() => {
@@ -47,7 +57,7 @@ describe("PanelShell", () => {
     inRouter(<PanelShell />);
 
     const nav = screen.getByRole("navigation", { name: "Menú principal" });
-    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inicio", "Socios", "Membresías"]);
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inicio", "Socios", "Membresías", "Pagos"]);
   });
 
   it("lleva el conmutador de tema (US-068) y aplica el claro por defecto del panel", async () => {
@@ -130,5 +140,52 @@ describe("AccessLayout", () => {
     expect(within(main).getByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("PanelShell · panel de pagos (S3-F4, S3-D65, E10)", () => {
+  const MEMBERSHIP = "66666666-6666-4666-8666-666666666666";
+  const withoutPayments: ReadonlySet<Feature> = new Set([...ENABLED_FEATURES].filter((feature) => feature !== "payments"));
+
+  it("sin ?pago= no descarga ni monta el host", () => {
+    signInAs("coach");
+    inRouter(<PanelShell />, "/membresias");
+
+    expect(screen.queryByText("Panel de pagos montado")).not.toBeInTheDocument();
+    expect(paymentHost.loaded).not.toHaveBeenCalled();
+  });
+
+  it("con ?pago= descarga el host perezoso y lo monta en la ranura del banner", async () => {
+    signInAs("coach");
+    inRouter(<PanelShell />, `/membresias?pago=${MEMBERSHIP}`);
+
+    expect(await screen.findByText("Panel de pagos montado")).toBeInTheDocument();
+    expect(paymentHost.loaded).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("main")).getByText("Panel de pagos montado")).toBeInTheDocument();
+  });
+
+  it("sin la feature payments no monta el host aunque la URL lo pida", async () => {
+    signInAs("admin");
+    inRouter(<PanelShell enabledFeatures={withoutPayments} />, `/membresias?pago=${MEMBERSHIP}`);
+
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+    expect(screen.queryByText("Panel de pagos montado")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Menú principal" })).queryByRole("link", { name: "Pagos" })).not.toBeInTheDocument();
+  });
+
+  it("sin sesión no monta el host", () => {
+    inRouter(<PanelShell />, `/membresias?pago=${MEMBERSHIP}`);
+
+    expect(screen.queryByText("Panel de pagos montado")).not.toBeInTheDocument();
+  });
+});
+
+describe("PanelShell · permiso del panel de pagos (revisión S3-F4, M3)", () => {
+  it("un rol sin payments.register no monta el host aunque la URL lo pida", async () => {
+    signInAs("member");
+    inRouter(<PanelShell />, "/?pago=66666666-6666-4666-8666-666666666666");
+
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+    expect(screen.queryByText("Panel de pagos montado")).not.toBeInTheDocument();
   });
 });

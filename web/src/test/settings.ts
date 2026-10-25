@@ -1,6 +1,6 @@
 // Datos de prueba de las secciones de configuración (S2-F5). Imitan las respuestas de
 // GET /settings/{gym|privacy|memberships}: defaults con version 0 y updated_* nulos.
-import type { GymSettings, MembershipsSettings, PrivacyView, SettingsSection } from "../features/system/api";
+import type { GymSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
 import type { MockReply } from "./server";
 
 export const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -56,4 +56,20 @@ export function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => voi
     resolve = r;
   });
   return { promise, resolve };
+}
+
+/** S3-F4: GET /settings/payment_methods con las etiquetas por defecto (D24). */
+export function paymentMethodsSection(value: Partial<PaymentMethodsSettings> = {}, version = 0): SettingsSection<"payment_methods"> {
+  return {
+    key: "payment_methods",
+    value: {
+      cash: { label: "Efectivo", hint: "" },
+      nequi: { label: "Nequi", hint: "" },
+      breb: { label: "Bre-B", hint: "" },
+      ...value,
+    },
+    version,
+    updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
+    updated_by: version === 0 ? null : ADMIN_ID,
+  };
 }

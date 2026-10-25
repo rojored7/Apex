@@ -19,7 +19,8 @@ import { invalidResponseError, parseResponse } from "../../core/api/response";
 import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
 import { LINK_PURPOSES, userOutSchema, usersPageSchema, type CreateUserForm, type LinkPurpose, type UserRowView, type UserView } from "./schemas";
 
-export type SettingsKey = "gym" | "privacy" | "memberships";
+// S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
+export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
@@ -52,6 +53,15 @@ const membershipsValueSchema = z.object({
   max_retroactive_days: integer,
 });
 
+// S3-F4 (D24, S3-D55): tres medios fijos, cada uno con su etiqueta y su ayuda.
+const methodLabelSchema = z.object({ label: z.string(), hint: z.string() });
+
+const paymentMethodsValueSchema = z.object({
+  cash: methodLabelSchema,
+  nequi: methodLabelSchema,
+  breb: methodLabelSchema,
+});
+
 function sectionSchema<K extends SettingsKey, V extends z.ZodTypeAny>(key: K, value: V) {
   return z.object({
     key: z.literal(key),
@@ -66,12 +76,14 @@ const SECTION_SCHEMAS = {
   gym: sectionSchema("gym", gymValueSchema),
   privacy: sectionSchema("privacy", privacyValueSchema),
   memberships: sectionSchema("memberships", membershipsValueSchema),
+  payment_methods: sectionSchema("payment_methods", paymentMethodsValueSchema),
 } as const;
 
 export type GymSettings = z.infer<typeof gymValueSchema>;
 /** Lo que se lee de `privacy`: sin publicar, versión y texto son null. */
 export type PrivacyView = z.infer<typeof privacyValueSchema>;
 export type MembershipsSettings = z.infer<typeof membershipsValueSchema>;
+export type PaymentMethodsSettings = z.infer<typeof paymentMethodsValueSchema>;
 
 /** Lo que se escribe en `privacy`: publicar exige versión y texto. */
 export interface PrivacyInput {
@@ -85,6 +97,7 @@ interface SectionInputs {
   gym: GymSettings;
   privacy: PrivacyInput;
   memberships: MembershipsSettings;
+  payment_methods: PaymentMethodsSettings;
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;

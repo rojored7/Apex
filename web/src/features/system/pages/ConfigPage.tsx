@@ -10,7 +10,7 @@
 // DESIGN-GAP: Config.html muestra las ocho secciones como cajas apiladas con un índice
 // lateral; el blueprint F5 las pasa a pestañas y el Sprint 2 solo habilita Gimnasio,
 // Privacidad y Membresías (S2-D15: horario, medios de pago, canales, clases y TV llegan en
-// sus versiones y no se muestran).
+// sus versiones y no se muestran). S3-F4 (US-056) suma "Medios de pago" (`?tab=medios`).
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useBeforeUnload, useBlocker, type BlockerFunction } from "react-router";
 import { useSession } from "../../../core/auth/session";
@@ -19,6 +19,7 @@ import { PageHeader } from "../../../shared/ui/PageHeader";
 import { Tabs, type TabItem } from "../../../shared/ui/Tabs";
 import { GymSettingsForm } from "../components/GymSettingsForm";
 import { MembershipsSettingsForm } from "../components/MembershipsSettingsForm";
+import { PaymentMethodsForm } from "../components/PaymentMethodsForm";
 import { PrivacySettingsForm } from "../components/PrivacySettingsForm";
 import styles from "./ConfigPage.module.css";
 
@@ -26,6 +27,7 @@ const TABS: TabItem[] = [
   { id: "gimnasio", label: "Gimnasio" },
   { id: "privacidad", label: "Privacidad" },
   { id: "membresias", label: "Membresías" },
+  { id: "medios", label: "Medios de pago" },
 ];
 
 type DirtyHandler = (dirty: boolean) => void;
@@ -33,6 +35,7 @@ type DirtyHandler = (dirty: boolean) => void;
 function sectionFor(id: string, onDirtyChange: DirtyHandler): ReactNode {
   if (id === "privacidad") return <PrivacySettingsForm onDirtyChange={onDirtyChange} />;
   if (id === "membresias") return <MembershipsSettingsForm onDirtyChange={onDirtyChange} />;
+  if (id === "medios") return <PaymentMethodsForm onDirtyChange={onDirtyChange} />;
   return <GymSettingsForm onDirtyChange={onDirtyChange} />;
 }
 

@@ -42,3 +42,10 @@ export function referenceError(value: string): string | null {
 }
 
 export const paymentMethodCodeSchema = z.enum(PAYMENT_METHOD_CODES);
+
+/**
+ * Tolerancia de `paid_at` hacia el futuro (`PAID_AT_FUTURE_TOLERANCE` de payments/rules.py). S3-F4:
+ * nace en features/memberships/schemas.ts (S3-F3) y se mueve aquí porque la usa también el panel de
+ * pagos; memberships la reexporta.
+ */
+export const PAID_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { isApiError } from "../../core/api/errors";
 import { pageSchema } from "../../core/api/page";
 import { ROLES, STAFF_ROLES } from "../../core/auth/permissions";
+import { PAYMENT_METHOD_CODES } from "../../shared/data/schemas/payment";
 import type { AccountStatusView } from "../../shared/ui/statusLabel";
 
 /** `^\d+(-\d)?$` del api: dígitos y, opcional, un guion con el dígito de verificación. */
@@ -82,8 +83,43 @@ export type GymSettingsForm = z.infer<typeof gymSettingsSchema>;
 export type PrivacySettingsForm = z.infer<typeof privacySettingsSchema>;
 export type MembershipsSettingsForm = z.infer<typeof membershipsSettingsSchema>;
 
+// S3-F4 · US-056 (D24, S3-D55): las etiquetas de los tres medios fijos. `label` de 1 a 30 y `hint` hasta
+// 120 (METHOD_LABEL_MAX_LENGTH y METHOD_HINT_MAX_LENGTH de settings/schemas.py), recortados; las tres
+// etiquetas no se repiten sin distinguir mayúsculas: el error va en la segunda que repite, como el api.
+export const METHOD_LABEL_MAX = 30;
+export const METHOD_HINT_MAX = 120;
+
+const methodLabelForm = z.object({
+  label: z.string().trim().min(1, "Escribe el nombre del medio de pago.").max(METHOD_LABEL_MAX, `El nombre admite hasta ${String(METHOD_LABEL_MAX)} caracteres.`),
+  hint: z.string().trim().max(METHOD_HINT_MAX, `La ayuda admite hasta ${String(METHOD_HINT_MAX)} caracteres.`),
+});
+
+export const DUPLICATE_LABEL_MESSAGE = "Ya hay otro medio con este nombre. Usa uno distinto.";
+
+export const paymentMethodsSettingsSchema = z
+  .object({ cash: methodLabelForm, nequi: methodLabelForm, breb: methodLabelForm })
+  .superRefine((values, ctx) => {
+    const seen = new Set<string>();
+    for (const code of PAYMENT_METHOD_CODES) {
+      const label = values[code].label.toLowerCase();
+      if (seen.has(label)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [code, "label"], message: DUPLICATE_LABEL_MESSAGE });
+      seen.add(label);
+    }
+  });
+export type PaymentMethodsSettingsForm = z.infer<typeof paymentMethodsSettingsSchema>;
+
 const VALUE_PREFIX = "value.";
 const UNPROCESSABLE = 422;
+
+/** S3-F4: ¿el formulario tiene el campo `a.b.c`? (los medios de pago tienen `nequi.label`). */
+function hasPath(values: unknown, path: string): boolean {
+  let current: unknown = values;
+  for (const key of path.split(".")) {
+    if (typeof current !== "object" || current === null || !Object.prototype.hasOwnProperty.call(current, key)) return false;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return true;
+}
 
 /**
  * Marca en el formulario el campo de un 422 del api (`field = "value.<campo>"`). Usa el
@@ -97,7 +133,7 @@ export function applyApiFieldError<T extends FieldValues>(
 ): boolean {
   if (!isApiError(error) || error.status !== UNPROCESSABLE || !error.field) return false;
   const name = error.field.startsWith(VALUE_PREFIX) ? error.field.slice(VALUE_PREFIX.length) : error.field;
-  if (!Object.prototype.hasOwnProperty.call(form.getValues(), name)) return false;
+  if (!hasPath(form.getValues(), name)) return false;
   form.setError(name as Path<T>, { type: "server", message: messages[name] ?? error.message }, { shouldFocus: true });
   return true;
 }

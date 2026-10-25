@@ -11,7 +11,7 @@ import { RoleProvider } from "../../../core/auth";
 import { clearSession } from "../../../core/auth/session";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { gymSection, membershipsSection, privacySection } from "../../../test/settings";
+import { gymSection, membershipsSection, paymentMethodsSection, privacySection } from "../../../test/settings";
 import ConfigPage from "./ConfigPage";
 
 const PATH = "/sistema/configuracion";
@@ -21,6 +21,7 @@ function defaultHandlers(): Record<string, MockHandler> {
     "GET /settings/gym": { status: 200, body: gymSection() },
     "GET /settings/privacy": { status: 200, body: privacySection({ policy_version: "2026-10", policy_text: "Autorizo." }, 1) },
     "GET /settings/memberships": { status: 200, body: membershipsSection() },
+    "GET /settings/payment_methods": { status: 200, body: paymentMethodsSection() },
   };
 }
 
@@ -74,13 +75,13 @@ afterEach(() => {
 });
 
 describe("ConfigPage", () => {
-  it("muestra el título, la nota de auditoría y las tres pestañas en orden", async () => {
+  it("muestra el título, la nota de auditoría y las cuatro pestañas en orden (S3-F4: Medios de pago)", async () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Configuración del gimnasio" })).toBeInTheDocument();
     expect(screen.getByText("Cada sección se guarda por separado y queda en auditoría.")).toBeInTheDocument();
     const list = screen.getByRole("tablist", { name: "Secciones de la configuración" });
-    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Privacidad", "Membresías"]);
+    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Privacidad", "Membresías", "Medios de pago"]);
     expect(tab("Gimnasio")).toHaveAttribute("aria-selected", "true");
     await nameInput();
   });
@@ -92,16 +93,18 @@ describe("ConfigPage", () => {
     expect(mock.callsTo("GET /settings/gym")).toHaveLength(1);
     expect(mock.callsTo("GET /settings/privacy")).toHaveLength(0);
     expect(mock.callsTo("GET /settings/memberships")).toHaveLength(0);
+    expect(mock.callsTo("GET /settings/payment_methods")).toHaveLength(0);
   });
 
   it.each([
     ["privacidad", "Privacidad", /Versión de la política/],
     ["membresias", "Membresías", /Por vencer/],
+    ["medios", "Medios de pago", /Nombre que se muestra/],
   ])("?tab=%s abre la pestaña %s", async (id, label, field) => {
     renderPage(`${PATH}?tab=${id}`);
 
     expect(tab(label)).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByLabelText(field)).toBeInTheDocument();
+    expect((await screen.findAllByLabelText(field))[0]).toBeInTheDocument();
   });
 
   it("una pestaña desconocida abre Gimnasio", async () => {

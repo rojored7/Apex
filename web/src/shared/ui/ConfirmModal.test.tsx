@@ -239,3 +239,26 @@ describe("ConfirmModal", () => {
     expect(screen.getByRole("button", { name: "Volver" })).toHaveFocus();
   });
 });
+
+describe("ConfirmModal · ayuda y tope del motivo (S3-F4, M-7, D17)", () => {
+  it("reasonHint queda como descripción del motivo", async () => {
+    await open({ ...voidPayment, reasonHint: "No escribas teléfonos, documentos ni datos de salud." });
+
+    expect(screen.getByRole("textbox", { name: /Motivo/ })).toHaveAccessibleDescription("No escribas teléfonos, documentos ni datos de salud.");
+  });
+
+  it("maxReasonLength cuenta caracteres tras recortar: al pasarse lo explica y deshabilita la acción", async () => {
+    const onConfirm = vi.fn(() => Promise.resolve());
+    const user = await open({ ...voidPayment, minReasonLength: 1, maxReasonLength: 5, onConfirm });
+    const reason = screen.getByRole("textbox", { name: /Motivo/ });
+
+    await user.type(reason, "  hola  ");
+    expect(screen.getByRole("button", { name: "Anular pago" })).toBeEnabled();
+    await user.type(reason, "123");
+
+    expect(screen.getByText("El motivo admite hasta 5 caracteres.")).toBeInTheDocument();
+    expect(reason).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Anular pago" })).toBeDisabled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+});

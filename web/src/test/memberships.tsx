@@ -137,3 +137,34 @@ export async function pickMember(user: UserEvent, text = "laura", name: RegExp =
 export async function pickPlan(user: UserEvent, name: string): Promise<void> {
   await user.click(await screen.findByRole("radio", { name: new RegExp(`^${name}`) }));
 }
+
+// S3-F4 (plan del Sprint 3, sección 2): fila de GET /memberships (MembershipRow de B7, con
+// `paid_cop`) y el resumen de GET /memberships/summary (cinco enteros).
+export type MembershipRowFixture = components["schemas"]["MembershipRow"];
+export type MembershipSummaryFixture = components["schemas"]["MembershipSummaryOut"];
+
+export function membershipRow(overrides: Partial<MembershipRowFixture> = {}): MembershipRowFixture {
+  return {
+    id: MEMBERSHIP_ID,
+    member_id: MEMBERS.laura.id,
+    member_name: "Laura Gómez",
+    plan_id: PLANS.mensual.id,
+    plan_name: "Mensual",
+    status: "pending_payment",
+    start_date: "2026-10-25",
+    end_date: "2026-11-24",
+    agreed_price_cop: 120_000,
+    paid_cop: 60_000,
+    classes_total: null,
+    classes_remaining: null,
+    ...overrides,
+  };
+}
+
+export function membershipRowsPage(items: MembershipRowFixture[], total = items.length): MockReply {
+  return { status: 200, body: { items, total, limit: 20, offset: 0 } };
+}
+
+export function membershipSummary(overrides: Partial<MembershipSummaryFixture> = {}): MembershipSummaryFixture {
+  return { active: 210, expiring: 18, expired: 12, frozen: 3, pending_payment: 5, ...overrides };
+}

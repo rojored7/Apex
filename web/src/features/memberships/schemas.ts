@@ -14,16 +14,17 @@
 import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { addDaysCivil, bogotaInputToUtc, parseCop } from "../../core/i18n/format";
+import { MEMBERSHIP_STATUSES } from "../../shared/data/memberships";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
-import { cleanReference, METHODS_WITH_REFERENCE, PAYMENT_METHOD_CODES, referenceError, type PaymentMethodCode } from "../../shared/data/schemas/payment";
+import { cleanReference, METHODS_WITH_REFERENCE, PAID_AT_FUTURE_TOLERANCE_MS, PAYMENT_METHOD_CODES, referenceError, type PaymentMethodCode } from "../../shared/data/schemas/payment";
 import { SELL_MESSAGES } from "./membershipErrors";
 
 export type SellMembershipBody = components["schemas"]["SellMembershipIn"];
 
 /** M-4 (S3-D47): el inicio no puede pasar de hoy más 366 días (`MAX_START_AHEAD_DAYS`). */
 export const MAX_START_AHEAD_DAYS = 366;
-/** Tolerancia de `paid_at` hacia el futuro (`PAID_AT_FUTURE_TOLERANCE` de payments/rules.py). */
-export const PAID_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
+/** Tolerancia de `paid_at` hacia el futuro (S3-F4: vive en shared/data/schemas/payment.ts). */
+export { PAID_AT_FUTURE_TOLERANCE_MS } from "../../shared/data/schemas/payment";
 
 export interface SellFormValues {
   memberId: string;
@@ -156,8 +157,8 @@ export function toSellBody(values: SellFormValues, options: SellBodyOptions = {}
   };
 }
 
-export const MEMBERSHIP_STATUSES = ["pending_payment", "active", "expiring", "expired", "frozen", "cancelled"] as const;
-export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
+// S3-F4: la lista de estados vive en shared/data/memberships.ts (la usa también el panel de pagos).
+export { MEMBERSHIP_STATUSES, type MembershipStatus } from "../../shared/data/memberships";
 
 const freezeOutSchema = z
   .object({

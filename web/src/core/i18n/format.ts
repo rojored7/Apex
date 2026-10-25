@@ -206,3 +206,17 @@ export function addDaysCivil(value: string, days: number): string | null {
   const date = new Date(Date.UTC(civil.year, civil.month - 1, civil.day) + days * MS_PER_DAY);
   return civilIso({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() });
 }
+
+/**
+ * S3-F4: vigencia corta de una membresía, como la dibuja el diseño ("Mensual 25 oct–24 nov" en
+ * Pagos.html). Dos fechas civiles "AAAA-MM-DD"; en el mismo año van sin año, si cruzan de año los
+ * llevan los dos ("15 dic 2026–14 ene 2027"). Una fecha que no es civil da "—".
+ */
+export function formatDateRange(start: string, end: string): string {
+  const from = parseCivilDate(start);
+  const to = parseCivilDate(end);
+  if (!from || !to) return EMPTY_VALUE;
+  if (from.year !== to.year) return `${civilText(from)}–${civilText(to)}`;
+  const dayMonth = ({ month, day }: CivilDate): string => `${String(day)} ${MONTHS_SHORT[month - 1] ?? ""}`;
+  return `${dayMonth(from)}–${dayMonth(to)}`;
+}

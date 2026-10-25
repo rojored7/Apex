@@ -124,3 +124,30 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* S3-F4: una fila por medio de pago (Config.html, "3 · Medios de pago"): ocupa las dos columnas y
+   pone sus dos campos lado a lado. */
+.group {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.legend {
+  padding: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+@media (width < 768px) {
+  .group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

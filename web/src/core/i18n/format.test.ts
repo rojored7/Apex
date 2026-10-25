@@ -7,6 +7,7 @@ import {
   formatCop,
   formatCount,
   formatDate,
+  formatDateRange,
   formatDateTime,
   formatMonth,
   formatTime,
@@ -183,5 +184,21 @@ describe("fechas de los formularios en hora de Bogotá (S3-F3)", () => {
     expect(addDaysCivil("2028-02-28", 1)).toBe("2028-02-29");
     expect(addDaysCivil("2026-10-28", 0)).toBe("2026-10-28");
     expect(addDaysCivil("2026-02-30", 1)).toBeNull();
+  });
+});
+
+describe("formatDateRange (S3-F4: vigencia corta de una membresía)", () => {
+  it("en el mismo año da día y mes con raya: «25 oct–24 nov»", () => {
+    expect(formatDateRange("2026-10-25", "2026-11-24")).toBe("25 oct–24 nov");
+    expect(formatDateRange("2026-09-25", "2026-10-24")).toBe("25 sept–24 oct");
+  });
+
+  it("si cruza de año lleva los dos años", () => {
+    expect(formatDateRange("2026-12-15", "2027-01-14")).toBe("15 dic 2026–14 ene 2027");
+  });
+
+  it("una fecha que no es civil da la raya de vacío", () => {
+    expect(formatDateRange("2026-13-01", "2026-11-24")).toBe("—");
+    expect(formatDateRange("2026-10-25", "nunca")).toBe("—");
   });
 });

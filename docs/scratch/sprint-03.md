@@ -1814,3 +1814,39 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   `tests/memberships/test_list_perf.py` aparte: 2 ok. `db_test` sin residuos (0 socios,
   membresías y pagos; 0 `idle in transaction`; los siete triggers en `A`).
 - B7.6 gates (abajo, en "Evidencia de S3-B7").
+
+### Evidencia de S3-B7 (B7.7, después del sello; E8)
+
+- Gates B7.6 al primer intento, seguidos y sin editar entre ellos (`ls` previo de los once
+  archivos): (1) `PYTEST_ADDOPTS="-m 'not perf'"` `members` con `test_service_list.py`,
+  `test_router_list.py` y `tests/architecture` 320 ok; (2) el que sella, sin `PYTEST_ADDOPTS`,
+  `memberships` con las nueve líneas y `tests/architecture` 518 ok (incluye las dos `perf`). Una
+  saltada en los dos (`test_no_sensitive_in_logs`, US-074). Checkpoint `9f5ae13`.
+- api `healthy`, recargado por el bind (`WatchFiles detected changes ... Reloading`,
+  `Application startup complete`; el contenedor ve `_summary_flight_lock`); log del api sin
+  `ERROR` en los 15 minutos de la demo; 0 sesiones `idle in transaction`. Sin migración:
+  `apex-db-1` sigue en `0011_payments_immutability`.
+- Demo por Nginx `:8180` con accesos del admin y de un coach firmados dentro del contenedor del
+  api (solo en variables de la shell; el script temporal se borró del contenedor y del
+  scratchpad):
+  - `GET /api/v1/memberships?status=active,pending_payment` (admin) → **200** `total 3`, orden
+    por fin: "Demo B4Uno" `927a3723…` `active` (`paid_cop` 120.000), "Demo B4Dos" `b21e25b5…`
+    `pending_payment` (`paid_cop` 61.000: el pago anulado de B5 no suma) y la renovación de B6
+    `6086de3c…` `pending_payment` (`paid_cop` 0, del 2026-11-25 al 2026-12-25);
+  - `GET /api/v1/memberships/summary` → **200** `{"active": 1, "expiring": 0, "expired": 0,
+    "frozen": 0, "pending_payment": 1}` con `Cache-Control: no-store`. Cuadre en psql con la
+    consulta de RUNBOOK §10 ("Cuadrar el resumen en psql", `expiring_days` 7 de
+    `settings.settings_sections`): `active 1`, `pending_payment 1`; 19 socios vivos, así que 17
+    `none` (Demo B4Uno decide por su vigente aunque tenga la renovación pendiente; la de B1 está
+    anulada);
+  - `GET /api/v1/memberships/b21e25b5…` (socio de la demo 3 de B5) → **200** `status
+    pending_payment`, `paid_cop` 61.000, `freezes []`: **cierra la evidencia pendiente de B5.6**;
+  - `GET /api/v1/memberships?q=Demo` → **200**; coach → **200** en la lista y en el resumen; sin
+    token → **401** `unauthorized` en los dos; coach con `status=vigente` → **422**
+    `validation_error`, `field = "status"`, mensaje sin el valor;
+  - `/health` y `/api/v1/health` → 200.
+- Rol `member`: no hay ningún usuario `member` en la base de desarrollo, y el api toma el rol del
+  usuario en la base (`PrincipalLoader`), no del claim del token: un access firmado con
+  `role=member` para el id del admin responde 200 como admin (no es un escalamiento: firmar
+  exige la llave privada del api). El 403 de `member` lo fijan `test_list_router.py` y
+  `test_summary_router.py` con usuarios reales; no se demuestra en vivo.

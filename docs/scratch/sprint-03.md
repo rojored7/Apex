@@ -2521,3 +2521,35 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   `reveal volume`, recuperar a un dado de baja, psql); `BRECHAS.md` §10 ("Dado de baja",
   "Reactivar" y campos sensibles en la edición, con `// DESIGN-GAP:` para el front).
 - Gates (B10.6), en orden y con `ls` previo de cada archivo: ver el bloque de evidencia.
+
+### S3-B10 · Evidencia (B10.6 y B10.7, demo 6; después del sello, checkpoint `4b4ce60`)
+
+- Gates (sin `PYTEST_ADDOPTS`, `ls` previo de cada archivo), seguidos y sin editar entre uno y
+  otro: (1) `slice-gate.sh audit tests/audit/test_reveal_entry.py` **286 ok**; (2)
+  `slice-gate.sh core/logging tests/core/test_logging_redact.py` **303 ok**; (3)
+  `slice-gate.sh memberships tests/memberships/test_lock_order.py` **294 ok**; (4) el que sella,
+  `slice-gate.sh members` con los diez archivos del plan **473 ok**. `ruff`, `format` y `mypy`
+  limpios en los cuatro (incluyen `tests/architecture`).
+- api `healthy`, recargado por el bind (WatchFiles); sin migración ni reconstrucción. Por Nginx
+  `:8180` con accesos del admin y del coach desechable firmados dentro del contenedor del api
+  (script borrado del contenedor y del scratchpad; tokens solo en variables de la shell; no se
+  tocó ninguna contraseña). Socio de demo propio "Demo B10Revelar" (`d7345990-…`, CC de 10
+  dígitos al azar, teléfono y correo de prueba); queda activo al final:
+  - `POST /members` (admin) → 201, `document "CC •••• <4 últimos>"`.
+  - `POST /members/{id}/reveal {"field":"document"}` (admin) → **200** con `Cache-Control:
+    no-store` y el valor igual al sembrado. psql: una fila `reveal` (seq 900, `user_id` = admin,
+    `after = {"ip": "172.30.0.128", "field": "document"}`, sin el valor; la IP es la del host
+    vista por Nginx) y una `decrypt | reveal | member.document` en `crypto_ops`.
+  - `PATCH {"phone": ...}` (coach) → **200**; `phone_idx` distinto; la fila `update` (seq 901,
+    `user_id` = coach) lleva solo `phone` (blob) y `phone_idx` (`***`).
+  - `PATCH {"document": <el mismo>}` (coach) → **403** `forbidden_field`, `field="document"`,
+    sin el valor en el cuerpo.
+  - `DELETE /members/{id}` (admin) → **204**; `GET` → `status "inactive"` y `deleted_at`;
+    auditoría `update` con `status` y `deleted_at` (seq 902). `DELETE` con el coach → **403**.
+  - `POST /members/{id}/memberships` sobre el dado de baja → **422** `member_inactive`; `PATCH`
+    sobre él → **409** `member_deactivated`.
+  - `POST /members/{id}/reactivate` (admin) → **200**, `status "active"`, `deleted_at null`
+    (seq 903).
+  - Ninguna fila de auditoría del socio contiene el documento ni el teléfono nuevo en claro.
+    `$DC logs --since 30m api` (306 líneas): 0 apariciones del documento, del teléfono viejo y
+    del nuevo, 0 `apx1.`, 0 `ERROR`.

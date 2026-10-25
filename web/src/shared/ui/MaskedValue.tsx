@@ -3,7 +3,8 @@
 // - El claro vive solo en el estado de este componente: no pasa por TanStack Query, ni por
 //   el almacenamiento del navegador, ni por la URL; se descarta al ocultar, al desmontar o
 //   a los 60 s. Cada pulsación llama a onReveal una vez (cada vista deja una auditoría).
-// Criterio diferido: la feature conecta onReveal a POST /members/{id}/reveal en US-074.
+// S3-F1 (US-074) cierra el criterio diferido: features/members/components/MemberSensitiveField
+// conecta onReveal a POST /members/{id}/reveal (S3-D52; prueba en MaskedValue.reveal.test.tsx).
 import { useEffect, useId, useRef, useState } from "react";
 import { isApiError } from "../../core/api/errors";
 import type { Action } from "../../core/auth/permissions";

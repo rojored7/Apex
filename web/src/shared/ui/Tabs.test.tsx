@@ -1,4 +1,5 @@
 // US-064 T2 y T4: pestañas accesibles con la pestaña activa en la URL.
+// S3-F1 (E14): en modo segmento, `indexId` es la pestaña que vive en la ruta base (hija índice).
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -149,5 +150,78 @@ describe("Tabs", () => {
     await user.click(screen.getByRole("tab", { name: "General" }));
     expect(screen.getByTestId("location")).toHaveTextContent("/config/general");
     expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  // S3-F1 (E14): la pestaña índice vive en la ruta del padre (la hija índice "Datos" de la ficha).
+  function renderIndexTabs(initial: string) {
+    return render(
+      <MemoryRouter initialEntries={[initial]}>
+        <Routes>
+          <Route
+            path="/socios/:id/*"
+            element={
+              <Tabs
+                label="Secciones del socio"
+                urlMode="segment"
+                basePath="/socios/1"
+                indexId="datos"
+                tabs={[
+                  { id: "datos", label: "Datos" },
+                  { id: "membresias", label: "Membresías" },
+                  { id: "historial", label: "Historial", disabledUntil: "v0.1" },
+                ]}
+              >
+                {(active) => <p>{`Panel ${active}`}</p>}
+              </Tabs>
+            }
+          />
+        </Routes>
+        <Location />
+      </MemoryRouter>,
+    );
+  }
+
+  it("en modo segmento con indexId, la ruta base activa la pestaña índice y pulsarla vuelve a la base sin segmento", async () => {
+    const user = userEvent.setup();
+    renderIndexTabs("/socios/1/membresias?x=1");
+
+    expect(screen.getByRole("tab", { name: "Membresías" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "Datos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe("/socios/1?x=1");
+    expect(screen.getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Panel datos");
+  });
+
+  it("con indexId y la ruta base, la índice es la activa aunque no sea la primera de la lista", () => {
+    render(
+      <MemoryRouter initialEntries={["/socios/1"]}>
+        <Tabs
+          label="Secciones"
+          urlMode="segment"
+          basePath="/socios/1"
+          indexId="datos"
+          tabs={[
+            { id: "resumen", label: "Resumen" },
+            { id: "datos", label: "Datos" },
+          ]}
+        >
+          {(active) => <p>{`Panel ${active}`}</p>}
+        </Tabs>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Panel datos");
+  });
+
+  it("con indexId, las flechas también llevan a la índice por la ruta base", async () => {
+    const user = userEvent.setup();
+    renderIndexTabs("/socios/1/membresias");
+
+    screen.getByRole("tab", { name: "Membresías" }).focus();
+    await user.keyboard("{ArrowLeft}");
+
+    expect(screen.getByTestId("location").textContent).toBe("/socios/1");
   });
 });

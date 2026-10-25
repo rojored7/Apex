@@ -5,9 +5,9 @@
 // - `access`: "public" (sin sesión), "session" (cualquier rol con sesión) o la acción de la
 //   matriz de US-040. El front oculta; cada endpoint vuelve a verificar el rol (RN-15).
 // - `load`: la página se descarga solo al visitar la ruta (US-067, criterio 3).
-// - Sin `load` (versiones futuras, o /socios/:id hasta S3-F1, S2-D34) la ruta no se registra
-//   y da 404 sin descargar nada. L1 de la revisión general del Sprint 2: se quitó `pending`
-//   (PendingPage, "Disponible pronto"), código muerto desde S2-F7.
+// - Sin `load` (versiones futuras) la ruta no se registra y da 404 sin descargar nada. S3-F1:
+//   /socios/:id (ficha) y /socios/:id/editar ya tienen página. L1 de la revisión general del
+//   Sprint 2: se quitó `pending` (PendingPage, "Disponible pronto"), código muerto desde S2-F7.
 import type { ComponentType } from "react";
 import type { Action } from "../core/auth/permissions";
 import type { Feature } from "./features";
@@ -79,6 +79,10 @@ export function fullPathOf(def: RouteKeyFields): string {
   return def.path === "" && def.parent !== undefined ? def.parent : def.path;
 }
 
+/** S3-F1: la ficha del socio, padre de sus pestañas (Datos aquí; Membresías y Pagos en S3-F7). */
+const MEMBER_DETAIL = route("/socios/:id", "Ficha del socio", "members", "members.view", "panel", {
+  load: () => import("../features/members/pages/MemberDetailPage"),
+});
 
 export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // Acceso (sin sesión): login (S2-F3), recuperación y restablecimiento (S2-F4a).
@@ -95,9 +99,11 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // S2-F6: lista (US-070) y alta (US-069).
   route("/socios", "Socios", "members", "members.view", "panel", { load: () => import("../features/members/pages/MembersListPage") }),
   route("/socios/nuevo", "Nuevo socio", "members", "members.create", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
-  // S2-D34: la ficha y la edición llegan con S3-B9 y S3-F1; hasta entonces dan 404.
-  route("/socios/:id", "Ficha del socio", "members", "members.view", "panel"),
-  route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel"),
+  // S3-F1 (US-073 a US-076, S2-D34): la ficha pinta sus pestañas en su <Outlet />; "Datos" es la
+  // hija índice (E14: no repite el path). Membresías y Pagos llegan como hijas en S3-F7.
+  MEMBER_DETAIL,
+  childRoute(MEMBER_DETAIL, "", "Datos", { load: () => import("../features/members/components/MemberDataTab") }),
+  route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
   route("/planes", "Planes", "plans", "plans.view", "panel", { load: () => import("../features/plans/pages/PlansPage") }),

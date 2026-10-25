@@ -1,5 +1,6 @@
 // US-064 T2: pestañas accesibles (patrón tablist/tab/tabpanel con tabindex móvil).
-// La pestaña activa vive en la URL (?tab= o un segmento de la ruta), nunca en un estado
+// La pestaña activa vive en la URL (?tab= o un segmento de la ruta; S3-F1: la pestaña `indexId`
+// vive en la ruta base, la hija índice), nunca en un estado
 // propio duplicado: recargar o volver atrás la conserva. La selección sigue al foco.
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
@@ -23,6 +24,11 @@ export interface TabsProps {
   param?: string;
   /** Ruta base en modo `segment`, sin barra final. */
   basePath?: string;
+  /**
+   * S3-F1 (E14): en modo `segment`, la pestaña que vive en `basePath` mismo (la ruta hija índice,
+   * "Datos" de la ficha): no agrega segmento y es la activa cuando la URL no trae ninguno.
+   */
+  indexId?: string;
   children: (activeId: string) => ReactNode;
 }
 
@@ -31,7 +37,7 @@ function segmentAfter(pathname: string, basePath: string): string | null {
   return pathname.slice(basePath.length + 1).split("/")[0] ?? null;
 }
 
-export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", children }: TabsProps) {
+export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", indexId, children }: TabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -39,7 +45,9 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const enabled = tabs.filter((tab) => !tab.disabledUntil);
-  const requested = urlMode === "query" ? searchParams.get(param) : segmentAfter(location.pathname, basePath);
+  const segment = urlMode === "segment" ? segmentAfter(location.pathname, basePath) : null;
+  // S3-F1 (E14): sin segmento, la ruta base es la de la pestaña índice.
+  const requested = urlMode === "query" ? searchParams.get(param) : (segment ?? indexId ?? null);
   const activeId = enabled.find((tab) => tab.id === requested)?.id ?? enabled[0]?.id ?? "";
   const tabId = (id: string): string => `${baseId}-tab-${id}`;
   const panelId = `${baseId}-panel`;
@@ -54,7 +62,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
         return next;
       });
     } else {
-      void navigate(`${basePath}/${id}${location.search}`);
+      void navigate(`${id === indexId ? basePath : `${basePath}/${id}`}${location.search}`);
     }
     tabRefs.current.get(id)?.focus();
   };

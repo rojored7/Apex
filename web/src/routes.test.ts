@@ -4,6 +4,7 @@
 // S3-F3 (E3, E14): rutas hijas. Una hija se registra bajo su padre (`children`, la índice con
 // `index`), nunca como hoja plana; hereda feature y layout (y el acceso si no declara uno); la
 // clave de una ruta es (parent, path) y el oráculo compara también el anidamiento.
+// S3-F1: /socios/:id (con su hija índice "Datos") y /socios/:id/editar se registran con página.
 import type { RouteObject } from "react-router";
 import { ENABLED_FEATURES, FEATURES, type Feature } from "./config/features";
 import { childRoute, fullPathOf, ROUTE_TABLE, routeKey, type RouteDef } from "./config/routeTable";
@@ -66,8 +67,8 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
-    expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual([
+  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), la ficha con su pestaña Datos y la edición (S3-F1), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
+    expect(ROUTE_TABLE.filter((r) => r.load).map(fullPathOf)).toEqual([
       "/login",
       "/recuperar",
       "/restablecer/:token",
@@ -75,6 +76,9 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/",
       "/socios",
       "/socios/nuevo",
+      "/socios/:id",
+      "/socios/:id",
+      "/socios/:id/editar",
       "/planes",
       "/membresias",
       "/membresias/vender",
@@ -87,15 +91,40 @@ describe("tabla de rutas (routeTable.ts)", () => {
 });
 
 describe("árbol de routes.tsx", () => {
-  it("con las features del Sprint 2 registra solo las rutas habilitadas con página", () => {
+  /** La hija índice (path "") no es una hoja con path: cuelga de su padre con `index`. */
+  const isIndexChild = (r: RouteDef): boolean => r.parent !== undefined && r.path === "";
+
+  it("con las features habilitadas registra solo las rutas habilitadas con página, la ficha incluida (S3-F1)", () => {
     const registered = leaves(buildRoutes()).map((l) => l.path).sort();
-    const expected = ROUTE_TABLE.filter((r) => r.load && r.feature !== undefined && ENABLED_FEATURES.has(r.feature))
+    const expected = ROUTE_TABLE.filter((r) => r.load && r.feature !== undefined && ENABLED_FEATURES.has(r.feature) && !isIndexChild(r))
       .map((r) => r.path)
       .sort();
 
     expect(registered).toEqual(expected);
     expect(registered).not.toContain("/clases");
-    expect(registered).not.toContain("/socios/:id");
+    // S3-F1: la aserción del Sprint 2 ("/socios/:id no se registra") se invierte.
+    expect(registered).toContain("/socios/:id");
+    expect(registered).toContain("/socios/:id/editar");
+  });
+
+  it("S3-F1 (E3, E14): la ficha lleva la pestaña Datos como hija índice con página; la edición es otra pantalla, no una hija", () => {
+    const find = (routes: RouteObject[], test: (r: RouteObject) => boolean): RouteObject | undefined => {
+      for (const r of routes) {
+        if (test(r)) return r;
+        const inner = r.children ? find(r.children, test) : undefined;
+        if (inner) return inner;
+      }
+      return undefined;
+    };
+    const routes = buildRoutes();
+    const ficha = find(routes, (r) => r.path === "/socios/:id");
+
+    expect(ficha?.lazy).toBeDefined();
+    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index"]);
+    expect(ficha?.children?.[0]?.handle).toEqual({ feature: "members", access: "members.view", layout: "panel", title: "Datos" });
+    const editar = find(routes, (r) => r.path === "/socios/:id/editar");
+    expect(editar?.handle).toEqual({ feature: "members", access: "members.update", layout: "panel", title: "Editar socio" });
+    expect(ficha?.children?.some((c) => c.path === "/socios/:id/editar")).toBe(false);
   });
 
   it("cada hoja declara feature, access y layout en handle", () => {
@@ -112,7 +141,7 @@ describe("árbol de routes.tsx", () => {
 
   it("con todas las features habilitadas registra las rutas con página de la tabla", () => {
     const registered = leaves(buildRoutes(ROUTE_TABLE, new Set(FEATURES))).map((l) => l.path);
-    expect(registered.length).toBe(ROUTE_TABLE.filter((r) => r.load).length);
+    expect(registered.length).toBe(ROUTE_TABLE.filter((r) => r.load && !isIndexChild(r)).length);
   });
 
   it("termina en una ruta comodín de NotFound", () => {

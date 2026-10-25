@@ -34,6 +34,8 @@ CON_LIMITE = {
     ("get", "/api/v1/members"),
     # S3-B1 (E2, H-2): vender consume `memberships-write`.
     ("post", "/api/v1/members/{member_id}/memberships"),
+    # S3-B2 (E2, H-2): congelar consume la misma cubeta `memberships-write`.
+    ("post", "/api/v1/memberships/{membership_id}/freeze"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

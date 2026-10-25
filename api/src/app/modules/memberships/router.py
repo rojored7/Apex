@@ -5,7 +5,14 @@
   `USER_WRITE_LIMIT_PER_MIN`): la venta 31 en un minuto del mismo usuario da 429. Códigos 201,
   401, 403, 404 (`member_not_found`), 409 (`membership_conflict`, `membership_overlap`), 422 y
   429; el 500 y el 503 `busy` los agrega el gancho de OpenAPI.
-La ruta no hace `select`: valida, aplica el límite, llama al service y devuelve.
+- `POST /memberships/{membership_id}/freeze` (S3-B2, US-089; admin y coach por Q7, `StaffDep`):
+  200 `MembershipOut`. Comparte la cubeta `memberships-write` con la venta (S3-D42): 20 ventas y
+  11 congelaciones del mismo usuario en un minuto dan 429 en la 31. Códigos 200, 401, 403, 404
+  (`membership_not_found`), 409 (`membership_not_freezable`, `freeze_already_scheduled`,
+  `freeze_limit_reached`, `freeze_days_exceeded`, `overlaps_future_membership`), 422
+  (`validation_error` con `field="frozen_to"`, `freeze_too_retroactive`,
+  `freeze_outside_validity`) y 429 (D14).
+Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
 """
 
 from __future__ import annotations
@@ -20,7 +27,12 @@ from app.core.http import no_store
 from app.core.ratelimit import enforce_user_limit
 from app.core.security import StaffDep
 from app.modules.memberships import service
-from app.modules.memberships.schemas import SellMembershipIn, SellMembershipOut
+from app.modules.memberships.schemas import (
+    FreezeIn,
+    MembershipOut,
+    SellMembershipIn,
+    SellMembershipOut,
+)
 
 router = APIRouter(
     tags=["memberships"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
@@ -48,4 +60,25 @@ async def sell_membership(
         start_date=body.start_date,
         renew=body.renew,
         first_payment=body.first_payment,
+    )
+
+
+@router.post(
+    "/memberships/{membership_id}/freeze",
+    response_model=MembershipOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def freeze_membership(
+    request: Request,
+    membership_id: UUID,
+    body: FreezeIn,
+    principal: StaffDep,
+    session: SessionDep,
+) -> MembershipOut:
+    await enforce_user_limit(request, "memberships-write", principal.user_id)
+    return await service.freeze(
+        session,
+        membership_id=membership_id,
+        frozen_from=body.frozen_from,
+        frozen_to=body.frozen_to,
     )

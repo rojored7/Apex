@@ -7,9 +7,10 @@ cualquier flush auditado, D3), no llama a `with_for_update` directo (la fila se 
 (`event.membership_id`, la fila que el emisor ya bloqueó). Romperlo abre el interbloqueo de la
 exploración (riesgo 2): `register` hace flush (cadena de auditoría) y el handler pediría el socio.
 
-La lista de handlers es exacta y se actualiza en el slice que agrega uno: vacía en B1;
-`on_payment_registered` en B4 y `on_payment_voided` en B5. Prohibido `pytest.skip`: con la lista
-vacía la prueba igual corre el análisis sobre el archivo real.
+La lista de handlers es exacta y se actualiza en el slice que agrega uno: vacía en B1 y en B2
+(`freeze` vive en `lifecycle.py` desde B2, pero es un caso de uso que emite, no un handler: toma
+el candado del socio como emisor, D3); `on_payment_registered` en B4 y `on_payment_voided` en B5.
+Prohibido `pytest.skip`: con la lista vacía la prueba igual corre el análisis sobre el archivo real.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ LIFECYCLE = (
     Path(__file__).resolve().parents[2] / "src" / "app" / "modules" / "memberships" / "lifecycle.py"
 )
 HANDLERS_ESPERADOS: frozenset[str] = frozenset()  # B4: on_payment_registered; B5: on_payment_voided
+CASOS_DE_USO_ESPERADOS: frozenset[str] = frozenset({"freeze"})  # B2; B6 agrega `cancel`
 
 
 def _nombre_llamado(nodo: ast.Call) -> str | None:
@@ -83,6 +85,17 @@ def test_los_handlers_de_lifecycle_son_exactamente_los_del_slice() -> None:
 
 def test_ningun_handler_pide_candados_nuevos() -> None:
     assert violaciones(LIFECYCLE.read_text(encoding="utf-8")) == []
+
+
+def test_freeze_vive_en_lifecycle_y_no_cuenta_como_handler() -> None:
+    """S3-B2: `freeze` pide `lock_member` (es el emisor de `MembershipFrozen`) y por eso no puede
+    llamarse `on_*`; la lista de handlers sigue vacía."""
+    arbol = ast.parse(LIFECYCLE.read_text(encoding="utf-8"))
+    funciones = {
+        n.name for n in arbol.body if isinstance(n, ast.AsyncFunctionDef | ast.FunctionDef)
+    }
+    assert CASOS_DE_USO_ESPERADOS <= funciones
+    assert not {f for f in funciones if f.startswith("on_")} - HANDLERS_ESPERADOS
 
 
 # Controles con fuentes falsas ----------------------------------------------------------------

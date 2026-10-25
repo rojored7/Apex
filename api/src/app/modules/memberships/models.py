@@ -14,6 +14,15 @@
   `subject_member_id` del socio.
 - Los triggers de identidad y de borrado viven solo en la migración (`memberships.guard_identity`
   y `memberships.forbid_delete`, S3-D48 y S3-D49).
+
+`memberships.membership_freezes` (S3-B2, US-089; migración `0009_membership_freezes`; D14, M-5):
+una fila por congelación con `frozen_from`, `frozen_to` y `days = (frozen_to - frozen_from) + 1`
+(RN-07), FK a `memberships.memberships` (mismo esquema). `ex_membership_freezes_dates`: dos
+ventanas de la misma membresía no se cruzan. Solo se agregan filas: la función
+`memberships.forbid_freeze_mutation()` rechaza cambiar, borrar o vaciar la tabla (`CONSTRAINT =
+membership_freezes_append_only`). `__audited__` sin `__audit_subject__`: la tabla no tiene
+`member_id`; la fila `update` de la membresía (fin y estado) sí lleva el socio. Se anota para
+US-106 (Sprint 4A), que decide cómo mostrar las congelaciones en el historial.
 """
 
 from __future__ import annotations
@@ -22,7 +31,16 @@ from datetime import date, datetime
 from typing import ClassVar, Final
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Date, Index, Integer, Text, literal_column, text
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    literal_column,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +57,8 @@ STATUSES: Final[tuple[str, ...]] = (
 EXCLUDE_NAME: Final = "ex_memberships_member_dates"
 IDENTITY_CONSTRAINT: Final = "memberships_identity"
 NO_DELETE_CONSTRAINT: Final = "memberships_no_delete"
+FREEZE_EXCLUDE_NAME: Final = "ex_membership_freezes_dates"
+FREEZE_APPEND_ONLY_CONSTRAINT: Final = "membership_freezes_append_only"
 
 
 class Membership(CommonColumnsMixin, Base):
@@ -96,3 +116,30 @@ class Membership(CommonColumnsMixin, Base):
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_by: Mapped[UUID | None] = mapped_column(nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class MembershipFreeze(CommonColumnsMixin, Base):
+    """Una congelación de una membresía (S3-B2, D14): ventana cerrada y sus días (RN-07)."""
+
+    __tablename__ = "membership_freezes"
+    __table_args__ = (
+        CheckConstraint("frozen_from <= frozen_to", name="dates_ordered"),
+        CheckConstraint("days = (frozen_to - frozen_from) + 1", name="days_match"),
+        ExcludeConstraint(
+            ("membership_id", "="),
+            (literal_column("daterange(frozen_from, frozen_to, '[]')"), "&&"),
+            name=FREEZE_EXCLUDE_NAME,
+            using="gist",
+        ),
+        Index("ix_membership_freezes_membership", "membership_id"),
+        {"schema": "memberships"},
+    )
+    __audited__: ClassVar[bool] = True
+    # Sin `__audit_subject__` (no hay `member_id`): pendiente de US-106 (Sprint 4A).
+
+    membership_id: Mapped[UUID] = mapped_column(
+        ForeignKey("memberships.memberships.id"), nullable=False
+    )
+    frozen_from: Mapped[date] = mapped_column(Date, nullable=False)
+    frozen_to: Mapped[date] = mapped_column(Date, nullable=False)
+    days: Mapped[int] = mapped_column(Integer, nullable=False)

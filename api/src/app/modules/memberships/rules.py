@@ -19,8 +19,19 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   `start_date > hoy` (D8). Las vencidas y canceladas no cuentan.
 - `find_overlap(start, end, others)`: id de la primera con rango cerrado que se cruza.
 - `validate_start_date(start, today, *, max_retroactive_days, max_ahead_days)`: N-24 y M-4.
+- `apply_freeze(m, freezes, frozen_from, frozen_to, limits, today, expiring_days)` (S3-B2, D14,
+  Q9): `FreezeOutcome(window, new_end_date)` o `FreezeError(code, field, status)`. Valida en este
+  orden: estado efectivo `active` o `expiring` (409 `membership_not_freezable`); fechas invertidas
+  (422 `validation_error`, `field="frozen_to"`); `frozen_from` antes de hoy menos
+  `max_retroactive_days` (422 `freeze_too_retroactive`, `field="frozen_from"`); `frozen_from`
+  fuera de `[start_date, end_date]` (422 `freeze_outside_validity`, `field="frozen_from"`); una
+  ventana con `frozen_to >= today` (409 `freeze_already_scheduled`); `max_count` ventanas ya
+  usadas (409 `freeze_limit_reached`); días usados más los nuevos sobre `max_days` (409
+  `freeze_days_exceeded`). Cuenta los días restando fechas antes de sumar al fin: un
+  `frozen_to` enorme da `freeze_days_exceeded` y nunca `OverflowError`. El fin se corre los días
+  de la ventana también si es futura (RN-07). No muta nada.
 
-B2 agrega `apply_freeze`, B4 `prefix_field`, B5 `should_revert`, B6 `plan_renewal` y B7
+B4 agrega `prefix_field`, B5 `should_revert`, B6 `plan_renewal` y B7
 `parse_status_filter` y `resolve_member_status`.
 """
 
@@ -55,6 +66,7 @@ _VIGENTES: Final = frozenset(
     {MembershipStatus.active, MembershipStatus.expiring, MembershipStatus.frozen}
 )
 _FUTURAS_SI_AUN_NO_EMPIEZAN: Final = frozenset({MembershipStatus.active, MembershipStatus.expiring})
+_CONGELABLES: Final = frozenset({MembershipStatus.active, MembershipStatus.expiring})
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +117,37 @@ class MembershipSnapshot:
     def __post_init__(self) -> None:
         if self.start_date > self.end_date:
             raise ValueError("start_date no puede ser posterior a end_date")
+
+
+@dataclass(frozen=True, slots=True)
+class FreezeLimits:
+    """Límites de Q9 (`settings.memberships`): días totales, veces y retroactividad."""
+
+    max_days: int
+    max_count: int
+    max_retroactive_days: int
+
+
+@dataclass(frozen=True, slots=True)
+class FreezeOutcome:
+    """Resultado de `apply_freeze`: la ventana nueva y el fin corrido."""
+
+    window: FreezeWindow
+    new_end_date: date
+
+
+class FreezeError(Exception):
+    """Regla de congelación incumplida (D14): `code` estable, `field`, `status` HTTP y un
+    `message` opcional (en `freeze_days_exceeded` dice los días que quedan disponibles)."""
+
+    def __init__(
+        self, code: str, *, field: str | None = None, status: int = 409, message: str = ""
+    ) -> None:
+        self.code = code
+        self.field = field
+        self.status = status
+        self.message = message
+        super().__init__(code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,3 +259,44 @@ def validate_start_date(
         raise StartDateTooFar()
     if max_retroactive_days is not None and (today - start).days > max_retroactive_days:
         raise StartDateTooRetroactive()
+
+
+def apply_freeze(
+    m: MembershipSnapshot,
+    freezes: Sequence[FreezeWindow],
+    frozen_from: date,
+    frozen_to: date,
+    limits: FreezeLimits,
+    today: date,
+    expiring_days: int,
+) -> FreezeOutcome:
+    """Valida la congelación en el orden de D14 y corre el fin (S3-B2). Pura; no muta nada."""
+    if compute_status(m, today, expiring_days, freezes) not in _CONGELABLES:
+        raise FreezeError("membership_not_freezable")
+    if frozen_from > frozen_to:
+        raise FreezeError("validation_error", field="frozen_to", status=422)
+    if (today - frozen_from).days > limits.max_retroactive_days:
+        raise FreezeError("freeze_too_retroactive", field="frozen_from", status=422)
+    if not m.start_date <= frozen_from <= m.end_date:
+        raise FreezeError("freeze_outside_validity", field="frozen_from", status=422)
+    if any(ventana.frozen_to >= today for ventana in freezes):
+        raise FreezeError("freeze_already_scheduled")
+    if len(freezes) >= limits.max_count:
+        raise FreezeError("freeze_limit_reached")
+    _check_freeze_days(freezes, frozen_from, frozen_to, limits.max_days)
+    ventana = FreezeWindow(frozen_from, frozen_to)
+    return FreezeOutcome(window=ventana, new_end_date=m.end_date + timedelta(days=ventana.days))
+
+
+def _check_freeze_days(
+    freezes: Sequence[FreezeWindow], frozen_from: date, frozen_to: date, max_days: int
+) -> None:
+    """`freeze_days_exceeded` si los días usados más los nuevos pasan `max_days`; el mensaje dice
+    los que quedan. Resta fechas (siempre representable): nunca suma días antes de comparar."""
+    usados = sum(ventana.days for ventana in freezes)
+    disponibles = max(max_days - usados, 0)
+    if (frozen_to - frozen_from).days + 1 > disponibles:
+        raise FreezeError(
+            "freeze_days_exceeded",
+            message=f"Quedan {disponibles} días de congelación para esta membresía.",
+        )

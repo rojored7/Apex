@@ -10,10 +10,11 @@ S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit
 pueden no existir, pero si ya existen y no declaran `__audited__ = True` la prueba falla. B7 y
 B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01` (S2-B7: `members.members`,
 con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-B1 mueve
-`memberships.memberships` (con `__audit_subject__ = "member_id"`, G-05); B2 moverá
-`memberships.membership_freezes` y B3 `payments.payments`. `PENDING_AUDITED` conserva entradas
-futuras (`classes.class_sessions`, `notifications.notifications`) para no dejar vacía la
-parametrización.
+`memberships.memberships` (con `__audit_subject__ = "member_id"`, G-05); S3-B2 mueve
+`memberships.membership_freezes` (sin `__audit_subject__`: la tabla no tiene `member_id`; la fila
+`update` de la membresía lleva el socio; anotado para US-106) y B3 moverá `payments.payments`.
+`PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`,
+`notifications.notifications`) para no dejar vacía la parametrización.
 """
 
 from __future__ import annotations
@@ -43,11 +44,11 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "members.members",
         "plans.plans",
         "memberships.memberships",
+        "memberships.membership_freezes",
     }
 )
 PENDING_AUDITED: dict[str, str] = {
     "payments.payments": "Sprint 3 (S3-B3)",
-    "memberships.membership_freezes": "Sprint 3 (S3-B2)",
     "classes.class_sessions": "Sprint 7",
     "notifications.notifications": "Sprint 5",
 }
@@ -174,6 +175,18 @@ def test_membership_y_payment_declaran_sujeto() -> None:
     membresia = tablas["memberships.memberships"]
     assert getattr(membresia, "__audited__", False) is True
     assert getattr(membresia, "__audit_subject__", None) == "member_id"
+
+
+def test_membership_freezes_es_requerida_y_no_declara_sujeto_hasta_us_106() -> None:
+    """S3-B2 (D14): `memberships.membership_freezes` es requerida y auditada. No declara
+    `__audit_subject__` (no tiene `member_id`); la fila `update` de `memberships.memberships`
+    (fin y estado) lleva el socio. US-106 (Sprint 4A) decide cómo mostrarla en el historial."""
+    assert "memberships.membership_freezes" in REQUIRED_AUDITED_TABLES_V01
+    assert "memberships.membership_freezes" not in PENDING_AUDITED
+    tablas = _tablas_de_la_app()
+    congelacion = tablas["memberships.membership_freezes"]
+    assert getattr(congelacion, "__audited__", False) is True
+    assert getattr(congelacion, "__audit_subject__", None) is None
 
 
 def test_una_requerida_ausente_o_sin_audited_falla() -> None:

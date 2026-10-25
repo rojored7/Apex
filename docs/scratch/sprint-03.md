@@ -525,3 +525,184 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   `memberships_no_delete`; con `SET LOCAL session_replication_role = replica` el `UPDATE` sigue
   rechazado (`memberships_identity`). Queda una sola fila (la venta del smoke, en la base de
   desarrollo). Log del api sin `ERROR` en los últimos 5 minutos; 0 sesiones `idle in transaction`.
+
+### S3-B2 · Rojo (B2.1 a B2.3 y la prueba de `0009`)
+
+- Línea base: HEAD `b19adcd`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.340 ok,
+  4 saltadas, 3 deseleccionadas; `ruff check` y `mypy src` (84 archivos) limpios.
+- Rojo: 2.457 recolectadas (113 más que la línea base; 3 deseleccionadas); **109 fallan**, 2.344 ok,
+  4 saltadas. Cuenta: de las 2.340 verdes de la línea base, 3 pasan a rojo por B2 (los dos casos con
+  base de `test_triggers_siempre_activos` y `test_docs_openapi_json_esta_al_dia`) y 1 desaparece (el
+  parámetro `memberships.membership_freezes` de `PENDING_AUDITED`); se suman 8 nuevas que ya pasan
+  sobre los stubs (lista abajo). `sell-sell` de `test_lock_order` se reparametrizó y sigue verde. `ruff format`, `ruff check` y `mypy src` (84 archivos) limpios.
+  `db_test` sin residuos: `alembic_version = 0008_memberships`, sin `memberships.membership_freezes`,
+  0 membresías, 0 planes, 0 socios, 0 usuarios `@test.apex`, 0 sesiones `idle in transaction`,
+  los tres triggers de `memberships.memberships` en `A`. `apex-db-1` en `0008_memberships`, api
+  `healthy`.
+  - Fallan por archivo: `tests/memberships/test_freeze_rules.py` 32 (`NotImplementedError` de
+    `apply_freeze`); `tests/migrations/test_0009_membership_freezes.py` 28 (no existe la revisión
+    ni la tabla); `tests/memberships/test_freeze_service.py` 26 (`NotImplementedError` de `freeze`
+    o `UndefinedTable` de `membership_freezes`; la de la `EXCLUDE` de membresías además por
+    `AttributeError`: el stub de `lifecycle` aún no importa `find_overlap`, ver decisión 6);
+    `tests/memberships/test_freeze_router.py` 19 (500 por el `NotImplementedError` o
+    `UndefinedTable` al leer las congelaciones); `tests/migrations/test_triggers_siempre_activos.py`
+    2 (faltan los dos triggers de `membership_freezes`); `tests/memberships/test_lock_order.py` 1
+    (`freeze-sell`); `tests/core/test_openapi_export.py` 1 (`docs/openapi.json` sin la ruta nueva ni
+    el `FreezeOut` nuevo: lo cierra P-API, B2.7).
+  - Verdes sobre los stubs (el stub ya es el contrato): `FreezeError` con código, campo y estado;
+    401 sin token; 422 de `membership_id` no UUID; OpenAPI de la ruta (200, 401, 403, 404, 409, 422,
+    429, 500, 503; cuerpo `FreezeIn`, respuesta `MembershipOut`); esquemas `FreezeOut` y `FreezeIn`;
+    `CON_LIMITE` y `test_user_limits_catalog` con la ruta nueva; `test_audited_tables` (requerida,
+    sin sujeto); `test_handlers_no_new_locks` (lista vacía y `freeze` no cuenta como handler);
+    `test_0008_memberships` "en la cadena" y con `TRUNCATE ... CASCADE`; la parte de texto de
+    `test_triggers_siempre_activos`.
+- Verde desechable (revertido; solo `db_test`, con `$DC stop api` antes de escribir la migración y
+  `$DC start api` después de borrarla, regla de S3-B1): migración `0009` mínima, `apply_freeze`,
+  `_load_freezes_for` real y `freeze`. Suite: 2.451 ok y 2 fallos esperados
+  (`test_docs_openapi_json_esta_al_dia`, P-API; `test_ninguna_funcion_supera_50_lineas`, el
+  `freeze` desechable de una pieza: el Verde lo parte). Encontró dos defectos de prueba en
+  `test_0009`, ya corregidos (`_congelacion` con `membership_id` duplicado en el caso NOT NULL;
+  PostgreSQL imprime `BEFORE DELETE OR UPDATE`, no `BEFORE UPDATE OR DELETE`). Corrida conjunta
+  `tests/memberships tests/migrations tests/architecture` (E1): 590 ok y solo el de 50 líneas.
+  Después: `alembic -x url=<db_test> downgrade 0008_memberships`, archivo borrado, `rules`,
+  `lifecycle`, `queries` y `sell` restaurados desde copia; `apex-db-1` nunca dejó `0008`.
+- Stubs (B2.2): `models.py` (`MembershipFreeze` completo con CHECKs `dates_ordered` y `days_match`,
+  `ex_membership_freezes_dates`, `ix_membership_freezes_membership`, FK a `memberships.memberships`,
+  `__audited__` sin `__audit_subject__` anotado para US-106; constantes `FREEZE_EXCLUDE_NAME` y
+  `FREEZE_APPEND_ONLY_CONSTRAINT`); `rules.py` (`FreezeLimits`, `FreezeOutcome`, `FreezeError` y
+  `apply_freeze` con `NotImplementedError`); `events.py` (`MembershipFrozen`); `exceptions.py`
+  (`FreezeRejected`, `OverlapsFutureMembership`); `schemas.py` (`FreezeIn` con `extra="forbid"`;
+  `FreezeOut` gana `id` y `created_at`, blueprint B2); `lifecycle.py` (`freeze` con
+  `NotImplementedError` y los pasos en el docstring); `router.py` (`POST
+  /memberships/{membership_id}/freeze`, 200 `MembershipOut`, `StaffDep`,
+  `enforce_user_limit(request, "memberships-write", principal.user_id)`, `responses_for(404, 409,
+  422, 429)`); `service.py` re-exporta `freeze` y `MembershipFrozen`; `queries._load_freezes_for`
+  sigue vacía (solo el docstring).
+- Fixtures (B2.1): `tests/factories/memberships.py: make_freeze(session, membership, frozen_from=None,
+  frozen_to=None, **cambios)` (calcula `days`, no mueve el fin) y
+  `FACTORIES["memberships.membership_freezes"]`; `tests/conftest.py`: `TRIGGERS_DE_CONGELACIONES` y
+  `LIMPIAR_MEMBERSHIPS` con un bloque previo para `membership_freezes` (`to_regclass`, `DISABLE
+  TRIGGER USER`, `DELETE`, `ENABLE ALWAYS TRIGGER` por nombre); `tests/memberships/_apoyo.py`:
+  `ruta_congelar`, `cuerpo_congelacion`, `CAMPOS_FREEZE`, `congelar`, `congelaciones_de`.
+- Archivos de prueba nuevos: `tests/memberships/test_freeze_rules.py` (33),
+  `test_freeze_service.py` (26), `test_freeze_router.py` (23),
+  `tests/migrations/test_0009_membership_freezes.py` (28). Cambiados: `test_lock_order.py`
+  (`freeze-sell` y preparación por combinación, `gather(return_exceptions=True)`),
+  `test_triggers_siempre_activos.py` (cinco triggers), `test_0008_memberships.py` (en la cadena,
+  funciones de head como superconjunto y `TRUNCATE ... CASCADE`), `test_audited_tables.py`,
+  `test_error_codes_per_route.py` (E2), `test_handlers_no_new_locks.py`.
+- Importadores de lo tocado: `memberships.models` lo importan `queries.py`, `sell.py`,
+  `migrations/env.py`, `tests/factories/memberships.py` y las pruebas de membresías;
+  `memberships.rules`, `queries.py`, `sell.py`, `test_no_cross_models.py` y la fábrica;
+  `memberships.schemas`, `lifecycle.py`, `queries.py`, `router.py`, `sell.py`, `_apoyo.py` y
+  `test_service_import_graph.py`; `memberships.lifecycle` solo `service.py` (y la prueba de servicio
+  para el `monkeypatch`); `memberships.service` lo importan `router.py`, `tests/memberships/conftest.py`
+  y las pruebas (ningún otro módulo de `app` todavía); `LIMPIAR_MEMBERSHIPS` y `TRIGGERS_DE_*`:
+  `tests/conftest.py` (`LIMPIEZA_DE_SESION`, `limpiar_tras_dos_sesiones`) y
+  `test_triggers_siempre_activos.py`; `FACTORIES`: `test_no_plaintext_at_rest.py` (solo tablas
+  cifradas). En `web/` nada usa `FreezeOut` fuera de `core/api/types.ts` (P-API lo regenera).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`TRUNCATE memberships.memberships` en `test_0008` pasa a `CASCADE`.** Comprobado en `db_test`
+   dentro de una transacción revertida: con una tabla que referencia a `memberships.memberships`,
+   el `TRUNCATE` simple lo rechaza PostgreSQL con `0A000` antes de correr el trigger; con `CASCADE`
+   el trigger de la tabla corre primero y da `23000 memberships_no_delete`. Sin el cambio, la FK de
+   `0009` rompía `test_delete_y_truncate_se_rechazan_con_memberships_no_delete`. Por la misma razón
+   `test_ciclo_de_0008` exige que las dos funciones de `0008` estén entre las de head (no igualdad).
+2. **Códigos, campos y estados de `apply_freeze` (D14).** `FreezeError(code, *, field=None,
+   status=409, message="")`: `membership_not_freezable` 409; `validation_error` 422
+   `field="frozen_to"`; `freeze_too_retroactive` y `freeze_outside_validity` 422 con
+   `field="frozen_from"` (el blueprint no fija el campo: se elige el que el front puede marcar);
+   `freeze_already_scheduled`, `freeze_limit_reached` y `freeze_days_exceeded` 409 sin campo;
+   `freeze_days_exceeded` lleva en `message` los días que quedan (el número aparece en el texto).
+   `FreezeRejected` se construye con `code`, `message`, `field` y `status` del `FreezeError`.
+3. **Orden de D14 fijado por pruebas**: estado efectivo, fechas invertidas, retroactividad,
+   vigencia (`frozen_from` en `[start_date, end_date]`), ya programada (`frozen_to >= hoy` en alguna
+   previa), veces, días. Una ventana que termina hoy contiene hoy: la membresía ya es `frozen` y el
+   rechazo es `membership_not_freezable`, no `freeze_already_scheduled`.
+4. **Sin `OverflowError`**: los días se cuentan restando fechas y se comparan con el tope antes de
+   sumar al fin (`frozen_to = 9999-12-31` da `freeze_days_exceeded`).
+5. **`freeze` corre dentro de `begin_nested()`** (regla transversal 5, como `sell`): un handler de
+   `MembershipFrozen` que falla no deja congelación, ni fin corrido, ni fila `update` de auditoría.
+   Lee la membresía sin candado, toma `lock_member` y después `lock_membership` (la espía de
+   sentencias exige `pg_advisory_xact_lock` antes del `FOR UPDATE` sobre
+   `memberships.memberships`).
+6. **`lifecycle` importa `find_overlap` al nivel del módulo y la llama por ese nombre**: la prueba de
+   traducción de `ex_memberships_member_dates` la reemplaza con `monkeypatch` (como
+   `sell._check_open_memberships` en B1). `OverlapsFutureMembership` lleva `existing_id` cuando sale
+   de `find_overlap` y no lo lleva cuando sale de la `EXCLUDE`. La revisión previa compara
+   `[start_date, new_end_date]` con las otras no canceladas del socio (sin la propia).
+7. **`MembershipOut` de `freeze`**: `paid_cop = 0` hasta B4; `freezes` con todas las congelaciones de
+   la membresía en orden de `frozen_from` y `FreezeOut` con `id`, `frozen_from`, `frozen_to`, `days`
+   y `created_at`; `member_name` y `plan_name` como en `sell`.
+8. **Estado guardado tras congelar**: `status = compute_status(...)` con el fin corrido y la lista
+   nueva: `frozen` si la ventana contiene hoy, `active` o `expiring` si es futura o ya terminó. La
+   fila `update` de auditoría de `memberships.memberships` trae exactamente `{"end_date", "status"}`
+   en `after`; la `insert` de `membership_freezes` va sin `subject_member_id`.
+9. **Concurrencia**: dos `freeze` de la misma membresía desde hoy: la segunda espera el candado del
+   socio, ve la fila ya `frozen` y responde `membership_not_freezable`. En `freeze-sell` la venta sin
+   `renew` choca con la vigente (`membership_conflict`) en cualquier orden.
+10. **Migración `0009`** (lo que la prueba exige): tabla con las ocho columnas `NOT NULL`, CHECKs con
+    nombre `ck_membership_freezes_dates_ordered` y `ck_membership_freezes_days_match`, EXCLUDE sin
+    `WHERE`, índice no único `ix_membership_freezes_membership`, una sola FK (a
+    `memberships.memberships(id)`), función `memberships.forbid_freeze_mutation()` (`plpgsql`,
+    `prosecdef = false`, `proconfig = ['search_path=pg_catalog']`, el texto con
+    `membership_freezes_append_only`) usada por los dos triggers; `UPDATE` (también sin cambios),
+    `DELETE` y `TRUNCATE` dan `23000` con `constraint_name = membership_freezes_append_only`, también
+    con `session_replication_role = replica`; head es `0009_membership_freezes` y el `downgrade`
+    deja las dos funciones de `0008`.
+
+#### Desviaciones del Rojo
+
+- El plan (B2.2) pone `_load_freezes_for` real en los stubs; por instrucción del orquestador sigue
+  vacía y la hace real el Verde (las pruebas de `sell` y `refs_for` no cambian por eso).
+- `FreezeOut` gana `id` y `created_at` (blueprint B2): cambia el contrato publicado en B1, P-API lo
+  regenera en B2.7 (ningún consumidor en `web/` fuera de `types.ts`).
+- `test_0008_memberships.py` cambia más que "es head" → "en la cadena": `TRUNCATE ... CASCADE` y las
+  funciones de head como superconjunto (decisión 1).
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B2 · Verde (B2.4 a B2.8)
+
+- Línea base del Verde: HEAD `b19adcd` con el Rojo sin confirmar; 109 fallan, 2.344 ok, 4 saltadas
+  (igual que el Rojo); `apex-db-1` en `0008_memberships`, api `healthy`.
+- B2.4 P-MIG: volcado `docs/scratch/sprint-03-antes-0009_membership_freezes.dump` con `$DC exec -T db
+  pg_dump ... -n memberships -n payments` desde Bash (`chmod 600`, ignorado por git, `pg_restore -l`
+  legible); `$DC stop api`; `api/migrations/versions/0009_membership_freezes.py` (tabla, CHECKs
+  `dates_ordered` y `days_match`, `EXCLUDE ex_membership_freezes_dates` sin `WHERE`, FK a
+  `memberships.memberships`, índice `ix_membership_freezes_membership`, función
+  `memberships.forbid_freeze_mutation()` `plpgsql`/`SECURITY INVOKER`/`search_path = pg_catalog`
+  con 23000 `membership_freezes_append_only`, triggers `membership_freezes_append_only` y
+  `membership_freezes_forbid_truncate` en `ENABLE ALWAYS`; `downgrade` simétrico);
+  `pytest tests/core/test_migrations.py tests/migrations/test_0009_membership_freezes.py
+  tests/migrations/test_0008_memberships.py` 81 ok contra `db_test`; `alembic heads` =
+  `0009_membership_freezes (head)`; `$DC start api` → `healthy` (la imagen no cambia); `alembic
+  current` = `0009_membership_freezes (head)`; ciclo `downgrade -1`/`upgrade head` en `apex-db-1`
+  sin errores en el log.
+- B2.5 Verde: `rules.apply_freeze` (orden D14, `_check_freeze_days` resta fechas antes de sumar);
+  `queries._freeze_rows_for`, `_load_freezes_for` real (por lotes, orden `frozen_from`),
+  `freeze_out` y `membership_out`; `lifecycle.freeze` partida (`_lock_for_freeze`, `_apply`,
+  `_check_dates_of_member`, `_store_freeze`, `_translate_flush_error`), en `begin_nested()`, con
+  `lock_member` antes de `lock_membership` y `find_overlap` importada al nivel del módulo.
+  `router.py`, `service.py`, `models.py`, `events.py`, `exceptions.py` y `schemas.py` del Rojo sin
+  cambios. Ninguna prueba del Rojo cambió.
+- Revisión de seguridad (antes del gate): 0 CRITICAL, 0 HIGH, 1 MEDIUM, 4 LOW. Aplicados M1 (socio
+  inactivo o dado de baja → 422 `member_inactive`) y L4 (`freezes` en orden de `frozen_from`); L1,
+  L2 (US-106) y L3 (S3-D49) anotados en DECISIONES "S3-B2". Prueba nueva
+  `tests/memberships/test_freeze_revision.py` (4: M1 con socio inactivo y dado de baja, L4 y la
+  traducción de `ex_membership_freezes_dates` a `freeze_already_scheduled`), roja sin los cambios
+  (3 fallan; la de la `EXCLUDE` ya pasaba) y verde con ellos.
+- Suite: 2.457 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura de `app` 96 % (`lifecycle`
+  96 %, `rules` 100 %, `queries` 96 %); `ruff format`, `ruff check` y `mypy src` (84 archivos)
+  limpios.
+- B2.6 Docs: RUNBOOK §6 (rollback de `0009`) y §10 (vaciado de `memberships` con la FK,
+  congelaciones append-only con psql, congelar); DECISIONES "S3-B2".
+- B2.7 P-API: `export-openapi` dos veces idéntica (la ruta `POST
+  /api/v1/memberships/{membership_id}/freeze`, `FreezeIn` y `FreezeOut` con `id` y `created_at`:
+  286 líneas en `docs/openapi.json`, 202 en `web/src/core/api/types.ts`); `npm run gen:api`,
+  `types.contract.test.ts` 5 ok y `npx tsc --noEmit` limpio.
+- Desviaciones: `refs_for` no usa `_load_freezes_for` (no calcula estado); `ex_membership_freezes_dates`
+  se traduce a `freeze_already_scheduled` (el blueprint no la traducía); el 200 en vivo queda para
+  la demo tras B4 (no hay vía legítima de activar la membresía de B1 sin pagos). La evidencia de
+  B2.9 va al commit `docs(sprint-03): evidencia de S3-B2` (E8).

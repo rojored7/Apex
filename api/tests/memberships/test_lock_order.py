@@ -7,8 +7,11 @@ con 55P03 (espera agotada, `DatabaseBusy`) o 40P01 (interbloqueo). Ninguna puede
 la segunda espera el candado del socio, ve lo que confirmó la primera y responde con su error de
 dominio.
 
-B1 trae `sell`/`sell`; B3 a B6 y B10 agregan `sell`/`register`, `register`/`void`,
-`freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+B1 trae `sell`/`sell`; B2 `freeze`/`sell` (el socio tiene una `active` del 1 al 31 de octubre: la
+congelación del 21 al 30 corre su fin y la venta sin `renew` choca con la vigente, 409
+`membership_conflict`, en cualquier orden); B3 a B6 y B10 agregan `sell`/`register`,
+`register`/`void`, `freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+Cada combinación declara cómo prepara su escenario (B1: socio y plan; B2: además la membresía).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 import pytest
@@ -31,6 +35,7 @@ from app.core.errors import DomainError
 from app.modules.memberships import service
 from app.modules.memberships.exceptions import MembershipConflict
 from tests.factories.members import make_member
+from tests.factories.memberships import make_membership
 from tests.factories.plans import make_plan
 
 ACTOR = UUID("0000000a-0000-4000-8000-00000000a002")
@@ -41,17 +46,44 @@ SQLSTATES_PROHIBIDOS = frozenset({"55P03", "40P01"})
 class Escenario:
     member_id: UUID
     plan_id: UUID
+    membership_id: UUID | None = None
 
 
 Operacion = Callable[[AsyncSession, Escenario], Awaitable[object]]
+Preparar = Callable[[AsyncSession], Awaitable[Escenario]]
+
+
+async def _socio_y_plan(sesion: AsyncSession) -> Escenario:
+    socio = await make_member(sesion)
+    plan = await make_plan(sesion)
+    return Escenario(member_id=socio.id, plan_id=plan.id)
+
+
+async def _con_activa(sesion: AsyncSession) -> Escenario:
+    """Socio con una `active` del 1 al 31 de octubre (hoy, 21 de octubre, faltan 10 días)."""
+    socio = await make_member(sesion)
+    plan = await make_plan(sesion)
+    membresia = await make_membership(sesion, socio, plan, status="active", start=date(2026, 10, 1))
+    return Escenario(member_id=socio.id, plan_id=plan.id, membership_id=membresia.id)
 
 
 async def _vender(sesion: AsyncSession, escenario: Escenario) -> object:
     return await service.sell(sesion, member_id=escenario.member_id, plan_id=escenario.plan_id)
 
 
-COMBINACIONES: dict[str, tuple[Operacion, Operacion, type[DomainError]]] = {
-    "sell-sell": (_vender, _vender, MembershipConflict),
+async def _congelar(sesion: AsyncSession, escenario: Escenario) -> object:
+    assert escenario.membership_id is not None
+    return await service.freeze(
+        sesion,
+        membership_id=escenario.membership_id,
+        frozen_from=date(2026, 10, 21),
+        frozen_to=date(2026, 10, 30),
+    )
+
+
+COMBINACIONES: dict[str, tuple[Preparar, Operacion, Operacion, type[DomainError]]] = {
+    "sell-sell": (_socio_y_plan, _vender, _vender, MembershipConflict),
+    "freeze-sell": (_con_activa, _congelar, _vender, MembershipConflict),
 }
 
 
@@ -75,13 +107,17 @@ async def test_las_combinaciones_terminan_sin_espera_agotada_ni_interbloqueo(
     combinacion: str,
 ) -> None:
     primera, segunda = dos_sesiones
-    socio = await make_member(primera)
-    plan = await make_plan(primera)
-    escenario = Escenario(member_id=socio.id, plan_id=plan.id)
-    op_a, op_b, error_esperado = COMBINACIONES[combinacion]
+    preparar, op_a, op_b, error_esperado = COMBINACIONES[combinacion]
+    escenario = await preparar(primera)
     resultados = await asyncio.gather(
-        _correr(primera, op_a, escenario), _correr(segunda, op_b, escenario)
+        _correr(primera, op_a, escenario),
+        _correr(segunda, op_b, escenario),
+        return_exceptions=True,  # las dos terminan antes de que `dos_sesiones` limpie
     )
+    inesperados = [
+        r for r in resultados if isinstance(r, BaseException) and not isinstance(r, DomainError)
+    ]
+    assert not [r for r in inesperados if not isinstance(r, DBAPIError)], resultados
     prohibidos = [
         r
         for r in resultados

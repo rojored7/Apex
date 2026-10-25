@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memberships/{membership_id}/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Freeze Membership */
+        post: operations["freeze_membership_api_v1_memberships__membership_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/plans": {
         parameters: {
             query?: never;
@@ -504,8 +521,35 @@ export interface components {
             /** Email */
             email: string;
         };
-        /** FreezeOut */
+        /**
+         * FreezeIn
+         * @description Cuerpo de `POST /memberships/{membership_id}/freeze` (S3-B2, D14). Sin `reason`: la tabla
+         *     no tiene motivo (el modal del diseño lo pinta; el front lo omite con `// DESIGN-GAP:`). Las
+         *     fechas invertidas no se rechazan aquí: las valida `rules.apply_freeze` después del estado
+         *     (422 `validation_error` con `field="frozen_to"`).
+         */
+        FreezeIn: {
+            /**
+             * Frozen From
+             * Format: date
+             */
+            frozen_from: string;
+            /**
+             * Frozen To
+             * Format: date
+             */
+            frozen_to: string;
+        };
+        /**
+         * FreezeOut
+         * @description Una congelación de la membresía (S3-B2, D14).
+         */
         FreezeOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Days */
             days: number;
             /**
@@ -518,6 +562,11 @@ export interface components {
              * Format: date
              */
             frozen_to: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /** GymPatchIn */
         GymPatchIn: {
@@ -772,6 +821,59 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "inactive";
+        };
+        /** MembershipOut */
+        MembershipOut: {
+            /** Agreed Price Cop */
+            agreed_price_cop: number;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Classes Remaining */
+            classes_remaining: number | null;
+            /** Classes Total */
+            classes_total: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Freezes */
+            freezes: components["schemas"]["FreezeOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Member Name */
+            member_name: string;
+            /** Paid Cop */
+            paid_cop: number;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /** Plan Name */
+            plan_name: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
         };
         /** MembershipsPatchIn */
         MembershipsPatchIn: {
@@ -1842,6 +1944,104 @@ export interface operations {
                 };
             };
             /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    freeze_membership_api_v1_memberships__membership_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FreezeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
             422: {
                 headers: {
                     [name: string]: unknown;

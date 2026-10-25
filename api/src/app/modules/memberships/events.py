@@ -24,3 +24,15 @@ class MembershipSold(DomainEvent):
     start_date: date
     end_date: date
     renewal: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipFrozen(DomainEvent):
+    """Una congelación quedó insertada y el fin de la membresía corrido (S3-B2, D14)."""
+
+    membership_id: UUID
+    member_id: UUID
+    frozen_from: date
+    frozen_to: date
+    days: int
+    end_date: date

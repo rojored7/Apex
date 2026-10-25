@@ -211,13 +211,28 @@ LIMPIAR_PLANS = (
 # vuelven a encender UNO POR UNO con `ENABLE ALWAYS` (S3-D49). Nunca `ENABLE TRIGGER USER`: dejaría
 # `tgenabled = 'O'` y `session_replication_role = replica` los saltaría
 # (`tests/migrations/test_triggers_siempre_activos.py`).
+# S3-B2 (E1, S3-D48): las congelaciones se borran PRIMERO (FK a la membresía), con la misma regla:
+# apagar, borrar y encender por nombre con `ENABLE ALWAYS`. `membership_freezes` nace en
+# `0009_membership_freezes`: mientras no exista (Rojo de B2) no se toca.
 TRIGGERS_DE_MEMBERSHIPS = (
     "memberships_guard_identity",
     "memberships_forbid_delete",
     "memberships_forbid_truncate",
 )
+TRIGGERS_DE_CONGELACIONES = (
+    "membership_freezes_append_only",
+    "membership_freezes_forbid_truncate",
+)
 LIMPIAR_MEMBERSHIPS = (
-    "DO $$ BEGIN IF to_regclass('memberships.memberships') IS NOT NULL THEN "
+    "DO $$ BEGIN IF to_regclass('memberships.membership_freezes') IS NOT NULL THEN "
+    "ALTER TABLE memberships.membership_freezes DISABLE TRIGGER USER; "
+    "DELETE FROM memberships.membership_freezes; "
+    "ALTER TABLE memberships.membership_freezes "
+    "ENABLE ALWAYS TRIGGER membership_freezes_append_only; "
+    "ALTER TABLE memberships.membership_freezes "
+    "ENABLE ALWAYS TRIGGER membership_freezes_forbid_truncate; "
+    "END IF; "
+    "IF to_regclass('memberships.memberships') IS NOT NULL THEN "
     "ALTER TABLE memberships.memberships DISABLE TRIGGER USER; "
     "DELETE FROM memberships.memberships; "
     "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_guard_identity; "

@@ -128,3 +128,25 @@ class MembershipNotFound(MembershipError):
     status = 404
     code = "membership_not_found"
     default_message = "No se encontró la membresía."
+
+
+class FreezeRejected(MembershipError):
+    """`rules.FreezeError` convertido en error de dominio (S3-B2, D14): lleva el `code`, el
+    `field` y el `status` de la regla que falló. 422 para la entrada mal formada
+    (`validation_error` con `field="frozen_to"`, `freeze_too_retroactive`,
+    `freeze_outside_validity`); 409 para lo que depende del estado de la membresía
+    (`membership_not_freezable`, `freeze_already_scheduled`, `freeze_limit_reached`,
+    `freeze_days_exceeded`)."""
+
+    status = 409
+    code = "freeze_rejected"
+    default_message = "No se puede congelar la membresía."
+
+
+class OverlapsFutureMembership(MembershipError):
+    """El fin corrido por la congelación choca con otra membresía no cancelada del socio (D14):
+    409 con `existing_id` si lo da la revisión previa; sin él si sale de la `EXCLUDE`."""
+
+    status = 409
+    code = "overlaps_future_membership"
+    default_message = "La congelación haría chocar la membresía con otra del socio."

@@ -321,6 +321,7 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **`0006_members`:** `downgrade 0005b_auth_security` borra `members.members` y sus blobs. Las llaves de `crypto_keys` se conservan. Solo hay datos de desarrollo. Se revierten B7 y B8 (y F6 si se fusionó).
 - **`0007_plans`:** `downgrade 0006_members` borra `plans.plans`. Se revierte B9 (y F7).
 - **`0008_memberships`:** `downgrade 0007_plans` borra los tres triggers, las dos funciones, los índices y `memberships.memberships` (con sus filas: antes, el volcado de la sección 10). El esquema `memberships` y `btree_gist` quedan. Se revierte el checkpoint de S3-B1 (y los posteriores que usen la tabla). La auditoría de las ventas queda en `audit.audit_log` (append-only).
+- **`0009_membership_freezes`:** `downgrade 0008_memberships` borra los dos triggers, la función `memberships.forbid_freeze_mutation()`, el índice y `memberships.membership_freezes` (con sus filas: antes, el volcado de la sección 10). Las membresías conservan el `end_date` ya corrido y el `status` guardado; sin la tabla, `compute_status` deja de ver las ventanas (una `frozen` guardada se lee por fecha). Quedan `memberships.memberships`, sus dos funciones, el esquema y `btree_gist`. Se revierte el checkpoint de S3-B2. La auditoría de las congelaciones queda en `audit.audit_log`.
 - En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.
 
 ## 7. Imágenes base por digest y su renovación (S3-D62)
@@ -407,7 +408,7 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ## 10. Membresías y pagos (Sprint 3)
 
-Lo completan S3-B1 a S3-B5; cada slice agrega su parte.
+Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`).
 
 ### Volcado y restauración (P-MIG)
 
@@ -424,7 +425,7 @@ Todo dentro de una transacción que se revierte, sobre `apex-db-1` (`$DC exec -T
 3. Las funciones: `SELECT proname, prosecdef, proconfig FROM pg_proc WHERE pronamespace = 'memberships'::regnamespace;` da `guard_identity` y `forbid_delete` con `prosecdef = f` (`SECURITY INVOKER`) y `proconfig = {search_path=pg_catalog}`.
 4. La `EXCLUDE` (23P01): dentro de `BEGIN;`, dos `INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, agreed_price_cop, start_date, end_date, status) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '<uuid de socio>', gen_random_uuid(), 120000, '2026-10-01', '2026-10-28', 'active');` con el mismo `member_id`: el segundo con `start_date = '2026-10-28'` falla con `ERROR: conflicting key value violates exclusion constraint "ex_memberships_member_dates"` (SQLSTATE 23P01); con `start_date = '2026-10-29'` entra (adyacentes). Una `cancelled` no cuenta.
 5. La identidad (23000): `UPDATE memberships.memberships SET agreed_price_cop = 1 WHERE id = '<id>';` falla con `memberships_identity: la identidad de la membresía no cambia`; lo mismo `id`, `created_at`, `created_by`, `member_id`, `plan_id`, `start_date` y `classes_total`. Sobre una `cancelled` falla cualquier cambio de estado, motivo, quién, cuándo, fin o clases restantes. `\set VERBOSITY verbose` muestra `CONSTRAINT NAME: memberships_identity`.
-6. Sin borrado: `DELETE FROM memberships.memberships WHERE id = '<id>';` y el vaciado de la tabla fallan con `memberships_no_delete` (23000). También con `SET LOCAL session_replication_role = replica;` antes.
+6. Sin borrado: `DELETE FROM memberships.memberships WHERE id = '<id>';` y el vaciado de la tabla fallan con `memberships_no_delete` (23000). También con `SET LOCAL session_replication_role = replica;` antes. Desde `0009` la tabla tiene una FK que la referencia (`membership_freezes`): el vaciado simple lo rechaza PostgreSQL con `0A000` antes del trigger; con `CASCADE` corre el trigger y da `memberships_no_delete`.
 7. `ROLLBACK;`.
 
 En el api la `EXCLUDE` es la red frente a la carrera: `sell` revisa antes en código (409 `membership_conflict` o `membership_overlap` con `existing_id`) y, si dos ventas del mismo socio llegaran a la vez sin el candado del socio, el 23P01 sale como 409 `membership_overlap` sin `existing_id`. El candado del socio (`pg_advisory_xact_lock(hashtextextended('<uuid>', 0))`) se ve en `pg_locks` con `locktype = 'advisory'` mientras dura la transacción de la venta.
@@ -435,4 +436,24 @@ En el api la `EXCLUDE` es la red frente a la carrera: `sell` revisa antes en có
 - Límite: 30 ventas por minuto por usuario (`USER_WRITE_LIMIT_PER_MIN`, bucket `memberships-write`); la 31 da 429 `rate_limited` con `Retry-After`. El contador vive en memoria y se limpia con `up -d api`.
 - `renew` y `first_payment` todavía no están: `renew=true` y cualquier `first_payment` dan 422 `validation_error` (con `field`) hasta S3-B6 y S3-B4.
 
-Pendiente de S3-B3 a S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`) y rollback de `0009` a `0011`.
+### Congelaciones append-only (`0009`, S3-B2)
+
+`memberships.membership_freezes` guarda una fila por congelación (`frozen_from`, `frozen_to`, `days = (frozen_to - frozen_from) + 1`) y solo admite `INSERT`. Comprobación con psql sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`), dentro de `BEGIN; ... ROLLBACK;`:
+
+1. Estructura: `\d memberships.membership_freezes` muestra la FK a `memberships.memberships(id)`, los CHECK `ck_membership_freezes_dates_ordered` y `ck_membership_freezes_days_match`, la `EXCLUDE` `ex_membership_freezes_dates` (`USING gist (membership_id WITH =, daterange(frozen_from, frozen_to, '[]'::text) WITH &&)`, sin `WHERE`), el índice `ix_membership_freezes_membership` y, en "Triggers firing always", `membership_freezes_append_only` (`BEFORE DELETE OR UPDATE ... FOR EACH ROW`) y `membership_freezes_forbid_truncate` (`BEFORE TRUNCATE ... FOR EACH STATEMENT`).
+2. Siempre activos: `SELECT tgname, tgenabled FROM pg_trigger WHERE tgrelid = 'memberships.membership_freezes'::regclass AND NOT tgisinternal;` da `A` en los dos. Una `O` se corrige con `ALTER TABLE memberships.membership_freezes ENABLE ALWAYS TRIGGER <nombre>`.
+3. La función: `SELECT proname, prosecdef, proconfig FROM pg_proc WHERE pronamespace = 'memberships'::regnamespace;` da también `forbid_freeze_mutation` con `prosecdef = f` y `proconfig = {search_path=pg_catalog}`.
+4. Append-only (23000, `CONSTRAINT NAME: membership_freezes_append_only` con `\set VERBOSITY verbose`): `UPDATE memberships.membership_freezes SET days = 1;` falla con `membership_freezes_append_only: una congelación no cambia ni se borra`; también un `UPDATE` que no cambia nada (`SET frozen_to = frozen_to`), el `DELETE` y el vaciado de la tabla, y todo eso también tras `SET LOCAL session_replication_role = replica;`. Con la tabla vacía el `UPDATE` y el `DELETE` no tocan filas y no fallan: la prueba se hace con una fila (la del smoke o un `INSERT` dentro de la transacción).
+5. La `EXCLUDE` (23P01): dos `INSERT` de la misma `membership_id` que comparten un día fallan con `ex_membership_freezes_dates`; adyacentes (21 a 30 y 31 a 31) entran.
+6. `ROLLBACK;`.
+
+Una congelación mal registrada no se corrige editando la fila: no hay endpoint para quitarla (US-089 no lo pide). Si hiciera falta, es una decisión del dueño con volcado previo y queda en `DECISIONES.md`.
+
+### Congelar (S3-B2)
+
+- `POST /api/v1/memberships/{membership_id}/freeze` (admin y coach) con `{"frozen_from": "AAAA-MM-DD", "frozen_to": "AAAA-MM-DD"}`. Responde 200 con la membresía: el fin se corre los días de la ventana (también si es futura), `status` es `frozen` si la ventana contiene hoy y `freezes` lista todas las congelaciones. Comparte el límite `memberships-write` con la venta (30 por minuto por usuario).
+- Rechazos, en este orden (D14): 409 `membership_not_freezable` (solo `active` o `expiring` por su estado efectivo: una `pending_payment`, `frozen`, vencida o anulada no se congela); 422 `validation_error` con `field = frozen_to` (fechas invertidas); 422 `freeze_too_retroactive` y `freeze_outside_validity` con `field = frozen_from`; 409 `freeze_already_scheduled` (hay una ventana que aún no termina), `freeze_limit_reached` y `freeze_days_exceeded` (el mensaje dice los días que quedan); 409 `overlaps_future_membership` si el fin corrido choca con otra membresía del socio.
+- Límites en la configuración de membresías (`max_freeze_days_per_membership` 30, `max_freezes_per_membership` 2, `max_retroactive_days` 7 por defecto).
+- Auditoría: una fila `insert` de `memberships.membership_freezes` (sin sujeto, US-106) y una `update` de `memberships.memberships` con `after = {end_date, status}` y el socio como sujeto.
+
+Pendiente de S3-B3 a S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`) y rollback de `0010` y `0011`.

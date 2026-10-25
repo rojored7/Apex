@@ -12,8 +12,10 @@ Se comprueba:
   `LIMPIAR_MEMBERS`;
 - tras ejecutar **solo** `LIMPIAR_MEMBERSHIPS` (no toda `LIMPIEZA_DE_SESION`, que borraría las
   llaves del bus de la corrida) y tras la limpieza de `dos_sesiones`
-  (`limpiar_tras_dos_sesiones`), los tres triggers de `memberships.memberships` siguen en `'A'`.
-B2 agrega los dos de `memberships.membership_freezes` y B3/B4 los dos de `payments.payments`.
+  (`limpiar_tras_dos_sesiones`), los tres triggers de `memberships.memberships` y los dos de
+  `memberships.membership_freezes` (S3-B2) siguen en `'A'`; las congelaciones se borran en un
+  bloque propio con su guarda `to_regclass` y antes que las membresías (FK).
+B3/B4 agregan los dos de `payments.payments`.
 """
 
 from __future__ import annotations
@@ -27,15 +29,21 @@ from tests.conftest import (
     LIMPIAR_MEMBERS,
     LIMPIAR_MEMBERSHIPS,
     LIMPIEZA_DE_SESION,
+    TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
     limpiar_tras_dos_sesiones,
 )
 
-TRIGGERS = (
+TRIGGERS_MEMBRESIAS = (
     "memberships_guard_identity",
     "memberships_forbid_delete",
     "memberships_forbid_truncate",
 )
+TRIGGERS_CONGELACIONES = (
+    "membership_freezes_append_only",
+    "membership_freezes_forbid_truncate",
+)
+TRIGGERS = TRIGGERS_MEMBRESIAS + TRIGGERS_CONGELACIONES
 ESTADO = text(
     "SELECT tgname, tgenabled::text AS estado FROM pg_trigger "
     "WHERE NOT tgisinternal AND tgname = ANY(:nombres)"
@@ -49,12 +57,23 @@ async def _estados(engine: AsyncEngine) -> dict[str, str]:
 
 
 def test_la_limpieza_enciende_cada_trigger_con_enable_always() -> None:
-    assert tuple(TRIGGERS_DE_MEMBERSHIPS) == TRIGGERS
+    assert tuple(TRIGGERS_DE_MEMBERSHIPS) == TRIGGERS_MEMBRESIAS
+    assert tuple(TRIGGERS_DE_CONGELACIONES) == TRIGGERS_CONGELACIONES
     assert "to_regclass('memberships.memberships')" in LIMPIAR_MEMBERSHIPS
+    assert "to_regclass('memberships.membership_freezes')" in LIMPIAR_MEMBERSHIPS
     assert "DISABLE TRIGGER USER" in LIMPIAR_MEMBERSHIPS
     for nombre in TRIGGERS:
         assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_MEMBERSHIPS, nombre
     assert "ENABLE TRIGGER USER" not in LIMPIAR_MEMBERSHIPS
+
+
+def test_las_congelaciones_se_borran_antes_que_las_membresias() -> None:
+    """La FK de `membership_freezes` a `memberships` exige borrar primero las congelaciones."""
+    borrar_congelaciones = LIMPIAR_MEMBERSHIPS.index("DELETE FROM memberships.membership_freezes;")
+    borrar_membresias = LIMPIAR_MEMBERSHIPS.index("DELETE FROM memberships.memberships;")
+    assert borrar_congelaciones < borrar_membresias
+    for nombre in TRIGGERS_CONGELACIONES:
+        assert f"membership_freezes ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_MEMBERSHIPS
 
 
 def test_la_limpieza_de_membresias_va_antes_que_la_de_socios() -> None:

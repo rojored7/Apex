@@ -238,12 +238,18 @@ def _codigo(url: str, *filas: dict[str, object]) -> str:
 # Revisión y forma ----------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0007_plans_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0007_plans_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S3-B2 `0009_membership_freezes` cuelga de esta revisión (D40): ya no es head, pero
+    sigue en la cadena que llega a head (la cabeza única la exige
+    `test_migrations.py::test_single_head`)."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
 
 
 def test_columnas_exactas_con_tipo_y_nulabilidad(
@@ -474,7 +480,10 @@ def test_delete_y_truncate_se_rechazan_con_memberships_no_delete(
     _revision_existe(alembic_config)
     fila = _fila()
     borrar: Paso = ("DELETE FROM memberships.memberships WHERE id = $1", [fila["id"]])
-    vaciar: Paso = ("TRUNCATE memberships.memberships", [])
+    # `CASCADE` desde S3-B2: con la FK de `membership_freezes` un `TRUNCATE` simple ya lo rechaza
+    # PostgreSQL (0A000) antes de correr el trigger; con `CASCADE` el trigger de esta tabla corre
+    # primero y es lo que se prueba.
+    vaciar: Paso = ("TRUNCATE memberships.memberships CASCADE", [])
     escenarios = [[_insert(fila), borrar], [_insert(_fila()), vaciar]]
     assert _resultados(migrated_database, escenarios) == [(INTEGRITY_VIOLATION, SIN_BORRADO)] * 2
 
@@ -540,5 +549,6 @@ def test_ciclo_de_0008(alembic_config: Config, migrated_database: str) -> None:
     command.upgrade(alembic_config, "head")
     estado = _estado(migrated_database)
     assert estado["existe"] is True
-    assert sorted(estado["funciones"]) == sorted(FUNCIONES)
+    # Desde S3-B2 head trae también la función de `0009` en el mismo esquema.
+    assert set(FUNCIONES) <= set(estado["funciones"])
     assert estado["triggers"] == dict.fromkeys(TRIGGERS, "A")

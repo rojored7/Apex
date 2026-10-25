@@ -8,10 +8,14 @@
   petición, una transacción; con la `session` de savepoint libera el savepoint).
 - Lecturas con SQL crudo: `leer_membresia`, `membresias_del_socio`, `leer_auditoria` y
   `contar_decrypt` (filas de `crypto.crypto_ops` con ese `record_id`).
+- S3-B2: `ruta_congelar(membership_id)`, `cuerpo_congelacion(desde, hasta, **cambios)`,
+  `CAMPOS_FREEZE` (claves exactas de `FreezeOut`), `congelar(session, actor, **datos)` (como
+  `vender`) y `congelaciones_de(session, membership_id)` (SQL crudo, orden `frozen_from`).
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import actor_scope
 from app.modules.memberships import service
-from app.modules.memberships.schemas import SellMembershipOut
+from app.modules.memberships.schemas import MembershipOut, SellMembershipOut
 
 MEMBERSHIPS = "/api/v1/memberships"
 
@@ -45,6 +49,7 @@ CAMPOS_MEMBERSHIP = frozenset(
     }
 )
 CAMPOS_SELL = CAMPOS_MEMBERSHIP | {"first_payment_id"}
+CAMPOS_FREEZE = frozenset({"id", "frozen_from", "frozen_to", "days", "created_at"})
 
 
 def ruta_venta(member_id: UUID | str) -> str:
@@ -59,6 +64,23 @@ def cuerpo_venta(plan_id: UUID | str, **cambios: Any) -> dict[str, Any]:
 async def vender(session: AsyncSession, actor: UUID, **datos: Any) -> SellMembershipOut:
     with actor_scope(actor):
         salida = await service.sell(session, **datos)
+        await session.commit()
+    return salida
+
+
+def ruta_congelar(membership_id: UUID | str) -> str:
+    return f"{MEMBERSHIPS}/{membership_id}/freeze"
+
+
+def cuerpo_congelacion(desde: date | str, hasta: date | str, **cambios: Any) -> dict[str, Any]:
+    """Cuerpo de `POST /memberships/{id}/freeze` (fechas ISO) más lo que se pida."""
+    return {"frozen_from": str(desde), "frozen_to": str(hasta), **cambios}
+
+
+async def congelar(session: AsyncSession, actor: UUID, **datos: Any) -> MembershipOut:
+    """`service.freeze` bajo `actor_scope(actor)` y commit (una petición, una transacción)."""
+    with actor_scope(actor):
+        salida = await service.freeze(session, **datos)
         await session.commit()
     return salida
 
@@ -104,3 +126,14 @@ async def contar_decrypt(session: AsyncSession, record_id: UUID) -> int:
         "SELECT count(*) FROM crypto.crypto_ops WHERE verb = 'decrypt' AND record_id = :r"
     )
     return int(await session.scalar(consulta, {"r": record_id}) or 0)
+
+
+_CONGELACIONES = text(
+    "SELECT id, membership_id, frozen_from, frozen_to, days, created_by "
+    "FROM memberships.membership_freezes WHERE membership_id = :m ORDER BY frozen_from"
+)
+
+
+async def congelaciones_de(session: AsyncSession, membership_id: UUID) -> list[dict[str, Any]]:
+    filas = (await session.execute(_CONGELACIONES, {"m": membership_id})).mappings().all()
+    return [dict(f) for f in filas]

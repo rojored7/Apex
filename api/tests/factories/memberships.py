@@ -11,6 +11,11 @@
 - `make_memberships(session, n, plan, *, members=None, **cambios)`: `n` membresías, una por socio
   (la `EXCLUDE` impide dos solapadas del mismo socio); sin `members` crea `n` socios con
   `make_members` (necesita el bus listo). Para las pruebas `perf` de B7.
+- `make_freeze(session, membership, frozen_from=None, frozen_to=None, **cambios)` (S3-B2, sección
+  2 del plan): inserta una `MembershipFreeze` por ORM bajo `actor_scope(SYSTEM_USER_ID)` con
+  `days = (frozen_to - frozen_from) + 1` (RN-07) y confirma el savepoint. Por defecto la ventana es
+  de un día en el inicio de la membresía. **No** corre `end_date` ni cambia el estado: prepara
+  historiales (congelaciones pasadas, ya programadas) para las reglas de `freeze`.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.modules.members.models import Member
-from app.modules.memberships.models import Membership
+from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.memberships.rules import PlanTerms, compute_end_date
 from app.modules.plans.models import Plan
 from tests.factories.members import make_members
@@ -88,3 +93,29 @@ async def make_memberships(
     """`n` membresías del plan, una por socio (crea los socios si no se pasan)."""
     socios = list(members) if members is not None else await make_members(session, n)
     return [await make_membership(session, socio, plan, **cambios) for socio in socios[:n]]
+
+
+async def make_freeze(
+    session: AsyncSession,
+    membership: Membership,
+    frozen_from: date | None = None,
+    frozen_to: date | None = None,
+    **cambios: Any,
+) -> MembershipFreeze:
+    """Inserta una congelación de `membership` (sin mover su fin) bajo `SYSTEM_USER_ID`."""
+    desde = frozen_from or membership.start_date
+    hasta = frozen_to or desde
+    valores: dict[str, Any] = {
+        "membership_id": membership.id,
+        "frozen_from": desde,
+        "frozen_to": hasta,
+        "days": (hasta - desde).days + 1,
+        "created_by": SYSTEM_USER_ID,
+    }
+    valores.update(cambios)
+    congelacion = MembershipFreeze(**valores)
+    with actor_scope(SYSTEM_USER_ID):
+        session.add(congelacion)
+        await session.flush()
+        await session.commit()
+    return congelacion

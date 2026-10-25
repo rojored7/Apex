@@ -4,6 +4,8 @@
   y `first_payment`, que en B1 solo admite nulo (B4 lo abre a `payments.schemas.PaymentIn`, así B1
   no importa `payments`). `extra="forbid"`: el cliente nunca fija `agreed_price_cop` (D16).
 - `MembershipOut` y `SellMembershipOut` (`first_payment_id`, nulo hasta B4).
+- `FreezeIn` (S3-B2: `frozen_from` y `frozen_to`, `extra="forbid"`) y `FreezeOut` (`id`,
+  `frozen_from`, `frozen_to`, `days`, `created_at`).
 - Contratos para otros módulos (dataclasses, nunca el ORM): `MembershipRef` (lo que `refs_for`
   devuelve por id de membresía) y `PaymentTarget` (lo que lee el gate de pagos, B4).
 """
@@ -36,10 +38,26 @@ class SellMembershipIn(BaseModel):
         return valor
 
 
+class FreezeIn(BaseModel):
+    """Cuerpo de `POST /memberships/{membership_id}/freeze` (S3-B2, D14). Sin `reason`: la tabla
+    no tiene motivo (el modal del diseño lo pinta; el front lo omite con `// DESIGN-GAP:`). Las
+    fechas invertidas no se rechazan aquí: las valida `rules.apply_freeze` después del estado
+    (422 `validation_error` con `field="frozen_to"`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    frozen_from: date
+    frozen_to: date
+
+
 class FreezeOut(BaseModel):
+    """Una congelación de la membresía (S3-B2, D14)."""
+
+    id: UUID
     frozen_from: date
     frozen_to: date
     days: int
+    created_at: datetime
 
 
 class MembershipOut(BaseModel):

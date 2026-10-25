@@ -52,6 +52,10 @@ export const API_ERROR_CODES = {
   paymentPossibleDuplicate: "payment_possible_duplicate",
   paymentLimitReached: "payment_limit_reached",
   paidAtTooRetroactive: "paid_at_too_retroactive",
+  // S3-F4: registrar y anular pagos (US-095, US-097; payments/exceptions.py).
+  membershipCancelled: "membership_cancelled",
+  paymentNotFound: "payment_not_found",
+  paymentAlreadyVoided: "payment_already_voided",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

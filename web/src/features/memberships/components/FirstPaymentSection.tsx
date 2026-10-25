@@ -13,8 +13,8 @@
 // - DESIGN-GAP: el diseño dice "Recibo por correo si el socio tiene correo"; los recibos llegan con
 //   v0.2 y no se menciona.
 import { Controller, useWatch, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
-import { usePaymentMethods, type PaymentMethodView } from "../../../shared/data/paymentMethods";
-import { METHODS_WITH_REFERENCE, PAYMENT_METHOD_CODES, REFERENCE_MAX, SENSITIVE_TEXT_WARNING, type PaymentMethodCode } from "../../../shared/data/schemas/payment";
+import type { PaymentMethodView } from "../../../shared/data/paymentMethods";
+import { METHODS_WITH_REFERENCE, REFERENCE_MAX, SENSITIVE_TEXT_WARNING } from "../../../shared/data/schemas/payment";
 import { moneyInputText } from "../../../shared/lib/moneyInput";
 import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
@@ -22,10 +22,9 @@ import { SELL_MESSAGES } from "../membershipErrors";
 import type { SellFormValues } from "../schemas";
 import styles from "./Sell.module.css";
 
-/** Las etiquetas por defecto de los tres medios (D24), si GET /payments/methods no responde. */
-const DEFAULT_LABELS: Readonly<Record<PaymentMethodCode, string>> = { cash: "Efectivo", nequi: "Nequi", breb: "Bre-B" };
-
-export const DEFAULT_PAYMENT_METHODS: readonly PaymentMethodView[] = PAYMENT_METHOD_CODES.map((code) => ({ code, label: DEFAULT_LABELS[code], hint: "" }));
+// S3-F4: los medios por defecto y usePaymentMethodOptions viven en shared/data/paymentMethods.ts (los
+// usa también el panel de pagos); se reexportan para la venta.
+export { DEFAULT_PAYMENT_METHODS, usePaymentMethodOptions } from "../../../shared/data/paymentMethods";
 
 export interface FirstPaymentSectionProps {
   control: Control<SellFormValues>;
@@ -37,18 +36,6 @@ export interface FirstPaymentSectionProps {
   onRetryMethods: () => void;
   /** El usuario escribió en el valor: deja de seguir al precio. */
   onAmountEdit: () => void;
-}
-
-/** Los medios del api, o los de siempre mientras cargan o si fallan. */
-export function usePaymentMethodOptions(): { methods: readonly PaymentMethodView[]; failed: boolean; retry: () => void } {
-  const query = usePaymentMethods();
-  return {
-    methods: query.data ?? DEFAULT_PAYMENT_METHODS,
-    failed: query.isError,
-    retry: () => {
-      void query.refetch();
-    },
-  };
 }
 
 function MethodOptions({ methods, register }: { methods: readonly PaymentMethodView[]; register: UseFormRegister<SellFormValues> }) {

@@ -8,10 +8,10 @@ const labels = (groups: NavGroup[]): string[] => groups.flatMap((g) => g.items.m
 const ALL: ReadonlySet<Feature> = new Set(FEATURES);
 
 describe("buildNavItems", () => {
-  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Planes, Usuarios y Configuración", () => {
+  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Usuarios y Configuración", () => {
     const groups = buildNavItems("admin", ENABLED_FEATURES);
 
-    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Planes", "Usuarios y roles", "Configuración"]);
+    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Usuarios y roles", "Configuración"]);
     expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "sistema"]);
     expect(groups.find((g) => g.id === "sistema")?.title).toBe("Sistema");
     expect(groups.find((g) => g.id === "inicio")?.title).toBeNull();
@@ -101,8 +101,15 @@ describe("buildNavItems", () => {
 });
 
 describe("menú y rutas hijas (S3-F3, E14)", () => {
-  it("el coach también ve Membresías con las features habilitadas (memberships.view es de admin y coach)", () => {
-    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías"]);
+  it("el coach también ve Membresías y Pagos con las features habilitadas (memberships.view y payments.view son de admin y coach)", () => {
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías", "Pagos"]);
+  });
+
+  it("S3-F4: Pagos lleva a /pagos con la feature payments", () => {
+    const pagos = NAV_CATALOG.find((item) => item.label === "Pagos");
+
+    expect(pagos).toMatchObject({ to: "/pagos", feature: "payments", group: "gestion" });
+    expect(labels(buildNavItems("admin", new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "payments"))))).not.toContain("Pagos");
   });
 
   it("NAV_CATALOG es estático y no tiene entradas con parámetros (:)", () => {

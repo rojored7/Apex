@@ -1,7 +1,7 @@
 // S2-F5: esquemas de los formularios de configuración con los rangos del api (N-18) y el
 // paso de un 422 con `field = "value.<campo>"` al campo del formulario.
 import { ApiError } from "../../core/api/errors";
-import { applyApiFieldError, gymSettingsSchema, membershipsSettingsSchema, privacySettingsSchema } from "./schemas";
+import { applyApiFieldError, gymSettingsSchema, membershipsSettingsSchema, paymentMethodsSettingsSchema, privacySettingsSchema } from "./schemas";
 
 const GYM = { name: "APEX", nit: "", address: "", city: "", phone: "", whatsapp: "", email: "" };
 const PRIVACY = { policy_version: "2026-10", policy_text: "Autorizo el tratamiento.", retention_years: "5", consent_required_from: "" };
@@ -150,5 +150,48 @@ describe("applyApiFieldError", () => {
 
     expect(applyApiFieldError(form as never, error)).toBe(false);
     expect(form.setError).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyApiFieldError con campos anidados (S3-F4, `value.<code>.label`)", () => {
+  function nestedForm(values: Record<string, unknown>) {
+    const setError = vi.fn();
+    return { setError, getValues: () => values };
+  }
+
+  const invalid = (field: string) => new ApiError({ status: 422, code: "validation_error", message: "La etiqueta ya está en uso.", field });
+
+  it("marca el campo anidado si existe en el formulario", () => {
+    const form = nestedForm({ nequi: { label: "Nequi", hint: "" } });
+
+    expect(applyApiFieldError(form as never, invalid("value.nequi.label"), { "nequi.label": "Cámbialo." })).toBe(true);
+    expect(form.setError).toHaveBeenCalledWith("nequi.label", { type: "server", message: "Cámbialo." }, { shouldFocus: true });
+  });
+
+  it.each(["value.card.label", "value.nequi.icon", "value.nequi.label.extra"])("no marca %s, que el formulario no tiene", (field) => {
+    const form = nestedForm({ nequi: { label: "Nequi", hint: "" } });
+
+    expect(applyApiFieldError(form as never, invalid(field))).toBe(false);
+    expect(form.setError).not.toHaveBeenCalled();
+  });
+});
+
+describe("paymentMethodsSettingsSchema (S3-F4, D24, S3-D55)", () => {
+  const VALUES = { cash: { label: "Efectivo", hint: "" }, nequi: { label: "Nequi", hint: "Número de transacción" }, breb: { label: "Bre-B", hint: "" } };
+
+  it("acepta las tres etiquetas y las recorta", () => {
+    expect(paymentMethodsSettingsSchema.parse({ ...VALUES, cash: { label: "  Caja  ", hint: " " } })).toEqual({ ...VALUES, cash: { label: "Caja", hint: "" } });
+  });
+
+  it.each([
+    ["vacía", { ...VALUES, cash: { label: "  ", hint: "" } }, "cash.label", "Escribe el nombre del medio de pago."],
+    ["de 31", { ...VALUES, breb: { label: "B".repeat(31), hint: "" } }, "breb.label", "El nombre admite hasta 30 caracteres."],
+    ["con ayuda de 121", { ...VALUES, nequi: { label: "Nequi", hint: "h".repeat(121) } }, "nequi.hint", "La ayuda admite hasta 120 caracteres."],
+    ["repetida sin distinguir mayúsculas", { ...VALUES, breb: { label: "NEQUI ", hint: "" } }, "breb.label", "Ya hay otro medio con este nombre. Usa uno distinto."],
+  ])("una etiqueta %s marca su campo", (_case, values, path, message) => {
+    const result = paymentMethodsSettingsSchema.safeParse(values);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([[path, message]]);
   });
 });

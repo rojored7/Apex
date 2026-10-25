@@ -38,3 +38,61 @@ export function paymentOut(overrides: Partial<PaymentOutFixture> = {}): PaymentO
     ...overrides,
   };
 }
+
+// S3-F4: fila y detalle de la lista de pagos (PaymentRow y PaymentDetail del blueprint B8, D26, con
+// `backdated` de S3-D51). Su contrato llega con B8; F6 los ajusta si cambia.
+export interface PaymentRowFixture {
+  id: string;
+  paid_at: string;
+  amount_cop: number;
+  method: "cash" | "nequi" | "breb";
+  reference: string | null;
+  voided: boolean;
+  void_reason: string | null;
+  registered_by: string;
+  registered_by_name: string;
+  membership_id: string;
+  member_id: string;
+  member_first_name: string;
+  member_last_name: string;
+  plan_name: string;
+  membership_start_date: string;
+  membership_end_date: string;
+  backdated: boolean;
+}
+
+export interface PaymentDetailFixture extends PaymentRowFixture {
+  voided_by: string | null;
+  voided_by_name: string | null;
+  voided_at: string | null;
+  created_at: string;
+}
+
+export const PAYMENT_ID = "99999999-9999-4999-8999-999999999999";
+
+export function paymentRow(overrides: Partial<PaymentRowFixture> = {}): PaymentRowFixture {
+  return {
+    id: PAYMENT_ID,
+    paid_at: "2026-10-20T19:10:00Z",
+    amount_cop: 120_000,
+    method: "nequi",
+    reference: "M12345678",
+    voided: false,
+    void_reason: null,
+    registered_by: "00000000-0000-4000-8000-000000000002",
+    registered_by_name: "c•••@apex.test",
+    membership_id: "66666666-6666-4666-8666-666666666666",
+    member_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    member_first_name: "Laura",
+    member_last_name: "Gómez",
+    plan_name: "Mensual",
+    membership_start_date: "2026-10-29",
+    membership_end_date: "2026-11-28",
+    backdated: false,
+    ...overrides,
+  };
+}
+
+export function paymentDetail(overrides: Partial<PaymentDetailFixture> = {}): PaymentDetailFixture {
+  return { ...paymentRow(), voided_by: null, voided_by_name: null, voided_at: null, created_at: "2026-10-20T19:10:00Z", ...overrides };
+}

@@ -7,10 +7,10 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("habilita siete: las seis del Sprint 2 y memberships (S3-F3)", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["auth", "dashboard", "members", "memberships", "plans", "settings", "users"]);
-    expect(ENABLED_FEATURES.size).toBe(7);
-    expect(ENABLED_FEATURES.has("payments")).toBe(false);
+  it("habilita ocho: las seis del Sprint 2, memberships (S3-F3) y payments (S3-F4, D36)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["auth", "dashboard", "members", "memberships", "payments", "plans", "settings", "users"]);
+    expect(ENABLED_FEATURES.size).toBe(8);
+    expect(ENABLED_FEATURES.has("classes")).toBe(false);
   });
 
   it("una ruta con feature habilitada está habilitada", () => {

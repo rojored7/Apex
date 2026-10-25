@@ -1,0 +1,246 @@
+/* S3-F4: panel "Registrar pago" (Pagos.html: buscador, select de membresía, medios grandes .w-btn de
+   52 px, valor y referencia) y su resumen tras registrar. Solo variables de tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.balance {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-caption);
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.alert:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Enlaces sobre la tarjeta: --ink subrayado (--blue-deep sobre --surface no llega a 4,5:1). */
+.link {
+  color: var(--ink);
+  font: var(--text-label);
+  text-decoration: underline;
+}
+
+.link:hover {
+  color: var(--blue-deep);
+}
+
+.link:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Socio: resultados de la búsqueda y socio elegido. */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control);
+  padding: var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease-out;
+}
+
+.option:hover {
+  border-color: var(--blue-deep);
+}
+
+.option:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.optionName {
+  font: var(--text-label);
+}
+
+.selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border: 2px solid var(--apex-blue);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.selectedText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.selectedLabel {
+  font: var(--text-caption);
+}
+
+/* Medios de pago grandes (.w-btn de 52 px en el panel; 56 px de --control-gym). */
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.methods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.method {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control-gym);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-button);
+  text-align: center;
+  cursor: pointer;
+}
+
+.method:has(:checked) {
+  border-color: var(--apex-blue);
+  background: var(--apex-blue);
+  color: var(--black);
+}
+
+.method:has(:focus-visible) {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.methodRadio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* Resumen tras registrar (.w-li): fila etiqueta / valor con línea inferior. */
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 2px solid var(--apex-blue);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+}
+
+.doneTitle {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.list {
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font: var(--text-body);
+}
+
+.row dt {
+  color: var(--ink);
+}
+
+.row dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (width < 480px) {
+  .grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

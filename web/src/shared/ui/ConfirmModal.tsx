@@ -27,6 +27,10 @@ export interface ConfirmModalProps {
   reasonLabel?: string;
   /** Mínimo de caracteres no vacíos del motivo obligatorio (el api solo pide "no vacío"). */
   minReasonLength?: number;
+  /** S3-F4: máximo de caracteres del motivo tras recortar (D17: 500 al anular un pago). */
+  maxReasonLength?: number;
+  /** S3-F4: ayuda bajo el motivo (M-7: "No escribas teléfonos, documentos ni datos de salud."). */
+  reasonHint?: string;
   /** Texto que hay que teclear exacto para habilitar la acción. */
   confirmText?: string;
   /** Hace la mutación; si rechaza, el modal sigue abierto con el error. */
@@ -46,6 +50,8 @@ function ConfirmContent({
   showReason = reasonRequired,
   reasonLabel = "Motivo",
   minReasonLength = 3,
+  maxReasonLength,
+  reasonHint,
   confirmText,
   onConfirm,
   onClose,
@@ -65,7 +71,11 @@ function ConfirmContent({
   };
   const dialogRef = useFocusTrap<HTMLDivElement>(true, { onEscape: cancel });
 
-  const reasonOk = !reasonRequired || reason.trim().length >= minReasonLength;
+  const trimmedReason = reason.trim();
+  // S3-F4: el tope cuenta caracteres (como el api), no unidades UTF-16.
+  const reasonTooLong = maxReasonLength !== undefined && Array.from(trimmedReason).length > maxReasonLength;
+  const reasonOk = (!reasonRequired || trimmedReason.length >= minReasonLength) && !reasonTooLong;
+  const shownReasonError = reasonError ?? (reasonTooLong ? `El motivo admite hasta ${String(maxReasonLength)} caracteres.` : undefined);
   const typedOk = confirmText === undefined || typed === confirmText;
 
   const confirm = async (): Promise<void> => {
@@ -109,7 +119,8 @@ function ConfirmContent({
             label={reasonLabel}
             name="reason"
             required={reasonRequired}
-            {...(reasonError ? { error: reasonError } : {})}
+            {...(reasonHint ? { hint: reasonHint } : {})}
+            {...(shownReasonError ? { error: shownReasonError } : {})}
           >
             {(control) => (
               <textarea

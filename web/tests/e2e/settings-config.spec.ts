@@ -8,7 +8,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const PATH = "/sistema/configuracion";
 
-type Key = "gym" | "privacy" | "memberships";
+type Key = "gym" | "privacy" | "memberships" | "payment_methods";
 
 interface Section {
   key: Key;
@@ -31,6 +31,11 @@ function initialSections(): Record<Key, Section> {
     gym: { key: "gym", value: { name: "APEX", nit: null, address: null, city: null, phone: null, whatsapp: null, email: null }, ...base },
     privacy: { key: "privacy", value: { policy_version: null, policy_text: null, retention_years: 5, consent_required_from: null }, ...base },
     memberships: { key: "memberships", value: { expiring_days: 7, max_freeze_days_per_membership: 30, max_freezes_per_membership: 2, max_retroactive_days: 7 }, ...base },
+    payment_methods: {
+      key: "payment_methods",
+      value: { cash: { label: "Efectivo", hint: "" }, nequi: { label: "Nequi", hint: "" }, breb: { label: "Bre-B", hint: "" } },
+      ...base,
+    },
   };
 }
 
@@ -136,6 +141,30 @@ test("fija expiring_days = 7 como entero y rechaza un decimal sin llamar al api"
   });
 });
 
+test("S3-F4: la pestaña Medios de pago guarda las tres etiquetas fijas, sin agregar medios", async ({ page }) => {
+  const api = await fakeApi(page);
+  await page.goto(PATH);
+  await page.getByRole("tab", { name: "Medios de pago" }).click();
+  await expect(page).toHaveURL(/\?tab=medios$/);
+
+  const nequi = page.getByRole("group", { name: "Nequi" });
+  await expect(page.getByText("Para agregar un medio nuevo se requiere una actualización del sistema.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Agregar/ })).toHaveCount(0);
+  await nequi.getByRole("textbox", { name: /Nombre que se muestra/ }).fill("Nequi del box");
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await expect(page.getByText("Cambios guardados")).toBeVisible();
+  expect(api.patches).toEqual([
+    {
+      key: "payment_methods",
+      body: { version: 0, value: { cash: { label: "Efectivo", hint: "" }, nequi: { label: "Nequi del box", hint: "" }, breb: { label: "Bre-B", hint: "" } } },
+    },
+  ]);
+
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Nequi" }).getByRole("textbox", { name: /Nombre que se muestra/ })).toHaveValue("Nequi del box");
+});
+
 test("con cambios sin guardar, cambiar de pestaña pide confirmación", async ({ page }) => {
   await fakeApi(page);
   await page.goto(PATH);
@@ -171,7 +200,7 @@ test("un 409 muestra el aviso y Recargar trae lo que guardó la otra persona", a
 
 for (const theme of ["light", "dark"] as const) {
   for (const width of [390, 1440]) {
-    test(`las tres pestañas pasan axe en ${theme} a ${String(width)} px sin desborde`, async ({ page }) => {
+    test(`las cuatro pestañas pasan axe en ${theme} a ${String(width)} px sin desborde`, async ({ page }) => {
       await fakeApi(page);
       await page.emulateMedia({ colorScheme: theme });
       await page.setViewportSize({ width, height: 900 });
@@ -183,7 +212,7 @@ for (const theme of ["light", "dark"] as const) {
         }
       }, theme);
 
-      for (const id of ["gimnasio", "privacidad", "membresias"]) {
+      for (const id of ["gimnasio", "privacidad", "membresias", "medios"]) {
         await page.goto(`${PATH}?tab=${id}`);
         await expect(page.getByRole("button", { name: "Guardar" })).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

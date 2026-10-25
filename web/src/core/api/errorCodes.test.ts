@@ -76,3 +76,13 @@ describe("códigos del Sprint 3 (S3-F3)", () => {
     expect(BUSY_MESSAGE).toBe("El sistema está ocupado; intenta de nuevo.");
   });
 });
+
+describe("códigos del Sprint 3 (S3-F4)", () => {
+  it("incluye los de registrar y anular pagos", () => {
+    expect(API_ERROR_CODES).toMatchObject({
+      membershipCancelled: "membership_cancelled",
+      paymentNotFound: "payment_not_found",
+      paymentAlreadyVoided: "payment_already_voided",
+    });
+  });
+});

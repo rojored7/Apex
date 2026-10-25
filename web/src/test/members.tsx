@@ -1,6 +1,10 @@
 // S2-F6: datos y montaje de prueba de /socios y /socios/nuevo. Las filas imitan MemberRowOut de
 // GET /members (sin ningún dato cifrado, N-01) y el alta, MemberDetailOut de POST /members (los
 // cinco campos sensibles enmascarados). /socios/:id es un marcador: la ficha llega con US-073.
+// S3-F2: renderMembers responde también GET /memberships/summary (conteos de los chips) y
+// GET /plans (filtro de plan); `memberRows(n)` y `pagedMemberPage` sirven la lista por páginas
+// ("Cargar más"); `listCalls` deja fuera la consulta del total (`limit=1&offset=0`, el chip
+// "Todos"), que se lee con `totalCalls`.
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,6 +13,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { SessionRoleProvider } from "../core/auth";
 import MemberFormPage from "../features/members/pages/MemberFormPage";
 import MembersListPage from "../features/members/pages/MembersListPage";
+import { planPage, PLANS } from "./plans";
 import { mockApi, testQueryClient, type MockHandler, type MockReply, type RecordedCall } from "./server";
 
 export interface MemberRowFixture {
@@ -43,6 +48,39 @@ export const MEMBERS = {
 } as const satisfies Record<string, MemberRowFixture>;
 
 export const MEMBER_ROWS: MemberRowFixture[] = Object.values(MEMBERS);
+
+/** `n` socios "Socio 01 Prueba"… con ids UUID; el primero es Laura Gómez (para buscar "laura"). */
+export function memberRows(n: number): MemberRowFixture[] {
+  return Array.from({ length: n }, (_, index) => {
+    const number = String(index + 1).padStart(2, "0");
+    const id = `${String(index + 1).padStart(8, "0")}-0000-4000-8000-000000000000`;
+    return index === 0
+      ? row(id, "Laura", "Gómez", { membership_status: "active", plan_name: "Mensual", membership_end_date: "2026-11-27" })
+      : row(id, `Socio ${number}`, "Prueba", { membership_status: "expired", plan_name: "12 clases", membership_end_date: "2026-10-15" });
+  });
+}
+
+/** La página de `rows` que piden `limit` y `offset`, con el total de todas. */
+export function pagedMemberPage(call: RecordedCall, rows: MemberRowFixture[]): MockReply {
+  const url = new URL(call.url, "http://apex.test");
+  const limit = Number(url.searchParams.get("limit"));
+  const offset = Number(url.searchParams.get("offset"));
+  return { status: 200, body: { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset } };
+}
+
+export interface MembershipSummaryFixture {
+  active: number;
+  expiring: number;
+  expired: number;
+  frozen: number;
+  pending_payment: number;
+}
+
+/** GET /memberships/summary de Socios_Lista.html: 342 socios, 273 con membresía (69 sin ella). */
+export const SOCIOS_SUMMARY: MembershipSummaryFixture = { active: 210, expiring: 18, expired: 41, frozen: 4, pending_payment: 0 };
+
+/** La consulta del total del chip "Todos" (GET /members?limit=1&offset=0). */
+export const isTotalCall = (call: RecordedCall): boolean => new URL(call.url, "http://apex.test").searchParams.toString() === "limit=1&offset=0";
 
 export const NEW_MEMBER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 export const EXISTING_MEMBER_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -94,7 +132,13 @@ export interface RenderMembersOptions {
 }
 
 export function renderMembers(entry = "/socios", { handlers = {}, rows = MEMBER_ROWS, queryClient = testQueryClient() }: RenderMembersOptions = {}) {
-  const mock = mockApi({ "GET /members": (call) => memberPage(call, rows), "POST /members": memberDetail(), ...handlers });
+  const mock = mockApi({
+    "GET /members": (call) => memberPage(call, rows),
+    "POST /members": memberDetail(),
+    "GET /memberships/summary": { status: 200, body: SOCIOS_SUMMARY },
+    "GET /plans": (call) => planPage(call, [PLANS.clases, PLANS.mensual]),
+    ...handlers,
+  });
   const shell = (page: ReactNode) => (
     <>
       <nav aria-label="Menú principal">
@@ -121,7 +165,20 @@ export function renderMembers(entry = "/socios", { handlers = {}, rows = MEMBER_
   return { mock, router, queryClient, user: userEvent.setup(), ...view };
 }
 
-/** Parámetros de cada GET /members, en orden. */
+/** Parámetros de cada GET /members de la lista, en orden (sin la consulta del total). */
 export function listCalls(mock: { callsTo: (key: string) => RecordedCall[] }): URLSearchParams[] {
-  return mock.callsTo("GET /members").map((c) => new URL(c.url, "http://apex.test").searchParams);
+  return mock
+    .callsTo("GET /members")
+    .filter((c) => !isTotalCall(c))
+    .map((c) => new URL(c.url, "http://apex.test").searchParams);
+}
+
+/** Las consultas del total del chip "Todos". */
+export function totalCalls(mock: { callsTo: (key: string) => RecordedCall[] }): RecordedCall[] {
+  return mock.callsTo("GET /members").filter(isTotalCall);
+}
+
+/** Parámetros de cada GET /plans, en orden. */
+export function planCalls(mock: { callsTo: (key: string) => RecordedCall[] }): URLSearchParams[] {
+  return mock.callsTo("GET /plans").map((c) => new URL(c.url, "http://apex.test").searchParams);
 }

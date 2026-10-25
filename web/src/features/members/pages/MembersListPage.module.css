@@ -94,3 +94,8 @@
   outline: 3px solid var(--blue-deep);
   outline-offset: 2px;
 }
+
+/* S3-F2: la fecha de "Vence" no se parte en la tabla. */
+.nowrap {
+  white-space: nowrap;
+}

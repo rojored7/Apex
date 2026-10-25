@@ -1,5 +1,16 @@
 // S2-F6: reglas puras del alta de socios (MemberCreate de B7) y de la fila de la lista.
-import { EMPTY_MEMBER_FORM, memberDetailSchema, memberFormSchema, memberRowSchema, toMemberCreate, type MemberFormValues } from "./schemas";
+import {
+  chipFromFilters,
+  chipToFilter,
+  EMPTY_MEMBER_FORM,
+  memberDetailSchema,
+  memberFormSchema,
+  memberRowSchema,
+  MEMBERSHIP_CHIP_LABELS,
+  MEMBERSHIP_CHIPS,
+  toMemberCreate,
+  type MemberFormValues,
+} from "./schemas";
 
 const TODAY = "2026-10-22";
 
@@ -174,5 +185,57 @@ describe("esquemas de respuesta", () => {
 
     expect(memberDetailSchema.parse(detail)).toEqual(detail);
     expect(memberDetailSchema.safeParse({ ...detail, plan_name: 7 }).success).toBe(false);
+  });
+});
+
+describe("S3-F2 · chips de la lista (US-071)", () => {
+  it("MEMBERSHIP_CHIPS son los siete de Socios_Lista.html en su orden, con su texto", () => {
+    expect(MEMBERSHIP_CHIPS).toEqual(["active", "expiring", "expired", "frozen", "pending_payment", "none", "deleted"]);
+    expect(MEMBERSHIP_CHIPS.map((chip) => MEMBERSHIP_CHIP_LABELS[chip])).toEqual([
+      "Al día",
+      "Por vencer",
+      "Vencidos",
+      "Congelados",
+      "Pendiente de pago",
+      "Sin membresía",
+      "Dados de baja",
+    ]);
+  });
+
+  it("chipToFilter: 'Dados de baja' es status=deleted y los otros seis, el membership_status del mismo nombre", () => {
+    expect(chipToFilter("deleted")).toEqual({ status: "deleted" });
+    for (const chip of ["active", "expiring", "expired", "frozen", "pending_payment", "none"] as const) {
+      expect(chipToFilter(chip)).toEqual({ membership_status: chip });
+    }
+    expect(chipToFilter(null)).toEqual({});
+  });
+
+  it("chipFromFilters lee el chip de la URL; lo desconocido es 'Todos' y la baja manda sobre la membresía", () => {
+    expect(chipFromFilters([], [])).toBeNull();
+    expect(chipFromFilters(["deleted"], [])).toBe("deleted");
+    expect(chipFromFilters([], ["expired"])).toBe("expired");
+    expect(chipFromFilters([], ["none"])).toBe("none");
+    expect(chipFromFilters(["deleted"], ["active"])).toBe("deleted");
+    expect(chipFromFilters(["active"], ["cancelled"])).toBeNull();
+    expect(chipFromFilters([], ["hack"])).toBeNull();
+    expect(chipFromFilters([], ["deleted"])).toBeNull();
+  });
+
+  it("memberRowSchema sigue estricto con las nueve claves (las ocho de B8 más membership_end_date)", () => {
+    const row = {
+      id: "x",
+      first_name: "A",
+      last_name: "B",
+      sex: "f",
+      status: "active",
+      deleted_at: null,
+      membership_status: "active",
+      plan_name: "Mensual",
+      membership_end_date: "2026-11-27",
+    };
+
+    expect(Object.keys(memberRowSchema.parse(row))).toHaveLength(9);
+    expect(memberRowSchema.safeParse({ ...row, document: "CC •••• 4417" }).success).toBe(false);
+    expect(memberRowSchema.safeParse({ ...row, phone: "••• ••• 4567" }).success).toBe(false);
   });
 });

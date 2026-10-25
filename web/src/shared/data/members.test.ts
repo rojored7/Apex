@@ -49,7 +49,7 @@ describe("useMembersSearch", () => {
   });
 
   it("toma solo lo que el selector usa: un campo nuevo de MemberRowOut no rompe la búsqueda", async () => {
-    mockApi({ "GET /members": (call) => memberPage(call, [{ ...MEMBERS.laura, membership_end_date: "2026-11-27" } as never]) });
+    mockApi({ "GET /members": (call) => memberPage(call, [{ ...MEMBERS.laura, membership_end_date: "2026-11-27" }]) });
     const { result } = renderHook(() => useMembersSearch("laura"), { wrapper: wrapper(testQueryClient(), []) });
 
     await waitFor(() => {

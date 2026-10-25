@@ -494,3 +494,34 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - Desviaciones: el plan "Mensual" de 120.000 en la base de desarrollo se llama "Mensual mvjipju3" (el
   llamado "mensual" vale 320.000): el smoke de B1.10 usa el id real del de 120.000. La evidencia de
   B1.10 va al commit `docs(sprint-03): evidencia de S3-B1` (E8).
+
+### Evidencia de S3-B1 (B1.10, después del sello; E8)
+
+- Gates B1.9 seguidos, sin editar entre ellos, `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo de los 14
+  archivos, todos verdes al primer intento: 1 `core/locks` 220 ok; 2 `architecture` 302 ok; 3 corrida
+  conjunta `tests/memberships tests/migrations` 266 ok; 4 (sella) `memberships` 412 ok (con
+  `test_payment_target`, `test_sell_router_renew` y `test_0008_endurecimiento`). Una saltada en cada
+  gate (`test_no_sensitive_in_logs`, US-074). Checkpoint `5c9bb45`.
+- P-MIG pasos 6 y 7 en `apex-db-1` (05:28 UTC): api `healthy`; `alembic current` = `0008_memberships
+  (head)`; `downgrade -1` → `0007_plans` y `upgrade head` → `0008_memberships (head)` (instala la
+  versión final con L1). Restricciones: diez `ck_memberships_*`, `ex_memberships_member_dates` y
+  `pk_memberships`; triggers `memberships_forbid_delete`, `memberships_forbid_truncate` y
+  `memberships_guard_identity` en `A`; funciones `forbid_delete` y `guard_identity` con
+  `prosecdef = f` y `proconfig = {search_path=pg_catalog}`.
+- Smoke por Nginx `:8180` con un access del admin firmado dentro del contenedor del api (no hay
+  `.env.seed`): `GET /members?q=1020304417` da "Prueba Smoke Uno" (`2b5b6860-…`); `POST
+  /members/2b5b6860-…/memberships` con el plan de 120.000 ("Mensual mvjipju3", `b6fab314-…`) → **201**
+  en 0,03 s, `pending_payment`, `2026-10-25` a `2026-11-24`, `agreed_price_cop = 120000`, `paid_cop
+  = 0`, `member_name` "Prueba Smoke Uno"; la segunda venta → **409** `membership_conflict` con
+  `existing_id` de la primera (D8: una `pending_payment` es futura y la revisión de conflicto va antes
+  que la de solape; `membership_overlap` sale con una no abierta que se cruza, cubierto por
+  `test_sell_service`); `renew: true` → **422** `validation_error`, `field = renew` (M1);
+  `/api/v1/health` 200.
+- psql: `SELECT status, start_date, end_date, agreed_price_cop FROM memberships.memberships` → una fila
+  `pending_payment | 2026-10-25 | 2026-11-24 | 120000`; `audit.audit_log` → una fila `insert` con
+  `subject_member_id = 2b5b6860-…` y `user_id` del admin. Dentro de transacciones revertidas:
+  `INSERT` crudo solapado (1 a 30 nov) → `23P01` `CONSTRAINT NAME: ex_memberships_member_dates`;
+  `UPDATE … SET agreed_price_cop = 1` → `23000` `memberships_identity`; `DELETE` → `23000`
+  `memberships_no_delete`; con `SET LOCAL session_replication_role = replica` el `UPDATE` sigue
+  rechazado (`memberships_identity`). Queda una sola fila (la venta del smoke, en la base de
+  desarrollo). Log del api sin `ERROR` en los últimos 5 minutos; 0 sesiones `idle in transaction`.

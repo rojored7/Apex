@@ -46,3 +46,15 @@ class MembershipActivated(DomainEvent):
     membership_id: UUID
     member_id: UUID
     status: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipActivationReverted(DomainEvent):
+    """Una membresía `active`, `expiring` o `frozen` (estado efectivo) dejó de estar cubierta al
+    anularse un pago y volvió a `pending_payment`, conservando congelaciones y `end_date` (S3-B5,
+    US-087, D13, N-25). `previous_status` es el estado efectivo antes de revertir. Lo emite
+    `on_payment_voided`."""
+
+    membership_id: UUID
+    member_id: UUID
+    previous_status: str

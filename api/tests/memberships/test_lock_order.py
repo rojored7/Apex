@@ -16,8 +16,13 @@ choca con la vigente, 409 `membership_conflict`); B4 `sell` con `first_payment`/
 (H-3 punto 3: el socio tiene una `active` del 1 de septiembre al 1 de octubre, vencida hoy; se le
 vende otra con su primer pago de 120.000 mientras se registra un pago de 60.000 sobre la vencida,
 que acepta pagos por N-28: la venta toma el candado del socio y la fila nueva, el pago la fila
-vieja, y las dos terminan bien, sin error de dominio); B5, B6 y B10 agregan `register`/`void`,
-`freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+vieja, y las dos terminan bien, sin error de dominio); B5 `register`/`void` (H-3 punto 3, D13: el
+socio tiene una `active` de hoy de 120.000 con un pago de 60.000 de la fábrica; se anula ese pago
+mientras se registra otro de 60.000 sobre la misma membresía. Las dos piden la fila de la
+membresía por el gate y después la del pago (orden membresía, pago), así que se serializan y
+terminan bien en cualquier orden: el saldo alcanza para el pago nuevo con o sin la anulación, y
+la reversión de la membresía corre en la transacción de `void` sobre la fila que ya tiene). B6 y
+B10 agregan `freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
 
 Desde B4 el gate de pagos es el REAL (`memberships.service.membership_payability`, registrado al
 importarse `memberships.service`; E9): ya no se usa el doble de `tests/payments/_apoyo.py`.
@@ -49,6 +54,7 @@ from app.modules.payments import service as payments_service
 from app.modules.payments.schemas import PaymentIn
 from tests.factories.members import make_member
 from tests.factories.memberships import make_membership
+from tests.factories.payments import make_payment
 from tests.factories.plans import make_plan
 
 ACTOR = UUID("0000000a-0000-4000-8000-00000000a002")
@@ -60,6 +66,7 @@ class Escenario:
     member_id: UUID
     plan_id: UUID
     membership_id: UUID | None = None
+    payment_id: UUID | None = None
 
 
 Operacion = Callable[[AsyncSession, Escenario], Awaitable[object]]
@@ -86,6 +93,17 @@ async def _con_vencida(sesion: AsyncSession) -> Escenario:
     plan = await make_plan(sesion)
     membresia = await make_membership(sesion, socio, plan, status="active", start=date(2026, 9, 1))
     return Escenario(member_id=socio.id, plan_id=plan.id, membership_id=membresia.id)
+
+
+async def _con_activa_y_un_pago(sesion: AsyncSession) -> Escenario:
+    """Socio con una `active` de hoy de 120.000 y un pago suyo de 60.000 (fábrica, sin eventos)."""
+    socio = await make_member(sesion)
+    plan = await make_plan(sesion)
+    membresia = await make_membership(sesion, socio, plan, status="active")
+    pago = await make_payment(sesion, membresia, amount=60_000)
+    return Escenario(
+        member_id=socio.id, plan_id=plan.id, membership_id=membresia.id, payment_id=pago.id
+    )
 
 
 async def _vender(sesion: AsyncSession, escenario: Escenario) -> object:
@@ -125,11 +143,19 @@ async def _registrar_pago(sesion: AsyncSession, escenario: Escenario) -> object:
     )
 
 
+async def _anular_pago(sesion: AsyncSession, escenario: Escenario) -> object:
+    assert escenario.payment_id is not None
+    return await payments_service.void(
+        sesion, payment_id=escenario.payment_id, reason="Monto mal digitado"
+    )
+
+
 COMBINACIONES: dict[str, tuple[Preparar, Operacion, Operacion, type[DomainError] | None]] = {
     "sell-sell": (_socio_y_plan, _vender, _vender, MembershipConflict),
     "freeze-sell": (_con_activa, _congelar, _vender, MembershipConflict),
     "sell-register": (_con_activa, _vender, _registrar_pago, MembershipConflict),
     "sell_con_pago-register": (_con_vencida, _vender_con_pago, _registrar_pago, None),
+    "register-void": (_con_activa_y_un_pago, _registrar_pago, _anular_pago, None),
 }
 
 

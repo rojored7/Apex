@@ -12,6 +12,12 @@
   cliente; `confirm_overpayment` y `confirm_duplicate` vienen del cuerpo (S3-D41). Códigos 201,
   401, 403, 404 (`membership_not_found`), 409 (`membership_cancelled`, `payment_exceeds_balance`,
   `payment_possible_duplicate`, `payment_limit_reached`), 422 y 429.
+- `POST /payments/{payment_id}/void` (S3-B5, US-097; D13, H-2, S3-D42; solo admin, `AdminDep`):
+  200 `PaymentOut` con la fila anulada. Cuerpo `VoidPaymentIn` (`reason`). Límite por usuario
+  `admin-write` (por defecto 30 por minuto, `USER_ADMIN_WRITE_LIMIT_PER_MIN`, E15; compartido con
+  anular membresía, B6), contado tras la validación de forma y antes del service. Códigos 200,
+  401, 403, 404 (`payment_not_found`), 409 (`payment_already_voided`), 422 (`field="reason"`) y
+  429.
 Las rutas fijas (`/payments/methods`, `/payments/summary`) van antes que las de parámetro (D27).
 Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
 """
@@ -26,9 +32,9 @@ from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.ratelimit import enforce_user_limit
-from app.core.security import StaffDep
+from app.core.security import AdminDep, StaffDep
 from app.modules.payments import service
-from app.modules.payments.schemas import PaymentIn, PaymentMethodsOut, PaymentOut
+from app.modules.payments.schemas import PaymentIn, PaymentMethodsOut, PaymentOut, VoidPaymentIn
 
 router = APIRouter(
     tags=["payments"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
@@ -65,3 +71,19 @@ async def register_payment(
         confirm_duplicate=body.confirm_duplicate,
         role=principal.role,
     )
+
+
+@router.post(
+    "/payments/{payment_id}/void",
+    response_model=PaymentOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def void_payment(
+    request: Request,
+    payment_id: UUID,
+    body: VoidPaymentIn,
+    principal: AdminDep,
+    session: SessionDep,
+) -> PaymentOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.void(session, payment_id=payment_id, reason=body.reason)

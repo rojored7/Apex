@@ -1179,3 +1179,170 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   todas con `CONSTRAINT NAME: payments_immutable`. Después: el pago sigue en 120.000 y la tabla
   tiene 4 pagos (los de las demos).
 - `/health` y `/api/v1/health` → 200.
+
+### S3-B5 · Rojo (B5.1 stubs y B5.2 Rojo; sin migración)
+
+- Línea base: HEAD `b09d89d`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.846 ok,
+  4 saltadas, 3 deseleccionadas; `ruff check` y `mypy src` (93 archivos) limpios. (Una primera
+  corrida de la línea base se contaminó porque los stubs se escribieron mientras corría y
+  `test_openapi_export` exporta en un subproceso; se repitió con los cambios en `git stash`.)
+- Rojo: 2.942 recolectadas (3 deseleccionadas); **69 fallan**, 2.869 ok, 4 saltadas. `ruff format`,
+  `ruff check` y `mypy src` (93 archivos) limpios. `db_test` sin residuos: `alembic_version =
+  0011_payments_immutability`, 0 pagos, 0 membresías, 0 congelaciones, 0 socios, 0 planes, 0
+  usuarios `@test.apex`, 0 sesiones `idle in transaction`, los siete triggers de `memberships` y
+  `payments` en `A`. `apex-db-1` no se tocó (sin migración); api `healthy`, log sin `ERROR`.
+  - Verdes de la línea base que pasan a rojo: solo `test_docs_openapi_json_esta_al_dia` (P-API,
+    B5.4). Suscribir el stub de `on_payment_voided` no rompe nada previo: nadie anulaba por el
+    service antes de B5 (la fábrica inserta pagos anulados sin eventos).
+  - Nuevas en rojo (68): `tests/payments/test_void_rules.py` 20 (`NotImplementedError` de
+    `normalize_void_reason` e `is_previous_month`); `test_void.py` 21 (todas); `test_router_void.py`
+    5 (200, 404, 409, 429 y el 422 de 501 caracteres, que decide el service: 500 por el stub);
+    `tests/memberships/test_revert_activation_service.py` 19; `test_lock_order[register-void]`;
+    `tests/architecture/test_handlers_no_new_locks.py::test_on_payment_voided_solo_bloquea_la_fila_del_evento`;
+    `test_payments_immutability_code.py::test_void_vive_en_service_y_asigna_exactamente_las_cuatro_de_anulacion`.
+  - Verdes sobre los stubs (el stub ya es el contrato): `VOID_REASON_MAX`, `VoidPaymentIn` (recorte,
+    ausente, vacío, espacios, NUL, U+200B, campo desconocido, no texto), catálogo de
+    `PaymentAlreadyVoided` e `InvalidVoidReason`, el evento `MembershipActivationReverted`, la
+    suscripción del handler, `test_router_void` 401, 403 (coach y `member`), 422 de forma
+    (ausente, vacío, espacios, campo desconocido, `payment_id` no UUID) y su OpenAPI;
+    `test_error_codes_per_route` y `test_user_limits_catalog` (E2), `test_every_route_has_role`,
+    `test_reraise_with_prefix_sirve_para_toda_excepcion_de_pagos` con las dos clases nuevas, y
+    `test_ningun_handler_pide_candados_nuevos` / `test_los_handlers_de_lifecycle_son_exactamente_los_del_slice`
+    con la lista nueva.
+- Verde desechable (revertido; sin migración, solo `db_test`): `normalize_void_reason` con
+  `check_visible_text` y el tope, `is_previous_month` por `(año, mes)` de `to_bogota_date`, `void`
+  en el orden de D13 con `begin_nested`, `should_revert`, `on_payment_voided`. Suite: 2.937 ok, 4
+  saltadas y 1 fallo (`test_docs_openapi_json_esta_al_dia`, P-API). Encontró dos defectos de prueba,
+  corregidos: (1) `test_void.py::test_anular_y_registrar_otro...` comparaba el orden de
+  `pagos_de` (`created_at` es el `now()` de la transacción de la prueba, igual en las dos filas):
+  ahora compara por id; (2) `test_router_void.py` exigía `no-store` en el 409: los errores salen por
+  el handler global, que no conserva la cabecera de la dependencia del router (ya pasaba en B4;
+  `test_router_register` tampoco lo exige en errores). Después, `rules` y `service` de `payments` y
+  `rules` y `lifecycle` de `memberships` restaurados desde copia.
+- Stubs (B5.1): `payments/rules.py` (`VOID_REASON_MAX = VOID_REASON_MAX_LENGTH` = 500,
+  `normalize_void_reason` e `is_previous_month` con `NotImplementedError`); `payments/exceptions.py`
+  (`PaymentAlreadyVoided` 409 `payment_already_voided`; `InvalidVoidReason` 422 `validation_error`
+  con `field="reason"` por defecto y la firma de `DomainError`); `payments/schemas.py`
+  (`VoidPaymentIn(reason: SafeText)`, `extra="forbid"`); `payments/service.py` (`void(session, *,
+  payment_id, reason) -> PaymentOut` con `NotImplementedError`, en `__all__`, y el orden de D13 en
+  el docstring); `payments/router.py` (`POST /payments/{payment_id}/void`, 200 `PaymentOut`,
+  `AdminDep`, `enforce_user_limit(request, "admin-write", principal.user_id)`,
+  `responses_for(404, 409, 422, 429)`, `no_store` del router); `memberships/rules.should_revert`;
+  `memberships/events.MembershipActivationReverted(membership_id, member_id, previous_status)`;
+  `memberships/lifecycle.on_payment_voided`; `memberships/service.py` exporta los dos y suscribe
+  `PaymentVoided → on_payment_voided`.
+- Archivos de prueba nuevos: `tests/payments/test_void_rules.py` (32), `test_void.py` (21),
+  `test_router_void.py` (14); `tests/memberships/test_revert_activation_service.py` (20).
+  Cambiados: `tests/payments/_apoyo.py` (`anular`, `updates_de`, `DE_ANULACION`),
+  `tests/memberships/test_lock_order.py` (`Escenario.payment_id`, `_con_activa_y_un_pago`,
+  `_anular_pago`, combinación `register-void`), `tests/architecture/test_error_codes_per_route.py`
+  (E2: `CON_LIMITE` gana solo `("post", "/api/v1/payments/{payment_id}/void")`),
+  `test_user_limits_catalog.py` (`CLAVES_SIN_RUTA_TODAVIA` pierde `admin-write`),
+  `test_handlers_no_new_locks.py` (lista exacta con `on_payment_voided` y su prueba de candado),
+  `test_payments_immutability_code.py` (`void` existe y asigna exactamente las cuatro).
+- Importadores de lo tocado: `payments/rules.py` lo importan `payments/{queries,schemas,service}.py`
+  y pruebas; `payments/exceptions.py` `payments/{rules,service}.py` y pruebas;
+  `payments/schemas.py` `memberships/{schemas,sell}.py`, `payments/{router,service}.py`, pruebas y
+  `tests/payments/_apoyo.py`; `payments/service.py` `memberships/{lifecycle,queries,sell,service}.py`,
+  `payments/router.py` y pruebas; `payments/router.py` solo `main.py` (por `MODULES`);
+  `memberships/rules.py` `memberships/{lifecycle,queries,sell}.py`, `tests/factories/memberships.py`
+  y pruebas; `memberships/events.py` `memberships/{lifecycle,sell,service}.py`;
+  `memberships/lifecycle.py` `memberships/service.py` y pruebas; `memberships/service.py`
+  `memberships/router.py`, `tests/memberships/{conftest,_apoyo}.py` y pruebas;
+  `tests/payments/_apoyo.py` lo importan las pruebas de `tests/payments` y tres de
+  `tests/memberships`. Ningún archivo de `src` cambia de firma: todo lo nuevo es agregado.
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`normalize_void_reason`** aplica la regla de `SafeText` (NFC, recorte, sin `Cc`/`Cf`, algo
+   visible) más el tope de 500 tras recortar; todo rechazo es `InvalidVoidReason` (422
+   `validation_error`, `field="reason"`) sin el valor en el mensaje. `void` la llama siempre (un
+   llamador interno con NUL no llega a PostgreSQL). El 501 por HTTP lo decide el service, con el
+   mismo código que los 422 del esquema.
+2. **`is_previous_month(paid_at, today)`** compara `(año, mes)` de la fecha civil de Bogotá de
+   `paid_at` con los de `today`; un mes posterior no es "anterior".
+3. **Orden de `void` (D13), fijado con una espía de sentencias:** primero un `SELECT` de
+   `payments.payments` sin `FOR UPDATE`, después `FOR UPDATE` de `memberships.memberships` (por el
+   gate, una llamada con el `membership_id` del pago: `GateDoble.llamadas`), después `FOR UPDATE`
+   de `payments.payments` y al final el `UPDATE`. Sin gate, `MembershipGateNotRegistered` y nada
+   escrito. Inexistente 404 `payment_not_found`.
+4. **`rules.can_void` se llama por el módulo** (`rules.can_void(...)`, no importado por nombre): la
+   prueba del trigger lo reemplaza con `monkeypatch` para forzar el rechazo `already_voided` en el
+   `flush`, que debe salir como `PaymentAlreadyVoided` con el `IntegrityError` como `__cause__`
+   (`violated_constraint == IMMUTABLE_CONSTRAINT`).
+5. **Las cuatro columnas se asignan dentro de `void`** en `service.py` (no en una ayuda): la prueba
+   AST exige que `void` asigne exactamente `voided`, `void_reason`, `voided_by` y `voided_at`.
+   `voided_at` es `current_clock().now_utc()` (igual a `T0` en las pruebas) y `voided_by` el actor.
+6. **Aviso de mes anterior:** `logger.warning("void of previous month", extra={"payment_id": ...,
+   "membership_id": ...})` de un logger `app.*`; el registro no lleva más atributos propios que
+   esos dos (ni motivo, ni monto, ni referencia). Uno de octubre en Bogotá no avisa.
+7. **`on_payment_voided`** llama a `lock_membership(session, event.membership_id)` una vez y a
+   ningún otro candado; usa el estado EFECTIVO con `hoy = to_bogota_date(event.occurred_at)` y las
+   congelaciones; `MembershipActivationReverted.previous_status` es ese estado efectivo
+   (`active`, `expiring` o `frozen`). Revertir solo cambia `status` (auditoría `update` con
+   `before = {"status": <guardado>}` y `after = {"status": "pending_payment"}` del admin); `end_date`
+   y `membership_freezes` intactos. `expired` efectivo (`active` guardada vencida), `cancelled` y
+   `pending_payment` no cambian ni emiten.
+8. **Atomicidad:** un handler de `PaymentVoided` o de `MembershipActivationReverted` que lanza deja
+   el pago sin anular, la membresía como estaba y sin auditoría nueva (`begin_nested`).
+9. **Auditoría del pago:** un solo `update` con `user_id` del admin, `subject_member_id` del socio y
+   `before`/`after` exactamente con las cuatro columnas de anulación.
+10. **Concurrencia:** dos `void` del mismo pago con `dos_sesiones`: uno devuelve `PaymentOut` y el
+    otro `PaymentAlreadyVoided` (sin 55P03); `register` frente a `void` sobre la misma membresía
+    terminan los dos bien (`test_lock_order[register-void]`).
+
+#### Desviaciones del Rojo
+
+- `InvalidVoidReason` usa el código `validation_error` (el plan solo fija 422 y `field="reason"`):
+  así los cuatro 422 de `reason` del router dan el mismo código, venga del esquema o del service.
+- `normalize_void_reason` también rechaza NUL y U+200B (el plan los pone como rechazos de
+  `SafeText`): `VoidPaymentIn` los rechaza en el esquema y la regla del service los rechaza para
+  llamadores internos (decisión 1).
+- `test_void.py` agrega casos fuera de la lista del plan: motivo inválido por el service, sin gate,
+  uso del gate, orden de sentencias y la traducción del trigger con `can_void` reemplazado (el
+  plan pedía "un `UPDATE` por SQL crudo antes acaba en 409 por `IMMUTABLE_CONSTRAINT`": con
+  `populate_existing` ese caso sale por `can_void`, así que se prueban los dos caminos por
+  separado).
+- `test_revert_activation_service.py` incluye la tabla de `should_revert` (regla pura) y el caso
+  `pending_payment` sin cambio.
+- El 409 por HTTP no exige `no-store` (decisión del Verde desechable, defecto 2).
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B5 · Verde (B5.3 a B5.5; sin migración)
+
+- Línea base del Verde: HEAD `b09d89d` con el Rojo sin confirmar; 69 fallan, 2.869 ok, 4 saltadas
+  (igual que el Rojo); `ruff` y `mypy` limpios. `apex-db-1` no se toca (sin migración).
+- B5.3 Verde: `payments/rules.py` (`normalize_void_reason` con `check_visible_text` y el tope de
+  500 tras recortar, todo rechazo `InvalidVoidReason()` sin valor; `is_previous_month` por `(año,
+  mes)` de `to_bogota_date(paid_at)`); `payments/service.py` (`void` en el orden de D13 con
+  `begin_nested()`, las cuatro columnas asignadas en `void`; ayudas `_lock_for_void`,
+  `_flush_void` con `IMMUTABLE_CONSTRAINT` → `PaymentAlreadyVoided` `from` el error y
+  `_warn_if_previous_month` con el logger `app.payments`, `PREVIOUS_MONTH_WARNING`);
+  `memberships/rules.should_revert` (efectivo en `_VIGENTES` y no `covers`);
+  `memberships/lifecycle.on_payment_voided` (un `lock_membership`, estado efectivo con
+  congelaciones y `to_bogota_date(event.occurred_at)`, solo `status`, `flush`,
+  `emit(MembershipActivationReverted)`). Resultado: 2.937 ok, 4 saltadas, 1 fallo
+  (`test_docs_openapi_json_esta_al_dia`, P-API), igual que el Verde desechable del QA.
+- Revisión de seguridad (`security-reviewer` sobre `git diff b09d89d -- api/src`, antes del gate
+  que sella): 0 CRITICAL, 0 HIGH, 0 MEDIUM, 3 LOW. LOW-2 corregido con prueba en rojo primero
+  (S3-D83: `VoidPaymentIn.reason` con `max_length = VOID_REASON_INPUT_MAX = 2000` antes de
+  `check_visible_text`; `test_void_rules.py::test_el_esquema_tiene_un_tope_holgado_de_entrada_antes_de_la_regla_de_500`
+  en rojo por `ImportError`, y `test_router_void.py::test_un_motivo_enorme_se_corta_en_el_esquema_con_422_en_reason`,
+  que ya pasaba por el service y fija el comportamiento). LOW-1 (motivo en claro en la auditoría) y
+  LOW-3 (`expired` efectivo no cambia el guardado) aceptados en DECISIONES "S3-B5".
+- Suite: 2.940 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura de `app` 96 %; `ruff format
+  --check` (365 archivos), `ruff check` y `mypy src` (93 archivos) limpios. Ninguna prueba del Rojo
+  cambió; las dos nuevas salen de la revisión.
+- Docs: RUNBOOK §10 "Anular un pago y revertir la activación (S3-B5)" (solo admin, `admin-write`,
+  motivo, 409 por `can_void` y por el trigger `already_voided`, aviso de mes anterior, reversión que
+  conserva fin y congelaciones, atomicidad, orden de candados, comprobación por psql); DECISIONES
+  "S3-B5" (orden de `void`, aviso, `on_payment_voided`, desviaciones del Rojo, S3-D83 y la revisión).
+- B5.4 P-API: `export-openapi` dos veces idéntica (sha256 `7c1e29f4…`; `POST
+  /payments/{payment_id}/void` y `VoidPaymentIn` con `maxLength: 2000`: +139 líneas en
+  `docs/openapi.json`, +123 en `web/src/core/api/types.ts`); `npm run gen:api`,
+  `types.contract.test.ts` 5 ok, `npx tsc --noEmit` limpio y `npx vitest run` 110 archivos, 1.763 ok.
+- B5.5 gates, seguidos y sin editar entre ellos, `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo:
+  (1) `memberships` con `test_revert_activation_service` y `test_lock_order`; (2) el que sella,
+  `payments` con `test_void_rules`, `test_void`, `test_router_void` y `test_immutability`. Una
+  primera pasada verde de los dos (273 y 358 ok) se repitió después de escribir este bloque, para que
+  el sello cubra el árbol con la documentación.

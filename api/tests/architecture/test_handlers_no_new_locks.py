@@ -21,7 +21,7 @@ from pathlib import Path
 LIFECYCLE = (
     Path(__file__).resolve().parents[2] / "src" / "app" / "modules" / "memberships" / "lifecycle.py"
 )
-HANDLERS_ESPERADOS: frozenset[str] = frozenset({"on_payment_registered"})  # B5: on_payment_voided
+HANDLERS_ESPERADOS: frozenset[str] = frozenset({"on_payment_registered", "on_payment_voided"})
 CASOS_DE_USO_ESPERADOS: frozenset[str] = frozenset({"freeze"})  # B2; B6 agrega `cancel`
 
 
@@ -128,6 +128,23 @@ def test_on_payment_registered_solo_bloquea_la_fila_del_evento() -> None:
     evento = _primer_parametro(funcion)
     sesion = funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
     assert candados_del_handler(fuente, "on_payment_registered") == [
+        f"lock_membership({sesion}, {evento}.membership_id)"
+    ]
+
+
+def test_on_payment_voided_solo_bloquea_la_fila_del_evento() -> None:
+    """S3-B5 (D13, H-3 punto 3): el handler vuelve a pedir la fila que el gate de `void` ya
+    bloqueó, exactamente una vez y con el id del evento; ningún otro candado (ni el del socio, ni
+    `FOR UPDATE` del pago)."""
+    fuente = LIFECYCLE.read_text(encoding="utf-8")
+    funcion = next(
+        n
+        for n in ast.parse(fuente).body
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "on_payment_voided"
+    )
+    evento = _primer_parametro(funcion)
+    sesion = funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
+    assert candados_del_handler(fuente, "on_payment_voided") == [
         f"lock_membership({sesion}, {evento}.membership_id)"
     ]
 

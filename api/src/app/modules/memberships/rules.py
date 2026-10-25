@@ -35,7 +35,12 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   prefijo de su campo en la venta (`"amount_cop"` da `"first_payment.amount_cop"`); `None` sigue
   siendo `None`.
 
-B5 agrega `should_revert`, B6 `plan_renewal` y B7 `parse_status_filter` y
+- `should_revert(effective_status, agreed_price_cop, paid_cop)` (S3-B5, US-087; D13, N-25): una
+  membresía cuyo estado EFECTIVO es `active`, `expiring` o `frozen` y que ya no queda cubierta
+  (`covers` falso tras anular un pago) vuelve a `pending_payment`; `pending_payment`, `expired` y
+  `cancelled` nunca se revierten.
+
+B6 agrega `plan_renewal` y B7 `parse_status_filter` y
 `resolve_member_status`.
 """
 
@@ -311,3 +316,8 @@ def prefix_field(prefix: str, field: str | None) -> str | None:
     if field is None:
         return None
     return f"{prefix}.{field}"
+
+
+def should_revert(effective_status: MembershipStatus, agreed_price_cop: int, paid_cop: int) -> bool:
+    """Verdadero si la membresía debe volver a `pending_payment` tras anular un pago (S3-B5)."""
+    return effective_status in _VIGENTES and not covers(agreed_price_cop, paid_cop)

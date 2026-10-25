@@ -7,7 +7,8 @@ Por AST sobre `src/app/modules/payments/*.py`:
 - ninguna cadena contiene `TRUNCATE` ni `DELETE FROM` / `UPDATE ... payments.payments` (SQL crudo);
 - las cuatro columnas de anulación (`voided`, `void_reason`, `voided_by`, `voided_at`) solo se
   asignan como atributo (`pago.voided = ...`) dentro de la función `void` (B5); en B4 `void` no
-  existe: cero asignaciones;
+  existía: cero asignaciones. Desde B5, `void` vive en `service.py` y asigna exactamente esas
+  cuatro (ni una protegida): sin partirla en ayudas que las asignen;
 - ninguna de las 10 columnas protegidas (`id`, `membership_id`, `member_id`, `amount_cop`,
   `method`, `reference`, `paid_at`, `registered_by`, `created_at`, `created_by`) se asigna como
   atributo en ningún sitio: se fijan una sola vez al construir el `Payment` (con argumentos con
@@ -139,6 +140,18 @@ def test_ninguna_columna_protegida_se_asigna_despues_de_construir_el_pago() -> N
         for path in _archivos()
     }
     assert {nombre: hallado for nombre, hallado in asignadas.items() if hallado} == {}
+
+
+def test_void_vive_en_service_y_asigna_exactamente_las_cuatro_de_anulacion() -> None:
+    """S3-B5 (D13, blueprint B5): `void` es el único lugar que anula y lo hace completo (el
+    trigger de `0011` rechaza una anulación a medias como `incomplete_void`)."""
+    fuente = (PAYMENTS / "service.py").read_text(encoding="utf-8")
+    funciones = {n.name for n in ast.parse(fuente).body if isinstance(n, ast.AsyncFunctionDef)}
+    assert FUNCION_DE_ANULAR in funciones
+    en_void = {
+        atributo for funcion, atributo, _ in asignaciones(fuente) if funcion == FUNCION_DE_ANULAR
+    }
+    assert en_void == DE_ANULACION
 
 
 # Controles con fuentes falsas ---------------------------------------------------------------------

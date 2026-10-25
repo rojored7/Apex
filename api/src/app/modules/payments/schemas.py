@@ -11,15 +11,21 @@
 - `PaymentOut`: la fila registrada (sin `confirm_*`).
 - `PaymentMethodOut(code, label, hint)` y `PaymentMethodsOut(items)`: `GET /payments/methods`
   responde un objeto, no un arreglo (D25, S3-C7).
+- `VoidPaymentIn(reason)` (S3-B5, US-097; D17, M-7; `extra="forbid"`): `reason` es `SafeText`
+  (NFC, recortado, sin `Cc`/`Cf`, con algo visible: vacío, espacios, NUL y U+200B dan 422
+  `validation_error` con `field="reason"`), con un tope previo de `VOID_REASON_INPUT_MAX` (2000)
+  caracteres antes de normalizar. El largo (hasta 500 tras recortar) lo decide
+  `rules.normalize_void_reason` en `void` con el mismo 422. La respuesta es `PaymentOut`.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -30,9 +36,13 @@ from pydantic import (
     field_validator,
 )
 
-from app.core.validators import SafeText
+from app.core.validators import SafeText, check_visible_text
 from app.modules.payments.models import MAX_AMOUNT_COP, REFERENCE_MAX_LENGTH
-from app.modules.payments.rules import REFERENCE_PATTERN, normalize_reference
+from app.modules.payments.rules import REFERENCE_PATTERN, VOID_REASON_MAX, normalize_reference
+
+VOID_REASON_INPUT_MAX: Final = 4 * VOID_REASON_MAX
+"""Tope holgado de entrada del motivo (2000), antes de NFC y recorte (revisión de seguridad de
+S3-B5, LOW-2): lo enorme se corta sin trabajo; entre 501 y 2000 decide `normalize_void_reason`."""
 
 PaymentMethod = Literal["cash", "nequi", "breb"]
 Reference = Annotated[
@@ -56,6 +66,18 @@ class PaymentIn(BaseModel):
     @classmethod
     def _normalizar_referencia(cls, valor: object) -> object:
         return normalize_reference(valor) if isinstance(valor, str) else valor
+
+
+class VoidPaymentIn(BaseModel):
+    """Cuerpo de `POST /payments/{payment_id}/void` (S3-B5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[
+        str,
+        StringConstraints(max_length=VOID_REASON_INPUT_MAX),
+        AfterValidator(check_visible_text),
+    ]
 
 
 class PaymentOut(BaseModel):

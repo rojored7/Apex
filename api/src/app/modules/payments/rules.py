@@ -19,24 +19,35 @@
   anulados tiene ya la membresía; con `count >= limit` es `PaymentLimitReached` (H-2).
 - `can_void(payment)` (S3-B4, D13): verdadero si el pago no está anulado. `void` (B5) la usa con
   la fila bloqueada para responder 409 `payment_already_voided`. No cambia el pago.
+- `normalize_void_reason(value)` (S3-B5, US-097; D17, M-7): el motivo de anular un pago, en NFC y
+  recortado; vacío, solo espacios, con caracteres de control o invisibles (`Cc`, `Cf`: NUL,
+  U+200B) o de más de `VOID_REASON_MAX` (500) caracteres tras recortar es `InvalidVoidReason`
+  (422, `field="reason"`, sin el valor en el mensaje). Es la misma regla de `SafeText` más el
+  largo: `void` la aplica también cuando no llega por HTTP.
+- `is_previous_month(paid_at, today)` (S3-B5, M-8 punto 3, S3-D51): verdadero si el mes civil de
+  Bogotá de `paid_at` es anterior al mes de `today` (fecha civil de Bogotá). `void` deja un
+  `logger.warning` con solo ids cuando anula un pago así.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Final
 from uuid import UUID
 
+from app.core.clock import to_bogota_date
+from app.core.validators import check_visible_text
 from app.modules.payments.exceptions import (
+    InvalidVoidReason,
     PaidAtInFuture,
     PaidAtInvalid,
     PaidAtTooRetroactive,
     PaymentExceedsBalance,
     PaymentLimitReached,
 )
-from app.modules.payments.models import REFERENCE_MAX_LENGTH, Payment
+from app.modules.payments.models import REFERENCE_MAX_LENGTH, VOID_REASON_MAX_LENGTH, Payment
 
 PAID_AT_FLOOR: Final = datetime(2020, 1, 1, tzinfo=UTC)
 PAID_AT_FUTURE_TOLERANCE: Final = timedelta(minutes=5)
@@ -45,6 +56,8 @@ MAX_PAYMENTS_PER_MEMBERSHIP: Final = 60
 REFERENCE_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,63}$"
 UNLIMITED_ROLE: Final = "admin"
 """El único rol sin tope retroactivo de `paid_at` (M-8); cualquier otro lo tiene."""
+VOID_REASON_MAX: Final = VOID_REASON_MAX_LENGTH
+"""Largo máximo del motivo de anulación tras recortar (D17; el CHECK de la tabla dice 500)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,3 +133,20 @@ def check_payment_count(count: int, *, limit: int = MAX_PAYMENTS_PER_MEMBERSHIP)
 def can_void(payment: Payment) -> bool:
     """Verdadero si `payment` todavía se puede anular (no está anulado)."""
     return not payment.voided
+
+
+def normalize_void_reason(value: str) -> str:
+    """El motivo recortado y en NFC; `InvalidVoidReason` si no es válido (S3-B5)."""
+    try:
+        motivo = check_visible_text(value)
+    except ValueError as error:
+        raise InvalidVoidReason() from error
+    if len(motivo) > VOID_REASON_MAX:
+        raise InvalidVoidReason()
+    return motivo
+
+
+def is_previous_month(paid_at: datetime, today: date) -> bool:
+    """Verdadero si el mes de Bogotá de `paid_at` es anterior al de `today` (S3-B5)."""
+    pagado = to_bogota_date(paid_at)
+    return (pagado.year, pagado.month) < (today.year, today.month)

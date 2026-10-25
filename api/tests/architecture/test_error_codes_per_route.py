@@ -38,6 +38,8 @@ CON_LIMITE = {
     ("post", "/api/v1/memberships/{membership_id}/freeze"),
     # S3-B4 (E2, E9, H-2): registrar un pago consume `payments-write`.
     ("post", "/api/v1/memberships/{membership_id}/payments"),
+    # S3-B5 (E2, H-2, E15): anular un pago consume `admin-write`.
+    ("post", "/api/v1/payments/{payment_id}/void"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

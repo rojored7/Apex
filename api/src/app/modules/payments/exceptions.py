@@ -121,5 +121,34 @@ class PaymentNotFound(PaymentError):
     default_message = "No se encontró el pago."
 
 
+class PaymentAlreadyVoided(PaymentError):
+    """El pago ya estaba anulado (S3-B5, D13): por `rules.can_void` con la fila bloqueada o por el
+    rechazo `already_voided` del trigger de `0011` (`IMMUTABLE_CONSTRAINT`)."""
+
+    status = 409
+    code = "payment_already_voided"
+    default_message = "El pago ya está anulado."
+
+
+class InvalidVoidReason(PaymentError):
+    """Motivo de anulación vacío, invisible, con caracteres de control o de más de 500
+    caracteres (S3-B5, D17, M-7): 422 `validation_error` con `field="reason"`."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El motivo de la anulación no es válido."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "reason",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)
+
+
 class MembershipGateNotRegistered(RuntimeError):
     """Nadie registró el puerto `MembershipGate` (D1): `register` y `void` fallan cerrados."""

@@ -7,8 +7,11 @@
   `CAMPOS_ROW` y `CAMPOS_DETAIL` llegan con las listas y el detalle (B8), que los fijan.
 - `registrar(session, actor, **datos)`: `service.register` bajo `actor_scope(actor)` y commit (una
   petición, una transacción; con la `session` de savepoint libera el savepoint).
-- Lecturas con SQL crudo: `leer_pago`, `pagos_de` (orden de `created_at`, `id`) y
-  `leer_auditoria_de_pagos`.
+- `anular(session, actor, **datos)` (S3-B5): `service.void` bajo `actor_scope(actor)` y commit.
+- Lecturas con SQL crudo: `leer_pago`, `pagos_de` (orden de `created_at`, `id`),
+  `leer_auditoria_de_pagos` y `updates_de(session, table_name, record_id)` (S3-B5: las filas
+  `update` de auditoría de un registro con `user_id`, `subject_member_id`, `before` y `after`).
+- `DE_ANULACION`: las cuatro columnas de anulación (S3-B5).
 - `GateDoble` y `gate_registrado(gate)`: el doble del puerto `MembershipGate` (D1, S3-D74). Toma
   `SELECT ... FOR UPDATE` de la fila REAL de `memberships.memberships` (el mismo candado que el gate
   real de B4: serializa dos pagos de una membresía) y arma `MembershipPayability` con su socio, su
@@ -54,6 +57,7 @@ CAMPOS_PAYMENT = frozenset(
     }
 )
 CAMPOS_METODO = frozenset({"code", "label", "hint"})
+DE_ANULACION = frozenset({"voided", "void_reason", "voided_by", "voided_at"})
 
 
 def cuerpo_pago(**cambios: Any) -> dict[str, Any]:
@@ -73,6 +77,28 @@ async def registrar(session: AsyncSession, actor: UUID, **datos: Any) -> Payment
         salida = await service.register(session, **datos)
         await session.commit()
     return salida
+
+
+async def anular(session: AsyncSession, actor: UUID, **datos: Any) -> PaymentOut:
+    """`service.void` bajo `actor_scope(actor)` y commit (una petición, una transacción)."""
+    with actor_scope(actor):
+        salida = await service.void(session, **datos)
+        await session.commit()
+    return salida
+
+
+_UPDATES = text(
+    "SELECT user_id, subject_member_id, before, after FROM audit.audit_log "
+    "WHERE table_name = :t AND record_id = :r AND action = 'update' ORDER BY seq"
+)
+
+
+async def updates_de(
+    session: AsyncSession, table_name: str, record_id: UUID
+) -> list[dict[str, Any]]:
+    """Filas `update` de `audit.audit_log` del registro, en orden de `seq`."""
+    filas = await session.execute(_UPDATES, {"t": table_name, "r": record_id})
+    return [dict(f) for f in filas.mappings().all()]
 
 
 _COLUMNAS = (

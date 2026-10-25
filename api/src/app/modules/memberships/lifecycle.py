@@ -36,6 +36,15 @@ expiring_days, congelaciones)` con `hoy = to_bogota_date(event.occurred_at)`, ha
 (auditoría `update` del usuario que pagó) y emite `MembershipActivated`. `snapshot(row)` es el
 `MembershipSnapshot` de una fila (lo que leen las reglas).
 
+`on_payment_voided(event, session)` (S3-B5, US-087; D13, N-25, L-5), handler de `PaymentVoided`:
+`sell.lock_membership(session, event.membership_id)` (la fila que `void` ya bloqueó por el gate);
+estado EFECTIVO con `compute_status(snapshot, hoy, expiring_days, congelaciones)` y
+`hoy = to_bogota_date(event.occurred_at)`; si `rules.should_revert(efectivo, agreed_price_cop,
+payments.service.sum_not_voided(...))` (la suma ya no ve el pago anulado: `void` hace `flush`
+antes de emitir), fija `status = pending_payment` sin tocar `end_date` ni las congelaciones, hace
+`flush` (auditoría `update` del admin que anuló) y emite `MembershipActivationReverted` con el
+estado efectivo previo. `pending_payment`, `expired` (efectivo) y `cancelled` no cambian.
+
 Regla de candados (S3-D43, `tests/architecture/test_handlers_no_new_locks.py`): un handler `on_*`
 solo vuelve a pedir la fila que el emisor ya tiene (`sell.lock_membership` con
 `event.membership_id`); nunca el candado del socio ni otro `FOR UPDATE`. `freeze` no es handler:
@@ -58,7 +67,11 @@ from app.core.db import violated_constraint
 from app.core.events import emit
 from app.core.locks import lock_member
 from app.modules.members import service as members_service
-from app.modules.memberships.events import MembershipActivated, MembershipFrozen
+from app.modules.memberships.events import (
+    MembershipActivated,
+    MembershipActivationReverted,
+    MembershipFrozen,
+)
 from app.modules.memberships.exceptions import (
     FreezeRejected,
     MemberInactive,
@@ -83,6 +96,7 @@ from app.modules.memberships.rules import (
     compute_status,
     covers,
     find_overlap,
+    should_revert,
 )
 from app.modules.memberships.schemas import MembershipOut
 from app.modules.memberships.sell import MEMBER_ACTIVE, lock_membership
@@ -271,5 +285,26 @@ async def on_payment_registered(
     await session.flush()
     evento = MembershipActivated(
         membership_id=membresia.id, member_id=membresia.member_id, status=estado.value
+    )
+    await emit(evento, session)
+
+
+async def on_payment_voided(event: payments_service.PaymentVoided, session: AsyncSession) -> None:
+    """Revierte a `pending_payment` la membresía que dejó de estar cubierta (S3-B5; pasos en el
+    docstring del módulo)."""
+    membresia = await lock_membership(session, event.membership_id)
+    if membresia is None:
+        return
+    politica = await settings_service.memberships_policy(session)
+    ventanas = (await _load_freezes_for(session, [membresia.id]))[membresia.id]
+    hoy = to_bogota_date(event.occurred_at)
+    efectivo = compute_status(snapshot(membresia), hoy, politica.expiring_days, ventanas)
+    pagado = await payments_service.sum_not_voided(session, membresia.id)
+    if not should_revert(efectivo, membresia.agreed_price_cop, pagado):
+        return
+    membresia.status = MembershipStatus.pending_payment.value
+    await session.flush()
+    evento = MembershipActivationReverted(
+        membership_id=membresia.id, member_id=membresia.member_id, previous_status=efectivo.value
     )
     await emit(evento, session)

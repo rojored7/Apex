@@ -6,6 +6,7 @@
 // memoria y nunca en la URL; con `localQuery` en falso la deja en la URL (solo pruebas del modo URL).
 // La espera de 300 ms de la búsqueda la hace FilterBar; la cancelación de la petición
 // anterior la hace la feature con el `signal` de TanStack Query.
+// S3-F2: `setFilters` cambia varios filtros en una sola navegación (los chips de Socios).
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { z } from "zod";
@@ -34,6 +35,12 @@ export interface ListParamsApi<F extends string> {
   page: number;
   setQuery: (q: string) => void;
   setFilter: (name: F, value: string | readonly string[] | undefined) => void;
+  /**
+   * S3-F2: varios filtros en una sola navegación (un chip de Socios fija `status` y quita
+   * `membership_status`, o al revés). Dos `setFilter` seguidos se pisarían: cada uno parte de la
+   * URL del render en que se llamó. Las claves que no se nombran quedan como estaban.
+   */
+  setFilters: (values: Partial<Record<F, string | readonly string[] | undefined>>) => void;
   setPage: (page: number) => void;
   setLimit: (limit: number) => void;
   setSort: (sort: SortState | null) => void;
@@ -103,6 +110,13 @@ function parseState<F extends string>(
   return { params, q, filters, sort, page: offsetToPage(offset, limit) };
 }
 
+/** Reemplaza los valores de un filtro en `next` (sin valor o vacío, lo quita). */
+function writeFilter(next: URLSearchParams, name: string, value: string | readonly string[] | undefined): void {
+  next.delete(name);
+  const values = value === undefined ? [] : typeof value === "string" ? [value] : value;
+  for (const v of values) if (v !== "") next.append(name, v);
+}
+
 export function useListParams<F extends string = never>({ filters = [], sorts, localQuery = true }: ListParamsConfig<F> = {}): ListParamsApi<F> {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.toString();
@@ -164,9 +178,7 @@ export function useListParams<F extends string = never>({ filters = [], sorts, l
   const setFilter = useCallback(
     (name: F, value: string | readonly string[] | undefined) => {
       update((next) => {
-        next.delete(name);
-        const values = value === undefined ? [] : typeof value === "string" ? [value] : value;
-        for (const v of values) if (v !== "") next.append(name, v);
+        writeFilter(next, name, value);
         next.delete("offset");
       });
     },
@@ -212,5 +224,15 @@ export function useListParams<F extends string = never>({ filters = [], sorts, l
     });
   }, [update, filtersKey]);
 
-  return { ...state, setQuery, setFilter, setPage, setLimit, setSort, clear };
+  const setFilters = useCallback(
+    (values: Partial<Record<F, string | readonly string[] | undefined>>) => {
+      update((next) => {
+        for (const [name, value] of Object.entries(values) as [F, string | readonly string[] | undefined][]) writeFilter(next, name, value);
+        next.delete("offset");
+      });
+    },
+    [update],
+  );
+
+  return { ...state, setQuery, setFilter, setFilters, setPage, setLimit, setSort, clear };
 }

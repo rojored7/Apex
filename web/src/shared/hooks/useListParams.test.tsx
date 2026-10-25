@@ -87,6 +87,30 @@ describe("useListParams", () => {
     expect(search()).toBe("?limit=25&status=expired");
   });
 
+  it("S3-F2: setFilters pone y quita varios filtros en una sola navegación y vuelve offset a 0", () => {
+    const { result, search, back } = setup("/socios?limit=25&offset=75&status=active&sort=last_name");
+
+    act(() => {
+      result.current.setFilters({ status: undefined, plan: "p1" });
+    });
+
+    expect(search()).toBe("?limit=25&sort=last_name&plan=p1");
+    expect(result.current.params).toEqual({ limit: 25, offset: 0, sort: "last_name", plan: ["p1"] });
+    // Una sola entrada nueva en el historial: atrás vuelve a la vista de antes.
+    back();
+    expect(search()).toBe("?limit=25&offset=75&status=active&sort=last_name");
+  });
+
+  it("S3-F2: setFilters deja como estaban los filtros que no nombra y acepta listas", () => {
+    const { result, search } = setup("/socios?status=active&plan=p1");
+
+    act(() => {
+      result.current.setFilters({ status: ["expired", "frozen", ""] });
+    });
+
+    expect(search()).toBe("?plan=p1&status=expired&status=frozen");
+  });
+
   it("quitar un filtro lo borra de la URL", () => {
     const { result } = setup("/socios?status=active&plan=p1");
 

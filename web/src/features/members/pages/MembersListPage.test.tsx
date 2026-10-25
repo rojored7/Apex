@@ -1,16 +1,18 @@
 // S2-F6 · US-070 (front): /socios (Socios_Lista.html), admin y coach.
 // - S2-D41 (M-8): la búsqueda (placeholder "Nombre, documento o teléfono") espera 300 ms, va al
 //   api y vive en memoria: nunca en la URL. En la URL quedan `status`, `sort`, `limit` y `offset`.
-// - Chips "Todos" y "Dados de baja" (status=deleted), también para el coach (N-20).
+// - Chips "Todos" y "Dados de baja" (status=deleted), también para el coach (N-20); desde S3-F2
+//   los de membresía y el filtro de plan (sus pruebas propias: MemberStatusChips y PlanFilter).
 // - Cambiar la búsqueda vuelve a la primera página; la petición anterior se cancela (`signal`).
-// - Filas con el nombre (enlace a /socios/{id}, S2-D34), el estado del socio con StatusTag y la
-//   membresía vacía hasta el Sprint 3. Nada cifrado en la lista (N-01).
+// - Filas con el nombre (enlace a /socios/{id}, S2-D34), y desde S3-F2 el plan vigente, "Vence",
+//   la membresía con StatusTag y el estado del socio. Nada cifrado en la lista (N-01).
+// - En el celular la lista son tarjetas (S3-F2, MemberCardList.test.tsx).
 // - Estados de carga, vacío, error y sin permiso. "Nuevo socio" solo con `members.create`.
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { setViewportWidth } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { apiError, listCalls, memberPage, MEMBERS, renderMembers } from "../../../test/members";
+import { apiError, isTotalCall, listCalls, memberPage, MEMBERS, renderMembers } from "../../../test/members";
 
 const table = () => screen.getByRole("table", { name: "Socios" });
 const searchbox = () => screen.getByRole("searchbox", { name: "Buscar" });
@@ -34,8 +36,18 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
     expect(screen.getByRole("heading", { level: 1, name: /Socios/ })).toBeInTheDocument();
     expect(await screen.findByText("3 en total")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Nuevo socio" })).toHaveAttribute("href", "/socios/nuevo");
-    expect(within(chips()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Todos", "Dados de baja"]);
-    expect(within(chips()).getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(chips()).getAllByRole("button").map((b) => b.textContent.replace(/[\d.]+$/, ""))).toEqual([
+      "Todos",
+      "Al día",
+      "Por vencer",
+      "Vencidos",
+      "Congelados",
+      "Pendiente de pago",
+      "Sin membresía",
+      "Dados de baja",
+    ]);
+    expect(within(chips()).getByRole("button", { name: /^Todos/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Plan" })).toBeInTheDocument();
     expect(searchbox()).toHaveAttribute("placeholder", "Nombre, documento o teléfono");
     expect(within(screen.getByRole("combobox", { name: "Ordenar por" })).getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Apellido A–Z",
@@ -45,27 +57,60 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
       "Más reciente",
       "Más antiguo",
     ]);
-    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Estado", "Membresía"]);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado"]);
   });
 
-  it("cada fila trae el nombre como enlace a la ficha, el estado con texto y la membresía vacía", async () => {
+  it("cada fila trae el nombre como enlace a la ficha y, sin membresía, plan y vencimiento vacíos", async () => {
     renderMembers();
 
     const link = await screen.findByRole("link", { name: "Laura Gómez" });
     expect(link).toHaveAttribute("href", `/socios/${MEMBERS.laura.id}`);
     const [, laura, andres, elena] = within(table()).getAllByRole("row");
-    expect(within(laura as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "Activo", "—"]);
-    expect(within(andres as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Andrés Ruiz", "Inactivo", "—"]);
+    expect(within(laura as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "—", "—", "—", "Activo"]);
+    expect(within(andres as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Andrés Ruiz", "—", "—", "—", "Inactivo"]);
     expect(within(elena as HTMLElement).getByText("Dado de baja")).toHaveAttribute("data-account", "deleted");
     expect(within(laura as HTMLElement).getByText("Activo")).toHaveAttribute("data-account", "active");
   });
 
-  it("una membresía conocida se muestra con su StatusTag", async () => {
-    renderMembers("/socios", { rows: [{ ...MEMBERS.laura, membership_status: "active", plan_name: "Mensual" }] });
+  it("S3-F2: una membresía conocida muestra el plan vigente, la fecha de fin y su StatusTag", async () => {
+    renderMembers("/socios", { rows: [{ ...MEMBERS.laura, membership_status: "active", plan_name: "Mensual", membership_end_date: "2026-11-27" }] });
 
     const link = await screen.findByRole("link", { name: "Laura Gómez" });
     const tr = link.closest("tr") as HTMLElement;
+    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "Mensual", "27 nov 2026", "Al día", "Activo"]);
     expect(within(tr).getByText("Al día")).toHaveAttribute("data-status", "active");
+  });
+
+  it("S3-F2: con el plan pero sin fecha de fin, 'Vence' queda vacío; un estado desconocido no se pinta", async () => {
+    renderMembers("/socios", { rows: [{ ...MEMBERS.laura, membership_status: "algo", plan_name: "12 clases", membership_end_date: null }] });
+
+    const link = await screen.findByRole("link", { name: "Laura Gómez" });
+    const tr = link.closest("tr") as HTMLElement;
+    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "12 clases", "—", "—", "Activo"]);
+  });
+
+  it("S3-F2: en escritorio 'Nuevo socio' va en el encabezado y no hay tarjetas ni botón flotante", async () => {
+    renderMembers();
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(screen.getAllByRole("link", { name: "Nuevo socio" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Nuevo socio" })).not.toHaveClass("fab");
+    expect(screen.queryByRole("list", { name: "Socios" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cargar más" })).not.toBeInTheDocument();
+  });
+
+  it("S3-F2: el chip, el plan y el orden viajan juntos; q sigue fuera de la URL", async () => {
+    const PLAN = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { mock, router, user } = renderMembers(`/socios?membership_status=expiring&plan_id=${PLAN}&sort=-created_at`);
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(listCalls(mock)[0]?.toString()).toBe(`limit=25&offset=0&membership_status=expiring&plan_id=${PLAN}&sort=-created_at`);
+    await user.type(searchbox(), "laura");
+
+    await waitFor(() => {
+      expect(listCalls(mock).at(-1)?.toString()).toBe(`limit=25&offset=0&q=laura&membership_status=expiring&plan_id=${PLAN}&sort=-created_at`);
+    });
+    expect(router.state.location.search).toBe(`?membership_status=expiring&plan_id=${PLAN}&sort=-created_at`);
   });
 
   it("la lista no muestra nada enmascarado ni cifrado (N-01)", async () => {
@@ -170,7 +215,7 @@ describe("MembersListPage · búsqueda local (S2-D41)", () => {
     await waitFor(() => {
       expect(listCalls(mock)).toHaveLength(1);
     });
-    const first = mock.callsTo("GET /members")[0]?.signal;
+    const first = mock.callsTo("GET /members").filter((c) => !isTotalCall(c))[0]?.signal;
     expect(first?.aborted).toBe(false);
 
     await user.type(searchbox(), "laura");
@@ -193,7 +238,7 @@ describe("MembersListPage · chips, orden y paginación en la URL", () => {
     expect(router.state.location.search).toBe("?status=deleted");
     expect(within(chips()).getByRole("button", { name: /Dados de baja/ })).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(within(chips()).getByRole("button", { name: "Todos" }));
+    await user.click(within(chips()).getByRole("button", { name: /^Todos/ }));
 
     await waitFor(() => {
       expect(router.state.location.search).toBe("");
@@ -240,7 +285,7 @@ describe("MembersListPage · chips, orden y paginación en la URL", () => {
     await screen.findByRole("link", { name: "Laura Gómez" });
 
     expect(listCalls(mock)[0]?.toString()).toBe("limit=25&offset=0");
-    expect(within(chips()).getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(chips()).getByRole("button", { name: /^Todos/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("Siguiente pide offset=25 y lo deja en la URL", async () => {
@@ -315,7 +360,7 @@ describe("MembersListPage · estados", () => {
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
 
     expect(await screen.findByRole("link", { name: "Laura Gómez" })).toBeInTheDocument();
-    expect(mock.callsTo("GET /members")).toHaveLength(2);
+    expect(listCalls(mock)).toHaveLength(2);
   });
 
   it("un 403 dice que no tienes permiso y a quién pedirlo", async () => {

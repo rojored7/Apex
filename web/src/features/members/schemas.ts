@@ -12,9 +12,11 @@
 // - S3-B9b (D35): la fila gana `membership_end_date` (fecha de fin de la membresía que decide el
 //   estado, "Vence") y la ficha `plan_name` y `membership_end_date`, opcionales y `null` por
 //   defecto, en el mismo checkpoint del backend; la lógica de pantalla llega con F1 y F2.
+// - S3-F2 (US-071): los siete chips de la lista (`MEMBERSHIP_CHIPS`) y su traducción a filtros de
+//   GET /members (`chipToFilter`, como `chip_to_filter` del api; `chipFromFilters` lee la URL).
 import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
-import type { components } from "../../core/api/types";
+import type { components, operations } from "../../core/api/types";
 import { todayBogota } from "../../core/i18n/format";
 
 export type MemberCreateBody = components["schemas"]["MemberCreate"];
@@ -43,8 +45,55 @@ export const MEMBER_SORT_LABELS: Readonly<Record<MemberSort, string>> = {
 /** Campos de orden que acepta la URL (useListParams compara el campo sin el signo). */
 export const MEMBER_SORT_FIELDS = ["last_name", "first_name", "created_at"] as const;
 
-/** El único estado que la lista ofrece en la URL: los dados de baja (N-20). */
+/** El único estado de la cuenta que la lista ofrece en la URL: los dados de baja (N-20). */
 export const DELETED_STATUS = "deleted";
+
+/** `membership_status` de GET /members (MembershipFilterStatus de S3-B9b, D22). */
+export type MembershipFilterStatus = NonNullable<NonNullable<operations["list_members_api_v1_members_get"]["parameters"]["query"]>["membership_status"]>;
+
+export const MEMBERSHIP_FILTER_STATUSES = ["active", "expiring", "expired", "frozen", "pending_payment", "none"] as const satisfies readonly MembershipFilterStatus[];
+
+/**
+ * S3-F2 · US-071: los siete chips de la lista en el orden de Socios_Lista.html, como
+ * `MEMBER_CHIPS` de `members/rules.py` (S3-B9b). "Todos" no es un chip: es no tener ninguno.
+ */
+export const MEMBERSHIP_CHIPS = [...MEMBERSHIP_FILTER_STATUSES, DELETED_STATUS] as const;
+export type MemberChip = (typeof MEMBERSHIP_CHIPS)[number];
+
+export const MEMBERSHIP_CHIP_LABELS: Readonly<Record<MemberChip, string>> = {
+  active: "Al día",
+  expiring: "Por vencer",
+  expired: "Vencidos",
+  frozen: "Congelados",
+  // DESIGN-GAP (Q3): "Pendiente de pago" no está dibujado en Socios_Lista.html.
+  pending_payment: "Pendiente de pago",
+  none: "Sin membresía",
+  deleted: "Dados de baja",
+};
+
+/** Los filtros de GET /members que fija un chip (`chip_to_filter` de S3-B9b). */
+export interface MemberChipFilter {
+  status?: typeof DELETED_STATUS;
+  membership_status?: MembershipFilterStatus;
+}
+
+export function chipToFilter(chip: MemberChip | null): MemberChipFilter {
+  if (chip === null) return {};
+  return chip === DELETED_STATUS ? { status: DELETED_STATUS } : { membership_status: chip };
+}
+
+const isMembershipFilter = (value: string | undefined): value is MembershipFilterStatus =>
+  value !== undefined && (MEMBERSHIP_FILTER_STATUSES as readonly string[]).includes(value);
+
+/**
+ * El chip que dicen los filtros de la URL, o null ("Todos"). La baja manda: con `status=deleted`
+ * un `membership_status` de más no cuenta (los chips son de modo único). Lo desconocido es null.
+ */
+export function chipFromFilters(status: readonly string[], membershipStatus: readonly string[]): MemberChip | null {
+  if (status[0] === DELETED_STATUS) return DELETED_STATUS;
+  const membership = membershipStatus[0];
+  return isMembershipFilter(membership) ? membership : null;
+}
 
 /** Topes de `MemberCreate` (api/src/app/modules/members/schemas.py). */
 export const MEMBER_LIMITS = {

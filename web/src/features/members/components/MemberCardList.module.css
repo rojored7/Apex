@@ -1,0 +1,171 @@
+/* S3-F2: tarjetas de socios en el celular (Socios_Movil.html). Los mismos tokens que las
+   tarjetas de DataTable.module.css (caja --card con borde --line y --radius-sm, enlace
+   --blue-deep); solo variables de tokens.css. */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+
+  /* Deja sitio al botón flotante: la última tarjeta y "Cargar más" no quedan debajo de él. */
+  padding-bottom: calc(var(--control) + var(--space-6));
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* La tarjeta entera es el enlace: al menos 44 px de alto (--control). */
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.card:hover {
+  border-color: var(--ink);
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.name {
+  font: var(--text-body);
+  font-weight: 700;
+  color: var(--blue-deep);
+  overflow-wrap: anywhere;
+}
+
+.card:hover .name {
+  text-decoration: underline;
+}
+
+.detail {
+  font: var(--text-caption);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tags {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.count,
+.note {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--muted);
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.emptyText {
+  margin: 0;
+  color: var(--muted);
+}
+
+.errorText {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.skeleton {
+  display: block;
+  height: calc(var(--control) + var(--space-4));
+  border-radius: var(--radius-sm);
+  background: var(--line);
+  animation: cards-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cards-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* "Nuevo socio" flotante: abajo a la derecha, con el aspecto del botón principal. */
+.fab {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--apex-blue);
+  border-radius: var(--radius-pill);
+  background: var(--apex-blue);
+  color: var(--black);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.fab:hover {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--white);
+}
+
+.fab:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Solo para el lector de pantalla. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

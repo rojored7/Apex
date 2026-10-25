@@ -28,14 +28,33 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # Buckets del catálogo cuya ruta todavía no existe (E2: S3-B1 sacó `memberships-write` con la
 # venta, S3-B4 `payments-write` con `POST /memberships/{membership_id}/payments` y S3-B5
 # `admin-write` con `POST /payments/{payment_id}/void`, S3-B9b `members-detail` con
-# `GET /members/{member_id}`; B10 saca los tres de `members-reveal`).
-CLAVES_SIN_RUTA_TODAVIA = frozenset(
-    {
-        "members-reveal",
-        "members-reveal-hour",
-        "members-reveal-day",
+# `GET /members/{member_id}`; S3-B10 sacó los tres de `members-reveal` con
+# `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
+
+
+def test_las_tres_ventanas_de_reveal_viven_en_la_misma_ruta() -> None:
+    """S3-D44 (M-1): minuto, hora y día se aplican en `POST /members/{member_id}/reveal`."""
+    fuente = (MODULES / "members" / "router.py").read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    funciones = [
+        f
+        for f in ast.walk(arbol)
+        if isinstance(f, ast.AsyncFunctionDef)
+        and _ruta_de(f) == ("post", f"{API_PREFIX}/members/{{member_id}}/reveal")
+    ]
+    assert len(funciones) == 1
+    buckets = {
+        nodo.args[1].value
+        for nodo in ast.walk(funciones[0])
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) == "enforce_user_limit"
+        and isinstance(nodo.args[1], ast.Constant)
     }
-)
+    assert buckets == {"members-reveal", "members-reveal-hour", "members-reveal-day"}
+    assert USER_LIMITS["members-reveal"] == (30, 60)
+    assert USER_LIMITS["members-reveal-hour"] == (200, 3600)
+    assert USER_LIMITS["members-reveal-day"] == (600, 86400)
 
 
 @dataclass(frozen=True)

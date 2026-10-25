@@ -10,7 +10,7 @@
   `family_started_at` fija el tope absoluto de la familia (L-4); el service lo escribe siempre
   con el reloj de la app y la rotación lo hereda.
 - `OneTimeToken` (activación y restablecimiento, US-047/048) sí se audita.
-Los usuarios nunca se borran físicamente (RN-14; `test_no_physical_delete_users.py`).
+Los usuarios nunca se borran físicamente (RN-14; `test_no_physical_delete.py`, S3-B10).
 """
 
 from __future__ import annotations

@@ -259,6 +259,9 @@ Fuente: `docs/ddd/blueprints/sprint-03-plan.md` (D37, S3-D41, S3-D50) y `docs/dd
 - **Tarjeta de la membresía futura en la ficha:** el diseño solo dibuja la vigente.
 - **Medios de pago fijos:** la pestaña "Medios de pago" tiene tres filas fijas (Efectivo, Nequi, Bre-B) sin casillas de habilitar; agregar un medio exige una actualización (D24).
 - **Ficha sin autorización de datos registrada (Q16):** aviso cuando `data_consent_at` es nulo; el diseño no lo dibuja.
+- **"Dado de baja" en la ficha (S3-B10, US-076, N-20):** `Socio_Ficha.html` dibuja "Dar de baja" en el menú "Más" pero no el estado posterior. La ficha de un socio con `deleted_at` se muestra de solo lectura, con la etiqueta "Dado de baja" y la fecha; editar le responde 409 `member_deactivated`. "Mostrar" (revelar) sigue disponible (N-20). La lista lo muestra solo con el chip "Dados de baja".
+- **"Reactivar" (S3-B10, US-076):** el diseño no tiene la acción. En la ficha de un dado de baja, solo para admin, el menú "Más" cambia "Dar de baja" por "Reactivar" (`POST /members/{id}/reactivate`); el 409 `member_document_duplicated` enlaza al socio vivo de `existing_id`.
+- **Campos sensibles en la edición (S3-B10, US-075; M-3, S3-D46):** `Socio_Form.html` en modo editar no distingue roles. Para el coach el documento y su tipo van de solo lectura y no viajan en el cuerpo (si los envía, aunque sean iguales, el API responde 403 `forbidden_field`); para el admin son editables. Los cinco campos cifrados llegan enmascarados en la ficha: el formulario de edición no los precarga en claro (para cambiar uno se escribe el valor nuevo; dejarlo vacío no lo envía y `null` explícito solo con "Quitar"). La autorización de datos solo se puede marcar, nunca retirar (`data_consent: false` da 422).
 
 ### "Socios con él" de `Planes.html`
 

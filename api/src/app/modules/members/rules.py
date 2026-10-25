@@ -23,12 +23,17 @@ Se movió tal cual desde `service.py`, sin cambiar la lógica.
 - `chip_to_filter(chip) -> MemberChipFilter` (S3-B9b, US-071): los siete chips de la lista
   (`MEMBER_CHIPS`); "Dados de baja" es `status="deleted"` y los otros seis, el
   `membership_status` del mismo nombre. Un chip desconocido da `ValueError`.
+- S3-B10 (US-075; D21, M-3, S3-D46): `diff_fields(before, patch)` (los campos presentes cuyo
+  valor cambia; documento, teléfono y correo normalizados), `ensure_can_change(set_fields,
+  role)` con `ADMIN_ONLY_FIELDS` (por presencia) y `validate_member_patch(patch, today)` (las
+  reglas del alta sobre los campos presentes).
 """
 
 from __future__ import annotations
 
 import builtins
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final, Literal
@@ -36,16 +41,18 @@ from typing import Any, Final, Literal
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.normalize import IndexKind, normalize_for_index
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern
-from app.modules.members.exceptions import MemberValidationError
+from app.modules.members.exceptions import MemberFieldForbidden, MemberValidationError
 from app.modules.members.models import SEXES
 from app.modules.members.schemas import (
     DATA_CONSENT_MISSING,
     MemberCreate,
+    MemberPatch,
     MembershipFilterStatus,
     MemberStatusFilter,
 )
 
 __all__ = [
+    "ADMIN_ONLY_FIELDS",
     "BIRTH_DATE_MIN",
     "DOCUMENT_MIN_MASKED",
     "DOTS",
@@ -65,8 +72,11 @@ __all__ = [
     "chip_to_filter",
     "classify_query",
     "compute_warnings",
+    "diff_fields",
+    "ensure_can_change",
     "mask",
     "validate_member_input",
+    "validate_member_patch",
 ]
 
 MaskField = Literal["document", "phone", "email", "birth_date", "emergency_contact"]
@@ -261,3 +271,72 @@ def chip_to_filter(chip: str) -> MemberChipFilter:
     if estado is None:
         raise ValueError("chip de socios desconocido")
     return MemberChipFilter(status=None, membership_status=estado)
+
+
+# Editar (S3-B10, US-075; D21, M-3, S3-D46) ---------------------------------------------
+
+
+ADMIN_ROLE: Final = "admin"
+ADMIN_ONLY_FIELDS: Final[frozenset[str]] = frozenset({"document", "document_type"})
+"""Campos de identidad que solo cambia un admin; se deciden por PRESENCIA en el cuerpo (M-3)."""
+
+
+_NORMALIZADOS: Final[Mapping[str, IndexKind]] = {
+    "document": "generic",
+    "phone": "phone",
+    "email": "email",
+}
+"""Campos que se comparan por su forma normalizada (N-02): un cambio solo de formato no cuenta."""
+
+
+def _valor_del_patch(patch: MemberPatch, campo: str) -> object:
+    """El valor del patch en la forma de `before` (el contacto como mapeo sin nulos)."""
+    if campo == "emergency_contact" and patch.emergency_contact is not None:
+        return patch.emergency_contact.model_dump(exclude_none=True)
+    return getattr(patch, campo)
+
+
+def _mismo_valor(campo: str, antes: object, despues: object) -> bool:
+    if antes is None or despues is None:
+        return antes is despues
+    kind = _NORMALIZADOS.get(campo)
+    if kind is not None:
+        nuevo = _normalizado(str(despues), kind)
+        return bool(nuevo) and nuevo == _normalizado(str(antes), kind)
+    return antes == despues
+
+
+def diff_fields(before: Mapping[str, object], patch: MemberPatch) -> frozenset[str]:
+    """Los campos de `patch.model_fields_set` cuyo valor difiere del actual (`before`, valores en
+    claro; una clave ausente vale `None`). Documento, teléfono y correo se comparan normalizados
+    (un cambio solo de formato no cuenta); `null` sobre un opcional con valor cuenta como cambio.
+    `data_consent` no se compara aquí (lo decide `update` con `data_consent_at`)."""
+    return frozenset(
+        campo
+        for campo in patch.model_fields_set - {"data_consent"}
+        if not _mismo_valor(campo, before.get(campo), _valor_del_patch(patch, campo))
+    )
+
+
+def ensure_can_change(set_fields: AbstractSet[str], role: str) -> None:
+    """`MemberFieldForbidden` (403 `forbidden_field`) si quien no es admin envía `document` o
+    `document_type`, con cualquier valor (presencia, M-3). Con los dos, nombra `document`."""
+    if role == ADMIN_ROLE:
+        return
+    for campo in sorted(ADMIN_ONLY_FIELDS):
+        if campo in set_fields:
+            raise MemberFieldForbidden(campo)
+
+
+def validate_member_patch(patch: MemberPatch, today: date) -> None:
+    """Las reglas del alta (`validate_member_input`) sobre los campos presentes del patch que el
+    schema no expresa: fecha de nacimiento entre `BIRTH_DATE_MIN` y `today`, documento y correo
+    que no se normalizan a vacío y teléfono con al menos `PHONE_MIN_DIGITS` dígitos."""
+    if patch.birth_date is not None and not BIRTH_DATE_MIN <= patch.birth_date <= today:
+        raise _invalido("birth_date")
+    if patch.document is not None and not _normalizado(patch.document, "generic"):
+        raise _invalido("document")
+    if patch.phone is not None and len(_normalizado(patch.phone, "phone")) < PHONE_MIN_DIGITS:
+        raise _invalido("phone")
+    if patch.email is not None and not _normalizado(patch.email, "email"):
+        raise _invalido("email")

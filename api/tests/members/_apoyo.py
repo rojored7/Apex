@@ -11,10 +11,17 @@
 - `CAMPOS_FILA` (S3-B9b): las claves exactas de `MemberRowOut` (N-01: nada sensible), con
   `membership_end_date` (D22, D35).
 - `ruta_socio(member_id)` (S3-B9b): `GET /members/{member_id}`.
+- S3-B10: `ruta_reveal` y `ruta_reactivar`; `auditoria_del_socio(session, member_id, action)`
+  (filas de `audit.audit_log` del socio, en orden de `seq`); `descifrar(blob, member_id)` (el
+  claro de un blob de la fila cruda, con `aad = id`; deja un `decrypt` sin propósito en el
+  buffer: solo al final de una prueba); `peticion(session, actor)` (sesión vacía y actor, como
+  una petición nueva).
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import actor_scope
+from app.core.crypto import bus
 from app.modules.members import service
 from app.modules.members.schemas import MemberCreate, MemberDetailOut
 from tests.factories.members import APELLIDO, KNOWN, NOMBRE
@@ -137,3 +145,42 @@ async def operaciones(session: AsyncSession, **filtros: object) -> list[dict[str
     condiciones = " AND ".join(f"{campo} = :{campo}" for campo in filtros) or "true"
     consulta = text(f"SELECT * FROM crypto.crypto_ops WHERE {condiciones} ORDER BY at")  # noqa: S608
     return [dict(f) for f in (await session.execute(consulta, filtros)).mappings().all()]
+
+
+# S3-B10 -----------------------------------------------------------------------------------
+
+
+def ruta_reveal(member_id: UUID | str) -> str:
+    return f"{ruta_socio(member_id)}/reveal"
+
+
+def ruta_reactivar(member_id: UUID | str) -> str:
+    return f"{ruta_socio(member_id)}/reactivate"
+
+
+async def auditoria_del_socio(
+    session: AsyncSession, member_id: UUID, action: str | None = None
+) -> list[dict[str, Any]]:
+    """Filas de `audit.audit_log` con `record_id = member_id` (y la acción, si se pide)."""
+    if action is None:
+        consulta = text("SELECT * FROM audit.audit_log WHERE record_id = :id ORDER BY seq")
+        parametros: dict[str, Any] = {"id": member_id}
+    else:
+        consulta = text(
+            "SELECT * FROM audit.audit_log WHERE record_id = :id AND action = :a ORDER BY seq"
+        )
+        parametros = {"id": member_id, "a": action}
+    return [dict(f) for f in (await session.execute(consulta, parametros)).mappings().all()]
+
+
+def descifrar(blob: str, member_id: UUID) -> str:
+    """El claro (texto) de un blob `apx1.` de la fila cruda del socio."""
+    return bus.decrypt(blob, bus.aad_for(member_id)).decode("utf-8")
+
+
+@contextmanager
+def peticion(session: AsyncSession, actor: UUID) -> Iterator[None]:
+    """Una petición: la sesión sin objetos cargados y el actor fijado (el que llama confirma)."""
+    session.expunge_all()
+    with actor_scope(actor):
+        yield

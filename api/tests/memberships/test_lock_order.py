@@ -30,7 +30,12 @@ dos terminan bien en cualquier orden) y `freeze`/`register` (S3-D43, pendiente d
 `active` del 1 al 31 de octubre se congela del 21 al 30 mientras se le registra un pago de
 60.000; `freeze` toma el socio y después la fila, `register` la fila por el gate; se serializan
 sobre la fila y terminan bien en cualquier orden: el pago no excede el saldo y la membresía no
-está `pending_payment`, así que el handler no la cambia). B10 agrega `sell`/`deactivate`.
+está `pending_payment`, así que el handler no la cambia). B10 agrega `sell`/`deactivate` (L-1,
+S3-D54) en una prueba aparte, porque el resultado depende del orden: las dos toman primero el
+candado del socio; si gana la baja, la venta recibe `MemberInactive` (422) y no queda membresía;
+si gana la venta, la baja la espera y termina bien, y la fila `insert` de la membresía en la
+auditoría va ANTES (`seq` menor) que la fila `update` de la baja. Nunca una venta confirmada
+después de la baja, ni 55P03 ni 40P01.
 
 Desde B4 el gate de pagos es el REAL (`memberships.service.membership_payability`, registrado al
 importarse `memberships.service`; E9): ya no se usa el doble de `tests/payments/_apoyo.py`.
@@ -56,8 +61,9 @@ from app.core.context import actor_scope
 from app.core.crypto.keyring import Keyring
 from app.core.db import DatabaseBusy, sqlstate_of
 from app.core.errors import DomainError
+from app.modules.members import service as members_service
 from app.modules.memberships import service
-from app.modules.memberships.exceptions import MembershipConflict
+from app.modules.memberships.exceptions import MemberInactive, MembershipConflict
 from app.modules.payments import service as payments_service
 from app.modules.payments.schemas import PaymentIn
 from tests.factories.members import make_member
@@ -219,3 +225,54 @@ async def test_las_combinaciones_terminan_sin_espera_agotada_ni_interbloqueo(
         assert errores == [], resultados
     else:
         assert len(errores) == 1 and isinstance(errores[0], error_esperado), resultados
+
+
+# S3-B10 (L-1, S3-D54): `sell` frente a `deactivate` ---------------------------------------------
+
+
+async def _dar_de_baja(sesion: AsyncSession, escenario: Escenario) -> object:
+    return await members_service.deactivate(sesion, escenario.member_id)
+
+
+async def _seq_de(sesion: AsyncSession, tabla: str, accion: str, member_id: UUID) -> list[int]:
+    consulta = text(
+        "SELECT seq FROM audit.audit_log WHERE table_name = :t AND action = :a "
+        "AND subject_member_id = :m ORDER BY seq"
+    )
+    return list(await sesion.scalars(consulta, {"t": tabla, "a": accion, "m": member_id}))
+
+
+@pytest.mark.parametrize("orden", ["venta-primero", "baja-primero"])
+async def test_sell_frente_a_deactivate_nunca_vende_a_un_dado_de_baja(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    bus_confirmado: Keyring,
+    reloj: FrozenClock,
+    orden: str,
+) -> None:
+    primera, segunda = dos_sesiones
+    escenario = await _socio_y_plan(primera)
+    operaciones = (_vender, _dar_de_baja) if orden == "venta-primero" else (_dar_de_baja, _vender)
+    resultados = await asyncio.gather(
+        _correr(primera, operaciones[0], escenario),
+        _correr(segunda, operaciones[1], escenario),
+        return_exceptions=True,
+    )
+    prohibidos = [
+        r
+        for r in resultados
+        if isinstance(r, DatabaseBusy)
+        or (isinstance(r, DBAPIError) and sqlstate_of(r) in SQLSTATES_PROHIBIDOS)
+    ]
+    assert prohibidos == [], resultados
+    errores = [r for r in resultados if isinstance(r, BaseException)]
+    assert all(isinstance(r, MemberInactive) for r in errores), resultados
+    assert len(errores) <= 1, resultados
+
+    ventas = await _seq_de(primera, "memberships.memberships", "insert", escenario.member_id)
+    bajas = await _seq_de(primera, "members.members", "update", escenario.member_id)
+    await primera.commit()
+    assert len(bajas) == 1, (bajas, resultados)  # la baja siempre termina
+    if errores:
+        assert ventas == [], (ventas, resultados)
+    else:
+        assert len(ventas) == 1 and ventas[0] < bajas[0], (ventas, bajas, resultados)

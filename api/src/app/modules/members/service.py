@@ -5,9 +5,14 @@ Otros módulos (`memberships`, `payments`), el router y las pruebas solo importa
 (`PRIVATE_HELPERS["members"]`):
 - `rules.py`: las puras y los tipos (`validate_member_input`, `compute_warnings`, `mask`,
   `classify_query`, `QueryPlan`, `LIKE_ESCAPE`, `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`) y,
-  desde S3-B9b, `chip_to_filter`, `MemberChipFilter` y `MEMBER_CHIPS`;
-- `detail.py` (S3-B9b): `get(session, member_id)`, la ficha enmascarada (US-073);
-- `changes.py` (S3-B10), vacío por ahora.
+  desde S3-B9b, `chip_to_filter`, `MemberChipFilter` y `MEMBER_CHIPS`; desde S3-B10,
+  `diff_fields`, `ensure_can_change` y `ADMIN_ONLY_FIELDS`;
+- `detail.py` (S3-B9b): `get(session, member_id)`, la ficha enmascarada (US-073); desde S3-B10
+  `reveal(session, member_id, field, *, ip)` (US-074);
+- `changes.py` (S3-B10): `update`, `deactivate`, `reactivate` y los eventos `MemberUpdated` y
+  `MemberDeactivated` (US-075, US-076); también `id_by_document`, `DOCUMENT_DATA_CLASS` y
+  `DOCUMENT_ALIVE_INDEX`, que se mudaron allí para que `update` los use sin un ciclo con este
+  archivo (la fachada los sigue exportando).
 
 S3-B9b (US-071; D22, G-03, G-04): `list` acepta `membership_status` y `plan_id`; el conjunto de
 ids lo pide a `memberships.service.member_ids_by_status` con import perezoso (`# lazy: G-03
@@ -69,16 +74,26 @@ from app.core import events
 from app.core.clock import current_clock
 from app.core.context import get_actor
 from app.core.crypto import bus
-from app.core.crypto.errors import CryptoError
 from app.core.crypto.secret import PlainValue, Secret
 from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import sql_fold
-from app.modules.members.detail import SIN_MEMBRESIA, get
+from app.modules.members.changes import (
+    DOCUMENT_ALIVE_INDEX,
+    DOCUMENT_DATA_CLASS,
+    MemberDeactivated,
+    MemberUpdated,
+    deactivate,
+    id_by_document,
+    reactivate,
+    update,
+)
+from app.modules.members.detail import SIN_MEMBRESIA, get, reveal
 from app.modules.members.exceptions import MemberDocumentDuplicated, MemberNotFound
 from app.modules.members.models import Member
 from app.modules.members.rules import (
+    ADMIN_ONLY_FIELDS,
     EMAIL_DATA_CLASS,
     LIKE_ESCAPE,
     MEMBER_CHIPS,
@@ -88,6 +103,8 @@ from app.modules.members.rules import (
     chip_to_filter,
     classify_query,
     compute_warnings,
+    diff_fields,
+    ensure_can_change,
     mask,
     validate_member_input,
 )
@@ -104,6 +121,7 @@ if TYPE_CHECKING:  # solo el tipo del contrato de `status_for` (regla de módulo
     from app.modules.memberships.schemas import MemberMembership
 
 __all__ = [
+    "ADMIN_ONLY_FIELDS",
     "DOCUMENT_ALIVE_INDEX",
     "DOCUMENT_DATA_CLASS",
     "EMAIL_DATA_CLASS",
@@ -112,6 +130,8 @@ __all__ = [
     "PHONE_DATA_CLASS",
     "MemberChipFilter",
     "MemberCreated",
+    "MemberDeactivated",
+    "MemberUpdated",
     "QueryPlan",
     "active_ids",
     "chip_to_filter",
@@ -119,6 +139,9 @@ __all__ = [
     "compute_warnings",
     "count",
     "create",
+    "deactivate",
+    "diff_fields",
+    "ensure_can_change",
     "ensure_exists",
     "get",
     "get_ref",
@@ -126,14 +149,15 @@ __all__ = [
     "list",
     "mask",
     "names_for",
+    "reactivate",
+    "reveal",
     "search_ids",
+    "update",
     "validate_member_input",
 ]
 
 logger = logging.getLogger("app.members")
 
-DOCUMENT_DATA_CLASS: Final = "member.document"
-DOCUMENT_ALIVE_INDEX: Final = "uq_members_document_idx_alive"
 # Los cinco estados con membresía que decide (D22); `none` es su complemento.
 _CON_MEMBRESIA: Final = ("active", "expiring", "expired", "frozen", "pending_payment")
 
@@ -256,20 +280,6 @@ async def ensure_exists(
         consulta = consulta.where(Member.deleted_at.is_(None))
     if await session.scalar(consulta) is None:
         raise MemberNotFound()
-
-
-async def id_by_document(session: AsyncSession, document: str) -> UUID | None:
-    """Id del socio no borrado con ese documento (por índice ciego); `None` si no hay ninguno o
-    si el valor se normaliza a vacío."""
-    try:
-        indice = bus.blind_index(DOCUMENT_DATA_CLASS, document)
-    except CryptoError as error:
-        if error.code != "empty_value":
-            raise
-        return None
-    consulta = select(Member.id).where(Member.document_idx == indice, Member.deleted_at.is_(None))
-    resultado: UUID | None = await session.scalar(consulta)
-    return resultado
 
 
 async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:

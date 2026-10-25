@@ -4,6 +4,8 @@ S2-B3: el token de `/restablecer/<token>`, el valor de `apex_refresh=` y las cla
 `activation_url`, `url` y `set-cookie` (blueprint 7.2; sección 2, regla 7).
 S2-B7: un socio real de la fábrica (fila cruda, `repr`, extra e `IntegrityError` forzado) no deja
 ningún valor de `KNOWN` en las líneas JSON (US-018 T8, parte de US-069; A-6).
+S3-B10: un `reveal` real de los cinco campos (cierra T8 de US-018 con US-074): ningún registro
+emitido durante el reveal lleva el valor ni el blob.
 """
 
 from __future__ import annotations
@@ -17,11 +19,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import logging as app_logging
-from app.core.context import request_id_var
+from app.core.clock import FrozenClock
+from app.core.context import SYSTEM_USER_ID, actor_scope, request_id_var
 from app.core.crypto.keyring import Keyring
 from app.core.logging import JsonFormatter, redact, redact_text
+from app.modules.members import service as members_service
 from app.modules.members.models import ENCRYPTED_FIELDS
-from tests.factories.members import KNOWN_NORMALIZED, make_member
+from tests.factories.members import KNOWN, KNOWN_NORMALIZED, make_member
 
 BLOB = "apx1.k1.A256GCM.bm9uY2U.Y2lmcmFkbw"
 JWT = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiIxIn0.firma_x-y"
@@ -262,6 +266,38 @@ async def test_un_socio_real_no_deja_valores_conocidos_en_el_log(
     assert "uq_members_document_idx_alive" in lineas[-1]  # la traza sí llegó al log
     for linea in lineas:
         assert "\n" not in linea
+        for valor in KNOWN_NORMALIZED:
+            assert valor not in linea, valor
+        assert "apx1." not in linea
+
+
+# S3-B10 · `reveal` real (cierra US-018 T8 con US-074; D19, L-12) -----------------------------
+
+
+async def test_un_reveal_real_no_deja_el_valor_ni_el_blob_en_el_log(
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj: FrozenClock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Los cinco campos se revelan con `members.service.reveal` (el valor vuelve en la salida) y
+    ningún registro emitido mientras tanto, pasado por `JsonFormatter`, lleva un valor de `KNOWN`
+    en claro o normalizado ni un blob `apx1.`."""
+    socio = await make_member(session)
+    session.expunge_all()
+    caplog.set_level(logging.DEBUG)
+    revelados: dict[str, object] = {}
+    with actor_scope(SYSTEM_USER_ID):
+        for campo in ENCRYPTED_FIELDS:
+            salida = await members_service.reveal(session, socio.id, campo, ip="203.0.113.9")
+            revelados[campo] = salida.value
+        await session.commit()
+
+    assert revelados["document"] == KNOWN["document"]
+    assert revelados["phone"] == KNOWN["phone"]
+    assert revelados["birth_date"] == KNOWN["birth_date"].isoformat()
+    lineas = _lineas_json(list(caplog.records))
+    for linea in lineas:
         for valor in KNOWN_NORMALIZED:
             assert valor not in linea, valor
         assert "apx1." not in linea

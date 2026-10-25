@@ -20,15 +20,20 @@ import pytest
 from tests.architecture._imports import PRIVATE_HELPERS, find_forbidden_imports
 
 # Lo que `members/service.py` re-exporta como fachada (S3-B9a): las puras de `rules.py` y los
-# contratos con sesión que siguen en el service.
+# contratos con sesión que siguen en el service. S3-B10 suma `reveal` (`detail.py`), `update`,
+# `deactivate`, `reactivate` y los eventos `MemberUpdated` y `MemberDeactivated` (`changes.py`),
+# y las puras `diff_fields`, `ensure_can_change` y `ADMIN_ONLY_FIELDS` (`rules.py`).
 FACHADA_MEMBERS = frozenset(
     {
+        "ADMIN_ONLY_FIELDS",
         "EMAIL_DATA_CLASS",
         "LIKE_ESCAPE",
         "MEMBER_CHIPS",
         "PHONE_DATA_CLASS",
         "MemberChipFilter",
         "MemberCreated",
+        "MemberDeactivated",
+        "MemberUpdated",
         "QueryPlan",
         "active_ids",
         "chip_to_filter",
@@ -36,6 +41,9 @@ FACHADA_MEMBERS = frozenset(
         "compute_warnings",
         "count",
         "create",
+        "deactivate",
+        "diff_fields",
+        "ensure_can_change",
         "ensure_exists",
         "get",
         "get_ref",
@@ -43,12 +51,16 @@ FACHADA_MEMBERS = frozenset(
         "list",
         "mask",
         "names_for",
+        "reactivate",
+        "reveal",
         "search_ids",
+        "update",
         "validate_member_input",
     }
 )
 PURAS_DE_RULES = frozenset(
     {
+        "ADMIN_ONLY_FIELDS",
         "EMAIL_DATA_CLASS",
         "LIKE_ESCAPE",
         "MEMBER_CHIPS",
@@ -58,10 +70,15 @@ PURAS_DE_RULES = frozenset(
         "chip_to_filter",
         "classify_query",
         "compute_warnings",
+        "diff_fields",
+        "ensure_can_change",
         "mask",
         "validate_member_input",
     }
 )
+# Lo que la fachada toma de `detail.py` y `changes.py` (S3-B10): el mismo objeto, no una copia.
+DE_DETAIL = frozenset({"get", "reveal"})
+DE_CHANGES = frozenset({"update", "deactivate", "reactivate", "MemberUpdated", "MemberDeactivated"})
 
 MODULES_DIR = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 
@@ -162,6 +179,12 @@ def test_members_service_es_fachada_con_all() -> None:
     rules = importlib.import_module("app.modules.members.rules")
     for nombre in PURAS_DE_RULES:
         assert getattr(service, nombre) is getattr(rules, nombre), nombre
+    detail = importlib.import_module("app.modules.members.detail")
+    for nombre in DE_DETAIL:
+        assert getattr(service, nombre) is getattr(detail, nombre), nombre
+    changes = importlib.import_module("app.modules.members.changes")
+    for nombre in DE_CHANGES:
+        assert getattr(service, nombre) is getattr(changes, nombre), nombre
 
 
 @pytest.mark.parametrize("ajeno", ["members", "memberships", "auth", "settings"])

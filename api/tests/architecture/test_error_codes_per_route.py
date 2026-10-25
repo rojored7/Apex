@@ -52,6 +52,11 @@ CON_LIMITE = {
     # S3-B9b (E2, M-2, S3-D45): la ficha del socio consume `members-detail` (120 por minuto); el
     # 429 del router de `members` baja a sus tres rutas (D27).
     ("get", "/api/v1/members/{member_id}"),
+    # S3-B10 (E2, D27, M-1, S3-D44): editar consume `members-write` (compartida con el alta) y
+    # revelar las tres ventanas `members-reveal`, `members-reveal-hour` y `members-reveal-day`.
+    # Dar de baja y reactivar (solo admin) no tienen límite.
+    ("patch", "/api/v1/members/{member_id}"),
+    ("post", "/api/v1/members/{member_id}/reveal"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

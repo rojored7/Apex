@@ -5,6 +5,9 @@
 lee la llave vigente con `SELECT ... FOR SHARE` en `crypto_keys`; por eso las llaves deben estar
 confirmadas. Al salir borra las llaves y las filas de `crypto_ops` que se escribieron desde que
 empezó, y descarga el keyring: la base queda como al inicio de la sesión de pruebas.
+
+`ops_tras_el_rollback` (S3-B10): borra las filas `decrypt` que el rollback de una petición
+confirma en otra conexión (prueba del commit que falla en `test_router_reveal.py`).
 """
 
 from __future__ import annotations
@@ -50,3 +53,25 @@ async def bus_confirmado(
     finally:
         configure_keyring(None)
         await _limpiar(engine, desde)
+
+
+@pytest.fixture
+async def ops_tras_el_rollback(engine: AsyncEngine) -> AsyncIterator[None]:
+    """S3-B10: borra al salir las filas de `crypto_ops` que `oplog._after_soft_rollback` confirmó
+    en su propia conexión (los `decrypt` sobreviven al rollback de la petición, D19).
+
+    Se pide ANTES que `session`, `app_http` o `api_prueba` en la firma de la prueba: así se
+    desmonta después de la transacción externa de `session` (el `ALTER TABLE` esperaría su
+    candado). El `lock_timeout` convierte un mal orden en un error en lugar de una espera."""
+    async with engine.connect() as conexion:
+        desde = await conexion.scalar(text("SELECT clock_timestamp()"))
+    try:
+        yield
+    finally:
+        async with engine.begin() as conexion:
+            await conexion.execute(text("SET LOCAL lock_timeout = '5s'"))
+            await conexion.execute(text("ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER"))
+            await conexion.execute(
+                text("DELETE FROM crypto.crypto_ops WHERE at >= :t"), {"t": desde}
+            )
+            await conexion.execute(text("ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER"))

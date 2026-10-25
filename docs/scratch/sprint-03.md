@@ -2307,3 +2307,217 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
     api sin `ERROR` y sin máscaras, blobs ni documentos en los 15 minutos de la demo.
   - Nota: la respuesta por Nginx lleva `Cache-Control: no-store` dos veces (la de Nginx y la del
     api); es igual en las demás rutas de datos y no cambia el efecto.
+
+### S3-B10 · Rojo (B10.1 stubs y B10.2 Rojo; sin migración)
+
+- Línea base: HEAD `cc8ee69`, árbol limpio. `tests/members tests/architecture
+  tests/audit/test_reveal_entry.py tests/core/test_logging_redact.py
+  tests/memberships/test_lock_order.py` con `-m "not perf"`: **631 ok, 1 saltada** (la de
+  `reveal`), 4 deseleccionadas. `ruff check`, `ruff format --check` y `mypy src` (96 archivos)
+  limpios. `apex-db-1` no se tocó; todo contra `db_test`.
+- Stubs (B10.1): `members/rules.py` (`ADMIN_ONLY_FIELDS`, `diff_fields`, `ensure_can_change` con
+  `NotImplementedError`); `members/schemas.py` (`RevealField`, `PATCH_NOT_NULL`,
+  `EmergencyContactOut`, `RevealIn` y `RevealOut` con `extra="forbid"` en la entrada,
+  `MemberPatch` cerrado con los diez campos de S3-D46, `data_consent: StrictBool | None` y un
+  `field_validator` que rechaza `null` en `PATCH_NOT_NULL`; `EmergencyContactIn.phone` pasa a
+  `SafeText`); `members/exceptions.py` (`MemberIsDeactivated` 409 `member_deactivated`,
+  `MemberFieldForbidden(field)` 403 `forbidden_field`, `MemberAlreadyDeactivated` 409,
+  `MemberNotDeactivated` 409, `ConsentCannotBeWithdrawn` 422 `consent_cannot_be_withdrawn` con
+  `field="data_consent"`); `members/detail.py` (`REVEAL_PURPOSE` y `reveal(session, member_id,
+  field, *, ip)` con `NotImplementedError`); `members/changes.py` (eventos `MemberUpdated(member_id,
+  changed_fields: tuple[str, ...])` y `MemberDeactivated(member_id)`; `update`, `deactivate` y
+  `reactivate` con `NotImplementedError`); `members/service.py` re-exporta todo en `__all__`;
+  `members/router.py` cableado entero: `POST /members/{member_id}/reveal` (`StaffDep`, las tres
+  `enforce_user_limit` `members-reveal`, `-hour` y `-day`, `ip` de `client_ip` con
+  `app.state.trusted_proxies`, `responses_for(404, 422, 429)`), `PATCH /members/{member_id}`
+  (`StaffDep`, `members-write`, `role=principal.role`, `responses_for(403, 404, 409, 422, 429)`),
+  `DELETE /members/{member_id}` (204, `AdminDep`, `response_class=Response`,
+  `responses_for(404, 409, 422)`) y `POST /members/{member_id}/reactivate` (`AdminDep`,
+  `responses_for(404, 409, 422)`). El aviso `reveal volume` NO va en el stub (lo hace el Verde).
+  `auth/models.py`: solo el docstring apunta a `test_no_physical_delete.py`.
+- Cubetas y catálogo (E2): `USER_LIMITS`, `user_limits_from`, las `USER_REVEAL_*` de `Settings` y
+  `.env.example` ya existían desde W0-2: **no se tocó `config.py`, `.env.example`, `ci.yml` ni
+  `test_compose_config.sh`** (el `ci.yml` sigue sin las `USER_*`: eso es de V4, E15).
+  `test_error_codes_per_route.py`: `CON_LIMITE` gana `("patch", "/api/v1/members/{member_id}")` y
+  `("post", "/api/v1/members/{member_id}/reveal")`. `test_user_limits_catalog.py`:
+  `CLAVES_SIN_RUTA_TODAVIA = frozenset()` y prueba nueva de las tres ventanas en la ruta de
+  `reveal` con sus topes por defecto.
+- Pruebas (archivos nuevos y cambiados; recolectadas / en rojo sobre los stubs / motivo):
+  - `tests/members/test_member_patch_rules.py` (nuevo): 49 / 33 (`NotImplementedError` de
+    `diff_fields` 25 y `ensure_can_change` 8). Verdes sobre el stub 16: `ADMIN_ONLY_FIELDS` y los
+    15 de `MemberPatch` (diez campos, seis claves ajenas, cinco `null` prohibidos, `null` en
+    opcional, `StrictBool`, NUL en `emergency_contact.phone`).
+  - `tests/members/test_service_reveal.py` (nuevo): 24 / 24 (`NotImplementedError: reveal`; el de
+    la auditoría rota llega como `NotImplementedError` en lugar de `AuditoriaRota`).
+  - `tests/members/test_router_reveal.py` (nuevo): 24 / 14 (`NotImplementedError: reveal` por el
+    transporte; el del commit roto, `[] == ['reveal']`: no hubo `decrypt`). Verdes 10: seis 422
+    `field="field"`, clave de más, 403 `member`, 401 y 422 de UUID.
+  - `tests/members/test_service_update.py` (nuevo): 31 / 31 (`NotImplementedError: update`; el de
+    la carrera, dos `NotImplementedError`).
+  - `tests/members/test_router_update.py` (nuevo): 26 / 14 (`update`). Verdes 12: 403 `member`,
+    401 y los diez 422 de schema (apellido vacío y en blanco, sexo, `document`/`first_name` nulos,
+    `status`, `deleted_at`, `data_consent_at`, `notes`, NUL en el contacto). En rojo los 422 que
+    decide el service (`birth_date` futura, `data_consent=false`).
+  - `tests/members/test_service_deactivate.py` (nuevo): 15 / 15 (`deactivate`/`reactivate`; las
+    dos de candado, "no quedó esperando el candado del socio").
+  - `tests/members/test_router_deactivate.py` (nuevo): 14 / 7 (`deactivate`/`reactivate`). Verdes
+    7: 403 coach y `member` en baja y en reactivar, 401 y 422 de UUID en las dos.
+  - `tests/audit/test_reveal_entry.py` (reescrito con `make_member` y `service.reveal`, sin
+    `uuid4()`): 1 / 1.
+  - `tests/core/test_logging_redact.py` (+1, `reveal` real de los cinco campos, T8 de US-018):
+    18 / 1.
+  - `tests/memberships/test_lock_order.py` (+2, `sell` frente a `deactivate` en los dos órdenes):
+    9 / 2.
+  - `tests/architecture/test_no_sensitive_in_logs.py` (la de `reveal` deja de saltarse: login de
+    coach, alta, ficha, `reveal` de documento y teléfono, `PATCH` del teléfono): 2 / 1.
+  - `tests/architecture/test_no_physical_delete.py` (nuevo; `git rm` de
+    `test_no_physical_delete_users.py`): 4 / 0. `test_events_without_pii.py` (+3): 7 / 0.
+    `test_user_limits_catalog.py` (+1): 7 / 0. `test_no_cross_models.py`
+    (`FACHADA_MEMBERS`, `PURAS_DE_RULES`, `DE_DETAIL`, `DE_CHANGES`): 16 / 0.
+    `test_error_codes_per_route.py`: 8 / 0.
+  - Apoyo: `tests/members/_apoyo.py` (`ruta_reveal`, `ruta_reactivar`, `auditoria_del_socio`,
+    `descifrar`, `peticion`) y `tests/members/conftest.py` (`ops_tras_el_rollback`).
+- Conteo: 143 pruebas nuevas o cambiadas en rojo, más `tests/core/test_openapi_export.py::
+  test_docs_openapi_json_esta_al_dia` (P-API de B10.5). Corrida del slice
+  (`tests/members tests/architecture` + los tres de otros módulos + `test_openapi_export.py`):
+  **144 fallan, 686 ok**, 4 deseleccionadas; ninguna verde de la línea base pasó a rojo salvo la
+  de `openapi.json`. `ruff check`, `ruff format --check` y `mypy src` (96 archivos) limpios con
+  los stubs. `db_test` sin residuos: `alembic_version = 0011_payments_immutability`, 0 socios,
+  membresías, congelaciones, pagos, planes, usuarios `@test.apex`, `crypto_ops` y `crypto_keys`;
+  0 sesiones `idle in transaction`; los siete triggers en `A`.
+- Verde desechable (revertido; sha256 de los siete archivos de `members/` iguales al stub):
+  `diff_fields`, `ensure_can_change`, `reveal` (con `_decrypt_fields(..., "reveal")` y
+  `audit.record`), `update`, `deactivate`, `reactivate` (todos con `lock_member` primero) y el
+  aviso `reveal volume` en el router. `tests/members tests/architecture` + los tres de otros
+  módulos: **824 ok**. Mutación: sin `lock_member` en `changes.py` caen las cuatro pruebas de
+  candado (`update`, venta durante la baja, baja durante la venta, reactivar) y la de
+  `test_lock_order` en orden `venta-primero`.
+  - Defectos de prueba encontrados con el Verde y corregidos: (1) `FrozenClock.advance` solo
+    acepta `days`, `hours` y `minutes` (la de 201 en una hora usa `minutes=1`); (2) la fábrica no
+    fija `sex`: el PATCH "sin cambios" lo siembra con `sex="f"`; (3) `socio.id` leído después de
+    un rollback o de una petición con error expira el objeto (`MissingGreenlet`): las pruebas de
+    router capturan `socio_id` justo después de `make_member` y la del candado de `update`
+    también; (4) esperar "cualquier candado asesor" era ambiguo (la cadena de auditoría también
+    lo es: sin `lock_member` la baja esperaba igual por la cadena); la espera ahora busca la
+    llave exacta de `hashtextextended(<uuid>, 0)` en `pg_locks` (`classid`/`objid`).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`reveal`:** carga el socio sin filtro de baja (N-20) o `MemberNotFound` sin auditar ni
+   descifrar; `_decrypt_fields(socio, [field], "reveal")` (única puerta, D-4) y
+   `core.audit.record(action="reveal", table_name="members.members", record_id=id, before=None,
+   after={"field": field, "ip": ip}, subject_member_id=id)` en la misma transacción, sin
+   `commit()` y sin evento. `RevealOut.value`: texto tal como se guardó (documento, teléfono,
+   correo), `birth_date` como `AAAA-MM-DD`, `emergency_contact` como `EmergencyContactOut`
+   (`relationship` nulo si no hay); un campo nulo da `None`, audita y no deja `decrypt`. Las
+   pruebas de la auditoría rota parchean `app.core.audit.append_entry` (debe llamarse vía
+   `audit.record`).
+2. **Router de `reveal`:** las tres `enforce_user_limit` antes del service (el 429 nombra la
+   cubeta en el registro `rate limit`); después, `usage("members-reveal-hour", str(user_id),
+   window_s=<ventana>)` y, si pasa de la mitad del tope horario vigente (`app.state.user_limits`),
+   `logger.warning("reveal volume", extra={"user_id": str(user_id), "count": n})` con `n` que
+   incluye la petición actual (101 con 100 previos; con 99 previos no avisa). La IP sale de
+   `client_ip` con `app.state.trusted_proxies`.
+3. **`update`** (orden que usó el Verde desechable; las pruebas solo exigen que ningún error
+   deje cambios parciales y que `lock_member` vaya antes de leer): `ensure_can_change(patch.model_fields_set, role)` → `data_consent is
+   False` → `ConsentCannotBeWithdrawn` → `lock_member` → carga (o `MemberNotFound`) → baja →
+   `MemberIsDeactivated` → reglas del alta (`birth_date` entre 1900 y hoy, documento, teléfono y
+   correo que no se normalizan a vacío: `MemberValidationError` con `field`) → `diff_fields`
+   contra lo descifrado con `mask` → pre-chequeo del documento entre vivos (sin el propio socio)
+   → asignación con `Secret.from_plain` → flush. **Sin cambios efectivos no hay `UPDATE`,
+   auditoría ni evento** (se mide con `contador_de_consultas`). `data_consent=true` solo fija
+   `data_consent_at` con el reloj si estaba nula. Respuesta: la ficha de `detail.get` con
+   `warnings = ["data_consent_missing"]` si `data_consent_at` sigue nula.
+4. **Traducción de `uq_members_document_idx_alive` en un UPDATE (punto delicado, demostrado con el
+   Verde desechable):** si las asignaciones se hacen FUERA del `begin_nested()` y el flush falla
+   dentro, la consulta siguiente (`id_by_document` para `existing_id`) dispara
+   `PendingRollbackError`; y tras el rollback del savepoint `socio.id` está expirado
+   (`MissingGreenlet`). Lo que funcionó: asignar DENTRO del `begin_nested()` y leer el id antes.
+   La carrera exige `existing_id` = el ganador. Ojo también al ciclo de imports: `id_by_document`
+   vive en `service.py`, que importa `changes.py`.
+5. **`MemberUpdated.changed_fields`:** tupla ordenada de nombres de columna cambiados, sin
+   `*_idx` (`("first_name", "phone")`; `("deleted_at", "status")` al reactivar). La auditoría
+   `update` del hook lleva solo esas columnas y sus índices (`phone`, `phone_idx` como `"***"`).
+6. **`deactivate`/`reactivate`:** `lock_member` primero (las pruebas miran `pg_locks` con la llave
+   exacta); baja: `deleted_at = now_utc()`, `status = "inactive"`, `MemberDeactivated`; repetida
+   `MemberAlreadyDeactivated`; no toca membresías ni pagos. Reactivar: `MemberNotDeactivated` si
+   está vivo; documento tomado por otro vivo → `MemberDocumentDuplicated(existing_id)` (por
+   `document_idx`, sin descifrar) y la fila sigue dada de baja; si no, limpia ambos, audita,
+   emite `MemberUpdated(("deleted_at", "status"))` y devuelve la ficha.
+7. **Orden de candados:** `lock_member` → `FOR SHARE` del plan → fila de la membresía → fila del
+   pago → cadena de auditoría (hook). `members` nunca pide los de `memberships`; `sell` frente a
+   `deactivate` se serializa en el candado del socio (la venta que entra después recibe 422
+   `member_inactive`; si gana la venta, su `insert` de auditoría tiene `seq` menor que el
+   `update` de la baja).
+8. **`ops_tras_el_rollback`** (conftest de `members`) se pide ANTES que `api_prueba` en la firma:
+   borra los `decrypt` que el rollback confirma en otra conexión; `lock_timeout` de 5 s evita una
+   espera infinita si alguien cambia el orden.
+
+#### Desviaciones del plan y hallazgos
+
+- `test_events_without_pii.py` no es nuevo (nació en B6); se amplió (+3).
+- El día completo de `reveal` (601) se prueba con 599 marcas de `ratelimit.record` en la misma
+  cubeta más dos peticiones reales; el minuto (31) y la hora (201, con `reloj.advance(minutes=1)`
+  cada 30) van con peticiones reales.
+- "Fallo simulado del commit → 500 sin el valor": el `before_commit` que falla se registra con
+  `insert=True` para que corra antes de que `oplog` vuelque su buffer; así el `decrypt` sobrevive
+  al rollback y la prueba lo exige (en el stub no hay `decrypt`: es la aserción que la deja roja,
+  porque el `NotImplementedError` también da 500).
+- `test_no_physical_delete.py` cubre además auditoría y llaves (regla de datos 4).
+- Blueprint B10 con nota de corrección (ver `DECISIONES.md`, "S3-B10"): siete puntos superados
+  por el plan y la revisión de seguridad.
+- No se tocaron `web/`, `docs/openapi.json`, `types.ts`, `config.py`, `.env.example` ni `ci.yml`.
+
+#### Gates de B10.6 (`ls` confirmado de cada archivo)
+
+1. `slice-gate.sh audit tests/audit/test_reveal_entry.py` — existe.
+2. `slice-gate.sh core/logging tests/core/test_logging_redact.py` — existe.
+3. `slice-gate.sh memberships tests/memberships/test_lock_order.py` — existe.
+4. Para sellar: `slice-gate.sh members tests/members/test_service_reveal.py
+   tests/members/test_router_reveal.py tests/members/test_member_patch_rules.py
+   tests/members/test_service_update.py tests/members/test_router_update.py
+   tests/members/test_service_deactivate.py tests/members/test_router_deactivate.py
+   tests/architecture/test_no_physical_delete.py tests/architecture/test_no_sensitive_in_logs.py
+   tests/architecture/test_events_without_pii.py` — los diez existen;
+   `tests/architecture/test_no_physical_delete_users.py` ya no existe (`git rm`).
+
+### S3-B10 · Verde (B10.3 a B10.6)
+
+- Verde (B10.3): `rules.py` (`diff_fields` con documento, teléfono y correo normalizados y el
+  contacto como mapeo sin nulos; `ensure_can_change` por presencia, `ADMIN_ROLE`; nueva pura
+  `validate_member_patch`); `detail.py` (`reveal` con `_decrypt_fields(socio, [field],
+  "reveal")` y `audit.record(action="reveal", table_name="members.members", after={field, ip},
+  subject_member_id)`, sin evento ni commit; `_revelado`); `changes.py` (`update`, `deactivate`,
+  `reactivate`, `_bloquear_y_cargar` con `lock_member` + `populate_existing`, `_escribir` con la
+  traducción de `uq_members_document_idx_alive` dentro de `begin_nested()`, y `id_by_document`
+  mudado desde `service.py`, S3-D84); `router.py` (aviso `reveal volume`, S3-D88). Decisiones
+  S3-D84 a S3-D88 en `DECISIONES.md`. Funciones de menos de 50 líneas; `service.py` 486 líneas,
+  `changes.py` 280.
+- Hallazgo del Verde: el pre-chequeo del documento iba después de descifrar; las dos pruebas del
+  409 dejaban 3 filas `decrypt | mask` confirmadas (sobreviven al rollback, D19) y en la corrida
+  conjunta caían `test_la_lista_nunca_descifra`,
+  `test_active_ids_emite_una_sola_consulta_y_no_descifra` y
+  `test_sin_q_no_hay_operaciones_de_cripto_y_con_q_solo_indices` (verdes por separado). Se movió el pre-chequeo antes del descifrado (S3-D85); `db_test` queda con 0 filas
+  en `crypto_ops` tras cada archivo.
+- Revisión de seguridad (`security-reviewer`, `git diff cc8ee69 -- api/src`): 0 CRITICAL, 0
+  HIGH, 0 MEDIUM; LOW-1 (`SafeText` en documento y teléfono) y LOW-2 (error opaco del contacto
+  ilegible) corregidos con dos pruebas nuevas en archivos del gate
+  (`test_member_patch_rules.py` +4, `test_service_reveal.py` +1, esta con
+  `ops_tras_el_rollback` antes de `session`); INFO-1 documentado en RUNBOOK §4; INFO-2 e INFO-3
+  aceptados (DECISIONES).
+- Corridas sin `--cov`: `tests/members tests/architecture` + `test_reveal_entry.py`,
+  `test_logging_redact.py` y `test_lock_order.py`: 824 ok antes de la revisión. Mitades de la
+  suite tras la revisión: `tests/core tests/crypto tests/auth tests/settings tests/cli
+  tests/audit tests/test_ci_database.py tests/test_smoke.py` **1484 ok, 3 saltadas** (NTFS);
+  `tests/members tests/plans tests/memberships tests/payments tests/migrations
+  tests/architecture` **2231 ok**, 8 deseleccionadas (`perf`). `ruff check`, `ruff format
+  --check` y `mypy src` (96 archivos) limpios.
+- Contrato (B10.5, P-API): `export-openapi` dos veces idéntica (sha256 `7c9590a8…`; +769/-59 en
+  `docs/openapi.json`, cuatro rutas nuevas y `RevealIn`, `RevealOut`, `EmergencyContactOut`,
+  `MemberPatch`); `npm run gen:api` (+456 en `web/src/core/api/types.ts`, único cambio en
+  `web/`); `npx vitest run src/core/api` 7 archivos, 158 ok; `npx tsc --noEmit` limpio.
+  `test_docs_openapi_json_esta_al_dia` verde. Ningún esquema `.strict()` del front gana campos.
+- Docs (B10.4): RUNBOOK §4 "Revelar, editar, dar de baja y reactivar" (los tres cupos, qué es
+  `reveal volume`, recuperar a un dado de baja, psql); `BRECHAS.md` §10 ("Dado de baja",
+  "Reactivar" y campos sensibles en la edición, con `// DESIGN-GAP:` para el front).
+- Gates (B10.6), en orden y con `ls` previo de cada archivo: ver el bloque de evidencia.

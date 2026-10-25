@@ -2045,3 +2045,32 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   - `GET /api/v1/payments/summary?month=2026-13`: **422** `validation_error`, `field "month"`, mensaje sin el valor.
   - Coach: **200** en la lista, el resumen y el detalle. Sin token: **401** `unauthorized`.
   - `/health` y `/api/v1/health`: 200.
+
+### S3-B9a · Partición de `members/service.py` (sin cambio de comportamiento)
+
+- Rojo (B9a.2): `PRIVATE_HELPERS["members"] = frozenset({"rules", "detail", "changes"})` en
+  `tests/architecture/_imports.py`; en `test_no_cross_models.py`,
+  `test_los_privados_de_members_son_los_de_b9a` (los tres archivos existen),
+  `test_nadie_fuera_de_members_importa_rules_detail_ni_changes` (con control por fuente falsa) y
+  `test_members_service_es_fachada_con_all` (`__all__` sin repetidos, contiene la fachada y las
+  puras son el mismo objeto que en `rules.py`). Rojo confirmado: 2 fallos (sin archivos y sin
+  `__all__`), 14 ok.
+- Extracción (B9a.1), mecánica por rangos de líneas y comprobada con `ast.dump`: las 49
+  definiciones de primer nivel del `service.py` original están, idénticas, en `service.py` o en
+  `rules.py` (ni faltan, ni sobran, ni cambian). A `rules.py` van `MaskField`, `MaskValue`,
+  `BIRTH_DATE_MIN`, `PHONE_MIN_DIGITS`, `MASK_TAIL`, `DOCUMENT_MIN_MASKED`, `DOTS`,
+  `EMERGENCY_CONTACT_MASK`, `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`, `_MENSAJES`, `_invalido`,
+  `_normalizado`, `validate_member_input`, `compute_warnings`, `_mask_document`, `_mask_phone`,
+  `_mask_email`, `mask`, `QueryPlan`, `PLAN_VACIO`, `_es_documento` y `classify_query`, más
+  `LIKE_ESCAPE` re-exportado de `core.search` (con `__all__` propio). En `service.py` quedan
+  `DOCUMENT_DATA_CLASS` y `DOCUMENT_ALIVE_INDEX` (solo los usa el código con sesión), el alta, los
+  contratos, la búsqueda y la lista; cierra la desviación de B7: `active_ids` ya está en `__all__`.
+  `detail.py` (B9b) y `changes.py` (B10) nacen con solo docstring.
+- Líneas: `service.py` 531 → 406; `rules.py` 202; `detail.py` 6; `changes.py` 6.
+- Importadores verificados (siguen en `service`, sin cambios): `members/router.py`,
+  `memberships/{sell,queries,lifecycle}.py`, `payments/queries.py` (`auth` no importa
+  `members`); en pruebas, `tests/members/*` y `tests/memberships/test_status_queries_service.py`.
+  `grep` de `members.rules|detail|changes`: solo `members/service.py` y la prueba de arquitectura.
+- `ruff format`, `ruff check` y `mypy src` (96 archivos) limpios. Regresión sin `perf`:
+  `tests/members tests/architecture tests/memberships tests/payments` 1.552 ok, 1 saltada.
+- Contrato: `export-openapi` y `git diff --exit-code docs/openapi.json` sin cambios.

@@ -1,18 +1,60 @@
 """Ningún módulo importa `models` ni `router` ajenos (US-022 T4; reglas de módulos 1 y 2).
 
 S3-B1 (D7, US-084): la prueba de helpers privados se generaliza a todos los módulos de
-`PRIVATE_HELPERS` (`auth` y, desde B1, `memberships`; B3 suma `payments` y B9 `members`), con un
-control por fuente falsa; y `memberships` no importa `members.models`, `plans.models` ni
+`PRIVATE_HELPERS` (`auth` y, desde B1, `memberships`; B3 suma `payments` y B9a `members`), con
+un control por fuente falsa; y `memberships` no importa `members.models`, `plans.models` ni
 `settings.models` (lee por sus services).
+
+S3-B9a (D7, S3-D73): `members/service.py` se parte en `rules.py` (puras y tipos), `detail.py` y
+`changes.py` (vacíos hasta B9b y B10) y queda como fachada con `__all__`; ningún otro módulo
+importa esos tres archivos.
 """
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 import pytest
 
 from tests.architecture._imports import PRIVATE_HELPERS, find_forbidden_imports
+
+# Lo que `members/service.py` re-exporta como fachada (S3-B9a): las puras de `rules.py` y los
+# contratos con sesión que siguen en el service.
+FACHADA_MEMBERS = frozenset(
+    {
+        "EMAIL_DATA_CLASS",
+        "LIKE_ESCAPE",
+        "PHONE_DATA_CLASS",
+        "MemberCreated",
+        "QueryPlan",
+        "active_ids",
+        "classify_query",
+        "compute_warnings",
+        "count",
+        "create",
+        "ensure_exists",
+        "get_ref",
+        "id_by_document",
+        "list",
+        "mask",
+        "names_for",
+        "search_ids",
+        "validate_member_input",
+    }
+)
+PURAS_DE_RULES = frozenset(
+    {
+        "EMAIL_DATA_CLASS",
+        "LIKE_ESCAPE",
+        "PHONE_DATA_CLASS",
+        "QueryPlan",
+        "classify_query",
+        "compute_warnings",
+        "mask",
+        "validate_member_input",
+    }
+)
 
 MODULES_DIR = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 
@@ -68,6 +110,51 @@ def test_los_privados_de_payments_son_los_de_d7() -> None:
     assert frozenset({"rules", "events", "queries"}) == PRIVATE_HELPERS["payments"]
     for archivo in PRIVATE_HELPERS["payments"]:
         assert (MODULES_DIR / "payments" / f"{archivo}.py").is_file(), archivo
+
+
+def test_los_privados_de_members_son_los_de_b9a() -> None:
+    """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`."""
+    assert frozenset({"rules", "detail", "changes"}) == PRIVATE_HELPERS.get("members")
+    for archivo in PRIVATE_HELPERS["members"]:
+        assert (MODULES_DIR / "members" / f"{archivo}.py").is_file(), archivo
+
+
+def test_nadie_fuera_de_members_importa_rules_detail_ni_changes() -> None:
+    privados = tuple(f"app.modules.members.{a}" for a in ("rules", "detail", "changes"))
+    violaciones = [
+        str(v)
+        for carpeta in sorted(p for p in MODULES_DIR.iterdir() if p.is_dir())
+        if carpeta.name != "members"
+        for archivo in sorted(carpeta.rglob("*.py"))
+        for v in find_forbidden_imports(archivo, module=carpeta.name)
+        if v.imported.startswith(privados)
+    ]
+    assert violaciones == [], "\n".join(violaciones)
+    falso = MODULES_DIR / "payments" / "queries.py"
+    fuente = "from app.modules.members.rules import mask\nfrom app.modules.members import detail\n"
+    assert sorted(
+        (v.imported, v.rule)
+        for v in find_forbidden_imports(falso, module="payments", source=fuente)
+    ) == [
+        ("app.modules.members.detail", "private_helper"),
+        ("app.modules.members.rules", "private_helper"),
+    ]
+
+
+def test_members_service_es_fachada_con_all() -> None:
+    """S3-B9a: `service.py` declara `__all__` y re-exporta las puras de `rules.py` (el mismo
+    objeto, no una copia), así `tests/members` y los demás módulos siguen importando de él."""
+    from app.modules.members import service
+
+    exportados = getattr(service, "__all__", None)
+    assert exportados is not None, "members/service.py sin __all__"
+    assert len(exportados) == len(set(exportados)), "nombres repetidos en __all__"
+    assert set(exportados) >= FACHADA_MEMBERS, sorted(FACHADA_MEMBERS - set(exportados))
+    for nombre in exportados:
+        assert hasattr(service, nombre), nombre
+    rules = importlib.import_module("app.modules.members.rules")
+    for nombre in PURAS_DE_RULES:
+        assert getattr(service, nombre) is getattr(rules, nombre), nombre
 
 
 @pytest.mark.parametrize("ajeno", ["members", "memberships", "auth", "settings"])

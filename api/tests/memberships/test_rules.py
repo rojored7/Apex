@@ -15,6 +15,13 @@ Sin base ni reloj: "hoy" llega como argumento. Fechas calculadas a mano (N-23, f
   `"first_payment.amount_cop"` y `None` queda `None`; `sell.reraise_with_prefix` re-lanza una copia
   de la misma clase con `code`, `message`, `existing_id`, `status` y `headers` intactos y solo el
   `field` prefijado (el original no cambia).
+- S3-B7 (US-091, US-092; D18, L-9, N-26): `parse_status_filter` (comas, partes recortadas,
+  repetidos fundidos, `None`/vacío/espacios sin filtro; desconocido, mayúsculas o parte vacía son
+  `StatusFilterInvalid` 422 `validation_error` en `status` sin eco del valor) y
+  `resolve_member_status`/`resolve_member_membership` con los nueve casos de US-092 sobre
+  snapshots con estado EFECTIVO y hoy 2026-10-21: vigente (`active`, `expiring` o `frozen` con
+  inicio <= hoy) > `pending_payment` > `expired` > futura (inicio > hoy) > `none`; las canceladas
+  no cuentan; dentro de una categoría decide el fin más tardío.
 """
 
 from __future__ import annotations
@@ -30,10 +37,12 @@ from app.modules.memberships.exceptions import (
     MembershipConflict,
     StartDateTooFar,
     StartDateTooRetroactive,
+    StatusFilterInvalid,
 )
 from app.modules.memberships.models import STATUSES
 from app.modules.memberships.rules import (
     MAX_START_AHEAD_DAYS,
+    MEMBER_STATUS_PRIORITY,
     FreezeWindow,
     MembershipSnapshot,
     MembershipStatus,
@@ -49,7 +58,10 @@ from app.modules.memberships.rules import (
     is_covered,
     next_start_for_renewal,
     paid_total,
+    parse_status_filter,
     prefix_field,
+    resolve_member_membership,
+    resolve_member_status,
     validate_start_date,
 )
 from app.modules.memberships.sell import reraise_with_prefix
@@ -574,3 +586,137 @@ def test_reraise_with_prefix_sirve_para_toda_excepcion_de_pagos(
         reraise_with_prefix(original, "first_payment")
     assert type(capturado.value) is clase
     assert capturado.value.field == prefix_field("first_payment", original.field)
+
+
+# parse_status_filter (S3-B7, D18, L-9) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("crudo", "esperado"),
+    [
+        ("active", {S.active}),
+        ("active,expiring", {S.active, S.expiring}),
+        ("expiring,active,expiring", {S.active, S.expiring}),
+        (" active , pending_payment ", {S.active, S.pending_payment}),
+        ("cancelled", {S.cancelled}),
+        ("pending_payment,active,expiring,expired,frozen,cancelled", set(MembershipStatus)),
+    ],
+    ids=["uno", "dos", "repetidos", "con-espacios", "canceladas", "los-seis"],
+)
+def test_parse_status_filter_separa_por_comas_y_funde_repetidos(
+    crudo: str, esperado: set[MembershipStatus]
+) -> None:
+    resultado = parse_status_filter(crudo)
+    assert resultado == frozenset(esperado)
+    assert isinstance(resultado, frozenset)
+
+
+@pytest.mark.parametrize("crudo", [None, "", "   "], ids=["none", "vacio", "espacios"])
+def test_parse_status_filter_sin_valor_es_sin_filtro(crudo: str | None) -> None:
+    assert parse_status_filter(crudo) is None
+
+
+@pytest.mark.parametrize(
+    "crudo",
+    ["vigente", "active,vigente", "ACTIVE", "none", "active,", ",active", "active,,expiring"],
+    ids=["desconocido", "uno-de-dos", "mayusculas", "none", "coma-final", "coma-inicial", "vacia"],
+)
+def test_parse_status_filter_rechaza_un_estado_desconocido_sin_repetirlo(crudo: str) -> None:
+    with pytest.raises(StatusFilterInvalid) as error:
+        parse_status_filter(crudo)
+    assert error.value.status == 422
+    assert error.value.code == "validation_error"
+    assert error.value.field == "status"
+    assert "vigente" not in error.value.message
+    assert "ACTIVE" not in error.value.message
+
+
+# resolve_member_status (S3-B7, US-092 criterios 2 a 4) --------------------------------------------
+#
+# Hoy 2026-10-21. Los snapshots ya traen el estado EFECTIVO (lo que da `compute_status`).
+
+VIGENTE = snap(S.active, date(2026, 10, 1), date(2026, 10, 31))
+POR_VENCER = snap(S.expiring, date(2026, 9, 26), date(2026, 10, 26))
+RENOVACION_PENDIENTE = snap(S.pending_payment, date(2026, 10, 27), date(2026, 11, 26))
+FUTURA_ACTIVA = snap(S.active, date(2026, 10, 28), date(2026, 11, 27))
+VENCIDA = snap(S.expired, date(2026, 8, 1), date(2026, 8, 31))
+VENCIDA_ANTES = snap(S.expired, date(2026, 6, 1), date(2026, 6, 30))
+ANULADA = snap(S.cancelled, date(2026, 10, 1), date(2026, 10, 31))
+CONGELADA = snap(S.frozen, date(2026, 10, 1), date(2026, 11, 15))
+PENDIENTE = snap(S.pending_payment, date(2026, 10, 21), date(2026, 11, 20))
+
+NUEVE_CASOS: list[tuple[str, list[MembershipSnapshot], str, MembershipSnapshot | None]] = [
+    ("solo-vigente", [VIGENTE], "active", VIGENTE),
+    (
+        "por-vencer-y-renovacion-pendiente",
+        [POR_VENCER, RENOVACION_PENDIENTE],
+        "expiring",
+        POR_VENCER,
+    ),
+    ("solo-futura-activa", [FUTURA_ACTIVA], "active", FUTURA_ACTIVA),
+    ("solo-vencida", [VENCIDA], "expired", VENCIDA),
+    ("solo-anulada", [ANULADA], "none", None),
+    ("congelada", [CONGELADA], "frozen", CONGELADA),
+    ("pendiente-y-vencida", [VENCIDA, PENDIENTE], "pending_payment", PENDIENTE),
+    ("vencida-y-futura-activa", [FUTURA_ACTIVA, VENCIDA], "expired", VENCIDA),
+    ("vacio", [], "none", None),
+]
+
+
+@pytest.mark.parametrize(
+    ("membresias", "esperado"),
+    [(m, e) for _, m, e, _ in NUEVE_CASOS],
+    ids=[caso for caso, *_ in NUEVE_CASOS],
+)
+def test_resolve_member_status_aplica_la_prioridad_de_us_092(
+    membresias: list[MembershipSnapshot], esperado: str
+) -> None:
+    assert resolve_member_status(membresias, HOY) == esperado
+    assert resolve_member_status(list(reversed(membresias)), HOY) == esperado
+
+
+@pytest.mark.parametrize(
+    ("membresias", "esperado", "decide"),
+    [(m, e, d) for _, m, e, d in NUEVE_CASOS],
+    ids=[caso for caso, *_ in NUEVE_CASOS],
+)
+def test_resolve_member_membership_devuelve_la_membresia_que_decide(
+    membresias: list[MembershipSnapshot], esperado: str, decide: MembershipSnapshot | None
+) -> None:
+    assert resolve_member_membership(membresias, HOY) == (esperado, decide)
+    assert resolve_member_membership(tuple(reversed(membresias)), HOY) == (esperado, decide)
+
+
+def test_la_vigente_gana_a_pendiente_vencida_futura_y_anulada() -> None:
+    todas = [ANULADA, VENCIDA, RENOVACION_PENDIENTE, FUTURA_ACTIVA, POR_VENCER]
+    assert resolve_member_membership(todas, HOY) == ("expiring", POR_VENCER)
+
+
+def test_la_pendiente_gana_a_la_futura_activa() -> None:
+    otra_futura = snap(S.active, date(2026, 11, 21), date(2026, 12, 21))
+    assert resolve_member_membership([otra_futura, PENDIENTE], HOY) == (
+        "pending_payment",
+        PENDIENTE,
+    )
+
+
+def test_entre_vencidas_decide_la_de_fin_mas_tardio() -> None:
+    assert resolve_member_membership([VENCIDA_ANTES, VENCIDA], HOY) == ("expired", VENCIDA)
+    assert resolve_member_membership([VENCIDA, VENCIDA_ANTES], HOY) == ("expired", VENCIDA)
+
+
+def test_una_futura_por_vencer_cuenta_con_su_estado_efectivo() -> None:
+    """Una futura de un plan corto cuyo fin cae dentro de `expiring_days` llega con su estado
+    efectivo `expiring`: el socio cuenta con ese estado (US-092 criterio 4 sobre el efectivo)."""
+    corta = snap(S.expiring, date(2026, 10, 23), date(2026, 10, 25))
+    assert resolve_member_membership([corta], HOY) == ("expiring", corta)
+
+
+def test_una_que_empieza_hoy_es_vigente_y_no_futura() -> None:
+    de_hoy = snap(S.active, HOY, date(2026, 11, 20))
+    pendiente_futura = snap(S.pending_payment, date(2026, 11, 21), date(2026, 12, 21))
+    assert resolve_member_membership([pendiente_futura, de_hoy], HOY) == ("active", de_hoy)
+
+
+def test_la_prioridad_tiene_las_cuatro_categorias_en_orden() -> None:
+    assert MEMBER_STATUS_PRIORITY == ("current", "pending_payment", "expired", "future")

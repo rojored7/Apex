@@ -83,8 +83,14 @@ def test_las_listas_efectivas_de_la_app_paginan_y_aceptan_q(settings_prueba: Set
     problemas, listas = problemas_de_listas(app)
     assert problemas == [], "\n".join(problemas)
     # S2-B3 publica la primera lista paginada (`GET /users`); el recorrido no puede quedar vacío.
-    # S2-B8 agrega `GET /members` y S2-B9 `GET /plans`: las tres deben recogerse.
-    assert {"GET /api/v1/users", "GET /api/v1/members", "GET /api/v1/plans"} <= set(listas)
+    # S2-B8 agrega `GET /members` y S2-B9 `GET /plans`: las tres deben recogerse. S3-B7 agrega
+    # `GET /memberships` (US-091).
+    assert {
+        "GET /api/v1/users",
+        "GET /api/v1/members",
+        "GET /api/v1/plans",
+        "GET /api/v1/memberships",
+    } <= set(listas)
 
 
 class _Out(BaseModel):

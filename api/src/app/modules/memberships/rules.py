@@ -51,7 +51,22 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   regla de `SafeText` más el largo del CHECK `cancel_reason_length`: `cancel` la aplica también
   cuando no llega por HTTP.
 
-B7 agrega `parse_status_filter` y `resolve_member_status`.
+- `parse_status_filter(raw)` (S3-B7, US-091; D18, L-9): el `status` de `GET /memberships`,
+  separado por comas (`"active,expiring"`), como `frozenset[MembershipStatus]`; cada parte se
+  recorta y los repetidos se funden; `None`, vacío o solo espacios es `None` (sin filtro); un
+  estado desconocido, en mayúsculas o una parte vacía (`"active,"`) es `StatusFilterInvalid`
+  (422, `field="status"`, sin el valor en el mensaje).
+- `resolve_member_status(items, today)` y `resolve_member_membership(items, today)` (S3-B7,
+  US-092; N-26): el estado del SOCIO sobre snapshots con estado EFECTIVO (`compute_status`). Las
+  `cancelled` se ignoran. Cada membresía cae en una categoría de `MEMBER_STATUS_PRIORITY`, en
+  este orden de prioridad: `current` (cualquier estado que no sea `pending_payment` ni `expired`
+  con `start_date <= today`: la vigente), `pending_payment`, `expired` y `future` (no
+  `pending_payment` ni `expired`, con `start_date > today`). Decide la de mejor categoría (dentro
+  de una misma categoría, la de `end_date` más tardío) y el estado del socio es el estado
+  efectivo de esa membresía; sin membresías (o solo canceladas) es `"none"`.
+  `resolve_member_membership` devuelve además la que decide (`None` con `"none"`). Es el oráculo
+  de la prueba de paridad de `queries.member_status_rank_expr` (S3-D53).
+  `member_status_category(m, today)` da la categoría de un snapshot (lo que ordena las dos).
 """
 
 from __future__ import annotations
@@ -60,7 +75,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
-from typing import Final
+from typing import Final, Literal, cast
 from uuid import UUID
 
 from app.core.validators import check_visible_text
@@ -68,6 +83,7 @@ from app.modules.memberships.exceptions import (
     CancelReasonInvalid,
     StartDateTooFar,
     StartDateTooRetroactive,
+    StatusFilterInvalid,
 )
 
 MAX_START_AHEAD_DAYS: Final = 366
@@ -370,3 +386,62 @@ def normalize_cancel_reason(reason: str) -> str:
     if not CANCEL_REASON_MIN <= len(motivo) <= CANCEL_REASON_MAX:
         raise CancelReasonInvalid()
     return motivo
+
+
+# Listas y estado del socio (S3-B7) ------------------------------------------------------------
+
+ResolvedStatus = Literal["pending_payment", "active", "expiring", "expired", "frozen", "none"]
+"""Estado de membresía de un SOCIO (US-092): los cinco efectivos sin `cancelled`, más `none`."""
+
+RESOLVED_NONE: Final = "none"
+
+MEMBER_STATUS_PRIORITY: Final[tuple[str, ...]] = ("current", "pending_payment", "expired", "future")
+"""Categorías de una membresía no cancelada, de mayor a menor prioridad (US-092 criterio 2;
+docstring del módulo). La posición es el rango de `queries.member_status_rank_expr`."""
+
+
+_VALID_STATUSES: Final = frozenset(estado.value for estado in MembershipStatus)
+
+
+def parse_status_filter(raw: str | None) -> frozenset[MembershipStatus] | None:
+    """El filtro `status` separado por comas (docstring del módulo)."""
+    if raw is None or not raw.strip():
+        return None
+    partes = [parte.strip() for parte in raw.split(",")]
+    if any(parte not in _VALID_STATUSES for parte in partes):
+        raise StatusFilterInvalid()
+    return frozenset(MembershipStatus(parte) for parte in partes)
+
+
+def member_status_category(m: MembershipSnapshot, today: date) -> str:
+    """Categoría de US-092 de un snapshot con estado efectivo no cancelado (docstring del
+    módulo): `pending_payment` y `expired` por su estado; si no, `current` o `future` por la
+    fecha de inicio."""
+    if m.status in (MembershipStatus.pending_payment, MembershipStatus.expired):
+        return m.status.value
+    return "current" if m.start_date <= today else "future"
+
+
+def resolve_member_membership(
+    items: Iterable[MembershipSnapshot], today: date
+) -> tuple[ResolvedStatus, MembershipSnapshot | None]:
+    """El estado del socio y la membresía que lo decide (docstring del módulo). Mejor categoría
+    de `MEMBER_STATUS_PRIORITY`; dentro de una, la de fin más tardío (y luego la de inicio más
+    tardío, para no depender del orden de entrada)."""
+    candidatas = [m for m in items if m.status != MembershipStatus.cancelled]
+    if not candidatas:
+        return RESOLVED_NONE, None
+    decide = min(
+        candidatas,
+        key=lambda m: (
+            MEMBER_STATUS_PRIORITY.index(member_status_category(m, today)),
+            -m.end_date.toordinal(),
+            -m.start_date.toordinal(),
+        ),
+    )
+    return cast(ResolvedStatus, decide.status.value), decide
+
+
+def resolve_member_status(items: Iterable[MembershipSnapshot], today: date) -> ResolvedStatus:
+    """El estado del socio (docstring del módulo)."""
+    return resolve_member_membership(items, today)[0]

@@ -13,6 +13,11 @@
   `vender`) y `congelaciones_de(session, membership_id)` (SQL crudo, orden `frozen_from`).
 - S3-B6: `ruta_cancelar(membership_id)`, `cuerpo_cancelacion(reason)` y `cancelar(session, actor,
   **datos)` (`service.cancel` bajo `actor_scope(actor)` y commit, como `vender`).
+- S3-B7: `RESUMEN` (`/api/v1/memberships/summary`), `ruta_detalle(membership_id)`,
+  `CAMPOS_ROW` (claves exactas de `MembershipRow`), `CAMPOS_RESUMEN` (las cinco de
+  `MembershipSummaryOut`), `TABLA_MEMBRESIAS`, `TABLA_CONGELACIONES` (nombres como los escribe
+  SQLAlchemy, para `contador_de_consultas`) y `guardar_politica(session, **cambios)` (la sección
+  `memberships` de settings con los valores por defecto y los cambios; commit).
 """
 
 from __future__ import annotations
@@ -24,9 +29,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.context import actor_scope
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.modules.memberships import service
 from app.modules.memberships.schemas import MembershipOut, SellMembershipOut
+from app.modules.settings.service import update_section
 
 MEMBERSHIPS = "/api/v1/memberships"
 
@@ -156,3 +162,44 @@ async def cancelar(session: AsyncSession, actor: UUID, **datos: Any) -> Membersh
         salida = await service.cancel(session, **datos)
         await session.commit()
     return salida
+
+
+RESUMEN = f"{MEMBERSHIPS}/summary"
+TABLA_MEMBRESIAS = "memberships.memberships"
+TABLA_CONGELACIONES = "memberships.membership_freezes"
+
+CAMPOS_ROW = frozenset(
+    {
+        "id",
+        "member_id",
+        "member_name",
+        "plan_id",
+        "plan_name",
+        "agreed_price_cop",
+        "paid_cop",
+        "start_date",
+        "end_date",
+        "classes_total",
+        "classes_remaining",
+        "status",
+    }
+)
+CAMPOS_RESUMEN = frozenset({"active", "expiring", "expired", "frozen", "pending_payment"})
+
+
+def ruta_detalle(membership_id: UUID | str) -> str:
+    return f"{MEMBERSHIPS}/{membership_id}"
+
+
+async def guardar_politica(session: AsyncSession, version: int = 0, **cambios: int) -> None:
+    """Guarda la sección `memberships` (valores por defecto más `cambios`) y confirma."""
+    valores = {
+        "expiring_days": 7,
+        "max_freeze_days_per_membership": 30,
+        "max_freezes_per_membership": 2,
+        "max_retroactive_days": 7,
+        **cambios,
+    }
+    with actor_scope(SYSTEM_USER_ID):
+        await update_section(session, "memberships", valores, version, SYSTEM_USER_ID)
+        await session.commit()

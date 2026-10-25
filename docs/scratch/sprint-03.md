@@ -1595,3 +1595,222 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - `/health` y `/api/v1/health` → 200.
 - Observación sin cambio: el 200 de `cancel` por Nginx trae `Cache-Control: no-store` dos veces
   (una en minúsculas); no es de B6 (mismo `no_store` del router de B1 a B5).
+
+### S3-B7 · Rojo (B7.1 fixtures, B7.2 stubs y B7.3 Rojo; sin migración)
+
+- Línea base: HEAD `c457922`, árbol limpio; suite en dos mitades con `-m "not perf"` y
+  `TEST_DATABASE_URL`: (1) `core crypto auth settings cli audit` + `test_ci_database.py` y
+  `test_smoke.py` 1.483 ok, 3 saltadas; (2) `members plans memberships payments migrations
+  architecture` 1.571 ok, 1 saltada, 3 deseleccionadas. Total 3.054 ok, 4 saltadas. `ruff check` y
+  `mypy src` (93 archivos) limpios.
+- Rojo: 3.215 recolectadas; con `-m "not perf"`: **123 fallan**, 3.083 ok, 4 saltadas, 5
+  deseleccionadas. Mitad 1: 1 falla (`test_docs_openapi_json_esta_al_dia`, P-API de B7.5), 1.482
+  ok, 3 saltadas. Mitad 2: 122 fallan (todas de B7), 1.601 ok, 1 saltada, 5 deseleccionadas.
+  `tests/memberships/test_list_perf.py` aparte: 2 fallan (rojo esperado). Las 122 + 2 son
+  `NotImplementedError` de los stubs, salvo `test_el_handler_solo_marca_la_sesion` (`KeyError
+  'apex.summary_dirty'`: el stub del handler no marca). `ruff format`, `ruff check` y `mypy src`
+  (93 archivos) limpios. `db_test` sin residuos: `alembic_version = 0011_payments_immutability`,
+  0 pagos, 0 membresías, 0 congelaciones, 0 socios, 0 planes, 0 usuarios `@test.apex`, 0 sesiones
+  `idle in transaction`, los siete triggers de `memberships` y `payments` en `A` (también tras las
+  dos pruebas `perf`, que siembran dentro de la transacción de `session`). `apex-db-1` no se tocó.
+  - Verdes de la línea base que pasan a rojo: solo `test_docs_openapi_json_esta_al_dia` (P-API).
+  - Nuevas: 154 (152 sin `perf`). En rojo 122 + 2 `perf`; verdes sobre los stubs 30 (el stub ya es
+    el contrato): `test_list_router.py` 9 (403 `member`/401 de lista y detalle; 422 de forma de
+    `limit` 0 y 201, `offset` -1, `status` de 101, fecha mal formada, `plan_id` y `member_id` no
+    UUID; detalle con id no UUID), `test_list_service.py` 2 (esquema de filtros),
+    `test_summary_router.py` 3 (403/401, orden de rutas, OpenAPI), `test_summary_cache.py` 7
+    (suscripción a los siete eventos), `test_rules.py` 1 (`MEMBER_STATUS_PRIORITY`),
+    `tests/architecture/test_no_cross_schema_sql.py` 4 y `test_handlers_no_new_locks.py` 4 nuevas.
+    Cambiadas y verdes: `test_error_codes_per_route.py` y `test_list_routes_use_page_params.py`.
+- Verde desechable (revertido; sin migración, solo `db_test`): `active_ids`, `parse_status_filter`,
+  `resolve_member_membership`/`resolve_member_status`, `status_expr` (`case` con `literal(today,
+  Date)` y `exists()` sobre `membership_freezes`), `member_status_rank_expr`, `list` (validación,
+  filtros, `paginate`, enriquecimiento por lote), `get`, `summary` (caché, `active_ids`, lotes con
+  `DISTINCT ON` por `postgresql.distinct_on` y `count(*) FILTER`), `status_for`,
+  `member_ids_by_status`, `count_active_by_plan`, el handler y los dos listeners de `Session`. Las
+  ocho líneas del gate de B7 más `tests/architecture`: 509 ok, 1 saltada; solo fallaron
+  `test_ninguna_funcion_supera_50_lineas` (el `list` desechable, no el Rojo) y un `ERROR` de
+  `caplog` por correr con `-p no:logging`. `test_list_perf.py`: 2 ok (lista `expiring` 16,5 ms;
+  resumen sin caché 18,1 ms). Pruebas de mutación de E13 sobre el desechable: sin `if
+  session.in_nested_transaction(): return` fallan 3 de `test_summary_cache.py` (SAVEPOINT de
+  `sell`, de `register` y el rollback); sin la guarda de SAVEPOINT en `after_soft_rollback` falla
+  `test_el_rollback_de_un_savepoint_no_pierde_la_marca_de_la_transaccion`. Sin defectos de prueba.
+  Después, `memberships/queries.py`, `memberships/rules.py` y `members/service.py` restaurados
+  desde copia (sha256 iguales a los del stub).
+- Fixtures (B7.1): `tests/conftest.py` gana `ContadorDeConsultas` y la fixture
+  `contador_de_consultas` (`before_cursor_execute` sobre `engine.sync_engine`, toda la prueba;
+  ignora `SAVEPOINT`, `RELEASE` y `ROLLBACK TO`; `midiendo()` vacía lo anotado; `de(tabla)` cuenta
+  las sentencias que nombran `esquema.tabla` como palabra completa, así `memberships.memberships`
+  no cuenta `memberships.membership_freezes`; `solo_de(tabla, *sin)`). `tests/memberships/
+  conftest.py` gana `sin_cache_de_resumen` (autouse: `configure_summary_cache(0)` y
+  `reset_summary_cache()` antes; al salir vacía y vuelve a `SUMMARY_CACHE_TTL_S`).
+  `tests/memberships/_apoyo.py` gana `RESUMEN`, `ruta_detalle`, `CAMPOS_ROW`, `CAMPOS_RESUMEN`,
+  `TABLA_MEMBRESIAS`, `TABLA_CONGELACIONES` y `guardar_politica(session, version=0, **cambios)`.
+- Stubs (B7.2): `members/service.py: active_ids(session) -> frozenset[UUID]`;
+  `memberships/exceptions.py`: `StatusFilterInvalid` y `DateRangeInvalid` (422
+  `validation_error`, `field` por defecto `status` y `ends_to`); `memberships/rules.py`:
+  `ResolvedStatus`, `RESOLVED_NONE`, `MEMBER_STATUS_PRIORITY = ("current", "pending_payment",
+  "expired", "future")`, `parse_status_filter`, `resolve_member_membership`,
+  `resolve_member_status` (con `NotImplementedError`); `memberships/schemas.py`:
+  `STATUS_FILTER_MAX_LENGTH = 100`, `MembershipListQuery`, `MembershipRow`,
+  `MembershipSummaryOut`, `MemberMembership`; `memberships/queries.py`: `ENDS_FLOOR`,
+  `ENDS_CEILING_YEARS`, `SUMMARY_ID_BATCH = 1000`, `SUMMARY_CACHE_TTL_S = 30`,
+  `SUMMARY_DIRTY_KEY = "apex.summary_dirty"`, `SummaryCache` (real), `reset_summary_cache` y
+  `configure_summary_cache` (reales, ver decisiones), `_mark_summary_dirty` (no hace nada),
+  `status_expr`, `member_status_rank_expr`, `list`, `get`, `summary`, `status_for`,
+  `member_ids_by_status`, `count_active_by_plan` (con `NotImplementedError`); `queries.py` usa
+  `builtins.list` en las anotaciones y llamadas existentes (`list` lo sombrea);
+  `memberships/service.py`: re-exporta los siete y `MemberMembership`, `__all__:
+  builtins.list[str]`, y al final suscribe `queries._mark_summary_dirty` a `MembershipSold`,
+  `MembershipActivated`, `MembershipActivationReverted`, `MembershipFrozen`, `MembershipCancelled`,
+  `PaymentRegistered` y `PaymentVoided` (después de los handlers de negocio);
+  `memberships/router.py`: `GET /memberships/summary` (sin parámetros), `GET /memberships`
+  (`StaffDep`, `PageParams`, `q`, `status` con alias y `max_length=100`, `plan_id`, `member_id`,
+  `ends_from`, `ends_to`; `enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)`
+  solo con `q`; `responses_for(422, 429)`) y `GET /memberships/{membership_id}`
+  (`responses_for(404)`), en ese orden y al final del router; `no_store` del router.
+- Archivos de prueba nuevos: `tests/memberships/test_status_expr_parity.py` (7),
+  `test_list_service.py` (32), `test_list_perf.py` (2, `perf`), `test_list_router.py` (25),
+  `test_status_queries_service.py` (16), `test_summary_cache.py` (18), `test_summary_router.py`
+  (6); `tests/architecture/test_no_cross_schema_sql.py` (4). Cambiados: `tests/memberships/
+  test_rules.py` (+40), `tests/architecture/test_handlers_no_new_locks.py` (+4: lista exacta de
+  handlers `_mark_*` de `queries.py`, solo `session.info`, sin `await` ni candados, lista exacta
+  de suscriptores de los siete eventos y control con fuente falsa), `test_error_codes_per_route.py`
+  (E2: `CON_LIMITE` gana `("get", "/api/v1/memberships")`), `test_list_routes_use_page_params.py`
+  (gana `GET /api/v1/memberships`). Sin cambio: `test_user_limits_catalog.py` (`members-search` ya
+  tenía ruta; el conjunto de rutas sale de `CON_LIMITE`).
+- Importadores de lo tocado: `members/service.py` lo importan `members/router.py`,
+  `memberships/{lifecycle,queries,sell}.py` y pruebas; `memberships/exceptions.py`
+  `memberships/{lifecycle,rules,sell}.py` y pruebas; `memberships/rules.py`
+  `memberships/{lifecycle,queries,schemas,sell}.py`, `tests/factories/memberships.py` y pruebas
+  (`schemas` lee ahora también `ResolvedStatus`; `rules` no importa `schemas`: sin ciclo);
+  `memberships/schemas.py` `memberships/{lifecycle,queries,router,sell}.py`,
+  `tests/memberships/_apoyo.py` y pruebas (importa ahora `core.pagination.MAX_SEARCH_LENGTH`);
+  `memberships/queries.py` `memberships/{lifecycle,sell,service}.py` (importa ahora
+  `core.clock`, `core.events.DomainEvent` y `core.pagination.Page/PageParams`; ninguna arista
+  nueva entre módulos); `memberships/service.py` `memberships/router.py`,
+  `tests/memberships/{conftest,_apoyo}.py` y pruebas; `memberships/router.py` solo `main.py`
+  (por `MODULES`); `tests/conftest.py` toda la suite. Ninguna firma existente cambia: todo es
+  agregado.
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`active_ids`:** `frozenset[UUID]` de los socios con `deleted_at IS NULL` (también los
+   `inactive`), en una sentencia y sin descifrar.
+2. **`parse_status_filter`:** separa por comas, recorta cada parte y funde repetidos; `None`, `""`
+   o solo espacios es `None`; un estado desconocido, en mayúsculas, `none` o una parte vacía
+   (`"active,"`, `",active"`, `"active,,expiring"`) es `StatusFilterInvalid` (422
+   `validation_error`, `field="status"`, sin el valor en el mensaje). `cancelled` es válido.
+3. **Estado del socio (US-092):** sobre snapshots con estado EFECTIVO; las `cancelled` no cuentan.
+   Categorías en orden `MEMBER_STATUS_PRIORITY`: `current` (no `pending_payment` ni `expired`,
+   inicio <= hoy), `pending_payment`, `expired`, `future` (inicio > hoy). Decide la de mejor
+   categoría; en empate, la de fin más tardío (dos vencidas: la última). El estado es el
+   efectivo de la que decide (una futura de plan corto que ya está `expiring` cuenta
+   `expiring`). `resolve_member_membership` devuelve `(estado, snapshot | None)`: `("none",
+   None)` sin membresías o solo anuladas. Indiferente al orden de entrada.
+4. **`status_expr(today, expiring_days)`** coincide con `compute_status` en toda la malla
+   (`today` del 22 de octubre al 2 de noviembre con fin 31 de octubre, `expiring_days` 0, 3 y
+   7, lo guardado `active`/`expired`/`frozen` no manda, congelación que contiene hoy o que cruza
+   el fin, `classes_remaining` 0 y 5, `pending_payment`, `cancelled`, futura). El SQL solo nombra
+   tablas de `memberships`. **`member_status_rank_expr(today, expiring_days)`** es la posición en
+   `MEMBER_STATUS_PRIORITY` de la categoría de cada fila no anulada. La prueba arma el `DISTINCT
+   ON` con `sqlalchemy.dialects.postgresql.distinct_on` (en SQLAlchemy 2.1 `select().distinct(col)`
+   está deprecado) ordenado por `member_id, rango, end_date DESC`.
+5. **`list(session, filters: MembershipListQuery, page: PageParams) -> Page[MembershipRow]`**
+   (como `members.list`; el blueprint lo daba con argumentos sueltos). Valida en el service, con
+   el "hoy" del reloj: `parse_status_filter`; cada `ends_*` entre `ENDS_FLOOR` (2020-01-01,
+   incluido) y hoy más 5 años (la prueba fija que 2031-10-20 pasa y 2032-10-21 falla, sin fijar
+   el día exacto del techo), `DateRangeInvalid(field=<el que falla>)`, y después invertidas en
+   `ends_to`; años 1 y 9999 dan 422, nunca 500. Sin `status` excluye `cancelled`; con `status`,
+   el estado efectivo. `ends_*` incluyen los extremos. Orden `end_date, id`. `q` con
+   `members.search_ids(include_deleted=True)` (un dado de baja aparece); sin coincidencias,
+   página vacía sin consultar `plans` ni `payments`. Con 8 filas en la página: exactamente una
+   sentencia a `members.members`, una a `plans.plans`, una a `payments.payments` y como mucho
+   una de congelaciones aparte. `paid_cop` ignora los anulados. Cero `decrypt` (también con `q`
+   por documento). Un `status` de 101 caracteres falla en el esquema (`loc == ("status",)`).
+6. **`get`:** `MembershipOut` (las mismas claves que `membership_out`, con congelaciones y
+   `paid_cop`); 404 `membership_not_found`; una anulada se ve con su motivo.
+7. **`summary(session, *, today=None)`:** cuenta socios vivos por estado resuelto (10/4/4/1/2 en
+   el escenario; suma más `none` = vivos). Lee `members.service.active_ids` una vez y consulta
+   `memberships.memberships` una vez por lote de `SUMMARY_ID_BATCH`, **leído al llamar** (la
+   prueba lo cambia con `monkeypatch.setattr(queries, "SUMMARY_ID_BATCH", 10_000)`): 2.500 socios
+   dan 3 sentencias y la misma suma que con 1; sin socios vivos, ninguna. `today=None` es "hoy"
+   de Bogotá del reloj.
+8. **`status_for`:** `dict[UUID, MemberMembership(status, plan_id, plan_name, end_date)]` de la
+   membresía que decide; los ids sin membresías no anuladas no aparecen (blueprint; el llamador
+   usa `none`); lotes de `ID_BATCH` (200 ids: 1 sentencia a `memberships.memberships`; 201: 2);
+   sin ids no envía ninguna sentencia (ni la de settings).
+9. **`member_ids_by_status(statuses, plan_id=None)`:** por el plan de la membresía que DECIDE
+   (la renovación Trimestral pendiente de Laura no la pone en `pending_payment` del Trimestral);
+   con `statuses` vacío, `set()`.
+10. **`count_active_by_plan`:** estado efectivo distinto de `cancelled` y `expired` (una `active`
+    guardada vencida no cuenta; una congelada sí).
+11. **Caché (S3-D53, E11, E13):** clave `(hoy, expiring_days)` (volver al `expiring_days` previo
+    sirve la entrada vieja); una entrada sirve mientras su edad medida con `current_clock()` sea
+    menor que el TTL (29 s sirve, 31 s no); TTL 0 nunca sirve. `_mark_summary_dirty(event,
+    session)` solo hace `session.info["apex.summary_dirty"] = True` (sin `await`, sin candados).
+    La invalidación es un listener de `Session`: `after_commit` que retorna si
+    `session.in_nested_transaction()` (confirmado con prueba de mutación: `after_commit` se
+    despacha antes de cerrar el SAVEPOINT) y, si la marca estaba, vacía la caché y la borra;
+    `after_soft_rollback` borra la marca solo si la transacción revertida NO es un SAVEPOINT
+    (`previous_transaction.nested`): el rollback de un SAVEPOINT dentro de una transacción ya
+    marcada no la pierde (si no, el commit siguiente conservaría datos viejos, contra S3-D53).
+    Tras el commit real la marca queda borrada; tras el rollback real también.
+12. **Rutas:** `/memberships/summary` antes de `/memberships/{membership_id}` (prueba
+    estructural sobre `effective_routes`); el resumen no declara parámetros, 404, 422 ni 429. La
+    lista con `q` gasta `PII_SEARCH_BUCKET` (40 aquí + 20 en `/members?q=` pasan, la 21 en
+    socios y la siguiente aquí dan 429); sin `q` no gasta (61 seguidas dan 200). Los 422 de la
+    lista llevan `validation_error` con `field` (también los que decide el service).
+
+#### Desviaciones del Rojo
+
+- `members/service.py` no tiene `__all__` (el plan dice que `active_ids` "va en `__all__`"): no
+  se crea uno para un solo nombre, que además ocultaría el resto en un `import *`. La partición de
+  B9a decide la fachada.
+- `reset_summary_cache` y `configure_summary_cache` no lanzan `NotImplementedError`: los usa la
+  fixture autouse `sin_cache_de_resumen` en cada prueba de `tests/memberships` y un stub que
+  lanzara rompería las ~1.000 pruebas ya verdes. Son dos líneas sobre la clase `SummaryCache`,
+  que el plan ya excluía de los stubs.
+- `after_soft_rollback` con guarda de SAVEPOINT y su prueba amplían E13 (el texto de E13 solo
+  decía "limpia la marca"); motivo en la decisión 11.
+- `FrozenClock.advance` no tiene `seconds` (el plan escribe `reloj.advance(seconds=31)`): la prueba
+  usa `reloj.set(T0 + timedelta(seconds=31))`; `core/clock.py` no se toca.
+- Los 2.500 socios del caso de lotes se siembran con SQL crudo (blobs `apx1.prueba...` y
+  `document_idx` falsos: el resumen nunca los lee), no con `make_members` (2.500 altas cifradas
+  y auditadas harían lenta una prueba que no es `perf`). La prueba `perf` sí usa `make_members` y
+  `make_memberships`, como pide el plan.
+- `test_no_cross_schema_sql.py` es una guardia: verde sobre los stubs y sobre el código actual.
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B7 · Verde (B7.4 a B7.6; sin migración)
+
+- B7.4: `members.active_ids` (`frozenset`, una sentencia); `rules.parse_status_filter`,
+  `member_status_category`, `resolve_member_membership` (mejor categoría, luego fin y después
+  inicio más tardío) y `resolve_member_status`; `queries.py`: `status_expr` (`case` con
+  `literal(today, Date)` y `EXISTS` correlacionado sobre `membership_freezes`),
+  `member_status_rank_expr`, `_deciding` (`DISTINCT ON` con `postgresql.distinct_on`), `list`
+  (validación, `q` con `search_ids(include_deleted=True)` y `= ANY(:ids uuid[])`, `paginate`,
+  `_rows_for` con una sentencia por vecino y estado efectivo con `compute_status`), `get` (estado
+  efectivo), `summary` partida (`_summary_compute`, `_summary_counts` con `count(*) FILTER`,
+  `_summary_cache_get/put`), `_mark_summary_dirty`, listeners `after_commit` (guarda de
+  SAVEPOINT) y `after_soft_rollback` (solo transacción real) registrados una vez, `status_for`,
+  `member_ids_by_status`, `count_active_by_plan`. Sin partir `queries.py` (688 líneas; el handler
+  y `SUMMARY_ID_BATCH` deben quedar en `queries.py` por las pruebas). `ruff format`, `ruff check`
+  y `mypy src` (93 archivos) limpios.
+- Revisión de seguridad: 0 CRITICAL/HIGH, 2 MEDIUM corregidos (marca de sesión sin caché;
+  generación de la caché y candado de un solo cálculo), LOW-2 y LOW-3 corregidos, LOW-1 y LOW-4
+  aceptados (DECISIONES "S3-B7"). Cinco pruebas nuevas en `test_summary_cache.py` (23 en total).
+- B7.5 P-API: `export-openapi` dos veces idéntica (sha256 `f908cbee…`, +520 líneas en
+  `docs/openapi.json`, +339 en `web/src/core/api/types.ts`); `types.contract.test.ts` 5 ok y
+  `tsc --noEmit` limpio. **F4 y F5 pueden arrancar sobre este contrato** (`GET
+  /memberships/summary`, `GET /memberships`, `GET /memberships/{membership_id}`).
+- Docs: RUNBOOK §10 "Estado de las membresías, lista y resumen" (estado derivado sin job, lista,
+  detalle, resumen, caché de 30 s, `expiring_days` y la consulta psql para cuadrar el resumen);
+  DECISIONES "S3-B7".
+- Suite en dos mitades, de una en una, `-m "not perf"`: (1) `core crypto auth settings cli
+  audit` + `test_ci_database.py` y `test_smoke.py` 1.483 ok, 3 saltadas; (2) `members plans
+  memberships payments migrations architecture` 1.728 ok, 1 saltada, 5 deseleccionadas. Total
+  3.211 ok, 4 saltadas, 0 fallos (el Rojo: 3.215 con 123 fallos; +5 de la revisión).
+  `tests/memberships/test_list_perf.py` aparte: 2 ok. `db_test` sin residuos (0 socios,
+  membresías y pagos; 0 `idle in transaction`; los siete triggers en `A`).
+- B7.6 gates (abajo, en "Evidencia de S3-B7").

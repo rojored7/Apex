@@ -29,25 +29,43 @@
   compartido con anular un pago (S3-B5), contado tras la validación de forma y antes del service.
   Códigos 200, 401, 403, 404 (`membership_not_found`), 409 (`membership_already_cancelled`), 422
   (`validation_error` con `field="reason"`) y 429.
+- `GET /memberships/summary` (S3-B7, US-092; admin y coach, `StaffDep`): 200
+  `MembershipSummaryOut` (cinco enteros: socios no dados de baja por estado resuelto; caché de 30
+  s, S3-D53). Declarada ANTES de `/memberships/{membership_id}`: si no, "summary" se leería como
+  un id y daría 422. Sin límite por usuario.
+- `GET /memberships` (S3-B7, US-091; admin y coach): `Page[MembershipRow]` con `PageParams`,
+  `status` separado por comas (hasta 100 caracteres, L-9), `q` (`SearchQuery`), `plan_id`,
+  `member_id` (UUID), `ends_from` y `ends_to`. Solo con `q`, la cubeta compartida de búsquedas
+  de personas (`PII_SEARCH_BUCKET`, 60 por minuto entre socios, membresías y pagos; M-2,
+  S3-D45). Códigos 200, 401, 403, 422 (`validation_error` con `field`) y 429.
+- `GET /memberships/{membership_id}` (S3-B7; admin y coach): 200 `MembershipOut` con sus
+  congelaciones; 404 `membership_not_found`; 422 si el id no es UUID.
 Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
 """
 
 from __future__ import annotations
 
+from datetime import date
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
-from app.core.ratelimit import enforce_user_limit
+from app.core.pagination import Page, PageParams, SearchQuery
+from app.core.ratelimit import PII_SEARCH_BUCKET, enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.memberships import service
 from app.modules.memberships.schemas import (
+    STATUS_FILTER_MAX_LENGTH,
     CancelMembershipIn,
     FreezeIn,
+    MembershipListQuery,
     MembershipOut,
+    MembershipRow,
+    MembershipSummaryOut,
     RenewalPreviewOut,
     SellMembershipIn,
     SellMembershipOut,
@@ -131,3 +149,45 @@ async def cancel_membership(
 ) -> MembershipOut:
     await enforce_user_limit(request, "admin-write", principal.user_id)
     return await service.cancel(session, membership_id=membership_id, reason=body.reason)
+
+
+@router.get("/memberships/summary", response_model=MembershipSummaryOut)
+async def membership_summary(principal: StaffDep, session: SessionDep) -> MembershipSummaryOut:
+    return await service.summary(session)
+
+
+@router.get("/memberships", response_model=Page[MembershipRow], responses=responses_for(422, 429))
+async def list_memberships(
+    request: Request,
+    principal: StaffDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    membership_status: Annotated[
+        str | None, Query(alias="status", max_length=STATUS_FILTER_MAX_LENGTH)
+    ] = None,
+    plan_id: UUID | None = None,
+    member_id: UUID | None = None,
+    ends_from: date | None = None,
+    ends_to: date | None = None,
+) -> Page[MembershipRow]:
+    if q:
+        await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
+    filtros = MembershipListQuery(
+        status=membership_status,
+        q=q,
+        plan_id=plan_id,
+        member_id=member_id,
+        ends_from=ends_from,
+        ends_to=ends_to,
+    )
+    return await service.list(session, filtros, page)
+
+
+@router.get(
+    "/memberships/{membership_id}", response_model=MembershipOut, responses=responses_for(404)
+)
+async def membership_detail(
+    membership_id: UUID, principal: StaffDep, session: SessionDep
+) -> MembershipOut:
+    return await service.get(session, membership_id)

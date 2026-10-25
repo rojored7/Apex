@@ -11,6 +11,11 @@ La lista de handlers es exacta y se actualiza en el slice que agrega uno: vacía
 (`freeze` vive en `lifecycle.py` desde B2, pero es un caso de uso que emite, no un handler: toma
 el candado del socio como emisor, D3); `on_payment_registered` en B4 y `on_payment_voided` en B5.
 Prohibido `pytest.skip`: con la lista vacía la prueba igual corre el análisis sobre el archivo real.
+
+S3-B7 (S3-D53, E11, E13): la lista exacta se amplía con los handlers de invalidación de la caché
+del resumen (`memberships/queries.py::_mark_summary_dirty`), que solo marcan `session.info` (sin
+`await`, sin candados, sin otro uso de la sesión), y con la lista exacta de suscriptores de los
+siete eventos que cambian el resumen.
 """
 
 from __future__ import annotations
@@ -180,3 +185,121 @@ def test_el_analizador_ve_los_handlers_y_sus_candados() -> None:
         "lock_membership(session, otra_id)",
         "select(Membership).with_for_update()",
     ]
+
+
+# Handlers de invalidación de la caché del resumen (S3-B7; S3-D53, E11, E13) -------------------
+#
+# `memberships/queries.py` define los handlers `_mark_*` que el `service.py` suscribe a los siete
+# eventos que cambian el resumen. Lista exacta: `_mark_summary_dirty`. No piden candados, no
+# esperan nada (`await`) y solo tocan la sesión por `session.info` (la marca que el listener de
+# `after_commit` lee después del commit real). Además, los suscriptores de esos siete eventos
+# son exactamente los de la tabla `SUSCRIPTORES_ESPERADOS` (L5 de la revisión de B1: todo
+# suscriptor nuevo de `MembershipSold` y compañía entra aquí con nombre).
+
+QUERIES = LIFECYCLE.parent / "queries.py"
+HANDLERS_DE_CACHE: frozenset[str] = frozenset({"_mark_summary_dirty"})
+MARCA = "app.modules.memberships.queries._mark_summary_dirty"
+SUSCRIPTORES_ESPERADOS: dict[str, list[str]] = {
+    "MembershipSold": [MARCA],
+    "MembershipActivated": [MARCA],
+    "MembershipActivationReverted": [MARCA],
+    "MembershipFrozen": [MARCA],
+    "MembershipCancelled": [MARCA],
+    "PaymentRegistered": ["app.modules.memberships.lifecycle.on_payment_registered", MARCA],
+    "PaymentVoided": ["app.modules.memberships.lifecycle.on_payment_voided", MARCA],
+}
+
+
+def handlers_de_cache(fuente: str) -> list[str]:
+    return sorted(
+        n.name
+        for n in ast.parse(fuente).body
+        if isinstance(n, ast.AsyncFunctionDef | ast.FunctionDef) and n.name.startswith("_mark_")
+    )
+
+
+def _segundo_parametro(funcion: ast.AsyncFunctionDef | ast.FunctionDef) -> str | None:
+    return funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
+
+
+def violaciones_de_cache(fuente: str) -> list[str]:
+    """`handler:línea: motivo` por cada uso de la sesión distinto de `session.info`, cada `await`
+    y cada llamada de candado en un handler `_mark_*`."""
+    salida: list[str] = []
+    for funcion in ast.parse(fuente).body:
+        if not (
+            isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef)
+            and funcion.name.startswith("_mark_")
+        ):
+            continue
+        sesion = _segundo_parametro(funcion)
+        info = {
+            id(n.value)
+            for n in ast.walk(funcion)
+            if isinstance(n, ast.Attribute) and n.attr == "info" and isinstance(n.value, ast.Name)
+        }
+        for nodo in ast.walk(funcion):
+            if isinstance(nodo, ast.Await):
+                salida.append(f"{funcion.name}:{nodo.lineno}: await")
+            elif isinstance(nodo, ast.Name) and nodo.id == sesion and id(nodo) not in info:
+                salida.append(f"{funcion.name}:{nodo.lineno}: usa la sesión fuera de info")
+            elif isinstance(nodo, ast.Call) and _nombre_llamado(nodo) in {
+                "lock_member",
+                "lock_membership",
+                "with_for_update",
+            }:
+                salida.append(f"{funcion.name}:{nodo.lineno}: candado")
+    return salida
+
+
+def test_los_handlers_de_cache_son_exactamente_los_del_slice() -> None:
+    assert handlers_de_cache(QUERIES.read_text(encoding="utf-8")) == sorted(HANDLERS_DE_CACHE)
+
+
+def test_los_handlers_de_cache_solo_tocan_session_info() -> None:
+    assert violaciones_de_cache(QUERIES.read_text(encoding="utf-8")) == []
+
+
+def test_los_suscriptores_de_los_eventos_del_resumen_son_exactamente_los_esperados() -> None:
+    from app.core import events
+    from app.modules.memberships import service as memberships_service
+    from app.modules.payments import service as payments_service
+
+    tipos = {
+        **{n: getattr(memberships_service, n) for n in list(SUSCRIPTORES_ESPERADOS)[:5]},
+        "PaymentRegistered": payments_service.PaymentRegistered,
+        "PaymentVoided": payments_service.PaymentVoided,
+    }
+    obtenidos = {
+        nombre: [f"{h.__module__}.{h.__qualname__}" for h in events.subscribers_for(tipo)]
+        for nombre, tipo in tipos.items()
+    }
+    assert obtenidos == SUSCRIPTORES_ESPERADOS
+
+
+FUENTE_CACHE = """
+async def _mark_summary_dirty(event, session):
+    session.info["apex.summary_dirty"] = True
+
+async def _mark_mal(event, session):
+    await session.execute(select(1))
+    session.flush
+    await lock_membership(session, event.membership_id)
+
+def no_es_handler(session):
+    session.execute(1)
+"""
+
+
+def test_el_analizador_de_cache_ve_los_handlers_y_sus_usos() -> None:
+    assert handlers_de_cache(FUENTE_CACHE) == ["_mark_mal", "_mark_summary_dirty"]
+    assert sorted(violaciones_de_cache(FUENTE_CACHE)) == sorted(
+        [
+            "_mark_mal:6: await",
+            "_mark_mal:6: usa la sesión fuera de info",
+            "_mark_mal:7: usa la sesión fuera de info",
+            "_mark_mal:8: await",
+            "_mark_mal:8: candado",
+            "_mark_mal:8: usa la sesión fuera de info",
+        ]
+    )

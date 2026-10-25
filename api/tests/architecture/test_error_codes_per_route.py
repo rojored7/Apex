@@ -43,6 +43,9 @@ CON_LIMITE = {
     # S3-B6 (E2, H-2): anular una membresía consume `admin-write` (compartida con anular un pago);
     # la vista previa de la renovación es una lectura y no tiene límite (S3-D42).
     ("post", "/api/v1/memberships/{membership_id}/cancel"),
+    # S3-B7 (E2, M-2, S3-D45): la lista de membresías con `q` consume la cubeta compartida de
+    # búsquedas de personas (`PII_SEARCH_BUCKET`); el resumen y el detalle no tienen límite.
+    ("get", "/api/v1/memberships"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

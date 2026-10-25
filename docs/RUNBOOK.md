@@ -408,7 +408,7 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ## 10. Membresías y pagos (Sprint 3)
 
-Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`, B3 la tabla de pagos, las reglas de registrar pago, los medios de pago y `0010`, B4 la inmutabilidad de los pagos con `0011`, la venta con primer pago, la ruta de registrar pago y la activación por cobertura).
+Lo completan S3-B1 a S3-B7; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`, B3 la tabla de pagos, las reglas de registrar pago, los medios de pago y `0010`, B4 la inmutabilidad de los pagos con `0011`, la venta con primer pago, la ruta de registrar pago y la activación por cobertura).
 
 ### Volcado y restauración (P-MIG)
 
@@ -540,3 +540,41 @@ Rollback de `0011`: `$DC exec api alembic downgrade 0010_payments` (o `downgrade
 - Anular una ya anulada da **409 `membership_already_cancelled`** sin cambios; una que no existe, 404 `membership_not_found`. Registrar un pago sobre una anulada da 409 `membership_cancelled`; anular uno de sus pagos sí se permite y no la reactiva.
 - **Una anulada no se puede revivir.** El trigger `memberships.guard_identity` rechaza cualquier cambio posterior de estado, motivo, quién o cuándo (`23000 memberships_identity`), también por SQL directo. Si se anuló por error, se vende de nuevo (el rango de la anulada queda libre para la `EXCLUDE`).
 - Comprobar en psql: `SELECT status, cancel_reason, cancelled_by, cancelled_at FROM memberships.memberships WHERE id = '<membresía>';` y `SELECT action, before, after FROM audit.audit_log WHERE table_name = 'memberships.memberships' AND record_id = '<membresía>' ORDER BY seq;`.
+
+### Estado de las membresías, lista y resumen (S3-B7, US-091 y US-092)
+
+- **El estado se calcula al leer; no hay job.** Lo guardado solo manda en `cancelled` y `pending_payment`. Para el resto, cada lectura deriva el estado de la fecha de hoy en Bogotá (D5): `frozen` si una congelación contiene hoy; `expired` si hoy pasó el fin o no quedan clases; `expiring` si al fin le faltan `expiring_days` días o menos (ajuste `memberships.expiring_days` de `/settings`, 7 por defecto); si no, `active`. Una membresía guardada `active` cuyo fin ya pasó se ve `expired` sin que nadie la cambie (en psql sigue diciendo `active`, y está bien). El job de vencimientos de US-094 (Sprint 4A) solo pondrá lo guardado al día.
+- **Lista:** `GET /api/v1/memberships` (admin y coach) con `limit`/`offset`, `status` separado por comas (`active,pending_payment`; el estado EFECTIVO; sin `status` no salen las anuladas), `plan_id`, `member_id`, `ends_from`/`ends_to` (fin entre esas fechas, incluidas; cada una entre 2020-01-01 y hoy más 5 años, si no 422 con el `field` de la fecha; invertidas dan 422 en `ends_to`) y `q` (nombre, apellido o documento, también de socios dados de baja; nunca descifra). Orden por fin y luego id. Con `q` gasta la cubeta de búsquedas de personas (60 por minuto por usuario, la misma de `GET /members?q=`); sin `q` no gasta nada.
+- **Detalle:** `GET /api/v1/memberships/{id}` da la membresía con sus congelaciones, lo pagado (`paid_cop`, sin anulados) y el estado efectivo; una anulada se ve con su motivo; 404 `membership_not_found` si no existe.
+- **Resumen:** `GET /api/v1/memberships/summary` da cinco enteros (`active`, `expiring`, `expired`, `frozen`, `pending_payment`): cuántos socios NO dados de baja hay en cada estado. Cuenta socios, no membresías: de las no anuladas de cada socio decide una, en este orden: la vigente (empezó y no está vencida ni pendiente), la pendiente de pago, la vencida y la futura; entre dos de la misma clase, la de fin más tardío. Un socio sin membresías (o con solo anuladas) no suma en ninguno, así que la suma más esos socios es el total de socios vivos.
+- **Caché del resumen:** cada proceso del api guarda el resumen 30 s por día y `expiring_days`. Se vacía en cuanto se confirma una venta, una renovación, un pago, una anulación de pago, una congelación, una activación o una anulación de membresía en ese proceso (nunca antes del commit). Cambiar `expiring_days` usa otra entrada al instante. Con más de un proceso del api, otro proceso puede mostrar el número anterior hasta 30 s: es lo esperado. Para descartarla a mano basta reiniciar el api.
+- **Cuadrar el resumen en psql** (misma regla, hoy de Bogotá y `expiring_days` 7; cambiar el 7 si el ajuste es otro):
+
+```sql
+WITH hoy AS (SELECT (now() AT TIME ZONE 'America/Bogota')::date AS d),
+efectivo AS (
+  SELECT m.member_id, m.start_date, m.end_date,
+    CASE
+      WHEN m.status IN ('cancelled', 'pending_payment') THEN m.status
+      WHEN EXISTS (SELECT 1 FROM memberships.membership_freezes f
+                   WHERE f.membership_id = m.id AND (SELECT d FROM hoy) BETWEEN f.frozen_from AND f.frozen_to) THEN 'frozen'
+      WHEN (SELECT d FROM hoy) > m.end_date OR m.classes_remaining = 0 THEN 'expired'
+      WHEN m.end_date - (SELECT d FROM hoy) <= 7 THEN 'expiring'
+      ELSE 'active'
+    END AS estado
+  FROM memberships.memberships m
+  WHERE m.status <> 'cancelled'
+    AND m.member_id IN (SELECT id FROM members.members WHERE deleted_at IS NULL)
+),
+decide AS (
+  SELECT DISTINCT ON (member_id) member_id, estado
+  FROM efectivo
+  ORDER BY member_id,
+    CASE WHEN estado = 'pending_payment' THEN 1 WHEN estado = 'expired' THEN 2
+         WHEN start_date <= (SELECT d FROM hoy) THEN 0 ELSE 3 END,
+    end_date DESC, start_date DESC
+)
+SELECT estado, count(*) FROM decide GROUP BY estado ORDER BY estado;
+```
+
+  Es una consulta de soporte, no del api (el api nunca cruza esquemas: pide los socios vivos a `members` y cuenta en `memberships` por lotes de 1.000 ids).

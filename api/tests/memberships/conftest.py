@@ -7,11 +7,15 @@
   las pruebas de concurrencia con `dos_sesiones` (dos conexiones que no ven el savepoint de
   `bus_listo`): el flush de un socio cifra y lee la llave vigente con `FOR SHARE` en
   `crypto_keys`. Al salir borra las llaves y las filas de `crypto_ops` escritas desde que empezó.
+- `sin_cache_de_resumen` (autouse, S3-B7, S3-D60): la caché del resumen con TTL 0 y vacía en cada
+  prueba (ninguna prueba ve el resumen de otra); al salir la vacía y vuelve al TTL de
+  producción (`SUMMARY_CACHE_TTL_S`). `test_summary_cache.py` vuelve a fijar el TTL de 30 s
+  dentro de cada prueba con `configure_summary_cache(SUMMARY_CACHE_TTL_S)`.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +26,11 @@ from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import LocalFileProvider
 from app.modules.memberships import service as memberships_service  # noqa: F401
+from app.modules.memberships.queries import (
+    SUMMARY_CACHE_TTL_S,
+    configure_summary_cache,
+    reset_summary_cache,
+)
 from tests.conftest import LIMPIAR_LLAVES
 
 
@@ -53,3 +62,15 @@ async def bus_confirmado(
     finally:
         configure_keyring(None)
         await _limpiar(engine, desde)
+
+
+@pytest.fixture(autouse=True)
+def sin_cache_de_resumen() -> Iterator[None]:
+    """TTL 0 (sin caché) durante la prueba; al salir, caché vacía con el TTL de producción."""
+    configure_summary_cache(0)
+    reset_summary_cache()
+    try:
+        yield
+    finally:
+        reset_summary_cache()
+        configure_summary_cache(SUMMARY_CACHE_TTL_S)

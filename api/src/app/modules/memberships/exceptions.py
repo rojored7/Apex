@@ -188,3 +188,45 @@ class CancelReasonInvalid(MembershipError):
         status: int | None = None,
     ) -> None:
         super().__init__(code, message, field=field, existing_id=existing_id, status=status)
+
+
+class StatusFilterInvalid(MembershipError):
+    """`status` de `GET /memberships` con un estado desconocido o una parte vacía (S3-B7, D18,
+    L-9): 422 `validation_error` con `field="status"`, el mismo código del 422 de forma (un
+    `status` de más de 100 caracteres). El mensaje no repite el valor recibido."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El filtro de estado no es válido."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "status",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)
+
+
+class DateRangeInvalid(MembershipError):
+    """`ends_from`/`ends_to` de `GET /memberships` fuera de `[2020-01-01, hoy + 5 años]` (M-4,
+    S3-D47; `field` es la fecha que falla) o invertidas (`field="ends_to"`, D18): 422
+    `validation_error`. El mensaje no repite el valor recibido."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El rango de fechas no es válido."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "ends_to",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)

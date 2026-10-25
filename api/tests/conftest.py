@@ -34,14 +34,25 @@ Kit de S2-B2 (plan del Sprint 2, sección 2, bloque B2; E7 y E9):
 - `capturar_eventos(*tipos)`: suscribe un capturador y al salir quita solo el suyo.
 - `sleeper_nulo`: espía que reemplaza la espera del piso de login (S2-D39) sin dormir.
 - `api_prueba` (la app de `app_http`) y `cliente_desde(ip)`: un cliente con otra IP de socket.
+
+Kit de S3-B7 (plan del Sprint 3, sección 2, bloque B7):
+- `contador_de_consultas`: un `ContadorDeConsultas` escuchando `before_cursor_execute` del
+  motor de la prueba (`engine`: lo comparten `session`, `app_http` y `dos_sesiones`) durante
+  toda la prueba; ignora `SAVEPOINT`, `RELEASE` y `ROLLBACK TO` (los de la fixture `session`).
+  `with contador.midiendo():` vacía lo anotado al entrar; `contador.de("plans.plans")` cuenta las
+  sentencias que nombran esa tabla (como palabra completa: `memberships.memberships` no cuenta
+  `memberships.membership_freezes`). Lo usan las aserciones "una consulta por servicio vecino
+  por página" de B7, B8, B9 y B11.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import AsyncIterator, Callable, Iterator
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -53,7 +64,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select, text
+from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -678,3 +689,51 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
             text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq}
         )
         await conexion.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+
+
+# Contador de sentencias (S3-B7; plan del Sprint 3, sección 2) ---------------------------------
+
+_SENTENCIAS_DE_SAVEPOINT = ("SAVEPOINT", "RELEASE", "ROLLBACK TO")
+
+
+@dataclass
+class ContadorDeConsultas:
+    """Sentencias SQL enviadas por el motor de la prueba, sin las de savepoint."""
+
+    sentencias: list[str] = field(default_factory=list)
+
+    def anotar(self, _conn: Any, _cursor: Any, sql: str, *_args: Any) -> None:
+        if not sql.lstrip().upper().startswith(_SENTENCIAS_DE_SAVEPOINT):
+            self.sentencias.append(sql)
+
+    @contextmanager
+    def midiendo(self) -> Iterator[ContadorDeConsultas]:
+        """Vacía lo anotado y deja medir el bloque (`with contador.midiendo(): ...`)."""
+        self.sentencias.clear()
+        yield self
+
+    def de(self, tabla: str) -> int:
+        """Sentencias que nombran `tabla` (`esquema.tabla`) como palabra completa."""
+        patron = re.compile(rf"(?<![\w.]){re.escape(tabla)}(?![\w])")
+        return sum(1 for sql in self.sentencias if patron.search(sql))
+
+    def solo_de(self, tabla: str, *sin: str) -> int:
+        """Sentencias que nombran `tabla` y ninguna de las tablas `sin`."""
+        patron = re.compile(rf"(?<![\w.]){re.escape(tabla)}(?![\w])")
+        otras = [re.compile(rf"(?<![\w.]){re.escape(t)}(?![\w])") for t in sin]
+        return sum(
+            1
+            for sql in self.sentencias
+            if patron.search(sql) and not any(o.search(sql) for o in otras)
+        )
+
+
+@pytest.fixture
+def contador_de_consultas(engine: AsyncEngine) -> Iterator[ContadorDeConsultas]:
+    """`ContadorDeConsultas` sobre `engine` durante toda la prueba (S3-B7)."""
+    contador = ContadorDeConsultas()
+    event.listen(engine.sync_engine, "before_cursor_execute", contador.anotar)
+    try:
+        yield contador
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", contador.anotar)

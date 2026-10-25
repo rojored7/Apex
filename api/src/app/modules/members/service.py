@@ -17,7 +17,9 @@ Con sesión:
   `data_consent_version = None`; la carrera la decide `uq_members_document_idx_alive` dentro de
   `begin_nested()`; emite `MemberCreated`; responde enmascarado sin descifrar nada. El actor sale
   de `current_actor`.
-- Contratos para otros módulos: `get_ref`, `ensure_exists`, `id_by_document`, `count`.
+- Contratos para otros módulos: `get_ref`, `ensure_exists`, `id_by_document`, `count` y
+  `active_ids` (S3-B7, S3-D60: los ids de los socios no dados de baja, para el resumen de
+  `memberships`).
 
 Buscar y listar (S2-B8, US-070; RN-13, RN-14, N-01, N-20, L-1):
 - `classify_query(q) -> QueryPlan` (pura): `q` en NFC, sin caracteres de control y
@@ -335,6 +337,12 @@ async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:
     if not include_deleted:
         consulta = consulta.where(Member.deleted_at.is_(None))
     return int(await session.scalar(consulta) or 0)
+
+
+async def active_ids(session: AsyncSession) -> frozenset[UUID]:
+    """Ids de los socios no dados de baja (`deleted_at IS NULL`), activos o inactivos, en una
+    consulta y sin descifrar (S3-B7, S3-D60; contrato de `memberships.summary`)."""
+    return frozenset(await session.scalars(select(Member.id).where(Member.deleted_at.is_(None))))
 
 
 # Buscar y listar (S2-B8) --------------------------------------------------------------

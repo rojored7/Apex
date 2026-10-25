@@ -19,6 +19,13 @@
   congelación) o nulo si no hay.
 - Contratos para otros módulos (dataclasses, nunca el ORM): `MembershipRef` (lo que `refs_for`
   devuelve por id de membresía) y `PaymentTarget` (lo que lee el gate de pagos, B4).
+- S3-B7 (US-091, US-092; D18, L-9, M-4): `MembershipListQuery` (filtros de `GET /memberships`:
+  `status` texto separado por comas de hasta `STATUS_FILTER_MAX_LENGTH` (100) caracteres, que
+  valida `rules.parse_status_filter`; `q`; `plan_id` y `member_id` como `UUID`; `ends_from` y
+  `ends_to`; `extra="forbid"`), `MembershipRow` (fila de la lista con `paid_cop` y el estado
+  EFECTIVO; sin congelaciones), `MembershipSummaryOut` (los cinco enteros de US-092) y
+  `MemberMembership` (dataclass: el estado del socio y la membresía que lo decide, contrato de
+  `status_for` para `members`).
 """
 
 from __future__ import annotations
@@ -28,10 +35,11 @@ from datetime import date, datetime
 from typing import Annotated, Final
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, StrictBool, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, StringConstraints
 
+from app.core.pagination import MAX_SEARCH_LENGTH
 from app.core.validators import check_visible_text
-from app.modules.memberships.rules import CANCEL_REASON_MAX
+from app.modules.memberships.rules import CANCEL_REASON_MAX, ResolvedStatus
 from app.modules.payments.schemas import PaymentIn
 
 
@@ -133,3 +141,63 @@ class PaymentTarget:
     exists: bool
     cancelled: bool
     member_id: UUID | None
+
+
+# Listas, resumen y estado del socio (S3-B7) ---------------------------------------------------
+
+STATUS_FILTER_MAX_LENGTH: Final = 100
+"""Tope del texto de `status` en `GET /memberships` (L-9)."""
+
+
+class MembershipListQuery(BaseModel):
+    """Filtros de `GET /memberships` (S3-B7, D18). Las reglas que dependen de "hoy" (rango de
+    fechas, M-4) y el texto de `status` (`rules.parse_status_filter`) las aplica `queries.list`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str | None = Field(default=None, max_length=STATUS_FILTER_MAX_LENGTH)
+    q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
+    plan_id: UUID | None = None
+    member_id: UUID | None = None
+    ends_from: date | None = None
+    ends_to: date | None = None
+
+
+class MembershipRow(BaseModel):
+    """Una fila de `GET /memberships` (S3-B7, D18): `status` es el estado EFECTIVO (D5)."""
+
+    id: UUID
+    member_id: UUID
+    member_name: str
+    plan_id: UUID
+    plan_name: str
+    agreed_price_cop: int
+    paid_cop: int
+    start_date: date
+    end_date: date
+    classes_total: int | None
+    classes_remaining: int | None
+    status: str
+
+
+class MembershipSummaryOut(BaseModel):
+    """`GET /memberships/summary` (US-092): socios no dados de baja por estado resuelto."""
+
+    # Inmutable: la caché de proceso da la misma instancia a todos (LOW-2 de la revisión de B7).
+    model_config = ConfigDict(frozen=True)
+
+    active: int
+    expiring: int
+    expired: int
+    frozen: int
+    pending_payment: int
+
+
+@dataclass(frozen=True, slots=True)
+class MemberMembership:
+    """Estado de membresía de un socio y la membresía que lo decide (contrato de `status_for`)."""
+
+    status: ResolvedStatus
+    plan_id: UUID
+    plan_name: str
+    end_date: date

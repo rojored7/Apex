@@ -56,6 +56,15 @@ export const API_ERROR_CODES = {
   membershipCancelled: "membership_cancelled",
   paymentNotFound: "payment_not_found",
   paymentAlreadyVoided: "payment_already_voided",
+  // S3-F5: congelar y anular membresías (US-089, US-090; D14, memberships/exceptions.py).
+  membershipNotFreezable: "membership_not_freezable",
+  freezeAlreadyScheduled: "freeze_already_scheduled",
+  freezeLimitReached: "freeze_limit_reached",
+  freezeDaysExceeded: "freeze_days_exceeded",
+  freezeTooRetroactive: "freeze_too_retroactive",
+  freezeOutsideValidity: "freeze_outside_validity",
+  overlapsFutureMembership: "overlaps_future_membership",
+  membershipAlreadyCancelled: "membership_already_cancelled",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

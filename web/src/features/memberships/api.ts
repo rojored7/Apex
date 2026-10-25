@@ -8,11 +8,16 @@
 // - useRenewalPreview(memberId, planId): GET /members/{id}/memberships/renewal-preview?plan_id=
 //   con la clave ["memberships", "renewal-preview", memberId, planId]; solo con socio y plan. Al
 //   cambiar de plan se pide de nuevo.
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "../../core/api/client";
+import { isApiError } from "../../core/api/errors";
+import type { Page } from "../../core/api/page";
+import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
-import { renewalPreviewSchema, sellMembershipOutSchema, type RenewalPreviewView, type SellMembershipBody, type SellMembershipOutView } from "./schemas";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
+import { membershipsPageSchema, type MembershipRowView } from "../../shared/data/memberships";
+import { membershipOutSchema, renewalPreviewSchema, sellMembershipOutSchema, type MembershipOutView, type RenewalPreviewView, type SellMembershipBody, type SellMembershipOutView } from "./schemas";
 
 /** Lo que una venta deja viejo (S3-D53: el resumen de membresías se relee). */
 export const SELL_INVALIDATES = [["memberships"], ["members"], ["payments"], ["memberships-summary"]] as const;
@@ -62,4 +67,147 @@ export function useRenewalPreview(memberId: string | null, planId: string | null
       parseResponse(renewalPreviewSchema, await api.get<unknown>(`${membershipsOf(memberId ?? "")}/renewal-preview`, { query: { plan_id: planId ?? "" }, signal })),
     enabled: memberId !== null && planId !== null,
   });
+}
+
+
+
+// S3-F5 · US-089, US-090, US-091 y US-092 (front): la lista de membresías y sus escrituras.
+// - useMemberships(params): GET /memberships con la clave ["memberships", "list", params]; los
+//   filtros son parte de la clave. `status` viaja separado por comas (D18). Filas estrictas
+//   (MembershipRow, D35). Mientras llega la página nueva se conserva la anterior; con `q` no queda
+//   en la caché ni se repite al volver a la ventana (S2-D41: gastaría el cupo de búsqueda).
+// - useMembership(id): GET /memberships/{id} (MembershipOut con el estado efectivo, B7).
+// - useFreezeMembership y useCancelMembership: POST /memberships/{id}/freeze { frozen_from,
+//   frozen_to } (admin y coach) y POST /memberships/{id}/cancel { reason } (solo admin) → 200
+//   MembershipOut. Llevan fechas o un motivo: `gcTime: 0` y `reset()` en `onSettled` (S3-D52); el
+//   modal también llama a `reset()` al cerrar. Al salir bien invalidan lo que cambia el estado de una
+//   membresía: la lista (y el panel de pagos, bajo ["memberships"]), el resumen y los socios (estado
+//   en su lista). Un 409 o un 404 dicen que lo que se ve quedó viejo: se releen la lista y el
+//   resumen. Sin reintentos: una escritura nunca se repite sola.
+//   Desviación del blueprint F5: no invalidan ["payments"]; congelar y anular no tocan pagos (D3).
+export interface MembershipsParams {
+  limit: number;
+  offset: number;
+  q?: string;
+  /** Estados separados por comas ("active,expiring"). */
+  status?: string;
+  plan_id?: string;
+  ends_from?: string;
+  ends_to?: string;
+}
+
+/** Lo que deja viejo congelar o anular una membresía. */
+export const MEMBERSHIP_WRITE_INVALIDATES = [["memberships"], ["memberships-summary"], ["members"]] as const;
+/** Lo que se relee cuando el api dice que la membresía cambió (409) o ya no existe (404). */
+const STALE_ON_CONFLICT = [["memberships"], ["memberships-summary"]] as const;
+
+export function membershipsQueryKey(params: MembershipsParams): readonly ["memberships", "list", MembershipsParams] {
+  return ["memberships", "list", params];
+}
+
+export function membershipQueryKey(id: string): readonly ["memberships", "detail", string] {
+  return ["memberships", "detail", id];
+}
+
+const membershipOf = (id: string): string => `/memberships/${encodeURIComponent(id)}`;
+
+export function useMemberships(params: MembershipsParams): UseQueryResult<Page<MembershipRowView>> {
+  return useQuery({
+    queryKey: membershipsQueryKey(params),
+    queryFn: async ({ signal }) => parseResponse(membershipsPageSchema, await api.get<unknown>("/memberships", { query: listParams({ ...params }), signal })),
+    placeholderData: keepPreviousData,
+    ...(params.q ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
+  });
+}
+
+export function useMembership(id: string | null): UseQueryResult<MembershipOutView> {
+  return useQuery({
+    queryKey: membershipQueryKey(id ?? ""),
+    queryFn: async ({ signal }) => parseResponse(membershipOutSchema, await api.get<unknown>(membershipOf(id ?? ""), { signal })),
+    enabled: id !== null,
+  });
+}
+
+export interface FreezeInput {
+  id: string;
+  frozen_from: string;
+  frozen_to: string;
+}
+
+export interface FreezeMembership {
+  /** Congela; rechaza con el ApiError del api. */
+  freeze: (input: FreezeInput) => Promise<MembershipOutView>;
+  isPending: boolean;
+  /** Olvida la última mutación (y sus variables) en la caché. */
+  reset: () => void;
+}
+
+export interface CancelInput {
+  id: string;
+  /** Ya recortado (cancelMembershipSchema). */
+  reason: string;
+}
+
+export interface CancelMembership {
+  cancel: (input: CancelInput) => Promise<MembershipOutView>;
+  isPending: boolean;
+}
+
+/** Al salir bien: lo que deja viejo congelar o anular. */
+function invalidateAfterWrite(queryClient: QueryClient): void {
+  for (const queryKey of MEMBERSHIP_WRITE_INVALIDATES) void queryClient.invalidateQueries({ queryKey });
+}
+
+/** Un 409 o un 404: lo que se ve quedó viejo; se releen la lista y el resumen. */
+function invalidateIfStale(queryClient: QueryClient, error: Error): void {
+  if (!isApiError(error) || (error.status !== HTTP_CONFLICT && error.status !== HTTP_NOT_FOUND)) return;
+  for (const queryKey of STALE_ON_CONFLICT) void queryClient.invalidateQueries({ queryKey });
+}
+
+export function useFreezeMembership(): FreezeMembership {
+  const queryClient = useQueryClient();
+  const resetRef = useRef<() => void>(() => undefined);
+  const mutation = useMutation<MembershipOutView, Error, FreezeInput>({
+    mutationFn: async ({ id, frozen_from, frozen_to }) =>
+      parseResponse(membershipOutSchema, await api.post<unknown>(`${membershipOf(id)}/freeze`, { body: { frozen_from, frozen_to } })),
+    gcTime: 0,
+    onSuccess: () => {
+      invalidateAfterWrite(queryClient);
+    },
+    onError: (error) => {
+      invalidateIfStale(queryClient, error);
+    },
+    onSettled: () => {
+      resetRef.current();
+    },
+  });
+  const { reset, mutateAsync, isPending } = mutation;
+  // reset() de la propia mutación, para llamarlo al terminar: un ref no se escribe durante el render.
+  useEffect(() => {
+    resetRef.current = reset;
+  }, [reset]);
+  return { freeze: mutateAsync, isPending, reset };
+}
+
+export function useCancelMembership(): CancelMembership {
+  const queryClient = useQueryClient();
+  const resetRef = useRef<() => void>(() => undefined);
+  const mutation = useMutation<MembershipOutView, Error, CancelInput>({
+    mutationFn: async ({ id, reason }) => parseResponse(membershipOutSchema, await api.post<unknown>(`${membershipOf(id)}/cancel`, { body: { reason } })),
+    gcTime: 0,
+    onSuccess: () => {
+      invalidateAfterWrite(queryClient);
+    },
+    onError: (error) => {
+      invalidateIfStale(queryClient, error);
+    },
+    onSettled: () => {
+      resetRef.current();
+    },
+  });
+  const { reset, mutateAsync, isPending } = mutation;
+  useEffect(() => {
+    resetRef.current = reset;
+  }, [reset]);
+  return { cancel: mutateAsync, isPending };
 }

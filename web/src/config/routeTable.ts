@@ -101,7 +101,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
   route("/planes", "Planes", "plans", "plans.view", "panel", { load: () => import("../features/plans/pages/PlansPage") }),
-  route("/membresias", "Membresías", "memberships", "memberships.view", "panel"),
+  // S3-F5: lista con filtros, resumen, congelar y anular (US-089 a US-092).
+  route("/membresias", "Membresías", "memberships", "memberships.view", "panel", { load: () => import("../features/memberships/pages/MembershipsPage") }),
   // S3-F3: vender, primer pago y renovar (US-084, US-085, US-088).
   route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel", { load: () => import("../features/memberships/pages/SellPage") }),
   route("/pagos", "Pagos", "payments", "payments.view", "panel"),

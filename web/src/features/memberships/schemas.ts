@@ -17,7 +17,7 @@ import { addDaysCivil, bogotaInputToUtc, parseCop } from "../../core/i18n/format
 import { MEMBERSHIP_STATUSES } from "../../shared/data/memberships";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
 import { cleanReference, METHODS_WITH_REFERENCE, PAID_AT_FUTURE_TOLERANCE_MS, PAYMENT_METHOD_CODES, referenceError, type PaymentMethodCode } from "../../shared/data/schemas/payment";
-import { SELL_MESSAGES } from "./membershipErrors";
+import { FREEZE_FORM_MESSAGES, SELL_MESSAGES } from "./membershipErrors";
 
 export type SellMembershipBody = components["schemas"]["SellMembershipIn"];
 
@@ -204,3 +204,52 @@ export const renewalPreviewSchema = z
   })
   .strict();
 export type RenewalPreviewView = z.infer<typeof renewalPreviewSchema>;
+
+// S3-F5 · US-089 y US-090 (front): formularios de congelar y anular.
+// - freezeFormSchema: las dos fechas de FreezeIn ("AAAA-MM-DD" reales); "Hasta" no puede ser
+//   anterior a "Desde" (el api daría 422 `validation_error` en `frozen_to`). Los límites (días,
+//   veces, retroactividad, vigencia) los decide el servidor con la política de Configuración (D14).
+// - cancelMembershipSchema: el motivo de CancelMembershipIn, de 5 a 500 caracteres tras recortar
+//   (D17, `normalize_cancel_reason`); cuenta caracteres, no unidades UTF-16.
+export interface FreezeFormValues {
+  frozenFrom: string;
+  frozenTo: string;
+}
+
+export type FreezeBody = components["schemas"]["FreezeIn"];
+
+/** ¿Es una fecha civil real "AAAA-MM-DD"? */
+const isCivilDate = (value: string): boolean => addDaysCivil(value, 0) === value;
+
+const freezeDate = (required: string, invalid: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, required)
+    .refine(isCivilDate, invalid);
+
+export const freezeFormSchema = z
+  .object({
+    frozenFrom: freezeDate(FREEZE_FORM_MESSAGES.fromRequired, FREEZE_FORM_MESSAGES.fromInvalid),
+    frozenTo: freezeDate(FREEZE_FORM_MESSAGES.toRequired, FREEZE_FORM_MESSAGES.toInvalid),
+  })
+  // "AAAA-MM-DD" se compara bien como texto.
+  .refine((values) => values.frozenTo >= values.frozenFrom, { path: ["frozenTo"], message: FREEZE_FORM_MESSAGES.inverted });
+
+export function toFreezeBody(values: FreezeFormValues): FreezeBody {
+  return { frozen_from: values.frozenFrom.trim(), frozen_to: values.frozenTo.trim() };
+}
+
+export const CANCEL_REASON_MIN = 5;
+export const CANCEL_REASON_MAX = 500;
+
+export const cancelMembershipSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .refine((value) => {
+      const length = Array.from(value).length;
+      return length >= CANCEL_REASON_MIN && length <= CANCEL_REASON_MAX;
+    }),
+});
+export type CancelMembershipBody = components["schemas"]["CancelMembershipIn"];

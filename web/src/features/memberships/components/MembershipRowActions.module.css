@@ -1,0 +1,58 @@
+/* S3-F5: acciones de una fila de Membresias.html ("Renovar · Congelar · Anular"). Solo tokens.css.
+   Enlaces y botones con aspecto de enlace, de 44 px de alto (DESIGN.md regla 9). */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+
+  /* Dos acciones por línea en la tabla: la columna no se encoge hasta apilarlas de a una. */
+  min-width: calc(var(--sidebar) * 0.95);
+  align-items: center;
+  justify-content: flex-end;
+  column-gap: var(--space-1);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--blue-deep);
+  font: var(--text-body);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--ink);
+}
+
+.action:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.danger:hover {
+  color: var(--danger);
+  text-decoration-thickness: 2px;
+}
+
+.none {
+  color: var(--muted);
+}
+
+/* En las tarjetas del celular ocupan el ancho que haya. */
+@media (width < 768px) {
+  .actions {
+    min-width: 0;
+  }
+}

@@ -1,0 +1,35 @@
+/* S3-F5: modal de congelar (Membresias.html, "Modal · Congelar membresía de …"). Solo tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Desde y Hasta lado a lado; en celular se apilan. */
+.dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--sidebar) * 0.6), 1fr));
+  gap: var(--space-3);
+}
+
+/* La vista previa reserva su línea: el modal no salta al aparecer el texto. */
+.preview {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+}

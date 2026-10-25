@@ -171,3 +171,28 @@ export async function darDeBajaSocio(page: Page, socioId: string, admin: Credent
   const headers = await accessDe(page, admin);
   await page.request.delete(`${API}/members/${socioId}`, { headers });
 }
+
+/** S3-F5: fecha civil de Bogotá (UTC-5 fijo) desplazada `dias` desde hoy, "AAAA-MM-DD". */
+export function fechaBogota(dias = 0): string {
+  const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1_000;
+  const DAY_MS = 24 * 60 * 60 * 1_000;
+  return new Date(Date.now() - BOGOTA_OFFSET_MS + dias * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** S3-F5: vende por el api con una fecha de inicio dada (POST /members/{id}/memberships con start_date). */
+export async function venderMembresiaDesde(page: Page, socioId: string, planId: string, inicio: string, pago?: PagoInicial, admin: Credentials = datosDeBase()): Promise<{ id: string; status: string }> {
+  const headers = await accessDe(page, admin);
+  const response = await page.request.post(`${API}/members/${socioId}/memberships`, {
+    headers,
+    data: { plan_id: planId, start_date: inicio, ...(pago ? { first_payment: pago } : {}) },
+  });
+  if (!response.ok()) throw new Error(`POST /members/{id}/memberships respondió ${String(response.status())}.`);
+  return (await response.json()) as { id: string; status: string };
+}
+
+/** S3-F5: congela por el api (POST /memberships/{id}/freeze); devuelve el código HTTP. */
+export async function congelarPorApi(page: Page, membershipId: string, desde: string, hasta: string, admin: Credentials = datosDeBase()): Promise<number> {
+  const headers = await accessDe(page, admin);
+  const response = await page.request.post(`${API}/memberships/${membershipId}/freeze`, { headers, data: { frozen_from: desde, frozen_to: hasta } });
+  return response.status();
+}

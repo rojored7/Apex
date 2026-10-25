@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { components } from "../core/api/types";
 import { SessionRoleProvider } from "../core/auth";
+import MembershipsPage from "../features/memberships/pages/MembershipsPage";
 import SellPage from "../features/memberships/pages/SellPage";
 import { MEMBERS, memberPage, type MemberRowFixture } from "./members";
 import { FIRST_PAYMENT_ID, paymentMethods } from "./payments";
@@ -167,4 +168,104 @@ export function membershipRowsPage(items: MembershipRowFixture[], total = items.
 
 export function membershipSummary(overrides: Partial<MembershipSummaryFixture> = {}): MembershipSummaryFixture {
   return { active: 210, expiring: 18, expired: 12, frozen: 3, pending_payment: 5, ...overrides };
+}
+
+// S3-F5 (plan del Sprint 3, sección 2): la lista /membresias (Membresias.html) con tres filas que
+// cubren los casos del diseño: Laura con un abono (pendiente de pago), Andrés con un plan de clases
+// por vencer y Elena al día con el fin del ejemplo de congelar (31 oct + 10 días = 10 nov 2026).
+// renderMemberships monta la página en un router de datos (nav y main, como PanelShell), con la
+// sesión por SessionRoleProvider (signInAs) y marcadores para la ficha y la venta.
+export const ANDRES_MEMBERSHIP_ID = "77777777-7777-4777-8777-777777777777";
+export const ELENA_MEMBERSHIP_ID = "99999999-aaaa-4999-8999-999999999999";
+
+export const MEMBERSHIP_ROWS: MembershipRowFixture[] = [
+  membershipRow(),
+  membershipRow({
+    id: ANDRES_MEMBERSHIP_ID,
+    member_id: MEMBERS.andres.id,
+    member_name: "Andrés Ruiz",
+    plan_id: PLANS.clases.id,
+    plan_name: "12 clases",
+    status: "expiring",
+    start_date: "2026-09-01",
+    end_date: "2026-10-31",
+    agreed_price_cop: 110_000,
+    paid_cop: 110_000,
+    classes_total: 12,
+    classes_remaining: 2,
+  }),
+  membershipRow({
+    id: ELENA_MEMBERSHIP_ID,
+    member_id: MEMBERS.elena.id,
+    member_name: "Elena Vargas",
+    status: "active",
+    start_date: "2026-10-01",
+    end_date: "2026-10-31",
+    paid_cop: 120_000,
+  }),
+];
+
+/** La página de GET /memberships con el limit y el offset pedidos. */
+export function membershipsPage(call: RecordedCall, rows: MembershipRowFixture[] = MEMBERSHIP_ROWS, total = rows.length): MockReply {
+  const url = new URL(call.url, "http://apex.test");
+  return { status: 200, body: { items: rows, total, limit: Number(url.searchParams.get("limit")), offset: Number(url.searchParams.get("offset")) } };
+}
+
+export const freezeKey = (membershipId: string = ELENA_MEMBERSHIP_ID): string => `POST /memberships/${membershipId}/freeze`;
+export const cancelKey = (membershipId: string = ELENA_MEMBERSHIP_ID): string => `POST /memberships/${membershipId}/cancel`;
+
+export interface RenderMembershipsOptions {
+  handlers?: Record<string, MockHandler>;
+  rows?: MembershipRowFixture[];
+  queryClient?: QueryClient;
+}
+
+export function renderMemberships(entry = "/membresias", options: RenderMembershipsOptions = {}) {
+  const { handlers = {}, rows = MEMBERSHIP_ROWS, queryClient = testQueryClient() } = options;
+  const mock = mockApi({
+    "GET /memberships": (call) => membershipsPage(call, rows),
+    "GET /memberships/summary": { status: 200, body: membershipSummary() },
+    "GET /plans": (call) => planPage(call, [PLANS.clases, PLANS.mensual, PLANS.promo]),
+    [freezeKey()]: { status: 200, body: membershipOut({ id: ELENA_MEMBERSHIP_ID, member_id: MEMBERS.elena.id, member_name: "Elena Vargas", status: "frozen", end_date: "2026-11-10" }) },
+    [cancelKey()]: { status: 200, body: membershipOut({ id: ELENA_MEMBERSHIP_ID, member_id: MEMBERS.elena.id, member_name: "Elena Vargas", status: "cancelled" }) },
+    ...handlers,
+  });
+  const shell = (page: ReactNode) => (
+    <>
+      <nav aria-label="Menú principal">
+        <a href="/">Inicio</a>
+      </nav>
+      <main>{page}</main>
+    </>
+  );
+  const [pathname = entry, query] = entry.split("?");
+  const router = createMemoryRouter(
+    [
+      { path: "/membresias", element: shell(<MembershipsPage />) },
+      { path: "/membresias/vender", element: shell(<h1>Vender membresía</h1>) },
+      { path: "/socios/:id", element: shell(<h1>Ficha del socio</h1>) },
+    ],
+    { initialEntries: [{ pathname, search: query ? `?${query}` : "" }] },
+  );
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <SessionRoleProvider>
+        <RouterProvider router={router} />
+      </SessionRoleProvider>
+    </QueryClientProvider>,
+  );
+  return { mock, router, queryClient, user: userEvent.setup(), ...view };
+}
+
+/** Los parámetros de cada GET /memberships (la lista; el resumen va aparte). */
+export function membershipListCalls(mock: { callsTo: (key: string) => RecordedCall[] }): URLSearchParams[] {
+  return mock.callsTo("GET /memberships").map((c) => new URL(c.url, "http://apex.test").searchParams);
+}
+
+/** La fila de escritorio de un socio, por su nombre (la primera columna es el enlace a la ficha). */
+export async function findMembershipRow(name: string): Promise<HTMLElement> {
+  const link = await screen.findByRole("link", { name });
+  const tr = link.closest("tr");
+  if (!tr) throw new Error(`sin fila para ${name}`);
+  return tr;
 }

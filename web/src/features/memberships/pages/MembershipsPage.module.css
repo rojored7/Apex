@@ -1,0 +1,99 @@
+/* S3-F5: Membresias.html (lista de membresías). Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Rango de "Vence entre" invertido: no se filtra hasta corregirlo. */
+.rangeError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+}
+
+/* Aviso de congelar o anular: borde azul. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.noticeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control);
+  min-height: var(--control);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background: var(--card);
+}
+
+.dismiss:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* "Vender la primera membresía": enlace con el aspecto del botón principal. */
+.firstSale {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--apex-blue);
+  border-radius: var(--radius-md);
+  background: var(--apex-blue);
+  color: var(--black);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.firstSale:hover {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--white);
+}
+
+.firstSale:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Plan y fechas no se parten en la tabla: se desplaza dentro de su caja (DESIGN.md). En las
+   tarjetas del celular sí se parten. */
+@media (width >= 768px) {
+  .nowrap {
+    white-space: nowrap;
+  }
+}
+
+/* Recibe el foco tras congelar o anular. */
+.notice:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

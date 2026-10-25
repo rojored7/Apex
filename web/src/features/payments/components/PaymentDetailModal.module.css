@@ -1,0 +1,89 @@
+/* S3-F6: detalle de un pago (Pagos.html, "Detalle del pago"). Solo tokens.css. */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+/* Etiqueta a la izquierda y valor a la derecha, separadas por una línea (w-li del diseño). */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font: var(--text-body);
+}
+
+.term {
+  color: var(--muted);
+}
+
+.value {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* S3-D51: el mismo aviso que en la lista. */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-pill);
+  color: var(--warning);
+  font: var(--text-caption);
+  white-space: nowrap;
+}
+
+/* La anulación se separa del pago con un borde a la izquierda (DESIGN.md: --danger es de anular). */
+.voidBlock {
+  margin-top: var(--space-4);
+  padding-left: var(--space-3);
+  border-left: var(--space-1) solid var(--danger);
+}
+
+.voidTitle {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-h2);
+}
+
+.note {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}

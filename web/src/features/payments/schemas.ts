@@ -9,12 +9,13 @@
 //   confirmaciones de S3-D41 en verdadero solo cuando se confirmaron.
 // - voidPaymentSchema: el motivo de anular, recortado, de 1 a 500 caracteres (D17; el api recorta y
 //   cuenta igual).
-// - paymentOutSchema (el contrato de B3 a B5, estricto), paymentRowSchema y paymentDetailSchema (el
-//   blueprint de B8, D26, con `backdated` de S3-D51; su contrato llega con B8: no son estrictos para
-//   que un campo nuevo no rompa la pantalla de F6 antes de que se ajuste).
+// - paymentOutSchema (el contrato de B3 a B5), paymentRowSchema, paymentDetailSchema y
+//   paymentsSummarySchema (el contrato de B8, D26, con `backdated` de S3-D51): todos estrictos y con
+//   enteros (S3-F6).
 // Las reglas de entrada que comparte la venta con primer pago viven en shared/data (S3-D65) y aquí
 // se reexportan.
 import { z } from "zod";
+import { pageSchema } from "../../core/api/page";
 import type { components } from "../../core/api/types";
 import { bogotaInputToUtc, parseCop } from "../../core/i18n/format";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
@@ -161,16 +162,11 @@ export const paymentOutSchema = z
   .strict();
 export type PaymentOutView = z.infer<typeof paymentOutSchema>;
 
+// PaymentRow y PaymentDetail (contrato de B8, D26). Las fechas de la membresía son civiles
+// ("AAAA-MM-DD"); `registered_by_name` y `voided_by_name` son el correo parcial ("l•••@dominio",
+// S3-D57) y llegan en null si la cuenta ya no existe.
 const paymentRowShape = {
   id: z.string().min(1),
-  paid_at: z.string(),
-  amount_cop: copAmount,
-  method: paymentMethodCodeSchema,
-  reference: z.string().nullable(),
-  voided: z.boolean(),
-  void_reason: z.string().nullable(),
-  registered_by: z.string().min(1),
-  registered_by_name: z.string(),
   membership_id: z.string().min(1),
   member_id: z.string().min(1),
   member_first_name: z.string(),
@@ -178,18 +174,44 @@ const paymentRowShape = {
   plan_name: z.string(),
   membership_start_date: z.string(),
   membership_end_date: z.string(),
-  /** S3-D51: `created_at - paid_at > 1 día`. */
+  amount_cop: copInt,
+  method: paymentMethodCodeSchema,
+  reference: z.string().nullable(),
+  paid_at: z.string(),
+  registered_by: z.string().min(1),
+  registered_by_name: z.string().nullable(),
+  voided: z.boolean(),
+  void_reason: z.string().nullable(),
+  /** S3-D51: registrado más de 24 h después de `paid_at`. */
   backdated: z.boolean(),
 };
 
-export const paymentRowSchema = z.object(paymentRowShape);
+export const paymentRowSchema = z.object(paymentRowShape).strict();
 export type PaymentRowView = z.infer<typeof paymentRowSchema>;
+export const paymentsPageSchema = pageSchema(paymentRowSchema);
 
-export const paymentDetailSchema = z.object({
-  ...paymentRowShape,
-  voided_by: z.string().nullable(),
-  voided_by_name: z.string().nullable(),
-  voided_at: z.string().nullable(),
-  created_at: z.string(),
-});
+export const paymentDetailSchema = z
+  .object({
+    ...paymentRowShape,
+    voided_by: z.string().nullable(),
+    voided_by_name: z.string().nullable(),
+    voided_at: z.string().nullable(),
+    created_at: z.string(),
+  })
+  .strict();
 export type PaymentDetailView = z.infer<typeof paymentDetailSchema>;
+
+// PaymentsSummary (B8, D23): el mes en Bogotá, lo cobrado por medio (solo pagos vigentes) y los conteos.
+// Revisión S3-F6 (M4): las claves de `by_method` son los medios de PAYMENT_METHOD_CODES; `satisfies`
+// hace que un medio nuevo en el contrato rompa la compilación aquí y no en la pantalla.
+const BY_METHOD_SHAPE = { cash: copAmount, nequi: copAmount, breb: copAmount } satisfies Record<PaymentMethodCode, typeof copAmount>;
+export const paymentsSummarySchema = z
+  .object({
+    month: z.string(),
+    total_cop: copAmount,
+    payments_count: z.number().int().nonnegative(),
+    voided_count: z.number().int().nonnegative(),
+    by_method: z.object(BY_METHOD_SHAPE).strict(),
+  })
+  .strict();
+export type PaymentsSummaryView = z.infer<typeof paymentsSummarySchema>;

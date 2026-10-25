@@ -1,13 +1,16 @@
 // S3-F4 · US-095 y US-097 (front): esquemas de pagos. Montos enteros (D17), referencia con el patrón
 // de comprobante (S3-D50), motivo de anulación recortado de 1 a 500 (D17), fila con `backdated`
 // (S3-D51) y el cuerpo de POST /memberships/{id}/payments con `paid_at` en UTC.
-import { paymentDetail, paymentOut, paymentRow } from "../../test/payments";
+// S3-F6: PaymentRow, PaymentDetail y PaymentsSummary del contrato de B8, estrictos y con enteros.
+import { paymentDetail, paymentOut, paymentRow, paymentsSummary } from "../../test/payments";
 import { PAYMENT_MESSAGES } from "./paymentErrors";
 import {
   EMPTY_REGISTER_FORM,
   paymentDetailSchema,
   paymentOutSchema,
   paymentRowSchema,
+  paymentsPageSchema,
+  paymentsSummarySchema,
   registerPaymentSchema,
   toPaymentBody,
   VOID_REASON_MAX,
@@ -140,5 +143,42 @@ describe("respuestas", () => {
     const parsed = paymentDetailSchema.parse(paymentDetail({ voided: true, void_reason: "Duplicado", voided_by: "u", voided_by_name: "a•••@apex.test", voided_at: "2026-10-21T15:00:00Z" }));
 
     expect(parsed).toMatchObject({ voided: true, void_reason: "Duplicado", voided_by_name: "a•••@apex.test", created_at: "2026-10-20T19:10:00Z" });
+  });
+});
+
+describe("S3-F6 · respuestas de B8 estrictas", () => {
+  it("paymentRowSchema rechaza un campo que el contrato no tiene", () => {
+    expect(paymentRowSchema.safeParse({ ...paymentRow(), extra: 1 }).success).toBe(false);
+  });
+
+  it("paymentRowSchema acepta `registered_by_name` en null (cuenta que ya no existe) y exige el correo como texto", () => {
+    expect(paymentRowSchema.safeParse(paymentRow({ registered_by_name: null })).success).toBe(true);
+    expect(paymentRowSchema.safeParse({ ...paymentRow(), registered_by_name: 3 }).success).toBe(false);
+  });
+
+  it("paymentRowSchema exige un monto de al menos $ 1", () => {
+    expect(paymentRowSchema.safeParse(paymentRow({ amount_cop: 0 })).success).toBe(false);
+  });
+
+  it("paymentDetailSchema es estricto y acepta los nombres en null", () => {
+    expect(paymentDetailSchema.safeParse({ ...paymentDetail(), extra: 1 }).success).toBe(false);
+    expect(paymentDetailSchema.safeParse(paymentDetail({ registered_by_name: null, voided_by_name: null })).success).toBe(true);
+    const withoutCreated = Object.fromEntries(Object.entries(paymentDetail()).filter(([key]) => key !== "created_at"));
+    expect(paymentDetailSchema.safeParse(withoutCreated).success).toBe(false);
+  });
+
+  it("paymentsPageSchema valida la página con filas estrictas", () => {
+    expect(paymentsPageSchema.safeParse({ items: [paymentRow()], total: 1, limit: 25, offset: 0 }).success).toBe(true);
+    expect(paymentsPageSchema.safeParse({ items: [{ ...paymentRow(), extra: 1 }], total: 1, limit: 25, offset: 0 }).success).toBe(false);
+  });
+
+  it("paymentsSummarySchema: enteros no negativos, los tres medios y nada más", () => {
+    expect(paymentsSummarySchema.parse(paymentsSummary())).toEqual(paymentsSummary());
+    expect(paymentsSummarySchema.safeParse(paymentsSummary({ total_cop: 0, payments_count: 0, voided_count: 0, by_method: { cash: 0, nequi: 0, breb: 0 } })).success).toBe(true);
+    expect(paymentsSummarySchema.safeParse(paymentsSummary({ total_cop: 10.5 })).success).toBe(false);
+    expect(paymentsSummarySchema.safeParse(paymentsSummary({ voided_count: -1 })).success).toBe(false);
+    expect(paymentsSummarySchema.safeParse({ ...paymentsSummary(), extra: 1 }).success).toBe(false);
+    expect(paymentsSummarySchema.safeParse({ ...paymentsSummary(), by_method: { cash: 0, nequi: 0, breb: 0, card: 0 } }).success).toBe(false);
+    expect(paymentsSummarySchema.safeParse({ ...paymentsSummary(), by_method: { cash: 0, nequi: 0 } }).success).toBe(false);
   });
 });

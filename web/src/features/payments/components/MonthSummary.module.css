@@ -1,0 +1,48 @@
+/* S3-F6: resumen del mes de Pagos.html (fila de KPI). Solo tokens.css. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.month {
+  flex: 0 1 calc(var(--sidebar) * 0.9);
+  min-width: 0;
+}
+
+/* Total, un medio por tarjeta y anulados; se reacomodan según el ancho. La cifra no se parte en el
+   espacio de "$ 18.240.000": cada columna mide lo que ocupa una cifra de ocho dígitos en --text-kpi. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--sidebar) * 1.05), 1fr));
+  gap: var(--space-3);
+}
+
+.cards > * {
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--danger);
+  font: var(--text-body);
+}

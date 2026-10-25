@@ -706,3 +706,32 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   se traduce a `freeze_already_scheduled` (el blueprint no la traducía); el 200 en vivo queda para
   la demo tras B4 (no hay vía legítima de activar la membresía de B1 sin pagos). La evidencia de
   B2.9 va al commit `docs(sprint-03): evidencia de S3-B2` (E8).
+
+### Evidencia de S3-B2 (B2.9, después del sello; E8)
+
+- Gates B2.8 seguidos, sin editar entre ellos, `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo de cada
+  archivo, todos verdes al primer intento: 1 `architecture` (con `test_migrations`, `test_0009`,
+  `test_0008`, `test_triggers_siempre_activos` y `test_audited_tables`) 301 ok; 2 corrida conjunta
+  `tests/memberships tests/migrations` 382 ok; 3 (sella) `memberships` 336 ok (con
+  `test_freeze_revision`, nacida en la revisión). Una saltada en los gates 1 y 3
+  (`test_no_sensitive_in_logs`, US-074). Checkpoint `5d412bd`.
+- P-MIG pasos 6 y 7 en `apex-db-1` (hechos en B2.4 y comprobados a las 06:18 UTC): api `healthy`;
+  `alembic current` = `0009_membership_freezes (head)`. Catálogo: triggers
+  `membership_freezes_append_only` y `membership_freezes_forbid_truncate` en `A`; funciones
+  `forbid_delete`, `forbid_freeze_mutation` y `guard_identity` con `prosecdef = f` y
+  `proconfig = {search_path=pg_catalog}`; restricciones `ck_membership_freezes_dates_ordered`,
+  `ck_membership_freezes_days_match`, `ex_membership_freezes_dates`,
+  `fk_membership_freezes_membership_id_memberships` y `pk_membership_freezes`.
+- Smoke por Nginx `:8180` con un access del admin firmado dentro del contenedor del api (el script
+  temporal se borró del contenedor): congelar 10 días (25 oct a 3 nov) la membresía de B1
+  (`0338472b-…`, `pending_payment`) → **409** `membership_not_freezable` en 0,03 s (evidencia de
+  D14: una pendiente de pago no se congela); id inexistente → **404** `membership_not_found`; sin
+  token → **401** `unauthorized`; `/api/v1/health` 200. La membresía sigue `pending_payment |
+  2026-11-24`, sin filas `update` de auditoría. El 200 en vivo queda para la demo tras B4
+  (DECISIONES "S3-B2"); lo prueban `test_freeze_router` y `test_freeze_service` sobre `db_test`.
+- psql en `apex-db-1`, dentro de una transacción revertida con una congelación insertada para la
+  prueba: `UPDATE memberships.membership_freezes SET days = 1` → `23000` `CONSTRAINT NAME:
+  membership_freezes_append_only`; `DELETE` → lo mismo; con `SET LOCAL session_replication_role =
+  replica` un `UPDATE` sin cambios → lo mismo; el vaciado de la tabla → lo mismo. Después: 0
+  congelaciones, 0 filas de auditoría de `membership_freezes`, 0 sesiones `idle in transaction`,
+  log del api sin `ERROR` en los últimos 10 minutos.

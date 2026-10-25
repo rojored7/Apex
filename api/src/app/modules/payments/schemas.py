@@ -16,11 +16,23 @@
   `validation_error` con `field="reason"`), con un tope previo de `VOID_REASON_INPUT_MAX` (2000)
   caracteres antes de normalizar. El largo (hasta 500 tras recortar) lo decide
   `rules.normalize_void_reason` en `void` con el mismo 422. La respuesta es `PaymentOut`.
+
+S3-B8 (US-098, US-099, US-100; D26, M-8, L-2, S3-D51, S3-D57):
+- `PaymentListQuery` (`extra="forbid"`): los filtros de `GET /payments`; `from` es alias de
+  `from_`; `from` y `to` con zona; `method` del `Literal`; `voided` y `backdated` tri-estado; `q`
+  hasta `MAX_SEARCH_LENGTH`. El rango contra "hoy" (M-4) lo valida `queries.list`.
+- `PaymentRow`: la fila de la lista, sin datos cifrados del socio (solo nombre y apellido, en
+  claro por regla), con el plan y las fechas de la membresía (`memberships.refs_for`),
+  `registered_by_name` como correo parcial (L-2) y `backdated` (M-8).
+- `PaymentDetail(PaymentRow)`: más `voided_by`, `voided_by_name` (correo parcial), `voided_at` y
+  `created_at`.
+- `PaymentsByMethod` y `PaymentsSummary(month, total_cop, by_method, voided_count,
+  payments_count)`: el resumen del mes de Bogotá (D23); montos y conteos enteros.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Final, Literal
 from uuid import UUID
 
@@ -36,6 +48,7 @@ from pydantic import (
     field_validator,
 )
 
+from app.core.pagination import MAX_SEARCH_LENGTH
 from app.core.validators import SafeText, check_visible_text
 from app.modules.payments.models import MAX_AMOUNT_COP, REFERENCE_MAX_LENGTH
 from app.modules.payments.rules import REFERENCE_PATTERN, VOID_REASON_MAX, normalize_reference
@@ -104,3 +117,68 @@ class PaymentMethodOut(BaseModel):
 
 class PaymentMethodsOut(BaseModel):
     items: list[PaymentMethodOut]
+
+
+class PaymentListQuery(BaseModel):
+    """Filtros de `GET /payments` (S3-B8, D26). `from` llega por alias (`from_` en Python)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
+    from_: AwareDatetime | None = Field(default=None, alias="from")
+    to: AwareDatetime | None = None
+    method: PaymentMethod | None = None
+    registered_by: UUID | None = None
+    voided: bool | None = None
+    backdated: bool | None = None
+    member_id: UUID | None = None
+    membership_id: UUID | None = None
+
+
+class PaymentRow(BaseModel):
+    """Una fila de `GET /payments` (S3-B8, D26, M-8, L-2)."""
+
+    id: UUID
+    paid_at: datetime
+    amount_cop: int
+    method: PaymentMethod
+    reference: str | None
+    voided: bool
+    void_reason: str | None
+    registered_by: UUID
+    registered_by_name: str | None
+    membership_id: UUID
+    member_id: UUID
+    member_first_name: str
+    member_last_name: str
+    plan_name: str
+    membership_start_date: date
+    membership_end_date: date
+    backdated: bool
+
+
+class PaymentDetail(PaymentRow):
+    """`GET /payments/{payment_id}` (S3-B8, US-099; L-2)."""
+
+    voided_by: UUID | None
+    voided_by_name: str | None
+    voided_at: datetime | None
+    created_at: datetime
+
+
+class PaymentsByMethod(BaseModel):
+    """Total no anulado por medio; siempre las tres claves (D24)."""
+
+    cash: int
+    nequi: int
+    breb: int
+
+
+class PaymentsSummary(BaseModel):
+    """`GET /payments/summary` (S3-B8, US-100; D23): el mes `AAAA-MM` de Bogotá."""
+
+    month: str
+    total_cop: int
+    by_method: PaymentsByMethod
+    voided_count: int
+    payments_count: int

@@ -46,6 +46,9 @@ CON_LIMITE = {
     # S3-B7 (E2, M-2, S3-D45): la lista de membresías con `q` consume la cubeta compartida de
     # búsquedas de personas (`PII_SEARCH_BUCKET`); el resumen y el detalle no tienen límite.
     ("get", "/api/v1/memberships"),
+    # S3-B8 (E2, M-2, S3-D45): la lista de pagos con `q` consume la misma cubeta compartida; el
+    # resumen, los medios y el detalle no tienen límite.
+    ("get", "/api/v1/payments"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

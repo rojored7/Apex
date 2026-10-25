@@ -1850,3 +1850,185 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   `role=member` para el id del admin responde 200 como admin (no es un escalamiento: firmar
   exige la llave privada del api). El 403 de `member` lo fijan `test_list_router.py` y
   `test_summary_router.py` con usuarios reales; no se demuestra en vivo.
+
+### S3-B8 · Rojo (B8.1 stubs y B8.2 Rojo; sin migración)
+
+- Línea base: HEAD `7eac10a`, árbol limpio; suite en dos mitades con `-m "not perf"` y
+  `TEST_DATABASE_URL`: (1) `core crypto auth settings cli audit` + `test_ci_database.py` y
+  `test_smoke.py` 1.483 ok, 3 saltadas; (2) `members plans memberships payments migrations
+  architecture` 1.728 ok, 1 saltada, 5 deseleccionadas. Total 3.211 ok, 4 saltadas. `ruff check` y
+  `mypy src` (93 archivos) limpios.
+- Rojo: 3.422 recolectadas; con `-m "not perf"`: **162 fallan**, 3.249 ok, 4 saltadas, 7
+  deseleccionadas. Mitad 1: 1 falla (`test_docs_openapi_json_esta_al_dia`, P-API de B8.4), 1.482
+  ok, 3 saltadas. Mitad 2: 161 fallan (todas de B8), 1.767 ok, 1 saltada, 7 deseleccionadas.
+  `tests/payments/test_list_perf.py` aparte: 2 fallan (rojo esperado: 500 por el stub). De las
+  161: 158 son `NotImplementedError` de los stubs (`payments.list` 42, `month_bounds_utc` 21,
+  `parse_month` 20, `payments.summary` 19, `build_filters` 18, `check_date_range` 12,
+  `payments.get` 9, `partial_email` 8, `is_backdated` 7, `date_ceiling` 2; las de router llegan
+  como 500) y 3 son del grafo de services: `test_cada_arista_permitida_existe` (`payments → auth` y
+  `payments → members` declaradas sin import), `test_payments_depende_de_members_auth_y_settings_
+  y_no_de_memberships` y `test_el_par_perezoso_payments_memberships_existe_y_esta_permitido`
+  (`perezosas["payments"]` vacío). `ruff format`, `ruff check` y `mypy src` (93 archivos) limpios.
+  `db_test` sin residuos: `alembic_version = 0011_payments_immutability`, 0 pagos, 0 membresías,
+  0 congelaciones, 0 socios, 0 planes, 0 usuarios `@test.apex`, 0 sesiones `idle in
+  transaction`, los siete triggers de `memberships` y `payments` en `A` (también tras las dos
+  `perf`, que siembran 10.000 pagos dentro de la transacción de `session`). `apex-db-1` no se
+  tocó.
+  - Verdes de la línea base que pasan a rojo: `test_docs_openapi_json_esta_al_dia` (P-API) y
+    `test_cada_arista_permitida_existe` (S3-D80: las dos aristas entran en B8 con su uso).
+  - Nuevas: 203 (202 netas: una del grafo se renombra; 201 sin `perf`). En rojo 160 + 2 `perf`;
+    verdes sobre los stubs 41
+    (el stub ya es el contrato): `test_list_filters.py` 11 (estructura de `PaymentFilters`,
+    `DATE_FLOOR`, el alias `from` y 8 rechazos del esquema `PaymentListQuery`),
+    `test_month_bounds.py` 2 (`MONTH_MIN`/`MONTH_MAX`; `InvalidMonth` no es `ValueError`),
+    `test_router_list.py` 13 (403/401 y 12 422 de forma: `limit` 0 y 201, `offset`, `method`,
+    `from` mal formada y sin zona, `voided`, `backdated`, tres ids y `q` de 101),
+    `test_router_get.py` 3 (422 por UUID, 403/401, orden de los `GET`), `test_router_summary.py`
+    3 (403/401, `month` de 10 caracteres, OpenAPI), `tests/architecture` 7
+    (`test_list_rows_without_sensitive_fields.py` 3: filas de membresías y pagos, correo parcial
+    sin campos `*email*`; los subprocesos de import de las dos aristas nuevas en los dos
+    órdenes, 4) y `tests/memberships/test_rules.py` 2
+    (la prueba parametrizada por las subclases de `PaymentError` gana `InvalidMonth` e
+    `InvalidDateRange`).
+- Verde desechable (revertido; sin migración, solo `db_test`): `parse_month` (`[0-9]{4}-[0-9]{2}`
+  con `fullmatch`), `month_bounds_utc` (aritmética de `(año, mes)` con `ZoneInfo`),
+  `date_ceiling`, `check_date_range`, `partial_email` (`rpartition("@")`), `is_backdated`,
+  `build_filters`, `list` (validación, `search_ids(include_deleted=True)` solo con `q`, total y
+  página `paid_at DESC, id DESC`), `get`, `summary` (`SUM`/`COUNT ... FILTER` en una sentencia) y
+  `_enrich` (`refs_for` perezoso con `# lazy: G-03 (payments -> memberships)`, `auth.names_for`
+  una vez con quien registró y quien anuló, `partial_email`), con `members.service` y
+  `auth.service` importados a nivel de módulo en `queries.py`. Resultado: `tests/payments` y
+  `tests/architecture` 737 ok y 1 falla de prueba (abajo); corregida, la mitad 2 completa 1.928
+  ok, 1 saltada, 7 deseleccionadas (incluye `test_ninguna_funcion_supera_50_lineas`, el grafo con
+  sus subprocesos y `test_no_cross_schema_sql`). `test_list_perf.py`: 2 ok (lista 14,8 ms;
+  resumen 12,2 ms con 10.000 pagos): la migración condicional `0014_payments_registered_by_idx`
+  no hace falta con este plan. Después, `payments/rules.py` y `payments/queries.py` restaurados
+  desde copia (sha256 iguales a los del stub, los nueve archivos de `payments/`).
+  - Defecto de prueba encontrado y corregido: `test_sin_q_no_hay_operaciones_de_cripto_y_con_q_
+    solo_indices` no veía las filas `index` de la búsqueda por documento porque la bitácora
+    `crypto_ops` se vacía en `before_commit`; `listar` (y `detalle` en `test_get.py`) ahora
+    confirma como una petición (`await session.commit()`), igual que `tests/members`.
+- Stubs (B8.1): `payments/exceptions.py`: `InvalidMonth` (422 `validation_error`, `field`
+  `month`) e `InvalidDateRange` (422 `validation_error`, `field` por defecto `to`);
+  `payments/rules.py`: `DATE_FLOOR = PAID_AT_FLOOR`, `DATE_CEILING_YEARS = 5`, `MONTH_MIN = 2020`,
+  `MONTH_MAX = 2100`, `MONTH_LENGTH = 7`, `BACKDATED_AFTER = 24 h`, `PaymentFilters` (real) y
+  `build_filters`, `date_ceiling`, `check_date_range`, `parse_month`, `month_bounds_utc`,
+  `partial_email`, `is_backdated` (con `NotImplementedError`); `payments/schemas.py`:
+  `PaymentListQuery` (`extra="forbid"`, `populate_by_name`, alias `from`), `PaymentRow`,
+  `PaymentDetail`, `PaymentsByMethod`, `PaymentsSummary`; `payments/queries.py`: `list`, `get`,
+  `summary` y `_enrich` (con `NotImplementedError`), y `builtins.list` en lo existente (`list`
+  sombrea al de Python); `payments/service.py`: re-exporta `list`, `get` y `summary` y
+  `__all__: builtins.list[str]`; `payments/router.py`: `GET /payments/summary` (`month` con
+  `max_length=MONTH_LENGTH`, `responses_for(422)`), `GET /payments/methods` (ya existía),
+  `GET /payments` (`PageParams`, `q`, `from` por alias, `to`, `method`, `registered_by`,
+  `voided`, `backdated`, `member_id`, `membership_id`; `enforce_user_limit(request,
+  PII_SEARCH_BUCKET, principal.user_id)` solo con `q`; `responses_for(422, 429)`) y
+  `GET /payments/{payment_id}` (`responses_for(404)`), en ese orden de `GET`; `no_store` del
+  router. Ningún stub importa `members.service` ni `auth.service`: un import sin uso lo rechaza
+  `ruff` (F401) y S3-D80 pide las aristas con uso real; entran en el Verde.
+- Archivos de prueba nuevos (`tests/payments`): `test_month_bounds.py` (43),
+  `test_list_filters.py` (58), `test_list.py` (29), `test_router_list.py` (26), `test_get.py` (5),
+  `test_router_get.py` (8), `test_summary.py` (11), `test_router_summary.py` (10) y
+  `test_list_perf.py` (2, `perf`). Cambiados: `tests/payments/_apoyo.py` (`RESUMEN`,
+  `TABLA_PAGOS`, `CAMPOS_ROW`, `CAMPOS_DETAIL`, `CAMPOS_RESUMEN`, `CAMPOS_POR_MEDIO`,
+  `ruta_pago`), `tests/architecture/test_service_import_graph.py` (`ALLOWED_EDGES` gana
+  `("payments", "auth")` y `("payments", "members")`, S3-D80; `test_payments_depende_de_settings_
+  y_no_de_memberships` pasa a `..._de_members_auth_y_settings_y_no_de_memberships`; nueva
+  `test_el_par_perezoso_payments_memberships_existe_y_esta_permitido`),
+  `test_error_codes_per_route.py` (E2: `CON_LIMITE` gana `("get", "/api/v1/payments")`),
+  `test_list_routes_use_page_params.py` (gana `GET /api/v1/payments`) y
+  `test_list_rows_without_sensitive_fields.py` (recorre también `/api/v1/memberships` y
+  `/api/v1/payments`; sufijo sensible `_email`; `registered_by_name` sí, ningún campo con
+  `email`). Sin cambio: `test_user_limits_catalog.py` (la cubeta ya tenía ruta; el conjunto sale
+  de `CON_LIMITE`).
+- Importadores de lo tocado: `payments/rules.py` lo importan `payments/{queries,schemas,service}.py`
+  y pruebas (importa ahora `sqlalchemy.ColumnElement`); `payments/exceptions.py`
+  `payments/{rules,service}.py`, `tests/architecture/test_gates_registered.py` y pruebas de
+  `memberships` y `payments`; `payments/schemas.py` `memberships/{schemas,sell}.py`,
+  `payments/{models,router,service}.py`, `settings/schemas.py` y pruebas (importa ahora
+  `core.pagination.MAX_SEARCH_LENGTH`; no importa `queries`: sin ciclo);
+  `payments/queries.py` solo `payments/service.py` (importa ahora `payments.schemas` y
+  `core.pagination.Page/PageParams`); `payments/service.py` `core/events.py`,
+  `memberships/{lifecycle,queries,sell,service}.py`, `payments/{events,router}.py` y pruebas;
+  `payments/router.py` solo `main.py` (por `MODULES`). Ninguna firma existente cambia: todo es
+  agregado.
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`PaymentFilters`** (dataclass congelada; nueve campos, todos `None` por defecto) y
+   **`build_filters(filters, member_ids_from_q=())`**: sin filtros, `[]`. Rango `[from_, to)`
+   (incluye `from`, excluye `to`; `from == to` da vacío); `method`, `registered_by`,
+   `member_id`, `membership_id` por igualdad; `voided` y `backdated` tri-estado; `q` es
+   `lower(reference) = lower(q)` (exacta, no parcial) o `member_id` en `member_ids_from_q`; sin
+   `q` los ids no filtran. Se prueba ejecutando las condiciones contra pagos reales.
+2. **Rango (M-4, S3-D47):** `check_date_range(from_, to, today)` (nombre nuevo, el plan no lo
+   fijaba) con `InvalidDateRange` (en `exceptions.py`, 422 `validation_error`, `field` `from` o
+   `to`; invertidas en `to`); `DATE_FLOOR == PAID_AT_FLOOR` (2020-01-01T00:00Z);
+   `date_ceiling(today)` con zona entre hoy + 5 años − 1 día y hoy + 6 años (2031-10-20 pasa,
+   2032-10-21 falla; un 29 de febrero no falla); años 1 y 9999 dan 422 sin `OverflowError`.
+   `list` valida con el "hoy" de Bogotá del reloj antes de consultar.
+3. **Mes (D23, M-4):** `parse_month` acepta solo `AAAA-MM` con dígitos ASCII completo (sin
+   espacios, sin salto de línea final, sin dígitos de ancho completo, sin signo), mes 01–12, año
+   2020–2100; `month_bounds_utc(month: str)` valida igual y devuelve `[inicio, fin)` con zona
+   UTC (octubre: 05:00Z del 1 al 05:00Z del 1 de noviembre; diciembre cruza de año; `2100-12`
+   termina en 2101-01-01T05:00Z). `InvalidMonth` vive en `exceptions.py` (422
+   `validation_error`, `field="month"`, sin el valor en el mensaje) y no hereda de `ValueError`.
+4. **`partial_email`:** primera letra de la parte local, `•••`, `@` y el dominio tras la ÚLTIMA
+   `@`; sin `@`, primera letra y `•••`; vacío, `•••`; sin cambiar mayúsculas.
+5. **`backdated` (M-8, S3-D51):** `created_at - paid_at > 24 h` estricto (24 h exactas no; 24 h
+   y 1 s sí; un `paid_at` posterior a `created_at` no). El filtro SQL usa la misma regla.
+6. **`list(session, filters: PaymentListQuery, page: PageParams) -> Page[PaymentRow]`** (como
+   `members.list` y `memberships.list`). Orden `paid_at DESC, id DESC`. `q` con
+   `members.service.search_ids(include_deleted=True)` solo cuando hay `q` (un socio dado de baja
+   aparece). Con 25 filas: exactamente una sentencia a `memberships.memberships`,
+   `members.members`, `plans.plans` y `auth.users`, y como mucho dos a `payments.payments`; con
+   `q` de apellido, dos a `members.members` (búsqueda y nombres); con `q` sin coincidencias,
+   ninguna a `memberships`, `plans` ni `auth`.
+7. **Cifrado:** ningún `decrypt` nunca (ni con `q`); sin `q` ninguna fila nueva en `crypto_ops`;
+   con `q` por documento, solo filas `index` de la búsqueda de socios. Así se lee "decrypt solo
+   con q" del plan (el blueprint dice "ningún `decrypt` salvo el de `q`" y B7 fijó cero
+   `decrypt` con `q`: la búsqueda va por índice ciego). Las ayudas de prueba confirman como una
+   petición (`before_commit` vacía la bitácora).
+8. **Filas:** `PaymentRow` tiene exactamente 17 claves (`CAMPOS_ROW`); `registered_by_name` es
+   `str | None` (correo parcial; `None` solo si el usuario no existiera); nombre, apellido,
+   plan y fechas de la membresía no nulos (de `refs_for`). `PaymentDetail` suma `voided_by`,
+   `voided_by_name` (parcial), `voided_at` y `created_at`. Ningún correo completo en la salida.
+9. **`get`:** `PaymentNotFound` (404 `payment_not_found`); una sentencia a `auth.users` para
+   quien registró y quien anuló.
+10. **`summary(session, month: str | None = None) -> PaymentsSummary`:** `month` de la salida es
+    `AAAA-MM`; `by_method` es un objeto con `cash`, `nequi` y `breb` siempre; `total_cop` y
+    `by_method` solo vigentes; `payments_count` vigentes y `voided_count` anulados del mes por
+    `paid_at` (anular en octubre un pago de septiembre baja septiembre y no toca octubre, L-13);
+    sin `month`, el mes de `current_clock().today_bogota()`; `total_cop` cuadra con la suma de
+    `list(from, to, voided=false)` del mismo mes.
+11. **Rutas:** orden de los `GET` bajo `/api/v1/payments`: `summary`, `methods`, lista,
+    `{payment_id}` (prueba estructural). `month` con `max_length=7` (un valor más largo es 422 de
+    forma en `month`). Los 422 de la lista llevan `validation_error` con `field` (`from` por su
+    alias), también los que decide el service. La cubeta `PII_SEARCH_BUCKET` solo con `q`: 60
+    aquí dan 200 y la 61 429; 30 en socios y 30 aquí, la 61 aquí da 429; 40 aquí y 20 en socios,
+    la 21 en socios y la siguiente aquí dan 429.
+12. **`perf`:** se mide por HTTP (más estricto que "en el service" del blueprint) con siembra
+    cruda; `GET /payments?limit=25` < 500 ms y `GET /payments/summary?month=2026-10` < 300 ms con
+    10.000 pagos.
+
+#### Desviaciones del Rojo
+
+- `InvalidMonth` e `InvalidDateRange` viven en `payments/exceptions.py` (convención del módulo;
+  el plan los listaba en `rules.py`, que los lanza). `check_date_range`, `MONTH_LENGTH`,
+  `DATE_CEILING_YEARS`, `BACKDATED_AFTER` y `PaymentsByMethod` son agregados que el plan no
+  nombraba (contrato necesario para las pruebas).
+- "decrypt solo con q" se fija como "ningún `decrypt`; con `q`, solo `index`" (decisión 7).
+- `members.service.ensure_exists` (S3-D80) no lo exige ninguna prueba: la arista
+  `payments → members` la justifica `search_ids`.
+- `test_list_rows_without_sensitive_fields.py` gana el sufijo sensible `_email` y los prefijos de
+  membresías y pagos (el plan pedía ampliarla si solo recorría `members`).
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B8 · Verde (B8.3 a B8.7)
+
+- Verde: `payments/rules.py` (`build_filters`, `_q_condition`, `date_ceiling`, `_outside`, `check_date_range`, `parse_month`, `month_bounds_utc`, `partial_email`, `is_backdated`, `EMAIL_MASK`, `_MONTH_RE`) y `payments/queries.py` (`list`, `_as_filters`, `_as_row`, `get`, `summary`, `_enrich`, `_partial_name`, `_detail`, `logger`). Router, schemas, service y exceptions quedan como en el Rojo. Ninguna prueba del Rojo cambió.
+- Suite sin `perf`, en dos mitades: (1) 1.483 ok, 3 saltadas; (2) 1.929 ok, 1 saltada, 7 deseleccionadas. Total 3.412 ok, 4 saltadas, 0 fallos (3.423 recolectadas: las 3.422 del Rojo más `test_enrich_guard.py`). `test_list_perf.py`: 2 ok (lista 13,7 ms y resumen 10,2 ms con 10.000 pagos). `0014` no hace falta.
+- Contrato (P-API): `export-openapi` dos veces, idéntico byte a byte; `npm run gen:api`, `types.contract.test.ts` 5 ok y `tsc --noEmit` limpio en el árbol principal (solo cambia `web/src/core/api/types.ts`).
+- Revisión de seguridad: 0 CRITICAL, HIGH o MEDIUM; LOW-1 corregido con prueba (`test_enrich_guard.py`), LOW-2 y LOW-3 aceptados (ver `DECISIONES.md`, "S3-B8").
+- Docs: `RUNBOOK.md` §10 "Pagos: lista, detalle y resumen del mes"; `DECISIONES.md` "S3-B8".
+- **F6 puede arrancar:** `GET /payments`, `GET /payments/{id}` y `GET /payments/summary` están en `docs/openapi.json` y en `web/src/core/api/types.ts`.

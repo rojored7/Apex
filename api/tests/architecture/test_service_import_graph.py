@@ -16,14 +16,17 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
   (`memberships_policy`). S3-B3 agrega `payments → settings` (`memberships_policy`,
   `payment_methods`); S3-B4 `memberships → payments` (`register`, el puerto `MembershipGate`,
   `PaymentRegistered`, `sum_not_voided`); B8 `payments → members` (`search_ids`,
-  `ensure_exists`) y `payments → auth` (`names_for`), donde tienen uso real (S3-D80). Cada arista
-  permitida existe de verdad.
+  `ensure_exists`) y `payments → auth` (`names_for`), donde tienen uso real (S3-D80; entran en
+  el Rojo de S3-B8 con la lista, el detalle y el resumen). Cada arista permitida existe de
+  verdad.
 - `payments` no importa `memberships` a nivel de módulo (D1: habla con él solo por el puerto
   `MembershipGate`, que `memberships` registra al importarse); la perezosa `payments → memberships`
-  (lista blanca) llega con B8. Desde B4 el par se importa limpio en los dos órdenes
-  (`memberships, payments` y `payments, memberships`).
+  (lista blanca) llega con B8: `payments/queries.py` pide `memberships.service.refs_for` dentro
+  de la función, con `# lazy: G-03 (payments -> memberships)` (lectura de presentación). Desde
+  B4 el par se importa limpio en los dos órdenes (`memberships, payments` y `payments,
+  memberships`).
 - `LAZY_IMPORT_WHITELIST` es exactamente `{payments → memberships, members → memberships,
-  plans → memberships}` (G-03); hoy no se usa ninguna.
+  plans → memberships}` (G-03); desde S3-B8 se usa `payments → memberships`.
 - Cada par de `ALLOWED_EDGES` se importa en un subproceso limpio (`python -I -c`) en los dos
   órdenes (DoD de US-071): un ciclo de imports al arrancar fallaría ahí aunque el análisis
   estático no lo viera.
@@ -52,6 +55,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("memberships", "payments"),
         ("memberships", "plans"),
         ("memberships", "settings"),
+        ("payments", "auth"),
+        ("payments", "members"),
         ("payments", "settings"),
     }
 )
@@ -225,16 +230,26 @@ def test_memberships_depende_de_members_payments_plans_y_settings() -> None:
     assert perezosas["memberships"] == set()
 
 
-def test_payments_depende_de_settings_y_no_de_memberships() -> None:
-    """S3-B3 (D1, D2, S3-D80): la arista `payments → settings` existe y no hay ninguna hacia
-    `memberships`, ni de nivel de módulo ni perezosa (el puerto `MembershipGate` lo evita).
-    `payments → members` y `payments → auth` llegan con B8 (S3-D80). S3-B4: el sentido
-    `memberships → payments` sí existe a nivel de módulo; el grafo sigue acíclico."""
-    arriba, perezosas = _grafo_real()
-    assert arriba["payments"] == {"settings"}
-    assert perezosas["payments"] == set()
+def test_payments_depende_de_members_auth_y_settings_y_no_de_memberships() -> None:
+    """S3-B3 (D1, D2): `payments → settings`. S3-B8 (S3-D80): `payments → members`
+    (`search_ids` de `q`) y `payments → auth` (`names_for` de quien registró y anuló), a nivel
+    de módulo. Hacia `memberships` nunca a nivel de módulo (el puerto `MembershipGate` y la
+    perezosa de G-03 lo evitan). S3-B4: el sentido `memberships → payments` sí existe a nivel de
+    módulo; el grafo sigue acíclico."""
+    arriba, _ = _grafo_real()
+    assert arriba["payments"] == {"auth", "members", "settings"}
     assert "memberships" not in arriba["payments"]
     assert "payments" in arriba["memberships"]
+
+
+def test_el_par_perezoso_payments_memberships_existe_y_esta_permitido() -> None:
+    """S3-B8 (D2, G-03): primer uso real de la lista blanca. `payments` lee los nombres y las
+    fechas de la membresía (`refs_for`) con un import dentro de la función; es su única
+    perezosa y lleva su comentario (lo vigila `test_todo_import_perezoso_lleva_su_comentario`)."""
+    _, perezosas = _grafo_real()
+    assert perezosas["payments"] == {"memberships"}
+    assert ("payments", "memberships") in LAZY_IMPORT_WHITELIST
+    assert ("payments", "memberships") not in ALLOWED_EDGES
 
 
 def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
@@ -246,7 +261,7 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
 
 
 def test_ningun_import_perezoso_fuera_de_la_lista_blanca() -> None:
-    """Toda perezosa real está en la lista blanca (hoy no hay ninguna)."""
+    """Toda perezosa real está en la lista blanca (desde S3-B8, `payments → memberships`)."""
     _, perezosas = _grafo_real()
     fuera = sorted(_aristas(perezosas) - LAZY_IMPORT_WHITELIST)
     assert fuera == [], f"imports perezosos de otro service sin lista blanca: {fuera}"

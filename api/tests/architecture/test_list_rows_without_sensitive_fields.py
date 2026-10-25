@@ -1,4 +1,5 @@
-"""Las filas de las listas de socios no declaran ningún campo sensible (S2-B8; US-070 T9; N-01).
+"""Las filas de las listas de socios, membresías y pagos no declaran ningún campo sensible
+(S2-B8; US-070 T9; N-01; ampliada en S3-B8 a `/api/v1/memberships` y `/api/v1/payments`, L-2).
 
 Se recorren las rutas EFECTIVAS de `create_app(...)` (`effective_routes`, S2-D3) bajo
 `/api/v1/members` y, para cada `GET` cuya respuesta 200 es un `Page_...`, se lee en
@@ -6,12 +7,19 @@ Se recorren las rutas EFECTIVAS de `create_app(...)` (`effective_routes`, S2-D3)
 `email`, `birth_date`, `emergency_contact` o cualquier `*_idx` o `*_hint`: la lista no lleva
 ningún dato cifrado, ni en claro, ni enmascarado, ni su índice ciego. El control construye una
 app desechable con una fila falsa que debe fallar.
+
+S3-B8: el mismo recorrido sobre `PREFIJOS_COMERCIALES` (`/api/v1/memberships` y
+`/api/v1/payments`): `MembershipRow` y `PaymentRow` llevan solo nombre y apellido del socio (en
+claro por regla) y `registered_by_name` (el correo PARCIAL de quien registró, L-2, S3-D57, que
+no es un campo sensible: no se llama `email`); ninguna declara `document`, `phone`, `email`,
+`birth_date`, `emergency_contact`, `*_idx`, `*_hint` ni un `*_email` con el correo completo.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Any
 
+import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from pydantic import BaseModel
 
@@ -23,7 +31,8 @@ from app.main import create_app
 PREFIJO = "/api/v1/members"
 SCHEMA_REF = "#/components/schemas/"
 SENSIBLES = frozenset({"document", "phone", "email", "birth_date", "emergency_contact"})
-SUFIJOS_SENSIBLES = ("_idx", "_hint")
+SUFIJOS_SENSIBLES = ("_idx", "_hint", "_email")
+PREFIJOS_COMERCIALES = ("/api/v1/memberships", "/api/v1/payments")
 
 
 def _resolver(esquema: dict[str, Any], nodo: dict[str, Any]) -> dict[str, Any]:
@@ -80,12 +89,56 @@ def test_las_filas_de_las_listas_de_socios_no_declaran_campos_sensibles(
     assert "GET /api/v1/members" in listas
 
 
+@pytest.mark.parametrize(
+    ("prefijo", "lista"),
+    [
+        ("/api/v1/memberships", "GET /api/v1/memberships"),
+        ("/api/v1/payments", "GET /api/v1/payments"),
+    ],
+)
+def test_las_filas_de_membresias_y_pagos_no_declaran_campos_sensibles(
+    settings_prueba: Settings, prefijo: str, lista: str
+) -> None:
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app, prefijo)
+    assert problemas == [], "\n".join(problemas)
+    assert lista in listas
+
+
+def test_la_fila_de_pagos_lleva_el_correo_parcial_y_no_el_completo(
+    settings_prueba: Settings,
+) -> None:
+    """L-2 (S3-D57): `registered_by_name` sí; ningún campo con el correo completo."""
+    esquema = create_app(settings_prueba, run_migrations_on_startup=False).openapi()
+    fila = esquema["components"]["schemas"]["PaymentRow"]["properties"]
+    assert "registered_by_name" in fila
+    assert not [campo for campo in fila if "email" in campo]
+
+
 def test_es_sensible_reconoce_campos_cifrados_indices_y_pistas() -> None:
     for campo in ("document", "phone", "email", "birth_date", "emergency_contact"):
         assert es_sensible(campo), campo
-    for campo in ("document_idx", "phone_idx", "email_idx", "phone_hint", "document_hint"):
+    for campo in (
+        "document_idx",
+        "phone_idx",
+        "email_idx",
+        "phone_hint",
+        "document_hint",
+        "registered_by_email",
+    ):
         assert es_sensible(campo), campo
-    for campo in ("id", "first_name", "last_name", "sex", "status", "deleted_at", "plan_name"):
+    for campo in (
+        "id",
+        "first_name",
+        "last_name",
+        "sex",
+        "status",
+        "deleted_at",
+        "plan_name",
+        "member_first_name",
+        "registered_by_name",
+        "voided_by_name",
+    ):
         assert not es_sensible(campo), campo
 
 

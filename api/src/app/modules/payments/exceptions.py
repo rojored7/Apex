@@ -4,6 +4,8 @@ Ningún `message` repite valores del usuario (monto, referencia, fechas). Todos 
 de `DomainError` (`code`, `message`, `field`, `existing_id`, `status`): `memberships.sell` los
 re-lanza con el `field` prefijado (`first_payment.amount_cop`, B4, E5).
 
+`InvalidMonth` e `InvalidDateRange` (S3-B8) son los 422 de la lista y del resumen.
+
 `MembershipGateNotRegistered` NO es un error de dominio: es un `RuntimeError` (falla cerrado,
 sale como 500 sin datos) cuando nadie registró el puerto `MembershipGate` (D1).
 """
@@ -144,6 +146,49 @@ class InvalidVoidReason(PaymentError):
         message: str = "",
         *,
         field: str | None = "reason",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)
+
+
+class InvalidMonth(PaymentError):
+    """El mes de `GET /payments/summary` no es `AAAA-MM` con dígitos ASCII, mes de 1 a 12 y año
+    entre `rules.MONTH_MIN` y `rules.MONTH_MAX` (S3-B8, D23, M-4, S3-D47): 422 `validation_error`
+    con `field="month"`, sin el valor en el mensaje. Un mes extremo nunca sale como `ValueError`
+    ni como `OverflowError`."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El mes no es válido. Usa el formato AAAA-MM."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "month",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)
+
+
+class InvalidDateRange(PaymentError):
+    """`from` o `to` de `GET /payments` fuera de `[rules.DATE_FLOOR, rules.date_ceiling(hoy)]`, o
+    invertidas (S3-B8, M-4, S3-D47): 422 `validation_error` con el `field` que falla (`from` o
+    `to`; invertidas, `to`), sin las fechas en el mensaje."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El rango de fechas no es válido."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "to",
         existing_id: UUID | None = None,
         status: int | None = None,
     ) -> None:

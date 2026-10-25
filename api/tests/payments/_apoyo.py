@@ -4,7 +4,10 @@
 - `cuerpo_pago(**cambios)` (un pago de 60.000 en efectivo más lo que se pida) y
   `cuerpo_anulacion(reason)` (B5).
 - `CAMPOS_PAYMENT` (claves exactas de `PaymentOut`) y `CAMPOS_METODO` (de `PaymentMethodOut`).
-  `CAMPOS_ROW` y `CAMPOS_DETAIL` llegan con las listas y el detalle (B8), que los fijan.
+- S3-B8: `RESUMEN` (`/api/v1/payments/summary`), `ruta_pago(payment_id)`, `CAMPOS_ROW` (claves
+  exactas de `PaymentRow`), `CAMPOS_DETAIL` (de `PaymentDetail`), `CAMPOS_RESUMEN` (de
+  `PaymentsSummary`), `CAMPOS_POR_MEDIO` (de `by_method`) y `TABLA_PAGOS` (el nombre que
+  escribe SQLAlchemy, para `contador_de_consultas`).
 - `registrar(session, actor, **datos)`: `service.register` bajo `actor_scope(actor)` y commit (una
   petición, una transacción; con la `session` de savepoint libera el savepoint).
 - `anular(session, actor, **datos)` (S3-B5): `service.void` bajo `actor_scope(actor)` y commit.
@@ -38,6 +41,8 @@ from app.modules.payments.service import MembershipPayability
 
 PAYMENTS = "/api/v1/payments"
 METODOS = f"{PAYMENTS}/methods"
+RESUMEN = f"{PAYMENTS}/summary"
+TABLA_PAGOS = "payments.payments"
 
 CAMPOS_PAYMENT = frozenset(
     {
@@ -58,6 +63,35 @@ CAMPOS_PAYMENT = frozenset(
 )
 CAMPOS_METODO = frozenset({"code", "label", "hint"})
 DE_ANULACION = frozenset({"voided", "void_reason", "voided_by", "voided_at"})
+CAMPOS_ROW = frozenset(
+    {
+        "id",
+        "paid_at",
+        "amount_cop",
+        "method",
+        "reference",
+        "voided",
+        "void_reason",
+        "registered_by",
+        "registered_by_name",
+        "membership_id",
+        "member_id",
+        "member_first_name",
+        "member_last_name",
+        "plan_name",
+        "membership_start_date",
+        "membership_end_date",
+        "backdated",
+    }
+)
+CAMPOS_DETAIL = CAMPOS_ROW | {"voided_by", "voided_by_name", "voided_at", "created_at"}
+CAMPOS_RESUMEN = frozenset({"month", "total_cop", "by_method", "voided_count", "payments_count"})
+CAMPOS_POR_MEDIO = frozenset({"cash", "nequi", "breb"})
+
+
+def ruta_pago(payment_id: UUID | str) -> str:
+    """`GET /payments/{payment_id}` (B8)."""
+    return f"{PAYMENTS}/{payment_id}"
 
 
 def cuerpo_pago(**cambios: Any) -> dict[str, Any]:

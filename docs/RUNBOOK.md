@@ -578,3 +578,29 @@ SELECT estado, count(*) FROM decide GROUP BY estado ORDER BY estado;
 ```
 
   Es una consulta de soporte, no del api (el api nunca cruza esquemas: pide los socios vivos a `members` y cuenta en `memberships` por lotes de 1.000 ids).
+
+### Pagos: lista, detalle y resumen del mes (S3-B8, US-098 a US-100)
+
+- **Lista:** `GET /api/v1/payments` (admin y coach) con `limit`/`offset` (hasta 200) y estos filtros, todos opcionales y combinables:
+  - `from` y `to`: instantes con zona (`2026-10-01T05:00:00Z` o `2026-10-01T00:00:00-05:00`). El rango es `[from, to)`: incluye `from` y excluye `to`. Cada uno debe estar entre 2020-01-01 y hoy más 5 años; si no, 422 `validation_error` con `field` `from` o `to`. Invertidas dan 422 en `to`. Sin zona también es 422.
+  - `method` (`cash`, `nequi`, `breb`), `registered_by` (id de usuario), `member_id`, `membership_id`.
+  - `voided`: `true` solo anulados, `false` solo vigentes; sin el parámetro, todos.
+  - `backdated`: `true` solo los registrados más de 24 h después de la fecha del pago (24 h exactas no cuentan).
+  - `q`: la referencia completa sin importar mayúsculas (`neq-55` encuentra `NEQ-55`; no es búsqueda parcial) o el nombre, apellido o documento del socio, incluidos socios dados de baja. Nunca descifra: la búsqueda va por índice ciego. Con `q` gasta la cubeta de búsquedas de personas (60 por minuto por usuario, compartida con `GET /members?q=` y `GET /memberships?q=`). Sin `q` no gasta nada.
+- Orden: del pago más reciente al más viejo (`paid_at` descendente y, en empate, id descendente).
+- Cada fila trae nombre y apellido del socio, plan y fechas de la membresía, y quién registró como correo parcial (`l•••@dominio`). Nunca trae documento, teléfono ni correo del socio, ni el correo completo del usuario.
+- **Detalle:** `GET /api/v1/payments/{id}` da la fila más `voided_by`, `voided_by_name` (también parcial), `voided_at` y `created_at`. Si no existe, 404 `payment_not_found`.
+- **Resumen:** `GET /api/v1/payments/summary?month=AAAA-MM` (sin `month`, el mes actual de Bogotá) da `total_cop` y `by_method` (`cash`, `nequi`, `breb`; las tres claves siempre) solo de pagos vigentes, `payments_count` (vigentes) y `voided_count` (anulados). El mes es el mes civil de Bogotá según `paid_at`: octubre va de `2026-10-01T05:00Z` a `2026-11-01T05:00Z`. Un pago de septiembre anulado en octubre baja septiembre y no toca octubre. Un `month` que no sea `AAAA-MM`, con mes fuera de 01–12 o año fuera de 2020–2100, da 422 con `field` `month`.
+- **Cuadre:** `total_cop` del resumen es igual a la suma de `amount_cop` de `GET /payments?from=<inicio>&to=<fin>&voided=false` del mismo mes, recorriendo todas las páginas. En psql, con el mismo rango:
+
+```sql
+SELECT method, sum(amount_cop) FILTER (WHERE NOT voided) AS vigente,
+       count(*) FILTER (WHERE NOT voided) AS pagos,
+       count(*) FILTER (WHERE voided) AS anulados
+FROM payments.payments
+WHERE paid_at >= TIMESTAMPTZ '2026-10-01 00:00:00-05' AND paid_at < TIMESTAMPTZ '2026-11-01 00:00:00-05'
+GROUP BY ROLLUP (method) ORDER BY method;
+```
+
+  La fila con `method` nulo es el total. Pagos retroactivos: `SELECT id, paid_at, created_at FROM payments.payments WHERE created_at - paid_at > interval '24 hours' ORDER BY paid_at DESC;`.
+- Si una página de la lista sale 500 y el log muestra `payment without membership reference` con un `payment_id`, ese pago apunta a una membresía cuyo socio o plan no aparece. Es un problema de integridad, no de la consulta: revisar la fila en psql antes de tocar nada.

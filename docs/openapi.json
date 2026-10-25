@@ -1529,6 +1529,38 @@
         "title": "Page[MembershipRow]",
         "type": "object"
       },
+      "Page_PaymentRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[PaymentRow]",
+        "type": "object"
+      },
       "Page_PlanOut_": {
         "additionalProperties": false,
         "properties": {
@@ -1591,6 +1623,177 @@
           "offset"
         ],
         "title": "Page[UserRow]",
+        "type": "object"
+      },
+      "PaymentDetail": {
+        "description": "`GET /payments/{payment_id}` (S3-B8, US-099; L-2).",
+        "properties": {
+          "amount_cop": {
+            "title": "Amount Cop",
+            "type": "integer"
+          },
+          "backdated": {
+            "title": "Backdated",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_first_name": {
+            "title": "Member First Name",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "member_last_name": {
+            "title": "Member Last Name",
+            "type": "string"
+          },
+          "membership_end_date": {
+            "format": "date",
+            "title": "Membership End Date",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "membership_start_date": {
+            "format": "date",
+            "title": "Membership Start Date",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "cash",
+              "nequi",
+              "breb"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "paid_at": {
+            "format": "date-time",
+            "title": "Paid At",
+            "type": "string"
+          },
+          "plan_name": {
+            "title": "Plan Name",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "registered_by": {
+            "format": "uuid",
+            "title": "Registered By",
+            "type": "string"
+          },
+          "registered_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered By Name"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided": {
+            "title": "Voided",
+            "type": "boolean"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "voided_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided By"
+          },
+          "voided_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided By Name"
+          }
+        },
+        "required": [
+          "id",
+          "paid_at",
+          "amount_cop",
+          "method",
+          "reference",
+          "voided",
+          "void_reason",
+          "registered_by",
+          "registered_by_name",
+          "membership_id",
+          "member_id",
+          "member_first_name",
+          "member_last_name",
+          "plan_name",
+          "membership_start_date",
+          "membership_end_date",
+          "backdated",
+          "voided_by",
+          "voided_by_name",
+          "voided_at",
+          "created_at"
+        ],
+        "title": "PaymentDetail",
         "type": "object"
       },
       "PaymentIn": {
@@ -1900,6 +2103,190 @@
           "created_at"
         ],
         "title": "PaymentOut",
+        "type": "object"
+      },
+      "PaymentRow": {
+        "description": "Una fila de `GET /payments` (S3-B8, D26, M-8, L-2).",
+        "properties": {
+          "amount_cop": {
+            "title": "Amount Cop",
+            "type": "integer"
+          },
+          "backdated": {
+            "title": "Backdated",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_first_name": {
+            "title": "Member First Name",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "member_last_name": {
+            "title": "Member Last Name",
+            "type": "string"
+          },
+          "membership_end_date": {
+            "format": "date",
+            "title": "Membership End Date",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "membership_start_date": {
+            "format": "date",
+            "title": "Membership Start Date",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "cash",
+              "nequi",
+              "breb"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "paid_at": {
+            "format": "date-time",
+            "title": "Paid At",
+            "type": "string"
+          },
+          "plan_name": {
+            "title": "Plan Name",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "registered_by": {
+            "format": "uuid",
+            "title": "Registered By",
+            "type": "string"
+          },
+          "registered_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered By Name"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided": {
+            "title": "Voided",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "paid_at",
+          "amount_cop",
+          "method",
+          "reference",
+          "voided",
+          "void_reason",
+          "registered_by",
+          "registered_by_name",
+          "membership_id",
+          "member_id",
+          "member_first_name",
+          "member_last_name",
+          "plan_name",
+          "membership_start_date",
+          "membership_end_date",
+          "backdated"
+        ],
+        "title": "PaymentRow",
+        "type": "object"
+      },
+      "PaymentsByMethod": {
+        "description": "Total no anulado por medio; siempre las tres claves (D24).",
+        "properties": {
+          "breb": {
+            "title": "Breb",
+            "type": "integer"
+          },
+          "cash": {
+            "title": "Cash",
+            "type": "integer"
+          },
+          "nequi": {
+            "title": "Nequi",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cash",
+          "nequi",
+          "breb"
+        ],
+        "title": "PaymentsByMethod",
+        "type": "object"
+      },
+      "PaymentsSummary": {
+        "description": "`GET /payments/summary` (S3-B8, US-100; D23): el mes `AAAA-MM` de Bogotá.",
+        "properties": {
+          "by_method": {
+            "$ref": "#/components/schemas/PaymentsByMethod"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "payments_count": {
+            "title": "Payments Count",
+            "type": "integer"
+          },
+          "total_cop": {
+            "title": "Total Cop",
+            "type": "integer"
+          },
+          "voided_count": {
+            "title": "Voided Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "total_cop",
+          "by_method",
+          "voided_count",
+          "payments_count"
+        ],
+        "title": "PaymentsSummary",
         "type": "object"
       },
       "PlanCreate": {
@@ -4500,6 +4887,271 @@
         ]
       }
     },
+    "/api/v1/payments": {
+      "get": {
+        "operationId": "list_payments_api_v1_payments_get",
+        "parameters": [
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "cash",
+                    "nequi",
+                    "breb"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Method"
+            }
+          },
+          {
+            "in": "query",
+            "name": "registered_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Registered By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voided",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Voided"
+            }
+          },
+          {
+            "in": "query",
+            "name": "backdated",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Backdated"
+            }
+          },
+          {
+            "in": "query",
+            "name": "member_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "membership_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Membership Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PaymentRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "List Payments",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/api/v1/payments/methods": {
       "get": {
         "operationId": "payment_methods_api_v1_payments_methods_get",
@@ -4556,6 +5208,189 @@
           }
         },
         "summary": "Payment Methods",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/summary": {
+      "get": {
+        "operationId": "payments_summary_api_v1_payments_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 7,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentsSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Payments Summary",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/{payment_id}": {
+      "get": {
+        "operationId": "payment_detail_api_v1_payments__payment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Payment Detail",
         "tags": [
           "payments"
         ]

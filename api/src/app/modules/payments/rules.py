@@ -27,19 +27,38 @@
 - `is_previous_month(paid_at, today)` (S3-B5, M-8 punto 3, S3-D51): verdadero si el mes civil de
   Bogotá de `paid_at` es anterior al mes de `today` (fecha civil de Bogotá). `void` deja un
   `logger.warning` con solo ids cuando anula un pago así.
+
+S3-B8 (US-098, US-099, US-100; D23, D26, M-4, M-8, L-2, S3-D47, S3-D51, S3-D57):
+- `PaymentFilters` y `build_filters(filters, member_ids_from_q)`: las condiciones de la lista
+  (`[from_, to)`, medio, quién registró, `voided` y `backdated` tri-estado, socio, membresía y
+  `q` como `lower(reference) = lower(q)` o `member_id` en los ids de la búsqueda de socios).
+- `check_date_range(from_, to, today)`: `from` y `to` entre `DATE_FLOOR` y `date_ceiling(today)`
+  (hoy más `DATE_CEILING_YEARS`), no invertidas; si no, `InvalidDateRange` con el campo.
+- `parse_month(value)` y `month_bounds_utc(month)`: `AAAA-MM` con año de `MONTH_MIN` a
+  `MONTH_MAX`; el rango `[inicio, fin)` en UTC del mes civil de Bogotá, con aritmética de
+  `(año, mes)` (nunca `datetime(año + 1, ...)` sin guardia); si no, `InvalidMonth`.
+- `partial_email(email)`: primera letra, `•••` y `@dominio` (`registered_by_name`,
+  `voided_by_name`).
+- `is_backdated(paid_at, created_at)`: registrado más de `BACKDATED_AFTER` después del pago.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Final
 from uuid import UUID
 
-from app.core.clock import to_bogota_date
+from sqlalchemy import ColumnElement, Uuid, any_, func, literal, or_
+from sqlalchemy.dialects.postgresql import ARRAY
+
+from app.core.clock import BOGOTA, to_bogota_date
 from app.core.validators import check_visible_text
 from app.modules.payments.exceptions import (
+    InvalidDateRange,
+    InvalidMonth,
     InvalidVoidReason,
     PaidAtInFuture,
     PaidAtInvalid,
@@ -58,6 +77,138 @@ UNLIMITED_ROLE: Final = "admin"
 """El único rol sin tope retroactivo de `paid_at` (M-8); cualquier otro lo tiene."""
 VOID_REASON_MAX: Final = VOID_REASON_MAX_LENGTH
 """Largo máximo del motivo de anulación tras recortar (D17; el CHECK de la tabla dice 500)."""
+DATE_FLOOR: Final = PAID_AT_FLOOR
+"""Piso de `from` y `to` de la lista (M-4, S3-D47): el mismo de `paid_at`."""
+DATE_CEILING_YEARS: Final = 5
+"""`from` y `to` hasta hoy más 5 años (M-4, S3-D47)."""
+MONTH_MIN: Final = 2020
+MONTH_MAX: Final = 2100
+MONTH_LENGTH: Final = 7
+"""`AAAA-MM`: el largo máximo que acepta el parámetro `month` antes de `parse_month`."""
+BACKDATED_AFTER: Final = timedelta(hours=24)
+"""Un pago es `backdated` si se registró más de 24 h después de `paid_at` (M-8, S3-D51)."""
+EMAIL_MASK: Final = chr(0x2022) * 3
+"""Lo que reemplaza la parte local del correo salvo su primera letra (L-2, S3-D57)."""
+_MONTH_RE: Final = re.compile(r"([0-9]{4})-([0-9]{2})")
+
+
+@dataclass(frozen=True, slots=True)
+class PaymentFilters:
+    """Filtros de `GET /payments` ya validados (S3-B8, D26, S3-D51). `from_` y `to` forman el
+    rango `[from_, to)`; `voided` y `backdated` son tri-estado (`None` no filtra); `q` compara
+    la referencia completa sin mayúsculas o el socio por los ids de `members.search_ids`."""
+
+    q: str | None = None
+    from_: datetime | None = None
+    to: datetime | None = None
+    method: str | None = None
+    registered_by: UUID | None = None
+    voided: bool | None = None
+    backdated: bool | None = None
+    member_id: UUID | None = None
+    membership_id: UUID | None = None
+
+
+def build_filters(
+    filters: PaymentFilters, member_ids_from_q: Collection[UUID] = ()
+) -> list[ColumnElement[bool]]:
+    """Las condiciones de `filters` sobre `Payment` (vacía sin filtros). El rango es
+    `[from_, to)`; `q` en blanco no filtra y sin `q` los ids de la búsqueda no cuentan."""
+    condiciones: list[ColumnElement[bool]] = []
+    if filters.from_ is not None:
+        condiciones.append(Payment.paid_at >= filters.from_)
+    if filters.to is not None:
+        condiciones.append(Payment.paid_at < filters.to)
+    for columna, valor in (
+        (Payment.method, filters.method),
+        (Payment.registered_by, filters.registered_by),
+        (Payment.voided, filters.voided),
+        (Payment.member_id, filters.member_id),
+        (Payment.membership_id, filters.membership_id),
+    ):
+        if valor is not None:
+            condiciones.append(columna == valor)
+    if filters.backdated is not None:
+        demora = Payment.created_at - Payment.paid_at
+        condiciones.append(
+            demora > BACKDATED_AFTER if filters.backdated else demora <= BACKDATED_AFTER
+        )
+    if filters.q is not None and filters.q.strip():
+        condiciones.append(_q_condition(filters.q.strip(), member_ids_from_q))
+    return condiciones
+
+
+def _q_condition(q: str, member_ids: Collection[UUID]) -> ColumnElement[bool]:
+    """`lower(reference) = lower(q)` (exacta) o el socio entre los ids de la búsqueda, como un
+    solo parámetro `uuid[]` (`= ANY(:ids)`, S3-D60)."""
+    referencia = func.lower(Payment.reference) == q.lower()
+    if not member_ids:
+        return referencia
+    socios = Payment.member_id == any_(literal(sorted(member_ids), ARRAY(Uuid())))
+    return or_(referencia, socios)
+
+
+def date_ceiling(today: date) -> datetime:
+    """Techo de `from` y `to` con zona: el inicio (UTC) del mismo día `DATE_CEILING_YEARS` años
+    después; un 29 de febrero pasa al 28."""
+    anio = today.year + DATE_CEILING_YEARS
+    dia = 28 if (today.month, today.day) == (2, 29) else today.day
+    return datetime(anio, today.month, dia, tzinfo=UTC)
+
+
+def _outside(value: datetime, ceiling: datetime) -> bool:
+    """Fuera de `[DATE_FLOOR, ceiling]`. El año se mira primero: comparar un año 1 o 9999 con
+    desfase podría desbordar al pasar a UTC (M-4)."""
+    if value.year < DATE_FLOOR.year - 1 or value.year > ceiling.year + 1:
+        return True
+    return value < DATE_FLOOR or value > ceiling
+
+
+def check_date_range(from_: datetime | None, to: datetime | None, today: date) -> None:
+    """`InvalidDateRange` con el campo que falla (`from`, `to`; invertidas, `to`)."""
+    techo = date_ceiling(today)
+    if from_ is not None and _outside(from_, techo):
+        raise InvalidDateRange(field="from")
+    if to is not None and _outside(to, techo):
+        raise InvalidDateRange(field="to")
+    if from_ is not None and to is not None and to < from_:
+        raise InvalidDateRange(field="to")
+
+
+def parse_month(value: str) -> tuple[int, int]:
+    """`(año, mes)` de `AAAA-MM` con dígitos ASCII (`fullmatch`: sin espacios ni salto de línea
+    final), mes de 1 a 12 y año de `MONTH_MIN` a `MONTH_MAX`; si no, `InvalidMonth`."""
+    coincide = _MONTH_RE.fullmatch(value)
+    if coincide is None:
+        raise InvalidMonth()
+    anio, mes = int(coincide.group(1)), int(coincide.group(2))
+    if not (MONTH_MIN <= anio <= MONTH_MAX and 1 <= mes <= 12):
+        raise InvalidMonth()
+    return anio, mes
+
+
+def month_bounds_utc(month: str) -> tuple[datetime, datetime]:
+    """`[inicio, fin)` en UTC del mes civil de Bogotá `AAAA-MM`, con aritmética de `(año, mes)`:
+    diciembre pasa a enero del año siguiente (`2100-12` termina en 2101-01-01T05:00Z)."""
+    anio, mes = parse_month(month)
+    siguiente = (anio + 1, 1) if mes == 12 else (anio, mes + 1)
+    inicio = datetime(anio, mes, 1, tzinfo=BOGOTA).astimezone(UTC)
+    fin = datetime(siguiente[0], siguiente[1], 1, tzinfo=BOGOTA).astimezone(UTC)
+    return inicio, fin
+
+
+def partial_email(email: str) -> str:
+    """Primera letra de la parte local, `•••` y `@dominio` tras la última `@` (L-2, S3-D57);
+    sin `@`, primera letra y `•••`; vacío, `•••`. Nunca más de una letra de la parte local."""
+    local, arroba, dominio = email.rpartition("@")
+    if not arroba:
+        return email[:1] + EMAIL_MASK
+    return f"{local[:1]}{EMAIL_MASK}@{dominio}"
+
+
+def is_backdated(paid_at: datetime, created_at: datetime) -> bool:
+    """Verdadero si `created_at - paid_at > BACKDATED_AFTER` (M-8, S3-D51): 24 h exactas no."""
+    return created_at - paid_at > BACKDATED_AFTER
 
 
 @dataclass(frozen=True, slots=True)

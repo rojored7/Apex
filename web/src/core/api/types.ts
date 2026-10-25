@@ -294,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Payments */
+        get: operations["list_payments_api_v1_payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/methods": {
         parameters: {
             query?: never;
@@ -303,6 +320,40 @@ export interface paths {
         };
         /** Payment Methods */
         get: operations["payment_methods_api_v1_payments_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payments Summary */
+        get: operations["payments_summary_api_v1_payments_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payment Detail */
+        get: operations["payment_detail_api_v1_payments__payment_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1176,6 +1227,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[PaymentRow] */
+        Page_PaymentRow_: {
+            /** Items */
+            items: components["schemas"]["PaymentRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[PlanOut] */
         Page_PlanOut_: {
             /** Items */
@@ -1197,6 +1259,81 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /**
+         * PaymentDetail
+         * @description `GET /payments/{payment_id}` (S3-B8, US-099; L-2).
+         */
+        PaymentDetail: {
+            /** Amount Cop */
+            amount_cop: number;
+            /** Backdated */
+            backdated: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member First Name */
+            member_first_name: string;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Member Last Name */
+            member_last_name: string;
+            /**
+             * Membership End Date
+             * Format: date
+             */
+            membership_end_date: string;
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /**
+             * Membership Start Date
+             * Format: date
+             */
+            membership_start_date: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "cash" | "nequi" | "breb";
+            /**
+             * Paid At
+             * Format: date-time
+             */
+            paid_at: string;
+            /** Plan Name */
+            plan_name: string;
+            /** Reference */
+            reference: string | null;
+            /**
+             * Registered By
+             * Format: uuid
+             */
+            registered_by: string;
+            /** Registered By Name */
+            registered_by_name: string | null;
+            /** Void Reason */
+            void_reason: string | null;
+            /** Voided */
+            voided: boolean;
+            /** Voided At */
+            voided_at: string | null;
+            /** Voided By */
+            voided_by: string | null;
+            /** Voided By Name */
+            voided_by_name: string | null;
         };
         /**
          * PaymentIn
@@ -1317,6 +1454,97 @@ export interface components {
             voided_at: string | null;
             /** Voided By */
             voided_by: string | null;
+        };
+        /**
+         * PaymentRow
+         * @description Una fila de `GET /payments` (S3-B8, D26, M-8, L-2).
+         */
+        PaymentRow: {
+            /** Amount Cop */
+            amount_cop: number;
+            /** Backdated */
+            backdated: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member First Name */
+            member_first_name: string;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Member Last Name */
+            member_last_name: string;
+            /**
+             * Membership End Date
+             * Format: date
+             */
+            membership_end_date: string;
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /**
+             * Membership Start Date
+             * Format: date
+             */
+            membership_start_date: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "cash" | "nequi" | "breb";
+            /**
+             * Paid At
+             * Format: date-time
+             */
+            paid_at: string;
+            /** Plan Name */
+            plan_name: string;
+            /** Reference */
+            reference: string | null;
+            /**
+             * Registered By
+             * Format: uuid
+             */
+            registered_by: string;
+            /** Registered By Name */
+            registered_by_name: string | null;
+            /** Void Reason */
+            void_reason: string | null;
+            /** Voided */
+            voided: boolean;
+        };
+        /**
+         * PaymentsByMethod
+         * @description Total no anulado por medio; siempre las tres claves (D24).
+         */
+        PaymentsByMethod: {
+            /** Breb */
+            breb: number;
+            /** Cash */
+            cash: number;
+            /** Nequi */
+            nequi: number;
+        };
+        /**
+         * PaymentsSummary
+         * @description `GET /payments/summary` (S3-B8, US-100; D23): el mes `AAAA-MM` de Bogotá.
+         */
+        PaymentsSummary: {
+            by_method: components["schemas"]["PaymentsByMethod"];
+            /** Month */
+            month: string;
+            /** Payments Count */
+            payments_count: number;
+            /** Total Cop */
+            total_cop: number;
+            /** Voided Count */
+            voided_count: number;
         };
         /** PlanCreate */
         PlanCreate: {
@@ -2972,6 +3200,93 @@ export interface operations {
             };
         };
     };
+    list_payments_api_v1_payments_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                from?: string | null;
+                to?: string | null;
+                method?: ("cash" | "nequi" | "breb") | null;
+                registered_by?: string | null;
+                voided?: boolean | null;
+                backdated?: boolean | null;
+                member_id?: string | null;
+                membership_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PaymentRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     payment_methods_api_v1_payments_methods_get: {
         parameters: {
             query?: never;
@@ -3001,6 +3316,149 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    payments_summary_api_v1_payments_summary_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentsSummary"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    payment_detail_api_v1_payments__payment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentDetail"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -52,10 +52,15 @@ Actor de `get_actor()` (solo admin por la ruta), hora de `current_clock()`. Todo
 6. si `rules.is_previous_month(paid_at, hoy de Bogotá)`, `logger.warning("void of previous
    month")` del logger `app.payments` con solo `payment_id` y `membership_id` en `extra`;
 7. `emit(PaymentVoided)` y la salida con la fila anulada.
+
+`list`, `get` y `summary` (S3-B8, US-098, US-099, US-100; de `queries.py`): la lista
+paginada con filtros, el detalle y el resumen del mes de Bogotá. `list` sombrea al `list`
+de Python en este archivo: las anotaciones usan `builtins.list`.
 """
 
 from __future__ import annotations
 
+import builtins
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -85,7 +90,10 @@ from app.modules.payments.models import Payment
 from app.modules.payments.queries import (
     _recent_fingerprints,
     count_not_voided,
+    get,
+    list,
     sum_not_voided,
+    summary,
     sums_not_voided,
 )
 from app.modules.payments.schemas import PaymentMethodOut, PaymentMethodsOut, PaymentOut
@@ -305,18 +313,21 @@ async def methods(session: AsyncSession) -> PaymentMethodsOut:
     )
 
 
-__all__: list[str] = [
+__all__: builtins.list[str] = [
     "IMMUTABLE_CONSTRAINT",
     "MembershipGate",
     "MembershipGateNotRegistered",
     "MembershipPayability",
     "PaymentRegistered",
     "PaymentVoided",
+    "get",
+    "list",
     "membership_gate",
     "methods",
     "register",
     "set_membership_gate",
     "sum_not_voided",
+    "summary",
     "sums_not_voided",
     "void",
 ]

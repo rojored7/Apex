@@ -13,8 +13,8 @@ Padre `0009_membership_freezes`. Tabla `payments.payments`:
   es NULL, el CHECK no es falso y un anulado sin motivo entraba, caso `anulado-sin-motivo`);
 - índices `ix_payments_paid_at (paid_at DESC)`, `ix_payments_membership_id (membership_id)` e
   `ix_payments_member_paid (member_id, paid_at DESC)`, ninguno único;
-- sin FK (ni a otros esquemas ni dentro del propio) y sin triggers: la inmutabilidad llega con
-  `0011_payments_immutability` (B4);
+- sin FK (ni a otros esquemas ni dentro del propio) y sin triggers propios: la inmutabilidad llega
+  con `0011_payments_immutability` (B4), cuyos dos triggers son los únicos de la tabla en head;
 el `downgrade` borra índices y tabla y deja el esquema `payments` (lo gestiona `0001`).
 Todo con SQL crudo en transacciones que se revierten.
 """
@@ -191,12 +191,17 @@ def _insertar(url: str, filas: Sequence[dict[str, object]]) -> list[tuple[str, s
 # Revisión y forma ----------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0009_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0009_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S3-B4 `0011_payments_immutability` cuelga de esta revisión (D40): ya no es head, pero
+    sigue en la cadena que llega a head (la cabeza única la exige `test_single_head`)."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
 
 
 def test_columnas_exactas_con_tipo_y_nulabilidad(
@@ -229,12 +234,15 @@ def test_los_tres_indices_no_unicos(alembic_config: Config, migrated_database: s
     assert set(indices) == {*INDICES, "pk_payments"}
 
 
-def test_sin_fk_ni_triggers_todavia(alembic_config: Config, migrated_database: str) -> None:
-    """Regla de módulos 2: sin FK entre esquemas. Los triggers de inmutabilidad son de `0011`."""
+def test_sin_fk_y_los_unicos_triggers_son_los_de_0011(
+    alembic_config: Config, migrated_database: str
+) -> None:
+    """Regla de módulos 2: sin FK entre esquemas. `0010` no crea triggers: los de inmutabilidad
+    son de `0011` (S3-B4) y en head son exactamente esos dos."""
     _revision_existe(alembic_config)
     estado = _estado(migrated_database)
     assert estado["fks"] == []
-    assert estado["triggers"] == []
+    assert sorted(estado["triggers"]) == ["payments_forbid_mutation", "payments_forbid_truncate"]
 
 
 # Filas válidas, CHECKs y NOT NULL ----------------------------------------------------------------

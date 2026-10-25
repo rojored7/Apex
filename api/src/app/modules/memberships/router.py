@@ -4,7 +4,11 @@
   Límite por usuario `memberships-write` (H-2, S3-D42; por defecto 30 por minuto,
   `USER_WRITE_LIMIT_PER_MIN`): la venta 31 en un minuto del mismo usuario da 429. Códigos 201,
   401, 403, 404 (`member_not_found`), 409 (`membership_conflict`, `membership_overlap`), 422 y
-  429; el 500 y el 503 `busy` los agrega el gancho de OpenAPI.
+  429; el 500 y el 503 `busy` los agrega el gancho de OpenAPI. Con `first_payment` (S3-B4, D4)
+  el pago se registra en la misma unidad con el rol del principal (`principal.role`, nunca un
+  valor del cliente; M-8) y sus errores llevan `field="first_payment.<campo>"` (E5). La venta con
+  pago gasta además la cubeta `payments-write` (revisión de seguridad de B4, H-2): con esa
+  cubeta agotada la venta con pago da 429 y la venta sin pago sigue.
 - `POST /memberships/{membership_id}/freeze` (S3-B2, US-089; admin y coach por Q7, `StaffDep`):
   200 `MembershipOut`. Comparte la cubeta `memberships-write` con la venta (S3-D42): 20 ventas y
   11 congelaciones del mismo usuario en un minuto dan 429 en la 31. Códigos 200, 401, 403, 404
@@ -53,6 +57,8 @@ async def sell_membership(
     session: SessionDep,
 ) -> SellMembershipOut:
     await enforce_user_limit(request, "memberships-write", principal.user_id)
+    if body.first_payment is not None:
+        await enforce_user_limit(request, "payments-write", principal.user_id)
     return await service.sell(
         session,
         member_id=member_id,
@@ -60,6 +66,7 @@ async def sell_membership(
         start_date=body.start_date,
         renew=body.renew,
         first_payment=body.first_payment,
+        role=principal.role,
     )
 
 

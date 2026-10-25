@@ -1423,6 +1423,67 @@
         "title": "Page[UserRow]",
         "type": "object"
       },
+      "PaymentIn": {
+        "additionalProperties": false,
+        "description": "Cuerpo de un pago (registrar, B4; primer pago de la venta, D4).",
+        "properties": {
+          "amount_cop": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Cop",
+            "type": "integer"
+          },
+          "confirm_duplicate": {
+            "default": false,
+            "title": "Confirm Duplicate",
+            "type": "boolean"
+          },
+          "confirm_overpayment": {
+            "default": false,
+            "title": "Confirm Overpayment",
+            "type": "boolean"
+          },
+          "method": {
+            "enum": [
+              "cash",
+              "nequi",
+              "breb"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "amount_cop",
+          "method"
+        ],
+        "title": "PaymentIn",
+        "type": "object"
+      },
       "PaymentMethodOut": {
         "properties": {
           "code": {
@@ -1555,6 +1616,120 @@
           "breb"
         ],
         "title": "PaymentMethodsSettings",
+        "type": "object"
+      },
+      "PaymentOut": {
+        "properties": {
+          "amount_cop": {
+            "title": "Amount Cop",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "cash",
+              "nequi",
+              "breb"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "paid_at": {
+            "format": "date-time",
+            "title": "Paid At",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "registered_by": {
+            "format": "uuid",
+            "title": "Registered By",
+            "type": "string"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided": {
+            "title": "Voided",
+            "type": "boolean"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "voided_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided By"
+          }
+        },
+        "required": [
+          "id",
+          "membership_id",
+          "member_id",
+          "amount_cop",
+          "method",
+          "reference",
+          "paid_at",
+          "registered_by",
+          "voided",
+          "void_reason",
+          "voided_by",
+          "voided_at",
+          "created_at"
+        ],
+        "title": "PaymentOut",
         "type": "object"
       },
       "PlanCreate": {
@@ -1996,8 +2171,14 @@
         "additionalProperties": false,
         "properties": {
           "first_payment": {
-            "title": "First Payment",
-            "type": "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "plan_id": {
             "format": "uuid",
@@ -3366,6 +3547,129 @@
         "summary": "Freeze Membership",
         "tags": [
           "memberships"
+        ]
+      }
+    },
+    "/api/v1/memberships/{membership_id}/payments": {
+      "post": {
+        "operationId": "register_payment_api_v1_memberships__membership_id__payments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membership_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Membership Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Register Payment",
+        "tags": [
+          "payments"
         ]
       }
     },

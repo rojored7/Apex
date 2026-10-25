@@ -17,6 +17,8 @@
   delante del de la aplicación, y un pago "del futuro" cuenta como reciente.
 - `check_payment_count(count, *, limit=MAX_PAYMENTS_PER_MEMBERSHIP)`: `count` es cuántos pagos no
   anulados tiene ya la membresía; con `count >= limit` es `PaymentLimitReached` (H-2).
+- `can_void(payment)` (S3-B4, D13): verdadero si el pago no está anulado. `void` (B5) la usa con
+  la fila bloqueada para responder 409 `payment_already_voided`. No cambia el pago.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ from app.modules.payments.exceptions import (
     PaymentExceedsBalance,
     PaymentLimitReached,
 )
-from app.modules.payments.models import REFERENCE_MAX_LENGTH
+from app.modules.payments.models import REFERENCE_MAX_LENGTH, Payment
 
 PAID_AT_FLOOR: Final = datetime(2020, 1, 1, tzinfo=UTC)
 PAID_AT_FUTURE_TOLERANCE: Final = timedelta(minutes=5)
@@ -113,3 +115,8 @@ def check_payment_count(count: int, *, limit: int = MAX_PAYMENTS_PER_MEMBERSHIP)
     """`PaymentLimitReached` si la membresía ya tiene `limit` pagos no anulados (H-2)."""
     if count >= limit:
         raise PaymentLimitReached()
+
+
+def can_void(payment: Payment) -> bool:
+    """Verdadero si `payment` todavía se puede anular (no está anulado)."""
+    return not payment.voided

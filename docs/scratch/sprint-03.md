@@ -965,3 +965,178 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   - `/health` y `/api/v1/health` → 200. `payments.payments` sigue vacía.
 - Observación sin cambio: Nginx y el api envían cada uno su `Cache-Control: no-store` (cabecera
   repetida, mismo valor); ya pasaba en rutas anteriores (`/members`), no es de B3.
+
+### S3-B4 · Rojo (B4.1 volcado, B4.2 stubs, B4.3 Rojo y la prueba de `0011`)
+
+- Línea base: HEAD `d8fc1df`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.694 ok,
+  4 saltadas, 3 deseleccionadas; `ruff check` y `mypy src` (93 archivos) limpios.
+- B4.1 volcado (P-MIG paso 1, S3-D58, L-8), solo desde Bash: `$DC exec -T db pg_dump -U apex -Fc -n
+  payments -n memberships apex > docs/scratch/sprint-03-antes-0011_payments_immutability.dump`,
+  `chmod 600` (NTFS lo deja `rw-r--r--`, como en B1 a B3), 16.562 bytes, `pg_restore -l` legible,
+  ignorado por git. El RUNBOOK lo escribe el Verde.
+- Rojo: 2.842 recolectadas (3 deseleccionadas); **140 fallan**, 2.695 ok, 4 saltadas. `ruff format`,
+  `ruff check` y `mypy src` (93 archivos) limpios. `db_test` sin residuos: `alembic_version =
+  0010_payments`, 0 pagos, 0 membresías, 0 socios, sin `payments.forbid_mutation`, los cinco
+  triggers de `memberships` en `A`. `apex-db-1` en `0010_payments` (nunca migró), api `healthy`.
+  - Verdes de la línea base que pasan a rojo (32, todas por B4): `tests/payments/test_register.py`
+    27 (el handler real `on_payment_registered` ya está suscrito y su stub lanza
+    `NotImplementedError` en cada registro); `test_lock_order[sell-register]` (usa el gate real,
+    stub); `test_0010_payments::test_sin_fk_y_los_unicos_triggers_son_los_de_0011` y los dos de
+    `test_triggers_siempre_activos` que exigen los triggers de pagos (cambiados en este Rojo, E1);
+    `test_docs_openapi_json_esta_al_dia` (P-API, B4.7).
+  - Nuevas en rojo (108): `tests/payments/test_immutability.py` 38 (sin `0011`); `test_can_void.py`
+    3; `test_router_register.py` 10 (gate y handler stub: 500); `tests/memberships/
+    test_activation_service.py` 17; `test_sell_with_payment_service.py` 16; `test_rules.py` 12
+    (`prefix_field`, `reraise_with_prefix`); `test_payment_target.py` 3 (`membership_payability`);
+    `test_sell_router.py` 3 (venta con primer pago por HTTP); `test_lock_order[sell_con_pago-register]`;
+    `tests/migrations/test_0011_payments_immutability.py` 4; `test_handlers_no_new_locks.py` 1
+    (`on_payment_registered` aún no llama a `lock_membership`).
+  - Verdes sobre los stubs (el stub ya es el contrato): `test_gates_registered.py` (5: el registro al
+    importarse, en proceso limpio por `main` y por `cli`, y `register` sin gate falla cerrado y
+    restaura), `test_payments_immutability_code.py` (5), `test_guarded_calls` (L-5),
+    `test_service_import_graph` (arista `memberships → payments`, importación limpia en los dos
+    órdenes), `test_error_codes_per_route` y `test_user_limits_catalog` (E2),
+    `test_every_route_has_role` (la ruta nueva con rol), los 401/403/422 de forma y el OpenAPI de
+    `test_router_register.py`, los 422 `first_payment.*` de `test_sell_router.py` y la
+    suscripción del handler.
+- Verde desechable (revertido; solo `db_test`, `$DC stop api` antes de escribir la migración y `$DC
+  start api` después de borrarla; `apex-db-1` siguió en `0010`): `0011` mínima (función con ramas
+  `truncate`, `delete`, `already_voided`, `column`, `incomplete_void`), `can_void`, `prefix_field`,
+  `reraise_with_prefix`, `membership_payability`, `_register_first_payment`,
+  `on_payment_registered`, `snapshot` y `paid_cop` real en `sell` y `membership_out`. Suite: 2.824
+  ok y 11 fallos; los 10 que eran defectos de prueba se corrigieron y `tests/memberships
+  tests/payments tests/migrations tests/architecture` dio 930 ok, 1 saltada. Solo queda
+  `test_docs_openapi_json_esta_al_dia` (P-API). Después: `alembic -x url=<db_test> downgrade
+  0010_payments`, archivo borrado y `sell`, `lifecycle`, `queries`, `rules` de `memberships` y
+  `rules` de `payments` restaurados desde copia. Defectos de prueba que encontró: `cancel_reason =
+  'x'` viola `ck_memberships_cancel_reason_length`; la auditoría "del socio" incluía el `insert` de
+  `members.members` (ahora se excluye); el orden de eventos capturados (el capturador de
+  `PaymentRegistered` corre después del handler real, que emite `MembershipActivated` antes): se
+  compara por tipo.
+- Stubs (B4.2): `payments/rules.can_void(payment)`; `payments/service.IMMUTABLE_CONSTRAINT =
+  "payments_immutable"` (en `__all__`); `payments/router.py` publica `POST
+  /memberships/{membership_id}/payments` real (`StaffDep`, `enforce_user_limit(request,
+  "payments-write", principal.user_id)`, `role=principal.role`, `confirm_*` del cuerpo, 201
+  `PaymentOut`, `responses_for(404, 409, 422, 429)`, `no_store` del router);
+  `memberships/rules.prefix_field`; `memberships/schemas.SellMembershipIn.first_payment: PaymentIn |
+  None = None` (el validador de `renew` sigue hasta B6); `memberships/sell.py`: `sell(...,
+  first_payment: PaymentIn | None, ..., role: str | None = None)` (la rama con pago sigue en
+  `NotImplementedError`), `membership_payability`, `_register_first_payment` y
+  `reraise_with_prefix`; `memberships/events.MembershipActivated(membership_id, member_id, status)`;
+  `memberships/lifecycle.snapshot` y `on_payment_registered`; `memberships/service.py` exporta los
+  tres y al final registra `payments_service.set_membership_gate(membership_payability)` y
+  `events.subscribe(PaymentRegistered, on_payment_registered)`; `memberships/router.py` pasa
+  `role=principal.role` a `sell`.
+- Archivos de prueba nuevos: `tests/payments/test_can_void.py` (3), `test_immutability.py` (41),
+  `test_router_register.py` (23); `tests/memberships/test_sell_with_payment_service.py` (17),
+  `test_activation_service.py` (18); `tests/architecture/test_payments_immutability_code.py` (5),
+  `test_gates_registered.py` (5); `tests/migrations/test_0011_payments_immutability.py` (4).
+  Cambiados: `tests/memberships/test_rules.py` (+12), `test_payment_target.py` (+3),
+  `test_sell_router.py` (3 casos de 422 `first_payment.*` en lugar de "primer pago hasta B4" y 3
+  pruebas nuevas), `test_sell_service.py` (`renew` solo), `test_lock_order.py` (gate real,
+  combinación `sell_con_pago-register`, error esperado `None`);
+  `tests/architecture/test_error_codes_per_route.py` y `test_user_limits_catalog.py` (E2),
+  `test_service_import_graph.py`, `test_guarded_calls.py` (L-5), `test_handlers_no_new_locks.py`,
+  `test_every_route_has_role.py`; `tests/migrations/test_triggers_siempre_activos.py` (E1) y
+  `test_0010_payments.py` (en la cadena; triggers de `0011`).
+- Importadores de lo tocado: `payments/rules.py` lo importan `payments/{queries,schemas,service}.py`
+  y las pruebas; `payments/service.py` lo importan `payments/router.py`, `memberships/{sell,
+  lifecycle,service}.py` (nuevos) y las pruebas; `payments/router.py` solo `main.py` (por
+  `MODULES`); `memberships/schemas.py` lo importan `lifecycle`, `queries`, `router`, `sell` y
+  pruebas (ahora importa `payments.schemas`, permitido por la regla 2); `memberships/sell.py`
+  `lifecycle`, `service` y pruebas; `memberships/rules.py` `lifecycle`, `queries`, `sell`,
+  `tests/factories/memberships.py` y pruebas; `memberships/events.py` `lifecycle`, `sell` y
+  `service`; `memberships/service.py` `router`, `tests/memberships/{conftest,_apoyo}.py` y pruebas;
+  `memberships/router.py` solo `main.py`. `tests/conftest.py` sin cambios.
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **Motivos del trigger:** `payments_immutable: <motivo>` en el mensaje, con `ERRCODE =
+   'integrity_constraint_violation'` y `CONSTRAINT = 'payments_immutable'`; `DELETE` da `delete` y
+   el vaciado da `truncate` (B4.4 nombra las ramas `delete`/`truncate`; el blueprint decía `delete`
+   para las dos: manda el plan). Orden: vaciado, borrado, `already_voided` (cualquier `UPDATE`
+   sobre un anulado, también sin cambios o de `true` a `false`), `column` (las 10 con `IS DISTINCT
+   FROM`, aunque la sentencia anule a la vez), `incomplete_void` (todo `UPDATE` de un vigente que no
+   sea la anulación completa, también el que solo toca `updated_at` o pone `voided = false`). La
+   definición nombra `NEW.<columna>` de las 10 y no lleva `EXCEPTION WHEN OTHERS`.
+2. **`reraise_with_prefix`** construye `type(error)(error.code, error.message,
+   field=prefix_field(...), existing_id=..., status=...)`, copia `headers` (dict nuevo) y no toca el
+   original.
+3. **`sell` con pago:** `confirm_duplicate=False` siempre; el `role` del llamador va a `register`; la
+   respuesta lleva el `status` tras el handler, `paid_cop = sum_not_voided` y `first_payment_id`. La
+   auditoría del socio (sin su propio `insert` de `members.members`) queda `insert` de la
+   membresía, `insert` del pago y, si cubre, `update` con `before = {"status": "pending_payment"}`.
+4. **`on_payment_registered`** llama a `lock_membership(session, event.membership_id)` una vez y a
+   ningún otro candado; solo actúa sobre `pending_payment`; `hoy = to_bogota_date(event.occurred_at)`.
+   Una pendiente vencida por fecha queda `expired` y **se emite** `MembershipActivated` con
+   `status = "expired"` (D11 acepta el caso; el evento lleva el estado resultante).
+5. **`paid_cop` real en `membership_out`** (la salida de `freeze`): B2 lo dejó en 0 "hasta B4";
+   `test_congelar_una_pagada_devuelve_paid_cop_con_lo_no_anulado` lo exige.
+6. **`membership_payability`** usa `lock_membership` (relee con `populate_existing`) y devuelve el
+   `agreed_price_cop` de la fila, no el del plan.
+7. **`test_lock_order` con el gate real:** la combinación nueva usa un socio con una `active` vencida
+   (1 de septiembre al 1 de octubre); la venta con pago y el pago a la vencida terminan bien las dos.
+8. **`payments-write` es cubeta propia:** el pago 31 da 429 y el mismo coach todavía vende
+   (`memberships-write`).
+
+#### Desviaciones del Rojo
+
+- `sell(..., role: str | None = None)`: con `None` y un primer pago decide el Verde (el desechable
+  pasó `""`, que la regla trata como rol limitado: falla cerrado). Las pruebas siempre pasan el rol.
+- `snapshot(row)` convive con el `_snapshot_of` privado de B2; el Verde puede unificarlos.
+- Las pruebas de `membership_payability` van en `tests/memberships/test_payment_target.py` (junto a
+  `get_payment_target`), no en un archivo nuevo.
+- Nota L5 de B1 (suscriptores de `MembershipSold`): sin cambio; `test_handlers_no_new_locks` sigue
+  mirando solo `lifecycle.py`. Hoy no hay suscriptores de `MembershipSold`.
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B4 · Verde (B4.4 a B4.8)
+
+- Línea base del Verde: HEAD `d8fc1df` con el Rojo sin confirmar; 140 fallan, 2.695 ok, 4 saltadas
+  (igual que el Rojo); `apex-db-1` en `0010_payments`, api `healthy`; `ruff` y `mypy` limpios.
+- B4.4 P-MIG (el volcado de B4.1 ya existía: 16.562 bytes): `$DC stop api`;
+  `api/migrations/versions/0011_payments_immutability.py` (función `payments.forbid_mutation()`
+  `plpgsql`, `SECURITY INVOKER`, `SET search_path = pg_catalog`, sin `EXCEPTION WHEN OTHERS`;
+  ramas `truncate` y `delete` por `TG_OP` antes de leer `OLD`, `already_voided`, `column` con `IS
+  DISTINCT FROM` sobre las 10, `incomplete_void`; triggers `payments_forbid_mutation` y
+  `payments_forbid_truncate` con `ENABLE ALWAYS`; `downgrade` triggers y función; SQL literal);
+  `pytest tests/core/test_migrations.py tests/migrations/test_0011_payments_immutability.py
+  tests/payments/test_immutability.py tests/migrations/test_triggers_siempre_activos.py
+  tests/migrations/test_0010_payments.py` 83 ok contra `db_test`; `alembic heads` =
+  `0011_payments_immutability (head)`; `$DC start api` → `healthy`, el log muestra `Running upgrade
+  0010_payments -> 0011_payments_immutability` y `alembic current` = `0011_payments_immutability
+  (head)`. El ciclo en `apex-db-1` (paso 7) va con la evidencia (B4.9).
+- B4.5 Verde: `memberships/rules.prefix_field`; `payments/rules.can_void`; `memberships/sell.py`
+  (`membership_payability` con `lock_membership` y el precio de la fila, `get_payment_target`
+  derivado de él, `sell` con la rama de pago dentro del mismo `begin_nested()`,
+  `_register_first_payment` con `confirm_duplicate=False`, `confirm_overpayment` del cuerpo y
+  `role` del llamador o `LIMITED_ROLE = ""` con `None` (S3-D81), `reraise_with_prefix`, `_sell_out`
+  con `paid_cop` de `sum_not_voided` y `first_payment_id`); `memberships/lifecycle.py` (`snapshot`
+  público que reemplaza a `_snapshot_of`, `on_payment_registered` con un solo
+  `lock_membership(session, event.membership_id)`, `sum_not_voided`, `covers`, `compute_status`
+  sobre base `active` con congelaciones y `to_bogota_date(event.occurred_at)`, `flush` y
+  `emit(MembershipActivated)`); `memberships/queries.membership_out` con `paid_cop` real.
+  Resultado: 2.834 ok, 4 saltadas, 1 fallo (`test_docs_openapi_json_esta_al_dia`, P-API).
+- Revisión de seguridad (`security-reviewer`, antes del gate): 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW, 1
+  INFO. MEDIUM-1 corregido con prueba en rojo primero (S3-D82: la venta con `first_payment` gasta
+  también `payments-write`; `test_sell_router.py::
+  test_la_venta_con_primer_pago_tambien_cuenta_en_payments_write`). LOW-1 cubierto con prueba
+  nueva (`test_rules.py::test_reraise_with_prefix_sirve_para_toda_excepcion_de_pagos`, 10 casos).
+  LOW-2 (dueño de la tabla) e INFO (socio dado de baja) aceptados en DECISIONES "S3-B4".
+- Suite: 2.846 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura de `app` 96 %; `ruff format`,
+  `ruff check` y `mypy src` (93 archivos) limpios. Ninguna prueba del Rojo cambió; las dos nuevas
+  salen de la revisión.
+- B4.6 Docs: RUNBOOK §10 (inmutabilidad de los pagos con los cinco motivos, cómo probar el trigger
+  con psql, rollback de `0011` que no toca filas y restauración `pg_restore --clean -n payments -n
+  memberships` en orden: `downgrade 0010_payments`, `stop api`, restaurar, `start api`; venta con
+  primer pago, ruta de registrar pago, cubeta `payments-write` y activación por cobertura;
+  correcciones de las notas "hasta S3-B4"); DECISIONES "S3-B4" (mensajes del trigger, S3-D81
+  `role=None`, `snapshot` unificado, desviaciones del Rojo, S3-D82 y la revisión).
+- B4.7 P-API: `export-openapi` dos veces idéntica (sha256 `1f018068…`; `first_payment` en
+  `SellMembershipIn` y `POST /memberships/{membership_id}/payments`: +306 líneas en
+  `docs/openapi.json`, +193 en `web/src/core/api/types.ts`); `npm run gen:api`,
+  `types.contract.test.ts` 5 ok, `npx tsc --noEmit` limpio y `npx vitest run` 110 archivos, 1.763
+  ok.
+- Desviaciones: S3-D81 (`role=None` como rol limitado) y S3-D82 (cubeta `payments-write` también
+  en la venta con pago); el volcado queda `rw-r--r--` en NTFS como en B1 a B3. La evidencia de B4.9
+  va al commit `docs(sprint-03): evidencia de S3-B4` (E8).

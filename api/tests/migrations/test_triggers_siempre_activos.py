@@ -17,9 +17,10 @@ Se comprueba:
   bloque propio con su guarda `to_regclass` y antes que las membresías (FK).
 S3-B3 (E1) agrega `LIMPIAR_PAYMENTS` (antes que `LIMPIAR_MEMBERSHIPS` en las dos limpiezas): apaga,
 borra y enciende `payments_forbid_mutation` y `payments_forbid_truncate` con `ENABLE ALWAYS`, cada
-uno bajo su guarda en `pg_trigger` porque los triggers llegan en `0011` (B4). Hasta entonces se
-comprueban "presentes solo si existen": todo trigger de `payments.payments` que exista sigue en
-`'A'` tras las limpiezas; en B4 la lista queda exacta.
+uno bajo su guarda en `pg_trigger` (escrita cuando los triggers aún no existían).
+S3-B4 (E1): con `0011_payments_immutability` los dos triggers de `payments.payments` son
+obligatorios: tras las dos limpiezas existen y siguen en `'A'`, igual que los cinco de
+`memberships` (la lista es exacta).
 """
 
 from __future__ import annotations
@@ -65,11 +66,9 @@ async def _estados(engine: AsyncEngine, nombres: tuple[str, ...] = TRIGGERS) -> 
         return {fila.tgname: fila.estado for fila in filas}
 
 
-async def _pagos_presentes_en_always(engine: AsyncEngine) -> None:
-    """Los de `payments.payments` que existan (ninguno hasta `0011`, B4) siguen en `'A'`."""
-    estados = await _estados(engine, TRIGGERS_PAGOS)
-    assert set(estados) <= set(TRIGGERS_PAGOS)
-    assert all(estado == "A" for estado in estados.values()), estados
+async def _pagos_en_always(engine: AsyncEngine) -> None:
+    """S3-B4: los dos de `payments.payments` existen y siguen en `'A'` (obligatorios)."""
+    assert await _estados(engine, TRIGGERS_PAGOS) == dict.fromkeys(TRIGGERS_PAGOS, "A")
 
 
 def test_la_limpieza_enciende_cada_trigger_con_enable_always() -> None:
@@ -124,12 +123,12 @@ async def test_tras_limpiar_pagos_y_membresias_los_triggers_siguen_en_always(
     engine: AsyncEngine,
 ) -> None:
     """Solo `LIMPIAR_PAYMENTS` y `LIMPIAR_MEMBERSHIPS` (no toda `LIMPIEZA_DE_SESION`, que borraría
-    las llaves del bus de la corrida); con y sin la tabla de pagos no falla."""
+    las llaves del bus de la corrida); los siete triggers quedan en `'A'`."""
     async with engine.begin() as conexion:
         await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
-    await _pagos_presentes_en_always(engine)
+    await _pagos_en_always(engine)
 
 
 @pytest.mark.usefixtures("migrated_database")
@@ -140,4 +139,4 @@ async def test_tras_la_limpieza_de_dos_sesiones_los_triggers_siguen_en_always(
         ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
     await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
-    await _pagos_presentes_en_always(engine)
+    await _pagos_en_always(engine)

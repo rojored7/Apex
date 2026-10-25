@@ -27,6 +27,15 @@ Partición (funciones de menos de 50 líneas): `freeze` orquesta; `_lock_for_fre
 `find_overlap` se importa al nivel del módulo y se llama por ese nombre (la prueba de la `EXCLUDE`
 la reemplaza con `monkeypatch`, como `sell._check_open_memberships`).
 
+`on_payment_registered(event, session)` (S3-B4, US-086; D11), handler de `PaymentRegistered`:
+`sell.lock_membership(session, event.membership_id)` (la fila que el emisor ya bloqueó por el
+gate); si no está `pending_payment`, nada. Si `covers(agreed_price_cop,
+payments.service.sum_not_voided(...))` (la suma ve el pago: `register` hace `flush` antes de
+emitir; nunca confía en `event.amount_cop`), fija `status = compute_status(base activa, hoy,
+expiring_days, congelaciones)` con `hoy = to_bogota_date(event.occurred_at)`, hace `flush`
+(auditoría `update` del usuario que pagó) y emite `MembershipActivated`. `snapshot(row)` es el
+`MembershipSnapshot` de una fila (lo que leen las reglas).
+
 Regla de candados (S3-D43, `tests/architecture/test_handlers_no_new_locks.py`): un handler `on_*`
 solo vuelve a pedir la fila que el emisor ya tiene (`sell.lock_membership` con
 `event.membership_id`); nunca el candado del socio ni otro `FOR UPDATE`. `freeze` no es handler:
@@ -44,12 +53,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.clock import current_clock
+from app.core.clock import current_clock, to_bogota_date
 from app.core.db import violated_constraint
 from app.core.events import emit
 from app.core.locks import lock_member
 from app.modules.members import service as members_service
-from app.modules.memberships.events import MembershipFrozen
+from app.modules.memberships.events import MembershipActivated, MembershipFrozen
 from app.modules.memberships.exceptions import (
     FreezeRejected,
     MemberInactive,
@@ -62,7 +71,7 @@ from app.modules.memberships.models import (
     Membership,
     MembershipFreeze,
 )
-from app.modules.memberships.queries import _freeze_rows_for, membership_out
+from app.modules.memberships.queries import _freeze_rows_for, _load_freezes_for, membership_out
 from app.modules.memberships.rules import (
     FreezeError,
     FreezeLimits,
@@ -72,10 +81,12 @@ from app.modules.memberships.rules import (
     MembershipStatus,
     apply_freeze,
     compute_status,
+    covers,
     find_overlap,
 )
 from app.modules.memberships.schemas import MembershipOut
 from app.modules.memberships.sell import MEMBER_ACTIVE, lock_membership
+from app.modules.payments import service as payments_service
 from app.modules.settings import service as settings_service
 from app.modules.settings.schemas import MembershipsPolicy
 
@@ -128,13 +139,15 @@ async def _lock_for_freeze(session: AsyncSession, membership_id: UUID) -> Member
     return membresia
 
 
-def _snapshot_of(membresia: Membership) -> MembershipSnapshot:
+def snapshot(row: Membership) -> MembershipSnapshot:
+    """El `MembershipSnapshot` de la fila (id, estado guardado, fechas y clases restantes); no la
+    cambia."""
     return MembershipSnapshot(
-        id=membresia.id,
-        status=MembershipStatus(membresia.status),
-        start_date=membresia.start_date,
-        end_date=membresia.end_date,
-        classes_remaining=membresia.classes_remaining,
+        id=row.id,
+        status=MembershipStatus(row.status),
+        start_date=row.start_date,
+        end_date=row.end_date,
+        classes_remaining=row.classes_remaining,
     )
 
 
@@ -149,7 +162,7 @@ def _apply(
     )
     try:
         return apply_freeze(
-            _snapshot_of(membresia),
+            snapshot(membresia),
             ctx.windows,
             frozen_from,
             frozen_to,
@@ -207,7 +220,7 @@ async def _store_freeze(
         days=ventana.days,
     )
     session.add(nueva)
-    corrida = replace(_snapshot_of(membresia), end_date=salida.new_end_date)
+    corrida = replace(snapshot(membresia), end_date=salida.new_end_date)
     estado = compute_status(corrida, ctx.today, ctx.policy.expiring_days, [*ctx.windows, ventana])
     membresia.end_date = salida.new_end_date
     membresia.status = estado.value
@@ -237,3 +250,26 @@ def _translate_flush_error(error: IntegrityError) -> NoReturn:
     if nombre == FREEZE_EXCLUDE_NAME:
         raise FreezeRejected("freeze_already_scheduled", status=409) from error
     raise error
+
+
+async def on_payment_registered(
+    event: payments_service.PaymentRegistered, session: AsyncSession
+) -> None:
+    """Activa la membresía del pago si quedó cubierta (D11; pasos en el docstring del módulo)."""
+    membresia = await lock_membership(session, event.membership_id)
+    if membresia is None or membresia.status != MembershipStatus.pending_payment.value:
+        return
+    pagado = await payments_service.sum_not_voided(session, membresia.id)
+    if not covers(membresia.agreed_price_cop, pagado):
+        return
+    politica = await settings_service.memberships_policy(session)
+    ventanas = (await _load_freezes_for(session, [membresia.id]))[membresia.id]
+    base = replace(snapshot(membresia), status=MembershipStatus.active)
+    hoy = to_bogota_date(event.occurred_at)
+    estado = compute_status(base, hoy, politica.expiring_days, ventanas)
+    membresia.status = estado.value
+    await session.flush()
+    evento = MembershipActivated(
+        membership_id=membresia.id, member_id=membresia.member_id, status=estado.value
+    )
+    await emit(evento, session)

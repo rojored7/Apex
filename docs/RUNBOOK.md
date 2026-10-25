@@ -408,7 +408,7 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ## 10. Membresías y pagos (Sprint 3)
 
-Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`, B3 la tabla de pagos, las reglas de registrar pago, los medios de pago y `0010`).
+Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`, B3 la tabla de pagos, las reglas de registrar pago, los medios de pago y `0010`, B4 la inmutabilidad de los pagos con `0011`, la venta con primer pago, la ruta de registrar pago y la activación por cobertura).
 
 ### Volcado y restauración (P-MIG)
 
@@ -434,7 +434,7 @@ En el api la `EXCLUDE` es la red frente a la carrera: `sell` revisa antes en có
 
 - `POST /api/v1/members/{member_id}/memberships` (admin y coach) con `{"plan_id": "<uuid>", "start_date": "AAAA-MM-DD"}` (`start_date` opcional: hoy de Bogotá). Responde 201 con la membresía en `pending_payment` y el precio del plan copiado en `agreed_price_cop` (cambiar el precio del plan después no la cambia). `start_date` entre hoy menos `max_retroactive_days` (configuración de membresías, 7 por defecto) y hoy más 366 días; fuera da 422 `start_date_too_retroactive` o `start_date_too_far`.
 - Límite: 30 ventas por minuto por usuario (`USER_WRITE_LIMIT_PER_MIN`, bucket `memberships-write`); la 31 da 429 `rate_limited` con `Retry-After`. El contador vive en memoria y se limpia con `up -d api`.
-- `renew` y `first_payment` todavía no están: `renew=true` y cualquier `first_payment` dan 422 `validation_error` (con `field`) hasta S3-B6 y S3-B4.
+- `renew` todavía no está: `renew=true` da 422 `validation_error` (con `field`) hasta S3-B6. `first_payment` existe desde S3-B4 (sección "Vender con primer pago y activación").
 
 ### Congelaciones append-only (`0009`, S3-B2)
 
@@ -458,7 +458,7 @@ Una congelación mal registrada no se corrige editando la fila: no hay endpoint 
 
 ### Pagos: la tabla `payments.payments` (`0010`, S3-B3)
 
-Un pago nunca se edita ni se borra (regla de datos 5): un error se corrige anulándolo (S3-B5) y registrando uno nuevo. La tabla no tiene llaves foráneas hacia `memberships` (otro esquema) y en `0010` todavía no tiene triggers; la inmutabilidad en la base llega con `0011` (S3-B4). Comprobación con psql sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`):
+Un pago nunca se edita ni se borra (regla de datos 5): un error se corrige anulándolo (S3-B5) y registrando uno nuevo. La tabla no tiene llaves foráneas hacia `memberships` (otro esquema) y la inmutabilidad en la base la ponen los triggers de `0011` (sección "Inmutabilidad de los pagos"). Comprobación con psql sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`):
 
 1. Estructura: `\d payments.payments` muestra las quince columnas, los cinco CHECK `ck_payments_amount_range` (1 a 1.000.000.000), `ck_payments_method` (`cash`, `nequi`, `breb`), `ck_payments_reference_length` (nula o de 1 a 64), `ck_payments_void_reason_length` (hasta 500) y `ck_payments_void_coherent` (las cuatro columnas de anulación van juntas y el motivo no puede ser vacío ni nulo), y los índices `ix_payments_paid_at`, `ix_payments_membership_id` e `ix_payments_member_paid`.
 2. Dentro de `BEGIN; ... ROLLBACK;`, un `INSERT` con `method = 'tarjeta'` o `amount_cop = 0` falla con 23514 y el nombre del CHECK.
@@ -466,7 +466,7 @@ Un pago nunca se edita ni se borra (regla de datos 5): un error se corrige anul�
 
 ### Registrar pago: reglas del servidor (S3-B3)
 
-El servicio `payments.register` ya existe y está probado; la ruta `POST /api/v1/memberships/{membership_id}/payments` se publica en S3-B4, junto con el candado real de la membresía (hasta entonces responde 404). Las reglas, en el orden en que se aplican:
+Desde S3-B4 la ruta `POST /api/v1/memberships/{membership_id}/payments` (admin y coach) aplica estas reglas con el candado real de la membresía. Las reglas, en el orden en que se aplican:
 
 - La membresía se bloquea primero (`SELECT ... FOR UPDATE` de su fila): dos pagos de la misma membresía nunca se deciden a la vez. Membresía inexistente: 404 `membership_not_found`; anulada: 409 `membership_cancelled`. Las vencidas y congeladas sí reciben pagos.
 - Fecha del pago (`paid_at`): si no viene, es ahora. Tiene que traer zona horaria y no puede ser anterior al 1 de enero de 2020 (422 `validation_error`, `field = paid_at`), ni pasar de ahora más 5 minutos (mismo código). El coach solo puede registrar hasta `max_retroactive_days` días atrás (configuración de membresías, 7 por defecto): más atrás da 422 `paid_at_too_retroactive`. El admin no tiene ese tope, solo el piso de 2020.
@@ -483,4 +483,34 @@ El servicio `payments.register` ya existe y está probado; la ruta `POST /api/v1
 - Si la sección guardada deja de validar (por ejemplo, editada a mano en la base), `GET /payments/methods` responde las etiquetas por defecto y el log de `app.settings` deja el aviso "la sección guardada no valida" con solo la clave `payment_methods`. Se corrige guardando la sección completa de nuevo desde Configuración.
 - Cambiar etiquetas no toca ningún pago guardado: los pagos guardan el código.
 
-Pendiente de S3-B4 y S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`), la ruta de registrar pago y el rollback de `0011`.
+### Inmutabilidad de los pagos (`0011`, S3-B4)
+
+Desde `0011_payments_immutability` la base hace cumplir la regla de datos 5. La función `payments.forbid_mutation()` (`plpgsql`, `SECURITY INVOKER`, `search_path = pg_catalog`) corre en dos triggers de `payments.payments`, los dos en `ENABLE ALWAYS`: `payments_forbid_mutation` (`BEFORE DELETE OR UPDATE ... FOR EACH ROW`) y `payments_forbid_truncate` (`BEFORE TRUNCATE ... FOR EACH STATEMENT`). Solo deja pasar una cosa: la anulación completa de un pago vigente (`voided = true`, motivo con texto, `voided_by` y `voided_at`; `updated_at` puede cambiar). Cada rechazo es SQLSTATE 23000 con `CONSTRAINT NAME: payments_immutable` y el motivo en el mensaje, en este orden:
+
+- `payments_immutable: truncate`: vaciar la tabla.
+- `payments_immutable: delete`: borrar una fila (también una anulada).
+- `payments_immutable: already_voided`: cualquier `UPDATE` sobre un pago ya anulado (anularlo otra vez, volver `voided` a `false`, cambiar el motivo o un `UPDATE` sin cambios).
+- `payments_immutable: column`: el `UPDATE` cambia alguna de las diez columnas protegidas (`id`, `membership_id`, `member_id`, `amount_cop`, `method`, `reference`, `paid_at`, `registered_by`, `created_at`, `created_by`), aunque la misma sentencia también anule.
+- `payments_immutable: incomplete_void`: cualquier otro `UPDATE` de un pago vigente (falta el motivo o es solo espacios, falta `voided_by` o `voided_at`, `voided = false`, o solo se toca `updated_at`).
+
+Cómo probar el trigger con psql sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`), siempre dentro de una transacción que se revierte, sobre un pago existente (`SELECT id FROM payments.payments LIMIT 1;`):
+
+1. Estado: `SELECT tgname, tgenabled FROM pg_trigger WHERE tgrelid = 'payments.payments'::regclass AND NOT tgisinternal;` da `A` en los dos. Una `O` (alguien corrió `ENABLE TRIGGER` sin `ALWAYS`) se corrige con `ALTER TABLE payments.payments ENABLE ALWAYS TRIGGER <nombre>`. `SELECT prosecdef, proconfig FROM pg_proc WHERE oid = 'payments.forbid_mutation'::regproc;` da `f` y `{search_path=pg_catalog}`.
+2. `BEGIN; UPDATE payments.payments SET amount_cop = 1 WHERE id = '<id>'; ROLLBACK;` falla con `payments_immutable: column`.
+3. `BEGIN; DELETE FROM payments.payments WHERE id = '<id>'; ROLLBACK;` falla con `payments_immutable: delete`.
+4. `BEGIN; SET LOCAL session_replication_role = replica; UPDATE payments.payments SET amount_cop = 1 WHERE id = '<id>'; ROLLBACK;` también falla (`ENABLE ALWAYS`, M-6).
+5. `\set VERBOSITY verbose` muestra `SQLSTATE 23000` y `CONSTRAINT NAME: payments_immutable`.
+
+En el api la única escritura permitida es la anulación de S3-B5 (`void`); cualquier otra se nota como 500 con `payments_immutable` en el log. Un pago mal registrado nunca se corrige editando la fila: se anula y se registra uno nuevo.
+
+Rollback de `0011`: `$DC exec api alembic downgrade 0010_payments` (o `downgrade -1` si `0011` es el head) borra los dos triggers y la función y **no toca ninguna fila**: los pagos quedan intactos pero editables hasta volver a `upgrade head`. Volcado previo en `docs/scratch/sprint-03-antes-0011_payments_immutability.dump` (P-MIG), del estado anterior a `0011` (sin la función ni los triggers). Restauración de los dos esquemas, solo desde Bash y en este orden: (1) con el api arriba, `$DC exec api alembic downgrade 0010_payments`; (2) `$DC stop api`; (3) `$DC exec -T db pg_restore -U apex -d apex --clean -n payments -n memberships < docs/scratch/sprint-03-antes-0011_payments_immutability.dump`; (4) `$DC start api`, que vuelve a aplicar `0011` sobre los datos restaurados; (5) `$DC exec api alembic current` da `0011_payments_immutability (head)`. Restaurar sin el paso 1 deja `alembic_version` en `0011` con los esquemas sin triggers. Restaurar es una decisión del dueño y queda en `DECISIONES.md`.
+
+### Vender con primer pago y activación (S3-B4)
+
+- `POST /api/v1/members/{member_id}/memberships` acepta `first_payment` (`{"amount_cop", "method", "reference", "paid_at", "confirm_overpayment"}`, los mismos campos y reglas que registrar pago). La venta y el pago son una sola unidad: si el pago se rechaza no queda ni membresía, ni pago, ni auditoría. Los errores del pago llevan el campo con prefijo (`first_payment.amount_cop`, `first_payment.paid_at`). El saldo de una venta nueva es el precio del plan: un pago mayor pide `confirm_overpayment: true` (409 `payment_exceeds_balance`). El duplicado no aplica a la venta (cada venta es una membresía nueva). La retroactividad de `paid_at` la decide el rol de quien vende (el coach tiene el tope de `max_retroactive_days`).
+- La respuesta trae `status` ya calculado (`active` si el pago cubre el precio; `pending_payment` si no), `paid_cop` (suma de pagos no anulados) y `first_payment_id`.
+- `POST /api/v1/memberships/{membership_id}/payments` (admin y coach) registra un pago con las reglas de la sección anterior y responde 201 con el pago. Límite propio: 30 pagos por minuto por usuario (`USER_WRITE_LIMIT_PER_MIN`, bucket `payments-write`, separado de `memberships-write`); el 31 da 429. La venta con `first_payment` gasta también esta cubeta (además de `memberships-write`): con ella agotada, vender con pago da 429 y vender sin pago sigue.
+- Activación por cobertura: cada pago registrado relee la membresía con su candado y, si estaba `pending_payment` y la suma de los pagos no anulados alcanza el precio pactado, pasa al estado del día (`active`, `expiring` si faltan `expiring_days` o menos, `frozen` si una congelación contiene hoy, o `expired` si ya venció: "pagada y vencida"). Deja una fila `update` de auditoría (`before.status = pending_payment`) del usuario que pagó, con el socio como sujeto. Un pago sobre una membresía que no está pendiente no cambia su estado.
+- Auditoría de una venta pagada completa: `insert` de la membresía, `insert` del pago y `update` de la membresía, las tres del mismo usuario y con el mismo `subject_member_id`.
+
+Pendiente de S3-B5: anular un pago (`POST /payments/{payment_id}/void`) y revertir la activación.

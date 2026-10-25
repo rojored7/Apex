@@ -5,6 +5,9 @@ Nacen en B1 (Verde) aunque el gate de pagos que los consume llega en B4:
   aunque el objeto ya esté en el mapa de identidad) y `None` si no existe;
 - `get_payment_target` dice si la membresía existe, si está anulada y de qué socio es (el
   `member_id` que `payments` copiará, D9), sin leerlo nunca del cuerpo de la petición.
+- S3-B4: `service.membership_payability` (el gate real que `memberships/service.py` registra) es
+  `get_payment_target` más el `agreed_price_cop` de la fila bloqueada, como
+  `payments.service.MembershipPayability` (S3-D41).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from app.core.crypto.keyring import Keyring
 from app.modules.memberships import service
 from app.modules.memberships.schemas import PaymentTarget
 from app.modules.memberships.sell import lock_membership
+from app.modules.payments.service import MembershipPayability
 from tests.factories.members import make_member
 from tests.factories.memberships import make_membership
 from tests.factories.plans import make_plan
@@ -64,3 +68,51 @@ async def test_get_payment_target_de_una_vigente_y_de_una_anulada(
     assert await service.get_payment_target(session, anulada.id) == PaymentTarget(
         exists=True, cancelled=True, member_id=socio.id
     )
+
+
+# `membership_payability`, el gate real de pagos (S3-B4, D1, S3-D41) -------------------------------
+
+
+async def test_membership_payability_de_una_inexistente(session: AsyncSession) -> None:
+    assert await service.membership_payability(session, uuid4()) == MembershipPayability(
+        exists=False, cancelled=False, member_id=None, agreed_price_cop=None
+    )
+
+
+async def test_membership_payability_lleva_el_precio_pactado_de_la_fila(
+    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
+) -> None:
+    """El precio es el pactado de la membresía (no el del plan, que pudo cambiar después)."""
+    socio = await make_member(session)
+    plan = await make_plan(session)
+    vigente = await make_membership(session, socio, plan, status="active", price=99_000)
+    anulada = await make_membership(
+        session, socio, plan, status="cancelled", start=reloj.today_bogota()
+    )
+    assert await service.membership_payability(session, vigente.id) == MembershipPayability(
+        exists=True, cancelled=False, member_id=socio.id, agreed_price_cop=99_000
+    )
+    assert await service.membership_payability(session, anulada.id) == MembershipPayability(
+        exists=True, cancelled=True, member_id=socio.id, agreed_price_cop=120_000
+    )
+
+
+async def test_membership_payability_toma_la_fila_con_el_candado(
+    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
+) -> None:
+    """Pasa por `lock_membership` (`FOR UPDATE`, `populate_existing`): ve lo que la base tiene
+    aunque el objeto del mapa de identidad esté viejo."""
+    socio = await make_member(session)
+    plan = await make_plan(session)
+    membresia = await make_membership(session, socio, plan, status="active")
+    await session.execute(
+        text(
+            "UPDATE memberships.memberships SET status = 'cancelled', "
+            "cancel_reason = 'Anulada en la prueba', cancelled_by = created_by, "
+            "cancelled_at = now() WHERE id = :id"
+        ),
+        {"id": membresia.id},
+    )
+    gate = await service.membership_payability(session, membresia.id)
+    assert gate.cancelled is True
+    assert membresia.status == "cancelled"

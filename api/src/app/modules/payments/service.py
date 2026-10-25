@@ -26,6 +26,10 @@ queda pago ni auditoría.
 
 `sum_not_voided`, `sums_not_voided` (de `queries.py`) y `methods(session) -> PaymentMethodsOut`
 (los tres medios en orden fijo con las etiquetas de `settings.service.payment_methods`, D24, D25).
+
+`IMMUTABLE_CONSTRAINT` (S3-B4, D13): nombre con que la función `payments.forbid_mutation()` de
+`0011_payments_immutability` firma cada rechazo (`CONSTRAINT = payments_immutable`); `void` (B5)
+lo compara con `core.db.violated_constraint` para responder 409 `payment_already_voided`.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +62,9 @@ from app.modules.payments.queries import (
 )
 from app.modules.payments.schemas import PaymentMethodOut, PaymentMethodsOut, PaymentOut
 from app.modules.settings import service as settings_service
+
+IMMUTABLE_CONSTRAINT: Final = "payments_immutable"
+"""`CONSTRAINT` de los rechazos del trigger de `0011` (D13)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +211,7 @@ async def methods(session: AsyncSession) -> PaymentMethodsOut:
 
 
 __all__: list[str] = [
+    "IMMUTABLE_CONSTRAINT",
     "MembershipGate",
     "MembershipGateNotRegistered",
     "MembershipPayability",

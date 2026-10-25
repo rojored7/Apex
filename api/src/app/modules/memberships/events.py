@@ -36,3 +36,13 @@ class MembershipFrozen(DomainEvent):
     frozen_to: date
     days: int
     end_date: date
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipActivated(DomainEvent):
+    """Una `pending_payment` quedó cubierta por sus pagos no anulados y pasó al estado efectivo
+    (`active`, `expiring`, `frozen` o `expired`; S3-B4, D11). Lo emite `on_payment_registered`."""
+
+    membership_id: UUID
+    member_id: UUID
+    status: str

@@ -1,9 +1,11 @@
 """Esquemas de membresías (S3-B1, US-084; D4, D16).
 
 - `SellMembershipIn`: `plan_id`, `start_date` opcional (hoy si falta), `renew` (`StrictBool`, B6)
-  y `first_payment`, que en B1 solo admite nulo (B4 lo abre a `payments.schemas.PaymentIn`, así B1
-  no importa `payments`). `extra="forbid"`: el cliente nunca fija `agreed_price_cop` (D16).
-- `MembershipOut` y `SellMembershipOut` (`first_payment_id`, nulo hasta B4).
+  y `first_payment` opcional, que desde B4 es `payments.schemas.PaymentIn` (D4: una sola fuente
+  de validadores; el 422 de forma sale con `field="first_payment.<campo>"`).
+  `extra="forbid"`: el cliente nunca fija `agreed_price_cop` (D16).
+- `MembershipOut` y `SellMembershipOut` (`first_payment_id`: el pago registrado con la venta, o
+  nulo).
 - `FreezeIn` (S3-B2: `frozen_from` y `frozen_to`, `extra="forbid"`) y `FreezeOut` (`id`,
   `frozen_from`, `frozen_to`, `days`, `created_at`).
 - Contratos para otros módulos (dataclasses, nunca el ORM): `MembershipRef` (lo que `refs_for`
@@ -18,6 +20,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StrictBool, field_validator
 
+from app.modules.payments.schemas import PaymentIn
+
 
 class SellMembershipIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -25,7 +29,7 @@ class SellMembershipIn(BaseModel):
     plan_id: UUID
     start_date: date | None = None
     renew: StrictBool = False
-    first_payment: None = None
+    first_payment: PaymentIn | None = None
 
     @field_validator("renew")
     @classmethod

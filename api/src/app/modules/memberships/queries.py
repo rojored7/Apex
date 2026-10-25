@@ -10,7 +10,8 @@
 - `_load_freezes_for(session, ids)`: las mismas, como `rules.FreezeWindow` (lo que leen
   `compute_status` y `apply_freeze`); la usan `sell` y `freeze`.
 - `freeze_out(fila)` y `membership_out(session, membresia, freezes)`: la salida `MembershipOut`
-  con el nombre del socio y del plan (`names_for` de cada módulo dueño) y `paid_cop = 0` hasta B4.
+  con el nombre del socio y del plan (`names_for` de cada módulo dueño) y `paid_cop`
+  (`payments.service.sum_not_voided`, S3-B4).
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from app.modules.members import service as members_service
 from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.memberships.rules import FreezeWindow
 from app.modules.memberships.schemas import FreezeOut, MembershipOut, MembershipRef
+from app.modules.payments import service as payments_service
 from app.modules.plans import service as plans_service
 
 
@@ -114,7 +116,8 @@ async def membership_out(
 ) -> MembershipOut:
     """`MembershipOut` de una membresía con sus congelaciones (en el orden dado). Socios y planes
     nunca se borran físicamente (regla de datos 4): si faltara un nombre, el `KeyError` es la
-    señal de un defecto, no un caso de negocio. `paid_cop` es 0 hasta B4."""
+    señal de un defecto, no un caso de negocio. `paid_cop` es la suma de los pagos no anulados
+    (S3-B4)."""
     socio = (await members_service.names_for(session, [membresia.member_id]))[membresia.member_id]
     plan_name = (await plans_service.names_for(session, [membresia.plan_id]))[membresia.plan_id]
     return MembershipOut(
@@ -124,7 +127,7 @@ async def membership_out(
         plan_id=membresia.plan_id,
         plan_name=plan_name,
         agreed_price_cop=membresia.agreed_price_cop,
-        paid_cop=0,
+        paid_cop=await payments_service.sum_not_voided(session, membresia.id),
         start_date=membresia.start_date,
         end_date=membresia.end_date,
         classes_total=membresia.classes_total,

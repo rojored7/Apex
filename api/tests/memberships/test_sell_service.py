@@ -15,7 +15,8 @@ pendiente); 409 `membership_overlap` con una vencida que se cruza; la `EXCLUDE` 
 retroactividad y `enforce_retroactive_limit=False`; una fila `insert` de auditoría con
 `subject_member_id`; `MembershipSold` una vez; un handler que falla no deja nada (savepoint de
 D3); dos ventas simultáneas del mismo socio con `dos_sesiones`: una gana y la otra recibe 409.
-`renew=True` y `first_payment` siguen en `NotImplementedError` hasta B6 y B4.
+`renew=True` sigue en `NotImplementedError` hasta B6; la venta con `first_payment` (B4) se prueba
+en `test_sell_with_payment_service.py`.
 """
 
 from __future__ import annotations
@@ -416,16 +417,15 @@ async def test_un_handler_que_falla_no_deja_membresia_ni_auditoria(
     assert await _contar_auditoria_del_socio(session, socio.id) == 0
 
 
-async def test_renovar_y_primer_pago_siguen_sin_implementar_en_b1(
+async def test_renovar_sigue_sin_implementar_hasta_b6(
     session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
 ) -> None:
-    """B6 (`renew`) y B4 (`first_payment`) los implementan; hasta entonces fallan cerrados."""
+    """B6 (`renew`) lo implementa; hasta entonces falla cerrado. `first_payment` llegó en B4
+    (`test_sell_with_payment_service.py`)."""
     socio = await make_member(session)
     plan = await make_plan(session)
     with pytest.raises(NotImplementedError):
         await vender(session, ACTOR, member_id=socio.id, plan_id=plan.id, renew=True)
-    with pytest.raises(NotImplementedError):
-        await vender(session, ACTOR, member_id=socio.id, plan_id=plan.id, first_payment=object())
 
 
 # Concurrencia (D3, con commit real) ------------------------------------------------------------

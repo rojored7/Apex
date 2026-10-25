@@ -10,7 +10,10 @@ Por AST sobre `src/app`:
 - D-3: `with_for_update` sobre `Membership` solo existe en `memberships/sell.py::lock_membership`
   (única puerta, con `populate_existing=True`); ningún otro archivo de `memberships` lo llama, y
   ningún archivo fuera de `memberships` nombra `Membership`.
-B4 agrega L-5 (`set_membership_gate(` solo en `memberships/service.py`).
+- L-5 (S3-B4, S3-D56): `set_membership_gate(` solo se llama en `memberships/service.py`, una vez,
+  al nivel del módulo (al importarse) y con `membership_payability`; ningún otro archivo de
+  `src/app` lo llama (`payments/service.py` lo define). Las pruebas (`tests/`) sí pueden, para
+  quitar y restaurar el gate.
 """
 
 from __future__ import annotations
@@ -72,6 +75,37 @@ def for_update_por_funcion(fuente: str) -> dict[str, list[int]]:
         if lineas:
             salida[funcion.name] = lineas
     return salida
+
+
+def llamadas_a(fuente: str, nombre: str) -> list[tuple[int, bool, list[str]]]:
+    """`(línea, al_nivel_del_módulo, argumentos)` de cada llamada a `nombre(`; los argumentos como
+    texto (`ast.unparse`)."""
+    arbol = ast.parse(fuente)
+    en_funciones = {
+        id(nodo)
+        for funcion in ast.walk(arbol)
+        if isinstance(funcion, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
+        for nodo in ast.walk(funcion)
+    }
+    return [
+        (nodo.lineno, id(nodo) not in en_funciones, [ast.unparse(a) for a in nodo.args])
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call) and _nombre_llamado(nodo) == nombre
+    ]
+
+
+def test_set_membership_gate_solo_desde_la_fachada_de_memberships() -> None:
+    """L-5: el gate de pagos lo registra solo `memberships/service.py`, al importarse, con el
+    adaptador real."""
+    llamadas = {
+        _relativo(path): encontradas
+        for path in _archivos()
+        if (encontradas := llamadas_a(path.read_text(encoding="utf-8"), "set_membership_gate"))
+    }
+    assert set(llamadas) == {"modules/memberships/service.py"}, llamadas
+    [(_, al_nivel_del_modulo, argumentos)] = llamadas["modules/memberships/service.py"]
+    assert al_nivel_del_modulo
+    assert argumentos == ["membership_payability"]
 
 
 def test_enforce_retroactive_limit_solo_desde_el_cli() -> None:
@@ -164,3 +198,14 @@ def test_los_analizadores_detectan_las_llamadas_prohibidas() -> None:
     }
     definicion = "async def sell(s, *, enforce_retroactive_limit: bool = True):\n    pass\n"
     assert con_argumento(definicion, "enforce_retroactive_limit") == []
+    gate = (
+        "payments_service.set_membership_gate(membership_payability)\n"
+        "def f():\n"
+        "    set_membership_gate(None)\n"
+        "def set_membership_gate(gate):\n"
+        "    pass\n"
+    )
+    assert llamadas_a(gate, "set_membership_gate") == [
+        (1, True, ["membership_payability"]),
+        (3, False, ["None"]),
+    ]

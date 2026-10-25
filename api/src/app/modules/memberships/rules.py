@@ -31,8 +31,12 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   `frozen_to` enorme da `freeze_days_exceeded` y nunca `OverflowError`. El fin se corre los días
   de la ventana también si es futura (RN-07). No muta nada.
 
-B4 agrega `prefix_field`, B5 `should_revert`, B6 `plan_renewal` y B7
-`parse_status_filter` y `resolve_member_status`.
+- `prefix_field(prefix, field)` (S3-B4, E5, S3-D75): el `field` de un error del primer pago con el
+  prefijo de su campo en la venta (`"amount_cop"` da `"first_payment.amount_cop"`); `None` sigue
+  siendo `None`.
+
+B5 agrega `should_revert`, B6 `plan_renewal` y B7 `parse_status_filter` y
+`resolve_member_status`.
 """
 
 from __future__ import annotations
@@ -300,3 +304,10 @@ def _check_freeze_days(
             "freeze_days_exceeded",
             message=f"Quedan {disponibles} días de congelación para esta membresía.",
         )
+
+
+def prefix_field(prefix: str, field: str | None) -> str | None:
+    """`"<prefix>.<field>"`; `None` si el error no tiene campo (E5)."""
+    if field is None:
+        return None
+    return f"{prefix}.{field}"

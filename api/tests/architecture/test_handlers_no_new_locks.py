@@ -21,7 +21,7 @@ from pathlib import Path
 LIFECYCLE = (
     Path(__file__).resolve().parents[2] / "src" / "app" / "modules" / "memberships" / "lifecycle.py"
 )
-HANDLERS_ESPERADOS: frozenset[str] = frozenset()  # B4: on_payment_registered; B5: on_payment_voided
+HANDLERS_ESPERADOS: frozenset[str] = frozenset({"on_payment_registered"})  # B5: on_payment_voided
 CASOS_DE_USO_ESPERADOS: frozenset[str] = frozenset({"freeze"})  # B2; B6 agrega `cancel`
 
 
@@ -89,13 +89,47 @@ def test_ningun_handler_pide_candados_nuevos() -> None:
 
 def test_freeze_vive_en_lifecycle_y_no_cuenta_como_handler() -> None:
     """S3-B2: `freeze` pide `lock_member` (es el emisor de `MembershipFrozen`) y por eso no puede
-    llamarse `on_*`; la lista de handlers sigue vacía."""
+    llamarse `on_*`; no cuenta entre los handlers."""
     arbol = ast.parse(LIFECYCLE.read_text(encoding="utf-8"))
     funciones = {
         n.name for n in arbol.body if isinstance(n, ast.AsyncFunctionDef | ast.FunctionDef)
     }
     assert CASOS_DE_USO_ESPERADOS <= funciones
     assert not {f for f in funciones if f.startswith("on_")} - HANDLERS_ESPERADOS
+
+
+def candados_del_handler(fuente: str, nombre: str) -> list[str]:
+    """Las llamadas de candado (`lock_member`, `lock_membership`, `with_for_update`) del handler
+    `nombre`, como texto (`ast.unparse`), en orden de aparición."""
+    funcion = next(
+        n
+        for n in ast.parse(fuente).body
+        if isinstance(n, ast.AsyncFunctionDef | ast.FunctionDef) and n.name == nombre
+    )
+    llamadas = [
+        n
+        for n in ast.walk(funcion)
+        if isinstance(n, ast.Call)
+        and _nombre_llamado(n) in {"lock_member", "lock_membership", "with_for_update"}
+    ]
+    return [ast.unparse(n) for n in sorted(llamadas, key=lambda n: (n.lineno, n.col_offset))]
+
+
+def test_on_payment_registered_solo_bloquea_la_fila_del_evento() -> None:
+    """S3-B4 (D3, D11): el handler vuelve a pedir la fila que el gate de `register` ya bloqueó,
+    exactamente una vez y con el id del evento; ningún otro candado."""
+    fuente = LIFECYCLE.read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    funcion = next(
+        n
+        for n in arbol.body
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "on_payment_registered"
+    )
+    evento = _primer_parametro(funcion)
+    sesion = funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
+    assert candados_del_handler(fuente, "on_payment_registered") == [
+        f"lock_membership({sesion}, {evento}.membership_id)"
+    ]
 
 
 # Controles con fuentes falsas ----------------------------------------------------------------
@@ -120,4 +154,12 @@ def test_el_analizador_ve_los_handlers_y_sus_candados() -> None:
         "on_payment_voided:6: lock_member",
         "on_payment_voided:7: lock_membership con otro id",
         "on_payment_voided:8: with_for_update",
+    ]
+    assert candados_del_handler(FUENTE, "on_payment_registered") == [
+        "lock_membership(session, event.membership_id)"
+    ]
+    assert candados_del_handler(FUENTE, "on_payment_voided") == [
+        "lock_member(session, event.member_id)",
+        "lock_membership(session, otra_id)",
+        "select(Membership).with_for_update()",
     ]

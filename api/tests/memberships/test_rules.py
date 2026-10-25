@@ -11,6 +11,10 @@ Sin base ni reloj: "hoy" llega como argumento. Fechas calculadas a mano (N-23, f
   = 2027-10-23, hoy - 7 = 2026-10-14 y hoy - 8 = 2026-10-13.
 - Renovación (Q1): vigente hasta el 2026-10-28 empieza el 29; adyacentes no se solapan con
   `daterange(start, end, '[]')`: fin el 28 e inicio el 29 caben, inicio el 28 choca.
+- S3-B4 (E5, S3-D75): `prefix_field("first_payment", "amount_cop")` es
+  `"first_payment.amount_cop"` y `None` queda `None`; `sell.reraise_with_prefix` re-lanza una copia
+  de la misma clase con `code`, `message`, `existing_id`, `status` y `headers` intactos y solo el
+  `field` prefijado (el original no cambia).
 """
 
 from __future__ import annotations
@@ -21,7 +25,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.modules.memberships.exceptions import StartDateTooFar, StartDateTooRetroactive
+from app.core.errors import DomainError
+from app.modules.memberships.exceptions import (
+    MembershipConflict,
+    StartDateTooFar,
+    StartDateTooRetroactive,
+)
 from app.modules.memberships.models import STATUSES
 from app.modules.memberships.rules import (
     MAX_START_AHEAD_DAYS,
@@ -40,7 +49,16 @@ from app.modules.memberships.rules import (
     is_covered,
     next_start_for_renewal,
     paid_total,
+    prefix_field,
     validate_start_date,
+)
+from app.modules.memberships.sell import reraise_with_prefix
+from app.modules.payments.exceptions import (
+    PaidAtInFuture,
+    PaidAtTooRetroactive,
+    PaymentError,
+    PaymentExceedsBalance,
+    PaymentLimitReached,
 )
 
 HOY = date(2026, 10, 21)
@@ -459,3 +477,100 @@ def test_freeze_window_cuenta_los_dos_extremos_y_sabe_si_contiene_un_dia() -> No
     assert ventana(HOY, HOY).days == 1
     assert diez.contains(date(2026, 10, 15)) and diez.contains(date(2026, 10, 25))
     assert not diez.contains(date(2026, 10, 14)) and not diez.contains(date(2026, 10, 26))
+
+
+# prefix_field y reraise_with_prefix (S3-B4, E5, S3-D75) -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("campo", "esperado"),
+    [
+        ("amount_cop", "first_payment.amount_cop"),
+        ("paid_at", "first_payment.paid_at"),
+        ("method", "first_payment.method"),
+        (None, None),
+    ],
+)
+def test_prefix_field_antepone_el_prefijo_y_respeta_none(
+    campo: str | None, esperado: str | None
+) -> None:
+    assert prefix_field("first_payment", campo) == esperado
+
+
+def test_prefix_field_usa_el_prefijo_dado() -> None:
+    assert prefix_field("renewal", "start_date") == "renewal.start_date"
+
+
+_ID_EXISTENTE = UUID("0000000a-0000-4000-8000-00000000c401")
+
+
+def _errores() -> list[DomainError]:
+    sobrepago = PaymentExceedsBalance()
+    sobrepago.headers["X-Prueba"] = "1"
+    return [
+        sobrepago,
+        PaidAtInFuture(),
+        PaidAtTooRetroactive(),
+        PaymentLimitReached(),
+        MembershipConflict(existing_id=_ID_EXISTENTE),
+    ]
+
+
+@pytest.mark.parametrize("error", _errores(), ids=lambda e: type(e).__name__)
+def test_reraise_with_prefix_conserva_todo_menos_el_campo(error: DomainError) -> None:
+    with pytest.raises(DomainError) as capturado:
+        reraise_with_prefix(error, "first_payment")
+    copia = capturado.value
+    assert type(copia) is type(error)
+    assert copia is not error
+    assert (copia.code, copia.message, copia.existing_id, copia.status) == (
+        error.code,
+        error.message,
+        error.existing_id,
+        error.status,
+    )
+    assert copia.headers == error.headers
+    assert copia.field == prefix_field("first_payment", error.field)
+
+
+def test_reraise_with_prefix_da_first_payment_amount_cop_y_paid_at() -> None:
+    with pytest.raises(PaymentExceedsBalance) as sobrepago:
+        reraise_with_prefix(PaymentExceedsBalance(), "first_payment")
+    assert sobrepago.value.field == "first_payment.amount_cop"
+    with pytest.raises(PaidAtInFuture) as futuro:
+        reraise_with_prefix(PaidAtInFuture(), "first_payment")
+    assert (futuro.value.code, futuro.value.field) == ("validation_error", "first_payment.paid_at")
+
+
+def test_reraise_with_prefix_sin_campo_deja_el_campo_en_none_y_no_cambia_el_original() -> None:
+    original = PaymentLimitReached()
+    with pytest.raises(PaymentLimitReached) as capturado:
+        reraise_with_prefix(original, "first_payment")
+    assert capturado.value.field is None
+    assert original.field is None
+    sobrepago = PaymentExceedsBalance()
+    with pytest.raises(PaymentExceedsBalance):
+        reraise_with_prefix(sobrepago, "first_payment")
+    assert sobrepago.field == "amount_cop"  # el original no se toca
+
+
+def _subclases(base: type[DomainError]) -> list[type[DomainError]]:
+    hijas = base.__subclasses__()
+    return [clase for hija in hijas for clase in (hija, *_subclases(hija))]
+
+
+@pytest.mark.parametrize(
+    "clase",
+    sorted(set(_subclases(PaymentError)), key=lambda c: c.__name__),
+    ids=lambda c: c.__name__,
+)
+def test_reraise_with_prefix_sirve_para_toda_excepcion_de_pagos(
+    clase: type[DomainError],
+) -> None:
+    """Revisión de seguridad de B4 (LOW-1): toda subclase de `PaymentError` acepta la firma de
+    `DomainError` que usa `reraise_with_prefix`; una firma distinta daría `TypeError` (500)."""
+    original = clase()
+    with pytest.raises(clase) as capturado:
+        reraise_with_prefix(original, "first_payment")
+    assert type(capturado.value) is clase
+    assert capturado.value.field == prefix_field("first_payment", original.field)

@@ -12,12 +12,15 @@
 // - S3-B9b (D35): la fila gana `membership_end_date` (fecha de fin de la membresía que decide el
 //   estado, "Vence") y la ficha `plan_name` y `membership_end_date`, opcionales y `null` por
 //   defecto, en el mismo checkpoint del backend; la lógica de pantalla llega con F1 y F2.
+// - S3-F1 (US-073 a US-076): la ficha (memberDetailViewSchema), revelar (revealOutSchema,
+//   flattenRevealed) y la edición (memberEditSchema, toMemberPatch); ver su bloque al final.
 // - S3-F2 (US-071): los siete chips de la lista (`MEMBERSHIP_CHIPS`) y su traducción a filtros de
 //   GET /members (`chipToFilter`, como `chip_to_filter` del api; `chipFromFilters` lee la URL).
+import type { FieldNamesMarkedBoolean } from "react-hook-form";
 import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
 import type { components, operations } from "../../core/api/types";
-import { todayBogota } from "../../core/i18n/format";
+import { formatDate, todayBogota } from "../../core/i18n/format";
 
 export type MemberCreateBody = components["schemas"]["MemberCreate"];
 
@@ -275,3 +278,228 @@ export const memberDetailSchema = z.object({
 });
 
 export const DATA_CONSENT_MISSING = "data_consent_missing";
+
+// ---------------------------------------------------------------------------------------------
+// S3-F1 · US-073 a US-076 (front): ficha, revelar, editar, dar de baja y reactivar.
+// - memberDetailViewSchema: GET /members/{id} (MemberDetailOut de B9b). Los cinco sensibles llegan
+//   enmascarados por el api (N-01) y se pintan tal cual. Una clave que no está en el contrato se
+//   descarta al validar: nunca llega a la pantalla.
+// - revealOutSchema: POST /members/{id}/reveal (RevealOut, B10). Estricto y con el tipo del valor
+//   atado al campo (el contacto es un objeto; los demás, texto). flattenRevealed lo vuelve texto de
+//   pantalla. El claro solo vive en el estado de MaskedValue (S3-D52).
+// - Edición (MemberPatch cerrado, S3-D46): los sensibles nunca se precargan en claro; cada uno
+//   está en "keep" (no viaja), "change" (se escribe el valor nuevo) o "remove" (viaja `null`; el
+//   documento no se puede quitar). toMemberPatch arma el cuerpo solo con lo modificado:
+//   `dirtyFields` para lo no sensible y el modo para lo sensible. `data_consent` solo viaja `true`
+//   (retirarla da 422 `consent_cannot_be_withdrawn`); nunca `status`, `deleted_at` ni
+//   `data_consent_at`.
+
+/** Los cinco campos cifrados que `POST /members/{id}/reveal` acepta (RevealIn). */
+export const REVEAL_FIELDS = ["document", "phone", "email", "birth_date", "emergency_contact"] as const satisfies readonly components["schemas"]["RevealIn"]["field"][];
+export type RevealField = (typeof REVEAL_FIELDS)[number];
+
+/** Cuerpo de `PATCH /members/{id}` (MemberPatch cerrado, S3-D46). */
+export type MemberPatchBody = components["schemas"]["MemberPatch"];
+
+const nullableText = z.string().nullable();
+
+/** GET /members/{id} (MemberDetailOut): los cinco sensibles llegan enmascarados (N-01). */
+export const memberDetailViewSchema = z.object({
+  id: z.string().min(1),
+  first_name: z.string(),
+  last_name: z.string(),
+  sex: z.enum(SEXES).nullable(),
+  status: z.enum(["active", "inactive"]),
+  document_type: z.enum(DOCUMENT_TYPES),
+  document: nullableText,
+  phone: nullableText,
+  email: nullableText,
+  birth_date: nullableText,
+  emergency_contact: nullableText,
+  data_consent_at: nullableText,
+  data_consent_version: nullableText,
+  deleted_at: nullableText,
+  membership_status: nullableText.optional().default(null),
+  plan_name: nullableText.optional().default(null),
+  membership_end_date: nullableText.optional().default(null),
+  created_at: z.string(),
+  updated_at: z.string(),
+  warnings: z.array(z.string()),
+});
+export type MemberDetailView = z.infer<typeof memberDetailViewSchema>;
+
+const revealedContactSchema = z.object({ name: z.string(), phone: z.string(), relationship: nullableText.optional() }).strict();
+export type RevealedContact = z.infer<typeof revealedContactSchema>;
+
+/** POST /members/{id}/reveal (RevealOut): un solo campo en claro, con el tipo que le corresponde. */
+export const revealOutSchema = z
+  .object({ field: z.enum(REVEAL_FIELDS), value: z.union([z.string(), revealedContactSchema, z.null()]) })
+  .strict()
+  .refine((out) => out.value === null || (out.field === "emergency_contact") === (typeof out.value === "object"), { message: "El valor no corresponde al campo." });
+export type RevealOutView = z.infer<typeof revealOutSchema>;
+export type RevealedValue = RevealOutView["value"];
+
+/** Lo que dice la pantalla de un campo sin valor (el mismo texto de MaskedValue). */
+export const NO_VALUE_TEXT = "Sin dato";
+const CONTACT_SEPARATOR = " · ";
+
+/** El valor revelado como texto de pantalla: el contacto como "Nombre · Parentesco · Teléfono". */
+export function flattenRevealed(field: RevealField, value: RevealedValue): string {
+  if (value === null) return NO_VALUE_TEXT;
+  if (typeof value === "object") return [value.name, value.relationship ?? "", value.phone].filter((part) => part !== "").join(CONTACT_SEPARATOR);
+  return field === "birth_date" ? formatDate(value) : value;
+}
+
+/** Los campos sensibles de la edición: los mismos cinco que se revelan. */
+export const SENSITIVE_EDIT_FIELDS = REVEAL_FIELDS;
+export type SensitiveEditField = RevealField;
+/** "keep": no viaja; "change": viaja el valor nuevo; "remove": viaja `null` (no el documento). */
+export type SensitiveEditMode = "keep" | "change" | "remove";
+/** Los que se pueden quitar (`null` en MemberPatch); el documento no (PATCH_NOT_NULL). */
+export const REMOVABLE_FIELDS: readonly SensitiveEditField[] = ["phone", "email", "birth_date", "emergency_contact"];
+
+export interface MemberEditValues {
+  first_name: string;
+  last_name: string;
+  sex: "" | Sex;
+  document_type: DocumentType;
+  document: string;
+  birth_date: string;
+  phone: string;
+  email: string;
+  emergency_contact: EmergencyContactValues;
+  data_consent: boolean;
+  modes: Record<SensitiveEditField, SensitiveEditMode>;
+}
+
+export type MemberEditDirtyFields = Partial<Readonly<FieldNamesMarkedBoolean<MemberEditValues>>>;
+
+export const EDIT_MESSAGES = {
+  documentChange: "Escribe el nuevo número de documento o cancela el cambio.",
+  birthDateChange: "Escribe la nueva fecha de nacimiento o cancela el cambio.",
+  phoneChange: "Escribe el nuevo teléfono o cancela el cambio.",
+  emailChange: "Escribe el nuevo correo o cancela el cambio.",
+} as const;
+
+const KEEP_ALL: Readonly<Record<SensitiveEditField, SensitiveEditMode>> = Object.freeze({
+  document: "keep",
+  phone: "keep",
+  email: "keep",
+  birth_date: "keep",
+  emergency_contact: "keep",
+});
+
+/** Valores iniciales: lo no sensible de la ficha; lo sensible vacío y sin cambio (nunca el claro). */
+export function editDefaults(member: MemberDetailView): MemberEditValues {
+  return {
+    first_name: member.first_name,
+    last_name: member.last_name,
+    sex: member.sex ?? "",
+    document_type: member.document_type,
+    document: "",
+    birth_date: "",
+    phone: "",
+    email: "",
+    emergency_contact: { name: "", phone: "", relationship: "" },
+    data_consent: false,
+    modes: { ...KEEP_ALL },
+  };
+}
+
+type IssueAdder = (path: (string | number)[], message: string) => void;
+
+/** Reglas del alta sobre un sensible en "change" (el valor ya viene recortado). */
+function checkChangedField(field: SensitiveEditField, values: MemberEditValues, today: string, add: IssueAdder): void {
+  const value = field === "emergency_contact" ? "" : values[field].trim();
+  if (field === "document") {
+    if (value === "") add(["document"], EDIT_MESSAGES.documentChange);
+    else if (value.length < MEMBER_LIMITS.documentMin || value.length > MEMBER_LIMITS.documentMax) add(["document"], MEMBER_MESSAGES.documentLength);
+  } else if (field === "birth_date") {
+    if (value === "") add(["birth_date"], EDIT_MESSAGES.birthDateChange);
+    else if (!isCalendarDate(value)) add(["birth_date"], MEMBER_MESSAGES.birthDateInvalid);
+    else if (value > today) add(["birth_date"], MEMBER_MESSAGES.birthDateFuture);
+  } else if (field === "phone") {
+    if (value === "") add(["phone"], EDIT_MESSAGES.phoneChange);
+    else if (value.length > MEMBER_LIMITS.phoneMax) add(["phone"], MEMBER_MESSAGES.phoneTooLong);
+    else if (value.replace(NON_DIGITS, "").length < MEMBER_LIMITS.phoneMinDigits) add(["phone"], MEMBER_MESSAGES.phoneDigits);
+  } else if (field === "email") {
+    if (value === "") add(["email"], EDIT_MESSAGES.emailChange);
+    else if (value.length > MEMBER_LIMITS.emailMax) add(["email"], MEMBER_MESSAGES.emailTooLong);
+    else if (!EMAIL_SHAPE.test(value)) add(["email"], MEMBER_MESSAGES.emailInvalid);
+  } else {
+    const contact = values.emergency_contact;
+    if (contact.name.trim() === "") add(["emergency_contact", "name"], MEMBER_MESSAGES.contactNameRequired);
+    else if (contact.name.trim().length > MEMBER_LIMITS.name) add(["emergency_contact", "name"], MEMBER_MESSAGES.firstNameTooLong);
+    if (contact.phone.trim() === "") add(["emergency_contact", "phone"], MEMBER_MESSAGES.contactPhoneRequired);
+    else if (contact.phone.trim().length > MEMBER_LIMITS.phoneMax) add(["emergency_contact", "phone"], MEMBER_MESSAGES.phoneTooLong);
+    if (contact.relationship.trim().length > MEMBER_LIMITS.relationshipMax) add(["emergency_contact", "relationship"], MEMBER_MESSAGES.relationshipTooLong);
+  }
+}
+
+/**
+ * Reglas de la edición; `today` (AAAA-MM-DD, Bogotá) se inyecta en las pruebas. Los nombres siguen
+ * obligatorios; un sensible solo se valida si está en "change", con las reglas del alta.
+ */
+export function memberEditSchema(today: string = todayBogota()): z.ZodType<MemberEditValues, z.ZodTypeDef, MemberEditValues> {
+  const mode = z.enum(["keep", "change", "remove"]);
+  return z
+    .object({
+      first_name: requiredName(MEMBER_MESSAGES.firstNameRequired, MEMBER_MESSAGES.firstNameTooLong),
+      last_name: requiredName(MEMBER_MESSAGES.lastNameRequired, MEMBER_MESSAGES.lastNameTooLong),
+      sex: z.union([z.literal(""), z.enum(SEXES)], { errorMap: () => ({ message: MEMBER_MESSAGES.sex }) }),
+      document_type: z.enum(DOCUMENT_TYPES, { errorMap: () => ({ message: MEMBER_MESSAGES.documentType }) }),
+      document: z.string(),
+      birth_date: z.string(),
+      phone: z.string(),
+      email: z.string(),
+      emergency_contact: z.object({ name: z.string(), phone: z.string(), relationship: z.string() }),
+      data_consent: z.boolean(),
+      modes: z.object({ document: mode, phone: mode, email: mode, birth_date: mode, emergency_contact: mode }),
+    })
+    .superRefine((values, ctx) => {
+      const add: IssueAdder = (path, message) => {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+      };
+      for (const field of SENSITIVE_EDIT_FIELDS) if (values.modes[field] === "change") checkChangedField(field, values, today, add);
+    });
+}
+
+type TextSensitiveField = Exclude<SensitiveEditField, "emergency_contact">;
+
+/** El valor de un sensible de texto en el cuerpo: el nuevo, `null` al quitarlo, o undefined si no viaja. */
+function textPatch(field: TextSensitiveField, values: MemberEditValues): string | null | undefined {
+  const mode = values.modes[field];
+  if (mode === "remove") return REMOVABLE_FIELDS.includes(field) ? null : undefined;
+  return mode === "change" ? values[field].trim() : undefined;
+}
+
+/** El contacto de emergencia en el cuerpo: el nuevo (parentesco solo si se escribió), `null` o undefined. */
+function contactPatch(values: MemberEditValues): MemberPatchBody["emergency_contact"] | undefined {
+  const mode = values.modes.emergency_contact;
+  if (mode === "remove") return null;
+  if (mode !== "change") return undefined;
+  const { name, phone, relationship } = values.emergency_contact;
+  const kin = relationship.trim();
+  return { name: name.trim(), phone: phone.trim(), ...(kin ? { relationship: kin } : {}) };
+}
+
+/** Cuerpo de PATCH /members/{id} con solo lo modificado (S3-D46). */
+export function toMemberPatch(values: MemberEditValues, dirtyFields: MemberEditDirtyFields): MemberPatchBody {
+  const document = textPatch("document", values);
+  const birthDate = textPatch("birth_date", values);
+  const phone = textPatch("phone", values);
+  const email = textPatch("email", values);
+  const contact = contactPatch(values);
+  return {
+    ...(dirtyFields.first_name ? { first_name: values.first_name.trim() } : {}),
+    ...(dirtyFields.last_name ? { last_name: values.last_name.trim() } : {}),
+    ...(dirtyFields.sex ? { sex: values.sex === "" ? null : values.sex } : {}),
+    ...(dirtyFields.document_type ? { document_type: values.document_type } : {}),
+    ...(document === undefined ? {} : { document }),
+    ...(birthDate === undefined ? {} : { birth_date: birthDate }),
+    ...(phone === undefined ? {} : { phone }),
+    ...(email === undefined ? {} : { email }),
+    ...(contact === undefined ? {} : { emergency_contact: contact }),
+    ...(dirtyFields.data_consent && values.data_consent ? { data_consent: true } : {}),
+  };
+}

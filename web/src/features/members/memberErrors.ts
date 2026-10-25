@@ -5,11 +5,11 @@
 // - createErrorMessage y listError: el resto (403, 429 con la espera, 5xx, red, respuesta
 //   inválida) como mensaje general.
 import type { FieldPath } from "react-hook-form";
-import { API_ERROR_CODES } from "../../core/api/errorCodes";
-import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { ApiError, isApiError } from "../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
-import { MEMBER_MESSAGES, type MemberFormValues } from "./schemas";
+import { MEMBER_MESSAGES, type MemberEditValues, type MemberFormValues } from "./schemas";
 
 export const CREATE_MESSAGES = {
   duplicated: "Ya existe un socio con este documento.",
@@ -79,4 +79,146 @@ export function listError(error: unknown): ApiError | null {
     (e) => (e.status === HTTP_FORBIDDEN ? LIST_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? LIST_MESSAGES.tooMany(waitText(e.retryAfterS)) : LIST_MESSAGES.failed),
     LIST_MESSAGES.failed,
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// S3-F1 · US-073 a US-076: ficha, revelar, editar, dar de baja y reactivar.
+// - detailErrorOf: la carga de la ficha (404 "Socio no encontrado", 403, 429 con la espera, 5xx,
+//   red, busy, respuesta inválida).
+// - revealError: el error de "Mostrar" como ApiError con el mensaje de la pantalla; MaskedValue
+//   muestra su `message` (el 403 lo traduce él mismo). Los tres cupos dan 429 (RUNBOOK §4).
+// - editFieldErrorOf / editErrorMessage: el PATCH. 403 `forbidden_field` y 409 de documento bajo su
+//   campo (S2-D34, con enlace), `consent_cannot_be_withdrawn` bajo la autorización, 422 con `field`
+//   bajo ese campo; el resto como aviso general.
+// - statusChangeError / duplicatedMemberId: dar de baja y reactivar (ConfirmModal muestra el
+//   `message`; el 409 de documento al reactivar sale con el id del socio vivo).
+
+export const DETAIL_MESSAGES = {
+  notFound: "Socio no encontrado",
+  notFoundHint: "Puede que el enlace esté mal escrito. Búscalo en la lista de socios.",
+  forbidden: "No tienes permiso para ver este socio. Si lo necesitas, pídeselo a un administrador.",
+  tooMany: (wait: string) => `Abriste muchas fichas seguidas. Espera ${wait} e intenta de nuevo.`,
+  failed: "No pudimos cargar la ficha del socio. Intenta de nuevo en un momento.",
+  refreshFailed: "No pudimos actualizar la ficha; se muestran los últimos datos cargados. Recarga la página en un momento.",
+} as const;
+
+export const REVEAL_MESSAGES = {
+  tooMany: "Demasiadas consultas; espera un momento",
+  notFound: "Este socio ya no existe. Vuelve a la lista de socios.",
+  failed: "No pudimos mostrar el dato. Intenta de nuevo en un momento.",
+} as const;
+
+export const EDIT_ERROR_MESSAGES = {
+  documentForbidden: "Solo un administrador puede cambiar el documento.",
+  consentWithdrawn: "La autorización no se puede retirar desde aquí. Si el socio la retira, pídeselo a un administrador.",
+  deactivated: "Este socio está dado de baja. Reactívalo desde su ficha antes de editarlo.",
+  forbidden: "No tienes permiso para editar socios. Si lo necesitas, pídeselo a un administrador.",
+  notFound: "Este socio ya no existe. Vuelve a la lista de socios.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos guardar los cambios. Intenta de nuevo en un momento.",
+  generic: "No pudimos guardar los cambios. Revisa los datos e intenta de nuevo.",
+} as const;
+
+export const STATUS_CHANGE_MESSAGES = {
+  alreadyDeactivated: "Otra persona ya dio de baja a este socio. Cierra y recarga la ficha.",
+  notDeactivated: "Este socio ya estaba activo. Cierra y recarga la ficha.",
+  duplicated: "No se puede reactivar: otro socio activo ya tiene este documento.",
+  forbidden: { deactivate: "No tienes permiso para dar de baja socios. Si lo necesitas, pídeselo a un administrador.", reactivate: "No tienes permiso para reactivar socios. Si lo necesitas, pídeselo a un administrador." },
+  notFound: "Este socio ya no existe. Vuelve a la lista de socios.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  server: { deactivate: "No pudimos dar de baja al socio. Intenta de nuevo en un momento.", reactivate: "No pudimos reactivar al socio. Intenta de nuevo en un momento." },
+} as const;
+
+export interface DetailError {
+  /** 404: la pantalla muestra "Socio no encontrado" en vez del aviso con "Reintentar". */
+  notFound: boolean;
+  message: string;
+}
+
+export function detailErrorOf(error: unknown): DetailError {
+  if (isApiError(error) && error.status === HTTP_NOT_FOUND) return { notFound: true, message: DETAIL_MESSAGES.notFoundHint };
+  const screen = toScreenError(
+    error,
+    (e) => (e.status === HTTP_FORBIDDEN ? DETAIL_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? DETAIL_MESSAGES.tooMany(waitText(e.retryAfterS)) : DETAIL_MESSAGES.failed),
+    DETAIL_MESSAGES.failed,
+  );
+  return { notFound: false, message: screen?.message ?? DETAIL_MESSAGES.failed };
+}
+
+/** El error de "Mostrar" con el mensaje de la pantalla; conserva status y code (el 403 lo traduce MaskedValue). */
+export function revealError(error: unknown): ApiError {
+  return (
+    toScreenError(
+      error,
+      (e) => (e.status === HTTP_TOO_MANY ? REVEAL_MESSAGES.tooMany : e.status === HTTP_NOT_FOUND ? REVEAL_MESSAGES.notFound : REVEAL_MESSAGES.failed),
+      REVEAL_MESSAGES.failed,
+    ) ?? new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: REVEAL_MESSAGES.failed })
+  );
+}
+
+/** Campo del api → campo de la edición, con su mensaje (los 422 por campo). */
+const EDIT_FIELD_ERRORS: Readonly<Record<string, { path: FieldPath<MemberEditValues>; message: string }>> = {
+  ...FIELD_ERRORS,
+  data_consent: { path: "data_consent", message: RECHECK },
+};
+
+export interface EditFieldError {
+  path: FieldPath<MemberEditValues>;
+  message: string;
+  /** 409: el socio vivo que ya tiene ese documento (S2-D34). */
+  existingId: string | null;
+}
+
+/** El error del PATCH que va bajo un campo, o null si es un aviso general. */
+export function editFieldErrorOf(error: unknown): EditFieldError | null {
+  if (!isApiError(error)) return null;
+  if (error.status === HTTP_FORBIDDEN && error.code === API_ERROR_CODES.forbiddenField) {
+    return { path: error.field === "document_type" ? "document_type" : "document", message: EDIT_ERROR_MESSAGES.documentForbidden, existingId: null };
+  }
+  if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.memberDocumentDuplicated) {
+    return { path: "document", message: CREATE_MESSAGES.duplicated, existingId: error.existingId ?? null };
+  }
+  if (error.code === API_ERROR_CODES.consentCannotBeWithdrawn) return { path: "data_consent", message: EDIT_ERROR_MESSAGES.consentWithdrawn, existingId: null };
+  if (error.status !== HTTP_UNPROCESSABLE || !error.field) return null;
+  const target = EDIT_FIELD_ERRORS[error.field];
+  return target ? { ...target, existingId: null } : null;
+}
+
+/** El aviso general de un PATCH fallido. */
+export function editErrorMessage(error: unknown): string {
+  if (!isApiError(error)) return EDIT_ERROR_MESSAGES.generic;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
+  if (error.code === API_ERROR_CODES.memberDeactivated) return EDIT_ERROR_MESSAGES.deactivated;
+  if (error.status === HTTP_FORBIDDEN) return EDIT_ERROR_MESSAGES.forbidden;
+  if (error.status === HTTP_NOT_FOUND) return EDIT_ERROR_MESSAGES.notFound;
+  if (error.status === HTTP_TOO_MANY) return EDIT_ERROR_MESSAGES.tooMany(waitText(error.retryAfterS));
+  if (error.status >= HTTP_SERVER_ERROR) return EDIT_ERROR_MESSAGES.server;
+  return EDIT_ERROR_MESSAGES.generic;
+}
+
+export type StatusChange = "deactivate" | "reactivate";
+
+function statusChangeMessage(error: ApiError, change: StatusChange): string {
+  if (error.code === API_ERROR_CODES.memberAlreadyDeactivated) return STATUS_CHANGE_MESSAGES.alreadyDeactivated;
+  if (error.code === API_ERROR_CODES.memberNotDeactivated) return STATUS_CHANGE_MESSAGES.notDeactivated;
+  if (error.code === API_ERROR_CODES.memberDocumentDuplicated) return STATUS_CHANGE_MESSAGES.duplicated;
+  if (error.status === HTTP_FORBIDDEN) return STATUS_CHANGE_MESSAGES.forbidden[change];
+  if (error.status === HTTP_NOT_FOUND) return STATUS_CHANGE_MESSAGES.notFound;
+  if (error.status === HTTP_TOO_MANY) return STATUS_CHANGE_MESSAGES.tooMany(waitText(error.retryAfterS));
+  return STATUS_CHANGE_MESSAGES.server[change];
+}
+
+/** El error de dar de baja o reactivar como ApiError con el mensaje que muestra ConfirmModal. */
+export function statusChangeError(error: unknown, change: StatusChange): ApiError {
+  return (
+    toScreenError(error, (e) => statusChangeMessage(e, change), STATUS_CHANGE_MESSAGES.server[change]) ??
+    new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: STATUS_CHANGE_MESSAGES.server[change] })
+  );
+}
+
+/** 409 `member_document_duplicated` con `existing_id`: el id del socio vivo; si no, null. */
+export function duplicatedMemberId(error: unknown): string | null {
+  if (!isApiError(error) || error.status !== HTTP_CONFLICT || error.code !== API_ERROR_CODES.memberDocumentDuplicated) return null;
+  return error.existingId ?? null;
 }

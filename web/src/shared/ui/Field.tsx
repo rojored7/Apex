@@ -38,9 +38,16 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   children?: (control: FieldControlProps) => ReactNode;
 }
 
-/** Ruta interna segura: empieza por una sola "/" y no esconde otro origen ("//x", "/\\x"). */
+/**
+ * Ruta interna segura: empieza por una sola "/" y no esconde otro origen ("//x", "/\\x"). Revisión
+ * S3-F1 (MEDIUM-1): sin caracteres de control ni "\" en ningún lugar; el navegador quita tabs y
+ * saltos de línea al leer la URL y "/\t/x" terminaría siendo "//x".
+ */
+// eslint-disable-next-line no-control-regex -- se rechazan justamente los caracteres de control.
+const INTERNAL_HREF = /^\/(?![/\\])[^\u0000-\u001f\u007f\\]*$/;
+
 export function isInternalHref(href: string): boolean {
-  return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\");
+  return INTERNAL_HREF.test(href);
 }
 
 export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(

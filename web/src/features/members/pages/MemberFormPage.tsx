@@ -9,13 +9,13 @@
 // - 201: vuelve a /socios con el aviso "Socio registrado" y, si el api devolvió
 //   `data_consent_missing`, "Falta la autorización de tratamiento de datos" (DECISIÓN 34).
 // DESIGN-GAP:
-// - Sin "Guardar y vender membresía": vender llega con el Sprint 3 (US-071). Tras guardar se
-//   vuelve a la lista con un aviso, no a la ficha (que llega con US-073).
+// - Sin "Guardar y vender membresía". Tras guardar el alta vuelve a la lista con un aviso, no a la
+//   ficha (S2-F6; la ficha existe desde S3-F1). S3-F1: con `:id` la ruta es la edición (MemberEditView).
 // - Las secciones que faltan (foto, firma, archivo, portal, cargas, observaciones de salud) están
 //   anotadas en MemberFormFields.tsx.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { PageHeader } from "../../../shared/ui/PageHeader";
@@ -25,10 +25,11 @@ import { createErrorMessage, fieldErrorOf } from "../memberErrors";
 import { MEMBERS_PATH, type MemberCreatedState } from "../memberLinks";
 import { EMPTY_MEMBER_FORM, memberFormSchema, toMemberCreate, type MemberFormValues } from "../schemas";
 import styles from "./MemberFormPage.module.css";
+import { MemberEditView } from "./MemberEditView";
 
 export const NEW_MEMBER_TITLE = "Nuevo socio";
 
-export default function MemberFormPage() {
+function MemberCreateForm() {
   const navigate = useNavigate();
   const create = useCreateMember();
   const resolver = useMemo(() => zodResolver(memberFormSchema()), []);
@@ -93,4 +94,10 @@ export default function MemberFormPage() {
       </form>
     </div>
   );
+}
+
+/** /socios/nuevo (alta) o, con `:id`, /socios/:id/editar (S3-F1, US-075; MemberEditView). */
+export default function MemberFormPage() {
+  const { id } = useParams();
+  return id ? <MemberEditView id={id} /> : <MemberCreateForm />;
 }

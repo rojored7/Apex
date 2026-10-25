@@ -86,3 +86,11 @@ describe("códigos del Sprint 3 (S3-F4)", () => {
     });
   });
 });
+
+describe("códigos del Sprint 3 (S3-F1)", () => {
+  it("incluye los de revelar, editar, dar de baja y reactivar socios (members/exceptions.py)", () => {
+    expect(Object.values(API_ERROR_CODES)).toEqual(
+      expect.arrayContaining(["forbidden_field", "member_deactivated", "member_already_deactivated", "member_not_deactivated", "consent_cannot_be_withdrawn", "member_document_duplicated"]),
+    );
+  });
+});

@@ -1,6 +1,6 @@
 // US-053 T1, L-5 y S2-D23: acceso por ruta con la matriz de US-040, inicio por rol sin
 // literales de rol y `next` sin redirecciones abiertas.
-import { childRoute, type RouteDef } from "../../config/routeTable";
+import { childRoute, fullPathOf, type RouteDef } from "../../config/routeTable";
 import { REFERENCE_ROUTES } from "../../config/routes.reference";
 import { ROLES, can, type Role } from "./permissions";
 import { canAccess, canAccessRoute, findRoute, homeFor, safeNext } from "./routeAccess";
@@ -9,7 +9,9 @@ const concrete = (path: string): string => path.replace(":id", "42").replace(":t
 
 describe("findRoute", () => {
   it("encuentra la definición por ruta concreta, con parámetros y sin query ni barra final", () => {
-    expect(findRoute("/socios/42")?.path).toBe("/socios/:id");
+    // S3-F1 (E14): en la ruta de la ficha responde su hija índice ("Datos"), con el acceso del padre.
+    expect(findRoute("/socios/42")).toMatchObject({ path: "", parent: "/socios/:id", access: "members.view" });
+    expect(findRoute("/socios/42/editar")?.path).toBe("/socios/:id/editar");
     expect(findRoute("/socios/nuevo")?.path).toBe("/socios/nuevo");
     expect(findRoute("/clases?dia=hoy")?.path).toBe("/clases");
     expect(findRoute("/clases/asistencia")?.path).toBe("/clases/asistencia");
@@ -30,7 +32,8 @@ describe("canAccess", () => {
 });
 
 describe("canAccessRoute", () => {
-  const cases = ROLES.flatMap((role) => REFERENCE_ROUTES.map((route) => [role, route.path, route.access] as const));
+  // S3-F1 (E14): la hija índice de la ficha se abre en la ruta de su padre.
+  const cases = ROLES.flatMap((role) => REFERENCE_ROUTES.map((route) => [role, fullPathOf(route), route.access] as const));
 
   it.each(cases)("%s en %s sigue la matriz (%s)", (role, path, access) => {
     const expected = access === "public" || access === "session" ? true : can(role, access);

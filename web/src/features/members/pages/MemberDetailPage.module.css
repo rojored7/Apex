@@ -1,0 +1,83 @@
+/* S3-F1: ficha del socio (Socio_Ficha.html): encabezado, avisos y pestañas. Solo tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.loading {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+/* Avisos: el texto lleva el significado; el borde izquierdo lo refuerza (DESIGN.md regla 10). */
+.notice,
+.alert,
+.deleted,
+.consent {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.notice {
+  border-color: var(--apex-blue);
+  background: var(--blue-tint);
+}
+
+.alert {
+  border-color: var(--danger);
+}
+
+.notice:focus-visible,
+.alert:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.deleted {
+  color: var(--muted);
+}
+
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-color: var(--warning);
+}
+
+.consentTitle {
+  font: var(--text-label);
+}
+
+.link {
+  color: var(--blue-deep);
+  font: var(--text-body);
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

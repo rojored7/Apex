@@ -12,6 +12,8 @@
 //   ["members", "infinite", params], `offset` por página, hasta MEMBERS_MAX_PAGES páginas, M-9) y
 //   useMembersTotal() para el chip "Todos" (clave ["members", "total"]). Las tres claves cuelgan
 //   de ["members"], que invalida el alta.
+// - S3-F1 (US-073 a US-076): useMember, useRevealField, useUpdateMember, useDeactivateMember y
+//   useReactivateMember; ver su bloque al final.
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -23,11 +25,26 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { api } from "../../core/api/client";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
-import { DATA_CONSENT_MISSING, memberDetailSchema, membersPageSchema, type MemberCreateBody, type MemberRowView, type MembershipFilterStatus } from "./schemas";
+import { isMemberId } from "./memberLinks";
+import {
+  DATA_CONSENT_MISSING,
+  memberDetailSchema,
+  memberDetailViewSchema,
+  membersPageSchema,
+  revealOutSchema,
+  type MemberCreateBody,
+  type MemberDetailView,
+  type MemberPatchBody,
+  type MemberRowView,
+  type MembershipFilterStatus,
+  type RevealField,
+  type RevealOutView,
+} from "./schemas";
 
 export interface MembersParams {
   limit: number;
@@ -128,6 +145,96 @@ export function useCreateMember(): UseMutationResult<CreatedMember, Error, Membe
       // en serie todas las que se habían cargado.
       void queryClient.resetQueries({ queryKey: MEMBERS_INFINITE_KEY });
       // Sin esperar la relectura: el alta ya terminó y la lista se pide al volver a /socios.
+      void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// S3-F1 · US-073 a US-076: la ficha (GET), revelar (POST reveal), editar (PATCH), dar de baja
+// (DELETE) y reactivar (POST reactivate).
+// - useMember(id): clave ["members", "detail", id] con el `gcTime` normal: la ficha solo trae
+//   máscaras (N-01). Cuelga de ["members"]: editar, dar de baja y reactivar la releen.
+// - useRevealField(id): mutación con `gcTime: 0`, sin setQueryData ni invalidaciones. Quien la usa
+//   (MemberSensitiveField) llama a `reset()` en cuanto tiene el valor (S3-D52, M-9): el claro no
+//   queda en `mutation.data` ni en la caché de mutaciones; solo en el estado de MaskedValue.
+// - useUpdateMember(id): el cuerpo lleva datos sensibles nuevos: `gcTime: 0` y `reset()` al
+//   terminar (onSettled, como useSellMembership). Al salir bien deja la ficha enmascarada que
+//   responde el api y relee ["members"] (lista, tarjetas y total).
+// - useDeactivateMember() y useReactivateMember(): solo llevan el id; al salir bien releen
+//   ["members"] (la ficha pasa a solo lectura o vuelve a ser editable, y la lista cambia).
+
+export function memberDetailKey(id: string): readonly ["members", "detail", string] {
+  return ["members", "detail", id];
+}
+
+const memberPath = (id: string): string => `/members/${encodeURIComponent(id)}`;
+
+export function useMember(id: string): UseQueryResult<MemberDetailView> {
+  return useQuery({
+    queryKey: memberDetailKey(id),
+    queryFn: async ({ signal }) => parseResponse(memberDetailViewSchema, await api.get<unknown>(memberPath(id), { signal })),
+    // Revisión S3-F1 (LOW-3): un `:id` sin forma de UUID no se pide (la pantalla da "no encontrado").
+    enabled: isMemberId(id),
+  });
+}
+
+export function useRevealField(id: string): UseMutationResult<RevealOutView, Error, RevealField> {
+  return useMutation<RevealOutView, Error, RevealField>({
+    mutationFn: async (field) => parseResponse(revealOutSchema, await api.post<unknown>(`${memberPath(id)}/reveal`, { body: { field } })),
+    gcTime: 0,
+  });
+}
+
+export interface UpdateMember {
+  /** Guarda el cuerpo; rechaza con el ApiError del api. */
+  update: (body: MemberPatchBody) => Promise<MemberDetailView>;
+  isPending: boolean;
+}
+
+export function useUpdateMember(id: string): UpdateMember {
+  const queryClient = useQueryClient();
+  // reset() de la propia mutación, para llamarlo al terminar (onSettled). Se guarda en un efecto:
+  // un ref no se escribe durante el render.
+  const resetRef = useRef<() => void>(() => undefined);
+  const mutation = useMutation<MemberDetailView, Error, MemberPatchBody>({
+    mutationFn: async (body) => parseResponse(memberDetailViewSchema, await api.patch<unknown>(memberPath(id), { body })),
+    gcTime: 0,
+    onSuccess: (member) => {
+      queryClient.setQueryData(memberDetailKey(id), member);
+      void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
+    },
+    onSettled: () => {
+      resetRef.current();
+    },
+  });
+  const { reset, mutateAsync, isPending } = mutation;
+  useEffect(() => {
+    resetRef.current = reset;
+  }, [reset]);
+  return { update: mutateAsync, isPending };
+}
+
+export function useDeactivateMember(): UseMutationResult<null, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<null, Error, string>({
+    mutationFn: async (memberId) => {
+      await api.delete<unknown>(memberPath(memberId));
+      return null;
+    },
+    // Revisión S3-F1 (LOW-7): se espera la relectura; la ficha ya es de solo lectura cuando avisa.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
+    },
+  });
+}
+
+export function useReactivateMember(): UseMutationResult<MemberDetailView, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<MemberDetailView, Error, string>({
+    mutationFn: async (memberId) => parseResponse(memberDetailViewSchema, await api.post<unknown>(`${memberPath(memberId)}/reactivate`)),
+    onSuccess: (member) => {
+      queryClient.setQueryData(memberDetailKey(member.id), member);
       void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
     },
   });

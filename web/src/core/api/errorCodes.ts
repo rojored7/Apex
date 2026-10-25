@@ -65,6 +65,12 @@ export const API_ERROR_CODES = {
   freezeOutsideValidity: "freeze_outside_validity",
   overlapsFutureMembership: "overlaps_future_membership",
   membershipAlreadyCancelled: "membership_already_cancelled",
+  // S3-F1: revelar, editar, dar de baja y reactivar socios (US-074 a US-076; members/exceptions.py).
+  forbiddenField: "forbidden_field",
+  memberDeactivated: "member_deactivated",
+  memberAlreadyDeactivated: "member_already_deactivated",
+  memberNotDeactivated: "member_not_deactivated",
+  consentCannotBeWithdrawn: "consent_cannot_be_withdrawn",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

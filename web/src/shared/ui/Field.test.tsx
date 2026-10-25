@@ -80,7 +80,8 @@ describe("Field", () => {
     expect(click.defaultPrevented).toBe(false);
   });
 
-  it.each(["https://malo.example/x", "//malo.example/x", "javascript:alert(1)", "/\\malo.example"])(
+  // Revisión S3-F1 (MEDIUM-1): tabs, saltos de línea y otros controles tras la "/" también.
+  it.each(["https://malo.example/x", "//malo.example/x", "javascript:alert(1)", "/\\malo.example", "/\t/malo.example", "/\n/malo.example", "/\r/malo.example", "/socios/\u0000x", "/socios\\x"])(
     "errorAction con %s no renderiza enlace",
     (href) => {
       render(<Field label="Documento" name="document" error="Duplicado." errorAction={{ href, text: "Ver socio" }} />);

@@ -224,4 +224,39 @@ describe("Tabs", () => {
 
     expect(screen.getByTestId("location").textContent).toBe("/socios/1");
   });
+
+  it("S3-F7: en modo segmento, cambiar de pestaña vuelve a la primera página de su lista y conserva lo demás", async () => {
+    const user = userEvent.setup();
+    renderIndexTabs("/socios/1/membresias?offset=25&limit=50&pago=nuevo");
+
+    await user.click(screen.getByRole("tab", { name: "Datos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe("/socios/1?limit=50&pago=nuevo");
+  });
+
+  it("revisión S3-F7 (M3): una pestaña con disabledNote se ve deshabilitada con ese texto, sin versión, y las flechas la saltan", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/socios/1"]}>
+        <Tabs
+          label="Secciones"
+          tabs={[
+            { id: "datos", label: "Datos" },
+            { id: "pagos", label: "Pagos", disabledNote: "No disponible" },
+            { id: "notas", label: "Notas" },
+          ]}
+        >
+          {(active) => <p>{`Panel ${active}`}</p>}
+        </Tabs>
+      </MemoryRouter>,
+    );
+    const pagos = screen.getByRole("tab", { name: /^Pagos/ });
+
+    expect(pagos).toHaveAttribute("aria-disabled", "true");
+    expect(pagos).toHaveTextContent("No disponible");
+    expect(pagos).not.toHaveTextContent("Disponible en");
+    screen.getByRole("tab", { name: "Datos" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Notas" })).toHaveAttribute("aria-selected", "true");
+  });
 });

@@ -280,3 +280,21 @@ export function toCancelError(error: unknown): ApiError {
   const message = connectionMessage(error) ?? cancelMessage(error);
   return new ApiError({ status: error.status, code: error.code, message, ...(error.field ? { field: error.field } : {}) });
 }
+
+// S3-F7 · US-093 (front): errores de la pestaña Membresías de la ficha (GET /members/{id}/memberships).
+export const MEMBER_TAB_MESSAGES = {
+  notFound: "No encontramos a este socio. Vuelve a la lista de socios.",
+  forbidden: "No tienes permiso para ver las membresías. Si lo necesitas, pídeselo a un administrador.",
+  generic: "No pudimos cargar las membresías de este socio. Intenta de nuevo.",
+} as const;
+
+function memberTabMessage(error: ApiError): string {
+  if (error.status === HTTP_NOT_FOUND) return MEMBER_TAB_MESSAGES.notFound;
+  if (error.status === HTTP_FORBIDDEN) return MEMBER_TAB_MESSAGES.forbidden;
+  return MEMBER_TAB_MESSAGES.generic;
+}
+
+/** El error de la pestaña como ApiError con el mensaje de la pantalla, o null. */
+export function memberTabError(error: unknown): ApiError | null {
+  return toScreenError(error, memberTabMessage, MEMBER_TAB_MESSAGES.generic);
+}

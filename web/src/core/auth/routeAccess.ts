@@ -7,6 +7,7 @@
 // Las guardas son comodidad: cada endpoint vuelve a verificar el rol (RN-15).
 import { matchPath } from "react-router";
 import { fullPathOf, ROUTE_TABLE, type RouteAccess, type RouteDef } from "../../config/routeTable";
+import { ENABLED_FEATURES, isRouteEnabled, type Feature } from "../../config/features";
 import { can, type Role } from "./permissions";
 
 export const CHANGE_PASSWORD_PATH = "/cambiar-clave";
@@ -73,4 +74,19 @@ export function safeNext(next: string | null | undefined, role: Role | null): st
   const def = findRoute(url.pathname);
   if (!def || def.access === "public" || !canAccess(role, def.access)) return null;
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * S3-F7 (S3-D65): ¿la ruta concreta abre una página para este rol? Existe en la tabla con página
+ * (`load`), su feature está habilitada, el rol cumple su acceso y, si es hija, su padre también tiene
+ * página y está habilitado (routes.tsx no registra una hija sin su padre). La ficha la usa para
+ * deshabilitar una pestaña cuya ruta hija no está registrada.
+ */
+export function isPageAvailable(role: Role | null, path: string, table: readonly RouteDef[] = ROUTE_TABLE, enabled: ReadonlySet<Feature> = ENABLED_FEATURES): boolean {
+  const def = findRoute(path, table);
+  const opens = (d: RouteDef): boolean => d.load !== undefined && isRouteEnabled(d, enabled);
+  if (def === null || !opens(def) || !canAccess(role, def.access)) return false;
+  if (def.parent === undefined) return true;
+  const parent = table.find((d) => d.parent === undefined && d.path === def.parent);
+  return parent !== undefined && opens(parent);
 }

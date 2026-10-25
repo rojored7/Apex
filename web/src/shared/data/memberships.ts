@@ -14,7 +14,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
-import { pageSchema } from "../../core/api/page";
+import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { copAmount } from "./schemas/money";
@@ -86,5 +86,63 @@ export function useMembershipOption(id: string | null): UseQueryResult<Membershi
     queryKey: membershipOptionKey(id ?? ""),
     queryFn: async ({ signal }) => parseResponse(membershipOptionSchema, await api.get<unknown>(`/memberships/${encodeURIComponent(id ?? "")}`, { signal })),
     enabled: id !== null,
+  });
+}
+
+// S3-F7 · US-093 (front): las membresías de un socio para la pestaña Membresías de la ficha.
+// - membershipOutSchema: MembershipOut (B1 a B11) estricto, con sus congelaciones, el motivo de
+//   anulación y el estado EFECTIVO. Nace en features/memberships/schemas.ts (S3-F3) y se muda aquí
+//   porque lo pide useMemberMemberships; features/memberships lo reexporta.
+// - useMemberMemberships(memberId, page, q?): GET /members/{id}/memberships (B11) con la clave
+//   ["memberships", "member", memberId, { limit, offset, q }]: vender, congelar, anular y los pagos
+//   invalidan ["memberships"] y la pestaña se relee sola. Incluye las anuladas; orden del api
+//   `start_date` descendente y, en empate, `id`. `q` filtra por el nombre del plan (sin cupo propio,
+//   D28). Mientras llega la página nueva se conserva la anterior (del mismo socio).
+const freezeOutSchema = z
+  .object({
+    id: z.string().min(1),
+    frozen_from: z.string(),
+    frozen_to: z.string(),
+    days: z.number().int(),
+    created_at: z.string(),
+  })
+  .strict();
+export type FreezeOutView = z.infer<typeof freezeOutSchema>;
+
+export const membershipOutShape = {
+  ...membershipRowShape,
+  cancel_reason: z.string().nullable(),
+  cancelled_at: z.string().nullable(),
+  freezes: z.array(freezeOutSchema),
+  created_at: z.string(),
+};
+
+export const membershipOutSchema = z.object(membershipOutShape).strict();
+export type MembershipOutView = z.infer<typeof membershipOutSchema>;
+export const memberMembershipsPageSchema = pageSchema(membershipOutSchema);
+
+/** Una ventana de la lista: `limit` y `offset` (D2). */
+export interface PageWindow {
+  limit: number;
+  offset: number;
+}
+
+export interface MemberMembershipsParams extends PageWindow {
+  q?: string;
+}
+
+export function memberMembershipsKey(memberId: string, page: PageWindow, q?: string): readonly ["memberships", "member", string, MemberMembershipsParams] {
+  return ["memberships", "member", memberId, { limit: page.limit, offset: page.offset, ...(q ? { q } : {}) }];
+}
+
+export function useMemberMemberships(memberId: string | null, page: PageWindow, q?: string): UseQueryResult<Page<MembershipOutView>> {
+  return useQuery({
+    queryKey: memberMembershipsKey(memberId ?? "", page, q),
+    queryFn: async ({ signal }) =>
+      parseResponse(memberMembershipsPageSchema, await api.get<unknown>(`/members/${encodeURIComponent(memberId ?? "")}/memberships`, { query: listParams({ limit: page.limit, offset: page.offset, q }), signal })),
+    enabled: memberId !== null,
+    // Revisión S3-F7 (M1): conserva la página anterior solo si es del mismo socio; la de otro socio
+    // nunca se muestra (ni sus botones) mientras llega la suya.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === (memberId ?? "") ? previous : undefined),
   });
 }

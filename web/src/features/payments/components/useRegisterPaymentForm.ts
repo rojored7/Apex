@@ -2,6 +2,7 @@
 // cada parte tenga una sola tarea:
 // - Socio: fijo por la membresía (`?pago=<membresía>`), por la URL (`?pago=nuevo&socio=`) o elegido
 //   en el panel. Sus membresías abiertas salen de useMemberOpenMemberships (shared/data, S3-D66).
+//   S3-F7: si vino por la URL y no tiene membresías abiertas, su nombre sale de useMemberName.
 // - Formulario (React Hook Form + Zod, registerPaymentSchema): membresía, medio, valor, referencia y
 //   fecha y hora del pago (ahora en Bogotá). Con una sola membresía abierta se elige sola. El valor
 //   sigue al saldo de la membresía elegida mientras no se edite; una precarga desde una anulación
@@ -16,6 +17,7 @@ import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useForm, useWatch, type Resolver, type UseFormReturn } from "react-hook-form";
 import { formatCop, nowBogotaInput, parseCop } from "../../../core/i18n/format";
+import { useMemberName } from "../../../shared/data/members";
 import { openMembershipsKey, useMemberOpenMemberships, useMembershipOption, type MembershipRowView } from "../../../shared/data/memberships";
 import type { PaymentPanelTarget, PaymentPrefill } from "../../../shared/lib/paymentPanel";
 import { zodResolver } from "../../../shared/lib/zodResolver";
@@ -113,7 +115,10 @@ export function useRegisterPaymentForm(target: PaymentPanelTarget, prefill: Paym
     if (member) void queryClient.invalidateQueries({ queryKey: openMembershipsKey(member.id) });
   });
 
-  const memberName = member?.name ?? options[0]?.member_name ?? null;
+  // S3-F7: un socio de la URL sin membresías abiertas (ni nombre) se nombra con GET /members/{id}.
+  const needsName = member !== null && member.name === null && memberships.isSuccess && options.length === 0;
+  const fetchedName = useMemberName(needsName ? member.id : null);
+  const memberName = member?.name ?? options[0]?.member_name ?? fetchedName.data ?? null;
   return {
     form,
     member: member ? { id: member.id, name: memberName } : null,

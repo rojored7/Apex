@@ -1,6 +1,7 @@
 // US-063 T4: tabla de las listas (Socios_Lista.html) y tarjetas en celular (Socios_Movil.html).
 // Caja con desplazamiento propio, cabecera en mayúsculas, primera columna como enlace a la
-// ficha y sin botones de editar o borrar en las filas. Estados de carga, vacío y error.
+// ficha (S3-F7: sin `rowHref`, texto: las listas dentro de la ficha no llevan a otra pantalla) y sin
+// botones de editar o borrar en las filas. Estados de carga, vacío y error.
 // N-01: no existe un tipo de columna "enmascarada"; las listas no muestran datos cifrados.
 // M4 (revisión del Sprint 2): una región role="status" visualmente oculta y estable (existe en
 // todos los estados) anuncia "Cargando…", "N resultados" o "Sin resultados" al buscar, filtrar o
@@ -36,7 +37,8 @@ export interface DataTableProps<T> {
   /** Tamaño de página: define las filas del esqueleto (máximo 10). */
   limit?: number;
   rowKey: (row: T) => string;
-  rowHref: (row: T) => string;
+  /** S3-F7: sin él la primera columna es texto (listas dentro de la ficha, que no llevan a otra pantalla). */
+  rowHref?: ((row: T) => string) | undefined;
   isLoading?: boolean;
   error?: unknown;
   onRetry?: () => void;
@@ -120,9 +122,13 @@ function Cards<T>({ caption, columns, rows, rowKey, rowHref }: Pick<DataTablePro
       {rows.map((row) => (
         <li key={rowKey(row)} className={styles.card}>
           {first ? (
-            <Link to={rowHref(row)} className={cx(styles.link, styles.cardTitle)}>
-              {first.render(row)}
-            </Link>
+            rowHref ? (
+              <Link to={rowHref(row)} className={cx(styles.link, styles.cardTitle)}>
+                {first.render(row)}
+              </Link>
+            ) : (
+              <span className={styles.cardTitle}>{first.render(row)}</span>
+            )
           ) : null}
           <dl className={styles.cardFields}>
             {rest.map((column) => (
@@ -227,7 +233,7 @@ function DataTableContent<T>({
                 <tr key={rowKey(row)}>
                   {columns.map((column, index) => (
                     <td key={column.key} className={cx(styles.td, column.align === "end" && styles.end)}>
-                      {index === 0 ? (
+                      {index === 0 && rowHref ? (
                         <Link to={rowHref(row)} className={styles.link}>
                           {column.render(row)}
                         </Link>

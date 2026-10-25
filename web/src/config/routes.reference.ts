@@ -33,6 +33,9 @@ export const REFERENCE_ROUTES: readonly ReferenceRoute[] = [
   r("/socios/:id", "members", "members.view", "panel"),
   // S3-F1 (E14): la pestaña "Datos" es la hija índice de la ficha (path vacío, mismo acceso).
   { path: "", feature: "members", access: "members.view", layout: "panel", parent: "/socios/:id" },
+  // S3-F7 (S3-D65, E3): las pestañas Membresías y Pagos son hijas con su feature y su acceso.
+  { path: "/socios/:id/membresias", feature: "memberships", access: "memberships.view", layout: "panel", parent: "/socios/:id" },
+  { path: "/socios/:id/pagos", feature: "payments", access: "payments.view", layout: "panel", parent: "/socios/:id" },
   r("/socios/:id/editar", "members", "members.update", "panel"),
   // Planes (solo admin)
   r("/planes", "plans", "plans.view", "panel"),

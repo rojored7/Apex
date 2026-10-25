@@ -12,6 +12,8 @@ export interface TabItem {
   label: string;
   /** Versión en la que llega ("v0.4"): la pestaña se ve deshabilitada y lo anuncia. */
   disabledUntil?: string;
+  /** S3-F7: deshabilitada por otra razón (su ruta no abre una página para el rol): este texto en lugar de la versión. */
+  disabledNote?: string;
 }
 
 export interface TabsProps {
@@ -44,7 +46,8 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
   const baseId = useId();
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  const enabled = tabs.filter((tab) => !tab.disabledUntil);
+  const isOff = (tab: TabItem): boolean => Boolean(tab.disabledUntil ?? tab.disabledNote);
+  const enabled = tabs.filter((tab) => !isOff(tab));
   const segment = urlMode === "segment" ? segmentAfter(location.pathname, basePath) : null;
   // S3-F1 (E14): sin segmento, la ruta base es la de la pestaña índice.
   const requested = urlMode === "query" ? searchParams.get(param) : (segment ?? indexId ?? null);
@@ -62,7 +65,13 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
         return next;
       });
     } else {
-      void navigate(`${id === indexId ? basePath : `${basePath}/${id}`}${location.search}`);
+      // S3-F7: igual que en modo `query`, la pestaña nueva empieza en la primera página de su lista. Los
+      // filtros de una lista (`voided`) se conservan: las otras pestañas no los leen (revisión, L6).
+      // (la ficha tiene dos listas paginadas, Membresías y Pagos); lo demás de la URL se conserva.
+      const next = new URLSearchParams(location.search);
+      next.delete("offset");
+      const query = next.toString();
+      void navigate(`${id === indexId ? basePath : `${basePath}/${id}`}${query === "" ? "" : `?${query}`}`);
     }
     tabRefs.current.get(id)?.focus();
   };
@@ -88,7 +97,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
       <div role="tablist" aria-label={label} className={styles.list} onKeyDown={onKeyDown}>
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
-          const isDisabled = Boolean(tab.disabledUntil);
+          const isDisabled = isOff(tab);
           return (
             <button
               key={tab.id}
@@ -109,7 +118,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
               }}
             >
               {tab.label}
-              {tab.disabledUntil ? <span className={styles.until}>{`Disponible en ${tab.disabledUntil}`}</span> : null}
+              {isDisabled ? <span className={styles.until}>{tab.disabledNote ?? `Disponible en ${tab.disabledUntil ?? ""}`}</span> : null}
             </button>
           );
         })}

@@ -6,24 +6,29 @@
 //   verificar, RN-15): Vender membresía (memberships.sell) y Editar (members.update) en un socio
 //   vivo; Dar de baja (members.delete, solo admin); en un dado de baja solo Reactivar
 //   (members.reactivate, solo admin): su ficha es de solo lectura (N-20) y se puede revelar.
-// - Las pestañas son rutas hijas (S3-D65, E3, E14): la página pinta la activa en su <Outlet />.
-//   "Datos" es la hija índice (MemberDataTab); Membresías y Pagos llegan con S3-F7 y Historial con
-//   US-106 (deshabilitadas con su versión); las demás, con la suya.
+// - Las pestañas son rutas hijas (S3-D65, E3, E14): la página pinta la activa en su <Outlet /> y le
+//   pasa la ficha por el contexto (MemberOutletContext, que cumple MemberTabContext de shared/data).
+//   "Datos" es la hija índice (MemberDataTab); Membresías y Pagos son hijas de sus features (S3-F7;
+//   se ven deshabilitadas si su ruta no abre una página para el rol, memberTabs); Historial llega
+//   con US-106 (deshabilitada con su versión); las demás, con la suya.
 // - Estados: cargando, 404 "Socio no encontrado", error con "Reintentar", aviso de autorización
 //   faltante (Q16), avisos de "Cambios guardados", "Socio dado de baja" y "Socio reactivado", y el
 //   409 de documento al reactivar con enlace al socio vivo.
 // DESIGN-GAP:
-// - Sin foto (v0.3), sin las cuatro tarjetas de resumen (Membresía, Asistencia, Último WOD, Avisos:
-//   llegan con S3-F7 y v0.2 a v0.5) ni "Registrar pago" y "Renovar" en el encabezado (S3-F7, en la
-//   pestaña Membresías); "Vender membresía" siempre lleva a la venta (un 409 de la venta ofrece
-//   "Renovar").
+// - Sin foto (v0.3) ni las cuatro tarjetas de resumen (Membresía, Asistencia, Último WOD, Avisos):
+//   la de Membresía es la tarjeta de la vigente en la pestaña Membresías (S3-F7) y las demás llegan
+//   con v0.2 a v0.5. "Renovar" y "Registrar pago" no van en el encabezado sino en las pestañas
+//   Membresías (Renovar, Registrar saldo) y Pagos (Registrar pago); "Vender membresía" siempre
+//   lleva a la venta (un 409 de la venta ofrece "Renovar").
 // - El menú "Más" (WhatsApp, enlace al portal) no existe todavía: "Dar de baja" va como botón.
 // - Aviso "Sin autorización de datos registrada" (Q16) y el estado "Dado de baja" con "Reactivar":
 //   el diseño no los dibuja (BRECHAS §10).
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { formatDate } from "../../../core/i18n/format";
-import { useCan } from "../../../core/auth/useCan";
+import type { Role } from "../../../core/auth/permissions";
+import { isPageAvailable } from "../../../core/auth/routeAccess";
+import { useCan, useRole } from "../../../core/auth/useCan";
 import { Button } from "../../../shared/ui/Button";
 import { MessagePage } from "../../../shared/ui/MessagePage";
 import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
@@ -41,8 +46,8 @@ import styles from "./MemberDetailPage.module.css";
 /** Pestañas de Socio_Ficha.html; Historial siempre la última (DESIGN.md, Tabs). */
 export const MEMBER_TABS: readonly TabItem[] = [
   { id: "datos", label: "Datos" },
-  { id: "membresias", label: "Membresías", disabledUntil: "v0.1" },
-  { id: "pagos", label: "Pagos", disabledUntil: "v0.1" },
+  { id: "membresias", label: "Membresías" },
+  { id: "pagos", label: "Pagos" },
   { id: "asistencia", label: "Asistencia", disabledUntil: "v0.4" },
   { id: "resultados", label: "Resultados", disabledUntil: "v0.5" },
   { id: "atleta", label: "Atleta", disabledUntil: "v0.6" },
@@ -51,6 +56,19 @@ export const MEMBER_TABS: readonly TabItem[] = [
   { id: "historial", label: "Historial", disabledUntil: "v0.1" },
 ];
 const INDEX_TAB = "datos";
+
+export const TAB_UNAVAILABLE = "No disponible";
+
+/** S3-F7: pestañas que son rutas hijas de otras features (Membresías, Pagos). */
+const CHILD_TABS: ReadonlySet<string> = new Set(["membresias", "pagos"]);
+
+/**
+ * Las pestañas con su estado para este rol: una hija cuya ruta no abre una página (su feature
+ * deshabilitada o un rol sin acceso; isPageAvailable) se ve deshabilitada en lugar de dar 404.
+ */
+export function memberTabs(memberId: string, role: Role | null): TabItem[] {
+  return MEMBER_TABS.map((tab) => (CHILD_TABS.has(tab.id) && !isPageAvailable(role, `${memberHref(memberId)}/${tab.id}`) ? { ...tab, disabledNote: TAB_UNAVAILABLE } : tab));
+}
 
 export const DETAIL_NOTICES = {
   updated: "Cambios guardados",
@@ -85,6 +103,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
   const noticeRef = useRef<HTMLParagraphElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
   const actions = useDetailActions(member, setModal);
+  const role = useRole();
 
   useEffect(() => {
     if (focusNotice) noticeRef.current?.focus();
@@ -149,7 +168,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
           <span>{'Edita el socio y marca "Registrar autorización" cuando el socio la acepte (Ley 1581).'}</span>
         </div>
       ) : null}
-      <Tabs label="Secciones del socio" urlMode="segment" basePath={memberHref(member.id)} indexId={INDEX_TAB} tabs={[...MEMBER_TABS]}>
+      <Tabs label="Secciones del socio" urlMode="segment" basePath={memberHref(member.id)} indexId={INDEX_TAB} tabs={memberTabs(member.id, role)}>
         {() => <Outlet context={{ member } satisfies MemberOutletContext} />}
       </Tabs>
       <DeactivateMemberModal

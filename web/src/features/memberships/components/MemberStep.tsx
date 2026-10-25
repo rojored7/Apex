@@ -37,7 +37,7 @@ export interface MemberStepProps {
   onClear: () => void;
 }
 
-/** "Socio elegido" cuando el nombre no se conoce (sin GET /members/{id} hasta B9). */
+/** "Socio elegido" mientras llega el nombre de GET /members/{id} (S3-F7) o si no se pudo leer. */
 export const UNNAMED_MEMBER = "Socio elegido";
 
 function isStatusView(value: string): value is MembershipStatusView {

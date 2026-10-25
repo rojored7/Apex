@@ -2,7 +2,7 @@
 // - /membresias/vender: vender. `?socio=<id>` fija el socio; con `&renovar=1` renueva (US-088,
 //   Q1). Un `socio` que no es un UUID se ignora (vuelve a la venta normal con buscador).
 // - El nombre del socio viaja en el estado de la navegación (validado con Zod) para no pedirlo de
-//   nuevo; sin él la pantalla dice "Socio elegido" hasta que exista GET /members/{id} (B9, S3-F1).
+//   nuevo; sin él la venta lo pide a GET /members/{id} (S3-F7, useMemberName de shared/data).
 // - memberHref: la ficha del socio (/socios/:id, US-073; F1). Se define aquí y no se importa de
 //   features/members (S3-D65: ninguna feature importa de otra).
 import { z } from "zod";
@@ -16,6 +16,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function memberHref(memberId: string): string {
   return `${MEMBERS_PATH}/${encodeURIComponent(memberId)}`;
+}
+
+/** S3-F7: /membresias/vender?socio=<id> (vender a un socio ya elegido, desde su ficha). */
+export function sellForMemberHref(memberId: string): string {
+  return `${SELL_PATH}?${new URLSearchParams({ socio: memberId }).toString()}`;
 }
 
 /** /membresias/vender?socio=<id>&renovar=1 */

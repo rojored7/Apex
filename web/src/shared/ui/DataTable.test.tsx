@@ -234,3 +234,30 @@ describe("DataTable · región viva del resultado (M4, revisión del Sprint 2)",
     expect(screen.getByRole("status")).toHaveTextContent("");
   });
 });
+
+describe("DataTable · sin rowHref (S3-F7, listas dentro de la ficha)", () => {
+  function renderPlain(width: number) {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: width < 768, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    return render(
+      <MemoryRouter>
+        <DataTable<Row> caption="Pagos del socio" columns={COLUMNS} rows={ROWS} total={ROWS.length} rowKey={(r) => r.id} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("en escritorio la primera columna es texto, sin enlace", () => {
+    renderPlain(1440);
+
+    expect(screen.getByRole("table", { name: "Pagos del socio" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(screen.getByRole("cell", { name: ROWS[0]?.name ?? "" })).toBeInTheDocument();
+  });
+
+  it("en celular la tarjeta lleva el título sin enlace", () => {
+    renderPlain(390);
+
+    const cards = screen.getByRole("list", { name: "Pagos del socio" });
+    expect(within(cards).queryAllByRole("link")).toHaveLength(0);
+    expect(within(cards).getByText(ROWS[0]?.name ?? "")).toBeInTheDocument();
+  });
+});

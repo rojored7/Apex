@@ -3,7 +3,8 @@
 //   migas Socios › nombre; acciones por rol con useCan (Editar con members.update, Vender con
 //   memberships.sell, Dar de baja solo con members.delete).
 // - Tabs con las pestañas de la ficha: Datos es la ruta hija índice (<Outlet />, S3-D65); Membresías
-//   y Pagos deshabilitadas hasta S3-F7; Historial deshabilitada (US-106) y la última.
+//   y Pagos son rutas hijas que navegan y montan su pestaña (S3-F7; deshabilitadas si su ruta no está
+//   disponible, isPageAvailable); Historial deshabilitada (US-106) y la última.
 // - Los cinco sensibles enmascarados con el texto del api y "Mostrar"; aviso si falta la
 //   autorización de datos (Q16); un dado de baja es de solo lectura con "Dado de baja" y
 //   "Reactivar" solo para el admin; 404 "Socio no encontrado"; error con "Reintentar".
@@ -12,6 +13,17 @@ import { axe } from "vitest-axe";
 import { apiError, DELETED_OVERRIDES, DETAIL_PATH, DUPLICATE_ID, MEMBER_ID, memberDetailBody, ok, REVEAL_PATH, renderMemberDetail } from "../../../test/memberDetail";
 import { setViewportWidth, testQueryClient } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
+
+// S3-F7: una prueba simula una pestaña cuya ruta hija no está disponible (su feature deshabilitada);
+// las demás usan la regla real.
+const availability = vi.hoisted(() => ({ blocked: new Set<string>() }));
+vi.mock("../../../core/auth/routeAccess", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../core/auth/routeAccess")>();
+  return {
+    ...actual,
+    isPageAvailable: (...args: Parameters<typeof actual.isPageAvailable>) => !availability.blocked.has(args[1].split("/").at(-1) ?? "") && actual.isPageAvailable(...args),
+  };
+});
 
 const header = (): HTMLElement => screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
 const actionNames = (): string[] => {
@@ -34,6 +46,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
   sessionStorage.clear();
+  availability.blocked.clear();
 });
 
 describe("MemberDetailPage · encabezado (Socio_Ficha.html)", () => {
@@ -85,14 +98,15 @@ describe("MemberDetailPage · acciones por rol (useCan)", () => {
 });
 
 describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
-  it("Datos es la activa en /socios/:id; Membresías, Pagos e Historial están deshabilitadas y Historial es la última", async () => {
+  it("Datos es la activa en /socios/:id; Membresías y Pagos están habilitadas (S3-F7); Historial y las demás, deshabilitadas, e Historial es la última", async () => {
     renderMemberDetail();
     const tablist = await screen.findByRole("tablist", { name: "Secciones del socio" });
     const tabs = within(tablist).getAllByRole("tab");
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of [/^Membresías/, /^Pagos/, /^Historial/, /^Asistencia/, /^Resultados/, /^Atleta/, /^Avisos/, /^Adjuntos/]) {
+    for (const name of ["Membresías", "Pagos"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    for (const name of [/^Historial/, /^Asistencia/, /^Resultados/, /^Atleta/, /^Avisos/, /^Adjuntos/]) {
       expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
     }
     expect(within(tablist).getByRole("tab", { name: /^Asistencia/ })).toHaveTextContent("Disponible en v0.4");
@@ -107,6 +121,62 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(`/socios/${MEMBER_ID}`);
     expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}`);
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
+  });
+
+  it("S3-F7: Membresías navega a /socios/:id/membresias y monta su pestaña en el <Outlet /> sin volver a pedir la ficha", async () => {
+    const { mock, user } = renderMemberDetail();
+    await user.click(await screen.findByRole("tab", { name: "Membresías" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/membresias`);
+    expect(screen.getByRole("tab", { name: "Membresías" })).toHaveAttribute("aria-selected", "true");
+    expect(await within(screen.getByRole("tabpanel")).findByText("Este socio no tiene membresías.")).toBeInTheDocument();
+    expect(mock.callsTo(`GET ${DETAIL_PATH}/memberships`)).toHaveLength(1);
+    expect(mock.callsTo(`GET ${DETAIL_PATH}`)).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: /Laura Gómez/ })).toBeInTheDocument();
+  });
+
+  it("S3-F7: Pagos navega a /socios/:id/pagos, monta su pestaña y vuelve a Datos sin segmento", async () => {
+    const { mock, user } = renderMemberDetail();
+    await user.click(await screen.findByRole("tab", { name: "Pagos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/pagos`);
+    expect(await within(screen.getByRole("tabpanel")).findByText("Este socio no tiene pagos.")).toBeInTheDocument();
+    expect(mock.callsTo(`GET ${DETAIL_PATH}/payments`)).toHaveLength(1);
+
+    await user.click(screen.getByRole("tab", { name: "Datos" }));
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}`);
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
+  });
+
+  it("S3-F7: entrar directo a /socios/:id/pagos selecciona Pagos; la pestaña lee el socio dado de baja de la ficha", async () => {
+    renderMemberDetail(`/socios/${MEMBER_ID}/pagos`, {
+      handlers: {
+        [`GET ${DETAIL_PATH}`]: ok(memberDetailBody(DELETED_OVERRIDES)),
+        [`GET ${DETAIL_PATH}/payments`]: ok({ items: [], total: 0, limit: 25, offset: 0 }),
+      },
+    });
+
+    expect(await screen.findByRole("tab", { name: "Pagos" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Este socio no tiene pagos.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Registrar pago" })).not.toBeInTheDocument();
+  });
+
+  it("S3-F7: cambiar de pestaña no arrastra la página de la lista anterior (offset)", async () => {
+    const { user } = renderMemberDetail(`/socios/${MEMBER_ID}/membresias?offset=25`);
+    await user.click(await screen.findByRole("tab", { name: "Pagos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/pagos`);
+  });
+
+  it("S3-F7: una pestaña cuya ruta hija no está disponible (feature deshabilitada) se ve deshabilitada", async () => {
+    availability.blocked.add("pagos");
+    renderMemberDetail();
+    const tablist = await screen.findByRole("tablist", { name: "Secciones del socio" });
+
+    expect(within(tablist).getByRole("tab", { name: /^Pagos/ })).toHaveAttribute("aria-disabled", "true");
+    expect(within(tablist).getByRole("tab", { name: /^Pagos/ })).toHaveTextContent("No disponible");
+    expect(within(tablist).getByRole("tab", { name: /^Pagos/ })).not.toHaveTextContent("Disponible en");
+    expect(within(tablist).getByRole("tab", { name: "Membresías" })).not.toHaveAttribute("aria-disabled");
   });
 });
 

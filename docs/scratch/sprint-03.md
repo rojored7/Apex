@@ -2280,3 +2280,30 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - **F2 puede arrancar**: `memberRowSchema` ya trae `membership_end_date` y el contrato de
   `GET /members` (`membership_status`, `plan_id`) y `GET /members/{member_id}` está en
   `docs/openapi.json` y `web/src/core/api/types.ts`.
+
+### S3-B9b · Evidencia (B9b.7, demo 6 y 7; después del sello, checkpoint `7d78c05`)
+
+- Gate que selló (sin `PYTEST_ADDOPTS`, `ls` previo de los nueve archivos): `slice-gate.sh
+  members` con la lista del plan más `tests/architecture`: `ruff`, `format` y `mypy` limpios;
+  **437 ok**, 1 saltada (incluye las 4 `perf` de `test_list_perf.py`).
+- api `healthy`, recargado por el bind (el contenedor ya tenía `_uuids` y `_CHIPS_DE_MEMBRESIA`);
+  sin migración. Por Nginx `:8180` con accesos del admin y de un coach firmados dentro del
+  contenedor del api (script y tokens borrados del contenedor y del scratchpad):
+  - Demo 6: `GET /api/v1/members/2b5b6860-…` (socio de CC `1.020.304.417`) → **200** con
+    `Cache-Control: no-store`, `document "CC •••• 4417"`, `phone "••• ••• 0417"`, correo con
+    inicial y dominio enmascarados, `birth_date "••/••/1990"`, `emergency_contact "Registrado"`,
+    `membership_status "none"` (su membresía de B1 está anulada), plan y fin nulos,
+    `warnings []`. psql: `SELECT verb, purpose, count(*) … WHERE record_id = <id> GROUP BY 1, 2`
+    → `decrypt | mask | 5` (cinco `data_class`, sin lote, `ok`), más `encrypt` 5 e `index` 3 del
+    alta; 0 filas `purpose='reveal'` en `crypto_ops`, 0 `action='reveal'` en `audit.audit_log` y
+    ninguna fila de auditoría nueva del socio.
+  - Demo 7: `GET /members?membership_status=active&plan_id=b6fab314-…` (plan de 120.000) →
+    `total 1`, "Demo B4Uno" (`9786ef0a…`) con `active`, "Mensual mvjipju3" y fin `2026-11-24`;
+    `membership_status=none` → `total 17` sin "Demo B4Uno" (cuadra con los 17 `none` del resumen
+    de B7); `none` + `plan_id` → página vacía (`limit 25`); `pending_payment` → "Demo B4Dos";
+    `membership_status=moroso` → **422** `field = membership_status`, sin el valor.
+  - Coach → **200** en la ficha de "Demo B4Uno" (`CC •••• 6641`, `active`); id inexistente →
+    **404** `member_not_found`; sin token → **401**; `/health` y `/api/v1/health` → 200. Log del
+    api sin `ERROR` y sin máscaras, blobs ni documentos en los 15 minutos de la demo.
+  - Nota: la respuesta por Nginx lleva `Cache-Control: no-store` dos veces (la de Nginx y la del
+    api); es igual en las demás rutas de datos y no cambia el efecto.

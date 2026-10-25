@@ -54,7 +54,9 @@ test.describe("registrar y anular pagos contra el stack", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     socio = await crearSocio(page);
     const plan = await crearPlan(page);
-    const membership = await venderMembresia(page, socio.id, plan.id, { amount_cop: 60_000, method: "cash" });
+    // S3-F7 (cierre del front): el abono va por Nequi con referencia; si fuera en efectivo, el saldo de
+    // 60.000 en efectivo del paso 1 sería un posible duplicado (S3-D41, 409 payment_possible_duplicate).
+    const membership = await venderMembresia(page, socio.id, plan.id, { amount_cop: 60_000, method: "nequi", reference: `E2E-${Date.now().toString(36)}` });
     expect(membership.status).toBe("pending_payment");
     await loginComo(page);
 

@@ -1,7 +1,8 @@
 // S3-F7 (US-093 y US-101; demo 6, botones de la ficha) contra el stack de Compose (proyecto `stack`,
 // S3-D72): el admin crea por el api un socio y un plan y vende con un abono de 60.000; en la ficha,
 // la pestaña Membresías muestra la vigente "Pendiente de pago" con su saldo y "Registrar saldo" abre
-// el panel de pagos (?pago=<membresía>) con el saldo precargado; tras registrarlo la tarjeta queda
+// el panel de pagos (?pago=<membresía>) con el saldo precargado (y la confirmación del posible
+// duplicado, S3-D41, porque el abono de la venta es igual y reciente); tras registrarlo la tarjeta queda
 // "Al día". La pestaña Pagos lista los dos pagos (el más reciente primero), el admin anula uno con
 // motivo ("Anulado" y "Motivo: …") y "Ocultar anulados" lo quita (voided=false). axe en cada paso y
 // capturas en claro y oscuro. Un solo login del admin por corrida (el login es por IP: 5 por minuto
@@ -69,6 +70,12 @@ test.describe("pestañas Membresías y Pagos de la ficha contra el stack", () =>
     await expect(panel.getByRole("textbox", { name: /^Valor recibido/ })).toHaveValue("$ 60.000");
     expect(await axeViolations(page)).toEqual([]);
     await panel.getByRole("button", { name: "Registrar" }).click();
+    // S3-D41: el abono de la venta (mismo valor, medio y quien registra, hace segundos) hace que el api
+    // pida confirmar el posible duplicado (409 payment_possible_duplicate); se confirma.
+    const duplicado = page.getByRole("dialog", { name: "¿Registrar otro pago igual?" });
+    await expect(duplicado).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+    await duplicado.getByRole("button", { name: "Sí, registrar otro" }).click();
     await expect(panel.getByRole("status", { name: "Pago registrado" })).toBeVisible();
     await panel.getByRole("button", { name: "Cerrar" }).first().click();
     await expect(page).not.toHaveURL(/pago=/);

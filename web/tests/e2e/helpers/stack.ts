@@ -56,7 +56,7 @@ export async function loginComo(page: Page, credentials: Credentials = datosDeBa
  * le pone contraseña con su enlace de activación (POST /users y POST /auth/reset).
  */
 export async function crearCoach(page: Page, admin: Credentials = datosDeBase()): Promise<Credentials> {
-  const { access_token } = await login(page.request, admin);
+  const access_token = await accessToken(page.request, admin);
   const email = `coach-${Date.now().toString(36)}@apex.test`;
   const created = await page.request.post(`${API}/users`, {
     headers: { Authorization: `Bearer ${access_token}` },
@@ -108,9 +108,26 @@ export function documentoAleatorio(): string {
   return `9${digits.slice(1).join("")}`;
 }
 
+/**
+ * S3-F7 (cierre del front): el access de las altas por el api se reutiliza mientras vale (15 min de
+ * vida; se renueva a los 10). El api de desarrollo admite 5 logins por minuto por IP y cada spec del
+ * stack daba de alta socio, plan, venta y baja con un login cada uno (429 al correrlas seguidas). Solo
+ * se guarda en la memoria del proceso de Playwright; `loginComo` sigue haciendo un login real porque
+ * deja la cookie del refresh en el navegador.
+ */
+const ACCESS_REUSE_MS = 10 * 60 * 1_000;
+const accessCache = new Map<string, { token: string; at: number }>();
+
+async function accessToken(request: APIRequestContext, admin: Credentials): Promise<string> {
+  const cached = accessCache.get(admin.email);
+  if (cached && Date.now() - cached.at < ACCESS_REUSE_MS) return cached.token;
+  const { access_token } = await login(request, admin);
+  accessCache.set(admin.email, { token: access_token, at: Date.now() });
+  return access_token;
+}
+
 async function accessDe(page: Page, admin: Credentials): Promise<Record<string, string>> {
-  const { access_token } = await login(page.request, admin);
-  return { Authorization: `Bearer ${access_token}` };
+  return { Authorization: `Bearer ${await accessToken(page.request, admin)}` };
 }
 
 export interface SocioCreado {

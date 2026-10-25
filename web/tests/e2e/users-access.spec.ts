@@ -61,6 +61,10 @@ async function fakeApi(page: Page, { session = true }: { session?: boolean } = {
 }
 
 async function axeViolations(page: Page): Promise<string[]> {
+  // V4 del Sprint 3: el hover de un botón recién pulsado pasa por colores intermedios; se mide al final.
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+  });
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   return result.violations.map((v) => `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
 }

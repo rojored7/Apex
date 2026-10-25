@@ -137,6 +137,7 @@ Recomendación general: recursos anidados para crear (`POST /members/{id}/member
 ## 6. Trazabilidad: qué pantalla se puede construir en cada versión del backend
 
 - v0.1: `Login` (solo la tarjeta de acceso), `Inicio` (KPIs de membresías y pagos; el resto vacío), `Socios_Lista`, `Socios_Movil`, `Socio_Ficha` (pestañas Membresías, Pagos, Historial), `Socio_Form` (sin foto ni adjuntos), `Planes`, `Membresias`, `Membresia_Vender`, `Pagos` (sin recibo PDF si se pospone), `Usuarios` (CRUD; sin reenviar enlace si no hay correo), `Auditoria`, `Config` (si se acepta el módulo `settings` en v0.1).
+  - Estado al cierre del Sprint 3 (25 de octubre de 2026): construidas `/socios`, `/socios/:id` con sus pestañas Datos, Membresías y Pagos (rutas hijas), `/socios/:id/editar`, `/membresias`, `/membresias/vender` (con `?socio=` y `?renovar=1`), `/pagos` y el panel de registrar pago (`?pago=`). Pendientes de v0.1 que no son del Sprint 3: la pestaña Historial de la ficha (US-106, Sprint 4A, S4A-F2) y los KPIs de `Inicio` (US-108, Sprint 4A). Detalle en §10.
 - v0.2: `PorAvisarHoy`, `Notif_Reglas`, `Notif_Historial`, tarjetas de recuperar y activar cuenta de `Login`, pestaña Avisos de la ficha.
 - v0.3: `Llaves` (si se crea el router de crypto), foto y adjuntos en `Socio_Form` y `Socio_Ficha`.
 - v0.4: `Sesiones`, `Horario`, `CheckIn`, pestaña Asistencia de la ficha, KPIs de asistencia en `Inicio`. Deuda de backend con dueño (S3-D92, PM2 de Fase 4 del Sprint 3): al agotarse las clases de una tiquetera, `classes` (US-160) recorta `end_date`; hasta entonces una tiquetera agotada con fin futuro bloquea la compra siguiente (`MembershipOverlap`).
@@ -242,41 +243,175 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 
 - `docs/ddd/09_sprint_plan/SPRINT-01.md` (refinamientos de US-110) planea `display_name` en `0004`. El código no lo tiene, `0004_auth` tampoco, y S2-D17 lo deja para US-110 del Sprint 4A. No se cambió ninguno de los dos documentos; hay que decidir cuál manda.
 
-## 10. Sprint 3: brechas previstas y diferencias con el diseño
+## 10. Sprint 3: brechas con el diseño (cierre de V1)
 
-Fuente: `docs/ddd/blueprints/sprint-03-plan.md` (D37, S3-D41, S3-D50) y `docs/ddd/DECISIONES.md`, "Sprint 3". Se escribe en S3-W0-1, antes de construir las pantallas; los slices del front (S3-F1 a S3-F7) anotan aquí lo que cierren o lo que aparezca y el cierre del sprint lo confirma contra los `// DESIGN-GAP:` reales de `web/src/`.
+Estado al 25 de octubre de 2026, después de los slices S3-F1 a S3-F7. Fuentes: `docs/scratch/sprint-03-front.md` (cuaderno del front), los `// DESIGN-GAP:` de `web/src/`, `docs/ddd/blueprints/sprint-03-plan.md` (D10, D14, D16, D17, D24, D37, D39) y `docs/ddd/DECISIONES.md` (Q3, N-20, N-23, N-26, N-27, N-28, S3-D41, S3-D46, S3-D50, S3-D51, S3-D57, S3-D65 y S3-D98).
 
-### Diferencias deliberadas con el diseño (D37; todas llevan `// DESIGN-GAP:` en el código)
+Cada brecha dice qué pide el diseño, qué se construyó y por qué, y su estado. Los estados son:
+- Aceptada para v0.1: lo construido es el comportamiento de v0.1.
+- Pendiente de diseño: el diseño no fija la solución y el front usa una provisional.
+- Depende de versión futura: el dato o la acción llega con el módulo dueño (versión o sprint indicado).
+- Pendiente de código: la pantalla existe, pero el diseño o una historia piden algo que el código todavía no hace.
 
-- **Chip "Pendiente de pago" (Q3, D10):** el estado `pending_payment` se guarda y se muestra; `Socios_Lista.html`, `Membresias.html` y la ficha no lo dibujan.
-- **"Precio pactado" de solo lectura (D16):** `SellMembershipIn` no lleva `agreed_price_cop`; el coach no fija el precio.
-- **Fin de vigencia por N-23 (D16):** el fin es inclusivo (`start_date + duration_days`): un plan de 30 días da acceso 31. El front dice "hasta el <fecha>", nunca "30 días", aunque `Membresia_Vender.html` dibuje otra cuenta.
-- **Congelar sin "Motivo" (D14):** `FreezeIn` no tiene `reason` y la tabla no tiene columna; el modal del diseño lo pinta.
-- **Referencia opcional en los tres medios (N-28, D17):** el asterisco de Nequi y Bre-B del diseño se ignora.
-- **Filtro de estado de `Pagos` en "Todos":** para que un pago recién anulado siga visible.
-- **Sin "Exportar" ni recibo PDF:** llegan con v0.2 (EP-16, sección 2 de este archivo).
-- **Conteos de los chips de socios:** salen de `GET /memberships/summary`; el de "Sin membresía" es el total menos la suma de los cinco estados.
-- **Tarjeta de la membresía futura en la ficha:** el diseño solo dibuja la vigente.
-- **Medios de pago fijos:** la pestaña "Medios de pago" tiene tres filas fijas (Efectivo, Nequi, Bre-B) sin casillas de habilitar; agregar un medio exige una actualización (D24).
-- **Ficha sin autorización de datos registrada (Q16):** aviso cuando `data_consent_at` es nulo; el diseño no lo dibuja.
-- **"Dado de baja" en la ficha (S3-B10, US-076, N-20):** `Socio_Ficha.html` dibuja "Dar de baja" en el menú "Más" pero no el estado posterior. La ficha de un socio con `deleted_at` se muestra de solo lectura, con la etiqueta "Dado de baja" y la fecha; editar le responde 409 `member_deactivated`. "Mostrar" (revelar) sigue disponible (N-20). La lista lo muestra solo con el chip "Dados de baja".
-- **"Reactivar" (S3-B10, US-076):** el diseño no tiene la acción. En la ficha de un dado de baja, solo para admin, el menú "Más" cambia "Dar de baja" por "Reactivar" (`POST /members/{id}/reactivate`); el 409 `member_document_duplicated` enlaza al socio vivo de `existing_id`.
-- **Campos sensibles en la edición (S3-B10, US-075; M-3, S3-D46):** `Socio_Form.html` en modo editar no distingue roles. Para el coach el documento y su tipo van de solo lectura y no viajan en el cuerpo (si los envía, aunque sean iguales, el API responde 403 `forbidden_field`); para el admin son editables. Los cinco campos cifrados llegan enmascarados en la ficha: el formulario de edición no los precarga en claro (para cambiar uno se escribe el valor nuevo; dejarlo vacío no lo envía y `null` explícito solo con "Quitar"). La autorización de datos solo se puede marcar, nunca retirar (`data_consent: false` da 422).
+### 10.1 Socios: lista y vista móvil (S3-F2)
 
-### "Socios con él" de `Planes.html`
+Pantallas `Socios_Lista.html` y `Socios_Movil.html`. Ruta `/socios`.
 
-No entra en el Sprint 3: necesita la arista `plans -> memberships` y `count_active_by_plan` visible en `PlanOut`. Lo cierra US-082 (Sprint 4A). La fila de `PlansPage.tsx` de la sección 9 quedó corregida.
+- Chip "Pendiente de pago" (Q3): el diseño no lo dibuja. Se muestra con el tono de "Por vencer" (borde y texto `--warning`). Aceptada para v0.1.
+- Chips de estado: el celular usa los ocho del escritorio ("Todos" y siete estados) en una fila desplazable, no los cuatro de `Socios_Movil.html` ("Al día", "Por vencer", "Vencidos", "Inactivos"). La barra de filtros se apila. Aceptada para v0.1.
+- Plegado "Filtros": no se construye. El plegado del portal llega con v1.0. Depende de versión futura (v1.0).
+- Chip "Dados de baja": solo lo ven admin y coach (N-20), en lugar de un 404. Aceptada.
+- Conteos de los chips: salen de `GET /memberships/summary` (D37, N-26). "Todos" cuenta los socios vivos y "Sin membresía" es el total menos la suma de los cinco estados, que nunca es negativo. Aceptada para v0.1.
+- Paginación en celular: "Cargar más" acumula tarjetas (US-072, D39) en vez de "Anterior" y "Siguiente". La lista se corta en 20 páginas y muestra "Se muestran los primeros N socios". US-072 pide "Cargar más" hasta el total; el tope es una desviación que ya fijó D39, no la regla de la historia. Aceptada para v0.1.
+- Botón "+ Nuevo": en celular es un botón flotante (blueprint F2); el diseño lo pone junto al título. Aceptada.
+- Círculo de la foto en la tarjeta: llega con los adjuntos (v0.3). Depende de versión futura (v0.3).
+- "12 clases · quedan 2" en la tarjeta: `GET /members` no trae las clases restantes. Depende de versión futura (clases, v0.4).
+- Columnas de escritorio: el diseño pide teléfono, última asistencia y una columna "Acción" (Ver, Renovar, Vender). La lista no devuelve datos cifrados (N-01) y la asistencia llega con v0.4; las acciones están en la ficha y en Membresías. Teléfono: aceptada para v0.1 (N-01). Asistencia: depende de v0.4. Acción: aceptada.
+- Documento enmascarado bajo el nombre: la lista no lo trae (N-01); se ve en la ficha. Aceptada para v0.1.
+- Columna "Vence": fecha con año. No lleva "Vencido · 5 días" ni "reanuda 1 nov", porque la fila no trae días restantes ni fecha de reanudación. Aceptada para v0.1.
+- Filtro por última asistencia: v0.4 (EP-21). Depende de versión futura.
+- "Exportar": v0.2 (Q15, N-29, EP-16, US-139). Depende de versión futura (v0.2). El comentario de `MembersListPage.tsx` lo atribuye a US-076 (dar de baja); la atribución está mal y debe corregirse.
+- Encabezado sin "· 269 con membresía": el número ya está en los chips. Aceptada.
+- "Ordenar por: Vencimiento más próximo": `GET /members` solo ordena por apellido, nombre y fecha de alta (`members/service.py`, `_ORDEN`). Ordenar por fin de membresía cruza `members` con `memberships` dentro de la consulta de socios, algo que la regla 2 de `CLAUDE.md` no permite sin un puerto. Decisión S3-D98: no entra en v0.1.
 
-### Confirmación de sobrepago y de duplicado (S3-D41, S3-C22)
+### 10.2 Ficha del socio (S3-F1 y S3-F7)
 
-El diseño muestra la advertencia de Q5 como un aviso del front. Desde el Sprint 3 la confirmación vive en el servidor: sin `confirm_overpayment` el API responde 409 `payment_exceeds_balance` (`field="amount_cop"`), y sin `confirm_duplicate` responde 409 `payment_possible_duplicate` cuando hay un pago igual (misma membresía, quien registra, valor, medio y referencia) no anulado en los últimos 120 s. La pantalla muestra el `ConfirmModal` y reenvía con la confirmación. `confirm_*` no se guardan. En la venta con primer pago solo aplica el sobrepago, contra el precio del plan.
+Pantalla `Socio_Ficha.html`. Ruta `/socios/:id`.
 
-### Avisos de datos personales en textos libres (S3-D50)
+- Foto y cuatro tarjetas de resumen (Membresía, Asistencia, Último WOD, Avisos): la foto llega con los adjuntos (v0.3). La tarjeta Membresía es la de la vigente, dentro de la pestaña Membresías. Las otras tres llegan con sus versiones (Avisos v0.2, Asistencia v0.4, Último WOD v0.5). Depende de versión futura.
+- Acciones del encabezado: el diseño pone "Renovar" y "Registrar pago" arriba. Aquí van en las pestañas: Membresías (Renovar, Registrar saldo) y Pagos (Registrar pago). "Vender membresía" siempre lleva a la venta; si el socio ya tiene una vigente, el 409 de la venta ofrece "Renovar" (S3-D65). Aceptada para v0.1.
+- Menú "Más": no existe. Traería WhatsApp (v0.2) y el enlace al portal (v1.0). "Dar de baja" va como botón del encabezado. El menú depende de versión futura; el botón, aceptada.
+- Aviso "Sin autorización de datos registrada" (Q16): aparece cuando `data_consent_at` es nulo. El diseño no lo dibuja. Aceptada.
+- Socio dado de baja: el diseño no dibuja el estado. La ficha muestra la etiqueta "Dado de baja" con la fecha y queda en solo lectura (editar responde 409 `member_deactivated`). "Mostrar" sigue disponible (N-20). Aceptada.
+- "Reactivar": el diseño no tiene la acción. Solo la ve el admin; reemplaza a "Dar de baja" en el menú de un socio dado de baja (`POST /members/{id}/reactivate`, N-20). Si el documento ya lo usa otro socio vivo, el 409 `member_document_duplicated` enlaza a ese socio. Aceptada.
+- Pestañas: Asistencia (v0.4), Resultados (v0.5), Atleta (v0.6), Avisos (v0.2) y Adjuntos (v0.3) se muestran deshabilitadas hasta su versión. Historial también se muestra deshabilitada: su pestaña es de US-106 (Sprint 4A, S4A-F2), no de v0.1. Depende de versión futura.
+- Pestañas Membresías y Pagos: existen como rutas hijas (S3-D65). Aceptada.
 
-Bajo los campos "Referencia" (registrar pago, primer pago de la venta) y "Motivo" (anular pago, anular membresía) el front muestra "No escribas teléfonos, documentos ni datos de salud". El diseño no lo dibuja. La referencia además solo admite el patrón de comprobante `^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,63}$`. Residual registrado: la auditoría inmutable conserva el texto escrito; la supresión llega con US-119.
+### 10.3 Pestaña Datos y edición del socio (S3-F1)
 
-### Rutas y contratos que cambian respecto del diseño o de los desgloses
+Pantallas `Socio_Ficha.html` (pestaña Datos) y `Socio_Form.html` en modo editar. Rutas `/socios/:id` (pestaña índice) y `/socios/:id/editar`.
 
-- `GET /api/v1/payments/methods` responde `{ items }`, no un arreglo (S3-C7).
-- Las pestañas Membresías y Pagos de la ficha son rutas hijas reales: `/socios/:id/membresias` y `/socios/:id/pagos` (S3-D65, E3, E14).
-- El panel de registrar pago se abre desde cualquier pantalla con `?pago=<membership_id>` o `?pago=nuevo&socio=<member_id>` (S3-D65).
+- Contacto de emergencia: el diseño muestra nombre y parentesco en claro y enmascara solo el teléfono. El api cifra y enmascara el contacto completo ("Registrado"); `members.emergency_contact` es un campo cifrado en v0.1 (`CLAUDE.md`, reglas de datos). Aceptada para v0.1.
+- Campos cifrados: "Mostrar" revela un dato con una llamada auditada (US-074) y el claro dura 60 s. El diseño no dibuja el botón ni la auditoría. Aceptada.
+- Edición por rol: `Socio_Form.html` no distingue roles. El coach ve el documento y su tipo de solo lectura; si los envía, aunque sean iguales, el api responde 403 `forbidden_field`. El admin los edita. Aceptada (S3-D46).
+- Campos sensibles al editar: el diseño no dice cómo se cambia un dato cifrado. Aquí van "Cambiar", "Quitar" y "Deshacer" sobre la máscara. Dejar el campo vacío no lo envía; `null` solo se envía con "Quitar". El documento no se quita. Aceptada.
+- Autorización de datos: se puede marcar, nunca retirar (`data_consent: false` da 422). "Registrar autorización" aparece solo si falta. El diseño no lo dice. Aceptada (S3-D46).
+- Sexo: suma "Sin indicar" (no se envía) y "Otro" (`x`), según §3. Aceptada.
+- Foto, firma, documento firmado y archivo: llegan con los adjuntos (v0.3, EP-19). Depende de versión futura.
+- "Acceso al portal": v1.0. "Unidad para cargas": v0.6 (atleta). "Observaciones de salud": no existen en el modelo (M-5). Depende de versión futura; las observaciones no tienen modelo.
+- Guardar: el alta vuelve a la lista con aviso (decisión de S2-F6); la edición vuelve a la ficha con "Cambios guardados". El diseño pide "Guardar y vender membresía" y el front no lo ofrece; la venta se alcanza desde la ficha. Pendiente de diseño.
+- Baja y reactivación: la confirmación usa `ConfirmModal` de DESIGN.md; el diseño no la dibuja. Aceptada.
+
+### 10.4 Pestañas Membresías y Pagos de la ficha (S3-F7)
+
+El diseño de la ficha solo enlaza a `Membresias.html` y `Pagos.html`; no dibuja el contenido de las pestañas.
+
+- Pestaña Membresías: tarjetas de la vigente y de la futura, e historial con las columnas de `Membresias.html`, sin "Socio" y sin acciones por fila (las acciones van en las tarjetas). Aceptada.
+- Tarjeta de la futura: el diseño solo dibuja la vigente. Pendiente de diseño (el front la muestra con el mismo formato).
+- "Pendiente de pago" (Q3) en la tarjeta: tono "Por vencer" y su texto. Aceptada.
+- Vigencia con año ("29 sept 2026 – 28 oct 2026", DESIGN.md regla 7). Aceptada.
+- Pestaña Pagos: tabla de `Pagos.html` sin columna "Socio" (es la del socio) y con "Anular" en la fila en vez de "Ver". Aceptada.
+- "Ocultar anulados" (`voided=false` en la URL): no dibujado. Pendiente de diseño.
+- Fechas con año y hora en 12 h (DESIGN.md regla 7). Aceptada.
+- "Registrar pago" oculto para un socio dado de baja. Aceptada (N-20).
+
+### 10.5 Membresías (S3-F5, `/membresias`)
+
+Pantalla `Membresias.html`.
+
+- Chip "Pendiente de pago" (Q3): no dibujado; tono "Por vencer" y su texto. Aceptada.
+- Conteos: el diseño los pone en los chips ("Activas 210"). Aquí van en cinco tarjetas "Socios por estado de su membresía", porque cuentan socios según la membresía que decide su estado (N-26) y no filas de la lista. Un chip con ese número no coincidiría con el listado al pulsarlo. Aceptada para v0.1.
+- "Exportar": v0.2 (EP-16, US-139). Depende de versión futura. El comentario de `MembershipsPage.tsx` lo atribuye a US-076: corregir.
+- Chip "Historial completo": no se construye. Sin estado, la lista ya trae todas menos las anuladas (D18), y marcar todos los chips da el historial completo. Aceptada.
+- Fechas con año ("29 sept 2026"; el diseño escribe "29 sep"). Aceptada (DESIGN.md regla 7).
+- Estado de la fila: la etiqueta común de `StatusTag` ("Por vencer"), no "Vence en 8 días". Aceptada.
+- Pagada completa: "$ 120.000 · pagado" en lugar de la marca "✓" (el significado va en texto). Aceptada.
+- Filtro de plan: el admin ve todos los planes y el coach solo los activos (S2-D26). Un plan inactivo que llega por la URL se muestra como "Plan elegido". Aceptada.
+- Congelar: el modal del diseño tiene un campo "Motivo"; `FreezeIn` no lo recibe y la tabla no tiene columna (D14). Aceptada para v0.1. Si el gimnasio lo pide, es cambio de API y de tabla.
+- Acciones por estado: "Registrar saldo" solo en estados que reciben pagos (N-28) y con saldo; "Congelar" solo para al día o por vencer (el api responde 409 `membership_not_freezable` en las demás). Aceptada (reglas del api).
+
+### 10.6 Vender y renovar (S3-F3, `/membresias/vender`)
+
+Pantalla `Membresia_Vender.html`. Rutas `/membresias/vender`, con `?socio=` y `?renovar=1`.
+
+- Fin de vigencia: el diseño dibuja "29 oct – 27 nov" para un plan de 30 días. El fin es inclusivo (`inicio + duración`, N-23), así que el front dice "hasta el 28 nov 2026". Aceptada (D16, N-23).
+- "Precio pactado": el diseño lo deja ajustar como descuento. `SellMembershipIn` no recibe precio y el servidor copia el del plan. Aceptada para v0.1 (D16). Si el gimnasio pide descuentos, cambia el contrato de venta.
+- Referencia del primer pago: opcional en los tres medios (N-28, D17); el asterisco de Nequi y Bre-B del diseño se ignora. El patrón de comprobante aplica a todos (S3-D50). Aceptada.
+- Fecha y hora del pago: el diseño pide solo la fecha. `paid_at` es un instante (N-27), así que se pide fecha y hora. Aceptada.
+- "Recibo por correo si el socio tiene correo": no aparece; los recibos llegan con v0.2 (P4). Depende de versión futura (v0.2).
+- Tarjeta del socio: el diseño muestra "vigente hasta … · la nueva empieza el …". La búsqueda de socios no pinta la fecha de fin (`MemberStep.tsx`), así que se muestran plan y estado. Pendiente de código: `GET /members` ya trae `membership_end_date` desde S3-B9b y `MemberStep` debe pintarlo.
+- Nombre del socio: si se llega sin el nombre en la navegación (un enlace directo o recargar), la tarjeta dice "Socio elegido" hasta que `GET /members/{id}` lo entrega (S3-F7). Resuelto.
+- "Registra": el resumen muestra el correo de la sesión; el nombre de usuario llega con US-110 (Sprint 4A). Depende de versión futura (Sprint 4A).
+- Botón: "Vender y cobrar" (con pago) o "Vender" (sin pago), en lugar de "Confirmar venta y pago" del diseño. Pendiente de diseño: el diseño debe adoptar el nombre.
+- Sobrepago: el aviso "¿Registrar un pago mayor al precio?" es de la pantalla. El api responde 409 `payment_exceeds_balance`, y solo entonces viaja `confirm_overpayment: true` (S3-D41). Aceptada.
+- Migas, destino de "Cancelar" y estado tras vender: ver 10.13.
+
+### 10.7 Registrar pago y anular (S3-F4, panel `?pago=`)
+
+Pantalla `Pagos.html` (panel lateral). Se abre sobre cualquier pantalla con `?pago=<membresía>` o `?pago=nuevo&socio=<socio>` (S3-D65).
+
+- Fecha y hora del pago: el diseño no la muestra. `paid_at` es un instante (N-27), así que se pide fecha y hora. Aceptada.
+- Referencia opcional (el diseño la marca con asterisco): N-28 y D17. Aceptada.
+- "Nueva venta…" en el selector: el front lo cambia por el enlace "Vender una membresía" cuando el socio no tiene membresías abiertas. Pendiente de diseño.
+- Buscador de socio: aparece solo si la URL no fija ni socio ni membresía. Pendiente de diseño.
+- Tras registrar: el panel muestra "Pago registrado" con "Registrar otro pago". El diseño no dibuja el estado posterior. Pendiente de diseño.
+- Socio dado de baja: el panel lo ofrece. Cobrar una membresía ya vendida no depende del estado del socio (INFO de S3-B4, regla de negocio). Aceptada.
+- Anular pago (`VoidPaymentModal`): motivo de 1 a 500 caracteres y aviso M-7; tras anular, "Pago anulado" con "Registrar pago nuevo" y la precarga. El diseño no dibuja la anulación en el panel. Aceptada (US-097, S3-D50).
+- Medios de pago (Configuración, pestaña "Medios de pago"): el diseño trae casillas para habilitar cada medio, el número de Nequi, la llave de Bre-B y "Exigir referencia en Nequi y Bre-B". El contrato (D24) trae solo nombre y ayuda, y los tres medios están siempre habilitados; las filas son fijas. Aceptada para v0.1. Si el gimnasio pide esos datos, es una decisión nueva.
+- Textos de fecha y saldo con el formato común: "25 sept–24 oct" (el diseño escribe "sep") y "saldo $ 60.000" (el diseño escribe "$60.000"). Aceptada (DESIGN.md regla 7).
+- Límite retroactivo: el texto de `paid_at_too_retroactive` dice 7 días (valor por defecto de N-18). El coach no lee Configuración; si el admin cambia el valor, el texto del coach no cambia. Pendiente de código (menor).
+
+### 10.8 Pantalla de pagos (S3-F6, `/pagos`)
+
+Pantalla `Pagos.html`.
+
+- Primera columna: el socio (DESIGN.md: la primera columna enlaza a la ficha); el diseño pone la fecha primero. Aceptada.
+- Estado del filtro: arranca en "Todos" (D37, para que un pago recién anulado siga visible); el diseño pone "Válidos" primero. Aceptada.
+- Filtro "Retroactivos" y marca "Retroactivo": no dibujados (S3-D51, campo `backdated`). Pendiente de diseño.
+- "Registró": muestra el correo parcial (S3-D57), no el nombre hasta US-110. Las opciones son "Yo" y las personas que aparecen en la página, porque el coach no tiene lista de usuarios. Depende de versión futura (US-110, Sprint 4A).
+- Fecha con año y hora en 12 h ("20 oct 2026, 2:10 p. m."; el diseño escribe "20 oct 14:10"). Aceptada (DESIGN.md regla 7).
+- Valor sin nota de "abono": la fila no trae el saldo de la membresía. Aceptada para v0.1.
+- "Exportar": v0.2 (EP-16, US-139). El comentario de `PaymentsPage.tsx` lo atribuye a US-076: corregir. Depende de versión futura.
+- Detalle del pago: sin "#4812" (los pagos tienen UUID, no consecutivo) y sin "Recibo · Reenviar · Imprimir" (recibo PDF: v0.2, P4). "Registró" muestra el correo parcial. Aceptada; el recibo depende de v0.2.
+- Resumen del mes (`MonthSummary`): el diseño no dibuja el selector de mes ni la tarjeta "Anulados". El mes va en `?mes=AAAA-MM` (por defecto, el mes de Bogotá). El título lleva el año ("Octubre 2026 · total"). Con cinco tarjetas, "Anulados" baja a una segunda fila a 1440 px. Pendiente de diseño.
+
+### 10.9 Resúmenes y KPIs del Sprint 3
+
+- Chips de socios: conteos desde `GET /memberships/summary` (ver 10.1).
+- Resumen de membresías: cinco tarjetas en vez de conteos en los chips (ver 10.5).
+- Resumen mensual de pagos: total del mes, una tarjeta por medio y "Anulados" (ver 10.8).
+- Inicio (`Inicio.html`): sigue en `InicioPage` mínima. Los KPIs llegan con `GET /dashboard` en US-108 (Sprint 4A, S4A-B8). Depende de versión futura (Sprint 4A).
+
+### 10.10 Textos y avisos que el diseño no dibuja (transversal)
+
+- Aviso bajo "Referencia" (registrar pago y primer pago de la venta) y "Motivo" (anular pago y anular membresía): "No escribas teléfonos, documentos ni datos de salud". Aceptada (S3-D50). Residual: la auditoría inmutable guarda el texto escrito; la supresión llega con US-119.
+- Referencia con patrón de comprobante `^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,63}$` (S3-D50). Aceptada.
+- Confirmaciones de sobrepago y de duplicado: el diseño las muestra como aviso del front. Desde el Sprint 3 las exige el servidor: 409 `payment_exceeds_balance` y 409 `payment_possible_duplicate` (pago igual no anulado en los últimos 120 s), S3-D41. El front muestra `ConfirmModal` y reenvía con `confirm_*`, que no se guardan. Aceptada.
+
+### 10.11 Rutas y contratos de Sprint 3
+
+- `GET /api/v1/payments/methods` responde `{ items }`, no un arreglo (S3-C7). Aceptada.
+- Pestañas Membresías y Pagos de la ficha como rutas hijas con contexto (S3-D65, E3, E14). Aceptada.
+- Panel de registrar pago con `?pago=` sobre cualquier pantalla del panel (S3-D65). Aceptada.
+- Ficha con un `id` sin forma de UUID: muestra "Socio no encontrado" sin pedir nada. Aceptada.
+
+### 10.12 Cierre de filas de la sección 9 (Sprint 3)
+
+- Socios, 409 "Ver socio existente": cerrado en S3-F1; la ficha existe en `/socios/:id`.
+- Socios, lista: membresía, plan, filtros, chips y conteos (US-071): cerrados en S3-F2. Asistencia (v0.4) y Exportar (v0.2) siguen pendientes.
+- Socios, venta: la venta existe en `/membresias/vender` (S3-F3). "Guardar y vender membresía" en el alta sigue sin hacerse (ver 10.3).
+- Membresías y pagos de la ficha: cerrados en S3-F7.
+- "Socios con él" (`Planes.html`): no entra en el Sprint 3 (necesita la arista `plans -> memberships`). Lo cierra US-082 (Sprint 4A).
+
+### 10.13 Pendientes de código (no de diseño)
+
+El diseño o una historia piden estos puntos y el código todavía no los hace. No cambian las decisiones de §1 a §9.
+
+- `MemberStep.tsx`: pintar la fecha de fin del socio en la tarjeta (ver 10.6).
+- `SellPage.tsx`: las migas de "Membresías" no enlazan a `/membresias`, que existe desde S3-F5. "Cancelar" vuelve a Socios; el destino debe decidirse ahora que existe `/membresias`. Tras vender, la pantalla queda en "Venta registrada" y el diseño (US-073) lleva a la ficha, que existe desde S3-F1.
+- Comentarios con atribución errónea: `MembersListPage.tsx`, `MembershipsPage.tsx` y `PaymentsPage.tsx` atribuyen "Exportar" a US-076 (dar de baja). La exportación es EP-16 (US-139, v0.2).
+- Texto de `paid_at_too_retroactive` (ver 10.7): el valor de N-18 no se lee para el coach. Menor.
+
+### 10.14 Decisiones de V1
+
+- S3-D98: el orden "Vencimiento más próximo" de la lista de socios no entra en v0.1 (ver 10.1 y `docs/ddd/DECISIONES.md`).

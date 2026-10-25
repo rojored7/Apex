@@ -904,3 +904,7 @@ Corrección consolidada de los dos informes de la revisión de Fase 4 sobre `c97
 ### Contrato (P-API)
 
 `docs/openapi.json` exportado dos veces idéntico; 53 operaciones, 0 nuevas, 0 quitadas. Cambios: componente nuevo `MembershipStatus` (`string`, `enum` de seis valores) y `status` de `MembershipOut`, `MembershipRow` y `SellMembershipOut` pasa de `string` a `$ref` a ese componente; `DELETE /api/v1/members/{member_id}` y `POST /api/v1/members/{member_id}/reactivate` declaran 429. `PaymentTarget` nunca estuvo en el contrato. `web/src/core/api/types.ts` regenerado con `npm run gen:api`.
+
+### Decisión de V1 del Sprint 3 (S3-D98)
+
+- **S3-D98 · Orden "Vencimiento más próximo" en la lista de socios (brecha de `Socios_Lista.html`, `docs/BRECHAS.md` §10.1).** El diseño ofrece ordenar a los socios por vencimiento. `GET /members` solo acepta `last_name`, `first_name` y `created_at` (`members/service.py`, `_ORDEN`). Ordenar por el fin de la membresía exige unir la última membresía de cada socio dentro de la consulta de socios, lo que cruza el módulo `members` con `memberships` fuera de un puerto (regla 2 de `CLAUDE.md`, G-03). Decisión: no entra en v0.1. La pantalla de membresías ya filtra por `ends_from` y `ends_to` para ver quién vence en un rango. Si el gimnasio lo pide, se revisa con un puerto de lectura en `members` o con una consulta del módulo `memberships` que devuelva los socios ordenados por vencimiento. Estado: aceptada para v0.1.

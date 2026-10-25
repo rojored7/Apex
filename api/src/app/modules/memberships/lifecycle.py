@@ -45,6 +45,18 @@ antes de emitir), fija `status = pending_payment` sin tocar `end_date` ni las co
 `flush` (auditoría `update` del admin que anuló) y emite `MembershipActivationReverted` con el
 estado efectivo previo. `pending_payment`, `expired` (efectivo) y `cancelled` no cambian.
 
+`cancel(session, *, membership_id, reason) -> MembershipOut` (S3-B6, US-090; D3, D17, M-5, M-7),
+dentro de `session.begin_nested()` (si un paso o un handler de `MembershipCancelled` falla, nada
+cambia): `rules.normalize_cancel_reason(reason)` (`CancelReasonInvalid`, 422 `field="reason"`;
+también para llamadores internos: un NUL nunca llega a PostgreSQL); `sell.lock_membership`
+(`FOR UPDATE` con `populate_existing`; es el único candado: ni el del socio, D3 y H-3);
+`MembershipNotFound` (404) si no existe; `MembershipAlreadyCancelled` (409) si ya está
+`cancelled`; asigna `status = "cancelled"`, `cancel_reason`, `cancelled_by = get_actor()` y
+`cancelled_at = current_clock().now_utc()`; `flush` (auditoría `update` con el socio como
+sujeto); `emit(MembershipCancelled(membership_id, member_id, reason_len))` (el largo, nunca el
+texto, S3-D70). No toca pagos ni congelaciones. Una anulada es terminal: `guard_identity` rechaza
+cualquier cambio posterior (S3-D48).
+
 Regla de candados (S3-D43, `tests/architecture/test_handlers_no_new_locks.py`): un handler `on_*`
 solo vuelve a pedir la fila que el emisor ya tiene (`sell.lock_membership` con
 `event.membership_id`); nunca el candado del socio ni otro `FOR UPDATE`. `freeze` no es handler:
@@ -63,6 +75,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock, to_bogota_date
+from app.core.context import get_actor
 from app.core.db import violated_constraint
 from app.core.events import emit
 from app.core.locks import lock_member
@@ -70,11 +83,13 @@ from app.modules.members import service as members_service
 from app.modules.memberships.events import (
     MembershipActivated,
     MembershipActivationReverted,
+    MembershipCancelled,
     MembershipFrozen,
 )
 from app.modules.memberships.exceptions import (
     FreezeRejected,
     MemberInactive,
+    MembershipAlreadyCancelled,
     MembershipNotFound,
     OverlapsFutureMembership,
 )
@@ -96,6 +111,7 @@ from app.modules.memberships.rules import (
     compute_status,
     covers,
     find_overlap,
+    normalize_cancel_reason,
     should_revert,
 )
 from app.modules.memberships.schemas import MembershipOut
@@ -308,3 +324,25 @@ async def on_payment_voided(event: payments_service.PaymentVoided, session: Asyn
         membership_id=membresia.id, member_id=membresia.member_id, previous_status=efectivo.value
     )
     await emit(evento, session)
+
+
+async def cancel(session: AsyncSession, *, membership_id: UUID, reason: str) -> MembershipOut:
+    """Anula la membresía con el motivo dado (S3-B6; pasos en el docstring del módulo)."""
+    motivo = normalize_cancel_reason(reason)
+    async with session.begin_nested():
+        membresia = await lock_membership(session, membership_id)
+        if membresia is None:
+            raise MembershipNotFound()
+        if membresia.status == MembershipStatus.cancelled.value:
+            raise MembershipAlreadyCancelled()
+        membresia.status = MembershipStatus.cancelled.value
+        membresia.cancel_reason = motivo
+        membresia.cancelled_by = get_actor()
+        membresia.cancelled_at = current_clock().now_utc()
+        await session.flush()
+        evento = MembershipCancelled(
+            membership_id=membresia.id, member_id=membresia.member_id, reason_len=len(motivo)
+        )
+        await emit(evento, session)
+    filas = (await _freeze_rows_for(session, [membresia.id]))[membresia.id]
+    return await membership_out(session, membresia, filas)

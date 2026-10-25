@@ -150,3 +150,41 @@ class OverlapsFutureMembership(MembershipError):
     status = 409
     code = "overlaps_future_membership"
     default_message = "La congelación haría chocar la membresía con otra del socio."
+
+
+class FutureMembershipExists(MembershipError):
+    """Renovar (S3-B6, Q1, D8) con una futura ya creada (`pending_payment` de cualquier fecha, o
+    `active`/`expiring` que aún no empieza): 409 con el `existing_id` de esa futura."""
+
+    status = 409
+    code = "future_membership_exists"
+    default_message = "El socio ya tiene una renovación por empezar."
+
+
+class MembershipAlreadyCancelled(MembershipError):
+    """La membresía ya estaba anulada (S3-B6, US-090): una anulada es terminal (S3-D48)."""
+
+    status = 409
+    code = "membership_already_cancelled"
+    default_message = "La membresía ya está anulada."
+
+
+class CancelReasonInvalid(MembershipError):
+    """Motivo de anulación vacío, invisible, con caracteres de control, de menos de 5 o de más de
+    500 caracteres tras recortar (S3-B6, D17, M-7): 422 `validation_error` con `field="reason"`,
+    el mismo código que dan los 422 de forma del esquema."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "El motivo de la anulación no es válido."
+
+    def __init__(
+        self,
+        code: str | None = None,
+        message: str = "",
+        *,
+        field: str | None = "reason",
+        existing_id: UUID | None = None,
+        status: int | None = None,
+    ) -> None:
+        super().__init__(code, message, field=field, existing_id=existing_id, status=status)

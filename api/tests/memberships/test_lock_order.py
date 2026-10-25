@@ -21,8 +21,16 @@ socio tiene una `active` de hoy de 120.000 con un pago de 60.000 de la fábrica;
 mientras se registra otro de 60.000 sobre la misma membresía. Las dos piden la fila de la
 membresía por el gate y después la del pago (orden membresía, pago), así que se serializan y
 terminan bien en cualquier orden: el saldo alcanza para el pago nuevo con o sin la anulación, y
-la reversión de la membresía corre en la transacción de `void` sobre la fila que ya tiene). B6 y
-B10 agregan `freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+la reversión de la membresía corre en la transacción de `void` sobre la fila que ya tiene); B6
+`sell`/`cancel` (H-3 punto 3: el socio tiene una `active` del 1 de septiembre al 1 de octubre,
+vencida hoy; el admin la anula mientras se le vende otra desde hoy. `cancel` pide solo la fila
+de la vencida (`lock_membership`, nunca el candado del socio) y `sell` el candado del socio y
+después inserta: no se cruzan, la vencida no choca con la venta ni anulada ni sin anular, y las
+dos terminan bien en cualquier orden) y `freeze`/`register` (S3-D43, pendiente desde B4: la
+`active` del 1 al 31 de octubre se congela del 21 al 30 mientras se le registra un pago de
+60.000; `freeze` toma el socio y después la fila, `register` la fila por el gate; se serializan
+sobre la fila y terminan bien en cualquier orden: el pago no excede el saldo y la membresía no
+está `pending_payment`, así que el handler no la cambia). B10 agrega `sell`/`deactivate`.
 
 Desde B4 el gate de pagos es el REAL (`memberships.service.membership_payability`, registrado al
 importarse `memberships.service`; E9): ya no se usa el doble de `tests/payments/_apoyo.py`.
@@ -143,6 +151,13 @@ async def _registrar_pago(sesion: AsyncSession, escenario: Escenario) -> object:
     )
 
 
+async def _anular_membresia(sesion: AsyncSession, escenario: Escenario) -> object:
+    assert escenario.membership_id is not None
+    return await service.cancel(
+        sesion, membership_id=escenario.membership_id, reason="Cambio de ciudad"
+    )
+
+
 async def _anular_pago(sesion: AsyncSession, escenario: Escenario) -> object:
     assert escenario.payment_id is not None
     return await payments_service.void(
@@ -156,6 +171,8 @@ COMBINACIONES: dict[str, tuple[Preparar, Operacion, Operacion, type[DomainError]
     "sell-register": (_con_activa, _vender, _registrar_pago, MembershipConflict),
     "sell_con_pago-register": (_con_vencida, _vender_con_pago, _registrar_pago, None),
     "register-void": (_con_activa_y_un_pago, _registrar_pago, _anular_pago, None),
+    "sell-cancel": (_con_vencida, _vender, _anular_membresia, None),
+    "freeze-register": (_con_activa, _congelar, _registrar_pago, None),
 }
 
 

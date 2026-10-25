@@ -11,6 +11,8 @@
 - S3-B2: `ruta_congelar(membership_id)`, `cuerpo_congelacion(desde, hasta, **cambios)`,
   `CAMPOS_FREEZE` (claves exactas de `FreezeOut`), `congelar(session, actor, **datos)` (como
   `vender`) y `congelaciones_de(session, membership_id)` (SQL crudo, orden `frozen_from`).
+- S3-B6: `ruta_cancelar(membership_id)`, `cuerpo_cancelacion(reason)` y `cancelar(session, actor,
+  **datos)` (`service.cancel` bajo `actor_scope(actor)` y commit, como `vender`).
 """
 
 from __future__ import annotations
@@ -137,3 +139,20 @@ _CONGELACIONES = text(
 async def congelaciones_de(session: AsyncSession, membership_id: UUID) -> list[dict[str, Any]]:
     filas = (await session.execute(_CONGELACIONES, {"m": membership_id})).mappings().all()
     return [dict(f) for f in filas]
+
+
+def ruta_cancelar(membership_id: UUID | str) -> str:
+    return f"{MEMBERSHIPS}/{membership_id}/cancel"
+
+
+def cuerpo_cancelacion(reason: str) -> dict[str, Any]:
+    """Cuerpo de `POST /memberships/{id}/cancel` (S3-B6)."""
+    return {"reason": reason}
+
+
+async def cancelar(session: AsyncSession, actor: UUID, **datos: Any) -> MembershipOut:
+    """`service.cancel` bajo `actor_scope(actor)` y commit (una petición, una transacción)."""
+    with actor_scope(actor):
+        salida = await service.cancel(session, **datos)
+        await session.commit()
+    return salida

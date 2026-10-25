@@ -40,6 +40,9 @@ CON_LIMITE = {
     ("post", "/api/v1/memberships/{membership_id}/payments"),
     # S3-B5 (E2, H-2, E15): anular un pago consume `admin-write`.
     ("post", "/api/v1/payments/{payment_id}/void"),
+    # S3-B6 (E2, H-2): anular una membresía consume `admin-write` (compartida con anular un pago);
+    # la vista previa de la renovación es una lectura y no tiene límite (S3-D42).
+    ("post", "/api/v1/memberships/{membership_id}/cancel"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

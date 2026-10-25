@@ -1375,3 +1375,181 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
     amount_cop = 1 WHERE id = <anulado>` → `ERROR 23000: payments_immutable: already_voided`,
     `CONSTRAINT NAME: payments_immutable`; después el pago sigue en 60.000 y anulado.
 - `/health` y `/api/v1/health` → 200.
+
+### S3-B6 · Rojo (B6.1 stubs y B6.2 Rojo; sin migración)
+
+- Línea base: HEAD `f2aab11`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.940 ok,
+  4 saltadas, 3 deseleccionadas; `ruff check` y `mypy src` (93 archivos) limpios. Corrida completa
+  antes de tocar `src` (lección de B5: `test_openapi_export` exporta en un subproceso).
+- Rojo: 3.060 recolectadas (3 deseleccionadas); **93 fallan**, 2.960 ok, 4 saltadas. `ruff format`,
+  `ruff check` y `mypy src` (93 archivos) limpios. `db_test` sin residuos: `alembic_version =
+  0011_payments_immutability`, 0 pagos, 0 membresías, 0 congelaciones, 0 socios, 0 planes, 0
+  usuarios `@test.apex`, 0 sesiones `idle in transaction`, los siete triggers de `memberships` y
+  `payments` en `A`. `apex-db-1` no se tocó (sin migración).
+  - Verdes de la línea base que pasan a rojo: solo `test_docs_openapi_json_esta_al_dia` (P-API,
+    B6.4). Salen de la línea base 3 pruebas retiradas (abajo): 2.940 − 3 − 1 = 2.936 siguen
+    verdes.
+  - Nuevas en rojo (92): `tests/memberships/test_renew_service.py` 37 (`NotImplementedError` de
+    `plan_renewal`, de la rama `renew=True` de `sell` y de `renewal_preview`);
+    `test_renew_router.py` 11 (201, 409, 429, vista previa 200/404/409/422 `plan_inactive` y
+    "sin límite": 500 por el stub); `test_cancel_service.py` 37 (`normalize_cancel_reason` y
+    `cancel`); `test_cancel_router.py` 6 (200, 404, 409, 429 y los 422 de 4 y de 501
+    caracteres, que decide el service); `test_lock_order[sell-cancel]`.
+  - Nuevas verdes sobre los stubs (24; el stub ya es el contrato): `test_renew_router.py` 7
+    (`renew: false` explícito, 403 `member`, 401, 422 de `plan_id` ausente y no UUID, 403/401 de la
+    vista previa, OpenAPI de la vista previa); `test_cancel_router.py` 10 (403 coach y `member`,
+    401, 422 de forma: ausente, vacío, NUL y 100.000 caracteres, campo desconocido, `membership_id`
+    no UUID, OpenAPI con `maxLength` 2000); `test_cancel_service.py` 2 (topes 5 y 500, esquema
+    `CancelMembershipIn`); `test_lock_order[freeze-register]` 1; `test_events_without_pii.py` 4.
+    Cambiadas y verdes: `test_error_codes_per_route` y `test_user_limits_catalog` (E2).
+- Verde desechable (revertido; sin migración, solo `db_test`): `plan_renewal` y
+  `normalize_cancel_reason`, la rama `renew` de `sell` (contexto con candados, `classify_open`
+  sobre el estado efectivo, `FutureMembershipExists`, `plan_renewal`, `renewal=renew`),
+  `renewal_preview` sin candados (`plans.get` sin `for_share`) y `cancel` (normaliza, un
+  `lock_membership`, 404, 409, las cuatro columnas, `flush`, `emit`). `tests/memberships
+  tests/payments tests/migrations tests/architecture`: 1.148 ok, 1 saltada; suite completa: 3.052
+  ok, 4 saltadas, 1 fallo (`test_docs_openapi_json_esta_al_dia`, P-API). Sin defectos de prueba.
+  Después, `rules`, `sell` y `lifecycle` restaurados desde copia (`ruff format` sin cambios).
+- Stubs (B6.1): `memberships/exceptions.py` (`FutureMembershipExists` 409
+  `future_membership_exists`; `MembershipAlreadyCancelled` 409 `membership_already_cancelled`;
+  `CancelReasonInvalid` 422 `validation_error` con `field="reason"` por defecto y la firma de
+  `DomainError`); `memberships/events.py` (`MembershipCancelled(membership_id, member_id,
+  reason_len)`); `memberships/rules.py` (`CANCEL_REASON_MIN = 5`, `CANCEL_REASON_MAX = 500`,
+  `RenewalPlan(start_date, end_date, agreed_price_cop)` definitivo, `plan_renewal(current, plan,
+  price_cop, today)` y `normalize_cancel_reason(reason)` con `NotImplementedError`);
+  `memberships/schemas.py` (`SellMembershipIn` **sin** el validador provisional de `renew` de B1
+  M1; `CANCEL_REASON_INPUT_MAX = 4 * CANCEL_REASON_MAX = 2000`; `CancelMembershipIn(reason)` con
+  `StringConstraints(max_length=2000)` y `check_visible_text`, `extra="forbid"`;
+  `RenewalPreviewOut(start_date, end_date, agreed_price_cop, current_end_date: date | None)`);
+  `memberships/sell.py` (la rama `renew=True` sigue en `NotImplementedError`, ahora alcanzable por
+  HTTP: 500 hasta el Verde; `renewal_preview(session, *, member_id, plan_id)` stub; docstring con
+  el diseño); `memberships/lifecycle.py` (`cancel(session, *, membership_id, reason)` stub y
+  docstring); `memberships/service.py` re-exporta `MembershipCancelled`, `cancel` y
+  `renewal_preview`; `memberships/router.py`: `GET /members/{member_id}/memberships/renewal-preview`
+  (`plan_id` de query obligatorio, `StaffDep`, `responses_for(404, 409, 422)`, sin límite, `no_store`
+  del router) y `POST /memberships/{membership_id}/cancel` (200 `MembershipOut`, `AdminDep`,
+  `enforce_user_limit(request, "admin-write", principal.user_id)`, `responses_for(404, 409, 422,
+  429)`).
+- Archivos de prueba nuevos: `tests/memberships/test_renew_service.py` (37),
+  `test_renew_router.py` (18), `test_cancel_service.py` (39), `test_cancel_router.py` (16);
+  `tests/architecture/test_events_without_pii.py` (4). Cambiados: `tests/memberships/_apoyo.py`
+  (`ruta_cancelar`, `cuerpo_cancelacion`, `cancelar`), `test_lock_order.py` (`_anular_membresia`,
+  `sell-cancel` y `freeze-register`), `test_sell_service.py` (sale
+  `test_renovar_sigue_sin_implementar_hasta_b6` y el docstring apunta a `test_renew_service.py`),
+  `tests/architecture/test_error_codes_per_route.py` (E2: `CON_LIMITE` gana solo `("post",
+  "/api/v1/memberships/{membership_id}/cancel")`). Retirado: `tests/memberships/
+  test_sell_router_renew.py` (S3-B1 M1; sus dos casos quedan invertidos en `test_renew_router.py`:
+  `test_renew_true_ya_no_es_un_422_de_forma` y `test_renew_false_explicito_sigue_vendiendo`). Sin
+  cambio: `test_user_limits_catalog.py` (`admin-write` ya tenía ruta desde B5) y
+  `test_handlers_no_new_locks.py` (la lista exacta sigue con los dos handlers: `cancel` no es
+  `on_*`).
+- Importadores de lo tocado: `memberships/exceptions.py` lo importan `memberships/{lifecycle,rules,
+  sell}.py` y pruebas; `memberships/events.py` `memberships/{lifecycle,sell,service}.py`;
+  `memberships/rules.py` `memberships/{lifecycle,queries,sell,schemas}.py` (`schemas` es nuevo:
+  lee `CANCEL_REASON_MAX`; `rules` no importa `schemas`, sin ciclo), `tests/factories/
+  memberships.py` y pruebas; `memberships/schemas.py` `memberships/{lifecycle,queries,router,
+  sell}.py`, `tests/memberships/_apoyo.py`, `test_service_import_graph.py`,
+  `test_find_forbidden_imports.py` y pruebas; `memberships/sell.py` `memberships/{lifecycle,
+  service}.py` y pruebas; `memberships/lifecycle.py` `memberships/service.py`,
+  `test_handlers_no_new_locks.py` y pruebas; `memberships/service.py` `memberships/router.py`,
+  `tests/memberships/{conftest,_apoyo}.py` y pruebas; `memberships/router.py` solo `main.py` (por
+  `MODULES`). Ningún archivo de `src` cambia de firma: todo es agregado salvo el validador
+  retirado de `SellMembershipIn` (el contrato publicado de `renew` sigue siendo booleano).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **Renovar (Q1, D8).** Con `renew=True` el `start_date` recibido se ignora (también uno
+   retroactivo de 30 días: no hay `start_date_too_retroactive`) y no corre `validate_start_date`
+   (una renovación que empieza el 2027-11-26 pasa). Bajo el candado del socio y con el estado
+   EFECTIVO de las no canceladas: una futura de D8 (`pending_payment` de cualquier fecha, incluida
+   una de hoy sin vigente, o `active`/`expiring` con inicio posterior a hoy) da
+   `FutureMembershipExists` con su `existing_id`; si no, `plan_renewal(classify_open(...).current,
+   términos del plan, plan.price_cop, hoy)`. La vigente congelada renueva desde su fin ya
+   extendido. Las canceladas no cuentan. `MembershipSold(renewal=True)` una vez. La vigente no
+   cambia ni gana auditoría; la renovación deja una sola fila `insert` con el socio como sujeto.
+2. **Primer pago de la renovación:** el mismo camino de B4: con pago completo la futura queda
+   `active` (`start_date > hoy`); un monto mayor al precio sin `confirm_overpayment` da 409
+   `payment_exceeds_balance` con `field="first_payment.amount_cop"` y no deja ni membresía ni pago.
+3. **Carrera:** dos renovaciones a la vez (`dos_sesiones`): una gana y la otra recibe
+   `FutureMembershipExists` con el id de la ganadora (la ve como futura tras el candado del socio).
+4. **`renewal_preview`:** mismas validaciones y errores que la renovación (`MemberNotFound`,
+   `MemberInactive`, `PlanInvalid`, `PlanInactive`, `FutureMembershipExists` con `existing_id`) y
+   el mismo resultado que crea después `sell(..., renew=True)`; `current_end_date` es el fin de la
+   vigente o `None`. Sin escribir y **sin candados**: la espía exige que ninguna sentencia tenga
+   `FOR UPDATE`, `FOR SHARE` (el plan se lee con `plans.get` sin `for_share`) ni `pg_advisory`, y
+   ningún `INSERT`/`UPDATE`/`DELETE`.
+5. **Rutas.** Renovar usa `memberships-write` (la 31 da 429 aunque las 30 primeras sean 404: el
+   límite va antes del service). La vista previa es `GET` con `plan_id` de query obligatorio (422
+   `validation_error` con `field="plan_id"` si falta o no es UUID), sin 429 en el OpenAPI y sin
+   consumir cupo: 40 seguidas del mismo coach dan 200 y ese coach sigue vendiendo.
+6. **`normalize_cancel_reason`:** NFC y recorte con `check_visible_text`, luego largo de 5 a 500;
+   todo rechazo es `CancelReasonInvalid()` (422 `validation_error`, `field="reason"`) sin el valor
+   en el mensaje. `CANCEL_REASON_MIN`/`CANCEL_REASON_MAX` en `rules.py` y el esquema con tope
+   holgado de 2000 (S3-D83): por HTTP, 4 y 501 caracteres los decide el service; vacío, NUL y
+   100.000 el esquema; todos con el mismo código y campo. `cancel` lo aplica también para
+   llamadores internos (un NUL nunca llega a PostgreSQL).
+7. **`cancel`:** un único `FOR UPDATE` (sobre `memberships.memberships`, por `lock_membership`)
+   antes del `UPDATE`, y nunca el candado del socio (ninguna sentencia con `hashtextextended`; el
+   asesor de la cadena de auditoría sí aparece y no cuenta). 404 `membership_not_found`; 409
+   `membership_already_cancelled` sin cambios (una sola auditoría `update`). Cambian exactamente
+   `status`, `cancel_reason` (recortado), `cancelled_by` (el actor) y `cancelled_at`
+   (`current_clock().now_utc()`, igual a `T0`); fechas, pagos (filas y auditoría de `payments`) y
+   congelaciones intactos. Auditoría: un `update` del admin con el socio como sujeto y `before`/
+   `after` con exactamente esas cuatro claves. La salida es `MembershipOut` con sus congelaciones.
+   Un handler de `MembershipCancelled` que lanza deja todo como estaba (`begin_nested`).
+8. **Después de anular:** `sell` con las mismas fechas da `pending_payment`; `register` da 409
+   `membership_cancelled` por el gate real y no crea pago; anular un pago suyo da 200 y no la
+   reactiva (sin `MembershipActivationReverted`); `UPDATE` crudo de `status`, `cancel_reason` o
+   `cancelled_at` da 23000 `memberships_identity`.
+9. **`MembershipCancelled`** tiene exactamente `occurred_at`, `membership_id`, `member_id` y
+   `reason_len` (`int`, el largo del motivo normalizado: 16 para "Cambio de ciudad"); su `repr` no
+   contiene el texto.
+10. **Orden de candados:** `sell-cancel` (socio con una `active` vencida del 1 de septiembre al 1
+    de octubre; se anula mientras se vende otra desde hoy) termina sin error de dominio, sin 55P03
+    ni 40P01, en cualquier orden.
+
+#### Desviaciones del Rojo
+
+- `test_events_without_pii.py` nace aquí (B5 no lo creó; S3-D70 lo ponía en B10 y el plan de B6 lo
+  adelanta). Los eventos de `auth` (`LoginAttempted`, `SessionsRevoked`, `UserLocked`) tienen un
+  campo `reason` que es un `Literal` cerrado (códigos, no texto): la regla acepta un nombre
+  prohibido solo si su tipo es `Literal` o `Literal | None`. Sin esa excepción la prueba fallaría
+  por `auth`, no por B6. La lista prohibida suma `note`, `notes`, `birth_date`,
+  `emergency_contact`, `address`, `cancel_reason` y `void_reason` a la de S3-D70.
+- `test_lock_order` suma `freeze-register` (S3-D43, asignada a B6 en el docstring de la prueba y
+  ausente hasta hoy); pasa sobre el código actual.
+- Las pruebas puras de `plan_renewal` y `normalize_cancel_reason` viven en `test_renew_service.py`
+  y `test_cancel_service.py` (en la línea de gate de B6.5), no en `test_rules.py` (como
+  `should_revert` en B5).
+- La vista previa tampoco toma `FOR SHARE` del plan (lectura estricta de "no toma candado"; el
+  blueprint solo nombraba el del socio).
+- `test_sell_router_renew.py` se retira (S3-B1 M1) y `test_renovar_sigue_sin_implementar_hasta_b6`
+  sale de `test_sell_service.py`; sus casos quedan cubiertos al revés en `test_renew_router.py` y
+  `test_renew_service.py`.
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B6 · Verde (B6.3 a B6.5; sin migración)
+
+- B6.3: `rules.plan_renewal` y `normalize_cancel_reason`; `sell.py` con `_sale_context(lock=...)`,
+  `_open_memberships`, `_renewal_for` (futura → `FutureMembershipExists`, `plan_renewal`, solape),
+  rama `renew` y `renewal_preview` sin candados; `lifecycle.cancel`. `ruff format`, `ruff check` y
+  `mypy src` (93 archivos) limpios. `tests/memberships tests/payments tests/architecture
+  tests/migrations`: 1.148 ok, 1 saltada (igual que el Verde desechable del QA).
+- Revisión de seguridad: 0 CRITICAL/HIGH/MEDIUM, 3 LOW (DECISIONES "S3-B6"); LOW-2 fijado con
+  `test_cancel_service.py::test_sin_actor_falla_cerrado_y_no_cambia_nada` (pasa).
+- B6.4 P-API: `export-openapi` dos veces idéntica (sha256 `43421887…`, +291 líneas en
+  `docs/openapi.json`, +247 en `web/src/core/api/types.ts`); `types.contract.test.ts` 5 ok y
+  `tsc --noEmit` limpio. **F3 puede arrancar con este contrato.**
+- Docs: RUNBOOK §10 "Renovar una membresía" y "Anular una membresía"; DECISIONES "S3-B6".
+- Suite completa: una primera corrida con `--cov` la detuvo el sistema por falta de memoria (sin
+  resultado). Se repitió en dos mitades, de una en una, `-m "not perf"`: (1) `core crypto auth
+  settings cli audit` 1.476 ok, 3 saltadas; (2) `members plans memberships payments migrations
+  architecture` más `test_ci_database.py` y `test_smoke.py` 1.578 ok, 1 saltada, 3
+  deseleccionadas. Total 3.054 ok, 4 saltadas, 0 fallos (el Rojo tenía 3.060 con 93 fallos; +1
+  prueba de la revisión). Después `npx vitest run` en `web/`: 110 archivos, 1.763 ok. Cobertura
+  global no se midió (la corrida con `--cov` de toda la suite es la que agotó la memoria); la del
+  módulo `app.modules.memberships` con `tests/memberships` es 99 % (735 sentencias, 5 sin cubrir;
+  426 ok). `slice-gate.sh` no mide cobertura.
+- B6.5 gate que sella: `memberships` con `test_renew_service`, `test_renew_router`,
+  `test_cancel_service`, `test_cancel_router`, `test_lock_order`, `test_sell_service` y
+  `tests/architecture/test_events_without_pii.py`.

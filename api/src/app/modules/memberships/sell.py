@@ -5,7 +5,13 @@
 membresía ni auditoría, también dentro de la sesión con savepoint de las pruebas.
 
 Pasos, en el orden único de candados de D3:
-1. `renew=True`: `NotImplementedError` hasta B6.
+1. `renew=True` (S3-B6, US-088; Q1, D8): el `start_date` recibido se descarta. Bajo el candado
+   del socio y con las mismas validaciones del paso 2, una futura (D8) da
+   `FutureMembershipExists` (409 `future_membership_exists`, `existing_id`); si no,
+   `rules.plan_renewal(vigente_o_None, plan, price_cop, hoy)` fija inicio, fin y precio. No aplica
+   `validate_start_date` (ni `start_date_too_far` ni el límite retroactivo); `find_overlap` y la
+   `EXCLUDE` siguen siendo la red; el primer pago es el mismo del paso 6 y el evento es
+   `MembershipSold(renewal=True)` (`_renewal_for`; la vista previa usa la misma función).
 2. `_sale_context`: `core.locks.lock_member` (candado del socio, siempre primero);
    `members.service.get_ref` (`MemberNotFound` si no existe; `MemberInactive` si está dado de
    baja o su `status` no es `active`); `plans.service.get(for_share=True)` (`PlanNotFound` pasa a
@@ -28,6 +34,12 @@ Pasos, en el orden único de candados de D3:
    "first_payment")` (E5). La respuesta se arma con la fila que dejó el handler, `paid_cop`
    (`payments.service.sum_not_voided`) y `first_payment_id`. Con `role=None` el pago se registra
    con `LIMITED_ROLE` (no `admin`: tope retroactivo de `paid_at`, falla cerrado).
+
+`renewal_preview(session, *, member_id, plan_id) -> RenewalPreviewOut` (S3-B6, US-088): lo que
+crearía `sell(..., renew=True)` (inicio, fin, precio y `current_end_date`, el fin de la vigente o
+nulo) con las mismas validaciones y errores (`MemberNotFound`, `MemberInactive`, `PlanInvalid`,
+`PlanInactive`, `FutureMembershipExists`), sin escribir y sin candados: ni el del socio, ni
+`FOR SHARE` del plan, ni `FOR UPDATE` (es una lectura; la ruta no consume cupo).
 
 `lock_membership` es la única puerta de `with_for_update` sobre `Membership` (D-3, S3-D59;
 `test_guarded_calls.py`): `FOR UPDATE` con `populate_existing=True`. `get_payment_target` la usa
@@ -59,6 +71,7 @@ from app.modules.members import service as members_service
 from app.modules.members.schemas import MemberRef
 from app.modules.memberships.events import MembershipSold
 from app.modules.memberships.exceptions import (
+    FutureMembershipExists,
     MemberInactive,
     MembershipConflict,
     MembershipOverlap,
@@ -71,14 +84,16 @@ from app.modules.memberships.rules import (
     MembershipSnapshot,
     MembershipStatus,
     PlanTerms,
+    RenewalPlan,
     classify_open,
     compute_end_date,
     effective,
     find_overlap,
+    plan_renewal,
     prefix_field,
     validate_start_date,
 )
-from app.modules.memberships.schemas import PaymentTarget, SellMembershipOut
+from app.modules.memberships.schemas import PaymentTarget, RenewalPreviewOut, SellMembershipOut
 from app.modules.payments import service as payments_service
 from app.modules.payments.schemas import PaymentIn
 from app.modules.plans import service as plans_service
@@ -118,41 +133,61 @@ async def sell(
     `principal.role`; decide la retroactividad de `paid_at`, M-8).
     `enforce_retroactive_limit=False` solo lo pasa la importación del CLI (N-24, L-6).
     """
-    if renew:
-        raise NotImplementedError("S3-B6: renovar una membresía")
     pago_id: UUID | None = None
     pagado = 0
     async with session.begin_nested():
         ctx = await _sale_context(session, member_id, plan_id)
-        inicio = start_date or ctx.today
-        tope = ctx.policy.max_retroactive_days if enforce_retroactive_limit else None
-        validate_start_date(inicio, ctx.today, max_retroactive_days=tope)
-        fin = compute_end_date(inicio, _terms(ctx.plan))
+        if renew:
+            renovacion, _ = await _renewal_for(session, ctx)
+            inicio, fin = renovacion.start_date, renovacion.end_date
+        else:
+            inicio = start_date or ctx.today
+            tope = ctx.policy.max_retroactive_days if enforce_retroactive_limit else None
+            validate_start_date(inicio, ctx.today, max_retroactive_days=tope)
+            fin = compute_end_date(inicio, _terms(ctx.plan))
         await _check_open_memberships(session, ctx, inicio, fin, renew=renew)
-        membresia = await _insert_membership(session, ctx, inicio, fin)
+        membresia = await _insert_membership(session, ctx, inicio, fin, renewal=renew)
         if first_payment is not None:
             pago_id = await _register_first_payment(session, membresia, first_payment, role=role)
             pagado = await payments_service.sum_not_voided(session, membresia.id)
     return _sell_out(membresia, ctx, paid_cop=pagado, first_payment_id=pago_id)
 
 
+async def renewal_preview(
+    session: AsyncSession, *, member_id: UUID, plan_id: UUID
+) -> RenewalPreviewOut:
+    """Vista previa de la renovación, sin escribir y sin candados (docstring del módulo)."""
+    ctx = await _sale_context(session, member_id, plan_id, lock=False)
+    renovacion, vigente = await _renewal_for(session, ctx)
+    return RenewalPreviewOut(
+        start_date=renovacion.start_date,
+        end_date=renovacion.end_date,
+        agreed_price_cop=renovacion.agreed_price_cop,
+        current_end_date=None if vigente is None else vigente.end_date,
+    )
+
+
 def _terms(plan: PlanSnapshot) -> PlanTerms:
     return PlanTerms(kind=plan.kind, duration_days=plan.duration_days, class_count=plan.class_count)
 
 
-async def _sale_context(session: AsyncSession, member_id: UUID, plan_id: UUID) -> _SaleContext:
+async def _sale_context(
+    session: AsyncSession, member_id: UUID, plan_id: UUID, *, lock: bool = True
+) -> _SaleContext:
     """Candados en el orden de D3 (socio y después `FOR SHARE` del plan) y lecturas de la venta.
 
     `MemberNotFound` (404) si el socio no existe; `MemberInactive` si está dado de baja o no
     activo; `PlanInvalid` si el plan no existe o está dado de baja; `PlanInactive` si no está
-    activo.
+    activo. Con `lock=False` (la vista previa de la renovación) hace las mismas lecturas sin
+    ningún candado.
     """
-    await lock_member(session, member_id)
+    if lock:
+        await lock_member(session, member_id)
     socio = await members_service.get_ref(session, member_id)
     if socio.is_deleted or socio.status != MEMBER_ACTIVE:
         raise MemberInactive()
     try:
-        plan = await plans_service.get(session, plan_id, for_share=True)
+        plan = await plans_service.get(session, plan_id, for_share=lock)
     except PlanNotFound as error:
         raise PlanInvalid() from error
     if not plan.is_active:
@@ -187,6 +222,19 @@ async def _check_open_memberships(
     un rango que se cruza con otra no cancelada (también vencida) da `MembershipOverlap` con su
     `existing_id`. La `EXCLUDE` de la base es la red ante la carrera (`_insert_membership`).
     """
+    abiertas = await _open_memberships(session, ctx)
+    if not renew:
+        clasificadas = classify_open(abiertas, ctx.today)
+        existente = clasificadas.current or clasificadas.future
+        if existente is not None:
+            raise MembershipConflict(existing_id=existente.id)
+    choque = find_overlap(start_date, end_date, abiertas)
+    if choque is not None:
+        raise MembershipOverlap(existing_id=choque)
+
+
+async def _open_memberships(session: AsyncSession, ctx: _SaleContext) -> list[MembershipSnapshot]:
+    """Las no canceladas del socio con su estado efectivo (D5) a la fecha de `ctx`."""
     consulta = select(
         Membership.id,
         Membership.status,
@@ -199,24 +247,37 @@ async def _check_open_memberships(
     )
     filas = (await session.execute(consulta)).all()
     congelaciones = await _load_freezes_for(session, [fila.id for fila in filas])
-    abiertas = [
+    return [
         effective(
             _snapshot(fila), ctx.today, ctx.policy.expiring_days, congelaciones.get(fila.id, [])
         )
         for fila in filas
     ]
-    if not renew:
-        clasificadas = classify_open(abiertas, ctx.today)
-        existente = clasificadas.current or clasificadas.future
-        if existente is not None:
-            raise MembershipConflict(existing_id=existente.id)
-    choque = find_overlap(start_date, end_date, abiertas)
+
+
+async def _renewal_for(
+    session: AsyncSession, ctx: _SaleContext
+) -> tuple[RenewalPlan, MembershipSnapshot | None]:
+    """Fechas y precio de la renovación (Q1, D8) y la vigente, si hay.
+
+    Una futura (D8, sobre el estado efectivo) da `FutureMembershipExists` con su `existing_id`;
+    si no, `plan_renewal` desde el fin de la vigente (ya extendido por sus congelaciones) o desde
+    hoy. Un rango que se cruza con otra no cancelada da `MembershipOverlap` (la misma revisión de
+    la venta: así la vista previa responde lo mismo que la renovación).
+    """
+    abiertas = await _open_memberships(session, ctx)
+    clasificadas = classify_open(abiertas, ctx.today)
+    if clasificadas.future is not None:
+        raise FutureMembershipExists(existing_id=clasificadas.future.id)
+    renovacion = plan_renewal(clasificadas.current, _terms(ctx.plan), ctx.plan.price_cop, ctx.today)
+    choque = find_overlap(renovacion.start_date, renovacion.end_date, abiertas)
     if choque is not None:
         raise MembershipOverlap(existing_id=choque)
+    return renovacion, clasificadas.current
 
 
 async def _insert_membership(
-    session: AsyncSession, ctx: _SaleContext, start_date: date, end_date: date
+    session: AsyncSession, ctx: _SaleContext, start_date: date, end_date: date, *, renewal: bool
 ) -> Membership:
     """Inserta la venta en `pending_payment` con el precio y las clases copiados del plan (RN-04,
     D15), hace `flush` (el hook escribe la auditoría con el socio como sujeto) y emite
@@ -246,7 +307,7 @@ async def _insert_membership(
         agreed_price_cop=membresia.agreed_price_cop,
         start_date=membresia.start_date,
         end_date=membresia.end_date,
-        renewal=False,
+        renewal=renewal,
     )
     await emit(evento, session)
     return membresia

@@ -58,3 +58,13 @@ class MembershipActivationReverted(DomainEvent):
     membership_id: UUID
     member_id: UUID
     previous_status: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipCancelled(DomainEvent):
+    """Una membresía quedó anulada (S3-B6, US-090). Lleva el largo del motivo (`reason_len`),
+    nunca su texto (M-7, S3-D70). Lo emite `lifecycle.cancel`."""
+
+    membership_id: UUID
+    member_id: UUID
+    reason_len: int

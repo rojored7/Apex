@@ -1,13 +1,22 @@
 """Esquemas de membresías (S3-B1, US-084; D4, D16).
 
-- `SellMembershipIn`: `plan_id`, `start_date` opcional (hoy si falta), `renew` (`StrictBool`, B6)
-  y `first_payment` opcional, que desde B4 es `payments.schemas.PaymentIn` (D4: una sola fuente
+- `SellMembershipIn`: `plan_id`, `start_date` opcional (hoy si falta; con `renew` se descarta),
+  `renew` (`StrictBool`; S3-B6 quita el validador provisional de B1 que respondía 422) y
+  `first_payment` opcional, que desde B4 es `payments.schemas.PaymentIn` (D4: una sola fuente
   de validadores; el 422 de forma sale con `field="first_payment.<campo>"`).
   `extra="forbid"`: el cliente nunca fija `agreed_price_cop` (D16).
 - `MembershipOut` y `SellMembershipOut` (`first_payment_id`: el pago registrado con la venta, o
   nulo).
 - `FreezeIn` (S3-B2: `frozen_from` y `frozen_to`, `extra="forbid"`) y `FreezeOut` (`id`,
   `frozen_from`, `frozen_to`, `days`, `created_at`).
+- `CancelMembershipIn(reason)` (S3-B6, US-090; D17, M-7; `extra="forbid"`): `reason` es
+  `SafeText` (NFC, recortado, sin `Cc`/`Cf`, con algo visible) con un tope previo holgado de
+  `CANCEL_REASON_INPUT_MAX` (2000) caracteres antes de normalizar (como S3-D83); el largo de 5 a
+  500 tras recortar lo decide `rules.normalize_cancel_reason` en `cancel`, con el mismo 422
+  `validation_error` en `reason`. La respuesta es `MembershipOut`.
+- `RenewalPreviewOut(start_date, end_date, agreed_price_cop, current_end_date)` (S3-B6, US-088):
+  lo que crearía la renovación; `current_end_date` es el fin de la vigente (con la extensión por
+  congelación) o nulo si no hay.
 - Contratos para otros módulos (dataclasses, nunca el ORM): `MembershipRef` (lo que `refs_for`
   devuelve por id de membresía) y `PaymentTarget` (lo que lee el gate de pagos, B4).
 """
@@ -16,10 +25,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Annotated, Final
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StrictBool, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, StrictBool, StringConstraints
 
+from app.core.validators import check_visible_text
+from app.modules.memberships.rules import CANCEL_REASON_MAX
 from app.modules.payments.schemas import PaymentIn
 
 
@@ -31,15 +43,30 @@ class SellMembershipIn(BaseModel):
     renew: StrictBool = False
     first_payment: PaymentIn | None = None
 
-    @field_validator("renew")
-    @classmethod
-    def _renovar_llega_en_b6(cls, valor: bool) -> bool:
-        """Hasta S3-B6 solo `false` (revisión de seguridad de B1, M1): `true` daría 500 por el
-        `NotImplementedError` del service. Es un 422 de forma con `field="renew"`; el contrato
-        sigue declarando `renew` booleano y B6 quita este validador."""
-        if valor:
-            raise ValueError("renew todavía no está disponible")
-        return valor
+
+CANCEL_REASON_INPUT_MAX: Final = 4 * CANCEL_REASON_MAX
+"""Tope holgado de entrada del motivo de anulación (2000), antes de NFC y recorte (S3-D83)."""
+
+
+class CancelMembershipIn(BaseModel):
+    """Cuerpo de `POST /memberships/{membership_id}/cancel` (S3-B6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[
+        str,
+        StringConstraints(max_length=CANCEL_REASON_INPUT_MAX),
+        AfterValidator(check_visible_text),
+    ]
+
+
+class RenewalPreviewOut(BaseModel):
+    """Vista previa de la renovación (S3-B6): lo mismo que `sell(..., renew=True)` crearía."""
+
+    start_date: date
+    end_date: date
+    agreed_price_cop: int
+    current_end_date: date | None
 
 
 class FreezeIn(BaseModel):

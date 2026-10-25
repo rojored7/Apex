@@ -40,8 +40,18 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   (`covers` falso tras anular un pago) vuelve a `pending_payment`; `pending_payment`, `expired` y
   `cancelled` nunca se revierten.
 
-B6 agrega `plan_renewal` y B7 `parse_status_filter` y
-`resolve_member_status`.
+- `plan_renewal(current, plan, price_cop, today)` (S3-B6, US-088; Q1, D8): `RenewalPlan(start_date,
+  end_date, agreed_price_cop)`. Empieza en `next_start_for_renewal(current, today)` (el día
+  siguiente al fin de la vigente, incluida la extensión por congelación; hoy si no hay vigente o
+  si ya venció), termina en `compute_end_date(inicio, plan)` y cuesta `price_cop`. No muta nada.
+- `normalize_cancel_reason(reason)` (S3-B6, US-090; D17, M-7): el motivo de anular una membresía,
+  en NFC y recortado; vacío, solo espacios, con caracteres de control o invisibles (`Cc`, `Cf`),
+  de menos de `CANCEL_REASON_MIN` (5) o de más de `CANCEL_REASON_MAX` (500) caracteres tras
+  recortar es `CancelReasonInvalid` (422, `field="reason"`, sin el valor en el mensaje). Es la
+  regla de `SafeText` más el largo del CHECK `cancel_reason_length`: `cancel` la aplica también
+  cuando no llega por HTTP.
+
+B7 agrega `parse_status_filter` y `resolve_member_status`.
 """
 
 from __future__ import annotations
@@ -53,10 +63,19 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID
 
-from app.modules.memberships.exceptions import StartDateTooFar, StartDateTooRetroactive
+from app.core.validators import check_visible_text
+from app.modules.memberships.exceptions import (
+    CancelReasonInvalid,
+    StartDateTooFar,
+    StartDateTooRetroactive,
+)
 
 MAX_START_AHEAD_DAYS: Final = 366
 """Una venta empieza a más tardar hoy más 366 días (M-4, S3-D47; `renew` no aplica)."""
+CANCEL_REASON_MIN: Final = 5
+"""Largo mínimo del motivo de anular una membresía tras recortar (D17; CHECK de `0008`)."""
+CANCEL_REASON_MAX: Final = 500
+"""Largo máximo del motivo de anular una membresía tras recortar (D17; CHECK de `0008`)."""
 
 
 class MembershipStatus(StrEnum):
@@ -321,3 +340,33 @@ def prefix_field(prefix: str, field: str | None) -> str | None:
 def should_revert(effective_status: MembershipStatus, agreed_price_cop: int, paid_cop: int) -> bool:
     """Verdadero si la membresía debe volver a `pending_payment` tras anular un pago (S3-B5)."""
     return effective_status in _VIGENTES and not covers(agreed_price_cop, paid_cop)
+
+
+@dataclass(frozen=True, slots=True)
+class RenewalPlan:
+    """Resultado de `plan_renewal`: inicio, fin y precio pactado de la renovación (S3-B6)."""
+
+    start_date: date
+    end_date: date
+    agreed_price_cop: int
+
+
+def plan_renewal(
+    current: MembershipSnapshot | None, plan: PlanTerms, price_cop: int, today: date
+) -> RenewalPlan:
+    """Fechas y precio de la renovación (S3-B6, Q1; docstring del módulo). Pura."""
+    inicio = next_start_for_renewal(current, today)
+    return RenewalPlan(
+        start_date=inicio, end_date=compute_end_date(inicio, plan), agreed_price_cop=price_cop
+    )
+
+
+def normalize_cancel_reason(reason: str) -> str:
+    """El motivo recortado y en NFC; `CancelReasonInvalid` si no es válido (S3-B6)."""
+    try:
+        motivo = check_visible_text(reason)
+    except ValueError as error:
+        raise CancelReasonInvalid() from error
+    if not CANCEL_REASON_MIN <= len(motivo) <= CANCEL_REASON_MAX:
+        raise CancelReasonInvalid()
+    return motivo

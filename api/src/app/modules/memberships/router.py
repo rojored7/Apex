@@ -16,6 +16,19 @@
   `freeze_limit_reached`, `freeze_days_exceeded`, `overlaps_future_membership`), 422
   (`validation_error` con `field="frozen_to"`, `freeze_too_retroactive`,
   `freeze_outside_validity`) y 429 (D14).
+- `POST /members/{member_id}/memberships` con `renew: true` (S3-B6, US-088; Q1): la misma ruta y
+  la misma cubeta `memberships-write`; el `start_date` del cuerpo se descarta. 409
+  `future_membership_exists` con `existing_id` si ya hay una futura.
+- `GET /members/{member_id}/memberships/renewal-preview?plan_id=` (S3-B6, US-088; admin y coach,
+  `StaffDep`): 200 `RenewalPreviewOut`. Es una lectura: sin límite por usuario (S3-D42) y sin
+  candados. Códigos 200, 401, 403, 404 (`member_not_found`), 409 (`future_membership_exists`) y
+  422 (`plan_id` ausente o no UUID, `plan_invalid`, `plan_inactive`, `member_inactive`).
+- `POST /memberships/{membership_id}/cancel` (S3-B6, US-090; solo admin, `AdminDep`): 200
+  `MembershipOut` con la membresía anulada. Cuerpo `CancelMembershipIn` (`reason`). Límite por
+  usuario `admin-write` (por defecto 30 por minuto, `USER_ADMIN_WRITE_LIMIT_PER_MIN`, E15),
+  compartido con anular un pago (S3-B5), contado tras la validación de forma y antes del service.
+  Códigos 200, 401, 403, 404 (`membership_not_found`), 409 (`membership_already_cancelled`), 422
+  (`validation_error` con `field="reason"`) y 429.
 Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
 """
 
@@ -29,11 +42,13 @@ from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.ratelimit import enforce_user_limit
-from app.core.security import StaffDep
+from app.core.security import AdminDep, StaffDep
 from app.modules.memberships import service
 from app.modules.memberships.schemas import (
+    CancelMembershipIn,
     FreezeIn,
     MembershipOut,
+    RenewalPreviewOut,
     SellMembershipIn,
     SellMembershipOut,
 )
@@ -89,3 +104,30 @@ async def freeze_membership(
         frozen_from=body.frozen_from,
         frozen_to=body.frozen_to,
     )
+
+
+@router.get(
+    "/members/{member_id}/memberships/renewal-preview",
+    response_model=RenewalPreviewOut,
+    responses=responses_for(404, 409, 422),
+)
+async def renewal_preview(
+    member_id: UUID, plan_id: UUID, principal: StaffDep, session: SessionDep
+) -> RenewalPreviewOut:
+    return await service.renewal_preview(session, member_id=member_id, plan_id=plan_id)
+
+
+@router.post(
+    "/memberships/{membership_id}/cancel",
+    response_model=MembershipOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def cancel_membership(
+    request: Request,
+    membership_id: UUID,
+    body: CancelMembershipIn,
+    principal: AdminDep,
+    session: SessionDep,
+) -> MembershipOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.cancel(session, membership_id=membership_id, reason=body.reason)

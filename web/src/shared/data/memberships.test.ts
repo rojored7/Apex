@@ -86,7 +86,7 @@ describe("useMemberOpenMemberships", () => {
   });
 
   it("una fila con un estado desconocido o un monto decimal es invalid_response", async () => {
-    mockApi({ "GET /memberships": membershipRowsPage([membershipRow({ status: "paused" })]) });
+    mockApi({ "GET /memberships": membershipRowsPage([membershipRow({ status: "paused" as never })]) });
     const bad = renderHook(() => useMemberOpenMemberships(MEMBERS.laura.id), { wrapper: wrapper(testQueryClient()) });
     await waitFor(() => {
       expect(bad.result.current.isError).toBe(true);
@@ -174,7 +174,7 @@ describe("useMemberMemberships", () => {
 
   it.each([
     ["un campo de más", { ...membershipOut(), extra: true }],
-    ["un estado desconocido", membershipOut({ status: "paused" })],
+    ["un estado desconocido", membershipOut({ status: "paused" as never })],
     ["un monto decimal", membershipOut({ paid_cop: 1.5 })],
     ["una congelación con días decimales", membershipOut({ freezes: [{ id: "f1", frozen_from: "2026-10-01", frozen_to: "2026-10-05", days: 2.5, created_at: "2026-10-01T15:00:00Z" }] })],
   ])("%s es invalid_response", async (_case, row) => {

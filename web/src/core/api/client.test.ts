@@ -364,3 +364,100 @@ describe("contexto del gancho del 401 (S2-F3)", () => {
     expect(handler.mock.calls[0]?.[1]).toEqual({ accessToken: null });
   });
 });
+
+describe("503 busy (S3-F3, S3-D67)", () => {
+  function busy(retryAfter: string | null = "1"): Response {
+    return new Response(JSON.stringify({ error: { code: "busy", message: "Base de datos ocupada" } }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", ...(retryAfter === null ? {} : { "Retry-After": retryAfter }) },
+    });
+  }
+
+  it("un GET con 503 busy se reintenta una vez tras los segundos de Retry-After", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(busy("2")).mockResolvedValueOnce(json(200, { ok: true }));
+
+    const pending = api.get<{ ok: boolean }>("/members");
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(await pending).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("si el reintento vuelve a dar busy, lanza el ApiError sin un tercer intento", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(() => Promise.resolve(busy()));
+
+    const pending = api.get("/members").catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(await pending).toMatchObject({ status: 503, code: "busy" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["POST", "PATCH", "PUT", "DELETE"] as const)("un %s con 503 busy nunca se reintenta (escritura)", async (method) => {
+    fetchMock.mockResolvedValue(busy());
+    const call = { POST: api.post, PATCH: api.patch, PUT: api.put, DELETE: api.delete }[method];
+
+    await expect(call("/members/1/memberships", { body: {} })).rejects.toMatchObject({ status: 503, code: "busy", retryAfterS: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin Retry-After espera 1 s; un Retry-After mayor que 5 s espera 5 s", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(busy(null)).mockResolvedValueOnce(json(200, {})).mockResolvedValueOnce(busy("120")).mockResolvedValueOnce(json(200, {}));
+
+    const first = api.get("/a");
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await first;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const second = api.get("/b");
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await second;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("otro 503 (sin el código busy) no se reintenta", async () => {
+    fetchMock.mockResolvedValue(new Response("<html>503</html>", { status: 503 }));
+
+    await expect(api.get("/x")).rejects.toMatchObject({ status: 503, code: "network_error" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el que llama cancela durante la espera, no hay segundo intento y se propaga el AbortError", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    fetchMock.mockResolvedValue(busy("3"));
+
+    const pending = api.get("/x", { signal: controller.signal }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(500);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("revisión S3-F3 (LOW 11): Retry-After 0 en un busy", () => {
+  it("espera al menos 1 s antes del reintento", async () => {
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "busy", message: "x" } }), { status: 503, headers: { "Retry-After": "0" } }))
+      .mockResolvedValueOnce(json(200, {}));
+
+    const pending = api.get("/x");
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

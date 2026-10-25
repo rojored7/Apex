@@ -98,3 +98,76 @@ export async function capture(page: Page, name: string, theme: Theme, width: num
   await page.screenshot({ path, fullPage: true });
   return path;
 }
+
+/**
+ * S3-F3 (S3-D72): documento de 10 dígitos distinto en cada llamada, para que las specs del stack
+ * se puedan correr dos veces seguidas (V4) sin chocar con un 409 de documento duplicado.
+ */
+export function documentoAleatorio(): string {
+  const digits = Array.from(crypto.getRandomValues(new Uint8Array(10)), (byte) => String(byte % 10));
+  return `9${digits.slice(1).join("")}`;
+}
+
+async function accessDe(page: Page, admin: Credentials): Promise<Record<string, string>> {
+  const { access_token } = await login(page.request, admin);
+  return { Authorization: `Bearer ${access_token}` };
+}
+
+export interface SocioCreado {
+  id: string;
+  documento: string;
+  nombre: string;
+}
+
+/** S3-F3: crea un socio activo por el api (POST /members), con documento aleatorio y autorización de datos. */
+export async function crearSocio(page: Page, admin: Credentials = datosDeBase()): Promise<SocioCreado> {
+  const headers = await accessDe(page, admin);
+  const documento = documentoAleatorio();
+  const apellido = `Venta${Date.now().toString(36)}`;
+  const created = await page.request.post(`${API}/members`, {
+    headers,
+    data: { first_name: "Sofía", last_name: apellido, document_type: "CC", document: documento, data_consent: true },
+  });
+  if (!created.ok()) throw new Error(`POST /members respondió ${String(created.status())}.`);
+  const body = (await created.json()) as { id: string };
+  return { id: body.id, documento, nombre: `Sofía ${apellido}` };
+}
+
+export interface PlanCreado {
+  id: string;
+  nombre: string;
+  precio: number;
+}
+
+/** S3-F3: crea un plan activo por días con nombre único (POST /plans, solo admin). */
+export async function crearPlan(page: Page, precio = 120_000, admin: Credentials = datosDeBase()): Promise<PlanCreado> {
+  const headers = await accessDe(page, admin);
+  const nombre = `Mensual ${Date.now().toString(36)}`;
+  const created = await page.request.post(`${API}/plans`, { headers, data: { name: nombre, price_cop: precio, kind: "days", duration_days: 30 } });
+  if (!created.ok()) throw new Error(`POST /plans respondió ${String(created.status())}.`);
+  const body = (await created.json()) as { id: string };
+  return { id: body.id, nombre, precio };
+}
+
+export interface PagoInicial {
+  amount_cop: number;
+  method: "cash" | "nequi" | "breb";
+  reference?: string;
+}
+
+/** S3-F3: vende una membresía por el api (POST /members/{id}/memberships), con primer pago opcional. */
+export async function venderMembresia(page: Page, socioId: string, planId: string, pago?: PagoInicial, admin: Credentials = datosDeBase()): Promise<{ id: string; status: string }> {
+  const headers = await accessDe(page, admin);
+  const response = await page.request.post(`${API}/members/${socioId}/memberships`, {
+    headers,
+    data: { plan_id: planId, ...(pago ? { first_payment: pago } : {}) },
+  });
+  if (!response.ok()) throw new Error(`POST /members/{id}/memberships respondió ${String(response.status())}.`);
+  return (await response.json()) as { id: string; status: string };
+}
+
+/** S3-F3: da de baja lógica al socio creado por la spec (DELETE /members/{id}, B10); sin la ruta no hace nada. */
+export async function darDeBajaSocio(page: Page, socioId: string, admin: Credentials = datosDeBase()): Promise<void> {
+  const headers = await accessDe(page, admin);
+  await page.request.delete(`${API}/members/${socioId}`, { headers });
+}

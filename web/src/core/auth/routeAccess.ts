@@ -6,7 +6,7 @@
 //   caracteres de control (L-5), no públicas y permitidas para el rol; si no, null.
 // Las guardas son comodidad: cada endpoint vuelve a verificar el rol (RN-15).
 import { matchPath } from "react-router";
-import { ROUTE_TABLE, type RouteAccess, type RouteDef } from "../../config/routeTable";
+import { fullPathOf, ROUTE_TABLE, type RouteAccess, type RouteDef } from "../../config/routeTable";
 import { can, type Role } from "./permissions";
 
 export const CHANGE_PASSWORD_PATH = "/cambiar-clave";
@@ -24,16 +24,23 @@ function pathnameOf(path: string): string {
   return cut === -1 ? path : path.slice(0, cut);
 }
 
-/** Definición de la tabla que corresponde a una ruta concreta (sin query ni hash). */
-export function findRoute(path: string): RouteDef | null {
+/**
+ * Orden de prueba (revisión S3-F3, HIGH 1): estáticas antes que dinámicas en toda la tabla
+ * (/socios/nuevo gana a /socios/:id y a su hija índice, como en React Router) y, a igual tipo, la
+ * hija antes que su padre (la hija índice responde en la ruta del padre).
+ */
+function rankOf(def: RouteDef): number {
+  return (fullPathOf(def).includes(":") ? 2 : 0) + (def.parent === undefined ? 1 : 0);
+}
+
+/**
+ * Definición de la tabla que corresponde a una ruta concreta (sin query ni hash). S3-F3 (E3): una
+ * hija ya trae el acceso heredado del padre si no declara uno (childRoute).
+ */
+export function findRoute(path: string, table: readonly RouteDef[] = ROUTE_TABLE): RouteDef | null {
   const pathname = pathnameOf(path);
-  // Las rutas estáticas ganan a las dinámicas (/socios/nuevo frente a /socios/:id).
-  const statics = ROUTE_TABLE.filter((r) => !r.path.includes(":"));
-  const dynamics = ROUTE_TABLE.filter((r) => r.path.includes(":"));
-  for (const def of [...statics, ...dynamics]) {
-    if (matchPath({ path: def.path, end: true }, pathname)) return def;
-  }
-  return null;
+  const ordered = [...table].sort((a, b) => rankOf(a) - rankOf(b));
+  return ordered.find((def) => matchPath({ path: fullPathOf(def), end: true }, pathname) !== null) ?? null;
 }
 
 /** ¿Este rol cumple este acceso? `session` exige cualquier rol; una acción, la matriz. */

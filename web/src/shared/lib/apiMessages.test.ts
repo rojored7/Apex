@@ -48,3 +48,15 @@ describe("toScreenError", () => {
     expect(toScreenError(error(0, "timeout"), byStatus, "Ajeno.")).toMatchObject({ status: 0, code: "timeout", message: GENERIC_MESSAGES.timeout });
   });
 });
+
+describe("connectionMessage con 503 busy (S3-F3, S3-D67)", () => {
+  it("un 503 busy da el mensaje genérico de sistema ocupado", () => {
+    expect(connectionMessage(new ApiError({ status: 503, code: "busy", message: "Base de datos ocupada" }))).toBe("El sistema está ocupado; intenta de nuevo.");
+  });
+
+  it("toScreenError también lo usa", () => {
+    const error = toScreenError(new ApiError({ status: 503, code: "busy", message: "x" }), () => "pantalla", "respaldo");
+
+    expect(error).toMatchObject({ status: 503, code: "busy", message: "El sistema está ocupado; intenta de nuevo." });
+  });
+});

@@ -1,0 +1,430 @@
+/* S3-F3: Membresia_Vender.html (pasos .w-step, cajas .w-box, opciones .w-opt, medios .w-pay,
+   resumen .w-li). Solo variables de tokens.css. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.stepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-pill);
+  font: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepDone .stepNumber {
+  background: var(--ink);
+  color: var(--card);
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.main {
+  display: flex;
+  flex: 999 1 460px;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.h2 {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.alert:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Enlaces sobre la tarjeta: --ink subrayado (--blue-deep sobre --surface no llega a 4,5:1). */
+.link {
+  color: var(--ink);
+  font: var(--text-label);
+  text-decoration: underline;
+}
+
+.link:hover {
+  color: var(--blue-deep);
+}
+
+.link:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-caption);
+}
+
+/* Paso 1: resultados de la búsqueda y socio elegido (.w-opt). */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control);
+  padding: var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease-out;
+}
+
+.option:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.option:disabled {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.option:hover:not(:disabled) {
+  border-color: var(--blue-deep);
+}
+
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.optionName {
+  font: var(--text-label);
+}
+
+.selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 2px solid var(--apex-blue);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+}
+
+.check {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: var(--apex-blue);
+  color: var(--black);
+}
+
+.selectedText {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Paso 2: planes como opciones (.w-opt), dos por fila. */
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.planGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.planOption {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+  cursor: pointer;
+}
+
+.planOption:has(:checked) {
+  border: 2px solid var(--apex-blue);
+  background: var(--blue-tint);
+}
+
+.planOption:has(:focus-visible) {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.radio {
+  flex: 0 0 auto;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--blue-deep);
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* Paso 3: medios de pago grandes (.w-pay, 56 px). */
+.methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.method {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 120px;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control-gym);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-button);
+  cursor: pointer;
+}
+
+.method:has(:checked) {
+  border-color: var(--apex-blue);
+  background: var(--apex-blue);
+  color: var(--black);
+}
+
+.method:has(:focus-visible) {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.methodRadio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--control);
+  color: var(--ink);
+  font: var(--text-body);
+  cursor: pointer;
+}
+
+.checkbox {
+  flex: 0 0 auto;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--blue-deep);
+}
+
+.checkbox:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Resumen (.w-li): fila etiqueta / valor con línea inferior. */
+.summary {
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.list {
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.row dt {
+  color: var(--muted);
+}
+
+.row dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.submit {
+  min-height: 52px;
+}
+
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.secondaryLink:hover {
+  background: var(--blue-tint);
+}
+
+.secondaryLink:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.doneTitle:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.doneActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (width < 768px) {
+  .planGrid,
+  .grid3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .box,
+  .summary {
+    padding: var(--space-4);
+  }
+}

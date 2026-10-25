@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "./errorCodes";
+import { API_ERROR_CODES, BUSY_MESSAGE, CLIENT_ERROR_CODES } from "./errorCodes";
 
 const API_SRC = fileURLToPath(new URL("../../../../api/src/", import.meta.url));
 const WEB_SRC = fileURLToPath(new URL("../../", import.meta.url));
@@ -47,5 +47,32 @@ describe("códigos de error del api (core/api/errorCodes.ts)", () => {
       .filter((file) => literal.test(readFileSync(join(WEB_SRC, file), "utf8")));
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("códigos del Sprint 3 (S3-F3)", () => {
+  it("incluye los de vender, primer pago y renovar, y el 503 busy", () => {
+    expect(Object.values(API_ERROR_CODES)).toEqual(
+      expect.arrayContaining([
+        "busy",
+        "member_inactive",
+        "plan_invalid",
+        "plan_inactive",
+        "start_date_too_retroactive",
+        "start_date_too_far",
+        "membership_conflict",
+        "membership_overlap",
+        "future_membership_exists",
+        "membership_not_found",
+        "payment_exceeds_balance",
+        "payment_possible_duplicate",
+        "payment_limit_reached",
+        "paid_at_too_retroactive",
+      ]),
+    );
+  });
+
+  it("el mensaje genérico del busy dice qué pasó y qué hacer", () => {
+    expect(BUSY_MESSAGE).toBe("El sistema está ocupado; intenta de nuevo.");
   });
 });

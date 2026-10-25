@@ -4,22 +4,25 @@
 //   con `classes`, de 1 a 1.000 clases), con superRefine para la regla que cruza `kind` y
 //   `class_count`. Los campos numéricos viajan como texto (lo que se ve en el campo) y
 //   toPlanCreate los vuelve enteros. Mensajes "qué pasó y qué hacer".
-// - priceInputText: el precio se escribe y se muestra con formatCop ("$ 120.000"). Se reformatea
+// - priceInputText (desde S3-F3, moneyInputText de shared/lib/moneyInput.ts, reexportado): el precio
+//   se escribe y se muestra con formatCop ("$ 120.000"). Se reformatea
 //   un entero bien escrito ("120000", "$ 1.200") o un dígito escrito o borrado sobre un precio ya
 //   formateado. Lo demás (una coma, un punto decimal como "1200.50", letras) queda como está y la
 //   validación lo explica: nunca se convierte un decimal en otro monto (revisión M1).
-// - planRowSchema: PlanOut tal cual (precio entero, RN-01); una forma inesperada es una respuesta
-//   inválida y no se pinta.
+// - planRowSchema, plansPageSchema, PLAN_KINDS y PlanKind viven desde S3-F3 en shared/data/plans.ts
+//   (S3-D65) y se reexportan aquí. planRowSchema es PlanOut tal cual (precio entero, RN-01); una
+//   forma inesperada es una respuesta inválida y no se pinta.
 import { z } from "zod";
-import { pageSchema } from "../../core/api/page";
 import type { components } from "../../core/api/types";
 import { formatCop, formatCount, parseCop } from "../../core/i18n/format";
+import { PLAN_KINDS, type PlanKind } from "../../shared/data/plans";
+
+export { PLAN_KINDS, planRowSchema, plansPageSchema, type PlanKind, type PlanRowView } from "../../shared/data/plans";
+/** S3-F3: el formato del precio al escribir vive en shared/lib/moneyInput.ts (lo usa también la venta). */
+export { moneyInputText as priceInputText } from "../../shared/lib/moneyInput";
 
 export type PlanCreateBody = components["schemas"]["PlanCreate"];
 export type PlanOut = components["schemas"]["PlanOut"];
-export type PlanKind = PlanCreateBody["kind"];
-
-export const PLAN_KINDS = ["days", "classes"] as const satisfies readonly PlanKind[];
 /** Planes.html: "Tipo de duración". */
 export const PLAN_KIND_LABELS: Readonly<Record<PlanKind, string>> = { days: "Por días", classes: "Por número de clases" };
 
@@ -61,10 +64,6 @@ export const PLAN_MESSAGES = {
 } as const;
 
 const INTEGER_TEXT = /^\d+$/;
-/** Lo que se reformatea mientras se escribe: dígitos con separadores de miles y el "$". */
-const PRICE_TYPING = /^[\d\s.$]*$/;
-/** Más dígitos que esto no es un entero seguro y no tiene sentido como precio. */
-const PRICE_MAX_DIGITS = 15;
 
 /** Entero de un campo de texto ("30"), o null si no es un entero sin signo. */
 function integerOf(text: string): number | null {
@@ -73,29 +72,6 @@ function integerOf(text: string): number | null {
 }
 
 const inRange = (value: number | null, min: number, max: number): boolean => value !== null && value >= min && value <= max;
-
-const digitsOf = (text: string): string => text.replace(/\D/g, "");
-
-/**
- * ¿Es un solo dígito escrito o un carácter borrado sobre un precio ya formateado (o vacío)? Así
- * "$ 120.0005" (se escribió un 5) y "$ 1.20" (se borró un 0) se reformatean, pero un punto
- * escrito a mano ("$ 1.200.") o un texto pegado no.
- */
-function isDigitEdit(previous: string, raw: string): boolean {
-  if (previous !== "" && parseCop(previous) === null) return false;
-  if (raw.length === previous.length - 1) return true;
-  return raw.length === previous.length + 1 && digitsOf(raw).length === digitsOf(previous).length + 1;
-}
-
-/** El precio como se muestra mientras se escribe: "120000" → "$ 120.000"; "" → "". */
-export function priceInputText(raw: string, previous = ""): string {
-  if (!PRICE_TYPING.test(raw)) return raw;
-  const digits = digitsOf(raw);
-  if (digits === "") return "";
-  if (digits.length > PRICE_MAX_DIGITS) return raw;
-  if (parseCop(raw) === null && !isDigitEdit(previous, raw)) return raw;
-  return formatCop(Number(digits));
-}
 
 type AddIssue = (path: keyof PlanFormValues, message: string) => void;
 
@@ -162,21 +138,6 @@ export function toPlanCreate(values: PlanFormValues): PlanCreateBody {
   };
   return values.kind === "classes" ? { ...base, class_count: required(integerOf(values.class_count), "class_count") } : base;
 }
-
-export const planRowSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  price_cop: z.number().int(),
-  kind: z.enum(PLAN_KINDS),
-  duration_days: z.number().int(),
-  class_count: z.number().int().nullable(),
-  is_active: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-export type PlanRowView = z.infer<typeof planRowSchema>;
-
-export const plansPageSchema = pageSchema(planRowSchema);
 
 /** El filtro `active` de la URL ("true" o "false"); cualquier otro valor no viaja. */
 export const ACTIVE_FILTERS = ["true", "false"] as const;

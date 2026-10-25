@@ -1,9 +1,12 @@
 // US-067 T2 y US-053 T2: inventario de rutas. routeTable.ts es la única tabla (S2-D23) y
 // debe coincidir con el oráculo escrito a mano desde ROUTES.md; el árbol de routes.tsx
 // solo registra rutas habilitadas y cada hoja declara su acceso.
+// S3-F3 (E3, E14): rutas hijas. Una hija se registra bajo su padre (`children`, la índice con
+// `index`), nunca como hoja plana; hereda feature y layout (y el acceso si no declara uno); la
+// clave de una ruta es (parent, path) y el oráculo compara también el anidamiento.
 import type { RouteObject } from "react-router";
-import { ENABLED_FEATURES, FEATURES } from "./config/features";
-import { ROUTE_TABLE } from "./config/routeTable";
+import { ENABLED_FEATURES, FEATURES, type Feature } from "./config/features";
+import { childRoute, fullPathOf, ROUTE_TABLE, routeKey, type RouteDef } from "./config/routeTable";
 import { REFERENCE_ROUTES } from "./config/routes.reference";
 import { ACTIONS } from "./core/auth/permissions";
 import { buildRoutes } from "./routes";
@@ -22,18 +25,24 @@ function leaves(routes: RouteObject[], out: Leaf[] = []): Leaf[] {
   return out;
 }
 
-const strip = ({ path, feature, access, layout }: (typeof ROUTE_TABLE)[number]) => ({ path, feature, access, layout });
+const strip = ({ path, feature, access, layout, parent }: (typeof ROUTE_TABLE)[number]) => ({ path, feature, access, layout, parent });
+const byKey = (a: { path: string; parent?: string | undefined }, b: { path: string; parent?: string | undefined }) => routeKey(a).localeCompare(routeKey(b));
 
 describe("tabla de rutas (routeTable.ts)", () => {
-  it("coincide exactamente con el oráculo de ROUTES.md", () => {
-    const byPath = (a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path);
-    expect(ROUTE_TABLE.map(strip).sort(byPath)).toEqual([...REFERENCE_ROUTES].sort(byPath));
+  it("coincide exactamente con el oráculo de ROUTES.md, anidamiento incluido", () => {
+    expect(ROUTE_TABLE.map(strip).sort(byKey)).toEqual([...REFERENCE_ROUTES].sort(byKey));
   });
 
-  it("no tiene rutas repetidas ni ninguna /hoy (Q25)", () => {
-    const paths = ROUTE_TABLE.map((r) => r.path);
-    expect(new Set(paths).size).toBe(paths.length);
+  it("no tiene rutas repetidas por (parent, path) ni ninguna /hoy (Q25)", () => {
+    const keys = ROUTE_TABLE.map(routeKey);
+    expect(new Set(keys).size).toBe(keys.length);
+    const paths = ROUTE_TABLE.map(fullPathOf);
     expect(paths.some((p) => p === "/hoy" || p.startsWith("/hoy/"))).toBe(false);
+  });
+
+  it("todo padre declarado existe en la tabla", () => {
+    const paths = new Set(ROUTE_TABLE.filter((r) => r.parent === undefined).map((r) => r.path));
+    for (const route of ROUTE_TABLE) if (route.parent !== undefined) expect(paths.has(route.parent), route.path).toBe(true);
   });
 
   it("cada acceso es public, session o una acción de la matriz", () => {
@@ -57,7 +66,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("en el Sprint 2 el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Planes (S2-F7), Usuarios (S2-F4a) y Configuración (S2-F5) tienen página; no queda ninguna pendiente", () => {
+  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), Planes (S2-F7), Vender (S3-F3), Usuarios (S2-F4a) y Configuración (S2-F5)", () => {
     expect(ROUTE_TABLE.filter((r) => r.load).map((r) => r.path)).toEqual([
       "/login",
       "/recuperar",
@@ -67,6 +76,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/socios",
       "/socios/nuevo",
       "/planes",
+      "/membresias/vender",
       "/sistema/usuarios",
       "/sistema/configuracion",
     ]);
@@ -106,5 +116,80 @@ describe("árbol de routes.tsx", () => {
   it("termina en una ruta comodín de NotFound", () => {
     const root = buildRoutes()[0];
     expect(root?.children?.at(-1)?.path).toBe("*");
+  });
+});
+
+describe("rutas hijas (S3-F3, E3 y E14) con una tabla de prueba", () => {
+  const page = (text: string) => vi.fn(async () => Promise.resolve({ default: () => text }));
+  const FICHA: RouteDef = { path: "/socios/:id", title: "Ficha del socio", feature: "members", access: "members.view", layout: "panel", load: page("Ficha") };
+  const DATOS = childRoute(FICHA, "", "Datos", { load: page("Datos") });
+  const MEMBRESIAS = childRoute(FICHA, "/socios/:id/membresias", "Membresías del socio", { access: "memberships.view", load: page("Membresías") });
+  const PAGOS = childRoute(FICHA, "/socios/:id/pagos", "Pagos del socio");
+  const SIN_PADRE: RouteDef = { path: "/wods/:id", title: "WOD", feature: "wods", access: "wods.view", layout: "panel" };
+  const HUERFANA = childRoute(SIN_PADRE, "/wods/:id/resultados", "Resultados del WOD", { load: page("Resultados") });
+  const LISTA: RouteDef = { path: "/socios", title: "Socios", feature: "members", access: "members.view", layout: "panel", load: page("Lista") };
+  const TABLE: readonly RouteDef[] = [LISTA, FICHA, DATOS, MEMBRESIAS, PAGOS, SIN_PADRE, HUERFANA];
+  const ALL: ReadonlySet<Feature> = new Set(FEATURES);
+
+  function find(routes: RouteObject[], test: (r: RouteObject) => boolean): RouteObject | undefined {
+    for (const route of routes) {
+      if (test(route)) return route;
+      const inner = route.children ? find(route.children, test) : undefined;
+      if (inner) return inner;
+    }
+    return undefined;
+  }
+
+  it("childRoute hereda feature y layout del padre, el acceso si no declara uno y guarda el padre", () => {
+    expect(PAGOS).toMatchObject({ path: "/socios/:id/pagos", feature: "members", layout: "panel", access: "members.view", parent: "/socios/:id" });
+    expect(MEMBRESIAS.access).toBe("memberships.view");
+    expect(DATOS).toMatchObject({ path: "", parent: "/socios/:id" });
+    expect(Object.isFrozen(DATOS)).toBe(true);
+  });
+
+  it("la clave (parent, path) distingue la hija índice de su padre y fullPathOf da la ruta que abre", () => {
+    expect(routeKey(DATOS)).not.toBe(routeKey(FICHA));
+    expect(new Set(TABLE.map(routeKey)).size).toBe(TABLE.length);
+    expect(fullPathOf(DATOS)).toBe("/socios/:id");
+    expect(fullPathOf(MEMBRESIAS)).toBe("/socios/:id/membresias");
+    expect(fullPathOf(FICHA)).toBe("/socios/:id");
+  });
+
+  it("una hija con load aparece bajo su padre (la índice con index) y no como hoja plana", () => {
+    const routes = buildRoutes(TABLE, ALL);
+    const ficha = find(routes, (r) => r.path === "/socios/:id");
+
+    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias"]);
+    const index = ficha?.children?.[0];
+    expect(index?.index).toBe(true);
+    expect(index?.lazy).toBeDefined();
+    expect(index?.handle).toEqual({ feature: "members", access: "members.view", layout: "panel", title: "Datos" });
+    const panelChildren = find(routes, (r) => (r.children ?? []).some((c) => c.path === "/socios"))?.children ?? [];
+    expect(panelChildren.map((c) => c.path)).toEqual(["/socios", "/socios/:id"]);
+  });
+
+  it("una hija sin load no se registra, ni una hija cuyo padre no tiene página", () => {
+    const paths = leaves(buildRoutes(TABLE, ALL)).map((l) => l.path);
+
+    expect(paths).not.toContain("/socios/:id/pagos");
+    expect(paths).not.toContain("/wods/:id/resultados");
+    expect(paths).not.toContain("/wods/:id");
+  });
+
+  it("la hija hereda la feature: con members deshabilitada no se registra ni el padre ni sus hijas", () => {
+    const routes = buildRoutes(TABLE, new Set<Feature>(["auth", "dashboard"]));
+
+    expect(find(routes, (r) => r.path === "/socios/:id" || r.path === "/socios/:id/membresias" || r.index === true)).toBeUndefined();
+  });
+
+  it("el oráculo compara también el padre: una hija sin parent en el oráculo no coincide", () => {
+    const table = [FICHA, MEMBRESIAS].map(strip);
+    const oracle = [
+      { path: "/socios/:id", feature: "members", access: "members.view", layout: "panel" },
+      { path: "/socios/:id/membresias", feature: "members", access: "memberships.view", layout: "panel" },
+    ];
+
+    expect(table).not.toEqual(oracle);
+    expect(table).toEqual([oracle[0], { ...oracle[1], parent: "/socios/:id" }]);
   });
 });

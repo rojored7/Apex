@@ -1140,3 +1140,42 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - Desviaciones: S3-D81 (`role=None` como rol limitado) y S3-D82 (cubeta `payments-write` también
   en la venta con pago); el volcado queda `rw-r--r--` en NTFS como en B1 a B3. La evidencia de B4.9
   va al commit `docs(sprint-03): evidencia de S3-B4` (E8).
+
+### Evidencia de S3-B4 (B4.9, después del sello; E8)
+
+- Gates B4.8 seguidos, sin editar entre ellos, `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo de cada
+  archivo, todos verdes al primer intento: 1 `architecture` (con `test_migrations`, `test_0011`,
+  `test_0010`, `test_triggers_siempre_activos`, `test_gates_registered` y
+  `test_payments_immutability_code`) 288 ok; 2 `payments` (con `test_can_void`, `test_immutability`,
+  `test_router_register` y `test_register`) 349 ok; 3 corrida conjunta `tests/memberships
+  tests/payments tests/migrations` 695 ok; 4 (sella) `memberships` (con `test_rules`,
+  `test_sell_with_payment_service`, `test_activation_service`, `test_sell_service`,
+  `test_lock_order`, `test_0011` y, por la revisión, `test_sell_router`) 444 ok. Una saltada en los
+  gates 1, 2 y 4 (`test_no_sensitive_in_logs`, US-074). Checkpoint `3d7702b`.
+- P-MIG pasos 6 y 7 en `apex-db-1`: `alembic current` = `0011_payments_immutability (head)`; ciclo
+  `downgrade -1` (a `0010_payments`) y `upgrade head` sin errores; después, `payments_forbid_mutation`
+  y `payments_forbid_truncate` en `A`, `forbid_mutation` con `prosecdef = f` y
+  `{search_path=pg_catalog}`; api `healthy`; log del api sin `ERROR` en 20 minutos; 0 sesiones
+  `idle in transaction`.
+- Demo 1 por Nginx `:8180` con un access del admin firmado dentro del contenedor del api (el archivo
+  del token se borró del scratchpad): socio nuevo "Demo B4Uno" (documento único) y venta del plan
+  "Mensual" de 120.000 con `first_payment` de 120.000 en `cash` → **201** `status = active`,
+  `paid_cop = 120000`, `first_payment_id` lleno, del 2026-10-25 al 2026-11-24. psql: una fila en
+  `memberships.memberships` (`active`, 120.000); una en `payments.payments` con `member_id` copiado
+  del socio y `registered_by` del admin; `audit.audit_log` del socio (sin `members.members`): `insert`
+  de la membresía (seq 869), `insert` del pago (870) y `update` de la membresía (871, `before =
+  {"status": "pending_payment"}`, `after = {"status": "active"}`), los tres del admin y con el mismo
+  `subject_member_id`.
+- Demo 2: socio nuevo "Demo B4Dos"; venta con 60.000 → 201 `pending_payment`, `paid_cop = 60000`;
+  `POST /memberships/{id}/payments` de 60.000 (`DEMO-2`) → **201** y la membresía queda `active`
+  (auditoría `update` `pending_payment` → `active`); tercer pago de 1.000 sin `confirm_overpayment` →
+  **409** `payment_exceeds_balance` (`field = amount_cop`); con `confirm_overpayment: true` → **201**;
+  el mismo pago repetido en menos de 2 minutos → **409** `payment_possible_duplicate`. Todas con
+  `Cache-Control: no-store`.
+- psql en transacciones revertidas sobre el pago de la demo 1 (`\set VERBOSITY verbose`): `UPDATE
+  payments.payments SET amount_cop = 1` → `ERROR 23000: payments_immutable: column`; `DELETE` →
+  `payments_immutable: delete`; `SET LOCAL session_replication_role = replica; UPDATE ...` →
+  `payments_immutable: column` (rechazado); vaciado de la tabla → `payments_immutable: truncate`;
+  todas con `CONSTRAINT NAME: payments_immutable`. Después: el pago sigue en 120.000 y la tabla
+  tiene 4 pagos (los de las demos).
+- `/health` y `/api/v1/health` → 200.

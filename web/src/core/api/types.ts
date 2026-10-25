@@ -1203,8 +1203,7 @@ export interface components {
              * Format: date
              */
             start_date: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["MembershipStatus"];
         };
         /**
          * MembershipRow
@@ -1248,9 +1247,13 @@ export interface components {
              * Format: date
              */
             start_date: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["MembershipStatus"];
         };
+        /**
+         * MembershipStatus
+         * @enum {string}
+         */
+        MembershipStatus: "pending_payment" | "active" | "expiring" | "expired" | "frozen" | "cancelled";
         /**
          * MembershipSummaryOut
          * @description `GET /memberships/summary` (US-092): socios no dados de baja por estado resuelto.
@@ -1954,8 +1957,7 @@ export interface components {
              * Format: date
              */
             start_date: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["MembershipStatus"];
         };
         /**
          * UpdateUserIn
@@ -2806,6 +2808,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Error inesperado */
             500: {
                 headers: {
@@ -3330,6 +3341,15 @@ export interface operations {
             };
             /** @description Petición inválida */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

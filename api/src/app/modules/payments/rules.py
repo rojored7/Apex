@@ -48,13 +48,13 @@ import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Uuid, any_, func, literal, or_
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import ColumnElement, func, or_
 
 from app.core.clock import BOGOTA, to_bogota_date
+from app.core.pagination import any_uuids
 from app.core.validators import check_visible_text
 from app.modules.payments.exceptions import (
     InvalidDateRange,
@@ -68,13 +68,17 @@ from app.modules.payments.exceptions import (
 )
 from app.modules.payments.models import REFERENCE_MAX_LENGTH, VOID_REASON_MAX_LENGTH, Payment
 
+if TYPE_CHECKING:  # solo el tipo (PM5 de Fase 4): las reglas no cargan `core.security`
+    from app.core.security import Role
+
 PAID_AT_FLOOR: Final = datetime(2020, 1, 1, tzinfo=UTC)
 PAID_AT_FUTURE_TOLERANCE: Final = timedelta(minutes=5)
 DUPLICATE_WINDOW: Final = timedelta(seconds=120)
 MAX_PAYMENTS_PER_MEMBERSHIP: Final = 60
 REFERENCE_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9 ._/#-]{0,63}$"
-UNLIMITED_ROLE: Final = "admin"
-"""El único rol sin tope retroactivo de `paid_at` (M-8); cualquier otro lo tiene."""
+UNLIMITED_ROLE: Final[Role] = "admin"
+"""El único rol sin tope retroactivo de `paid_at` (M-8); cualquier otro, o ninguno (`None`, un
+llamador interno sin rol, S3-D81), lo tiene."""
 VOID_REASON_MAX: Final = VOID_REASON_MAX_LENGTH
 """Largo máximo del motivo de anulación tras recortar (D17; el CHECK de la tabla dice 500)."""
 DATE_FLOOR: Final = PAID_AT_FLOOR
@@ -144,7 +148,7 @@ def _q_condition(q: str, member_ids: Collection[UUID]) -> ColumnElement[bool]:
     referencia = func.lower(Payment.reference) == q.lower()
     if not member_ids:
         return referencia
-    socios = Payment.member_id == any_(literal(sorted(member_ids), ARRAY(Uuid())))
+    socios = Payment.member_id == any_uuids(member_ids)
     return or_(referencia, socios)
 
 
@@ -225,7 +229,7 @@ class PaymentFingerprint:
 
 
 def validate_paid_at(
-    paid_at: datetime, now: datetime, *, role: str, max_retroactive_days: int
+    paid_at: datetime, now: datetime, *, role: Role | None, max_retroactive_days: int
 ) -> None:
     """`None` si `paid_at` es válido para el rol; si no, el error de `paid_at` que corresponde."""
     if paid_at.tzinfo is None or paid_at.utcoffset() is None:

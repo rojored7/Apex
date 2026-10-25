@@ -139,7 +139,7 @@ Recomendación general: recursos anidados para crear (`POST /members/{id}/member
 - v0.1: `Login` (solo la tarjeta de acceso), `Inicio` (KPIs de membresías y pagos; el resto vacío), `Socios_Lista`, `Socios_Movil`, `Socio_Ficha` (pestañas Membresías, Pagos, Historial), `Socio_Form` (sin foto ni adjuntos), `Planes`, `Membresias`, `Membresia_Vender`, `Pagos` (sin recibo PDF si se pospone), `Usuarios` (CRUD; sin reenviar enlace si no hay correo), `Auditoria`, `Config` (si se acepta el módulo `settings` en v0.1).
 - v0.2: `PorAvisarHoy`, `Notif_Reglas`, `Notif_Historial`, tarjetas de recuperar y activar cuenta de `Login`, pestaña Avisos de la ficha.
 - v0.3: `Llaves` (si se crea el router de crypto), foto y adjuntos en `Socio_Form` y `Socio_Ficha`.
-- v0.4: `Sesiones`, `Horario`, `CheckIn`, pestaña Asistencia de la ficha, KPIs de asistencia en `Inicio`.
+- v0.4: `Sesiones`, `Horario`, `CheckIn`, pestaña Asistencia de la ficha, KPIs de asistencia en `Inicio`. Deuda de backend con dueño (S3-D92, PM2 de Fase 4 del Sprint 3): al agotarse las clases de una tiquetera, `classes` (US-160) recorta `end_date`; hasta entonces una tiquetera agotada con fin futuro bloquea la compra siguiente (`MembershipOverlap`).
 - v0.5: `Movimientos`, `WOD_Lista`, `WOD_Form`, `WOD_Detalle`, `Resultados_Registro`, `TV`, pestaña Resultados de la ficha.
 - v0.6: `Atleta_Perfil`, pestaña Atleta de la ficha.
 - v1.0: `Portal_Inicio`, `Portal_Pagos`, `Portal_WODs`, `Portal_Progreso`, `Portal_Datos`, `Portal_Avisos`, validación de resultados enviados por socios.

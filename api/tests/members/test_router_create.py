@@ -61,7 +61,7 @@ async def test_admin_y_coach_crean_y_reciben_el_detalle_enmascarado(
     assert datos["warnings"] == []
     assert datetime.fromisoformat(datos["data_consent_at"]) == T0
     assert datos["data_consent_version"] is None
-    assert datos["membership_status"] is None
+    assert datos["membership_status"] == "none"  # PL4 de Fase 4: como la ficha y la lista
     assert datetime.fromisoformat(datos["created_at"]).tzinfo is not None
     for valor in KNOWN_NORMALIZED:
         assert valor not in r.text, valor

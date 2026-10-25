@@ -86,6 +86,7 @@ MEMBERSHIPS_ARCHIVOS = (
     "sell",
     "lifecycle",
     "queries",
+    "summary",
     "exceptions",
     "schemas",
     "router",

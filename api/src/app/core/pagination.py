@@ -10,6 +10,9 @@
   (revisión S2-B8, MEDIUM-1; cerrado en S2-B9): un valor fuera de contrato da 422 con
   `field = "q"` en todas las listas, antes de cualquier service. Nunca se registra en logs
   (US-018).
+- `uuid_array(ids)` y `any_uuids(ids)` (PM4 de la revisión de Fase 4 del Sprint 3): un solo
+  parámetro ligado de tipo `uuid[]` con los ids ordenados (S3-D60) y `= ANY(...)` sobre él; la
+  única copia (antes había una en `memberships`, otra en `members` y un literal en `payments`).
 - `paginate(session, stmt, params)`: cuenta sobre la subconsulta y aplica `limit` y
   `offset` con orden estable: siempre agrega la clave primaria de la primera entidad
   como último criterio, así filas con la misma clave de orden no se repiten ni se omiten
@@ -21,13 +24,15 @@ nunca pagina `models` de otro módulo (regla de módulos 2).
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Final
+from uuid import UUID
 
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Select, func, inspect, select
+from sqlalchemy import ColumnElement, Select, Uuid, any_, func, inspect, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
 DEFAULT_LIMIT: Final = 25
@@ -109,3 +114,13 @@ def chunked[T](items: Sequence[T], size: int = ID_BATCH) -> Iterator[Sequence[T]
     if size <= 0:
         raise ValueError(f"chunked exige size > 0 (size={size})")
     return (items[inicio : inicio + size] for inicio in range(0, len(items), size))
+
+
+def uuid_array(ids: Iterable[UUID]) -> ColumnElement[Any]:
+    """Los ids como UN parámetro ligado `uuid[]`, ordenados (S3-D60; para `ANY` o `ALL`)."""
+    return literal(sorted(ids), ARRAY(Uuid()))
+
+
+def any_uuids(ids: Iterable[UUID]) -> ColumnElement[Any]:
+    """`= ANY(:ids)` con un solo parámetro de tipo `uuid[]` (S3-D60)."""
+    return any_(uuid_array(ids))

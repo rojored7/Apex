@@ -33,7 +33,8 @@ Pasos, en el orden único de candados de D3:
    si el pago la cubre. Un `DomainError` del pago sale con `reraise_with_prefix(error,
    "first_payment")` (E5). La respuesta se arma con la fila que dejó el handler, `paid_cop`
    (`payments.service.sum_not_voided`) y `first_payment_id`. Con `role=None` el pago se registra
-   con `LIMITED_ROLE` (no `admin`: tope retroactivo de `paid_at`, falla cerrado).
+   sin rol (`None` no es `admin`: tope retroactivo de `paid_at`, falla cerrado; S3-D81, y desde
+   PM5 de la revisión de Fase 4 del Sprint 3 sin el centinela `LIMITED_ROLE = ""`).
 
 `renewal_preview(session, *, member_id, plan_id) -> RenewalPreviewOut` (S3-B6, US-088): lo que
 crearía `sell(..., renew=True)` (inicio, fin, precio y `current_end_date`, el fin de la vigente o
@@ -42,23 +43,29 @@ nulo) con las mismas validaciones y errores (`MemberNotFound`, `MemberInactive`,
 `FOR SHARE` del plan, ni `FOR UPDATE` (es una lectura; la ruta no consume cupo).
 
 `lock_membership` es la única puerta de `with_for_update` sobre `Membership` (D-3, S3-D59;
-`test_guarded_calls.py`): `FOR UPDATE` con `populate_existing=True`. `get_payment_target` la usa
-y `membership_payability` (S3-B4, D1) la adapta al puerto `MembershipGate` de `payments`
-(`MembershipPayability` con `agreed_price_cop`, S3-D41); `memberships/service.py` la registra.
+`test_guarded_calls.py`): `FOR UPDATE` con `populate_existing=True`. `membership_payability`
+(S3-B4, D1) la adapta al puerto `MembershipGate` de `payments` (`MembershipPayability` con
+`agreed_price_cop`, S3-D41); `memberships/service.py` la registra. (`get_payment_target`, el
+contrato de B1 que B4 reemplazó, se quitó en la revisión de Fase 4 del Sprint 3, PL2.)
+
+`open_memberships(session, member_id, today, expiring_days)`: las no canceladas del socio con su
+estado efectivo (D5); la usan la venta, la renovación y, desde PM4, la revisión de fechas de
+`lifecycle.freeze`.
 
 `reraise_with_prefix(error, prefix)` (E5, S3-D75): vuelve a lanzar una copia de `error` (misma
 clase, `code`, `message`, `existing_id`, `status` y `headers`) con `field =
-rules.prefix_field(prefix, error.field)`.
+rules.prefix_field(prefix, error.field)`; sirve para toda subclase de `DomainError`, también las
+de `__init__` propio (PM3, S3-D94).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Final, NoReturn
+from typing import NoReturn
 from uuid import UUID
 
-from sqlalchemy import Row, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +74,7 @@ from app.core.db import violated_constraint
 from app.core.errors import DomainError
 from app.core.events import emit
 from app.core.locks import lock_member
+from app.core.security import Role
 from app.modules.members import service as members_service
 from app.modules.members.schemas import MemberRef
 from app.modules.memberships.events import MembershipSold
@@ -79,7 +87,7 @@ from app.modules.memberships.exceptions import (
     PlanInvalid,
 )
 from app.modules.memberships.models import EXCLUDE_NAME, Membership
-from app.modules.memberships.queries import _load_freezes_for
+from app.modules.memberships.queries import _load_freezes_for, out_fields
 from app.modules.memberships.rules import (
     MembershipSnapshot,
     MembershipStatus,
@@ -91,9 +99,10 @@ from app.modules.memberships.rules import (
     find_overlap,
     plan_renewal,
     prefix_field,
+    snapshot,
     validate_start_date,
 )
-from app.modules.memberships.schemas import PaymentTarget, RenewalPreviewOut, SellMembershipOut
+from app.modules.memberships.schemas import RenewalPreviewOut, SellMembershipOut
 from app.modules.payments import service as payments_service
 from app.modules.payments.schemas import PaymentIn
 from app.modules.plans import service as plans_service
@@ -125,7 +134,7 @@ async def sell(
     renew: bool = False,
     first_payment: PaymentIn | None = None,
     enforce_retroactive_limit: bool = True,
-    role: str | None = None,
+    role: Role | None = None,
 ) -> SellMembershipOut:
     """Vende el plan al socio; actor de `get_actor()`, hora de `current_clock()` (D3).
 
@@ -198,16 +207,6 @@ async def _sale_context(
     )
 
 
-def _snapshot(fila: Row[*tuple[Any, ...]]) -> MembershipSnapshot:
-    return MembershipSnapshot(
-        id=fila.id,
-        status=MembershipStatus(fila.status),
-        start_date=fila.start_date,
-        end_date=fila.end_date,
-        classes_remaining=fila.classes_remaining,
-    )
-
-
 async def _check_open_memberships(
     session: AsyncSession,
     ctx: _SaleContext,
@@ -222,7 +221,7 @@ async def _check_open_memberships(
     un rango que se cruza con otra no cancelada (también vencida) da `MembershipOverlap` con su
     `existing_id`. La `EXCLUDE` de la base es la red ante la carrera (`_insert_membership`).
     """
-    abiertas = await _open_memberships(session, ctx)
+    abiertas = await _open_of(session, ctx)
     if not renew:
         clasificadas = classify_open(abiertas, ctx.today)
         existente = clasificadas.current or clasificadas.future
@@ -233,8 +232,10 @@ async def _check_open_memberships(
         raise MembershipOverlap(existing_id=choque)
 
 
-async def _open_memberships(session: AsyncSession, ctx: _SaleContext) -> list[MembershipSnapshot]:
-    """Las no canceladas del socio con su estado efectivo (D5) a la fecha de `ctx`."""
+async def open_memberships(
+    session: AsyncSession, member_id: UUID, today: date, expiring_days: int
+) -> list[MembershipSnapshot]:
+    """Las no canceladas del socio con su estado efectivo (D5) a `today`."""
     consulta = select(
         Membership.id,
         Membership.status,
@@ -242,17 +243,20 @@ async def _open_memberships(session: AsyncSession, ctx: _SaleContext) -> list[Me
         Membership.end_date,
         Membership.classes_remaining,
     ).where(
-        Membership.member_id == ctx.member.id,
+        Membership.member_id == member_id,
         Membership.status != MembershipStatus.cancelled.value,
     )
     filas = (await session.execute(consulta)).all()
     congelaciones = await _load_freezes_for(session, [fila.id for fila in filas])
     return [
-        effective(
-            _snapshot(fila), ctx.today, ctx.policy.expiring_days, congelaciones.get(fila.id, [])
-        )
+        effective(snapshot(fila), today, expiring_days, congelaciones.get(fila.id, []))
         for fila in filas
     ]
+
+
+async def _open_of(session: AsyncSession, ctx: _SaleContext) -> list[MembershipSnapshot]:
+    """`open_memberships` del socio de la venta, a la fecha y con la política de `ctx`."""
+    return await open_memberships(session, ctx.member.id, ctx.today, ctx.policy.expiring_days)
 
 
 async def _renewal_for(
@@ -265,7 +269,7 @@ async def _renewal_for(
     hoy. Un rango que se cruza con otra no cancelada da `MembershipOverlap` (la misma revisión de
     la venta: así la vista previa responde lo mismo que la renovación).
     """
-    abiertas = await _open_memberships(session, ctx)
+    abiertas = await _open_of(session, ctx)
     clasificadas = classify_open(abiertas, ctx.today)
     if clasificadas.future is not None:
         raise FutureMembershipExists(existing_id=clasificadas.future.id)
@@ -321,26 +325,19 @@ def _sell_out(
     first_payment_id: UUID | None,
 ) -> SellMembershipOut:
     """La salida con la fila tal como la dejó el handler de activación (misma instancia del mapa
-    de identidad: `lock_membership` la relee con `populate_existing`)."""
-    return SellMembershipOut(
-        id=membresia.id,
-        member_id=membresia.member_id,
+    de identidad: `lock_membership` la relee con `populate_existing`). El estado guardado es el
+    efectivo de hoy (la venta lo fija en `pending_payment` y la activación con `compute_status`
+    del mismo día), sin congelaciones ni anulación; los campos salen de `queries.out_fields`
+    (PM4)."""
+    campos = out_fields(
+        membresia,
         member_name=f"{ctx.member.first_name} {ctx.member.last_name}",
-        plan_id=membresia.plan_id,
         plan_name=ctx.plan.name,
-        agreed_price_cop=membresia.agreed_price_cop,
         paid_cop=paid_cop,
-        start_date=membresia.start_date,
-        end_date=membresia.end_date,
-        classes_total=membresia.classes_total,
-        classes_remaining=membresia.classes_remaining,
-        status=membresia.status,
+        status=MembershipStatus(membresia.status),
         freezes=[],
-        cancel_reason=None,
-        cancelled_at=None,
-        created_at=membresia.created_at,
-        first_payment_id=first_payment_id,
     )
+    return SellMembershipOut(**campos, first_payment_id=first_payment_id)
 
 
 async def lock_membership(session: AsyncSession, membership_id: UUID) -> Membership | None:
@@ -352,14 +349,6 @@ async def lock_membership(session: AsyncSession, membership_id: UUID) -> Members
         .execution_options(populate_existing=True)
     )
     return (await session.scalars(consulta)).first()
-
-
-async def get_payment_target(session: AsyncSession, membership_id: UUID) -> PaymentTarget:
-    """Lo que el gate de pagos necesita, con la fila bloqueada por `lock_membership` (D1)."""
-    estado = await membership_payability(session, membership_id)
-    return PaymentTarget(
-        exists=estado.exists, cancelled=estado.cancelled, member_id=estado.member_id
-    )
 
 
 async def membership_payability(
@@ -380,23 +369,19 @@ async def membership_payability(
     )
 
 
-LIMITED_ROLE: Final = ""
-"""Rol con que se registra el primer pago si el llamador no da uno (`role=None`): no es `admin`,
-así que `paid_at` queda con el tope retroactivo (M-8). Falla cerrado; el router siempre pasa
-`principal.role`."""
-
-
 async def _register_first_payment(
     session: AsyncSession,
     membership: Membership,
     first_payment: PaymentIn,
     *,
-    role: str | None,
+    role: Role | None,
 ) -> UUID:
     """Registra el primer pago de la venta (paso 6) y devuelve su id; errores con prefijo (E5).
 
     `confirm_duplicate=False` siempre (la membresía es nueva: no hay pagos previos con que
-    chocar); `confirm_overpayment` viene del cuerpo y el saldo es el precio pactado (H-1)."""
+    chocar); `confirm_overpayment` viene del cuerpo y el saldo es el precio pactado (H-1). Con
+    `role=None` (un llamador interno sin rol) el pago tiene el tope retroactivo (S3-D81): el
+    router siempre pasa `principal.role`."""
     try:
         pago = await payments_service.register(
             session,
@@ -407,7 +392,7 @@ async def _register_first_payment(
             paid_at=first_payment.paid_at,
             confirm_overpayment=first_payment.confirm_overpayment,
             confirm_duplicate=False,
-            role=LIMITED_ROLE if role is None else role,
+            role=role,
         )
     except DomainError as error:
         reraise_with_prefix(error, "first_payment")
@@ -417,13 +402,14 @@ async def _register_first_payment(
 def reraise_with_prefix(error: DomainError, prefix: str) -> NoReturn:
     """Copia de `error` con `field = prefix_field(prefix, error.field)` (E5, S3-D75): misma
     clase, `code`, `message`, `existing_id`, `status` y una copia de `headers`. El original no
-    cambia y queda como causa (`from error`)."""
-    copia = type(error)(
-        error.code,
-        error.message,
-        field=prefix_field(prefix, error.field),
-        existing_id=error.existing_id,
-        status=error.status,
-    )
+    cambia y queda como causa (`from error`).
+
+    PM3 de la revisión de Fase 4 del Sprint 3: la copia no llama al `__init__` de la clase (que
+    en `DatabaseBusy` o `TooManyRequestsError` tiene otra firma y daba `TypeError`, un 500): se
+    crea con `__new__` y copia los atributos de la instancia (`copy.copy` tampoco sirve: las
+    excepciones se copian llamando a la clase con `args`)."""
+    copia = type(error).__new__(type(error), *error.args)
+    copia.__dict__.update(vars(error))
     copia.headers = dict(error.headers)
+    copia.field = prefix_field(prefix, error.field)
     raise copia from error

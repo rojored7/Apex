@@ -212,6 +212,7 @@ async def test_reactivar_vuelve_a_active_y_devuelve_la_ficha(
     socio = await make_member(session)
     await dar_de_baja(session, admin.id, socio.id)
     recibidos = capturar_eventos(service.MemberUpdated)
+    reactivados = capturar_eventos(service.MemberReactivated)
     salida = await reactivar(session, admin.id, socio.id)
     fila = await fila_socio(session, socio.id)
     assert (fila["status"], fila["deleted_at"]) == ("active", None)
@@ -224,6 +225,8 @@ async def test_reactivar_vuelve_a_active_y_devuelve_la_ficha(
             member_id=socio.id, changed_fields=("deleted_at", "status"), occurred_at=T0
         )
     ]
+    # Fase 4 del Sprint 3 (M1, PM1; S3-D89): el evento propio que invalida el resumen.
+    assert reactivados == [service.MemberReactivated(member_id=socio.id, occurred_at=T0)]
     updates = await auditoria_del_socio(session, socio.id, "update")
     assert len(updates) == 2
     assert updates[-1]["after"]["status"] == "active"

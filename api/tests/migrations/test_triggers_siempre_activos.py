@@ -96,18 +96,18 @@ def test_la_limpieza_de_membresias_va_antes_que_la_de_socios() -> None:
     assert orden.index(LIMPIAR_MEMBERSHIPS) < orden.index(LIMPIAR_MEMBERS)
 
 
-def test_la_limpieza_de_pagos_enciende_sus_triggers_con_enable_always_bajo_guarda() -> None:
-    """S3-B3 (E1): `to_regclass` de la tabla y, por trigger, una guarda en `pg_trigger` (los
-    triggers llegan en `0011`); `ENABLE ALWAYS` por nombre y nunca `ENABLE TRIGGER USER`."""
+def test_la_limpieza_de_pagos_enciende_sus_triggers_con_enable_always_sin_guarda() -> None:
+    """S3-B3 (E1): `to_regclass` de la tabla; `ENABLE ALWAYS` por nombre y nunca `ENABLE TRIGGER
+    USER`. PL7 de la revisión de Fase 4 del Sprint 3: sin la guarda en `pg_trigger` por trigger
+    (`0011` ya existe): si una migración no instalara un trigger, la limpieza falla en lugar de
+    esconderlo."""
     assert tuple(TRIGGERS_DE_PAGOS) == TRIGGERS_PAGOS
     assert "to_regclass('payments.payments')" in LIMPIAR_PAYMENTS
     assert "ALTER TABLE payments.payments DISABLE TRIGGER USER;" in LIMPIAR_PAYMENTS
     assert "DELETE FROM payments.payments;" in LIMPIAR_PAYMENTS
     for nombre in TRIGGERS_PAGOS:
-        assert f"tgname = '{nombre}'" in LIMPIAR_PAYMENTS, nombre
         assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_PAYMENTS, nombre
-        guarda = LIMPIAR_PAYMENTS.index(f"tgname = '{nombre}'")
-        assert guarda < LIMPIAR_PAYMENTS.index(f"ENABLE ALWAYS TRIGGER {nombre};"), nombre
+    assert "pg_trigger" not in LIMPIAR_PAYMENTS
     assert "ENABLE TRIGGER USER" not in LIMPIAR_PAYMENTS
 
 

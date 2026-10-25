@@ -14,7 +14,8 @@ falla, no queda congelación, ni fin corrido, ni auditoría):
    `_load_freezes_for`) y `rules.apply_freeze` (`FreezeError` sale como `FreezeRejected` con su
    `code`, `message`, `field` y `status`);
 5. `rules.find_overlap` del rango `[start_date, new_end_date]` contra las otras no canceladas del
-   socio (`OverlapsFutureMembership` con `existing_id`);
+   socio (`sell.open_memberships` sin la propia, desde PM4 de la revisión de Fase 4 del Sprint 3;
+   `OverlapsFutureMembership` con `existing_id`);
 6. insertar la `MembershipFreeze`, correr `end_date` y fijar `status = compute_status(...)` con la
    lista nueva; `flush` con `ex_memberships_member_dates` (23P01) traducida a
    `OverlapsFutureMembership` sin `existing_id` y `ex_membership_freezes_dates` (dos ventanas que
@@ -34,7 +35,8 @@ payments.service.sum_not_voided(...))` (la suma ve el pago: `register` hace `flu
 emitir; nunca confía en `event.amount_cop`), fija `status = compute_status(base activa, hoy,
 expiring_days, congelaciones)` con `hoy = to_bogota_date(event.occurred_at)`, hace `flush`
 (auditoría `update` del usuario que pagó) y emite `MembershipActivated`. `snapshot(row)` es el
-`MembershipSnapshot` de una fila (lo que leen las reglas).
+`MembershipSnapshot` de una fila (lo que leen las reglas): desde PM4 es `rules.snapshot`, el único
+constructor, y este archivo lo re-importa con ese nombre.
 
 `on_payment_voided(event, session)` (S3-B5, US-087; D13, N-25, L-5), handler de `PaymentVoided`:
 `sell.lock_membership(session, event.membership_id)` (la fila que `void` ya bloqueó por el gate);
@@ -105,7 +107,6 @@ from app.modules.memberships.rules import (
     FreezeLimits,
     FreezeOutcome,
     FreezeWindow,
-    MembershipSnapshot,
     MembershipStatus,
     apply_freeze,
     compute_status,
@@ -113,9 +114,10 @@ from app.modules.memberships.rules import (
     find_overlap,
     normalize_cancel_reason,
     should_revert,
+    snapshot,
 )
 from app.modules.memberships.schemas import MembershipOut
-from app.modules.memberships.sell import MEMBER_ACTIVE, lock_membership
+from app.modules.memberships.sell import MEMBER_ACTIVE, lock_membership, open_memberships
 from app.modules.payments import service as payments_service
 from app.modules.settings import service as settings_service
 from app.modules.settings.schemas import MembershipsPolicy
@@ -143,7 +145,7 @@ async def freeze(
             today=current_clock().today_bogota(),
         )
         salida = _apply(membresia, ctx, frozen_from, frozen_to)
-        await _check_dates_of_member(session, membresia, salida.new_end_date)
+        await _check_dates_of_member(session, membresia, salida.new_end_date, ctx)
         nueva = await _store_freeze(session, membresia, salida, ctx)
     todas = sorted([*filas, nueva], key=lambda fila: (fila.frozen_from, fila.id))
     return await membership_out(session, membresia, todas)
@@ -167,18 +169,6 @@ async def _lock_for_freeze(session: AsyncSession, membership_id: UUID) -> Member
     if socio.is_deleted or socio.status != MEMBER_ACTIVE:
         raise MemberInactive()
     return membresia
-
-
-def snapshot(row: Membership) -> MembershipSnapshot:
-    """El `MembershipSnapshot` de la fila (id, estado guardado, fechas y clases restantes); no la
-    cambia."""
-    return MembershipSnapshot(
-        id=row.id,
-        status=MembershipStatus(row.status),
-        start_date=row.start_date,
-        end_date=row.end_date,
-        classes_remaining=row.classes_remaining,
-    )
 
 
 def _apply(
@@ -207,31 +197,15 @@ def _apply(
 
 
 async def _check_dates_of_member(
-    session: AsyncSession, membresia: Membership, new_end_date: date
+    session: AsyncSession, membresia: Membership, new_end_date: date, ctx: _FreezeContext
 ) -> None:
     """`[start_date, new_end_date]` contra las otras no canceladas del socio (sin la propia):
-    `OverlapsFutureMembership` con el `existing_id` de la primera que choca (D14)."""
-    consulta = select(
-        Membership.id,
-        Membership.status,
-        Membership.start_date,
-        Membership.end_date,
-        Membership.classes_remaining,
-    ).where(
-        Membership.member_id == membresia.member_id,
-        Membership.id != membresia.id,
-        Membership.status != MembershipStatus.cancelled.value,
+    `OverlapsFutureMembership` con el `existing_id` de la primera que choca (D14). Las lee
+    `sell.open_memberships` (PM4); `find_overlap` solo mira las fechas."""
+    abiertas = await open_memberships(
+        session, membresia.member_id, ctx.today, ctx.policy.expiring_days
     )
-    otras = [
-        MembershipSnapshot(
-            id=fila.id,
-            status=MembershipStatus(fila.status),
-            start_date=fila.start_date,
-            end_date=fila.end_date,
-            classes_remaining=fila.classes_remaining,
-        )
-        for fila in await session.execute(consulta)
-    ]
+    otras = [m for m in abiertas if m.id != membresia.id]
     choque = find_overlap(membresia.start_date, new_end_date, otras)
     if choque is not None:
         raise OverlapsFutureMembership(existing_id=choque)

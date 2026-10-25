@@ -6,14 +6,19 @@ Baja: 204 sin cuerpo y con `Cache-Control: no-store` para el admin (la ficha sig
 `member_not_found`; 409 `member_already_deactivated`; 422 con `field="member_id"`.
 Reactivar: 200 con la ficha para el admin; 403 para el coach; 409 `member_not_deactivated` sobre
 un vivo y `member_document_duplicated` con `existing_id` si otro socio vivo tomó el documento.
-Ninguna de las dos rutas tiene límite por usuario (sin 429, D27).
+Límite (L1 de la revisión de Fase 4 del Sprint 3): las dos consumen `admin-write` (30 por
+minuto por usuario, `USER_ADMIN_WRITE_LIMIT_PER_MIN`), la cubeta de las demás escrituras
+de solo admin (anular pago y anular membresía): la 31 del minuto da 429 con `Retry-After` y
+otro admin pasa. El OpenAPI de las dos declara 429 (D27).
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +34,8 @@ from tests.members._apoyo import (
     ruta_reactivar,
     ruta_socio,
 )
+
+TOPE_POR_MINUTO = 30
 
 
 async def test_el_admin_da_de_baja_con_204_y_la_ficha_sigue_visible(
@@ -204,3 +211,67 @@ async def test_reactivar_un_id_inexistente_da_404(
     )
     assert r.status_code == 404, r.text
     assert r.json()["error"]["code"] == "member_not_found"
+
+
+# Límite `admin-write` (L1 de la revisión de Fase 4 del Sprint 3) --------------------------------
+
+
+async def test_baja_y_reactivar_comparten_admin_write_y_la_31_da_429(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> None:
+    admin = await usuario_real("admin")
+    otro = await usuario_real("admin")
+    for _ in range(15):
+        r = await app_http.delete(ruta_socio(uuid4()), headers=cabeceras(admin))
+        assert r.status_code == 404, r.text
+    for _ in range(TOPE_POR_MINUTO - 15):
+        r = await app_http.post(ruta_reactivar(uuid4()), headers=cabeceras(admin))
+        assert r.status_code == 404, r.text
+    for metodo, ruta in (
+        (app_http.delete, ruta_socio(uuid4())),
+        (app_http.post, ruta_reactivar(uuid4())),
+    ):
+        r = await metodo(ruta, headers=cabeceras(admin))
+        assert r.status_code == 429, r.text
+        assert r.json()["error"]["code"] == "rate_limited"
+        assert int(r.headers["retry-after"]) >= 1
+    r = await app_http.delete(ruta_socio(uuid4()), headers=cabeceras(otro))
+    assert r.status_code == 404, r.text
+
+
+async def test_la_baja_comparte_admin_write_con_anular_una_membresia(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> None:
+    admin = await usuario_real("admin")
+    cancelar = f"/api/v1/memberships/{uuid4()}/cancel"
+    for _ in range(TOPE_POR_MINUTO):
+        r = await app_http.post(
+            cancelar, json={"reason": "Error de digitación"}, headers=cabeceras(admin)
+        )
+        assert r.status_code == 404, r.text
+    r = await app_http.delete(ruta_socio(uuid4()), headers=cabeceras(admin))
+    assert r.status_code == 429, r.text
+
+
+@pytest.mark.parametrize(
+    ("metodo", "ruta", "exito"),
+    [
+        ("delete", "/api/v1/members/{member_id}", "204"),
+        ("post", "/api/v1/members/{member_id}/reactivate", "200"),
+    ],
+)
+def test_el_openapi_de_baja_y_reactivar_declara_el_429(
+    api_prueba: FastAPI, metodo: str, ruta: str, exito: str
+) -> None:
+    operacion = api_prueba.openapi()["paths"][ruta][metodo]
+    assert set(operacion["responses"]) == {
+        exito,
+        "401",
+        "403",
+        "404",
+        "409",
+        "422",
+        "429",
+        "500",
+        "503",
+    }

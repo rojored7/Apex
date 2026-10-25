@@ -445,3 +445,11 @@ def test_los_eventos_llevan_solo_ids_y_monto() -> None:
     )
     anulado = PaymentVoided(membership_id=ACTOR, payment_id=OTRO)
     assert (anulado.membership_id, anulado.payment_id) == (ACTOR, OTRO)
+
+
+def test_sin_rol_aplica_el_tope_retroactivo() -> None:
+    """PM5 de la revisión de Fase 4 del Sprint 3 (S3-D81): `role=None` es un llamador interno sin
+    rol; no es `admin`, así que `paid_at` queda con el tope retroactivo (falla cerrado)."""
+    with pytest.raises(PaidAtTooRetroactive):
+        validate_paid_at(AHORA - timedelta(days=8), AHORA, role=None, max_retroactive_days=7)
+    validate_paid_at(AHORA - timedelta(days=6), AHORA, role=None, max_retroactive_days=7)

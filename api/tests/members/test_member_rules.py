@@ -271,3 +271,12 @@ def test_member_create_rechaza_valores_invalidos(cambios: dict[str, Any], campo:
     with pytest.raises(ValidationError) as error:
         MemberCreate.model_validate(cuerpo(**cambios))
     assert error.value.errors()[0]["loc"][0] == campo
+
+
+def test_los_campos_cifrados_de_la_ficha_son_los_de_la_tabla() -> None:
+    """PM5 de la revisión de Fase 4 del Sprint 3: `detail.CAMPOS_CIFRADOS` se tipa como
+    `tuple[MaskField, ...]` (sin `cast`) y sigue siendo `models.ENCRYPTED_FIELDS`, en orden."""
+    from app.modules.members.detail import CAMPOS_CIFRADOS
+    from app.modules.members.models import ENCRYPTED_FIELDS
+
+    assert CAMPOS_CIFRADOS == ENCRYPTED_FIELDS

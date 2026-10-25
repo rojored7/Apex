@@ -23,8 +23,10 @@ define en el emisor y se exporta desde su `service.py`, L7).
 - `id_by_document(session, document)`: id del socio vivo con ese documento (contrato que la
   fachada re-exporta; vive aquí para que `update` lo use sin un ciclo con `service.py`).
 - Eventos `MemberUpdated(member_id, changed_fields)` (nombres de columna en orden alfabético,
-  nunca valores) y `MemberDeactivated(member_id)` (S3-D70: la excepción 409 es
-  `MemberIsDeactivated`).
+  nunca valores), `MemberDeactivated(member_id)` (S3-D70: la excepción 409 es
+  `MemberIsDeactivated`) y `MemberReactivated(member_id)` (Fase 4 del Sprint 3, S3-D89: la
+  reactivación lo emite después de `MemberUpdated`; `memberships` invalida con él y con
+  `MemberDeactivated` la caché del resumen).
 
 Las tres escrituras toman `core.locks.lock_member` antes de leer (orden único de D3: socio, plan,
 membresía, pago, cadena de auditoría) y recargan la fila con `populate_existing` ya con el
@@ -51,6 +53,7 @@ from app.core.crypto.secret import Secret
 from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.locks import lock_member
+from app.core.security import Role
 from app.modules.members.detail import CAMPOS_CIFRADOS, MASK_PURPOSE, _decrypt_fields, get
 from app.modules.members.exceptions import (
     ConsentCannotBeWithdrawn,
@@ -72,7 +75,7 @@ REACTIVATE_FIELDS: Final[tuple[str, ...]] = ("deleted_at", "status")
 _NOMBRES: Final = frozenset({"first_name", "last_name"})
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MemberUpdated(DomainEvent):
     """Un socio cambió: `changed_fields` son los nombres de las columnas cambiadas, en orden
     alfabético, sin índices ciegos ni valores."""
@@ -81,9 +84,17 @@ class MemberUpdated(DomainEvent):
     changed_fields: tuple[str, ...]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MemberDeactivated(DomainEvent):
     """Un socio fue dado de baja (N-20: sus membresías y pagos no cambian)."""
+
+    member_id: UUID
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MemberReactivated(DomainEvent):
+    """Un socio dado de baja volvió a estar vivo (S3-D89: `memberships` lo escucha para
+    invalidar la caché del resumen). Solo el id, sin datos personales."""
 
     member_id: UUID
 
@@ -216,7 +227,7 @@ async def _ganador_del_documento(session: AsyncSession, patch: MemberPatch) -> U
 
 
 async def update(
-    session: AsyncSession, member_id: UUID, patch: MemberPatch, *, role: str
+    session: AsyncSession, member_id: UUID, patch: MemberPatch, *, role: Role
 ) -> MemberDetailOut:
     """Edita el socio (US-075): ningún error deja cambios parciales; sin cambio efectivo no hay
     `UPDATE`, auditoría ni evento."""
@@ -257,7 +268,8 @@ async def deactivate(session: AsyncSession, member_id: UUID) -> None:
 
 async def reactivate(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
     """Deshace la baja del socio (US-076, N-20): `deleted_at` nulo y `status="active"`, auditado
-    por el hook, con `MemberUpdated(("deleted_at", "status"))`. El documento tomado por otro
+    por el hook, con `MemberUpdated(("deleted_at", "status"))` y después `MemberReactivated`
+    (S3-D89). El documento tomado por otro
     socio vivo da `MemberDocumentDuplicated` y la fila sigue dada de baja."""
     socio = await _bloquear_y_cargar(session, member_id)
     if socio.deleted_at is None:
@@ -274,4 +286,5 @@ async def reactivate(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
     await _escribir(session, asignar, lambda: _vivo_con_indice(session, indice, excepto=member_id))
     evento = MemberUpdated(member_id=member_id, changed_fields=REACTIVATE_FIELDS)
     await events.emit(evento, session)
+    await events.emit(MemberReactivated(member_id=member_id), session)
     return await _ficha(session, socio)

@@ -9,7 +9,8 @@
 Comandos siguientes: `init-keys` (US-023), `seed --as` (US-041), `issue-reset-link --as`
 (S2-B4, L-13), `unlock-user --as` (S2-B5; `--as` obligatorio desde la revisión V10, N-4),
 `import-members`, `rotate-key`, `sign-audit`. Todo comando que escriba tablas acepta
-`--as <email>` (N-15) y abre la base con `cli_runtime(settings)` (revisión Python M8): instala
+`--as <email>` (N-15) y abre la base con `cli_runtime(settings, runtime_options(ctx))`
+(revisión Python M8; las opciones globales van en `ctx.obj`, PL1 de Fase 4 del Sprint 3): instala
 los listeners de auditoría, bitácora del bus y cifrado, carga los services de los módulos
 (`_load_module_services`, S2-B6) para que los eventos que emite queden auditados, y libera el
 engine al terminar.
@@ -72,18 +73,23 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 DB_TIMEOUTS_CHOICES: Final = ("on", "off")
 
 
-@dataclass
-class _RuntimeOptions:
-    """Opciones globales del proceso del CLI que `cli_runtime` consulta (E7)."""
+@dataclass(frozen=True, slots=True)
+class RuntimeOptions:
+    """Opciones globales de UNA invocación del CLI (E7): el callback las deja en `ctx.obj` y cada
+    comando que abre la base se las pasa a `cli_runtime` (PL1 de la revisión de Fase 4 del
+    Sprint 3: antes vivían en un global mutable del proceso)."""
 
     db_timeouts: bool = True
 
 
-_runtime_options = _RuntimeOptions()
+def runtime_options(ctx: typer.Context) -> RuntimeOptions:
+    """Las opciones que dejó el callback; las de por defecto si el comando corre sin él."""
+    return ctx.obj if isinstance(ctx.obj, RuntimeOptions) else RuntimeOptions()
 
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     db_timeouts: Annotated[
         str,
         typer.Option(
@@ -97,8 +103,8 @@ def main(
         raise typer.BadParameter(
             f"use {' u '.join(DB_TIMEOUTS_CHOICES)}", param_hint="--db-timeouts"
         )
-    # Cada invocación fija el estado de nuevo: un `off` anterior no se arrastra.
-    _runtime_options.db_timeouts = db_timeouts == "on"
+    # Por invocación (`ctx.obj`): un `off` anterior nunca se arrastra.
+    ctx.obj = RuntimeOptions(db_timeouts=db_timeouts == "on")
 
 
 def _sin_tiempos_de_espera(settings: Settings) -> Settings:
@@ -282,13 +288,15 @@ def _load_module_services() -> None:
 
 
 @asynccontextmanager
-async def cli_runtime(settings: Settings) -> AsyncIterator[Any]:
+async def cli_runtime(
+    settings: Settings, options: RuntimeOptions | None = None
+) -> AsyncIterator[Any]:
     """Preámbulo común de los comandos que escriben (revisión Python M8): listeners de
     auditoría (US-016), de `crypto_ops` (US-029) y de cifrado (US-028), los services de los
     módulos (sus suscriptores del bus) y el engine de `Settings`; cede una `AsyncSession` sin
     transacción abierta y libera el engine al salir, falle o no el comando. Con
-    `--db-timeouts off` el engine sale de una copia con los tres tiempos en 0 (E7); el
-    `Settings` recibido no se muta."""
+    `options.db_timeouts` falso (`--db-timeouts off`) el engine sale de una copia con los tres
+    tiempos en 0 (E7); sin `options`, los de `Settings`. El `Settings` recibido no se muta."""
     from app.core import db
     from app.core.audit import install_audit_listeners
     from app.core.crypto.oplog import install_oplog_listeners
@@ -298,7 +306,8 @@ async def cli_runtime(settings: Settings) -> AsyncIterator[Any]:
     install_oplog_listeners()
     install_crypto_type_listeners()
     _load_module_services()
-    efectivos = settings if _runtime_options.db_timeouts else _sin_tiempos_de_espera(settings)
+    opciones = options or RuntimeOptions()
+    efectivos = settings if opciones.db_timeouts else _sin_tiempos_de_espera(settings)
     db.configure_engine(db.create_engine_from(efectivos))
     try:
         async with db.get_sessionmaker()() as session:
@@ -314,6 +323,7 @@ async def _seed(
     actor_email: str | None,
     *,
     force_change: bool,
+    options: RuntimeOptions | None = None,
 ) -> str:
     from app.core.security import configure_password_hasher, configure_password_policy
     from app.modules.auth.service import seed_admin
@@ -322,7 +332,7 @@ async def _seed(
         settings.ARGON2_TIME_COST, settings.ARGON2_MEMORY_COST_KIB, settings.ARGON2_PARALLELISM
     )
     configure_password_policy(settings.PASSWORD_MIN_LENGTH)
-    async with cli_runtime(settings) as session:
+    async with cli_runtime(settings, options) as session:
         async with session.begin():
             actor = await resolve_actor(session, actor_email)
         # El actor debe seguir fijado durante el commit: la auditoría se escribe en el flush.
@@ -353,6 +363,7 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 
 @app.command("seed")
 def seed(
+    ctx: typer.Context,
     actor: Annotated[str | None, typer.Option("--as")] = None,
     no_force_change: Annotated[bool, typer.Option("--no-force-change")] = False,
 ) -> None:
@@ -385,7 +396,14 @@ def seed(
         raise typer.Exit(code=2) from None
     try:
         resultado = _run(
-            _seed(settings, semilla.ADMIN_EMAIL, clave, actor, force_change=not no_force_change)
+            _seed(
+                settings,
+                semilla.ADMIN_EMAIL,
+                clave,
+                actor,
+                force_change=not no_force_change,
+                options=runtime_options(ctx),
+            )
         )
     except AuthError as error:
         typer.echo(f"seed: {error.code}", err=True)
@@ -398,6 +416,7 @@ def seed(
 
 @app.command("issue-reset-link")
 def issue_reset_link(
+    ctx: typer.Context,
     email: str,
     actor: Annotated[str | None, typer.Option("--as")] = None,
 ) -> None:
@@ -411,7 +430,7 @@ def issue_reset_link(
         typer.echo("issue-reset-link: --as <correo de un admin activo> es obligatorio", err=True)
         raise typer.Exit(code=2)
     settings = get_settings()
-    salida = _run(_issue_reset_link(settings, email, actor))
+    salida = _run(_issue_reset_link(settings, email, actor, runtime_options(ctx)))
     if salida is None:
         typer.echo(_LINK_REJECTED, err=True)
         raise typer.Exit(code=2)
@@ -425,14 +444,14 @@ _LINK_REJECTED = "issue-reset-link: esa cuenta no puede recibir un enlace"
 
 
 async def _issue_reset_link(
-    settings: Settings, email: str, actor_email: str
+    settings: Settings, email: str, actor_email: str, options: RuntimeOptions | None = None
 ) -> tuple[str, str, str] | None:
     """`(url, propósito, vence)` o `None` si la cuenta no existe o no es elegible. Sale con 2
     (por `resolve_actor` o aquí) si `--as` no es un admin activo."""
     from app.modules.auth.exceptions import UserNotEligible, UserNotFound
     from app.modules.auth.service import issue_link
 
-    async with cli_runtime(settings) as session:
+    async with cli_runtime(settings, options) as session:
         actor, objetivo = await _admin_actor_and_target(session, actor_email, email)
         if objetivo is None:
             return None
@@ -470,6 +489,7 @@ async def _admin_actor_and_target(
 
 @app.command("unlock-user")
 def unlock_user(
+    ctx: typer.Context,
     email: str,
     actor: Annotated[str | None, typer.Option("--as")] = None,
 ) -> None:
@@ -485,7 +505,7 @@ def unlock_user(
         typer.echo("unlock-user: --as <correo de un admin activo> es obligatorio", err=True)
         raise typer.Exit(code=2)
     settings = get_settings()
-    if not _run(_unlock_user(settings, email, actor)):
+    if not _run(_unlock_user(settings, email, actor, runtime_options(ctx))):
         typer.echo(_UNLOCK_REJECTED, err=True)
         raise typer.Exit(code=2)
     typer.echo("unlock-user: cuenta desbloqueada")
@@ -495,13 +515,15 @@ def unlock_user(
 _UNLOCK_REJECTED = "unlock-user: no hay una cuenta bloqueada con ese correo"
 
 
-async def _unlock_user(settings: Settings, email: str, actor_email: str) -> bool:
+async def _unlock_user(
+    settings: Settings, email: str, actor_email: str, options: RuntimeOptions | None = None
+) -> bool:
     """`True` si desbloqueó; `False` si la cuenta no existe, está borrada o no está bloqueada.
     Sale con 2 (por `resolve_actor` o aquí) si `--as` no es un admin activo."""
     from app.modules.auth.exceptions import NotLocked, UserNotFound
     from app.modules.auth.service import unlock
 
-    async with cli_runtime(settings) as session:
+    async with cli_runtime(settings, options) as session:
         actor, objetivo = await _admin_actor_and_target(session, actor_email, email)
         if objetivo is None:
             return False

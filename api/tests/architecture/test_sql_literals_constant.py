@@ -104,7 +104,7 @@ def test_las_llaves_de_los_candados_fijos_no_cambian() -> None:
 def test_el_candado_del_socio_usa_hashtextextended_con_parametro_ligado() -> None:
     fuente = (SRC / "app" / "core" / "locks.py").read_text(encoding="utf-8")
     assert "hashtextextended" in fuente
-    assert "hashtextextended(:m, 0)" in MEMBER_LOCK_SQL
+    assert "hashtextextended(:m, :ns)" in MEMBER_LOCK_SQL  # PL2 de Fase 4: semilla ligada
     assert hallazgos(fuente, "app/core/locks.py") == []
 
 

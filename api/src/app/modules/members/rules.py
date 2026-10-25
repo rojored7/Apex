@@ -36,7 +36,7 @@ from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.normalize import IndexKind, normalize_for_index
@@ -50,6 +50,9 @@ from app.modules.members.schemas import (
     MembershipFilterStatus,
     MemberStatusFilter,
 )
+
+if TYPE_CHECKING:  # solo el tipo (PM5 de Fase 4): las reglas no cargan `core.security`
+    from app.core.security import Role
 
 __all__ = [
     "ADMIN_ONLY_FIELDS",
@@ -276,7 +279,7 @@ def chip_to_filter(chip: str) -> MemberChipFilter:
 # Editar (S3-B10, US-075; D21, M-3, S3-D46) ---------------------------------------------
 
 
-ADMIN_ROLE: Final = "admin"
+ADMIN_ROLE: Final[Role] = "admin"
 ADMIN_ONLY_FIELDS: Final[frozenset[str]] = frozenset({"document", "document_type"})
 """Campos de identidad que solo cambia un admin; se deciden por PRESENCIA en el cuerpo (M-3)."""
 
@@ -318,7 +321,7 @@ def diff_fields(before: Mapping[str, object], patch: MemberPatch) -> frozenset[s
     )
 
 
-def ensure_can_change(set_fields: AbstractSet[str], role: str) -> None:
+def ensure_can_change(set_fields: AbstractSet[str], role: Role) -> None:
     """`MemberFieldForbidden` (403 `forbidden_field`) si quien no es admin envía `document` o
     `document_type`, con cualquier valor (presencia, M-3). Con los dos, nombra `document`."""
     if role == ADMIN_ROLE:

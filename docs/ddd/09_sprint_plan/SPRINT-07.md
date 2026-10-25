@@ -67,6 +67,7 @@ Solo depende de v0.1. Por eso este sprint se puede ejecutar antes que los Sprint
      - solo responde 409 por duplicado o por sesión cancelada;
      - incluye el E2E.
    - US-160 · Descontar y devolver clases: `classes_remaining`, recorte de `end_date` y `original_end_date`.
+     - Deuda heredada del Sprint 3 (PM2 de la revisión de Fase 4, S3-D92): al gastar la última clase, `classes` recorta `end_date` al día del agotamiento; así ni `rules.find_overlap` ni la `EXCLUDE` `ex_memberships_member_dates` bloquean la compra siguiente. Hoy una tiquetera con `classes_remaining = 0` y `end_date` futuro da `MembershipOverlap` al vender: `tests/memberships/test_sell_service.py::test_una_tiquetera_agotada_con_fin_futuro_hoy_bloquea_la_compra` fija ese comportamiento y esta historia la invierte.
    - US-161 · Borrar asistencia: borrado lógico, para admin y coach (Q8); emite `AttendanceRemoved`.
 4. **Bloque D · Lecturas.**
    - US-162 · Reportes de asistencia: `weekly_summary` pura, con un máximo de 26 semanas.

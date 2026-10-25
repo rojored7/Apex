@@ -37,7 +37,8 @@ async def _soltar(*sesiones: AsyncSession) -> None:
 
 
 def test_la_sentencia_usa_hashtextextended_con_la_semilla_cero() -> None:
-    assert "pg_advisory_xact_lock(hashtextextended(:m, 0))" in MEMBER_LOCK_SQL
+    # PL2 de la revisión de Fase 4 del Sprint 3: la semilla viaja como parámetro (`:ns`).
+    assert MEMBER_LOCK_SQL == "SELECT pg_advisory_xact_lock(hashtextextended(:m, :ns))"
     assert MEMBER_LOCK_NAMESPACE == 0
 
 

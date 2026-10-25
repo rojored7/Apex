@@ -1393,8 +1393,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/MembershipStatus"
           }
         },
         "required": [
@@ -1485,8 +1484,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/MembershipStatus"
           }
         },
         "required": [
@@ -1505,6 +1503,18 @@
         ],
         "title": "MembershipRow",
         "type": "object"
+      },
+      "MembershipStatus": {
+        "enum": [
+          "pending_payment",
+          "active",
+          "expiring",
+          "expired",
+          "frozen",
+          "cancelled"
+        ],
+        "title": "MembershipStatus",
+        "type": "string"
       },
       "MembershipSummaryOut": {
         "description": "`GET /memberships/summary` (US-092): socios no dados de baja por estado resuelto.",
@@ -3209,8 +3219,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/MembershipStatus"
           }
         },
         "required": [
@@ -4317,6 +4326,16 @@
             },
             "description": "Petición inválida"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -5165,6 +5184,16 @@
               }
             },
             "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
           },
           "500": {
             "content": {

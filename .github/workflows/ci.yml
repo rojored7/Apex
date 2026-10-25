@@ -277,8 +277,18 @@ jobs:
           # Perfil E2E de los límites del api (E5): topes altos solo en este job.
           sed -i -E \
             -e 's/^(LOGIN_IP_LIMIT|LOGIN_ACCOUNT_LIMIT|LOGIN_LOCK_AFTER|REFRESH_IP_LIMIT|RESET_IP_LIMIT|FORGOT_IP_LIMIT|LOGOUT_IP_LIMIT)=.*/\1=1000/' \
-            -e 's/^LOGIN_ACCOUNT_GLOBAL_LIMIT=.*/LOGIN_ACCOUNT_GLOBAL_LIMIT=10000/' .env
+            -e 's/^LOGIN_ACCOUNT_GLOBAL_LIMIT=.*/LOGIN_ACCOUNT_GLOBAL_LIMIT=10000/' \
+            -e 's/^(USER_WRITE_LIMIT_PER_MIN|USER_ADMIN_WRITE_LIMIT_PER_MIN|USER_REVEAL_LIMIT_PER_MIN)=.*/\1=3000/' \
+            -e 's/^(USER_MEMBERS_WRITE_LIMIT_PER_MIN|USER_SEARCH_LIMIT_PER_MIN)=.*/\1=6000/' \
+            -e 's/^USER_DETAIL_LIMIT_PER_MIN=.*/USER_DETAIL_LIMIT_PER_MIN=12000/' \
+            -e 's/^USER_REVEAL_LIMIT_PER_HOUR=.*/USER_REVEAL_LIMIT_PER_HOUR=20000/' \
+            -e 's/^USER_REVEAL_LIMIT_PER_DAY=.*/USER_REVEAL_LIMIT_PER_DAY=60000/' .env
           grep -E '^(LOGIN|REFRESH|RESET|FORGOT|LOGOUT)_[A-Z_]*(LIMIT|AFTER)=' .env
+          # E15 (Fase 4 del Sprint 3, H1): las ocho cubetas USER_* con los valores x100 del plan
+          # (sprint-03-plan.md, sección 7 V4). Falla si .env.example cambia y alguna no se sube.
+          grep -E '^USER_[A-Z_]*_LIMIT_PER_(MIN|HOUR|DAY)=' .env
+          subidas="$(grep -cE '^USER_(WRITE|ADMIN_WRITE|REVEAL)_LIMIT_PER_MIN=3000$|^USER_(MEMBERS_WRITE|SEARCH)_LIMIT_PER_MIN=6000$|^USER_DETAIL_LIMIT_PER_MIN=12000$|^USER_REVEAL_LIMIT_PER_(HOUR=20000|DAY=60000)$' .env)"
+          [ "$subidas" = "8" ] || { echo "E15: se esperaban 8 cubetas USER_* subidas y hay $subidas" >&2; exit 1; }
           umask 077
           clave="$(openssl rand -hex 16)"
           # La máscara va antes de cualquier uso: desde aquí el valor sale como *** en el log.

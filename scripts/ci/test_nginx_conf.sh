@@ -10,7 +10,8 @@
 # S2-W0-1: limit_req en /api/v1/auth/ con 429 en envelope, 16k de cuerpo en auth,
 # no-store y Pragma en /api/, form-action en las dos CSP, Referrer-Policy por location
 # (fuera del snippet común) y una prueba funcional con Nginx real: el access log de
-# /restablecer/<token> y de ?q= no contiene el token ni la búsqueda.
+# /restablecer/<token> y de ?q= no contiene el token ni la búsqueda. Fase 4 del Sprint 3 (M3):
+# proxy_hide_header de Cache-Control y Pragma y un upstream falso que las manda: una de cada una.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -154,6 +155,43 @@ if grep -qi '^H429 Retry-After: 60$' <<< "$salida" && grep -qi '^H429 Content-Ty
 if grep -qi '^H429 Cache-Control: no-store$' <<< "$salida"; then ok "funcional: el 429 lleva Cache-Control no-store"; else falla "funcional: el 429 sin Cache-Control no-store"; fi
 
 if grep -q '^BIG 413$' <<< "$salida"; then ok "funcional: 20 KB a /api/v1/auth/ devuelve 413 sin llegar al api (L-12)"; else falla "funcional: 20 KB a /api/v1/auth/ respondió '$(grep '^BIG' <<< "$salida" || true)' (se esperaba 413)"; fi
+
+# M3 de la revisión de Fase 4 del Sprint 3: el api ya manda `Cache-Control: no-store` y
+# `Pragma: no-cache` (core/http.py y el 503 `busy`) y `add_header` agrega, no reemplaza. Con
+# `proxy_hide_header` antes de los `add_header`, la respuesta lleva UNA sola de cada una.
+# Estático: las dos directivas existen y van antes de sus `add_header` en proxy-api.conf.
+orden_hide() { # cabecera
+  awk -v h="$1" '
+    $0 ~ "^[[:space:]]*proxy_hide_header[[:space:]]+" h ";" && !add { hide=1 }
+    $0 ~ "^[[:space:]]*add_header[[:space:]]+" h "[[:space:]]" { add=1 }
+    END { exit !(hide && add) }
+  ' "$SNIP/proxy-api.conf"
+}
+for h in Cache-Control Pragma; do
+  if orden_hide "$h"; then ok "proxy-api.conf: proxy_hide_header $h antes de su add_header"; else falla "proxy-api.conf sin proxy_hide_header $h antes de add_header $h"; fi
+done
+# Funcional: un upstream falso en 127.0.0.1:8000 (el `api` de --add-host) que manda las dos
+# cabeceras; por /api/ la respuesta debe llevar exactamente una de cada una.
+FALSO="$(mktemp -d)"
+cat > "$FALSO/upstream-falso.conf" <<'CONF'
+server {
+    listen 127.0.0.1:8000;
+    location / {
+        add_header Cache-Control "no-store" always;
+        add_header Pragma "no-cache" always;
+        default_type application/json;
+        return 200 '{}';
+    }
+}
+CONF
+CON_FALSO="$PREPARA && cp /tmp/n/upstream-falso.conf /etc/nginx/conf.d/upstream-falso.conf && nginx && sleep 0.3"
+CON_FALSO+=" && curl -s -D - -o /dev/null http://127.0.0.1/api/v1/health | sed 's/^/UPS /'"
+CON_FALSO+=" && nginx -s quit; sleep 0.3"
+salida_falso="$(tar -c -C "$DIR" default.conf snippets -C "$FALSO" upstream-falso.conf | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$CON_FALSO" 2>&1 | tr -d '\r' || true)"
+rm -rf "$FALSO"
+n_cc="$(grep -ci '^UPS Cache-Control:' <<< "$salida_falso" || true)"
+n_pr="$(grep -ci '^UPS Pragma:' <<< "$salida_falso" || true)"
+if grep -q '^UPS HTTP/1.1 200' <<< "$salida_falso" && [ "$n_cc" = "1" ] && [ "$n_pr" = "1" ]; then ok "funcional: /api/ con upstream que manda no-store responde una sola Cache-Control y un solo Pragma"; else falla "funcional: /api/ con upstream que manda no-store dio $n_cc Cache-Control y $n_pr Pragma (se esperaba 1 y 1)"; fi
 
 echo "test_nginx_conf: $fallas fallas"
 [ "$fallas" -eq 0 ]

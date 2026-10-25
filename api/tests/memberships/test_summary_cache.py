@@ -20,6 +20,8 @@ por la caché no envía ninguna). Reloj congelado en `T0` = 2026-10-21T15:00:00Z
   marcar no invalida y descarta la marca (un commit posterior sin cambios tampoco invalida). El
   rollback de un SAVEPOINT dentro de una transacción ya marcada no pierde la marca: el commit
   invalida igual (nunca se conservan datos viejos tras confirmar, S3-D53).
+- Fase 4 del Sprint 3 (M1, PM1; S3-D89; cierra B7 LOW-1): dar de baja y reactivar al socio
+  también invalidan tras el commit real (el resumen solo cuenta socios no dados de baja).
 - Revisión de seguridad del Verde: una sesión marcada calcula sin leer ni escribir la caché
   (MEDIUM-1); un vaciado durante el cálculo descarta lo calculado y dos resúmenes a la vez con
   la caché vacía calculan una sola vez (MEDIUM-2); el resumen es inmutable (LOW-2) y la caché no
@@ -43,14 +45,16 @@ from app.core import events
 from app.core.clock import FrozenClock
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.keyring import Keyring
+from app.modules.members import service as members_service
 from app.modules.memberships import queries, service
-from app.modules.memberships.queries import (
+from app.modules.memberships import summary as cache_del_resumen
+from app.modules.memberships.schemas import MembershipSummaryOut
+from app.modules.memberships.summary import (
     SUMMARY_CACHE_TTL_S,
     SUMMARY_DIRTY_KEY,
     configure_summary_cache,
     reset_summary_cache,
 )
-from app.modules.memberships.schemas import MembershipSummaryOut
 from app.modules.payments import service as payments_service
 from tests.conftest import T0, ContadorDeConsultas
 from tests.factories.members import make_member, unique_document
@@ -66,6 +70,9 @@ EVENTOS_QUE_CAMBIAN_EL_RESUMEN = (
     service.MembershipCancelled,
     payments_service.PaymentRegistered,
     payments_service.PaymentVoided,
+    # Fase 4 del Sprint 3 (M1, PM1; S3-D89): la baja y la reactivación del socio.
+    members_service.MemberDeactivated,
+    members_service.MemberReactivated,
 )
 
 
@@ -202,7 +209,7 @@ async def test_el_handler_solo_marca_la_sesion(session: AsyncSession) -> None:
     evento = service.MembershipCancelled(
         membership_id=SYSTEM_USER_ID, member_id=SYSTEM_USER_ID, reason_len=16
     )
-    await queries._mark_summary_dirty(evento, session)
+    await cache_del_resumen._mark_summary_dirty(evento, session)
     assert session.info[SUMMARY_DIRTY_KEY] is True
     assert SUMMARY_DIRTY_KEY == "apex.summary_dirty"
     session.info.pop(SUMMARY_DIRTY_KEY, None)
@@ -211,7 +218,7 @@ async def test_el_handler_solo_marca_la_sesion(session: AsyncSession) -> None:
 @pytest.mark.parametrize("evento", EVENTOS_QUE_CAMBIAN_EL_RESUMEN, ids=lambda e: e.__name__)
 def test_el_handler_esta_suscrito_a_los_siete_eventos(evento: type[events.DomainEvent]) -> None:
     suscritos = events.subscribers_for(evento)
-    assert sum(1 for h in suscritos if h is queries._mark_summary_dirty) == 1
+    assert sum(1 for h in suscritos if h is cache_del_resumen._mark_summary_dirty) == 1
 
 
 # Commit real con dos sesiones (E11, E13) ----------------------------------------------------------
@@ -327,6 +334,58 @@ async def test_el_rollback_de_un_savepoint_no_pierde_la_marca_de_la_transaccion(
     assert nuevo.pending_payment == cebado.pending_payment + 1
 
 
+# Baja y reactivación del socio (Fase 4 del Sprint 3: M1, PM1; S3-D89) ---------------------------
+
+
+async def _con_una_pendiente(
+    dos_con_cache: tuple[AsyncSession, AsyncSession, UUID, UUID],
+    contador: ContadorDeConsultas,
+) -> tuple[AsyncSession, AsyncSession, UUID, MembershipSummaryOut]:
+    """Una venta confirmada del socio (pendiente de pago) y la caché cebada por la segunda."""
+    primera, segunda, plan, socio = dos_con_cache
+    await _vender_sin_confirmar(primera, plan, socio)
+    await primera.commit()
+    cebado, _ = await _resumen_de_la_segunda(segunda, contador)
+    assert cebado.pending_payment == 1
+    return primera, segunda, socio, cebado
+
+
+async def test_dar_de_baja_al_socio_invalida_el_resumen_tras_el_commit(
+    dos_con_cache: tuple[AsyncSession, AsyncSession, UUID, UUID],
+    contador_de_consultas: ContadorDeConsultas,
+) -> None:
+    primera, segunda, socio, cebado = await _con_una_pendiente(dos_con_cache, contador_de_consultas)
+    with actor_scope(SYSTEM_USER_ID):
+        await members_service.deactivate(primera, socio)
+    assert primera.info.get(SUMMARY_DIRTY_KEY) is True
+    servido, consultas = await _resumen_de_la_segunda(segunda, contador_de_consultas)
+    assert (servido, consultas) == (cebado, 0)
+    await primera.commit()
+    # Sin socios vivos no hay lote que consultar: lo que prueba el recálculo es el valor nuevo.
+    nuevo, _ = await _resumen_de_la_segunda(segunda, contador_de_consultas)
+    assert nuevo.pending_payment == 0
+
+
+async def test_reactivar_al_socio_invalida_el_resumen_tras_el_commit(
+    dos_con_cache: tuple[AsyncSession, AsyncSession, UUID, UUID],
+    contador_de_consultas: ContadorDeConsultas,
+) -> None:
+    primera, segunda, socio, _ = await _con_una_pendiente(dos_con_cache, contador_de_consultas)
+    with actor_scope(SYSTEM_USER_ID):
+        await members_service.deactivate(primera, socio)
+    await primera.commit()
+    de_baja, _ = await _resumen_de_la_segunda(segunda, contador_de_consultas)
+    assert de_baja.pending_payment == 0
+    with actor_scope(SYSTEM_USER_ID):
+        await members_service.reactivate(primera, socio)
+    servido, consultas = await _resumen_de_la_segunda(segunda, contador_de_consultas)
+    assert (servido, consultas) == (de_baja, 0)
+    await primera.commit()
+    nuevo, consultas = await _resumen_de_la_segunda(segunda, contador_de_consultas)
+    assert consultas >= 1
+    assert nuevo.pending_payment == 1
+
+
 # Revisión de seguridad del Verde de B7 (MEDIUM-1, MEDIUM-2, LOW-2, LOW-3) ------------------------
 
 
@@ -392,11 +451,11 @@ def test_el_resumen_es_inmutable() -> None:
 
 def test_la_cache_no_pasa_de_su_tope_de_entradas(reloj: FrozenClock) -> None:
     """LOW-3: como mucho `SUMMARY_CACHE_MAX_ENTRIES` entradas; sale la más vieja."""
-    cache = queries.SummaryCache(SUMMARY_CACHE_TTL_S)
+    cache = cache_del_resumen.SummaryCache(SUMMARY_CACHE_TTL_S)
     cero = MembershipSummaryOut(active=0, expiring=0, expired=0, frozen=0, pending_payment=0)
     for dia in range(100):
         reloj.set(T0 + timedelta(microseconds=dia))
         cache.put((date(2026, 1, 1) + timedelta(days=dia), 7), cero)
-    assert len(cache) == queries.SUMMARY_CACHE_MAX_ENTRIES
+    assert len(cache) == cache_del_resumen.SUMMARY_CACHE_MAX_ENTRIES
     assert cache.get((date(2026, 1, 1), 7)) is None
     assert cache.get((date(2026, 1, 1) + timedelta(days=99), 7)) == cero

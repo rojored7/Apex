@@ -40,7 +40,8 @@ from app.core.clock import FrozenClock
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto.keyring import Keyring
 from app.modules.members import service as members_service
-from app.modules.memberships import queries, service
+from app.modules.memberships import service
+from app.modules.memberships import summary as cache_del_resumen
 from app.modules.memberships.schemas import MemberMembership, MembershipSummaryOut
 from tests.conftest import T0, ContadorDeConsultas
 from tests.factories.members import make_member, unique_document
@@ -389,7 +390,7 @@ async def test_el_resumen_de_2500_socios_va_en_tres_lotes_y_suma_igual_que_uno(
     await _sembrar_lote(session, plan.id, "Lote A", 1500, "active")
     await _sembrar_lote(session, plan.id, "Lote B", 700, "pending_payment")
     await _sembrar_lote(session, plan.id, "Lote C", 300, None)
-    assert queries.SUMMARY_ID_BATCH == 1000
+    assert cache_del_resumen.SUMMARY_ID_BATCH == 1000
     esperado = MembershipSummaryOut(
         active=1500, expiring=0, expired=0, frozen=0, pending_payment=700
     )
@@ -398,7 +399,7 @@ async def test_el_resumen_de_2500_socios_va_en_tres_lotes_y_suma_igual_que_uno(
     assert en_lotes == esperado
     assert contador_de_consultas.de(TABLA_MEMBRESIAS) == 3
     assert contador_de_consultas.de("members.members") == 1  # `active_ids`, una vez
-    monkeypatch.setattr(queries, "SUMMARY_ID_BATCH", 10_000)
+    monkeypatch.setattr(cache_del_resumen, "SUMMARY_ID_BATCH", 10_000)
     with contador_de_consultas.midiendo():
         de_una_vez = await service.summary(session)
     assert de_una_vez == en_lotes

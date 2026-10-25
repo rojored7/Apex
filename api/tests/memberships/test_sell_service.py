@@ -120,6 +120,33 @@ async def test_vender_una_tiquetera_copia_las_clases(
     assert fila is not None and (fila["classes_total"], fila["classes_remaining"]) == (12, 12)
 
 
+async def test_una_tiquetera_agotada_con_fin_futuro_hoy_bloquea_la_compra(
+    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
+) -> None:
+    """PM2 de la revisión de Fase 4 del Sprint 3 (S3-D92): comportamiento ACTUAL, aceptado con
+    dueño v0.4. Con `classes_remaining = 0` la tiquetera está `expired` (D15) y no cuenta como
+    vigente (`classify_open`), pero su rango sigue hasta `end_date` y `find_overlap` (y la
+    `EXCLUDE`) lo cruzan: vender hoy da `MembershipOverlap` con su `existing_id`. Hoy nada
+    descuenta clases; la regla de v0.4 (módulo `classes`) recorta `end_date` al día en que se
+    agota la última clase, y ahí esta prueba cambia a "vende sin choque"."""
+    socio = await make_member(session)
+    plan = await make_plan(
+        session, name="Tiquetera agotada", kind="classes", class_count=4, duration_days=60
+    )
+    agotada = await make_membership(
+        session,
+        socio,
+        plan,
+        status="active",
+        start=date(2026, 10, 1),
+        end=date(2026, 11, 30),
+        classes_remaining=0,
+    )
+    with pytest.raises(MembershipOverlap) as error:
+        await vender(session, ACTOR, member_id=socio.id, plan_id=plan.id)
+    assert error.value.existing_id == agotada.id
+
+
 async def test_vender_con_fecha_de_inicio_futura(
     session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
 ) -> None:

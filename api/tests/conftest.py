@@ -264,14 +264,10 @@ LIMPIAR_PAYMENTS = (
     "DO $$ BEGIN IF to_regclass('payments.payments') IS NOT NULL THEN "
     "ALTER TABLE payments.payments DISABLE TRIGGER USER; "
     "DELETE FROM payments.payments; "
-    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'payments.payments'::regclass "
-    "AND tgname = 'payments_forbid_mutation') THEN "
+    # PL7 de la revisión de Fase 4 del Sprint 3: sin guarda por trigger; si `0011` no los
+    # instalara, el `ALTER` falla y lo deja a la vista.
     "ALTER TABLE payments.payments ENABLE ALWAYS TRIGGER payments_forbid_mutation; "
-    "END IF; "
-    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'payments.payments'::regclass "
-    "AND tgname = 'payments_forbid_truncate') THEN "
     "ALTER TABLE payments.payments ENABLE ALWAYS TRIGGER payments_forbid_truncate; "
-    "END IF; "
     "END IF; END $$"
 )
 

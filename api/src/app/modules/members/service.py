@@ -9,10 +9,10 @@ Otros módulos (`memberships`, `payments`), el router y las pruebas solo importa
   `diff_fields`, `ensure_can_change` y `ADMIN_ONLY_FIELDS`;
 - `detail.py` (S3-B9b): `get(session, member_id)`, la ficha enmascarada (US-073); desde S3-B10
   `reveal(session, member_id, field, *, ip)` (US-074);
-- `changes.py` (S3-B10): `update`, `deactivate`, `reactivate` y los eventos `MemberUpdated` y
-  `MemberDeactivated` (US-075, US-076); también `id_by_document`, `DOCUMENT_DATA_CLASS` y
-  `DOCUMENT_ALIVE_INDEX`, que se mudaron allí para que `update` los use sin un ciclo con este
-  archivo (la fachada los sigue exportando).
+- `changes.py` (S3-B10): `update`, `deactivate`, `reactivate` y los eventos `MemberUpdated`,
+  `MemberDeactivated` y `MemberReactivated` (S3-D89) (US-075, US-076); también `id_by_document`,
+  `DOCUMENT_DATA_CLASS` y `DOCUMENT_ALIVE_INDEX`, que se mudaron allí para que `update` los use
+  sin un ciclo con este archivo (la fachada los sigue exportando).
 
 S3-B9b (US-071; D22, G-03, G-04): `list` acepta `membership_status` y `plan_id`; el conjunto de
 ids lo pide a `memberships.service.member_ids_by_status` con import perezoso (`# lazy: G-03
@@ -57,15 +57,12 @@ from sqlalchemy import (
     CompoundSelect,
     Select,
     Text,
-    Uuid,
     all_,
-    any_,
     func,
     literal,
     select,
     union,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -77,12 +74,13 @@ from app.core.crypto import bus
 from app.core.crypto.secret import PlainValue, Secret
 from app.core.db import violated_constraint
 from app.core.events import DomainEvent
-from app.core.pagination import Page, PageParams, paginate, to_page
+from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page, uuid_array
 from app.core.search import sql_fold
 from app.modules.members.changes import (
     DOCUMENT_ALIVE_INDEX,
     DOCUMENT_DATA_CLASS,
     MemberDeactivated,
+    MemberReactivated,
     MemberUpdated,
     deactivate,
     id_by_document,
@@ -131,6 +129,7 @@ __all__ = [
     "MemberChipFilter",
     "MemberCreated",
     "MemberDeactivated",
+    "MemberReactivated",
     "MemberUpdated",
     "QueryPlan",
     "active_ids",
@@ -162,8 +161,10 @@ logger = logging.getLogger("app.members")
 _CON_MEMBRESIA: Final = ("active", "expiring", "expired", "frozen", "pending_payment")
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MemberCreated(DomainEvent):
+    """Un socio quedó insertado en la transacción (solo el id, sin datos personales)."""
+
     member_id: UUID
 
 
@@ -217,7 +218,7 @@ def _detail(socio: Member, data: MemberCreate) -> MemberDetailOut:
         data_consent_at=socio.data_consent_at,
         data_consent_version=None,
         deleted_at=None,
-        membership_status=None,
+        membership_status=SIN_MEMBRESIA,  # PL4 de Fase 4: un socio recién creado no tiene membresía
         created_at=socio.created_at,
         updated_at=socio.updated_at,
         warnings=compute_warnings(data),
@@ -407,11 +408,6 @@ async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.li
     return [_fila(s, estados.get(s.id)) for s in socios]
 
 
-def _uuids(ids: Iterable[UUID]) -> ColumnElement[Any]:
-    """Un solo parámetro `uuid[]` (D22, S3-D71): 5.000 ids no expanden un `IN`."""
-    return literal(sorted(ids), ARRAY(Uuid()))
-
-
 async def _por_membresia(
     session: AsyncSession, filters: MemberListQuery
 ) -> ColumnElement[bool] | None:
@@ -425,10 +421,11 @@ async def _por_membresia(
 
     if filters.membership_status == SIN_MEMBRESIA:
         con = await memberships_service.member_ids_by_status(session, _CON_MEMBRESIA)
-        return Member.id != all_(_uuids(con))
+        # Un solo parámetro `uuid[]` (D22, S3-D71): 5.000 ids no expanden un `IN`.
+        return Member.id != all_(uuid_array(con))
     estados = _CON_MEMBRESIA if filters.membership_status is None else (filters.membership_status,)
     ids = await memberships_service.member_ids_by_status(session, estados, filters.plan_id)
-    return Member.id == any_(_uuids(ids))
+    return Member.id == any_uuids(ids)
 
 
 async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan builtins.list)

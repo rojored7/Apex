@@ -78,6 +78,7 @@ from app.core.clock import current_clock
 from app.core.context import get_actor
 from app.core.db import violated_constraint
 from app.core.events import emit
+from app.core.security import Role
 from app.modules.payments import rules
 from app.modules.payments.events import PaymentRegistered, PaymentVoided
 from app.modules.payments.exceptions import (
@@ -146,7 +147,7 @@ async def register(
     paid_at: datetime | None = None,
     confirm_overpayment: bool = False,
     confirm_duplicate: bool = False,
-    role: str,
+    role: Role | None,
 ) -> PaymentOut:
     """Registra un pago de la membresía (pasos en el docstring del módulo)."""
     gate = membership_gate()

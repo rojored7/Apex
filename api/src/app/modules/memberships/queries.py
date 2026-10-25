@@ -10,8 +10,12 @@
 - `_load_freezes_for(session, ids)`: las mismas, como `rules.FreezeWindow` (lo que leen
   `compute_status` y `apply_freeze`); la usan `sell` y `freeze`.
 - `freeze_out(fila)` y `membership_out(session, membresia, freezes)`: la salida `MembershipOut`
-  con el nombre del socio y del plan (`names_for` de cada módulo dueño) y `paid_cop`
-  (`payments.service.sum_not_voided`, S3-B4).
+  con el nombre del socio y del plan (`names_for` de cada módulo dueño), `paid_cop`
+  (`payments.service.sum_not_voided`, S3-B4) y, desde la revisión de Fase 4 del Sprint 3 (PM4,
+  S3-D91), el estado EFECTIVO (D5) con la política y el "hoy" del reloj: `get`, `freeze` y
+  `cancel` lo usan y responden lo mismo que la lista.
+- `row_fields(...)` y `out_fields(...)` (PM4): los campos de `MembershipRow` y de `MembershipOut`
+  desde la fila del ORM; los únicos constructores de las dos salidas (también de la de `sell`).
 
 S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` sombrea al
 `list` de Python en este archivo: las anotaciones y llamadas usan `builtins.list`.
@@ -34,20 +38,10 @@ S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` som
   el estado EFECTIVO (D5), como la fila de la lista.
 - `list_for_member(session, member_id, page, *, q=None) -> Page[MembershipOut]` (S3-B11, US-093,
   D28): la pestaña de la ficha (docstring de la función).
-- `summary(session, *, today=None) -> MembershipSummaryOut` (S3-D53, S3-D60, E11): la caché de
-  proceso (`SummaryCache`, clave `(hoy, expiring_days)`, TTL `SUMMARY_CACHE_TTL_S`) y, si no
-  sirve, `members.service.active_ids` en lotes de `SUMMARY_ID_BATCH` (una sentencia por lote:
-  `_summary_counts` con `DISTINCT ON (member_id)` ordenado por `member_status_rank_expr` y
-  `count(*) FILTER` por estado), sumando los lotes.
-- `reset_summary_cache()` y `configure_summary_cache(ttl_s)`: vaciar la caché y fijar su TTL
-  (las pruebas: `sin_cache_de_resumen` pone 0).
-- `_mark_summary_dirty(event, session)`: el handler de los siete eventos que cambian el resumen
-  (`MembershipSold`, `MembershipActivated`, `MembershipActivationReverted`, `MembershipFrozen`,
-  `MembershipCancelled`, `PaymentRegistered`, `PaymentVoided`; suscrito al final de
-  `service.py`): solo escribe `session.info[SUMMARY_DIRTY_KEY] = True`. La caché se vacía
-  después del commit real (un listener de `Session` que ignora la liberación de un SAVEPOINT,
-  E13) y la marca se descarta con el rollback de la transacción (no con el de un SAVEPOINT).
-  Los dos listeners se registran una sola vez al importar este archivo.
+- `_summary_counts(session, member_ids, today, expiring_days)` y `SUMMARY_FIELDS`: una
+  sentencia con `DISTINCT ON (member_id)` ordenado por `member_status_rank_expr` y
+  `count(*) FILTER` por estado; la usa `summary.py` (el resumen y su caché de proceso, que se
+  separaron de este archivo en la revisión de Fase 4 del Sprint 3, S3-D90).
 - `status_for(session, member_ids, *, today=None) -> dict[UUID, MemberMembership]`: el estado
   del socio y la membresía que lo decide, en lotes de `ID_BATCH`; los ids sin membresías no
   canceladas no aparecen (el llamador usa `none`).
@@ -60,11 +54,9 @@ S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` som
 
 from __future__ import annotations
 
-import asyncio
 import builtins
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Final
 from uuid import UUID
 
@@ -75,33 +67,28 @@ from sqlalchemy import (
     Row,
     Subquery,
     Text,
-    Uuid,
-    any_,
     case,
-    event,
     exists,
     func,
     literal,
     or_,
     select,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, distinct_on
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, SessionTransaction
 
 from app.core.clock import current_clock
-from app.core.events import DomainEvent
-from app.core.pagination import Page, PageParams, chunked, paginate, to_page
+from app.core.pagination import Page, PageParams, any_uuids, chunked, paginate, to_page
 from app.modules.members import service as members_service
 from app.modules.memberships.exceptions import DateRangeInvalid, MembershipNotFound
 from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.memberships.rules import (
     MEMBER_STATUS_PRIORITY,
     FreezeWindow,
-    MembershipSnapshot,
     MembershipStatus,
     compute_status,
     parse_status_filter,
+    snapshot,
 )
 from app.modules.memberships.schemas import (
     FreezeOut,
@@ -110,7 +97,6 @@ from app.modules.memberships.schemas import (
     MembershipOut,
     MembershipRef,
     MembershipRow,
-    MembershipSummaryOut,
 )
 from app.modules.payments import service as payments_service
 from app.modules.plans import service as plans_service
@@ -198,33 +184,75 @@ def freeze_out(fila: MembershipFreeze) -> FreezeOut:
     )
 
 
+def row_fields(
+    m: Membership, *, member_name: str, plan_name: str, paid_cop: int, status: MembershipStatus
+) -> dict[str, Any]:
+    """Los campos de `MembershipRow` (PM4): la base de toda salida de una membresía."""
+    return {
+        "id": m.id,
+        "member_id": m.member_id,
+        "member_name": member_name,
+        "plan_id": m.plan_id,
+        "plan_name": plan_name,
+        "agreed_price_cop": m.agreed_price_cop,
+        "paid_cop": paid_cop,
+        "start_date": m.start_date,
+        "end_date": m.end_date,
+        "classes_total": m.classes_total,
+        "classes_remaining": m.classes_remaining,
+        "status": status,
+    }
+
+
+def out_fields(
+    m: Membership,
+    *,
+    member_name: str,
+    plan_name: str,
+    paid_cop: int,
+    status: MembershipStatus,
+    freezes: Iterable[MembershipFreeze],
+) -> dict[str, Any]:
+    """Los campos de `MembershipOut` (PM4): los de la fila más congelaciones y anulación."""
+    return {
+        **row_fields(
+            m, member_name=member_name, plan_name=plan_name, paid_cop=paid_cop, status=status
+        ),
+        "freezes": [freeze_out(fila) for fila in freezes],
+        "cancel_reason": m.cancel_reason,
+        "cancelled_at": m.cancelled_at,
+        "created_at": m.created_at,
+    }
+
+
+def _effective(
+    m: Membership, freezes: Iterable[MembershipFreeze], today: date, expiring_days: int
+) -> MembershipStatus:
+    """El estado EFECTIVO de la fila con sus congelaciones (D5)."""
+    ventanas = [FreezeWindow(fila.frozen_from, fila.frozen_to) for fila in freezes]
+    return compute_status(snapshot(m), today, expiring_days, ventanas)
+
+
 async def membership_out(
     session: AsyncSession, membresia: Membership, freezes: Iterable[MembershipFreeze]
 ) -> MembershipOut:
-    """`MembershipOut` de una membresía con sus congelaciones (en el orden dado). Socios y planes
-    nunca se borran físicamente (regla de datos 4): si faltara un nombre, el `KeyError` es la
-    señal de un defecto, no un caso de negocio. `paid_cop` es la suma de los pagos no anulados
-    (S3-B4)."""
+    """`MembershipOut` de una membresía con sus congelaciones (en el orden dado) y su estado
+    EFECTIVO de hoy (D5, PM4). Socios y planes nunca se borran físicamente (regla de datos 4): si
+    faltara un nombre, el `KeyError` es la señal de un defecto, no un caso de negocio. `paid_cop`
+    es la suma de los pagos no anulados (S3-B4)."""
+    filas = builtins.list(freezes)
     socio = (await members_service.names_for(session, [membresia.member_id]))[membresia.member_id]
     plan_name = (await plans_service.names_for(session, [membresia.plan_id]))[membresia.plan_id]
-    return MembershipOut(
-        id=membresia.id,
-        member_id=membresia.member_id,
+    hoy, dias = await _today_and_expiring_days(session, None)
+    campos = out_fields(
+        membresia,
         member_name=f"{socio.first_name} {socio.last_name}",
-        plan_id=membresia.plan_id,
         plan_name=plan_name,
-        agreed_price_cop=membresia.agreed_price_cop,
         paid_cop=await payments_service.sum_not_voided(session, membresia.id),
-        start_date=membresia.start_date,
-        end_date=membresia.end_date,
-        classes_total=membresia.classes_total,
-        classes_remaining=membresia.classes_remaining,
-        status=membresia.status,
-        freezes=[freeze_out(fila) for fila in freezes],
-        cancel_reason=membresia.cancel_reason,
-        cancelled_at=membresia.cancelled_at,
-        created_at=membresia.created_at,
+        status=_effective(membresia, filas, hoy, dias),
+        freezes=filas,
     )
+    return MembershipOut(**campos)
 
 
 # Listas, resumen y consultas de estado (S3-B7) ---------------------------------------------------
@@ -233,125 +261,6 @@ ENDS_FLOOR: Final = date(2020, 1, 1)
 """Piso de `ends_from` y `ends_to` (M-4, S3-D47: el sistema no existe antes)."""
 ENDS_CEILING_YEARS: Final = 5
 """Techo de `ends_from` y `ends_to`: hoy más 5 años (M-4, S3-D47)."""
-SUMMARY_ID_BATCH: Final = 1000
-"""Ids de socios por sentencia del resumen (S3-D60): `member_id = ANY(:lote)`."""
-SUMMARY_CACHE_TTL_S: Final = 30
-"""Vida de una entrada de la caché del resumen, en segundos del reloj de la app (S3-D53)."""
-SUMMARY_DIRTY_KEY: Final = "apex.summary_dirty"
-"""Marca en `session.info` de una transacción que cambió el resumen (E11, E13)."""
-
-SUMMARY_CACHE_MAX_ENTRIES: Final = 32
-"""Tope de entradas de la caché del resumen (una por día y `expiring_days`; LOW-3 de B7)."""
-
-type SummaryKey = tuple[date, int]
-
-
-@dataclass(frozen=True, slots=True)
-class _SummaryEntry:
-    value: MembershipSummaryOut
-    stored_at: datetime
-
-
-class SummaryCache:
-    """Caché de proceso del resumen (S3-D53): clave `(hoy, expiring_days)`; una entrada sirve
-    mientras `current_clock().now_utc() - stored_at < ttl_s` (con `ttl_s = 0` nunca sirve).
-
-    `generation` sube con cada `clear()`: un `put` con la generación leída antes de calcular se
-    descarta si entre tanto se vació (un commit que invalidó mientras otra petición leía; MEDIUM-2
-    de la revisión de B7). Como mucho `SUMMARY_CACHE_MAX_ENTRIES` entradas (LOW-3): `put` purga
-    las vencidas y, si sigue lleno, saca la más vieja."""
-
-    def __init__(self, ttl_s: int = SUMMARY_CACHE_TTL_S) -> None:
-        self.ttl_s = ttl_s
-        self.generation = 0
-        self._entries: dict[SummaryKey, _SummaryEntry] = {}
-
-    def _age_s(self, entrada: _SummaryEntry) -> float:
-        return (current_clock().now_utc() - entrada.stored_at).total_seconds()
-
-    def get(self, key: SummaryKey) -> MembershipSummaryOut | None:
-        entrada = self._entries.get(key)
-        if entrada is None:
-            return None
-        if self._age_s(entrada) >= self.ttl_s:
-            del self._entries[key]
-            return None
-        return entrada.value
-
-    def put(
-        self, key: SummaryKey, value: MembershipSummaryOut, generation: int | None = None
-    ) -> None:
-        if self.ttl_s <= 0 or (generation is not None and generation != self.generation):
-            return
-        for vencida in [k for k, e in self._entries.items() if self._age_s(e) >= self.ttl_s]:
-            del self._entries[vencida]
-        if key not in self._entries and len(self._entries) >= SUMMARY_CACHE_MAX_ENTRIES:
-            del self._entries[min(self._entries, key=lambda k: self._entries[k].stored_at)]
-        self._entries[key] = _SummaryEntry(value, current_clock().now_utc())
-
-    def __len__(self) -> int:
-        return len(self._entries)
-
-    def clear(self) -> None:
-        self.generation += 1
-        self._entries.clear()
-
-
-_summary_cache = SummaryCache()
-_summary_lock: tuple[asyncio.AbstractEventLoop, asyncio.Lock] | None = None
-
-
-def reset_summary_cache() -> None:
-    """Vacía la caché del resumen."""
-    _summary_cache.clear()
-
-
-def configure_summary_cache(ttl_s: int) -> None:
-    """Fija el TTL de la caché del resumen (`0` la apaga) y la vacía."""
-    if ttl_s < 0:
-        raise ValueError("ttl_s no puede ser negativo")
-    _summary_cache.ttl_s = ttl_s
-    _summary_cache.clear()
-
-
-def _summary_cache_get(key: SummaryKey) -> MembershipSummaryOut | None:
-    return _summary_cache.get(key)
-
-
-def _summary_cache_put(
-    key: SummaryKey, value: MembershipSummaryOut, generation: int | None = None
-) -> None:
-    _summary_cache.put(key, value, generation)
-
-
-async def _mark_summary_dirty(event: DomainEvent, session: AsyncSession) -> None:
-    """Handler de los siete eventos que cambian el resumen (docstring del módulo): solo marca la
-    transacción; la caché se vacía tras el commit real (`_invalidate_summary_after_commit`)."""
-    session.info[SUMMARY_DIRTY_KEY] = True
-
-
-def _invalidate_summary_after_commit(session: Session) -> None:
-    """`after_commit` de `Session` (E11, E13): se despacha también al liberar un SAVEPOINT, antes
-    de cerrarlo; ahí todavía no hay commit real y no se toca nada."""
-    if session.in_nested_transaction():
-        return
-    if session.info.pop(SUMMARY_DIRTY_KEY, False):
-        _summary_cache.clear()
-
-
-def _forget_summary_mark_after_rollback(
-    session: Session, previous_transaction: SessionTransaction
-) -> None:
-    """`after_soft_rollback` (E13): el rollback de la transacción descarta la marca; el de un
-    SAVEPOINT no (la transacción que lo contiene ya pudo cambiar el resumen)."""
-    if not previous_transaction.nested:
-        session.info.pop(SUMMARY_DIRTY_KEY, None)
-
-
-if not event.contains(Session, "after_commit", _invalidate_summary_after_commit):
-    event.listen(Session, "after_commit", _invalidate_summary_after_commit)
-if not event.contains(Session, "after_soft_rollback", _forget_summary_mark_after_rollback):
-    event.listen(Session, "after_soft_rollback", _forget_summary_mark_after_rollback)
 
 
 # Estado derivado en SQL (D5) ----------------------------------------------------------------------
@@ -406,11 +315,6 @@ def member_status_rank_expr(today: date, expiring_days: int) -> ColumnElement[in
     )
 
 
-def _ids_param(ids: Iterable[UUID]) -> ColumnElement[Any]:
-    """`= ANY(:ids)` con un solo parámetro de tipo `uuid[]` (S3-D60)."""
-    return any_(literal(builtins.list(ids), ARRAY(Uuid())))
-
-
 def _deciding(
     today: date, expiring_days: int, member_ids: Iterable[UUID] | None = None
 ) -> Subquery:
@@ -424,7 +328,7 @@ def _deciding(
         status_expr(today, expiring_days).label("estado"),
     ).where(Membership.status != MembershipStatus.cancelled.value)
     if member_ids is not None:
-        consulta = consulta.where(Membership.member_id == _ids_param(member_ids))
+        consulta = consulta.where(Membership.member_id == any_uuids(member_ids))
     return (
         consulta.order_by(
             Membership.member_id,
@@ -441,16 +345,6 @@ async def _today_and_expiring_days(session: AsyncSession, today: date | None) ->
     """ "Hoy" (el pedido o el de Bogotá del reloj) y `expiring_days` de la política (Q4)."""
     politica = await settings_service.memberships_policy(session)
     return today or current_clock().today_bogota(), politica.expiring_days
-
-
-def _snapshot(m: Membership) -> MembershipSnapshot:
-    return MembershipSnapshot(
-        id=m.id,
-        status=MembershipStatus(m.status),
-        start_date=m.start_date,
-        end_date=m.end_date,
-        classes_remaining=m.classes_remaining,
-    )
 
 
 # Lista y detalle (US-091) -------------------------------------------------------------------------
@@ -488,7 +382,7 @@ def _list_conditions(
         valores = sorted(estado.value for estado in statuses)
         condiciones.append(status_expr(today, expiring_days).in_(valores))
     if member_ids is not None:
-        condiciones.append(Membership.member_id == _ids_param(member_ids))
+        condiciones.append(Membership.member_id == any_uuids(member_ids))
     if filters.member_id is not None:
         condiciones.append(Membership.member_id == filters.member_id)
     if filters.plan_id is not None:
@@ -509,21 +403,16 @@ async def _rows_for(
     socios = await members_service.names_for(session, (m.member_id for m in filas))
     planes = await plans_service.names_for(session, (m.plan_id for m in filas))
     pagado = await payments_service.sums_not_voided(session, ids)
-    congelaciones = await _load_freezes_for(session, ids)
+    congelaciones = await _freeze_rows_for(session, ids)
     return [
         MembershipRow(
-            id=m.id,
-            member_id=m.member_id,
-            member_name=f"{socios[m.member_id].first_name} {socios[m.member_id].last_name}",
-            plan_id=m.plan_id,
-            plan_name=planes[m.plan_id],
-            agreed_price_cop=m.agreed_price_cop,
-            paid_cop=pagado.get(m.id, 0),
-            start_date=m.start_date,
-            end_date=m.end_date,
-            classes_total=m.classes_total,
-            classes_remaining=m.classes_remaining,
-            status=compute_status(_snapshot(m), today, expiring_days, congelaciones[m.id]).value,
+            **row_fields(
+                m,
+                member_name=f"{socios[m.member_id].first_name} {socios[m.member_id].last_name}",
+                plan_name=planes[m.plan_id],
+                paid_cop=pagado.get(m.id, 0),
+                status=_effective(m, congelaciones[m.id], today, expiring_days),
+            )
         )
         for m in filas
     ]
@@ -558,11 +447,7 @@ async def get(session: AsyncSession, membership_id: UUID) -> MembershipOut:
     if membresia is None:
         raise MembershipNotFound()
     filas = (await _freeze_rows_for(session, [membresia.id]))[membresia.id]
-    hoy, dias = await _today_and_expiring_days(session, None)
-    ventanas = [FreezeWindow(fila.frozen_from, fila.frozen_to) for fila in filas]
-    salida = await membership_out(session, membresia, filas)
-    estado = compute_status(_snapshot(membresia), hoy, dias, ventanas)
-    return salida.model_copy(update={"status": estado.value})
+    return await membership_out(session, membresia, filas)
 
 
 async def list_for_member(
@@ -578,7 +463,7 @@ async def list_for_member(
         planes = await plans_service.search_ids(session, q)
         if not planes:
             return to_page([], 0, page)
-        condiciones.append(Membership.plan_id == _ids_param(planes))
+        condiciones.append(Membership.plan_id == any_uuids(planes))
     hoy, dias = await _today_and_expiring_days(session, None)
     consulta = (
         select(Membership).where(*condiciones).order_by(Membership.start_date.desc(), Membership.id)
@@ -598,36 +483,24 @@ async def _member_outs(
     planes = await plans_service.names_for(session, (m.plan_id for m in filas))
     pagado = await payments_service.sums_not_voided(session, ids)
     congelaciones = await _freeze_rows_for(session, ids)
-    salida: builtins.list[MembershipOut] = []
-    for m in filas:
-        ventanas = [FreezeWindow(f.frozen_from, f.frozen_to) for f in congelaciones[m.id]]
-        socio = socios[m.member_id]
-        salida.append(
-            MembershipOut(
-                id=m.id,
-                member_id=m.member_id,
-                member_name=f"{socio.first_name} {socio.last_name}",
-                plan_id=m.plan_id,
+    return [
+        MembershipOut(
+            **out_fields(
+                m,
+                member_name=f"{socios[m.member_id].first_name} {socios[m.member_id].last_name}",
                 plan_name=planes[m.plan_id],
-                agreed_price_cop=m.agreed_price_cop,
                 paid_cop=pagado.get(m.id, 0),
-                start_date=m.start_date,
-                end_date=m.end_date,
-                classes_total=m.classes_total,
-                classes_remaining=m.classes_remaining,
-                status=compute_status(_snapshot(m), today, expiring_days, ventanas).value,
-                freezes=[freeze_out(f) for f in congelaciones[m.id]],
-                cancel_reason=m.cancel_reason,
-                cancelled_at=m.cancelled_at,
-                created_at=m.created_at,
+                status=_effective(m, congelaciones[m.id], today, expiring_days),
+                freezes=congelaciones[m.id],
             )
         )
-    return salida
+        for m in filas
+    ]
 
 
 # Resumen (US-092; S3-D53, S3-D60, E11) ------------------------------------------------------------
 
-_SUMMARY_FIELDS: Final = ("active", "expiring", "expired", "frozen", "pending_payment")
+SUMMARY_FIELDS: Final = ("active", "expiring", "expired", "frozen", "pending_payment")
 
 
 async def _summary_counts(
@@ -636,54 +509,10 @@ async def _summary_counts(
     """Una sentencia: por estado resuelto, cuántos de `member_ids` hay (`count(*) FILTER`)."""
     decide = _deciding(today, expiring_days, member_ids)
     consulta = select(
-        *(func.count().filter(decide.c.estado == campo).label(campo) for campo in _SUMMARY_FIELDS)
+        *(func.count().filter(decide.c.estado == campo).label(campo) for campo in SUMMARY_FIELDS)
     ).select_from(decide)
     fila = (await session.execute(consulta)).one()
-    return {campo: int(getattr(fila, campo)) for campo in _SUMMARY_FIELDS}
-
-
-def _summary_flight_lock() -> asyncio.Lock:
-    """Un solo cálculo del resumen a la vez por proceso y bucle (MEDIUM-2 de la revisión de B7):
-    las peticiones que llegan con la caché vacía esperan al primero y leen lo que dejó."""
-    global _summary_lock
-    bucle = asyncio.get_running_loop()
-    if _summary_lock is None or _summary_lock[0] is not bucle:
-        _summary_lock = (bucle, asyncio.Lock())
-    return _summary_lock[1]
-
-
-async def _summary_compute(
-    session: AsyncSession, today: date, expiring_days: int
-) -> MembershipSummaryOut:
-    """`members.active_ids` y una sentencia por lote de `SUMMARY_ID_BATCH` (leído al llamar)."""
-    vivos = sorted(await members_service.active_ids(session))
-    totales = dict.fromkeys(_SUMMARY_FIELDS, 0)
-    for lote in chunked(vivos, SUMMARY_ID_BATCH):
-        for campo, cuantos in (await _summary_counts(session, lote, today, expiring_days)).items():
-            totales[campo] += cuantos
-    return MembershipSummaryOut(**totales)
-
-
-async def summary(session: AsyncSession, *, today: date | None = None) -> MembershipSummaryOut:
-    """US-092: socios no dados de baja por estado resuelto (docstring del módulo). Una sesión con
-    cambios sin confirmar que mueven el resumen (la marca `SUMMARY_DIRTY_KEY`) lo calcula sin
-    leer ni escribir la caché: ve lo suyo y nunca deja en la caché algo que puede revertirse
-    (MEDIUM-1 de la revisión de B7)."""
-    hoy, dias = await _today_and_expiring_days(session, today)
-    if session.info.get(SUMMARY_DIRTY_KEY) or _summary_cache.ttl_s <= 0:
-        return await _summary_compute(session, hoy, dias)
-    clave: SummaryKey = (hoy, dias)
-    guardado = _summary_cache_get(clave)
-    if guardado is not None:
-        return guardado
-    async with _summary_flight_lock():
-        guardado = _summary_cache_get(clave)
-        if guardado is not None:
-            return guardado
-        generacion = _summary_cache.generation
-        resultado = await _summary_compute(session, hoy, dias)
-        _summary_cache_put(clave, resultado, generacion)
-    return resultado
+    return {campo: int(getattr(fila, campo)) for campo in SUMMARY_FIELDS}
 
 
 # Consultas de estado para otros módulos (US-092 criterio 5, US-071, N-22) ------------------------

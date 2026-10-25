@@ -128,6 +128,14 @@ def test_member_deactivated_solo_lleva_el_socio() -> None:
     assert evento in eventos_de_la_app()
 
 
+def test_member_reactivated_solo_lleva_el_socio() -> None:
+    """Fase 4 del Sprint 3 (M1, PM1; S3-D89): el evento propio de la reactivación."""
+    evento = members_service.MemberReactivated
+    assert {campo.name for campo in dataclasses.fields(evento)} == {"occurred_at", "member_id"}
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+
+
 def test_el_evento_de_la_baja_y_el_409_no_comparten_nombre() -> None:
     """L-7: un `except MemberDeactivated` mal importado no puede tragarse el 409."""
     assert members_service.MemberDeactivated.__name__ == "MemberDeactivated"

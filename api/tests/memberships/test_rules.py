@@ -26,13 +26,14 @@ Sin base ni reloj: "hoy" llega como argumento. Fechas calculadas a mano (N-23, f
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, dataclass, replace
 from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.errors import DomainError
+from app.core.db import DatabaseBusy
+from app.core.errors import DomainError, TooManyRequestsError
 from app.modules.memberships.exceptions import (
     MembershipConflict,
     StartDateTooFar,
@@ -62,6 +63,7 @@ from app.modules.memberships.rules import (
     prefix_field,
     resolve_member_membership,
     resolve_member_status,
+    snapshot,
     validate_start_date,
 )
 from app.modules.memberships.sell import reraise_with_prefix
@@ -525,6 +527,10 @@ def _errores() -> list[DomainError]:
         PaidAtTooRetroactive(),
         PaymentLimitReached(),
         MembershipConflict(existing_id=_ID_EXISTENTE),
+        # PM3 de la revisión de Fase 4 del Sprint 3: errores con `__init__` propio (sin `code`
+        # ni `message` en la firma) y con cabeceras; reconstruirlos daba `TypeError` (500).
+        DatabaseBusy(),
+        TooManyRequestsError(7),
     ]
 
 
@@ -720,3 +726,33 @@ def test_una_que_empieza_hoy_es_vigente_y_no_futura() -> None:
 
 def test_la_prioridad_tiene_las_cuatro_categorias_en_orden() -> None:
     assert MEMBER_STATUS_PRIORITY == ("current", "pending_payment", "expired", "future")
+
+
+# rules.snapshot (PM4 de la revisión de Fase 4 del Sprint 3) -------------------------------------
+
+
+@dataclass(frozen=True)
+class _FilaDeColumnas:
+    """Lo que devuelve un `select` de columnas: atributos con el estado guardado como texto."""
+
+    id: UUID
+    status: str
+    start_date: date
+    end_date: date
+    classes_remaining: int | None
+
+
+def test_snapshot_de_una_fila_de_columnas_convierte_el_estado() -> None:
+    fila = _FilaDeColumnas(uuid4(), "frozen", HOY, HOY + timedelta(days=30), 4)
+    assert snapshot(fila) == MembershipSnapshot(
+        id=fila.id,
+        status=S.frozen,
+        start_date=HOY,
+        end_date=HOY + timedelta(days=30),
+        classes_remaining=4,
+    )
+
+
+def test_snapshot_con_un_estado_desconocido_es_value_error() -> None:
+    with pytest.raises(ValueError, match="no_existe"):
+        snapshot(_FilaDeColumnas(uuid4(), "no_existe", HOY, HOY, None))

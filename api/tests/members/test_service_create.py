@@ -92,7 +92,8 @@ async def test_crea_el_socio_activo_y_responde_enmascarado(
     for campo, mascara in MASCARAS_KNOWN.items():
         assert getattr(salida, campo) == mascara, campo
     assert salida.deleted_at is None
-    assert salida.membership_status is None
+    # PL4 de la revisión de Fase 4 del Sprint 3: el alta responde `"none"`, como la ficha.
+    assert salida.membership_status == "none"
     assert salida.warnings == []
     assert salida.created_at is not None and salida.updated_at is not None
     fila = await fila_socio(session, salida.id)

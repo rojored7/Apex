@@ -2,7 +2,7 @@
 (S3-B9a, D7, S3-D73). Solo lo importa `members`; los demás módulos llegan por la fachada
 `members/service.py`.
 
-- `_decrypt_fields(socio, campos, purpose) -> dict[str, object]`: descifra en memoria cada campo
+- `_decrypt_fields(socio, campos, purpose) -> dict[str, MaskValue]`: descifra en memoria cada campo
   cifrado NO nulo con `types.reveal(socio, campo, purpose)` (una fila `decrypt` en `crypto_ops`
   con ese `purpose`, el `record_id` del socio y el actor). Es la única llamada a `types.reveal`
   fuera de `core/` (D-4, `tests/architecture/test_reveal_single_door.py`). Los nulos no se
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import date
-from typing import Final, cast
+from typing import Final, get_args
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import audit
 from app.core.crypto import types
 from app.modules.members.exceptions import MemberNotFound
-from app.modules.members.models import ENCRYPTED_FIELDS, Member
+from app.modules.members.models import Member
 from app.modules.members.rules import MaskField, MaskValue, mask
 from app.modules.members.schemas import (
     EmergencyContactOut,
@@ -41,7 +41,9 @@ from app.modules.members.schemas import (
     RevealOut,
 )
 
-CAMPOS_CIFRADOS: Final[tuple[str, ...]] = ENCRYPTED_FIELDS
+# PM5 de la revisión de Fase 4 del Sprint 3: tipado como los campos de `mask` (sin `cast`); es
+# `models.ENCRYPTED_FIELDS` en el mismo orden (`test_member_rules.py` lo comprueba).
+CAMPOS_CIFRADOS: Final[tuple[MaskField, ...]] = get_args(MaskField)
 MASK_PURPOSE: Final = "mask"
 REVEAL_PURPOSE: Final = "reveal"
 MEMBERS_TABLE: Final = "members.members"
@@ -49,7 +51,7 @@ CONTACTO_ILEGIBLE: Final = "el contacto de emergencia guardado no tiene la forma
 SIN_MEMBRESIA: Final = "none"  # blueprint B7: sin entrada en `status_for`, `none`
 
 
-def _decrypt_fields(socio: Member, campos: Iterable[str], purpose: str) -> dict[str, object]:
+def _decrypt_fields(socio: Member, campos: Iterable[str], purpose: str) -> dict[str, MaskValue]:
     """Valores en claro de los `campos` no nulos del socio, con su tipo (`date`, mapeo). Cada
     uno deja una fila `decrypt` en `crypto_ops` con `purpose`; los nulos no se descifran."""
     return {
@@ -59,12 +61,12 @@ def _decrypt_fields(socio: Member, campos: Iterable[str], purpose: str) -> dict[
     }
 
 
-def _mascaras(socio: Member, claros: Mapping[str, object]) -> dict[str, str | None]:
+def _mascaras(socio: Member, claros: Mapping[str, MaskValue]) -> dict[str, str | None]:
     """Los cinco campos enmascarados en memoria desde los valores descifrados (D20)."""
     return {
         campo: mask(
-            cast(MaskField, campo),
-            cast(MaskValue, claros.get(campo)),
+            campo,
+            claros.get(campo),
             document_type=socio.document_type if campo == "document" else None,
         )
         for campo in CAMPOS_CIFRADOS

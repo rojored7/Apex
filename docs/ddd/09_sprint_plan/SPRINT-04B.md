@@ -114,7 +114,8 @@ Patrón de v0.1 en cada slice:
       - idempotente;
       - límites de 10 MB y 5.000 filas;
       - `bus.batch()`;
-      - sin `defusedxml`.
+      - sin `defusedxml`;
+      - una transacción por socio (deuda de PL6 de la revisión de Fase 4 del Sprint 3, S3-D95): alta, venta y primer pago de un socio confirman juntos y el siguiente socio abre otra transacción, así ninguna pide `lock_member` después del primer flush auditado de otro socio (orden de candados de D3, docstring de `core/locks.py`).
   - Gate: `slice-gate.sh cli` y `slice-gate.sh members`, cada uno con sus archivos.
 - **Slice S4B-B2 · Backup y su verificación.** Historias: US-114 y US-115 (backend).
   - Rojo:

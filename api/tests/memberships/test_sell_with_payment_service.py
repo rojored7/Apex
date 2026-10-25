@@ -76,7 +76,7 @@ async def _vender(
     plan_id: UUID,
     pago: PaymentIn,
     *,
-    role: str = "coach",
+    role: str | None = "coach",
     **otros: Any,
 ) -> Any:
     return await vender(
@@ -371,3 +371,15 @@ async def test_dos_ventas_con_el_mismo_pago_a_dos_socios_no_son_duplicado(
     dos = await _vender(session, segundo.id, plan.id, pago)
     assert (uno.status, dos.status) == ("active", "active")
     assert uno.first_payment_id != dos.first_payment_id
+
+
+async def test_sin_rol_el_primer_pago_tiene_el_tope_retroactivo(
+    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
+) -> None:
+    """S3-D81 (PM5 de Fase 4 quita el centinela `LIMITED_ROLE`): `role=None` no es `admin`."""
+    socio_id, plan_id = await _socio_y_plan(session)
+    hace_8_dias = T0 - timedelta(days=8)
+    with pytest.raises(PaidAtTooRetroactive) as error:
+        await _vender(session, socio_id, plan_id, _pago(paid_at=hace_8_dias), role=None)
+    assert error.value.field == "first_payment.paid_at"
+    await _nada_del_socio(session, socio_id)

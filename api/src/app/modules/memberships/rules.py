@@ -11,6 +11,10 @@ necesita. Los valores son `@dataclass(frozen=True, slots=True)` y validan en `__
   `pending_payment` salen del estado guardado; el resto se deriva de la fecha (D5).
   `classes_remaining == 0` cuenta como vencida (D15). `ValueError` si `expiring_days < 0`.
 - `effective(...)`: el mismo snapshot con el estado de `compute_status`.
+- `snapshot(fuente)` (PM4 de la revisión de Fase 4 del Sprint 3): el `MembershipSnapshot` de
+  cualquier objeto con `id`, `status` (texto guardado), `start_date`, `end_date` y
+  `classes_remaining` (la fila del ORM o una fila de columnas de un `select`); `ValueError` si
+  el estado no existe. Es el único constructor del snapshot.
 - `paid_total`, `covers` (Q5: pagar de más cubre) e `is_covered`.
 - `next_start_for_renewal(current, today)`: el día siguiente al fin de la vigente; hoy si no hay
   o si ya venció.
@@ -75,7 +79,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
-from typing import Final, Literal, cast
+from typing import Final, Literal, Protocol, cast
 from uuid import UUID
 
 from app.core.validators import check_visible_text
@@ -161,6 +165,32 @@ class MembershipSnapshot:
     def __post_init__(self) -> None:
         if self.start_date > self.end_date:
             raise ValueError("start_date no puede ser posterior a end_date")
+
+
+class SnapshotSource(Protocol):
+    """Lo que `snapshot` lee: la fila del ORM o una fila de columnas (estado como texto)."""
+
+    @property
+    def id(self) -> UUID: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def start_date(self) -> date: ...
+    @property
+    def end_date(self) -> date: ...
+    @property
+    def classes_remaining(self) -> int | None: ...
+
+
+def snapshot(fuente: SnapshotSource) -> MembershipSnapshot:
+    """El `MembershipSnapshot` de `fuente` con el estado guardado (docstring del módulo)."""
+    return MembershipSnapshot(
+        id=fuente.id,
+        status=MembershipStatus(fuente.status),
+        start_date=fuente.start_date,
+        end_date=fuente.end_date,
+        classes_remaining=fuente.classes_remaining,
+    )
 
 
 @dataclass(frozen=True, slots=True)

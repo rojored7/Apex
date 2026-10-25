@@ -21,7 +21,8 @@ from tests.architecture._imports import PRIVATE_HELPERS, find_forbidden_imports
 
 # Lo que `members/service.py` re-exporta como fachada (S3-B9a): las puras de `rules.py` y los
 # contratos con sesión que siguen en el service. S3-B10 suma `reveal` (`detail.py`), `update`,
-# `deactivate`, `reactivate` y los eventos `MemberUpdated` y `MemberDeactivated` (`changes.py`),
+# `deactivate`, `reactivate` y los eventos `MemberUpdated` y `MemberDeactivated` (`changes.py`;
+# Fase 4 del Sprint 3 suma `MemberReactivated`, S3-D89),
 # y las puras `diff_fields`, `ensure_can_change` y `ADMIN_ONLY_FIELDS` (`rules.py`).
 FACHADA_MEMBERS = frozenset(
     {
@@ -33,6 +34,7 @@ FACHADA_MEMBERS = frozenset(
         "MemberChipFilter",
         "MemberCreated",
         "MemberDeactivated",
+        "MemberReactivated",
         "MemberUpdated",
         "QueryPlan",
         "active_ids",
@@ -78,7 +80,16 @@ PURAS_DE_RULES = frozenset(
 )
 # Lo que la fachada toma de `detail.py` y `changes.py` (S3-B10): el mismo objeto, no una copia.
 DE_DETAIL = frozenset({"get", "reveal"})
-DE_CHANGES = frozenset({"update", "deactivate", "reactivate", "MemberUpdated", "MemberDeactivated"})
+DE_CHANGES = frozenset(
+    {
+        "update",
+        "deactivate",
+        "reactivate",
+        "MemberUpdated",
+        "MemberDeactivated",
+        "MemberReactivated",
+    }
+)
 
 MODULES_DIR = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 
@@ -122,7 +133,7 @@ def test_nadie_importa_los_helpers_privados_de_otro_modulo() -> None:
 
 def test_los_privados_de_memberships_son_los_de_d7() -> None:
     assert (
-        frozenset({"rules", "events", "sell", "lifecycle", "queries"})
+        frozenset({"rules", "events", "sell", "lifecycle", "queries", "summary"})
         == PRIVATE_HELPERS["memberships"]
     )
     for archivo in PRIVATE_HELPERS["memberships"]:

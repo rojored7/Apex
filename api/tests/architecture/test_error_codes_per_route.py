@@ -54,9 +54,12 @@ CON_LIMITE = {
     ("get", "/api/v1/members/{member_id}"),
     # S3-B10 (E2, D27, M-1, S3-D44): editar consume `members-write` (compartida con el alta) y
     # revelar las tres ventanas `members-reveal`, `members-reveal-hour` y `members-reveal-day`.
-    # Dar de baja y reactivar (solo admin) no tienen límite.
     ("patch", "/api/v1/members/{member_id}"),
     ("post", "/api/v1/members/{member_id}/reveal"),
+    # L1 de la revisión de Fase 4 del Sprint 3: dar de baja y reactivar (solo admin) consumen
+    # `admin-write`, como anular un pago o una membresía.
+    ("delete", "/api/v1/members/{member_id}"),
+    ("post", "/api/v1/members/{member_id}/reactivate"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

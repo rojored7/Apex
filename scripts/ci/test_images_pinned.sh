@@ -9,13 +9,15 @@
 #   - cada `FROM` de api/Dockerfile y web/Dockerfile;
 #   - cada `image:` de infra/compose.yml e infra/compose.dev.yml, salvo las imágenes
 #     propias `apex-*:local`;
-#   - la imagen de Nginx de scripts/ci/test_nginx_conf.sh (toda mención `nginx:<tag>`).
+#   - la imagen de Nginx de scripts/ci/test_nginx_conf.sh (toda mención `nginx:<tag>`);
+#   - cada `image:` de .github/workflows/ci.yml (L2 de la revisión de Fase 4 del Sprint 3),
+#     y el digest de `postgres:16` de ese archivo debe ser el de infra/compose.yml.
 # Renovación: docs/RUNBOOK.md, sección 7. Con un argumento, revisa esa raíz en lugar del
 # repositorio (para probar el script sobre una copia).
 set -euo pipefail
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
@@ -77,7 +79,7 @@ for rel in api/Dockerfile web/Dockerfile; do
   [ "$vistos" -gt 0 ] || falla "$rel" "$rel sin ningún FROM"
 done
 
-for rel in infra/compose.yml infra/compose.dev.yml; do
+for rel in infra/compose.yml infra/compose.dev.yml .github/workflows/ci.yml; do
   existe "$rel" || continue
   while IFS=: read -r n resto; do
     ref="$(printf '%s' "$resto" | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]]+#.*$//; s/^["'\'']//; s/["'\'']$//')"
@@ -103,6 +105,22 @@ if existe "$rel"; then
     done < <(printf '%s\n' "$resto" | grep -oE 'nginx:[A-Za-z0-9._-]+(@sha256:[0-9a-f]+)?' || true)
   done < <(grep -nE 'nginx:[A-Za-z0-9._-]+' "$ROOT/$rel" || true)
   [ "$menciones" -gt 0 ] || falla "$rel" "$rel sin imagen de Nginx"
+fi
+
+# digest_postgres <archivo relativo>: el digest de la primera `image: postgres:16@sha256:...`.
+digest_postgres() {
+  grep -oE 'image:[[:space:]]*postgres:16@sha256:[0-9a-f]{64}' "$ROOT/$1" | head -n 1 | sed 's/.*@//' || true
+}
+
+rel=.github/workflows/ci.yml
+if [ -f "$ROOT/$rel" ] && [ -f "$ROOT/infra/compose.yml" ]; then
+  del_ci="$(digest_postgres "$rel")"
+  del_compose="$(digest_postgres infra/compose.yml)"
+  if [ -n "$del_ci" ] && [ "$del_ci" = "$del_compose" ]; then
+    ok "$rel postgres:16 con el mismo digest de infra/compose.yml"
+  else
+    falla "$rel" "$rel postgres:16 con un digest distinto del de infra/compose.yml"
+  fi
 fi
 
 if [ "$fallas" -gt 0 ]; then

@@ -13,9 +13,9 @@ el candado del socio como emisor, D3); `on_payment_registered` en B4 y `on_payme
 Prohibido `pytest.skip`: con la lista vacía la prueba igual corre el análisis sobre el archivo real.
 
 S3-B7 (S3-D53, E11, E13): la lista exacta se amplía con los handlers de invalidación de la caché
-del resumen (`memberships/queries.py::_mark_summary_dirty`), que solo marcan `session.info` (sin
-`await`, sin candados, sin otro uso de la sesión), y con la lista exacta de suscriptores de los
-siete eventos que cambian el resumen.
+del resumen (`memberships/summary.py::_mark_summary_dirty`; en `queries.py` hasta S3-D90), que
+solo marcan `session.info` (sin `await`, sin candados, sin otro uso de la sesión), y con la lista
+exacta de suscriptores de los eventos que cambian el resumen.
 """
 
 from __future__ import annotations
@@ -189,16 +189,16 @@ def test_el_analizador_ve_los_handlers_y_sus_candados() -> None:
 
 # Handlers de invalidación de la caché del resumen (S3-B7; S3-D53, E11, E13) -------------------
 #
-# `memberships/queries.py` define los handlers `_mark_*` que el `service.py` suscribe a los siete
-# eventos que cambian el resumen. Lista exacta: `_mark_summary_dirty`. No piden candados, no
+# `memberships/summary.py` (S3-D90) define los handlers `_mark_*` que el `service.py` suscribe a
+# los eventos que cambian el resumen. Lista exacta: `_mark_summary_dirty`. No piden candados, no
 # esperan nada (`await`) y solo tocan la sesión por `session.info` (la marca que el listener de
 # `after_commit` lee después del commit real). Además, los suscriptores de esos siete eventos
 # son exactamente los de la tabla `SUSCRIPTORES_ESPERADOS` (L5 de la revisión de B1: todo
 # suscriptor nuevo de `MembershipSold` y compañía entra aquí con nombre).
 
-QUERIES = LIFECYCLE.parent / "queries.py"
+QUERIES = LIFECYCLE.parent / "summary.py"  # S3-D90: el resumen salió de `queries.py`
 HANDLERS_DE_CACHE: frozenset[str] = frozenset({"_mark_summary_dirty"})
-MARCA = "app.modules.memberships.queries._mark_summary_dirty"
+MARCA = "app.modules.memberships.summary._mark_summary_dirty"
 SUSCRIPTORES_ESPERADOS: dict[str, list[str]] = {
     "MembershipSold": [MARCA],
     "MembershipActivated": [MARCA],
@@ -207,6 +207,9 @@ SUSCRIPTORES_ESPERADOS: dict[str, list[str]] = {
     "MembershipCancelled": [MARCA],
     "PaymentRegistered": ["app.modules.memberships.lifecycle.on_payment_registered", MARCA],
     "PaymentVoided": ["app.modules.memberships.lifecycle.on_payment_voided", MARCA],
+    # Fase 4 del Sprint 3 (M1, PM1; S3-D89; cierra B7 LOW-1): baja y reactivación del socio.
+    "MemberDeactivated": [MARCA],
+    "MemberReactivated": [MARCA],
 }
 
 
@@ -262,6 +265,7 @@ def test_los_handlers_de_cache_solo_tocan_session_info() -> None:
 
 def test_los_suscriptores_de_los_eventos_del_resumen_son_exactamente_los_esperados() -> None:
     from app.core import events
+    from app.modules.members import service as members_service
     from app.modules.memberships import service as memberships_service
     from app.modules.payments import service as payments_service
 
@@ -269,6 +273,8 @@ def test_los_suscriptores_de_los_eventos_del_resumen_son_exactamente_los_esperad
         **{n: getattr(memberships_service, n) for n in list(SUSCRIPTORES_ESPERADOS)[:5]},
         "PaymentRegistered": payments_service.PaymentRegistered,
         "PaymentVoided": payments_service.PaymentVoided,
+        "MemberDeactivated": members_service.MemberDeactivated,
+        "MemberReactivated": members_service.MemberReactivated,
     }
     obtenidos = {
         nombre: [f"{h.__module__}.{h.__qualname__}" for h in events.subscribers_for(tipo)]

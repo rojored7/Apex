@@ -30,7 +30,8 @@ FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "excep
 PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "auth": frozenset({"rules", "tokens", "cookies", "events", "sessions", "users", "links"}),
     # S3-B1 (D7): `memberships` nace partido tras la fachada `service.py`.
-    "memberships": frozenset({"rules", "events", "sell", "lifecycle", "queries"}),
+    # Fase 4 del Sprint 3 (S3-D90): `summary` sale de `queries` (el resumen y su caché).
+    "memberships": frozenset({"rules", "events", "sell", "lifecycle", "queries", "summary"}),
     # S3-B3 (D7): `payments` nace partido tras la fachada `service.py`.
     "payments": frozenset({"rules", "events", "queries"}),
     # S3-B9a (D7, S3-D73): `members/service.py` se parte en `rules`, `detail` y `changes`.

@@ -22,9 +22,11 @@ S3-B10 (US-074, US-075, US-076; D19, D21, M-1, M-3, S3-D44, S3-D46):
   registra `logger.warning("reveal volume", extra={"user_id", "count"})` (S3-D44, M-1).
 - `PATCH /members/{member_id}` (admin y coach): `MemberDetailOut` enmascarado; consume
   `members-write` (compartido con `POST /members`). Códigos 200, 401, 403, 404, 409, 422 y 429.
-- `DELETE /members/{member_id}` (solo admin): 204. Códigos 204, 401, 403, 404, 409 y 422.
+- `DELETE /members/{member_id}` (solo admin): 204. Códigos 204, 401, 403, 404, 409, 422 y 429.
 - `POST /members/{member_id}/reactivate` (solo admin): `MemberDetailOut`. Códigos 200, 401, 403,
-  404, 409 y 422.
+  404, 409, 422 y 429.
+- Las dos consumen `admin-write` (30 por minuto, `USER_ADMIN_WRITE_LIMIT_PER_MIN`; L1 de la
+  revisión de Fase 4 del Sprint 3), la cubeta de anular un pago y anular una membresía.
 El 429 se declara por ruta, nunca en el `APIRouter` (D27, E2). Las rutas no hacen `select`:
 validan, llaman al service y devuelven.
 """
@@ -175,19 +177,23 @@ async def update_member(
     "/members/{member_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
-    responses=responses_for(404, 409, 422),
+    responses=responses_for(404, 409, 422, 429),
 )
-async def deactivate_member(member_id: UUID, principal: AdminDep, session: Session) -> None:
+async def deactivate_member(
+    request: Request, member_id: UUID, principal: AdminDep, session: Session
+) -> None:
     # Sin `Response` propia: FastAPI arma el 204 con las cabeceras de `no_store`.
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     await service.deactivate(session, member_id)
 
 
 @router.post(
     "/members/{member_id}/reactivate",
     response_model=MemberDetailOut,
-    responses=responses_for(404, 409, 422),
+    responses=responses_for(404, 409, 422, 429),
 )
 async def reactivate_member(
-    member_id: UUID, principal: AdminDep, session: Session
+    request: Request, member_id: UUID, principal: AdminDep, session: Session
 ) -> MemberDetailOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     return await service.reactivate(session, member_id)

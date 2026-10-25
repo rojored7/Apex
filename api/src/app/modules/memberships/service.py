@@ -2,7 +2,7 @@
 
 - `sell` (S3-B1, US-084; con primer pago desde S3-B4, US-085) y el evento `MembershipSold` (L7:
   se define en `events.py` y se exporta aquí).
-- `refs_for` (contrato para `payments`, B8) y `get_payment_target`.
+- `refs_for` (contrato para `payments`, B8).
 - `freeze` (S3-B2, US-089) y el evento `MembershipFrozen`.
 - S3-B4 (D1, D11): `membership_payability` (el gate de pagos), `on_payment_registered` (activa por
   cobertura) y el evento `MembershipActivated`.
@@ -19,8 +19,8 @@
 Al final del archivo, al importarse (lo hace `main.load_module_services()` en el api, el CLI y
 las pruebas): el registro del gate (`payments_service.set_membership_gate`, única llamada del api,
 L-5), las suscripciones a `PaymentRegistered` y `PaymentVoided` (B5) y, desde S3-B7 (S3-D53,
-E11), la de `queries._mark_summary_dirty` a los siete eventos que cambian el resumen (después de
-los handlers de negocio).
+E11), la de `summary._mark_summary_dirty` (en `summary.py` desde S3-D90) a los eventos que
+cambian el resumen (después de los handlers de negocio).
 """
 
 from __future__ import annotations
@@ -28,7 +28,8 @@ from __future__ import annotations
 import builtins
 
 from app.core import events
-from app.modules.memberships import queries
+from app.modules.members import service as members_service
+from app.modules.memberships import summary as summary_cache
 from app.modules.memberships.events import (
     MembershipActivated,
     MembershipActivationReverted,
@@ -50,15 +51,14 @@ from app.modules.memberships.queries import (
     member_ids_by_status,
     refs_for,
     status_for,
-    summary,
 )
 from app.modules.memberships.schemas import MemberMembership
 from app.modules.memberships.sell import (
-    get_payment_target,
     membership_payability,
     renewal_preview,
     sell,
 )
+from app.modules.memberships.summary import summary
 from app.modules.payments import service as payments_service
 
 __all__: builtins.list[str] = [
@@ -72,7 +72,6 @@ __all__: builtins.list[str] = [
     "count_active_by_plan",
     "freeze",
     "get",
-    "get_payment_target",
     "list",
     "list_for_member",
     "member_ids_by_status",
@@ -99,5 +98,9 @@ for _evento in (
     MembershipCancelled,
     payments_service.PaymentRegistered,
     payments_service.PaymentVoided,
+    # Fase 4 del Sprint 3 (M1, PM1; S3-D89; cierra B7 LOW-1): el resumen solo cuenta socios no
+    # dados de baja, así que la baja y la reactivación también lo cambian.
+    members_service.MemberDeactivated,
+    members_service.MemberReactivated,
 ):
-    events.subscribe(_evento, queries._mark_summary_dirty)
+    events.subscribe(_evento, summary_cache._mark_summary_dirty)

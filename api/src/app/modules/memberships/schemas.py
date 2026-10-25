@@ -18,7 +18,10 @@
   lo que crearía la renovación; `current_end_date` es el fin de la vigente (con la extensión por
   congelación) o nulo si no hay.
 - Contratos para otros módulos (dataclasses, nunca el ORM): `MembershipRef` (lo que `refs_for`
-  devuelve por id de membresía) y `PaymentTarget` (lo que lee el gate de pagos, B4).
+  devuelve por id de membresía). `PaymentTarget` (B1) se quitó en la revisión de Fase 4 del
+  Sprint 3 (PL2): el gate de pagos es `payments.service.MembershipPayability` desde B4.
+- PM5 de la revisión de Fase 4 del Sprint 3: `status` de `MembershipOut` y `MembershipRow` es el
+  enum `MembershipStatus` (el OpenAPI lo publica con sus seis valores; antes era `string`).
 - S3-B7 (US-091, US-092; D18, L-9, M-4): `MembershipListQuery` (filtros de `GET /memberships`:
   `status` texto separado por comas de hasta `STATUS_FILTER_MAX_LENGTH` (100) caracteres, que
   valida `rules.parse_status_filter`; `q`; `plan_id` y `member_id` como `UUID`; `ends_from` y
@@ -39,7 +42,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, S
 
 from app.core.pagination import MAX_SEARCH_LENGTH
 from app.core.validators import check_visible_text
-from app.modules.memberships.rules import CANCEL_REASON_MAX, ResolvedStatus
+from app.modules.memberships.rules import CANCEL_REASON_MAX, MembershipStatus, ResolvedStatus
 from app.modules.payments.schemas import PaymentIn
 
 
@@ -111,7 +114,7 @@ class MembershipOut(BaseModel):
     end_date: date
     classes_total: int | None
     classes_remaining: int | None
-    status: str
+    status: MembershipStatus
     freezes: list[FreezeOut]
     cancel_reason: str | None
     cancelled_at: datetime | None
@@ -132,15 +135,6 @@ class MembershipRef:
     plan_name: str
     start_date: date
     end_date: date
-
-
-@dataclass(frozen=True, slots=True)
-class PaymentTarget:
-    """Lo que el gate de pagos sabe de la membresía, leída con `FOR UPDATE` (D1, B4)."""
-
-    exists: bool
-    cancelled: bool
-    member_id: UUID | None
 
 
 # Listas, resumen y estado del socio (S3-B7) ---------------------------------------------------
@@ -177,7 +171,7 @@ class MembershipRow(BaseModel):
     end_date: date
     classes_total: int | None
     classes_remaining: int | None
-    status: str
+    status: MembershipStatus
 
 
 class MembershipSummaryOut(BaseModel):

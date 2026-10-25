@@ -1,13 +1,16 @@
-"""`sell.lock_membership` y `service.get_payment_target` (S3-B1; D1, D-3, S3-D59).
+"""`sell.lock_membership` y `service.membership_payability` (S3-B1 y S3-B4; D1, D-3, S3-D41,
+S3-D59).
 
-Nacen en B1 (Verde) aunque el gate de pagos que los consume llega en B4:
 - `lock_membership` devuelve la fila con `FOR UPDATE` y `populate_existing=True` (relee de la base
   aunque el objeto ya esté en el mapa de identidad) y `None` si no existe;
-- `get_payment_target` dice si la membresía existe, si está anulada y de qué socio es (el
-  `member_id` que `payments` copiará, D9), sin leerlo nunca del cuerpo de la petición.
-- S3-B4: `service.membership_payability` (el gate real que `memberships/service.py` registra) es
-  `get_payment_target` más el `agreed_price_cop` de la fila bloqueada, como
+- `service.membership_payability` (el gate real que `memberships/service.py` registra) dice si
+  la membresía existe, si está anulada, de qué socio es (el `member_id` que `payments` copiará,
+  D9, sin leerlo nunca del cuerpo de la petición) y su `agreed_price_cop`, como
   `payments.service.MembershipPayability` (S3-D41).
+
+Antes `test_payment_target.py`: la revisión de Fase 4 del Sprint 3 (PL2) quitó
+`get_payment_target` y `PaymentTarget`, el contrato de B1 que el gate de B4 reemplazó; sus dos
+pruebas se fueron con él y `test_el_contrato_de_b1_ya_no_existe` lo fija.
 """
 
 from __future__ import annotations
@@ -19,8 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FrozenClock
 from app.core.crypto.keyring import Keyring
-from app.modules.memberships import service
-from app.modules.memberships.schemas import PaymentTarget
+from app.modules.memberships import schemas, service
 from app.modules.memberships.sell import lock_membership
 from app.modules.payments.service import MembershipPayability
 from tests.factories.members import make_member
@@ -47,27 +49,11 @@ async def test_lock_membership_relee_la_fila_de_la_base(
     assert bloqueada.status == "active"  # ...refrescado por `populate_existing`
 
 
-async def test_get_payment_target_de_una_inexistente(session: AsyncSession) -> None:
-    assert await service.get_payment_target(session, uuid4()) == PaymentTarget(
-        exists=False, cancelled=False, member_id=None
-    )
-
-
-async def test_get_payment_target_de_una_vigente_y_de_una_anulada(
-    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
-) -> None:
-    socio = await make_member(session)
-    plan = await make_plan(session)
-    vigente = await make_membership(session, socio, plan, status="active")
-    anulada = await make_membership(
-        session, socio, plan, status="cancelled", start=reloj.today_bogota()
-    )
-    assert await service.get_payment_target(session, vigente.id) == PaymentTarget(
-        exists=True, cancelled=False, member_id=socio.id
-    )
-    assert await service.get_payment_target(session, anulada.id) == PaymentTarget(
-        exists=True, cancelled=True, member_id=socio.id
-    )
+def test_el_contrato_de_b1_ya_no_existe() -> None:
+    """PL2: nada de producción usaba `get_payment_target` ni `PaymentTarget`."""
+    assert not hasattr(service, "get_payment_target")
+    assert "get_payment_target" not in service.__all__
+    assert not hasattr(schemas, "PaymentTarget")
 
 
 # `membership_payability`, el gate real de pagos (S3-B4, D1, S3-D41) -------------------------------

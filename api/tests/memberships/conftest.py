@@ -26,7 +26,7 @@ from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import LocalFileProvider
 from app.modules.memberships import service as memberships_service  # noqa: F401
-from app.modules.memberships.queries import (
+from app.modules.memberships.summary import (
     SUMMARY_CACHE_TTL_S,
     configure_summary_cache,
     reset_summary_cache,

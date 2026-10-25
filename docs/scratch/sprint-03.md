@@ -2639,3 +2639,249 @@ Corrección consolidada de los informes `code-reviewer` y `python-reviewer` sobr
 - V1 (front, sin cambio esperado): el alta de socio responde `membership_status: "none"` en lugar de `null` (PL4), lo mismo que ya daban la ficha y la lista.
 - V2/V4: prueba funcional de Nginx por `:8180` (una sola `Cache-Control` y un solo `Pragma` en `/api/`); exige reconstruir la imagen `web` (copia `infra/nginx/snippets/`). No se reinició ni se reconstruyó nada: el api recarga por bind mount.
 - V2/V4: el job `e2e-stack` de la CI con las ocho `USER_*` x100 solo se ve en GitHub Actions.
+
+## Validación V2–V8
+
+Rama `feat/sprint-03-membresias-pagos` en `d5f494d` al entrar, árbol limpio. Alias
+`DC="docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml"`. Informes,
+logs y scripts de la demo en el scratchpad de la sesión (fuera del repo); capturas en
+`web/test-results/captures/` (gitignored). Sin credenciales en este bloque: `admin@ejemplo.local`
+no se tocó; un access suyo se firmó dentro de `apex-api-1` (script temporal en `/tmp`, borrado
+como root al terminar) solo para crear y luego borrar el admin desechable
+`admin-e2e-1792950100@apex.test` (`99fd5d95-…`, `POST /users` + `POST /auth/reset` con
+contraseña aleatoria; `DELETE /users/{id}` 204 al final). El coach `coach-mvjpe527@apex.test`
+se restableció con `tools issue-reset-link … --as admin@ejemplo.local` + `POST /auth/reset`.
+Contraseñas y tokens vivieron solo en archivos del scratchpad, borrados al terminar.
+
+### V2 · Stack desde cero de código
+- `docker compose build` sigue roto en este equipo (RUNBOOK §7, `--allow=network.host`; con
+  `COMPOSE_BAKE=false` también falla: "failed to execute bake"). Imágenes con buildx directo y
+  `--no-cache`: `apex-api:local` `699523dc7e8d` (contexto `api/`, 18 s) y `apex-web:local`
+  `c4d45f01b338` (contexto raíz, 26 s); `$DC up -d --no-build`: api y web recreados, `healthy`.
+- `tools init-keys`: KEK, firma y par JWT "ya existe". `alembic current` =
+  `0011_payments_immutability (head)`.
+- `pg_dump` previo a `docs/scratch/sprint-03-antes-v2.dump` (2,4 MB, ignorado por `*.dump`, NO
+  confirmado; lo borra V12). Antes: 13 membresías, 3 congelaciones, 15 pagos, 43 socios, 25
+  planes, 76 usuarios, 1.157 filas de auditoría.
+- Ciclo en `apex-db-1` con el api parado (`$DC stop api`) y `$DC run --rm --entrypoint alembic
+  tools …`: `downgrade 0007_plans` (0011 → 0010 → 0009 → 0008 → 0007, sin errores; no quedan
+  tablas en `memberships` ni `payments`) → `current` `0007_plans` → `upgrade head` (cuatro pasos)
+  → `current` `0011_payments_immutability (head)`; `alembic heads` (contenedor y `uv run` en
+  `api/`): una sola cabeza. Para ver la migración aplicada por el engine propio de `env.py` se
+  bajó un paso más sin datos (`downgrade 0010_payments`, tablas vacías) y se arrancó el api: log
+  `Running upgrade 0010_payments -> 0011_payments_immutability` y `migraciones al día` en
+  0,08 s, sin timeouts. Los siete triggers de `memberships` y `payments` en `A`.
+- `$DC logs --tail 50 api`: solo `INFO` (arranque, alembic, `Keyring(llaves=8, activas=8)`),
+  0 `ERROR`, 0 trazas.
+- Nginx (M3 de la Fase 4) por 8180: `GET /api/v1/health` y `GET /api/v1/members?limit=1` con
+  token → **una** `Cache-Control: no-store` y **una** `Pragma: no-cache` (también en el 401 sin
+  token y en el 503 `busy`). Queda cerrada la observación de B9b/B11 (cabecera duplicada).
+- Efecto del ciclo: se perdieron las membresías, congelaciones y pagos de B1 a B11 y de F1–F7
+  (aprobado en el plan; el dump los conserva).
+
+### V3 · Datos reales
+- `auth.users` vivos: 3 admin (`admin@ejemplo.local`, `system@apex.local` inactivo y el
+  desechable) y 58 coach (de specs anteriores); todos con `must_change_password = f`.
+- `settings.settings_sections`: `gym` 19, `memberships` 16, `payment_methods` 1, `privacy` 14
+  (las versiones suben con las specs). `memberships`: `max_freezes_per_membership` 2,
+  `max_freeze_days_per_membership` 30, `max_retroactive_days` 7, `expiring_days` 7.
+- `plans.plans`: 25 vivos; **no** hay "Mensual" 120.000/30: `POST /plans {"name":"Mensual"}` →
+  409 `plan_name_duplicated` contra "mensual" (320.000/90, `37f1e7d4-…`, creado por error en V2
+  del Sprint 2; sin edición de planes hasta US-082). Se creó **"Mensual V50137"** (120.000, 30
+  días, `2f240e77-7038-4560-936d-17f21b21a909`) y la demo lo usa.
+- Socios de la demo por API (documento y teléfono aleatorios, correo `@apex.test`):
+  `demo-venta` `dab44d0a-6cac-4a29-9177-0fe7df906fca`, `demo-parcial`
+  `2b46a4bd-d5c4-4690-9f95-a4b3aa3d5bc4`, `demo-renovar` `7a647c69-9d4a-4064-8fda-c91e67028afd`,
+  `demo-congelar` `f5a582ff-3651-46b7-88bb-c79d89b9c9ce`, `demo-ficha`
+  `9e786531-c4e3-4fd2-8ed6-6b88e4834080` (nombres "Demo <X> V50137"); en V7 se sumó "Demo
+  CongelarLimite V50137" `ae258a0e-987b-4df4-b1a7-12850ff0238e`.
+
+### V4 · E2E contra el stack
+- Copia de `.env` al scratchpad; bloque al final con las ocho `LOGIN_*`/`*_IP_LIMIT` de E5
+  (1000; `LOGIN_ACCOUNT_GLOBAL_LIMIT` 10000) y las ocho `USER_*` ×100 de E10 (los valores del
+  `sed` del job `e2e-stack`); `$DC -f infra/compose.e2e.yml up -d --no-build api web`: 16
+  variables dentro del api y `rate=6000r/m` en `auth-zone.conf` de web.
+- `npm run e2e:stack -- --workers=1` (`E2E_BASE_URL=http://localhost:8180`), 35 pruebas en 15
+  specs. Corridas 1 y 2: **34 ok, 1 fallo**, `refresh-two-tabs` (`refreshes` = `[200, 200]`
+  en lugar de `[200]`); corrida 3: 35 ok. Sola, 8 de 8 ok.
+  - Diagnóstico (copia temporal de la spec con registro de peticiones, ya borrada): en el caso
+    malo la segunda pestaña recibió por el canal el access nuevo de la primera ANTES de pedir
+    `/settings/gym`; el 401 falso de la spec se aplica a la primera lectura sin mirar el token, así
+    que "venció" un token recién emitido y la app pidió, con razón, otro refresh (sin reuso ni
+    pérdida de sesión). **Defecto de sincronización de la prueba, no del producto.**
+  - Corrección `7bb4e55` `fix(web)`: los dos 401 falsos se retienen con una barrera hasta que
+    llegan las dos lecturas; la aserción `[200]` no cambia. 15 de 15 ok repetida sola.
+- Resultado final, dos corridas completas seguidas tras la corrección: **35 ok, 0 fallos, 0
+  saltadas** (46,3 s y 46,8 s; `retries: 0`, así que no hay flaky), y una tercera de 35 ok (48,4
+  s) para regenerar las capturas. Incluye completas `settings-gym` (5 de 5, con "el coach ve Sin
+  permiso…") y `captures` (13 de 13, con "inicio en dark" a 768, 1024 y 1440), las dos que F7 no
+  pudo cerrar por los 429 de desarrollo. 0 respuestas 429 en el log de Nginx.
+  Por spec: `captures` 13, `login` 4, `settings-gym` 5, `plans` 2 y una cada una `logout-expired`,
+  `member-detail`, `member-tabs`, `members-mobile`, `members`, `memberships-freeze-cancel`,
+  `payment-void`, `refresh-two-tabs`, `sell-with-payment`, `users-activation`, `users-manage`.
+- `npx playwright test --project=preview --workers=1`: primera corrida **143 ok, 1 fallo**
+  (`members.spec.ts` "alta: el 409 enlaza al socio existente…", axe `color-contrast` en el
+  botón recién pulsado: hover a mitad de la transición, el caso del Sprint 2; sola 10 de 10 ok).
+  Corrección `dab1cc4` `fix(web)`: los cinco ayudantes axe del preview que no esperaban las
+  animaciones (`members`, `plans`, `settings-config`, `users-access`, `users-manage`) ahora lo
+  hacen, como ya hacían los demás; sin cambio de aserciones. Después: **144 ok, 0 fallos** (2,0
+  min), dos veces. 120 capturas del preview (320, 768, 1024 y 1440 en claro y oscuro donde las
+  piden; `members-mobile` a 390 y 320) más 23 del stack.
+- Restauración: `.env` copiado de vuelta, `cmp` idéntico a la copia; `$DC up -d --no-build api
+  web` sin `compose.e2e.yml`: 0 variables de límites en el api, `rate=60r/m`, sin el montaje
+  E2E. Seis logins fallidos (61 s después): `401 ×5, 429`.
+
+### V5 · Rendimiento
+`uv run pytest -m perf -q -s` (`TEST_DATABASE_URL` en `127.0.0.1:5443`), dos corridas: **8 ok**
+cada una (79,8 s y 85,2 s). Tiempos (corrida 1 / corrida 2; entre paréntesis B11.6):
+- búsqueda por documento con 1.000 socios: 34,6 / 30,9 ms (32,8);
+- L-11 login fallido ×20: p50 0,403 / 0,399 s, p95 0,411 / 0,412 s (0,398 y 0,407);
+- `membership_status=active` con 5.000 ids: 43,1 / 42,6 ms (42,6);
+- `membership_status=none` con 5.000 ids: 138,8 / 161,4 ms (143,5);
+- lista `expiring` con 1.000 socios y 3.000 membresías: 15,0 / 16,2 ms (15,4);
+- resumen de membresías sin caché con 1.000 socios: 17,2 / 13,0 ms (14,8);
+- lista de pagos con 10.000 pagos (`limit=25`): 13,7 / 12,9 ms (17,4);
+- resumen del mes con 10.000 pagos: 8,2 / 8,6 ms (9,5).
+Todo muy por debajo de los topes (500 y 300 ms); no hace falta `0014_payments_registered_by_idx`.
+
+### V6 · Smoke con evidencia SQL (sobre `apex-db-1`, tras las acciones de V7)
+- Activación atómica (V7.1, membresía `7ea35042-20be-4f30-9c76-2358917e0c90`):
+  `SELECT m.status, p.member_id = m.member_id … JOIN payments.payments p …` → `active | t`
+  (120.000, `cash`); auditoría del socio por `seq`: 1170 `insert members.members`, 2869 `insert
+  memberships.memberships`, 2870 `insert payments.payments`, 2871 `update
+  memberships.memberships`.
+- Reversión (V7.3, membresía `6f655274-c72d-449d-9dae-5dcd80131afc`, pago anulado
+  `dea8ba75-dbcb-46ee-8b95-3056d1af19ff`): `pending_payment`, `2026-10-25 – 2026-11-24` intactas,
+  0 congelaciones, pagado 62.000; el pago con `voided = t`, motivo y quién.
+- `EXCLUDE`: `INSERT` crudo solapado para `demo-renovar` (`2026-11-01 – 2026-11-30`) → `ERROR
+  23P01 … "ex_memberships_member_dates"` con el rango de la vigente.
+- Triggers (cada uno en `BEGIN … ROLLBACK`): `UPDATE payments SET amount_cop = 1` sobre un pago
+  válido → `payments_immutable: column`; anular por SQL y volver a tocar → `payments_immutable:
+  already_voided` (también `amount_cop` sobre el ya anulado); `DELETE` → `payments_immutable:
+  delete`; `TRUNCATE` → `payments_immutable: truncate`; `UPDATE memberships SET status='active'
+  WHERE status='cancelled'` → `memberships_identity: una membresía anulada no cambia`; `DELETE
+  FROM memberships.memberships` y `TRUNCATE … CASCADE` → `memberships_no_delete`; `UPDATE
+  membership_freezes SET days=1` y `DELETE` → `membership_freezes_append_only`; `SET LOCAL
+  session_replication_role = replica; UPDATE payments …` → `payments_immutable: column` (los
+  triggers `ENABLE ALWAYS` siguen). El pago tocado sigue en 1.000 y válido.
+- Ficha y reveal (`demo-ficha`): `crypto_ops` por `verb, purpose` → `decrypt | mask | 28`,
+  `decrypt | reveal | 1`, `encrypt 4`, `index 4`. Observación: el plan dice `mask | 5` para UNA
+  carga; este socio tiene 4 campos cifrados (sin contacto de emergencia ni nacimiento) y la ficha
+  se cargó 7 veces en la demo (admin, recarga, coach, edición, tras guardar, baja y reactivación):
+  7 × 4 = 28. Auditoría `reveal` seq 2907, `user_id` = admin desechable, `after = {"ip":
+  "172.30.0.128", "field": "document"}` sin el valor. `decrypt` sin `purpose`: **0** en toda
+  `crypto_ops`. Claves de auditoría del socio: `insert` (blobs e índices), `reveal` (`ip`,
+  `field`), `update` del coach solo `phone`, `phone_idx`, y dos `update` `status`, `deleted_at`.
+- `verify_chain` (script por stdin en el contenedor del api, `create_engine_from` y
+  `AuditEntry.__table__` por `seq`; no hay comando del CLI): `VerifyResult(ok=True,
+  rows_checked=2914, broken_at_seq=None)`, 2.914 de 2.914.
+- 503 `busy` (W0-2.7 repetida): psql `BEGIN; SELECT pg_advisory_xact_lock(4270002);
+  pg_sleep(20)`; `POST /members` 2 s después → **503** en **10,03 s** con `retry-after: 1` y una
+  `Cache-Control: no-store`; log `WARNING app.db "db busy"` `sqlstate 55P03` y `http_request`
+  `status 503` `duration_ms 10017`; tras el `ROLLBACK`, el mismo `POST` → **201** en 0,015 s.
+- Logs del api (`$DC logs --since 90m`, 315 líneas desde la recreación de las 18:03 UTC; las de
+  V3 se fueron con la recreación de V4): 0 apariciones de los documentos y teléfonos de V3, de
+  las referencias `V7-REN-`/`V7-CONG-`, de los motivos de anulación de V7, de `apx1.` y de los
+  correos de demo; 0 `ERROR`, 0 trazas.
+
+### V7 · Demo por la pantalla en 8180 (Playwright con el admin desechable y el coach; capturas `v7-p*-*.png`)
+1. `demo-venta`: `/membresias/vender?socio=<id>`, "Mensual V50137", Efectivo, $ 120.000 →
+   `POST` 201 `active`; "Venta registrada" con Estado **"Al día"** (`v7-p1-*`). SQL en V6.
+2. `demo-parcial`: venta con $ 60.000 → 201 `pending_payment`, **"Pendiente de pago"**. Saldo por
+   el panel (`/socios?pago=`, precargado $ 60.000): el api respondió **409
+   `payment_possible_duplicate`** (mismo valor, medio y quien registra que el abono de la venta,
+   hace segundos: S3-D41, como en F7) y la pantalla mostró "¿Registrar otro pago igual?"; al
+   confirmar, 201 y estado `active` ("Al día"). Tercer pago de $ 1.000: la pantalla muestra
+   "¿Registrar un pago mayor al saldo? Este pago supera el saldo de la membresía en $ 1.000…"
+   sin enviar nada; el mismo pago por API sin `confirm_overpayment` → **409
+   `payment_exceeds_balance`** (`field amount_cop`); al confirmar, **201** con
+   `confirm_overpayment: true`. Repetido en menos de 2 minutos: modal de sobrepago, luego el api
+   409 `payment_possible_duplicate` y el **segundo modal** "¿Registrar otro pago igual?"; al
+   confirmar, 201 con `confirm_duplicate: true` (`v7-p2-*`). Observación de texto: el plan dice
+   "supera el saldo pendiente"; la pantalla dice "supera el saldo de la membresía".
+3. El admin anula el segundo pago (el saldo de 60.000) desde la pestaña Pagos de la ficha con
+   motivo → `POST /payments/{id}/void` 200; la vigente vuelve a **"Pendiente de pago"** (pagado
+   62.000, saldo 58.000). La misma anulación desde una pestaña abierta antes → 409
+   `payment_already_voided` y la alerta **"Otra persona lo anuló antes. Actualizamos el pago…"**;
+   por API otra vez → 409. `UPDATE … amount_cop = 1` rechazado por el trigger (V6) (`v7-p3-*`).
+4. `demo-renovar` vendida y pagada por API (Nequi, 201 `active`, `2026-10-25 – 2026-11-24`).
+   "Renovar membresía" (`?renovar=1`) muestra **Inicio 25 nov 2026** ("al día siguiente de que
+   termine la actual", solo lectura; Q1) y fin 25 dic 2026; `renew: true` → 201, la futura
+   `ee1ccfd8-5212-45e0-892b-3d77c3664289` `2026-11-25 – 2026-12-25`. Vender otra sin `renew` (con y
+   sin `start_date` dentro de la vigente) → **409 `membership_conflict`** con `existing_id` de la
+   vigente: según `sell.py`, con una vigente o futura el conflicto gana a `membership_overlap`
+   (D8); `membership_overlap` solo sale contra una no cancelada que ya no es vigente (lo cubre
+   `test_sell_service.py`). El `INSERT` crudo lo rechaza la `EXCLUDE` (V6) (`v7-p4-*`).
+   Observación: el texto del plan ("responde 409 `membership_overlap`") no coincide con el
+   orden de D8 del código; se anota, no es un defecto.
+5. `demo-congelar` (al día, Bre-B): congelar desde la pantalla de membresías "Desde" hoy, "Hasta"
+   +9 → "Son 10 días; la membresía terminará el 4 dic 2026"; aviso "Ahora termina el 4 dic 2026",
+   fila "Congelado", `end_date` 2026-11-24 → **2026-12-04**. La misma ventana otra vez y una
+   segunda antes de terminar la primera → **409 `membership_not_freezable`** (la membresía está
+   `frozen`: es la primera regla de `rules.py`, antes de `freeze_already_scheduled`). La tercera
+   (`freeze_limit_reached`) no se alcanza en el mismo socio mientras la primera sigue en curso,
+   así que se mostró en "Demo CongelarLimite" (venta desde hoy −7, dos congelaciones pasadas por
+   API, 200 y 200): la tercera por la pantalla → **409 `freeze_limit_reached`** y "Esta membresía
+   ya usó todas las congelaciones que permite el gimnasio." Anular la membresía congelada de
+   `demo-congelar` (admin, motivo) → 200, "Sus pagos siguen registrados.", fila "Cancelado";
+   registrar un pago sobre ella → **409 `membership_cancelled`** (`v7-p5-*`).
+6. `demo-ficha`: la ficha muestra el documento como `CC •••• <4 últimos>`; "Mostrar" lo revela
+   (igual al sembrado) y "Ocultar" vuelve a la máscara sin dejarlo en el HTML; una fila `reveal`
+   y una `decrypt | reveal` (V6). El coach: sin "Dar de baja"; en "Editar socio" el documento
+   sale como "Solo un administrador puede cambiar el documento" sin "Cambiar"; cambia el teléfono
+   (el `PATCH` lleva solo `phone`, "Cambios guardados", máscara nueva); `PATCH {document}`
+   distinto y también el mismo → **403 `forbidden_field`** `field document` (M-3). El admin da de
+   baja → "Dado de baja el 25 oct 2026. Su ficha es de solo lectura…", sin "Editar"; reactivar →
+   "Socio reactivado" y "Editar" de nuevo (`v7-p6-*`).
+7. `/socios`: chips de "Estado" con conteos (Todos 50, Al día 3, Por vencer 0, Vencidos 0,
+   Congelados 0, Pendiente de pago 1, Sin membresía 46, Dados de baja); `plan_id` de "Mensual
+   V50137" → 4 filas; + "Al día" → `?plan_id=…&membership_status=active`, 3 filas (las mismas 3
+   del API `membership_status=active&plan_id=…`); + "Pendiente de pago" → 1 fila. Los conteos de
+   los chips son los globales del resumen (`/memberships/summary` → `active 3, pending_payment
+   1`), no se recalculan por plan. A 390 px: 0 tablas, 25 tarjetas y "Cargar más" → 50.
+   `GET /payments/summary?month=2026-10` → `total_cop 7.682.000`, `payments_count 86`,
+   `voided_count 27`, efectivo 6.662.000, Nequi 900.000, Bre-B 120.000; `/pagos?mes=2026-10`
+   muestra lo mismo ("86 pagos válidos", "Anulados 27", 113 en total); la lista `voided=false`
+   del mes paginada por el API suma 86 pagos y 7.682.000 con el mismo reparto por medio
+   (`v7-p7-*`).
+
+### V8 · Repetición
+- `tools seed` dos veces sin `.env.seed`: "faltan ADMIN_EMAIL o ADMIN_INITIAL_PASSWORD"
+  (S3-D64: el archivo ya no existe); con un `.env.seed` efímero (correo `admin@seed-v8…`,
+  contraseña aleatoria, borrado al terminar): "omitido: ya existe un admin activo" dos veces; no
+  se creó ningún usuario.
+- `tools init-keys` dos veces: las tres llaves "ya existe". `export-openapi` dos veces:
+  idénticas entre sí e idénticas a `docs/openapi.json` (sha256 `7f30f2e02289…`).
+- Specs `stack` dos veces seguidas en verde (V4). Anular el mismo pago dos veces: 200 (pantalla)
+  y 409 `payment_already_voided` (pestaña vieja y API). Congelar la misma ventana dos veces: 200
+  (pantalla) y 409 (`membership_not_freezable`, V7.5). `renew: true` dos veces: 201 (pantalla) y
+  409 `future_membership_exists` con el id de la futura.
+- `SMOKE_KEEP=1 bash scripts/ci/compose-smoke.sh`: no corre tal cual en este equipo (su `$DC
+  build api` y `up --build` chocan con el `--allow=network.host` de Compose). Usa el mismo
+  project `apex`, el mismo `.env` y los mismos puertos (no pisa otros proyectos; con
+  `SMOKE_KEEP=1` no baja nada). Se corrió una copia en el scratchpad con solo esos dos cambios
+  (buildx directo de api y web, `up -d --no-build`): **verde en 29 s**; db, db_test, api y web
+  healthy, `.env.seed` efímero creado y borrado, seed "omitido", api sin `ADMIN_*`, web en
+  `172.30.0.10` = `TRUSTED_PROXIES`, `web-smoke` 0 fallas, `headers` 0 fallas (con
+  `Cache-Control` y `Pragma` únicos; ráfaga de 45 logins: 40 respuestas 429). Imágenes
+  resultantes `apex-api:local` `18158a4577c7` y `apex-web:local` `dc21074575fc` (la web incluye
+  las specs corregidas; el bundle servido sigue siendo `assets/main-CvatLbOO.js`); api y web
+  recreados con ellas (`--force-recreate`), `healthy`, `alembic current` head.
+
+### Commits de la validación
+- `7bb4e55` fix(web): `refresh-two-tabs` sin carrera del 401 falso.
+- `dab1cc4` fix(web): axe del preview tras las transiciones.
+- El de este bloque (`docs(sprint-03)`).
+
+### Estado al terminar
+- Stack `apex` arriba sin `compose.e2e.yml`: db, db_test, api y web healthy en 5442/5443/8181/8180;
+  web con `rate=60r/m`; `.env` idéntico a la copia previa (`cmp`); seis logins fallidos `401 ×5,
+  429` tras la última recreación.
+- Admin desechable `admin-e2e-1792950100@apex.test` borrado (204, `deleted_at`); script de firma
+  borrado del contenedor; secretos del scratchpad borrados.
+- `docs/scratch/sprint-03-antes-v2.dump` en disco, sin confirmar (V12 lo borra).
+- Datos de la demo que quedan: plan "Mensual V50137"; socios "Demo Venta/Parcial/Renovar/
+  Congelar/Ficha/CongelarLimite V50137" activos con sus membresías y pagos (y "Demo Busy V50137"
+  del 201 posterior al 503); los socios y planes de las specs.
+- Fuera de este bloque: V1 y V9 a V12 (otros pasos del plan); el job `e2e-stack` de la CI solo
+  se ve en GitHub Actions.

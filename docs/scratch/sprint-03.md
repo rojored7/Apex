@@ -1553,3 +1553,45 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - B6.5 gate que sella: `memberships` con `test_renew_service`, `test_renew_router`,
   `test_cancel_service`, `test_cancel_router`, `test_lock_order`, `test_sell_service` y
   `tests/architecture/test_events_without_pii.py`.
+
+### Evidencia de S3-B6 (B6.6, después del sello; E8)
+
+- Gate B6.5 (sella) `memberships` con los siete archivos y `tests/architecture`: 395 ok, 1 saltada
+  (`test_no_sensitive_in_logs`, US-074), al primer intento y repetido tras corregir el bloque del
+  Verde. Checkpoint `3136ee6`.
+- api `healthy` y recargado por el bind (la vista previa ya respondía 200 antes de la demo); log del
+  api sin `ERROR` en los 15 minutos de la demo; 0 sesiones `idle in transaction`. Sin migración:
+  `apex-db-1` sigue en `0011_payments_immutability`.
+- Demo 4 por Nginx `:8180` con accesos del admin y de un coach firmados dentro del contenedor del
+  api (solo en variables de la shell; ningún archivo con token). Socio "Demo B4Uno" de la demo 1 de
+  B4 (`active` del 2026-10-25 al 2026-11-24), plan "Mensual mvjipju3" de 120.000:
+  - `GET /members/9786ef0a…/memberships/renewal-preview?plan_id=b6fab314…` → **200**
+    `{start_date 2026-11-25, end_date 2026-12-25, agreed_price_cop 120000, current_end_date
+    2026-11-24}`: inicio = fin + 1;
+  - `POST /members/9786ef0a…/memberships` con `renew: true` y `start_date` 2026-01-01 (descartado) →
+    **201** `pending_payment` del 2026-11-25 al 2026-12-25 (`6086de3c…`); auditoría `insert` (seq
+    879) del admin con el socio como sujeto; la vigente sin auditoría nueva;
+  - la vista previa otra vez → **409** `future_membership_exists` con `existing_id` = `6086de3c…`;
+  - venta sin `renew` con `start_date` 2026-11-01 (dentro de la vigente) → **409**
+    `membership_conflict` con `existing_id` de la vigente (`927a3723…`): por D8 la revisión de
+    conflicto (hay vigente y futura) va antes que la de solape, así que `membership_overlap` no
+    llega a evaluarse;
+  - psql en transacción revertida (`\set VERBOSITY verbose`): `INSERT` crudo del 2026-11-01 al
+    2026-12-01 para el mismo socio → `ERROR 23P01` en `ex_memberships_member_dates`; después el socio
+    sigue con 2 membresías.
+- Demo 5: membresía `pending_payment` de B1 (`0338472b…`, "Prueba Smoke Uno"):
+  - coach → `POST /memberships/0338472b…/cancel` **403** `forbidden`, sin cambios;
+  - admin con `{"reason": "  Cambio de ciudad  "}` → **200** `status = cancelled`, `cancel_reason`
+    "Cambio de ciudad" (recortado), `cancelled_at` lleno, fechas intactas, `Cache-Control:
+    no-store`; psql: `cancelled_by` = admin; auditoría `update` (seq 880) del admin con el socio como
+    sujeto y `before`/`after` con exactamente `status`, `cancel_reason`, `cancelled_by` y
+    `cancelled_at`; 0 pagos de esa membresía (sin cambios);
+  - admin otra vez → **409** `membership_already_cancelled`;
+  - `POST /memberships/0338472b…/payments` (120.000 `cash`) → **409** `membership_cancelled`, sin
+    pago;
+  - psql en transacción revertida: `UPDATE memberships.memberships SET status = 'active' WHERE id =
+    <anulada> AND status = 'cancelled'` → `ERROR 23000: memberships_identity: una membresía anulada
+    no cambia`, `CONSTRAINT NAME: memberships_identity`; después sigue `cancelled`.
+- `/health` y `/api/v1/health` → 200.
+- Observación sin cambio: el 200 de `cancel` por Nginx trae `Cache-Control: no-store` dos veces
+  (una en minúsculas); no es de B6 (mismo `no_store` del router de B1 a B5).

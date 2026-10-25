@@ -1346,3 +1346,32 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   `payments` con `test_void_rules`, `test_void`, `test_router_void` y `test_immutability`. Una
   primera pasada verde de los dos (273 y 358 ok) se repitió después de escribir este bloque, para que
   el sello cubra el árbol con la documentación.
+
+### Evidencia de S3-B5 (B5.6, después del sello; E8)
+
+- Gates B5.5 al primer intento (repetidos una vez tras escribir el bloque del Verde, antes del
+  checkpoint): 1 `memberships` (con `test_revert_activation_service`, `test_lock_order` y
+  `tests/architecture`) 273 ok; 2 (sella) `payments` (con `test_void_rules`, `test_void`,
+  `test_router_void`, `test_immutability` y `tests/architecture`) 358 ok. Una saltada en los dos
+  (`test_no_sensitive_in_logs`, US-074). Checkpoint `47c5692`.
+- api `healthy`, recargado por el bind (`WatchFiles detected changes ... Reloading`, `Application
+  startup complete`; el contenedor ve `_lock_for_void` y `VOID_REASON_INPUT_MAX`); log del api sin
+  `ERROR` en los 10 minutos de la demo; 0 sesiones `idle in transaction`. Sin migración:
+  `apex-db-1` sigue en `0011_payments_immutability`.
+- Demo 3 por Nginx `:8180` con access del admin y de un coach firmados dentro del contenedor del api
+  (solo en variables de la shell; ningún archivo con token). Socio "Demo B4Dos" de la demo 2 de B4,
+  membresía `b21e25b5…` (120.000, `active`, pagos 60.000 + 60.000 `DEMO-2` + 1.000 `DEMO-3`):
+  - coach → `POST /api/v1/payments/34c5effc…/void` **403** `forbidden`, sin cambios;
+  - admin con `{"reason": "Monto mal digitado"}` sobre el pago `DEMO-2` (el de 60.000 que completó
+    la cobertura) → **200** con `voided = true`, `void_reason`, `voided_by` = admin, `voided_at`
+    lleno; monto, medio, comprobante y `paid_at` intactos; `Cache-Control: no-store`;
+  - psql: la membresía vuelve a `pending_payment` con `end_date` 2026-11-24 intacto; lo pagado no
+    anulado es 61.000; `audit.audit_log`: `update` del pago (seq 877, `before` con las cuatro
+    columnas en vacío/falso, `after` con la anulación) y `update` de la membresía (seq 878,
+    `before = {"status": "active"}`, `after = {"status": "pending_payment"}`), los dos del admin y
+    con el socio como sujeto (el `update` de B4, seq 875, era la activación);
+  - admin otra vez → **409** `payment_already_voided`, sin cambios;
+  - psql en transacción revertida (`\set VERBOSITY verbose`): `UPDATE payments.payments SET
+    amount_cop = 1 WHERE id = <anulado>` → `ERROR 23000: payments_immutable: already_voided`,
+    `CONSTRAINT NAME: payments_immutable`; después el pago sigue en 60.000 y anulado.
+- `/health` y `/api/v1/health` → 200.

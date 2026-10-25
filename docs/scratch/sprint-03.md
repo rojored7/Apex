@@ -939,3 +939,29 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - Desviaciones: aristas de `payments` según S3-D80; el volcado queda con modo `rw-r--r--` en NTFS
   (Windows no conserva `chmod 600`, como en B1 y B2). La evidencia de B3.9 va al commit
   `docs(sprint-03): evidencia de S3-B3` (E8).
+
+### Evidencia de S3-B3 (B3.9, después del sello; E8)
+
+- Gates B3.8 seguidos, sin editar entre ellos, `PYTEST_ADDOPTS="-m 'not perf'"`, `ls` previo de cada
+  archivo, todos verdes al primer intento: 1 `settings` 344 ok; 2 `architecture` (con
+  `test_migrations`, `test_0010`, `test_0009`, `test_triggers_siempre_activos`,
+  `test_audited_tables`, `test_audit_module` y `test_banned_imports`) 298 ok; 3 `memberships` (con
+  `test_lock_order`, `sell-register`) 235 ok; 4 corrida conjunta `tests/memberships tests/payments
+  tests/migrations` 557 ok; 5 (sella) `payments` 404 ok. Una saltada en los gates 1, 2, 3 y 5
+  (`test_no_sensitive_in_logs`, US-074). Checkpoint `d5b37b9`.
+- P-MIG pasos 6 y 7 en `apex-db-1` (hechos en B3.4 y comprobados después del sello): api
+  `healthy`; `alembic current` = `0010_payments (head)`; ciclo `downgrade -1`/`upgrade head` sin
+  errores; log del api sin `ERROR` en los últimos 15 minutos; 0 sesiones `idle in transaction`.
+- Smoke por Nginx `:8180` con accesos firmados dentro del contenedor del api (el script temporal se
+  borró del contenedor y los tokens del disco):
+  - `GET /api/v1/payments/methods` con el coach `coach-b7-smoke@test.apex` → **200**
+    `{"items":[cash "Efectivo", nequi "Nequi", breb "Bre-B"]}` en orden, `Cache-Control:
+    no-store`.
+  - `GET /api/v1/settings/payment_methods` con el admin → 200 con los defaults en `version` 0;
+    `PATCH` con `version` 0 y `breb` = "Bre-B (Bancolombia)" → **200** `version` 1 (auditoría
+    `insert` de `settings.settings_sections`); `GET /payments/methods` del coach lo refleja.
+  - `PATCH /settings/payment_methods` con el coach → 403; `GET /payments/methods` sin token → 401.
+  - `POST /api/v1/memberships/{id}/payments` → **404** `not_found` (E9: la ruta nace en B4).
+  - `/health` y `/api/v1/health` → 200. `payments.payments` sigue vacía.
+- Observación sin cambio: Nginx y el api envían cada uno su `Cache-Control: no-store` (cabecera
+  repetida, mismo valor); ya pasaba en rutas anteriores (`/members`), no es de B3.

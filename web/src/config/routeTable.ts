@@ -105,7 +105,7 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/membresias", "Membresías", "memberships", "memberships.view", "panel", { load: () => import("../features/memberships/pages/MembershipsPage") }),
   // S3-F3: vender, primer pago y renovar (US-084, US-085, US-088).
   route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel", { load: () => import("../features/memberships/pages/SellPage") }),
-  route("/pagos", "Pagos", "payments", "payments.view", "panel"),
+  route("/pagos", "Pagos", "payments", "payments.view", "panel", { load: () => import("../features/payments/pages/PaymentsPage") }),
   route("/clases", "Clases", "classes", "classes.view", "panel"),
   route("/clases/horario", "Horario", "classes", "classes.schedule", "panel"),
   route("/clases/asistencia", "Asistencia", "classes", "classes.view", "panel"),

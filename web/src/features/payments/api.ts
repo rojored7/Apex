@@ -8,13 +8,25 @@
 //   en la lista), sin esperar las relecturas. Sin reintentos: una escritura nunca se repite sola.
 // - usePayment(id): GET /payments/{id} (B8) con la clave ["payments", "detail", id], para el detalle
 //   de S3-F6 y para releer un pago tras un 409.
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "../../core/api/client";
 import { isApiError } from "../../core/api/errors";
+import type { Page } from "../../core/api/page";
+import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
-import { paymentDetailSchema, paymentOutSchema, type PaymentDetailView, type PaymentInBody, type PaymentOutView } from "./schemas";
+import {
+  paymentDetailSchema,
+  paymentOutSchema,
+  paymentsPageSchema,
+  paymentsSummarySchema,
+  type PaymentDetailView,
+  type PaymentInBody,
+  type PaymentOutView,
+  type PaymentRowView,
+  type PaymentsSummaryView,
+} from "./schemas";
 export { PAYMENT_METHODS_QUERY_KEY, usePaymentMethods } from "../../shared/data/paymentMethods";
 
 /** Lo que deja viejo registrar o anular un pago. */
@@ -94,5 +106,50 @@ export function usePayment(id: string | null): UseQueryResult<PaymentDetailView>
     queryKey: paymentQueryKey(id ?? ""),
     queryFn: async ({ signal }) => parseResponse(paymentDetailSchema, await api.get<unknown>(`/payments/${encodeURIComponent(id ?? "")}`, { signal })),
     enabled: id !== null,
+  });
+}
+
+// S3-F6 · US-098, US-099 y US-100 (front): la lista de pagos y el resumen del mes.
+// - usePayments(params): GET /payments con la clave ["payments", "list", params]; los filtros son
+//   parte de la clave. `from` y `to` ya van en UTC (el rango es [from, to), D26). Filas estrictas.
+//   Mientras llega la página nueva se conserva la anterior; con `q` no queda en la caché ni se
+//   repite al volver a la ventana (S2-D41: gastaría el cupo de búsqueda de 60 por minuto).
+// - usePaymentsSummary(month): GET /payments/summary?month=AAAA-MM con la clave
+//   ["payments-summary", month]; registrar y anular la invalidan (PAYMENT_WRITE_INVALIDATES).
+export interface PaymentsParams {
+  limit: number;
+  offset: number;
+  q?: string;
+  /** Inicio del rango en UTC (el día de Bogotá a las 00:00). */
+  from?: string;
+  /** Fin exclusivo del rango en UTC (el día siguiente al "Hasta" de Bogotá a las 00:00). */
+  to?: string;
+  method?: string;
+  registered_by?: string;
+  voided?: boolean;
+  backdated?: boolean;
+}
+
+export function paymentsQueryKey(params: PaymentsParams): readonly ["payments", "list", PaymentsParams] {
+  return ["payments", "list", params];
+}
+
+export function paymentsSummaryKey(month: string): readonly ["payments-summary", string] {
+  return ["payments-summary", month];
+}
+
+export function usePayments(params: PaymentsParams): UseQueryResult<Page<PaymentRowView>> {
+  return useQuery({
+    queryKey: paymentsQueryKey(params),
+    queryFn: async ({ signal }) => parseResponse(paymentsPageSchema, await api.get<unknown>("/payments", { query: listParams({ ...params }), signal })),
+    placeholderData: keepPreviousData,
+    ...(params.q ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
+  });
+}
+
+export function usePaymentsSummary(month: string): UseQueryResult<PaymentsSummaryView> {
+  return useQuery({
+    queryKey: paymentsSummaryKey(month),
+    queryFn: async ({ signal }) => parseResponse(paymentsSummarySchema, await api.get<unknown>("/payments/summary", { query: { month }, signal })),
   });
 }

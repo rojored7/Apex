@@ -1,0 +1,104 @@
+/* S3-F6: Pagos.html (lista de pagos). Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Rango de fechas invertido: no se filtra hasta corregirlo. */
+.rangeError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+}
+
+/* Valor en negrita y cifras tabulares (DESIGN.md); el anulado va tachado y su estado lo dice. */
+.amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* S3-D51: registrado más de 24 h después de la fecha del pago. Borde y texto warning, como un aviso
+   pendiente; el texto lleva el significado. */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-pill);
+  color: var(--warning);
+  font: var(--text-caption);
+  white-space: nowrap;
+}
+
+/* "Ver": enlace de texto de Pagos.html con el alto mínimo del panel. */
+.view {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--blue-deep);
+  font: var(--text-button);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.view:hover {
+  background: var(--blue-tint);
+  color: var(--ink);
+}
+
+.view:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* "Registrar el primer pago": enlace con el aspecto del botón principal. */
+.firstPayment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--apex-blue);
+  border-radius: var(--radius-md);
+  background: var(--apex-blue);
+  color: var(--black);
+  font: var(--text-button);
+  text-decoration: none;
+}
+
+.firstPayment:hover {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--white);
+}
+
+.firstPayment:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+/* Fecha y membresía no se parten en la tabla: se desplaza dentro de su caja (DESIGN.md). En las
+   tarjetas del celular sí se parten. */
+@media (width >= 768px) {
+  .nowrap {
+    white-space: nowrap;
+  }
+}

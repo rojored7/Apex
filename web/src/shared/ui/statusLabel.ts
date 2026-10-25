@@ -67,3 +67,28 @@ export function accountLabel(status: AccountStatusView): string {
 export function accountTone(status: AccountStatusView): StatusTone {
   return ACCOUNT_TONES[status];
 }
+
+/**
+ * S3-F6: estado de un pago (Pagos.html). Un pago está vigente o anulado; nunca se edita ni se borra
+ * (DESIGN.md regla 4).
+ */
+export type PaymentStatusView = "valid" | "voided";
+
+export const PAYMENT_LABELS = Object.freeze({
+  valid: "Válido",
+  voided: "Anulado",
+} as const satisfies Record<PaymentStatusView, string>);
+
+/** Pagos.html: "Válido" con el relleno de "al día"; "Anulado" neutro (borde line, texto muted). */
+export const PAYMENT_TONES = Object.freeze({
+  valid: "ok",
+  voided: "neutral",
+} as const satisfies Record<PaymentStatusView, StatusTone>);
+
+export function paymentLabel(status: PaymentStatusView): string {
+  return PAYMENT_LABELS[status];
+}
+
+export function paymentTone(status: PaymentStatusView): StatusTone {
+  return PAYMENT_TONES[status];
+}

@@ -12,7 +12,7 @@ import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
 import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
-import { connectionMessage, waitText } from "../../shared/lib/apiMessages";
+import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { REFERENCE_MESSAGES } from "../../shared/data/schemas/payment";
 import type { RegisterPaymentFormValues } from "./schemas";
 
@@ -135,4 +135,51 @@ export function toVoidError(error: unknown): ApiError {
   if (!isApiError(error)) return new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: VOID_MESSAGES.generic });
   const message = connectionMessage(error) ?? voidMessage(error);
   return new ApiError({ status: error.status, code: error.code, message, ...(error.field ? { field: error.field } : {}) });
+}
+
+// S3-F6 · US-098, US-099 y US-100 (front): la lista de pagos, el detalle y el resumen del mes.
+export const LIST_MESSAGES = {
+  forbidden: "No tienes permiso para ver los pagos. Si lo necesitas, pídeselo a un administrador.",
+  invalidFilters: "Revisa las fechas del filtro: alguna está fuera del rango permitido. Límpialas e intenta de nuevo.",
+  tooMany: (wait: string) => `Hiciste muchas búsquedas seguidas. Espera ${wait} e intenta de nuevo.`,
+  generic: "No pudimos cargar los pagos. Intenta de nuevo.",
+} as const;
+
+export const DETAIL_MESSAGES = {
+  notFound: "No encontramos este pago. Cierra el detalle y actualiza la lista.",
+  forbidden: "No tienes permiso para ver este pago. Si lo necesitas, pídeselo a un administrador.",
+  generic: "No pudimos cargar el pago. Intenta de nuevo.",
+} as const;
+
+export const SUMMARY_MESSAGES = {
+  /** D23: el api acepta meses de 2020 a 2100 (422 `field="month"`). */
+  monthOutOfRange: "Elige un mes entre enero de 2020 y diciembre de 2100.",
+} as const;
+
+function listMessage(error: ApiError): string {
+  if (error.status === HTTP_FORBIDDEN) return LIST_MESSAGES.forbidden;
+  if (error.status === HTTP_UNPROCESSABLE) return LIST_MESSAGES.invalidFilters;
+  if (error.status === HTTP_TOO_MANY) return LIST_MESSAGES.tooMany(waitText(error.retryAfterS));
+  return LIST_MESSAGES.generic;
+}
+
+/** El error de la lista de pagos como ApiError con el mensaje de la pantalla, o null. */
+export function paymentListError(error: unknown): ApiError | null {
+  return toScreenError(error, listMessage, LIST_MESSAGES.generic);
+}
+
+function detailMessage(error: ApiError): string {
+  if (error.status === HTTP_NOT_FOUND) return DETAIL_MESSAGES.notFound;
+  if (error.status === HTTP_FORBIDDEN) return DETAIL_MESSAGES.forbidden;
+  return DETAIL_MESSAGES.generic;
+}
+
+/** El mensaje del detalle que no cargó (red, busy, 404, 403 o cualquier otro). */
+export function paymentDetailMessage(error: unknown): string {
+  return toScreenError(error, detailMessage, DETAIL_MESSAGES.generic)?.message ?? DETAIL_MESSAGES.generic;
+}
+
+/** Un 422 del mes del resumen: se explica el rango en vez de mostrar tarjetas en error. */
+export function isMonthOutOfRange(error: unknown): boolean {
+  return isApiError(error) && error.status === HTTP_UNPROCESSABLE && error.field === "month";
 }

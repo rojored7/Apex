@@ -4,9 +4,10 @@
 // tercer pago mayor al saldo (modal de Q5 y confirmación), anula ese tercero con motivo desde
 // /pagos, ve "Anulado" y comprueba que un segundo "Anular" desde otra pestaña da el 409 ("Otra
 // persona lo anuló antes"). axe en cada paso; al terminar da de baja al socio (baja lógica).
-// La anulación se hace desde la pantalla de pagos (S3-F6): los selectores siguen Pagos.html ("Ver",
-// "Detalle del pago", "Anular pago") y F6 los ajusta si su pantalla cambia. Se corre en V4 (F4.6:
-// sin Docker desde el worktree); sin E2E_BASE_URL se omite.
+// La anulación se hace desde la pantalla de pagos (S3-F6, con sus selectores reales): "Ver el pago de
+// <socio>" abre el diálogo "Detalle del pago"; "Anular pago" lo cambia por la confirmación; al cerrar
+// "Pago anulado" vuelve el detalle releído con la anulación, y Cerrar lo quita. Se corre en V4 (F4.6
+// y F6: sin Docker desde el worktree); sin E2E_BASE_URL se omite.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { crearPlan, crearSocio, darDeBajaSocio, esperarTransiciones, loginComo, venderMembresia, type SocioCreado } from "../helpers/stack";
@@ -35,8 +36,8 @@ async function openPaymentDetail(page: Page, socio: SocioCreado, amount: string)
   await page.goto("/pagos");
   await page.getByRole("searchbox", { name: "Buscar" }).fill(socio.documento);
   const row = page.getByRole("row", { name: new RegExp(`${socio.nombre}.*${amount.replace(/[$.]/g, "\\$&")}`) }).first();
-  await row.getByRole("button", { name: "Ver" }).click();
-  await expect(page.getByRole("dialog", { name: /Detalle del pago/ })).toBeVisible();
+  await row.getByRole("button", { name: `Ver el pago de ${socio.nombre}` }).click();
+  await expect(page.getByRole("dialog", { name: "Detalle del pago" })).toBeVisible();
 }
 
 test.describe("registrar y anular pagos contra el stack", () => {
@@ -96,6 +97,10 @@ test.describe("registrar y anular pagos contra el stack", () => {
     await voidModal.getByRole("button", { name: "Anular pago" }).click();
     await expect(page.getByRole("dialog", { name: "Pago anulado" })).toBeVisible();
     await page.getByRole("dialog", { name: "Pago anulado" }).getByRole("button", { name: "Cerrar" }).click();
+    const detail = page.getByRole("dialog", { name: "Detalle del pago" });
+    await expect(detail.getByRole("region", { name: "Anulación" })).toContainText(REASON);
+    expect(await axeViolations(page)).toEqual([]);
+    await detail.getByRole("button", { name: "Cerrar" }).click();
     await expect(page.getByRole("row", { name: new RegExp(socio.nombre) }).filter({ hasText: "Anulado" })).toHaveCount(1);
 
     // 5. El segundo "Anular" (desde la pestaña vieja) da el 409.

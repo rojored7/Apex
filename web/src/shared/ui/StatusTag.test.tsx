@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { axe } from "vitest-axe";
-import type { AccountStatusView, MembershipStatusView, StatusTone } from "./statusLabel";
+import { paymentLabel, paymentTone, type AccountStatusView, type MembershipStatusView, type PaymentStatusView, type StatusTone } from "./statusLabel";
 import { StatusTag } from "./StatusTag";
 
 const CASES: [MembershipStatusView, string, StatusTone][] = [
@@ -74,6 +74,44 @@ describe("StatusTag con account", () => {
         {ACCOUNT_CASES.map(([account]) => (
           <li key={account}>
             <StatusTag account={account} />
+          </li>
+        ))}
+      </ul>,
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// S3-F6: estado de un pago (Pagos.html: "Válido" relleno azul, "Anulado" neutro). Un pago no tiene
+// más estados: nunca se edita ni se borra (DESIGN.md regla 4).
+const PAYMENT_CASES: [PaymentStatusView, string, StatusTone][] = [
+  ["valid", "Válido", "ok"],
+  ["voided", "Anulado", "neutral"],
+];
+
+describe("StatusTag con payment", () => {
+  it.each(PAYMENT_CASES)("%s muestra '%s' con el tono %s", (payment, label, tone) => {
+    render(<StatusTag payment={payment} />);
+    const tag = screen.getByText(label);
+
+    expect(tag).toHaveClass("tag", tone);
+    expect(tag).toHaveAttribute("data-payment", payment);
+    expect(tag).not.toHaveAttribute("data-status");
+    expect(tag).not.toHaveAttribute("data-account");
+  });
+
+  it("las etiquetas y los tonos salen de statusLabel", () => {
+    expect(paymentLabel("voided")).toBe("Anulado");
+    expect(paymentTone("valid")).toBe("ok");
+  });
+
+  it("no tiene violaciones de accesibilidad", async () => {
+    const { container } = render(
+      <ul>
+        {PAYMENT_CASES.map(([payment]) => (
+          <li key={payment}>
+            <StatusTag payment={payment} className="extra" />
           </li>
         ))}
       </ul>,

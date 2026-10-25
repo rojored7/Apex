@@ -29,6 +29,10 @@
   `field`) y 429.
 - `GET /payments/{payment_id}` (S3-B8, US-099; admin y coach): 200 `PaymentDetail`; 404
   `payment_not_found`; 422 si el id no es UUID.
+- `GET /members/{member_id}/payments` (S3-B11, US-101, D28; admin y coach): `Page[PaymentRow]`
+  de la pestaña de la ficha con `PageParams`, `voided` opcional y `q` (referencia exacta, sin
+  distinguir mayúsculas). Sin límite por usuario: `q` no busca personas. Códigos 200, 401, 403,
+  404 (`member_not_found`) y 422.
 Las rutas fijas (`/payments/summary`, `/payments/methods`) van antes que las de parámetro
 (D27): el orden de los `GET` es `summary`, `methods`, lista y `{payment_id}`.
 Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
@@ -118,6 +122,22 @@ async def payment_detail(
     payment_id: UUID, principal: StaffDep, session: SessionDep
 ) -> PaymentDetail:
     return await service.get(session, payment_id)
+
+
+@router.get(
+    "/members/{member_id}/payments",
+    response_model=Page[PaymentRow],
+    responses=responses_for(404, 422),
+)
+async def member_payments(
+    member_id: UUID,
+    principal: StaffDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    voided: bool | None = None,
+) -> Page[PaymentRow]:
+    return await service.list_for_member(session, member_id, voided, page, q=q)
 
 
 @router.post(

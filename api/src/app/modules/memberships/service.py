@@ -14,6 +14,7 @@
 - S3-B7 (US-091, US-092): `list`, `get`, `summary`, `status_for`, `member_ids_by_status`,
   `count_active_by_plan` (contratos para `members`, `plans` y `dashboard`) y el tipo
   `MemberMembership`. `list` sombrea al `list` de Python: aquí se usa `builtins.list`.
+- S3-B11 (US-093, D28): `list_for_member` (la pestaña de membresías de la ficha).
 
 Al final del archivo, al importarse (lo hace `main.load_module_services()` en el api, el CLI y
 las pruebas): el registro del gate (`payments_service.set_membership_gate`, única llamada del api,
@@ -45,6 +46,7 @@ from app.modules.memberships.queries import (
     count_active_by_plan,
     get,
     list,
+    list_for_member,
     member_ids_by_status,
     refs_for,
     status_for,
@@ -72,6 +74,7 @@ __all__: builtins.list[str] = [
     "get",
     "get_payment_target",
     "list",
+    "list_for_member",
     "member_ids_by_status",
     "membership_payability",
     "on_payment_registered",

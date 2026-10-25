@@ -19,6 +19,10 @@
 - `POST /members/{member_id}/memberships` con `renew: true` (S3-B6, US-088; Q1): la misma ruta y
   la misma cubeta `memberships-write`; el `start_date` del cuerpo se descarta. 409
   `future_membership_exists` con `existing_id` si ya hay una futura.
+- `GET /members/{member_id}/memberships` (S3-B11, US-093, D28; admin y coach, `StaffDep`):
+  `Page[MembershipOut]` de la pestaña de la ficha con `PageParams` y `q` (nombre de plan). Sin
+  límite por usuario: `q` no busca personas (no usa `members.search_ids`). Códigos 200, 401,
+  403, 404 (`member_not_found`) y 422.
 - `GET /members/{member_id}/memberships/renewal-preview?plan_id=` (S3-B6, US-088; admin y coach,
   `StaffDep`): 200 `RenewalPreviewOut`. Es una lectura: sin límite por usuario (S3-D42) y sin
   candados. Códigos 200, 401, 403, 404 (`member_not_found`), 409 (`future_membership_exists`) y
@@ -122,6 +126,21 @@ async def freeze_membership(
         frozen_from=body.frozen_from,
         frozen_to=body.frozen_to,
     )
+
+
+@router.get(
+    "/members/{member_id}/memberships",
+    response_model=Page[MembershipOut],
+    responses=responses_for(404, 422),
+)
+async def member_memberships(
+    member_id: UUID,
+    principal: StaffDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+) -> Page[MembershipOut]:
+    return await service.list_for_member(session, member_id, page, q=q)
 
 
 @router.get(

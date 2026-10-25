@@ -56,6 +56,8 @@ Actor de `get_actor()` (solo admin por la ruta), hora de `current_clock()`. Todo
 `list`, `get` y `summary` (S3-B8, US-098, US-099, US-100; de `queries.py`): la lista
 paginada con filtros, el detalle y el resumen del mes de Bogotá. `list` sombrea al `list`
 de Python en este archivo: las anotaciones usan `builtins.list`.
+
+`list_for_member` (S3-B11, US-101, D28; de `queries.py`): la pestaña de pagos de la ficha.
 """
 
 from __future__ import annotations
@@ -92,6 +94,7 @@ from app.modules.payments.queries import (
     count_not_voided,
     get,
     list,
+    list_for_member,
     sum_not_voided,
     summary,
     sums_not_voided,
@@ -322,6 +325,7 @@ __all__: builtins.list[str] = [
     "PaymentVoided",
     "get",
     "list",
+    "list_for_member",
     "membership_gate",
     "methods",
     "register",

@@ -14,7 +14,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 1. [Sesión y límites](#1-sesión-y-límites-s2-b2)
 2. [Cuentas](#2-cuentas): primer admin, enlaces de activación y recuperación, ciclo de vida
 3. [Auditoría de eventos de seguridad](#3-auditoría-de-eventos-de-seguridad-s2-b6)
-4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado
+4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado, ficha, revelar y editar, pestañas de membresías y pagos
 5. [Planes](#5-planes-s2-b9)
 6. [Rollback por migración](#6-rollback-por-migración)
 7. [Imágenes base por digest y su renovación](#7-imágenes-base-por-digest-y-su-renovación-s3-d62)
@@ -318,6 +318,15 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin ac
 - **Recuperar a un socio dado de baja (`POST /api/v1/members/{member_id}/reactivate`, solo admin):** 200 con la ficha; vuelve a `active` con `deleted_at` nulo (auditado como `update`). Si mientras tanto se dio de alta a otro socio vivo con el mismo documento, responde 409 `member_document_duplicated` con su `existing_id` y el socio sigue dado de baja: decidir cuál de los dos es el real, dar de baja el duplicado (y pasarle sus membresías a mano si hiciera falta) y reactivar. Sobre un socio vivo da 409 `member_not_deactivated`. Encontrar el id: `GET /api/v1/members?status=deleted&q=<nombre o documento>`.
 - **Concurrencia:** editar, dar de baja y reactivar toman primero el candado del socio (`lock_member`, el mismo de vender, congelar y pagar), así una venta y una baja simultáneas no dejan una membresía nueva sobre un dado de baja. Si la espera supera `lock_timeout`, 503 `busy` (sección 9).
 - **Verificar con psql tras una revelación:** `SELECT action, after FROM audit.audit_log WHERE record_id = '<id>' AND action = 'reveal' ORDER BY seq DESC LIMIT 1;` da `{"field": ..., "ip": ...}` y `SELECT verb, purpose FROM crypto.crypto_ops WHERE record_id = '<id>' AND purpose = 'reveal';` una fila `decrypt | reveal` por revelación de un campo no vacío.
+
+### Pestañas de la ficha: membresías y pagos (S3-B11, US-093 y US-101)
+
+- **`GET /api/v1/members/{member_id}/memberships` (admin y coach, también sobre un socio dado de baja).** Página de `MembershipOut` de ese socio con `limit` (1 a 200), `offset` y `q`. Incluye las anuladas; orden `start_date` descendente y, en empate, `id`. Cada fila trae sus congelaciones, `paid_cop` (suma de los pagos no anulados) y el estado EFECTIVO (el mismo de `GET /memberships/{id}`: una `active` vencida sale `expired`, una congelada hoy sale `frozen`). `q` filtra por el nombre del plan sin tildes ni mayúsculas, incluidos los planes dados de baja (`Mensual` encuentra "Mensual Ilimitado"); si ningún plan coincide, la página sale vacía sin más consultas.
+- **`GET /api/v1/members/{member_id}/payments` (admin y coach, también sobre un dado de baja).** Página de `PaymentRow` de ese socio con `limit`, `offset`, `q` y `voided` (`true`, `false` o ausente para todos). Orden `paid_at` descendente y, en empate, `id` descendente. `q` es la referencia COMPLETA sin distinguir mayúsculas (`nq-123` encuentra `NQ-123`; `NQ` no encuentra nada): en esta pestaña `q` nunca busca personas. Cada fila lleva `backdated` y el correo de quien registró en forma parcial, como `GET /payments`.
+- **Errores:** socio inexistente 404 `member_not_found` (también con `q`: el 404 gana); `limit` fuera de 1 a 200, `offset` negativo, `q` de más de 100 caracteres o con controles, `voided` no booleano o `member_id` que no es UUID dan 422 con `field`; el rol `member` 403; sin sesión 401.
+- **Sin cupo propio:** ninguna de las dos lleva límite por usuario ni responde 429 (D28). `q` no toca datos de personas (nombre de plan o referencia de pago), así que no gasta la cubeta de búsquedas de `GET /members` (60 por minuto, ver "Búsqueda y listado"). Ninguna descifra ni calcula índices ciegos: abrir las pestañas no deja filas en `crypto.crypto_ops`. Las dos responden `Cache-Control: no-store`.
+- **Costo:** cada página hace un número fijo de sentencias (el socio, la página y el total, y una por vecino: nombres de socios y planes, sumas de pagos y congelaciones, o los datos de quien registró), sin importar cuántas filas tenga.
+- **Verificar con psql:** `SELECT count(*) FROM memberships.memberships WHERE member_id = '<id>';` y `SELECT count(*) FROM payments.payments WHERE member_id = '<id>';` coinciden con el `total` de cada pestaña sin `q` (y, para pagos, `... AND NOT voided` con `voided=false`).
 
 ## 5. Planes (S2-B9)
 

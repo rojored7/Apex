@@ -32,6 +32,8 @@ S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` som
   estado efectivo por lote (una consulta por servicio vecino por página). Nunca descifra.
 - `get(session, membership_id) -> MembershipOut` (`MembershipNotFound`): con sus congelaciones y
   el estado EFECTIVO (D5), como la fila de la lista.
+- `list_for_member(session, member_id, page, *, q=None) -> Page[MembershipOut]` (S3-B11, US-093,
+  D28): la pestaña de la ficha (docstring de la función).
 - `summary(session, *, today=None) -> MembershipSummaryOut` (S3-D53, S3-D60, E11): la caché de
   proceso (`SummaryCache`, clave `(hoy, expiring_days)`, TTL `SUMMARY_CACHE_TTL_S`) y, si no
   sirve, `members.service.active_ids` en lotes de `SUMMARY_ID_BATCH` (una sentencia por lote:
@@ -561,6 +563,66 @@ async def get(session: AsyncSession, membership_id: UUID) -> MembershipOut:
     salida = await membership_out(session, membresia, filas)
     estado = compute_status(_snapshot(membresia), hoy, dias, ventanas)
     return salida.model_copy(update={"status": estado.value})
+
+
+async def list_for_member(
+    session: AsyncSession, member_id: UUID, page: PageParams, *, q: str | None = None
+) -> Page[MembershipOut]:
+    """S3-B11 (US-093, D28): la pestaña de membresías de la ficha. `MemberNotFound` si el socio
+    no existe (`members.ensure_exists(include_deleted=True)`: un dado de baja ve las suyas);
+    orden `start_date DESC, id`; incluye anuladas; congelaciones, nombres, `paid_cop` y estado
+    efectivo por lote; `q` filtra por nombre de plan (`plans.search_ids`). Nunca descifra."""
+    await members_service.ensure_exists(session, member_id, include_deleted=True)  # 404 primero
+    condiciones: builtins.list[ColumnElement[bool]] = [Membership.member_id == member_id]
+    if q is not None and q.strip():
+        planes = await plans_service.search_ids(session, q)
+        if not planes:
+            return to_page([], 0, page)
+        condiciones.append(Membership.plan_id == _ids_param(planes))
+    hoy, dias = await _today_and_expiring_days(session, None)
+    consulta = (
+        select(Membership).where(*condiciones).order_by(Membership.start_date.desc(), Membership.id)
+    )
+    filas, total = await paginate(session, consulta, page)
+    return to_page(await _member_outs(session, filas, hoy, dias), total, page)
+
+
+async def _member_outs(
+    session: AsyncSession, filas: Sequence[Membership], today: date, expiring_days: int
+) -> builtins.list[MembershipOut]:
+    """`MembershipOut` de la página con el estado EFECTIVO (D5): una sentencia a cada vecino
+    (nombres de socios y planes, sumas no anuladas) y una de congelaciones; nunca
+    `membership_out` por fila (sería N+1)."""
+    ids = [m.id for m in filas]
+    socios = await members_service.names_for(session, (m.member_id for m in filas))
+    planes = await plans_service.names_for(session, (m.plan_id for m in filas))
+    pagado = await payments_service.sums_not_voided(session, ids)
+    congelaciones = await _freeze_rows_for(session, ids)
+    salida: builtins.list[MembershipOut] = []
+    for m in filas:
+        ventanas = [FreezeWindow(f.frozen_from, f.frozen_to) for f in congelaciones[m.id]]
+        socio = socios[m.member_id]
+        salida.append(
+            MembershipOut(
+                id=m.id,
+                member_id=m.member_id,
+                member_name=f"{socio.first_name} {socio.last_name}",
+                plan_id=m.plan_id,
+                plan_name=planes[m.plan_id],
+                agreed_price_cop=m.agreed_price_cop,
+                paid_cop=pagado.get(m.id, 0),
+                start_date=m.start_date,
+                end_date=m.end_date,
+                classes_total=m.classes_total,
+                classes_remaining=m.classes_remaining,
+                status=compute_status(_snapshot(m), today, expiring_days, ventanas).value,
+                freezes=[freeze_out(f) for f in congelaciones[m.id]],
+                cancel_reason=m.cancel_reason,
+                cancelled_at=m.cancelled_at,
+                created_at=m.created_at,
+            )
+        )
+    return salida
 
 
 # Resumen (US-092; S3-D53, S3-D60, E11) ------------------------------------------------------------

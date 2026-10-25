@@ -84,14 +84,41 @@ def test_las_listas_efectivas_de_la_app_paginan_y_aceptan_q(settings_prueba: Set
     assert problemas == [], "\n".join(problemas)
     # S2-B3 publica la primera lista paginada (`GET /users`); el recorrido no puede quedar vacío.
     # S2-B8 agrega `GET /members` y S2-B9 `GET /plans`: las tres deben recogerse. S3-B7 agrega
-    # `GET /memberships` (US-091) y S3-B8 `GET /payments` (US-098).
+    # `GET /memberships` (US-091) y S3-B8 `GET /payments` (US-098). S3-B11 (D28, condición 3)
+    # agrega las dos listas anidadas de la ficha, con `PageParams` y `q` real.
     assert {
         "GET /api/v1/users",
         "GET /api/v1/members",
         "GET /api/v1/plans",
         "GET /api/v1/memberships",
         "GET /api/v1/payments",
+        "GET /api/v1/members/{member_id}/memberships",
+        "GET /api/v1/members/{member_id}/payments",
     } <= set(listas)
+
+
+def test_las_listas_anidadas_de_la_ficha_paginan_y_aceptan_q(settings_prueba: Settings) -> None:
+    """S3-B11 (D28): las pestañas de la ficha usan `Annotated[PageParams, Depends()]` y
+    `q: SearchQuery` (hasta 100 caracteres, sin caracteres de control); la de pagos suma
+    `voided`. `limit` declara 1..200 en el OpenAPI."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    esquema = app.openapi()
+    rutas = {ruta.path: ruta for ruta in effective_routes(app)[0] if "GET" in ruta.methods}
+    esperados = {
+        "/api/v1/members/{member_id}/memberships": {"limit", "offset", "q"},
+        "/api/v1/members/{member_id}/payments": {"limit", "offset", "q", "voided"},
+    }
+    for path, consulta in esperados.items():
+        assert path in rutas, path
+        assert _usa_page_params(rutas[path].dependant), path
+        assert _query_params(rutas[path].dependant) == consulta, path
+        operacion = esquema["paths"][path]["get"]
+        parametros = {p["name"]: p for p in operacion["parameters"] if p["in"] == "query"}
+        assert parametros["limit"]["schema"]["minimum"] == 1, path
+        assert _limite_maximo(operacion) == MAX_LIMIT, path
+        q = parametros["q"]["schema"]
+        variantes = q.get("anyOf", [q])
+        assert any(v.get("maxLength") == 100 for v in variantes), path
 
 
 class _Out(BaseModel):

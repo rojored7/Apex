@@ -23,6 +23,8 @@ Con sesión:
 - Contratos para otros módulos: `get(session, plan_id, *, for_share=False)` (`PlanNotFound` si
   no existe o está dado de baja; `for_share` toma `FOR SHARE`), `get_including_deleted` y
   `names_for` (una consulta, incluye dados de baja).
+- S3-B11 (D28): `search_ids(session, q)`: ids de planes vivos o dados de baja por nombre, con
+  el pliegue de `list`; sin `q` da `set()` sin consultar.
 """
 
 from __future__ import annotations
@@ -285,6 +287,18 @@ async def names_for(session: AsyncSession, plan_ids: Iterable[UUID]) -> dict[UUI
     return {fila.id: fila.name for fila in await session.execute(consulta)}
 
 
+async def search_ids(session: AsyncSession, q: str | None) -> set[UUID]:
+    """S3-B11 (D28): ids de los planes (vivos o dados de baja) cuyo nombre contiene `q`, con el
+    mismo pliegue de tildes y mayúsculas de `list` (`core.search`); `q` vacío o en blanco da
+    `set()` sin consultar. Lo usa la pestaña de membresías de la ficha para su `q`."""
+    termino = clean_query(q)  # core/search (H3), como `list`
+    if not termino:
+        return set()
+    patron = sql_fold(literal(contains_pattern(termino), Text))  # valor ligado
+    consulta = select(Plan.id).where(sql_fold(Plan.name).ilike(patron, escape=LIKE_ESCAPE))
+    return set((await session.scalars(consulta)).all())
+
+
 __all__: builtins.list[str] = [
     "PlanCreated",
     "create",
@@ -295,5 +309,6 @@ __all__: builtins.list[str] = [
     "get_including_deleted",
     "list",
     "names_for",
+    "search_ids",
     "validate_plan",
 ]

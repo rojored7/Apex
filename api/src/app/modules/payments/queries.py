@@ -18,6 +18,8 @@ sombrea al `list` de Python en este archivo: las anotaciones y llamadas usan `bu
   `members.service.search_ids(include_deleted=True)` solo cuando hay `q`; pagina
   `select(Payment)` con `rules.build_filters` y `ORDER BY paid_at DESC, id DESC`; completa la
   página con `_enrich`. Nunca descifra.
+- `list_for_member(session, member_id, voided, page, *, q=None) -> Page[PaymentRow]` (S3-B11,
+  US-101, D28): la pestaña de pagos de la ficha (docstring de la función).
 - `get(session, payment_id) -> PaymentDetail`: 404 `payment_not_found` (`PaymentNotFound`).
 - `summary(session, month=None) -> PaymentsSummary`: el mes de Bogotá (`rules.month_bounds_utc`;
   sin `month`, el de `current_clock().today_bogota()`), en una consulta con `SUM ... FILTER` y
@@ -37,7 +39,7 @@ from datetime import datetime
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
@@ -129,7 +131,32 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
     socios: set[UUID] = set()
     if filters.q is not None and filters.q.strip():
         socios = await members_service.search_ids(session, filters.q, include_deleted=True)
-    condiciones = build_filters(_as_filters(filters), socios)
+    return await _page_of(session, build_filters(_as_filters(filters), socios), page)
+
+
+async def list_for_member(
+    session: AsyncSession,
+    member_id: UUID,
+    voided: bool | None,
+    page: PageParams,
+    *,
+    q: str | None = None,
+) -> Page[PaymentRow]:
+    """S3-B11 (US-101, D28): la pestaña de pagos de la ficha, sobre `list` con `member_id` fijo.
+    `MemberNotFound` si el socio no existe (`members.ensure_exists(include_deleted=True)`);
+    `voided` tri-estado; `q` es la referencia exacta sin distinguir mayúsculas (nunca busca
+    personas); orden `paid_at DESC, id DESC`. Nunca descifra."""
+    await members_service.ensure_exists(session, member_id, include_deleted=True)
+    # Sin ids de socios: `q` solo compara la referencia (D28; nunca `members.search_ids`).
+    filtros = PaymentFilters(q=q, voided=voided, member_id=member_id)
+    return await _page_of(session, build_filters(filtros), page)
+
+
+async def _page_of(
+    session: AsyncSession, condiciones: Sequence[ColumnElement[bool]], page: PageParams
+) -> Page[PaymentRow]:
+    """La página de `Payment` con `condiciones`, `ORDER BY paid_at DESC, id DESC`, completada
+    con `_enrich` (una consulta por servicio vecino)."""
     consulta = (
         select(Payment).where(*condiciones).order_by(Payment.paid_at.desc(), Payment.id.desc())
     )

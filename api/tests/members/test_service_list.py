@@ -8,7 +8,9 @@ criterios 3 a 8; RN-13, RN-14, N-01, N-20; blueprint B8).
   `active` e `inactive` miran solo a los vivos con ese estado.
 - Cada `sort` ordena; `%` y `_` del término no actúan como comodines.
 - Paginación con `limit`, `offset` y `total` sin repetir ni omitir filas.
-- Las filas no traen ningún campo sensible (N-01) y `membership_status` va `None`.
+- Las filas no traen ningún campo sensible (N-01); un socio sin membresías lleva
+  `membership_status == "none"` y `plan_name` y `membership_end_date` nulos (S3-B9b, D22:
+  la página se decora con `status_for`; sin entrada, `none`).
 - Listar nunca descifra: cero filas `decrypt` nuevas en `crypto_ops`; una búsqueda deja como
   mucho 3 filas `index` (una por clase, agregadas en un lote `bus.batch`) y una por nombre ninguna.
 - `search_ids` y `names_for` hacen una sola consulta (sin N+1) y `names_for` incluye a los dados
@@ -35,20 +37,8 @@ from app.modules.members.models import Member
 from app.modules.members.schemas import MemberListQuery, MemberName, MemberRowOut
 from tests.conftest import T0
 from tests.factories.members import KNOWN_NORMALIZED, make_member, make_members, unique_document
-from tests.members._apoyo import operaciones
+from tests.members._apoyo import CAMPOS_FILA, operaciones
 
-CAMPOS_FILA = frozenset(
-    {
-        "id",
-        "first_name",
-        "last_name",
-        "sex",
-        "status",
-        "deleted_at",
-        "membership_status",
-        "plan_name",
-    }
-)
 SENSIBLES = ("document", "phone", "email", "birth_date", "emergency_contact")
 
 
@@ -308,7 +298,8 @@ async def test_las_filas_no_traen_campos_sensibles_ni_enmascarados(
     assert set(fila) == CAMPOS_FILA
     assert fila["first_name"] == "Lucía" and fila["last_name"] == "Gómez"
     assert fila["sex"] == "f" and fila["status"] == "active" and fila["deleted_at"] is None
-    assert fila["membership_status"] is None and fila["plan_name"] is None
+    assert fila["membership_status"] == "none"
+    assert fila["plan_name"] is None and fila["membership_end_date"] is None
     texto = pagina.model_dump_json()
     for valor in (*KNOWN_NORMALIZED, "apx1.", "•"):
         assert valor not in texto, valor

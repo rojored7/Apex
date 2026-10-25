@@ -184,3 +184,93 @@ async def test_l11_veinte_logins_fallidos_concurrentes_bajo_el_candado_p95_menor
     )
     assert registrados == LOGINS_CONCURRENTES  # cada fallo pasó por su registro
     assert p95 < P95_MAXIMO_S
+
+
+# S3-B9b (D22, S3-D71): 5.000 ids en el conjunto de `membership_status` --------------------------
+
+SOCIOS_CON_MEMBRESIA = 5000
+MAXIMO_PARAMETROS = 20
+_SOCIOS_EN_LOTE = text(
+    "INSERT INTO members.members (id, first_name, last_name, status, document_type, document, "
+    "document_idx, created_by) "
+    "SELECT gen_random_uuid(), 'Carga ' || i, 'Cinco Mil', 'active', 'CC', "
+    "'apx1.prueba.A256GCM.x.x', 'cinco-mil-' || i, :actor FROM generate_series(1, :n) AS i"
+)
+_MEMBRESIAS_EN_LOTE = text(
+    "INSERT INTO memberships.memberships (id, member_id, plan_id, agreed_price_cop, start_date, "
+    "end_date, status, created_by) "
+    "SELECT gen_random_uuid(), m.id, :plan, 120000, :inicio, :fin, 'active', :actor "
+    "FROM members.members m WHERE m.last_name = 'Cinco Mil'"
+)
+
+
+async def test_cinco_mil_ids_van_en_un_solo_parametro_y_responden_en_menos_de_500_ms(
+    app_http: AsyncClient,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    session: AsyncSession,
+    engine: AsyncEngine,
+    reloj: object,
+) -> None:
+    """S3-D71: 5.000 socios con su membresía vigente (sembrados con SQL; la lista no lee los
+    blobs) y uno sin membresía. `membership_status=active` aplica el conjunto de 5.000 ids con
+    `= ANY(...)` y `none` con `<> ALL(...)`: la consulta de socios lleva pocos parámetros (nunca
+    un `IN` expandido) y responde en menos de 500 ms; el límite de parámetros de asyncpg no se
+    toca."""
+    from datetime import date
+
+    from app.core.context import SYSTEM_USER_ID
+    from tests.factories.plans import make_plan
+
+    plan = await make_plan(session, name="Mensual")
+    await session.execute(_SOCIOS_EN_LOTE, {"n": SOCIOS_CON_MEMBRESIA, "actor": SYSTEM_USER_ID})
+    await session.execute(
+        _MEMBRESIAS_EN_LOTE,
+        {
+            "plan": plan.id,
+            "inicio": date(2026, 10, 1),
+            "fin": date(2026, 11, 30),
+            "actor": SYSTEM_USER_ID,
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO members.members (id, first_name, last_name, status, document_type, "
+            "document, document_idx, created_by) VALUES (gen_random_uuid(), 'Sola', 'Sin Plan', "
+            "'active', 'CC', 'apx1.prueba.A256GCM.x.x', 'sin-plan-1', :actor)"
+        ),
+        {"actor": SYSTEM_USER_ID},
+    )
+    await session.execute(text("ANALYZE members.members"))
+    await session.execute(text("ANALYZE memberships.memberships"))
+    coach = await usuario_real("coach")
+    parametros_de_socios: list[int] = []
+
+    def anotar(_c: Any, _cur: Any, sql: str, parametros: Any, *_a: Any) -> None:
+        if "members.members" in sql and "memberships.memberships" not in sql:
+            parametros_de_socios.append(len(parametros or ()))
+
+    calentamiento = await app_http.get(
+        MEMBERS, params={"membership_status": "frozen"}, headers=cabeceras(coach)
+    )
+    assert calentamiento.status_code == 200, calentamiento.text
+    event.listen(engine.sync_engine, "before_cursor_execute", anotar)
+    try:
+        for estado, total in (("active", SOCIOS_CON_MEMBRESIA), ("none", 1)):
+            parametros_de_socios.clear()
+            inicio = time.perf_counter()
+            r = await app_http.get(
+                MEMBERS, params={"membership_status": estado}, headers=cabeceras(coach)
+            )
+            transcurrido_ms = (time.perf_counter() - inicio) * 1000
+            assert r.status_code == 200, r.text
+            assert r.json()["total"] == total, estado
+            print(f"\nmembership_status={estado} con 5.000 ids: {transcurrido_ms:.1f} ms")
+            assert transcurrido_ms < LIMITE_MS, estado
+            assert parametros_de_socios, "no se capturó la consulta de socios"
+            assert max(parametros_de_socios) <= MAXIMO_PARAMETROS, parametros_de_socios
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", anotar)
+    sola = r.json()["items"]
+    assert [f["last_name"] for f in sola] == ["Sin Plan"]
+    assert sola[0]["membership_status"] == "none"

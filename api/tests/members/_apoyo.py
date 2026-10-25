@@ -6,7 +6,11 @@
   petición, una transacción).
 - `fila_socio`, `filas_crudas` y `operaciones`: lecturas con SQL crudo de `members.members` y de
   `crypto.crypto_ops`.
-- `CAMPOS_DETALLE`: las claves exactas de `MemberDetailOut` (sin `notes`, M-5).
+- `CAMPOS_DETALLE`: las claves exactas de `MemberDetailOut` (sin `notes`, M-5); desde S3-B9b
+  con `plan_name` y `membership_end_date`.
+- `CAMPOS_FILA` (S3-B9b): las claves exactas de `MemberRowOut` (N-01: nada sensible), con
+  `membership_end_date` (D22, D35).
+- `ruta_socio(member_id)` (S3-B9b): `GET /members/{member_id}`.
 """
 
 from __future__ import annotations
@@ -41,11 +45,32 @@ CAMPOS_DETALLE = frozenset(
         "data_consent_version",
         "deleted_at",
         "membership_status",
+        "plan_name",
+        "membership_end_date",
         "created_at",
         "updated_at",
         "warnings",
     }
 )
+
+CAMPOS_FILA = frozenset(
+    {
+        "id",
+        "first_name",
+        "last_name",
+        "sex",
+        "status",
+        "deleted_at",
+        "membership_status",
+        "plan_name",
+        "membership_end_date",
+    }
+)
+
+
+def ruta_socio(member_id: UUID | str) -> str:
+    return f"{MEMBERS}/{member_id}"
+
 
 # Máscaras de los valores de `KNOWN` (blueprint B7: `CC •••• 0304`, `••• ••• 4567`,
 # `l•••@•••.co`, `••/••/1991`, `"Registrado"`).

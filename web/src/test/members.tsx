@@ -20,6 +20,7 @@ export interface MemberRowFixture {
   deleted_at: string | null;
   membership_status: string | null;
   plan_name: string | null;
+  membership_end_date: string | null;
 }
 
 const row = (id: string, first_name: string, last_name: string, overrides: Partial<MemberRowFixture> = {}): MemberRowFixture => ({
@@ -31,6 +32,7 @@ const row = (id: string, first_name: string, last_name: string, overrides: Parti
   deleted_at: null,
   membership_status: null,
   plan_name: null,
+  membership_end_date: null,
   ...overrides,
 });
 
@@ -70,6 +72,8 @@ export function memberDetail(warnings: string[] = []): MockReply {
       data_consent_version: warnings.length > 0 ? null : "2026-10",
       deleted_at: null,
       membership_status: null,
+      plan_name: null,
+      membership_end_date: null,
       created_at: "2026-10-22T15:00:00Z",
       updated_at: "2026-10-22T15:00:00Z",
       warnings,

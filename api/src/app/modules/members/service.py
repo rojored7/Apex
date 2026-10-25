@@ -4,8 +4,17 @@ Otros módulos (`memberships`, `payments`), el router y las pruebas solo importa
 (regla de módulos 2): re-exporta con `__all__` lo público de los archivos privados del módulo
 (`PRIVATE_HELPERS["members"]`):
 - `rules.py`: las puras y los tipos (`validate_member_input`, `compute_warnings`, `mask`,
-  `classify_query`, `QueryPlan`, `LIKE_ESCAPE`, `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`);
-- `detail.py` (S3-B9b) y `changes.py` (S3-B10), vacíos por ahora.
+  `classify_query`, `QueryPlan`, `LIKE_ESCAPE`, `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`) y,
+  desde S3-B9b, `chip_to_filter`, `MemberChipFilter` y `MEMBER_CHIPS`;
+- `detail.py` (S3-B9b): `get(session, member_id)`, la ficha enmascarada (US-073);
+- `changes.py` (S3-B10), vacío por ahora.
+
+S3-B9b (US-071; D22, G-03, G-04): `list` acepta `membership_status` y `plan_id`; el conjunto de
+ids lo pide a `memberships.service.member_ids_by_status` con import perezoso (`# lazy: G-03
+(members -> memberships)`) y lo aplica con `Member.id == any_(...)` (o `!= all_(...)` para
+`none`) en la consulta externa; cada página se decora con UNA llamada a
+`memberships.service.status_for(ids)` (`membership_status`, `plan_name`,
+`membership_end_date`; sin entrada, `none`).
 
 Con sesión (siguen aquí):
 - `create(session, data)`: valida, pre-chequea el documento por índice ciego, arma el `Member`
@@ -33,9 +42,9 @@ from __future__ import annotations
 import builtins
 import logging
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from sqlalchemy import (
@@ -43,11 +52,15 @@ from sqlalchemy import (
     CompoundSelect,
     Select,
     Text,
+    Uuid,
+    all_,
+    any_,
     func,
     literal,
     select,
     union,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -62,13 +75,17 @@ from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import sql_fold
+from app.modules.members.detail import SIN_MEMBRESIA, get
 from app.modules.members.exceptions import MemberDocumentDuplicated, MemberNotFound
 from app.modules.members.models import Member
 from app.modules.members.rules import (
     EMAIL_DATA_CLASS,
     LIKE_ESCAPE,
+    MEMBER_CHIPS,
     PHONE_DATA_CLASS,
+    MemberChipFilter,
     QueryPlan,
+    chip_to_filter,
     classify_query,
     compute_warnings,
     mask,
@@ -83,20 +100,27 @@ from app.modules.members.schemas import (
     MemberRowOut,
 )
 
+if TYPE_CHECKING:  # solo el tipo del contrato de `status_for` (regla de módulos 2)
+    from app.modules.memberships.schemas import MemberMembership
+
 __all__ = [
     "DOCUMENT_ALIVE_INDEX",
     "DOCUMENT_DATA_CLASS",
     "EMAIL_DATA_CLASS",
     "LIKE_ESCAPE",
+    "MEMBER_CHIPS",
     "PHONE_DATA_CLASS",
+    "MemberChipFilter",
     "MemberCreated",
     "QueryPlan",
     "active_ids",
+    "chip_to_filter",
     "classify_query",
     "compute_warnings",
     "count",
     "create",
     "ensure_exists",
+    "get",
     "get_ref",
     "id_by_document",
     "list",
@@ -110,6 +134,8 @@ logger = logging.getLogger("app.members")
 
 DOCUMENT_DATA_CLASS: Final = "member.document"
 DOCUMENT_ALIVE_INDEX: Final = "uq_members_document_idx_alive"
+# Los cinco estados con membresía que decide (D22); `none` es su complemento.
+_CON_MEMBRESIA: Final = ("active", "expiring", "expired", "frozen", "pending_payment")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -341,8 +367,9 @@ _ORDEN: Final[Mapping[str, tuple[ColumnElement[Any], ...]]] = {
 }
 
 
-def _fila(socio: Member) -> MemberRowOut:
-    """Solo columnas en claro (N-01): ni el blob ni la máscara."""
+def _fila(socio: Member, membresia: MemberMembership | None) -> MemberRowOut:
+    """Solo columnas en claro (N-01): ni el blob ni la máscara. Sin membresía que decida,
+    `none` y plan y fin nulos (blueprint B7)."""
     return MemberRowOut.model_validate(
         {
             "id": socio.id,
@@ -351,16 +378,55 @@ def _fila(socio: Member) -> MemberRowOut:
             "sex": socio.sex,
             "status": socio.status,
             "deleted_at": socio.deleted_at,
-            "membership_status": None,
-            "plan_name": None,
+            "membership_status": SIN_MEMBRESIA if membresia is None else membresia.status,
+            "plan_name": None if membresia is None else membresia.plan_name,
+            "membership_end_date": None if membresia is None else membresia.end_date,
         }
     )
+
+
+async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.list[MemberRowOut]:
+    """Decora la página con UNA llamada a `memberships.service.status_for` (G-04); una página
+    vacía no consulta nada."""
+    if not socios:
+        return []
+    # lazy: G-03 (members -> memberships)
+    from app.modules.memberships import service as memberships_service
+
+    estados = await memberships_service.status_for(session, [s.id for s in socios])
+    return [_fila(s, estados.get(s.id)) for s in socios]
+
+
+def _uuids(ids: Iterable[UUID]) -> ColumnElement[Any]:
+    """Un solo parámetro `uuid[]` (D22, S3-D71): 5.000 ids no expanden un `IN`."""
+    return literal(sorted(ids), ARRAY(Uuid()))
+
+
+async def _por_membresia(
+    session: AsyncSession, filters: MemberListQuery
+) -> ColumnElement[bool] | None:
+    """Condición de la consulta externa por `membership_status` y `plan_id` (D22): `None` sin
+    esos filtros. El conjunto lo resuelve `memberships`; `none` es el complemento de los cinco
+    estados y `plan_id` solo mira los cinco (el llamador corta `none` + `plan_id` antes)."""
+    if filters.membership_status is None and filters.plan_id is None:
+        return None
+    # lazy: G-03 (members -> memberships)
+    from app.modules.memberships import service as memberships_service
+
+    if filters.membership_status == SIN_MEMBRESIA:
+        con = await memberships_service.member_ids_by_status(session, _CON_MEMBRESIA)
+        return Member.id != all_(_uuids(con))
+    estados = _CON_MEMBRESIA if filters.membership_status is None else (filters.membership_status,)
+    ids = await memberships_service.member_ids_by_status(session, estados, filters.plan_id)
+    return Member.id == any_(_uuids(ids))
 
 
 async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan builtins.list)
     session: AsyncSession, filters: MemberListQuery, page: PageParams
 ) -> Page[MemberRowOut]:
-    """US-070: la página de socios filtrada; nunca descifra (N-01)."""
+    """US-070 y US-071: la página de socios filtrada y decorada; nunca descifra (N-01)."""
+    if filters.membership_status == SIN_MEMBRESIA and filters.plan_id is not None:
+        return to_page([], 0, page)  # sin membresía no hay plan: ni se consulta (D22)
     estado = _filtro_de_estado(filters.status)
     consulta = (
         select(Member)
@@ -378,8 +444,11 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
     plan = classify_query(filters.q)
     if plan.q is not None:
         consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
+    por_membresia = await _por_membresia(session, filters)
+    if por_membresia is not None:
+        consulta = consulta.where(por_membresia)
     socios, total = await paginate(session, consulta.order_by(*_ORDEN[filters.sort]), page)
-    return to_page([_fila(s) for s in socios], total, page)
+    return to_page(await _filas(session, socios), total, page)
 
 
 async def search_ids(session: AsyncSession, q: str, *, include_deleted: bool = False) -> set[UUID]:

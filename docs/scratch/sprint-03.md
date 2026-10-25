@@ -2074,3 +2074,209 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
 - `ruff format`, `ruff check` y `mypy src` (96 archivos) limpios. Regresión sin `perf`:
   `tests/members tests/architecture tests/memberships tests/payments` 1.552 ok, 1 saltada.
 - Contrato: `export-openapi` y `git diff --exit-code docs/openapi.json` sin cambios.
+
+### S3-B9b · Rojo (B9b.1 stubs y B9b.2 Rojo; sin migración)
+
+- Línea base: HEAD `ee609f1` (checkpoint de B9a), árbol limpio; suite en dos mitades con
+  `-m "not perf"` y `TEST_DATABASE_URL`: (1) `core crypto auth settings cli audit` +
+  `test_ci_database.py` y `test_smoke.py` 1.483 ok, 3 saltadas; (2) `members plans memberships
+  payments migrations architecture` 1.932 ok, 1 saltada, 7 deseleccionadas. Total **3.415 ok**, 4
+  saltadas (el brief decía 3.412: son las 3 pruebas de arquitectura que sumó B9a). `ruff check` y
+  `mypy src` (96 archivos) limpios. Durante el Rojo el orquestador fusionó F5 en la rama
+  (`5fdf793`, merge `87df3cc`): solo `web/` de memberships y docs del front, sin cruce con este
+  slice; la API no cambia.
+- Rojo: 3.528 recolectadas (3.520 sin `perf`). Con `-m "not perf"`: **78 fallan**, 3.438 ok, 4
+  saltadas, 8 deseleccionadas. Mitad 1: 1 falla (`test_docs_openapi_json_esta_al_dia`, P-API de
+  B9b.5), 1.482 ok, 3 saltadas. Mitad 2: 77 fallan (todas de B9b), 1.956 ok, 1 saltada, 8
+  deseleccionadas. `tests/members/test_list_perf.py` aparte: 1 falla (el caso nuevo de 5.000 ids,
+  500 por el stub), 3 ok. De las 77: 66 son `NotImplementedError` de los stubs (`chip_to_filter`
+  23, `detail.get` 20, filtros de `list` 20, `_decrypt_fields` 3; las de router llegan como 500)
+  y 11 son aserciones sobre lo que aún no existe: el decorado (`membership_status` `None` en vez
+  de `none`, `plan_name` y `membership_end_date` nulos, cero sentencias a
+  `memberships.memberships`), el grafo (`perezosas["members"]` vacío) y la puerta única (ninguna
+  llamada a `types.reveal`). `ruff format`, `ruff check` y `mypy src` (96 archivos) limpios.
+  `db_test` sin residuos: `alembic_version = 0011_payments_immutability`, 0 socios, membresías,
+  congelaciones, pagos y planes, 0 usuarios `@test.apex`, 0 sesiones `idle in transaction`, los
+  siete triggers en `A` (también tras la `perf` de 5.000, que siembra con SQL dentro de la
+  transacción de `session`). `apex-db-1` no se tocó.
+  - Verdes de la línea base que pasan a rojo (4): `test_docs_openapi_json_esta_al_dia` (P-API),
+    `test_service_list.py::test_las_filas_no_traen_campos_sensibles_ni_enmascarados` y
+    `test_router_list.py::test_admin_y_coach_reciben_la_pagina_con_el_contrato` [admin, coach]:
+    `CAMPOS_FILA` gana `membership_end_date` y la fila sin membresías pasa de `None` a `"none"`
+    (decisión 3).
+  - Nuevas: 102 (101 sin `perf`). En rojo 74 + 1 `perf`; verdes sobre los stubs 27 (el stub ya es
+    el contrato): `test_chip_to_filter.py` 2 (`MEMBER_CHIPS` y los seis valores de
+    `MembershipFilterStatus`), `test_service_list_membership_filters.py` 1 (página vacía sin
+    decorar), `test_router_list_filters.py` 14 (seis 422 con `field`, 403 y 401 con filtros, el
+    `APIRouter` sin 429, las tres rutas con 429, las demás de `/api/v1/members` sin 429, los
+    parámetros y la fila en el OpenAPI), `test_service_get.py` 1 (`CAMPOS_CIFRADOS`),
+    `test_router_get.py` 5 (403, 401 y tres 422 de UUID), `test_reveal_single_door.py` 3 (sin
+    `bus.decrypt` fuera de `core` y los dos controles) y
+    `test_list_rows_without_sensitive_fields.py` 1.
+- Verde desechable (revertido; sin migración, solo `db_test`): `chip_to_filter`,
+  `_decrypt_fields`, `detail.get` (carga, `mask` sobre lo descifrado con `purpose="mask"`,
+  `status_for([id])` perezoso), `_por_membresia` (`member_ids_by_status` perezoso, `= ANY` y
+  `<> ALL` con un `uuid[]`), la salida temprana de `none` con `plan_id` y el decorado con un
+  `status_for` por página. `tests/members` y `tests/architecture`: 603 ok y 2 fallas de prueba
+  (abajo); corregidas, todo verde. `test_list_perf.py`: 4 ok (5.000 ids: `active` 35,1 ms y
+  `none` 32,1 ms; búsqueda por documento con 1.000 socios 31,4 ms). Mutación: con `Member.id.in_`
+  en lugar de `any_`, el caso de 5.000 falla (`[5000, 5002]` parámetros). Después, `rules.py`,
+  `detail.py` y `service.py` restaurados desde copia (sha256 iguales a los del stub).
+  - Defectos de prueba encontrados y corregidos: (1) `test_router_get.py` exigía `no-store` en el
+    404 (los errores salen por el handler sin la cabecera de la dependencia; misma decisión que
+    S3-B5); (2) la prueba de las 121 fichas leía `socio.id` después del 429, cuando el rollback
+    de la petición ya había expirado el objeto (`MissingGreenlet`): la ruta se calcula antes del
+    bucle.
+- Stubs (B9b.1): `members/schemas.py`: `MembershipFilterStatus`,
+  `MemberListQuery.membership_status` y `plan_id`, `MemberRowOut.membership_end_date`,
+  `MemberDetailOut.plan_name` y `membership_end_date` (por defecto `None`); `members/rules.py`:
+  `MemberChip`, `MEMBER_CHIPS`, `MemberChipFilter` (dataclass congelada con `status` y
+  `membership_status`) y `chip_to_filter` (con `NotImplementedError`); `members/detail.py`:
+  `CAMPOS_CIFRADOS = ENCRYPTED_FIELDS`, `MASK_PURPOSE = "mask"`, `_decrypt_fields` y `get` (con
+  `NotImplementedError`); `members/service.py`: re-exporta `get`, `chip_to_filter`,
+  `MemberChipFilter` y `MEMBER_CHIPS` en `__all__`, `_por_membresia(session, filters)` (sin
+  filtros `None`; con filtros `NotImplementedError`) aplicada en `list`, y `_fila` con
+  `membership_end_date`; `members/router.py`: el `APIRouter` con `responses_for(401, 403)`, 429
+  por ruta en `POST /members` (`responses_for(409, 429)`) y `GET /members`
+  (`responses_for(429)`), `GET /members` con `membership_status` y `plan_id`, y
+  `GET /members/{member_id}` (`StaffDep`, `enforce_user_limit(request, "members-detail", ...)`,
+  `responses_for(404, 422, 429)`, `no_store` del router). Ningún stub importa
+  `memberships.service` (un import sin uso lo rechaza `ruff`; el par perezoso entra en el Verde).
+- Archivos de prueba nuevos: `tests/members/test_chip_to_filter.py` (25),
+  `test_service_list_membership_filters.py` (20), `test_router_list_filters.py` (20),
+  `test_service_get.py` (16), `test_router_get.py` (13) y
+  `tests/architecture/test_reveal_single_door.py` (4). Cambiados: `tests/members/_apoyo.py`
+  (`CAMPOS_DETALLE` con `plan_name` y `membership_end_date`; `CAMPOS_FILA` nuevo; `ruta_socio`),
+  `test_service_list.py` y `test_router_list.py` (usan `CAMPOS_FILA` de `_apoyo` y esperan
+  `"none"`), `test_list_perf.py` (+1 `perf`: 5.000 ids),
+  `tests/architecture/test_error_codes_per_route.py` (E2: `CON_LIMITE` gana
+  `("get", "/api/v1/members/{member_id}")`), `test_user_limits_catalog.py`
+  (`CLAVES_SIN_RUTA_TODAVIA` pierde `members-detail`), `test_service_import_graph.py` (+2: el par
+  perezoso `members -> memberships` real y permitido, y que vive en `service.py` y `detail.py`),
+  `test_list_rows_without_sensitive_fields.py` (+1: `MemberRowOut` con `membership_end_date` y
+  sin campos sensibles; `membership_end_date` en la lista de no sensibles) y
+  `test_no_cross_models.py` (`FACHADA_MEMBERS` y `PURAS_DE_RULES` ganan los nombres nuevos).
+- Front (D35, excepción del slice): `web/src/features/members/schemas.ts` (`memberRowSchema`
+  gana `membership_end_date: z.string().nullable().optional().default(null)`;
+  `memberDetailSchema` acepta `plan_name` y `membership_end_date` igual), `schemas.test.ts` (+3
+  casos y el de `memberDetailSchema` con los dos `null`), `web/src/test/members.tsx`
+  (`MemberRowFixture` y `memberDetail` con los campos) y `web/tests/e2e/members.spec.ts` (filas y
+  alta con los campos). `npx vitest run src/features/members/schemas.test.ts`: 35 ok;
+  `src/features/members` completo: 358 ok; `tsc --noEmit` y `eslint` limpios.
+- Importadores de lo tocado: `members/schemas.py` lo importan `members/{router,rules,service,
+  detail}.py`, `memberships/sell.py` (`MemberRef`) y pruebas; `members/rules.py` solo
+  `members/{service,detail}.py` (ahora importa `MembershipFilterStatus` y `MemberStatusFilter`
+  de `schemas`, sin ciclo); `members/detail.py` solo `members/service.py` (importa `models` y
+  `schemas`; no importa `service`); `members/service.py` `members/router.py`,
+  `memberships/{lifecycle,queries,sell}.py`, `payments/queries.py` y pruebas (solo agrega);
+  `members/router.py` solo `main.py` (por `MODULES`); `memberRowSchema` y `memberDetailSchema`
+  los usan `features/members/api.ts` y `schemas.test.ts`. Ninguna firma existente cambia.
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **`chip_to_filter(chip: str) -> MemberChipFilter`:** los chips `active`, `expiring`,
+   `expired`, `frozen`, `pending_payment` y `none` fijan `membership_status` con `status=None`;
+   `deleted` fija `status="deleted"` con `membership_status=None`; `MEMBER_CHIPS` en ese orden;
+   cualquier otro valor (mayúsculas, espacios, vacío, `inactive`, `cancelled`) es `ValueError`
+   con "chip" en el mensaje. El filtro es una entrada válida de
+   `MemberListQuery(**asdict(filtro))`.
+2. **Filtros de `list` (D22):** `membership_status` y `plan_id` piden el conjunto a
+   `memberships.service.member_ids_by_status` con import perezoso (`# lazy: G-03 (members ->
+   memberships)`) y lo aplican en la consulta externa con UN parámetro `uuid[]` (`= ANY`; `none`
+   es `<> ALL` de los cinco estados); con 5.000 ids la consulta de socios lleva como mucho 20
+   parámetros. Solo `plan_id` mira los cinco estados (nunca `none`) por el plan de la membresía
+   que DECIDE. `none` con `plan_id` devuelve la página vacía (con el `limit` y el `offset`
+   pedidos) sin ninguna sentencia a `members.members` ni a `memberships.memberships`. Un plan
+   inexistente da la página vacía. Los filtros se combinan con `q`, `status` (`deleted`,
+   `active`, `inactive`), `sort` y la paginación. Ninguna consulta de socios nombra
+   `memberships.memberships` (sin `JOIN`).
+3. **Decorado:** cada página no vacía llama UNA vez a `memberships.service.status_for` con los
+   ids de la página (la prueba espía reemplazando el atributo del módulo `memberships.service`:
+   el import perezoso debe resolver `status_for` al llamar): una sentencia a
+   `memberships.memberships` y una a `plans.plans` sin filtro de membresía; dos a
+   `memberships.memberships` con filtro. Una fila sin entrada lleva `membership_status = "none"`
+   y `plan_name` y `membership_end_date` nulos (blueprint B7: "el llamador usa `none`"). Página
+   vacía: ninguna sentencia a `memberships.memberships`. El alta (`create`) sigue devolviendo
+   `membership_status = None` (fuera del alcance; `test_router_create.py` no cambia).
+4. **Índice:** con un filtro de membresía activo, la consulta con `document_idx` sigue usando
+   `uq_members_document_idx_alive` (`EXPLAIN` con `SET LOCAL enable_seqscan = off`: con pocas
+   filas el barrido sería más barato); el `EXPLAIN` original de `test_list_perf.py` no cambia.
+   Listar nunca descifra (cero `decrypt`, también con `q` y filtros).
+5. **`detail.get(session, member_id)`:** carga el socio aunque esté dado de baja;
+   `MemberNotFound` (404 `member_not_found`) sin descifrar; los cinco campos con `mask` sobre lo
+   que devuelve `_decrypt_fields(socio, CAMPOS_CIFRADOS, "mask")` (máscaras de
+   `MASCARAS_KNOWN`); en `crypto_ops`, una fila `decrypt` por campo no nulo con
+   `purpose='mask'`, el `record_id` del socio, la `data_class` del campo, el actor como
+   `user_id`, `result='ok'` y `batch_id` nulo (D20: sin `bus.batch`); ninguna fila con
+   `purpose='reveal'` y ninguna fila nueva en `audit.audit_log`; `membership_status`, `plan_name`
+   y `membership_end_date` de `status_for([id])` con import perezoso en `detail.py` (sin entrada:
+   `none` y nulos); `warnings == []` siempre; claves exactas `CAMPOS_DETALLE`. Las pruebas leen
+   la ficha con la sesión vacía (`expunge_all`), como una petición nueva.
+6. **`_decrypt_fields(socio, campos, purpose) -> dict[str, object]`:** solo los campos pedidos y
+   no nulos, con su tipo (`birth_date` como `date`, `emergency_contact` como `dict`), una fila
+   `decrypt` por campo con el `purpose` recibido; sin campos, `{}` y ninguna fila. Es la única
+   llamada a `types.reveal` fuera de `core/` (`test_reveal_single_door.py`, D-4) y nadie fuera de
+   `core/` llama a `bus.decrypt`.
+7. **Router:** `GET /members/{member_id}` para admin y coach (también sobre un dado de baja,
+   N-20), 403 `member`, 401 sin token, 404, 422 con `field="member_id"`; `Cache-Control:
+   no-store` solo se exige en el 200; ni la respuesta ni los logs (stdout JSON y `caplog`) llevan
+   valores de `KNOWN`, máscaras ni `apx1.`. M-2: 120 fichas por minuto por usuario; la 121 da 429
+   `rate_limited` con `Retry-After` y el registro `rate limit` con `bucket="members-detail"`; la
+   de otro usuario pasa y la lista del mismo usuario sigue (otra cubeta); un 404 también consume
+   la cubeta (el límite va antes del service). Los filtros sin `q` no gastan `members-search`.
+8. **Contrato:** 429 por ruta en `POST /members`, `GET /members` y `GET /members/{member_id}`, y
+   no en el `APIRouter`; `GET /members` declara `membership_status` (seis valores) y `plan_id`
+   (`uuid`); `MemberRowOut` tiene exactamente `CAMPOS_FILA`, con `membership_end_date` como
+   fecha. Grafo: `perezosas["members"] == {"memberships"}`, `arriba["members"] == set()`, y los
+   archivos con la perezosa son exactamente `detail.py` y `service.py`.
+
+#### Desviaciones del Rojo
+
+- Línea base 3.415 y no 3.412 (las 3 pruebas de arquitectura de B9a).
+- La fila sin membresía pasa de `membership_status = None` a `"none"` (decisión 3): cambian dos
+  pruebas existentes de `test_service_list.py` y `test_router_list.py`; `CAMPOS_FILA` se mueve
+  de esas dos pruebas a `_apoyo.py`.
+- El caso de 5.000 ids (S3-D71) se siembra con SQL crudo (como B7) para que la `perf` mida la
+  lista y no 5.000 altas cifradas; mide el número de parámetros de la consulta de socios además
+  del tiempo (con `IN` expandido, 5.000 parámetros no revientan asyncpg: el tiempo solo no
+  probaría D22).
+- Agregados que el plan no nombraba: `MemberChip`, `MEMBER_CHIPS`, `CAMPOS_CIFRADOS`,
+  `MASK_PURPOSE`, `ruta_socio`, `_por_membresia` (nombre del stub; el Verde puede partir `list`
+  como quiera mientras respete las decisiones), la prueba de que un 404 consume la cubeta y la de
+  `bus.decrypt` en `test_reveal_single_door.py`.
+- El 404 de la ficha no exige `no-store` (defecto de prueba 1, misma decisión que S3-B5).
+- No se tocan `docs/openapi.json`, `DECISIONES.md`, `CLAUDE.md`, `RUNBOOK.md` ni otros archivos
+  de `web/`.
+
+### S3-B9b · Verde (B9b.3 a B9b.6)
+
+- Verde (B9b.3), sin migración: `members/rules.py` (`chip_to_filter` con `_CHIPS_DE_MEMBRESIA`),
+  `members/detail.py` (`_decrypt_fields` con `types.reveal` sobre los campos no nulos,
+  `_mascaras`, `get` con `select(Member)` sin filtro de baja, `status_for([id])` perezoso y
+  `SIN_MEMBRESIA = "none"`), `members/service.py` (`_uuids` = un `uuid[]` ligado,
+  `_por_membresia` con `member_ids_by_status` perezoso y `= ANY` / `<> ALL`, salida temprana de
+  `none` + `plan_id` en `list`, `_filas` con UNA llamada a `status_for` por página y `_fila` con
+  la membresía; `MemberMembership` solo bajo `TYPE_CHECKING`). Las dos perezosas viven en
+  `service.py` y `detail.py`. Tamaños: `service.py` 476, `detail.py` 89, `rules.py` 263; todas
+  las funciones bajo 50 líneas. El router ya venía cableado del stub.
+- Defecto de prueba demostrado y corregido: `test_la_rama_de_documento_sigue_usando_el_indice_
+  unico_parcial` fallaba de forma determinista también SIN filtro de membresía (prueba temporal
+  borrada: `{}`, `none` y `active` daban `False` en las dos consultas). Causa: `pg_class` de
+  `db_test` con `reltuples 0` y los índices engordados por altas revertidas (`uq_…` 58 páginas,
+  `ix_members_alive_last_name` 51); con `ANALYZE members.members` las tres variantes usan el
+  único parcial. La prueba ahora hace el `ANALYZE` antes de capturar (como `test_list_perf.py`).
+  El Verde desechable del QA pasó por el estado que dejó la base en ese momento.
+- Revisión (`security-reviewer` sobre `git diff 87df3cc -- api/src`): 0 CRITICAL, 0 HIGH, 0
+  MEDIUM, 2 LOW, 1 INFO. LOW-2 corregido con prueba nueva
+  (`test_sin_ninguna_membresia_none_trae_a_todos_y_los_demas_a_nadie`); LOW-1 e INFO aceptados
+  (detalle en `DECISIONES.md`, "S3-B9b").
+- Números: mitad 1 1.483 ok, 3 saltadas; mitad 2 2.034 ok, 1 saltada, 8 deseleccionadas. Total
+  **3.517 ok**, 0 fallos, 4 saltadas (3.529 recolectadas). `test_list_perf.py` 4 ok. `ruff
+  format`, `ruff check` y `mypy src` (96 archivos) limpios.
+- Contrato (B9b.5, P-API con el paso 6 de D35): `export-openapi` dos veces idénticas;
+  `npm run gen:api`; `types.contract.test.ts` + `schemas.test.ts` 40 ok; `tsc --noEmit` limpio;
+  `src/features/members` 358 ok.
+- Docs (B9b.4): RUNBOOK §4 "Filtros por membresía y ficha del socio"; `DECISIONES.md` "S3-B9b".
+- **F2 puede arrancar**: `memberRowSchema` ya trae `membership_end_date` y el contrato de
+  `GET /members` (`membership_status`, `plan_id`) y `GET /members/{member_id}` está en
+  `docs/openapi.json` y `web/src/core/api/types.ts`.

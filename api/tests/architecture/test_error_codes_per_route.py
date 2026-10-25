@@ -49,6 +49,9 @@ CON_LIMITE = {
     # S3-B8 (E2, M-2, S3-D45): la lista de pagos con `q` consume la misma cubeta compartida; el
     # resumen, los medios y el detalle no tienen límite.
     ("get", "/api/v1/payments"),
+    # S3-B9b (E2, M-2, S3-D45): la ficha del socio consume `members-detail` (120 por minuto); el
+    # 429 del router de `members` baja a sus tres rutas (D27).
+    ("get", "/api/v1/members/{member_id}"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

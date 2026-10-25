@@ -20,6 +20,9 @@ Se movió tal cual desde `service.py`, sin cambiar la lógica.
   dígitos; `by_phone` = el teléfono normalizado con al menos `PHONE_MIN_DIGITS` dígitos;
   `by_email` = el correo normalizado si `q` tiene `@`. Captura `CryptoError("empty_value")`.
   `q` vacío o en blanco da el plan vacío (todo `None`).
+- `chip_to_filter(chip) -> MemberChipFilter` (S3-B9b, US-071): los siete chips de la lista
+  (`MEMBER_CHIPS`); "Dados de baja" es `status="deleted"` y los otros seis, el
+  `membership_status` del mismo nombre. Un chip desconocido da `ValueError`.
 """
 
 from __future__ import annotations
@@ -35,7 +38,12 @@ from app.core.crypto.normalize import IndexKind, normalize_for_index
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern
 from app.modules.members.exceptions import MemberValidationError
 from app.modules.members.models import SEXES
-from app.modules.members.schemas import DATA_CONSENT_MISSING, MemberCreate
+from app.modules.members.schemas import (
+    DATA_CONSENT_MISSING,
+    MemberCreate,
+    MembershipFilterStatus,
+    MemberStatusFilter,
+)
 
 __all__ = [
     "BIRTH_DATE_MIN",
@@ -45,12 +53,16 @@ __all__ = [
     "EMERGENCY_CONTACT_MASK",
     "LIKE_ESCAPE",
     "MASK_TAIL",
+    "MEMBER_CHIPS",
     "PHONE_DATA_CLASS",
     "PHONE_MIN_DIGITS",
     "PLAN_VACIO",
     "MaskField",
     "MaskValue",
+    "MemberChip",
+    "MemberChipFilter",
     "QueryPlan",
+    "chip_to_filter",
     "classify_query",
     "compute_warnings",
     "mask",
@@ -200,3 +212,52 @@ def classify_query(q: str | None) -> QueryPlan:
         by_phone=telefono if len(telefono) >= PHONE_MIN_DIGITS else None,
         by_email=correo or None,
     )
+
+
+# Chips de la lista (S3-B9b, US-071; D22, N-20) ---------------------------------------
+
+
+MemberChip = Literal[
+    "active", "expiring", "expired", "frozen", "pending_payment", "none", "deleted"
+]
+MEMBER_CHIPS: Final[tuple[MemberChip, ...]] = (
+    "active",
+    "expiring",
+    "expired",
+    "frozen",
+    "pending_payment",
+    "none",
+    "deleted",
+)
+"""Los siete chips de la lista: "Al día", "Por vencer", "Vencidos", "Congelados", "Pendiente
+de pago", "Sin membresía" y "Dados de baja" (admin y coach, N-20)."""
+
+
+_CHIPS_DE_MEMBRESIA: Final[Mapping[str, MembershipFilterStatus]] = {
+    "active": "active",
+    "expiring": "expiring",
+    "expired": "expired",
+    "frozen": "frozen",
+    "pending_payment": "pending_payment",
+    "none": "none",
+}
+
+
+@dataclass(frozen=True)
+class MemberChipFilter:
+    """Los filtros de `MemberListQuery` que un chip fija; el resto queda como esté."""
+
+    status: MemberStatusFilter | None
+    membership_status: MembershipFilterStatus | None
+
+
+def chip_to_filter(chip: str) -> MemberChipFilter:
+    """El filtro de un chip: "Dados de baja" (`deleted`) es `status="deleted"`; los otros seis
+    fijan el `membership_status` del mismo nombre. Un chip desconocido da `ValueError` (sin
+    normalizar mayúsculas ni espacios: el front envía el valor exacto)."""
+    if chip == "deleted":
+        return MemberChipFilter(status="deleted", membership_status=None)
+    estado = _CHIPS_DE_MEMBRESIA.get(chip)
+    if estado is None:
+        raise ValueError("chip de socios desconocido")
+    return MemberChipFilter(status=None, membership_status=estado)

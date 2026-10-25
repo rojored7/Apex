@@ -26,19 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import configure_logging
 from tests.conftest import T0, Cabeceras, CrearUsuario
 from tests.factories.members import KNOWN, KNOWN_NORMALIZED, make_member, unique_document
-from tests.members._apoyo import MEMBERS
+from tests.members._apoyo import CAMPOS_FILA, MEMBERS
 
 LIMITE_DE_BUSQUEDAS = 60
-CAMPOS_FILA = {
-    "id",
-    "first_name",
-    "last_name",
-    "sex",
-    "status",
-    "deleted_at",
-    "membership_status",
-    "plan_name",
-}
 
 
 async def _socios(session: AsyncSession) -> dict[str, str]:
@@ -75,7 +65,9 @@ async def test_admin_y_coach_reciben_la_pagina_con_el_contrato(
     assert datos["total"] == 1
     fila = datos["items"][0]
     assert set(fila) == CAMPOS_FILA
-    assert fila["membership_status"] is None
+    # S3-B9b (D22): sin membresías la fila dice `none` (decorada con `status_for`).
+    assert fila["membership_status"] == "none"
+    assert fila["plan_name"] is None and fila["membership_end_date"] is None
 
 
 @pytest.mark.parametrize("rol", ["admin", "coach"])

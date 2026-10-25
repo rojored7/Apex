@@ -9,6 +9,9 @@
 //   Los opcionales vacíos no viajan.
 // - memberRowSchema es estricto: una fila con un campo de más (por ejemplo un dato cifrado o
 //   enmascarado) es una respuesta inválida y no se pinta (N-01).
+// - S3-B9b (D35): la fila gana `membership_end_date` (fecha de fin de la membresía que decide el
+//   estado, "Vence") y la ficha `plan_name` y `membership_end_date`, opcionales y `null` por
+//   defecto, en el mismo checkpoint del backend; la lógica de pantalla llega con F1 y F2.
 import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
 import type { components } from "../../core/api/types";
@@ -204,18 +207,22 @@ export const memberRowSchema = z
     deleted_at: z.string().nullable(),
     membership_status: z.string().nullable().default(null),
     plan_name: z.string().nullable().default(null),
+    membership_end_date: z.string().nullable().optional().default(null),
   })
   .strict();
 
 export type MemberRowView = z.infer<typeof memberRowSchema>;
 export const membersPageSchema = pageSchema(memberRowSchema);
 
-/** Lo que el alta usa de MemberDetailOut: el id, el nombre y los avisos (`data_consent_missing`). */
+/** Lo que el alta usa de MemberDetailOut: el id, el nombre y los avisos (`data_consent_missing`);
+ *  desde S3-B9b (D35) también acepta el plan y el fin de la membresía que decide el estado. */
 export const memberDetailSchema = z.object({
   id: z.string().min(1),
   first_name: z.string(),
   last_name: z.string(),
   warnings: z.array(z.string()),
+  plan_name: z.string().nullable().optional().default(null),
+  membership_end_date: z.string().nullable().optional().default(null),
 });
 
 export const DATA_CONSENT_MISSING = "data_consent_missing";

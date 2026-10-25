@@ -26,7 +26,9 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
   B4 el par se importa limpio en los dos órdenes (`memberships, payments` y `payments,
   memberships`).
 - `LAZY_IMPORT_WHITELIST` es exactamente `{payments → memberships, members → memberships,
-  plans → memberships}` (G-03); desde S3-B8 se usa `payments → memberships`.
+  plans → memberships}` (G-03); desde S3-B8 se usa `payments → memberships` y desde S3-B9b
+  `members → memberships` (`member_ids_by_status` y `status_for` de la lista y la ficha, con
+  `# lazy: G-03 (members -> memberships)`; condición 1 del impacto).
 - Cada par de `ALLOWED_EDGES` se importa en un subproceso limpio (`python -I -c`) en los dos
   órdenes (DoD de US-071): un ciclo de imports al arrancar fallaría ahí aunque el análisis
   estático no lo viera.
@@ -250,6 +252,30 @@ def test_el_par_perezoso_payments_memberships_existe_y_esta_permitido() -> None:
     assert perezosas["payments"] == {"memberships"}
     assert ("payments", "memberships") in LAZY_IMPORT_WHITELIST
     assert ("payments", "memberships") not in ALLOWED_EDGES
+
+
+def test_el_par_perezoso_members_memberships_existe_y_esta_permitido() -> None:
+    """S3-B9b (D22, G-03, condición 1): `members` pide a `memberships` el conjunto de ids de la
+    lista (`member_ids_by_status`) y el estado de cada página y de la ficha (`status_for`) con
+    imports dentro de la función. Es su única perezosa; a nivel de módulo `members` no importa
+    ningún service (`memberships → members` es el sentido mayoritario)."""
+    arriba, perezosas = _grafo_real()
+    assert perezosas["members"] == {"memberships"}
+    assert arriba["members"] == set()
+    assert ("members", "memberships") in LAZY_IMPORT_WHITELIST
+    assert ("members", "memberships") not in ALLOWED_EDGES
+    assert "members" in arriba["memberships"]
+
+
+def test_la_perezosa_de_members_vive_en_service_y_detail() -> None:
+    """S3-B9b: la lista (`service.py`) y la ficha (`detail.py`) son los dos lugares que leen el
+    estado de membresía; ningún otro archivo de `members` importa `memberships`."""
+    con_perezosa = sorted(
+        archivo.name
+        for archivo in (MODULES_DIR / "members").glob("*.py")
+        if service_edges(archivo.read_text(encoding="utf-8"), "members")[1] == {"memberships"}
+    )
+    assert con_perezosa == ["detail.py", "service.py"]
 
 
 def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:

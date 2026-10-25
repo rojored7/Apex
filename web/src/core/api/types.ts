@@ -158,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Member */
+        get: operations["get_member_api_v1_members__member_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members/{member_id}/memberships": {
         parameters: {
             query?: never;
@@ -988,10 +1005,14 @@ export interface components {
             id: string;
             /** Last Name */
             last_name: string;
+            /** Membership End Date */
+            membership_end_date?: string | null;
             /** Membership Status */
             membership_status?: string | null;
             /** Phone */
             phone: string | null;
+            /** Plan Name */
+            plan_name?: string | null;
             /** Sex */
             sex: ("f" | "m" | "x") | null;
             /**
@@ -1023,6 +1044,8 @@ export interface components {
             id: string;
             /** Last Name */
             last_name: string;
+            /** Membership End Date */
+            membership_end_date?: string | null;
             /** Membership Status */
             membership_status?: string | null;
             /** Plan Name */
@@ -2344,6 +2367,8 @@ export interface operations {
                 q?: string | null;
                 status?: ("active" | "inactive" | "deleted") | null;
                 sort?: "last_name" | "-last_name" | "first_name" | "-first_name" | "created_at" | "-created_at";
+                membership_status?: ("active" | "expiring" | "expired" | "frozen" | "pending_payment" | "none") | null;
+                plan_id?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -2468,6 +2493,91 @@ export interface operations {
                 };
             };
             /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_member_api_v1_members__member_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDetailOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
             422: {
                 headers: {
                     [name: string]: unknown;

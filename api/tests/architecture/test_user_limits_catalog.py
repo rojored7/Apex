@@ -27,11 +27,10 @@ MODULES = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # Buckets del catálogo cuya ruta todavía no existe (E2: S3-B1 sacó `memberships-write` con la
 # venta, S3-B4 `payments-write` con `POST /memberships/{membership_id}/payments` y S3-B5
-# `admin-write` con `POST /payments/{payment_id}/void`; B9b saca `members-detail` y B10 los tres
-# de `members-reveal`).
+# `admin-write` con `POST /payments/{payment_id}/void`, S3-B9b `members-detail` con
+# `GET /members/{member_id}`; B10 saca los tres de `members-reveal`).
 CLAVES_SIN_RUTA_TODAVIA = frozenset(
     {
-        "members-detail",
         "members-reveal",
         "members-reveal-hour",
         "members-reveal-day",

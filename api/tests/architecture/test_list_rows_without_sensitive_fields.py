@@ -115,6 +115,16 @@ def test_la_fila_de_pagos_lleva_el_correo_parcial_y_no_el_completo(
     assert not [campo for campo in fila if "email" in campo]
 
 
+def test_la_fila_de_socios_lleva_el_fin_de_la_membresia_y_nada_sensible(
+    settings_prueba: Settings,
+) -> None:
+    """S3-B9b (D22, D35): `MemberRowOut` gana `membership_end_date` (dato comercial en claro)."""
+    esquema = create_app(settings_prueba, run_migrations_on_startup=False).openapi()
+    fila = esquema["components"]["schemas"]["MemberRowOut"]["properties"]
+    assert {"membership_status", "plan_name", "membership_end_date"} <= set(fila)
+    assert not [campo for campo in fila if es_sensible(campo)]
+
+
 def test_es_sensible_reconoce_campos_cifrados_indices_y_pistas() -> None:
     for campo in ("document", "phone", "email", "birth_date", "emergency_contact"):
         assert es_sensible(campo), campo
@@ -135,6 +145,7 @@ def test_es_sensible_reconoce_campos_cifrados_indices_y_pistas() -> None:
         "status",
         "deleted_at",
         "plan_name",
+        "membership_end_date",
         "member_first_name",
         "registered_by_name",
         "voided_by_name",

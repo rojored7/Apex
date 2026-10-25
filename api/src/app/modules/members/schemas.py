@@ -16,6 +16,11 @@ S2-B8 (US-070; N-01, N-20, S2-D41):
   `sort` con seis valores (`-` es descendente), `last_name` por defecto.
 - `MemberName`: dataclass congelada que devuelve `service.names_for` a otros módulos.
 
+S3-B9b (US-071, US-073; D22, D35): `MembershipFilterStatus`; `MemberListQuery` gana
+`membership_status` y `plan_id`; `MemberRowOut.membership_end_date` y
+`MemberDetailOut.plan_name`/`membership_end_date` (la membresía que decide el estado; datos
+comerciales en claro, no sensibles).
+
 Revisión del Sprint 2 (seguridad N-2, Python H2): `first_name`, `last_name` y el `name` y
 `relationship` del contacto de emergencia son `SafeText` (NFC, sin `Cc` ni `Cf`, algo visible):
 un NUL daba 500 y un U+200B o U+202E pasaban el CHECK y se mostraban en las listas.
@@ -37,6 +42,11 @@ DocumentType = Literal["CC", "CE", "TI", "PA"]
 Sex = Literal["f", "m", "x"]
 MemberStatus = Literal["active", "inactive"]
 MemberStatusFilter = Literal["active", "inactive", "deleted"]
+# S3-B9b (US-071, D22): estado de membresía por el que se filtra la lista; `none` es "sin
+# membresía" (complemento de los otros cinco).
+MembershipFilterStatus = Literal[
+    "active", "expiring", "expired", "frozen", "pending_payment", "none"
+]
 MemberSort = Literal[
     "last_name", "-last_name", "first_name", "-first_name", "created_at", "-created_at"
 ]
@@ -92,6 +102,9 @@ class MemberDetailOut(BaseModel):
     data_consent_version: str | None
     deleted_at: datetime | None
     membership_status: str | None = None
+    # S3-B9b (US-073, D22): la membresía que decide el estado (`memberships.status_for`).
+    plan_name: str | None = None
+    membership_end_date: date | None = None
     created_at: datetime
     updated_at: datetime
     warnings: list[str]
@@ -119,6 +132,7 @@ class MemberRowOut(BaseModel):
     deleted_at: datetime | None
     membership_status: str | None = None
     plan_name: str | None = None
+    membership_end_date: date | None = None  # S3-B9b (D22, D35): "Vence" de la lista
 
 
 class MemberListQuery(BaseModel):
@@ -129,6 +143,9 @@ class MemberListQuery(BaseModel):
     q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
     status: MemberStatusFilter | None = None
     sort: MemberSort = DEFAULT_MEMBER_SORT
+    # S3-B9b (US-071, D22): estado de la membresía que decide y su plan.
+    membership_status: MembershipFilterStatus | None = None
+    plan_id: UUID | None = None
 
 
 @dataclass(frozen=True)

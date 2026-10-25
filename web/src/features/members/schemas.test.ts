@@ -135,15 +135,44 @@ describe("esquemas de respuesta", () => {
     ).toBe(false);
   });
 
-  it("memberRowSchema acepta la fila sin membership_status ni plan_name", () => {
+  it("memberRowSchema acepta la fila sin membership_status, plan_name ni membership_end_date", () => {
     expect(memberRowSchema.parse({ id: "x", first_name: "A", last_name: "B", sex: null, status: "inactive", deleted_at: null })).toMatchObject({
       membership_status: null,
       plan_name: null,
+      membership_end_date: null,
     });
+  });
+
+  it("S3-B9b (D35): memberRowSchema acepta la fila con membership_end_date y la de B9b completa", () => {
+    const row = { id: "x", first_name: "A", last_name: "B", sex: "f", status: "active", deleted_at: null, membership_status: "expiring", plan_name: "Mensual", membership_end_date: "2026-10-25" };
+
+    expect(memberRowSchema.parse(row)).toEqual(row);
+    expect(memberRowSchema.parse({ ...row, membership_status: "none", plan_name: null, membership_end_date: null }).membership_end_date).toBeNull();
+  });
+
+  it("S3-B9b (D35): memberRowSchema sigue estricto con los campos nuevos", () => {
+    const row = { id: "x", first_name: "A", last_name: "B", sex: null, status: "active", deleted_at: null, membership_end_date: "2026-10-25" };
+
+    expect(memberRowSchema.safeParse({ ...row, plan_id: "p" }).success).toBe(false);
+    expect(memberRowSchema.safeParse({ ...row, membership_end_date: 20261025 }).success).toBe(false);
   });
 
   it("memberDetailSchema exige warnings como lista de textos", () => {
     expect(memberDetailSchema.safeParse({ id: "x", first_name: "A", last_name: "B", warnings: "data_consent_missing" }).success).toBe(false);
-    expect(memberDetailSchema.parse({ id: "x", first_name: "A", last_name: "B", warnings: [] })).toEqual({ id: "x", first_name: "A", last_name: "B", warnings: [] });
+    expect(memberDetailSchema.parse({ id: "x", first_name: "A", last_name: "B", warnings: [] })).toEqual({
+      id: "x",
+      first_name: "A",
+      last_name: "B",
+      warnings: [],
+      plan_name: null,
+      membership_end_date: null,
+    });
+  });
+
+  it("S3-B9b (D35): memberDetailSchema acepta plan_name y membership_end_date de la ficha", () => {
+    const detail = { id: "x", first_name: "A", last_name: "B", warnings: [], plan_name: "Mensual", membership_end_date: "2026-11-30" };
+
+    expect(memberDetailSchema.parse(detail)).toEqual(detail);
+    expect(memberDetailSchema.safeParse({ ...detail, plan_name: 7 }).success).toBe(false);
   });
 });

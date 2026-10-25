@@ -12,9 +12,9 @@ const EXISTING_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const DUPLICATED = "1020304417";
 
 const ROWS = [
-  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", first_name: "Laura", last_name: "Gómez", sex: "f", status: "active", deleted_at: null, membership_status: null, plan_name: null },
-  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", first_name: "Andrés", last_name: "Ruiz", sex: "m", status: "inactive", deleted_at: null, membership_status: null, plan_name: null },
-  { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", first_name: "Elena", last_name: "Vargas", sex: null, status: "active", deleted_at: "2026-10-20T15:00:00Z", membership_status: null, plan_name: null },
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", first_name: "Laura", last_name: "Gómez", sex: "f", status: "active", deleted_at: null, membership_status: null, plan_name: null, membership_end_date: null },
+  { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", first_name: "Andrés", last_name: "Ruiz", sex: "m", status: "inactive", deleted_at: null, membership_status: null, plan_name: null, membership_end_date: null },
+  { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", first_name: "Elena", last_name: "Vargas", sex: null, status: "active", deleted_at: "2026-10-20T15:00:00Z", membership_status: null, plan_name: null, membership_end_date: null },
 ];
 
 const json = (route: Route, status: number, body?: unknown) =>
@@ -55,6 +55,8 @@ async function fakeApi(page: Page): Promise<FakeApi> {
         data_consent_version: body.data_consent ? "2026-10" : null,
         deleted_at: null,
         membership_status: null,
+        plan_name: null,
+        membership_end_date: null,
         created_at: "2026-10-22T15:00:00Z",
         updated_at: "2026-10-22T15:00:00Z",
         warnings: body.data_consent ? [] : ["data_consent_missing"],

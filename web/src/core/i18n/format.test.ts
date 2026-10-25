@@ -12,6 +12,9 @@ import {
   formatTime,
   parseCop,
   todayBogota,
+  addDaysCivil,
+  bogotaInputToUtc,
+  nowBogotaInput,
 } from "./format";
 import { LOCALE, TZ_DISPLAY } from "../../config/locale";
 
@@ -147,5 +150,38 @@ describe("entradas inválidas", () => {
     expect(formatTime("no es fecha")).toBe("—");
     expect(formatMonth("2026-00")).toBe("—");
     expect(formatMonth("no es fecha")).toBe("—");
+  });
+});
+
+describe("fechas de los formularios en hora de Bogotá (S3-F3)", () => {
+  it.each(ZONES)("nowBogotaInput da 'AAAA-MM-DDTHH:mm' de Bogotá con el equipo en %s", (zone) => {
+    process.env.TZ = zone;
+    expect(nowBogotaInput(Date.parse("2026-10-28T15:07:59Z"))).toBe("2026-10-28T10:07");
+    expect(nowBogotaInput(Date.parse("2026-10-29T03:30:00Z"))).toBe("2026-10-28T22:30");
+  });
+
+  it("nowBogotaInput sin argumento usa el reloj", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T04:59:00Z"));
+    expect(nowBogotaInput()).toBe("2025-12-31T23:59");
+  });
+
+  it.each(ZONES)("bogotaInputToUtc lleva la hora de Bogotá (UTC-5) a un instante UTC con el equipo en %s", (zone) => {
+    process.env.TZ = zone;
+    expect(bogotaInputToUtc("2026-10-28T10:00")).toBe("2026-10-28T15:00:00.000Z");
+    expect(bogotaInputToUtc("2026-10-27T19:30")).toBe("2026-10-28T00:30:00.000Z");
+    expect(bogotaInputToUtc("2026-12-31T23:59")).toBe("2027-01-01T04:59:00.000Z");
+  });
+
+  it.each(["", "2026-10-28", "2026-10-28T25:00", "2026-02-30T10:00", "2026-10-28T10:60", "hoy"])("bogotaInputToUtc(%j) da null", (input) => {
+    expect(bogotaInputToUtc(input)).toBeNull();
+  });
+
+  it("addDaysCivil suma días a una fecha civil (fin de mes, de año y bisiesto) y da null si no es fecha", () => {
+    expect(addDaysCivil("2026-10-29", 30)).toBe("2026-11-28");
+    expect(addDaysCivil("2026-12-15", 30)).toBe("2027-01-14");
+    expect(addDaysCivil("2028-02-28", 1)).toBe("2028-02-29");
+    expect(addDaysCivil("2026-10-28", 0)).toBe("2026-10-28");
+    expect(addDaysCivil("2026-02-30", 1)).toBeNull();
   });
 });

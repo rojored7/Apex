@@ -1,0 +1,3 @@
+# S3-F3 (S3-D65): la raíz ignora toda carpeta `data/` ("Datos locales"); src/shared/data/ es código
+# del front (hooks y esquemas compartidos entre features) y sí se versiona.
+!src/shared/data/

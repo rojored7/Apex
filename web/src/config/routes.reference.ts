@@ -11,6 +11,8 @@ export interface ReferenceRoute {
   feature: Feature;
   access: RouteAccess;
   layout: RouteLayout;
+  /** S3-F3 (E3, E14): ruta del padre de una ruta hija (pestañas de la ficha, F1 y F7). */
+  parent?: string;
 }
 
 const r = (path: string, feature: Feature, access: RouteAccess, layout: RouteLayout): ReferenceRoute => ({ path, feature, access, layout });

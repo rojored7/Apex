@@ -5,8 +5,9 @@
 //   si el error vino con respuesta del api.
 // - toScreenError: el error de una consulta como ApiError con el mensaje de la pantalla (lo
 //   pinta DataTable o un aviso), conservando status y code.
-import { CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { API_ERROR_CODES, BUSY_MESSAGE, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, GENERIC_MESSAGES, isApiError } from "../../core/api/errors";
+import { HTTP_SERVICE_UNAVAILABLE } from "../../core/api/status";
 
 /** Un 429 sin `Retry-After` útil. */
 export const TOO_MANY_MESSAGE = "Demasiados intentos. Espera un momento y vuelve a intentarlo.";
@@ -17,9 +18,13 @@ export function waitText(seconds: number | undefined): string {
   return seconds === 1 ? "1 segundo" : `${String(seconds)} segundos`;
 }
 
-/** Sin respuesta o respuesta inválida; `null` si el api respondió con su envelope. */
+/**
+ * Sin respuesta, respuesta inválida o base ocupada (503 `busy`, S3-F3): mensajes que no dependen de
+ * la pantalla. `null` si el api respondió con otro error de su envelope.
+ */
 export function connectionMessage(error: ApiError): string | null {
   if (error.code === CLIENT_ERROR_CODES.invalidResponse) return error.message;
+  if (error.status === HTTP_SERVICE_UNAVAILABLE && error.code === API_ERROR_CODES.busy) return BUSY_MESSAGE;
   if (error.status === 0) return error.code === CLIENT_ERROR_CODES.timeout ? GENERIC_MESSAGES.timeout : GENERIC_MESSAGES.network_error;
   return null;
 }

@@ -2,9 +2,9 @@
 // una ruta deshabilitada da 404 sin descargar su código y no existe /hoy.
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { RouterProvider } from "react-router";
+import { Outlet, RouterProvider } from "react-router";
 import { ENABLED_FEATURES, type Feature } from "./config/features";
-import type { RouteDef } from "./config/routeTable";
+import { childRoute, type RouteDef } from "./config/routeTable";
 import { SessionRoleProvider } from "./core/auth/SessionRole";
 import { createAppRouter, type AppRouterOptions } from "./routes";
 import { testQueryClient } from "./test/server";
@@ -152,5 +152,57 @@ describe("router de la app", () => {
 
     expect(await screen.findByRole("heading", { name: "Leaderboard" })).toBeInTheDocument();
     expect(screen.getByTestId("tv-stage")).toBeInTheDocument();
+  });
+});
+
+describe("rutas hijas en el router (S3-F3, E3)", () => {
+  function Ficha() {
+    return (
+      <>
+        <h1>Ficha de Laura</h1>
+        <Outlet />
+      </>
+    );
+  }
+  const FICHA: RouteDef = {
+    path: "/socios/:id",
+    title: "Ficha del socio",
+    feature: "members",
+    access: "members.view",
+    layout: "panel",
+    load: async () => Promise.resolve({ default: Ficha }),
+  };
+  const NESTED: RouteDef[] = [
+    FICHA,
+    childRoute(FICHA, "", "Datos", { load: async () => Promise.resolve({ default: () => <h2>Datos del socio</h2> }) }),
+    childRoute(FICHA, "/socios/:id/membresias", "Membresías", { load: async () => Promise.resolve({ default: () => <h2>Membresías del socio</h2> }) }),
+    childRoute(FICHA, "/socios/:id/pagos", "Pagos", { access: "plans.view", load: async () => Promise.resolve({ default: () => <h2>Pagos del socio</h2> }) }),
+  ];
+
+  it("la ruta del padre pinta su página con la hija índice en el Outlet", async () => {
+    signInAs("coach");
+    renderAt("/socios/42", { table: NESTED });
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Datos del socio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Ficha de Laura" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Membresías del socio" })).not.toBeInTheDocument();
+  });
+
+  it("una hija nombrada se pinta dentro del padre, sin la índice", async () => {
+    signInAs("coach");
+    renderAt("/socios/42/membresias", { table: NESTED });
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Membresías del socio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Ficha de Laura" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Datos del socio" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Menú principal" })).toBeInTheDocument();
+  });
+
+  it("el acceso de la hija manda: el coach en una hija solo para admin ve Sin permiso", async () => {
+    signInAs("coach");
+    renderAt("/socios/42/pagos", { table: NESTED });
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Sin permiso" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Pagos del socio" })).not.toBeInTheDocument();
   });
 });

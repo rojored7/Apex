@@ -17,11 +17,20 @@ export type RouteLayout = "access" | "panel" | "portal" | "gym" | "tv";
 export type RouteAccess = "public" | "session" | Action;
 
 export interface RouteDef {
+  /**
+   * Ruta completa ("/socios/:id/membresias"). La hija índice (E14) lleva "" y no repite la de su
+   * padre: la clave de una ruta es (parent, path), ver routeKey.
+   */
   path: string;
   title: string;
   feature?: Feature;
   access: RouteAccess;
   layout: RouteLayout;
+  /**
+   * S3-F3 (E3, S3-D65): ruta completa del padre. La hija se pinta dentro del `<Outlet />` de la
+   * página del padre; hereda `layout` y `feature` y, si no declara uno, el `access` (childRoute).
+   */
+  parent?: string;
   /** Página diferida; sin `load` la ruta no se registra (404). */
   load?: () => Promise<{ default: ComponentType }>;
 }
@@ -30,6 +39,45 @@ type Extra = Pick<RouteDef, "load">;
 
 const route = (path: string, title: string, feature: Feature, access: RouteAccess, layout: RouteLayout, extra: Extra = {}): RouteDef =>
   Object.freeze({ path, title, feature, access, layout, ...extra });
+
+export interface ChildExtra {
+  /** Sin él, la hija hereda el acceso del padre. */
+  access?: RouteAccess;
+  load?: RouteDef["load"];
+}
+
+/**
+ * S3-F3 (E3, E14): una ruta hija de `parent`. `path` es la ruta completa de la hija, o "" para la
+ * hija índice (la que se pinta en la ruta del padre).
+ */
+export function childRoute(parent: RouteDef, path: string, title: string, extra: ChildExtra = {}): RouteDef {
+  const { access = parent.access, load } = extra;
+  return Object.freeze({
+    path,
+    title,
+    ...(parent.feature ? { feature: parent.feature } : {}),
+    access,
+    layout: parent.layout,
+    parent: parent.path,
+    ...(load ? { load } : {}),
+  });
+}
+
+/** Lo que identifica una ruta: su path y, si es hija, su padre. */
+export interface RouteKeyFields {
+  path: string;
+  parent?: string | undefined;
+}
+
+/** E14: clave única de una ruta en la tabla, (parent, path). */
+export function routeKey(def: RouteKeyFields): string {
+  return `${def.parent ?? ""} ${def.path}`;
+}
+
+/** La ruta completa que abre esta definición: la del padre para la hija índice. */
+export function fullPathOf(def: RouteKeyFields): string {
+  return def.path === "" && def.parent !== undefined ? def.parent : def.path;
+}
 
 
 export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
@@ -54,7 +102,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
   route("/planes", "Planes", "plans", "plans.view", "panel", { load: () => import("../features/plans/pages/PlansPage") }),
   route("/membresias", "Membresías", "memberships", "memberships.view", "panel"),
-  route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel"),
+  // S3-F3: vender, primer pago y renovar (US-084, US-085, US-088).
+  route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel", { load: () => import("../features/memberships/pages/SellPage") }),
   route("/pagos", "Pagos", "payments", "payments.view", "panel"),
   route("/clases", "Clases", "classes", "classes.view", "panel"),
   route("/clases/horario", "Horario", "classes", "classes.schedule", "panel"),

@@ -8,6 +8,8 @@ export const HTTP_CONFLICT = 409;
 export const HTTP_UNPROCESSABLE = 422;
 export const HTTP_TOO_MANY = 429;
 export const HTTP_SERVER_ERROR = 500;
+// S3-F3: 503 `busy` (S3-D67), la base no dio el candado a tiempo.
+export const HTTP_SERVICE_UNAVAILABLE = 503;
 
 /** 4xx: no es transitorio (credenciales, permiso, validación, conflicto, 429). */
 export function isClientErrorStatus(status: number): boolean {

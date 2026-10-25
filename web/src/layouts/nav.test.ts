@@ -8,10 +8,10 @@ const labels = (groups: NavGroup[]): string[] => groups.flatMap((g) => g.items.m
 const ALL: ReadonlySet<Feature> = new Set(FEATURES);
 
 describe("buildNavItems", () => {
-  it("admin con las features del Sprint 2 ve Inicio, Socios, Planes, Usuarios y Configuración", () => {
+  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Planes, Usuarios y Configuración", () => {
     const groups = buildNavItems("admin", ENABLED_FEATURES);
 
-    expect(labels(groups)).toEqual(["Inicio", "Socios", "Planes", "Usuarios y roles", "Configuración"]);
+    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Planes", "Usuarios y roles", "Configuración"]);
     expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "sistema"]);
     expect(groups.find((g) => g.id === "sistema")?.title).toBe("Sistema");
     expect(groups.find((g) => g.id === "inicio")?.title).toBeNull();
@@ -97,5 +97,15 @@ describe("buildNavItems", () => {
       const visible = new Set(labels(buildNavItems(role, enabled)));
       for (const item of NAV_CATALOG) expect(visible.has(item.label)).toBe(canAccessRoute(role, item.to));
     }
+  });
+});
+
+describe("menú y rutas hijas (S3-F3, E14)", () => {
+  it("el coach también ve Membresías con las features habilitadas (memberships.view es de admin y coach)", () => {
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías"]);
+  });
+
+  it("NAV_CATALOG es estático y no tiene entradas con parámetros (:)", () => {
+    expect(NAV_CATALOG.filter((item) => item.to.includes(":")).map((item) => item.to)).toEqual([]);
   });
 });

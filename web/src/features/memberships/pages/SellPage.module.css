@@ -1,0 +1,14 @@
+/* S3-F3: Membresia_Vender.html (columna principal con gap de 16 px). Solo tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}

@@ -7,8 +7,10 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("el Sprint 2 habilita auth, dashboard, members, plans, users y settings", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["auth", "dashboard", "members", "plans", "settings", "users"]);
+  it("habilita siete: las seis del Sprint 2 y memberships (S3-F3)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["auth", "dashboard", "members", "memberships", "plans", "settings", "users"]);
+    expect(ENABLED_FEATURES.size).toBe(7);
+    expect(ENABLED_FEATURES.has("payments")).toBe(false);
   });
 
   it("una ruta con feature habilitada está habilitada", () => {

@@ -166,3 +166,43 @@ export function todayBogota(): string {
   const pad = (n: number): string => String(n).padStart(2, "0");
   return `${String(now.year)}-${pad(now.month)}-${pad(now.day)}`;
 }
+
+// S3-F3: fechas de los formularios en hora de Bogotá. Colombia no tiene horario de verano: la
+// hora de Bogotá es siempre UTC-5, así que pasar del campo `datetime-local` (que el navegador
+// no asocia a ninguna zona) a un instante UTC es una suma fija, sin depender de la zona del equipo.
+const BOGOTA_OFFSET_HOURS = 5;
+const DATETIME_INPUT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+const MS_PER_DAY = 86_400_000;
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+function civilIso({ year, month, day }: CivilDate): string {
+  return `${String(year)}-${pad2(month)}-${pad2(day)}`;
+}
+
+/** "AAAA-MM-DDTHH:mm" de ahora en Bogotá: el valor inicial de un campo `datetime-local`. */
+export function nowBogotaInput(nowMs: number = Date.now()): string {
+  const now = toBogota(new Date(nowMs).toISOString());
+  /* v8 ignore next -- toISOString siempre produce un instante válido */
+  if (!now) throw new Error("nowBogotaInput: reloj inválido");
+  return `${civilIso(now)}T${pad2(now.hour)}:${pad2(now.minute)}`;
+}
+
+/** El valor de un `datetime-local` leído como hora de Bogotá, en UTC ISO; null si no es válido. */
+export function bogotaInputToUtc(value: string): string | null {
+  const match = DATETIME_INPUT.exec(value);
+  if (!match) return null;
+  const civil = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  if (!isValidCivil(civil) || hour > 23 || minute > 59) return null;
+  return new Date(Date.UTC(civil.year, civil.month - 1, civil.day, hour + BOGOTA_OFFSET_HOURS, minute)).toISOString();
+}
+
+/** Fecha civil "AAAA-MM-DD" más `days` días; null si no es una fecha real. */
+export function addDaysCivil(value: string, days: number): string | null {
+  const civil = parseCivilDate(value);
+  if (!civil) return null;
+  const date = new Date(Date.UTC(civil.year, civil.month - 1, civil.day) + days * MS_PER_DAY);
+  return civilIso({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() });
+}

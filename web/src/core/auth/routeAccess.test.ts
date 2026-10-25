@@ -1,5 +1,6 @@
 // US-053 T1, L-5 y S2-D23: acceso por ruta con la matriz de US-040, inicio por rol sin
 // literales de rol y `next` sin redirecciones abiertas.
+import { childRoute, type RouteDef } from "../../config/routeTable";
 import { REFERENCE_ROUTES } from "../../config/routes.reference";
 import { ROLES, can, type Role } from "./permissions";
 import { canAccess, canAccessRoute, findRoute, homeFor, safeNext } from "./routeAccess";
@@ -110,5 +111,46 @@ describe("safeNext", () => {
     expect(safeNext(undefined, "admin")).toBeNull();
     expect(safeNext("/socios", null)).toBeNull();
     expect(safeNext(`/${"a".repeat(3000)}`, "admin")).toBeNull();
+  });
+});
+
+describe("findRoute con rutas hijas (S3-F3, E3 y E14)", () => {
+  const FICHA: RouteDef = { path: "/socios/:id", title: "Ficha del socio", feature: "members", access: "members.view", layout: "panel" };
+  const EDITAR: RouteDef = { path: "/socios/:id/editar", title: "Editar socio", feature: "members", access: "members.update", layout: "panel" };
+  const DATOS = childRoute(FICHA, "", "Datos");
+  const MEMBRESIAS = childRoute(FICHA, "/socios/:id/membresias", "Membresías del socio", { access: "memberships.view" });
+  const PAGOS = childRoute(FICHA, "/socios/:id/pagos", "Pagos del socio");
+  // El padre va primero a propósito: la hija (más específica) gana aunque esté después.
+  const TABLE: readonly RouteDef[] = [FICHA, EDITAR, DATOS, MEMBRESIAS, PAGOS];
+
+  it("resuelve la hija nombrada y la hija índice antes que el padre", () => {
+    expect(findRoute("/socios/42/membresias", TABLE)).toBe(MEMBRESIAS);
+    expect(findRoute("/socios/42", TABLE)).toBe(DATOS);
+    expect(findRoute("/socios/42?tab=1", TABLE)).toBe(DATOS);
+  });
+
+  it("la hija que no declara acceso hereda el del padre; la que lo declara usa el suyo", () => {
+    expect(findRoute("/socios/42/pagos", TABLE)?.access).toBe("members.view");
+    expect(findRoute("/socios/42/membresias", TABLE)?.access).toBe("memberships.view");
+  });
+
+  it("una ruta estática hermana sigue ganando a una dinámica y una ruta desconocida da null", () => {
+    expect(findRoute("/socios/42/editar", TABLE)).toBe(EDITAR);
+    expect(findRoute("/socios/42/otra", TABLE)).toBeNull();
+  });
+
+  it("sin tabla usa ROUTE_TABLE", () => {
+    expect(findRoute("/membresias/vender")?.path).toBe("/membresias/vender");
+  });
+});
+
+describe("revisión S3-F3 (HIGH 1): una estática raíz gana a la hija índice dinámica", () => {
+  const FICHA: RouteDef = { path: "/socios/:id", title: "Ficha del socio", feature: "members", access: "members.view", layout: "panel" };
+  const NUEVO: RouteDef = { path: "/socios/nuevo", title: "Nuevo socio", feature: "members", access: "members.create", layout: "panel" };
+  const DATOS = childRoute(FICHA, "", "Datos");
+
+  it("/socios/nuevo resuelve la raíz estática aunque exista la hija índice de /socios/:id", () => {
+    expect(findRoute("/socios/nuevo", [FICHA, DATOS, NUEVO])).toBe(NUEVO);
+    expect(findRoute("/socios/42", [FICHA, DATOS, NUEVO])).toBe(DATOS);
   });
 });

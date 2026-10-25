@@ -35,7 +35,27 @@ export const API_ERROR_CODES = {
   memberNotFound: "member_not_found",
   planNameDuplicated: "plan_name_duplicated",
   planNotFound: "plan_not_found",
+  // S3-F3: la base no dio el candado a tiempo (503, S3-D67; core/db.py).
+  busy: "busy",
+  // S3-F3: membresías (vender y renovar, US-084, US-088).
+  memberInactive: "member_inactive",
+  planInvalid: "plan_invalid",
+  planInactive: "plan_inactive",
+  startDateTooRetroactive: "start_date_too_retroactive",
+  startDateTooFar: "start_date_too_far",
+  membershipConflict: "membership_conflict",
+  membershipOverlap: "membership_overlap",
+  futureMembershipExists: "future_membership_exists",
+  membershipNotFound: "membership_not_found",
+  // S3-F3: pagos (primer pago de la venta, US-085; S3-D41).
+  paymentExceedsBalance: "payment_exceeds_balance",
+  paymentPossibleDuplicate: "payment_possible_duplicate",
+  paymentLimitReached: "payment_limit_reached",
+  paidAtTooRetroactive: "paid_at_too_retroactive",
 } as const;
+
+/** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */
+export const BUSY_MESSAGE = "El sistema está ocupado; intenta de nuevo.";
 
 export const CLIENT_ERROR_CODES = {
   networkError: "network_error",

@@ -6,10 +6,15 @@
 // - Ante un 401 invoca el gancho registrado (US-043 hace ahí el refresh compartido) como
 //   máximo una vez por petición; si responde "retry" se repite la petición una sola vez.
 // - S2-F3: un 429 lleva en el ApiError los segundos de `Retry-After` (retryAfterS).
+// - S3-F3 (S3-D67): un 503 `busy` de una lectura (GET) se reintenta una sola vez tras los segundos
+//   de `Retry-After` (1 s si no viene, 5 s como máximo); una escritura nunca se reintenta: podría
+//   registrar dos veces una venta o un pago. Si el que llama cancela durante la espera, no hay
+//   segundo intento.
 // - Nunca escribe en console ni registra cuerpos o tokens.
+import { API_ERROR_CODES } from "./errorCodes";
 import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { toQueryString, type QueryParams } from "./query";
-import { HTTP_UNAUTHORIZED } from "./status";
+import { HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
 
 export const API_BASE = "/api/v1";
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -109,7 +114,46 @@ function readSuccess({ status, text }: RawResponse): unknown {
   }
 }
 
-async function request<T>(method: Method, path: string, options: RequestOptions, retried: boolean): Promise<T> {
+/** S3-F3: reintentos ya gastados en esta petición (uno por motivo, nunca más). */
+interface Retries {
+  /** Tras un 401, el gancho pidió repetir (US-043). */
+  auth: boolean;
+  /** Tras un 503 `busy` en una lectura (S3-D67). */
+  busy: boolean;
+}
+
+const FRESH: Retries = Object.freeze({ auth: false, busy: false });
+
+/** S3-F3: espera de un 503 `busy` sin `Retry-After` útil, y tope de la espera. */
+export const BUSY_RETRY_DEFAULT_S = 1;
+export const BUSY_RETRY_MAX_S = 5;
+const MS_PER_S = 1_000;
+
+/** Un 503 `busy` de una lectura se reintenta una vez; una escritura nunca (podría duplicarse). */
+function shouldRetryBusy(method: Method, error: ApiError, retries: Retries): boolean {
+  return method === "GET" && !retries.busy && error.status === HTTP_SERVICE_UNAVAILABLE && error.code === API_ERROR_CODES.busy;
+}
+
+/** Espera `seconds`; si el que llama cancela, rechaza con el motivo de su señal (AbortError). */
+function waitFor(seconds: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason as Error);
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal?.reason as Error);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, seconds * MS_PER_S);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function request<T>(method: Method, path: string, options: RequestOptions, retries: Retries = FRESH): Promise<T> {
   const hasBody = options.body !== undefined;
   const token = accessTokenGetter?.() ?? null;
   const init: RequestInit = {
@@ -122,17 +166,22 @@ async function request<T>(method: Method, path: string, options: RequestOptions,
   if (response.ok) return readSuccess(response) as T;
 
   const error = parseApiError(response.status, response.text, response.retryAfter);
-  if (response.status === HTTP_UNAUTHORIZED && !retried && !options.skipAuthRetry && unauthorizedHandler) {
+  if (response.status === HTTP_UNAUTHORIZED && !retries.auth && !options.skipAuthRetry && unauthorizedHandler) {
     const outcome = await unauthorizedHandler(error, { accessToken: token });
-    if (outcome === "retry") return request<T>(method, path, options, true);
+    if (outcome === "retry") return request<T>(method, path, options, { ...retries, auth: true });
+  }
+  if (shouldRetryBusy(method, error, retries)) {
+    // Revisión S3-F3 (LOW 11): entre 1 y 5 s; un Retry-After de 0 no reintenta al instante.
+    await waitFor(Math.min(Math.max(error.retryAfterS ?? BUSY_RETRY_DEFAULT_S, BUSY_RETRY_DEFAULT_S), BUSY_RETRY_MAX_S), options.signal);
+    return request<T>(method, path, options, { ...retries, busy: true });
   }
   throw error;
 }
 
 export const api = {
-  get: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("GET", path, options, false),
-  post: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("POST", path, options, false),
-  put: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PUT", path, options, false),
-  patch: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PATCH", path, options, false),
-  delete: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("DELETE", path, options, false),
+  get: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("GET", path, options),
+  post: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("POST", path, options),
+  put: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PUT", path, options),
+  patch: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PATCH", path, options),
+  delete: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("DELETE", path, options),
 };

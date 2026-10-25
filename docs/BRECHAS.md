@@ -272,6 +272,7 @@ Pantallas `Socios_Lista.html` y `Socios_Movil.html`. Ruta `/socios`.
 - Filtro por última asistencia: v0.4 (EP-21). Depende de versión futura.
 - "Exportar": v0.2 (Q15, N-29, EP-16, US-139). Depende de versión futura (v0.2). El comentario de `MembersListPage.tsx` lo atribuye a US-076 (dar de baja); la atribución está mal y debe corregirse.
 - Encabezado sin "· 269 con membresía": el número ya está en los chips. Aceptada.
+- Nota de búsqueda por valor exacto: el diseño no la pone; va como ayuda corta bajo la lista. Aceptada.
 - "Ordenar por: Vencimiento más próximo": `GET /members` solo ordena por apellido, nombre y fecha de alta (`members/service.py`, `_ORDEN`). Ordenar por fin de membresía cruza `members` con `memberships` dentro de la consulta de socios, algo que la regla 2 de `CLAUDE.md` no permite sin un puerto. Decisión S3-D98: no entra en v0.1.
 
 ### 10.2 Ficha del socio (S3-F1 y S3-F7)
@@ -297,6 +298,8 @@ Pantallas `Socio_Ficha.html` (pestaña Datos) y `Socio_Form.html` en modo editar
 - Campos sensibles al editar: el diseño no dice cómo se cambia un dato cifrado. Aquí van "Cambiar", "Quitar" y "Deshacer" sobre la máscara. Dejar el campo vacío no lo envía; `null` solo se envía con "Quitar". El documento no se quita. Aceptada.
 - Autorización de datos: se puede marcar, nunca retirar (`data_consent: false` da 422). "Registrar autorización" aparece solo si falta. El diseño no lo dice. Aceptada (S3-D46).
 - Sexo: suma "Sin indicar" (no se envía) y "Otro" (`x`), según §3. Aceptada.
+- Sexo y teléfono: el diseño los marca con asterisco (obligatorios); el alta los deja opcionales, como fija N-19. Aceptada.
+- Caja "Historial reciente" de la pestaña Datos: llega con la pestaña Historial (US-106, Sprint 4A). Depende de versión futura (Sprint 4A).
 - Foto, firma, documento firmado y archivo: llegan con los adjuntos (v0.3, EP-19). Depende de versión futura.
 - "Acceso al portal": v1.0. "Unidad para cargas": v0.6 (atleta). "Observaciones de salud": no existen en el modelo (M-5). Depende de versión futura; las observaciones no tienen modelo.
 - Guardar: el alta vuelve a la lista con aviso (decisión de S2-F6); la edición vuelve a la ficha con "Cambios guardados". El diseño pide "Guardar y vender membresía" y el front no lo ofrece; la venta se alcanza desde la ficha. Pendiente de diseño.
@@ -323,6 +326,7 @@ Pantalla `Membresias.html`.
 - Conteos: el diseño los pone en los chips ("Activas 210"). Aquí van en cinco tarjetas "Socios por estado de su membresía", porque cuentan socios según la membresía que decide su estado (N-26) y no filas de la lista. Un chip con ese número no coincidiría con el listado al pulsarlo. Aceptada para v0.1.
 - "Exportar": v0.2 (EP-16, US-139). Depende de versión futura. El comentario de `MembershipsPage.tsx` lo atribuye a US-076: corregir.
 - Chip "Historial completo": no se construye. Sin estado, la lista ya trae todas menos las anuladas (D18), y marcar todos los chips da el historial completo. Aceptada.
+- Estado "Anulada" (`cancelled`): el diseño no define su estilo; el `StatusTag` usa el de "Congelado" (neutro). Pendiente de diseño.
 - Fechas con año ("29 sept 2026"; el diseño escribe "29 sep"). Aceptada (DESIGN.md regla 7).
 - Estado de la fila: la etiqueta común de `StatusTag` ("Por vencer"), no "Vence en 8 días". Aceptada.
 - Pagada completa: "$ 120.000 · pagado" en lugar de la marca "✓" (el significado va en texto). Aceptada.

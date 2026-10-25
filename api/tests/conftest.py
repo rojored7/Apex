@@ -20,9 +20,10 @@ Kit de S2-B1 (plan del Sprint 2, sección 2; S2-D19 y E6):
 - `usuario_real` (fábrica) y `cabeceras(usuario)`: usuario real en `auth.users` con
   `hash_password` y access token real; cabeceras con `Bearer` y `Origin` del front.
 - `dos_sesiones`: dos `AsyncSession` con commit real (concurrencia); al salir borra lo que
-  dejaron en `settings.settings_sections`, `memberships.memberships` (S3-B1), `members.members`
-  (S2-B7) y `plans.plans` (S2-B9), los usuarios `@test.apex` con sus refresh y tokens de un
-  solo uso, y la cola que agregaron a `audit.audit_log` (`limpiar_tras_dos_sesiones`).
+  dejaron en `settings.settings_sections`, `payments.payments` (S3-B3), `memberships.memberships`
+  (S3-B1), `members.members` (S2-B7) y `plans.plans` (S2-B9), los usuarios `@test.apex` con
+  sus refresh y tokens de un solo uso, y la cola que agregaron a `audit.audit_log`
+  (`limpiar_tras_dos_sesiones`).
 
 Kit de S2-B2 (plan del Sprint 2, sección 2, bloque B2; E7 y E9):
 - Al importarse corre `load_module_services()` ANTES de importar y registrar
@@ -241,6 +242,28 @@ LIMPIAR_MEMBERSHIPS = (
     "END IF; END $$"
 )
 
+# S3-B3 (D30, E1): los pagos que una prueba con commit real (`dos_sesiones`) o una corrida cortada
+# hayan dejado; se borran ANTES que las membresías. `payments.payments` nace en `0010_payments`:
+# mientras no exista (Rojo de B3) no se toca. Sus triggers de inmutabilidad llegan en
+# `0011_payments_immutability` (B4): mientras no existan, cada `ENABLE ALWAYS` va bajo su propia
+# guarda en `pg_trigger` (si no, el `ALTER TABLE` fallaría por trigger inexistente). Nunca
+# `ENABLE TRIGGER USER` (S3-D49, `tests/migrations/test_triggers_siempre_activos.py`).
+TRIGGERS_DE_PAGOS = ("payments_forbid_mutation", "payments_forbid_truncate")
+LIMPIAR_PAYMENTS = (
+    "DO $$ BEGIN IF to_regclass('payments.payments') IS NOT NULL THEN "
+    "ALTER TABLE payments.payments DISABLE TRIGGER USER; "
+    "DELETE FROM payments.payments; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'payments.payments'::regclass "
+    "AND tgname = 'payments_forbid_mutation') THEN "
+    "ALTER TABLE payments.payments ENABLE ALWAYS TRIGGER payments_forbid_mutation; "
+    "END IF; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'payments.payments'::regclass "
+    "AND tgname = 'payments_forbid_truncate') THEN "
+    "ALTER TABLE payments.payments ENABLE ALWAYS TRIGGER payments_forbid_truncate; "
+    "END IF; "
+    "END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -253,6 +276,7 @@ LIMPIEZA_DE_SESION = (
     "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
     *LIMPIAR_AUTH,
+    LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
     LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
     LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
     LIMPIAR_PLANS,  # E6 y plan, sección 2 (B9)
@@ -638,10 +662,12 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
     """Lo que borra el `finally` de `dos_sesiones` (en una función para que
     `tests/migrations/test_triggers_siempre_activos.py` pruebe exactamente esta limpieza).
 
-    Orden (sección 0 del plan del Sprint 3): membresías antes que socios y planes.
+    Orden (sección 0 del plan del Sprint 3): pagos, membresías (con sus congelaciones), socios y
+    planes.
     """
     async with engine.begin() as conexion:
         await conexion.execute(text(LIMPIAR_SETTINGS))
+        await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))

@@ -13,8 +13,12 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
 - `ALLOWED_EDGES` (mapa de contextos) crece slice a slice con su decisión: `audit → auth`,
   `auth → settings` (S2-D14) y, desde S3-B1, `memberships → members` (`get_ref`, `names_for`),
   `memberships → plans` (`get(for_share=True)`, `names_for`) y `memberships → settings`
-  (`memberships_policy`). B3 agrega `payments → members/auth/settings` y B4
-  `memberships → payments`. Cada arista permitida existe de verdad.
+  (`memberships_policy`). S3-B3 agrega `payments → settings` (`memberships_policy`,
+  `payment_methods`); B4 `memberships → payments`; B8 `payments → members` (`search_ids`,
+  `ensure_exists`) y `payments → auth` (`names_for`), donde tienen uso real (S3-D80). Cada arista
+  permitida existe de verdad.
+- `payments` no importa `memberships` a ningún nivel en B3 (D1: habla con él solo por el puerto
+  `MembershipGate`); la perezosa `payments → memberships` (lista blanca) llega con B8.
 - `LAZY_IMPORT_WHITELIST` es exactamente `{payments → memberships, members → memberships,
   plans → memberships}` (G-03); hoy no se usa ninguna.
 - Cada par de `ALLOWED_EDGES` se importa en un subproceso limpio (`python -I -c`) en los dos
@@ -44,6 +48,7 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("memberships", "members"),
         ("memberships", "plans"),
         ("memberships", "settings"),
+        ("payments", "settings"),
     }
 )
 LAZY_IMPORT_WHITELIST: Final[frozenset[tuple[str, str]]] = frozenset(
@@ -177,7 +182,7 @@ def _aristas(grafo: dict[str, set[str]]) -> set[tuple[str, str]]:
 
 def test_hay_services_que_revisar() -> None:
     arriba, _ = _grafo_real()
-    assert {"auth", "settings", "members", "plans", "memberships"} <= set(arriba)
+    assert {"auth", "settings", "members", "plans", "memberships", "payments"} <= set(arriba)
 
 
 def test_las_aristas_del_mapa_se_ven_tras_partir_auth() -> None:
@@ -212,6 +217,16 @@ def test_memberships_depende_de_members_plans_y_settings() -> None:
     arriba, perezosas = _grafo_real()
     assert arriba["memberships"] == {"members", "plans", "settings"}
     assert perezosas["memberships"] == set()
+
+
+def test_payments_depende_de_settings_y_no_de_memberships() -> None:
+    """S3-B3 (D1, D2, S3-D80): la arista `payments → settings` existe y no hay ninguna hacia
+    `memberships`, ni de nivel de módulo ni perezosa (el puerto `MembershipGate` lo evita).
+    `payments → members` y `payments → auth` llegan con B8 (S3-D80)."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["payments"] == {"settings"}
+    assert perezosas["payments"] == set()
+    assert "payments" not in arriba["memberships"]
 
 
 def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:

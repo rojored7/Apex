@@ -218,12 +218,17 @@ def _resultado(url: str, pasos: Sequence[Paso]) -> tuple[str, str | None]:
 # Revisión y forma ----------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0008_memberships_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0008_memberships_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S3-B3 `0010_payments` cuelga de esta revisión (D40): ya no es head, pero sigue en la
+    cadena que llega a head (la cabeza única la exige `test_migrations.py::test_single_head`)."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
 
 
 def test_columnas_exactas_con_tipo_y_nulabilidad(

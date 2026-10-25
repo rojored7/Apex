@@ -9,8 +9,15 @@ dominio.
 
 B1 trae `sell`/`sell`; B2 `freeze`/`sell` (el socio tiene una `active` del 1 al 31 de octubre: la
 congelación del 21 al 30 corre su fin y la venta sin `renew` choca con la vigente, 409
-`membership_conflict`, en cualquier orden); B3 a B6 y B10 agregan `sell`/`register`,
-`register`/`void`, `freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+`membership_conflict`, en cualquier orden); B3 `sell`/`register` (el mismo socio: un pago de
+60.000 sobre su `active` del 1 al 31 de octubre mientras se le vende otra; el pago toma la fila de
+esa membresía por el gate y la venta el candado del socio, sin cruzarse: el pago entra y la venta
+choca con la vigente, 409 `membership_conflict`); B4 a B6 y B10 agregan `register`/`void`,
+`freeze`/`register`, `sell`/`cancel` y `sell`/`deactivate` a `COMBINACIONES`.
+
+El gate de pagos es el doble de `tests/payments/_apoyo.py` (`GateDoble`, `FOR UPDATE` sobre la fila
+real) mientras el real no exista (B4, E9); se registra en todas las combinaciones (las que no
+pagan no lo usan).
 Cada combinación declara cómo prepara su escenario (B1: socio y plan; B2: además la membresía).
 """
 
@@ -34,9 +41,11 @@ from app.core.db import DatabaseBusy, sqlstate_of
 from app.core.errors import DomainError
 from app.modules.memberships import service
 from app.modules.memberships.exceptions import MembershipConflict
+from app.modules.payments import service as payments_service
 from tests.factories.members import make_member
 from tests.factories.memberships import make_membership
 from tests.factories.plans import make_plan
+from tests.payments._apoyo import GateDoble, gate_registrado
 
 ACTOR = UUID("0000000a-0000-4000-8000-00000000a002")
 SQLSTATES_PROHIBIDOS = frozenset({"55P03", "40P01"})
@@ -81,9 +90,23 @@ async def _congelar(sesion: AsyncSession, escenario: Escenario) -> object:
     )
 
 
+async def _registrar_pago(sesion: AsyncSession, escenario: Escenario) -> object:
+    assert escenario.membership_id is not None
+    return await payments_service.register(
+        sesion,
+        membership_id=escenario.membership_id,
+        amount_cop=60_000,
+        method="cash",
+        reference=None,
+        paid_at=None,
+        role="coach",
+    )
+
+
 COMBINACIONES: dict[str, tuple[Preparar, Operacion, Operacion, type[DomainError]]] = {
     "sell-sell": (_socio_y_plan, _vender, _vender, MembershipConflict),
     "freeze-sell": (_con_activa, _congelar, _vender, MembershipConflict),
+    "sell-register": (_con_activa, _vender, _registrar_pago, MembershipConflict),
 }
 
 
@@ -109,11 +132,12 @@ async def test_las_combinaciones_terminan_sin_espera_agotada_ni_interbloqueo(
     primera, segunda = dos_sesiones
     preparar, op_a, op_b, error_esperado = COMBINACIONES[combinacion]
     escenario = await preparar(primera)
-    resultados = await asyncio.gather(
-        _correr(primera, op_a, escenario),
-        _correr(segunda, op_b, escenario),
-        return_exceptions=True,  # las dos terminan antes de que `dos_sesiones` limpie
-    )
+    with gate_registrado(GateDoble()):
+        resultados = await asyncio.gather(
+            _correr(primera, op_a, escenario),
+            _correr(segunda, op_b, escenario),
+            return_exceptions=True,  # las dos terminan antes de que `dos_sesiones` limpie
+        )
     inesperados = [
         r for r in resultados if isinstance(r, BaseException) and not isinstance(r, DomainError)
     ]

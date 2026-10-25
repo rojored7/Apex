@@ -1,11 +1,11 @@
 """Router de settings (US-054; blueprint del Sprint 2, B1; S2-D3 y S2-D15).
 
-Plano, con la ruta completa en cada decorador y `require_role("admin")` en las ocho rutas.
-Las tipadas (`gym`, `privacy`, `memberships`) se declaran ANTES que la genérica
-`/settings/{section}` para ganar el emparejamiento; `section` es `str` (no enum) para que una
-clave desconocida dé 404 `section_not_available` y no 422.
+Plano, con la ruta completa en cada decorador y `require_role("admin")` en las diez rutas.
+Las tipadas (`gym`, `privacy`, `memberships` y, desde S3-B3, `payment_methods`) se declaran ANTES
+que la genérica `/settings/{section}` para ganar el emparejamiento; `section` es `str` (no enum)
+para que una clave desconocida dé 404 `section_not_available` y no 422.
 
-El coach recibe 403 en las ocho (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
+El coach recibe 403 en las diez (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
 Las rutas no hacen `select`: validan el cuerpo, llaman al service y devuelven.
 """
 
@@ -25,6 +25,8 @@ from app.modules.settings.schemas import (
     GymSectionOut,
     MembershipsPatchIn,
     MembershipsSectionOut,
+    PaymentMethodsPatchIn,
+    PaymentMethodsSectionOut,
     PrivacyPatchIn,
     PrivacySectionOut,
     SectionKey,
@@ -82,6 +84,26 @@ async def patch_memberships(
     return await service.update_section(
         session,
         SectionKey.memberships,
+        body.value.model_dump(mode="json"),
+        body.version,
+        principal.user_id,
+    )
+
+
+@router.get("/settings/payment_methods", response_model=PaymentMethodsSectionOut)
+async def get_payment_methods(principal: Admin, session: Session) -> SectionOut:
+    return await service.get_section(session, SectionKey.payment_methods)
+
+
+@router.patch(
+    "/settings/payment_methods", response_model=PaymentMethodsSectionOut, responses=_PATCH
+)
+async def patch_payment_methods(
+    body: PaymentMethodsPatchIn, principal: Admin, session: Session
+) -> SectionOut:
+    return await service.update_section(
+        session,
+        SectionKey.payment_methods,
         body.value.model_dump(mode="json"),
         body.version,
         principal.user_id,

@@ -408,7 +408,7 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ## 10. Membresías y pagos (Sprint 3)
 
-Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`).
+Lo completan S3-B1 a S3-B5; cada slice agrega su parte (B1 la venta y `0008`, B2 las congelaciones y `0009`, B3 la tabla de pagos, las reglas de registrar pago, los medios de pago y `0010`).
 
 ### Volcado y restauración (P-MIG)
 
@@ -456,4 +456,31 @@ Una congelación mal registrada no se corrige editando la fila: no hay endpoint 
 - Límites en la configuración de membresías (`max_freeze_days_per_membership` 30, `max_freezes_per_membership` 2, `max_retroactive_days` 7 por defecto).
 - Auditoría: una fila `insert` de `memberships.membership_freezes` (sin sujeto, US-106) y una `update` de `memberships.memberships` con `after = {end_date, status}` y el socio como sujeto.
 
-Pendiente de S3-B3 a S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`) y rollback de `0010` y `0011`.
+### Pagos: la tabla `payments.payments` (`0010`, S3-B3)
+
+Un pago nunca se edita ni se borra (regla de datos 5): un error se corrige anulándolo (S3-B5) y registrando uno nuevo. La tabla no tiene llaves foráneas hacia `memberships` (otro esquema) y en `0010` todavía no tiene triggers; la inmutabilidad en la base llega con `0011` (S3-B4). Comprobación con psql sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`):
+
+1. Estructura: `\d payments.payments` muestra las quince columnas, los cinco CHECK `ck_payments_amount_range` (1 a 1.000.000.000), `ck_payments_method` (`cash`, `nequi`, `breb`), `ck_payments_reference_length` (nula o de 1 a 64), `ck_payments_void_reason_length` (hasta 500) y `ck_payments_void_coherent` (las cuatro columnas de anulación van juntas y el motivo no puede ser vacío ni nulo), y los índices `ix_payments_paid_at`, `ix_payments_membership_id` e `ix_payments_member_paid`.
+2. Dentro de `BEGIN; ... ROLLBACK;`, un `INSERT` con `method = 'tarjeta'` o `amount_cop = 0` falla con 23514 y el nombre del CHECK.
+3. Rollback de `0010`: `$DC exec api alembic downgrade 0009_membership_freezes` borra índices y tabla (con pagos reales se pierden: volcado previo obligatorio, sección "Volcado y restauración").
+
+### Registrar pago: reglas del servidor (S3-B3)
+
+El servicio `payments.register` ya existe y está probado; la ruta `POST /api/v1/memberships/{membership_id}/payments` se publica en S3-B4, junto con el candado real de la membresía (hasta entonces responde 404). Las reglas, en el orden en que se aplican:
+
+- La membresía se bloquea primero (`SELECT ... FOR UPDATE` de su fila): dos pagos de la misma membresía nunca se deciden a la vez. Membresía inexistente: 404 `membership_not_found`; anulada: 409 `membership_cancelled`. Las vencidas y congeladas sí reciben pagos.
+- Fecha del pago (`paid_at`): si no viene, es ahora. Tiene que traer zona horaria y no puede ser anterior al 1 de enero de 2020 (422 `validation_error`, `field = paid_at`), ni pasar de ahora más 5 minutos (mismo código). El coach solo puede registrar hasta `max_retroactive_days` días atrás (configuración de membresías, 7 por defecto): más atrás da 422 `paid_at_too_retroactive`. El admin no tiene ese tope, solo el piso de 2020.
+- Sobrepago: si el monto supera el saldo (precio pactado menos lo pagado y no anulado), da 409 `payment_exceeds_balance` (`field = amount_cop`) salvo que venga `confirm_overpayment: true`.
+- Tope: una membresía admite como máximo 60 pagos no anulados; el 61 da 409 `payment_limit_reached` (los anulados no cuentan).
+- Posible duplicado: si el mismo usuario registró en los últimos 120 segundos un pago no anulado de la misma membresía con el mismo monto, medio y referencia (dos referencias vacías cuentan como iguales), da 409 `payment_possible_duplicate` salvo que venga `confirm_duplicate: true`. Las confirmaciones no se guardan.
+- Referencia: opcional, se recorta, vacía queda nula, hasta 64 caracteres, solo letras y números sin tilde, espacio y `. _ / # -`, empezando por letra o número. Es para el número de comprobante: frases, correos o teléfonos con nombre se rechazan (422 en `reference`).
+- Cada pago registrado escribe una fila `insert` de auditoría con el socio como sujeto.
+
+### Medios de pago (S3-B3, US-056)
+
+- Los códigos son fijos: `cash`, `nequi` y `breb`, en ese orden. Solo cambia cómo se ven: `GET /api/v1/settings/payment_methods` (admin) y `PATCH` con `{"value": {"cash": {"label": "...", "hint": "..."}, "nequi": {...}, "breb": {...}}, "version": <la leída>}`. Etiqueta de 1 a 30 caracteres, pista hasta 120 (puede ir vacía), dos medios no pueden tener la misma etiqueta sin distinguir mayúsculas (422 en `value.<código>.label`), un código distinto de los tres da 422. Versión vieja: 409 `version_conflict`.
+- `GET /api/v1/payments/methods` (admin y coach) responde `{"items": [{"code", "label", "hint"}, ...]}` en orden fijo, con las etiquetas guardadas o las por defecto (Efectivo, Nequi, Bre-B).
+- Si la sección guardada deja de validar (por ejemplo, editada a mano en la base), `GET /payments/methods` responde las etiquetas por defecto y el log de `app.settings` deja el aviso "la sección guardada no valida" con solo la clave `payment_methods`. Se corrige guardando la sección completa de nuevo desde Configuración.
+- Cambiar etiquetas no toca ningún pago guardado: los pagos guardan el código.
+
+Pendiente de S3-B4 y S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`), la ruta de registrar pago y el rollback de `0011`.

@@ -1,6 +1,7 @@
 """Router de settings con el api real (US-054 T9; S2-D15; kit `app_http` de S2-B1).
 
-Admin 200 en GET y PATCH; sin token 401 y coach o member 403 en las ocho rutas; secciones de
+Admin 200 en GET y PATCH; sin token 401 y coach o member 403 en las diez rutas (S3-B3 suma las
+dos tipadas de `payment_methods`); secciones de
 versiones futuras 404 `section_not_available`; versión vieja 409 `version_conflict`; valor
 inválido 422 con `field` sin tocar la fila; auditoría `insert` y `update` con el actor real.
 """
@@ -82,7 +83,7 @@ async def test_admin_guarda_y_lee_lo_guardado(
 
 
 @pytest.mark.parametrize(("metodo", "ruta"), RUTAS)
-async def test_sin_token_401_en_las_ocho_rutas(
+async def test_sin_token_401_en_las_diez_rutas(
     app_http: AsyncClient, metodo: str, ruta: str
 ) -> None:
     r = await _pedir(app_http, metodo, ruta, cuerpo=_cuerpo(metodo, ruta))
@@ -92,7 +93,7 @@ async def test_sin_token_401_en_las_ocho_rutas(
 
 
 @pytest.mark.parametrize(("metodo", "ruta"), RUTAS)
-async def test_coach_403_en_las_ocho_rutas(
+async def test_coach_403_en_las_diez_rutas(
     app_http: AsyncClient,
     coach: UsuarioPrueba,
     cabeceras: Cabeceras,

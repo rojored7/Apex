@@ -26,6 +26,7 @@ from tests.settings._apoyo import (
     GYM_OK,
     MEMBERSHIPS_DEFAULTS,
     NO_HABILITADAS,
+    PAYMENT_METHODS_DEFAULTS,
     PRIVACY_DEFAULTS,
 )
 
@@ -80,8 +81,9 @@ def test_check_version_distinta_da_409_version_conflict(guardada: int, enviada: 
     )
 
 
-@pytest.mark.parametrize("clave", ["gym", "privacy", "memberships"])
-def test_ensure_enabled_acepta_las_tres_del_sprint(clave: str) -> None:
+@pytest.mark.parametrize("clave", ["gym", "privacy", "memberships", "payment_methods"])
+def test_ensure_enabled_acepta_las_cuatro_habilitadas(clave: str) -> None:
+    """S2-D15; S3-B3 (US-056, D24) habilita `payment_methods`."""
     assert ensure_enabled(clave) == SectionKey(clave)
     assert SectionKey(clave) in ENABLED_SECTIONS
 
@@ -113,7 +115,22 @@ def test_defaults_for_devuelve_una_copia() -> None:
     assert defaults_for(SectionKey.gym)["name"] == "APEX"
 
 
-@pytest.mark.parametrize("clave", [SectionKey.gym, SectionKey.memberships])
+def test_las_habilitadas_son_exactamente_cuatro() -> None:
+    assert (
+        frozenset(
+            {SectionKey.gym, SectionKey.privacy, SectionKey.memberships, SectionKey.payment_methods}
+        )
+        == ENABLED_SECTIONS
+    )
+
+
+def test_defaults_de_payment_methods_son_efectivo_nequi_y_bre_b() -> None:
+    assert defaults_for(SectionKey.payment_methods) == PAYMENT_METHODS_DEFAULTS
+
+
+@pytest.mark.parametrize(
+    "clave", [SectionKey.gym, SectionKey.memberships, SectionKey.payment_methods]
+)
 def test_los_defaults_validan_contra_su_esquema(clave: SectionKey) -> None:
     assert validate_section(clave, defaults_for(clave)).model_dump(mode="json") == defaults_for(
         clave

@@ -130,3 +130,19 @@ def test_el_control_detecta_listas_sin_page_params_sin_q_y_arreglos() -> None:
         "GET /api/v1/sin: sin PageParams",
     ]
     assert sorted(listas) == ["GET /api/v1/con", "GET /api/v1/sin", "GET /api/v1/sin-q"]
+
+
+def test_los_medios_de_pago_son_un_objeto_con_items_que_no_pagina(
+    settings_prueba: Settings,
+) -> None:
+    """S3-B3 (D25, condición 3 del impacto, S3-C7): `GET /payments/methods` responde
+    `PaymentMethodsOut {items}`: no es un arreglo (que esta prueba rechaza) ni una `Page_...`
+    (son tres medios fijos; no pagina ni acepta `q`). La regla clasifica como lista solo las
+    respuestas `Page_...`, así que la ruta no entra en `listas` y no da problemas."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = problemas_de_listas(app)
+    assert problemas == []
+    assert "GET /api/v1/payments/methods" not in listas
+    operacion = app.openapi()["paths"]["/api/v1/payments/methods"]["get"]
+    respuesta = _respuesta_200(operacion)
+    assert respuesta == {"$ref": f"{SCHEMA_REF}PaymentMethodsOut"}

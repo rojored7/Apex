@@ -63,6 +63,26 @@ def test_los_privados_de_memberships_son_los_de_d7() -> None:
         assert (MODULES_DIR / "memberships" / f"{archivo}.py").is_file(), archivo
 
 
+def test_los_privados_de_payments_son_los_de_d7() -> None:
+    """S3-B3 (D7): `payments` nace partido tras la fachada `service.py`."""
+    assert frozenset({"rules", "events", "queries"}) == PRIVATE_HELPERS["payments"]
+    for archivo in PRIVATE_HELPERS["payments"]:
+        assert (MODULES_DIR / "payments" / f"{archivo}.py").is_file(), archivo
+
+
+@pytest.mark.parametrize("ajeno", ["members", "memberships", "auth", "settings"])
+def test_payments_no_importa_models_ajenos(ajeno: str) -> None:
+    """S3-B3: `payments` habla con los demás solo por su `service.py`, `schemas.py` y
+    `exceptions.py` (regla de módulos 2), nunca por sus `models.py`."""
+    violaciones = [
+        str(v)
+        for archivo in sorted((MODULES_DIR / "payments").rglob("*.py"))
+        for v in find_forbidden_imports(archivo, module="payments")
+        if v.imported.startswith(f"app.modules.{ajeno}.models")
+    ]
+    assert violaciones == [], "\n".join(violaciones)
+
+
 @pytest.mark.parametrize("ajeno", ["members", "plans", "settings"])
 def test_memberships_no_importa_models_de_socios_planes_ni_settings(ajeno: str) -> None:
     violaciones = [

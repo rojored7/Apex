@@ -12,11 +12,18 @@ Contrato (N-18, S2-D15, D5):
 - `MembershipsSettings`: cuatro `StrictInt`: `expiring_days` 1 a 30 (7),
   `max_freeze_days_per_membership` 0 a 180 (30), `max_freezes_per_membership` 0 a 12 (2),
   `max_retroactive_days` 0 a 30 (7).
-- `SECTION_REGISTRY`: exactamente las tres de `ENABLED_SECTIONS` (esquemas de escritura);
+- `PaymentMethodsSettings` (S3-B3, US-056; D24, S3-D55, L-3): exactamente las claves de
+  `PAYMENT_METHOD_CODES` (`cash`, `nequi`, `breb`), cada una un `MethodLabel` con `label`
+  (`SafeText`, 1 a 30) y `hint` (`SafeText` o vacío, hasta 120); las tres etiquetas no se repiten
+  sin distinguir mayúsculas (422 en `value.<code>.label` del segundo que repite). Los códigos son
+  fijos: la sección solo cambia cómo se ven. `PaymentMethodInfo` es el contrato que
+  `settings.service.payment_methods` entrega a `payments` (S2-D45).
+- `SECTION_REGISTRY`: exactamente las cuatro de `ENABLED_SECTIONS` (esquemas de escritura);
   `SECTION_VIEWS`: los de lectura (`privacy` sin publicar se lee con `PrivacyView`).
 - `SECTION_DEFAULTS`: `gym` con `name = "APEX"` y el resto `None`; `privacy` con
   `policy_version`/`policy_text`/`consent_required_from` en `None` y `retention_years = 5`;
-  `memberships` con 7, 30, 2 y 7. El service entrega copias (`defaults_for`).
+  `memberships` con 7, 30, 2 y 7; `payment_methods` con "Efectivo", "Nequi" y "Bre-B" y pistas
+  vacías. El service entrega copias (`defaults_for`).
 """
 
 from __future__ import annotations
@@ -27,9 +34,18 @@ from enum import StrEnum
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
-from app.core.validators import EmailAddress, SafeMultilineText, SafeText
+from app.core.validators import EmailAddress, SafeMultilineText, SafeText, check_visible_text
 
 
 class SectionKey(StrEnum):
@@ -43,10 +59,17 @@ class SectionKey(StrEnum):
     privacy = "privacy"
 
 
-# S2-D15: `payment_methods` (US-056) queda fuera del Sprint 2 y responde 404.
+# S2-D15: las demás responden 404 hasta su versión. S3-B3 (US-056, D24) habilita `payment_methods`.
 ENABLED_SECTIONS: frozenset[SectionKey] = frozenset(
-    {SectionKey.gym, SectionKey.privacy, SectionKey.memberships}
+    {SectionKey.gym, SectionKey.privacy, SectionKey.memberships, SectionKey.payment_methods}
 )
+
+# D24: códigos fijos de los medios de pago, en el orden en que se muestran. Los mismos en
+# `payments.schemas.PaymentMethod`, `payments.models.PAYMENT_METHODS`, el CHECK del modelo y la
+# migración `0010_payments` (`tests/architecture/test_payment_method_codes.py`).
+PAYMENT_METHOD_CODES: Final[tuple[str, ...]] = ("cash", "nequi", "breb")
+METHOD_LABEL_MAX_LENGTH: Final[int] = 30
+METHOD_HINT_MAX_LENGTH: Final[int] = 120
 
 NIT_PATTERN: Final[str] = r"^\d+(-\d)?$"
 RETENCION_POR_DEFECTO: Final[int] = 5
@@ -127,11 +150,58 @@ class MembershipsPolicy:
     max_retroactive_days: int
 
 
-# Esquemas de escritura de las tres secciones habilitadas (S2-D15).
+class MethodLabel(SectionValue):
+    """Cómo se ve un medio de pago (US-056, S3-D55): etiqueta visible y pista opcional."""
+
+    label: SafeText = Field(min_length=1, max_length=METHOD_LABEL_MAX_LENGTH)
+    hint: str = Field(default="", max_length=METHOD_HINT_MAX_LENGTH)
+
+    @field_validator("hint")
+    @classmethod
+    def _pista_segura(cls, valor: str) -> str:
+        """Vacía se acepta; con texto, la misma regla de `SafeText` (sin `Cc` ni `Cf`)."""
+        return check_visible_text(valor) if valor else valor
+
+
+class PaymentMethodsSettings(SectionValue):
+    """Etiquetas de los tres medios de pago fijos (US-056; D24, S3-D55)."""
+
+    cash: MethodLabel
+    nequi: MethodLabel
+    breb: MethodLabel
+
+    @model_validator(mode="after")
+    def _etiquetas_unicas(self) -> PaymentMethodsSettings:
+        """Dos medios con la misma etiqueta (sin distinguir mayúsculas) se leerían igual en los
+        informes (L-3): el segundo que repite da error en `<code>.label`."""
+        vistas: set[str] = set()
+        for codigo in PAYMENT_METHOD_CODES:
+            etiqueta = getattr(self, codigo).label
+            clave = etiqueta.casefold()
+            if clave in vistas:
+                error = PydanticCustomError("duplicate_label", "La etiqueta ya está en uso.")
+                detalle = InitErrorDetails(type=error, loc=(codigo, "label"), input=etiqueta)
+                raise ValidationError.from_exception_data(type(self).__name__, [detalle])
+            vistas.add(clave)
+        return self
+
+
+@dataclass(frozen=True)
+class PaymentMethodInfo:
+    """Contrato que `payments` importa desde `settings.schemas` (S2-D45, D24): un medio con su
+    código fijo y cómo se ve."""
+
+    code: str
+    label: str
+    hint: str
+
+
+# Esquemas de escritura de las secciones habilitadas (S2-D15; S3-B3 suma `payment_methods`).
 SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.gym: GymSettings,
     SectionKey.privacy: PrivacySettings,
     SectionKey.memberships: MembershipsSettings,
+    SectionKey.payment_methods: PaymentMethodsSettings,
 }
 
 # Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`, y ninguna
@@ -164,6 +234,11 @@ SECTION_DEFAULTS: dict[SectionKey, dict[str, Any]] = {
         "max_freeze_days_per_membership": 30,
         "max_freezes_per_membership": 2,
         "max_retroactive_days": 7,
+    },
+    SectionKey.payment_methods: {
+        "cash": {"label": "Efectivo", "hint": ""},
+        "nequi": {"label": "Nequi", "hint": ""},
+        "breb": {"label": "Bre-B", "hint": ""},
     },
 }
 
@@ -198,6 +273,10 @@ class MembershipsSectionOut(_SectionMeta):
     value: MembershipsSettings
 
 
+class PaymentMethodsSectionOut(_SectionMeta):
+    value: PaymentMethodsSettings
+
+
 class SectionPatchIn(BaseModel):
     """`PATCH` reemplaza la sección completa con la versión que se leyó (N-17, S2-D15)."""
 
@@ -225,4 +304,11 @@ class MembershipsPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     value: MembershipsSettings
+    version: int = Field(ge=0)
+
+
+class PaymentMethodsPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: PaymentMethodsSettings
     version: int = Field(ge=0)

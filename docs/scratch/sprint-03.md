@@ -735,3 +735,207 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   replica` un `UPDATE` sin cambios → lo mismo; el vaciado de la tabla → lo mismo. Después: 0
   congelaciones, 0 filas de auditoría de `membership_freezes`, 0 sesiones `idle in transaction`,
   log del api sin `ERROR` en los últimos 10 minutos.
+
+### S3-B3 · Rojo (B3.1 a B3.3 y la prueba de `0010`)
+
+- Línea base: HEAD `fdce0dd`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.457 ok,
+  4 saltadas, 3 deseleccionadas (salida 0); `ruff check` y `mypy src` (84 archivos) limpios.
+- Rojo: 2.702 recolectadas (3 deseleccionadas); **140 fallan**, 2.558 ok, 4 saltadas. `ruff format`,
+  `ruff check` y `mypy src` (93 archivos) limpios. De las verdes de la línea base solo
+  `test_docs_openapi_json_esta_al_dia` pasa a rojo (P-API, B3.7); la parametrización de
+  `NO_HABILITADAS` pierde `payment_methods` (4 casos) y `RUTAS` gana dos rutas (4 casos), y
+  `PENDING_AUDITED` pierde `payments.payments` (1 caso). `db_test` sin residuos:
+  `alembic_version = 0009_membership_freezes`, sin `payments.payments`, 0 membresías, 0 socios,
+  0 planes, 0 usuarios `@test.apex`, 0 sesiones `idle in transaction`, los cinco triggers de
+  `memberships` en `A`. `apex-db-1` en `0009_membership_freezes` (nunca migró), api `healthy`.
+  - Fallan por archivo: `tests/payments/test_rules.py` 55 (`NotImplementedError` de las reglas; los
+    422 de `reference` porque `PaymentIn` normaliza con `rules.normalize_reference`);
+    `tests/payments/test_register.py` 36 (`NotImplementedError` de `register`, sumas y
+    `UndefinedTable`); `tests/migrations/test_0010_payments.py` 28 (no existe la revisión);
+    `tests/settings/test_payment_methods_service.py` 8 y `test_payment_methods_rules.py` 4
+    (`decorate_methods` y `payment_methods`); `tests/payments/test_payment_methods_router.py` 4 (500
+    por `methods`); `tests/architecture/test_service_import_graph.py` 2
+    (`test_cada_arista_permitida_existe` y `test_payments_depende_de_members_auth_y_settings_y_no_de_memberships`:
+    `payments` aún no importa `members`, `auth` ni `settings`);
+    `tests/architecture/test_payment_method_codes.py` 1 (no existe `0010_payments.py`);
+    `tests/memberships/test_lock_order.py` 1 (`sell-register`); `tests/core/test_openapi_export.py` 1.
+  - Verdes sobre los stubs (el stub ya es el contrato): constantes de reglas y del modelo, patrón de
+    comprobante, `PaymentIn` (montos, medios, `confirm_*` estrictos, extra, zona de `paid_at`),
+    `PaymentOut`, catálogo de errores, eventos; esquema `PaymentMethodsSettings` (etiquetas, pistas,
+    repetidas, extra, faltantes) por `validate_section`; las dos rutas tipadas de settings (son
+    `get_section`/`update_section` reales) y la lectura y guardado por service; `GET
+    /payments/methods` 401/403 y su OpenAPI (objeto `PaymentMethodsOut`, sin `429`, con `500` y
+    `503`); `test_every_route_has_role` y `test_list_routes_use_page_params` con la ruta nueva;
+    `test_audit_module` (tupla final), `test_audited_tables`, `test_no_cross_models`,
+    `test_settings_no_secrets`, `test_banned_imports`, `test_triggers_siempre_activos` (texto de
+    `LIMPIAR_PAYMENTS` y estado), `test_0009` "en la cadena"; los 12 subprocesos de importación
+    limpia de los pares nuevos de `payments`.
+- Verde desechable (revertido; solo `db_test`, con `$DC stop api` antes de escribir la migración y
+  `$DC start api` después de borrarla; `apex-db-1` siguió en `0009`): migración `0010` mínima,
+  reglas, consultas, `register`, `methods`, `decorate_methods` y `payment_methods`. Suite completa:
+  2.693 ok y 5 fallos, todos del desechable o esperados (`test_docs_openapi_json_esta_al_dia`,
+  P-API; `test_ninguna_funcion_supera_50_lineas`, el `register` de una pieza; y tres de
+  `test_service_import_graph` por los imports dentro de funciones del desechable). Encontró un
+  defecto de prueba (`test_el_tope_del_coach_sale_de_la_politica_guardada` llamaba a
+  `update_section` sin `actor_scope`: corregido) y un defecto del blueprint (decisión 3).
+  Después: `alembic -x url=<db_test> downgrade 0009_membership_freezes`, archivo borrado, `rules`,
+  `queries`, `service` de `payments` y `settings/service.py` restaurados desde copia.
+- Stubs (B3.2): `modules/payments/` completo salvo la lógica: `models.py` (`Payment` con los cinco
+  CHECKs y los tres índices, `PAYMENT_METHODS`, `MAX_AMOUNT_COP`, `REFERENCE_MAX_LENGTH`,
+  `VOID_REASON_MAX_LENGTH`; `__audited__` con sujeto `member_id`), `exceptions.py` (catálogo con
+  `PaidAtInvalid` como base de `PaidAtInFuture`), `events.py`, `schemas.py` (`PaymentIn`,
+  `PaymentOut`, `PaymentMethodOut`, `PaymentMethodsOut`), `router.py` (solo `GET /payments/methods`,
+  `StaffDep`, `no_store`, `responses_for()`); `rules.py` (constantes definitivas,
+  `PaymentFingerprint`, funciones con `NotImplementedError`), `queries.py` (`sum_not_voided`,
+  `sums_not_voided`, `count_not_voided`, `_recent_fingerprints` con `NotImplementedError`),
+  `service.py` (`MembershipPayability`, `MembershipGate`, `set_membership_gate` y `membership_gate`
+  reales; `register` y `methods` con `NotImplementedError`; `__all__`). Settings:
+  `PAYMENT_METHOD_CODES`, `MethodLabel`, `PaymentMethodsSettings` (validador de etiquetas únicas
+  con `loc` `(<code>, "label")`), `PaymentMethodInfo`, `PaymentMethodsSectionOut`,
+  `PaymentMethodsPatchIn`, registro en `ENABLED_SECTIONS`, `SECTION_REGISTRY`, `SECTION_VIEWS` (por
+  el `**SECTION_REGISTRY`) y `SECTION_DEFAULTS`; `decorate_methods` y `payment_methods` con
+  `NotImplementedError`; rutas tipadas `GET`/`PATCH /settings/payment_methods` antes de la genérica.
+  `main.MODULES` final con `payments`; `migrations/env.py` importa `payments.models`;
+  `PRIVATE_HELPERS["payments"] = {rules, events, queries}`.
+- Fixtures (B3.1): `tests/factories/payments.py: make_payment(session, membership, *, amount=None,
+  method="cash", paid_at=None, voided=False, void_reason=None, reference=None, registered_by=None,
+  **cambios)` y `FACTORIES["payments.payments"]`; `tests/conftest.py`: `TRIGGERS_DE_PAGOS` y
+  `LIMPIAR_PAYMENTS` (en `LIMPIEZA_DE_SESION` y en `limpiar_tras_dos_sesiones`, antes de
+  `LIMPIAR_MEMBERSHIPS`); `tests/payments/{__init__,_apoyo,conftest}.py` (`GateDoble`,
+  `gate_registrado`, `registrar`, `leer_pago`, `pagos_de`, `leer_auditoria_de_pagos`,
+  `CAMPOS_PAYMENT`, `CAMPOS_METODO`; fixture `gate_doble`; `bus_confirmado` importado de
+  `tests/memberships/conftest.py`); `tests/settings/_apoyo.py` (`NO_HABILITADAS` con cuatro,
+  `RUTAS` con diez, `PAYMENT_METHODS_OK` y `PAYMENT_METHODS_DEFAULTS`).
+- Archivos de prueba nuevos: `tests/payments/test_rules.py` (101), `test_register.py` (36),
+  `test_payment_methods_router.py` (7); `tests/settings/test_payment_methods_rules.py` (20),
+  `test_payment_methods_service.py` (10), `test_payment_methods_router.py` (11);
+  `tests/architecture/test_payment_method_codes.py` (6); `tests/migrations/test_0010_payments.py`
+  (28). Cambiados: `test_service_import_graph.py` (tres aristas y la prueba de `payments`),
+  `test_audit_module.py`, `test_audited_tables.py`, `test_no_cross_models.py` (privados y models de
+  `payments`), `test_settings_no_secrets.py`, `test_every_route_has_role.py`,
+  `test_list_routes_use_page_params.py`, `test_banned_imports.py`,
+  `tests/migrations/test_triggers_siempre_activos.py`, `test_0009_membership_freezes.py` (en la
+  cadena), `tests/memberships/test_lock_order.py` (`sell-register`),
+  `tests/settings/test_settings_router.py` y `test_settings_rules.py`.
+- Importadores de lo tocado: `app.main.MODULES` lo leen `cli.py`, `tests/conftest.py`,
+  `test_audit_module.py`, `test_audited_tables.py` y `test_user_limits_catalog.py`;
+  `settings.schemas` lo importan `settings/{service,router}.py`, `memberships/sell.py`
+  (`MembershipsPolicy`) y las pruebas de settings y de arquitectura; `settings.service` lo importan
+  `settings/router.py`, `auth/users.py`, `memberships/sell.py` y `lifecycle.py` (ninguno usa lo
+  nuevo); `settings.router` solo `main.py`; `migrations/env.py` lo usa Alembic; `payments/*` es
+  nuevo (lo importan solo sus propios archivos, `migrations/env.py`, `main.py` por `MODULES` y las
+  pruebas); `tests/conftest.py` lo importan todas las pruebas (`LIMPIAR_PAYMENTS` y
+  `TRIGGERS_DE_PAGOS` son nuevos); `PRIVATE_HELPERS` lo leen `find_forbidden_imports` y
+  `test_no_cross_models.py`; `FACTORIES` solo `test_no_plaintext_at_rest.py` (solo tablas cifradas).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **Aristas de `payments` (D2).** `ALLOWED_EDGES` gana `payments → members`, `payments → auth` y
+   `payments → settings` como pide el plan, y `test_cada_arista_permitida_existe` exige que las
+   tres existan a nivel de módulo: el Verde de B3 tiene que importar `members.service` y
+   `auth.service` con un uso real. B3 no tiene uno evidente (`search_ids`, `ensure_exists` y
+   `names_for` los usan las listas de B8): si el Verde no encuentra un uso legítimo, el orquestador
+   decide mover esas dos aristas a B8 (cambia `ALLOWED_EDGES` y
+   `test_payments_depende_de_members_auth_y_settings_y_no_de_memberships`). Ninguna arista hacia
+   `memberships`, ni perezosa, en B3 (la perezosa de la lista blanca llega con B8).
+2. **`void_coherent` con `void_reason IS NOT NULL` explícito (hallado por el Verde desechable).** Con
+   el texto del blueprint, `btrim(NULL) <> ''` es NULL, el CHECK no es falso y un pago
+   `voided = true` sin motivo entra. La migración y el modelo (ya corregido en el stub) escriben
+   `voided = true AND void_reason IS NOT NULL AND btrim(void_reason) <> '' AND ...`
+   (`test_0010_payments.py::...[anulado-sin-motivo]`).
+3. **Errores de `paid_at`.** `PaidAtInvalid` (422 `validation_error`, `field="paid_at"`) para sin
+   zona y antes del piso; `PaidAtInFuture` hereda de él (mismo código); `PaidAtTooRetroactive` es
+   422 `paid_at_too_retroactive`. Orden de `validate_paid_at`: zona, piso, futuro, retroactividad
+   (solo si `role != "admin"`). Compara sin convertir de zona (año 1 con +05:00 da 422, nunca
+   `OverflowError`). Límites inclusivos: justo 7 días atrás pasa, 7 días y 1 s no; +4 min 59 s pasa
+   y +5 min 1 s no (la frontera exacta de +5 min no la fija ninguna prueba).
+4. **Ventana de duplicado solo con piso.** `is_possible_duplicate` cuenta los pagos no anulados con
+   `registered_at >= now - DUPLICATE_WINDOW` (120 s exactos cuentan) e iguales en
+   `registered_by`, `amount_cop`, `method` y `reference` (dos nulas son iguales). Un
+   `registered_at` posterior a `now` cuenta: `registered_at` es `created_at` de la fila (reloj de la
+   base, `now()` de la transacción) y en las pruebas va por delante del `reloj` congelado; así
+   "dos registros seguidos" es duplicado. `_recent_fingerprints(session, membership_id, since)`
+   filtra `created_at >= since`. La frontera de 119 s y 121 s se prueba también por el service con
+   la fábrica (`created_at = T0 - 119 s` / `T0 - 121 s`).
+5. **Orden dentro de `register` (lo exigen las pruebas):** gate (`MembershipGateNotRegistered` si
+   falta, antes de tocar nada); 404; 409 cancelada; `validate_paid_at` con
+   `memberships_policy(session).max_retroactive_days`; saldo con `agreed_price_cop` del gate;
+   conteo; duplicado (salvo `confirm_duplicate`); insertar; `flush`; `emit`. Todo en
+   `begin_nested()` (un handler que lanza no deja pago ni auditoría). `member_id` sale del gate (la
+   prueba fuerza un `member_id` distinto con `GateDoble.forzados`). El gate se llama una vez por
+   registro.
+6. **`sums_not_voided`:** todo id pedido aparece (0 si no tiene pagos o todos anulados); sin ids, cero
+   sentencias; 450 ids son 3 sentencias sobre `payments.payments` (`chunked`, `ID_BATCH`).
+7. **`PaymentIn.reference` delega en `rules.normalize_reference`** (recorta, vacía a `None`, más de
+   64 es `ValueError` sin el valor) y después aplica `SafeText` y `REFERENCE_PATTERN`.
+8. **Settings:** `hint` vacío se acepta y con texto aplica `check_visible_text`; etiquetas únicas
+   con `casefold`, error en el segundo código que repite (`value.nequi.label`,
+   `value.breb.label`). `decorate_methods` devuelve `tuple[PaymentMethodInfo, ...]` en el orden de
+   `codes`, con default por código faltante e ignorando ajenos; `payment_methods(session)` valida
+   lo guardado con `PaymentMethodsSettings` y, si no valida, avisa en `app.settings` con solo la
+   clave y responde los defaults. `GET /payments/methods` arma `PaymentMethodsOut` desde eso.
+9. **`LIMPIAR_PAYMENTS`:** `to_regclass` y, por trigger, `IF EXISTS (SELECT 1 FROM pg_trigger WHERE
+   tgrelid = 'payments.payments'::regclass AND tgname = ...)` antes de cada `ENABLE ALWAYS`; corre
+   antes que `LIMPIAR_MEMBERSHIPS` en las dos limpiezas. `test_triggers_siempre_activos` acepta los
+   de `payments` "solo si existen" hasta B4.
+10. **`GateDoble`** bloquea la fila real con `SELECT ... FOR UPDATE` (SQL crudo, en `tests/`, no
+    cuenta para `test_guarded_calls`) y arma la respuesta desde ella; `sell-register` de
+    `test_lock_order` lo registra con `gate_registrado` alrededor del `gather`.
+11. `test_list_routes_use_page_params` clasifica como lista solo las respuestas `Page_...` y rechaza
+    los arreglos: el objeto `{items}` de D25 cumple sin cambiar la regla (condición 3 del impacto);
+    la prueba nueva fija que la ruta responde `PaymentMethodsOut` y no entra en `listas`.
+
+#### Desviaciones del Rojo
+
+- `CAMPOS_ROW` y `CAMPOS_DETAIL` (sección 2 del plan) no se crean en `tests/payments/_apoyo.py`: sus
+  campos los fija el blueprint de B8 (`PaymentRow`, `PaymentDetail`) y hoy no tienen consumidor.
+- `bus_confirmado` no se copia: `tests/payments/conftest.py` lo importa de
+  `tests/memberships/conftest.py` (una sola definición).
+- `test_payment_method_codes.py` exige el texto de `0010_payments.py` (falla si no existe), no "solo
+  si existe": en el Verde de B3 el archivo existe siempre.
+- El modelo `Payment` ya lleva el CHECK `void_coherent` corregido (decisión 2).
+- No se tocan `docs/openapi.json`, `web/`, `DECISIONES.md`, `CLAUDE.md` ni `RUNBOOK.md`.
+
+### S3-B3 · Verde (B3.4 a B3.8)
+
+- Línea base del Verde: HEAD `fdce0dd` con el Rojo sin confirmar; 140 fallan, 2.558 ok, 4 saltadas
+  (igual que el Rojo); `apex-db-1` en `0009_membership_freezes`, api `healthy`.
+- B3.4 P-MIG: volcado `docs/scratch/sprint-03-antes-0010_payments.dump` con `$DC exec -T db pg_dump
+  ... -n memberships -n payments` desde Bash (`chmod 600`, ignorado por git, `pg_restore -l`
+  legible); `$DC stop api`; `api/migrations/versions/0010_payments.py` (tabla con `member_id NOT
+  NULL`, CHECKs `amount_range`, `method`, `reference_length`, `void_reason_length` y
+  `void_coherent` con `void_reason IS NOT NULL`, índices `ix_payments_paid_at (paid_at DESC)`,
+  `ix_payments_membership_id` e `ix_payments_member_paid (member_id, paid_at DESC)`, sin FK ni
+  triggers, `downgrade` índices y tabla, SQL literal); `pytest tests/core/test_migrations.py
+  tests/migrations/test_0010_payments.py tests/architecture/test_payment_method_codes.py` 37 ok
+  contra `db_test`; `alembic heads` = `0010_payments (head)`; `$DC start api` → `healthy`;
+  `alembic current` = `0010_payments (head)`; ciclo `downgrade -1`/`upgrade head` en `apex-db-1`
+  sin errores en el log.
+- B3.5 Verde: `payments/rules.py` (`validate_paid_at` con orden zona, piso, futuro y
+  retroactividad; `normalize_reference`; `check_balance`; `is_possible_duplicate` con piso;
+  `check_payment_count`), `queries.py` (`sum_not_voided`, `sums_not_voided` con `chunked` y ceros,
+  `count_not_voided`, `_recent_fingerprints`), `service.py` (`register` partido en `_payable`,
+  `_check_under_lock` e `_insert_payment`; `methods`), `settings/service.py` (`decorate_methods`
+  pura y `payment_methods` tolerante). `models`, `schemas`, `router`, `events`, `exceptions` del
+  Rojo sin cambios.
+- Prueba cambiada por decisión (S3-D80, no por error): `test_service_import_graph.py` deja en
+  `ALLOWED_EDGES` solo `("payments", "settings")` (las de `members` y `auth` llegan en B8) y la
+  prueba de `payments` pasa a `test_payments_depende_de_settings_y_no_de_memberships`. La suite
+  pierde 4 casos parametrizados (los subprocesos de importación limpia de las dos aristas, en los
+  dos sentidos): 2.698 recolectadas.
+- Revisión de seguridad (antes del gate): 0 CRITICAL, 0 HIGH, 0 MEDIUM, 3 LOW y 1 INFO, todos
+  aceptados sin cambio y anotados en DECISIONES "S3-B3" (L1 ventana por `created_at` de la
+  transacción, L2 homógrafos en etiquetas, L3 500 del `GET` de settings con fila inválida como las
+  demás secciones, INFO inmutabilidad en `0011`). Sin prueba nueva.
+- Suite: 2.694 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura de `app` 96 % (`payments`:
+  `rules` 100 %, `queries` 100 %, `service` 99 %); `ruff format`, `ruff check` y `mypy src` (93
+  archivos) limpios.
+- B3.6 Docs: RUNBOOK §10 (tabla `payments.payments` y rollback de `0010`, reglas del servidor de
+  registrar pago, medios de pago); DECISIONES "S3-B3" (S3-D80, desviaciones del Rojo, revisión).
+- B3.7 P-API: `export-openapi` dos veces idéntica (sha256 `0089e616…`; `GET /payments/methods`,
+  `PaymentMethodsOut`, rutas tipadas `GET`/`PATCH /settings/payment_methods`: 368 líneas en
+  `docs/openapi.json`, 281 en `web/src/core/api/types.ts`); `npm run gen:api`,
+  `types.contract.test.ts` 5 ok y `npx tsc --noEmit` limpio.
+- Desviaciones: aristas de `payments` según S3-D80; el volcado queda con modo `rw-r--r--` en NTFS
+  (Windows no conserva `chmod 600`, como en B1 y B2). La evidencia de B3.9 va al commit
+  `docs(sprint-03): evidencia de S3-B3` (E8).

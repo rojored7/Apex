@@ -1,8 +1,9 @@
 """El módulo `audit` (S2-B6; US-107; riesgo 6.10, decisión 21; CLAUDE.md, reglas de módulos).
 
-- `MODULES == ("auth", "settings", "audit", "members", "plans", "memberships")`: `audit` va
-  después de `auth`, cuyo `service.py` declara los eventos que escucha; S2-B7 agrega `members`,
-  S2-B9 `plans` y S3-B1 `memberships` al final (B3 agrega `payments`; D1 del Sprint 3).
+- `MODULES == ("auth", "settings", "audit", "members", "plans", "memberships", "payments")`:
+  `audit` va después de `auth`, cuyo `service.py` declara los eventos que escucha; S2-B7 agrega
+  `members`, S2-B9 `plans`, S3-B1 `memberships` y S3-B3 `payments` al final (D1 del Sprint 3:
+  la tupla final de v0.1).
 - `load_module_services()` deja suscritos los cuatro handlers de `audit.service` a sus eventos,
   una sola vez cada uno (se compara por identidad de función).
 - `modules/audit` tiene `router.py` vacío, `service.py` y ningún `models.py` (la tabla vive en
@@ -41,9 +42,17 @@ HANDLERS = (
 
 
 def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
-    """S2-B7 suma `members`, S2-B9 `plans` y S3-B1 `memberships` al final (D1 del Sprint 3:
-    `memberships` antes que `payments`, que llega en B3)."""
-    assert MODULES == ("auth", "settings", "audit", "members", "plans", "memberships")
+    """S2-B7 suma `members`, S2-B9 `plans`, S3-B1 `memberships` y S3-B3 `payments` al final (D1 del
+    Sprint 3: `memberships` antes que `payments`; tupla final de v0.1)."""
+    assert MODULES == (
+        "auth",
+        "settings",
+        "audit",
+        "members",
+        "plans",
+        "memberships",
+        "payments",
+    )
 
 
 @pytest.mark.parametrize(("evento", "nombre"), HANDLERS, ids=[n for _, n in HANDLERS])

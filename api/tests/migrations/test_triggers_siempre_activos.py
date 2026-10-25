@@ -15,10 +15,16 @@ Se comprueba:
   (`limpiar_tras_dos_sesiones`), los tres triggers de `memberships.memberships` y los dos de
   `memberships.membership_freezes` (S3-B2) siguen en `'A'`; las congelaciones se borran en un
   bloque propio con su guarda `to_regclass` y antes que las membresías (FK).
-B3/B4 agregan los dos de `payments.payments`.
+S3-B3 (E1) agrega `LIMPIAR_PAYMENTS` (antes que `LIMPIAR_MEMBERSHIPS` en las dos limpiezas): apaga,
+borra y enciende `payments_forbid_mutation` y `payments_forbid_truncate` con `ENABLE ALWAYS`, cada
+uno bajo su guarda en `pg_trigger` porque los triggers llegan en `0011` (B4). Hasta entonces se
+comprueban "presentes solo si existen": todo trigger de `payments.payments` que exista sigue en
+`'A'` tras las limpiezas; en B4 la lista queda exacta.
 """
 
 from __future__ import annotations
+
+import inspect
 
 import pytest
 from sqlalchemy import func, select, text
@@ -28,9 +34,11 @@ from app.core.audit import AuditEntry
 from tests.conftest import (
     LIMPIAR_MEMBERS,
     LIMPIAR_MEMBERSHIPS,
+    LIMPIAR_PAYMENTS,
     LIMPIEZA_DE_SESION,
     TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
+    TRIGGERS_DE_PAGOS,
     limpiar_tras_dos_sesiones,
 )
 
@@ -44,16 +52,24 @@ TRIGGERS_CONGELACIONES = (
     "membership_freezes_forbid_truncate",
 )
 TRIGGERS = TRIGGERS_MEMBRESIAS + TRIGGERS_CONGELACIONES
+TRIGGERS_PAGOS = ("payments_forbid_mutation", "payments_forbid_truncate")
 ESTADO = text(
     "SELECT tgname, tgenabled::text AS estado FROM pg_trigger "
     "WHERE NOT tgisinternal AND tgname = ANY(:nombres)"
 )
 
 
-async def _estados(engine: AsyncEngine) -> dict[str, str]:
+async def _estados(engine: AsyncEngine, nombres: tuple[str, ...] = TRIGGERS) -> dict[str, str]:
     async with engine.connect() as conexion:
-        filas = await conexion.execute(ESTADO, {"nombres": list(TRIGGERS)})
+        filas = await conexion.execute(ESTADO, {"nombres": list(nombres)})
         return {fila.tgname: fila.estado for fila in filas}
+
+
+async def _pagos_presentes_en_always(engine: AsyncEngine) -> None:
+    """Los de `payments.payments` que existan (ninguno hasta `0011`, B4) siguen en `'A'`."""
+    estados = await _estados(engine, TRIGGERS_PAGOS)
+    assert set(estados) <= set(TRIGGERS_PAGOS)
+    assert all(estado == "A" for estado in estados.values()), estados
 
 
 def test_la_limpieza_enciende_cada_trigger_con_enable_always() -> None:
@@ -81,12 +97,39 @@ def test_la_limpieza_de_membresias_va_antes_que_la_de_socios() -> None:
     assert orden.index(LIMPIAR_MEMBERSHIPS) < orden.index(LIMPIAR_MEMBERS)
 
 
-async def test_tras_limpiar_membresias_los_triggers_siguen_en_always(
+def test_la_limpieza_de_pagos_enciende_sus_triggers_con_enable_always_bajo_guarda() -> None:
+    """S3-B3 (E1): `to_regclass` de la tabla y, por trigger, una guarda en `pg_trigger` (los
+    triggers llegan en `0011`); `ENABLE ALWAYS` por nombre y nunca `ENABLE TRIGGER USER`."""
+    assert tuple(TRIGGERS_DE_PAGOS) == TRIGGERS_PAGOS
+    assert "to_regclass('payments.payments')" in LIMPIAR_PAYMENTS
+    assert "ALTER TABLE payments.payments DISABLE TRIGGER USER;" in LIMPIAR_PAYMENTS
+    assert "DELETE FROM payments.payments;" in LIMPIAR_PAYMENTS
+    for nombre in TRIGGERS_PAGOS:
+        assert f"tgname = '{nombre}'" in LIMPIAR_PAYMENTS, nombre
+        assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_PAYMENTS, nombre
+        guarda = LIMPIAR_PAYMENTS.index(f"tgname = '{nombre}'")
+        assert guarda < LIMPIAR_PAYMENTS.index(f"ENABLE ALWAYS TRIGGER {nombre};"), nombre
+    assert "ENABLE TRIGGER USER" not in LIMPIAR_PAYMENTS
+
+
+def test_los_pagos_se_borran_antes_que_las_membresias_en_las_dos_limpiezas() -> None:
+    orden = list(LIMPIEZA_DE_SESION)
+    assert orden.index(LIMPIAR_PAYMENTS) < orden.index(LIMPIAR_MEMBERSHIPS)
+    fuente = inspect.getsource(limpiar_tras_dos_sesiones)
+    assert "text(LIMPIAR_PAYMENTS)" in fuente
+    assert fuente.index("text(LIMPIAR_PAYMENTS)") < fuente.index("text(LIMPIAR_MEMBERSHIPS)")
+
+
+async def test_tras_limpiar_pagos_y_membresias_los_triggers_siguen_en_always(
     engine: AsyncEngine,
 ) -> None:
+    """Solo `LIMPIAR_PAYMENTS` y `LIMPIAR_MEMBERSHIPS` (no toda `LIMPIEZA_DE_SESION`, que borraría
+    las llaves del bus de la corrida); con y sin la tabla de pagos no falla."""
     async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
+    await _pagos_presentes_en_always(engine)
 
 
 @pytest.mark.usefixtures("migrated_database")
@@ -97,3 +140,4 @@ async def test_tras_la_limpieza_de_dos_sesiones_los_triggers_siguen_en_always(
         ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
     await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
+    await _pagos_presentes_en_always(engine)

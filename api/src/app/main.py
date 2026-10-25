@@ -59,6 +59,7 @@ MODULES: Final[tuple[str, ...]] = (
     "members",
     "plans",
     "memberships",
+    "payments",
 )
 API_PREFIX = "/api/v1"
 MIGRATION_LOCK_KEY: Final[int] = db.MIGRATION_LOCK_KEY

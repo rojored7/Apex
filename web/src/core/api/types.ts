@@ -192,6 +192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payment Methods */
+        get: operations["payment_methods_api_v1_payments_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/plans": {
         parameters: {
             query?: never;
@@ -261,6 +278,24 @@ export interface paths {
         head?: never;
         /** Patch Memberships */
         patch: operations["patch_memberships_api_v1_settings_memberships_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/payment_methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payment Methods */
+        get: operations["get_payment_methods_api_v1_settings_payment_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Payment Methods */
+        patch: operations["patch_payment_methods_api_v1_settings_payment_methods_patch"];
         trace?: never;
     };
     "/api/v1/settings/privacy": {
@@ -918,6 +953,19 @@ export interface components {
              */
             max_retroactive_days: number;
         };
+        /**
+         * MethodLabel
+         * @description Cómo se ve un medio de pago (US-056, S3-D55): etiqueta visible y pista opcional.
+         */
+        MethodLabel: {
+            /**
+             * Hint
+             * @default
+             */
+            hint: string;
+            /** Label */
+            label: string;
+        };
         /** Page[MemberRowOut] */
         Page_MemberRowOut_: {
             /** Items */
@@ -950,6 +998,49 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PaymentMethodOut */
+        PaymentMethodOut: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "cash" | "nequi" | "breb";
+            /** Hint */
+            hint: string;
+            /** Label */
+            label: string;
+        };
+        /** PaymentMethodsOut */
+        PaymentMethodsOut: {
+            /** Items */
+            items: components["schemas"]["PaymentMethodOut"][];
+        };
+        /** PaymentMethodsPatchIn */
+        PaymentMethodsPatchIn: {
+            value: components["schemas"]["PaymentMethodsSettings"];
+            /** Version */
+            version: number;
+        };
+        /** PaymentMethodsSectionOut */
+        PaymentMethodsSectionOut: {
+            key: components["schemas"]["SectionKey"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            value: components["schemas"]["PaymentMethodsSettings"];
+            /** Version */
+            version: number;
+        };
+        /**
+         * PaymentMethodsSettings
+         * @description Etiquetas de los tres medios de pago fijos (US-056; D24, S3-D55).
+         */
+        PaymentMethodsSettings: {
+            breb: components["schemas"]["MethodLabel"];
+            cash: components["schemas"]["MethodLabel"];
+            nequi: components["schemas"]["MethodLabel"];
         };
         /** PlanCreate */
         PlanCreate: {
@@ -2079,6 +2170,62 @@ export interface operations {
             };
         };
     };
+    payment_methods_api_v1_payments_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodsOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_plans_api_v1_plans_get: {
         parameters: {
             query?: {
@@ -2514,6 +2661,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MembershipsSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_payment_methods_api_v1_settings_payment_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodsSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_payment_methods_api_v1_settings_payment_methods_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentMethodsPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodsSectionOut"];
                 };
             };
             /** @description Sin sesión válida */

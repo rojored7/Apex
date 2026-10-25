@@ -1,4 +1,4 @@
-"""Datos y consultas compartidos por las pruebas de settings (S2-B1).
+"""Datos y consultas compartidos por las pruebas de settings (S2-B1; S3-B3 suma `payment_methods`).
 
 Los valores válidos siguen N-18 (desgloses US-055, US-057 y US-058). Las consultas leen la
 base con SQL directo para no depender de lo que el service devuelva.
@@ -61,12 +61,25 @@ MEMBERSHIPS_DEFAULTS: dict[str, Any] = {
     "max_retroactive_days": 7,
 }
 
-# Secciones que existen en el CHECK pero no están habilitadas en el Sprint 2 (S2-D15), más
-# una clave inexistente y una con mayúsculas.
-NO_HABILITADAS = ("tv", "hours", "channels", "classes", "payment_methods")
+# S3-B3 (US-056, D24): los tres medios de pago con códigos fijos y sus etiquetas.
+PAYMENT_METHODS_OK: dict[str, Any] = {
+    "cash": {"label": "Caja", "hint": "Billetes y monedas"},
+    "nequi": {"label": "Nequi", "hint": "Número de comprobante"},
+    "breb": {"label": "Bre-B (Bancolombia)", "hint": ""},
+}
+PAYMENT_METHODS_DEFAULTS: dict[str, Any] = {
+    "cash": {"label": "Efectivo", "hint": ""},
+    "nequi": {"label": "Nequi", "hint": ""},
+    "breb": {"label": "Bre-B", "hint": ""},
+}
+
+# Secciones que existen en el CHECK pero no están habilitadas (S2-D15; S3-B3 habilita
+# `payment_methods`: quedan cuatro), más una clave inexistente y una con mayúsculas.
+NO_HABILITADAS = ("tv", "hours", "channels", "classes")
 DESCONOCIDAS = ("inexistente", "GYM")
 
-# Las ocho rutas del router (S2-D15): tipadas y genérica.
+# Las diez rutas del router (S2-D15; S3-B3 suma las dos tipadas de `payment_methods`): tipadas y
+# genérica.
 RUTAS = (
     ("GET", "/settings/gym"),
     ("PATCH", "/settings/gym"),
@@ -74,6 +87,8 @@ RUTAS = (
     ("PATCH", "/settings/privacy"),
     ("GET", "/settings/memberships"),
     ("PATCH", "/settings/memberships"),
+    ("GET", "/settings/payment_methods"),
+    ("PATCH", "/settings/payment_methods"),
     ("GET", "/settings/tv"),  # genérica `/settings/{section}`
     ("PATCH", "/settings/tv"),
 )
@@ -81,6 +96,7 @@ CUERPOS = {
     "/settings/gym": {"value": GYM_OK, "version": 0},
     "/settings/privacy": {"value": PRIVACY_OK, "version": 0},
     "/settings/memberships": {"value": MEMBERSHIPS_OK, "version": 0},
+    "/settings/payment_methods": {"value": PAYMENT_METHODS_OK, "version": 0},
     "/settings/tv": {"value": {}, "version": 0},
 }
 

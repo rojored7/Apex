@@ -14,7 +14,12 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, ConfigDict
 
-from app.modules.settings.schemas import ENABLED_SECTIONS, SECTION_REGISTRY
+from app.modules.settings.schemas import (
+    ENABLED_SECTIONS,
+    SECTION_REGISTRY,
+    PaymentMethodsSettings,
+    SectionKey,
+)
 
 SECRETO = re.compile(
     r"(_password|_token|_secret|_key)$|password|secret|api_key|private_key|smtp_pass|vapid",
@@ -51,6 +56,15 @@ def sin_extra_forbid(modelo: type[BaseModel]) -> list[str]:
 def test_el_registro_tiene_exactamente_las_secciones_habilitadas() -> None:
     assert set(SECTION_REGISTRY) == set(ENABLED_SECTIONS)
     assert all(modelo.model_fields for modelo in SECTION_REGISTRY.values())
+
+
+def test_payment_methods_esta_registrada_y_revisada() -> None:
+    """S3-B3 (US-056, D24): la sección nueva entra al registro y se revisa también anidada
+    (`MethodLabel` por medio): sin campos de secreto y con `extra="forbid"` en cada nivel."""
+    assert SectionKey.payment_methods in ENABLED_SECTIONS
+    assert SECTION_REGISTRY[SectionKey.payment_methods] is PaymentMethodsSettings
+    assert campos_sospechosos(PaymentMethodsSettings) == []
+    assert sin_extra_forbid(PaymentMethodsSettings) == []
 
 
 def test_ningun_esquema_registrado_declara_un_campo_secreto() -> None:

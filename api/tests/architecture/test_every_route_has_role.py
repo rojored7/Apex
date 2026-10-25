@@ -129,3 +129,24 @@ def test_login_y_forgot_llevan_limite_de_intentos(
             assert objetivo[ruta.path] in buckets, (ruta.path, buckets)
             vistas.add(ruta.path)
     assert {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"} <= vistas
+
+
+def test_get_payments_methods_existe_y_exige_rol(
+    tmp_path: Path, settings_prueba: Settings, claves_prueba: Path
+) -> None:
+    """S3-B3 (US-056): `GET /payments/methods` se publica con `StaffDep` (admin y coach) y no
+    entra a `PUBLIC_ROUTES`; `POST /memberships/{membership_id}/payments` todavía no existe (nace
+    en B4 con el gate real, E9)."""
+    from app.core.security import route_has_role_dependency
+
+    app = create_app(
+        _produccion(tmp_path, settings_prueba, claves_prueba), run_migrations_on_startup=False
+    )
+    app.openapi()
+    rutas = effective_routes(app)[0]
+    metodos = [r for r in rutas if r.path == "/api/v1/payments/methods" and "GET" in r.methods]
+    assert len(metodos) == 1
+    assert route_has_role_dependency(metodos[0])
+    assert ("GET", "/api/v1/payments/methods") not in PUBLIC_ROUTES
+    pago = "/api/v1/memberships/{membership_id}/payments"
+    assert not [r for r in rutas if r.path == pago]

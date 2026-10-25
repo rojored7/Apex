@@ -12,7 +12,8 @@ B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01` (S2-B7
 con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-B1 mueve
 `memberships.memberships` (con `__audit_subject__ = "member_id"`, G-05); S3-B2 mueve
 `memberships.membership_freezes` (sin `__audit_subject__`: la tabla no tiene `member_id`; la fila
-`update` de la membresía lleva el socio; anotado para US-106) y B3 moverá `payments.payments`.
+`update` de la membresía lleva el socio; anotado para US-106) y S3-B3 mueve `payments.payments`
+(con `__audit_subject__ = "member_id"`, G-05).
 `PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`,
 `notifications.notifications`) para no dejar vacía la parametrización.
 """
@@ -45,10 +46,10 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "plans.plans",
         "memberships.memberships",
         "memberships.membership_freezes",
+        "payments.payments",
     }
 )
 PENDING_AUDITED: dict[str, str] = {
-    "payments.payments": "Sprint 3 (S3-B3)",
     "classes.class_sessions": "Sprint 7",
     "notifications.notifications": "Sprint 5",
 }
@@ -139,7 +140,7 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    tablas = {**_requeridas_auditadas(), "payments.payments": _Auditada}
+    tablas = {**_requeridas_auditadas(), "classes.class_sessions": _Auditada}
     assert _incumplidas(tablas) == []
 
 
@@ -165,16 +166,20 @@ def test_plans_es_requerida_y_su_modulo_esta_en_modules() -> None:
 
 
 def test_membership_y_payment_declaran_sujeto() -> None:
-    """S3-B1 (G-05): `memberships.memberships` es requerida, su módulo está en `MODULES` y declara
-    `__audit_subject__ = "member_id"` (la fila de auditoría lleva el socio). B3 agrega aquí
-    `payments.payments` con el mismo sujeto."""
-    assert "memberships.memberships" in REQUIRED_AUDITED_TABLES_V01
-    assert "memberships.memberships" not in PENDING_AUDITED
-    assert "memberships" in MODULES
+    """S3-B1 y S3-B3 (G-05): `memberships.memberships` y `payments.payments` son requeridas, sus
+    módulos están en `MODULES` y declaran `__audit_subject__ = "member_id"` (la fila de auditoría
+    lleva el socio)."""
     tablas = _tablas_de_la_app()
-    membresia = tablas["memberships.memberships"]
-    assert getattr(membresia, "__audited__", False) is True
-    assert getattr(membresia, "__audit_subject__", None) == "member_id"
+    for tabla, modulo in (
+        ("memberships.memberships", "memberships"),
+        ("payments.payments", "payments"),
+    ):
+        assert tabla in REQUIRED_AUDITED_TABLES_V01
+        assert tabla not in PENDING_AUDITED
+        assert modulo in MODULES
+        clase = tablas[tabla]
+        assert getattr(clase, "__audited__", False) is True, tabla
+        assert getattr(clase, "__audit_subject__", None) == "member_id", tabla
 
 
 def test_membership_freezes_es_requerida_y_no_declara_sujeto_hasta_us_106() -> None:

@@ -15,6 +15,12 @@
 - API interna para otros módulos (S2-D45): `get`, `memberships_policy`,
   `current_privacy_version` (`None` sin política publicada) y `gym_name` (respaldo `"APEX"`,
   también si lo guardado ya no valida; revisión Python M3).
+- Medios de pago (S3-B3, US-056; D24, S3-D55, L-3): la pura `decorate_methods(codes, labels)`
+  devuelve un `PaymentMethodInfo` por código, en el orden de `codes` (nunca el del JSON), con la
+  etiqueta de `labels` o la de `SECTION_DEFAULTS` si falta; ignora claves ajenas.
+  `payment_methods(session)` lee la sección y la valida con `PaymentMethodsSettings`; si lo
+  guardado ya no valida (claves de más o de menos, edición a mano) registra un aviso con solo la
+  clave y responde con los defaults: nunca expone un código ajeno ni da 500.
 - El log registra solo `key` y `version`, nunca el valor.
 """
 
@@ -22,7 +28,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Final
 from uuid import UUID
 
@@ -40,12 +46,16 @@ from app.modules.settings.exceptions import (
 from app.modules.settings.models import SettingsSection
 from app.modules.settings.schemas import (
     ENABLED_SECTIONS,
+    PAYMENT_METHOD_CODES,
     SECTION_DEFAULTS,
     SECTION_REGISTRY,
     SECTION_VIEWS,
     GymView,
     MembershipsPolicy,
     MembershipsSettings,
+    MethodLabel,
+    PaymentMethodInfo,
+    PaymentMethodsSettings,
     PrivacyView,
     SectionKey,
     SectionOut,
@@ -216,3 +226,29 @@ async def gym_name(session: AsyncSession) -> str:
         logger.warning("settings: la sección guardada no valida", extra={"settings_key": "gym"})
         return GYM_NAME_FALLBACK
     return valor.name or GYM_NAME_FALLBACK
+
+
+def decorate_methods(
+    codes: Sequence[str], labels: Mapping[str, MethodLabel]
+) -> tuple[PaymentMethodInfo, ...]:
+    """Pura: un medio por código, en el orden de `codes`, con su etiqueta o la por defecto."""
+    por_defecto = SECTION_DEFAULTS[SectionKey.payment_methods]
+    medios: list[PaymentMethodInfo] = []
+    for codigo in codes:
+        etiqueta = labels.get(codigo) or MethodLabel.model_validate(por_defecto[codigo])
+        medios.append(PaymentMethodInfo(code=codigo, label=etiqueta.label, hint=etiqueta.hint))
+    return tuple(medios)
+
+
+async def payment_methods(session: AsyncSession) -> tuple[PaymentMethodInfo, ...]:
+    """Contrato para `payments` (D24): los tres medios en orden fijo, tolerante a lo guardado."""
+    clave = SectionKey.payment_methods
+    try:
+        valor = await _read_as(session, clave, PaymentMethodsSettings)
+    except ValidationError:
+        logger.warning(
+            "settings: la sección guardada no valida", extra={"settings_key": clave.value}
+        )
+        valor = PaymentMethodsSettings.model_validate(defaults_for(clave))
+    etiquetas = {codigo: getattr(valor, codigo) for codigo in PAYMENT_METHOD_CODES}
+    return decorate_methods(PAYMENT_METHOD_CODES, etiquetas)

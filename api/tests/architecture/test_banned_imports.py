@@ -33,6 +33,19 @@ def test_sin_imports_de_criptografia_fuera_del_bus() -> None:
     assert [str(h) for h in _hallazgos(APP, SRC)] == []
 
 
+def test_el_recorrido_cubre_locks_memberships_y_payments() -> None:
+    """S3-B1 y S3-B3 (US-083, E11): los archivos nuevos están dentro del recorrido de `APP` y
+    ninguno es parte del bus (no los deja pasar `is_allowed`)."""
+    revisados = {p.relative_to(SRC).as_posix() for p in APP.rglob("*.py")}
+    nuevos = {
+        "app/core/locks.py",
+        *(f"app/modules/payments/{n}.py" for n in ("models", "rules", "queries", "service")),
+        *(f"app/modules/memberships/{n}.py" for n in ("sell", "lifecycle", "queries")),
+    }
+    assert nuevos <= revisados, sorted(nuevos - revisados)
+    assert not [n for n in nuevos if is_allowed(n)]
+
+
 def test_el_recorrido_si_visita_el_bus_y_lo_deja_pasar() -> None:
     """El bus sí importa primitivas: si el recorrido no lo viera, la prueba no probaría nada."""
     aead = APP / "core" / "crypto" / "aead.py"

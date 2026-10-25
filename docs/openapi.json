@@ -1304,6 +1304,29 @@
         "title": "MembershipsSettings",
         "type": "object"
       },
+      "MethodLabel": {
+        "additionalProperties": false,
+        "description": "Cómo se ve un medio de pago (US-056, S3-D55): etiqueta visible y pista opcional.",
+        "properties": {
+          "hint": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Hint",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "MethodLabel",
+        "type": "object"
+      },
       "Page_MemberRowOut_": {
         "additionalProperties": false,
         "properties": {
@@ -1398,6 +1421,140 @@
           "offset"
         ],
         "title": "Page[UserRow]",
+        "type": "object"
+      },
+      "PaymentMethodOut": {
+        "properties": {
+          "code": {
+            "enum": [
+              "cash",
+              "nequi",
+              "breb"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "hint"
+        ],
+        "title": "PaymentMethodOut",
+        "type": "object"
+      },
+      "PaymentMethodsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentMethodOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PaymentMethodsOut",
+        "type": "object"
+      },
+      "PaymentMethodsPatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/PaymentMethodsSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "PaymentMethodsPatchIn",
+        "type": "object"
+      },
+      "PaymentMethodsSectionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SectionKey"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "$ref": "#/components/schemas/PaymentMethodsSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "updated_at",
+          "updated_by",
+          "value"
+        ],
+        "title": "PaymentMethodsSectionOut",
+        "type": "object"
+      },
+      "PaymentMethodsSettings": {
+        "additionalProperties": false,
+        "description": "Etiquetas de los tres medios de pago fijos (US-056; D24, S3-D55).",
+        "properties": {
+          "breb": {
+            "$ref": "#/components/schemas/MethodLabel"
+          },
+          "cash": {
+            "$ref": "#/components/schemas/MethodLabel"
+          },
+          "nequi": {
+            "$ref": "#/components/schemas/MethodLabel"
+          }
+        },
+        "required": [
+          "cash",
+          "nequi",
+          "breb"
+        ],
+        "title": "PaymentMethodsSettings",
         "type": "object"
       },
       "PlanCreate": {
@@ -3212,6 +3369,67 @@
         ]
       }
     },
+    "/api/v1/payments/methods": {
+      "get": {
+        "operationId": "payment_methods_api_v1_payments_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Payment Methods",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/api/v1/plans": {
       "get": {
         "operationId": "list_plans_api_v1_plans_get",
@@ -3822,6 +4040,156 @@
           }
         },
         "summary": "Patch Memberships",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/payment_methods": {
+      "get": {
+        "operationId": "get_payment_methods_api_v1_settings_payment_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodsSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Get Payment Methods",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_payment_methods_api_v1_settings_payment_methods_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentMethodsPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodsSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Patch Payment Methods",
         "tags": [
           "settings"
         ]

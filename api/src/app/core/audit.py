@@ -10,7 +10,7 @@ Cadena (US-015):
   `pg_advisory_xact_lock(AUDIT_CHAIN_LOCK_KEY)`, así dos transacciones nunca toman el
   mismo `prev_hash`. El lock se libera solo al cerrar la transacción.
 - La tabla se escribe siempre con `insert()` de Core, nunca con `session.add`, y la
-  base rechaza `UPDATE`, `DELETE` y `TRUNCATE` (trigger `audit.forbid_mutation`).
+  base rechaza `UPDATE`, `DELETE` y el vaciado de la tabla (trigger `audit.forbid_mutation`).
 - `subject_member_id` (G-05) entra al hash solo cuando no es nulo, así las filas sin
   sujeto conservan el hash de US-015.
 - SHA-256 viene de `core/crypto/digest.py` (N-06): este módulo no importa la biblioteca

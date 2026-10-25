@@ -214,6 +214,31 @@
         "title": "ForgotIn",
         "type": "object"
       },
+      "FreezeOut": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "frozen_from": {
+            "format": "date",
+            "title": "Frozen From",
+            "type": "string"
+          },
+          "frozen_to": {
+            "format": "date",
+            "title": "Frozen To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "frozen_from",
+          "frozen_to",
+          "days"
+        ],
+        "title": "FreezeOut",
+        "type": "object"
+      },
       "GymPatchIn": {
         "additionalProperties": false,
         "properties": {
@@ -1649,6 +1674,181 @@
         "title": "SectionPatchIn",
         "type": "object"
       },
+      "SellMembershipIn": {
+        "additionalProperties": false,
+        "properties": {
+          "first_payment": {
+            "title": "First Payment",
+            "type": "null"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "renew": {
+            "default": false,
+            "title": "Renew",
+            "type": "boolean"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "plan_id"
+        ],
+        "title": "SellMembershipIn",
+        "type": "object"
+      },
+      "SellMembershipOut": {
+        "properties": {
+          "agreed_price_cop": {
+            "title": "Agreed Price Cop",
+            "type": "integer"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "classes_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes Remaining"
+          },
+          "classes_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes Total"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "first_payment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Payment Id"
+          },
+          "freezes": {
+            "items": {
+              "$ref": "#/components/schemas/FreezeOut"
+            },
+            "title": "Freezes",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "member_name": {
+            "title": "Member Name",
+            "type": "string"
+          },
+          "paid_cop": {
+            "title": "Paid Cop",
+            "type": "integer"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_name": {
+            "title": "Plan Name",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "member_id",
+          "member_name",
+          "plan_id",
+          "plan_name",
+          "agreed_price_cop",
+          "paid_cop",
+          "start_date",
+          "end_date",
+          "classes_total",
+          "classes_remaining",
+          "status",
+          "freezes",
+          "cancel_reason",
+          "cancelled_at",
+          "created_at",
+          "first_payment_id"
+        ],
+        "title": "SellMembershipOut",
+        "type": "object"
+      },
       "UpdateUserIn": {
         "additionalProperties": false,
         "description": "`PATCH /users/{user_id}`: correo y rol; un campo ausente o nulo no cambia (US-049).",
@@ -2602,6 +2802,129 @@
         "summary": "Create Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/memberships": {
+      "post": {
+        "operationId": "sell_membership_api_v1_members__member_id__memberships_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SellMembershipIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellMembershipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Sell Membership",
+        "tags": [
+          "memberships"
         ]
       }
     },

@@ -25,15 +25,15 @@ from tests.architecture.test_error_codes_per_route import CON_LIMITE
 
 MODULES = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 METODOS = frozenset({"get", "post", "put", "patch", "delete"})
-# Buckets del catálogo cuya ruta todavía no existe (E2: B1 y B2 sacan `memberships-write`, B4
-# `payments-write`, B5 `admin-write`, B9b `members-detail`, B10 los tres de `members-reveal`).
+# Buckets del catálogo cuya ruta todavía no existe (E2: S3-B1 sacó `memberships-write` con la
+# venta; B4 saca `payments-write`, B5 `admin-write`, B9b `members-detail`, B10 los tres de
+# `members-reveal`).
 CLAVES_SIN_RUTA_TODAVIA = frozenset(
     {
         "members-detail",
         "members-reveal",
         "members-reveal-hour",
         "members-reveal-day",
-        "memberships-write",
         "payments-write",
         "admin-write",
     }

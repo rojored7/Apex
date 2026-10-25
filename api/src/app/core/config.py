@@ -64,6 +64,9 @@ PASSWORD_MIN_LENGTH_FLOOR: Final[int] = 12
 # Máximo de `lock_timeout`, `statement_timeout` e `idle_in_transaction_session_timeout` en
 # PostgreSQL (INT_MAX, en ms); un valor mayor haría fallar cada conexión (S3-W0-2).
 DB_TIMEOUT_MAX_MS: Final[int] = 2_147_483_647
+# Piso de los tres tiempos con `ENV=production` (S3-D79): un `.env` con `0` o pocos ms apagaría
+# la defensa de H-3 en todo el api. El CLI los apaga con `model_copy`, sin revalidar.
+DB_TIMEOUT_FLOOR_MS: Final[int] = 1_000
 _ESQUEMA = "postgresql+asyncpg"
 
 
@@ -183,7 +186,8 @@ class Settings(BaseSettings):
     REFRESH_ABSOLUTE_TTL_DAYS: int = Field(default=30, gt=0)
 
     # Tiempos de espera de la base (S3-D43, H-3): pasan como `server_settings` de asyncpg en
-    # `create_engine_from`. `0` desactiva; solo el CLI con `--db-timeouts off` (E7).
+    # `create_engine_from`. `0` desactiva (fuera de producción o el CLI con `--db-timeouts off`,
+    # E7); con `ENV=production` el piso es `DB_TIMEOUT_FLOOR_MS` (S3-D79).
     # Techo: el máximo de un parámetro entero de PostgreSQL (fuera de él la conexión falla).
     DB_LOCK_TIMEOUT_MS: int = Field(default=10000, ge=0, le=DB_TIMEOUT_MAX_MS)
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, ge=0, le=DB_TIMEOUT_MAX_MS)
@@ -253,6 +257,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"PASSWORD_MIN_LENGTH no puede ser menor que {PASSWORD_MIN_LENGTH_FLOOR} "
                 "en producción"
+            )
+        return valor
+
+    @field_validator("DB_LOCK_TIMEOUT_MS", "DB_STATEMENT_TIMEOUT_MS", "DB_IDLE_IN_TX_TIMEOUT_MS")
+    @classmethod
+    def _tiempos_de_espera_con_piso_en_produccion(cls, valor: int, info: ValidationInfo) -> int:
+        """S3-D79: en producción ningún tiempo de espera baja de `DB_TIMEOUT_FLOOR_MS`; en dev se
+        admite `0` (desactivado) para pruebas manuales."""
+        if info.data.get("ENV") == "production" and valor < DB_TIMEOUT_FLOOR_MS:
+            raise ValueError(
+                f"{info.field_name} no puede ser menor que {DB_TIMEOUT_FLOOR_MS} ms en producción"
             )
         return valor
 

@@ -20,9 +20,9 @@ Kit de S2-B1 (plan del Sprint 2, sección 2; S2-D19 y E6):
 - `usuario_real` (fábrica) y `cabeceras(usuario)`: usuario real en `auth.users` con
   `hash_password` y access token real; cabeceras con `Bearer` y `Origin` del front.
 - `dos_sesiones`: dos `AsyncSession` con commit real (concurrencia); al salir borra lo que
-  dejaron en `settings.settings_sections`, `members.members` (S2-B7) y `plans.plans` (S2-B9),
-  los usuarios `@test.apex` con sus refresh y tokens de un solo uso, y la cola que agregaron a
-  `audit.audit_log`.
+  dejaron en `settings.settings_sections`, `memberships.memberships` (S3-B1), `members.members`
+  (S2-B7) y `plans.plans` (S2-B9), los usuarios `@test.apex` con sus refresh y tokens de un
+  solo uso, y la cola que agregaron a `audit.audit_log` (`limpiar_tras_dos_sesiones`).
 
 Kit de S2-B2 (plan del Sprint 2, sección 2, bloque B2; E7 y E9):
 - Al importarse corre `load_module_services()` ANTES de importar y registrar
@@ -205,6 +205,27 @@ LIMPIAR_PLANS = (
     "DELETE FROM plans.plans; END IF; END $$"
 )
 
+# S3-B1 (D30, S3-D48, E1): las membresías que una prueba con commit real (`dos_sesiones`) o una
+# corrida cortada hayan dejado. `memberships.memberships` nace en `0008_memberships`: mientras no
+# exista (Rojo de B1) no se toca. Sus triggers rechazan `DELETE` (S3-D48): se apagan, se borra y se
+# vuelven a encender UNO POR UNO con `ENABLE ALWAYS` (S3-D49). Nunca `ENABLE TRIGGER USER`: dejaría
+# `tgenabled = 'O'` y `session_replication_role = replica` los saltaría
+# (`tests/migrations/test_triggers_siempre_activos.py`).
+TRIGGERS_DE_MEMBERSHIPS = (
+    "memberships_guard_identity",
+    "memberships_forbid_delete",
+    "memberships_forbid_truncate",
+)
+LIMPIAR_MEMBERSHIPS = (
+    "DO $$ BEGIN IF to_regclass('memberships.memberships') IS NOT NULL THEN "
+    "ALTER TABLE memberships.memberships DISABLE TRIGGER USER; "
+    "DELETE FROM memberships.memberships; "
+    "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_guard_identity; "
+    "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_forbid_delete; "
+    "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_forbid_truncate; "
+    "END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -217,6 +238,7 @@ LIMPIEZA_DE_SESION = (
     "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
     *LIMPIAR_AUTH,
+    LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
     LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
     LIMPIAR_PLANS,  # E6 y plan, sección 2 (B9)
 )
@@ -594,14 +616,24 @@ async def dos_sesiones(engine: AsyncEngine) -> AsyncIterator[tuple[AsyncSession,
     finally:
         await primera.close()
         await segunda.close()
-        async with engine.begin() as conexion:
-            await conexion.execute(text(LIMPIAR_SETTINGS))
-            await conexion.execute(text(LIMPIAR_MEMBERS))
-            await conexion.execute(text(LIMPIAR_PLANS))
-            for sql in LIMPIAR_AUTH:
-                await conexion.execute(text(sql))
-            await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
-            await conexion.execute(
-                text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq or 0}
-            )
-            await conexion.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await limpiar_tras_dos_sesiones(engine, ultima_seq or 0)
+
+
+async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> None:
+    """Lo que borra el `finally` de `dos_sesiones` (en una función para que
+    `tests/migrations/test_triggers_siempre_activos.py` pruebe exactamente esta limpieza).
+
+    Orden (sección 0 del plan del Sprint 3): membresías antes que socios y planes.
+    """
+    async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_SETTINGS))
+        await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
+        await conexion.execute(text(LIMPIAR_MEMBERS))
+        await conexion.execute(text(LIMPIAR_PLANS))
+        for sql in LIMPIAR_AUTH:
+            await conexion.execute(text(sql))
+        await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conexion.execute(
+            text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq}
+        )
+        await conexion.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))

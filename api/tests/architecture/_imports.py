@@ -29,6 +29,8 @@ FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "excep
 # Archivos privados por módulo: solo su propio módulo los importa (S2-D4).
 PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "auth": frozenset({"rules", "tokens", "cookies", "events", "sessions", "users", "links"}),
+    # S3-B1 (D7): `memberships` nace partido tras la fachada `service.py`.
+    "memberships": frozenset({"rules", "events", "sell", "lifecycle", "queries"}),
 }
 
 Rule = Literal[

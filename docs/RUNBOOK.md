@@ -320,6 +320,7 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **`0005b_auth_security`:** `downgrade 0005_settings` quita las cuatro columnas y el CHECK. El código de B2 a B5 las usa: se revierten esos checkpoints en orden inverso. Las sesiones vigentes siguen siendo válidas.
 - **`0006_members`:** `downgrade 0005b_auth_security` borra `members.members` y sus blobs. Las llaves de `crypto_keys` se conservan. Solo hay datos de desarrollo. Se revierten B7 y B8 (y F6 si se fusionó).
 - **`0007_plans`:** `downgrade 0006_members` borra `plans.plans`. Se revierte B9 (y F7).
+- **`0008_memberships`:** `downgrade 0007_plans` borra los tres triggers, las dos funciones, los índices y `memberships.memberships` (con sus filas: antes, el volcado de la sección 10). El esquema `memberships` y `btree_gist` quedan. Se revierte el checkpoint de S3-B1 (y los posteriores que usen la tabla). La auditoría de las ventas queda en `audit.audit_log` (append-only).
 - En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.
 
 ## 7. Imágenes base por digest y su renovación (S3-D62)
@@ -377,7 +378,7 @@ Una transacción detenida (un `psql` de soporte con `BEGIN` abierto, una sentenc
 - `DB_STATEMENT_TIMEOUT_MS` (30.000, `statement_timeout`): máximo que dura una sentencia. Agotado: `57014`.
 - `DB_IDLE_IN_TX_TIMEOUT_MS` (60.000, `idle_in_transaction_session_timeout`): una conexión que deja una transacción abierta sin hacer nada más de ese tiempo es cerrada por PostgreSQL y sus candados se liberan. El pool la descarta (`pool_pre_ping`).
 - Un deadlock (`40P01`) también se responde como `busy`.
-- Rango: de `0` a `2147483647` (el máximo de PostgreSQL; fuera de él `Settings` no arranca). `0` desactiva el tiempo correspondiente. Solo lo usa el CLI con `--db-timeouts off`; en el api no se baja a 0 (`.env.example`).
+- Rango: de `0` a `2147483647` (el máximo de PostgreSQL; fuera de él `Settings` no arranca). `0` desactiva el tiempo correspondiente. Con `ENV=production` el piso es 1.000 ms (S3-D79, `DB_TIMEOUT_FLOOR_MS`): un `.env` de producción con `0` o menos de 1.000 hace que el api no arranque (`ConfigError` con el nombre de la variable). El CLI con `--db-timeouts off` los pone en `0` sobre una copia ya validada del `Settings` (`model_copy`), así que sigue funcionando en producción.
 
 Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from`): `SHOW lock_timeout` ahí da `0`. Los del api los comprueba `tests/core/test_db_timeouts.py` (`SHOW lock_timeout` = `10s` sobre un engine de `create_engine_from`).
 
@@ -406,8 +407,32 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ## 10. Membresías y pagos (Sprint 3)
 
-Esqueleto; lo completan S3-B1 a S3-B5. Contenido previsto:
-- Volcado previo a cada migración del sprint (`0008` a `0011`), solo desde Bash y solo de los dos esquemas que el sprint toca (S3-D58, E11): `$DC exec -T db pg_dump -U apex -Fc -n memberships -n payments apex > docs/scratch/sprint-03-antes-<rev>.dump && chmod 600 docs/scratch/sprint-03-antes-<rev>.dump`. `*.dump` y `*.sql.gz` están en `.gitignore`; los volcados se borran al cerrar el sprint.
-- Restauración: `pg_restore --clean` de los dos esquemas sobre `apex-db-1`.
-- Cómo probar los triggers a mano (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`; `tgenabled = 'A'` en `pg_trigger`) y el `EXCLUDE` de membresías.
-- Rollback de `0008` a `0011` (se agrega también a la sección 6).
+Lo completan S3-B1 a S3-B5; cada slice agrega su parte.
+
+### Volcado y restauración (P-MIG)
+
+- Volcado previo a cada migración del sprint (`0008` a `0011`), solo desde Bash y solo de los dos esquemas que el sprint toca (S3-D58, E11): `$DC exec -T db pg_dump -U apex -Fc -n memberships -n payments apex > docs/scratch/sprint-03-antes-<rev>.dump && chmod 600 docs/scratch/sprint-03-antes-<rev>.dump`. `-T` es obligatorio (sin él `exec` asigna una TTY y corrompe el binario); en PowerShell la redirección también lo corrompe. `*.dump` y `*.sql.gz` están en `.gitignore`; los volcados se borran al cerrar el sprint.
+- Comprobar que el volcado se puede leer: `$DC exec -T db pg_restore -l < docs/scratch/sprint-03-antes-<rev>.dump | head`.
+- Restauración: `pg_restore --clean` de los dos esquemas sobre `apex-db-1`, con el api detenido (`$DC stop api`).
+
+### Comprobar la `EXCLUDE` y los triggers de `0008` (S3-B1)
+
+Todo dentro de una transacción que se revierte, sobre `apex-db-1` (`$DC exec -T db psql -U apex -d apex`). Las filas de prueba usan UUID nuevos y no tocan socios reales; el `ROLLBACK` final no deja nada.
+
+1. Estructura: `\d memberships.memberships` muestra la `EXCLUDE` `ex_memberships_member_dates` (`USING gist (member_id WITH =, daterange(start_date, end_date, '[]'::text) WITH &&) WHERE (status <> 'cancelled'::text)`), los diez CHECK `ck_memberships_*` y, en "Triggers firing always", los tres triggers.
+2. Los triggers siempre activos: `SELECT tgname, tgenabled FROM pg_trigger WHERE tgrelid = 'memberships.memberships'::regclass AND NOT tgisinternal;` debe dar `A` en `memberships_guard_identity`, `memberships_forbid_delete` y `memberships_forbid_truncate`. Una `O` significa que alguien corrió `ENABLE TRIGGER` sin `ALWAYS`: bajo `session_replication_role = replica` dejarían de correr (M-6). Se corrige con `ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER <nombre>`.
+3. Las funciones: `SELECT proname, prosecdef, proconfig FROM pg_proc WHERE pronamespace = 'memberships'::regnamespace;` da `guard_identity` y `forbid_delete` con `prosecdef = f` (`SECURITY INVOKER`) y `proconfig = {search_path=pg_catalog}`.
+4. La `EXCLUDE` (23P01): dentro de `BEGIN;`, dos `INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, agreed_price_cop, start_date, end_date, status) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '<uuid de socio>', gen_random_uuid(), 120000, '2026-10-01', '2026-10-28', 'active');` con el mismo `member_id`: el segundo con `start_date = '2026-10-28'` falla con `ERROR: conflicting key value violates exclusion constraint "ex_memberships_member_dates"` (SQLSTATE 23P01); con `start_date = '2026-10-29'` entra (adyacentes). Una `cancelled` no cuenta.
+5. La identidad (23000): `UPDATE memberships.memberships SET agreed_price_cop = 1 WHERE id = '<id>';` falla con `memberships_identity: la identidad de la membresía no cambia`; lo mismo `id`, `created_at`, `created_by`, `member_id`, `plan_id`, `start_date` y `classes_total`. Sobre una `cancelled` falla cualquier cambio de estado, motivo, quién, cuándo, fin o clases restantes. `\set VERBOSITY verbose` muestra `CONSTRAINT NAME: memberships_identity`.
+6. Sin borrado: `DELETE FROM memberships.memberships WHERE id = '<id>';` y el vaciado de la tabla fallan con `memberships_no_delete` (23000). También con `SET LOCAL session_replication_role = replica;` antes.
+7. `ROLLBACK;`.
+
+En el api la `EXCLUDE` es la red frente a la carrera: `sell` revisa antes en código (409 `membership_conflict` o `membership_overlap` con `existing_id`) y, si dos ventas del mismo socio llegaran a la vez sin el candado del socio, el 23P01 sale como 409 `membership_overlap` sin `existing_id`. El candado del socio (`pg_advisory_xact_lock(hashtextextended('<uuid>', 0))`) se ve en `pg_locks` con `locktype = 'advisory'` mientras dura la transacción de la venta.
+
+### Vender (S3-B1)
+
+- `POST /api/v1/members/{member_id}/memberships` (admin y coach) con `{"plan_id": "<uuid>", "start_date": "AAAA-MM-DD"}` (`start_date` opcional: hoy de Bogotá). Responde 201 con la membresía en `pending_payment` y el precio del plan copiado en `agreed_price_cop` (cambiar el precio del plan después no la cambia). `start_date` entre hoy menos `max_retroactive_days` (configuración de membresías, 7 por defecto) y hoy más 366 días; fuera da 422 `start_date_too_retroactive` o `start_date_too_far`.
+- Límite: 30 ventas por minuto por usuario (`USER_WRITE_LIMIT_PER_MIN`, bucket `memberships-write`); la 31 da 429 `rate_limited` con `Retry-After`. El contador vive en memoria y se limpia con `up -d api`.
+- `renew` y `first_payment` todavía no están: `renew=true` y cualquier `first_payment` dan 422 `validation_error` (con `field`) hasta S3-B6 y S3-B4.
+
+Pendiente de S3-B3 a S3-B5: triggers de `payments.payments` (`UPDATE payments.payments SET amount_cop = 1` debe fallar con `payments_immutable`) y rollback de `0009` a `0011`.

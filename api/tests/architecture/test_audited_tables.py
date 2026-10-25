@@ -9,7 +9,11 @@ S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit
 `REQUIRED_AUDITED_TABLES_V01` deben existir y estar auditadas; las de `PENDING_AUDITED` todavía
 pueden no existir, pero si ya existen y no declaran `__audited__ = True` la prueba falla. B7 y
 B9 mueven su entrada de `PENDING_AUDITED` a `REQUIRED_AUDITED_TABLES_V01` (S2-B7: `members.members`,
-con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`).
+con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-B1 mueve
+`memberships.memberships` (con `__audit_subject__ = "member_id"`, G-05); B2 moverá
+`memberships.membership_freezes` y B3 `payments.payments`. `PENDING_AUDITED` conserva entradas
+futuras (`classes.class_sessions`, `notifications.notifications`) para no dejar vacía la
+parametrización.
 """
 
 from __future__ import annotations
@@ -38,11 +42,14 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "settings.settings_sections",
         "members.members",
         "plans.plans",
+        "memberships.memberships",
     }
 )
 PENDING_AUDITED: dict[str, str] = {
-    "memberships.memberships": "Sprint 3",
-    "payments.payments": "Sprint 3",
+    "payments.payments": "Sprint 3 (S3-B3)",
+    "memberships.membership_freezes": "Sprint 3 (S3-B2)",
+    "classes.class_sessions": "Sprint 7",
+    "notifications.notifications": "Sprint 5",
 }
 
 
@@ -131,7 +138,7 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    tablas = {**_requeridas_auditadas(), "memberships.memberships": _Auditada}
+    tablas = {**_requeridas_auditadas(), "payments.payments": _Auditada}
     assert _incumplidas(tablas) == []
 
 
@@ -154,6 +161,19 @@ def test_plans_es_requerida_y_su_modulo_esta_en_modules() -> None:
     _cargar_modelos(("plans",))
     tablas = _tablas_de_la_app()
     assert getattr(tablas["plans.plans"], "__audited__", False) is True
+
+
+def test_membership_y_payment_declaran_sujeto() -> None:
+    """S3-B1 (G-05): `memberships.memberships` es requerida, su módulo está en `MODULES` y declara
+    `__audit_subject__ = "member_id"` (la fila de auditoría lleva el socio). B3 agrega aquí
+    `payments.payments` con el mismo sujeto."""
+    assert "memberships.memberships" in REQUIRED_AUDITED_TABLES_V01
+    assert "memberships.memberships" not in PENDING_AUDITED
+    assert "memberships" in MODULES
+    tablas = _tablas_de_la_app()
+    membresia = tablas["memberships.memberships"]
+    assert getattr(membresia, "__audited__", False) is True
+    assert getattr(membresia, "__audit_subject__", None) == "member_id"
 
 
 def test_una_requerida_ausente_o_sin_audited_falla() -> None:

@@ -381,14 +381,52 @@ def test_tiempos_de_espera_y_topes_por_usuario_con_sus_valores_por_defecto(
 
 
 @pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))
-def test_los_tiempos_de_espera_aceptan_cero_y_rechazan_negativos(
+def test_los_tiempos_de_espera_aceptan_cero_fuera_de_produccion_y_rechazan_negativos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str
+) -> None:
+    """S3-D79 (decisión del orquestador en S3-B1, posterior a W0-2): el `0` sigue aceptado fuera
+    de producción. Antes esta prueba aceptaba `0` con el `Settings` de producción (W0-2 fijó
+    `ge=0` sin piso); no era un error de la prueba sino una decisión que cambió."""
+    monkeypatch.delenv(nombre, raising=False)
+    dev = load_settings(env_file=escribir_env(tmp_path, ENV="dev", **{nombre: "0"}))
+    assert getattr(dev, nombre) == 0
+    for env in ("dev", "production"):
+        with pytest.raises(ConfigError) as excinfo:
+            load_settings(env_file=escribir_env(tmp_path, ENV=env, **{nombre: "-1"}))
+        assert nombre in excinfo.value.invalid
+
+
+@pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))
+@pytest.mark.parametrize("valor", ["0", "1", "999"])
+def test_en_produccion_los_tiempos_de_espera_no_bajan_de_1000_ms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str, valor: str
+) -> None:
+    """S3-D79: con `ENV=production` cada `DB_*_TIMEOUT_MS` tiene piso de 1.000 ms (como
+    `PASSWORD_MIN_LENGTH`): un `.env` con `0` desactivaría la defensa de H-3 en todo el api."""
+    monkeypatch.delenv(nombre, raising=False)
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, **{nombre: valor}))
+    assert nombre in excinfo.value.invalid
+    assert nombre in str(excinfo.value)
+
+
+@pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))
+def test_en_produccion_1000_ms_es_el_piso_aceptado(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nombre: str
 ) -> None:
     monkeypatch.delenv(nombre, raising=False)
-    assert getattr(load_settings(env_file=escribir_env(tmp_path, **{nombre: "0"})), nombre) == 0
-    with pytest.raises(ConfigError) as excinfo:
-        load_settings(env_file=escribir_env(tmp_path, **{nombre: "-1"}))
-    assert nombre in excinfo.value.invalid
+    prod = load_settings(env_file=escribir_env(tmp_path, **{nombre: "1000"}))
+    assert prod.ENV == "production"
+    assert getattr(prod, nombre) == 1000
+
+
+def test_el_cli_desactiva_los_tiempos_despues_de_validar_produccion(tmp_path: Path) -> None:
+    """S3-D79: `--db-timeouts off` sigue funcionando en producción porque `cli_runtime` copia el
+    `Settings` ya validado con `model_copy` (sin revalidar), no lo carga con ceros."""
+    prod = load_settings(env_file=escribir_env(tmp_path))
+    apagado = prod.model_copy(update=dict.fromkeys(DB_TIMEOUTS, 0))
+    assert {n: getattr(apagado, n) for n in DB_TIMEOUTS} == dict.fromkeys(DB_TIMEOUTS, 0)
+    assert {n: getattr(prod, n) for n in DB_TIMEOUTS} == DB_TIMEOUTS
 
 
 @pytest.mark.parametrize("nombre", list(DB_TIMEOUTS))

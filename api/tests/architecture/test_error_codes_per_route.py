@@ -32,6 +32,8 @@ CON_LIMITE = {
     ("post", "/api/v1/auth/me/password"),
     ("post", "/api/v1/members"),
     ("get", "/api/v1/members"),
+    # S3-B1 (E2, H-2): vender consume `memberships-write`.
+    ("post", "/api/v1/members/{member_id}/memberships"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

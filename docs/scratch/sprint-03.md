@@ -327,3 +327,170 @@ falla a propósito: 1.026 errores de "TEST_DATABASE_URL no está definida", no s
   0; `--db-timeouts quizas` → "Invalid value for --db-timeouts", código 2. `pg_stat_activity`
   sin sesiones `idle in transaction` al terminar.
 - Checkpoint `5e84bab`; `git status` limpio después.
+
+### S3-B1 · Rojo (B1.1 a B1.4 y la prueba de `0008`)
+
+- Línea base: HEAD `d8c2810`, árbol limpio; `pytest -m "not perf"` con `TEST_DATABASE_URL`: 2.078 ok,
+  4 saltadas, 3 deseleccionadas; `ruff check` y `mypy src` limpios.
+- B1.1 verificado: tras fábrica, limpieza y apoyos, `pytest tests/members tests/plans` 422 ok.
+- Rojo: 2.335 recolectadas; **198 fallan**, 2.130 ok (las 2.078 de la línea base más 52 nuevas que
+  ya pasan sobre los stubs), 4 saltadas, 3 deseleccionadas. `ruff format`, `ruff check` y
+  `mypy src` (84 archivos) limpios. `db_test` sin residuos: `alembic_version = 0007_plans`, sin
+  `memberships.memberships`, 0 planes, 0 socios, 0 usuarios `@test.apex`, 0 sesiones
+  `idle in transaction`.
+  - Fallan por archivo: `tests/memberships/test_rules.py` 80 (`NotImplementedError` de las reglas;
+    `ValueError` de fechas invertidas ausente); `tests/migrations/test_0008_memberships.py` 50 (no
+    existe la revisión); `tests/memberships/test_sell_service.py` 25 y `test_sell_router.py` 15
+    (`NotImplementedError` de `sell`/`compute_end_date` o `UndefinedTable`);
+    `tests/core/test_config.py` 9 (S3-D79, piso de 1.000 ms en producción);
+    `tests/core/test_locks.py` 5; `tests/memberships/test_refs_for.py` 4;
+    `tests/architecture/test_service_import_graph.py` 3 (`memberships` aún no importa
+    `members`/`plans`/`settings`: `test_cada_arista_permitida_existe`,
+    `test_memberships_depende_de_members_plans_y_settings`,
+    `test_plans_no_importa_services_y_solo_memberships_lo_importa`);
+    `tests/architecture/test_guarded_calls.py` 2 (`lock_membership` sin `with_for_update` ni
+    `populate_existing`); `tests/migrations/test_triggers_siempre_activos.py` 2;
+    `tests/architecture/test_no_trigger_tampering.py` 1 (el docstring de `core/audit.py`, línea
+    13, dice `` `TRUNCATE` ``: el Verde lo reescribe, por ejemplo "el vaciado de la tabla");
+    `tests/memberships/test_lock_order.py` 1; `tests/core/test_openapi_export.py` 1
+    (`docs/openapi.json` sin la ruta nueva: lo cierra P-API, B1.8).
+  - Verdes sobre los stubs (52; el stub ya es el contrato): catálogos y constantes, inmutabilidad
+    de los valores, 401, 422 de `member_id` en la ruta, OpenAPI de la ruta (201, 401, 403, 404,
+    409, 422, 429, 500, 503), `NotImplementedError` de `renew` y `first_payment`, `CON_LIMITE` y
+    `test_user_limits_catalog` con la ruta nueva, `test_sql_literals_constant` (todo el código
+    actual cumple E6), `test_handlers_no_new_locks` (lista vacía), `test_banned_imports`
+    ampliada, `test_no_cross_models` generalizada, `test_audited_tables`, `test_audit_module`,
+    `test_0007_plans` "en la cadena" y los controles de cada analizador.
+- Verde desechable (revertido; solo para validar el Rojo): migración `0008`, reglas, `sell`,
+  `refs_for`, `lock_member`, el piso de S3-D79 y el docstring de `core/audit.py`. Suite: 2.324 ok y
+  4 fallos: `test_docs_openapi_json_esta_al_dia` (esperado, P-API), `test_ninguna_funcion_supera_50_lineas`
+  (el `sell` desechable de 70 líneas: el Verde debe partirlo, E11) y dos defectos de prueba del
+  router (`MissingGreenlet` al leer `plan.id`/`previa.id` tras un 404/409: la sesión revierte y el
+  ORM expira), ya corregidos capturando los ids antes. Con eso `pytest tests/memberships
+  tests/migrations` en corrida conjunta (E1): 254 ok. Antes de borrar la revisión desechable se
+  bajó `db_test` a `0007_plans`.
+- Stubs: `core/locks.py` (`MEMBER_LOCK_NAMESPACE = 0` y `MEMBER_LOCK_SQL` definitivos;
+  `lock_member` con `NotImplementedError`); `modules/memberships/`: `models.py` (completo, con
+  `STATUSES`, `EXCLUDE_NAME`, `IDENTITY_CONSTRAINT`, `NO_DELETE_CONSTRAINT`), `exceptions.py`,
+  `schemas.py`, `events.py` y `router.py` completos (contrato), `rules.py` (tipos definitivos sin
+  validación de `__post_init__`; funciones con `NotImplementedError`), `sell.py` (`sell`,
+  `lock_membership`, `get_payment_target`), `queries.py` (`refs_for`, `_load_freezes_for`),
+  `lifecycle.py` (solo docstring), `service.py` fachada con `__all__` (`MembershipSold`,
+  `get_payment_target`, `refs_for`, `sell`). `main.MODULES` suma `memberships`;
+  `migrations/env.py` importa `memberships.models`; `PRIVATE_HELPERS["memberships"]`.
+- Fixtures y apoyos: `tests/factories/memberships.py` (`make_membership`, `make_memberships`) y
+  `FACTORIES["memberships.memberships"]`; `tests/conftest.py`: `TRIGGERS_DE_MEMBERSHIPS`,
+  `LIMPIAR_MEMBERSHIPS` (en `LIMPIEZA_DE_SESION` antes de `LIMPIAR_MEMBERS`) y
+  `limpiar_tras_dos_sesiones(engine, ultima_seq)` (el `finally` de `dos_sesiones`, extraído para
+  que `test_triggers_siempre_activos` pruebe exactamente esa limpieza); `tests/memberships/`
+  `__init__.py`, `_apoyo.py` y `conftest.py` (`bus_confirmado` copiado y `memberships_service`
+  importado al nivel del módulo).
+- Archivos de prueba nuevos: `tests/memberships/test_rules.py`, `test_sell_service.py`,
+  `test_sell_router.py`, `test_refs_for.py`, `test_lock_order.py`; `tests/core/test_locks.py`;
+  `tests/migrations/test_0008_memberships.py`, `test_triggers_siempre_activos.py`;
+  `tests/architecture/test_no_trigger_tampering.py`, `test_sql_literals_constant.py`,
+  `test_guarded_calls.py`, `test_handlers_no_new_locks.py`. Cambiados:
+  `test_service_import_graph.py` (reescrita, D2), `test_audit_module.py`, `test_audited_tables.py`,
+  `test_no_cross_models.py`, `test_error_codes_per_route.py`, `test_user_limits_catalog.py`,
+  `test_banned_imports.py`, `tests/migrations/test_0007_plans.py`, `tests/core/test_config.py`.
+- Importadores de lo tocado: `app.main.MODULES` lo leen `cli.py` (`_load_module_services`),
+  `tests/conftest.py` (`load_module_services`), `test_audit_module.py`, `test_audited_tables.py` y
+  `test_user_limits_catalog.py` (por `API_PREFIX`); `core/locks.py` es nuevo (lo usará
+  `memberships/sell.py`; hoy lo importan `test_locks.py`, `test_sql_literals_constant.py` y
+  `test_banned_imports.py` lo recorre); `tests/conftest.py` lo importan todas las pruebas
+  (`LIMPIAR_MEMBERSHIPS` y `limpiar_tras_dos_sesiones` son nuevos, `dos_sesiones` conserva su
+  comportamiento); `tests/architecture/_imports.PRIVATE_HELPERS` lo leen `find_forbidden_imports`
+  (todas las pruebas de módulos) y `test_no_cross_models.py`; `FACTORIES` solo
+  `test_no_plaintext_at_rest.py` (solo tablas cifradas).
+
+#### Decisiones de prueba que el Verde debe respetar
+
+1. **S3-D79 (decisión del orquestador en este Rojo).** Los tres `DB_*_TIMEOUT_MS` tienen piso de
+   1.000 ms con `ENV=production` (validador en `Settings`, como `PASSWORD_MIN_LENGTH`; mensaje con
+   el nombre de la variable, `ConfigError.invalid` la incluye); `0` sigue aceptado fuera de
+   producción, y el CLI los desactiva con `model_copy` después de validar (no revalida). La prueba
+   de W0-2 que aceptaba `0` con el `Settings` de producción se ajustó: no era un error de la prueba
+   sino una decisión posterior (queda en su docstring). Va a `DECISIONES.md` en el Verde.
+2. `pg_get_functiondef` nunca imprime `SECURITY INVOKER` (es el valor por defecto; solo imprime
+   `SECURITY DEFINER`): la prueba de L-10 usa `pg_proc.prosecdef = false`, `lanname = plpgsql`,
+   `proconfig == ['search_path=pg_catalog']` y "search_path" en la definición. Verificado contra
+   PostgreSQL 16 de `db_test`.
+3. `guard_identity` (S3-D48, "cualquier cambio sobre una `cancelled`"): sobre una cancelada se
+   rechazan `status`, `cancel_reason`, `cancelled_by`, `cancelled_at` y también `end_date`; el
+   desechable comparó además `classes_remaining`. Los cambios legítimos (`end_date`, `status`,
+   `classes_remaining`, anular y un `UPDATE` sin cambios) pasan. Error: 23000 con
+   `constraint_name = memberships_identity`; borrar y vaciar: 23000 con `memberships_no_delete`.
+4. `validate_start_date(start, today, *, max_retroactive_days: int | None, max_ahead_days=366)`:
+   `None` = sin tope retroactivo (lo pasa `sell` con `enforce_retroactive_limit=False`); compara
+   con `today ± timedelta` y nunca suma días a `start` (sin `OverflowError` con `9999-12-31` ni
+   `0001-01-01`). Los mensajes de `ValueError` de `__post_init__` nombran `start_date` y
+   `frozen_from`; `compute_status` nombra `expiring_days`.
+5. Excepciones con la firma de `DomainError` y `field` por defecto (`plan_id`, `start_date`), para
+   `reraise_with_prefix` de B4. `MembershipOverlap` lleva `existing_id` cuando lo da
+   `find_overlap` y no lo lleva cuando sale de la `EXCLUDE` (23P01).
+6. `test_sell_service` reemplaza `sell._check_open_memberships` con un `monkeypatch` para probar la
+   traducción de la `EXCLUDE`: el nombre (E11) y su llamada desde `sell` por atributo del módulo
+   son contrato de prueba. Los handlers que fallan se prueban con una excepción propia, no
+   `RuntimeError` (`NotImplementedError` lo es).
+7. `refs_for` consulta `memberships.memberships` una vez por lote de `ID_BATCH` (450 ids = 3
+   sentencias); `names_for` de socios y planes no se cuenta. Sin ids, cero sentencias.
+8. `classify_open` ignora también las canceladas y las vencidas; una `pending_payment` es futura
+   aunque haya empezado o vencido (D8). `is_covered` con lista vacía o todo anulado es falso.
+9. `lock_member` traduce el 55P03 con `raise DatabaseBusy from error` (la prueba mira `__cause__`);
+   la llave es `hashtextextended(str(member_id), 0)` (comprobada en `pg_locks`).
+10. `test_service_import_graph` exige `ALLOWED_EDGES` exactamente igual al grafo de nivel de módulo
+    (`test_cada_arista_permitida_existe`) y el comentario `# lazy: G-03` en todo import perezoso;
+    los pares se importan en `python -I -c` en los dos órdenes.
+11. `test_no_trigger_tampering` busca `TRUNCATE` en mayúsculas o `truncate [table] esquema.tabla`
+    en cualquier caso (el helper `auth.rules.truncate` no cuenta); el docstring de `core/audit.py`
+    sí cuenta y debe cambiar.
+
+#### Desviaciones del Rojo
+
+- `plan_renewal`, `resolve_member_status`, `apply_freeze`, `should_revert`, `parse_status_filter` y
+  `prefix_field` no tienen stub ni prueba en B1: nacen con sus slices (B6, B7, B2, B5, B7, B4); el
+  blueprint B1 los nombra en "Tipos puros" pero la matriz de pruebas de B1 no los incluye.
+- `docs/openapi.json` sin tocar (el Rojo no corre P-API): `test_docs_openapi_json_esta_al_dia` en rojo.
+- El caso `fin` en una cancelada y el de L-10 sin `SECURITY INVOKER` textual se explican arriba
+  (decisiones 2 y 3).
+
+### S3-B1 · Verde (B1.5 a B1.9)
+
+- Línea base del Verde: HEAD `d8c2810` con el Rojo sin confirmar; `pytest -m "not perf"`: 198 fallan,
+  2.130 ok, 4 saltadas, 3 deseleccionadas (igual que el Rojo).
+- Hallazgo de entorno: `apex-db-1` estaba en `alembic_version = 0008_memberships` (el Verde desechable
+  se aplicó también a la base de desarrollo al arrancar el api) sin la revisión en el árbol: el api no
+  arrancaba ("Can't locate revision", `unhealthy`). La tabla estaba vacía (0 filas, 0 auditoría). Se
+  resolvió dentro de P-MIG (DECISIONES, S3-B1).
+- B1.5 P-MIG: volcado `docs/scratch/sprint-03-antes-0008_memberships.dump` con `$DC exec -T db
+  pg_dump ... -n memberships -n payments` desde Bash (`chmod 600`, ignorado por git, `pg_restore -l`
+  legible, 18 entradas); `$DC stop api`; `api/migrations/versions/0008_memberships.py`;
+  `pytest tests/core/test_migrations.py tests/migrations/test_0008_memberships.py` 53 ok contra
+  `db_test`; `alembic heads` = `0008_memberships (head)`; `$DC start api` → `healthy`, "migraciones al
+  día"; ciclo `downgrade -1`/`upgrade head` en `apex-db-1` (reemplaza los objetos desechables).
+- B1.6 Verde: `rules.py` (todas las puras y la validación de `__post_init__`), `sell.py` partido
+  (`sell` en `begin_nested()`, `_sale_context`, `_check_open_memberships`, `_insert_membership`,
+  `_sell_out`, `lock_membership`, `get_payment_target`; ninguna función pasa de 50 líneas),
+  `queries.py` (`refs_for` por `chunked`, `_load_freezes_for` vacía hasta B2), `core/locks.py`
+  (`lock_member`; 55P03 → `DatabaseBusy` con `from`), docstring de `core/audit.py` sin la palabra de
+  vaciado, `Settings` con el piso de S3-D79 (`DB_TIMEOUT_FLOOR_MS`). `router.py`, `service.py`,
+  `models.py`, `events.py` y `exceptions.py` del Rojo sin cambios de contrato.
+- Revisión de seguridad (antes del gate): 0 CRITICAL, 0 HIGH, 2 MEDIUM, 5 LOW. Aplicados M1 (`renew=true`
+  da 422 `field="renew"` hasta B6, validador en `SellMembershipIn`) y L1 (`guard_identity` vigila `id`,
+  `created_at`, `created_by`; CHECK `cancel_fields_only_when_cancelled` en la migración y el modelo).
+  M2 (dueño B10), L2 (S3-D49), L3, L4 y L5 (dueño B4) anotados en DECISIONES.
+- Pruebas nuevas del Verde: `tests/memberships/test_payment_target.py` (4),
+  `tests/memberships/test_sell_router_renew.py` (2) y `tests/migrations/test_0008_endurecimiento.py`
+  (6). Ninguna prueba del Rojo cambió.
+- Suite: 2.340 ok, 4 saltadas, 3 deseleccionadas, 0 fallos; cobertura de `app` 96 % (`memberships`
+  98 %); `ruff format`, `ruff check` y `mypy src` (84 archivos) limpios.
+- B1.7 Docs: RUNBOOK §6 (rollback de `0008`), §9 (piso de producción) y §10 (volcado, comprobación de la
+  `EXCLUDE`, los triggers y las funciones con psql, y la venta); `.env.example` (comentario del piso);
+  DECISIONES "S3-B1".
+- B1.8 P-API: `export-openapi` dos veces idéntica (la ruta `POST /api/v1/members/{member_id}/memberships`
+  y sus esquemas, solo adiciones: 323 líneas en `docs/openapi.json`, 202 en `web/src/core/api/types.ts`);
+  repetida tras la revisión sin cambios; `npm run gen:api`, `types.contract.test.ts` 5 ok y
+  `npx tsc --noEmit` limpio.
+- Desviaciones: el plan "Mensual" de 120.000 en la base de desarrollo se llama "Mensual mvjipju3" (el
+  llamado "mensual" vale 320.000): el smoke de B1.10 usa el id real del de 120.000. La evidencia de
+  B1.10 va al commit `docs(sprint-03): evidencia de S3-B1` (E8).

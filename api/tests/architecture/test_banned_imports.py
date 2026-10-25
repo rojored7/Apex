@@ -4,6 +4,11 @@ Primera versión (US-002): recorría el árbol con `ast` solo por `import` y `fr
 la pasa al analizador compartido `find_banned_imports` de `_imports.py`, que también reporta
 `importlib.import_module("...")`, `import_module("...")` y `__import__("...")` con literal, y
 agrega un control en un directorio temporal. Complementa la regla `banned-api` de ruff.
+
+S3-B1 (US-083, E11): el recorrido cubre `core/locks.py` y todos los archivos de
+`modules/memberships` (y de `modules/payments` desde B3): ninguno es parte del bus y ninguno
+importa `hashlib`, `hmac`, `cryptography`, `jwt`, `argon2` ni `oqs`; el candado del socio calcula
+su llave con `hashtextextended` en SQL.
 """
 
 from __future__ import annotations
@@ -58,6 +63,39 @@ def test_control_en_un_arbol_temporal_reporta_archivo_y_linea(tmp_path: Path) ->
         "app/modules/members/service.py:4 importa cryptography.hazmat.primitives",
         "app/modules/members/service.py:6 importa jwt",
     ]
+
+
+MEMBERSHIPS_ARCHIVOS = (
+    "__init__",
+    "models",
+    "rules",
+    "events",
+    "sell",
+    "lifecycle",
+    "queries",
+    "exceptions",
+    "schemas",
+    "router",
+    "service",
+)
+
+
+def test_el_recorrido_cubre_core_locks_y_memberships() -> None:
+    visitados = {path.relative_to(SRC).as_posix() for path in APP.rglob("*.py")}
+    esperados = {"app/core/locks.py"} | {
+        f"app/modules/memberships/{nombre}.py" for nombre in MEMBERSHIPS_ARCHIVOS
+    }
+    assert esperados <= visitados, sorted(esperados - visitados)
+    for relativo in sorted(esperados):
+        assert not is_allowed(relativo), relativo
+        fuente = (SRC / relativo).read_text(encoding="utf-8")
+        assert find_banned_imports(fuente, relativo) == [], relativo
+
+
+def test_el_candado_del_socio_usa_hashtextextended_en_sql() -> None:
+    fuente = (APP / "core" / "locks.py").read_text(encoding="utf-8")
+    assert "hashtextextended" in fuente
+    assert find_banned_imports(fuente, "app/core/locks.py") == []
 
 
 def test_el_analizador_respeta_core_crypto() -> None:

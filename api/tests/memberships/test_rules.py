@@ -1,0 +1,461 @@
+"""Reglas puras de membresías (S3-B1, US-083; blueprint B1 "Rojo", sección 2 "Tipos puros"; D5,
+D8, D15, D16, N-23, N-24, M-4).
+
+Sin base ni reloj: "hoy" llega como argumento. Fechas calculadas a mano (N-23, fin inclusivo:
+`start + duration_days`; 30 días dan acceso 31 días):
+- 2026-10-01 + 30 = 2026-10-31; + 60 = 2026-11-30; 2028-02-01 + 30 = 2028-03-02 (2028 es
+  bisiesto: febrero tiene 29); 2026-10-21 + 30 = 2026-11-20; 2026-12-15 + 30 = 2027-01-14.
+- Con `expiring_days = 7` y fin 2026-10-31: el 23 faltan 8 días (al día), el 24 faltan 7 (por
+  vencer), el 31 faltan 0 (por vencer), el 1 de noviembre ya pasó (vencida).
+- Hoy de las pruebas es 2026-10-21 (D33): hoy + 366 = 2027-10-22 (2027 no es bisiesto), hoy + 367
+  = 2027-10-23, hoy - 7 = 2026-10-14 y hoy - 8 = 2026-10-13.
+- Renovación (Q1): vigente hasta el 2026-10-28 empieza el 29; adyacentes no se solapan con
+  `daterange(start, end, '[]')`: fin el 28 e inicio el 29 caben, inicio el 28 choca.
+"""
+
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError, replace
+from datetime import date, timedelta
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.modules.memberships.exceptions import StartDateTooFar, StartDateTooRetroactive
+from app.modules.memberships.models import STATUSES
+from app.modules.memberships.rules import (
+    MAX_START_AHEAD_DAYS,
+    FreezeWindow,
+    MembershipSnapshot,
+    MembershipStatus,
+    OpenMemberships,
+    PaymentLine,
+    PlanTerms,
+    classify_open,
+    compute_end_date,
+    compute_status,
+    covers,
+    effective,
+    find_overlap,
+    is_covered,
+    next_start_for_renewal,
+    paid_total,
+    validate_start_date,
+)
+
+HOY = date(2026, 10, 21)
+S = MembershipStatus
+DIAS_30 = PlanTerms(kind="days", duration_days=30, class_count=None)
+
+
+def snap(
+    status: MembershipStatus = S.active,
+    start: date = date(2026, 10, 1),
+    end: date = date(2026, 10, 31),
+    classes_remaining: int | None = None,
+    id: UUID | None = None,
+) -> MembershipSnapshot:
+    return MembershipSnapshot(
+        id=id or uuid4(),
+        status=status,
+        start_date=start,
+        end_date=end,
+        classes_remaining=classes_remaining,
+    )
+
+
+def ventana(desde: date, hasta: date) -> FreezeWindow:
+    return FreezeWindow(frozen_from=desde, frozen_to=hasta)
+
+
+# Catálogo ------------------------------------------------------------------------------------
+
+
+def test_los_estados_de_la_regla_son_los_del_modelo() -> None:
+    assert {s.value for s in MembershipStatus} == set(STATUSES)
+    assert len(STATUSES) == 6
+    assert MAX_START_AHEAD_DAYS == 366
+
+
+# compute_end_date ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("inicio", "plan", "fin"),
+    [
+        (date(2026, 10, 1), DIAS_30, date(2026, 10, 31)),
+        (
+            date(2026, 10, 1),
+            PlanTerms(kind="classes", duration_days=60, class_count=12),
+            date(2026, 11, 30),
+        ),
+        (date(2028, 2, 1), DIAS_30, date(2028, 3, 2)),
+        (date(2026, 10, 21), DIAS_30, date(2026, 11, 20)),
+        (date(2026, 12, 15), DIAS_30, date(2027, 1, 14)),
+        (
+            date(2026, 10, 21),
+            PlanTerms(kind="days", duration_days=1, class_count=None),
+            date(2026, 10, 22),
+        ),
+    ],
+    ids=["30-dias", "clases-60-dias", "febrero-bisiesto", "venta-de-hoy", "cruce-de-ano", "un-dia"],
+)
+def test_compute_end_date_es_inicio_mas_duracion_con_fin_inclusivo(
+    inicio: date, plan: PlanTerms, fin: date
+) -> None:
+    assert compute_end_date(inicio, plan) == fin
+
+
+# compute_status -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("hoy", "esperado"),
+    [
+        (date(2026, 10, 1), S.active),
+        (date(2026, 10, 23), S.active),
+        (date(2026, 10, 24), S.expiring),
+        (date(2026, 10, 30), S.expiring),
+        (date(2026, 10, 31), S.expiring),
+        (date(2026, 11, 1), S.expired),
+        (date(2027, 1, 1), S.expired),
+    ],
+    ids=[
+        "primer-dia",
+        "faltan-8",
+        "faltan-7",
+        "faltan-1",
+        "ultimo-dia",
+        "dia-siguiente",
+        "mucho-despues",
+    ],
+)
+def test_compute_status_por_fecha_con_expiring_days_7(
+    hoy: date, esperado: MembershipStatus
+) -> None:
+    assert compute_status(snap(), hoy, 7, []) == esperado
+
+
+def test_compute_status_con_expiring_days_0_solo_el_ultimo_dia_es_por_vencer() -> None:
+    assert compute_status(snap(), date(2026, 10, 30), 0, []) == S.active
+    assert compute_status(snap(), date(2026, 10, 31), 0, []) == S.expiring
+
+
+def test_pending_payment_se_conserva_aunque_las_fechas_ya_pasaron() -> None:
+    pendiente = snap(S.pending_payment, date(2026, 8, 1), date(2026, 8, 31))
+    assert compute_status(pendiente, HOY, 7, []) == S.pending_payment
+
+
+def test_pending_payment_gana_a_una_ventana_de_congelacion_que_contiene_hoy() -> None:
+    pendiente = snap(S.pending_payment)
+    assert compute_status(pendiente, HOY, 7, [ventana(HOY, HOY)]) == S.pending_payment
+
+
+@pytest.mark.parametrize(
+    ("hoy", "ventanas"),
+    [
+        (HOY, []),
+        (date(2026, 11, 15), []),
+        (HOY, [ventana(date(2026, 10, 15), date(2026, 10, 25))]),
+        (date(2026, 10, 30), []),
+    ],
+    ids=["vigente", "vencida-por-fecha", "con-ventana-hoy", "por-vencer"],
+)
+def test_cancelled_siempre_es_cancelled(hoy: date, ventanas: list[FreezeWindow]) -> None:
+    assert compute_status(snap(S.cancelled), hoy, 7, ventanas) == S.cancelled
+
+
+def test_classes_remaining_cero_es_vencida_aunque_las_fechas_esten_vigentes() -> None:
+    assert compute_status(snap(classes_remaining=0), HOY, 7, []) == S.expired
+    assert compute_status(snap(classes_remaining=3), HOY, 7, []) == S.active
+
+
+@pytest.mark.parametrize(
+    "ventanas",
+    [
+        [ventana(date(2026, 10, 15), date(2026, 10, 25))],
+        [ventana(HOY, date(2026, 10, 25))],
+        [ventana(date(2026, 10, 15), HOY)],
+        [ventana(HOY, HOY)],
+        [
+            ventana(date(2026, 10, 1), date(2026, 10, 5)),
+            ventana(date(2026, 10, 20), date(2026, 10, 22)),
+        ],
+    ],
+    ids=["contiene-hoy", "empieza-hoy", "termina-hoy", "solo-hoy", "segunda-de-dos"],
+)
+def test_una_ventana_que_contiene_hoy_da_frozen(ventanas: list[FreezeWindow]) -> None:
+    assert compute_status(snap(), HOY, 7, ventanas) == S.frozen
+
+
+@pytest.mark.parametrize(
+    "ventanas",
+    [
+        [ventana(date(2026, 10, 1), date(2026, 10, 5))],
+        [ventana(date(2026, 10, 25), date(2026, 10, 28))],
+        [
+            ventana(date(2026, 10, 1), date(2026, 10, 20)),
+            ventana(date(2026, 10, 22), date(2026, 10, 24)),
+        ],
+    ],
+    ids=["pasada", "futura", "rodean-hoy-sin-contenerlo"],
+)
+def test_una_ventana_que_no_contiene_hoy_no_congela(ventanas: list[FreezeWindow]) -> None:
+    assert compute_status(snap(), HOY, 7, ventanas) == S.active
+
+
+def test_el_estado_guardado_no_manda_salvo_cancelled_y_pending_payment() -> None:
+    """D5: una `frozen` sin ventanas que contengan hoy, o una `expired` vigente por fecha, se
+    leen por la fecha (el job de US-094 llega en el Sprint 4A)."""
+    assert compute_status(snap(S.frozen), HOY, 7, []) == S.active
+    assert compute_status(snap(S.expired), HOY, 7, []) == S.active
+    assert compute_status(snap(S.active), date(2026, 11, 1), 7, []) == S.expired
+
+
+def test_una_futura_activa_se_lee_al_dia() -> None:
+    futura = snap(S.active, date(2026, 11, 1), date(2026, 11, 30))
+    assert compute_status(futura, HOY, 7, []) == S.active
+
+
+def test_expiring_days_negativo_es_value_error() -> None:
+    with pytest.raises(ValueError, match="expiring_days"):
+        compute_status(snap(), HOY, -1, [])
+
+
+def test_effective_devuelve_otro_snapshot_con_el_estado_calculado() -> None:
+    original = snap(S.active)
+    calculado = effective(original, date(2026, 10, 24), 7, [])
+    assert calculado == replace(original, status=S.expiring)
+    assert calculado is not original
+    assert original.status == S.active
+
+
+# Cobertura (RN-03, Q5) --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pagado", "cubre"),
+    [(120_000, True), (119_999, False), (150_000, True), (0, False)],
+    ids=["igual", "menor", "mayor-q5", "nada"],
+)
+def test_covers(pagado: int, cubre: bool) -> None:
+    assert covers(120_000, pagado) is cubre
+
+
+def test_paid_total_suma_solo_los_no_anulados() -> None:
+    lineas = [PaymentLine(60_000, False), PaymentLine(60_000, True), PaymentLine(30_000, False)]
+    assert paid_total(lineas) == 90_000
+    assert paid_total([]) == 0
+
+
+@pytest.mark.parametrize(
+    ("lineas", "cubre"),
+    [
+        ([PaymentLine(120_000, False)], True),
+        ([PaymentLine(60_000, False), PaymentLine(60_000, False)], True),
+        ([PaymentLine(60_000, False)], False),
+        ([PaymentLine(200_000, False)], True),
+        ([PaymentLine(120_000, True), PaymentLine(120_000, True)], False),
+        ([], False),
+    ],
+    ids=["igual", "dos-abonos", "abono", "mayor-q5", "todos-anulados", "sin-pagos"],
+)
+def test_is_covered(lineas: list[PaymentLine], cubre: bool) -> None:
+    assert is_covered(120_000, lineas) is cubre
+
+
+# next_start_for_renewal (Q1) -----------------------------------------------------------------
+
+
+def test_renovar_una_vigente_empieza_el_dia_siguiente_al_fin() -> None:
+    vigente = snap(S.active, date(2026, 9, 29), date(2026, 10, 28))
+    assert next_start_for_renewal(vigente, HOY) == date(2026, 10, 29)
+
+
+def test_renovar_el_ultimo_dia_empieza_manana() -> None:
+    vigente = snap(S.expiring, date(2026, 9, 21), HOY)
+    assert next_start_for_renewal(vigente, HOY) == date(2026, 10, 22)
+
+
+def test_renovar_una_vencida_o_sin_membresia_empieza_hoy() -> None:
+    vencida = snap(S.expired, date(2026, 9, 1), date(2026, 10, 10))
+    assert next_start_for_renewal(vencida, HOY) == HOY
+    assert next_start_for_renewal(None, HOY) == HOY
+
+
+# classify_open y find_overlap (D8) --------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "estado", [S.active, S.expiring, S.frozen], ids=["activa", "por-vencer", "congelada"]
+)
+def test_una_vigente_es_current(estado: MembershipStatus) -> None:
+    vigente = snap(estado)
+    assert classify_open([vigente], HOY) == OpenMemberships(current=vigente, future=None)
+
+
+def test_una_activa_que_empieza_hoy_es_vigente() -> None:
+    hoy = snap(S.active, HOY, date(2026, 11, 20))
+    assert classify_open([hoy], HOY) == OpenMemberships(current=hoy, future=None)
+
+
+@pytest.mark.parametrize(
+    "futura",
+    [
+        snap(S.pending_payment, date(2026, 11, 1), date(2026, 11, 30)),
+        snap(S.pending_payment, date(2026, 10, 1), date(2026, 10, 31)),
+        snap(S.pending_payment, date(2026, 8, 1), date(2026, 8, 31)),
+        snap(S.active, date(2026, 10, 29), date(2026, 11, 28)),
+        snap(S.expiring, date(2026, 10, 22), date(2026, 10, 25)),
+    ],
+    ids=[
+        "pendiente-futura",
+        "pendiente-en-curso",
+        "pendiente-vieja",
+        "activa-futura",
+        "por-vencer-futura",
+    ],
+)
+def test_una_futura_es_future(futura: MembershipSnapshot) -> None:
+    assert classify_open([futura], HOY) == OpenMemberships(current=None, future=futura)
+
+
+def test_vigente_y_futura_a_la_vez() -> None:
+    vigente = snap(S.active, date(2026, 9, 29), date(2026, 10, 28))
+    futura = snap(S.pending_payment, date(2026, 10, 29), date(2026, 11, 28))
+    assert classify_open([futura, vigente], HOY) == OpenMemberships(current=vigente, future=futura)
+
+
+def test_solo_vencidas_o_canceladas_no_abren_nada() -> None:
+    items = [
+        snap(S.expired, date(2026, 9, 1), date(2026, 10, 10)),
+        snap(S.cancelled, date(2026, 10, 1), date(2026, 10, 31)),
+    ]
+    assert classify_open(items, HOY) == OpenMemberships(current=None, future=None)
+    assert classify_open([], HOY) == OpenMemberships(current=None, future=None)
+
+
+OTRA = UUID("11111111-1111-1111-1111-111111111111")
+SEGUNDA = UUID("22222222-2222-2222-2222-222222222222")
+
+
+@pytest.mark.parametrize(
+    ("inicio", "fin", "esperado"),
+    [
+        (date(2026, 10, 29), date(2026, 11, 28), None),
+        (date(2026, 10, 28), date(2026, 11, 27), OTRA),
+        (date(2026, 9, 1), date(2026, 9, 30), None),
+        (date(2026, 9, 1), date(2026, 10, 1), OTRA),
+        (date(2026, 9, 1), date(2026, 12, 1), OTRA),
+        (date(2026, 10, 10), date(2026, 10, 12), OTRA),
+    ],
+    ids=[
+        "adyacente-despues",
+        "mismo-dia-final",
+        "adyacente-antes",
+        "mismo-dia-inicial",
+        "la-contiene",
+        "contenida",
+    ],
+)
+def test_find_overlap_con_rangos_cerrados(inicio: date, fin: date, esperado: UUID | None) -> None:
+    otra = snap(S.active, date(2026, 10, 1), date(2026, 10, 28), id=OTRA)
+    assert find_overlap(inicio, fin, [otra]) == esperado
+
+
+def test_find_overlap_devuelve_la_que_choca_y_none_sin_otras() -> None:
+    primera = snap(S.expired, date(2026, 8, 1), date(2026, 8, 31), id=OTRA)
+    segunda = snap(S.active, date(2026, 10, 1), date(2026, 10, 28), id=SEGUNDA)
+    assert find_overlap(date(2026, 10, 20), date(2026, 11, 19), [primera, segunda]) == SEGUNDA
+    assert find_overlap(date(2026, 10, 20), date(2026, 11, 19), []) is None
+
+
+# validate_start_date (N-24, M-4) -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "inicio",
+    [HOY, HOY - timedelta(days=7), HOY + timedelta(days=366), date(2027, 10, 22)],
+    ids=["hoy", "hoy-menos-7", "hoy-mas-366", "2027-10-22"],
+)
+def test_validate_start_date_acepta_la_ventana_permitida(inicio: date) -> None:
+    validate_start_date(inicio, HOY, max_retroactive_days=7)
+
+
+@pytest.mark.parametrize(
+    "inicio",
+    [date(2026, 10, 13), date(2026, 1, 1), date(1, 1, 1)],
+    ids=["hoy-menos-8", "enero", "anio-1"],
+)
+def test_validate_start_date_rechaza_lo_demasiado_antiguo(inicio: date) -> None:
+    with pytest.raises(StartDateTooRetroactive) as error:
+        validate_start_date(inicio, HOY, max_retroactive_days=7)
+    assert (error.value.status, error.value.code, error.value.field) == (
+        422,
+        "start_date_too_retroactive",
+        "start_date",
+    )
+
+
+@pytest.mark.parametrize(
+    "inicio",
+    [date(2027, 10, 23), HOY + timedelta(days=367), date(2099, 1, 1), date(9999, 12, 31)],
+    ids=["2027-10-23", "hoy-mas-367", "2099", "9999-12-31"],
+)
+def test_validate_start_date_rechaza_lo_demasiado_lejano_sin_overflow(inicio: date) -> None:
+    with pytest.raises(StartDateTooFar) as error:
+        validate_start_date(inicio, HOY, max_retroactive_days=7)
+    assert (error.value.status, error.value.code, error.value.field) == (
+        422,
+        "start_date_too_far",
+        "start_date",
+    )
+
+
+def test_sin_tope_retroactivo_acepta_cualquier_pasado_pero_no_el_futuro_lejano() -> None:
+    """`enforce_retroactive_limit=False` (importación, N-24) llega como `None`; M-4 sigue."""
+    validate_start_date(date(2020, 1, 1), HOY, max_retroactive_days=None)
+    with pytest.raises(StartDateTooFar):
+        validate_start_date(date(2027, 10, 23), HOY, max_retroactive_days=None)
+
+
+def test_max_ahead_days_se_puede_ajustar() -> None:
+    validate_start_date(HOY + timedelta(days=10), HOY, max_retroactive_days=7, max_ahead_days=10)
+    with pytest.raises(StartDateTooFar):
+        validate_start_date(
+            HOY + timedelta(days=11), HOY, max_retroactive_days=7, max_ahead_days=10
+        )
+
+
+# Valores inmutables y validados ----------------------------------------------------------------
+
+
+def test_los_valores_son_inmutables() -> None:
+    with pytest.raises(FrozenInstanceError):
+        snap().status = S.expired  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        ventana(HOY, HOY).frozen_to = date(2026, 10, 30)  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        DIAS_30.duration_days = 60  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        PaymentLine(1, False).voided = True  # type: ignore[misc]
+
+
+def test_fechas_invertidas_son_value_error() -> None:
+    with pytest.raises(ValueError, match="start_date"):
+        snap(start=date(2026, 10, 31), end=date(2026, 10, 1))
+    with pytest.raises(ValueError, match="frozen_from"):
+        ventana(date(2026, 10, 25), date(2026, 10, 15))
+
+
+def test_un_solo_dia_es_un_rango_valido() -> None:
+    assert snap(start=HOY, end=HOY).end_date == HOY
+    assert ventana(HOY, HOY).frozen_to == HOY
+
+
+def test_freeze_window_cuenta_los_dos_extremos_y_sabe_si_contiene_un_dia() -> None:
+    diez = ventana(date(2026, 10, 15), date(2026, 10, 25))
+    assert diez.days == 11
+    assert ventana(HOY, HOY).days == 1
+    assert diez.contains(date(2026, 10, 15)) and diez.contains(date(2026, 10, 25))
+    assert not diez.contains(date(2026, 10, 14)) and not diez.contains(date(2026, 10, 26))

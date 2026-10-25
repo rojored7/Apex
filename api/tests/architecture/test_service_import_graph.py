@@ -1,34 +1,55 @@
 """Grafo de imports entre los `service.py` de los módulos (S2-D53; CLAUDE.md, reglas de
-módulos 2 bis y 3; G-03 y G-04).
+módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Sprint 3).
 
 - Nodo: cada módulo `app/modules/<m>/`. Arista `a → b`: algún archivo de `a` importa
   `app.modules.b.service` (en cualquier forma: `import`, `from ... import service`, relativo,
-  dentro de una función o `importlib.import_module("...")` literal). Desde la revisión Python
-  H1 se revisan todos los archivos del módulo, no solo `service.py`: el de auth se partió en
-  `sessions.py`, `users.py` y `links.py`, y la arista `auth → settings` vive en `users.py`.
-- El grafo es acíclico. El sentido minoritario de una dependencia mutua usa un puerto que el
-  dueño registra al arrancar, o un import perezoso de la lista blanca.
-- Aristas permitidas en v0.1 (mapa de contextos): `audit → auth` y `auth → settings`
-  (`GET /auth/me` lee `settings.service.gym_name`, S2-D14). Una arista nueva se agrega aquí con
-  su decisión.
-- Import perezoso (dentro de una función) de otro service: solo los pares de
-  `LAZY_IMPORT_WHITELIST`, vacía hasta el Sprint 3 (`memberships ↔ payments`, ...).
+  dentro de una función o `importlib.import_module("...")` literal). Se revisan todos los
+  archivos del módulo, no solo `service.py` (revisión Python H1: el de auth se partió y la arista
+  `auth → settings` vive en `users.py`; `memberships` nace partido, D7).
+- D2: las aristas de **nivel de módulo** y las **perezosas** (dentro de una función) se separan.
+  El grafo acíclico se exige solo sobre las de nivel de módulo; cada perezosa se valida contra
+  `LAZY_IMPORT_WHITELIST` y lleva el comentario `# lazy: G-03` en su línea o en la anterior
+  (sección 0 del plan del Sprint 3).
+- `ALLOWED_EDGES` (mapa de contextos) crece slice a slice con su decisión: `audit → auth`,
+  `auth → settings` (S2-D14) y, desde S3-B1, `memberships → members` (`get_ref`, `names_for`),
+  `memberships → plans` (`get(for_share=True)`, `names_for`) y `memberships → settings`
+  (`memberships_policy`). B3 agrega `payments → members/auth/settings` y B4
+  `memberships → payments`. Cada arista permitida existe de verdad.
+- `LAZY_IMPORT_WHITELIST` es exactamente `{payments → memberships, members → memberships,
+  plans → memberships}` (G-03); hoy no se usa ninguna.
+- Cada par de `ALLOWED_EDGES` se importa en un subproceso limpio (`python -I -c`) en los dos
+  órdenes (DoD de US-071): un ciclo de imports al arrancar fallaría ahí aunque el análisis
+  estático no lo viera.
 """
 
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 from typing import Final
+
+import pytest
 
 import app
 
 MODULES_DIR: Final = Path(app.__file__).resolve().parent / "modules"
+API_ROOT: Final = Path(app.__file__).resolve().parents[2]
 PREFIX: Final = "app.modules."
 ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
-    {("audit", "auth"), ("auth", "settings")}
+    {
+        ("audit", "auth"),
+        ("auth", "settings"),
+        ("memberships", "members"),
+        ("memberships", "plans"),
+        ("memberships", "settings"),
+    }
 )
-LAZY_IMPORT_WHITELIST: Final[frozenset[tuple[str, str]]] = frozenset()
+LAZY_IMPORT_WHITELIST: Final[frozenset[tuple[str, str]]] = frozenset(
+    {("payments", "memberships"), ("members", "memberships"), ("plans", "memberships")}
+)
+LAZY_MARK: Final = "# lazy: G-03"
 
 
 def _destino(nombre: str) -> str | None:
@@ -87,6 +108,28 @@ def service_edges(fuente: str, modulo: str) -> tuple[set[str], set[str]]:
     return arriba, perezosas
 
 
+def lazy_imports_sin_marca(fuente: str, modulo: str) -> list[int]:
+    """Líneas de imports perezosos de otro service sin `# lazy: G-03` en la línea o la anterior."""
+    lineas = fuente.splitlines()
+    faltan: list[int] = []
+
+    def visitar(nodo: ast.AST, dentro_de_funcion: bool) -> None:
+        for hijo in ast.iter_child_nodes(nodo):
+            en_funcion = dentro_de_funcion or isinstance(
+                hijo, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+            )
+            destinos = {_destino(n) for n in _nombres(hijo, modulo)} - {None, modulo}
+            if en_funcion and destinos and isinstance(hijo, ast.stmt | ast.expr):
+                numero = hijo.lineno
+                vecinas = lineas[max(0, numero - 2) : numero]
+                if not any(LAZY_MARK in linea for linea in vecinas):
+                    faltan.append(numero)
+            visitar(hijo, en_funcion)
+
+    visitar(ast.parse(fuente), False)
+    return faltan
+
+
 def find_cycle(grafo: dict[str, set[str]]) -> list[str] | None:
     """Un ciclo del grafo dirigido (lista de nodos con el primero repetido al final) o `None`."""
     estado: dict[str, int] = {}  # 1 = en la pila, 2 = terminado
@@ -115,57 +158,115 @@ def find_cycle(grafo: dict[str, set[str]]) -> list[str] | None:
 
 
 def _grafo_real() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    grafo: dict[str, set[str]] = {}
+    """`(arriba, perezosas)` por módulo: aristas de nivel de módulo y dentro de funciones."""
+    arriba: dict[str, set[str]] = {}
     perezosas: dict[str, set[str]] = {}
     for servicio in sorted(MODULES_DIR.glob("*/service.py")):
         modulo = servicio.parent.name
-        grafo[modulo], perezosas[modulo] = set(), set()
+        arriba[modulo], perezosas[modulo] = set(), set()
         for archivo in sorted(servicio.parent.glob("*.py")):
-            arriba, lazy = service_edges(archivo.read_text(encoding="utf-8"), modulo)
-            grafo[modulo] |= arriba | lazy
+            de_arriba, lazy = service_edges(archivo.read_text(encoding="utf-8"), modulo)
+            arriba[modulo] |= de_arriba
             perezosas[modulo] |= lazy
-    return grafo, perezosas
+    return arriba, perezosas
+
+
+def _aristas(grafo: dict[str, set[str]]) -> set[tuple[str, str]]:
+    return {(a, b) for a, destinos in grafo.items() for b in destinos}
 
 
 def test_hay_services_que_revisar() -> None:
-    grafo, _ = _grafo_real()
-    assert {"auth", "settings", "members", "plans"} <= set(grafo)
+    arriba, _ = _grafo_real()
+    assert {"auth", "settings", "members", "plans", "memberships"} <= set(arriba)
 
 
 def test_las_aristas_del_mapa_se_ven_tras_partir_auth() -> None:
     """Control (revisión Python H1): `auth → settings` está en `users.py`, no en `service.py`;
     si el grafo mirara solo `service.py` la arista desaparecería sin que nada fallara."""
-    grafo, _ = _grafo_real()
-    assert "settings" in grafo["auth"]
-    assert "auth" in grafo["audit"]
+    arriba, _ = _grafo_real()
+    assert "settings" in arriba["auth"]
+    assert "auth" in arriba["audit"]
 
 
-def test_plans_no_agrega_aristas() -> None:
-    """S2-B9: `plans` no importa ningún service ajeno ni nadie importa el suyo todavía (lo hará
-    `memberships` en el Sprint 3, con su decisión)."""
-    grafo, _ = _grafo_real()
-    assert grafo["plans"] == set()
-    assert [a for a, destinos in grafo.items() if "plans" in destinos] == []
-
-
-def test_el_grafo_de_services_es_aciclico() -> None:
-    grafo, _ = _grafo_real()
-    assert find_cycle(grafo) is None, f"ciclo entre services: {find_cycle(grafo)}"
+def test_el_grafo_de_nivel_de_modulo_es_aciclico() -> None:
+    arriba, _ = _grafo_real()
+    assert find_cycle(arriba) is None, f"ciclo entre services: {find_cycle(arriba)}"
 
 
 def test_solo_existen_las_aristas_del_mapa_de_contextos() -> None:
-    grafo, _ = _grafo_real()
-    aristas = {(a, b) for a, destinos in grafo.items() for b in destinos}
-    sobrantes = sorted(aristas - ALLOWED_EDGES)
+    arriba, _ = _grafo_real()
+    sobrantes = sorted(_aristas(arriba) - ALLOWED_EDGES)
     assert sobrantes == [], f"aristas sin decisión: {sobrantes}"
 
 
+def test_cada_arista_permitida_existe() -> None:
+    """Una arista declarada que nadie usa es una decisión sin código (o un import que se perdió):
+    `ALLOWED_EDGES` es exactamente el grafo de nivel de módulo."""
+    arriba, _ = _grafo_real()
+    faltan = sorted(ALLOWED_EDGES - _aristas(arriba))
+    assert faltan == [], f"aristas declaradas sin import: {faltan}"
+
+
+def test_memberships_depende_de_members_plans_y_settings() -> None:
+    """S3-B1 (D2): `sell` toma el socio, el plan y la política por sus services."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["memberships"] == {"members", "plans", "settings"}
+    assert perezosas["memberships"] == set()
+
+
+def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
+    """Reescrita en S3-B1 (D2; antes `test_plans_no_agrega_aristas`)."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["plans"] == set() and perezosas["plans"] == set()
+    importadores = {a for a, destinos in arriba.items() if "plans" in destinos}
+    assert importadores == {"memberships"}
+
+
 def test_ningun_import_perezoso_fuera_de_la_lista_blanca() -> None:
+    """Toda perezosa real está en la lista blanca (hoy no hay ninguna)."""
     _, perezosas = _grafo_real()
-    fuera = sorted((a, b) for a, destinos in perezosas.items() for b in destinos)
-    fuera = [par for par in fuera if par not in LAZY_IMPORT_WHITELIST]
+    fuera = sorted(_aristas(perezosas) - LAZY_IMPORT_WHITELIST)
     assert fuera == [], f"imports perezosos de otro service sin lista blanca: {fuera}"
-    assert frozenset() == LAZY_IMPORT_WHITELIST  # vacía hasta el Sprint 3 (S2-D53)
+
+
+def test_la_lista_blanca_es_la_de_g03() -> None:
+    esperada = {("payments", "memberships"), ("members", "memberships"), ("plans", "memberships")}
+    assert frozenset(esperada) == LAZY_IMPORT_WHITELIST
+    assert not LAZY_IMPORT_WHITELIST & ALLOWED_EDGES
+
+
+def test_todo_import_perezoso_lleva_su_comentario() -> None:
+    faltan = [
+        f"{archivo.relative_to(MODULES_DIR).as_posix()}:{linea}"
+        for archivo in sorted(MODULES_DIR.glob("*/*.py"))
+        for linea in lazy_imports_sin_marca(
+            archivo.read_text(encoding="utf-8"), archivo.parent.name
+        )
+    ]
+    assert faltan == [], f"imports perezosos sin '{LAZY_MARK}': {faltan}"
+
+
+PARES_EN_AMBOS_ORDENES = sorted({par for a, b in ALLOWED_EDGES for par in ((a, b), (b, a))})
+
+
+@pytest.mark.parametrize(
+    ("primero", "segundo"),
+    PARES_EN_AMBOS_ORDENES,
+    ids=[f"{a}-{b}" for a, b in PARES_EN_AMBOS_ORDENES],
+)
+def test_los_services_se_importan_en_un_proceso_limpio_en_ambos_ordenes(
+    primero: str, segundo: str
+) -> None:
+    orden = f"import app.modules.{primero}.service, app.modules.{segundo}.service"
+    resultado = subprocess.run(  # noqa: S603 - comando fijo armado con nombres de módulo
+        [sys.executable, "-I", "-c", orden],
+        cwd=API_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
 
 
 # Controles del analizador ------------------------------------------------------------------
@@ -191,6 +292,38 @@ def test_el_analizador_ve_todas_las_formas_de_import() -> None:
 def test_el_propio_service_no_es_arista() -> None:
     arriba, perezosas = service_edges("from app.modules.auth import service\n", "auth")
     assert arriba == set() and perezosas == set()
+
+
+def test_un_ciclo_solo_con_perezosas_no_cuenta_como_ciclo() -> None:
+    """D2: `memberships → payments` arriba y `payments → memberships` perezosa (G-03) no son un
+    ciclo de nivel de módulo."""
+    memberships = "from app.modules.payments import service as payments_service\n"
+    payments = (
+        "def enriquecer():\n"
+        "    # lazy: G-03 (payments -> memberships)\n"
+        "    from app.modules.memberships import service\n"
+    )
+    arriba = {"memberships": service_edges(memberships, "memberships")[0]}
+    arriba["payments"], perezosas = service_edges(payments, "payments")
+    assert find_cycle(arriba) is None
+    assert perezosas == {"memberships"}
+    assert lazy_imports_sin_marca(payments, "payments") == []
+
+
+def test_lazy_imports_sin_marca_ve_el_comentario_en_la_linea_o_la_anterior() -> None:
+    fuente = (
+        "from app.modules.members import service as members_service\n"
+        "def con_marca():\n"
+        "    # lazy: G-03 (payments -> memberships)\n"
+        "    from app.modules.memberships import service\n"
+        "def en_la_misma_linea():\n"
+        "    from app.modules.memberships import service  # lazy: G-03\n"
+        "def sin_marca():\n"
+        "    from app.modules.memberships import service\n"
+        "def ajeno():\n"
+        "    from app.modules.memberships import schemas\n"
+    )
+    assert lazy_imports_sin_marca(fuente, "payments") == [8]
 
 
 def test_find_cycle_detecta_un_ciclo_y_acepta_un_dag() -> None:

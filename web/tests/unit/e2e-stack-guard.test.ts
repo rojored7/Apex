@@ -3,7 +3,8 @@
 // niegan a correr si E2E_BASE_URL no apunta a localhost o 127.0.0.1, antes de crear nada.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { exigirStackLocal } from "../e2e/helpers/stack";
+import type { Page } from "@playwright/test";
+import { exigirStackLocal, loginComo, type CoachCreado } from "../e2e/helpers/stack";
 
 describe("exigirStackLocal (V10 L-D)", () => {
   it.each(["http://localhost:8180", "http://127.0.0.1:8180/", "https://localhost", "http://localhost"])("acepta %s", (url) => {
@@ -25,6 +26,29 @@ describe("exigirStackLocal (V10 L-D)", () => {
     expect(login.split("\n").slice(0, 3).join("\n")).toMatch(/exigirStackLocal\(process\.env\.E2E_BASE_URL\);/);
     // La contraseña del coach creado no se puede adivinar por la hora (Fase 4 L9).
     expect(source).toContain("const password = `Coach-${crypto.randomUUID()}-e2e!`;");
+  });
+
+  it("el login envía solo email y password aunque reciba un CoachCreado con id (LoginIn tiene extra=forbid)", async () => {
+    const enviados: unknown[] = [];
+    const page = {
+      request: {
+        post: (_url: string, options: { data: unknown }) => {
+          enviados.push(options.data);
+          return Promise.resolve({ ok: () => true, status: () => 200, json: () => Promise.resolve({ access_token: "t", must_change_password: false }) });
+        },
+      },
+    } as unknown as Page;
+    const coach: CoachCreado = { id: "00000000-0000-0000-0000-000000000002", email: "coach-x@apex.test", password: "p" };
+    const anterior = process.env.E2E_BASE_URL;
+    process.env.E2E_BASE_URL = "http://localhost:8180";
+    try {
+      await loginComo(page, coach);
+    } finally {
+      if (anterior === undefined) delete process.env.E2E_BASE_URL;
+      else process.env.E2E_BASE_URL = anterior;
+    }
+
+    expect(enviados).toEqual([{ email: "coach-x@apex.test", password: "p" }]);
   });
 
   it("toda spec que crea un coach lo borra al terminar (borrarUsuario en un finally)", () => {

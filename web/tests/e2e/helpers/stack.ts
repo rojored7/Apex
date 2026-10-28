@@ -60,7 +60,9 @@ export function exigirStackLocal(baseUrl: string | undefined): void {
 
 async function login(request: APIRequestContext, credentials: Credentials): Promise<LoginBody> {
   exigirStackLocal(process.env.E2E_BASE_URL);
-  const response = await request.post(`${API}/auth/login`, { data: credentials, headers: sameOriginHeaders() });
+  // Solo email y password: un CoachCreado trae también `id` y LoginIn tiene extra="forbid" (422).
+  const data = { email: credentials.email, password: credentials.password };
+  const response = await request.post(`${API}/auth/login`, { data, headers: sameOriginHeaders() });
   if (!response.ok()) throw new Error(`El login de ${credentials.email} respondió ${String(response.status())}.`);
   const body = (await response.json()) as LoginBody;
   if (body.must_change_password) throw new Error(`${credentials.email} debe cambiar su contraseña antes de los E2E (V3 del plan).`);

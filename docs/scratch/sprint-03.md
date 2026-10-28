@@ -3011,3 +3011,31 @@ Todas las corridas usaron `--workers=1`, `retries: 0` y `E2E_BASE_URL=http://loc
 - Admin desechable borrado (204, `deleted_at`).
 - Quedan como datos de prueba los 30 planes `E2E-tope-d78ef5-*` y los planes, socios y ventas de las specs. Los planes se podrán limpiar cuando exista `DELETE /plans` (Sprint 4A).
 - Quedan 120 cuentas `coach-*` viejas, varias con contraseñas derivables de la hora, en la base de desarrollo. Hay que darlas de baja en V12 o con un comando auditado.
+
+## V12 · Baja de cuentas de prueba
+
+Rama `feat/sprint-03-membresias-pagos`, 2026-10-28. Solo API y psql de lectura sobre `apex-db-1`; ningún SQL de escritura, ni `down -v`, ni imágenes reconstruidas, ni `.env`/`infra/`/`web/` tocados. Otro agente migraba el front a zod 4 en el mismo árbol; ninguno de sus archivos entra en este commit.
+
+### Método
+- `admin@ejemplo.local` no se tocó: se firmó un access suyo dentro de `apex-api-1` (`configure_security` + `create_access_token`, script temporal en `/tmp`). El access vivió solo en un archivo del scratchpad. Sin admin desechable.
+- Al terminar, los scripts de `/tmp` del contenedor se borraron como root (`/tmp` vacío) y el access y los scripts se borraron del scratchpad.
+- `DELETE /api/v1/users/{id}` por `8181`, uno cada ~2,2 s (≈27 por minuto, por debajo de la cubeta `admin-write` de 30), con reintento según `Retry-After` si llegaba un 429.
+
+### Alcance
+- Lista previa con psql de solo lectura: `email LIKE 'coach-%@apex.test' AND deleted_at IS NULL` = **120**, `created_at` de 2026-10-22 12:05 a 2026-10-25 18:03 UTC. `coach-mvjpe527@apex.test` está dentro de esas 120.
+- `admin-e2e-%`: los cinco que existen ya tenían `deleted_at`; no había ninguno vivo.
+- Fuera del alcance y sin tocar: `admin@ejemplo.local`, `system@apex.local` y tres coaches con dominio `@test.apex` (`coach-b3-smoke`, `coach-b7-smoke`, `coach-demo-mvjipju3`). No encajan en el patrón pedido; quedan anotados para decidir aparte.
+
+### Resultado
+- **120 × 204**, **0 × 429**, 0 otros códigos. De 21:03:23 a 21:08:20 UTC (4 min 57 s).
+- psql después:
+  - `coach-%@apex.test` vivos: **0** (antes 120).
+  - `auth.users` vivos: **5** de 200 (antes 125 de 200): los cinco de fuera del alcance.
+- Auditoría:
+  - `audit.audit_log` pasó de seq 3955 a 4195: **+240 filas**, todas `update` sobre `auth.users`, 120 `record_id` distintos (dos por baja), y las 120 con `deleted_at` en `after`. Actor único: el admin real.
+  - 0 filas `delete` (la baja es lógica). `insert` y `login` sin cambios (199 y 1138).
+  - Aún no existe `sign-audit --verify` en el CLI. La cadena se verificó con `core.audit.verify_chain` sobre toda la tabla, leída en una transacción `READ ONLY` dentro del api: **`ok=True`, 4195 filas, sin ruptura**.
+
+### Queda como dato de prueba
+- Los 30 planes `E2E-tope-d78ef5-*`, "Mensual V50137" y los planes, socios y ventas de las specs. `DELETE /plans` llega en el Sprint 4A; hasta entonces no hay baja auditada para ellos.
+- Los volcados `docs/scratch/sprint-03-antes-*.dump` (L-C) no son parte de este paso de V12; siguen pendientes de borrar al cerrar el sprint.

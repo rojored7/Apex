@@ -3039,3 +3039,55 @@ Rama `feat/sprint-03-membresias-pagos`, 2026-10-28. Solo API y psql de lectura s
 ### Queda como dato de prueba
 - Los 30 planes `E2E-tope-d78ef5-*`, "Mensual V50137" y los planes, socios y ventas de las specs. `DELETE /plans` llega en el Sprint 4A; hasta entonces no hay baja auditada para ellos.
 - Los volcados `docs/scratch/sprint-03-antes-*.dump` (L-C) no son parte de este paso de V12; siguen pendientes de borrar al cerrar el sprint.
+
+## Validación final del stack con Zod 4
+
+Rama `feat/sprint-03-membresias-pagos`, desde `0fa1270` con el árbol limpio. Es la primera corrida de la migración a Zod 4 (V9, S3-D105) contra Nginx real. Mismo método que en "Validación final del stack tras Fase 4 y V10". `admin@ejemplo.local` no se tocó: dentro de `apex-api-1` se firmó un access suyo con un script temporal. Ese access sirvió para crear el admin desechable `admin-e2e-1793222752@apex.test` (`8f85de88-…`) con `POST /users` y para borrarlo al final. La contraseña se fijó con el token de `activation_url` y `POST /auth/reset`, y era aleatoria. El script se borró como root (`/tmp` vacío). Contraseñas, tokens y la copia de `.env` vivieron solo en el scratchpad y se borraron. Mientras tanto, otros agentes escribían documentos: el commit `43793e4` solo tocó `docs/ddd/`, así que la imagen sigue correspondiendo al código.
+
+### 1 · Imagen web
+- `apex-web:local` se construyó con buildx directo y contexto raíz (`-f web/Dockerfile .`). Quedó con id **`695f6e2f027d`** en 29 s; antes era `1b2739fc20b7`. `apex-api:local` no cambió (`7ebd75528265`).
+- `$DC up -d --no-build web` dejó web `healthy`. `alembic current` da `0011_payments_immutability (head)`.
+- 8180 sirve **`assets/main-6hstwnyo.js`** (418.299 B) y **`assets/zod-DOov2Nxz.js`** (92.050 B), los dos con 200.
+- `/index.html` trae el `<script type="module">` de `main` y `<link rel="modulepreload" href="/assets/zod-DOov2Nxz.js">`, ambos con el mismo `nonce` de 32 hexadecimales que la cabecera.
+- La CSP de `/index.html` y la de `/socios` es `script-src 'self' 'nonce-…'`. No incluye **`unsafe-eval`** ni `unsafe-inline`, y el nonce cambia en cada respuesta.
+
+### 2 · CSP con Zod 4 (`jitless`)
+- `CSP_BASE_URL=http://localhost:8180 npx playwright test --project=preview --workers=1 tests/e2e/csp.spec.ts`:
+  - "el front carga sin violaciones de CSP": **ok**, con la cabecera del servidor y 0 violaciones;
+  - el control del script en línea se salta por diseño contra Nginx.
+- Con Playwright y el admin desechable se entró por la pantalla de login y se recorrió:
+  - `/socios` con búsqueda;
+  - `/socios/nuevo`, con "Guardar" vacío y un teléfono `12`: 4 campos con error, entre ellos "El teléfono debe tener al menos 7 dígitos.";
+  - `/membresias/vender`, con "Vender y cobrar" vacío: "Elige el socio…", "Elige un plan." y "Escribe el valor recibido.".
+- Resultado: **0 violaciones de CSP** (`securitypolicyviolation`) y **0 errores de página**.
+  - La consola tuvo un solo error: el `401` de `POST /auth/refresh` al abrir `/login` sin cookie. Es el intento normal de restaurar la sesión y no viene de Zod.
+  - Zod 4 valida en `jitless` sin pedir `eval`.
+
+### 3 · `e2e:stack`
+- Se copió `.env` y se le agregó un bloque al final:
+  - las ocho `LOGIN_*` y `*_IP_LIMIT` (1000, y `LOGIN_ACCOUNT_GLOBAL_LIMIT` 10000);
+  - las ocho `USER_*` con los valores del job `e2e-stack`.
+- `$DC -f infra/compose.e2e.yml up -d --no-build api web`: 16 variables dentro del api y `rate=6000r/m` en `auth-zone.conf`.
+- Las corridas usaron `npm run e2e:stack -- --workers=1`, `E2E_BASE_URL=http://localhost:8180` y `retries: 0`, sin `E2E_COACH_*`.
+  - **Corrida 1: 35 ok, 0 fallos, 0 flaky** en 53,8 s.
+  - **Corrida 2: 35 ok, 0 fallos, 0 flaky** en 53,5 s.
+  - No hizo falta ninguna corrección de spec ni hubo defectos de producto.
+- psql de solo lectura después:
+  - `coach-<uuid>@apex.test` creados en la última hora: 37, todos con `deleted_at`;
+  - `coach-<uuid>` vivos: **0**; `coach-%@apex.test` vivos: 0;
+  - los tres `@test.apex` siguen vivos y no se tocaron.
+
+### 4 · Restauración
+- `.env` se copió de vuelta y `cmp` dio **idéntico**.
+- `$DC up -d --no-build api web` sin `compose.e2e.yml`: 0 variables de topes en el api, `rate=60r/m` y sin el montaje E2E. Compose recreó también `db`, por el `env_file`; quedó `healthy`.
+- El admin desechable se borró con `DELETE /users/{id}` (**204**, `deleted_at`). Quedan 5 usuarios vivos, los mismos que al cerrar V12.
+- Seis logins fallidos por 8180: **`401 ×5, 429`**.
+- `$DC ps`: db, db_test, api y web `healthy`.
+- `$DC logs --since 30m api`: 28 líneas.
+  - 0 `ERROR` y 0 trazas. Las tres líneas con "error" son del logger `uvicorn.error` en nivel `INFO`.
+  - 0 apariciones de `apx1.`, del correo del admin desechable, del correo de los logins fallidos y de `E2E-tope` o `0 E2E`.
+  - Límite: los logs del contenedor de las corridas E2E se perdieron al recrear.
+
+### Estado al terminar
+- Stack `apex` normal con `apex-api:local` `7ebd75528265` y `apex-web:local` `695f6e2f027d` (Zod 4). `.env` idéntico al previo.
+- Siguen como datos de prueba los planes, socios y ventas de las specs de estas dos corridas, igual que en las anteriores, hasta que exista `DELETE /plans` (Sprint 4A).

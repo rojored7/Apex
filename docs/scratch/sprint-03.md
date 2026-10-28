@@ -2918,3 +2918,96 @@ Puntos V9.2 a V9.7 y V9.9 del plan (sección 7), sobre `fd2e8a3` con el árbol l
 - Conteos · api por recolección: **3.894 pruebas, 3.886 con `-m "not perf"`** (8 `perf`). Front: `npx vitest list` da **1.907** líneas de prueba sobre 142 archivos `*.test.ts(x)` de `src`; no cuadra con las 2.758 de la Fase 4 (es probable que `vitest list` no expanda igual los casos parametrizados o cuente distinto); vitest completo no se corrió aquí y la cifra válida la da V9.1.
 
 **Veredicto de V9 ligero:** todo en verde salvo `npm audit --omit=dev` (zod 3.x, GHSA-mrhx-c7xc-m3w5), que bloquea el gate y la CI hasta migrar a `zod` ≥ 4.6.6 o registrar un riesgo aceptado con su decisión en `DECISIONES.md`.
+
+## Validación final del stack tras Fase 4 y V10
+
+Rama `feat/sprint-03-membresias-pagos`, desde `fd2e8a3` con el árbol limpio. Repite V2 parcial, V4 y V9.8 con las imágenes reconstruidas. Mismo método que en "Validación V2–V8". `admin@ejemplo.local` no se tocó: solo se firmó un access suyo dentro de `apex-api-1`, con un script temporal borrado como root al terminar. Ese access sirvió para crear y borrar el admin desechable `admin-e2e-1793220078@apex.test` (`200d0bb0-…`). La contraseña del desechable se fijó con `tools issue-reset-link --as admin@ejemplo.local` y `POST /auth/reset`. El coach `coach-mvjpe527@apex.test` se restableció igual. Contraseñas, tokens y la copia de `.env` vivieron solo en el scratchpad y se borraron. Mientras tanto, otro agente trabajaba en el árbol: V9 ligero y la migración a zod 4, sin confirmar. Ninguno de sus archivos entra en estos commits.
+
+### 1 · Imágenes
+- Se construyeron con buildx directo y sin `--no-cache`:
+  - `apex-api:local` `7ebd75528265`, en 11 s. El contexto es `api/`: el Dockerfile copia `pyproject.toml` y `src` con rutas relativas a `api/`, como dice RUNBOOK §7, así que el contexto raíz no sirve.
+  - `apex-web:local` `1b2739fc20b7`, en 20 s, con contexto raíz.
+- `$DC up -d --no-build api web`: los cuatro servicios quedaron `healthy`.
+- `alembic current` da `0011_payments_immutability (head)`.
+- Por 8180 se sirve `assets/main-DnvXISUu.js`. Antes era `main-CvatLbOO.js`: el bundle ya incluye la Fase 4 del front.
+
+### 2 · V9.8
+- `check-image-secrets.sh apex-api:local`: **0 fallas**. Sin `.env`, sin llaves privadas, nada bajo `/app` y gitleaks limpio.
+- `test_api_image.sh apex-api:local`: **0 fallas**. Revisó UID 10001, tzdata, alembic, ausencia de herramientas de desarrollo y que `app.main` importa.
+- Ninguno de los dos scripts construye cuando recibe la imagen, así que no hubo desviaciones.
+
+### 3 · Nginx en vivo por 8180
+- Cabeceras de caché: exactamente **una** `Cache-Control: no-store` y **una** `Pragma: no-cache` en:
+  - `GET /api/v1/health` (200);
+  - `GET /members?limit=1` con token (200);
+  - el 401 sin token.
+  - `HEAD /health` da 405, porque el api no tiene HEAD, y también trae una de cada una.
+- Topes de cuerpo:
+  - `POST /api/v1/members` con 60 KB: **422** `validation_error` del api. Con 70 KB: **413** de Nginx.
+  - `PATCH /api/v1/settings/privacy` con 100 KB: **422** del api. Con 140 KB: **413**.
+  - Los 413 llevan una sola `Cache-Control: no-store` y una sola `Pragma`.
+- Observación: el 413 de Nginx sale en HTML (`text/html`), no con el envelope JSON. El 429 de auth sí tiene envelope (`@rate_limited`). No bloquea: el front lo trata como error genérico. Queda anotado para cuando lleguen los adjuntos.
+
+### 4 · Topes `admin-write` (S3-D100)
+- Con el admin desechable y los topes de desarrollo (30 por minuto) se lanzaron 31 `POST /plans` seguidos, del `E2E-tope-d78ef5-1` al 31:
+  - los 30 primeros dieron **201**;
+  - el 31 dio **429** `rate_limited` con `retry-after: 59` y una sola `Cache-Control`;
+  - un 32 también dio 429.
+- Con la cubeta agotada, `POST /users/{id}/lock` y luego `/unlock` sobre el coach viejo `coach-mvo4z83m@apex.test` respondieron **200 y 200**. Son rutas exentas.
+- No existe `DELETE /plans/{id}` hasta el Sprint 4A, así que quedan **30 planes activos `E2E-tope-d78ef5-<n>`** como datos de prueba.
+
+### 5 · `e2e:stack`
+Antes de correr se ajustó el entorno:
+- copia de `.env` y bloque al final con las ocho `LOGIN_*` y `*_IP_LIMIT` de E5 y las ocho `USER_*` ×100;
+- `-f infra/compose.e2e.yml`;
+- dentro del api quedaron 16 variables y Nginx con `rate=6000r/m`.
+
+Todas las corridas usaron `--workers=1`, `retries: 0` y `E2E_BASE_URL=http://localhost:8180`, sin `E2E_COACH_*`, de modo que todas las specs pasan por `crearCoach`.
+
+- **Corrida 1: 31 ok y 4 fallos** (`member-detail`, `members`, `plans`, `settings-gym`). En las cuatro, el login del coach respondió 422.
+  - Causa: `crearCoach` devuelve ahora `{ id, email, password }` y `login()` mandaba el objeto entero. `LoginIn` tiene `extra="forbid"` y rechaza el `id`.
+  - Se reprodujo fuera de la spec: con solo `email` y `password`, el login da 200.
+  - Es un **defecto de la prueba**, no del producto.
+  - Corrección `59bf09d`: `login()` envía solo `email` y `password`. Prueba nueva en `tests/unit/e2e-stack-guard.test.ts`, en rojo antes del cambio.
+  - Los cuatro coaches de esa corrida se borraron en el `finally`, aunque la spec falló: `borrarUsuario` ya funciona contra el stack.
+- **Corrida 2: 35 ok.**
+- **Corrida 3: 34 ok y 1 fallo** en `sell-with-payment`: no encontraba el radio `^Mensual mvsl6sf5`.
+  - La venta pide los 100 primeros planes activos ordenados por nombre (`SELL_PLANS_LIMIT`) y muestra "Se muestran 100 de N planes…". Es diseño, ya probado en `SellPage.test.tsx`.
+  - Había 136 planes activos: los 30 `E2E-tope` más los de corridas anteriores, que no se pueden dar de baja.
+  - El nombre `Mensual <hora>` del helper siempre queda detrás de los de corridas anteriores, así que la spec se iba a romper tarde o temprano. Es un **defecto de la prueba** que dependía de datos acumulados.
+  - Corrección `43b4f09`: `nombrePlanE2E()` devuelve `0 E2E <cuenta regresiva base 36>`, que ordena primero y deja el más nuevo delante. Comprobado con `ORDER BY` en `apex-db-1` y con una prueba unitaria.
+- **Corridas 4 y 5: 35 ok cada una.**
+- Coaches restantes: `coach-activa-<hora>` subía en uno por corrida y seguía vivo.
+  - `users-activation.spec.ts` crea ese coach desde la pantalla con una contraseña sacada de la misma hora y nunca lo borraba. Su guarda solo miraba las specs que usan `crearCoach`.
+  - Corrección `561ae32`: la contraseña sale de `crypto.randomUUID()`, el `id` se lee de la respuesta de `POST /users` y la cuenta se borra en un `finally`. La guarda unitaria cubre ahora las altas por la pantalla, con `users-manage` exenta porque prueba la baja por la pantalla.
+  - Se comprobó con la spec sola (1 ok, coach con `deleted_at`).
+  - Los cinco `coach-activa-mvsl*` de estas corridas se borraron por API (204 ×5).
+- **Resultado final: dos corridas completas seguidas tras las tres correcciones, 35 ok, 0 fallos y 0 flaky cada una**, en 53,4 s y 53,8 s. Por spec: `captures` 13, `settings-gym` 5, `login` 4, `plans` 2 y una cada una las otras once.
+- psql: `coach-%@apex.test` vivos = **120**, igual que antes de empezar.
+  - Son cuentas viejas de sprints anteriores, todas con `created_at` ≤ 2026-10-25 18:03 UTC, más `coach-mvjpe527@apex.test`.
+  - De esta validación quedan **0** coaches vivos.
+  - `coach-<uuid>` vivos: 0 de 21.
+  - El "0 salvo `coach-mvjpe527`" que pedía la tarea no aplica a esta base: las 120 viejas no vienen de estas specs.
+- Guarda `exigirStackLocal`: con `E2E_BASE_URL=http://example.invalid`, `sell-with-payment` y `members` fallaron en **2,4 s en total**, con el mensaje "E2E_BASE_URL debe apuntar a localhost o 127.0.0.1…". Los conteos de `members.members`, `plans.plans` y `auth.users` no cambiaron (210, 156 y 200).
+
+### 6 · Restauración
+- `.env` se copió de vuelta y `cmp` dio idéntico.
+- `$DC up -d --no-build api web` sin `compose.e2e.yml`: 0 variables de topes en el api, `rate=60r/m` y sin el montaje E2E. Compose recreó también `db`, porque cambió el hash de `env_file`; quedó `healthy` y con los datos.
+- Seis logins fallidos: **`401 ×5, 429`**.
+- `$DC ps`: db, db_test, api y web `healthy`.
+- `$DC logs --since 1h api`: 28 líneas, que solo cubren el contenedor recreado tras restaurar.
+  - `grep -ci error` da 3. Las tres son del logger `uvicorn.error` en nivel `INFO` (arranque), así que hay 0 `ERROR` y 0 trazas.
+  - 0 apariciones de `apx1.`, `E2E-tope`, el correo del admin desechable, el correo de los logins fallidos y el coach bloqueado.
+  - Límite: los logs de los contenedores de las corridas E2E se perdieron al recrear, y los documentos aleatorios de las specs no se conocen fuera de Playwright.
+
+### Commits
+- `59bf09d` fix(web): login de los helpers sin `id`.
+- `43b4f09` fix(web): nombre del plan de las specs que ordena primero.
+- `561ae32` fix(web): `users-activation` borra su coach.
+- El de este bloque.
+
+### Estado al terminar
+- Stack `apex` normal (sin `compose.e2e.yml`) con las imágenes `7ebd75528265` y `1b2739fc20b7`. `.env` idéntico al previo.
+- Admin desechable borrado (204, `deleted_at`).
+- Quedan como datos de prueba los 30 planes `E2E-tope-d78ef5-*` y los planes, socios y ventas de las specs. Los planes se podrán limpiar cuando exista `DELETE /plans` (Sprint 4A).
+- Quedan 120 cuentas `coach-*` viejas, varias con contraseñas derivables de la hora, en la base de desarrollo. Hay que darlas de baja en V12 o con un comando auditado.

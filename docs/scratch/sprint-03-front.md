@@ -392,3 +392,35 @@ Rama `feat/sprint-03-front-f7` desde `c9720ea` (HEAD de la rama del sprint con B
 - **psql:** de los socios "Pestanas…" de las corridas, ninguno queda vivo (baja lógica al terminar cada una); sus pagos: 2 válidos y 1 anulado (el anulado es el de la corrida verde; el de la corrida fallida es el abono de su venta).
 - **Cierre del front (F7.6), sobre el árbol sellado:** `npm run lint`, `npx tsc --noEmit`, `npx vitest run --coverage` (144 archivos, 2.627 pruebas; 97,58 % de sentencias, 94,27 % de ramas, 96,43 % de funciones, 98,67 % de líneas), `npm run build` (`main` 472,5 kB) y `npm run licenses` (MIT 12, ISC 1): verde. `npx playwright test --project=preview` completo: 144 en verde (capturas de las specs a 320, 768, 1024 y 1440 en claro y oscuro donde las piden, `members-mobile` a 390 y 320). `npm run gen:api && git diff --exit-code src/core/api/types.ts`: sin deriva contra el `docs/openapi.json` del worktree (el orquestador avisó que `6e8406f` del árbol principal cambia el contrato; no se regeneró aquí).
 - **DESIGN-GAP consolidados del front del Sprint 3 (para BRECHAS §10, V1):** los de F3, F4, F6, F2 y F1 están en sus bloques de este cuaderno (y F5 en el encabezado de `MembershipsPage.tsx`, `FreezeModal.tsx` y `lib/rules.ts`); los de F7, en su bloque. Todos llevan `// DESIGN-GAP:` en `web/src/`.
+
+## Fase 4 · Front (corrección consolidada de la revisión del Sprint 3)
+
+Rama `fix/sprint-03-fase4-front`, desde `123abce`, en el worktree `.claude/worktrees/sprint-03-fase4-front`. Sello: `b39d160` (checkpoint del código). El detalle de cada hallazgo está en `docs/ddd/DECISIONES.md`, en "Fase 4 · Sprint 3 · Front".
+
+- **Qué quedó corregido:**
+  - Los 8 MEDIUM (M1 a M8) y los 9 LOW (L1 a L9) de la revisión del front.
+  - Los 4 pendientes de código de V1 (`docs/BRECHAS.md` §10.13 queda sin puntos abiertos).
+  - El L-D de V10: los helpers del stack solo corren contra `localhost` o `127.0.0.1`, la contraseña del coach es aleatoria y cada spec borra al coach que crea.
+  - De la revisión final del diff: 2 MEDIUM y 2 LOW corregidos, 1 LOW aceptado con justificación y 1 LOW que ya estaba resuelto.
+- **Decisiones nuevas:**
+  - S3-D99: el buscador del panel de pagos ofrece al socio inactivo, marcado.
+  - S3-D100: a dónde lleva la venta al salir.
+  - S3-D101: `useSensitiveMutation` es obligatorio, salvo la lista blanca.
+  - Se tomaron S3-D99 a S3-D101 porque no había ninguna S3-D1xx en ninguna rama. Si el backend usa S3-D100 o S3-D101 en paralelo, hay que renumerar al fusionar.
+- **Aserciones cambiadas porque la aserción era el defecto:**
+  - En `RegisterPaymentPanel.test.tsx`: "últimos 7 días" y "hace menos de 2 minutos" (M7).
+  - En `SellPage.test.tsx`: "Cancelar" e "Ir a Socios" hacia `/socios` (S3-D100).
+  - En `shared/data/members.test.ts`: la que exigía descartar `membership_end_date` (pendiente 2).
+  - En `CancelMembershipModal.test.tsx` y `FreezeModal.test.tsx`: solo los fixtures de objetivo, que ganan `plan_name` (L6).
+- **Verificación en el worktree, antes del sello:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run build` (`main` 473,96 kB) y `npm run licenses` (MIT 12, ISC 1): en verde.
+  - `npx vitest run --coverage`: 154 archivos y 2.758 pruebas. Sentencias 97,88 % (antes 97,58 %), ramas 94,56 %, funciones 96,78 %, líneas 98,76 %.
+  - `npx playwright test --project=preview --workers=1`: 144 en verde.
+  - `slice-gate.sh web/app` con los 28 archivos de prueba tocados, más `src/test/setup.ts` y `src/test/vitest-axe.d.ts`: verde, con 567 pruebas.
+  - `types.ts` y `docs/openapi.json` no se tocaron ni se regeneraron. La comprobación de deriva, hecha antes del aviso del orquestador, salió sin cambios.
+- **Qué no se corrió:** ni `e2e:stack` ni la reconstrucción de la imagen. `borrarUsuario`, la lectura del `id` de `POST /users` y `exigirStackLocal` solo están probados en unidad (`tests/unit/e2e-stack-guard.test.ts`), no contra el stack.
+- **Lo que debe hacer el orquestador tras fusionar:**
+  1. Reconstruir la imagen web.
+  2. Repetir `e2e:stack` con `E2E_BASE_URL=http://localhost:8180`. Es la primera corrida de `crearCoach` con `id` y del borrado con `DELETE /users/{id}`.
+  3. Comprobar con psql que no quedan cuentas `coach-<uuid>@apex.test` vivas.
+  4. Regenerar `types.ts` cuando el backend cierre su cambio de contrato (429 en rutas de admin).

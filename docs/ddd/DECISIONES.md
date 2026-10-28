@@ -980,3 +980,16 @@ Corrección consolidada de la revisión `typescript-reviewer` del front (8 MEDIU
   - `useCreateUser` y `useUserMutation`: el enlace de activación se lee de `data`, y el panel o el modal llaman a `reset()` al cerrar (L-7).
 
   Las mutaciones de `auth`, que llevan contraseñas, sí pasan por el hook.
+
+#### V9 · Migración del front a Zod 4
+
+- **S3-D105 · El front usa `zod` 4 (4.6.7) en lugar de 3.25.76.** V9 bloqueaba en `npm audit --omit=dev --audit-level=high` por GHSA-mrhx-c7xc-m3w5 (alto, `zod < 4.6.6`: agotamiento de memoria al validar colecciones grandes con restricciones). No hay 3.x corregida y no se usó el subpath `zod/v3` (viene en el mismo paquete, sin garantía de que la corrección lo cubra): se migró a la API de Zod 4 sin cambiar validaciones, mensajes, esquemas estrictos ni transformaciones. Convenciones:
+  - Mensajes de error en opciones con `error:` (`{ error: msg }` en `z.enum`, `z.union` y `refine`); nada de `errorMap` ni `message:` en opciones. El texto corto `.min(1, msg)` sigue igual.
+  - Correo encadenado tras `trim`/`min`/`max` con `.regex(z.regexes.email, msg)`: es el patrón de `z.email()` y conserva el orden de los checks de Zod 3, así que el primer mensaje por campo no cambia. Un correo suelto es `z.email()`. `zodIssues.test.ts` compara el patrón con el de Zod 3.
+  - `ctx.addIssue({ code: CUSTOM_ISSUE, … })` con la constante de `shared/lib/zodIssues.ts` (`z.ZodIssueCode` está obsoleto y `errorCodes.test.ts` prohíbe `code: "literal"`).
+  - Fechas con zona en respuestas con `z.iso.datetime({ offset: true })`. Zod 4 exige segundos y offset `±hh:mm` (Zod 3 aceptaba `±hh` y sin segundos); Pydantic siempre emite segundos y `+00:00` o `Z`, así que no cambia nada del api.
+  - `.strict()` se mantiene (no está obsoleto en Zod 4 y sigue rechazando claves extra). Tipos `z.ZodType<Salida, Entrada>`; `z.ZodTypeAny` pasa a `z.ZodType`.
+  - `z.config({ jitless: true })` en `core/zodSetup.ts`, importado primero en `main.tsx`, en la entrada del catálogo y en `src/test/setup.ts`. Zod 4 prueba `new Function("")` al validar el primer objeto y, con la CSP sin `'unsafe-eval'`, el navegador lo reporta como violación (lo detectó `tests/e2e/csp.spec.ts`). La revisión (MEDIUM) señaló que solo el orden de los imports lo protege: `zodSetup.test.ts` exige que sea el primer `import` de las tres entradas.
+  - Zod va en su propio chunk (`manualChunks` en `vite.config.ts`): con Zod 4, `main` pasaba de 473,96 kB a 510,60 kB; ahora `main` 418,30 kB y `zod` 92,05 kB, precargado desde `index.html` con el nonce.
+  - El `type` que da `zodResolver` a cada error es el código de Zod 4 (`invalid_format` donde Zod 3 decía `invalid_string`). Ninguna pantalla lo lee (solo `type: "server"`); cambió la aserción de `zodResolver.test.ts`, que copiaba el código de la librería.
+  - Residual de desarrollo: ninguno. `eslint-plugin-react-hooks` y `zod-validation-error` aceptan `^3.25 || ^4` y quedan deduplicados en 4.6.7; `npm audit --audit-level=high` da 0.

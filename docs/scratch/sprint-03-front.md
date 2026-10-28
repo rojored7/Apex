@@ -424,3 +424,37 @@ Rama `fix/sprint-03-fase4-front`, desde `123abce`, en el worktree `.claude/workt
   2. Repetir `e2e:stack` con `E2E_BASE_URL=http://localhost:8180`. Es la primera corrida de `crearCoach` con `id` y del borrado con `DELETE /users/{id}`.
   3. Comprobar con psql que no quedan cuentas `coach-<uuid>@apex.test` vivas.
   4. Regenerar `types.ts` cuando el backend cierre su cambio de contrato (429 en rutas de admin).
+
+## V9 · Migración a Zod 4
+
+Corrección bloqueante de V9 (S3-D105). Se hizo en el árbol principal, solo en `web/`, `NOTICE` y docs, sin tocar Docker, `.env`, `infra/` ni `e2e:stack`.
+
+- **Rojo:** `npm audit --omit=dev --audit-level=high` salía 1 por GHSA-mrhx-c7xc-m3w5 (`zod < 4.6.6`, alto). Instalado: `zod` 3.25.76.
+- **Cambio de versión:** `zod` pasó a `^4.6.7` (instalado 4.6.7, mismo estilo de rango que las demás dependencias de producción). No hay `@hookform/resolvers`: el front usa su propio `shared/lib/zodResolver.ts` (S2-F5). `react-hook-form` no cambia. `eslint-plugin-react-hooks` → `zod-validation-error` queda deduplicado en 4.6.7.
+- **Auditorías:** `npm audit --omit=dev --audit-level=high` da 0 vulnerabilidades. `npm audit --audit-level=high` también da 0: no hay residual de desarrollo.
+- **Código:**
+  - `errorMap` y `message:` en opciones pasaron a `error:`.
+  - El correo encadenado pasó a `.regex(z.regexes.email, …)` y el correo suelto a `z.email()`.
+  - `z.ZodIssueCode.custom` pasó a `CUSTOM_ISSUE` (`shared/lib/zodIssues.ts`).
+  - `datetime` pasó a `z.iso.datetime`.
+  - En los tipos, `ZodTypeDef` y `ZodTypeAny` salieron. `pageSchema` ya no lleva aserción. `parseSection` usa `SECTION_PARSERS` y `parseResponse`.
+  - Nuevo `core/zodSetup.ts` con `jitless`, primero en `main.tsx`, en `catalogMain.tsx` y en `test/setup.ts`.
+  - `manualChunks` separa `zod` del chunk principal.
+- **Verificación final:**
+  - `npx tsc --noEmit`: 0 errores. `npm run lint`: limpio.
+  - `npx vitest run --coverage`: 156 archivos y 2.788 pruebas en verde. Sentencias 97,98 %, ramas 94,56 %, funciones 97,09 %, líneas 98,87 %.
+  - Pruebas nuevas: `zodIssues.test.ts` (22: paridad del patrón de correo con Zod 3, código `custom` y fechas con zona del api) y `zodSetup.test.ts` (5: `jitless`, `.strict()` y el orden de imports en las tres entradas).
+  - `npm run build`: `main` 418,30 kB más `zod` 92,05 kB (antes, `main` 473,96 kB con Zod 3; con Zod 4 sin separar, 510,60 kB). Rollup avisa de dos comentarios `@__PURE__` mal ubicados dentro de `zod/v4/core`; es solo informativo.
+  - `npm run licenses`: MIT 12, ISC 1. `NOTICE`: `zod@3.25.76` cambia a `zod@4.6.7`.
+  - `npx playwright test --project=preview --workers=1`: 144 en verde. La primera corrida dio 2 fallos en `csp.spec.ts`: Zod 4 probaba `new Function` y la CSP reportaba `script-src eval`. `jitless` lo corrigió.
+  - `npm run gen:api` + `git diff --exit-code src/core/api/types.ts`: sin deriva.
+- **Aserción cambiada:** en `zodResolver.test.ts`, `type: "invalid_string"` pasó a `"invalid_format"`. Es el código de la librería y ninguna pantalla lo lee. El defecto era la aserción, que copiaba el código de Zod 3. En `system/schemas.test.ts` cambió solo el tipo auxiliar `ParseLike`: `path` pasó a `PropertyKey[]`, sin tocar ninguna aserción.
+- **Revisión (`typescript-reviewer`):**
+  - Sin CRITICAL ni HIGH.
+  - MEDIUM corregido: la protección de la CSP depende de que `zodSetup` sea el primer import. Ahora hay un comentario y una prueba en las tres entradas.
+  - LOW 4 aplicado: `CUSTOM_ISSUE` tiene el tipo `core.$ZodIssueCustom["code"]`.
+  - LOW 2, 3 y 5 aceptados sin cambio:
+    - `offset=1e21` en la URL ahora da 0.
+    - Los enteros fuera de ±2^53 se rechazan; los importes COP caben de sobra.
+    - El nonce del `modulepreload` ya lo cubre Playwright.
+- **Pendiente para el orquestador:** reconstruir la imagen web y repetir `e2e:stack`. Esa corrida es la primera de Zod 4 contra Nginx real; `csp.spec.ts` con `CSP_BASE_URL` comprueba que no hay violación de eval.

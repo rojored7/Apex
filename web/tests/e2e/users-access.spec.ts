@@ -5,6 +5,7 @@
 // 390 y 1440 px y con capturas. La variante contra el stack es stack/users-activation.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_";
@@ -28,12 +29,7 @@ interface FakeApi {
 
 async function fakeApi(page: Page, { session = true }: { session?: boolean } = {}): Promise<FakeApi> {
   const state: FakeApi = { listQueries: [], passwordBodies: [], resetBodies: [] };
-  await page.route("**/api/v1/auth/refresh", (route) =>
-    session ? json(route, 200, { access_token: "e2e-admin", token_type: "bearer", expires_in: 900 }) : json(route, 401, { error: { code: "invalid_refresh", message: "x" } }),
-  );
-  await page.route("**/api/v1/auth/me", (route) =>
-    json(route, 200, { id: ROWS[0]?.id, email: "admin@apex.test", role: "admin", member_id: null, gym_name: "Box Norte", must_change_password: false }),
-  );
+  await mockSession(page, { id: ROWS[0]?.id ?? "", email: "admin@apex.test", role: "admin" }, { isActive: () => session });
   await page.route("**/api/v1/auth/me/password", (route) => {
     state.passwordBodies.push(route.request().postDataJSON());
     return json(route, 200, { access_token: "e2e-admin-2", token_type: "bearer", expires_in: 900 });

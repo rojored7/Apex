@@ -1,9 +1,11 @@
+import type { components } from "../../core/api/types";
+
 /**
- * Estado de membresía tal como lo ve el front: los seis de `Membership.status` más
- * `none` (socio sin membresía, consulta derivada `membership_status`).
- * Cuando US-059 genere los tipos desde `docs/openapi.json`, este tipo debe coincidir con el enum.
+ * Estado de membresía tal como lo ve el front: los seis del enum `MembershipStatus` del contrato más
+ * `none` (socio sin membresía, consulta derivada `membership_status`). Fase 4 del Sprint 3 (L1): sale
+ * de types.ts; un estado nuevo en el contrato rompe la compilación de STATUS_LABELS y STATUS_TONES.
  */
-export type MembershipStatusView = "active" | "expiring" | "expired" | "frozen" | "cancelled" | "pending_payment" | "none";
+export type MembershipStatusView = components["schemas"]["MembershipStatus"] | "none";
 
 /** Tono visual del estado según docs/design/DESIGN.md (Estados de membresía). */
 export type StatusTone = "ok" | "warning" | "danger" | "neutral";
@@ -28,6 +30,11 @@ export const STATUS_TONES = Object.freeze({
   pending_payment: "warning",
   none: "danger",
 } as const satisfies Record<MembershipStatusView, StatusTone>);
+
+/** ¿Es `value` un estado que StatusTag sabe pintar? Un texto desconocido (un estado nuevo) no lo es. */
+export function isMembershipStatusView(value: string): value is MembershipStatusView {
+  return Object.hasOwn(STATUS_LABELS, value);
+}
 
 export function statusLabel(status: MembershipStatusView): string {
   return STATUS_LABELS[status];

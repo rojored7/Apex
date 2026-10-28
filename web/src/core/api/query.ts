@@ -3,6 +3,13 @@ export type QueryScalar = string | number | boolean;
 export type QueryValue = QueryScalar | readonly QueryScalar[] | null | undefined;
 export type QueryParams = Readonly<Record<string, QueryValue>>;
 
+/**
+ * Fase 4 del Sprint 3 (L1): los parámetros de una lista tal como los declara el contrato
+ * (`operations[...]["parameters"]["query"]` de types.ts): `limit` y `offset` obligatorios (D2) y los
+ * filtros `K`, opcionales y sin `null`. Un filtro que el contrato no tiene no compila.
+ */
+export type ListQueryParams<Q, K extends keyof Q> = { limit: number; offset: number } & { [P in K]?: NonNullable<Q[P]> };
+
 /** Máximo que acepta el api en `limit`. */
 export const MAX_LIMIT = 200;
 /** Tamaño de página por defecto. */

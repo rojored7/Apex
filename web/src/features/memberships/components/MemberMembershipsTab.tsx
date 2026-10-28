@@ -151,6 +151,114 @@ function History({ list, history }: HistoryProps) {
   );
 }
 
+/** Sin la primera página: el error con Reintentar o la carga. */
+function FirstPageFallback({ first }: { first: UseQueryResult<Page<MembershipOutView>> }) {
+  if (!first.isError) {
+    return (
+      <p className={styles.loading} role="status">
+        {MEMBER_MEMBERSHIPS_LOADING}
+      </p>
+    );
+  }
+  return (
+    <div className={styles.tab}>
+      <p className={styles.alert} role="alert">
+        {memberTabError(first.error)?.message}
+      </p>
+      <div>
+        <Button
+          variant="secondary"
+          loading={first.isFetching}
+          onClick={() => {
+            void first.refetch();
+          }}
+        >
+          Reintentar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** El socio sin ninguna membresía: lo dice y, si puede, ofrece Vender. */
+function NoMemberships({ memberId, memberName, canSell }: { memberId: string; memberName: string | null; canSell: boolean }) {
+  return (
+    <div className={styles.empty}>
+      <p className={styles.none}>{MEMBER_MEMBERSHIPS_EMPTY}</p>
+      {canSell ? (
+        <Link className={cx(buttonStyles.button, buttonStyles.primary, buttonStyles.md)} to={sellForMemberHref(memberId)} state={memberName ? ({ memberName } satisfies SellLocationState) : undefined}>
+          Vender
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+interface CardsProps {
+  memberships: readonly MembershipOutView[];
+  today: string;
+  actions: MembershipActions;
+  onFreeze: (membership: MembershipOutView) => void;
+  onCancel: (membership: MembershipOutView) => void;
+}
+
+/** Las tarjetas de la vigente y de la futura, o "sin vigente". */
+function Cards({ memberships, today, actions, onFreeze, onCancel }: CardsProps) {
+  const { current, future } = splitMemberships(memberships, today);
+  if (!current && !future) return <p className={styles.none}>{MEMBER_NO_CURRENT}</p>;
+  const cardActions = (m: MembershipOutView) => ({ pay: actions.payIds.includes(m.id), freeze: actions.freezeIds.includes(m.id), cancel: actions.cancelIds.includes(m.id) });
+  return (
+    <div className={styles.cards}>
+      {current ? <MemberMembershipCard kind="current" membership={current} today={today} actions={cardActions(current)} onFreeze={onFreeze} onCancel={onCancel} /> : null}
+      {future ? <MemberMembershipCard kind="future" membership={future} today={today} actions={cardActions(future)} onFreeze={onFreeze} onCancel={onCancel} /> : null}
+    </div>
+  );
+}
+
+/** Congelar y anular desde las tarjetas: qué modal está abierto y el aviso que deja. */
+function useCardWrites() {
+  const [freezing, setFreezing] = useState<MembershipOutView | null>(null);
+  const [cancelling, setCancelling] = useState<MembershipOutView | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const modals = (
+    <>
+      <FreezeModal
+        membership={freezing}
+        onClose={() => {
+          setFreezing(null);
+        }}
+        onFrozen={(target, endDate) => {
+          setFreezing(null);
+          // L6: el plan sale del objetivo del modal, no de la clausura del render.
+          setNotice({ kind: "frozen", plan: target.plan_name, endDate });
+        }}
+      />
+      <CancelMembershipModal
+        membership={cancelling}
+        onClose={() => {
+          setCancelling(null);
+        }}
+        onCancelled={(target) => {
+          setCancelling(null);
+          setNotice({ kind: "cancelled", plan: target.plan_name });
+        }}
+      />
+    </>
+  );
+  return {
+    notice,
+    modals,
+    onFreeze: (m: MembershipOutView): void => {
+      setNotice(null);
+      setFreezing(m);
+    },
+    onCancel: (m: MembershipOutView): void => {
+      setNotice(null);
+      setCancelling(m);
+    },
+  };
+}
+
 export default function MemberMembershipsTab() {
   const { id = "" } = useParams();
   const member = useMemberTab();
@@ -160,71 +268,21 @@ export default function MemberMembershipsTab() {
   const first = useMemberMemberships(memberId, CARDS_PAGE);
   const list = useListParams();
   const history = useMemberMemberships(memberId, { limit: list.params.limit, offset: list.params.offset });
-  // La membresía de la tarjeta (es FreezeTarget y CancelTarget): el aviso nombra su plan.
-  const [freezing, setFreezing] = useState<MembershipOutView | null>(null);
-  const [cancelling, setCancelling] = useState<MembershipOutView | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const writes = useCardWrites();
 
-  if (first.data === undefined) {
-    if (first.isError) {
-      return (
-        <div className={styles.tab}>
-          <p className={styles.alert} role="alert">
-            {memberTabError(first.error)?.message}
-          </p>
-          <div>
-            <Button
-              variant="secondary"
-              loading={first.isFetching}
-              onClick={() => {
-                void first.refetch();
-              }}
-            >
-              Reintentar
-            </Button>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <p className={styles.loading} role="status">
-        {MEMBER_MEMBERSHIPS_LOADING}
-      </p>
-    );
-  }
+  if (first.data === undefined) return <FirstPageFallback first={first} />;
 
   const items = first.data.items;
   // Sin la ficha no se sabe si el socio está dado de baja: la pestaña es de solo lectura.
   const readOnly = member === null || member.deleted_at !== null;
   const actions = membershipActions(items, role, today, readOnly);
-  const { current, future } = splitMemberships(items, today);
   const memberName = member ? memberFullName(member) : null;
-  const cardActions = (m: MembershipOutView) => ({ pay: actions.payIds.includes(m.id), freeze: actions.freezeIds.includes(m.id), cancel: actions.cancelIds.includes(m.id) });
-  const onFreeze = (m: MembershipOutView): void => {
-    setNotice(null);
-    setFreezing(m);
-  };
-  const onCancel = (m: MembershipOutView): void => {
-    setNotice(null);
-    setCancelling(m);
-  };
 
-  if (first.data.total === 0) {
-    return (
-      <div className={styles.empty}>
-        <p className={styles.none}>{MEMBER_MEMBERSHIPS_EMPTY}</p>
-        {actions.sell ? (
-          <Link className={cx(buttonStyles.button, buttonStyles.primary, buttonStyles.md)} to={sellForMemberHref(id)} state={memberName ? ({ memberName } satisfies SellLocationState) : undefined}>
-            Vender
-          </Link>
-        ) : null}
-      </div>
-    );
-  }
+  if (first.data.total === 0) return <NoMemberships memberId={id} memberName={memberName} canSell={actions.sell} />;
 
   return (
     <div className={styles.tab}>
-      <TabNotice notice={notice} />
+      <TabNotice notice={writes.notice} />
       {/* Revisión S3-F7 (M2): en la página 1 las dos consultas son la misma; el historial ya avisa. */}
       {first.isError && !history.isError ? (
         <p className={styles.alert} role="alert">
@@ -232,35 +290,9 @@ export default function MemberMembershipsTab() {
         </p>
       ) : null}
       <Toolbar memberId={id} memberName={memberName} actions={actions} />
-      {current || future ? (
-        <div className={styles.cards}>
-          {current ? <MemberMembershipCard kind="current" membership={current} today={today} actions={cardActions(current)} onFreeze={onFreeze} onCancel={onCancel} /> : null}
-          {future ? <MemberMembershipCard kind="future" membership={future} today={today} actions={cardActions(future)} onFreeze={onFreeze} onCancel={onCancel} /> : null}
-        </div>
-      ) : (
-        <p className={styles.none}>{MEMBER_NO_CURRENT}</p>
-      )}
+      <Cards memberships={items} today={today} actions={actions} onFreeze={writes.onFreeze} onCancel={writes.onCancel} />
       <History list={list} history={history} />
-      <FreezeModal
-        membership={freezing}
-        onClose={() => {
-          setFreezing(null);
-        }}
-        onFrozen={(_target, endDate) => {
-          setFreezing(null);
-          setNotice({ kind: "frozen", plan: freezing?.plan_name ?? "", endDate });
-        }}
-      />
-      <CancelMembershipModal
-        membership={cancelling}
-        onClose={() => {
-          setCancelling(null);
-        }}
-        onCancelled={() => {
-          setCancelling(null);
-          setNotice({ kind: "cancelled", plan: cancelling?.plan_name ?? "" });
-        }}
-      />
+      {writes.modals}
     </div>
   );
 }

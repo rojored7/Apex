@@ -9,7 +9,7 @@
 // Sin E2E_BASE_URL se omite.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { capture, crearCoach, datosDeBase, documentoAleatorio, esperarTransiciones, loginComo, sameOriginHeaders, type Credentials } from "../helpers/stack";
+import { borrarUsuario, capture, crearCoach, datosDeBase, documentoAleatorio, esperarTransiciones, loginComo, sameOriginHeaders, type Credentials } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -132,7 +132,10 @@ test.describe("ficha del socio contra el stack", () => {
     await expect(page.getByRole("link", { name: "Editar" })).toBeVisible();
 
     // Otra sesión: el coach ve la ficha y "Editar", pero no "Dar de baja".
-    const coach = coachDeEntorno() ?? (await crearCoach(page, admin));
+    // Fase 4 L9: el coach que crea la spec se borra al final; el del entorno no.
+    const coachFijo = coachDeEntorno();
+    const coach: Credentials & { id?: string } = coachFijo ?? (await crearCoach(page, admin));
+    const creadoId = coachFijo ? null : (coach.id ?? null);
     const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "" });
     try {
       const coachPage = await context.newPage();
@@ -144,6 +147,7 @@ test.describe("ficha del socio contra el stack", () => {
       await expect(coachPage.getByRole("button", { name: "Reactivar" })).toHaveCount(0);
     } finally {
       await context.close();
+      if (creadoId) await borrarUsuario(page, creadoId, admin);
     }
   });
 });

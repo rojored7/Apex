@@ -3,10 +3,12 @@
 //   como "AAAA-MM-DDTHH:mm" en hora de Bogotá). registerPaymentSchema(now) aplica las reglas de
 //   PaymentIn en el cliente: membresía elegida, valor entero de 1 a 1.000.000.000 (D17), referencia
 //   opcional con el patrón de comprobante solo con Nequi y Bre-B (S3-D50) y fecha y hora válidas que
-//   no pasen de ahora más 5 minutos. El tope hacia atrás del coach (7 días por defecto, M-8) lo decide
-//   el servidor (422 `paid_at_too_retroactive`).
+//   no pasen de ahora más 5 minutos. El tope hacia atrás del coach (`max_retroactive_days`, M-8) lo
+//   decide el servidor (422 `paid_at_too_retroactive`).
 // - toPaymentBody: el cuerpo de POST /memberships/{id}/payments, con `paid_at` en UTC y las
 //   confirmaciones de S3-D41 en verdadero solo cuando se confirmaron.
+// - Fase 4 del Sprint 3 (M2): las reglas del pago y su cuerpo son checkPaymentFields y
+//   buildPaymentBody de shared/data/schemas/payment.ts (las mismas de la venta) con los textos del panel.
 // - voidPaymentSchema: el motivo de anular, recortado, de 1 a 500 caracteres (D17; el api recorta y
 //   cuenta igual).
 // - paymentOutSchema (el contrato de B3 a B5), paymentRowSchema, paymentDetailSchema y
@@ -16,16 +18,14 @@
 // se reexportan.
 import { z } from "zod";
 import type { components } from "../../core/api/types";
-import { bogotaInputToUtc, parseCop } from "../../core/i18n/format";
 import { copAmount, copInt } from "../../shared/data/schemas/money";
 import { paymentRowShape } from "../../shared/data/payments";
 import {
-  cleanReference,
-  METHODS_WITH_REFERENCE,
-  PAID_AT_FUTURE_TOLERANCE_MS,
+  buildPaymentBody,
+  checkPaymentFields,
   PAYMENT_METHOD_CODES,
   paymentMethodCodeSchema,
-  referenceError,
+  type PaymentBodyOptions,
   type PaymentInBody,
   type PaymentMethodCode,
 } from "../../shared/data/schemas/payment";
@@ -60,34 +60,9 @@ export interface RegisterPaymentFormValues {
 
 export const EMPTY_REGISTER_FORM: RegisterPaymentFormValues = { membershipId: "", method: "cash", amount: "", reference: "", paidAt: "" };
 
-export interface PaymentBodyOptions {
-  /** El usuario confirmó un pago mayor al saldo (Q5, S3-D41). */
-  confirmOverpayment?: boolean;
-  /** El usuario confirmó que no es un duplicado (409 `payment_possible_duplicate`, S3-D41). */
-  confirmDuplicate?: boolean;
-}
+export type { PaymentBodyOptions } from "../../shared/data/schemas/payment";
 
 type AddIssue = (path: keyof RegisterPaymentFormValues, message: string) => void;
-
-function checkAmount(amount: string, add: AddIssue): void {
-  if (amount.trim() === "") {
-    add("amount", PAYMENT_MESSAGES.amountRequired);
-    return;
-  }
-  const value = parseCop(amount);
-  if (value === null) add("amount", PAYMENT_MESSAGES.amountInvalid);
-  else if (!copInt.safeParse(value).success) add("amount", PAYMENT_MESSAGES.amountRange);
-}
-
-function checkPaidAt(paidAt: string, nowMs: number, add: AddIssue): void {
-  if (paidAt.trim() === "") {
-    add("paidAt", PAYMENT_MESSAGES.paidAtRequired);
-    return;
-  }
-  const utc = bogotaInputToUtc(paidAt);
-  if (utc === null) add("paidAt", PAYMENT_MESSAGES.paidAtInvalid);
-  else if (Date.parse(utc) > nowMs + PAID_AT_FUTURE_TOLERANCE_MS) add("paidAt", PAYMENT_MESSAGES.paidAtFuture);
-}
 
 /** `nowMs` fijo solo en pruebas; sin él, la hora se lee al validar (el panel puede llevar rato abierto). */
 export function registerPaymentSchema(nowMs?: number): z.ZodType<RegisterPaymentFormValues, z.ZodTypeDef, RegisterPaymentFormValues> {
@@ -104,32 +79,13 @@ export function registerPaymentSchema(nowMs?: number): z.ZodType<RegisterPayment
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
       };
       if (values.membershipId === "") add("membershipId", PAYMENT_MESSAGES.membershipRequired);
-      checkAmount(values.amount, add);
-      if (METHODS_WITH_REFERENCE.has(values.method)) {
-        const reference = referenceError(values.reference);
-        if (reference) add("reference", reference);
-      }
-      checkPaidAt(values.paidAt, nowMs ?? Date.now(), add);
+      checkPaymentFields(values, nowMs ?? Date.now(), PAYMENT_MESSAGES, add);
     });
-}
-
-/** Un formulario sin validar es un error de programación, no un 0 que el api rechace. */
-function required<T>(value: T | null, field: keyof RegisterPaymentFormValues): T {
-  if (value === null) throw new Error(`toPaymentBody: ${field} no pasó por registerPaymentSchema`);
-  return value;
 }
 
 /** El cuerpo de POST /memberships/{id}/payments a partir de un formulario ya validado. */
 export function toPaymentBody(values: RegisterPaymentFormValues, options: PaymentBodyOptions = {}): PaymentInBody {
-  const reference = METHODS_WITH_REFERENCE.has(values.method) ? cleanReference(values.reference) : undefined;
-  return {
-    amount_cop: required(parseCop(values.amount), "amount"),
-    method: values.method,
-    ...(reference ? { reference } : {}),
-    paid_at: required(bogotaInputToUtc(values.paidAt), "paidAt"),
-    confirm_overpayment: options.confirmOverpayment === true,
-    confirm_duplicate: options.confirmDuplicate === true,
-  };
+  return buildPaymentBody(values, options, "toPaymentBody");
 }
 
 const charCount = (value: string): number => Array.from(value).length;

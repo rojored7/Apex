@@ -1,6 +1,6 @@
 // @vitest-environment node
 // US-059 T1: armado del query string y parámetros de lista (regla de datos 6, D2).
-import { DEFAULT_LIMIT, MAX_LIMIT, clampLimit, listParams, toQueryString } from "./query";
+import { DEFAULT_LIMIT, MAX_LIMIT, clampLimit, listParams, toQueryString, type ListQueryParams } from "./query";
 
 describe("toQueryString", () => {
   it("omite undefined y null y repite los arreglos", () => {
@@ -73,5 +73,13 @@ describe("clampLimit", () => {
     ["7.5", 25],
   ])("clampLimit(%j) es %i", (value, expected) => {
     expect(clampLimit(value)).toBe(expected);
+  });
+});
+
+// Fase 4 del Sprint 3 (L1): los parámetros de las listas salen del contrato.
+describe("ListQueryParams", () => {
+  it("limit y offset obligatorios; los filtros elegidos, opcionales y sin null", () => {
+    type Query = { q?: string | null; method?: ("cash" | "nequi") | null; limit?: number; offset?: number };
+    expectTypeOf<ListQueryParams<Query, "q" | "method">>().toEqualTypeOf<{ limit: number; offset: number } & { q?: string; method?: "cash" | "nequi" }>();
   });
 });

@@ -6,6 +6,7 @@
 // stack es stack/users-manage.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
@@ -44,12 +45,7 @@ interface FakeApi {
 async function fakeApi(page: Page): Promise<FakeApi> {
   const state: FakeApi = { rows: initialRows(), calls: [], patchBodies: [] };
   let session = true;
-  await page.route("**/api/v1/auth/refresh", (route) =>
-    session ? json(route, 200, { access_token: "e2e-admin", token_type: "bearer", expires_in: 900 }) : json(route, 401, { error: { code: "invalid_refresh", message: "x" } }),
-  );
-  await page.route("**/api/v1/auth/me", (route) =>
-    json(route, 200, { id: ADMIN_ID, email: "admin@apex.test", role: "admin", member_id: null, gym_name: "Box Norte", must_change_password: false }),
-  );
+  await mockSession(page, { id: ADMIN_ID, email: "admin@apex.test", role: "admin" }, { isActive: () => session });
   await page.route(/\/api\/v1\/users(\?.*)?$/, (route) => {
     const url = new URL(route.request().url());
     const visible = state.rows.filter((r) => r.status !== "deleted");

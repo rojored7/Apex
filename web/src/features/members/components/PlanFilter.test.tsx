@@ -121,6 +121,14 @@ describe("PlanFilter", () => {
     expect(listCalls(mock)[0]?.get("plan_id")).toBe(OTHER_PLAN);
   });
 
+  it("si GET /plans trae menos planes que el total, el filtro lo dice (Fase 4 L8)", async () => {
+    renderMembers("/socios", { handlers: { "GET /plans": { status: 200, body: { items: [PLANS.clases, PLANS.mensual], total: 230, limit: 200, offset: 0 } } } });
+
+    await waitFor(() => {
+      expect(planSelect()).toHaveAccessibleDescription("Se muestran 2 de 230 planes. Si falta el que buscas, avísale a un administrador.");
+    });
+  });
+
   it("si GET /plans falla el filtro queda en 'Cualquiera' y la lista sigue", async () => {
     renderMembers("/socios", { handlers: { "GET /plans": apiError(500, "internal") } });
 

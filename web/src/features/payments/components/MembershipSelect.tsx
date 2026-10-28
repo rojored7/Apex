@@ -6,6 +6,7 @@ import type { UseFormReturn } from "react-hook-form";
 import { Link } from "react-router";
 import { formatCop } from "../../../core/i18n/format";
 import type { MembershipRowView } from "../../../shared/data/memberships";
+import { sellHref } from "../../../shared/lib/routes";
 import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { membershipOptionText } from "../lib/balance";
@@ -23,7 +24,7 @@ export interface MembershipSelectProps {
 
 function SellLink({ memberId }: { memberId: string }) {
   return (
-    <Link className={styles.link} to={`/membresias/vender?socio=${encodeURIComponent(memberId)}`}>
+    <Link className={styles.link} to={sellHref(memberId)}>
       Vender una membresía
     </Link>
   );

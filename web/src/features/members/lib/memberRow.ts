@@ -6,14 +6,14 @@
 // - membershipDetail: la línea de la tarjeta de Socios_Movil.html ("Mensual · vence 28 oct 2026",
 //   "12 clases · venció 15 oct 2026" o "Sin membresía"); la fecha con año (DESIGN.md regla 7).
 import { formatDate } from "../../../core/i18n/format";
-import { STATUS_LABELS, type AccountStatusView, type MembershipStatusView } from "../../../shared/ui/statusLabel";
+import { isMembershipStatusView, type AccountStatusView, type MembershipStatusView } from "../../../shared/ui/statusLabel";
 import type { MemberRowView } from "../schemas";
 
 export const NO_MEMBERSHIP_TEXT = "Sin membresía";
 
 export function membershipStatusOf(row: Pick<MemberRowView, "membership_status">): MembershipStatusView | null {
   const value = row.membership_status;
-  return value !== null && Object.prototype.hasOwnProperty.call(STATUS_LABELS, value) ? (value as MembershipStatusView) : null;
+  return value !== null && isMembershipStatusView(value) ? value : null;
 }
 
 export function accountStatusOf(row: Pick<MemberRowView, "status" | "deleted_at">): AccountStatusView {

@@ -20,7 +20,7 @@ import { mockApi, testQueryClient, type MockHandler } from "../../../test/server
 import { signInAs, signOutForTests } from "../../../test/session";
 import { FreezeModal, type FreezeTarget } from "./FreezeModal";
 
-const TARGET: FreezeTarget = { id: ELENA_MEMBERSHIP_ID, member_name: "Elena Vargas", end_date: "2026-10-31" };
+const TARGET: FreezeTarget = { id: ELENA_MEMBERSHIP_ID, member_name: "Elena Vargas", plan_name: "Mensual", end_date: "2026-10-31" };
 const FROZEN = membershipOut({ id: ELENA_MEMBERSHIP_ID, member_id: MEMBERS.elena.id, member_name: "Elena Vargas", status: "frozen", end_date: "2026-11-10" });
 
 function renderFreeze(handlers: Record<string, MockHandler> = {}, target: FreezeTarget | null = TARGET) {

@@ -6,7 +6,7 @@
 // ../plans.spec.ts. Idempotente: el nombre lleva la marca de la corrida (V4 corre dos veces).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
+import { borrarUsuario, crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -62,21 +62,25 @@ test.describe("alta y lista de planes contra el stack", () => {
   test("el coach no entra a /planes y el api solo le muestra planes activos", async ({ browser, page }) => {
     const coach = await crearCoach(page);
     const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "" });
-    const coachPage = await context.newPage();
-    await coachPage.setViewportSize({ width: 390, height: 844 });
-    const token = await loginComo(coachPage, coach);
+    try {
+      const coachPage = await context.newPage();
+      await coachPage.setViewportSize({ width: 390, height: 844 });
+      const token = await loginComo(coachPage, coach);
 
-    await coachPage.goto("/planes");
-    await expect(coachPage.getByRole("heading", { level: 1, name: "Sin permiso" })).toBeVisible();
-    expect(await axeViolations(coachPage)).toEqual([]);
+      await coachPage.goto("/planes");
+      await expect(coachPage.getByRole("heading", { level: 1, name: "Sin permiso" })).toBeVisible();
+      expect(await axeViolations(coachPage)).toEqual([]);
 
-    const headers = { Authorization: `Bearer ${token}` };
-    const all = await coachPage.request.get("/api/v1/plans", { headers });
-    expect(all.status()).toBe(403);
-    const active = await coachPage.request.get("/api/v1/plans?active=true&limit=200", { headers });
-    expect(active.status()).toBe(200);
-    const body = (await active.json()) as { items: PlanBody[] };
-    expect(body.items.every((p) => p.is_active)).toBe(true);
-    await context.close();
+      const headers = { Authorization: `Bearer ${token}` };
+      const all = await coachPage.request.get("/api/v1/plans", { headers });
+      expect(all.status()).toBe(403);
+      const active = await coachPage.request.get("/api/v1/plans?active=true&limit=200", { headers });
+      expect(active.status()).toBe(200);
+      const body = (await active.json()) as { items: PlanBody[] };
+      expect(body.items.every((p) => p.is_active)).toBe(true);
+    } finally {
+      await context.close();
+      await borrarUsuario(page, coach.id);
+    }
   });
 });

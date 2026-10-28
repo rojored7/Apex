@@ -4,6 +4,7 @@
 // stack/settings-gym.spec.ts. Accesibilidad con @axe-core/playwright en claro y oscuro.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const PATH = "/sistema/configuracion";
@@ -43,17 +44,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 async function fakeApi(page: Page): Promise<FakeApi> {
   const state: FakeApi = { sections: initialSections(), patches: [], conflictOn: new Set() };
-  await page.route("**/api/v1/auth/refresh", (route) => json(route, 200, { access_token: "e2e-admin", token_type: "bearer", expires_in: 900 }));
-  await page.route("**/api/v1/auth/me", (route) =>
-    json(route, 200, {
-      id: "11111111-1111-4111-8111-111111111111",
-      email: "admin@apex.test",
-      role: "admin",
-      member_id: null,
-      gym_name: "APEX",
-      must_change_password: false,
-    }),
-  );
+  await mockSession(page, { id: "11111111-1111-4111-8111-111111111111", email: "admin@apex.test", role: "admin" }, { gymName: "APEX" });
   await page.route("**/api/v1/settings/*", async (route) => {
     const key = new URL(route.request().url()).pathname.split("/").pop() as Key;
     const current = state.sections[key];

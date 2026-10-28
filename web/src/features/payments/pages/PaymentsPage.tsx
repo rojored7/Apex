@@ -14,7 +14,7 @@
 // DESIGN-GAP:
 // - La primera columna es el socio (DESIGN.md: la primera columna es el enlace a la ficha); Pagos.html
 //   pone primero la fecha.
-// - Sin "Exportar": la exportación es US-076 (fuera del Sprint 3).
+// - Sin "Exportar": la exportación es EP-16 (US-139, v0.2).
 // - "Registró" muestra el correo parcial ("c•••@apex.test", S3-D57) y no el nombre ("Carlos") hasta
 //   US-110; sus opciones son "Yo" y quienes aparecen en la página (no hay lista de usuarios para el
 //   coach).
@@ -136,46 +136,13 @@ function columnsFor(methodLabel: (code: PaymentRowView["method"]) => string, onV
   ];
 }
 
-export default function PaymentsPage() {
-  const filters = usePaymentFilters();
-  const { list, params } = filters;
-  const location = useLocation();
-  const canRegister = useCan("payments.register");
-  const { methods } = usePaymentMethodOptions();
-  const payments = usePayments(params);
-  const page = payments.data;
-  const registeredByOptions = useRegisteredByOptions(page?.items, filters.registeredBy);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  // Al abrir el panel de pagos (p. ej. "Registrar pago nuevo" tras anular) el detalle se cierra: dos
-  // diálogos a la vez se pelearían el foco.
-  const panelOpen = readPaymentPanel(location.search) !== null;
-  const [panelSeen, setPanelSeen] = useState(panelOpen);
-  if (panelOpen !== panelSeen) {
-    setPanelSeen(panelOpen);
-    if (panelOpen) setDetailId(null);
-  }
-  // Un offset viejo (marcador, o el total bajó): hay pagos, pero esta página quedó vacía.
-  const isPastEnd = page !== undefined && page.total > 0 && page.items.length === 0;
+type Filters = ReturnType<typeof usePaymentFilters>;
 
-  const columns = useMemo(() => {
-    const labels = new Map(methods.map((method) => [method.code, method.label]));
-    return columnsFor(
-      (code) => labels.get(code) ?? code,
-      (row) => {
-        setDetailId(row.id);
-      },
-    );
-  }, [methods]);
-
-  const registerHref = paymentPanelHref(location, { memberId: null });
-  const actions: PageAction[] = canRegister ? [{ id: "register", label: "Registrar pago", href: registerHref, variant: "primary" }] : [];
-  const methodOptions = methods.map((method) => ({ value: method.code, label: method.label }));
-
+/** La barra de filtros de Pagos.html con sus cuatro selects y el rango de fechas (Fase 4 M8). */
+function PaymentFilters({ filters, methodOptions, registeredByOptions }: { filters: Filters; methodOptions: FilterOption[]; registeredByOptions: FilterOption[] }) {
+  const { list } = filters;
   return (
-    <div className={styles.page}>
-      {/* Revisión S3-F6 (L6): mientras llega la página nueva no se muestra el total de la anterior. */}
-      <PageHeader title="Pagos" {...(page && !payments.isPlaceholderData ? { total: `${formatCount(page.total)} en total` } : {})} actions={actions} />
-      <MonthSummary />
+    <>
       <FilterBar
         query={list.q}
         onQueryChange={list.setQuery}
@@ -194,6 +161,85 @@ export default function PaymentsPage() {
         dateRange={{ label: "Fecha del pago", ...filters.range, onChange: filters.setRange }}
       />
       {filters.rangeInverted ? <p className={styles.rangeError}>{RANGE_INVERTED}</p> : null}
+    </>
+  );
+}
+
+/** Qué ofrece la tabla vacía: la primera página, limpiar los filtros o registrar el primer pago. */
+function EmptyAction({ isPastEnd, filters, registerHref }: { isPastEnd: boolean; filters: Filters; registerHref: string | null }) {
+  if (isPastEnd) {
+    return (
+      <Button
+        variant="secondary"
+        onClick={() => {
+          filters.list.setPage(1);
+        }}
+      >
+        Ir a la primera página
+      </Button>
+    );
+  }
+  if (filters.isFiltered) {
+    return (
+      <Button variant="secondary" onClick={filters.list.clear}>
+        Limpiar filtros
+      </Button>
+    );
+  }
+  return registerHref ? (
+    <Link className={styles.firstPayment} to={registerHref}>
+      Registrar el primer pago
+    </Link>
+  ) : null;
+}
+
+/**
+ * El pago abierto en el detalle. Al abrir el panel de pagos (p. ej. "Registrar pago nuevo" tras
+ * anular) el detalle se cierra: dos diálogos a la vez se pelearían el foco.
+ */
+function usePaymentDetail(search: string) {
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const panelOpen = readPaymentPanel(search) !== null;
+  const [panelSeen, setPanelSeen] = useState(panelOpen);
+  if (panelOpen !== panelSeen) {
+    setPanelSeen(panelOpen);
+    if (panelOpen) setDetailId(null);
+  }
+  return { detailId, setDetailId };
+}
+
+export default function PaymentsPage() {
+  const filters = usePaymentFilters();
+  const { list, params } = filters;
+  const location = useLocation();
+  const canRegister = useCan("payments.register");
+  const { methods } = usePaymentMethodOptions();
+  const payments = usePayments(params);
+  const page = payments.data;
+  const registeredByOptions = useRegisteredByOptions(page?.items, filters.registeredBy);
+  const { detailId, setDetailId } = usePaymentDetail(location.search);
+  // Un offset viejo (marcador, o el total bajó): hay pagos, pero esta página quedó vacía.
+  const isPastEnd = page !== undefined && page.total > 0 && page.items.length === 0;
+
+  const columns = useMemo(() => {
+    const labels = new Map(methods.map((method) => [method.code, method.label]));
+    return columnsFor(
+      (code) => labels.get(code) ?? code,
+      (row) => {
+        setDetailId(row.id);
+      },
+    );
+  }, [methods, setDetailId]);
+
+  const registerHref = paymentPanelHref(location, { memberId: null });
+  const actions: PageAction[] = canRegister ? [{ id: "register", label: "Registrar pago", href: registerHref, variant: "primary" }] : [];
+
+  return (
+    <div className={styles.page}>
+      {/* Revisión S3-F6 (L6): mientras llega la página nueva no se muestra el total de la anterior. */}
+      <PageHeader title="Pagos" {...(page && !payments.isPlaceholderData ? { total: `${formatCount(page.total)} en total` } : {})} actions={actions} />
+      <MonthSummary />
+      <PaymentFilters filters={filters} methodOptions={methods.map((method) => ({ value: method.code, label: method.label }))} registeredByOptions={registeredByOptions} />
       <DataTable
         caption="Pagos"
         columns={columns}
@@ -209,26 +255,7 @@ export default function PaymentsPage() {
           void payments.refetch();
         }}
         emptyMessage={isPastEnd ? PAYMENTS_PAST_END : filters.isFiltered ? PAYMENTS_EMPTY_FILTERED : PAYMENTS_EMPTY}
-        emptyAction={
-          isPastEnd ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                list.setPage(1);
-              }}
-            >
-              Ir a la primera página
-            </Button>
-          ) : filters.isFiltered ? (
-            <Button variant="secondary" onClick={list.clear}>
-              Limpiar filtros
-            </Button>
-          ) : canRegister ? (
-            <Link className={styles.firstPayment} to={registerHref}>
-              Registrar el primer pago
-            </Link>
-          ) : null
-        }
+        emptyAction={<EmptyAction isPastEnd={isPastEnd} filters={filters} registerHref={canRegister ? registerHref : null} />}
       />
       {page && page.total > 0 ? <Pagination total={page.total} limit={params.limit} offset={params.offset} onPageChange={list.setPage} onLimitChange={list.setLimit} /> : null}
       {/* Revisión S3-F6 (M1): se monta solo con un pago elegido, así cada apertura empieza en el detalle. */}

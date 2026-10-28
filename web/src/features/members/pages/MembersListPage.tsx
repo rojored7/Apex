@@ -19,7 +19,7 @@
 //   trae datos cifrados (N-01) y la asistencia llega con v0.4; sin el documento enmascarado bajo el
 //   nombre (N-01). "Vence" muestra la fecha de fin con año; no "Vencido · 5 días", "reanuda 1 nov"
 //   ni "12 clases · quedan 2" (la fila no trae días ni clases restantes).
-// - Sin filtro de última asistencia (v0.4) ni "Exportar" (US-076, solo admin). El encabezado no
+// - Sin filtro de última asistencia (v0.4) ni "Exportar" (EP-16, US-139, v0.2). El encabezado no
 //   dice "· 269 con membresía": el número está en los chips.
 // - Sin la nota de la búsqueda por valor exacto: va como ayuda corta bajo la lista.
 // - "Ordenar por" no ofrece "Vencimiento más próximo" (GET /members no ordena por fin de membresía).

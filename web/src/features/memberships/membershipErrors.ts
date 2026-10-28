@@ -8,10 +8,11 @@
 // - isOverpaymentError: 409 `payment_exceeds_balance` (S3-D41) no es un error para el usuario: abre
 //   la confirmación del sobrepago.
 import type { FieldPath } from "react-hook-form";
-import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
-import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { HTTP_CONFLICT, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { connectionMessage, statusMessage, toFormError, toScreenError } from "../../shared/lib/apiMessages";
+import { AMOUNT_RANGE_MESSAGE } from "../../shared/data/schemas/money";
 import { REFERENCE_MESSAGES } from "../../shared/data/schemas/payment";
 import { memberHref, renewHref } from "./membershipLinks";
 import type { FreezeFormValues, SellFormValues } from "./schemas";
@@ -27,7 +28,7 @@ export const SELL_MESSAGES = {
   planUnavailable: "Este plan ya no está disponible para vender. Elige otro.",
   amountRequired: "Escribe el valor recibido.",
   amountInvalid: "Escribe el valor en pesos enteros, sin centavos (por ejemplo $ 120.000).",
-  amountRange: "El valor debe estar entre $ 1 y $ 1.000.000.000.",
+  amountRange: AMOUNT_RANGE_MESSAGE,
   amountServer: "El servidor no aceptó este valor. Revísalo e intenta de nuevo.",
   methodRequired: "Elige el medio de pago.",
   paidAtRequired: "Escribe la fecha y la hora del pago.",
@@ -119,13 +120,9 @@ function conflictAlert(error: ApiError, { memberId, memberName }: SellAlertConte
   return null;
 }
 
-function statusMessage(error: ApiError): string {
+function sellStatusMessage(error: ApiError): string {
   if (error.code === API_ERROR_CODES.memberInactive) return SELL_MESSAGES.memberInactive;
-  if (error.status === HTTP_NOT_FOUND) return SELL_MESSAGES.memberNotFound;
-  if (error.status === HTTP_FORBIDDEN) return SELL_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return SELL_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return SELL_MESSAGES.server;
-  return SELL_MESSAGES.generic;
+  return statusMessage(error, { ...SELL_MESSAGES, notFound: SELL_MESSAGES.memberNotFound });
 }
 
 /** El aviso general de una venta (o de la vista previa) que falló. */
@@ -134,7 +131,7 @@ export function sellAlert(error: unknown, context: SellAlertContext): SellAlert 
   const connection = connectionMessage(error);
   if (connection) return { message: connection };
   if (error.status === HTTP_CONFLICT) return conflictAlert(error, context) ?? { message: SELL_MESSAGES.generic };
-  return { message: statusMessage(error) };
+  return { message: sellStatusMessage(error) };
 }
 
 /** ¿Es el 409 de la vista previa que impide renovar (ya hay una renovación por empezar)? */
@@ -195,16 +192,9 @@ export const CANCEL_MESSAGES = {
   generic: "No pudimos anular la membresía. Intenta de nuevo.",
 } as const;
 
-function listMessage(error: ApiError): string {
-  if (error.status === HTTP_FORBIDDEN) return LIST_MESSAGES.forbidden;
-  if (error.status === HTTP_UNPROCESSABLE) return LIST_MESSAGES.invalidFilters;
-  if (error.status === HTTP_TOO_MANY) return LIST_MESSAGES.tooMany(waitText(error.retryAfterS));
-  return LIST_MESSAGES.generic;
-}
-
 /** El error de la lista de membresías como ApiError con el mensaje de la pantalla, o null. */
 export function listError(error: unknown): ApiError | null {
-  return toScreenError(error, listMessage, LIST_MESSAGES.generic);
+  return toScreenError(error, (e) => statusMessage(e, { ...LIST_MESSAGES, unprocessable: LIST_MESSAGES.invalidFilters }), LIST_MESSAGES.generic);
 }
 
 export interface FreezeFieldError {
@@ -257,28 +247,18 @@ export function freezeAlert(error: unknown): string {
   if (connection) return connection;
   if (error.status === HTTP_CONFLICT) return freezeConflict(error);
   if (error.code === API_ERROR_CODES.memberInactive) return FREEZE_MESSAGES.memberInactive;
-  if (error.status === HTTP_NOT_FOUND) return FREEZE_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return FREEZE_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return FREEZE_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return FREEZE_MESSAGES.server;
-  return FREEZE_MESSAGES.generic;
+  return statusMessage(error, FREEZE_MESSAGES);
 }
 
 function cancelMessage(error: ApiError): string {
   if (error.code === API_ERROR_CODES.membershipAlreadyCancelled) return CANCEL_MESSAGES.alreadyCancelled;
   if (error.status === HTTP_UNPROCESSABLE && error.field === "reason") return CANCEL_MESSAGES.reasonInvalid;
-  if (error.status === HTTP_NOT_FOUND) return CANCEL_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return CANCEL_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return CANCEL_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return CANCEL_MESSAGES.server;
-  return CANCEL_MESSAGES.generic;
+  return statusMessage(error, CANCEL_MESSAGES);
 }
 
 /** El error de anular con el mensaje de la pantalla; conserva status, code y field. */
 export function toCancelError(error: unknown): ApiError {
-  if (!isApiError(error)) return new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: CANCEL_MESSAGES.generic });
-  const message = connectionMessage(error) ?? cancelMessage(error);
-  return new ApiError({ status: error.status, code: error.code, message, ...(error.field ? { field: error.field } : {}) });
+  return toFormError(error, cancelMessage, CANCEL_MESSAGES.generic);
 }
 
 // S3-F7 · US-093 (front): errores de la pestaña Membresías de la ficha (GET /members/{id}/memberships).
@@ -288,13 +268,7 @@ export const MEMBER_TAB_MESSAGES = {
   generic: "No pudimos cargar las membresías de este socio. Intenta de nuevo.",
 } as const;
 
-function memberTabMessage(error: ApiError): string {
-  if (error.status === HTTP_NOT_FOUND) return MEMBER_TAB_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return MEMBER_TAB_MESSAGES.forbidden;
-  return MEMBER_TAB_MESSAGES.generic;
-}
-
 /** El error de la pestaña como ApiError con el mensaje de la pantalla, o null. */
 export function memberTabError(error: unknown): ApiError | null {
-  return toScreenError(error, memberTabMessage, MEMBER_TAB_MESSAGES.generic);
+  return toScreenError(error, (e) => statusMessage(e, MEMBER_TAB_MESSAGES), MEMBER_TAB_MESSAGES.generic);
 }

@@ -12,12 +12,12 @@
 import { z } from "zod";
 import { COP_MAX, COP_MIN } from "../data/schemas/money";
 import { PAYMENT_METHOD_CODES, type PaymentMethodCode } from "../data/schemas/payment";
+import { isUuid } from "./ids";
 
 export const PAYMENT_PANEL_PARAM = "pago";
 export const PAYMENT_PANEL_MEMBER_PARAM = "socio";
 export const NEW_PAYMENT = "nuevo";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type PaymentPanelTarget = { kind: "membership"; membershipId: string } | { kind: "new"; memberId: string | null };
 
@@ -72,9 +72,9 @@ export function readPaymentPanel(search: string): PaymentPanelTarget | null {
   if (value === null) return null;
   if (value === NEW_PAYMENT) {
     const member = params.get(PAYMENT_PANEL_MEMBER_PARAM);
-    return { kind: "new", memberId: member !== null && UUID.test(member) ? member : null };
+    return { kind: "new", memberId: member !== null && isUuid(member) ? member : null };
   }
-  return UUID.test(value) ? { kind: "membership", membershipId: value } : null;
+  return isUuid(value) ? { kind: "membership", membershipId: value } : null;
 }
 
 /** La misma pantalla sin el panel. */

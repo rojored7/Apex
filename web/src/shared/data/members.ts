@@ -6,6 +6,10 @@
 //   dejar de usarse ni se repite al volver a la ventana (gastaría el límite members-search).
 // - memberOptionSchema no es estricto (a diferencia de memberRowSchema, N-01): toma solo lo que
 //   el selector muestra y descarta el resto, así un campo nuevo de MemberRowOut no lo rompe.
+// - Fase 4 del Sprint 3 (M3): useMemberSearch(text) es la búsqueda con 300 ms de espera que usan la
+//   venta y el panel de pagos (sin los dados de baja), y memberSearchNote la nota de cada resultado
+//   ("Mensual · Al día · hasta el 28 oct 2026"; la fecha de fin llega con S3-B9b, pendiente 2 de V1).
+//   El buscador que la pinta es shared/ui/MemberSearch.
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useOutletContext } from "react-router";
 import { z } from "zod";
@@ -13,6 +17,9 @@ import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
+import { formatDate } from "../../core/i18n/format";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { isMembershipStatusView, statusLabel } from "../ui/statusLabel";
 
 export const MEMBERS_SEARCH_LIMIT = 10;
 
@@ -24,6 +31,7 @@ export const memberOptionSchema = z.object({
   deleted_at: z.string().nullable(),
   membership_status: z.string().nullish(),
   plan_name: z.string().nullish(),
+  membership_end_date: z.string().nullish(),
 });
 export type MemberOption = z.infer<typeof memberOptionSchema>;
 
@@ -36,6 +44,36 @@ export function membersSearchKey(q: string): readonly ["members", "search", stri
 /** "Laura Gómez". */
 export function memberFullName(member: Pick<MemberOption, "first_name" | "last_name">): string {
   return `${member.first_name} ${member.last_name}`.trim();
+}
+
+/** La espera del buscador antes de pedir (US-063). */
+export const MEMBER_SEARCH_DELAY_MS = 300;
+
+/** "Socio elegido" mientras llega el nombre de GET /members/{id} (S3-F7) o si no se pudo leer. */
+export const UNNAMED_MEMBER = "Socio elegido";
+
+export interface MemberSearchResult {
+  status: "idle" | "pending" | "error" | "done";
+  /** Los resultados sin los dados de baja (no se ofrecen en ningún buscador). */
+  options: MemberOption[];
+}
+
+/** La búsqueda del buscador de socio: espera `delayMs` sin cambios y pide; sin texto, `idle`. */
+export function useMemberSearch(text: string, delayMs: number = MEMBER_SEARCH_DELAY_MS): MemberSearchResult {
+  const query = useDebouncedValue(text, delayMs);
+  const search = useMembersSearch(query);
+  if (query.trim() === "") return { status: "idle", options: [] };
+  if (search.isError) return { status: "error", options: [] };
+  if (!search.isSuccess) return { status: "pending", options: [] };
+  return { status: "done", options: search.data.items.filter((option) => option.deleted_at === null) };
+}
+
+/** "Mensual · Al día · hasta el 28 oct 2026", "Por vencer" o "Sin membresía". */
+export function memberSearchNote(option: Pick<MemberOption, "plan_name" | "membership_status" | "membership_end_date">): string {
+  const { plan_name: plan, membership_status: status, membership_end_date: end } = option;
+  if (status === "none" || (!plan && !status)) return "Sin membresía";
+  const parts = [plan, status && isMembershipStatusView(status) ? statusLabel(status) : null, end ? `hasta el ${formatDate(end)}` : null];
+  return parts.filter((part): part is string => Boolean(part)).join(" · ");
 }
 
 export function useMembersSearch(q: string): UseQueryResult<Page<MemberOption>> {

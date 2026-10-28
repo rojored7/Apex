@@ -208,6 +208,17 @@ export function addDaysCivil(value: string, days: number): string | null {
 }
 
 /**
+ * Fase 4 del Sprint 3 (L8): días de `from` a `to` (fechas civiles "AAAA-MM-DD"), negativo si `to` es
+ * anterior; null si alguna no es una fecha real. No depende de la zona del equipo.
+ */
+export function civilDaysBetween(from: string, to: string): number | null {
+  const start = parseCivilDate(from);
+  const end = parseCivilDate(to);
+  if (!start || !end) return null;
+  return Math.round((Date.UTC(end.year, end.month - 1, end.day) - Date.UTC(start.year, start.month - 1, start.day)) / MS_PER_DAY);
+}
+
+/**
  * S3-F4: vigencia corta de una membresía, como la dibuja el diseño ("Mensual 25 oct–24 nov" en
  * Pagos.html). Dos fechas civiles "AAAA-MM-DD"; en el mismo año van sin año, si cruzan de año los
  * llevan los dos ("15 dic 2026–14 ene 2027"). Una fecha que no es civil da "—".

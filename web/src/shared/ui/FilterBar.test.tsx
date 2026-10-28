@@ -83,6 +83,12 @@ describe("FilterBar", () => {
     expect(onSortChange).toHaveBeenCalledWith("-end_date");
   });
 
+  it("un select con hint lo muestra y lo asocia al control (Fase 4 L8)", () => {
+    render(<FilterBar {...base} selects={[{ name: "plan", label: "Plan", value: "", options: [], hint: "Se muestran 2 de 230 planes." }]} />);
+
+    expect(screen.getByRole("combobox", { name: "Plan" })).toHaveAccessibleDescription("Se muestran 2 de 230 planes.");
+  });
+
   it("Limpiar llama a onClear y vacía el buscador", async () => {
     const user = fakeTimersUser();
     const onClear = vi.fn();

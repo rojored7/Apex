@@ -12,7 +12,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { BUSY_MESSAGE } from "../../../core/api/errorCodes";
-import { MEMBERS } from "../../../test/members";
+import { MEMBER_ROWS, MEMBERS, memberPage } from "../../../test/members";
 import { apiError, MEMBERSHIP_ID, membershipRow, membershipRowsPage } from "../../../test/memberships";
 import {
   findPaymentPanel,
@@ -109,6 +109,20 @@ describe("RegisterPaymentPanel · preselección", () => {
       "12 clases 15 dic 2026–14 ene 2027 · sin saldo pendiente",
     ]);
     expect(membershipSelect()).toHaveValue("");
+  });
+
+  // Fase 4 (M3, S3-D99): cobrar una membresía ya vendida no depende del estado del socio (el api
+  // registra el pago de un socio inactivo; dar de baja no toca membresías ni pagos, N-20). El panel
+  // ofrece al inactivo y lo marca, en vez de esconder la diferencia; los dados de baja no salen.
+  it("un socio inactivo se puede elegir y su resultado dice que está inactivo; un dado de baja no aparece", async () => {
+    const { user } = renderPaymentPanel("/pagos?pago=nuevo", { handlers: { "GET /members": (call) => memberPage(call, MEMBER_ROWS) } });
+    await findPaymentPanel();
+
+    await user.type(within(paymentPanel()).getByRole("searchbox", { name: "Buscar socio" }), "a");
+    const andres = await within(paymentPanel()).findByRole("button", { name: /Andrés Ruiz/ });
+    expect(andres).toBeEnabled();
+    expect(andres).toHaveTextContent("Inactivo · Sin membresía");
+    expect(within(paymentPanel()).queryByRole("button", { name: /Elena Vargas/ })).not.toBeInTheDocument();
   });
 
   it("?pago=nuevo pide buscar el socio; al elegirlo carga sus membresías", async () => {
@@ -311,8 +325,10 @@ describe("RegisterPaymentPanel · errores del api", () => {
     });
   });
 
-  it("el texto del coach para paid_at_too_retroactive dice los 7 días", () => {
-    expect(PAYMENT_MESSAGES.paidAtTooRetroactive).toContain("últimos 7 días");
+  // Fase 4 M7: la aserción anterior exigía "últimos 7 días", una cifra que el admin puede cambiar
+  // en Configuración y el coach no ve; el defecto era la aserción.
+  it("el texto del coach para paid_at_too_retroactive no fija los días y pide un administrador", () => {
+    expect(PAYMENT_MESSAGES.paidAtTooRetroactive).toContain("los días que permite el gimnasio");
     expect(PAYMENT_MESSAGES.paidAtTooRetroactive).toContain("administrador");
   });
 
@@ -444,7 +460,8 @@ describe("RegisterPaymentPanel · confirmaciones (Q5 y duplicado, S3-D41)", () =
 
     await user.click(panelSubmit());
     let modal = await screen.findByRole("dialog", { name: PAYMENT_MESSAGES.duplicateTitle });
-    expect(modal).toHaveTextContent("Ya registraste un pago igual hace menos de 2 minutos");
+    // Fase 4 M7: sin la ventana del api (120 s) en el texto.
+    expect(modal).toHaveTextContent("Ya registraste un pago igual hace unos minutos");
     await user.click(within(modal).getByRole("button", { name: "Volver" }));
     expect(registerBodies(mock).map((b) => b.confirm_duplicate)).toEqual([false]);
 

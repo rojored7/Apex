@@ -3,30 +3,22 @@
 //   Q1). Un `socio` que no es un UUID se ignora (vuelve a la venta normal con buscador).
 // - El nombre del socio viaja en el estado de la navegación (validado con Zod) para no pedirlo de
 //   nuevo; sin él la venta lo pide a GET /members/{id} (S3-F7, useMemberName de shared/data).
-// - memberHref: la ficha del socio (/socios/:id, US-073; F1). Se define aquí y no se importa de
-//   features/members (S3-D65: ninguna feature importa de otra).
+// - Fase 4 del Sprint 3 (M4): las rutas y sus enlaces (memberHref, sellHref, renewHref) viven en
+//   shared/lib/routes.ts y aquí se reexportan; `sellForMemberHref` es `sellHref`.
 import { z } from "zod";
+import { isUuid } from "../../shared/lib/ids";
+import { SELL_MEMBER_PARAM, SELL_RENEW_PARAM } from "../../shared/lib/routes";
 
-export const SELL_PATH = "/membresias/vender";
-export const MEMBERS_PATH = "/socios";
-export const NEW_MEMBER_PATH = "/socios/nuevo";
-export const PLANS_PATH = "/planes";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function memberHref(memberId: string): string {
-  return `${MEMBERS_PATH}/${encodeURIComponent(memberId)}`;
-}
-
-/** S3-F7: /membresias/vender?socio=<id> (vender a un socio ya elegido, desde su ficha). */
-export function sellForMemberHref(memberId: string): string {
-  return `${SELL_PATH}?${new URLSearchParams({ socio: memberId }).toString()}`;
-}
-
-/** /membresias/vender?socio=<id>&renovar=1 */
-export function renewHref(memberId: string): string {
-  return `${SELL_PATH}?${new URLSearchParams({ socio: memberId, renovar: "1" }).toString()}`;
-}
+export {
+  MEMBERS_PATH,
+  MEMBERSHIPS_PATH,
+  memberHref,
+  NEW_MEMBER_PATH,
+  PLANS_PATH,
+  renewHref,
+  SELL_PATH,
+  sellHref as sellForMemberHref,
+} from "../../shared/lib/routes";
 
 export interface SellParams {
   /** El socio fijado por la URL, o null. */
@@ -37,9 +29,9 @@ export interface SellParams {
 
 export function readSellParams(search: string): SellParams {
   const params = new URLSearchParams(search);
-  const socio = params.get("socio");
-  const memberId = socio !== null && UUID.test(socio) ? socio : null;
-  return { memberId, renew: memberId !== null && params.get("renovar") === "1" };
+  const socio = params.get(SELL_MEMBER_PARAM);
+  const memberId = socio !== null && isUuid(socio) ? socio : null;
+  return { memberId, renew: memberId !== null && params.get(SELL_RENEW_PARAM) === "1" };
 }
 
 /** Estado de la navegación hacia la venta: el nombre del socio ya elegido. */

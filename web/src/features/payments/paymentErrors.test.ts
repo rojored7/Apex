@@ -2,6 +2,8 @@
 // que las pruebas de los componentes no recorren: errores ajenos al cliente del api, 404 de la
 // membresía, 422 sin campo conocido, 429 y el resto de los de anular.
 import { ApiError, GENERIC_MESSAGES } from "../../core/api/errors";
+import { formatCop } from "../../core/i18n/format";
+import { AMOUNT_RANGE_MESSAGE, COP_MAX, COP_MIN } from "../../shared/data/schemas/money";
 import { PAYMENT_MESSAGES, registerAlert, registerFieldError, toVoidError, VOID_MESSAGES } from "./paymentErrors";
 
 const apiError = (status: number, code: string, field?: string, retryAfterS?: number): ApiError => new ApiError({ status, code, message: "Mensaje del api.", field, retryAfterS });
@@ -59,5 +61,26 @@ describe("toVoidError", () => {
 
   it("un error ajeno al cliente del api da el mensaje genérico", () => {
     expect(toVoidError(new Error("x"))).toMatchObject({ status: 0, code: "unknown", message: VOID_MESSAGES.generic });
+  });
+});
+
+// Fase 4 del Sprint 3 (M7): los textos no fijan valores de negocio que el api decide. El rango sale de
+// COP_MIN y COP_MAX con formatCop; el límite retroactivo del coach (`max_retroactive_days`, que el
+// coach no puede leer y el 422 no trae) y la ventana del duplicado (120 s en el api) van sin cifra.
+describe("textos sin cifras fijas (M7)", () => {
+  it("el rango del valor se arma con formatCop(COP_MIN) y formatCop(COP_MAX)", () => {
+    expect(PAYMENT_MESSAGES.amountRange).toBe(`El valor debe estar entre ${formatCop(COP_MIN)} y ${formatCop(COP_MAX)}.`);
+    expect(PAYMENT_MESSAGES.amountRange).toBe(AMOUNT_RANGE_MESSAGE);
+  });
+
+  it("paid_at_too_retroactive no dice un número de días y pide un administrador", () => {
+    expect(PAYMENT_MESSAGES.paidAtTooRetroactive).not.toMatch(/\d/);
+    expect(PAYMENT_MESSAGES.paidAtTooRetroactive).toContain("los días que permite el gimnasio");
+    expect(PAYMENT_MESSAGES.paidAtTooRetroactive).toContain("administrador");
+  });
+
+  it("el aviso de duplicado no dice la ventana del api", () => {
+    expect(PAYMENT_MESSAGES.duplicate).not.toMatch(/\d/);
+    expect(PAYMENT_MESSAGES.duplicate).toContain("hace unos minutos");
   });
 });

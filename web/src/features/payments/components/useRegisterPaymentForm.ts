@@ -94,17 +94,28 @@ export interface RegisterFocusRefs {
   alertRef: RefObject<HTMLParagraphElement | null>;
 }
 
-export function useRegisterPaymentForm(target: PaymentPanelTarget, prefill: PaymentPrefill | null, { alertRef }: RegisterFocusRefs): RegisterPaymentFormState {
-  const queryClient = useQueryClient();
-  // "Ahora" se lee en cada validación (el panel puede quedar abierto un rato).
-  const resolver = useMemo<Resolver<RegisterPaymentFormValues>>(() => async (values, context, options) => zodResolver(registerPaymentSchema())(values, context, options), []);
-  const form = useForm<RegisterPaymentFormValues>({ resolver, defaultValues: initialValues(target, prefill) });
+/** El socio del panel, sus membresías abiertas y la elegida (Fase 4 M8). */
+function usePanelMemberships(target: PaymentPanelTarget, form: UseFormReturn<RegisterPaymentFormValues>) {
   const fromUrl = useMembershipOption(target.kind === "membership" ? target.membershipId : null);
   const { member, setPicked, memberPicked } = usePanelMember(target, fromUrl.data);
   const memberships = useMemberOpenMemberships(member?.id ?? null);
   const options = optionsOf(memberships.data, fromUrl.data);
   const membershipId = useWatch({ control: form.control, name: "membershipId" });
   const selected = options.find((m) => m.id === membershipId) ?? null;
+  // S3-F7: un socio de la URL sin membresías abiertas (ni nombre) se nombra con GET /members/{id}.
+  const needsName = member !== null && member.name === null && memberships.isSuccess && options.length === 0;
+  const fetchedName = useMemberName(needsName ? member.id : null);
+  const memberName = member?.name ?? options[0]?.member_name ?? fetchedName.data ?? null;
+  return { fromUrl, member: member ? { id: member.id, name: memberName } : null, setPicked, memberPicked, memberships, options, membershipId, selected };
+}
+
+export function useRegisterPaymentForm(target: PaymentPanelTarget, prefill: PaymentPrefill | null, { alertRef }: RegisterFocusRefs): RegisterPaymentFormState {
+  const queryClient = useQueryClient();
+  // "Ahora" se lee en cada validación (el panel puede quedar abierto un rato).
+  const resolver = useMemo<Resolver<RegisterPaymentFormValues>>(() => async (values, context, options) => zodResolver(registerPaymentSchema())(values, context, options), []);
+  const form = useForm<RegisterPaymentFormValues>({ resolver, defaultValues: initialValues(target, prefill) });
+  const panel = usePanelMemberships(target, form);
+  const { member, options, selected, membershipId } = panel;
   const balance = selected ? balanceOf(selected) : null;
   const amountEdited = useRef(prefill !== null);
 
@@ -114,27 +125,22 @@ export function useRegisterPaymentForm(target: PaymentPanelTarget, prefill: Paym
   const sender = useSender(form, membershipId === "" ? null : membershipId, alertRef, () => {
     if (member) void queryClient.invalidateQueries({ queryKey: openMembershipsKey(member.id) });
   });
+  const changeMember = (chosen: PanelMember | null): void => {
+    panel.setPicked(chosen);
+    sender.clearAlert();
+    form.setValue("membershipId", "");
+  };
 
-  // S3-F7: un socio de la URL sin membresías abiertas (ni nombre) se nombra con GET /members/{id}.
-  const needsName = member !== null && member.name === null && memberships.isSuccess && options.length === 0;
-  const fetchedName = useMemberName(needsName ? member.id : null);
-  const memberName = member?.name ?? options[0]?.member_name ?? fetchedName.data ?? null;
   return {
     form,
-    member: member ? { id: member.id, name: memberName } : null,
-    memberPicked,
-    selectMember: (chosen) => {
-      setPicked(chosen);
-      sender.clearAlert();
-      form.setValue("membershipId", "");
-    },
+    member,
+    memberPicked: panel.memberPicked,
+    selectMember: changeMember,
     clearMember: () => {
-      setPicked(null);
-      sender.clearAlert();
-      form.setValue("membershipId", "");
+      changeMember(null);
     },
-    membershipFromUrl: target.kind === "membership" ? fromUrl : null,
-    memberships,
+    membershipFromUrl: target.kind === "membership" ? panel.fromUrl : null,
+    memberships: panel.memberships,
     options,
     selected,
     balance,
@@ -145,7 +151,7 @@ export function useRegisterPaymentForm(target: PaymentPanelTarget, prefill: Paym
     submit: async (values) => {
       const amount = parseCop(values.amount);
       if (balance !== null && amount !== null && amount > balance) {
-        sender.askOverpay({ values, confirmations: {}, excess: excessOver(balance, amount) });
+        sender.askOverpay({ values, confirmations: {}, excess: excessOver(balance, 0, amount) });
         return;
       }
       await sender.send(values, {});

@@ -11,19 +11,43 @@
 //   los campos de la fila: el panel abierto con `?pago=<membresía>` sabe de quién es y cuánto falta.
 // - Esquemas estrictos donde el contrato es la fila (MembershipRow, D35); el detalle se reduce a la
 //   fila descartando lo demás (congelaciones, motivo de anulación), que el panel no usa.
+// - Fase 4 del Sprint 3 (L1 y M4): `MembershipStatus` es el enum del contrato (types.ts) y los grupos
+//   de estados (los que reciben pagos, los que se congelan) viven solo aquí.
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
+import type { components } from "../../core/api/types";
 import { copAmount } from "./schemas/money";
 
-export const MEMBERSHIP_STATUSES = ["pending_payment", "active", "expiring", "expired", "frozen", "cancelled"] as const;
-export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
+export type MembershipStatus = components["schemas"]["MembershipStatus"];
 
-/** Estados de una membresía que recibe pagos (las vencidas y anuladas no se ofrecen). */
+/** Los seis estados del contrato (la prueba de tipos exige que estén todos). */
+export const MEMBERSHIP_STATUSES = ["pending_payment", "active", "expiring", "expired", "frozen", "cancelled"] as const satisfies readonly MembershipStatus[];
+
+/**
+ * Estados de una membresía abierta: la que ya empezó y sigue vigente, y la que recibe pagos (las
+ * vencidas y anuladas no se ofrecen).
+ */
 export const OPEN_MEMBERSHIP_STATUSES = ["active", "expiring", "frozen", "pending_payment"] as const satisfies readonly MembershipStatus[];
+
+/** Congelar solo al día o por vencer (el api da 409 `membership_not_freezable` en las demás). */
+export const FREEZABLE_MEMBERSHIP_STATUSES = ["active", "expiring"] as const satisfies readonly MembershipStatus[];
+
+const OPEN_SET: ReadonlySet<MembershipStatus> = new Set(OPEN_MEMBERSHIP_STATUSES);
+const FREEZABLE_SET: ReadonlySet<MembershipStatus> = new Set(FREEZABLE_MEMBERSHIP_STATUSES);
+
+/** ¿Está abierta (vigente y recibe pagos)? */
+export function isOpenMembershipStatus(status: MembershipStatus): boolean {
+  return OPEN_SET.has(status);
+}
+
+/** ¿Se puede congelar? */
+export function isFreezableMembershipStatus(status: MembershipStatus): boolean {
+  return FREEZABLE_SET.has(status);
+}
 /** Un socio tiene a lo sumo una vigente y una futura; 20 deja margen sin paginar. */
 export const OPEN_MEMBERSHIPS_LIMIT = 20;
 

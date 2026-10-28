@@ -6,13 +6,14 @@
 // - useFreezeMembership y useCancelMembership: POST de congelar y anular; `gcTime: 0` y `reset()`
 //   al terminar (S3-D52). Al salir bien invalidan ["memberships"], ["memberships-summary"] y
 //   ["members"]; un 409 o un 404 también releen la lista (lo que se ve quedó viejo).
-import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import { focusManager, QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { MEMBERS } from "../../test/members";
-import { apiError, cancelKey, ELENA_MEMBERSHIP_ID, freezeKey, MEMBERSHIP_ID, MEMBERSHIP_ROWS, membershipOut, membershipRow, membershipsPage } from "../../test/memberships";
+import { INVALIDATE_AFTER_PAYMENT } from "../../shared/data/payments";
+import { apiError, cancelKey, ELENA_MEMBERSHIP_ID, freezeKey, MEMBERSHIP_ID, MEMBERSHIP_ROWS, membershipOut, membershipRow, membershipsPage, previewKey, renewalPreview, sellKey, sellMembershipOut } from "../../test/memberships";
 import { mockApi, testQueryClient } from "../../test/server";
-import { MEMBERSHIP_WRITE_INVALIDATES, membershipQueryKey, membershipsQueryKey, useCancelMembership, useFreezeMembership, useMembership, useMemberships, type MembershipsParams } from "./api";
+import { MEMBERSHIP_WRITE_INVALIDATES, membershipQueryKey, membershipsQueryKey, renewalPreviewKey, SELL_INVALIDATES, useCancelMembership, useFreezeMembership, useMembership, useMemberships, useRenewalPreview, useSellMembership, type MembershipsParams } from "./api";
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -222,5 +223,65 @@ describe("useCancelMembership", () => {
     await act(async () => {
       await expect(result.current.cancel({ id: ELENA_MEMBERSHIP_ID, reason: "Vendida por error" })).rejects.toMatchObject({ code: "invalid_response" });
     });
+  });
+});
+
+// Fase 4 del Sprint 3 (M1): vender con primer pago deja viejo el total del mes de /pagos; la venta
+// y el registro de pagos invalidan la misma lista (shared/data/payments.ts).
+describe("useSellMembership", () => {
+  it("al salir bien invalida todo lo que deja viejo un pago, también ['payments-summary']", async () => {
+    mockApi({ [sellKey()]: { status: 201, body: sellMembershipOut({ first_payment_id: "12121212-1212-4121-8121-121212121212", paid_cop: 120_000 }) } });
+    const queryClient = testQueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useSellMembership(MEMBERS.laura.id), { wrapper: wrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.sell({ plan_id: "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa", renew: false, start_date: "2026-10-28" });
+    });
+
+    expect(SELL_INVALIDATES).toBe(INVALIDATE_AFTER_PAYMENT);
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([["payments"], ["payments-summary"], ["memberships"], ["memberships-summary"], ["members"]]);
+  });
+});
+
+// Fase 4 del Sprint 3 (L5): la vista previa de la renovación tiene su propia clave; invalidar
+// ["memberships"] (vender, pagar, congelar) no la pide de nuevo.
+describe("useRenewalPreview", () => {
+  it("usa la clave ['renewal-preview', socio, plan] y no se relee al invalidar ['memberships']", async () => {
+    const mock = mockApi({ [previewKey()]: { status: 200, body: renewalPreview() } });
+    const queryClient = testQueryClient();
+    const planId = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { result } = renderHook(() => useRenewalPreview(MEMBERS.laura.id, planId), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(renewalPreviewKey(MEMBERS.laura.id, planId)).toEqual(["renewal-preview", MEMBERS.laura.id, planId]);
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["memberships"] });
+    });
+    expect(mock.callsTo(previewKey())).toHaveLength(1);
+  });
+});
+
+// Revisión final de la Fase 4 (LOW 3): tras vender, la vista previa sigue montada bajo "Venta
+// registrada"; volver a la ventana no la pide de nuevo (podría responder 409 y bloquear la venta).
+describe("useRenewalPreview · foco de la ventana", () => {
+  it("no se relee al volver a la ventana", async () => {
+    const mock = mockApi({ [previewKey()]: { status: 200, body: renewalPreview() } });
+    const queryClient = testQueryClient();
+    const { result } = renderHook(() => useRenewalPreview(MEMBERS.laura.id, "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), { wrapper: wrapper(queryClient) });
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(mock.callsTo(previewKey())).toHaveLength(1);
+    focusManager.setFocused(undefined);
   });
 });

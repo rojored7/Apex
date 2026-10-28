@@ -3,27 +3,12 @@
 // validación del sprint, V4). El coach escribe /planes y /sistema/configuracion en la barra y
 // ve "Sin permiso"; el menú no muestra Planes ni Sistema; el admin ve los dos.
 import { expect, test, type Page } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 type TestRole = "admin" | "coach";
 
 async function sessionAs(page: Page, role: TestRole): Promise<void> {
-  await page.route("**/api/v1/auth/refresh", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: `e2e-${role}`, token_type: "bearer", expires_in: 900 }) }),
-  );
-  await page.route("**/api/v1/auth/me", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "11111111-1111-4111-8111-111111111111",
-        email: `${role}@apex.test`,
-        role,
-        member_id: null,
-        gym_name: "Box E2E",
-        must_change_password: false,
-      }),
-    }),
-  );
+  await mockSession(page, { id: "11111111-1111-4111-8111-111111111111", email: `${role}@apex.test`, role }, { gymName: "Box E2E" });
 }
 
 test.beforeEach(async ({ page }) => {

@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { addDaysCivil } from "../../../core/i18n/format";
 import type { MembershipStatus } from "../../../shared/data/memberships";
 import { useListParams, type ListParamsApi } from "../../../shared/hooks/useListParams";
+import { isUuid } from "../../../shared/lib/ids";
 import type { DateRange } from "../../../shared/ui/FilterBar";
 import type { MembershipsParams } from "../api";
 
@@ -20,7 +21,6 @@ export type MembershipFilter = (typeof MEMBERSHIP_FILTERS)[number];
 /** Los estados en el orden de los chips de Membresias.html. */
 export const STATUS_CHIP_ORDER = ["active", "expiring", "expired", "frozen", "pending_payment", "cancelled"] as const satisfies readonly MembershipStatus[];
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isStatus = (value: string): value is MembershipStatus => (STATUS_CHIP_ORDER as readonly string[]).includes(value);
 
@@ -56,7 +56,7 @@ export function useMembershipFilters(): MembershipFiltersApi {
   const { limit, offset } = list.params;
   const statusKey = parseStatuses(filters.status).join(",");
   const planRaw = filters.plan_id[0] ?? "";
-  const planId = UUID.test(planRaw) ? planRaw : "";
+  const planId = isUuid(planRaw) ? planRaw : "";
   const from = civilOrEmpty(filters.ends_from[0]);
   const to = civilOrEmpty(filters.ends_to[0]);
   const rangeInverted = from !== "" && to !== "" && to < from;
@@ -77,7 +77,7 @@ export function useMembershipFilters(): MembershipFiltersApi {
   const { setFilter } = list;
   return {
     list,
-    statuses: statusKey ? (statusKey.split(",") as MembershipStatus[]) : [],
+    statuses: parseStatuses([statusKey]),
     planId,
     range: { from, to },
     rangeInverted,

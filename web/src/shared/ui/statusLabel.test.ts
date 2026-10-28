@@ -6,6 +6,7 @@ import {
   STATUS_TONES,
   accountLabel,
   accountTone,
+  isMembershipStatusView,
   statusLabel,
   statusTone,
   type AccountStatusView,
@@ -80,5 +81,24 @@ describe("estados de cuenta (S2-D24)", () => {
     const same: [ContractStatus] extends [AccountStatusView] ? ([AccountStatusView] extends [ContractStatus] ? true : false) : false = true;
 
     expect(same).toBe(true);
+  });
+});
+
+// Fase 4 del Sprint 3 (L1): el estado de membresía sale del contrato y un texto se reconoce con un
+// solo guardián.
+describe("MembershipStatusView del contrato", () => {
+  it("son los estados de MembershipStatus más `none`", () => {
+    expectTypeOf<MembershipStatusView>().toEqualTypeOf<components["schemas"]["MembershipStatus"] | "none">();
+  });
+
+  it.each([
+    ["active", true],
+    ["none", true],
+    ["pending_payment", true],
+    ["paused", false],
+    ["toString", false],
+    ["", false],
+  ])("isMembershipStatusView(%j) es %s", (value, expected) => {
+    expect(isMembershipStatusView(value)).toBe(expected);
   });
 });

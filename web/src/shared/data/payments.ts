@@ -17,6 +17,13 @@ import { parseResponse } from "../../core/api/response";
 import { copInt } from "./schemas/money";
 import { paymentMethodCodeSchema } from "./schemas/payment";
 
+/**
+ * Fase 4 del Sprint 3 (M1): lo que deja viejo un pago, y por eso lo invalidan registrarlo, anularlo y
+ * vender (la venta puede traer el primer pago): pagos, el resumen del mes de /pagos, membresías, su
+ * resumen y socios (el estado en la lista). Una sola lista para que ninguna escritura olvide una clave.
+ */
+export const INVALIDATE_AFTER_PAYMENT = [["payments"], ["payments-summary"], ["memberships"], ["memberships-summary"], ["members"]] as const;
+
 // Las fechas de la membresía son civiles ("AAAA-MM-DD"); `registered_by_name` es el correo parcial
 // ("l•••@dominio", S3-D57) y llega en null si la cuenta ya no existe.
 export const paymentRowShape = {

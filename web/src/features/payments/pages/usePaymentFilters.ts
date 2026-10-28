@@ -13,6 +13,7 @@ import { useMemo } from "react";
 import { addDaysCivil, bogotaInputToUtc } from "../../../core/i18n/format";
 import { PAYMENT_METHOD_CODES, type PaymentMethodCode } from "../../../shared/data/schemas/payment";
 import { useListParams, type ListParamsApi } from "../../../shared/hooks/useListParams";
+import { isUuid } from "../../../shared/lib/ids";
 import type { DateRange } from "../../../shared/ui/FilterBar";
 import type { PaymentsParams } from "../api";
 
@@ -22,7 +23,6 @@ export type PaymentFilter = (typeof PAYMENT_FILTERS)[number];
 /** Un filtro de sí o no tal como viaja en la URL; "" es "sin filtro". */
 export type BooleanFilter = "" | "true" | "false";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isMethod = (value: string): value is PaymentMethodCode => (PAYMENT_METHOD_CODES as readonly string[]).includes(value);
 
@@ -70,7 +70,7 @@ export function usePaymentFilters(): PaymentFiltersApi {
   const methodRaw = filters.method[0] ?? "";
   const method = isMethod(methodRaw) ? methodRaw : "";
   const registeredRaw = filters.registered_by[0] ?? "";
-  const registeredBy = UUID.test(registeredRaw) ? registeredRaw : "";
+  const registeredBy = isUuid(registeredRaw) ? registeredRaw : "";
   const voided = booleanOf(filters.voided[0]);
   const backdated = booleanOf(filters.backdated[0]);
 

@@ -1,20 +1,10 @@
-// S3-F4 · US-095 (front): el saldo de una membresía y cómo se ofrece en el panel de pagos. Manda el
-// servidor: el saldo sale de `agreed_price_cop - paid_cop` (B7) y el 409 `payment_exceeds_balance`
-// confirma lo mismo bajo el candado (S3-D41). Q5: un pago mayor al saldo no deja saldo a favor.
+// S3-F4 · US-095 (front): cómo se ofrece el saldo de una membresía en el panel de pagos. Fase 4 del
+// Sprint 3 (M4): la regla del saldo (Q5, S3-D41) vive en shared/lib/balance.ts, la misma de la venta.
 import { formatCop, formatDateRange } from "../../../core/i18n/format";
 import type { MembershipRowView } from "../../../shared/data/memberships";
+import { balanceOf } from "../../../shared/lib/balance";
 
-type Priced = Pick<MembershipRowView, "agreed_price_cop" | "paid_cop">;
-
-/** Lo que falta pagar; nunca negativo. */
-export function balanceOf(membership: Priced): number {
-  return Math.max(membership.agreed_price_cop - membership.paid_cop, 0);
-}
-
-/** Cuánto supera el pago al saldo, o 0. */
-export function excessOver(balance: number, amount: number): number {
-  return Math.max(amount - balance, 0);
-}
+export { balanceOf, excessOver } from "../../../shared/lib/balance";
 
 /** "Mensual 25 oct–24 nov". */
 export function membershipText(membership: Pick<MembershipRowView, "plan_name" | "start_date" | "end_date">): string {

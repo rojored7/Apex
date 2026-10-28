@@ -3091,3 +3091,19 @@ Rama `feat/sprint-03-membresias-pagos`, desde `0fa1270` con el árbol limpio. Es
 ### Estado al terminar
 - Stack `apex` normal con `apex-api:local` `7ebd75528265` y `apex-web:local` `695f6e2f027d` (Zod 4). `.env` idéntico al previo.
 - Siguen como datos de prueba los planes, socios y ventas de las specs de estas dos corridas, igual que en las anteriores, hasta que exista `DELETE /plans` (Sprint 4A).
+
+## V9.1 · `run-gates.sh` completo y V12 · higiene
+
+Corrido por el orquestador el 2026-10-28 sobre `aacd8b0` (mismo código que `0fa1270` y `43793e4`: desde `6f9a20e` solo cambian documentos), con `TEST_DATABASE_URL` a `127.0.0.1:5443`. Salida final: `run-gates: todos los gates en verde`, código 0.
+
+- API (`-m "not perf"`, con cobertura): 3.883 ok, 3 saltadas (modos de archivo en NTFS), 8 `perf` deseleccionadas, 11 min 04 s. Cobertura global de `app`: 97 % (6.835 sentencias, 165 sin cubrir; 1.252 ramas, 83 sin cubrir).
+- Front: 156 archivos y 2.788 pruebas en verde; cobertura 97,98 % sentencias, 94,56 % ramas, 97,09 % funciones, 98,87 % líneas; lint, `tsc` y build (`2332 modules transformed`, `built in 2.74s`) en verde.
+- Scripts de infraestructura (incluido `test_images_pinned.sh`) en verde.
+- Los puntos V9.2 a V9.7 y V9.9 están en el bloque "V9 · Gates ligeros"; V9.8 (imagen) en "Validación final del stack tras Fase 4 y V10".
+
+Higiene de V12 (orquestador, 2026-10-28):
+
+- Borrados los cinco volcados `docs/scratch/sprint-03-antes-*.dump` (0008, 0009, 0010, 0011 y v2); `ls docs/scratch/*.dump` no devuelve nada. Nunca salieron de la máquina ni se sincronizaron.
+- Borrados del scratchpad de la sesión los archivos temporales con credenciales de sesiones anteriores (copias de `.env`, tokens firmados, contraseñas de cuentas desechables, salidas de `curl`); un grep de JWT y llaves privadas sobre el scratchpad devuelve 0.
+- `git worktree list` solo muestra el árbol principal; `.env` idéntico a la copia previa (comprobado por el agente del stack con `cmp`); stack arriba sin `compose.e2e.yml`.
+- Trailers de coautoría: los commits `59bf09d`, `43b4f09`, `561ae32`, `dd3d276` y `2c191a4` se reescribieron para llevar el trailer del repositorio (rama reescrita localmente antes del push; no había nada empujado).

@@ -8,11 +8,12 @@
 //   201 la caché de mutaciones no conserva el cuerpo (S3-D52).
 // - Errores: 409 `membership_conflict` con "Renovar"; 422 por campo con foco; 503 `busy` sin
 //   limpiar el formulario; planes vacíos o con error.
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { MEMBERS } from "../../../test/members";
 import {
   apiError,
+  MEMBERSHIP_ID,
   pickMember,
   pickPlan,
   renderSell,
@@ -53,8 +54,40 @@ describe("SellPage · estructura (Membresia_Vender.html)", () => {
     const steps = screen.getByRole("list", { name: "Pasos de la venta" });
     expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1Socio", "2Plan y fechas", "3Pago"]);
     for (const name of ["1 · Socio", "2 · Plan y fechas", "3 · Pago", "Resumen"]) expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Cancelar" })).toHaveAttribute("href", "/socios");
+    // Pendiente 3 de V1 (S3-D100): sin socio fijo, "Cancelar" vuelve a /membresias (antes a /socios,
+    // cuando /membresias no existía; la aserción anterior era el defecto).
+    expect(screen.getByRole("link", { name: "Cancelar" })).toHaveAttribute("href", "/membresias");
     expect(await screen.findByRole("radio", { name: /^Mensual/ })).toBeInTheDocument();
+  });
+
+  it("las migas enlazan 'Membresías' a /membresias (pendiente 3 de V1)", () => {
+    renderSell();
+
+    expect(within(screen.getByRole("navigation", { name: "Migas" })).getByRole("link", { name: "Membresías" })).toHaveAttribute("href", "/membresias");
+  });
+
+  it("con ?socio= 'Cancelar' vuelve a la ficha del socio (S3-D100)", () => {
+    renderSell(`/membresias/vender?socio=${MEMBERS.laura.id}`);
+
+    expect(screen.getByRole("link", { name: "Cancelar" })).toHaveAttribute("href", `/socios/${MEMBERS.laura.id}`);
+  });
+
+  it("abrir el panel de pagos (?pago=) no vuelve a montar la venta: lo escrito sigue (L4)", async () => {
+    const { user, router } = renderSell(`/membresias/vender?socio=${MEMBERS.laura.id}`);
+    await user.click(await screen.findByRole("radio", { name: /Nequi/ }));
+    await user.type(screen.getByRole("textbox", { name: /^Referencia/ }), "NQ-77");
+
+    await act(async () => {
+      await router.navigate(`/membresias/vender?socio=${MEMBERS.laura.id}&pago=${MEMBERSHIP_ID}`);
+    });
+
+    expect(screen.getByRole("textbox", { name: /^Referencia/ })).toHaveValue("NQ-77");
+  });
+
+  it("si la lista de planes activos viene cortada, la venta lo dice (Fase 4 L8)", async () => {
+    renderSell("/membresias/vender", { handlers: { "GET /plans": { status: 200, body: { items: [PLANS.clases, PLANS.mensual], total: 230, limit: 100, offset: 0 } } } });
+
+    expect(await screen.findByText("Se muestran 2 de 230 planes. Si falta el que buscas, avísale a un administrador.")).toBeInTheDocument();
   });
 
   it("pide solo los planes activos y los muestra con su duración y precio", async () => {
@@ -110,6 +143,20 @@ describe("SellPage · elegir el socio", () => {
     await user.click(screen.getByRole("button", { name: "Cambiar socio" }));
     expect(screen.getByRole("searchbox", { name: "Buscar socio" })).toBeInTheDocument();
     expect(summaryValue("Socio")).toBe("—");
+  });
+
+  // Pendiente 2 de V1: GET /members trae `membership_end_date` (S3-B9b); el resultado y la tarjeta
+  // del socio elegido dicen hasta cuándo va su membresía (Membresia_Vender.html).
+  it("el resultado y la tarjeta del socio elegido dicen hasta cuándo va su membresía", async () => {
+    const laura = { ...MEMBERS.laura, plan_name: "Mensual", membership_status: "expiring", membership_end_date: "2026-11-02" };
+    const { user } = renderSell("/membresias/vender", { members: [laura] });
+    await user.type(screen.getByRole("searchbox", { name: "Buscar socio" }), "laura");
+
+    expect(await screen.findByRole("button", { name: /Laura Gómez/ })).toHaveTextContent("Mensual · Por vencer · hasta el 2 nov 2026");
+    await user.click(screen.getByRole("button", { name: /Laura Gómez/ }));
+    const card = screen.getByRole("button", { name: "Cambiar socio" }).parentElement;
+    expect(card).toHaveTextContent("Laura Gómez");
+    expect(card).toHaveTextContent("Mensual · Por vencer · hasta el 2 nov 2026");
   });
 
   it("un socio inactivo aparece pero no se puede elegir", async () => {
@@ -195,7 +242,17 @@ describe("SellPage · vender", () => {
     expect(summaryValue("Pagado", region)).toBe("$ 120.000");
     expect(summaryValue("Saldo", region)).toBe("$ 0");
     expect(summaryValue("Vigencia", region)).toBe("28 oct 2026 – 27 nov 2026");
-    expect(within(region).getByRole("link", { name: "Ir a Socios" })).toHaveAttribute("href", "/socios");
+    // Pendiente 3 de V1 (S3-D100): sin socio fijo, tras vender se ofrece la lista de membresías.
+    expect(within(region).getByRole("link", { name: "Ir a Membresías" })).toHaveAttribute("href", "/membresias");
+  });
+
+  it("con ?socio= la venta registrada lleva a la ficha del socio (S3-D100)", async () => {
+    const { user } = renderSell(`/membresias/vender?socio=${MEMBERS.laura.id}`, { state: { memberName: "Laura Gómez" } });
+    await pickPlan(user, "Mensual");
+    await user.click(submitButton());
+
+    const region = await screen.findByRole("region", { name: "Venta registrada" });
+    expect(within(region).getByRole("link", { name: "Ir a la ficha del socio" })).toHaveAttribute("href", `/socios/${MEMBERS.laura.id}`);
   });
 
   it("una venta que queda pendiente de pago lo muestra con su saldo", async () => {

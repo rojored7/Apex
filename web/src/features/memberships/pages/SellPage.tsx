@@ -5,9 +5,12 @@
 //   renovar usan el mismo endpoint (regla 9 de CLAUDE.md).
 // - `?socio=<id>` fija el socio; `&renovar=1` renueva: `renew: true`, sin `start_date`, y la fecha
 //   de inicio la calcula el servidor (vista previa, Q1). El formulario se monta de nuevo al cambiar
-//   la URL (por ejemplo al pulsar "Renovar" en el aviso de `membership_conflict`) y al pulsar
-//   "Vender otra membresía".
-// - DESIGN-GAP: las migas dicen "Membresías" sin enlace: la lista de membresías llega con S3-F5.
+//   el socio o la renovación de la URL (por ejemplo al pulsar "Renovar" en el aviso de
+//   `membership_conflict`) y al pulsar "Vender otra membresía"; abrir el panel de pagos (`?pago=`) no
+//   lo toca (Fase 4 L4).
+// - Pendiente 3 de V1 (S3-D100): las migas enlazan "Membresías" a /membresias. "Cancelar" y el enlace
+//   de la venta registrada llevan a la ficha del socio si se llegó con `?socio=` (desde su ficha o
+//   para renovar), y a /membresias si no.
 import { useRef, useState } from "react";
 import { useWatch } from "react-hook-form";
 import { Link, useLocation } from "react-router";
@@ -21,7 +24,7 @@ import { MemberStep, UNNAMED_MEMBER } from "../components/MemberStep";
 import { PlanStep } from "../components/PlanStep";
 import styles from "../components/Sell.module.css";
 import { SellDone, SellSummary } from "../components/SellSummary";
-import { memberNameFromState, readSellParams, type SellLocationState, type SellParams } from "../membershipLinks";
+import { memberHref, MEMBERSHIPS_PATH, memberNameFromState, readSellParams, type SellLocationState, type SellParams } from "../membershipLinks";
 import { useSellForm, type Overpayment } from "./useSellForm";
 import page from "./SellPage.module.css";
 
@@ -30,6 +33,16 @@ export const RENEW_TITLE = "Renovar membresía";
 
 const OVERPAY_TITLE = "¿Registrar un pago mayor al precio?";
 const NO_CREDIT = "La diferencia no queda como saldo a favor.";
+
+/** S3-D100: a dónde vuelve la venta (Cancelar y tras vender). */
+export interface SellExit {
+  href: string;
+  text: string;
+}
+
+export function sellExitOf(params: SellParams): SellExit {
+  return params.memberId ? { href: memberHref(params.memberId), text: "Ir a la ficha del socio" } : { href: MEMBERSHIPS_PATH, text: "Ir a Membresías" };
+}
 
 function overpayText(overpay: Overpayment | null): string {
   if (overpay?.excess === null || overpay === null) return `Este pago supera el saldo de la membresía. ${NO_CREDIT}`;
@@ -77,12 +90,13 @@ function SellForm({ params, initialMemberName, fallbackName, onSellAnother }: Se
   const method = useWatch({ control: form.control, name: "method" });
   const amount = parseCop(useWatch({ control: form.control, name: "amount" }));
   const methodLabel = methods.methods.find((m) => m.code === method)?.label ?? "";
+  const exit = sellExitOf(params);
 
   return (
     <>
       <Steps memberDone={member !== null} planDone={plan !== null} />
       {state.sold ? (
-        <SellDone sold={state.sold} onSellAnother={onSellAnother} />
+        <SellDone sold={state.sold} exit={exit} onSellAnother={onSellAnother} />
       ) : (
         <form className={page.form} noValidate aria-label={params.renew ? RENEW_TITLE : SELL_TITLE} onSubmit={(event) => void form.handleSubmit(state.submit)(event)}>
           {alert ? (
@@ -135,6 +149,7 @@ function SellForm({ params, initialMemberName, fallbackName, onSellAnother }: Se
               registeredBy={state.registeredBy}
               submitting={state.submitting}
               submitDisabled={state.blocked}
+              cancelHref={exit.href}
             />
           </div>
         </form>
@@ -164,9 +179,10 @@ export default function SellPage() {
   const title = params.renew ? RENEW_TITLE : SELL_TITLE;
   return (
     <div className={page.page}>
-      <PageHeader title={title} breadcrumbs={[{ label: "Membresías" }, { label: params.renew ? "Renovar" : "Vender" }]} />
+      <PageHeader title={title} breadcrumbs={[{ label: "Membresías", href: MEMBERSHIPS_PATH }, { label: params.renew ? "Renovar" : "Vender" }]} />
       <SellForm
-        key={`${location.search}#${String(round)}`}
+        // L4: la clave es lo que define la venta (socio y renovación), no toda la búsqueda de la URL.
+        key={`${params.memberId ?? ""}|${String(params.renew)}#${String(round)}`}
         params={params}
         initialMemberName={memberName}
         fallbackName={fetchedName.data ?? null}

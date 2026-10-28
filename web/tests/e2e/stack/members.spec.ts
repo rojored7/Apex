@@ -5,7 +5,7 @@
 // ../members.spec.ts. Idempotente: documento y apellido únicos por corrida (V4 corre dos veces).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
+import { borrarUsuario, crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -61,13 +61,17 @@ test.describe("alta y lista de socios contra el stack", () => {
 
     const coach = await crearCoach(page);
     const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "" });
-    const coachPage = await context.newPage();
-    await coachPage.setViewportSize({ width: 390, height: 844 });
-    await loginComo(coachPage, coach);
-    await coachPage.goto("/socios");
-    await coachPage.getByRole("searchbox", { name: "Buscar" }).fill(LAST_NAME);
-    await expect(coachPage.getByRole("link", { name: FULL_NAME })).toBeVisible();
-    expect(await axeViolations(coachPage)).toEqual([]);
-    await context.close();
+    try {
+      const coachPage = await context.newPage();
+      await coachPage.setViewportSize({ width: 390, height: 844 });
+      await loginComo(coachPage, coach);
+      await coachPage.goto("/socios");
+      await coachPage.getByRole("searchbox", { name: "Buscar" }).fill(LAST_NAME);
+      await expect(coachPage.getByRole("link", { name: FULL_NAME })).toBeVisible();
+      expect(await axeViolations(coachPage)).toEqual([]);
+    } finally {
+      await context.close();
+      await borrarUsuario(page, coach.id);
+    }
   });
 });

@@ -111,6 +111,8 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
     }
     expect(within(tablist).getByRole("tab", { name: /^Asistencia/ })).toHaveTextContent("Disponible en v0.4");
     expect(within(tablist).getByRole("tab", { name: /^Avisos/ })).toHaveTextContent("Disponible en v0.2");
+    // Pendiente 4 de V1: Historial es de US-106 (Sprint 4A), no de un v0.1 ya entregado.
+    expect(within(tablist).getByRole("tab", { name: /^Historial/ })).toHaveTextContent("Disponible en v0.1 · Sprint 4A");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
   });
 

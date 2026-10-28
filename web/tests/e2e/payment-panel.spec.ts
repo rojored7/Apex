@@ -5,6 +5,7 @@
 // 390 y 1440 px, sin desborde y con capturas. La variante contra el stack es stack/payment-void.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const COACH_ID = "22222222-2222-4222-8222-222222222222";
@@ -31,10 +32,7 @@ const json = (route: Route, status: number, body?: unknown) =>
 
 async function fakeApi(page: Page): Promise<{ bodies: Record<string, unknown>[] }> {
   const state = { bodies: [] as Record<string, unknown>[] };
-  await page.route("**/api/v1/auth/refresh", (route) => json(route, 200, { access_token: "e2e-coach", token_type: "bearer", expires_in: 900 }));
-  await page.route("**/api/v1/auth/me", (route) =>
-    json(route, 200, { id: COACH_ID, email: "coach@apex.test", role: "coach", member_id: null, gym_name: "Box Norte", must_change_password: false }),
-  );
+  await mockSession(page, { id: COACH_ID, email: "coach@apex.test", role: "coach" });
   await page.route("**/api/v1/payments/methods", (route) =>
     json(route, 200, { items: [{ code: "cash", label: "Efectivo", hint: "" }, { code: "nequi", label: "Nequi", hint: "" }, { code: "breb", label: "Bre-B", hint: "" }] }),
   );

@@ -6,6 +6,7 @@
 // stack/member-tabs.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const ADMIN = { id: "11111111-1111-4111-8111-111111111111", email: "admin@apex.test", role: "admin" } as const;
@@ -110,8 +111,7 @@ const page25 = (items: unknown[]) => ({ items, total: items.length, limit: 25, o
 
 async function fakeApi(page: Page): Promise<FakeApi> {
   const state: FakeApi = { detailCalls: 0, paymentQueries: [] };
-  await page.route("**/api/v1/auth/refresh", (route) => json(route, 200, { access_token: "e2e-admin", token_type: "bearer", expires_in: 900 }));
-  await page.route("**/api/v1/auth/me", (route) => json(route, 200, { ...ADMIN, member_id: null, gym_name: "Box Norte", must_change_password: false }));
+  await mockSession(page, ADMIN);
   await page.route("**/api/v1/payments/methods", (route) =>
     json(route, 200, {
       items: [

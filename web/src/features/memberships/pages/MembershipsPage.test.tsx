@@ -555,3 +555,13 @@ describe("MembershipsPage · revisión S3-F5", () => {
     });
   });
 });
+
+describe("MembershipsPage · planes cortados (Fase 4 L8)", () => {
+  it("si el filtro de plan no trae todos los planes, lo dice bajo el select", async () => {
+    renderMemberships("/membresias", { handlers: { "GET /plans": { status: 200, body: { items: [PLANS.clases, PLANS.mensual], total: 230, limit: 200, offset: 0 } } } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Plan" })).toHaveAccessibleDescription("Se muestran 2 de 230 planes. Si falta el que buscas, avísale a un administrador.");
+    });
+  });
+});

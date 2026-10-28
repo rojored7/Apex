@@ -22,6 +22,8 @@ export interface FilterSelect {
   options: FilterOption[];
   /** Texto de la opción vacía; por defecto "Cualquiera". */
   anyLabel?: string;
+  /** Fase 4 del Sprint 3 (L8): una ayuda bajo el select (por ejemplo, que la lista viene cortada). */
+  hint?: string;
 }
 
 /** Fechas civiles AAAA-MM-DD (sin zona). */
@@ -119,7 +121,7 @@ export function FilterBar({
       <SearchInput query={query} onQueryChange={onQueryChange} label={searchLabel} placeholder={searchPlaceholder} resetToken={resetToken} />
       {selects.map((select) => (
         <div key={select.name} className={styles.select}>
-          <Field label={select.label} name={select.name}>
+          <Field label={select.label} name={select.name} {...(select.hint ? { hint: select.hint } : {})}>
             {(control) => (
               <select
                 {...control}

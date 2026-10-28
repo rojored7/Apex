@@ -7,6 +7,8 @@
 //   . _ / # -, empezando por letra o número. Así no cabe un correo ni un texto libre.
 import { z } from "zod";
 import type { components } from "../../../core/api/types";
+import { bogotaInputToUtc, parseCop } from "../../../core/i18n/format";
+import { copInt } from "./money";
 
 export type PaymentInBody = components["schemas"]["PaymentIn"];
 export type PaymentMethodCode = PaymentInBody["method"];
@@ -49,3 +51,87 @@ export const paymentMethodCodeSchema = z.enum(PAYMENT_METHOD_CODES);
  * pagos; memberships la reexporta.
  */
 export const PAID_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
+
+// Fase 4 del Sprint 3 (M2): la venta con primer pago (features/memberships) y el panel de pagos
+// (features/payments) validaban y armaban el pago con dos copias que solo cambiaban los textos. Las
+// reglas viven aquí y cada pantalla pasa sus mensajes:
+// - checkPaymentFields: valor entero de 1 a 1.000.000.000 (D17), referencia con el patrón de
+//   comprobante solo en Nequi y Bre-B (S3-D50) y fecha y hora válidas que no pasen de ahora más la
+//   tolerancia del api. El tope hacia atrás lo decide el servidor (N-24, M-8).
+// - buildPaymentBody: PaymentIn con `paid_at` en UTC y las confirmaciones de S3-D41 en verdadero solo
+//   cuando se confirmaron.
+
+/** Los campos del pago tal como se ven en el formulario. */
+export interface PaymentFieldValues {
+  method: PaymentMethodCode;
+  /** Lo que se ve en el campo, por ejemplo "$ 60.000". */
+  amount: string;
+  reference: string;
+  /** "AAAA-MM-DDTHH:mm" en hora de Bogotá. */
+  paidAt: string;
+}
+
+export type PaymentField = "amount" | "reference" | "paidAt";
+
+/** Los textos de cada pantalla para los errores del pago (la referencia usa REFERENCE_MESSAGES). */
+export interface PaymentFieldMessages {
+  amountRequired: string;
+  amountInvalid: string;
+  amountRange: string;
+  paidAtRequired: string;
+  paidAtInvalid: string;
+  paidAtFuture: string;
+}
+
+export interface PaymentBodyOptions {
+  /** El usuario confirmó un pago mayor al saldo (Q5, S3-D41). */
+  confirmOverpayment?: boolean;
+  /** El usuario confirmó que no es un duplicado (409 `payment_possible_duplicate`, S3-D41). */
+  confirmDuplicate?: boolean;
+}
+
+type AddPaymentIssue = (path: PaymentField, message: string) => void;
+
+function amountError(amount: string, messages: PaymentFieldMessages): string | null {
+  if (amount.trim() === "") return messages.amountRequired;
+  const value = parseCop(amount);
+  if (value === null) return messages.amountInvalid;
+  return copInt.safeParse(value).success ? null : messages.amountRange;
+}
+
+function paidAtError(paidAt: string, nowMs: number, messages: PaymentFieldMessages): string | null {
+  if (paidAt.trim() === "") return messages.paidAtRequired;
+  const utc = bogotaInputToUtc(paidAt);
+  if (utc === null) return messages.paidAtInvalid;
+  return Date.parse(utc) > nowMs + PAID_AT_FUTURE_TOLERANCE_MS ? messages.paidAtFuture : null;
+}
+
+/** Revisa valor, referencia y fecha del pago; cada error va con `add` bajo su campo. */
+export function checkPaymentFields(values: PaymentFieldValues, nowMs: number, messages: PaymentFieldMessages, add: AddPaymentIssue): void {
+  const amount = amountError(values.amount, messages);
+  if (amount) add("amount", amount);
+  if (METHODS_WITH_REFERENCE.has(values.method)) {
+    const reference = referenceError(values.reference);
+    if (reference) add("reference", reference);
+  }
+  const paidAt = paidAtError(values.paidAt, nowMs, messages);
+  if (paidAt) add("paidAt", paidAt);
+}
+
+/** PaymentIn a partir de campos ya validados; `caller` nombra a quien lo pidió en el error. */
+export function buildPaymentBody(values: PaymentFieldValues, options: PaymentBodyOptions, caller: string): PaymentInBody {
+  // Un formulario sin validar es un error de programación, no un 0 que el api rechace.
+  const required = <T>(value: T | null, field: PaymentField): T => {
+    if (value === null) throw new Error(`${caller}: ${field} no pasó por la validación del formulario`);
+    return value;
+  };
+  const reference = METHODS_WITH_REFERENCE.has(values.method) ? cleanReference(values.reference) : undefined;
+  return {
+    amount_cop: required(parseCop(values.amount), "amount"),
+    method: values.method,
+    ...(reference ? { reference } : {}),
+    paid_at: required(bogotaInputToUtc(values.paidAt), "paidAt"),
+    confirm_overpayment: options.confirmOverpayment === true,
+    confirm_duplicate: options.confirmDuplicate === true,
+  };
+}

@@ -5,6 +5,9 @@
 //   a los 60 s. Cada pulsación llama a onReveal una vez (cada vista deja una auditoría).
 // S3-F1 (US-074) cierra el criterio diferido: features/members/components/MemberSensitiveField
 // conecta onReveal a POST /members/{id}/reveal (S3-D52; prueba en MaskedValue.reveal.test.tsx).
+// Fase 4 del Sprint 3 (L2): cuando el claro deja de mostrarse porque cambió el registro o se perdió el
+// permiso, también sale del estado (antes reaparecía al volver antes de los 60 s). Y se enmascara al
+// ocultar la pestaña (`visibilitychange` a `hidden`) o al salir de la página (`pagehide`).
 import { useEffect, useId, useRef, useState } from "react";
 import { isApiError } from "../../core/api/errors";
 import type { Action } from "../../core/auth/permissions";
@@ -79,6 +82,11 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
     try {
       const plain = await onReveal();
       if (!mounted.current) return;
+      // Revisión final (LOW 4): si la respuesta llega con la pestaña oculta, el claro no se muestra.
+      if (document.visibilityState === "hidden") {
+        setState({ status: "masked" });
+        return;
+      }
       setState({ status: "revealed", plain, source: requestedFor });
       clearTimer();
       timer.current = setTimeout(() => {
@@ -97,6 +105,36 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
   };
 
   const isRevealed = state.status === "revealed" && state.source === source && canReveal;
+  const revealed = state.status === "revealed";
+  // L2: un claro que ya no se muestra (otro registro, sin permiso) no se guarda. Se ajusta durante el
+  // render (el patrón de React para derivar estado de las props), sin esperar a un efecto.
+  if (revealed && !isRevealed) setState({ status: "masked" });
+
+  // Sin claro, el temporizador de los 60 s ya no tiene nada que enmascarar.
+  useEffect(() => {
+    if (revealed) return;
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  }, [revealed]);
+
+  // L2: con el claro a la vista, ocultar la pestaña o salir de la página lo enmascara.
+  useEffect(() => {
+    if (!revealed) return undefined;
+    const mask = (): void => {
+      if (timer.current !== null) clearTimeout(timer.current);
+      timer.current = null;
+      setState({ status: "masked" });
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden") mask();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", mask);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", mask);
+    };
+  }, [revealed]);
 
   return (
     <div className={styles.field}>

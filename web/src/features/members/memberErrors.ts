@@ -7,8 +7,8 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
-import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { connectionMessage, statusMessage, toScreenError } from "../../shared/lib/apiMessages";
 import { MEMBER_MESSAGES, type MemberEditValues, type MemberFormValues } from "./schemas";
 
 export const CREATE_MESSAGES = {
@@ -66,17 +66,14 @@ export function createErrorMessage(error: unknown): string {
   if (!isApiError(error)) return CREATE_MESSAGES.generic;
   const connection = connectionMessage(error);
   if (connection) return connection;
-  if (error.status === HTTP_FORBIDDEN) return CREATE_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return CREATE_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return CREATE_MESSAGES.server;
-  return CREATE_MESSAGES.generic;
+  return statusMessage(error, { forbidden: CREATE_MESSAGES.forbidden, tooMany: CREATE_MESSAGES.tooMany, server: CREATE_MESSAGES.server, generic: CREATE_MESSAGES.generic });
 }
 
 /** El error de la lista como ApiError con el mensaje de la pantalla (lo pinta DataTable). */
 export function listError(error: unknown): ApiError | null {
   return toScreenError(
     error,
-    (e) => (e.status === HTTP_FORBIDDEN ? LIST_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? LIST_MESSAGES.tooMany(waitText(e.retryAfterS)) : LIST_MESSAGES.failed),
+    (e) => statusMessage(e, { forbidden: LIST_MESSAGES.forbidden, tooMany: LIST_MESSAGES.tooMany, generic: LIST_MESSAGES.failed }),
     LIST_MESSAGES.failed,
   );
 }
@@ -139,7 +136,7 @@ export function detailErrorOf(error: unknown): DetailError {
   if (isApiError(error) && error.status === HTTP_NOT_FOUND) return { notFound: true, message: DETAIL_MESSAGES.notFoundHint };
   const screen = toScreenError(
     error,
-    (e) => (e.status === HTTP_FORBIDDEN ? DETAIL_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? DETAIL_MESSAGES.tooMany(waitText(e.retryAfterS)) : DETAIL_MESSAGES.failed),
+    (e) => statusMessage(e, { forbidden: DETAIL_MESSAGES.forbidden, tooMany: DETAIL_MESSAGES.tooMany, generic: DETAIL_MESSAGES.failed }),
     DETAIL_MESSAGES.failed,
   );
   return { notFound: false, message: screen?.message ?? DETAIL_MESSAGES.failed };
@@ -150,7 +147,7 @@ export function revealError(error: unknown): ApiError {
   return (
     toScreenError(
       error,
-      (e) => (e.status === HTTP_TOO_MANY ? REVEAL_MESSAGES.tooMany : e.status === HTTP_NOT_FOUND ? REVEAL_MESSAGES.notFound : REVEAL_MESSAGES.failed),
+      (e) => statusMessage(e, { tooMany: () => REVEAL_MESSAGES.tooMany, notFound: REVEAL_MESSAGES.notFound, generic: REVEAL_MESSAGES.failed }),
       REVEAL_MESSAGES.failed,
     ) ?? new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: REVEAL_MESSAGES.failed })
   );
@@ -190,11 +187,7 @@ export function editErrorMessage(error: unknown): string {
   const connection = connectionMessage(error);
   if (connection) return connection;
   if (error.code === API_ERROR_CODES.memberDeactivated) return EDIT_ERROR_MESSAGES.deactivated;
-  if (error.status === HTTP_FORBIDDEN) return EDIT_ERROR_MESSAGES.forbidden;
-  if (error.status === HTTP_NOT_FOUND) return EDIT_ERROR_MESSAGES.notFound;
-  if (error.status === HTTP_TOO_MANY) return EDIT_ERROR_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return EDIT_ERROR_MESSAGES.server;
-  return EDIT_ERROR_MESSAGES.generic;
+  return statusMessage(error, EDIT_ERROR_MESSAGES);
 }
 
 export type StatusChange = "deactivate" | "reactivate";
@@ -203,10 +196,12 @@ function statusChangeMessage(error: ApiError, change: StatusChange): string {
   if (error.code === API_ERROR_CODES.memberAlreadyDeactivated) return STATUS_CHANGE_MESSAGES.alreadyDeactivated;
   if (error.code === API_ERROR_CODES.memberNotDeactivated) return STATUS_CHANGE_MESSAGES.notDeactivated;
   if (error.code === API_ERROR_CODES.memberDocumentDuplicated) return STATUS_CHANGE_MESSAGES.duplicated;
-  if (error.status === HTTP_FORBIDDEN) return STATUS_CHANGE_MESSAGES.forbidden[change];
-  if (error.status === HTTP_NOT_FOUND) return STATUS_CHANGE_MESSAGES.notFound;
-  if (error.status === HTTP_TOO_MANY) return STATUS_CHANGE_MESSAGES.tooMany(waitText(error.retryAfterS));
-  return STATUS_CHANGE_MESSAGES.server[change];
+  return statusMessage(error, {
+    forbidden: STATUS_CHANGE_MESSAGES.forbidden[change],
+    notFound: STATUS_CHANGE_MESSAGES.notFound,
+    tooMany: STATUS_CHANGE_MESSAGES.tooMany,
+    generic: STATUS_CHANGE_MESSAGES.server[change],
+  });
 }
 
 /** El error de dar de baja o reactivar como ApiError con el mensaje que muestra ConfirmModal. */

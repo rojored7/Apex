@@ -6,7 +6,7 @@ import { createElement, type ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, Outlet, RouterProvider, useLocation } from "react-router";
 import { MEMBERS, memberPage } from "../../test/members";
 import { mockApi, testQueryClient } from "../../test/server";
-import { memberFullName, memberNameKey, membersSearchKey, useMemberName, useMembersSearch, useMemberTab, type MemberTabContext, type MemberTabMember } from "./members";
+import { MEMBER_SEARCH_DELAY_MS, memberFullName, memberNameKey, membersSearchKey, memberSearchNote, useMemberName, useMemberSearch, useMembersSearch, useMemberTab, type MemberTabContext, type MemberTabMember } from "./members";
 
 function wrapper(queryClient: QueryClient, seen: string[]) {
   function Spy() {
@@ -55,7 +55,11 @@ describe("useMembersSearch", () => {
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
     });
-    expect(result.current.data?.items[0]).not.toHaveProperty("membership_end_date");
+    // Fase 4 (pendiente 2 de V1): la venta pinta `membership_end_date` (S3-B9b), así que el
+    // esquema ya lo toma; la aserción anterior comprobaba que se descartara. Lo que no usa (`sex`)
+    // sigue fuera.
+    expect(result.current.data?.items[0]).toHaveProperty("membership_end_date", "2026-11-27");
+    expect(result.current.data?.items[0]).not.toHaveProperty("sex");
   });
 
   it("una respuesta con otra forma es invalid_response", async () => {
@@ -172,5 +176,54 @@ describe("useMemberTab", () => {
       await router.navigate("/sola");
     });
     expect(seen.at(-1)).toBeNull();
+  });
+});
+
+// Fase 4 del Sprint 3 (M3): la búsqueda con espera que comparten la venta y el panel de pagos, y la
+// nota de cada resultado (con la fecha de fin de S3-B9b: pendiente 2 de V1).
+describe("useMemberSearch", () => {
+  it("espera 300 ms, no ofrece a los dados de baja y dice el estado", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const mock = mockApi({ "GET /members": (call) => memberPage(call, [MEMBERS.laura, MEMBERS.andres, MEMBERS.elena]) });
+      const { result, rerender } = renderHook(({ text }) => useMemberSearch(text), { wrapper: wrapper(testQueryClient(), []), initialProps: { text: "" } });
+
+      expect(result.current).toEqual({ status: "idle", options: [] });
+      rerender({ text: "a" });
+      expect(MEMBER_SEARCH_DELAY_MS).toBe(300);
+      expect(mock.calls).toHaveLength(0);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MEMBER_SEARCH_DELAY_MS);
+      });
+      await waitFor(() => {
+        expect(result.current.status).toBe("done");
+      });
+      expect(result.current.options.map(memberFullName)).toEqual(["Laura Gómez", "Andrés Ruiz"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("un fallo de la búsqueda es status error", async () => {
+    mockApi({ "GET /members": { status: 500, body: { error: { code: "internal_error", message: "x" } } } });
+    const { result } = renderHook(() => useMemberSearch("laura", 0), { wrapper: wrapper(testQueryClient(), []) });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("error");
+    });
+  });
+});
+
+describe("memberSearchNote", () => {
+  const base = { plan_name: null, membership_status: null, membership_end_date: null };
+
+  it.each([
+    [base, "Sin membresía"],
+    [{ ...base, membership_status: "none" }, "Sin membresía"],
+    [{ ...base, plan_name: "Mensual", membership_status: "active" }, "Mensual · Al día"],
+    [{ ...base, plan_name: "Mensual", membership_status: "active", membership_end_date: "2026-10-28" }, "Mensual · Al día · hasta el 28 oct 2026"],
+    [{ ...base, plan_name: "12 clases", membership_status: "estado_nuevo", membership_end_date: "2026-11-02" }, "12 clases · hasta el 2 nov 2026"],
+  ])("%j → %s", (option, text) => {
+    expect(memberSearchNote(option)).toBe(text);
   });
 });

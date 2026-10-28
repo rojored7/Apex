@@ -2,9 +2,13 @@
 // pagos). Dinero siempre entero en COP (regla de datos 1, RN-01), de 1 a 1.000.000.000 como
 // `amount_cop` del api (`StrictInt`, `ge=1`, `le=MAX_AMOUNT_COP`, D17).
 import { z } from "zod";
+import { formatCop } from "../../../core/i18n/format";
 
 export const COP_MIN = 1;
 export const COP_MAX = 1_000_000_000;
+
+/** Fase 4 del Sprint 3 (M7): el rango del valor de un pago, armado con los mismos límites. */
+export const AMOUNT_RANGE_MESSAGE = `El valor debe estar entre ${formatCop(COP_MIN)} y ${formatCop(COP_MAX)}.`;
 
 /** Monto entero en COP, de 1 a 1.000.000.000. */
 export const copInt = z.number().int().min(COP_MIN).max(COP_MAX);

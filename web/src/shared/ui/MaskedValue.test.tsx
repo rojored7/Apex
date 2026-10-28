@@ -193,6 +193,112 @@ describe("MaskedValue", () => {
     expect(screen.getByText("CC •••• 4417")).toBeInTheDocument();
   });
 
+  // Fase 4 del Sprint 3 (L2): el claro no sigue en el estado cuando deja de mostrarse. Antes, al
+  // volver al registro anterior (o recuperar el permiso) antes de los 60 s, el claro reaparecía.
+  it("al pasar a otro registro y volver, el claro anterior ya no está", async () => {
+    const user = fakeTimersUser();
+    const ui = (masked: string) => (
+      <RoleProvider value="coach">
+        <MaskedValue label="Documento" masked={masked} onReveal={() => Promise.resolve("CC 1020304417")} />
+      </RoleProvider>
+    );
+    const { rerender } = render(ui("CC •••• 4417"));
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+
+    rerender(ui("CC •••• 9031"));
+    rerender(ui("CC •••• 4417"));
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mostrar" })).toBeInTheDocument();
+  });
+
+  it("al perder el permiso y recuperarlo, el claro no vuelve", async () => {
+    const user = fakeTimersUser();
+    const ui = (role: Role) => (
+      <RoleProvider value={role}>
+        <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />
+      </RoleProvider>
+    );
+    const { rerender } = render(ui("coach"));
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+
+    rerender(ui("member"));
+    rerender(ui("coach"));
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+  });
+
+  it("al ocultar la pestaña (visibilitychange a hidden) se enmascara antes de los 60 s", async () => {
+    const user = fakeTimersUser();
+    asRole("coach", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />);
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+
+    visibility.mockReturnValue("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(screen.getByText("CC 1020304417")).toBeInTheDocument();
+    visibility.mockReturnValue("hidden");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+    expect(screen.getByText("CC •••• 4417")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(REVEAL_TTL_MS);
+    });
+    expect(screen.getByRole("button", { name: "Mostrar" })).toBeInTheDocument();
+  });
+
+  // Revisión final de la Fase 4 (LOW 4): si la respuesta llega con la pestaña oculta, no se muestra.
+  it("si onReveal responde con la pestaña oculta, el claro no queda a la vista al volver", async () => {
+    const user = fakeTimersUser();
+    let answer: (value: string) => void = () => undefined;
+    const onReveal = () =>
+      new Promise<string>((resolve) => {
+        answer = resolve;
+      });
+    asRole("coach", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={onReveal} />);
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    await act(async () => {
+      answer("CC 1020304417");
+      await Promise.resolve();
+    });
+    visibility.mockReturnValue("visible");
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mostrar" })).toBeInTheDocument();
+  });
+
+  it("al salir de la página (pagehide) se enmascara", async () => {
+    const user = fakeTimersUser();
+    asRole("coach", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />);
+    await user.click(screen.getByRole("button", { name: "Mostrar" }));
+    await screen.findByText("CC 1020304417");
+
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(screen.queryByText("CC 1020304417")).not.toBeInTheDocument();
+  });
+
+  it("sin claro no escucha la visibilidad ni pagehide", () => {
+    const addDoc = vi.spyOn(document, "addEventListener");
+    const addWin = vi.spyOn(window, "addEventListener");
+    asRole("coach", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("CC 1020304417")} />);
+
+    expect(addDoc.mock.calls.map(([type]) => type)).not.toContain("visibilitychange");
+    expect(addWin.mock.calls.map(([type]) => type)).not.toContain("pagehide");
+  });
+
   it("sin permiso members.reveal no hay botón", () => {
     asRole("member", <MaskedValue label="Documento" masked="CC •••• 4417" onReveal={() => Promise.resolve("x")} />);
 

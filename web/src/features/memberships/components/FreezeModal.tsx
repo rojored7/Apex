@@ -28,6 +28,8 @@ import styles from "./MembershipModals.module.css";
 export interface FreezeTarget {
   id: string;
   member_name: string;
+  /** Fase 4 L6: el plan, para el aviso de la ficha tras congelar. */
+  plan_name: string;
   /** Fin actual de la membresía ("AAAA-MM-DD"), para la vista previa. */
   end_date: string;
 }

@@ -9,32 +9,31 @@
 // - toVoidError: el error de anular como ApiError con el mensaje de la pantalla (ConfirmModal lo
 //   pinta bajo el motivo si `field = "reason"` o en su alerta).
 import type { FieldPath } from "react-hook-form";
-import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
+import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
-import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { connectionMessage, statusMessage, toFormError, toScreenError } from "../../shared/lib/apiMessages";
+import { AMOUNT_RANGE_MESSAGE } from "../../shared/data/schemas/money";
 import { REFERENCE_MESSAGES } from "../../shared/data/schemas/payment";
 import type { RegisterPaymentFormValues } from "./schemas";
 
-/**
- * Días hacia atrás que el coach puede registrar (`max_retroactive_days` de Configuración, 7 por
- * defecto, N-18). El coach no lee Configuración (solo admin): el mensaje dice el valor por defecto.
- */
-export const DEFAULT_MAX_RETROACTIVE_DAYS = 7;
-
+// Fase 4 del Sprint 3 (M7): ningún texto fija un valor de negocio que decide el api. El tope hacia
+// atrás del coach es `max_retroactive_days` de Configuración (N-18): el coach no la lee y el 422
+// `paid_at_too_retroactive` no trae el número, así que el texto no lo dice. La ventana del duplicado
+// (120 s, `DUPLICATE_WINDOW` del api) tampoco.
 export const PAYMENT_MESSAGES = {
   memberRequired: "Elige el socio que paga.",
   membershipRequired: "Elige la membresía a la que se abona el pago.",
   amountRequired: "Escribe el valor recibido.",
   amountInvalid: "Escribe el valor en pesos enteros, sin centavos (por ejemplo $ 60.000).",
-  amountRange: "El valor debe estar entre $ 1 y $ 1.000.000.000.",
+  amountRange: AMOUNT_RANGE_MESSAGE,
   amountServer: "El servidor no aceptó este valor. Revísalo e intenta de nuevo.",
   methodRequired: "Elige el medio de pago.",
   referenceServer: REFERENCE_MESSAGES.pattern,
   paidAtRequired: "Escribe la fecha y la hora del pago.",
   paidAtInvalid: "Escribe una fecha y una hora del pago válidas.",
   paidAtFuture: "La fecha del pago no puede estar en el futuro.",
-  paidAtTooRetroactive: `Como coach solo puedes registrar pagos de los últimos ${String(DEFAULT_MAX_RETROACTIVE_DAYS)} días. Pídele a un administrador que registre este pago.`,
+  paidAtTooRetroactive: "Como coach solo puedes registrar pagos de los días que permite el gimnasio. Pídele a un administrador que registre este pago.",
   paidAtServer: "El servidor no aceptó la fecha del pago. Revísala e intenta de nuevo.",
   membershipCancelled: "Esta membresía está anulada y ya no recibe pagos. Elige otra o vende una nueva.",
   membershipNotFound: "No encontramos esta membresía. Elige otra de la lista.",
@@ -52,7 +51,7 @@ export const PAYMENT_MESSAGES = {
   overpay: (excess: string) => `Este pago supera el saldo de la membresía en ${excess}. No queda saldo a favor.`,
   overpayUnknown: "El valor supera el saldo de la membresía. No queda saldo a favor.",
   duplicateTitle: "¿Registrar otro pago igual?",
-  duplicate: "Ya registraste un pago igual hace menos de 2 minutos. Regístralo solo si es un pago distinto.",
+  duplicate: "Ya registraste un pago igual hace unos minutos. Regístralo solo si es un pago distinto.",
 } as const;
 
 export const VOID_MESSAGES = {
@@ -114,27 +113,18 @@ export function registerAlert(error: unknown): string {
   const connection = connectionMessage(error);
   if (connection) return connection;
   if (error.code === API_ERROR_CODES.paymentLimitReached) return PAYMENT_MESSAGES.limitReached;
-  if (error.status === HTTP_FORBIDDEN) return PAYMENT_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return PAYMENT_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return PAYMENT_MESSAGES.server;
-  return PAYMENT_MESSAGES.generic;
+  return statusMessage(error, { forbidden: PAYMENT_MESSAGES.forbidden, tooMany: PAYMENT_MESSAGES.tooMany, server: PAYMENT_MESSAGES.server, generic: PAYMENT_MESSAGES.generic });
 }
 
 function voidMessage(error: ApiError): string {
   if (error.code === API_ERROR_CODES.paymentAlreadyVoided) return VOID_MESSAGES.alreadyVoided;
   if (error.status === HTTP_UNPROCESSABLE && error.field === "reason") return VOID_MESSAGES.reasonInvalid;
-  if (error.status === HTTP_NOT_FOUND) return VOID_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return VOID_MESSAGES.forbidden;
-  if (error.status === HTTP_TOO_MANY) return VOID_MESSAGES.tooMany(waitText(error.retryAfterS));
-  if (error.status >= HTTP_SERVER_ERROR) return VOID_MESSAGES.server;
-  return VOID_MESSAGES.generic;
+  return statusMessage(error, VOID_MESSAGES);
 }
 
 /** El error de anular con el mensaje de la pantalla; conserva status, code y field. */
 export function toVoidError(error: unknown): ApiError {
-  if (!isApiError(error)) return new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: VOID_MESSAGES.generic });
-  const message = connectionMessage(error) ?? voidMessage(error);
-  return new ApiError({ status: error.status, code: error.code, message, ...(error.field ? { field: error.field } : {}) });
+  return toFormError(error, voidMessage, VOID_MESSAGES.generic);
 }
 
 // S3-F6 · US-098, US-099 y US-100 (front): la lista de pagos, el detalle y el resumen del mes.
@@ -156,27 +146,14 @@ export const SUMMARY_MESSAGES = {
   monthOutOfRange: "Elige un mes entre enero de 2020 y diciembre de 2100.",
 } as const;
 
-function listMessage(error: ApiError): string {
-  if (error.status === HTTP_FORBIDDEN) return LIST_MESSAGES.forbidden;
-  if (error.status === HTTP_UNPROCESSABLE) return LIST_MESSAGES.invalidFilters;
-  if (error.status === HTTP_TOO_MANY) return LIST_MESSAGES.tooMany(waitText(error.retryAfterS));
-  return LIST_MESSAGES.generic;
-}
-
 /** El error de la lista de pagos como ApiError con el mensaje de la pantalla, o null. */
 export function paymentListError(error: unknown): ApiError | null {
-  return toScreenError(error, listMessage, LIST_MESSAGES.generic);
-}
-
-function detailMessage(error: ApiError): string {
-  if (error.status === HTTP_NOT_FOUND) return DETAIL_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return DETAIL_MESSAGES.forbidden;
-  return DETAIL_MESSAGES.generic;
+  return toScreenError(error, (e) => statusMessage(e, { ...LIST_MESSAGES, unprocessable: LIST_MESSAGES.invalidFilters }), LIST_MESSAGES.generic);
 }
 
 /** El mensaje del detalle que no cargó (red, busy, 404, 403 o cualquier otro). */
 export function paymentDetailMessage(error: unknown): string {
-  return toScreenError(error, detailMessage, DETAIL_MESSAGES.generic)?.message ?? DETAIL_MESSAGES.generic;
+  return toScreenError(error, (e) => statusMessage(e, DETAIL_MESSAGES), DETAIL_MESSAGES.generic)?.message ?? DETAIL_MESSAGES.generic;
 }
 
 /** Un 422 del mes del resumen: se explica el rango en vez de mostrar tarjetas en error. */
@@ -191,13 +168,7 @@ export const MEMBER_TAB_MESSAGES = {
   generic: "No pudimos cargar los pagos de este socio. Intenta de nuevo.",
 } as const;
 
-function memberTabMessage(error: ApiError): string {
-  if (error.status === HTTP_NOT_FOUND) return MEMBER_TAB_MESSAGES.notFound;
-  if (error.status === HTTP_FORBIDDEN) return MEMBER_TAB_MESSAGES.forbidden;
-  return MEMBER_TAB_MESSAGES.generic;
-}
-
 /** El error de la pestaña como ApiError con el mensaje de la pantalla, o null. */
 export function memberTabError(error: unknown): ApiError | null {
-  return toScreenError(error, memberTabMessage, MEMBER_TAB_MESSAGES.generic);
+  return toScreenError(error, (e) => statusMessage(e, MEMBER_TAB_MESSAGES), MEMBER_TAB_MESSAGES.generic);
 }

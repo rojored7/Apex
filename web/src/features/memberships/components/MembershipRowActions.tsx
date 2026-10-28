@@ -13,13 +13,11 @@
 import { Link, useLocation } from "react-router";
 import { useCan } from "../../../core/auth/useCan";
 import { EMPTY_VALUE } from "../../../core/i18n/format";
-import { OPEN_MEMBERSHIP_STATUSES, type MembershipRowView, type MembershipStatus } from "../../../shared/data/memberships";
+import { isFreezableMembershipStatus, isOpenMembershipStatus, type MembershipRowView } from "../../../shared/data/memberships";
 import { paymentPanelHref } from "../../../shared/lib/paymentPanel";
 import { cx } from "../../../shared/ui/cx";
 import { renewHref } from "../membershipLinks";
 import styles from "./MembershipRowActions.module.css";
-
-const FREEZABLE: readonly MembershipStatus[] = ["active", "expiring"];
 
 export interface MembershipRowActionsProps {
   row: MembershipRowView;
@@ -35,7 +33,7 @@ export function MembershipRowActions({ row, onFreeze, onCancel }: MembershipRowA
   const canCancel = useCan("memberships.cancel");
   const isCancelled = row.status === "cancelled";
   const owes = row.paid_cop < row.agreed_price_cop;
-  const receivesPayments = (OPEN_MEMBERSHIP_STATUSES as readonly MembershipStatus[]).includes(row.status);
+  const receivesPayments = isOpenMembershipStatus(row.status);
   const name = row.member_name;
 
   const actions = [
@@ -49,7 +47,7 @@ export function MembershipRowActions({ row, onFreeze, onCancel }: MembershipRowA
         Renovar
       </Link>
     ) : null,
-    canFreeze && FREEZABLE.includes(row.status) ? (
+    canFreeze && isFreezableMembershipStatus(row.status) ? (
       <button
         key="freeze"
         type="button"

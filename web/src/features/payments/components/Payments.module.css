@@ -78,45 +78,6 @@
 }
 
 /* Socio: resultados de la búsqueda y socio elegido. */
-.results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.option {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: var(--control);
-  padding: var(--space-3);
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  color: var(--ink);
-  font: var(--text-body);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 120ms ease-out;
-}
-
-.option:hover {
-  border-color: var(--blue-deep);
-}
-
-.option:focus-visible {
-  outline: 3px solid var(--blue-deep);
-  outline-offset: 2px;
-}
-
-.optionName {
-  font: var(--text-label);
-}
 
 .selected {
   display: flex;

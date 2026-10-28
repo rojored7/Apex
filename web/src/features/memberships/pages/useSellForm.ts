@@ -20,11 +20,11 @@ import { zodResolver } from "../../../shared/lib/zodResolver";
 import { useRenewalPreview, useSellMembership } from "../api";
 import type { SelectedMember } from "../components/MemberStep";
 import { computeEndDate, exceedsBalance, excessOver } from "../lib/rules";
-import { isFutureMembershipError, isOverpaymentError, sellAlert, sellFieldError, type SellAlert } from "../membershipErrors";
+import { isFutureMembershipError, isOverpaymentError, sellAlert, sellFieldError, type SellAlert, type SellAlertContext } from "../membershipErrors";
 import type { SellParams } from "../membershipLinks";
 import { EMPTY_SELL_FORM, sellMembershipSchema, toSellBody, type RenewalPreviewView, type SellFormValues, type SellMembershipOutView } from "../schemas";
 
-/** Planes activos que se ofrecen (un box tiene pocos; el api admite hasta 200 por página). */
+/** Planes activos que se ofrecen (un box tiene pocos; el api admite hasta 200 por página). Si hay más, PlanStep lo dice (Fase 4 L8). */
 export const SELL_PLANS_LIMIT = 100;
 
 export interface Overpayment {
@@ -91,34 +91,36 @@ export interface SellFocusRefs {
   planGroupRef: RefObject<HTMLFieldSetElement | null>;
 }
 
-export function useSellForm(params: SellParams, initialMemberName: string | null, { alertRef, planGroupRef }: SellFocusRefs): SellFormState {
-  const registeredBy = useSession().user?.email ?? null;
-  // Revisión S3-F3 (LOW 6): "hoy" se lee en cada validación (la página puede quedar abierta tras medianoche).
-  const resolver = useMemo<Resolver<SellFormValues>>(() => async (values, context, options) => zodResolver(sellMembershipSchema(todayBogota()))(values, context, options), []);
-  const form = useForm<SellFormValues>({ resolver, defaultValues: initialValues(params) });
-  const [member, setMember] = useState<SelectedMember | null>(params.memberId ? { id: params.memberId, name: initialMemberName } : null);
+/** Plan elegido, vista previa de la renovación y fechas del resumen (Fase 4 M8). */
+function useSellPlan(form: UseFormReturn<SellFormValues>, renew: boolean, memberId: string | null) {
   const plans = usePlans({ limit: SELL_PLANS_LIMIT, offset: 0, active: true });
   const planId = useWatch({ control: form.control, name: "planId" });
   const startDate = useWatch({ control: form.control, name: "startDate" });
   const plan = plans.data?.items.find((p) => p.id === planId) ?? null;
-  const previewQuery = useRenewalPreview(params.renew ? (member?.id ?? null) : null, params.renew && planId !== "" ? planId : null);
-  const preview = params.renew && planId !== "" ? previewQuery : null;
-  const dates = datesOf(params.renew, preview, plan, startDate);
-  const amountEdited = useRef(false);
-  useAmountFollowsPrice(form, dates.price, amountEdited);
+  const previewQuery = useRenewalPreview(renew ? memberId : null, renew && planId !== "" ? planId : null);
+  const preview = renew && planId !== "" ? previewQuery : null;
+  return { plans, plan, preview, dates: datesOf(renew, preview, plan, startDate) };
+}
 
-  const sale = useSellMembership(member?.id ?? null);
+interface SellSubmitInput {
+  form: UseFormReturn<SellFormValues>;
+  memberId: string | null;
+  context: SellAlertContext;
+  price: number | null;
+  refs: SellFocusRefs;
+}
+
+/** El envío: un POST a la vez, el sobrepago confirmado y los errores con foco (Fase 4 M8). */
+function useSellSubmit({ form, memberId, context, price, refs }: SellSubmitInput) {
+  const sale = useSellMembership(memberId);
   const [alert, setAlert] = useState<SellAlert | null>(null);
   const [overpay, setOverpay] = useState<Overpayment | null>(null);
   const [sold, setSold] = useState<SellMembershipOutView | null>(null);
   const inFlight = useRef(false);
+  const { alertRef, planGroupRef } = refs;
   useEffect(() => {
     if (alert) alertRef.current?.focus();
   }, [alert, alertRef]);
-
-  const context = { memberId: member?.id ?? "", memberName: member?.name ?? null };
-  const futureExists = preview !== null && isFutureMembershipError(preview.error);
-  const previewAlert = futureExists ? sellAlert(preview.error, context) : null;
 
   const onError = (error: unknown, values: SellFormValues, confirmed: boolean): void => {
     if (isOverpaymentError(error) && !confirmed) {
@@ -148,44 +150,20 @@ export function useSellForm(params: SellParams, initialMemberName: string | null
     }
   };
 
-  const submit = async (values: SellFormValues): Promise<void> => {
-    const amount = parseCop(values.amount);
-    if (values.withPayment && dates.price !== null && amount !== null && exceedsBalance(dates.price, 0, amount)) {
-      setOverpay({ values, excess: excessOver(dates.price, 0, amount) });
-      return;
-    }
-    await send(values, false);
-  };
-
   return {
-    form,
-    member,
-    selectMember: (selected) => {
-      setMember(selected);
-      setAlert(null);
-      form.setValue("memberId", selected.id);
-      form.clearErrors("memberId");
-    },
-    clearMember: () => {
-      setMember(null);
-      setAlert(null);
-      form.setValue("memberId", "");
-    },
-    plans,
-    // Revisión S3-F3 (LOW 8): cambiar de plan quita el aviso general que ya no aplica.
-    planField: form.register("planId", {
-      onChange: () => {
-        setAlert(null);
-      },
-    }),
-    onAmountEdit: () => {
-      amountEdited.current = true;
-    },
-    plan,
-    preview,
-    dates,
-    alert: alert ?? previewAlert,
+    alert,
+    setAlert,
     overpay,
+    sold,
+    submitting: sale.isPending,
+    submit: async (values: SellFormValues): Promise<void> => {
+      const amount = parseCop(values.amount);
+      if (values.withPayment && price !== null && amount !== null && exceedsBalance(price, 0, amount)) {
+        setOverpay({ values, excess: excessOver(price, 0, amount) });
+        return;
+      }
+      await send(values, false);
+    },
     closeOverpay: () => {
       setOverpay(null);
     },
@@ -196,10 +174,59 @@ export function useSellForm(params: SellParams, initialMemberName: string | null
       setOverpay(null);
       if (pending) await send(pending.values, true);
     },
-    submit,
-    submitting: sale.isPending,
+  };
+}
+
+export function useSellForm(params: SellParams, initialMemberName: string | null, refs: SellFocusRefs): SellFormState {
+  const registeredBy = useSession().user?.email ?? null;
+  // Revisión S3-F3 (LOW 6): "hoy" se lee en cada validación (la página puede quedar abierta tras medianoche).
+  const resolver = useMemo<Resolver<SellFormValues>>(() => async (values, context, options) => zodResolver(sellMembershipSchema(todayBogota()))(values, context, options), []);
+  const form = useForm<SellFormValues>({ resolver, defaultValues: initialValues(params) });
+  const [member, setMember] = useState<SelectedMember | null>(params.memberId ? { id: params.memberId, name: initialMemberName } : null);
+  const { plans, plan, preview, dates } = useSellPlan(form, params.renew, member?.id ?? null);
+  const amountEdited = useRef(false);
+  useAmountFollowsPrice(form, dates.price, amountEdited);
+
+  const context: SellAlertContext = { memberId: member?.id ?? "", memberName: member?.name ?? null };
+  const sale = useSellSubmit({ form, memberId: member?.id ?? null, context, price: dates.price, refs });
+  const futureExists = preview !== null && isFutureMembershipError(preview.error);
+  const previewAlert = futureExists ? sellAlert(preview.error, context) : null;
+
+  return {
+    form,
+    member,
+    selectMember: (selected) => {
+      setMember(selected);
+      sale.setAlert(null);
+      form.setValue("memberId", selected.id);
+      form.clearErrors("memberId");
+    },
+    clearMember: () => {
+      setMember(null);
+      sale.setAlert(null);
+      form.setValue("memberId", "");
+    },
+    plans,
+    // Revisión S3-F3 (LOW 8): cambiar de plan quita el aviso general que ya no aplica.
+    planField: form.register("planId", {
+      onChange: () => {
+        sale.setAlert(null);
+      },
+    }),
+    onAmountEdit: () => {
+      amountEdited.current = true;
+    },
+    plan,
+    preview,
+    dates,
+    alert: sale.alert ?? previewAlert,
+    overpay: sale.overpay,
+    closeOverpay: sale.closeOverpay,
+    confirmOverpay: sale.confirmOverpay,
+    submit: sale.submit,
+    submitting: sale.submitting,
     blocked: futureExists,
-    sold,
+    sold: sale.sold,
     registeredBy,
   };
 }

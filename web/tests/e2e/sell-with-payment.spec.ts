@@ -5,6 +5,7 @@
 // La variante contra el stack es stack/sell-with-payment.spec.ts (V4, E10).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
@@ -56,10 +57,7 @@ function sold(body: Record<string, unknown>): Record<string, unknown> {
 
 async function fakeApi(page: Page): Promise<FakeApi> {
   const state: FakeApi = { sellBodies: [], previewQueries: [] };
-  await page.route("**/api/v1/auth/refresh", (route) => json(route, 200, { access_token: "e2e-admin", token_type: "bearer", expires_in: 900 }));
-  await page.route("**/api/v1/auth/me", (route) =>
-    json(route, 200, { id: ADMIN_ID, email: "admin@apex.test", role: "admin", member_id: null, gym_name: "Box Norte", must_change_password: false }),
-  );
+  await mockSession(page, { id: ADMIN_ID, email: "admin@apex.test", role: "admin" });
   await page.route(/\/api\/v1\/members(\?.*)?$/, (route) => {
     const url = new URL(route.request().url());
     return json(route, 200, { items: MEMBERS, total: MEMBERS.length, limit: Number(url.searchParams.get("limit")), offset: 0 });

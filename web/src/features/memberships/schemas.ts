@@ -9,14 +9,17 @@
 // - toSellBody: el cuerpo de POST /members/{id}/memberships. Con `renew` no va `start_date` (regla 9
 //   de CLAUDE.md); el pago va con `paid_at` en UTC y `confirm_overpayment` solo cuando se confirmó
 //   el sobrepago (S3-D41). `confirm_duplicate` siempre es falso: la venta no revisa duplicados.
+// - Fase 4 del Sprint 3 (M2): las reglas del pago y su cuerpo son checkPaymentFields y
+//   buildPaymentBody de shared/data/schemas/payment.ts (las mismas del panel de pagos) con los textos
+//   de la venta.
 // - membershipOutSchema, sellMembershipOutSchema y renewalPreviewSchema: el contrato de B1 a B6,
 //   estrictos y con enteros (una forma inesperada es `invalid_response`).
 import { z } from "zod";
 import type { components } from "../../core/api/types";
-import { addDaysCivil, bogotaInputToUtc, parseCop } from "../../core/i18n/format";
+import { addDaysCivil } from "../../core/i18n/format";
 import { membershipOutShape } from "../../shared/data/memberships";
-import { copAmount, copInt } from "../../shared/data/schemas/money";
-import { cleanReference, METHODS_WITH_REFERENCE, PAID_AT_FUTURE_TOLERANCE_MS, PAYMENT_METHOD_CODES, referenceError, type PaymentMethodCode } from "../../shared/data/schemas/payment";
+import { copAmount } from "../../shared/data/schemas/money";
+import { buildPaymentBody, checkPaymentFields, PAYMENT_METHOD_CODES, type PaymentMethodCode } from "../../shared/data/schemas/payment";
 import { FREEZE_FORM_MESSAGES, SELL_MESSAGES } from "./membershipErrors";
 
 export type SellMembershipBody = components["schemas"]["SellMembershipIn"];
@@ -75,34 +78,6 @@ function checkStartDate(startDate: string, today: string, add: AddIssue): void {
   if (latest !== null && startDate > latest) add("startDate", SELL_MESSAGES.startDateTooFar);
 }
 
-function checkAmount(amount: string, add: AddIssue): void {
-  if (amount.trim() === "") {
-    add("amount", SELL_MESSAGES.amountRequired);
-    return;
-  }
-  const value = parseCop(amount);
-  if (value === null) add("amount", SELL_MESSAGES.amountInvalid);
-  else if (!copInt.safeParse(value).success) add("amount", SELL_MESSAGES.amountRange);
-}
-
-function checkPaidAt(paidAt: string, nowMs: number, add: AddIssue): void {
-  if (paidAt.trim() === "") {
-    add("paidAt", SELL_MESSAGES.paidAtRequired);
-    return;
-  }
-  const utc = bogotaInputToUtc(paidAt);
-  if (utc === null) add("paidAt", SELL_MESSAGES.paidAtInvalid);
-  else if (Date.parse(utc) > nowMs + PAID_AT_FUTURE_TOLERANCE_MS) add("paidAt", SELL_MESSAGES.paidAtFuture);
-}
-
-function checkPayment(values: SellFormValues, nowMs: number, add: AddIssue): void {
-  checkAmount(values.amount, add);
-  if (METHODS_WITH_REFERENCE.has(values.method)) {
-    const reference = referenceError(values.reference);
-    if (reference) add("reference", reference);
-  }
-  checkPaidAt(values.paidAt, nowMs, add);
-}
 
 /** `nowMs` fijo solo en pruebas; sin él, la hora se lee al validar (la página puede llevar rato abierta). */
 export function sellMembershipSchema(today: string, nowMs?: number): z.ZodType<SellFormValues, z.ZodTypeDef, SellFormValues> {
@@ -125,26 +100,13 @@ export function sellMembershipSchema(today: string, nowMs?: number): z.ZodType<S
       if (values.memberId === "") add("memberId", SELL_MESSAGES.memberRequired);
       if (values.planId === "") add("planId", SELL_MESSAGES.planRequired);
       if (!values.renew) checkStartDate(values.startDate, today, add);
-      if (values.withPayment) checkPayment(values, nowMs ?? Date.now(), add);
+      if (values.withPayment) checkPaymentFields(values, nowMs ?? Date.now(), SELL_MESSAGES, add);
     });
 }
 
-/** Un formulario sin validar es un error de programación, no un 0 que el api rechace. */
-function required<T>(value: T | null, field: keyof SellFormValues): T {
-  if (value === null) throw new Error(`toSellBody: ${field} no pasó por sellMembershipSchema`);
-  return value;
-}
-
+/** El primer pago: `confirm_duplicate` siempre falso (la venta no revisa duplicados, S3-D41). */
 function toFirstPayment(values: SellFormValues, options: SellBodyOptions): NonNullable<SellMembershipBody["first_payment"]> {
-  const reference = METHODS_WITH_REFERENCE.has(values.method) ? cleanReference(values.reference) : undefined;
-  return {
-    amount_cop: required(parseCop(values.amount), "amount"),
-    method: values.method,
-    ...(reference ? { reference } : {}),
-    paid_at: required(bogotaInputToUtc(values.paidAt), "paidAt"),
-    confirm_overpayment: options.confirmOverpayment === true,
-    confirm_duplicate: false,
-  };
+  return buildPaymentBody(values, { confirmOverpayment: options.confirmOverpayment === true, confirmDuplicate: false }, "toSellBody");
 }
 
 /** El cuerpo de POST /members/{id}/memberships a partir de un formulario ya validado. */

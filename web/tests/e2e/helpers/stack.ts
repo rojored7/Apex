@@ -38,7 +38,28 @@ export function sameOriginHeaders(): Record<string, string> {
   return base ? { Origin: new URL(base).origin } : {};
 }
 
+/** Corrección de V10 L-D: los anfitriones donde los helpers pueden crear cuentas y socios. */
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1"]);
+
+/**
+ * Corrección de V10 L-D: los helpers crean usuarios, socios, planes y ventas por el api. Contra un
+ * despliegue real dejarían datos de prueba; se niegan a correr si E2E_BASE_URL no es localhost o
+ * 127.0.0.1, antes de crear nada.
+ */
+export function exigirStackLocal(baseUrl: string | undefined): void {
+  let host: string | null = null;
+  try {
+    host = baseUrl ? new URL(baseUrl).hostname : null;
+  } catch {
+    host = null;
+  }
+  if (host === null || !LOCAL_HOSTS.has(host)) {
+    throw new Error(`Los E2E del stack crean datos: E2E_BASE_URL debe apuntar a localhost o 127.0.0.1 y es ${JSON.stringify(baseUrl ?? "")}. Apúntala al stack local (por ejemplo http://localhost:8180).`);
+  }
+}
+
 async function login(request: APIRequestContext, credentials: Credentials): Promise<LoginBody> {
+  exigirStackLocal(process.env.E2E_BASE_URL);
   const response = await request.post(`${API}/auth/login`, { data: credentials, headers: sameOriginHeaders() });
   if (!response.ok()) throw new Error(`El login de ${credentials.email} respondió ${String(response.status())}.`);
   const body = (await response.json()) as LoginBody;
@@ -51,24 +72,39 @@ export async function loginComo(page: Page, credentials: Credentials = datosDeBa
   return (await login(page.request, credentials)).access_token;
 }
 
+/** Un coach creado por la spec: sus credenciales y su id, para borrarlo al terminar. */
+export interface CoachCreado extends Credentials {
+  id: string;
+}
+
 /**
  * Crea un coach con correo único por corrida (las specs del stack se corren dos veces, V4) y
- * le pone contraseña con su enlace de activación (POST /users y POST /auth/reset).
+ * le pone contraseña con su enlace de activación (POST /users y POST /auth/reset). Fase 4 L9: la
+ * contraseña sale de `crypto.randomUUID()` (antes se podía adivinar por la hora) y la spec que lo crea
+ * lo borra al final con `borrarUsuario`.
  */
-export async function crearCoach(page: Page, admin: Credentials = datosDeBase()): Promise<Credentials> {
+export async function crearCoach(page: Page, admin: Credentials = datosDeBase()): Promise<CoachCreado> {
   const access_token = await accessToken(page.request, admin);
-  const email = `coach-${Date.now().toString(36)}@apex.test`;
+  const email = `coach-${crypto.randomUUID()}@apex.test`;
   const created = await page.request.post(`${API}/users`, {
     headers: { Authorization: `Bearer ${access_token}` },
     data: { email, role: "coach" },
   });
   if (!created.ok()) throw new Error(`POST /users respondió ${String(created.status())}.`);
-  const token = /\/restablecer\/([A-Za-z0-9_-]+)/.exec(await created.text())?.[1];
-  if (!token) throw new Error("POST /users no devolvió el enlace de activación.");
-  const password = `Coach-${Date.now().toString(36)}-e2e!`;
+  const body = (await created.json()) as { user?: { id?: string }; activation_url?: string };
+  const id = body.user?.id;
+  const token = /\/restablecer\/([A-Za-z0-9_-]+)/.exec(body.activation_url ?? "")?.[1];
+  if (!id || !token) throw new Error("POST /users no devolvió el usuario y su enlace de activación.");
+  const password = `Coach-${crypto.randomUUID()}-e2e!`;
   const reset = await page.request.post(`${API}/auth/reset`, { data: { token, new_password: password } });
   if (!reset.ok()) throw new Error(`POST /auth/reset respondió ${String(reset.status())}.`);
-  return { email, password };
+  return { id, email, password };
+}
+
+/** Fase 4 L9: da de baja (DELETE /users/{id}) una cuenta que creó la spec, para no acumular coaches. */
+export async function borrarUsuario(page: Page, id: string, admin: Credentials = datosDeBase()): Promise<void> {
+  const response = await page.request.delete(`${API}/users/${encodeURIComponent(id)}`, { headers: await accessDe(page, admin) });
+  if (!response.ok()) throw new Error(`DELETE /users/${id} respondió ${String(response.status())}.`);
 }
 
 /**

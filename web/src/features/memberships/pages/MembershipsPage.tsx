@@ -14,7 +14,7 @@
 // DESIGN-GAP:
 // - "Pendiente de pago" (pending_payment, Q3) no está dibujado en Membresias.html: chip y StatusTag
 //   con el tono de "Por vencer" y su texto (DESIGN.md).
-// - Sin "Exportar": la exportación es US-076 (fuera del Sprint 3).
+// - Sin "Exportar": la exportación es EP-16 (US-139, v0.2).
 // - Sin el chip "Historial completo": sin estados la lista ya muestra todas menos las anuladas (D18);
 //   marcar todos los chips muestra el historial completo.
 // - Los conteos van en el resumen y no en los chips (ver MembershipsSummary).
@@ -25,12 +25,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useCan } from "../../../core/auth/useCan";
 import { formatCop, formatCount, formatDate } from "../../../core/i18n/format";
-import type { MembershipRowView } from "../../../shared/data/memberships";
-import { usePlans, type PlansParams } from "../../../shared/data/plans";
+import type { MembershipRowView, MembershipStatus } from "../../../shared/data/memberships";
+import { plansShownNote, usePlans, type PlansParams } from "../../../shared/data/plans";
 import { Button } from "../../../shared/ui/Button";
 import { Chips, type ChipOption } from "../../../shared/ui/Chips";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
-import { FilterBar, type FilterOption } from "../../../shared/ui/FilterBar";
+import { FilterBar, type FilterSelect } from "../../../shared/ui/FilterBar";
 import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { StatusTag } from "../../../shared/ui/StatusTag";
@@ -43,22 +43,27 @@ import { classesRemainingText, paidText } from "../lib/rules";
 import { listError } from "../membershipErrors";
 import { memberHref, SELL_PATH } from "../membershipLinks";
 import styles from "./MembershipsPage.module.css";
-import { useMembershipFilters } from "./useMembershipFilters";
+import { STATUS_CHIP_ORDER, useMembershipFilters } from "./useMembershipFilters";
 
 export const MEMBERSHIPS_EMPTY = "Todavía no hay membresías vigentes. Las anuladas se ven con el chip Anuladas.";
 export const MEMBERSHIPS_EMPTY_FILTERED = "No hay membresías con estos filtros";
 export const MEMBERSHIPS_PAST_END = "Esta página ya no tiene membresías.";
 export const RANGE_INVERTED = "La segunda fecha de 'Vence entre' es anterior a la primera. Corrígela para filtrar por vencimiento.";
 
-const STATUS_CHIPS: ChipOption[] = [
-  { value: "active", label: "Activas" },
-  { value: "expiring", label: "Por vencer" },
-  { value: "expired", label: "Vencidas" },
-  { value: "frozen", label: "Congeladas" },
-  // DESIGN-GAP (Q3): no dibujado en Membresias.html; mismo tono que "Por vencer".
-  { value: "pending_payment", label: "Pendiente de pago", tone: "warning" },
-  { value: "cancelled", label: "Anuladas" },
-];
+/** Fase 4 M4: la etiqueta de cada chip; el orden es STATUS_CHIP_ORDER (el de los filtros de la URL). */
+const STATUS_CHIP_LABELS = {
+  active: "Activas",
+  expiring: "Por vencer",
+  expired: "Vencidas",
+  frozen: "Congeladas",
+  pending_payment: "Pendiente de pago",
+  cancelled: "Anuladas",
+} as const satisfies Record<MembershipStatus, string>;
+
+const STATUS_CHIPS: ChipOption[] = STATUS_CHIP_ORDER.map((value) =>
+  // DESIGN-GAP (Q3): "Pendiente de pago" no está dibujado en Membresias.html; mismo tono que "Por vencer".
+  value === "pending_payment" ? { value, label: STATUS_CHIP_LABELS[value], tone: "warning" } : { value, label: STATUS_CHIP_LABELS[value] },
+);
 
 /** El coach solo lee los planes activos (S2-D26); el admin, todos (también los de membresías viejas). */
 const ALL_PLANS: PlansParams = { limit: 200, offset: 0 };
@@ -94,12 +99,15 @@ function PageNotice({ notice, onDismiss }: { notice: Notice | null; onDismiss: (
   );
 }
 
-function usePlanOptions(selectedId: string): FilterOption[] {
+/** El select "Plan" de la barra de filtros; dice si la lista de planes viene cortada (Fase 4 L8). */
+function usePlanSelect(selectedId: string): FilterSelect {
   const canSeeAllPlans = useCan("plans.view");
   const plans = usePlans(canSeeAllPlans ? ALL_PLANS : ACTIVE_PLANS);
-  const options = (plans.data?.items ?? []).map((plan) => ({ value: plan.id, label: plan.name }));
+  const listed = (plans.data?.items ?? []).map((plan) => ({ value: plan.id, label: plan.name }));
   // Un plan de la URL que la lista no trae (inactivo para el coach) sigue visible como elegido.
-  return selectedId && !options.some((option) => option.value === selectedId) ? [...options, { value: selectedId, label: "Plan elegido" }] : options;
+  const options = selectedId && !listed.some((option) => option.value === selectedId) ? [...listed, { value: selectedId, label: "Plan elegido" }] : listed;
+  const hint = plansShownNote(plans.data);
+  return { name: "plan_id", label: "Plan", value: selectedId, options, ...(hint ? { hint } : {}) };
 }
 
 function columnsFor(onFreeze: (row: MembershipRowView) => void, onCancel: (row: MembershipRowView) => void): Column<MembershipRowView>[] {
@@ -115,97 +123,27 @@ function columnsFor(onFreeze: (row: MembershipRowView) => void, onCancel: (row: 
   ];
 }
 
-export default function MembershipsPage() {
-  const filters = useMembershipFilters();
-  const { list, params } = filters;
-  const canSell = useCan("memberships.sell");
-  const planOptions = usePlanOptions(filters.planId);
-  const memberships = useMemberships(params);
-  const page = memberships.data;
+/** Congelar y anular desde las filas: qué modal está abierto y el aviso que deja (Fase 4 M8). */
+function useRowWrites() {
   const [freezeTarget, setFreezeTarget] = useState<FreezeTarget | null>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  // Un offset viejo (marcador, o el total bajó): hay membresías, pero esta página quedó vacía.
-  const isPastEnd = page !== undefined && page.total > 0 && page.items.length === 0;
-
   const columns = useMemo(
     () =>
       columnsFor(
         (row) => {
           setNotice(null);
-          setFreezeTarget({ id: row.id, member_name: row.member_name, end_date: row.end_date });
+          setFreezeTarget({ id: row.id, member_name: row.member_name, plan_name: row.plan_name, end_date: row.end_date });
         },
         (row) => {
           setNotice(null);
-          setCancelTarget({ id: row.id, member_name: row.member_name });
+          setCancelTarget({ id: row.id, member_name: row.member_name, plan_name: row.plan_name });
         },
       ),
     [],
   );
-
-  const actions: PageAction[] = canSell ? [{ id: "sell", label: "Vender membresía", href: SELL_PATH, variant: "primary" }] : [];
-
-  return (
-    <div className={styles.page}>
-      <PageHeader title="Membresías" {...(page ? { total: `${formatCount(page.total)} en total` } : {})} actions={actions} />
-      <PageNotice
-        notice={notice}
-        onDismiss={() => {
-          setNotice(null);
-        }}
-      />
-      <MembershipsSummary />
-      <Chips label="Estado" mode="multiple" options={STATUS_CHIPS} value={filters.statuses} onChange={filters.setStatuses} />
-      <FilterBar
-        query={list.q}
-        onQueryChange={list.setQuery}
-        onClear={list.clear}
-        searchLabel="Buscar socio"
-        searchPlaceholder="Nombre o documento"
-        selects={[{ name: "plan_id", label: "Plan", value: filters.planId, options: planOptions }]}
-        onSelectChange={(_name, value) => {
-          filters.setPlan(value);
-        }}
-        dateRange={{ label: "Vence entre", ...filters.range, onChange: filters.setRange }}
-      />
-      {filters.rangeInverted ? <p className={styles.rangeError}>{RANGE_INVERTED}</p> : null}
-      <DataTable
-        caption="Membresías"
-        columns={columns}
-        rows={page?.items}
-        total={page?.total}
-        limit={params.limit}
-        rowKey={(row) => row.id}
-        rowHref={(row) => memberHref(row.member_id)}
-        // Mientras llega la página nueva no se muestran las filas de la anterior como si fueran ella.
-        isLoading={memberships.isLoading || memberships.isPlaceholderData}
-        error={listError(memberships.error)}
-        onRetry={() => {
-          void memberships.refetch();
-        }}
-        emptyMessage={isPastEnd ? MEMBERSHIPS_PAST_END : filters.isFiltered ? MEMBERSHIPS_EMPTY_FILTERED : MEMBERSHIPS_EMPTY}
-        emptyAction={
-          isPastEnd ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                list.setPage(1);
-              }}
-            >
-              Ir a la primera página
-            </Button>
-          ) : filters.isFiltered ? (
-            <Button variant="secondary" onClick={list.clear}>
-              Limpiar filtros
-            </Button>
-          ) : canSell ? (
-            <Link className={styles.firstSale} to={SELL_PATH}>
-              Vender la primera membresía
-            </Link>
-          ) : null
-        }
-      />
-      {page && page.total > 0 ? <Pagination total={page.total} limit={params.limit} offset={params.offset} onPageChange={list.setPage} onLimitChange={list.setLimit} /> : null}
+  const modals = (
+    <>
       <FreezeModal
         membership={freezeTarget}
         onClose={() => {
@@ -226,6 +164,98 @@ export default function MembershipsPage() {
           setNotice({ kind: "cancelled", name: target.member_name });
         }}
       />
+    </>
+  );
+  return {
+    columns,
+    modals,
+    notice,
+    dismissNotice: () => {
+      setNotice(null);
+    },
+  };
+}
+
+type Filters = ReturnType<typeof useMembershipFilters>;
+
+/** Qué ofrece la tabla vacía: la primera página, limpiar los filtros o vender la primera. */
+function EmptyAction({ isPastEnd, filters, canSell }: { isPastEnd: boolean; filters: Filters; canSell: boolean }) {
+  if (isPastEnd) {
+    return (
+      <Button
+        variant="secondary"
+        onClick={() => {
+          filters.list.setPage(1);
+        }}
+      >
+        Ir a la primera página
+      </Button>
+    );
+  }
+  if (filters.isFiltered) {
+    return (
+      <Button variant="secondary" onClick={filters.list.clear}>
+        Limpiar filtros
+      </Button>
+    );
+  }
+  return canSell ? (
+    <Link className={styles.firstSale} to={SELL_PATH}>
+      Vender la primera membresía
+    </Link>
+  ) : null;
+}
+
+export default function MembershipsPage() {
+  const filters = useMembershipFilters();
+  const { list, params } = filters;
+  const canSell = useCan("memberships.sell");
+  const planSelect = usePlanSelect(filters.planId);
+  const memberships = useMemberships(params);
+  const page = memberships.data;
+  const writes = useRowWrites();
+  // Un offset viejo (marcador, o el total bajó): hay membresías, pero esta página quedó vacía.
+  const isPastEnd = page !== undefined && page.total > 0 && page.items.length === 0;
+  const actions: PageAction[] = canSell ? [{ id: "sell", label: "Vender membresía", href: SELL_PATH, variant: "primary" }] : [];
+
+  return (
+    <div className={styles.page}>
+      <PageHeader title="Membresías" {...(page ? { total: `${formatCount(page.total)} en total` } : {})} actions={actions} />
+      <PageNotice notice={writes.notice} onDismiss={writes.dismissNotice} />
+      <MembershipsSummary />
+      <Chips label="Estado" mode="multiple" options={STATUS_CHIPS} value={filters.statuses} onChange={filters.setStatuses} />
+      <FilterBar
+        query={list.q}
+        onQueryChange={list.setQuery}
+        onClear={list.clear}
+        searchLabel="Buscar socio"
+        searchPlaceholder="Nombre o documento"
+        selects={[planSelect]}
+        onSelectChange={(_name, value) => {
+          filters.setPlan(value);
+        }}
+        dateRange={{ label: "Vence entre", ...filters.range, onChange: filters.setRange }}
+      />
+      {filters.rangeInverted ? <p className={styles.rangeError}>{RANGE_INVERTED}</p> : null}
+      <DataTable
+        caption="Membresías"
+        columns={writes.columns}
+        rows={page?.items}
+        total={page?.total}
+        limit={params.limit}
+        rowKey={(row) => row.id}
+        rowHref={(row) => memberHref(row.member_id)}
+        // Mientras llega la página nueva no se muestran las filas de la anterior como si fueran ella.
+        isLoading={memberships.isLoading || memberships.isPlaceholderData}
+        error={listError(memberships.error)}
+        onRetry={() => {
+          void memberships.refetch();
+        }}
+        emptyMessage={isPastEnd ? MEMBERSHIPS_PAST_END : filters.isFiltered ? MEMBERSHIPS_EMPTY_FILTERED : MEMBERSHIPS_EMPTY}
+        emptyAction={<EmptyAction isPastEnd={isPastEnd} filters={filters} canSell={canSell} />}
+      />
+      {page && page.total > 0 ? <Pagination total={page.total} limit={params.limit} offset={params.offset} onPageChange={list.setPage} onLimitChange={list.setLimit} /> : null}
+      {writes.modals}
     </div>
   );
 }

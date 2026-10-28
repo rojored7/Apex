@@ -13,6 +13,7 @@ import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
+import { formatCount } from "../../core/i18n/format";
 import type { components } from "../../core/api/types";
 
 export type PlanKind = components["schemas"]["PlanCreate"]["kind"];
@@ -53,4 +54,14 @@ export function usePlans(params: PlansParams): UseQueryResult<Page<PlanRowView>>
     queryFn: async ({ signal }) => parseResponse(plansPageSchema, await api.get<unknown>("/plans", { query: listParams({ ...params }), signal })),
     placeholderData: keepPreviousData,
   });
+}
+
+/**
+ * Fase 4 del Sprint 3 (L8): la venta pide hasta 100 planes activos y los filtros de Membresías y Socios
+ * hasta 200, sin paginar (un gimnasio tiene pocos). Si el api tiene más, la pantalla lo dice en vez de
+ * esconder los demás: "Se muestran 2 de 230 planes. …". null si trae todos.
+ */
+export function plansShownNote(page: Page<unknown> | undefined): string | null {
+  if (!page || page.total <= page.items.length) return null;
+  return `Se muestran ${formatCount(page.items.length)} de ${formatCount(page.total)} planes. Si falta el que buscas, avísale a un administrador.`;
 }

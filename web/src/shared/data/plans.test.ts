@@ -7,7 +7,7 @@ import * as plansApi from "../../features/plans/api";
 import * as plansSchemas from "../../features/plans/schemas";
 import { PLANS, planPage } from "../../test/plans";
 import { mockApi, testQueryClient } from "../../test/server";
-import { PLAN_KINDS, planRowSchema, plansPageSchema, plansQueryKey, PLANS_QUERY_KEY, usePlans } from "./plans";
+import { PLAN_KINDS, planRowSchema, plansPageSchema, plansQueryKey, PLANS_QUERY_KEY, plansShownNote, usePlans } from "./plans";
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -55,5 +55,18 @@ describe("reexportación desde features/plans", () => {
     expect(plansSchemas.planRowSchema).toBe(planRowSchema);
     expect(plansSchemas.plansPageSchema).toBe(plansPageSchema);
     expect(plansSchemas.PLAN_KINDS).toBe(PLAN_KINDS);
+  });
+});
+
+// Fase 4 del Sprint 3 (L8): una lista de planes cortada por `limit` lo dice (la venta pide 100 y los
+// filtros de Membresías y Socios 200); antes los demás desaparecían en silencio.
+describe("plansShownNote", () => {
+  it("null mientras no hay página o cuando trae todos", () => {
+    expect(plansShownNote(undefined)).toBeNull();
+    expect(plansShownNote({ items: [PLANS.mensual], total: 1, limit: 100, offset: 0 })).toBeNull();
+  });
+
+  it("dice cuántos se muestran de cuántos y qué hacer", () => {
+    expect(plansShownNote({ items: [PLANS.mensual, PLANS.clases], total: 230, limit: 2, offset: 0 })).toBe("Se muestran 2 de 230 planes. Si falta el que buscas, avísale a un administrador.");
   });
 });

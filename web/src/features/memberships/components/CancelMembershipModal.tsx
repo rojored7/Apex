@@ -18,6 +18,8 @@ import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, cancelMembershipSchema } from "..
 export interface CancelTarget {
   id: string;
   member_name: string;
+  /** Fase 4 L6: el plan, para el aviso de la ficha tras anular. */
+  plan_name: string;
 }
 
 export interface CancelMembershipModalProps {

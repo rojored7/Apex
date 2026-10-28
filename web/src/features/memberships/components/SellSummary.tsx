@@ -2,11 +2,12 @@
 // - SellSummary: socio, plan, vigencia, precio, pago, saldo y quién registra, con el botón de envío
 //   ("Vender y cobrar", o "Vender" sin pago) y Cancelar. Todo dinero y fecha sale de core/i18n.
 //   DESIGN-GAP: "Registra" muestra el correo de la sesión (no hay nombre de usuario hasta US-110).
-//   DESIGN-GAP: el botón dice "Vender y cobrar" (blueprint) en vez de "Confirmar venta y pago", y
-//   Cancelar vuelve a Socios (la lista de membresías llega con S3-F5).
+//   DESIGN-GAP: el botón dice "Vender y cobrar" (blueprint) en vez de "Confirmar venta y pago".
+//   Cancelar vuelve a donde dice la página (S3-D100: la ficha del socio o /membresias).
 // - SellDone: lo que respondió el api (201): estado con StatusTag ("Al día" o "Pendiente de pago"),
-//   pagado y saldo. El título recibe el foco. DESIGN-GAP: el diseño lleva a la ficha del socio
-//   (US-073, S3-F1); hasta entonces la venta registrada se queda en la página.
+//   pagado y saldo. El título recibe el foco. S3-D100: la venta registrada se queda en la página (el
+//   confirmado se lee) y ofrece "Vender otra membresía" y el enlace de salida (la ficha del socio si
+//   se llegó con `?socio=`, o /membresias).
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link } from "react-router";
 import { EMPTY_VALUE, formatCop, formatDate } from "../../../core/i18n/format";
@@ -14,7 +15,6 @@ import { Button } from "../../../shared/ui/Button";
 import { StatusTag } from "../../../shared/ui/StatusTag";
 import { cx } from "../../../shared/ui/cx";
 import { saldo } from "../lib/rules";
-import { MEMBERS_PATH } from "../membershipLinks";
 import type { SellMembershipOutView } from "../schemas";
 import styles from "./Sell.module.css";
 
@@ -54,6 +54,8 @@ export interface SellSummaryProps {
   registeredBy: string | null;
   submitting: boolean;
   submitDisabled: boolean;
+  /** A dónde lleva Cancelar (S3-D100). */
+  cancelHref: string;
 }
 
 function paymentText({ withPayment, amount, methodLabel }: Pick<SellSummaryProps, "withPayment" | "amount" | "methodLabel">): string {
@@ -67,7 +69,7 @@ function balanceText({ price, withPayment, amount }: Pick<SellSummaryProps, "pri
 }
 
 export function SellSummary(props: SellSummaryProps) {
-  const { memberName, planName, start, end, price, registeredBy, withPayment, submitting, submitDisabled } = props;
+  const { memberName, planName, start, end, price, registeredBy, withPayment, submitting, submitDisabled, cancelHref } = props;
   const rows: SummaryRow[] = [
     { label: "Socio", value: memberName ?? EMPTY_VALUE },
     { label: "Plan", value: planName ?? EMPTY_VALUE },
@@ -88,7 +90,7 @@ export function SellSummary(props: SellSummaryProps) {
         <Button type="submit" className={styles.submit} loading={submitting} disabled={submitDisabled}>
           {submitting ? "Vendiendo…" : label}
         </Button>
-        <Link className={styles.secondaryLink} to={MEMBERS_PATH}>
+        <Link className={styles.secondaryLink} to={cancelHref}>
           Cancelar
         </Link>
       </div>
@@ -98,10 +100,12 @@ export function SellSummary(props: SellSummaryProps) {
 
 export interface SellDoneProps {
   sold: SellMembershipOutView;
+  /** El enlace de salida (S3-D100). */
+  exit: { href: string; text: string };
   onSellAnother: () => void;
 }
 
-export function SellDone({ sold, onSellAnother }: SellDoneProps) {
+export function SellDone({ sold, exit, onSellAnother }: SellDoneProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     titleRef.current?.focus();
@@ -123,8 +127,8 @@ export function SellDone({ sold, onSellAnother }: SellDoneProps) {
       <Rows rows={rows} />
       <div className={styles.doneActions}>
         <Button onClick={onSellAnother}>Vender otra membresía</Button>
-        <Link className={styles.secondaryLink} to={MEMBERS_PATH}>
-          Ir a Socios
+        <Link className={styles.secondaryLink} to={exit.href}>
+          {exit.text}
         </Link>
       </div>
     </section>

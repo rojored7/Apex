@@ -5,7 +5,7 @@
 // Idempotente: valores únicos por corrida (V4 corre las specs dos veces seguidas).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
+import { borrarUsuario, crearCoach, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const PATH = "/sistema/configuracion";
@@ -93,6 +93,7 @@ test.describe("configuración del gimnasio contra el stack", () => {
       expect(direct.status()).toBe(403);
     } finally {
       await context.close();
+      await borrarUsuario(page, coach.id);
     }
   });
 });

@@ -14,6 +14,7 @@ import {
   parseCop,
   todayBogota,
   addDaysCivil,
+  civilDaysBetween,
   bogotaInputToUtc,
   nowBogotaInput,
 } from "./format";
@@ -200,5 +201,30 @@ describe("formatDateRange (S3-F4: vigencia corta de una membresía)", () => {
   it("una fecha que no es civil da la raya de vacío", () => {
     expect(formatDateRange("2026-13-01", "2026-11-24")).toBe("—");
     expect(formatDateRange("2026-10-25", "nunca")).toBe("—");
+  });
+});
+
+// Fase 4 del Sprint 3 (L8): la diferencia en días entre dos fechas civiles; antes rules.ts tenía su
+// propio lector de fechas.
+describe("civilDaysBetween", () => {
+  it.each([
+    ["2026-10-01", "2026-10-10", 9],
+    ["2026-10-10", "2026-10-10", 0],
+    ["2026-10-10", "2026-10-01", -9],
+    ["2026-12-31", "2027-01-01", 1],
+    ["2028-02-28", "2028-03-01", 2],
+  ])("%s → %s = %s días", (from, to, days) => {
+    for (const zone of ZONES) {
+      process.env.TZ = zone;
+      expect(civilDaysBetween(from, to)).toBe(days);
+    }
+  });
+
+  it.each([
+    ["2026-02-30", "2026-03-01"],
+    ["2026-10-01", ""],
+    ["1 oct", "2026-10-01"],
+  ])("null si alguna no es una fecha real (%s, %s)", (from, to) => {
+    expect(civilDaysBetween(from, to)).toBeNull();
   });
 });

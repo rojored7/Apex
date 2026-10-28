@@ -5,6 +5,7 @@
 // capturas. La variante contra el stack es stack/memberships-freeze-cancel.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const USERS = {
@@ -70,8 +71,7 @@ interface FakeApi {
 async function fakeApi(page: Page, who: keyof typeof USERS): Promise<FakeApi> {
   const state: FakeApi = { freezeBodies: [], cancelBodies: [] };
   const user = USERS[who];
-  await page.route("**/api/v1/auth/refresh", (route) => json(route, 200, { access_token: `e2e-${who}`, token_type: "bearer", expires_in: 900 }));
-  await page.route("**/api/v1/auth/me", (route) => json(route, 200, { ...user, member_id: null, gym_name: "Box Norte", must_change_password: false }));
+  await mockSession(page, user);
   await page.route(/\/api\/v1\/plans(\?.*)?$/, (route) =>
     json(route, 200, {
       items: [

@@ -53,7 +53,8 @@ export const MEMBER_TABS: readonly TabItem[] = [
   { id: "atleta", label: "Atleta", disabledUntil: "v0.6" },
   { id: "avisos", label: "Avisos", disabledUntil: "v0.2" },
   { id: "adjuntos", label: "Adjuntos", disabledUntil: "v0.3" },
-  { id: "historial", label: "Historial", disabledUntil: "v0.1" },
+  // Pendiente 4 de V1: la pestaña es de US-106 (Sprint 4A, S4A-F2).
+  { id: "historial", label: "Historial", disabledUntil: "v0.1 · Sprint 4A" },
 ];
 const INDEX_TAB = "datos";
 
@@ -92,18 +93,19 @@ function useDetailActions(member: MemberDetailView, open: (modal: Modal) => void
   return [...(canSell ? [sell] : []), ...(canUpdate ? [edit] : []), ...(canDelete ? [deactivate] : [])];
 }
 
-function MemberDetail({ member, refreshError }: { member: MemberDetailView; refreshError: string | null }) {
+/**
+ * Los avisos de la ficha (Fase 4 M8): "Cambios guardados" que deja la edición (se lee una vez), el de
+ * dar de baja o reactivar (con el foco, porque el botón que abrió el modal ya no existe) y el 409 del
+ * documento repetido al reactivar.
+ */
+function useDetailNotices() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [modal, setModal] = useState<Modal>(null);
   const [notice, setNotice] = useState<string | null>(() => (readUpdatedNotice(location.state) ? DETAIL_NOTICES.updated : null));
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
-  // Tras dar de baja o reactivar, el botón que abrió el modal ya no existe: el foco va al aviso.
   const [focusNotice, setFocusNotice] = useState(false);
   const noticeRef = useRef<HTMLParagraphElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
-  const actions = useDetailActions(member, setModal);
-  const role = useRole();
 
   useEffect(() => {
     if (focusNotice) noticeRef.current?.focus();
@@ -116,29 +118,31 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
     if (readUpdatedNotice(location.state)) void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location, navigate]);
 
-  const name = `${member.first_name} ${member.last_name}`;
-  const deleted = member.deleted_at !== null;
-  const target = { id: member.id, name };
-  const done = (text: string) => (): void => {
-    setDuplicateId(null);
-    setNotice(text);
-    setFocusNotice(true);
+  return {
+    notice,
+    noticeRef,
+    duplicateId,
+    alertRef,
+    setDuplicateId,
+    done: (text: string) => (): void => {
+      setDuplicateId(null);
+      setNotice(text);
+      setFocusNotice(true);
+    },
   };
+}
 
+interface DetailBannersProps {
+  member: MemberDetailView;
+  refreshError: string | null;
+  notices: ReturnType<typeof useDetailNotices>;
+}
+
+/** Lo que va entre el encabezado y las pestañas: errores, avisos, baja y autorización de datos. */
+function DetailBanners({ member, refreshError, notices }: DetailBannersProps) {
+  const { notice, noticeRef, duplicateId, alertRef } = notices;
   return (
-    <div className={styles.page}>
-      <PageHeader
-        title={name}
-        badge={
-          <span className={styles.badges}>
-            <StatusTag status={membershipStatusOf(member) ?? "none"} />
-            {deleted ? <StatusTag account="deleted" /> : null}
-          </span>
-        }
-        description={`Socio desde ${formatDate(member.created_at)} · ${membershipDetail(member)}`}
-        breadcrumbs={[{ label: "Socios", href: MEMBERS_PATH }, { label: name }]}
-        actions={actions}
-      />
+    <>
       {refreshError ? (
         <p className={styles.alert} role="alert">
           {refreshError}
@@ -157,7 +161,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
           </Link>
         </div>
       ) : null}
-      {deleted && member.deleted_at !== null ? (
+      {member.deleted_at !== null ? (
         <p className={styles.deleted}>
           {`Dado de baja el ${formatDate(member.deleted_at)}. Su ficha es de solo lectura; sus membresías, pagos e historial se conservan.`}
         </p>
@@ -168,6 +172,34 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
           <span>{'Edita el socio y marca "Registrar autorización" cuando el socio la acepte (Ley 1581).'}</span>
         </div>
       ) : null}
+    </>
+  );
+}
+
+function MemberDetail({ member, refreshError }: { member: MemberDetailView; refreshError: string | null }) {
+  const [modal, setModal] = useState<Modal>(null);
+  const notices = useDetailNotices();
+  const actions = useDetailActions(member, setModal);
+  const role = useRole();
+  const name = `${member.first_name} ${member.last_name}`;
+  const deleted = member.deleted_at !== null;
+  const target = { id: member.id, name };
+
+  return (
+    <div className={styles.page}>
+      <PageHeader
+        title={name}
+        badge={
+          <span className={styles.badges}>
+            <StatusTag status={membershipStatusOf(member) ?? "none"} />
+            {deleted ? <StatusTag account="deleted" /> : null}
+          </span>
+        }
+        description={`Socio desde ${formatDate(member.created_at)} · ${membershipDetail(member)}`}
+        breadcrumbs={[{ label: "Socios", href: MEMBERS_PATH }, { label: name }]}
+        actions={actions}
+      />
+      <DetailBanners member={member} refreshError={refreshError} notices={notices} />
       <Tabs label="Secciones del socio" urlMode="segment" basePath={memberHref(member.id)} indexId={INDEX_TAB} tabs={memberTabs(member.id, role)}>
         {() => <Outlet context={{ member } satisfies MemberOutletContext} />}
       </Tabs>
@@ -177,7 +209,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
         onClose={() => {
           setModal(null);
         }}
-        onDone={done(DETAIL_NOTICES.deactivated)}
+        onDone={notices.done(DETAIL_NOTICES.deactivated)}
       />
       <ReactivateMemberModal
         open={modal === "reactivate"}
@@ -185,8 +217,8 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
         onClose={() => {
           setModal(null);
         }}
-        onDone={done(DETAIL_NOTICES.reactivated)}
-        onDuplicate={setDuplicateId}
+        onDone={notices.done(DETAIL_NOTICES.reactivated)}
+        onDuplicate={notices.setDuplicateId}
       />
     </div>
   );

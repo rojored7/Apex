@@ -118,47 +118,6 @@
 }
 
 /* Paso 1: resultados de la búsqueda y socio elegido (.w-opt). */
-.results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.option {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: var(--control);
-  padding: var(--space-3);
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  color: var(--ink);
-  font: var(--text-body);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 120ms ease-out;
-}
-
-.option:focus-visible {
-  outline: 3px solid var(--blue-deep);
-  outline-offset: 2px;
-}
-
-.option:disabled {
-  background: var(--surface);
-  color: var(--muted);
-  cursor: not-allowed;
-}
-
-.option:hover:not(:disabled) {
-  border-color: var(--blue-deep);
-}
 
 .optionText {
   display: flex;

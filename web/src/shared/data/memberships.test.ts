@@ -5,10 +5,14 @@ import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import * as membershipSchemas from "../../features/memberships/schemas";
+import type { components } from "../../core/api/types";
 import { MEMBERS } from "../../test/members";
 import { MEMBERSHIP_ID, membershipOut, membershipRow, membershipRowsPage, membershipSummary } from "../../test/memberships";
 import { mockApi, testQueryClient } from "../../test/server";
 import {
+  FREEZABLE_MEMBERSHIP_STATUSES,
+  isFreezableMembershipStatus,
+  isOpenMembershipStatus,
   MEMBERSHIP_STATUSES,
   memberMembershipsKey,
   MEMBERSHIPS_SUMMARY_QUERY_KEY,
@@ -228,5 +232,22 @@ describe("revisión S3-F7 (M1): la página anterior se conserva solo para el mis
 
     rerender({ id: B, offset: 0 });
     expect(result.current.data).toBeUndefined();
+  });
+});
+
+// Fase 4 del Sprint 3 (L1 y M4): los estados salen del contrato y las reglas que los agrupan viven aquí.
+describe("estados de membresía del contrato", () => {
+  it("MEMBERSHIP_STATUSES cubre exactamente el enum MembershipStatus del contrato", () => {
+    expectTypeOf<(typeof MEMBERSHIP_STATUSES)[number]>().toEqualTypeOf<components["schemas"]["MembershipStatus"]>();
+    expect(new Set(MEMBERSHIP_STATUSES).size).toBe(6);
+  });
+
+  it.each(MEMBERSHIP_STATUSES)("isOpenMembershipStatus(%s) sigue a OPEN_MEMBERSHIP_STATUSES", (status) => {
+    expect(isOpenMembershipStatus(status)).toBe((OPEN_MEMBERSHIP_STATUSES as readonly string[]).includes(status));
+  });
+
+  it("solo se congelan las al día o por vencer", () => {
+    expect(FREEZABLE_MEMBERSHIP_STATUSES).toEqual(["active", "expiring"]);
+    expect(MEMBERSHIP_STATUSES.filter(isFreezableMembershipStatus)).toEqual(["active", "expiring"]);
   });
 });

@@ -5,13 +5,14 @@
 //   (refreshCurrentUser), sin bloquear la entrada; mientras tanto el gimnasio es "APEX".
 // - loginErrorMessage traduce el error a un mensaje "qué pasó y qué hacer". Un 401 nunca dice
 //   si la cuenta existe, está bloqueada o pendiente.
-import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
 import { parseResponse } from "../../core/api/response";
 import { HTTP_BAD_REQUEST, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNAUTHORIZED, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
 import type { components } from "../../core/api/types";
 import { ROLES } from "../../core/auth/permissions";
 import { adoptAccessToken, getSession, refreshCurrentUser, setSession, type SessionPayload, type SessionUser } from "../../core/auth/session";
@@ -80,7 +81,8 @@ async function login(values: LoginForm): Promise<SessionUser> {
 
 /** Mutación del login: al terminar, la sesión ya está en memoria. */
 export function useLogin(): UseMutationResult<SessionUser, Error, LoginForm> {
-  return useMutation<SessionUser, Error, LoginForm>({ mutationFn: login, gcTime: 0 });
+  // Fase 4 M6: la contraseña no se queda en la caché de mutaciones (useSensitiveMutation).
+  return useSensitiveMutation<SessionUser, Error, LoginForm>({ mutationFn: login });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -189,9 +191,8 @@ async function changePassword({ currentPassword, newPassword }: ChangePasswordIn
 
 export function useChangePassword(): UseMutationResult<undefined, Error, ChangePasswordInput> {
   const queryClient = useQueryClient();
-  return useMutation<undefined, Error, ChangePasswordInput>({
+  return useSensitiveMutation<undefined, Error, ChangePasswordInput>({
     mutationFn: changePassword,
-    gcTime: 0,
     // Sin esperar: la relectura de me no debe alargar el "Guardando…".
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
@@ -210,7 +211,7 @@ async function resetPassword({ token, newPassword }: ResetInput): Promise<undefi
 }
 
 export function useResetPassword(): UseMutationResult<undefined, Error, ResetInput> {
-  return useMutation<undefined, Error, ResetInput>({ mutationFn: resetPassword, gcTime: 0 });
+  return useSensitiveMutation<undefined, Error, ResetInput>({ mutationFn: resetPassword });
 }
 
 async function forgotPassword({ email }: ForgotForm): Promise<undefined> {
@@ -219,5 +220,5 @@ async function forgotPassword({ email }: ForgotForm): Promise<undefined> {
 }
 
 export function useForgotPassword(): UseMutationResult<undefined, Error, ForgotForm> {
-  return useMutation<undefined, Error, ForgotForm>({ mutationFn: forgotPassword, gcTime: 0 });
+  return useSensitiveMutation<undefined, Error, ForgotForm>({ mutationFn: forgotPassword });
 }

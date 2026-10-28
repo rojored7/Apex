@@ -18,7 +18,7 @@ import { mockApi, testQueryClient, type MockHandler } from "../../../test/server
 import { signInAs, signOutForTests } from "../../../test/session";
 import { CancelMembershipModal, type CancelTarget } from "./CancelMembershipModal";
 
-const TARGET: CancelTarget = { id: ELENA_MEMBERSHIP_ID, member_name: "Elena Vargas" };
+const TARGET: CancelTarget = { id: ELENA_MEMBERSHIP_ID, member_name: "Elena Vargas", plan_name: "Mensual" };
 const CANCELLED = membershipOut({ id: ELENA_MEMBERSHIP_ID, member_id: MEMBERS.elena.id, member_name: "Elena Vargas", status: "cancelled" });
 const REASON = "Se vendió por error al socio equivocado";
 

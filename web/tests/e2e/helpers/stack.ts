@@ -194,10 +194,23 @@ export interface PlanCreado {
   precio: number;
 }
 
+/** Tope de la cuenta regresiva del nombre del plan: base 36 de 9 cifras hasta el año 2286. */
+const PLAN_NAME_HORIZON_MS = 10_000_000_000_000;
+
+/**
+ * Validación final del Sprint 3: la venta muestra solo los 100 primeros planes activos por nombre
+ * (SELL_PLANS_LIMIT, con su aviso) y los planes de prueba no se pueden dar de baja hasta el Sprint
+ * 4A. Con "Mensual <hora>" el plan nuevo quedaba detrás de los de corridas anteriores y salía de la
+ * lista al pasar de 100. Este nombre empieza por "0" y cuenta hacia atrás: el más nuevo va primero.
+ */
+export function nombrePlanE2E(ahora: number = Date.now()): string {
+  return `0 E2E ${(PLAN_NAME_HORIZON_MS - ahora).toString(36).padStart(9, "0")}`;
+}
+
 /** S3-F3: crea un plan activo por días con nombre único (POST /plans, solo admin). */
 export async function crearPlan(page: Page, precio = 120_000, admin: Credentials = datosDeBase()): Promise<PlanCreado> {
   const headers = await accessDe(page, admin);
-  const nombre = `Mensual ${Date.now().toString(36)}`;
+  const nombre = nombrePlanE2E();
   const created = await page.request.post(`${API}/plans`, { headers, data: { name: nombre, price_cop: precio, kind: "days", duration_days: 30 } });
   if (!created.ok()) throw new Error(`POST /plans respondió ${String(created.status())}.`);
   const body = (await created.json()) as { id: string };

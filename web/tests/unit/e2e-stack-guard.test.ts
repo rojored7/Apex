@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Page } from "@playwright/test";
-import { exigirStackLocal, loginComo, type CoachCreado } from "../e2e/helpers/stack";
+import { exigirStackLocal, loginComo, nombrePlanE2E, type CoachCreado } from "../e2e/helpers/stack";
 
 describe("exigirStackLocal (V10 L-D)", () => {
   it.each(["http://localhost:8180", "http://127.0.0.1:8180/", "https://localhost", "http://localhost"])("acepta %s", (url) => {
@@ -61,5 +61,15 @@ describe("exigirStackLocal (V10 L-D)", () => {
 
     expect(specs.filter((name) => readFileSync(new URL(name, dir), "utf8").includes("crearCoach(")).length).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("nombrePlanE2E (validación final del Sprint 3)", () => {
+  it("el plan más nuevo ordena antes que los de corridas anteriores y que los nombres con letra", () => {
+    const antes = nombrePlanE2E(1_793_000_000_000);
+    const despues = nombrePlanE2E(1_793_000_000_001);
+
+    expect([antes, despues, "E2E-tope-1", "Mensual mvsl6sf5"].sort()).toEqual([despues, antes, "E2E-tope-1", "Mensual mvsl6sf5"]);
+    expect(despues).toMatch(/^0 E2E [0-9a-z]{9}$/);
   });
 });

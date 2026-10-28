@@ -9,7 +9,7 @@ const MEMBERSHIPS = { expiring_days: "7", max_freeze_days_per_membership: "30", 
 
 interface ParseLike {
   success: boolean;
-  error?: { issues: { path: (string | number)[]; message: string }[] };
+  error?: { issues: { path: PropertyKey[]; message: string }[] };
 }
 
 function firstMessage(result: ParseLike, field: string): string | undefined {

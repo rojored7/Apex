@@ -11,7 +11,7 @@
 //   Otro error: aviso general con el mensaje del api. Sin borradores en localStorage.
 import { useEffect, useRef, useState } from "react";
 import { useForm, type DefaultValues, type FieldValues, type UseFormReturn } from "react-hook-form";
-import type { ZodType, ZodTypeDef } from "zod";
+import type { ZodType } from "zod";
 import { isApiError } from "../../../core/api/errors";
 import { zodResolver } from "../../../shared/lib/zodResolver";
 import { isVersionConflict, type SectionInput, type SectionValue, type SettingsKey, type SettingsSection, type SettingsSectionApi } from "../api";
@@ -24,7 +24,7 @@ export const RELOAD_ERROR = "No pudimos recargar la sección. Revisa tu conexió
 export interface SectionFormOptions<K extends SettingsKey, TForm extends FieldValues> {
   section: SettingsSection<K>;
   api: SettingsSectionApi<K>;
-  schema: ZodType<TForm, ZodTypeDef, TForm>;
+  schema: ZodType<TForm, TForm>;
   toForm: (value: SectionValue<K>) => TForm;
   toInput: (values: TForm) => SectionInput<K>;
   /** Mensaje propio por campo para un 422 del api (el del api nombra el campo en inglés). */

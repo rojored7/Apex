@@ -20,22 +20,23 @@ describe("zodResolver", () => {
     expect(result).toEqual({ values: { name: "Box", code: "123" }, errors: {} });
   });
 
+  // S3-D105: `type` es el código de Zod 4 (`invalid_format`; Zod 3 decía `invalid_string`).
   it("con datos inválidos devuelve un error por campo, el primero que encuentra, y valores vacíos", async () => {
     const result = await zodResolver(schema)({ name: "", code: "ab" }, undefined, options as never);
 
     expect(result.values).toEqual({});
     expect(result.errors).toEqual({
       name: { type: "too_small", message: "Escribe el nombre." },
-      code: { type: "invalid_string", message: "Solo dígitos." },
+      code: { type: "invalid_format", message: "Solo dígitos." },
     });
   });
 
   it("anida los errores de rutas con varios niveles", async () => {
-    const nested = z.object({ contact: z.object({ email: z.string().email("Correo inválido.") }) });
+    const nested = z.object({ contact: z.object({ email: z.email("Correo inválido.") }) });
 
     const result = await zodResolver(nested)({ contact: { email: "x" } }, undefined, options as never);
 
-    expect(result.errors).toEqual({ contact: { email: { type: "invalid_string", message: "Correo inválido." } } });
+    expect(result.errors).toEqual({ contact: { email: { type: "invalid_format", message: "Correo inválido." } } });
   });
 
   it("un error sin ruta queda en root", async () => {

@@ -30,6 +30,7 @@ import {
   type PaymentMethodCode,
 } from "../../shared/data/schemas/payment";
 import { PAYMENT_MESSAGES } from "./paymentErrors";
+import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 export {
   cleanReference,
   METHODS_WITH_REFERENCE,
@@ -65,18 +66,18 @@ export type { PaymentBodyOptions } from "../../shared/data/schemas/payment";
 type AddIssue = (path: keyof RegisterPaymentFormValues, message: string) => void;
 
 /** `nowMs` fijo solo en pruebas; sin él, la hora se lee al validar (el panel puede llevar rato abierto). */
-export function registerPaymentSchema(nowMs?: number): z.ZodType<RegisterPaymentFormValues, z.ZodTypeDef, RegisterPaymentFormValues> {
+export function registerPaymentSchema(nowMs?: number): z.ZodType<RegisterPaymentFormValues, RegisterPaymentFormValues> {
   return z
     .object({
       membershipId: z.string(),
-      method: z.enum(PAYMENT_METHOD_CODES, { errorMap: () => ({ message: PAYMENT_MESSAGES.methodRequired }) }),
+      method: z.enum(PAYMENT_METHOD_CODES, { error: PAYMENT_MESSAGES.methodRequired }),
       amount: z.string(),
       reference: z.string(),
       paidAt: z.string(),
     })
     .superRefine((values, ctx) => {
       const add: AddIssue = (path, message) => {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+        ctx.addIssue({ code: CUSTOM_ISSUE, path: [path], message });
       };
       if (values.membershipId === "") add("membershipId", PAYMENT_MESSAGES.membershipRequired);
       checkPaymentFields(values, nowMs ?? Date.now(), PAYMENT_MESSAGES, add);
@@ -94,8 +95,8 @@ export const voidPaymentSchema = z.object({
   reason: z
     .string()
     .trim()
-    .refine((value) => value.length > 0, { message: "Escribe el motivo de la anulación." })
-    .refine((value) => charCount(value) <= VOID_REASON_MAX, { message: `El motivo admite hasta ${String(VOID_REASON_MAX)} caracteres.` }),
+    .refine((value) => value.length > 0, { error: "Escribe el motivo de la anulación." })
+    .refine((value) => charCount(value) <= VOID_REASON_MAX, { error: `El motivo admite hasta ${String(VOID_REASON_MAX)} caracteres.` }),
 });
 
 // PaymentOut (B3 a B5): lo que devuelven registrar y anular.

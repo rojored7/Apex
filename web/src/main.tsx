@@ -1,3 +1,5 @@
+// S3-D105: zodSetup va antes de cualquier esquema (jitless, CSP sin eval); no lo reordenes.
+import "./core/zodSetup";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./core/styles/fonts.css";

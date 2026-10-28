@@ -21,6 +21,7 @@ import { membershipOutShape } from "../../shared/data/memberships";
 import { copAmount } from "../../shared/data/schemas/money";
 import { buildPaymentBody, checkPaymentFields, PAYMENT_METHOD_CODES, type PaymentMethodCode } from "../../shared/data/schemas/payment";
 import { FREEZE_FORM_MESSAGES, SELL_MESSAGES } from "./membershipErrors";
+import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 export type SellMembershipBody = components["schemas"]["SellMembershipIn"];
 
@@ -80,7 +81,7 @@ function checkStartDate(startDate: string, today: string, add: AddIssue): void {
 
 
 /** `nowMs` fijo solo en pruebas; sin él, la hora se lee al validar (la página puede llevar rato abierta). */
-export function sellMembershipSchema(today: string, nowMs?: number): z.ZodType<SellFormValues, z.ZodTypeDef, SellFormValues> {
+export function sellMembershipSchema(today: string, nowMs?: number): z.ZodType<SellFormValues, SellFormValues> {
   return z
     .object({
       memberId: z.string(),
@@ -88,14 +89,14 @@ export function sellMembershipSchema(today: string, nowMs?: number): z.ZodType<S
       renew: z.boolean(),
       startDate: z.string(),
       withPayment: z.boolean(),
-      method: z.enum(PAYMENT_METHOD_CODES, { errorMap: () => ({ message: SELL_MESSAGES.methodRequired }) }),
+      method: z.enum(PAYMENT_METHOD_CODES, { error: SELL_MESSAGES.methodRequired }),
       amount: z.string(),
       reference: z.string(),
       paidAt: z.string(),
     })
     .superRefine((values, ctx) => {
       const add: AddIssue = (path, message) => {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+        ctx.addIssue({ code: CUSTOM_ISSUE, path: [path], message });
       };
       if (values.memberId === "") add("memberId", SELL_MESSAGES.memberRequired);
       if (values.planId === "") add("planId", SELL_MESSAGES.planRequired);
@@ -168,7 +169,7 @@ export const freezeFormSchema = z
     frozenTo: freezeDate(FREEZE_FORM_MESSAGES.toRequired, FREEZE_FORM_MESSAGES.toInvalid),
   })
   // "AAAA-MM-DD" se compara bien como texto.
-  .refine((values) => values.frozenTo >= values.frozenFrom, { path: ["frozenTo"], message: FREEZE_FORM_MESSAGES.inverted });
+  .refine((values) => values.frozenTo >= values.frozenFrom, { path: ["frozenTo"], error: FREEZE_FORM_MESSAGES.inverted });
 
 export function toFreezeBody(values: FreezeFormValues): FreezeBody {
   return { frozen_from: values.frozenFrom.trim(), frozen_to: values.frozenTo.trim() };

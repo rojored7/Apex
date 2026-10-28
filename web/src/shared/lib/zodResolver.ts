@@ -5,8 +5,11 @@
 // - Valores válidos: devuelve lo que entrega el esquema (con sus `trim`), sin errores.
 // - Inválidos: un error por ruta (el primero que reporta Zod), anidado como lo espera RHF; un
 //   error sin ruta (un `refine` del objeto entero) queda en `root`.
+// - S3-D105: desde Zod 4 el `type` de cada error es el código de Zod 4 (`invalid_format` donde Zod 3
+//   decía `invalid_string`, `invalid_value` donde decía `invalid_enum_value`); ninguna pantalla lo lee
+//   (solo el `type: "server"` que pone el 422 del api).
 import type { FieldErrors, FieldValues, Resolver } from "react-hook-form";
-import type { ZodIssue, ZodType, ZodTypeDef } from "zod";
+import type { core, ZodType } from "zod";
 
 interface ErrorLeaf {
   type: string;
@@ -24,14 +27,14 @@ function insert(tree: ErrorTree, path: readonly string[], leaf: ErrorLeaf): Erro
   return { ...tree, [head]: insert(child, rest, leaf) };
 }
 
-function toFieldErrors(issues: readonly ZodIssue[]): ErrorTree {
+function toFieldErrors(issues: readonly core.$ZodIssue[]): ErrorTree {
   return issues.reduce<ErrorTree>((tree, issue) => {
     const path = issue.path.length > 0 ? issue.path.map(String) : ["root"];
     return insert(tree, path, { type: issue.code, message: issue.message });
   }, {});
 }
 
-export function zodResolver<T extends FieldValues>(schema: ZodType<T, ZodTypeDef, T>): Resolver<T> {
+export function zodResolver<T extends FieldValues>(schema: ZodType<T, T>): Resolver<T> {
   return async (values) => {
     const result = await schema.safeParseAsync(values);
     if (result.success) return { values: result.data, errors: {} };

@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { formatCop, formatCount, parseCop } from "../../core/i18n/format";
 import { PLAN_KINDS, type PlanKind } from "../../shared/data/plans";
+import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 export { PLAN_KINDS, planRowSchema, plansPageSchema, type PlanKind, type PlanRowView } from "../../shared/data/plans";
 /** S3-F3: el formato del precio al escribir vive en shared/lib/moneyInput.ts (lo usa también la venta). */
@@ -104,17 +105,17 @@ function checkClassCount(kind: PlanKind, classes: string, add: AddIssue): void {
   else if (!inRange(integerOf(classes), PLAN_LIMITS.classMin, PLAN_LIMITS.classMax)) add("class_count", PLAN_MESSAGES.classCountRange);
 }
 
-export const planFormSchema: z.ZodType<PlanFormValues, z.ZodTypeDef, PlanFormValues> = z
+export const planFormSchema: z.ZodType<PlanFormValues, PlanFormValues> = z
   .object({
     name: z.string(),
     price: z.string(),
-    kind: z.enum(PLAN_KINDS, { errorMap: () => ({ message: PLAN_MESSAGES.kind }) }),
+    kind: z.enum(PLAN_KINDS, { error: PLAN_MESSAGES.kind }),
     duration_days: z.string(),
     class_count: z.string(),
   })
   .superRefine((values, ctx) => {
     const add: AddIssue = (path, message) => {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+      ctx.addIssue({ code: CUSTOM_ISSUE, path: [path], message });
     };
     checkName(values.name, add);
     checkPrice(values.price, add);

@@ -21,6 +21,7 @@ import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
 import type { components, operations } from "../../core/api/types";
 import { formatDate, todayBogota } from "../../core/i18n/format";
+import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 export type MemberCreateBody = components["schemas"]["MemberCreate"];
 
@@ -198,17 +199,17 @@ const emergencyContactSchema = z
   .superRefine((contact, ctx) => {
     const isEmpty = contact.name === "" && contact.phone === "" && contact.relationship === "";
     if (isEmpty) return;
-    if (contact.name === "") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["name"], message: MEMBER_MESSAGES.contactNameRequired });
-    if (contact.phone === "") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["phone"], message: MEMBER_MESSAGES.contactPhoneRequired });
+    if (contact.name === "") ctx.addIssue({ code: CUSTOM_ISSUE, path: ["name"], message: MEMBER_MESSAGES.contactNameRequired });
+    if (contact.phone === "") ctx.addIssue({ code: CUSTOM_ISSUE, path: ["phone"], message: MEMBER_MESSAGES.contactPhoneRequired });
   });
 
 /** Reglas del alta; `today` (AAAA-MM-DD, Bogotá) se inyecta en las pruebas. */
-export function memberFormSchema(today: string = todayBogota()): z.ZodType<MemberFormValues, z.ZodTypeDef, MemberFormValues> {
+export function memberFormSchema(today: string = todayBogota()): z.ZodType<MemberFormValues, MemberFormValues> {
   return z.object({
     first_name: requiredName(MEMBER_MESSAGES.firstNameRequired, MEMBER_MESSAGES.firstNameTooLong),
     last_name: requiredName(MEMBER_MESSAGES.lastNameRequired, MEMBER_MESSAGES.lastNameTooLong),
-    sex: z.union([z.literal(""), z.enum(SEXES)], { errorMap: () => ({ message: MEMBER_MESSAGES.sex }) }),
-    document_type: z.enum(DOCUMENT_TYPES, { errorMap: () => ({ message: MEMBER_MESSAGES.documentType }) }),
+    sex: z.union([z.literal(""), z.enum(SEXES)], { error: MEMBER_MESSAGES.sex }),
+    document_type: z.enum(DOCUMENT_TYPES, { error: MEMBER_MESSAGES.documentType }),
     document: z
       .string()
       .trim()
@@ -219,9 +220,9 @@ export function memberFormSchema(today: string = todayBogota()): z.ZodType<Membe
       .trim()
       .superRefine((value, ctx) => {
         if (value === "") return;
-        if (!isCalendarDate(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: MEMBER_MESSAGES.birthDateInvalid });
+        if (!isCalendarDate(value)) ctx.addIssue({ code: CUSTOM_ISSUE, message: MEMBER_MESSAGES.birthDateInvalid });
         // AAAA-MM-DD se compara como texto en orden de calendario.
-        else if (value > today) ctx.addIssue({ code: z.ZodIssueCode.custom, message: MEMBER_MESSAGES.birthDateFuture });
+        else if (value > today) ctx.addIssue({ code: CUSTOM_ISSUE, message: MEMBER_MESSAGES.birthDateFuture });
       }),
     phone: optionalPhone,
     email: optionalEmail,
@@ -335,7 +336,7 @@ export type RevealedContact = z.infer<typeof revealedContactSchema>;
 export const revealOutSchema = z
   .object({ field: z.enum(REVEAL_FIELDS), value: z.union([z.string(), revealedContactSchema, z.null()]) })
   .strict()
-  .refine((out) => out.value === null || (out.field === "emergency_contact") === (typeof out.value === "object"), { message: "El valor no corresponde al campo." });
+  .refine((out) => out.value === null || (out.field === "emergency_contact") === (typeof out.value === "object"), { error: "El valor no corresponde al campo." });
 export type RevealOutView = z.infer<typeof revealOutSchema>;
 export type RevealedValue = RevealOutView["value"];
 
@@ -440,14 +441,14 @@ function checkChangedField(field: SensitiveEditField, values: MemberEditValues, 
  * Reglas de la edición; `today` (AAAA-MM-DD, Bogotá) se inyecta en las pruebas. Los nombres siguen
  * obligatorios; un sensible solo se valida si está en "change", con las reglas del alta.
  */
-export function memberEditSchema(today: string = todayBogota()): z.ZodType<MemberEditValues, z.ZodTypeDef, MemberEditValues> {
+export function memberEditSchema(today: string = todayBogota()): z.ZodType<MemberEditValues, MemberEditValues> {
   const mode = z.enum(["keep", "change", "remove"]);
   return z
     .object({
       first_name: requiredName(MEMBER_MESSAGES.firstNameRequired, MEMBER_MESSAGES.firstNameTooLong),
       last_name: requiredName(MEMBER_MESSAGES.lastNameRequired, MEMBER_MESSAGES.lastNameTooLong),
-      sex: z.union([z.literal(""), z.enum(SEXES)], { errorMap: () => ({ message: MEMBER_MESSAGES.sex }) }),
-      document_type: z.enum(DOCUMENT_TYPES, { errorMap: () => ({ message: MEMBER_MESSAGES.documentType }) }),
+      sex: z.union([z.literal(""), z.enum(SEXES)], { error: MEMBER_MESSAGES.sex }),
+      document_type: z.enum(DOCUMENT_TYPES, { error: MEMBER_MESSAGES.documentType }),
       document: z.string(),
       birth_date: z.string(),
       phone: z.string(),
@@ -458,7 +459,7 @@ export function memberEditSchema(today: string = todayBogota()): z.ZodType<Membe
     })
     .superRefine((values, ctx) => {
       const add: IssueAdder = (path, message) => {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+        ctx.addIssue({ code: CUSTOM_ISSUE, path, message });
       };
       for (const field of SENSITIVE_EDIT_FIELDS) if (values.modes[field] === "change") checkChangedField(field, values, today, add);
     });

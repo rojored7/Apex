@@ -1,3 +1,5 @@
+// S3-D105: zodSetup va antes de cualquier esquema (jitless, CSP sin eval); no lo reordenes.
+import "../core/zodSetup";
 import "@testing-library/jest-dom/vitest";
 import * as axeMatchers from "vitest-axe/matchers";
 

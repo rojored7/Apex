@@ -16,6 +16,9 @@ export default defineConfig(({ mode }) => ({
     // `vite build --mode catalog`; el build de producción y la imagen de Nginx no lo llevan.
     rollupOptions: {
       input: mode === "catalog" ? { main: page("./index.html"), catalog: page("./catalog.html") } : { main: page("./index.html") },
+      // S3-D105: Zod 4 pesa unos 37 kB más que Zod 3 y llevaba `main` por encima de 500 kB; va en
+      // su propio chunk, precargado desde index.html con el mismo nonce (no cambia qué se descarga).
+      output: { manualChunks: { zod: ["zod"] } },
     },
   },
   test: {

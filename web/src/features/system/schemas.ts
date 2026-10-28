@@ -10,13 +10,14 @@ import { pageSchema } from "../../core/api/page";
 import { ROLES, STAFF_ROLES } from "../../core/auth/permissions";
 import { PAYMENT_METHOD_CODES } from "../../shared/data/schemas/payment";
 import type { AccountStatusView } from "../../shared/ui/statusLabel";
+import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 /** `^\d+(-\d)?$` del api: dígitos y, opcional, un guion con el dígito de verificación. */
 export const NIT_PATTERN = /^\d+(-\d)?$/;
 export const POLICY_TEXT_MAX = 20_000;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DIGITS = /^\d+$/;
-const emailFormat = z.string().email();
+const emailFormat = z.email();
 
 const maxText = (max: number, message: string) => z.string().trim().max(max, message);
 
@@ -102,7 +103,7 @@ export const paymentMethodsSettingsSchema = z
     const seen = new Set<string>();
     for (const code of PAYMENT_METHOD_CODES) {
       const label = values[code].label.toLowerCase();
-      if (seen.has(label)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [code, "label"], message: DUPLICATE_LABEL_MESSAGE });
+      if (seen.has(label)) ctx.addIssue({ code: CUSTOM_ISSUE, path: [code, "label"], message: DUPLICATE_LABEL_MESSAGE });
       seen.add(label);
     }
   });
@@ -171,8 +172,8 @@ export const createUserSchema = z.object({
     .trim()
     .min(1, USER_EMAIL_MESSAGES.required)
     .max(EMAIL_MAX_LENGTH, USER_EMAIL_MESSAGES.tooLong)
-    .email(USER_EMAIL_MESSAGES.invalid),
-  role: z.enum(STAFF_ROLES, { errorMap: () => ({ message: "Elige un rol: Coach o Admin." }) }),
+    .regex(z.regexes.email, USER_EMAIL_MESSAGES.invalid),
+  role: z.enum(STAFF_ROLES, { error: "Elige un rol: Coach o Admin." }),
 });
 
 export type UserRowView = z.infer<typeof userRowSchema>;

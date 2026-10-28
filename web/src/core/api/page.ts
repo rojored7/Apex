@@ -13,11 +13,11 @@ export interface Page<T> {
 }
 
 /** Esquema Zod de una página para validar la respuesta del api antes de usarla. */
-export function pageSchema<T extends z.ZodTypeAny>(item: T): z.ZodType<Page<z.infer<T>>> {
+export function pageSchema<T extends z.ZodType>(item: T): z.ZodType<Page<z.infer<T>>> {
   return z.object({
     items: z.array(item),
     total: z.number().int().nonnegative(),
     limit: z.number().int().min(1).max(MAX_LIMIT),
     offset: z.number().int().nonnegative(),
-  }) as z.ZodType<Page<z.infer<T>>>;
+  });
 }

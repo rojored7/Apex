@@ -16,7 +16,7 @@ export const loginSchema = z.object({
     .trim()
     .min(1, "Escribe tu correo.")
     .max(EMAIL_MAX_LENGTH, `El correo admite hasta ${String(EMAIL_MAX_LENGTH)} caracteres.`)
-    .email("Escribe un correo válido, por ejemplo ana@correo.com."),
+    .regex(z.regexes.email, "Escribe un correo válido, por ejemplo ana@correo.com."),
   password: z
     .string()
     .min(1, "Escribe tu contraseña.")
@@ -55,7 +55,7 @@ const sameConfirmation = (values: { newPassword: string; confirmPassword: string
 
 export const resetSchema = z
   .object({ newPassword, confirmPassword })
-  .refine(sameConfirmation, { path: ["confirmPassword"], message: PASSWORD_MESSAGES.mismatch });
+  .refine(sameConfirmation, { path: ["confirmPassword"], error: PASSWORD_MESSAGES.mismatch });
 
 export const changePasswordSchema = z
   .object({
@@ -63,10 +63,10 @@ export const changePasswordSchema = z
     newPassword,
     confirmPassword,
   })
-  .refine(sameConfirmation, { path: ["confirmPassword"], message: PASSWORD_MESSAGES.mismatch })
+  .refine(sameConfirmation, { path: ["confirmPassword"], error: PASSWORD_MESSAGES.mismatch })
   .refine((values) => values.currentPassword === "" || values.newPassword !== values.currentPassword, {
     path: ["newPassword"],
-    message: PASSWORD_MESSAGES.sameAsCurrent,
+    error: PASSWORD_MESSAGES.sameAsCurrent,
   });
 
 export const forgotSchema = z.object({ email: loginSchema.shape.email });

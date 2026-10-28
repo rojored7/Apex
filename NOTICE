@@ -78,7 +78,7 @@ BSD-3-Clause
 "react@19.3.1","MIT","https://github.com/react/react"
 "scheduler@0.28.0","MIT","https://github.com/react/react"
 "set-cookie-parser@2.7.2","MIT","https://github.com/nfriedly/set-cookie-parser"
-"zod@3.25.76","MIT","https://github.com/colinhacks/zod"
+"zod@4.6.7","MIT","https://github.com/colinhacks/zod"
 
 == recursos que no son paquetes ==
 

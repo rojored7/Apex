@@ -15,7 +15,7 @@ import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
-import { invalidResponseError, parseResponse } from "../../core/api/response";
+import { parseResponse } from "../../core/api/response";
 import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
 import { LINK_PURPOSES, userOutSchema, usersPageSchema, type CreateUserForm, type LinkPurpose, type UserRowView, type UserView } from "./schemas";
 
@@ -62,7 +62,7 @@ const paymentMethodsValueSchema = z.object({
   breb: methodLabelSchema,
 });
 
-function sectionSchema<K extends SettingsKey, V extends z.ZodTypeAny>(key: K, value: V) {
+function sectionSchema<K extends SettingsKey, V extends z.ZodType>(key: K, value: V) {
   return z.object({
     key: z.literal(key),
     value,
@@ -101,6 +101,10 @@ interface SectionInputs {
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;
+
+// S3-D105: con Zod 4, indexar SECTION_SCHEMAS con una K genérica ya no da un esquema de
+// SettingsSection<K>; este mapa tipado lo comprueba clave por clave y parseSection lo indexa.
+const SECTION_PARSERS: { readonly [K in SettingsKey]: z.ZodType<SettingsSection<K>> } = SECTION_SCHEMAS;
 export type SectionValue<K extends SettingsKey> = SettingsSection<K>["value"];
 export type SectionInput<K extends SettingsKey> = SectionInputs[K];
 
@@ -126,10 +130,7 @@ export function isVersionConflict(error: unknown): boolean {
 }
 
 function parseSection<K extends SettingsKey>(key: K, raw: unknown): SettingsSection<K> {
-  // parseResponse no sirve aquí: el esquema depende de K y TypeScript no reduce la unión.
-  const parsed = SECTION_SCHEMAS[key].safeParse(raw);
-  if (!parsed.success) throw invalidResponseError();
-  return parsed.data;
+  return parseResponse(SECTION_PARSERS[key], raw);
 }
 
 const pathOf = (key: SettingsKey): string => `/settings/${key}`;
@@ -202,7 +203,7 @@ const createdUserSchema = z.object({
   user: z.object({ id: z.string().min(1), email: z.string().min(1) }),
   // Solo http(s): el enlace se muestra y se copia, nunca se interpreta.
   activation_url: z.string().regex(/^https?:\/\/\S+$/),
-  expires_at: z.string().datetime({ offset: true }),
+  expires_at: z.iso.datetime({ offset: true }),
 });
 
 export function useUsers(params: UsersParams): UseQueryResult<Page<UserRowView>> {
@@ -265,7 +266,7 @@ const revokedSchema = z.object({ revoked: z.number().int().nonnegative() });
 const issuedLinkSchema = z.object({
   url: z.string().regex(/^https?:\/\/\S+$/),
   purpose: z.enum(LINK_PURPOSES),
-  expires_at: z.string().datetime({ offset: true }),
+  expires_at: z.iso.datetime({ offset: true }),
 });
 
 /** Mutación de una cuenta que, al salir bien, invalida toda la familia ["users"]. */

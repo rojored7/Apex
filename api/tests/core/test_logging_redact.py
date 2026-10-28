@@ -301,3 +301,49 @@ async def test_un_reveal_real_no_deja_el_valor_ni_el_blob_en_el_log(
         for valor in KNOWN_NORMALIZED:
             assert valor not in linea, valor
         assert "apx1." not in linea
+
+
+# V10 del Sprint 3 (L-B): el `DETAIL` de PostgreSQL no llega al log ------------------------------
+
+MARCA = "MARCA-V10-SECRETA-7731"
+
+
+def test_redact_text_recorta_detail_failing_row_y_key() -> None:
+    texto = (
+        'new row for relation "payments" violates check constraint "ck_payments_reference"\n'
+        f"DETAIL:  Failing row contains (1, 2, nequi, {MARCA}, f, null).\n"
+        "[SQL: INSERT INTO payments.payments ...]\n"
+        f"conflicting key value: Key (member_id)=({MARCA}) conflicts with existing key\n"
+        f"otra línea: Failing row contains ({MARCA})"
+    )
+    limpio = redact_text(texto)
+    assert MARCA not in limpio
+    assert 'check constraint "ck_payments_reference"' in limpio  # el nombre sí queda
+    assert "DETAIL: [redacted]" in limpio
+    assert "[SQL: INSERT INTO payments.payments ...]" in limpio  # las demás líneas quedan
+
+
+def test_un_integrity_error_sintetico_no_deja_el_detail_en_la_linea_json() -> None:
+    """Como lo registra `core/errors._handler_inesperado` con `logger.exception`: el texto del
+    `DBAPIError` y el de la causa encadenada (asyncpg pone el `DETAIL` en su `__str__`)."""
+    causa = Exception(
+        'new row violates check constraint "ck_void_reason"\n'
+        f"DETAIL:  Failing row contains (abc, {MARCA}, t)."
+    )
+    try:
+        try:
+            raise causa
+        except Exception as interna:
+            raise IntegrityError("UPDATE payments.payments SET ...", None, interna) from interna
+    except IntegrityError as error:
+        linea = JsonFormatter().format(_registro("error inesperado", exc=error))
+    assert MARCA not in linea
+    assert "ck_void_reason" in linea
+    assert "DETAIL: [redacted]" in json.loads(linea)["exception"]
+
+
+def test_el_detail_en_el_mensaje_o_en_un_extra_tambien_se_recorta() -> None:
+    registro = _registro("falló: %s", f"x\nDETAIL:  Key (reference)=({MARCA}) already exists.")
+    registro.detalle = f"DETAIL: {MARCA}"  # type: ignore[attr-defined]
+    linea = JsonFormatter().format(registro)
+    assert MARCA not in linea

@@ -55,6 +55,22 @@ El **último admin activo** queda fuera de las capas 3, 4 y 5 (S2-D10): solo le 
 límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador. Su
 `failed_login_count` sí sube y queda en la base como evidencia.
 
+### Topes de las escrituras de admin y de cuerpo (V10 del Sprint 3)
+
+- **`admin-write`** (30 por minuto por usuario, `USER_ADMIN_WRITE_LIMIT_PER_MIN`): una sola
+  cubeta para toda escritura de solo admin: crear planes, los cinco `PATCH /settings/*`, crear
+  usuarios, reenviar su enlace, editarlos y darlos de baja, anular pagos y membresías, y dar de
+  baja y reactivar socios. La 31 del minuto da 429 con `Retry-After`; otro admin no se ve
+  afectado (S3-D100).
+- **Exentas a propósito:** `POST /users/{id}/lock`, `/unlock` y `/revoke-sessions`. Son la
+  respuesta a un incidente: aunque la cubeta esté agotada siguen respondiendo. Pasan por la
+  auditoría. `tests/architecture/test_writes_have_user_limit.py` falla si aparece una escritura
+  nueva sin tope ni motivo.
+- **Cuerpo en Nginx** (S3-D101): 16k en `/api/v1/auth/`, 64k en el resto de `/api/` (y en
+  `/api/v1/tv/`), 128k solo en `PATCH /api/v1/settings/privacy` (el texto de la política admite
+  20.000 caracteres) y 5m en el server para los adjuntos de v0.3. Un cuerpo mayor responde 413
+  en el borde, sin llegar al api.
+
 ### Contadores en memoria y desbloqueo
 
 - Las capas 2 a 4 viven en la memoria del proceso del api (un solo proceso, sin `--workers`).
@@ -442,6 +458,7 @@ Esta sección cubre lo que hicieron S3-B1 a S3-B8: la venta y `0008` (B1), las c
 ### Volcado y restauración (P-MIG)
 
 - Volcado previo a cada migración del sprint (`0008` a `0011`), solo desde Bash y solo de los dos esquemas que el sprint toca (S3-D58, E11): `$DC exec -T db pg_dump -U apex -Fc -n memberships -n payments apex > docs/scratch/sprint-03-antes-<rev>.dump && chmod 600 docs/scratch/sprint-03-antes-<rev>.dump`. `-T` es obligatorio (sin él `exec` asigna una TTY y corrompe el binario); en PowerShell la redirección también lo corrompe. `*.dump` y `*.sql.gz` están en `.gitignore`; los volcados se borran al cerrar el sprint.
+- **Los volcados guardan en claro lo que no pasa por el bus** (referencias y motivos de pagos y membresías; L-C de V10): `chmod 600` no es efectivo en NTFS (Git Bash lo acepta y no cambia los permisos de Windows), así que la protección es el perfil del usuario de Windows. Los volcados de `docs/scratch/` se borran al cerrar el sprint (paso V12) y nunca se sincronizan con una nube (OneDrive, Google Drive) ni se copian fuera de la máquina; `.gitignore` ya los deja fuera del repositorio.
 - Comprobar que el volcado se puede leer: `$DC exec -T db pg_restore -l < docs/scratch/sprint-03-antes-<rev>.dump | head`.
 - Restauración: `pg_restore --clean` de los dos esquemas sobre `apex-db-1`, con el api detenido (`$DC stop api`).
 

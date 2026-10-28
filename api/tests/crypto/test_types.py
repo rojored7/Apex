@@ -179,3 +179,29 @@ async def test_select_por_indice_ciego(db: AsyncSession) -> None:
         select(CryptoTestPerson).where(CryptoTestPerson.document_idx == indice)
     )
     assert encontrada is not None and encontrada.name == "Ana"
+
+
+# V10 del Sprint 3 (L-B): una fecha corrupta no repite su valor en el error ----------------------
+
+
+def test_una_fecha_corrupta_da_crypto_error_sin_el_valor() -> None:
+    from app.core.crypto.registry import get_spec
+    from app.core.crypto.types import _from_bytes
+
+    valor = "1999-13-45-MARCA"
+    with pytest.raises(CryptoError) as capturado:
+        _from_bytes(valor.encode("ascii"), get_spec("member.birth_date"))
+    error = capturado.value
+    assert error.code == "blob_invalid"
+    assert valor not in str(error) and "MARCA" not in repr(error)
+    assert error.__cause__ is None and error.__suppress_context__  # sin la causa con el valor
+
+
+def test_una_fecha_que_no_es_ascii_da_crypto_error_sin_el_valor() -> None:
+    from app.core.crypto.registry import get_spec
+    from app.core.crypto.types import _from_bytes
+
+    with pytest.raises(CryptoError) as capturado:
+        _from_bytes("2000-01-0ñ".encode(), get_spec("member.birth_date"))
+    assert capturado.value.code == "blob_invalid"
+    assert capturado.value.__cause__ is None and capturado.value.__suppress_context__

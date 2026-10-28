@@ -104,7 +104,10 @@ def _from_bytes(data: bytes, spec: DataClassSpec) -> str | date | dict[str, Any]
     if spec.value_type == "str":
         return data.decode("utf-8")
     if spec.value_type == "date":
-        return date.fromisoformat(data.decode("ascii"))
+        try:
+            return date.fromisoformat(data.decode("ascii"))
+        except ValueError:  # incluye UnicodeDecodeError; su texto repetiría el valor (L-B de V10)
+            raise CryptoError("blob_invalid", f"{spec.name} no es una fecha válida") from None
     cargado: dict[str, Any] = json.loads(data.decode("utf-8"))
     return cargado
 

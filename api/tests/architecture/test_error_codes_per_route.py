@@ -60,6 +60,19 @@ CON_LIMITE = {
     # `admin-write`, como anular un pago o una membresía.
     ("delete", "/api/v1/members/{member_id}"),
     ("post", "/api/v1/members/{member_id}/reactivate"),
+    # M-A de la revisión de seguridad V10 del Sprint 3 (S3-D100): toda escritura de solo admin
+    # consume `admin-write`. Las tres de emergencia (`lock`, `unlock`, `revoke-sessions`) quedan
+    # exentas con su motivo en `test_writes_have_user_limit.py`.
+    ("post", "/api/v1/plans"),
+    ("patch", "/api/v1/settings/gym"),
+    ("patch", "/api/v1/settings/privacy"),
+    ("patch", "/api/v1/settings/memberships"),
+    ("patch", "/api/v1/settings/payment_methods"),
+    ("patch", "/api/v1/settings/{section}"),
+    ("post", "/api/v1/users"),
+    ("post", "/api/v1/users/{user_id}/resend-link"),
+    ("patch", "/api/v1/users/{user_id}"),
+    ("delete", "/api/v1/users/{user_id}"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

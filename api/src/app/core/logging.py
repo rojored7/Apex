@@ -6,6 +6,11 @@
 - S2-B3 (blueprint 7.2): el token de un enlace `/restablecer/<token>` y el valor de la
   cookie `apex_refresh=<valor>` (los atributos de la cookie se conservan); las claves
   `activation_url`, `url` y `set-cookie` se redactan enteras.
+- V10 del Sprint 3 (L-B): lo que sigue a `DETAIL:`, `Failing row contains` y `Key (` en un texto
+  (el `__str__` de un error de asyncpg y del `DBAPIError` que lo envuelve, en el mensaje o en la
+  traza de `logger.exception`) se reemplaza hasta el fin de la línea: el servidor copia ahí los
+  valores de la fila (`reference`, `void_reason`, `cancel_reason`). El nombre de la restricción
+  queda en la primera línea.
 - `JsonFormatter`: una línea JSON por registro con `timestamp` UTC, `level`,
   `logger`, `message`, `request_id` y los extras.
 - `configure_logging`: idempotente; apaga el log de acceso de Uvicorn (lo reemplaza
@@ -68,6 +73,10 @@ _DSN = re.compile(r"://[^@/\s]+@")  # credenciales dentro de una URL: usuario:cl
 _RESET_LINK = re.compile(r"(/restablecer/|%2Frestablecer%2F)[^\s/?#\"'&<>%]+", re.IGNORECASE)
 # Valor de la cookie del refresh, hasta el primer separador de atributos.
 _REFRESH_COOKIE = re.compile(r"(apex_refresh=)[^;\s,\"']+")
+# Valores de la fila en los errores de PostgreSQL (L-B de V10): hasta el fin de la línea.
+_PG_DETAIL = re.compile(r"DETAIL:[^\n]*")
+_PG_FAILING_ROW = re.compile(r"Failing row contains[^\n]*")
+_PG_KEY = re.compile(r"\bKey \([^\n]*")
 _ATRIBUTOS_ESTANDAR = set(vars(logging.LogRecord("x", 0, "", 0, "", (), None))) | {
     "message",
     "asctime",
@@ -79,11 +88,14 @@ access_logger = logging.getLogger("app.access")
 
 
 def redact_text(text: str) -> str:
-    """Reemplaza blobs `apx1.`, JWT, credenciales de URL, tokens de `/restablecer/` y el valor
-    de `apex_refresh=` dentro de un texto libre."""
+    """Reemplaza blobs `apx1.`, JWT, credenciales de URL, tokens de `/restablecer/`, el valor
+    de `apex_refresh=` y los valores de fila de un error de PostgreSQL dentro de un texto libre."""
     limpio = _DSN.sub("://[redacted]@", _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text)))
     limpio = _RESET_LINK.sub(rf"\g<1>{REDACTED}", limpio)
-    return _REFRESH_COOKIE.sub(rf"\g<1>{REDACTED}", limpio)
+    limpio = _REFRESH_COOKIE.sub(rf"\g<1>{REDACTED}", limpio)
+    limpio = _PG_DETAIL.sub(f"DETAIL: {REDACTED}", limpio)
+    limpio = _PG_FAILING_ROW.sub(f"Failing row contains {REDACTED}", limpio)
+    return _PG_KEY.sub(f"Key {REDACTED}", limpio)
 
 
 def _redact_value(value: Any) -> Any:

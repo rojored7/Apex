@@ -2885,3 +2885,18 @@ Todo muy por debajo de los topes (500 y 300 ms); no hace falta `0014_payments_re
   del 201 posterior al 503); los socios y planes de las specs.
 - Fuera de este bloque: V1 y V9 a V12 (otros pasos del plan); el job `e2e-stack` de la CI solo
   se ve en GitHub Actions.
+
+## V10 · Corrección
+
+Corrección de la revisión de seguridad final V10 (backend e infra) en el árbol principal, rama `feat/sprint-03-membresias-pagos`, desde `3c7db38`. Detalle y decisiones S3-D100 a S3-D102 en `docs/ddd/DECISIONES.md`, sección "V10 · Sprint 3 · Seguridad posterior". La sesión se cortó por el límite semanal tras el Verde de M-A y L-B; se retomó tras el reinicio de la máquina con `apex-db_test-1` healthy.
+
+- Orden: M-A (prueba de arquitectura `test_writes_have_user_limit.py`, `CON_LIMITE` +10, pruebas de router de `plans`, `settings` y `auth`; luego `enforce_user_limit(..., "admin-write", ...)` y 429 en las diez rutas) → L-B (`redact_text` recorta `DETAIL:`, `Failing row contains` y `Key (`; `_from_bytes` de fechas sin el valor) → L-A (64k en `/api/` y `/api/v1/tv/`, 128k en `= /api/v1/settings/privacy`, casos estáticos y funcionales en `test_nginx_conf.sh`) → L-C (RUNBOOK §10) → I-2 (SPRINT-04B, W0-2) → P-API → docs.
+- Rojos vistos: `test_user_limits_catalog` y `test_error_codes_per_route` con `CON_LIMITE` ampliado (2 fallas); las tres pruebas de router (18 fallas: sin 429 ni declaración); `test_logging_redact` y `test_types` (5 fallas); `test_nginx_conf.sh` contra el `default.conf` de `3c7db38` (7 fallas: los topes y los 413 de 70 KB y 140 KB).
+- Cuerpos legítimos revisados frente a 64k: motivos de 2.000 caracteres, `MemberPatch`, planes y settings caben; `policy_text` (20.000 caracteres, hasta 80.000 bytes) no, por eso su location propio de 128k.
+- Conteos (sin `--cov`, `-m "not perf"`, una corrida a la vez): primera mitad **1.517 ok, 3 saltadas**; segunda mitad **2.366 ok, 8 deseleccionadas**. `ruff check .` y `ruff format --check .` limpios (415 archivos), `mypy src` sin errores (97 archivos), `uvx pre-commit run --all-files` en verde, `bash -n` y `test_nginx_conf.sh` 0 fallas, `scripts/workflow/tests/run.sh` en verde.
+- Contrato (P-API): `export-openapi` dos veces idéntico (sha256 `3559f376…`), 10 respuestas 429 nuevas, 0 operaciones nuevas; `npm run gen:api` (solo `web/src/core/api/types.ts`), `npx tsc --noEmit` limpio, `npx vitest run src/core/api` 164 ok.
+
+**Pendientes que pasan al orquestador.**
+- V9: reconstruir la imagen `web` para ver los 413 del borde por `:8180` (el script ya lo prueba con Nginx real en un contenedor desechable). No se reinició ni se reconstruyó nada.
+- V12: borrar los volcados `docs/scratch/sprint-03-antes-*.dump` (L-C).
+- Front (no tocado salvo `types.ts`): las diez rutas ahora pueden responder 429 `rate_limited`; falta comprobar que las pantallas de planes, ajustes y usuarios lo muestran con un mensaje claro (hoy solo `LoginPage` trata `rate_limited` de forma explícita).

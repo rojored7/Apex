@@ -12,6 +12,10 @@
 # (fuera del snippet común) y una prueba funcional con Nginx real: el access log de
 # /restablecer/<token> y de ?q= no contiene el token ni la búsqueda. Fase 4 del Sprint 3 (M3):
 # proxy_hide_header de Cache-Control y Pragma y un upstream falso que las manda: una de cada una.
+# V10 del Sprint 3 (L-A, S3-D101): 64k de cuerpo en /api/ y en /api/v1/tv/, 128k solo en
+# = /api/v1/settings/privacy (policy_text de 20.000 caracteres) y 5m en el server para los
+# adjuntos de v0.3; funcional: 60 KB pasan por /api/ y 70 KB dan 413; 100 KB pasan por la
+# política de privacidad y 140 KB dan 413.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -110,6 +114,17 @@ if grep -Eq '^\s*limit_req\s+zone=apex_auth\s+burst=30\s+nodelay;' <<< "$auth_lo
 if grep -Eq '^\s*client_max_body_size\s+16k;' <<< "$auth_loc"; then ok "/api/v1/auth/: client_max_body_size 16k (L-12)"; else falla "/api/v1/auth/ sin client_max_body_size 16k"; fi
 if grep -Eq '^\s*error_page\s+429\s+=\s+@rate_limited;' <<< "$auth_loc"; then ok "/api/v1/auth/: error_page 429 = @rate_limited"; else falla "/api/v1/auth/ sin error_page 429 = @rate_limited"; fi
 if grep -q 'include snippets/proxy-api.conf;' <<< "$auth_loc"; then ok "/api/v1/auth/ hace proxy al api"; else falla "/api/v1/auth/ no incluye proxy-api.conf"; fi
+
+# L-A de V10 (S3-D101): tope de cuerpo por location del api.
+cuerpo_max() { # location tope
+  if grep -Eq "^\s*client_max_body_size\s+$2;" <<< "$(bloque "$1")"; then ok "location $1: client_max_body_size $2"; else falla "location $1 sin client_max_body_size $2"; fi
+}
+cuerpo_max /api/ 64k
+cuerpo_max /api/v1/tv/ 64k
+cuerpo_max "= /api/v1/settings/privacy" 128k
+if grep -q 'include snippets/proxy-api.conf;' <<< "$(bloque "= /api/v1/settings/privacy")"; then ok "= /api/v1/settings/privacy hace proxy al api"; else falla "= /api/v1/settings/privacy no incluye proxy-api.conf"; fi
+n_grandes="$(grep -Ec '^\s*client_max_body_size\s+128k;' "$CONF" || true)"
+if [ "$n_grandes" = "1" ]; then ok "128k solo en un location"; else falla "client_max_body_size 128k aparece $n_grandes veces (solo la política de privacidad)"; fi
 directiva '^\s*limit_req_status\s+429;' "limit_req_status 429"
 directiva '^\s*limit_req_log_level\s+warn;' "limit_req_log_level warn (el error_log no registra la línea con query)"
 lim_loc="$(bloque @rate_limited)"
@@ -139,6 +154,10 @@ FUNCIONAL+=" && curl -s -D - -o /dev/null http://127.0.0.1/restablecer/$TOKEN | 
 FUNCIONAL+=" && curl -s -o /dev/null http://127.0.0.1/socios?q=$BUSQUEDA"
 FUNCIONAL+=" && curl -s -o /dev/null http://127.0.0.1/api/v1/members?q=$BUSQUEDA"
 FUNCIONAL+=" && head -c 20000 /dev/zero | curl -s -o /dev/null -w 'BIG %{http_code}\n' -X POST --data-binary @- http://127.0.0.1/api/v1/auth/forgot"
+FUNCIONAL+=" && head -c 60000 /dev/zero | curl -s -o /dev/null -w 'API60 %{http_code}\n' -X POST --data-binary @- http://127.0.0.1/api/v1/members"
+FUNCIONAL+=" && head -c 70000 /dev/zero | curl -s -o /dev/null -w 'API70 %{http_code}\n' -X POST --data-binary @- http://127.0.0.1/api/v1/members"
+FUNCIONAL+=" && head -c 100000 /dev/zero | curl -s -o /dev/null -w 'PRIV100 %{http_code}\n' -X PATCH --data-binary @- http://127.0.0.1/api/v1/settings/privacy"
+FUNCIONAL+=" && head -c 140000 /dev/zero | curl -s -o /dev/null -w 'PRIV140 %{http_code}\n' -X PATCH --data-binary @- http://127.0.0.1/api/v1/settings/privacy"
 FUNCIONAL+=" && for i in \$(seq 1 45); do curl -s -o /dev/null -w 'CODE %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1/api/v1/auth/login; done"
 FUNCIONAL+=" && curl -s -D - -o /tmp/b429 -X POST -d '{}' http://127.0.0.1/api/v1/auth/login | sed 's/^/H429 /' && sed 's/^/B429 /' /tmp/b429 && echo"
 FUNCIONAL+=" && sleep 0.3 && nginx -s quit; sleep 0.3"
@@ -153,6 +172,12 @@ if [ "$n429" -ge 1 ] && [ "$npass" -ge 31 ]; then ok "funcional: 45 POST a /auth
 if grep -Fq 'B429 {"error":{"code":"rate_limited","message":"Demasiados intentos. Espera un momento."}}' <<< "$salida"; then ok "funcional: el 429 de Nginx lleva el envelope"; else falla "funcional: el 429 de Nginx no lleva el envelope"; fi
 if grep -qi '^H429 Retry-After: 60$' <<< "$salida" && grep -qi '^H429 Content-Type: application/json' <<< "$salida"; then ok "funcional: el 429 lleva Retry-After 60 y application/json"; else falla "funcional: el 429 sin Retry-After 60 o sin application/json"; fi
 if grep -qi '^H429 Cache-Control: no-store$' <<< "$salida"; then ok "funcional: el 429 lleva Cache-Control no-store"; else falla "funcional: el 429 sin Cache-Control no-store"; fi
+
+codigo_de() { grep "^$1 " <<< "$salida" | awk '{print $2}' || true; }
+for par in "API60 502" "API70 413" "PRIV100 502" "PRIV140 413"; do
+  read -r nombre esperado <<< "$par"
+  if [ "$(codigo_de "$nombre")" = "$esperado" ]; then ok "funcional: $nombre responde $esperado (L-A de V10)"; else falla "funcional: $nombre respondió '$(codigo_de "$nombre")' (se esperaba $esperado)"; fi
+done
 
 if grep -q '^BIG 413$' <<< "$salida"; then ok "funcional: 20 KB a /api/v1/auth/ devuelve 413 sin llegar al api (L-12)"; else falla "funcional: 20 KB a /api/v1/auth/ respondió '$(grep '^BIG' <<< "$salida" || true)' (se esperaba 413)"; fi
 

@@ -21,6 +21,11 @@ decorador (S2-D3).
 - S2-B5: `GET`, `PATCH` y `DELETE /users/{user_id}` (204) y `POST /users/{user_id}/lock`,
   `/unlock` (200 `UserOut`) y `/revoke-sessions` (200 `RevokeSessionsOut`); todas solo admin
   con `no_store`.
+- M-A de V10 (S3-D100): `POST /users`, `resend-link`, `PATCH` y `DELETE /users/{user_id}` consumen
+  `admin-write` (30 por minuto por usuario, la cubeta de las demás escrituras de solo admin) y
+  declaran 429. `lock`, `unlock` y `revoke-sessions` quedan EXENTAS: son la respuesta a un
+  incidente y un tope no puede bloquearlas cuando hacen falta (motivo en
+  `tests/architecture/test_writes_have_user_limit.py`).
 Las rutas no hacen `select`: leen la cookie, llaman al service y devuelven. `Settings` sale de
 `request.app.state.settings` (cookie `Secure`, orígenes y política).
 """
@@ -39,7 +44,7 @@ from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
-from app.core.ratelimit import client_ip, rate_limit
+from app.core.ratelimit import client_ip, enforce_user_limit, rate_limit
 from app.core.security import Principal, require_role
 from app.modules.auth import rules, service
 from app.modules.auth.cookies import (
@@ -214,12 +219,13 @@ async def list_users(
     "/users",
     response_model=CreateUserOut,
     status_code=status.HTTP_201_CREATED,
-    responses=responses_for(401, 403, 409),
+    responses=responses_for(401, 403, 409, 429),
     dependencies=[Depends(no_store)],
 )
 async def create_user(
     body: CreateUserIn, request: Request, principal: Admin, session: Session
 ) -> CreateUserOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     return await service.create_user(
         session,
         email=body.email,
@@ -256,12 +262,13 @@ async def reset(body: ResetIn, session: Session) -> Response:
 @router.post(
     "/users/{user_id}/resend-link",
     response_model=IssuedLinkOut,
-    responses=responses_for(401, 403, 404, 409),
+    responses=responses_for(401, 403, 404, 409, 429),
     dependencies=[Depends(no_store)],
 )
 async def resend_link(
     user_id: UUID, request: Request, principal: Admin, session: Session
 ) -> IssuedLinkOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     return await service.resend_link(
         session,
         user_id,
@@ -271,6 +278,8 @@ async def resend_link(
 
 
 # S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051) -------------------------------
+# `lock`, `unlock` y `revoke-sessions` no llaman a `enforce_user_limit` a propósito (S3-D100):
+# son de emergencia.
 
 
 @router.get(
@@ -286,12 +295,13 @@ async def get_user(user_id: UUID, principal: Admin, session: Session) -> UserOut
 @router.patch(
     "/users/{user_id}",
     response_model=UserOut,
-    responses=responses_for(401, 403, 404, 409),
+    responses=responses_for(401, 403, 404, 409, 429),
     dependencies=[Depends(no_store)],
 )
 async def update_user(
-    user_id: UUID, body: UpdateUserIn, principal: Admin, session: Session
+    user_id: UUID, body: UpdateUserIn, request: Request, principal: Admin, session: Session
 ) -> UserOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     usuario = await service.update_user(
         session, user_id, email=body.email, role=body.role, by=principal.user_id
     )
@@ -302,11 +312,12 @@ async def update_user(
     "/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
-    responses=responses_for(401, 403, 404, 409),
+    responses=responses_for(401, 403, 404, 409, 429),
     dependencies=[Depends(no_store)],
 )
-async def delete_user(user_id: UUID, principal: Admin, session: Session) -> None:
+async def delete_user(user_id: UUID, request: Request, principal: Admin, session: Session) -> None:
     # Sin `Response` propia: FastAPI arma el 204 con las cabeceras de `no_store`.
+    await enforce_user_limit(request, "admin-write", principal.user_id)
     await service.delete_user(session, user_id, by=principal.user_id)
 
 

@@ -96,6 +96,7 @@ Patrón de v0.1 en cada slice:
   - `deploy.sh`, con backup previo, espera de salud y `rollback-*.txt`.
   - `restore.sh`, que se nombra en el rollback pero no se ejecuta.
   - Volúmenes del respaldo de la KEK.
+  - Rol de base del api separado (S3-D49, reforzado por I-2 de la revisión V10 del Sprint 3): el api se conecta con un rol que no es superusuario ni dueño de los esquemas `payments`, `memberships` y `audit`; las migraciones corren con el rol dueño. Así el api no puede apagar ni borrar los triggers de inmutabilidad con SQL propio.
 - **Gate de la Wave 0:**
   - `bash -n` sobre los scripts;
   - smoke de Compose con los cinco servicios;

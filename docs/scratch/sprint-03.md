@@ -2900,3 +2900,21 @@ Corrección de la revisión de seguridad final V10 (backend e infra) en el árbo
 - V9: reconstruir la imagen `web` para ver los 413 del borde por `:8180` (el script ya lo prueba con Nginx real en un contenedor desechable). No se reinició ni se reconstruyó nada.
 - V12: borrar los volcados `docs/scratch/sprint-03-antes-*.dump` (L-C).
 - Front (no tocado salvo `types.ts`): las diez rutas ahora pueden responder 429 `rate_limited`; falta comprobar que las pantallas de planes, ajustes y usuarios lo muestran con un mensaje claro (hoy solo `LoginPage` trata `rate_limited` de forma explícita).
+
+## V9 · Gates ligeros
+
+Puntos V9.2 a V9.7 y V9.9 del plan (sección 7), sobre `fd2e8a3` con el árbol limpio, sin tocar Docker del stack, `.env`, `infra/` ni Playwright. V9.1 (`run-gates.sh`) y V9.8 (imagen del api) quedan para el orquestador.
+
+- V9.2 · `uv run pytest tests/architecture -q -rs`: **293 ok, 0 saltadas** (30,7 s). Verde.
+- V9.3 · `uvx pre-commit run --all-files`: ruff, ruff format, detect private key, fin de archivo, conflictos, sin llaves ni `.env` y `mypy --strict` en verde; `git status` limpio después (no reformateó nada). Verde.
+- V9.4 · `bash scripts/workflow/tests/run.sh`: 5 de 5 archivos en verde. `bash -n` de los 24 `scripts/**/*.sh` versionados: 0 fallos. Verde.
+- V9.5 · `bash scripts/ci/check-licenses-api.sh`: todas las licencias del runtime en la lista permitida (con la excepción MPL-2.0 registrada). `cd web && npm run licenses`: MIT 12, ISC 1, salida 0. `bash scripts/ci/notice.sh && git diff --exit-code NOTICE`: sin diferencia. Dependencias entre `d65056e` y `fd2e8a3`: `api/pyproject.toml` y `api/uv.lock` sin cambios; en `web/package.json` solo cambian `vitest` y `@vitest/coverage-v8` (3.2.7 a 5.0.5, desarrollo). **No hay dependencias de producción nuevas en el Sprint 3**; `NOTICE` al día. Verde.
+- V9.6 · `uv export --frozen --no-dev --no-emit-project` + `uvx pip-audit@2.10.1 --strict --disable-pip --require-hashes` (igual que el job `api` de la CI): "No known vulnerabilities found". Verde.
+- V9.6 · `cd web && npm audit --omit=dev --audit-level=high`: **BLOQUEANTE, salida 1**. Aviso nuevo de producción: `zod <4.6.6`, GHSA-mrhx-c7xc-m3w5 (alto, CVSS 7,5: agotamiento de memoria al validar colecciones grandes con restricciones). El front usa `zod ^3.25.76` (instalado 3.25.76, también lo trae `eslint-plugin-react-hooks` vía `zod-validation-error`); no hay 3.x corregida: la única salida es `zod` 4.6.7 (mayor, rompe API) y 31 archivos de `web/src` importan `zod`. El paso "auditoría de dependencias de producción" del job `web` fallará igual en la CI. No se corrigió aquí: migrar a Zod 4 (y revisar `@hookform/resolvers`) toca todos los formularios y exige vitest completo y build, fuera del alcance ligero de V9.
+- V9.6 · `npm audit --audit-level=high` (informativo): el mismo único aviso (`zod`). El residual de desarrollo `braces` vía stylelint 17 **ya no aparece**.
+- V9.7 · gitleaks con la imagen por digest de `ci.yml` (`zricethezav/gitleaks@sha256:c00b6bd0…`), contenedor efímero con el repo en solo lectura, `--config /repo/.gitleaks.toml --redact --log-opts="--all"`: 133 commits, ~16 MB, **no leaks found**. Verde.
+- V9.9 · `npm run gen:api && git diff --exit-code src/core/api/types.ts`: sin deriva. Verde.
+- Extra · `ruff check .` limpio, `ruff format --check .` 415 archivos formateados, `mypy src` sin errores en 97 archivos; `grep -rn "DISABLE TRIGGER\|TRUNCATE" api/src` vacío.
+- Conteos · api por recolección: **3.894 pruebas, 3.886 con `-m "not perf"`** (8 `perf`). Front: `npx vitest list` da **1.907** líneas de prueba sobre 142 archivos `*.test.ts(x)` de `src`; no cuadra con las 2.758 de la Fase 4 (es probable que `vitest list` no expanda igual los casos parametrizados o cuente distinto); vitest completo no se corrió aquí y la cifra válida la da V9.1.
+
+**Veredicto de V9 ligero:** todo en verde salvo `npm audit --omit=dev` (zod 3.x, GHSA-mrhx-c7xc-m3w5), que bloquea el gate y la CI hasta migrar a `zod` ≥ 4.6.6 o registrar un riesgo aceptado con su decisión en `DECISIONES.md`.

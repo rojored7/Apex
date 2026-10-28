@@ -385,3 +385,140 @@ Corren en cada gate de slice (A-5).
   - cuando la base agota `lock_timeout` o `statement_timeout`, o detecta un interbloqueo, el API responde 503 `busy` con `Retry-After: 1` y nunca 500 (S3-D43, S3-D67).
 - Paso humano: push, PR con CI en verde y merge.
 - `verify-delivery`, con una venta y una anulación reales hechas por la pantalla.
+
+## Estado al cierre del sprint (documentación)
+
+Fecha: 2026-10-28. Rama `feat/sprint-03-membresias-pagos`. HEAD antes de esta documentación: `0fa1270`. Sin push: la rama está en local y el push y el PR los hace una persona (ver "Pendiente humano").
+
+### Slices ejecutados
+
+Cada slice tiene su checkpoint (`chore(checkpoint)`). Los 20 slices del plan están confirmados: W0-1 y W0-2, B1 a B11 y F1 a F7.
+
+- **Wave 0:** W0-1 `452453b` (línea base, imágenes por digest, dependencias de desarrollo y decisiones); W0-2 `5e84bab` (tiempos de espera de la base, 503 `busy` y helpers de límite por usuario). Son dos slices, no uno (S3-C20).
+- **Backend:**
+  - B1 `5c9bb45` (reglas puras, venta atómica, migración 0008);
+  - B2 `5d412bd` (congelar, migración 0009);
+  - B3 `d5b37b9` (registrar pago, medios de pago, migración 0010);
+  - B4 `3d7702b` (inmutabilidad, venta con primer pago, activación, migración 0011);
+  - B5 `47c5692` (anular pago y reversión);
+  - B6 `3136ee6` (renovar y anular membresía);
+  - B7 `9f5ae13` (lista de membresías, resumen y consultas de estado);
+  - B8 `208117e` (lista, detalle y resumen de pagos);
+  - B9 en dos checkpoints (S3-D73): B9a `ee609f1` (partición de `members/service.py` sin cambio de comportamiento) y B9b `7d78c05` (filtros de socios y ficha enmascarada);
+  - B10 `4b4ce60` (revelar, editar, dar de baja y reactivar);
+  - B11 `41e244e` (pestañas de membresías y pagos de la ficha, cierre del backend).
+- **Front** (orden de ejecución según S3-D66: F3, F4, F5, F6, F2, F1, F7):
+  - F3 `bf0626d` (vender, primer pago y renovar);
+  - F4 `afe6526` (registrar y anular pagos, panel por URL, medios de pago);
+  - F5 `5fdf793` (membresías con congelar y anular);
+  - F6 `8026ab1` (pagos con detalle y resumen del mes);
+  - F2 `c6d9590` (filtros de socios, chips y vista móvil);
+  - F1 `d139457` (ficha del socio con revelado auditado, edición, baja y reactivación);
+  - F7 `889f365` (pestañas de la ficha; `ce932d0` estabiliza los E2E del stack).
+- **Revisiones y correcciones posteriores:**
+  - Fase 4 backend `6e8406f`;
+  - Fase 4 front `b39d160`;
+  - V10 (seguridad posterior, backend e infra) `7962caa`;
+  - migración del front a Zod 4 (GHSA-mrhx-c7xc-m3w5) `6c98eb6`.
+- **Correcciones de validación:** `3c7db38` (evidencia V2 a V8), `7bb4e55` y `dab1cc4` (E2E del preview), `59bf09d`, `43b4f09` y `561ae32` (E2E del stack). Los merges de los worktrees de los agentes del front van en el `git log`, no aquí.
+
+### Conteos finales
+
+- **API** (sin cambios en `api/` desde `7962caa`): **3.883 pruebas en verde** (1.517 y 2.366, en las dos mitades de la suite con `-m "not perf"`), **3 saltadas** por NTFS, **8 `perf`** fuera de los gates. Fuente: "Fase 4 · Backend" y "V10 · Corrección" del cuaderno. Cobertura global de `app`: **[pendiente de cita: el cuaderno no registra la cifra]**.
+- **Front** (sin cambios en `web/` desde `6c98eb6`, tras la migración a Zod 4): **156 archivos y 2.788 pruebas en verde**. Cobertura: 97,98 % de sentencias, 94,56 % de ramas, 97,09 % de funciones y 98,87 % de líneas. Build: `main` 418,30 kB y el chunk `zod` 92,05 kB. Fuente: "V9 · Migración a Zod 4" del cuaderno del front.
+- **`run-gates.sh` en verde el 2026-10-28:** **[pendiente de cita: el cuaderno no registra esa corrida; la última registrada es V10 para la API y la migración a Zod 4 para el front]**.
+
+### Validación V2 a V8, V9 y final
+
+- **Migraciones:** `0008_memberships`, `0009_membership_freezes`, `0010_payments` y `0011_payments_immutability`. El ciclo `downgrade 0007_plans` y `upgrade head` se ejecutó en V2 sobre `apex-db-1` (el diferimiento de B11.6 a V2 queda cerrado), con volcado previo `docs/scratch/sprint-03-antes-v2.dump` (ver "Pendiente humano").
+- **Tiempos `perf` (V5, dos corridas):** búsqueda por documento con 1.000 socios, 34,6 y 30,9 ms; login fallido ×20, p95 0,411 y 0,412 s; `membership_status=active` con 5.000 ids, 43,1 y 42,6 ms; `membership_status=none` con 5.000 ids, 138,8 y 161,4 ms; lista `expiring` con 1.000 socios y 3.000 membresías, 15,0 y 16,2 ms; resumen sin caché, 17,2 y 13,0 ms; lista de pagos con 10.000 pagos, 13,7 y 12,9 ms; resumen del mes con 10.000 pagos, 8,2 y 8,6 ms. Todo está por debajo de los topes (500 y 300 ms).
+- **Smoke con evidencia SQL (V6):** activación atómica (membresía `active` con el pago en `payments`, auditoría `insert`, `insert`, `update`); reversión (`pending_payment`, fechas intactas, pago con `voided = t`); `EXCLUDE` (`ex_memberships_member_dates` rechaza el solapamiento, SQLSTATE 23P01); triggers (`payments_immutable`, `memberships_identity`, `memberships_no_delete`, `membership_freezes_append_only`, también con `session_replication_role = replica`); filas `reveal` y `decrypt` en `audit.audit_log` y `crypto_ops`, sin valores en claro en los logs; `verify_chain` sobre 2.914 filas, sin ruptura; 503 `busy` medido (10,03 s, `Retry-After: 1`).
+- **E2E:**
+  - `e2e:stack` con 35 de 35 en dos corridas seguidas después de V10 (V4 ya había dado 35 de 35 dos veces);
+  - Playwright del proyecto `preview`: 144 de 144 (V4, dos veces, y de nuevo en la migración a Zod 4, tras corregir la CSP con `jitless`).
+  - La corrida final del stack con Zod 4 la añade otro agente al cuaderno: ver `docs/scratch/sprint-03.md`, bloque "Validación final del stack con Zod 4". En el momento de escribir este estado, ese bloque todavía no aparece en el cuaderno.
+- **Demo por pantalla (V7):** venta con cobro completo (`Al día`), venta parcial (`Pendiente de pago`), saldo con confirmaciones de sobrepago y duplicado, anulación de pago desde la ficha con reversión, renovación con inicio al día siguiente, congelación con la ventana y el límite de congelaciones, anulación, ficha con revelado, baja y reactivación, filtros de socios y resumen de pagos del mes.
+
+### Contrato
+
+- `docs/openapi.json`: **53 operaciones** (31 en `d65056e`, **22 nuevas**, 0 quitadas). Exportación idéntica en dos corridas; sha256 `3559f376…` después de V10.
+- `GET /members` gana `membership_status` y `plan_id`, con las rutas fijas antes que las que llevan parámetro.
+- Componente nuevo `MembershipStatus` (seis valores); `status` de `MembershipOut`, `MembershipRow` y `SellMembershipOut` lo referencia.
+- Respuestas `429` nuevas: 10 en escrituras de solo admin (V10, S3-D100) y 2 en la baja y la reactivación de socios (Fase 4, S3-D97).
+- `GET /payments/methods` responde `{ items }` (S3-C7).
+- `web/src/core/api/types.ts` regenerado con `npm run gen:api` sin deriva.
+
+### Revisiones de seguridad y de código
+
+- **Por slice (`security-reviewer`):** ninguna revisión registrada dio CRITICAL ni HIGH. Los MEDIUM de B1, B2, B4 y B7 se corrigieron con prueba; el de B1 sobre `lock_member` en `sell` se cerró en B10.
+- **Fase 4 backend (`code-reviewer` y `python-reviewer`):** `code-reviewer` dio 0 CRITICAL, 1 HIGH, 4 MEDIUM y 3 LOW; `python-reviewer` dio 0 CRITICAL, 0 HIGH, 5 MEDIUM y 7 LOW, con solapamientos (M1 es PM1, y M2 es PL5). Estado: todo corregido, salvo PM2 (MEDIUM de `python-reviewer`, `classes_remaining = 0`), **aceptado con decisión y dueño** (S3-D92, Sprint 7, US-160), y algunos LOW aceptados con justificación (L3, `list` sombrea al builtin, PL2 (c) y PL7 (b)).
+- **Fase 4 front (`typescript-reviewer`):** 8 MEDIUM y 9 LOW en la primera revisión, todos corregidos salvo el LOW 5 (`enclosingFunction` por expresión regular), aceptado con justificación. La revisión final dio 0 CRITICAL, 0 HIGH, 2 MEDIUM y 4 LOW: el MEDIUM 2 es un cambio de texto intencional (M7), el LOW 5 queda aceptado y el resto está corregido.
+- **V10 (`security-reviewer`):** M-A (MEDIUM) corregido; L-A y L-B corregidos; L-D corregido en el front; L-C documentado (borrado de volcados pendiente, ver "Pendiente humano"); I-2 con dueño S4B-W0-2; I-4 con dueño US-106; I-3 informativo.
+- **V9 ligero:** `npm audit --omit=dev` bloqueaba por `zod` 3.25.76 (GHSA-mrhx-c7xc-m3w5). Resuelto con Zod 4.6.7 (S3-D105): `npm audit` da 0 en producción y en desarrollo.
+- **Revisión W0-2 (dos MEDIUM no aplicados):** ver "Hallazgos abiertos".
+
+### Desviaciones del plan (consolidado)
+
+1. Wave 0 en dos slices, W0-1 y W0-2 (S3-C20).
+2. S3-D43: los tiempos de espera tienen piso de 1.000 ms en producción (S3-D79) y las opciones del CLI viajan en `ctx.obj` (PL1 de la Fase 4).
+3. 503 `busy`: `Retry-After: 1` y traducción en `get_session` (S3-D67). La descripción `503` va solo en las operaciones con seguridad declarada, no en las públicas (E16).
+4. Confirmaciones en el servidor: el API responde 409 `payment_exceeds_balance` o `payment_possible_duplicate` y la pantalla reenvía con `confirm_overpayment` o `confirm_duplicate` (H-1, S3-D41; S3-C22).
+5. `paid_at` por rol: el coach solo registra dentro de `max_retroactive_days` (422 `paid_at_too_retroactive`); el admin, sin ese límite (S3-D51).
+6. B9 en dos checkpoints, `B9a` y `B9b` (S3-D73).
+7. Orden del front: F3, F4, F5, F6, F2, F1, F7 (S3-D66).
+8. `MemberPaymentsTab` vive en `web/src/features/payments/components/` (no en `memberships`), igual que su prueba.
+9. Sin `CHECK` de fechas de anulación (`voided_at >= created_at` se descarta, S3-D68).
+10. Sin siembra de 10.000 socios: el volumen es de 1.000 socios; los 10.000 se usan para pagos (S3-D71).
+11. Ciclo de Alembic de B11.6 diferido a V2, donde se ejecutó sobre `apex-db-1`.
+12. Nació `memberships/summary.py` (S3-D90), que no estaba en el plan.
+13. `status` tipado como enum `MembershipStatus` en el contrato (S3-D96).
+14. `admin-write` ampliado: a la baja y reactivación de socios (S3-D97) y a todas las escrituras de solo admin (S3-D100).
+15. Migración del front a Zod 4 (S3-D105), que no estaba en el plan.
+16. `membership_conflict` frente a `membership_overlap`: `sell` responde `membership_conflict` cuando hay una membresía vigente o futura, y `membership_overlap` solo contra una no cancelada que ya no es vigente (D8 en el código). El texto del plan no coincide con ese orden; no es un defecto (V7).
+17. Texto de sobrepago: la pantalla dice "supera el saldo de la membresía" y el plan decía "saldo pendiente" (V7).
+18. Regla de clases agotadas diferida a v0.4 (S3-D92).
+19. Ventanas de topes por proceso: el api corre con un solo proceso (S3-D93).
+20. Proyecto `stack` con 15 specs y 35 pruebas, más que las cuatro del plan (S3-D72).
+21. El buscador del panel de pagos ofrece al socio inactivo (S3-D99). Se desvía de la indicación de deshabilitarlo porque el API lo acepta.
+22. Ordenación "Vencimiento más próximo" fuera de v0.1 (S3-D98).
+
+### Hallazgos abiertos (no cerrados en este documento)
+
+- **W0-2 MEDIUM-1:** `25P03` y los cortes del servidor quedan como 500 en lugar de 503. No se aplicó, y el texto de S3-W0-2 no nombra dueño. **Pendiente de decisión del orquestador** (aceptar con dueño o abrir un slice).
+- **W0-2 MEDIUM-2:** un fallo al escribir `crypto_ops` durante el rollback tras un 55P03 da 500 en lugar de 503. No se aplicó y no nombra dueño. **Pendiente de la misma decisión.**
+- **S3-D98 (ordenación por vencimiento):** no entra en v0.1 y ningún sprint posterior la recoge. **Pendiente de dueño.**
+- **Pendientes de diseño de BRECHAS §10** (por ejemplo "Guardar y vender membresía", estilo de "Cancelada", "Ocultar anulados" y el selector de mes de pagos): figuran como "Pendiente de diseño" sin dueño nombrado. **Pendiente de dueño.**
+- **Observación de V9:** el 413 de Nginx sale en HTML y no con el envelope JSON. El front lo trata como error genérico. Se anotó para cuando lleguen los adjuntos (v0.3).
+
+### Deuda con dueño
+
+- Clases agotadas (S3-D92, PM2): módulo `classes`, Sprint 7 (v0.4), US-160 (`SPRINT-07.md`).
+- Rol del api no superusuario ni dueño de `payments`, `memberships` y `audit` (S3-D49, I-2 y L2 de B1): slice S4B-W0-2 (`SPRINT-04B.md`).
+- `subject_member_id` en las congelaciones (L2 de B2): US-106, Sprint 4A.
+- Orden de candados del comando `import-members` (S3-D95, PL6): una transacción por socio, en SPRINT-04B.
+- Historial del socio, pestaña y caja de la ficha: US-106, Sprint 4A (S4A-F2).
+- Nombre de usuario en lugar del correo parcial (S3-D57): US-110, Sprint 4A.
+- Tablero de Inicio (KPIs): US-108, Sprint 4A (S4A-B8).
+- "Socios con él" en Planes (D37): US-082, Sprint 4A.
+- `DELETE /api/v1/plans/{id}` para los datos de prueba: Sprint 4A (`SPRINT-04A.md`, línea de `DELETE /api/v1/plans/{id}`).
+- Dependencias de versión de BRECHAS §10: "Exportar" (v0.2, EP-16, US-139), foto y adjuntos (v0.3), asistencia (v0.4), último WOD (v0.5) y portal (v1.0); el 413 de Nginx con envelope JSON (v0.3).
+- Límite `USER_*` en producción: lo decide quien administra el `.env` (W0-2, operador).
+- N-6 (dueño S4B-W0-2) y N-7 (remedir el p99 en S4B-W0-2): heredadas del Sprint 2.
+
+### Datos de prueba que quedan en `apex-db-1`
+
+- 30 planes `E2E-tope-d78ef5-1` a `-30`, creados en la validación final del stack (topes `admin-write`). Quedan hasta el `DELETE /plans` del Sprint 4A.
+- Plan "Mensual V50137" (120.000, 30 días), usado por la demo, y el plan 320.000/90 creado por error en el Sprint 2.
+- Socios de la demo "… V50137" (Venta, Parcial, Renovar, Congelar, Ficha, CongelarLimite y Busy), con sus membresías y pagos.
+- Planes, socios y ventas de las specs E2E.
+- Tres coaches `@test.apex` (`coach-b3-smoke`, `coach-b7-smoke`, `coach-demo-mvjipju3`): fuera del patrón de V12, quedan para decidir aparte.
+- Cuentas vivas tras V12: `admin@ejemplo.local` (no tocada), `system@apex.local` (inactiva, `is_active = false`) y las tres de arriba. Las 120 cuentas `coach-*@apex.test` se dieron de baja en V12 (204 cada una, auditadas).
+
+### Pendiente humano
+
+1. Push de la rama `feat/sprint-03-membresias-pagos`.
+2. PR con la CI en verde en sus seis jobs: `api`, `web`, `images`, `scripts`, `secrets-scan` y `e2e-stack`. El job `e2e-stack` con las ocho `USER_*` ×100 solo se verifica en GitHub Actions. El paso `npm audit` del job `web` es informativo.
+3. Merge.
+4. Restablecer la contraseña del admin: `.env.seed` se borró en W0-1 (S3-D64). Se usa `tools issue-reset-link <admin> --as <admin>` (RUNBOOK §2).
+5. Borrar los volcados `docs/scratch/sprint-03-antes-*.dump` (L-C de V10, RUNBOOK §10). **No se encuentran en `docs/scratch/` al cerrar**; hay que confirmar que no quedan copias en la máquina.
+6. Cierre de `verify-delivery`: lo hace otro agente en `docs/scratch/sprint-03-verify-delivery.md`, y no forma parte de este commit.

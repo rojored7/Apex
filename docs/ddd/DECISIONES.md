@@ -993,3 +993,95 @@ Corrección consolidada de la revisión `typescript-reviewer` del front (8 MEDIU
   - Zod va en su propio chunk (`manualChunks` en `vite.config.ts`): con Zod 4, `main` pasaba de 473,96 kB a 510,60 kB; ahora `main` 418,30 kB y `zod` 92,05 kB, precargado desde `index.html` con el nonce.
   - El `type` que da `zodResolver` a cada error es el código de Zod 4 (`invalid_format` donde Zod 3 decía `invalid_string`). Ninguna pantalla lo lee (solo `type: "server"`); cambió la aserción de `zodResolver.test.ts`, que copiaba el código de la librería.
   - Residual de desarrollo: ninguno. `eslint-plugin-react-hooks` y `zod-validation-error` aceptan `^3.25 || ^4` y quedan deduplicados en 4.6.7; `npm audit --audit-level=high` da 0.
+
+### Estado al cierre del Sprint 3
+
+Fecha: 2026-10-28. Se anota solo lo que cambió respecto al texto original de cada decisión. Las que no aparecen aquí se cumplieron como se escribieron, o no tienen cambio registrado en el cuaderno. El estado del sprint está en `docs/ddd/09_sprint_plan/SPRINT-03.md`, sección "Estado al cierre del sprint (documentación)".
+
+#### Planificación (D1 a D40) afectadas
+
+- **D2:** Estado al cierre: `ALLOWED_EDGES` creció por slice. En B3 `payments` solo añadió `settings`; `members` y `auth` entraron en B8 (S3-D80).
+- **D5:** Estado al cierre: el estado se deriva en lectura (`queries.status_expr`, espejo de `compute_status`). El contrato publica `MembershipStatus` (S3-D96).
+- **D7:** Estado al cierre: `memberships` y `payments` nacieron partidos como se planeó. `members` se partió en B9a. Nació `memberships/summary.py` en la Fase 4 (S3-D90), que el plan no tenía.
+- **D8:** Estado al cierre: en el código, `membership_conflict` (membresía vigente o futura) se evalúa antes que `membership_overlap` (solo contra una no cancelada que ya no es vigente). El texto del plan no coincide con ese orden; no es un defecto (V7).
+- **D15:** Estado al cierre: `classes_total` se fija al vender y nada descuenta clases hasta v0.4. La regla de tiqueteras agotadas se difiere a v0.4 (S3-D92).
+- **D22:** Estado al cierre: `GET /members` gana `membership_status` y `plan_id`. `membership_end_date` se añadió en B9b. La ordenación "Vencimiento más próximo" no entra en v0.1 (S3-D98).
+- **D27:** Estado al cierre: el número de rutas con 429 creció. V10 añadió diez escrituras de solo admin con `admin-write` (S3-D100); la Fase 4 añadió la baja y la reactivación de socios (S3-D97).
+- **D30:** Estado al cierre: la limpieza de pruebas usa `DISABLE TRIGGER USER` solo en `api/tests/conftest.py`; `test_no_trigger_tampering` lo prohíbe en `app/`. La guarda `EXISTS` de `LIMPIAR_PAYMENTS` se quitó (PL7 de la Fase 4).
+- **D37:** Estado al cierre: "Socios con él" queda para US-082 (Sprint 4A). Los demás huecos de diseño están en BRECHAS §10 con `// DESIGN-GAP:`.
+- **D38:** Estado al cierre: `CLAUDE.md` ya recoge `core/locks.py`, la línea del 503 `busy` y `web/src/shared/data/`.
+- **D40:** Estado al cierre: en B9b cambiaron dos pruebas de US-070 (`membership_status = "none"` en lugar de `null`), que el slice rompió.
+
+#### Seguridad del diseño y del plan (S3-D41 a S3-D78)
+
+- **S3-D41:** Estado al cierre: cumplida. La pantalla dice "supera el saldo de la membresía" y no "saldo pendiente" como el plan (S3-C22; V7).
+- **S3-D42:** Estado al cierre: cubetas `memberships-write`, `payments-write` y `admin-write` a 30 por minuto. Ampliada: la venta con primer pago gasta también `payments-write` (S3-D82), y `admin-write` cubre las escrituras de solo admin de V10 (S3-D100) y la baja y reactivación de socios (S3-D97).
+- **S3-D43:** Estado al cierre: cumplida. Los tiempos viajan como `server_settings` y el 503 `busy` se midió en vivo (V6). Añadidos: piso de 1.000 ms en producción (S3-D79) y opciones del CLI en `ctx.obj` (PL1).
+- **S3-D46:** Estado al cierre: cumplida (V7: el coach recibe 403 `forbidden_field`). Añadido en B10: `null` rechazado en campos obligatorios (`PATCH_NOT_NULL`) y `SafeText` en `document` y `phone` (LOW-1).
+- **S3-D47:** Estado al cierre: cumplida. El piso y la zona de `paid_at` salen como `PaidAtInvalid` (422 `validation_error`, `field="paid_at"`); `PaidAtInFuture` hereda ese código (desviación de B3).
+- **S3-D48:** Estado al cierre: ampliada en B1. Una membresía `cancelled` es terminal también para `end_date` y `classes_remaining`; el CHECK `ck_memberships_cancel_fields_only_when_cancelled` lo refuerza (L1 de B1).
+- **S3-D49:** Estado al cierre: triggers con `ENABLE ALWAYS` y prueba bajo `session_replication_role = replica`. Residual aceptado: el rol del api es dueño de las tablas. La separación de roles pasa a S4B-W0-2 (I-2 de V10).
+- **S3-D51:** Estado al cierre: cumplida. `sell` sin rol falla cerrado (S3-D81).
+- **S3-D52:** Estado al cierre: cumplida en F1 a F5. Ampliada en la Fase 4 del front con `useSensitiveMutation` (S3-D104).
+- **S3-D53:** Estado al cierre: el resumen vive en `memberships/summary.py` (S3-D90), con caché de proceso de 32 entradas como máximo (LOW-3 de B7) y listeners que ignoran los SAVEPOINT (E13). Vale para un solo proceso (S3-D93).
+- **S3-D54:** Estado al cierre: `lock_member` lo toman `sell`, `deactivate`, `reactivate` y `update` (B10). El orden frente al hook de auditoría queda documentado en `core/locks.py` (S3-D95).
+- **S3-D57:** Estado al cierre: correo parcial en `registered_by_name` y `voided_by_name` hasta US-110 (Sprint 4A).
+- **S3-D58:** Estado al cierre: volcado previo a `0011` hecho en V2 (`docs/scratch/sprint-03-antes-v2.dump`). El borrado al cierre sigue pendiente y el archivo no aparece en `docs/scratch/` al cerrar; ver "Deuda con dueño".
+- **S3-D59:** Estado al cierre: `enforce_user_limit` con el catálogo `USER_LIMITS`. Ampliado por S3-D97 y S3-D100.
+- **S3-D63:** Estado al cierre: `vitest` y `@vitest/coverage-v8` en 5.0.5. `npm audit` da 0 tras la migración a Zod 4 (S3-D105).
+- **S3-D64:** Estado al cierre: `.env.seed` borrado en W0-1. V8 comprobó que `tools seed` sin el archivo falla con un mensaje claro.
+- **S3-D66:** Estado al cierre: el orden ejecutado fue F3, F4, F5, F6, F2, F1, F7, el que fija la regla.
+- **S3-D71:** Estado al cierre: no se sembraron 10.000 socios. La `perf` se midió con 1.000 socios y 10.000 pagos (V5).
+- **S3-D72:** Estado al cierre: el proyecto `stack` tiene 15 specs y 35 pruebas, no solo las cuatro del plan. El proyecto `preview` tiene 144 pruebas.
+- **S3-D76:** Estado al cierre: ocho variables `USER_*` en `Settings`. V4 y el job `e2e-stack` las suben ×100 (H1 de la Fase 4).
+- **S3-D77:** Estado al cierre: `POST /memberships/{id}/payments` se publicó en B4 con el gate real.
+
+#### Decisiones de los slices, de la Fase 4 y de V10 (S3-D79 a S3-D105)
+
+- **S3-D79:** Estado al cierre: aplicada. Con `ENV=production`, los tiempos de espera tienen piso de 1.000 ms.
+- **S3-D80:** Estado al cierre: aplicada en B3 (`payments` solo añade `settings`); `members` y `auth` entran en B8.
+- **S3-D81:** Estado al cierre: aplicada. `sell` con `role=None` falla cerrado.
+- **S3-D82:** Estado al cierre: aplicada. La venta con primer pago gasta también `payments-write`.
+- **S3-D83:** Estado al cierre: aplicada (`VOID_REASON_INPUT_MAX = 2000`).
+- **S3-D84 a S3-D88:** Estado al cierre: aplicadas en B10.
+- **S3-D89:** Estado al cierre: aplicada (`MemberReactivated` y suscripción de la caché del resumen).
+- **S3-D90:** Estado al cierre: aplicada (`memberships/summary.py`).
+- **S3-D91:** Estado al cierre: aplicada (`row_fields`, `out_fields`, `rules.snapshot`, `any_uuids`).
+- **S3-D92:** Estado al cierre: aceptada con dueño. Al gastar la última clase, el módulo `classes` recorta `end_date` (Sprint 7, US-160; `SPRINT-07.md`).
+- **S3-D93:** Estado al cierre: aceptada. El api corre con un solo proceso; la nota está en RUNBOOK §4.
+- **S3-D94:** Estado al cierre: aplicada (copia de la excepción con `__new__`, sin `__init__`).
+- **S3-D95:** Estado al cierre: documentada en `core/locks.py`. La deuda del comando `import-members` (una transacción por socio) pasa a SPRINT-04B.
+- **S3-D96:** Estado al cierre: aplicada (`MembershipStatus` y `Role` tipados).
+- **S3-D97:** Estado al cierre: aplicada. La baja y la reactivación de socios usan `admin-write` y declaran 429.
+- **S3-D98:** Estado al cierre: no entra en v0.1. No hay sprint que lo recoja; **pendiente de dueño** (ver "Hallazgos abiertos").
+- **S3-D99:** Estado al cierre: aplicada con una desviación respecto a la indicación del orquestador. El buscador del panel de pagos ofrece al socio inactivo, marcado, y no lo deshabilita, porque el API acepta el cobro de una membresía ya vendida.
+- **S3-D100:** Estado al cierre: aplicada en diez rutas de solo admin (V10).
+- **S3-D101:** Estado al cierre: aplicada. El 413 de Nginx sale en HTML y no con el envelope JSON; se anotó para v0.3.
+- **S3-D102:** Estado al cierre: aplicada. `redact_text` cubre el `DETAIL` de PostgreSQL en los logs.
+- **S3-D103:** Estado al cierre: aplicada en F4 (`SellPage`). Dos aserciones de `SellPage.test.tsx` cambiaron porque esperaban el destino antiguo.
+- **S3-D104:** Estado al cierre: aplicada. Las excepciones están en la lista blanca de `tests/lint/sensitive-mutations.test.ts`.
+- **S3-D105:** Estado al cierre: aplicada. `zod` 4.6.7 con `jitless` (`core/zodSetup.ts`).
+
+#### Renumeración de las decisiones del front
+
+El front escribió primero S3-D100 (venta) y S3-D101 (`useSensitiveMutation`), que chocaban con S3-D100 a S3-D102 de V10. Se renumeraron a S3-D103 y S3-D104. S3-D99 queda para el buscador del panel de pagos y S3-D105 para Zod 4. S3-D100 a S3-D102 son de V10. No quedan referencias a las numeraciones antiguas en `api/`, `web/`, `docs/` ni `scripts/`.
+
+#### Deuda con dueño
+
+- Clases agotadas (S3-D92, PM2): módulo `classes`, Sprint 7, US-160.
+- Rol del api no superusuario ni dueño de los esquemas (S3-D49, I-2 de V10 y L2 de B1): S4B-W0-2.
+- `subject_member_id` en las congelaciones (L2 de B2): US-106, Sprint 4A. Lo mismo para I-4 de V10.
+- `import-members` con una transacción por socio (S3-D95, PL6): SPRINT-04B.
+- Límite `USER_*` en producción (W0-2): lo decide quien administra el `.env`.
+- N-6 (dueño S4B-W0-2) y N-7 (remedir el p99 en S4B-W0-2): heredadas del Sprint 2.
+- `DELETE /api/v1/plans/{id}`, necesario para retirar los datos de prueba: Sprint 4A (`SPRINT-04A.md`).
+- Historial, Inicio (KPIs), nombre de usuario en lugar del correo, "Socios con él": US-106, US-108, US-110 y US-082, todos en Sprint 4A.
+- BRECHAS §10 con versión futura: "Exportar" (v0.2, US-139), foto y adjuntos (v0.3), asistencia (v0.4), último WOD (v0.5), portal (v1.0). El 413 de Nginx con envelope JSON, v0.3.
+- Borrado de `docs/scratch/sprint-03-antes-*.dump` (L-C de V10): el operador lo hace al cerrar. No se encontraron en `docs/scratch/` al cerrar.
+
+#### Hallazgos abiertos (sin dueño decidido)
+
+- **W0-2 MEDIUM-1:** `25P03` y los cortes del servidor quedan como 500 en lugar de 503. No se aplicó y el texto de S3-W0-2 no nombra dueño.
+- **W0-2 MEDIUM-2:** un fallo al escribir `crypto_ops` durante el rollback tras un 55P03 da 500 en lugar de 503. No se aplicó y no nombra dueño.
+- **S3-D98:** ordenación por vencimiento, fuera de v0.1, sin dueño de sprint.
+- **BRECHAS §10:** los "Pendiente de diseño" (por ejemplo "Guardar y vender membresía", estilo de "Cancelada", "Ocultar anulados" y el selector de mes de pagos) no tienen dueño nombrado.

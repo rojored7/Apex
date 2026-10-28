@@ -125,7 +125,7 @@ Ninguna.
 - [ ] `cd api && uv run pytest tests/memberships/test_rules.py -q`
 - [ ] `cd api && uv run pytest tests/worker/test_expirations.py -q`
 - [ ] `cd api && uv run pytest tests/cli/test_recompute_memberships.py -q`
-- [ ] `cd api && uv run pytest -m slow tests/worker/test_expirations.py -q`
+- [ ] `cd api && uv run pytest -m perf tests/worker/test_expirations.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `docker compose -f infra/compose.yml -f infra/compose.dev.yml run --rm worker uv run python -m app.worker.main --run-once expirations` termina con código 0 y deja una fila en `worker.job_runs` con `job_name = 'expirations'` y el resumen en `details`
 - [ ] Correrlo dos veces seguidas no agrega filas nuevas a `audit.audit_log` para `memberships` en la segunda corrida

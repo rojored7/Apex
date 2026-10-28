@@ -3107,3 +3107,5 @@ Higiene de V12 (orquestador, 2026-10-28):
 - Borrados del scratchpad de la sesión los archivos temporales con credenciales de sesiones anteriores (copias de `.env`, tokens firmados, contraseñas de cuentas desechables, salidas de `curl`); un grep de JWT y llaves privadas sobre el scratchpad devuelve 0.
 - `git worktree list` solo muestra el árbol principal; `.env` idéntico a la copia previa (comprobado por el agente del stack con `cmp`); stack arriba sin `compose.e2e.yml`.
 - Trailers de coautoría: los commits `59bf09d`, `43b4f09`, `561ae32`, `dd3d276` y `2c191a4` se reescribieron para llevar el trailer del repositorio (rama reescrita localmente antes del push; no había nada empujado).
+
+Nota del orquestador (V11, 2026-10-28): los hashes `59bf09d`, `43b4f09`, `561ae32`, `dd3d276` y `2c191a4` citados más arriba corresponden, tras la reescritura del trailer, a `ece2f4e`, `5d2b4d1`, `958a070`, `20b5c8e` y `0fa1270`. El contenido de cada commit no cambió.

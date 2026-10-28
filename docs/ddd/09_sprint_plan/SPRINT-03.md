@@ -392,7 +392,7 @@ Fecha: 2026-10-28. Rama `feat/sprint-03-membresias-pagos`. HEAD antes de esta do
 
 ### Slices ejecutados
 
-Cada slice tiene su checkpoint (`chore(checkpoint)`). Los 20 slices del plan están confirmados: W0-1 y W0-2, B1 a B11 y F1 a F7.
+Cada slice tiene su checkpoint (`chore(checkpoint)`). Los 20 slices del plan están confirmados en 21 checkpoints (B9 se confirmó en dos, B9a y B9b): W0-1 y W0-2, B1 a B11 y F1 a F7.
 
 - **Wave 0:** W0-1 `452453b` (línea base, imágenes por digest, dependencias de desarrollo y decisiones); W0-2 `5e84bab` (tiempos de espera de la base, 503 `busy` y helpers de límite por usuario). Son dos slices, no uno (S3-C20).
 - **Backend:**
@@ -420,13 +420,13 @@ Cada slice tiene su checkpoint (`chore(checkpoint)`). Los 20 slices del plan est
   - Fase 4 front `b39d160`;
   - V10 (seguridad posterior, backend e infra) `7962caa`;
   - migración del front a Zod 4 (GHSA-mrhx-c7xc-m3w5) `6c98eb6`.
-- **Correcciones de validación:** `3c7db38` (evidencia V2 a V8), `7bb4e55` y `dab1cc4` (E2E del preview), `59bf09d`, `43b4f09` y `561ae32` (E2E del stack). Los merges de los worktrees de los agentes del front van en el `git log`, no aquí.
+- **Correcciones de validación:** `3c7db38` (evidencia V2 a V8), `7bb4e55` y `dab1cc4` (E2E del preview), `ece2f4e`, `5d2b4d1` y `958a070` (E2E del stack; en el cuaderno aparecen con sus hashes previos a la reescritura del trailer: `59bf09d`, `43b4f09`, `561ae32`). Los merges de los worktrees de los agentes del front van en el `git log`, no aquí.
 
 ### Conteos finales
 
-- **API** (sin cambios en `api/` desde `7962caa`): **3.883 pruebas en verde** (1.517 y 2.366, en las dos mitades de la suite con `-m "not perf"`), **3 saltadas** por NTFS, **8 `perf`** fuera de los gates. Fuente: "Fase 4 · Backend" y "V10 · Corrección" del cuaderno. Cobertura global de `app`: **[pendiente de cita: el cuaderno no registra la cifra]**.
+- **API** (sin cambios en `api/` desde `7962caa`): **3.883 pruebas en verde** (1.517 y 2.366, en las dos mitades de la suite con `-m "not perf"`), **3 saltadas** por NTFS, **8 `perf`** fuera de los gates. Fuente: "Fase 4 · Backend" y "V10 · Corrección" del cuaderno. Cobertura global de `app`: **97 %** (6.835 sentencias, 165 sin cubrir; fuente: bloque "V9.1 · `run-gates.sh` completo y V12 · higiene" del cuaderno).
 - **Front** (sin cambios en `web/` desde `6c98eb6`, tras la migración a Zod 4): **156 archivos y 2.788 pruebas en verde**. Cobertura: 97,98 % de sentencias, 94,56 % de ramas, 97,09 % de funciones y 98,87 % de líneas. Build: `main` 418,30 kB y el chunk `zod` 92,05 kB. Fuente: "V9 · Migración a Zod 4" del cuaderno del front.
-- **`run-gates.sh` en verde el 2026-10-28:** **[pendiente de cita: el cuaderno no registra esa corrida; la última registrada es V10 para la API y la migración a Zod 4 para el front]**.
+- **`run-gates.sh` en verde el 2026-10-28:** corrida por el orquestador sobre `aacd8b0` (mismo código que el HEAD final): api 3.883 ok con 97 % de cobertura, front 2.788 ok, lint, tsc, build y scripts de infraestructura en verde, salida `run-gates: todos los gates en verde`. Fuente: bloque "V9.1 · `run-gates.sh` completo y V12 · higiene" del cuaderno.
 
 ### Validación V2 a V8, V9 y final
 
@@ -482,12 +482,12 @@ Cada slice tiene su checkpoint (`chore(checkpoint)`). Los 20 slices del plan est
 21. El buscador del panel de pagos ofrece al socio inactivo (S3-D99). Se desvía de la indicación de deshabilitarlo porque el API lo acepta.
 22. Ordenación "Vencimiento más próximo" fuera de v0.1 (S3-D98).
 
-### Hallazgos abiertos (no cerrados en este documento)
+### Hallazgos que quedaron sin dueño al redactar este documento (resueltos en `8ef1a91`)
 
-- **W0-2 MEDIUM-1:** `25P03` y los cortes del servidor quedan como 500 en lugar de 503. No se aplicó, y el texto de S3-W0-2 no nombra dueño. **Pendiente de decisión del orquestador** (aceptar con dueño o abrir un slice).
-- **W0-2 MEDIUM-2:** un fallo al escribir `crypto_ops` durante el rollback tras un 55P03 da 500 en lugar de 503. No se aplicó y no nombra dueño. **Pendiente de la misma decisión.**
-- **S3-D98 (ordenación por vencimiento):** no entra en v0.1 y ningún sprint posterior la recoge. **Pendiente de dueño.**
-- **Pendientes de diseño de BRECHAS §10** (por ejemplo "Guardar y vender membresía", estilo de "Cancelada", "Ocultar anulados" y el selector de mes de pagos): figuran como "Pendiente de diseño" sin dueño nombrado. **Pendiente de dueño.**
+- **W0-2 MEDIUM-1:** `25P03` y los cortes del servidor quedan como 500 en lugar de 503. Aceptado con dueño **S4B-W0-2** (DECISIONES, "Dueños asignados al cierre del Sprint 3").
+- **W0-2 MEDIUM-2:** un fallo al escribir `crypto_ops` durante el rollback tras un 55P03 da 500 en lugar de 503. Aceptado con dueño **S4B-W0-2** (misma sección de DECISIONES).
+- **S3-D98 (ordenación por vencimiento):** no entra en v0.1; dueño: **revisión de diseño previa al Sprint 4A** (análisis de impacto del Sprint 4A).
+- **Pendientes de diseño de BRECHAS §10** (por ejemplo "Guardar y vender membresía", estilo de "Cancelada", "Ocultar anulados" y el selector de mes de pagos): figuran como "Pendiente de diseño"; dueño: **revisión de diseño previa al Sprint 4A** con `docs/design/` como fuente de verdad.
 - **Observación de V9:** el 413 de Nginx sale en HTML y no con el envelope JSON. El front lo trata como error genérico. Se anotó para cuando lleguen los adjuntos (v0.3).
 
 ### Deuda con dueño

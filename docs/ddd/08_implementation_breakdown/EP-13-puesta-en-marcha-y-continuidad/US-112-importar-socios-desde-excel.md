@@ -157,7 +157,7 @@ Ninguna.
 - [ ] `cd api && uv run ruff check . && uv run ruff format --check .`
 - [ ] `cd api && uv run mypy src`
 - [ ] `cd api && uv run pytest tests/cli/test_members_xlsx_parse.py tests/cli/test_import_members.py -q`
-- [ ] `cd api && uv run pytest tests/cli/test_import_members_perf.py -q -m slow`
+- [ ] `cd api && uv run pytest tests/cli/test_import_members_perf.py -q -m perf`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd api && uv run pip-licenses --allow-only="MIT;BSD;Apache;PostgreSQL" | grep -i openpyxl` muestra MIT
 - [ ] `uv run python -m app.cli import-members tests/fixtures/socios-3.xlsx --as dueno@apex.co` dos veces: la segunda imprime 0 creados y 3 omitidos

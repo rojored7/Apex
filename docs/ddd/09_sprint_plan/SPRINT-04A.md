@@ -100,7 +100,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
   - **Gate:** `slice-gate.sh worker` y `slice-gate.sh core/jobs`, cada uno con sus archivos, más el ciclo de Alembic.
 - **Slice S4A-B2 · Job diario de vencimientos.** Historia: US-094.
   - **Rojo:**
-    - `tests/worker/test_expirations.py`, también con `-m slow`;
+    - `tests/worker/test_expirations.py`, también con `-m perf`;
     - `tests/cli/test_recompute_memberships.py`.
   - **Verde:**
     - `recompute_statuses(today)` por lotes, con `today_bogota()`;
@@ -202,7 +202,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
 
 - E2E de `home.spec.ts` y de todos los specs anteriores.
 - `--run-once expirations` dos veces el mismo día.
-- Prueba de rendimiento de la verificación de la cadena (`-m slow`).
+- Prueba de rendimiento de la verificación de la cadena (`-m perf`).
 - Paso humano: push y PR.
 
 ## Migraciones que aplica

@@ -107,7 +107,7 @@ Patrón de v0.1 en cada slice:
 - **Slice S4B-B1 · Datos de demostración e importación.** Historias: US-111 y US-112.
   - Rojo:
     - `tests/cli/test_demo_dataset.py`, `test_seed_demo.py` y `test_seed_cli.py`;
-    - `tests/cli/test_members_xlsx_parse.py`, `test_import_members.py` y `test_import_members_perf.py` (`-m slow`).
+    - `tests/cli/test_members_xlsx_parse.py`, `test_import_members.py` y `test_import_members_perf.py` (`-m perf`).
   - Verde:
     - `cli seed --demo`, idempotente, que llama a `sell` con `max_retroactive_days=None`;
     - `cli import-members`:

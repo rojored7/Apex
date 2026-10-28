@@ -62,6 +62,21 @@ describe("exigirStackLocal (V10 L-D)", () => {
     expect(specs.filter((name) => readFileSync(new URL(name, dir), "utf8").includes("crearCoach(")).length).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
+
+  it("toda spec que crea una cuenta desde la pantalla la borra en un finally y no deriva su contraseña de la hora", () => {
+    // users-manage.spec.ts prueba justamente la baja por la pantalla y su cuenta nunca se activa.
+    const BORRA_POR_LA_PANTALLA = new Set(["users-manage.spec.ts"]);
+    const dir = new URL("../e2e/stack/", import.meta.url);
+    const specs = readdirSync(dir).filter((name) => name.endsWith(".spec.ts") && !BORRA_POR_LA_PANTALLA.has(name));
+    const conAlta = specs.filter((name) => readFileSync(new URL(name, dir), "utf8").includes('name: "Crear usuario"'));
+    const offenders = conAlta.filter((name) => {
+      const source = readFileSync(new URL(name, dir), "utf8");
+      return !/finally \{[^}]*borrarUsuario\(/s.test(source) || /PASSWORD = `[^`]*\$\{RUN\}/.test(source);
+    });
+
+    expect(conAlta).toContain("users-activation.spec.ts");
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe("nombrePlanE2E (validación final del Sprint 3)", () => {

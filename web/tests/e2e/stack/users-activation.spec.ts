@@ -7,13 +7,14 @@
 // Idempotente: correo y contraseña únicos por corrida (V4 corre las specs dos veces).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { esperarTransiciones, loginComo } from "../helpers/stack";
+import { borrarUsuario, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const RUN = Date.now().toString(36);
 const COACH_EMAIL = `coach-activa-${RUN}@apex.test`;
-const COACH_PASSWORD = `Coach-activa-${RUN}-e2e!`;
+// Validación final del Sprint 3: aleatoria (antes salía de la hora) y la cuenta se borra al terminar.
+const COACH_PASSWORD = `Coach-activa-${crypto.randomUUID()}-e2e!`;
 
 async function axeViolations(page: Page): Promise<string[]> {
   await esperarTransiciones(page);
@@ -35,66 +36,75 @@ test.describe("alta y activación de un coach contra el stack", () => {
     await expect(page.getByRole("table", { name: "Usuarios" })).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
 
-    await page.getByRole("button", { name: "Nuevo usuario del equipo" }).click();
-    const panel = page.getByRole("dialog", { name: "Nuevo usuario del equipo" });
-    await panel.getByRole("textbox", { name: /^Correo/ }).fill(COACH_EMAIL);
-    await panel.getByRole("combobox", { name: /^Rol/ }).selectOption("coach");
-    await panel.getByRole("button", { name: "Crear usuario" }).click();
+    let coachId: string | null = null;
+    try {
+      await page.getByRole("button", { name: "Nuevo usuario del equipo" }).click();
+      const panel = page.getByRole("dialog", { name: "Nuevo usuario del equipo" });
+      await panel.getByRole("textbox", { name: /^Correo/ }).fill(COACH_EMAIL);
+      await panel.getByRole("combobox", { name: /^Rol/ }).selectOption("coach");
+      const creado = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/users");
+      await panel.getByRole("button", { name: "Crear usuario" }).click();
+      const respuesta = await creado;
+      expect(respuesta.status()).toBe(201);
+      coachId = ((await respuesta.json()) as { user: { id: string } }).user.id;
 
-    const linkBox = panel.getByRole("textbox", { name: "Enlace de activación" });
-    await expect(linkBox).toBeVisible();
-    await expect(panel.getByText("Entrega este enlace por un medio seguro; vence en 72 horas.")).toBeVisible();
-    const link = await linkBox.inputValue();
-    expect(link).toMatch(/\/restablecer\/[A-Za-z0-9_-]{20,}$/);
-    await panel.getByRole("button", { name: "Copiar" }).click();
-    await expect(panel.getByText("Enlace copiado.")).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
-    expect(await axeViolations(page)).toEqual([]);
+      const linkBox = panel.getByRole("textbox", { name: "Enlace de activación" });
+      await expect(linkBox).toBeVisible();
+      await expect(panel.getByText("Entrega este enlace por un medio seguro; vence en 72 horas.")).toBeVisible();
+      const link = await linkBox.inputValue();
+      expect(link).toMatch(/\/restablecer\/[A-Za-z0-9_-]{20,}$/);
+      await panel.getByRole("button", { name: "Copiar" }).click();
+      await expect(panel.getByText("Enlace copiado.")).toBeVisible();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+      expect(await axeViolations(page)).toEqual([]);
 
-    // Al cerrar, el enlace ya no está en la página.
-    await panel.getByRole("button", { name: "Listo" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(await page.content()).not.toContain(link);
+      // Al cerrar, el enlace ya no está en la página.
+      await panel.getByRole("button", { name: "Listo" }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(await page.content()).not.toContain(link);
 
-    // El coach aparece pendiente de activación (la búsqueda nunca va a la URL, S2-D41).
-    await page.getByRole("searchbox", { name: "Buscar" }).fill(COACH_EMAIL);
-    const row = page.getByRole("row").filter({ hasText: COACH_EMAIL });
-    await expect(row.getByText("Pendiente de activación")).toBeVisible();
-    expect(page.url()).not.toContain("coach-activa");
+      // El coach aparece pendiente de activación (la búsqueda nunca va a la URL, S2-D41).
+      await page.getByRole("searchbox", { name: "Buscar" }).fill(COACH_EMAIL);
+      const row = page.getByRole("row").filter({ hasText: COACH_EMAIL });
+      await expect(row.getByText("Pendiente de activación")).toBeVisible();
+      expect(page.url()).not.toContain("coach-activa");
 
-    // 2. Otra ventana, sin la sesión del admin: activar con el enlace.
-    const coachContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const coach = await coachContext.newPage();
-    await coach.goto(new URL(link).pathname);
-    await expect(coach.getByRole("heading", { level: 1, name: "Nueva contraseña" })).toBeVisible();
-    await expect.poll(() => new URL(coach.url()).pathname).toBe("/restablecer");
-    expect(await axeViolations(coach)).toEqual([]);
+      // 2. Otra ventana, sin la sesión del admin: activar con el enlace.
+      const coachContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const coach = await coachContext.newPage();
+      await coach.goto(new URL(link).pathname);
+      await expect(coach.getByRole("heading", { level: 1, name: "Nueva contraseña" })).toBeVisible();
+      await expect.poll(() => new URL(coach.url()).pathname).toBe("/restablecer");
+      expect(await axeViolations(coach)).toEqual([]);
 
-    await coach.getByLabel(/^Contraseña nueva/).fill(COACH_PASSWORD);
-    await coach.getByLabel(/^Repite la contraseña nueva/).fill(COACH_PASSWORD);
-    await coach.getByRole("button", { name: "Guardar contraseña" }).click();
-    await expect(coach.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
-    await expect(coach.getByText("Tu contraseña quedó guardada. Inicia sesión con ella.")).toBeVisible();
+      await coach.getByLabel(/^Contraseña nueva/).fill(COACH_PASSWORD);
+      await coach.getByLabel(/^Repite la contraseña nueva/).fill(COACH_PASSWORD);
+      await coach.getByRole("button", { name: "Guardar contraseña" }).click();
+      await expect(coach.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
+      await expect(coach.getByText("Tu contraseña quedó guardada. Inicia sesión con ella.")).toBeVisible();
 
-    // 3. El coach entra a / y su menú no tiene Usuarios ni Configuración.
-    await coach.getByRole("textbox", { name: "Correo" }).fill(COACH_EMAIL);
-    await coach.getByLabel("Contraseña").fill(COACH_PASSWORD);
-    await coach.getByRole("button", { name: "Entrar" }).click();
-    await expect.poll(() => new URL(coach.url()).pathname).toBe("/");
-    const nav = coach.getByRole("navigation", { name: "Menú principal" });
-    await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Usuarios y roles" })).toHaveCount(0);
-    await expect(nav.getByRole("link", { name: "Configuración" })).toHaveCount(0);
-    expect(await axeViolations(coach)).toEqual([]);
+      // 3. El coach entra a / y su menú no tiene Usuarios ni Configuración.
+      await coach.getByRole("textbox", { name: "Correo" }).fill(COACH_EMAIL);
+      await coach.getByLabel("Contraseña").fill(COACH_PASSWORD);
+      await coach.getByRole("button", { name: "Entrar" }).click();
+      await expect.poll(() => new URL(coach.url()).pathname).toBe("/");
+      const nav = coach.getByRole("navigation", { name: "Menú principal" });
+      await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Usuarios y roles" })).toHaveCount(0);
+      await expect(nav.getByRole("link", { name: "Configuración" })).toHaveCount(0);
+      expect(await axeViolations(coach)).toEqual([]);
 
-    // El enlace ya se usó: abrirlo otra vez no sirve.
-    const again = await coachContext.newPage();
-    await again.goto(new URL(link).pathname);
-    await again.getByLabel(/^Contraseña nueva/).fill(`${COACH_PASSWORD}2`);
-    await again.getByLabel(/^Repite la contraseña nueva/).fill(`${COACH_PASSWORD}2`);
-    await again.getByRole("button", { name: "Guardar contraseña" }).click();
-    await expect(again.getByRole("alert")).toHaveText("El enlace ya no es válido. Pide uno nuevo al administrador.");
+      // El enlace ya se usó: abrirlo otra vez no sirve.
+      const again = await coachContext.newPage();
+      await again.goto(new URL(link).pathname);
+      await again.getByLabel(/^Contraseña nueva/).fill(`${COACH_PASSWORD}2`);
+      await again.getByLabel(/^Repite la contraseña nueva/).fill(`${COACH_PASSWORD}2`);
+      await again.getByRole("button", { name: "Guardar contraseña" }).click();
+      await expect(again.getByRole("alert")).toHaveText("El enlace ya no es válido. Pide uno nuevo al administrador.");
 
-    await coachContext.close();
+      await coachContext.close();
+    } finally {
+      if (coachId) await borrarUsuario(page, coachId);
+    }
   });
 });

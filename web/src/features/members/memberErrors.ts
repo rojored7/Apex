@@ -217,3 +217,28 @@ export function duplicatedMemberId(error: unknown): string | null {
   if (!isApiError(error) || error.status !== HTTP_CONFLICT || error.code !== API_ERROR_CODES.memberDocumentDuplicated) return null;
   return error.existingId ?? null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// S4A-F2 · US-106: el historial de la ficha (pestaña y caja "Historial reciente"). 429 de la cubeta
+// `staff-read` (S4A-D45), 404 del socio, 403, 5xx, red, base ocupada y respuesta inválida.
+export const HISTORY_MESSAGES = {
+  tooMany: "Demasiadas consultas; espera un momento",
+  notFound: "Este socio ya no existe. Vuelve a la lista de socios.",
+  forbidden: "No tienes permiso para ver el historial de este socio. Si lo necesitas, pídeselo a un administrador.",
+  failed: "No pudimos cargar el historial. Intenta de nuevo en un momento.",
+  loadMoreFailed: "No pudimos cargar más entradas del historial. Intenta de nuevo.",
+} as const;
+
+/** El error del historial como ApiError con el mensaje de la pantalla (HistoryAside pinta su `message`). */
+export function historyError(error: unknown): ApiError | null {
+  return toScreenError(
+    error,
+    (e) => statusMessage(e, { tooMany: () => HISTORY_MESSAGES.tooMany, notFound: HISTORY_MESSAGES.notFound, forbidden: HISTORY_MESSAGES.forbidden, generic: HISTORY_MESSAGES.failed }),
+    HISTORY_MESSAGES.failed,
+  );
+}
+
+/** Revisión S4A-F2 (LOW-1): un `:id` sin forma de UUID no se pide al api; la pestaña dice que no existe. */
+export function historyNotFoundError(): ApiError {
+  return new ApiError({ status: HTTP_NOT_FOUND, code: CLIENT_ERROR_CODES.unknown, message: HISTORY_MESSAGES.notFound });
+}

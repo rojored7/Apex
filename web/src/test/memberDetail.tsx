@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { SessionRoleProvider } from "../core/auth";
 import MemberDataTab from "../features/members/components/MemberDataTab";
+import MemberHistoryTab from "../features/members/components/MemberHistoryTab";
 import MemberMembershipsTab from "../features/memberships/components/MemberMembershipsTab";
 import MemberPaymentsTab from "../features/payments/components/MemberPaymentsTab";
 import { MemberSensitiveField, type MemberSensitiveFieldProps } from "../features/members/components/MemberSensitiveField";
@@ -136,6 +137,8 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
     // S3-F7: las pestañas Membresías y Pagos (rutas hijas) piden lo suyo; por defecto, vacías.
     [`GET ${DETAIL_PATH}/memberships`]: emptyPage,
     [`GET ${DETAIL_PATH}/payments`]: emptyPage,
+    // S4A-F2: la caja "Historial reciente" de Datos y la pestaña Historial; por defecto, vacías.
+    [`GET ${DETAIL_PATH}/audit`]: emptyPage,
     "GET /payments/methods": ok({ items: [] }),
     ...handlers,
   });
@@ -149,6 +152,7 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
           { index: true, element: <MemberDataTab /> },
           { path: "/socios/:id/membresias", element: <MemberMembershipsTab /> },
           { path: "/socios/:id/pagos", element: <MemberPaymentsTab /> },
+          { path: "/socios/:id/historial", element: <MemberHistoryTab /> },
         ],
       },
       { path: "/socios/:id/editar", element: shell(<MemberFormPage />) },

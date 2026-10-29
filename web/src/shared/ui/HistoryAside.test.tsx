@@ -1,5 +1,5 @@
 // US-066 T5 y T7: historial del registro. Criterio diferido: la feature lo conecta a
-// GET /members/{id}/audit en US-106.
+// GET /members/{id}/audit en US-106 (S4A-F2: frase, propósito, "Cargar más" y pie con el enlace).
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "../../core/api/errors";
@@ -131,5 +131,72 @@ describe("HistoryAside", () => {
     );
 
     expect(screen.getByRole("listitem")).toHaveTextContent("Socio · eliminóAna P. · 20 oct 2026, 10:00 a. m.");
+  });
+});
+
+describe("HistoryAside · S4A-F2 (frase, propósito, botón y pie)", () => {
+  const phrased: AuditEntryView = {
+    id: "p1",
+    at: "2026-10-21T02:30:00Z",
+    actor_id: "u1",
+    actor_name: "ana",
+    entity: "members.members",
+    action: "update",
+    fields: ["phone", "email"],
+    phrase: "ana editó teléfono y correo",
+  };
+
+  it("pinta la frase como línea fuerte y la entidad con la fecha debajo, sin repetir el resumen", () => {
+    render(<HistoryAside entries={[phrased]} total={1} onLoadMore={noop} />);
+    const item = screen.getByRole("listitem");
+
+    expect(within(item).getByText("ana editó teléfono y correo").tagName).toBe("B");
+    expect(item).toHaveTextContent("Socio · 20 oct 2026, 9:30 p. m.");
+    expect(item).not.toHaveTextContent("Cambió:");
+    expect(item).not.toHaveTextContent("Socio · modificó");
+  });
+
+  it("una entrada con propósito lleva la etiqueta 'automático (aviso)'; sin propósito no", () => {
+    render(
+      <HistoryAside
+        entries={[
+          { ...phrased, id: "p2", action: "reveal", fields: ["phone"], phrase: "Sistema mostró el teléfono", purpose: "notify" },
+          { ...phrased, id: "p3", purpose: null },
+        ]}
+        total={2}
+        onLoadMore={noop}
+      />,
+    );
+    const [auto, manual] = screen.getAllByRole("listitem") as [HTMLElement, HTMLElement];
+
+    expect(auto).toHaveTextContent("Sistema mostró el teléfono");
+    expect(within(auto).getByText("automático (aviso)")).toBeInTheDocument();
+    expect(manual).not.toHaveTextContent("automático (aviso)");
+  });
+
+  it("una frase con HTML se ve literal (sin innerHTML)", () => {
+    render(<HistoryAside entries={[{ ...phrased, phrase: "<b>ana</b> editó <img src=x onerror=alert(1)>" }]} total={1} onLoadMore={noop} />);
+    const item = screen.getByRole("listitem");
+
+    expect(item).toHaveTextContent("<b>ana</b> editó <img src=x onerror=alert(1)>");
+    expect(item.querySelector("img")).toBeNull();
+    expect(item.querySelectorAll("b")).toHaveLength(1);
+  });
+
+  it("moreLabel cambia el texto del botón de la página siguiente", async () => {
+    const onLoadMore = vi.fn();
+    render(<HistoryAside entries={ENTRIES} total={10} onLoadMore={onLoadMore} moreLabel="Cargar más" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Cargar más" }));
+
+    expect(onLoadMore).toHaveBeenCalledWith(3);
+    expect(screen.queryByRole("button", { name: "Ver más" })).not.toBeInTheDocument();
+  });
+
+  it("footer se pinta al final del aside", () => {
+    render(<HistoryAside entries={ENTRIES} total={3} onLoadMore={noop} footer={<a href="/socios/x/historial">Ver historial completo →</a>} />);
+
+    const aside = screen.getByRole("complementary", { name: "Historial" });
+    expect(within(aside).getByRole("link", { name: "Ver historial completo →" })).toHaveAttribute("href", "/socios/x/historial");
   });
 });

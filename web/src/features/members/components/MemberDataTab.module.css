@@ -58,3 +58,37 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* S4A-F2: Datos a la izquierda y "Historial reciente" a la derecha en escritorio; con poco ancho el
+   aside salta al final (flex con salto, como Socio_Ficha.html). */
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.layout > .tab {
+  flex: 999 1 420px;
+}
+
+.side {
+  flex: 1 1 280px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Enlace sobre --surface: --ink con subrayado (contraste AA en los dos temas, lección de S2-F6). */
+.historyLink {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  color: var(--ink);
+  font: var(--text-caption);
+  text-decoration: underline;
+}
+
+.historyLink:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}

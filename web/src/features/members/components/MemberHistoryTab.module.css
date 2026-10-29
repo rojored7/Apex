@@ -1,0 +1,18 @@
+/* S4A-F2: pestaña Historial de Socio_Ficha.html (HistoryAside a todo el ancho). Solo tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}

@@ -75,3 +75,20 @@
   outline: 3px solid var(--blue-deep);
   outline-offset: 2px;
 }
+
+/* S4A-F2: la frase (o entidad y acción) con la etiqueta "automático (aviso)" al lado si cabe. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.purpose {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: var(--text-caption);
+  white-space: nowrap;
+}

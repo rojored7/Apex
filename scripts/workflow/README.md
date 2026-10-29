@@ -10,7 +10,7 @@ Gate de un slice. Con lista de archivos corre solo esos archivos más `tests/arc
 - front: `npx eslint` solo sobre los archivos que toca el slice (`git diff --name-only` contra la base del slice, más los archivos sin seguimiento y la lista recibida); `npx tsc --noEmit -p tsconfig.slice.json`, donde `tsconfig.slice.json` es un archivo temporal que extiende `tsconfig.json` con `include` = carpetas del módulo más los archivos del slice (pasar archivos sueltos a `tsc` ignora `tsconfig.json`); y `npx vitest run` sobre los archivos de prueba de la lista (o las carpetas del módulo si no hay lista). La base del slice es `SLICE_BASE` si está definida, o `git merge-base HEAD main`.
 
 Mapeo de módulos (A-01):
-- `core/<x>`: `api/src/app/core/<x>.py` o `api/src/app/core/<x>/`; pruebas en `api/tests/core`. Ejemplos del Sprint 4A: `core/jobs`, `core/alerts`, `core/audit_verify` (con lista, sus pruebas pueden vivir en `tests/worker/` o `tests/migrations/`).
+- `core/<x>`: `api/src/app/core/<x>.py` o `api/src/app/core/<x>/`; pruebas en `api/tests/core`. Ejemplos del Sprint 4A: `core/jobs`, `core/alerts`, `core/audit_verify` (con lista, sus pruebas pueden vivir en `tests/worker/` o `tests/migrations/`). Ejemplos del Sprint 4B: `core/config`, `core/backup_status`, `core/migrations_status` (valen en cuanto el Rojo crea el archivo) y `crypto` (cubre `core/crypto/archive.py`, `kek_backup.py`, `service.py`; `core/<x>` admite un solo nivel, así que `core/crypto/archive` no vale).
 - `crypto`: `api/src/app/core/crypto/`; pruebas en `api/tests/crypto`.
 - `main`: `api/src/app/main.py`; pruebas en `api/tests/core`.
 - `worker`: `api/src/app/worker/`; pruebas en `api/tests/worker` (`slice-gate.sh worker tests/worker/test_runner.py ...`; el directorio lo crea el Rojo de S4A-B1).
@@ -24,6 +24,18 @@ Nombre válido: `^(web/)?[a-z][a-z0-9_-]*(/[a-z][a-z0-9_-]*)*$`. Cada archivo de
 El mapeo es genérico, sin lista fija de módulos (S3-D61): `memberships`, `payments`, `web/memberships` y `web/payments` funcionan en cuanto existen sus directorios, que crea el Rojo del primer slice de cada uno. Antes, el gate falla con `módulo inexistente: api/src/app/modules/memberships` y no deja sello. Antes de cada línea de gate con lista se hace `ls` de cada archivo (E4 del plan del Sprint 3): un archivo ausente aborta con "archivo inexistente".
 
 En verde escribe `.git/apex/slice-gate.ok` con el módulo y una huella del árbol de trabajo (`git diff HEAD` más los archivos sin seguimiento con su `hash-object`, resumidos con `git hash-object --stdin`).
+
+## wave0-gate.sh `<slice> [archivos de prueba de Python...]` (Sprint 4B, S4B-D52 y S4B-D82)
+
+Gate de los slices de Wave 0 (infraestructura). Corre `bash -n` de cada `.sh` de `infra/`, `scripts/ci` y `scripts/workflow`; `test_check_key_files`, `test_images_pinned`, `test_nginx_conf`, `test_compose_config`, `test_infra_scripts` y `test_api_image.sh apex-api:local` (omitible con `WAVE0_SKIP_IMAGE=1`, solo para probar el script); `docker compose config --quiet` en cuatro combinaciones (`compose.yml`, con `--profile tools`, con `compose.verify.yml` y con `compose.dev.yml`); y **termina con `exec scripts/workflow/slice-gate.sh architecture [archivos...]`**, que es quien escribe el sello (así `checkpoint-commit.sh` no cambia). Como `architecture` no corre `ruff` ni `mypy`, todo slice de Wave 0 que toque Python corre antes `slice-gate.sh <modulo>` del módulo tocado (W0-1: `core/config`); `wave0-gate.sh` es el último comando que toca el árbol. Regla: los W0 sellan con `wave0-gate.sh`.
+
+Ejemplo:
+```
+bash scripts/workflow/slice-gate.sh core/config tests/core/test_config.py tests/core/test_env_example.py
+bash scripts/workflow/wave0-gate.sh W0-1 tests/core/test_env_example.py tests/core/test_config.py
+```
+
+Mapeo futuro de `cli` (B0, S4B-D28): `cli` pasará a lintear, formatear y tipar la lista de lo que exista entre `src/app/cli.py` (obligatorio), `cli_base.py`, `cli_ops/`, `seed/` e `imports/`; `seed` e `imports` no son módulos de negocio.
 
 ## checkpoint-commit.sh `"<mensaje>"`
 

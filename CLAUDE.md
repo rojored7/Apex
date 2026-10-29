@@ -48,7 +48,7 @@ apex/
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
           digest.py      #   SHA-256 sin dependencias (lo usa core/audit)
-          archive.py     #   digest_file() y verify_age_archive() sobre el binario age
+          archive.py     #   digest_file() y respaldo de la KEK con age -p (S4B-D20, D58)
       modules/
         auth/        router.py schemas.py models.py service.py exceptions.py
                      rules.py tokens.py cookies.py   # ayudas privadas del módulo (S2-D4)
@@ -88,8 +88,10 @@ apex/
     compose.yml
     compose.dev.yml
     compose.e2e.yml      # solo E2E (V4): zona de limit_req alta para Nginx
+    compose.verify.yml   # solo backup: monta la identidad age de verificación (S4B-D59)
     nginx/default.conf
-    backup/              # Dockerfile y script de pg_dump cifrado
+    backup/              # Dockerfile (postgres:16-alpine + age, minisign, rclone, supercronic), run.sh, lib.sh,
+                         # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro); restore.sh llega en 4B-B3a
     openbao/             # config.hcl (desde v0.2)
   docs/
     PLAN.md              # referencia original del backend
@@ -98,6 +100,7 @@ apex/
     openapi.json         # contrato exportado del API
     adr/                 # ADR-001-arquitectura.md, ADR-002-criptografia.md, ...
   .env.example
+  .env.ops.example       # variables de operación (respaldo, firma, roles de base, red); la copia .env.ops no se versiona
   .env.seed.example      # ADMIN_* del primer seed; la copia .env.seed solo la lee tools
   .pre-commit-config.yaml
   .github/workflows/ci.yml
@@ -125,7 +128,7 @@ apex/
 
 ## El bus de criptografía (`core/crypto/`)
 
-1. Única puerta: `encrypt(data_class, plaintext, aad)`, `decrypt(blob, aad)`, `blind_index(data_class, value)`, `sign(data_class, data)`, `verify(data_class, data, signature)`, más `digest(data)` (SHA-256 para la cadena de auditoría, en `core/crypto/digest.py`) y, desde v0.2, `digest_file(path)` y `verify_age_archive(path, identity)` en `core/crypto/archive.py`.
+1. Única puerta: `encrypt(data_class, plaintext, aad)`, `decrypt(blob, aad)`, `blind_index(data_class, value)`, `sign(data_class, data)`, `verify(data_class, data, signature)`, más `digest(data)` (SHA-256 para la cadena de auditoría, en `core/crypto/digest.py`) y `digest_file(path)` más las funciones de respaldo de la KEK (`age -p` por `subprocess`) en `core/crypto/archive.py`, que existen desde v0.1 (S4B-D20, D58; no hay `verify_age_archive`: la verificación de descifrado de los respaldos la hace el servicio `backup`).
 2. `data_class` es un string como `member.document`; decide la llave. El que llama nunca elige llave ni algoritmo.
 3. Envelope: KEK en el `KeyProvider`; DEK por `data_class`, envuelta en la tabla `crypto_keys`, abierta en memoria al arrancar. Campos en AES-256-GCM con `aad = id del registro`.
 4. Formato del blob (texto): `apx1.<key_id>.<alg>.<nonce_b64url>.<ciphertext_b64url>`. `alg` en v0.1 es `A256GCM`. El algoritmo va en el dato, no en el código.
@@ -140,7 +143,7 @@ apex/
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
 - Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo las ocho entradas de `PUBLIC_ROUTES` (`core/security.py`): health (dos), login, refresh, logout (por cookie), forgot, reset y la TV con token de dispositivo.
 - Rate limit en login. Límite por usuario en las escrituras y lecturas caras (`USER_LIMITS` de `core/ratelimit.py`); desde S4A-B3 suma `USER_READ_LIMIT_PER_MIN` (cubeta `staff-read`), `USER_AUDIT_VERIFY_LIMIT_PER_MIN` y `USER_AUDIT_VERIFY_LIMIT_PER_HOUR` (cubetas de `POST /audit/verify`). CORS solo para el dominio del front.
-- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
+- Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`. **Dos archivos de ejemplo (S4B-D79):** `.env.example` (lo que lee `Settings`) y `.env.ops.example` (respaldo `BACKUP_*`, `RCLONE_CONFIG_APEX_*`, firma `BACKUP_SIGN_*`, `BACKUP_VERIFY_IDENTITY_FILE`, contraseñas de rol, red, `DEPLOY_HEALTH_TIMEOUT`; `.env.ops` no se versiona y desde 4B-W0-3 ningún servicio web lo lee entero). En W0-1 solo nace el segundo; `POSTGRES_*`, `DATABASE_URL` y los puertos pasan a él en W0-3. En desarrollo `.env` es la suma de los dos.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
 - 503 `busy` con `Retry-After: 1` cuando la base agota `lock_timeout`, `statement_timeout` o detecta un interbloqueo (Sprint 3, S3-D67); nunca un 500.
@@ -148,7 +151,7 @@ apex/
 
 ## Licencias
 
-Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros.
+Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros. Binarios de contenedor (no son dependencias de Python; bloque fijo de `NOTICE`): `age` BSD-3, `rclone` MIT, `supercronic` MIT, `minisign` ISC y `pg_dump` (licencia PostgreSQL) en la imagen `apex-backup`; `age` también en la del api. Dependencias nuevas del api en 4B: `openpyxl` (MIT) y `defusedxml` (PSF-2.0), solo bajo `imports/`.
 
 ## Calidad y Git
 

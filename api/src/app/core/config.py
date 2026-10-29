@@ -54,6 +54,28 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "API_PORT",
         "DB_PORT",
         "DB_TEST_PORT",
+        # S4B-W0-1 (S4B-D79): variables de operación de .env.ops.example; las lee Compose o el
+        # servicio backup, nunca Settings. Los nombres son exactamente los de ese archivo.
+        "BACKUP_KEEP_DAYS",
+        "BACKUP_CRON",
+        "BACKUP_AGE_RECIPIENT",
+        "BACKUP_AGE_VERIFY_RECIPIENT",
+        "BACKUP_RCLONE_REMOTE",
+        "RCLONE_CONFIG_APEX_TYPE",
+        "RCLONE_CONFIG_APEX_PROVIDER",
+        "RCLONE_CONFIG_APEX_ENDPOINT",
+        "RCLONE_CONFIG_APEX_ACCESS_KEY_ID",
+        "RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY",
+        "BACKUP_SIGN_PUBKEY",
+        "BACKUP_SIGN_KEY_FILE",
+        "BACKUP_VERIFY_IDENTITY_FILE",
+        "DEPLOY_HEALTH_TIMEOUT",
+        "APEX_API_DB_PASSWORD",
+        "APEX_WORKER_DB_PASSWORD",
+        "APEX_BACKUP_DB_PASSWORD",
+        "APEX_SUBNET",
+        "APEX_IP_RANGE",
+        "APEX_WEB_IP",
     }
 )
 

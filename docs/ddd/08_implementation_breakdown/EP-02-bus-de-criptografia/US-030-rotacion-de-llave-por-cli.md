@@ -1,5 +1,13 @@
 # US-030 · Rotación de llave por CLI — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - READY. Los blobs cifrados de `audit_log` entran como conteo confirmado en `retire-key`: la persona confirma el conteo antes de retirar la llave.
+> - El recifrado deja `rotated_by`, y el actor se resuelve con `resolve_admin_actor` (`--as <email>`).
+> - `rotate-key` cierra en `decrypt_only` (corrige el criterio 4, "hasta `retired`"); el retiro es el comando aparte `retire-key`.
+> - El argumento de `rotate-key` es posicional (`rotate-key member.document --reason ... --as ...`), no `--data-class`.
+> - La prueba es `api/tests/cli/test_rotate_key_cli.py` (antes `tests/test_cli_rotate_key.py`).
+> - Sin `--db-timeouts off`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-02-bus-de-criptografia/US-030-rotacion-de-llave-por-cli.md`
 - **Épica:** EP-02 · Bus de criptografía y cifrado de datos personales
 - **Bounded context / módulo:** Crypto (`api/src/app/core/crypto/service.py`, `api/src/app/core/crypto/discovery.py`, `api/src/app/cli.py`)
@@ -78,7 +86,7 @@ El flujo de rotación, el lote de 500, la reanudación, la exclusión de rotacio
 - [ ] T12 · `api/tests/crypto/test_rotate.py` con 1.200 filas del modelo de prueba de US-028: rotación completa (versión 2 `active`, 3 lotes, `done = 1200`, versión 1 `retired`, todos se leen, ninguna fila con el `key_id` anterior); lectura durante el recifrado tras el primer lote; interrupción simulada tras el lote 1 y nueva ejecución que continúa sin crear versión 3 ni recifrar de nuevo (se compara el blob de las filas ya migradas); falla inyectada en el lote 2 deja `failed`, versión 1 en `decrypt_only` y datos legibles; `crypto_ops` con una fila `rotate` y filas de lote con `count`; entradas de auditoría con el motivo — 6 h
 - [ ] T13 · `api/tests/crypto/test_rotate_concurrency.py`: dos sesiones; con el candado tomado, la segunda falla con "rotación en curso" y no crea llave; una escritura del API con `FOR SHARE` en curso hace esperar la transacción de rotación y su fila queda con la llave nueva o es recifrada antes del retiro — 2,5 h
 - [ ] T14 · `api/tests/crypto/test_rotate_index.py`: `--index` cambia todos los `document_idx`, la búsqueda por el valor normalizado encuentra el registro con la llave nueva, la llave `index` anterior queda `retired`, `--index` sin datos funciona — 1,5 h
-- [ ] T15 · `api/tests/test_cli_rotate_key.py`: sin `--reason` sale con código distinto de 0 y no cambia llaves; `--as` de un usuario inexistente falla; salida informa el total antes de empezar — 1 h
+- [ ] T15 · `api/tests/cli/test_rotate_key_cli.py`: sin `--reason` sale con código distinto de 0 y no cambia llaves; `--as` de un usuario inexistente falla; salida informa el total antes de empezar — 1 h
 
 ### Tests de router
 - No aplica.
@@ -134,7 +142,7 @@ La suma queda en el borde alto del rango de 8 puntos (28-42 h) por la rotación 
 ## Definición de hecho
 - [ ] `cd api && uv run ruff check . && uv run ruff format --check .`
 - [ ] `cd api && uv run mypy src`
-- [ ] `cd api && uv run pytest tests/crypto/test_next_key_state.py tests/crypto/test_rotate.py tests/crypto/test_rotate_concurrency.py tests/crypto/test_rotate_index.py tests/test_cli_rotate_key.py -q`
+- [ ] `cd api && uv run pytest tests/crypto/test_next_key_state.py tests/crypto/test_rotate.py tests/crypto/test_rotate_concurrency.py tests/crypto/test_rotate_index.py tests/cli/test_rotate_key_cli.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] Tras `uv run python -m app.cli rotate-key member.document --reason "prueba"` en una base con datos: `SELECT version, state FROM crypto.crypto_keys WHERE purpose = 'encrypt' AND data_class = 'member.document' ORDER BY version` muestra `1 retired` y `2 active`; `SELECT status, done, total FROM crypto.crypto_jobs ORDER BY created_at DESC LIMIT 1` muestra `done` con `done = total`
 - [ ] `SELECT count(*) FROM members.members WHERE split_part(document, '.', 2) = '<key_id versión 1>'` devuelve 0 (cuando exista `members`, US-069)

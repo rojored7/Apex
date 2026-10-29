@@ -1,0 +1,10 @@
+# Identidad de verificación de respaldos (S4B-W0-1, S4B-D59). Se apila sobre compose.yml:
+#   docker compose --env-file .env -f infra/compose.yml -f infra/compose.verify.yml up -d backup
+# Monta la identidad age (BACKUP_VERIFY_IDENTITY_FILE, archivo 600 de uid 10001 en el
+# anfitrión, nunca en el repo) SOLO en el servicio backup: con ella un contenedor comprometido
+# abriría todos los respaldos locales, por eso ni api, worker ni tools la reciben. Su recipiente
+# público va en BACKUP_AGE_VERIFY_RECIPIENT de .env.ops.
+services:
+  backup:
+    volumes:
+      - ${BACKUP_VERIFY_IDENTITY_FILE:?defina BACKUP_VERIFY_IDENTITY_FILE}:/run/apex/backup/verify.key:ro

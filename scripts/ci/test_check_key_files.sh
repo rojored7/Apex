@@ -22,6 +22,15 @@ bloquea .env.local
 bloquea kek.bin
 bloquea jwt_ed25519.pem
 permite .env.example
+permite .env.ops.example
+bloquea .env.ops
+bloquea infra/.env.ops
+bloquea backup-sign.key
+bloquea backup-verify-identity.txt
+bloquea age-identity.txt
+bloquea rclone.conf
+bloquea apex-20261021-070005-db.dump.age
+permite infra/backup/manifest.schema.json
 permite .env.seed.example
 permite docs/README.md
 

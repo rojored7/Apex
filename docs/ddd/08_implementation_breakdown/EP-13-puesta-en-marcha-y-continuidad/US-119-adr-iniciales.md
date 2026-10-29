@@ -1,5 +1,11 @@
 # US-119 · ADR iniciales — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Nombres finales: `ADR-001-monolito-modular.md`, `ADR-002-criptografia.md` (antes `ADR-002-bus-de-criptografia.md`), `ADR-003-pagos-inmutables.md` y `ADR-004-serializacion-canonica-de-auditoria.md`.
+> - ADR-002 cita `age -p` para el respaldo de la KEK.
+> - El nombre real de la prueba del trigger de pagos se verifica con `ls api/tests/payments` antes de citarlo en ADR-003.
+> - `test_banned_imports.py` se reemplaza por `test_ruff_banned_api.py` sin cambio y la nueva `test_third_party_confinement.py`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-119-adr-iniciales.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno; documentación (`docs/adr/`) y una prueba en `api/tests/core/`
@@ -17,7 +23,7 @@ Los tres ADR documentan decisiones ya tomadas en `04_architecture_decision.md`, 
 Se escriben en `docs/adr/` cuatro documentos con las seis secciones fijas (Estado, Contexto, Decisión, Alternativas descartadas, Consecuencias, Cómo se verifica):
 
 - `ADR-001-monolito-modular.md` resume `04_architecture_decision.md`: monolito modular, esquema por contexto, bus de eventos en la misma transacción, worker en la misma imagen y reglas de importación.
-- `ADR-002-bus-de-criptografia.md` fija:
+- `ADR-002-criptografia.md` fija:
   - la única puerta del bus;
   - el formato del blob `apx1.<key_id>.<alg>.<nonce_b64url>.<ciphertext_b64url>`;
   - el AAD igual al id del registro;
@@ -73,7 +79,7 @@ Ninguna.
 
 ### Service
 - [ ] T1 · `docs/adr/ADR-001-monolito-modular.md`: Estado (Aceptado, fecha y versión v0.1), Contexto (un gimnasio, menos de 10 usuarios, consistencia de S5 y RN-03), Decisión (monolito modular, esquema por contexto, eventos en la misma transacción, worker en la misma imagen, reglas de importación entre módulos), Alternativas descartadas (microservicios, monolito sin módulos, BaaS, cola externa), Consecuencias (trade-offs de la sección 8), Cómo se verifica, y la regla de detenerse y preguntar — 1,5 h
-- [ ] T2 · `docs/adr/ADR-002-bus-de-criptografia.md`: la única puerta (`encrypt`, `decrypt`, `blind_index`, `sign`, `verify`, `digest`), `data_class` como registro en `core/crypto/registry.py`, envelope KEK/DEK con AES-256-GCM para envolver (N-03), formato exacto del blob y de la firma con un ejemplo, AAD igual al id del registro asignado en Python antes del flush, índice ciego HMAC-SHA-256 con la normalización de N-02 y ejemplos (`1.020-304` → `1020304`; `+57 300 123 4567` → `3001234567`), enmascarado en memoria (N-01), lista `banned-api`, evolución prevista (OpenBao v0.2, ML-DSA v0.3, ML-KEM v1.0) y ampliaciones pendientes del gate — 2 h
+- [ ] T2 · `docs/adr/ADR-002-criptografia.md`: la única puerta (`encrypt`, `decrypt`, `blind_index`, `sign`, `verify`, `digest`), `data_class` como registro en `core/crypto/registry.py`, envelope KEK/DEK con AES-256-GCM para envolver (N-03), formato exacto del blob y de la firma con un ejemplo, AAD igual al id del registro asignado en Python antes del flush, índice ciego HMAC-SHA-256 con la normalización de N-02 y ejemplos (`1.020-304` → `1020304`; `+57 300 123 4567` → `3001234567`), enmascarado en memoria (N-01), lista `banned-api`, evolución prevista (OpenBao v0.2, ML-DSA v0.3, ML-KEM v1.0) y ampliaciones pendientes del gate — 2 h
 - [ ] T3 · `docs/adr/ADR-003-pagos-inmutables.md`: RN-02, trigger `BEFORE UPDATE OR DELETE`, las cuatro columnas de anulación una sola vez, corrección con pago nuevo, regla espejo en `payments.service.can_void`, el evento `PaymentVoided` y su efecto en la cobertura (US-087), y alternativas descartadas (borrado lógico de pagos, edición con historial) — 1 h
 - [ ] T4 · `docs/adr/ADR-004-serializacion-canonica-de-auditoria.md`: reglas de `canonical(row)`, fórmula del hash con `bus.digest`, `prev_hash` inicial, un salto de `seq` cuenta como ruptura (N-30), ejemplo de entrada completo (una fila `insert` de `plans` con valores fijos) y su hash esperado en hexadecimal, y la advertencia de que cambiar la serialización con datos invalida toda la cadena — 1 h
 
@@ -146,6 +152,6 @@ Ninguna.
 - [ ] `cd api && uv run mypy src`
 - [ ] `cd api && uv run pytest tests/core/test_chain_hash_vector.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
-- [ ] `ls docs/adr/ADR-001-monolito-modular.md docs/adr/ADR-002-bus-de-criptografia.md docs/adr/ADR-003-pagos-inmutables.md docs/adr/ADR-004-serializacion-canonica-de-auditoria.md` encuentra los cuatro
+- [ ] `ls docs/adr/ADR-001-monolito-modular.md docs/adr/ADR-002-criptografia.md docs/adr/ADR-003-pagos-inmutables.md docs/adr/ADR-004-serializacion-canonica-de-auditoria.md` encuentra los cuatro
 - [ ] `grep -c "^## " docs/adr/ADR-00*.md` muestra al menos 6 por archivo
 - [ ] Revisión del PR por alguien distinto del autor, con la lista de las seis secciones marcada

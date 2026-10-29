@@ -455,3 +455,29 @@ def test_los_topes_por_usuario_exigen_mayor_que_cero(
         load_settings(env_file=escribir_env(tmp_path, **{nombre: "0"}))
     assert nombre in excinfo.value.invalid
     assert getattr(load_settings(env_file=escribir_env(tmp_path, **{nombre: "7"})), nombre) == 7
+
+
+def test_non_api_env_vars_contiene_las_de_operacion_y_las_diez_de_antes() -> None:
+    """S4B-D79: los nombres exactos de `.env.ops.example` más los diez que ya había."""
+    from pathlib import Path
+
+    antes = {
+        "ADMIN_EMAIL",
+        "ADMIN_INITIAL_PASSWORD",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "TEST_DATABASE_URL",
+        "WEB_PORT",
+        "API_PORT",
+        "DB_PORT",
+        "DB_TEST_PORT",
+    }
+    ops = Path(__file__).resolve().parents[3] / ".env.ops.example"
+    claves = {
+        linea.split("=", 1)[0].strip()
+        for linea in ops.read_text(encoding="utf-8").splitlines()
+        if linea.strip() and not linea.strip().startswith("#") and "=" in linea
+    }
+    assert claves
+    assert NON_API_ENV_VARS == antes | claves

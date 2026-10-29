@@ -2,7 +2,7 @@
 # run-gates.sh [numero-de-wave]
 #
 # Suite completa al cerrar una wave o un sprint: api con cobertura global de `app`
-# de al menos 80 %, los scripts de infraestructura (scripts/ci/test_*.sh que existan) y,
+# de al menos 80 %, los scripts de infraestructura (scripts/ci/test_*.sh que existan, incluido test_infra_scripts desde S4B-W0-1) y,
 # si existe web/package.json, el front con lint, tsc, pruebas con cobertura y build.
 # Imprime qué gate falló. El argumento de wave es informativo.
 #
@@ -23,7 +23,7 @@ api (desde api/):  uv run ruff check . ; uv run ruff format --check . ; uv run m
                    uv run pytest --cov=app --cov-fail-under=80 -q -m "not perf"
 scripts (raíz, los que existan; necesitan Docker):
                    scripts/ci/test_check_key_files.sh ; scripts/ci/test_images_pinned.sh ;
-                   scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh
+                   scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh ; scripts/ci/test_infra_scripts.sh
 front (si existe web/package.json, desde web/):
                    npm run lint ; npx tsc --noEmit ; npm test -- --run --coverage ; npm run build
 EOF
@@ -55,7 +55,7 @@ gate "api pruebas"    uv run pytest --cov=app --cov-fail-under=80 -q -m "not per
 # los jobs `secrets-scan`, `scripts` e `images`. Un script ausente se omite (repos de prueba).
 # test_images_pinned (S3-D62) es grep puro: imágenes base por digest con fecha.
 cd "$ROOT"
-for prueba in test_check_key_files test_images_pinned test_nginx_conf test_compose_config; do
+for prueba in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts; do
   if [ -f "$ROOT/scripts/ci/$prueba.sh" ]; then
     gate "scripts $prueba" bash "$ROOT/scripts/ci/$prueba.sh"
   else

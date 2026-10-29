@@ -42,5 +42,15 @@ fi
 
 docker run --rm "$IMG" python -c "import app.main; assert callable(app.main.create_app)" && ok "app.main importa" || falla "app.main no importa"
 
+# S4B-W0-1 (US-115 T11; S4B-D67): age para verify-kek-backup, carpetas de respaldo e importación
+# con dueño apex y la revisión de git como etiqueta OCI.
+if docker run --rm "$IMG" age --version > /dev/null 2>&1; then ok "age presente"; else falla "falta age en la imagen"; fi
+for dir in /data/backups /data/imports; do
+  dueno="$(MSYS_NO_PATHCONV=1 docker run --rm "$IMG" stat -c %u "$dir" 2>/dev/null || true)"
+  if [ "$dueno" = "10001" ]; then ok "$dir existe con dueño 10001"; else falla "$dir sin dueño 10001 (${dueno:-no existe})"; fi
+done
+revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMG" 2>/dev/null || true)"
+if [ -n "$revision" ]; then ok "etiqueta org.opencontainers.image.revision ($revision)"; else falla "falta la etiqueta org.opencontainers.image.revision"; fi
+
 echo "test_api_image: $fallas fallas"
 [ "$fallas" -eq 0 ]

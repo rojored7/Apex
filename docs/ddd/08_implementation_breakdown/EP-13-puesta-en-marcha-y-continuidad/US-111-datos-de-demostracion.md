@@ -1,5 +1,14 @@
 # US-111 · Datos de demostración — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Dos transacciones por socio, para respetar el orden de candados.
+> - La venta llama a `sell(..., enforce_retroactive_limit=False, role="admin")`.
+> - El alta usa `create(session, data)`.
+> - `recompute_statuses(session_factory, today=)` se llama tras el último commit.
+> - `seed --demo` sobre una base que no es de prueba exige `--allow-production` y el nombre de la base.
+> - Idempotencia por reanudación: una segunda corrida completa lo que falte sin duplicar.
+> - `tools` se invoca sin `uv run` (la imagen no trae `uv`): `docker compose run --rm tools seed --demo`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-111-datos-de-demostracion.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno propio; comando de aplicación que usa los services de Plans, Members, Memberships, Payments y Auth (`api/src/app/cli.py`, `api/src/app/seed/demo.py`)

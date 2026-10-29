@@ -33,6 +33,10 @@ cryptography
 50.0.2
 Apache-2.0 OR BSD-3-Clause
 
+defusedxml
+0.7.1
+Python Software Foundation License
+
 fastapi
 0.157.0
 MIT
@@ -40,6 +44,10 @@ MIT
 httpx
 0.28.1
 BSD License
+
+openpyxl
+3.1.5
+MIT License
 
 pydantic
 2.14.1
@@ -91,3 +99,12 @@ Lucide (iconos) · ISC · paquete lucide-react en web/
 axe-core · MPL-2.0 · pruebas de accesibilidad del front (US-010)
 gitleaks · MIT · escaneo de secretos en CI, como imagen de Docker (US-039)
 certifi · MPL-2.0 · certificados raíz, transitiva de httpx (runtime del api; ver scripts/ci/licenses-exceptions.txt)
+
+== binarios de la imagen apex-backup (infra/backup/Dockerfile, S4B-W0-1) ==
+
+age · BSD-3-Clause · cifrado de respaldos (también en la imagen del api para verify-kek-backup)
+rclone · MIT · subida de respaldos con copyto
+supercronic · MIT · planificador del servicio backup
+minisign · ISC · firma del manifiesto del respaldo
+pg_dump (cliente de PostgreSQL) · licencia PostgreSQL · imagen postgres:16-alpine
+busybox y tar de Alpine son parte del sistema operativo de la imagen base y no se redistribuyen aparte

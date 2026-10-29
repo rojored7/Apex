@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manifiesto de respaldo de APEX (S4B-D80)",
+  "type": "object",
+  "required": ["format_version", "name", "created_at", "database", "files", "verify", "upload"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {"type": "integer", "const": 1},
+    "name": {"type": "string", "pattern": "^(apex|pre-deploy|pre-restore)-[0-9]{8}-[0-9]{6}$"},
+    "created_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "database": {"type": "string", "minLength": 1, "maxLength": 63},
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "size_bytes", "sha256", "plain_sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "enum": ["db", "uploads"]},
+          "name": {"type": "string", "minLength": 1, "maxLength": 200},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "plain_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "verify": {"type": "string", "enum": ["ok", "failed", "skipped"]},
+    "verified_at": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "upload": {"type": "string", "enum": ["ok", "skipped", "failed"]},
+    "upload_error": {"type": "string", "maxLength": 200}
+  }
+}

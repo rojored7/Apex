@@ -11,11 +11,12 @@ from app.core.config import NON_API_ENV_VARS, Settings
 
 RAIZ = Path(__file__).resolve().parents[3]
 EJEMPLO = RAIZ / ".env.example"
+EJEMPLO_OPS = RAIZ / ".env.ops.example"
 
 
-def _claves() -> dict[str, str]:
+def _claves(ruta: Path = EJEMPLO) -> dict[str, str]:
     claves: dict[str, str] = {}
-    for linea in EJEMPLO.read_text(encoding="utf-8").splitlines():
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
         linea = linea.strip()
         if not linea or linea.startswith("#") or "=" not in linea:
             continue
@@ -35,7 +36,7 @@ def test_toda_variable_de_settings_esta_documentada() -> None:
 
 
 def test_toda_clave_ajena_al_api_esta_en_non_api_env_vars() -> None:
-    claves = _claves()
+    claves = {**_claves(), **_claves(EJEMPLO_OPS)}
     desconocidas = [
         c for c in claves if c not in Settings.model_fields and c not in NON_API_ENV_VARS
     ]
@@ -187,3 +188,61 @@ def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
         linea for linea in lineas[max(0, indices[0] - 6) : indices[0]] if linea.startswith("#")
     )
     assert "0" in comentario and "--db-timeouts off" in comentario
+
+
+# S4B-W0-1 · segundo archivo de ejemplo (S4B-D79, E7): variables de operación -----------------
+
+ACTIVAS_S4B_W0_1: dict[str, str] = {
+    "BACKUP_KEEP_DAYS": "14",
+    "BACKUP_CRON": "0 2 * * *",
+    "BACKUP_AGE_RECIPIENT": "",
+    "BACKUP_AGE_VERIFY_RECIPIENT": "",
+    "BACKUP_RCLONE_REMOTE": "",
+    "RCLONE_CONFIG_APEX_TYPE": "s3",
+    "RCLONE_CONFIG_APEX_PROVIDER": "",
+    "RCLONE_CONFIG_APEX_ENDPOINT": "",
+    "RCLONE_CONFIG_APEX_ACCESS_KEY_ID": "",
+    "RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY": "",
+    "BACKUP_SIGN_PUBKEY": "",
+    "BACKUP_SIGN_KEY_FILE": "",
+    "BACKUP_VERIFY_IDENTITY_FILE": "",
+    "DEPLOY_HEALTH_TIMEOUT": "120",
+    "APEX_API_DB_PASSWORD": "cambiar-esto",
+    "APEX_WORKER_DB_PASSWORD": "cambiar-esto",
+    "APEX_BACKUP_DB_PASSWORD": "cambiar-esto",
+    "APEX_SUBNET": "172.30.0.0/24",
+    "APEX_IP_RANGE": "172.30.0.128/25",
+    "APEX_WEB_IP": "172.30.0.10",
+}
+
+
+def test_el_ejemplo_de_operacion_existe() -> None:
+    assert EJEMPLO_OPS.is_file()
+
+
+def test_las_variables_de_s4b_w0_1_van_activas_con_sus_valores() -> None:
+    """S4B-D79: las variables nuevas de operación son líneas activas en `.env.ops.example`."""
+    claves = _claves(EJEMPLO_OPS)
+    distintas = {n: claves.get(n) for n, v in ACTIVAS_S4B_W0_1.items() if claves.get(n) != v}
+    assert distintas == {}, f"valores distintos o ausentes en .env.ops.example: {distintas}"
+
+
+def test_las_claves_de_operacion_estan_en_non_api_env_vars() -> None:
+    assert set(_claves(EJEMPLO_OPS)) <= NON_API_ENV_VARS
+
+
+def test_sin_claves_repetidas_entre_los_dos_ejemplos() -> None:
+    assert set(_claves()) & set(_claves(EJEMPLO_OPS)) == set()
+
+
+def test_el_ejemplo_de_operacion_no_trae_secretos_reales() -> None:
+    import re
+
+    texto = EJEMPLO_OPS.read_text(encoding="utf-8")
+    for clave, valor in _claves(EJEMPLO_OPS).items():
+        if clave.endswith(("PASSWORD", "SECRET", "TOKEN", "KEY", "SECRET_ACCESS_KEY")):
+            assert valor == "" or "cambiar-esto" in valor, f"{clave} parece llevar un valor real"
+        assert not re.fullmatch(r"[A-Za-z0-9+/=_-]{43,}", valor), f"{clave} parece un secreto real"
+        assert not valor.startswith("age1"), f"{clave} lleva un destinatario real"
+    assert "-----BEGIN" not in texto
+    assert "AGE-SECRET-KEY-" not in texto

@@ -30,11 +30,15 @@ COMPOSE_YML="$(cat infra/compose.yml)"
 E2E="$(docker compose --env-file .env -f infra/compose.yml -f infra/compose.e2e.yml config --format json 2>/dev/null || echo "{}")"
 # Sin resolver los env_file: conserva la lista de archivos y su `required`.
 CRUDO="$(docker compose --env-file .env --profile worker --profile tools -f infra/compose.yml config --no-env-resolution --format json)"
+# S4B-W0-1: compose.verify.yml (identidad de verificación solo en backup) con un archivo temporal.
+VERIFY="$(BACKUP_VERIFY_IDENTITY_FILE="$ROOT/.env.example" docker compose --env-file .env -f infra/compose.yml -f infra/compose.verify.yml config --format json 2>/dev/null || echo "{}")"
 COMPOSE_VERSION="$(docker compose version --short 2>/dev/null | tr -d '\r' || true)"
 IGNORA_SEED="$(git check-ignore -q .env.seed && echo si || echo no)"
 IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo no)"
+IGNORA_OPS="$(git check-ignore -q .env.ops && echo si || echo no)"
+IGNORA_OPS_EJEMPLO="$(git check-ignore -q .env.ops.example && echo si || echo no)"
 
-PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
+VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
 import json
 import os
@@ -72,7 +76,7 @@ check("db_test" in dev, "db_test existe en desarrollo")
 check(not [v for v in dev["db_test"].get("volumes", []) if v.get("type") == "volume"], "db_test sin volumenes persistentes")
 check(any(str(p.get("target")) == "5432" for p in dev["db_test"].get("ports", [])), "db_test publica su puerto en desarrollo")
 check(any(v.get("target") == "/app/migrations" for v in dev["api"].get("volumes", [])), "api en desarrollo monta migrations/ (B-3)")
-check("POSTGRES_PASSWORD" not in texto, "compose.yml no lleva secretos en linea")
+check(re.search(r"POSTGRES_PASSWORDs*[:=]s*[^$s]", texto) is None, "compose.yml no lleva secretos en linea (solo interpolaciones)")
 
 # --- S2-W0-1 · M-1: subred fija e IP fija del proxy ---------------------------------
 red = prod_doc.get("networks", {}).get("default", {})
@@ -191,6 +195,58 @@ for svc in ("worker", "tools"):
     for origen, destino in (("api/src", "/app/src"), ("api/migrations", "/app/migrations")):
         m = [v for v in montajes(dev_perfiles.get(svc, {})) if v.get("target") == destino and fuente(v).endswith(origen)]
         check(len(m) == 1 and m[0].get("read_only") is True, f"{svc} en desarrollo monta ../{origen} en {destino} en solo lectura")
+# --- S4B-W0-1 (US-114; S4B-D14, D57, D59, D75, D79): servicio backup -------------------------
+backup = prod.get("backup") or {}
+check(bool(backup), "backup existe en produccion")
+check(backup.get("image") == "apex-backup:local", f"backup.image = apex-backup:local ({backup.get('image')})")
+ctx = str(((backup.get("build") or {}).get("context")) or "").replace("\\", "/")
+check(ctx.endswith("infra/backup"), f"backup.build.context termina en infra/backup ({ctx})")
+check("ports" not in backup, "backup no publica puertos")
+check("env_file" not in backup, "backup sin env_file (solo su bloque environment)")
+entorno = backup.get("environment") or {}
+check(entorno.get("PGHOST") == "db", f"backup con PGHOST=db ({entorno.get('PGHOST')})")
+check("DATABASE_URL" not in entorno, "backup sin DATABASE_URL")
+mont = {v.get("target"): v for v in montajes(backup)}
+check(
+    set(mont) == {"/data/backups", "/data/uploads", "/run/apex/backup/sign.key"},
+    f"backup monta exactamente backups, uploads y la llave de firma ({sorted(mont)})",
+)
+check(not (mont.get("/data/backups") or {}).get("read_only"), "backup escribe en backups")
+check((mont.get("/data/uploads") or {}).get("read_only") is True, "backup monta uploads en solo lectura")
+check((mont.get("/run/apex/backup/sign.key") or {}).get("read_only") is True, "la llave de firma va en solo lectura")
+check(all("keys" not in str(v.get("source", "")) or v.get("type") != "volume" for v in montajes(backup)) and not any(v.get("source") == "keys" for v in montajes(backup)), "backup no monta el volumen keys")
+check(backup.get("read_only") is True, "backup con read_only")
+check("/tmp" in (backup.get("tmpfs") or []), f"backup con tmpfs /tmp ({backup.get('tmpfs')})")
+check(backup.get("cap_drop") == ["ALL"], "backup con cap_drop ALL")
+check("no-new-privileges:true" in (backup.get("security_opt") or []), "backup con no-new-privileges")
+check(((backup.get("depends_on") or {}).get("db") or {}).get("condition") == "service_healthy", "backup depende de db healthy")
+bhc = backup.get("healthcheck") or {}
+check(bhc.get("test") == ["CMD", "pgrep", "-x", "supercronic"], f"backup healthcheck pgrep supercronic ({bhc.get('test')})")
+check(
+    (bhc.get("interval"), bhc.get("timeout"), bhc.get("retries"), bhc.get("start_period")) == ("30s", "5s", 3, "20s"),
+    "healthcheck de backup 30s/5s/3/20s",
+)
+check(backup.get("restart") == "unless-stopped", "backup con restart unless-stopped")
+check("backups" in prod_doc.get("volumes", {}), "volumen backups en uso")
+dev_backup = dev.get("backup") or {}
+check(not [v for v in montajes(dev_backup) if fuente(v).endswith("api/src")], "backup en desarrollo no monta codigo")
+# compose.verify.yml: la identidad de verificacion solo en backup (S4B-D59).
+vsvc = (json.loads(os.environ["VERIFY"]).get("services") or {})
+vmont = [v for v in montajes(vsvc.get("backup", {})) if v.get("target") == "/run/apex/backup/verify.key"]
+check(len(vmont) == 1 and vmont[0].get("read_only") is True, "compose.verify.yml monta verify.key en backup en solo lectura")
+for svc in ("worker", "api", "tools"):
+    check(not [v for v in montajes(vsvc.get(svc, {})) if v.get("target") == "/run/apex/backup/verify.key"], f"{svc} no recibe la identidad de verificacion")
+# .env.ops.example (S4B-D79, E7/E8): existe, versionado y sin claves repetidas con .env.example.
+ops_ejemplo = Path(os.environ["RAIZ"]) / ".env.ops.example"
+check(ops_ejemplo.is_file(), ".env.ops.example existe")
+claves_ops = set()
+if ops_ejemplo.is_file():
+    for linea in ops_ejemplo.read_text(encoding="utf-8").splitlines():
+        if linea.strip() and not linea.strip().startswith("#") and "=" in linea:
+            claves_ops.add(linea.split("=", 1)[0].strip())
+check(not (claves_ops & set(ejemplo)), f"ninguna clave de .env.ops.example esta tambien en .env.example ({sorted(claves_ops & set(ejemplo))})")
+check(os.environ["IGNORA_OPS_EJEMPLO"] == "no", "git versiona .env.ops.example (!.env.ops.example)")
+check(os.environ["IGNORA_OPS"] == "si", "git ignora .env.ops")
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)
 EOF

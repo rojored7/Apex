@@ -56,6 +56,15 @@ EOF
   echo "axe-core · MPL-2.0 · pruebas de accesibilidad del front (US-010)"
   echo "gitleaks · MIT · escaneo de secretos en CI, como imagen de Docker (US-039)"
   echo "certifi · MPL-2.0 · certificados raíz, transitiva de httpx (runtime del api; ver scripts/ci/licenses-exceptions.txt)"
+  echo
+  echo "== binarios de la imagen apex-backup (infra/backup/Dockerfile, S4B-W0-1) =="
+  echo
+  echo "age · BSD-3-Clause · cifrado de respaldos (también en la imagen del api para verify-kek-backup)"
+  echo "rclone · MIT · subida de respaldos con copyto"
+  echo "supercronic · MIT · planificador del servicio backup"
+  echo "minisign · ISC · firma del manifiesto del respaldo"
+  echo "pg_dump (cliente de PostgreSQL) · licencia PostgreSQL · imagen postgres:16-alpine"
+  echo "busybox y tar de Alpine son parte del sistema operativo de la imagen base y no se redistribuyen aparte"
 } | tr -d '\r' > "$SALIDA"
 
 echo "notice.sh: NOTICE regenerado ($(wc -l < "$SALIDA") líneas)"

@@ -1,5 +1,14 @@
 # US-116 · Respaldo de la KEK y prueba de restauración — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El respaldo de la KEK usa `age -p` por `archive.py`, sin `--passphrase-file` y sin `pyrage`.
+> - `restore.sh` verifica la firma y exige `--confirm-database`; la KEK se restaura con `restore-kek`; la clase del respaldo es `kek.backup`.
+> - La tabla es `crypto.crypto_keys` (no `crypto_keys`).
+> - Sin `0014_crypto_ops_export_verb`: la migración `0014` del sprint es `0014_audit_log_triggers_always`.
+> - Pruebas y scripts en Bash puro con `bash -n`; sin `bats` ni `shellcheck`.
+> - `test_banned_imports.py` se reemplaza por `test_ruff_banned_api.py` sin cambio y la nueva `test_third_party_confinement.py`.
+> - Los comandos usan `docker compose run --rm tools ...`, sin `uv run`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-116-respaldo-de-kek-y-prueba-de-restauracion.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** Crypto (`api/src/app/core/crypto/kek_backup.py` y `local_provider.py`), comandos en `api/src/app/cli.py`, script `infra/backup/restore.sh` y documento `docs/operacion/respaldo-y-restauracion.md`

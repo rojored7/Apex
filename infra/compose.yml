@@ -97,6 +97,54 @@ services:
         condition: service_healthy
     profiles: ["tools"]
 
+  backup:
+    # Respaldo cifrado y firmado (S4B-W0-1, S4B-D14, D57, D75): pg_dump + uploads -> age, manifiesto
+    # firmado con minisign, cron con supercronic. Sin BACKUP_AGE_RECIPIENT queda inerte pero visible
+    # en el log. Sin env_file: solo este bloque (S4B-D56). Hasta W0-3 usa la credencial del
+    # propietario; W0-3 la cambia por el rol apex_backup. La llave de firma se monta de
+    # BACKUP_SIGN_KEY_FILE (archivo 600 de uid 10001 en el anfitrión; sin archivo, run.sh sale con 2
+    # y lo dice). La identidad de verificación llega solo con infra/compose.verify.yml.
+    build:
+      context: ./backup
+    image: apex-backup:local
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_AGE_VERIFY_RECIPIENT: ${BACKUP_AGE_VERIFY_RECIPIENT:-}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_CRON: ${BACKUP_CRON:-0 2 * * *}
+      RCLONE_CONFIG_APEX_TYPE: ${RCLONE_CONFIG_APEX_TYPE:-s3}
+      RCLONE_CONFIG_APEX_PROVIDER: ${RCLONE_CONFIG_APEX_PROVIDER:-}
+      RCLONE_CONFIG_APEX_ENDPOINT: ${RCLONE_CONFIG_APEX_ENDPOINT:-}
+      RCLONE_CONFIG_APEX_ACCESS_KEY_ID: ${RCLONE_CONFIG_APEX_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY:-}
+      BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
+      TZ: America/Bogota
+    volumes:
+      - backups:/data/backups
+      - uploads:/data/uploads:ro
+      - ${BACKUP_SIGN_KEY_FILE:-/dev/null}:/run/apex/backup/sign.key:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "-x", "supercronic"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   web:
     build:
       context: ..

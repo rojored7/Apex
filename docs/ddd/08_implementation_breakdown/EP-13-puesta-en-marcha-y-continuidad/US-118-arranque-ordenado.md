@@ -1,5 +1,14 @@
 # US-118 · Arranque ordenado — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Servicios `migrate` y `dbsetup`, con `MIGRATE_ON_STARTUP`.
+> - La configuración se reparte en `.env` y `.env.ops`.
+> - `HealthOut.migrations` toma `ok`, `mismatch` o `unknown` (no `Literal["head","behind"]`).
+> - `start_period` de 60 s.
+> - Endurecimiento L-7.
+> - Zona `apex_health` de Nginx.
+> - Sin `uv run` en contenedores.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-118-arranque-ordenado.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno; operación (`infra/compose.yml`) y arranque del api (`api/src/app/main.py`)

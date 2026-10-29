@@ -68,7 +68,7 @@ existe() {
   return 1
 }
 
-for rel in api/Dockerfile web/Dockerfile; do
+for rel in api/Dockerfile web/Dockerfile infra/backup/Dockerfile; do
   existe "$rel" || continue
   vistos=0
   while IFS=: read -r n resto; do
@@ -79,7 +79,7 @@ for rel in api/Dockerfile web/Dockerfile; do
   [ "$vistos" -gt 0 ] || falla "$rel" "$rel sin ningún FROM"
 done
 
-for rel in infra/compose.yml infra/compose.dev.yml .github/workflows/ci.yml; do
+for rel in infra/compose.yml infra/compose.dev.yml infra/compose.e2e.yml .github/workflows/ci.yml; do
   existe "$rel" || continue
   while IFS=: read -r n resto; do
     ref="$(printf '%s' "$resto" | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]]+#.*$//; s/^["'\'']//; s/["'\'']$//')"

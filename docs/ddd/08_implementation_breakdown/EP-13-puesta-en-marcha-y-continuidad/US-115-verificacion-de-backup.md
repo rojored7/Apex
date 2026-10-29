@@ -1,5 +1,14 @@
 # US-115 · Verificación de backup — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - READY con G-07 enmendada: no existe `verify_age_archive`.
+> - `BACKUP_AGE_VERIFY_IDENTITY_PATH` no va en el worker: la identidad de verificación vive solo en `backup`.
+> - El job es `run(ctx) -> JobResult(status=...)` (no `run(session, today, clock) -> JobOutcome`) y `details` lleva solo enteros.
+> - El chequeo se registra con `register_health_check(..., critical=False, allowed=, healthy=)` (no `informative=True`).
+> - `HealthOut.backup` toma solo `ok`, `attention` o `unknown` (no seis estados).
+> - El worker monta `backups` como `:ro` y sin identidad.
+> - `test_banned_imports.py` se reemplaza por `test_ruff_banned_api.py` sin cambio y la nueva `test_third_party_confinement.py`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-115-verificacion-de-backup.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno de negocio; job `api/src/app/worker/jobs/backup_check.py`, registro en `api/src/app/core/jobs.py` (propuesto en US-113), campo `backup` de `/health` en `api/src/app/main.py`, y una ampliación de `api/src/app/core/crypto/`

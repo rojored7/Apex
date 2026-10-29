@@ -1,5 +1,11 @@
 # US-114 · Backup nocturno cifrado — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Cada respaldo produce dos archivos y un manifiesto firmado (`latest.json` con su firma `minisign`).
+> - La verificación corre en el contenedor `backup`.
+> - Los scripts se prueban en Bash puro (`infra/backup/tests/run.sh`); sin `bats` ni `shellcheck`; la sintaxis se comprueba con `bash -n`.
+> - El digest de los archivos lo calcula `digest_file` (`core/crypto/archive.py`).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-114-backup-nocturno-cifrado.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno; contenedor `backup` (`infra/backup/`)

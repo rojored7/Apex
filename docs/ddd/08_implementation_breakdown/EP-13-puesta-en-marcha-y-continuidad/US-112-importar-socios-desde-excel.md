@@ -1,5 +1,14 @@
 # US-112 · Importar socios desde Excel — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El documento repetido lanza `MemberDocumentDuplicated`.
+> - La prueba de rendimiento lleva el marcador `perf` (no `slow`) y usa 5.000 filas (no 10.000).
+> - El XLSX se lee con `defusedxml`.
+> - La ruta del archivo se resuelve dentro de `IMPORT_DIR`; `--report` es un nombre dentro de ese directorio.
+> - El registro de corridas es `members.import_runs` (no `members_import`).
+> - La columna `notas` se ignora; un contacto de emergencia incompleto se omite; el tipo de documento es `CC`.
+> - Sin `bus.batch()`: una transacción por socio.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-112-importar-socios-desde-excel.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** Members (vía `members.service`), comando de aplicación en `api/src/app/cli.py` con el lector en `api/src/app/imports/members_xlsx.py`

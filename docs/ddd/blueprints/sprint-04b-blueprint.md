@@ -1,3 +1,5 @@
+> Corregido por `sprint-04b-plan.md` (S4B-W0-1): S4B-D8, D10, D13, D15, D16, D17, D18, D20, D22, D25, D26, D27, D30, D34, D37, D38, D41, D42, D44, D45, D50 y S4B-D79 a S4B-D96 (más D97 a D103 de las críticas 1 y 2). Donde choquen, manda el plan.
+
 # Blueprint de implementación · Sprint 4B · Continuidad operativa y release v0.1.0
 
 > Fase 1 de `/flow-update`. Resuelve los 18 hallazgos numerados del resumen ejecutivo (el encargo los contó como 14), los 12 bloqueantes de configuración y las 17 preguntas abiertas de `sprint-04b-exploracion.md` y las 10 "Condiciones para VERDE" de `docs/ddd/impacto/sprint-04b.md` (sección 9; se citan como **C1 a C10**). Donde este plano y un desglose o `SPRINT-04B.md` chocan, manda este plano; las decisiones se copian a `docs/ddd/DECISIONES.md` (sección "Sprint 4B") en el primer checkpoint (S4B-W0-1), igual que hicieron los Sprints 2, 3 y 4A.

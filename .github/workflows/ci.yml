@@ -57,6 +57,13 @@ jobs:
       - name: dependencias
         working-directory: api
         run: uv sync --frozen
+      - name: age (S4B-D103)
+        # Versión de ubuntu-24.04 (noble-updates) consultada el 2026-10-29 en Launchpad. Las pruebas de
+        # age real (S4B-D89) corren aquí; B3a.4 agrega el paso que falla si alguna se salta.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends age=1.1.1-1ubuntu0.24.04.3
+          age --version
       - name: lint
         working-directory: api
         run: uv run ruff check .
@@ -227,6 +234,22 @@ jobs:
       - name: secretos en la imagen del api (US-039)
         if: steps.img.outputs.api == 'true'
         run: bash scripts/ci/check-image-secrets.sh apex-api:ci
+      - name: build backup (S4B-W0-1)
+        if: hashFiles('infra/backup/Dockerfile') != ''
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: infra/backup
+          file: infra/backup/Dockerfile
+          push: false
+          load: true
+          tags: apex-backup:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: secretos en la imagen de backup y pruebas de sus scripts
+        if: hashFiles('infra/backup/Dockerfile') != ''
+        run: |
+          bash scripts/ci/check-image-secrets.sh apex-backup:ci
+          bash scripts/ci/test_infra_scripts.sh
       - name: build web
         if: steps.img.outputs.web == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -365,6 +388,8 @@ jobs:
         run: bash scripts/workflow/tests/run.sh
       - name: imágenes base por digest (S3-D62)
         run: bash scripts/ci/test_images_pinned.sh
+      - name: scripts de respaldo (S4B-W0-1)
+        run: bash scripts/ci/test_infra_scripts.sh
 
   secrets-scan:
     # US-039: gitleaks (MIT) sobre todo el historial del PR con .gitleaks.toml.

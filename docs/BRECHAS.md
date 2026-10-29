@@ -547,3 +547,11 @@ Cierre de V1 (29 de octubre de 2026). `grep -rn "DESIGN-GAP" web/src/features we
 | 58 | `shared/ui/StatusTag.module.css` (44) | Kit | Estilo de "Cancelado" no definido. Se usa el de "Congelado". | Sin estilo en DESIGN.md | — | backlog |
 
 Cobertura: las 58 marcas tienen fila. Las marcas de `features/members` y `features/system` que ya tienen fila en la sección 9 o 10 se citan por su archivo en la columna de decisión; la fila de esta tabla es la que cuenta para V1.
+
+## 12. Sprint 4B: brechas con el diseño
+
+El Sprint 4B no agrega pantallas nuevas: continuidad operativa (respaldo, restauración, rotación de llave, despliegue) y release v0.1.0. Esta sección queda sin filas hasta que S4B-F1 (deuda de front con dueño: `Tabs` de la ficha a 1440 px y contraste de "automático (aviso)", sección 11.5; regla de lint del `sessionStorage` de `RouteError.tsx`) añada las suyas. Las dos primeras ya tienen fila en 11.5 y 11.6; aquí se cierran con su estado.
+
+| # | Archivo | Brecha | Slice | Estado |
+|---|---------|--------|-------|--------|
+| — | (sin filas) | S4B-F1 las añade si encuentra algo que el diseño no dibuja; el comentario `// DESIGN-GAP:` en el código es lo que cuenta para V1 | S4B-F1 | pendiente |

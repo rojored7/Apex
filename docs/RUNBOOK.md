@@ -22,6 +22,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 9. [Tiempos de espera de la base y 503 `busy`](#9-tiempos-de-espera-de-la-base-y-503-busy-s3-w0-2)
 10. [Membresías y pagos](#10-membresías-y-pagos-sprint-3)
 11. [Worker, auditoría verificable y tablero](#11-worker-auditoría-verificable-y-tablero-sprint-4a)
+12. [Respaldo, restauración, KEK y rotación](#12-respaldo-restauración-kek-y-rotación-sprint-4b)
 
 ## 1. Sesión y límites (S2-B2)
 
@@ -399,6 +400,7 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **`0009_membership_freezes`:** `downgrade 0008_memberships` borra los dos triggers, la función `memberships.forbid_freeze_mutation()`, el índice y `memberships.membership_freezes` (con sus filas: antes, el volcado de la sección 10). Las membresías conservan el `end_date` ya corrido y el `status` guardado; sin la tabla, `compute_status` deja de ver las ventanas (una `frozen` guardada se lee por fecha). Quedan `memberships.memberships`, sus dos funciones, el esquema y `btree_gist`. Se revierte el checkpoint de S3-B2. La auditoría de las congelaciones queda en `audit.audit_log`.
 - **`0012_worker_job_runs` (S4A-B1):** crea `worker.job_runs` (una fila por job y día de Bogotá; CHECKs `ck_job_runs_job_name_shape`, `ck_job_runs_result` y `ck_job_runs_finished_after_started`; sin triggers). `downgrade 0011_payments_immutability` borra los dos índices (`uq_job_runs_name_date`, `ix_job_runs_name_started`) y `worker.job_runs`; nunca el esquema `worker` (es de `0001`). Solo se pierde la bitácora de corridas del worker. Antes: `$DC stop worker` (enmienda E4: todo `downgrade` que borre `worker.job_runs` exige parar el worker antes y `$DC start worker` después, con `healthy` y `RestartCount` anotados). Se revierte el checkpoint de S4A-B1 (y W0-2 y B2 si existen).
 - **`0013_audit_verifications` (S4A-B3):** crea `audit.verifications` (una fila por verificación terminada; CHECKs `ck_verifications_through_seq_non_negative`, `_rows_checked_non_negative`, `_source`, `_ok_matches_broken`, `_finished_after_started` y `_through_hash_shape`; índice `ix_verifications_finished_at (finished_at DESC)`; triggers `verifications_forbid_mutation` y `verifications_forbid_truncate` sobre la función existente `audit.forbid_mutation()`, los dos con `ENABLE ALWAYS`). `downgrade 0012_worker_job_runs` quita los dos triggers, el índice y la tabla, y con ella el ancla `through_hash` de la última verificación `ok`: antes, el volcado de P-MIG y la copia de la última línea `audit anchor` del log. Nunca borra `audit.forbid_mutation()` (la usa `audit.audit_log`) y las filas `verify` de la cadena se quedan (la cadena es inmutable). No toca `worker.job_runs`: no hace falta parar el worker (enmienda E4). Se revierte el checkpoint de S4A-B3.
+- **`0014_audit_log_triggers_always` (S4B-W0-2, esqueleto):** `ENABLE ALWAYS` de los cuatro triggers que quedaban en `O` y `CREATE OR REPLACE` de `audit.forbid_mutation()` con `TG_TABLE_SCHEMA`/`TG_TABLE_NAME`. Sin tablas ni columnas nuevas: `downgrade 0013_audit_verifications` devuelve los triggers a `ENABLE` y el texto de la función. No toca el worker. Protocolo P-MIG del plan (volcado, `$DC stop api`, pruebas contra `db_test`, ciclo en `apex-db-1`). Lo completa W0-2.
 - En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.
 
 ## 7. Imágenes base por digest y su renovación (S3-D62)
@@ -409,6 +411,7 @@ Dónde están:
 - `api/Dockerfile`: `python:3.12-slim` (dos `FROM`: `builder` y `runtime`).
 - `web/Dockerfile`: `node:22-alpine` (`build`) y `nginx:stable-alpine` (imagen final).
 - `infra/compose.yml` (`db`) e `infra/compose.dev.yml` (`db_test`): `postgres:16`.
+- `infra/backup/Dockerfile` (S4B-W0-1): `postgres:16-alpine` (digest del índice; consulta: `docker buildx imagetools inspect postgres:16-alpine --format '{{json .Manifest.Digest}}'`). Además de la base, fija con `apk` las versiones de `age`, `minisign`, `rclone` y `supercronic`; se renuevan juntas (`docker run --rm postgres:16-alpine sh -c 'apk update >/dev/null && apk policy age minisign rclone supercronic'`).
 - `scripts/ci/test_nginx_conf.sh`: `nginx:stable-alpine` (contenedor desechable de la prueba funcional).
 - `.github/workflows/ci.yml`: el servicio `postgres:16` del job `api` (desde la revisión de Fase 4 del Sprint 2, L3).
 
@@ -436,6 +439,15 @@ $DC up -d --no-build
 ```
 `apex-api:local` la usan `api`, `worker` y `tools`: tras reconstruirla, `$DC up -d --no-build` recrea `api` y `worker` (`tools` corre con `run --rm` y toma la imagen nueva en la siguiente invocación). Comprobación del worker en §9, "Worker".
 En la CI (Linux, sin `compose.dev.yml`) no aplica.
+
+**`apex-backup:local` (S4B-W0-1):** se construye igual, con buildx directo, cada vez que cambia algo de `infra/backup/`:
+```
+docker buildx build --load --network host --allow network.host -t apex-backup:local -f infra/backup/Dockerfile infra/backup
+$DC up -d --no-build backup
+```
+Todo lo que necesite `age`, `minisign`, `rclone` o `pg_dump` se corre dentro de esa imagen (o de `apex-api:local`, que trae `age`): el anfitrión no los tiene. Las pruebas de shell de respaldo: `bash scripts/ci/test_infra_scripts.sh` (en el anfitrión) y, dentro de la imagen, `docker run --rm -v "$PWD/infra/backup:/opt/backup-src:ro" --entrypoint bash apex-backup:local /opt/backup-src/tests/run.sh` (con `MSYS_NO_PATHCONV=1` delante en Git Bash).
+
+**Cuándo reconstruir `apex-api:local` (regla de S4B-D98, que reemplaza a la anterior):** ~~solo cuando cambian `pyproject.toml`, `uv.lock`, `alembic.ini` o el `Dockerfile`~~. `api/Dockerfile` hace `COPY src`, `COPY alembic.ini` y `COPY migrations`, así que **cualquier cambio en `api/src/` o `api/migrations/` exige reconstruirla antes de usar un servicio sin bind de código** (`migrate` y `dbsetup` del perfil `prod-init`, `tools`/`api`/`worker` de un ensayo o smoke de producción, la CI). En el stack de desarrollo `api`, `worker` y `tools` montan el código y recogen los cambios sin reconstruir. Nunca "se reutiliza si el id coincide": se reconstruye y se anota el id nuevo.
 
 ## 8. Primer admin sin `.env.seed` (S3-D64)
 
@@ -766,3 +778,29 @@ Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-0
   5. Al cerrar, dar de baja el admin desechable, como en la validación final del Sprint 3 (sección 8: nunca se resetea la contraseña del admin real).
 - **Ejecución registrada (V12, 2026-10-29):** 177 planes activos antes de la limpieza, 174 candidatos. Resultado: 102 planes dados de baja (`DELETE` 204); 72 desactivados porque tenían membresías activas (`DELETE` 409 `plan_has_active_memberships`, luego `deactivate` 200; esas membresías siguen activas en el plan desactivado, porque el procedimiento solo anula `pending_payment`); 27 membresías `pending_payment` anuladas (`cancel`). Quedan 3 planes activos (`mensual`, `Mensual V50137`, `Tiquetera 12`). Después, `verify-audit --as` dio código 0. Sin 5xx ni 429. Detalle en `docs/ddd/DECISIONES.md`, "Estado al cierre del Sprint 4A". Tras la corrida E2E final de V12 quedaron 4 planes de prueba más activos (7 en total); el procedimiento los retira en la próxima limpieza.
 - **Admin desechable (paso 5 de la limpieza):** dado de baja por API al cerrar V12. Pendiente de verificación del orquestador antes del commit. La contraseña del admin real no se tocó.
+
+## 12. Respaldo, restauración, KEK y rotación (Sprint 4B)
+
+Esqueleto de S4B-W0-1; cada slice completa su parte (W0-3 roles y entorno, B2 estado del respaldo, B3a restauración y KEK, B3b rotación, B4 despliegue). Todo lo de abajo corre desde Bash en la raíz del repo con `DC="docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml"`.
+
+### Qué hace el servicio `backup` (S4B-W0-1)
+
+- **Dos archivos por corrida, cifrados con `age`, y un manifiesto firmado.** `pg_dump` (formato custom) y `tar` de `/data/uploads` van en tubería hacia `age` (nunca un volcado en claro en disco): `apex-AAAAMMDD-HHMMSS-db.dump.age` y `apex-AAAAMMDD-HHMMSS-uploads.tar.age` (UTC), más `latest.json` y `latest.json.minisig` en el volumen `backups`. Con `--prefix pre-deploy` o `--prefix pre-restore` escribe `<prefijo>-<ts>.json` y su `.minisig` y **no** toca `latest.json`. `age` da confidencialidad, no autenticidad: la firma `minisign` del manifiesto es lo que `restore.sh` verifica antes de descifrar nada.
+- **Inerte sin destinatario.** Sin `BACKUP_AGE_RECIPIENT` el servicio queda `healthy` pero el log dice `ERROR backup deshabilitado: falta BACKUP_AGE_RECIPIENT` y no hace respaldos. La llave de firma es obligatoria: sin `BACKUP_SIGN_KEY_FILE` montado, `run.sh` sale con 2.
+- **Aviso P3: sin `BACKUP_RCLONE_REMOTE` el respaldo vive en el mismo disco que la base.** No es un respaldo fuera de la máquina; el estado de `/health` y de `backup_check` lo dirán (B2). Con destino remoto la subida es `rclone copyto` con una credencial **sin permiso de borrado**; ejemplo de política del cubo sin `DeleteObject` (S3): permitir solo `s3:PutObject` y `s3:ListBucket` al usuario de `apex`.
+- **Retención.** `BACKUP_KEEP_DAYS` (3 a 365, 14 por defecto) borra solo juegos `apex-*` antiguos, solo tras una corrida cuya verificación no falló y nunca deja menos de dos juegos; los `pre-deploy-*` y `pre-restore-*` se borran a mano.
+- **Verificación de descifrado.** Con `infra/compose.verify.yml` y `BACKUP_VERIFY_IDENTITY_FILE` (identidad age en un archivo 600 de uid 10001) la propia corrida descifra y compara el hash en claro: `verify` queda en `ok` o `failed`; sin identidad queda en `skipped` ("sin verificar" no es "sano"). La identidad se monta solo en `backup`, nunca en el worker ni el api.
+
+### Generar las claves (una vez, fuera del repositorio)
+
+```
+# Dentro de la imagen (el anfitrión no tiene age ni minisign); los archivos quedan en una carpeta tuya, modo 600, dueño uid 10001.
+docker run --rm -v "$HOME/apex-secretos:/k" --entrypoint sh apex-backup:local -c 'age-keygen -o /k/backup-verify-identity.txt && minisign -G -W -p /k/backup-sign.pub -s /k/backup-sign.key'
+sudo chown 10001:10001 "$HOME/apex-secretos"/* && chmod 600 "$HOME/apex-secretos"/*
+```
+La identidad de **restauración** (la que descifra el desastre) se genera aparte, se guarda fuera de la máquina y solo su recipiente público (`age1...`) entra a `.env.ops`. Ningún documento cita identidades reales: se escriben como `AGE-SECRET-KEY-1<...>`.
+
+### Pendiente de completar por slice
+
+- Roles y `.env`/`.env.ops` por servicio, `dbsetup` y `revoke.sql` (W0-3; comando de P-ROL: `$DC --profile prod-init run --rm --no-deps dbsetup`).
+- `backup_check` y sus estados (B2); `restore.sh`, `export-kek`/`restore-kek`/`verify-kek-backup` (B3a); `rotate-key`/`retire-key` (B3b); `deploy.sh`, ensayo en la misma máquina y `prod-smoke.sh` (B4).

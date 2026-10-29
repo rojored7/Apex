@@ -1,5 +1,12 @@
 # US-117 · Despliegue seguro — desglose técnico
 
+> **Corregido en S4B-W0-1** (`docs/ddd/blueprints/sprint-04b-plan.md`, sección 1, "Contradicciones de contrato cerradas en los desgloses", y decisión S4B-D2; registro en `docs/ddd/DECISIONES.md`, "Sprint 4B"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El despliegue es `deploy.sh --ref --expect-sha`; sin `docker compose pull` ni `IMAGE_TAG` (etiquetado local, `prev-<fecha>`).
+> - La salud se comprueba con `grep -E`, sin `curl | jq -e`; el despliegue exige `migrations == "ok"`.
+> - Compose se invoca con `--env-file .env --env-file .env.ops`.
+> - Pruebas en Bash puro con `bash -n`; sin `deploy_unit.bats` ni `shellcheck`.
+> - Los comandos usan `docker compose run --rm tools ...`, sin `uv run`.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-117-despliegue-seguro.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno; operación (`infra/deploy.sh`, `docs/operacion/actualizar.md`)

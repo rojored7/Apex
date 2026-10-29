@@ -27,12 +27,14 @@ FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00
 # SHA corto de git que publica /health como `version` (US-020).
 ARG GIT_SHA=dev
 ENV APP_VERSION=$GIT_SHA
+# Revisión de git como etiqueta OCI (S4B-D67): deploy.sh la compara antes de reutilizar la imagen.
+LABEL org.opencontainers.image.revision=$GIT_SHA
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tzdata \
+    && apt-get install -y --no-install-recommends tzdata age \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 apex \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin apex \
-    && mkdir -p /run/apex/keys /data/uploads \
+    && mkdir -p /run/apex/keys /data/uploads /data/backups /data/imports \
     && chown -R apex:apex /run/apex /data
 COPY --from=builder --chown=apex:apex /app /app
 WORKDIR /app

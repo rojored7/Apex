@@ -7,7 +7,7 @@
 #   2. algún archivo contiene `-----BEGIN ... PRIVATE KEY-----`;
 #   3. hay `.pem`, `.key` o `.kek` bajo `app/`.
 # Excluye de forma explícita el parser PEM de cryptography (contiene la cabecera como constante)
-# y los certificados públicos de CA (`etc/ssl/certs`,
+# los binarios de rclone (S4B-W0-1: llevan la cabecera como constante del parser) y los certificados públicos de CA (`etc/ssl/certs`,
 # `usr/share/ca-certificates`, `**/certifi/cacert.pem`): no son secretos.
 # Termina con `gitleaks dir` sobre el mismo directorio (imagen oficial, MIT); con
 # SKIP_GITLEAKS=1 se omite (por ejemplo sin acceso a Docker Hub).
@@ -28,7 +28,7 @@ docker rm -f "$contenedor" > /dev/null
 envs="$(find "$TMP" -xdev \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" 2>/dev/null | sed "s|$TMP||" || true)"
 if [ -z "$envs" ]; then ok "sin archivos .env en la imagen"; else falla "archivos .env en la imagen:$envs"; fi
 
-privadas="$(grep -rlsE --exclude-dir=lib -e "-----BEGIN (RSA |EC |OPENSSH |ENCRYPTED |DSA |)PRIVATE KEY-----" "$TMP" 2>/dev/null | grep -vE "etc/ssl/certs|usr/share/ca-certificates|certifi/cacert\.pem|site-packages/cryptography/hazmat/primitives/serialization/" | sed "s|$TMP||" || true)"
+privadas="$(grep -rlsE --exclude-dir=lib -e "-----BEGIN (RSA |EC |OPENSSH |ENCRYPTED |DSA |)PRIVATE KEY-----" "$TMP" 2>/dev/null | grep -vE "etc/ssl/certs|usr/share/ca-certificates|certifi/cacert\.pem|site-packages/cryptography/hazmat/primitives/serialization/|usr/bin/rclone$|usr/bin/rclonefs$|usr/sbin/mount.rclone$" | sed "s|$TMP||" || true)"
 if [ -z "$privadas" ]; then ok "ninguna llave privada por contenido"; else falla "llaves privadas por contenido:$privadas"; fi
 
 bajo_app="$(find "$TMP/app" -xdev -path "*/site-packages" -prune -o \( -name "*.pem" -o -name "*.key" -o -name "*.kek" \) -print 2>/dev/null | sed "s|$TMP||" || true)"

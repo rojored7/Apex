@@ -22,6 +22,7 @@ web/playwright-report/
 .env.*
 !.env.example
 !.env.seed.example
+!.env.ops.example
 *.pem
 *.key
 keys/
@@ -46,6 +47,16 @@ _entregas/**/*.zip
 *.dump
 *.sql.age
 *.sql.gz
+# Respaldos cifrados, identidades y llaves de firma (S4B-D10, S4B-D78)
+*.age
+rclone.conf
+age-identity*
+backup-verify-identity*
+backup-sign*
+# Ensayo de producción y restos de despliegue (S4B-D79)
+docs/scratch/ensayo/
+rollback-*.txt
+deploy-*.state.json
 
 # Llaves locales del bus de criptografía y artefactos de pruebas
 *.kek

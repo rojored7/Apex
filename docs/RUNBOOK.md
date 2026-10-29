@@ -14,7 +14,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 1. [Sesión y límites](#1-sesión-y-límites-s2-b2)
 2. [Cuentas](#2-cuentas): primer admin, enlaces de activación y recuperación, ciclo de vida
 3. [Auditoría de eventos de seguridad](#3-auditoría-de-eventos-de-seguridad-s2-b6)
-4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado, ficha, revelar y editar, pestañas de membresías y pagos, historial de la ficha
+4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado, ficha, revelar y editar, pestañas de membresías y pagos, historial de la ficha, contacto para avisos
 5. [Planes](#5-planes-s2-b9)
 6. [Rollback por migración](#6-rollback-por-migración)
 7. [Imágenes base por digest y su renovación](#7-imágenes-base-por-digest-y-su-renovación-s3-d62)
@@ -356,6 +356,15 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin ac
 - **Errores y límites:** socio inexistente 404 `member_not_found` (gana sobre un `offset` fuera de rango); `offset` mayor que 100.000 da 422 con `field="offset"`; `limit` fuera de rango, `offset` negativo, `q` con controles o `member_id` que no es UUID dan 422 con `field`; el rol `member` 403; sin sesión 401. Consume `staff-read` (120 lecturas por minuto por usuario, compartida con `GET /audit`, `GET /audit/{seq}` y el tablero): la 121.ª da 429 con `Retry-After`. El `total` se satura en 100.001, como en `GET /audit`.
 - **Solo lee:** abrir el historial no escribe en `audit.audit_log` ni en `crypto.crypto_ops`, y no descifra nada.
 - **Verificar con psql:** `SELECT seq, action, table_name FROM audit.audit_log WHERE subject_member_id = '<id>' ORDER BY seq DESC LIMIT 25;` coincide con la primera página sin `q`.
+
+### Contacto para avisos (S4A-B6, US-077; S4A-D21, S4A-D50, S4A-D113)
+
+- **`members.service.contact_for_notification(session, member_id, purpose)`.** Devuelve un `Contact` con el nombre, el teléfono y el correo en claro del socio para mandarle un aviso. No es una ruta: no hay endpoint que la exponga. El `repr` y el `str` del `Contact` nunca muestran el teléfono ni el correo; quien lo recibe no lo guarda, no lo escribe en logs y no lo serializa: `pickle`, `copy`, `deepcopy`, `vars` y `json.dumps` sin ayuda lanzan `TypeError`, y `dataclasses.asdict`/`astuple` no se usan con él.
+- **Quién puede llamarla.** En el Sprint 4A, nadie fuera de `members` (`CONTACT_CALLERS` vacío en `tests/architecture/test_contact_callers.py`). El Sprint 5 agrega `notifications.service` a `CONTACT_CALLERS`, y solo ese módulo.
+- **Propósitos.** Solo `notify` (aviso al socio) y `auth_link` (enlace de cuenta), exactos: `NOTIFY`, ` notify`, `mask`, `reveal`, `export` o vacío dan `InvalidPurpose` antes de leer la base. Un socio inexistente o dado de baja da `MemberNotContactable` sin descifrar ni auditar.
+- **Rastro.** Por cada campo no vacío (teléfono, correo): una fila `decrypt` en `crypto.crypto_ops` con el `purpose`, el `record_id` del socio, `count = 1` y el `batch_id` del lote del llamador, y una fila `reveal` en `audit.audit_log` con `after = {"field", "purpose"}` (nunca el valor ni la IP), `record_id` y `subject_member_id` del socio. El historial de la ficha la muestra con `purpose` `notify` o `auth_link`. Un campo vacío sale `None` y no deja filas.
+- **Regla de composición.** No pide `lock_member` ni candados de fila (no escribe en `members`), pero la primera fila de auditoría toma el candado de la cadena. Una llamada por socio: en una transacción propia, o después de `lock_member` del mismo socio y antes de otras escrituras que pidan candados; nunca en un bucle sobre varios socios en la misma transacción. Quien la llama confirma la transacción antes de enviar el aviso: un rollback borra las filas `reveal` pero no las `decrypt` (`oplog` las escribe en otra conexión).
+- **Verificar con psql:** `SELECT verb, purpose, count, batch_id FROM crypto.crypto_ops WHERE record_id = '<id>' AND purpose IN ('notify', 'auth_link');` y `SELECT action, after FROM audit.audit_log WHERE subject_member_id = '<id>' AND action = 'reveal' AND after ? 'purpose';` dan una fila por campo y llamada.
 
 ## 5. Planes (S2-B9)
 

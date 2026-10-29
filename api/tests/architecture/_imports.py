@@ -38,7 +38,8 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     # S3-B3 (D7): `payments` nace partido tras la fachada `service.py`.
     "payments": frozenset({"rules", "events", "queries"}),
     # S3-B9a (D7, S3-D73): `members/service.py` se parte en `rules`, `detail` y `changes`.
-    "members": frozenset({"rules", "detail", "changes"}),
+    # S4A-B6 (S4A-D21): `contact` (contacto para avisos) también es privado.
+    "members": frozenset({"rules", "detail", "changes", "contact"}),
     # S4A-B3 (S4A-D18): `audit` nace partido; B3 suma `verify` y B4 `queries` y `diff`.
     "audit": frozenset({"verify", "queries", "diff"}),
 }

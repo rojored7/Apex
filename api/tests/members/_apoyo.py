@@ -16,6 +16,8 @@
   claro de un blob de la fila cruda, con `aad = id`; deja un `decrypt` sin propósito en el
   buffer: solo al final de una prueba); `peticion(session, actor)` (sesión vacía y actor, como
   una petición nueva).
+- S4A-B6: `contar_crypto_ops(session, record_id, verb, purpose)`: filas de `crypto_ops` del
+  registro con ese verbo y propósito.
 """
 
 from __future__ import annotations
@@ -184,3 +186,20 @@ def peticion(session: AsyncSession, actor: UUID) -> Iterator[None]:
     session.expunge_all()
     with actor_scope(actor):
         yield
+
+
+# S4A-B6 -----------------------------------------------------------------------------------
+
+
+async def contar_crypto_ops(
+    session: AsyncSession, record_id: UUID, verb: str, purpose: str | None
+) -> int:
+    """Filas de `crypto.crypto_ops` del registro con ese verbo y propósito (`None` = sin propósito).
+
+    Cuenta filas, no la suma de `count`: una fila agregada por `bus.batch` pierde el `record_id`
+    y no entra (S4A-D21 exige una fila por campo con el `record_id` del socio)."""
+    consulta = text(
+        "SELECT count(*) FROM crypto.crypto_ops WHERE record_id = :r AND verb = :v "
+        "AND purpose IS NOT DISTINCT FROM CAST(:p AS text)"
+    )
+    return int(await session.scalar(consulta, {"r": record_id, "v": verb, "p": purpose}) or 0)

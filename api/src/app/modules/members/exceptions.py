@@ -86,6 +86,24 @@ class MemberNotDeactivated(MemberError):
     default_message = "El socio no está dado de baja."
 
 
+# S4A-B6 (US-077; S4A-D21, S4A-D50) ------------------------------------------------------------
+
+
+class InvalidPurpose(MemberError):
+    """`contact_for_notification` con un propósito que no es `notify` ni `auth_link`. Se lanza
+    antes de leer la base; no sale por HTTP (ninguna ruta llama al contacto)."""
+
+    code = "invalid_purpose"
+    default_message = "El propósito de la consulta de contacto no es válido."
+
+
+class MemberNotContactable(MemberError):
+    """El socio no existe o está dado de baja: no se descifra nada ni se audita."""
+
+    code = "member_not_contactable"
+    default_message = "El socio no se puede contactar."
+
+
 class ConsentCannotBeWithdrawn(MemberError):
     """`data_consent=false` en la edición: retirar la autorización es otro proceso (Ley 1581,
     S3-D46). 422 con `field="data_consent"`."""

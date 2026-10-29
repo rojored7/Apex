@@ -41,6 +41,10 @@ Buscar y listar (S2-B8, US-070; RN-13, RN-14, N-01, N-20, L-1):
 - `search_ids(session, q, include_deleted=False)` y `names_for(session, ids)`: una consulta
   cada una; `names_for` incluye dados de baja (contratos de US-091 y US-110).
 
+Contacto para avisos (S4A-B6, US-077; S4A-D21, S4A-D50): re-exporta de `contact.py`
+`Contact`, `validate_purpose` y `contact_for_notification`, y las excepciones `InvalidPurpose`
+y `MemberNotContactable`. En 4A nadie fuera de `members` la llama (`test_contact_callers.py`).
+
 Historial (S4A-B5, US-106; S4A-D20): `history(session, member_id, page, q)` hace
 `ensure_exists(member_id, include_deleted=True)` y delega en `audit.service.member_history`
 (import de nivel de módulo: arista `members -> audit`; `audit` nunca importa `members`).
@@ -95,8 +99,14 @@ from app.modules.members.changes import (
     reactivate,
     update,
 )
+from app.modules.members.contact import Contact, contact_for_notification, validate_purpose
 from app.modules.members.detail import SIN_MEMBRESIA, get, reveal
-from app.modules.members.exceptions import MemberDocumentDuplicated, MemberNotFound
+from app.modules.members.exceptions import (
+    InvalidPurpose,
+    MemberDocumentDuplicated,
+    MemberNotContactable,
+    MemberNotFound,
+)
 from app.modules.members.models import Member
 from app.modules.members.rules import (
     ADMIN_ONLY_FIELDS,
@@ -134,9 +144,12 @@ __all__ = [
     "LIKE_ESCAPE",
     "MEMBER_CHIPS",
     "PHONE_DATA_CLASS",
+    "Contact",
+    "InvalidPurpose",
     "MemberChipFilter",
     "MemberCreated",
     "MemberDeactivated",
+    "MemberNotContactable",
     "MemberReactivated",
     "MemberUpdated",
     "QueryPlan",
@@ -144,6 +157,7 @@ __all__ = [
     "chip_to_filter",
     "classify_query",
     "compute_warnings",
+    "contact_for_notification",
     "count",
     "create",
     "deactivate",
@@ -162,6 +176,7 @@ __all__ = [
     "search_ids",
     "update",
     "validate_member_input",
+    "validate_purpose",
 ]
 
 logger = logging.getLogger("app.members")

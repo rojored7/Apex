@@ -58,6 +58,12 @@ FACHADA_MEMBERS = frozenset(
         "search_ids",
         "update",
         "validate_member_input",
+        # S4A-B6 (S4A-D21): el contacto para avisos y sus dos excepciones.
+        "Contact",
+        "InvalidPurpose",
+        "MemberNotContactable",
+        "contact_for_notification",
+        "validate_purpose",
     }
 )
 PURAS_DE_RULES = frozenset(
@@ -90,6 +96,9 @@ DE_CHANGES = frozenset(
         "MemberReactivated",
     }
 )
+# S4A-B6: lo que la fachada toma de `contact.py` y de `exceptions.py` (el mismo objeto).
+DE_CONTACT = frozenset({"Contact", "contact_for_notification", "validate_purpose"})
+DE_EXCEPTIONS = frozenset({"InvalidPurpose", "MemberNotContactable"})
 
 MODULES_DIR = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
 
@@ -156,14 +165,15 @@ def test_los_privados_de_audit_son_los_de_b4() -> None:
 
 
 def test_los_privados_de_members_son_los_de_b9a() -> None:
-    """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`."""
-    assert frozenset({"rules", "detail", "changes"}) == PRIVATE_HELPERS.get("members")
+    """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`;
+    S4A-B6 (S4A-D21) suma `contact` (el contacto para avisos). Conjunto exacto."""
+    assert frozenset({"rules", "detail", "changes", "contact"}) == PRIVATE_HELPERS.get("members")
     for archivo in PRIVATE_HELPERS["members"]:
         assert (MODULES_DIR / "members" / f"{archivo}.py").is_file(), archivo
 
 
 def test_nadie_fuera_de_members_importa_rules_detail_ni_changes() -> None:
-    privados = tuple(f"app.modules.members.{a}" for a in ("rules", "detail", "changes"))
+    privados = tuple(f"app.modules.members.{a}" for a in ("rules", "detail", "changes", "contact"))
     violaciones = [
         str(v)
         for carpeta in sorted(p for p in MODULES_DIR.iterdir() if p.is_dir())
@@ -204,6 +214,12 @@ def test_members_service_es_fachada_con_all() -> None:
     changes = importlib.import_module("app.modules.members.changes")
     for nombre in DE_CHANGES:
         assert getattr(service, nombre) is getattr(changes, nombre), nombre
+    contact = importlib.import_module("app.modules.members.contact")
+    for nombre in DE_CONTACT:
+        assert getattr(service, nombre) is getattr(contact, nombre), nombre
+    excepciones = importlib.import_module("app.modules.members.exceptions")
+    for nombre in DE_EXCEPTIONS:
+        assert getattr(service, nombre) is getattr(excepciones, nombre), nombre
 
 
 @pytest.mark.parametrize("ajeno", ["members", "memberships", "auth", "settings"])

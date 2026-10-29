@@ -25,7 +25,7 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # comandos: seed, init-keys, export-openapi, issue-reset-link, verify-audit y recompute-memberships (Sprint 4A), import-members, rotate-key, sign-audit; cli_ops.py si cli.py pasa de 760 líneas (S4A-D72)
+      cli.py             # comandos: seed, init-keys, export-openapi, issue-reset-link, verify-audit y recompute-memberships (Sprint 4A), import-members, rotate-key, sign-audit; cli_ops.py si cli.py pasa de 760 líneas (S4A-D72; en 4A cli.py mide 760 y no se extrajo)
       core/
         config.py        # Settings con pydantic-settings, todo desde .env
         db.py            # engine async, sesión, Base, CommonColumnsMixin
@@ -56,7 +56,7 @@ apex/
         settings/    router.py schemas.py models.py service.py
         members/     router.py schemas.py models.py service.py
                      contact.py   # contact_for_notification(session, member_id, purpose), privado (Sprint 4A, S4A-D21)
-        plans/       ...           # changes.py si service.py pasa de 600 líneas (S4A-D72)
+        plans/       ...           # changes.py si service.py pasa de 600 líneas (S4A-D72; en 4A service.py mide 506 y no se extrajo)
         memberships/
                      expirations.py   # recompute_statuses del job diario, privado (Sprint 4A, S4A-D2)
         payments/

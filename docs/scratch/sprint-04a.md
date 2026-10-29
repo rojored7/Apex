@@ -936,3 +936,51 @@ verify-audit --as admin-e2e-1793249495@apex.test: 'Cadena íntegra: 5432 registr
 - gitleaks (imagen por digest de `ci.yml`, modo `git` con `--log-opts=--all` y `.gitleaks.toml`): 177 commits, "no leaks found", tras dos ajustes: el cuaderno ya no cita la cabecera PEM con sus guiones, y `.gitleaks.toml` añade por valor exacto los dos `key_id` ficticios de los blobs de prueba (`encryptedBlob.test.ts`, `audit.spec.ts`, `test_filters.py`) y los tres commits intermedios `dbc352e`, `8339138` y `fa0787d` que citaban la cabecera como texto (nunca hubo material de llave). El modo `dir` sobre el árbol solo marca archivos de `api/.venv*` (no versionados).
 - `check-image-secrets.sh apex-api:local` en verde. `npm run gen:api` sin deriva en `types.ts`. `grep -rn "job_runs\|audit_log" web/tests` vacío.
 - Pendiente del cierre: reconstruir las dos imágenes con el código final y repetir `test_api_image.sh`, el smoke y los E2E (V12).
+
+## V12 · Stack final, smoke, E2E y limpieza (HEAD `39a4b31`)
+
+
+Sin tokens ni contraseñas. Logs en este scratchpad con prefijo `v12b-`.
+
+### 1. Imágenes y stack
+- Antes: apex-api:local `329e3396b325`, apex-web:local `b8cd258b1cab`.
+- `docker buildx build --load --network host --allow network.host` → api rc 0, web rc 0 (sin cortes por EOF).
+- Después: apex-api:local `sha256:83a82fc3caff5174c81323e7bed5b6b8b2f29639d4cfac867bebce9498abe87d` (11:20:58Z, 359 MB); apex-web:local `sha256:6745c50bf90a83164972531333213beed5cac7265de1945b566eacc93f214fdb` (11:21:19Z, 94 MB).
+- `$DC up -d --no-build --force-recreate api worker web` → los cinco healthy; RestartCount 0 en api, worker y web; api y worker con 83a82fc3caff, web con 6745c50bf90a.
+- `alembic current` = `0013_audit_verifications (head)`; `--status expirations` rc 0 (fila 6861ce21, ok, run_date 2026-10-29).
+
+### 2. Pruebas de imagen
+- `test_api_image.sh apex-api:local` rc 0, 0 fallas. `check-image-secrets.sh apex-api:local` rc 0, 0 fallas (gitleaks sin hallazgos).
+- Web (no hay script propio de imagen; la CI corre `test_nginx_conf.sh`): `test_nginx_conf.sh` rc 0, 0 fallas; `check-image-secrets.sh apex-web:local` rc 0, 0 fallas; extra `test_compose_config.sh` rc 0, 0 fallas (.env sin cambios, sha256 128adc5675d354b0).
+
+### 3. Smoke
+- Copia `compose-smoke-v12b.sh` del script actual con `build api` omitido y `--build` → `--no-build` (db/db_test y web). `SMOKE_KEEP=1` → verde en 62 s, rc 0.
+- worker healthy y sin reinicios tras 30 s; `--run-once expirations` (1) 0, (2) 0; `--status` ok con la misma fila; `.env.seed` efímero creado y borrado (no queda en disco); seed "omitido: ya existe un admin activo"; api sin ADMIN_*; web en 172.30.0.10; web-smoke 0 fallas; headers 0 fallas (ráfaga de 45 logins: 40 × 429). Ningún contenedor recreado (mismos StartedAt).
+
+### 4. E2E stack con topes ×100
+- `.env` copiado (cmp ok); 0 de las 19 variables existían; bloque añadido: 7 `LOGIN_*`/`*_IP_LIMIT`/`LOGIN_LOCK_AFTER` = 1000, `LOGIN_ACCOUNT_GLOBAL_LIMIT=10000`, 11 `USER_*` según el sed de ci.yml (grep de la CI = 11).
+- `$DC -f infra/compose.e2e.yml up -d --no-build api web` → api y web (y db por el cambio de .env, mismo volumen) recreados y healthy; 19 variables en el api; `rate=6000r/m`.
+- `node with-admin.mjs web npm run e2e:stack -- --workers=1` (admin desechable, contraseña aleatoria solo en el entorno) → **40 passed (59,4 s)**, 0 fallos, rc 0.
+- Restauración: `.env` copiado de vuelta, `cmp` idéntico (sha256 128adc5675d354b0), copia borrada; `$DC up -d --no-build api web` sin compose.e2e.yml → healthy; 0 variables de topes; `rate=60r/m`.
+- Topes de producción (11:27–11:28Z): 6 logins fallidos (correo inexistente) → 401 ×5, 429 `rate_limited` Retry-After 60. Tras 65 s, `POST /audit/verify` ×4 → 200 (5.604), 200 (5.605), 200 (5.606), 429 `rate_limited` Retry-After 60.
+
+### 5. Activate en vivo
+- `GET /plans?active=false&limit=200` 200, total 72 (se pidió 200 para filtrar el nombre). Plan `0 E2E 2wq4d8h2r` (52322d09-d473-42da-b7aa-e1374d9506cf), is_active false.
+- `POST /plans/{id}/activate` → 200, is_active true; `GET /audit?table=plans.plans&limit=1` → seq 5.608 `update` del mismo record (antes la última era seq 5.554 insert).
+- `POST /plans/{id}/deactivate` → 200, is_active false; auditoría seq 5.609 `update` del mismo plan.
+- `tools verify-audit --as admin-e2e-1793249495@apex.test` → rc 0, "Cadena íntegra: 5609 registros verificados hasta el seq 5609."
+
+### 6. Limpieza
+- `GET /users?q=admin-e2e` 200 (1, mismo id que /auth/me 8378cdeb-…); `DELETE /users/8378cdeb-…` → **204**. Sin más llamadas autenticadas.
+- psql lectura: `%@apex.test` 239 filas, **0 vivas** (todas con baja). Usuarios vivos: 5 (system@apex.local inactivo, admin real, 3 coaches de demo del Sprint 3, que son `@test.apex`, no `@apex.test`).
+- db_test: bases apex_test, postgres, template0, template1; **sin apex_sim**.
+- Borrados `docs/scratch/sprint-04a-antes-0012.dump` y `…-0013.dump` (ignorados por git); no había `sprint-04a-sim.dump`; `ls docs/scratch/*.dump` vacío.
+- `git worktree list`: solo el principal. `.env` idéntico; sin `.env.seed`.
+- Stack: cinco healthy, RestartCount 0, sin compose.e2e.yml, alembic head 0013; logs api+worker últimos 15 min: 0 ERROR/CRITICAL/Traceback.
+- `git status`: M CLAUDE.md, docs/RUNBOOK.md, docs/ddd/09_sprint_plan/SPRINT-04A.md, docs/ddd/DECISIONES.md (ediciones del otro agente; RUNBOOK.md no estaba en la lista anunciada).
+
+### Desviaciones
+- La corrida E2E dejó 4 planes activos nuevos (`0 E2E 2wq49a3jx`, `…acho`, `…ahrb`, `Mensual mvtgidux`): hay 7 activos, no 3 como dice la nota de P2-1 añadida a RUNBOOK.md; 72 desactivados sin cambio.
+- Ninguna `*_IP_LIMIT`/`LOGIN_*` adicional: la CI sube 7 a 1000 más la GLOBAL (8 en total), no 8 a 1000.
+
+- Nota: la corrida E2E final dejó 4 planes de prueba activos más (7 en total con los 3 reales), que el procedimiento P2-1 de RUNBOOK §11 retira en la próxima limpieza; sin admin desechable vivo al cierre.

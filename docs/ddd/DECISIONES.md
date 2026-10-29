@@ -1098,6 +1098,26 @@ Los cuatro puntos que la documentación de cierre dejó sin dueño quedan así. 
 
 - **Resueltos en S4A-W0-1 (revisión de diseño previa al Sprint 4A).** S3-D98 queda fuera de v0.1 con dueño "backlog v0.2, junto a EP-16", y los "Pendiente de diseño" de `docs/BRECHAS.md` §10 conservan su estado sin cambio de código; el cierre está en `BRECHAS.md` §10.14 y §11 y en S4A-D36 (sección "Sprint 4A" más abajo).
 
+### Estado de los dueños del Sprint 3 al cierre del Sprint 4A (V12, 2026-10-29)
+
+Se actualiza la sección anterior sin cambiar su texto original. Lo que cerró el Sprint 4A se marca con su slice; lo que sigue abierto conserva su dueño.
+
+- **Resuelto en 4A:**
+  - **P2-1** (planes de prueba que ocupaban la venta y `DELETE /plans/{id}`): código en S4A-B7 (S4A-D23, D24, D60) y limpieza por API en V12; detalle en la sección "Estado al cierre del Sprint 4A" y en `RUNBOOK.md` §11.
+  - **Historial de la ficha (US-106)** y `subject_member_id` de las congelaciones: S4A-B5 (S4A-D20, S4A-D109 a S4A-D112) y S4A-F2.
+  - **"Socios con él" en Planes**: `active_members_count` en S4A-B7 (S4A-D25) y S4A-F4 (S4A-D124).
+  - **Tablero de Inicio (KPI)**: S4A-B8 (S4A-D116 a S4A-D119) y S4A-F3 (S4A-D121, S4A-D125).
+  - **Job de vencimientos y sus eventos**: S4A-B2 (S4A-D1, S4A-D2, S4A-D89).
+  - **`omit` de `cli.py` y `worker/` en la cobertura**: S4A-B1.7 (S4A-D39); `run-gates.sh` sin `omit` con 97 % (V9).
+  - **S3-D98 (orden "Vencimiento más próximo")**: ya constaba como cerrado en S4A-W0-1 (fuera de v0.1, backlog v0.2 con EP-16; `docs/BRECHAS.md` §10.14 y §11).
+  - **"Pendientes de diseño" de `docs/BRECHAS.md` §10**: revisión de diseño previa al 4A cerrada en S4A-W0-1 (S4A-D36). Las brechas nuevas del sprint quedan en `docs/BRECHAS.md` §11 (ver "Dueños asignados al cierre del Sprint 4A").
+- **Sigue abierto con dueño:**
+  - **W0-2 MEDIUM-1** (`25P03` y cortes del servidor responden 500 y no 503 `busy`) y **W0-2 MEDIUM-2** (fallo de `crypto_ops` durante el rollback): **S4B-W0-2**.
+  - **Rol del api no superusuario ni dueño de tablas** (S3-D49, I-2): **S4B-W0-2**.
+  - **N-6 y N-7** (heredadas del Sprint 2; remedir el p99): **S4B-W0-2**.
+  - **Nombre de usuario en lugar del correo parcial** (S3-D57): la parte local queda como nombre visible (S4A-D19, S4A-D108); la columna de nombre llega en **v0.2, EP-04**.
+  - **Límite `USER_*` en producción**: lo decide quien administra el `.env` (operador, sin cambio de sprint).
+
 ## Sprint 4A · decisiones de implementación
 
 Fuente: `docs/ddd/blueprints/sprint-04a-plan.md`, sección 1, copiada íntegra en el checkpoint de S4A-W0-1, con las enmiendas de la crítica 1 (`sprint-04a-critica-1.md`, E1 a E10) aplicadas: E1 deja una sola forma del job marcador (S4A-D64) y E5 añade la guarda dura de `--date` a la contradicción 2, a S4A-D48 y a S4A-D63. Mandan sobre `sprint-04a-blueprint.md` y `sprint-04a-seguridad-diseno.md` donde choquen. Las decisiones del blueprint (S4A-D1 a S4A-D42) se registran en su forma final; las de seguridad (S4A-D43 a S4A-D61) con la opción elegida; las del plan continúan en S4A-D62. Los slices anotan aquí, en su bloque, lo que decidan al implementar.
@@ -1311,3 +1331,120 @@ Decisiones que fijaron los cuadernos del front al implementar y que aún no esta
 - **Dueño de S4A-D103 (aviso 6 de V11).** Las cubetas por usuario en la memoria del único proceso de Uvicorn pasan a almacén compartido cuando haya más de un proceso. Dueño: **v0.2, junto a OpenBao/despliegue con varios workers**.
 - **Dueño de R-3 de S4A-D127 (aviso 5 de V11).** La pausa del GC de generación 2 en el proceso real del api durante una verificación síncrona no se midió. Dueño: **Sprint 4B, medir con `gc.callbacks` en el api bajo carga y fijar `gc.freeze()` tras el arranque si hace falta**.
 - **Nota de V10 sobre `sessionStorage` en `web/src/pages/RouteError.tsx:41-43` (aviso 6 de V11).** Guarda solo la marca de tiempo de la única recarga automática por chunk (Sprint 2), sin datos del usuario ni tokens: aceptada. Dueño: **front, regla de lint explícita en 4B** (lista blanca de usos de `sessionStorage`).
+
+### Estado al cierre del Sprint 4A
+
+Fecha: 2026-10-29. Se anota solo lo que cambió respecto al plan (`docs/ddd/blueprints/sprint-04a-plan.md`) o a la decisión original. El estado del sprint, los conteos y las desviaciones están en `docs/ddd/09_sprint_plan/SPRINT-04A.md`, sección "Estado al cierre del sprint (documentación)". Rama `feat/sprint-04a-worker-auditoria-tablero`, HEAD `39a4b31` antes de esta documentación.
+
+#### Verificación de la cadena (S4A-D13, D14, D44, D47, D91, D100, D120)
+
+- **`SYNC_VERIFY_MAX_ROWS` = 100.000.** El plan decía 50.000 como valor inicial; `test_verify_performance.py` lo calibró en S4A-D91 (100.000 filas en unos 2,2 s). Valor final.
+- **`VERIFY_BATCH_SIZE` = 500, con lectura por rango acotado de `seq`.** El contrato del plan decía 5.000; B3 lo midió en 1.000 (S4A-D91) y V5 lo bajó a 500 con `last_seq < seq <= min(last_seq + 500, through_seq)` (S4A-D120). El tope de 100 ms por bloque síncrono no cambió.
+- **`SYNC_VERIFY_MAX_SECONDS` = 45 (nuevo).** Plazo de la rama síncrona, bajo los 60 s de Nginx. Si vence, el SAVEPOINT se revierte y la respuesta es 202 (S4A-D100). No estaba en el plan.
+- **`VERIFY_MAX_SECONDS` = 900.** Plazo de la tarea en segundo plano con `asyncio.timeout` (S4A-D44).
+- **`POST /audit/verify`** responde 200, 202 o 409 como en el plan. Su límite es `audit-verify` y `audit-verify-hour`, no `admin-write` (S4A-D14, S4A-D47).
+
+#### Cubetas de límite (S4A-D26, D45, D47, D65)
+
+- **12 cubetas y 11 variables `USER_*`.** El plan decía que `USER_LIMITS` no cambiaba (9 cubetas y 8 variables). La seguridad lo corrigió (contradicción 1 de esta sección).
+- **`staff-read`** = 120 por minuto (`USER_READ_LIMIT_PER_MIN`) para `GET /audit`, `GET /audit/{seq}`, `GET /members/{id}/audit` y `GET /dashboard`.
+- **`audit-verify`** = 3 por minuto (`USER_AUDIT_VERIFY_LIMIT_PER_MIN`) y **`audit-verify-hour`** = 20 por hora (`USER_AUDIT_VERIFY_LIMIT_PER_HOUR`), para `POST /audit/verify`.
+- Las escrituras de planes siguen con `admin-write` (S4A-D26). El job `e2e-stack` de la CI espera las 11 variables (S4A-D65, E9).
+
+#### Auditoría, rangos y paginación (S4A-D16, D45, D46, D104, D106, D110)
+
+- **`MAX_AUDIT_OFFSET` = 100.000**, con 422 `field="offset"` en `GET /audit` y en el historial.
+- **`total` se satura en 100.001.** El conteo recorre una subconsulta con `LIMIT MAX_AUDIT_OFFSET + 1` (S4A-D106 b, S4A-D110). El front lo muestra como "Más de 100.000 entradas".
+- **`record_id` exige `table`**, y `table` debe estar en `AUDITABLE_TABLES` (S4A-D106 a). Un `q` UUID solo se traduce a `record_id` cuando hay `table` (precisa S4A-D104).
+- **Rangos de instantes:** `check_instant_range` en `core/validators.py`, con `INSTANT_FLOOR` = 2020-01-01 UTC y techo `now + 1 día` (S4A-D46, S4A-D66).
+- **`GET /audit/verify/last` no tiene límite de cubeta** y va antes que `/audit/{seq}`.
+
+#### Contacto, historial y marcador de blobs (S4A-D20, D21, D50, D52, D105, D107, D109 a D113)
+
+- **`contact_for_notification(session, member_id, purpose)`**, sin `fields` ni `by` y sin ruta HTTP. `CONTACT_CALLERS` queda vacío en 4A (S4A-D21, S4A-D50). La regla de composición es una unidad por socio, en transacción propia o tras `lock_member`.
+- **`member_history(session, member_id, page, q)`** en lugar de `list_for_subject` (S4A-D20). `void_reason` y `reference` no aparecen ni como nombre de campo (S4A-D109). Un `q` con `@` da página vacía sin buscar usuarios (S4A-D112).
+- **Marcador en vez de blob (S4A-D52).** El servidor sustituye todo valor `apx1.` por `{"encrypted": true, "key_id", "alg"}`. Un texto con `apx1.` mal formado sale como marcador con `key_id` y `alg` nulos (S4A-D105, S4A-D107). La profundidad máxima de `diff` es `MAX_DEPTH` = 32.
+- **`*_idx` en el detalle** salen como `***` en `before`, `after` y `changes` (V10 L-3; `diff._redact_item`).
+- **Importadores del bus de criptografía** fijados por prueba AST, con la excepción `ARRANQUE` de `main.py`, `cli.py` y `worker/runtime.py` (S4A-D113).
+
+#### Tablero y usuarios (S4A-D19, D54, D108, D115, D117 a D119, D121, D125)
+
+- **Coach sin finanzas (S4A-D118, ajusta S4A-D29).** `income_month_cop` = **`null`** para el coach y las frases de pagos no llevan monto. El cuerpo es igual para los dos roles salvo ese campo.
+- **Enlace de ingresos en días civiles (S4A-D121):** `/pagos?from=AAAA-MM-01&to=AAAA-MM-último`, no un instante UTC.
+- **Sin columna `display_name` (S4A-D19, D108).** El nombre visible es la parte local del correo, y "Sistema" para `SYSTEM_USER_ID`. `user_names_for` (solo nombre) lo usan `members` y `dashboard`; `user_refs_for` (con correo) solo lo usa `audit` (S4A-D54). Es PII parcial y su columna llega en v0.2 (ver "Dueños").
+- **`recent` consulta una vez por tabla** y une en memoria por `seq` (S4A-D51, S4A-D115, S4A-D117). No se añadió índice: los existentes bastan para las pruebas de rendimiento; el índice de la deuda de 4B se mantiene por si el volumen crece.
+- **`payments.summary` sin caché** (S4A-D119 a): aceptado.
+
+#### Worker (S4A-D8, D49, D55, D56, D75 a D85, D128)
+
+- **Worker sin volúmenes (S4A-D49).** Va con `read_only`, `tmpfs /tmp`, `cap_drop: ALL` y `no-new-privileges`. El plan decía `keys:ro` en el worker; vuelve en el Sprint 5, cuando el worker cifre o descifre.
+- **`finish_run(session, run_id, *, claimed_started_at, result, error, details) -> JobRunView | None`** (S4A-D77). Devuelve `None` si el reclamo ya no es el suyo (`lost_claim`).
+- **`claim_run(..., reclaim_finished)`** (S4A-D79). El ciclo programado (`run_cycle`) no repite un día cerrado; `--run-once` sí, y suma intentos.
+- **Log `job finished` con `started_at`, `finished_at` y `duration_ms`** (S4A-D128). Cumple el criterio 6 de US-113, que el verify-delivery marcó como no cumplido (aviso 1 de V11).
+- **Latido:** el worker solo toca `/tmp/apex-worker-heartbeat` si `SELECT 1` responde (S4A-D56). `/health` no lee `job_runs` en 4A (v0.2).
+
+#### Guarda de `--date` y demo (S4A-D4, D48, D63, D75, D89, E5)
+
+- **`--date` distinto de hoy exige `--simulate`, `ENV=dev` y una base `*_sim` o `apex_test`.** Si falta cualquiera, sale con 2 (E5). Es un cambio frente al plan, que solo pedía `ENV=dev` (S4A-D4).
+- **`--simulate` exige la misma guarda aunque la fecha sea hoy** (S4A-D75). `--simulate` con `--as` sale con 2 (S4A-D89).
+- **La demo con fecha corre contra `apex_sim`** (S4A-D63). `apex-db-1` solo recibe corridas sin `--date`: comprobado con 0 filas `*_sim` en `worker.job_runs` y `max(at) <= now()` en `audit.audit_log`.
+
+#### Tamaños de archivo y partición (S4A-D72, D90, D95)
+
+- **`api/src/app/cli.py` = 760 líneas.** No pasa del límite de 760; no se extrajo `cli_ops.py`. Tras B2 medía 676 (S4A-D90) y B3 lo llevó a 760 (S4A-D95).
+- **`api/src/app/modules/plans/service.py` = 506 líneas.** No se extrajo `plans/changes.py` (límite 600).
+- **Ninguna función nueva supera 50 líneas** (S4A-D72). `verify`, `run_verification`, `movement_phrase` y `serve` se partieron desde el diseño.
+
+#### Pruebas de rendimiento (S4A-D68, D120, D127)
+
+- **Marcador `perf`, no `slow`** (cabecera de `SPRINT-04A.md`). Fuera del gate.
+- **`test_cien_mil_filas_en_menos_de_60_s_y_bloques_de_menos_de_100_ms` hace `gc.collect()` y `gc.freeze()` antes de medir**, y `gc.unfreeze()` en el `finally` (S4A-D127). Sin eso, una pausa del GC de generación 2 superaba el tope de 100 ms en la corrida completa de `-m perf`. El tope no cambió. La pausa en el proceso real del api (R-3) no se midió: tiene dueño en "Dueños".
+
+#### Front (S4A-D42, D62, D121 a D126)
+
+- **Orden de slices F1, F2, F4, F3** (S4A-D42, S4A-D62), en el worktree `.claude/worktrees/sprint-04a-front`, fusionado en V1.
+- **Los `// DESIGN-GAP:` de los cuatro slices** están en `docs/BRECHAS.md` §11 (V1). La revisión por diseño sigue en el backlog.
+- **`planRowSchema` es `.strict()`** (V10 L-1), como los demás esquemas de fila.
+- **Los movimientos del tablero no muestran entradas del sistema** ("Sistema marcó…" queda excluido, Q10).
+
+#### Otros cambios de alcance
+
+- **Cobertura sin `omit`** de `cli.py` y `worker/` desde S4A-B1.7 (S4A-D39). El total de `app` fue 97 % en V9.
+- **Migraciones:** `0012_worker_job_runs` y `0013_audit_verifications`. No se crearon `0014_audit_subject_member`, `0014_crypto_ops_purpose`, `0014_crypto_ops_export_verb` ni `0014_payments_registered_by_idx` (cabecera de `SPRINT-04A.md`; S4A-D19, S4A-D38).
+- **Contrato:** 10 endpoints nuevos y `active_members_count` en `GET /plans`; `docs/openapi.json` pasa de 53 a 63 operaciones.
+- **Decisiones registradas:** S4A-D1 a S4A-D128 (128), más las enmiendas E1 a E10 de la crítica 1.
+- **Contradicciones de contrato:** 12 de 12 resueltas (sección 1 del plan), más las de T-DOC (S4A-D41 y las de este plan, sección "Contradicciones de contrato cerradas" de esta sección).
+- **Revisiones de seguridad:** 0 CRITICAL y 0 HIGH en todo el sprint; todo MEDIUM corregido con prueba. Los LOW aceptados están en "Dueños asignados al cierre del Sprint 4A".
+
+#### Limpieza P2-1 de planes de prueba (S4A-D60, V12)
+
+- **Antes:** 177 planes activos, de ellos 174 candidatos (los de las specs y `E2E-tope-*`). Membresías de los candidatos: 72 `active`, 27 `pending_payment`, 24 `cancelled`, 1 `expired` y 24 `frozen`.
+- **Resultado por API:** **102** planes dados de baja (`DELETE` 204). **72** planes con membresías activas se desactivaron: el `DELETE` dio 409 `plan_has_active_memberships` y luego `deactivate` dio 200. Esas membresías siguen activas en el plan desactivado, porque el procedimiento solo anula las `pending_payment`. **27** membresías `pending_payment` anuladas (`cancel`). Sin 5xx ni 429.
+- **Después:** 3 planes activos (`mensual`, `Mensual V50137`, `Tiquetera 12`); la corrida E2E final de V12 dejó 4 de prueba más (`0 E2E 2wq49a3jx`, `0 E2E 2wq49acho`, `0 E2E 2wq49ahrb`, `Mensual mvtgidux`): 7 en total, lejos del tope de 100; cada `e2e:stack` suma algunos y el procedimiento P2-1 los retira. `verify-audit --as` da "Cadena íntegra" con código 0.
+- **Datos de prueba que quedan** en `apex-db-1`: ver `docs/ddd/09_sprint_plan/SPRINT-04A.md`, "Datos de prueba que quedan".
+
+#### Admin desechable y volcados (V12)
+
+- **Admin desechable** `admin-e2e-*@apex.test`: dado de baja por API (`DELETE /users/{id}`), como indica S4A-D71. Lo ejecutó el agente de validación del stack; pendiente de verificación del orquestador antes del commit.
+- **Volcados** `docs/scratch/sprint-04a-antes-0012.dump` y `docs/scratch/sprint-04a-antes-0013.dump`: borrados (V10 L-4). Lo ejecutó el agente de validación del stack; pendiente de verificación del orquestador antes del commit.
+
+### Dueños asignados al cierre del Sprint 4A (V12, orquestador, 2026-10-29)
+
+Lo que pasa a otra versión o sprint tiene dueño concreto (política de deuda cero). Los riesgos aceptados que no tienen dueño de sprint se listan al final, sin dueño inventado.
+
+- **`display_name` y parte local del correo como PII parcial** (S4A-D19, S4A-D54, S4A-D108): columna de nombre visible y sustitución de la parte local en `user_names_for` y `user_refs_for`. **Dueño: v0.2, EP-04.**
+- **Rol de base separado para el worker, `.env` completo del worker y credencial compartida con el api** (S4A-D49, S4A-D85 L-5). **Dueño: S4B-W0-2** (`docs/ddd/09_sprint_plan/SPRINT-04B.md`).
+- **`/health` con `worker.job_runs`** (S4A-D8). **Dueño: v0.2.**
+- **`sign-audit` y firma externa del ancla `through_hash`** (S4A-D43, S4A-D92). Hasta entonces, el ancla vive en la misma base que la cadena: residual aceptado. **Dueño: v0.3.**
+- **`notifications.service` en `CONTACT_CALLERS`** (S4A-D50). **Dueño: Sprint 5 (EP-14).**
+- **T8 de US-109** (cuadre del tablero con los datos de demostración, S4A-F3). **Dueño: Sprint 4B, con US-111.**
+- **`0014_audit_log_triggers_always`** (`ENABLE ALWAYS` de `audit_log_forbid_mutation` y `audit_log_forbid_truncate`, que hoy tienen `tgenabled` `O`; S4A-D98) y **texto de `audit.forbid_mutation()`**, que nombra `audit.audit_log` también al rechazar `audit.verifications` (V6). **Dueño: Sprint 4B.** La misma migración puede reemplazar la función y usar `TG_TABLE_NAME`.
+- **Índices de `audit.audit_log`:** `(record_id)`, `(action, seq DESC)` y `(table_name, action, seq DESC)` (S4A-D106 c, S4A-D115, S4A-D119 b). Se crean si el volumen lo exige. **Dueño: Sprint 4B.**
+- **R-3 (pausa del GC de generación 2 en el proceso real del api durante la verificación síncrona)** (S4A-D127). No medido en el proceso del api. **Dueño: Sprint 4B.** Hay que medir con `gc.callbacks` bajo carga y fijar `gc.freeze()` tras el arranque si hace falta. Impacto bajo: lectura de admin, 3 por minuto.
+- **Cubetas en memoria del único proceso de Uvicorn** (S4A-D103): `audit-verify`, `audit-verify-hour`, `staff-read` y las anteriores. **Dueño: v0.2**, junto a OpenBao y el despliegue con varios procesos (almacén compartido antes de subir a más de uno).
+- **`sessionStorage` en `web/src/pages/RouteError.tsx:41-43`** (V10, nota; V11 aviso 6): marca de tiempo de la recarga por chunk, sin datos del usuario. Aceptado. **Dueño: front, con regla de lint explícita (lista blanca de usos) en 4B.**
+- **Barra `Tabs` de la ficha a 1440 px y contraste de "automático (aviso)"** (S4A-F2; "Deuda de front con dueño" de `DECISIONES.md`). **Dueño: Sprint 4B, pantalla de ficha.**
+- **`payments.summary` sin caché** (S4A-D119 a): aceptado; constancia en `RUNBOOK.md` §11. Se revisa si el volumen crece.
+- **`docs/BRECHAS.md` §11, revisión por diseño** de los `// DESIGN-GAP:` de los slices de front (V1): backlog, con `docs/design/` como fuente de verdad.
+- **Riesgos aceptados en la revisión de seguridad, con dueño en la revisión de riesgos del Sprint 4B (S4B-W0):** S4A-D60 (precio vigente al vender, sin `expected_price_cop`) y S4A-D61 (la lectura de la auditoría no se audita; el log de acceso es el único rastro). Quedan registrados como decisión del sprint. No tienen dueño asignado y se dejan para revisión del usuario.
+- **Pendientes de Sprint 3 que siguen:** ver "Estado de los dueños del Sprint 3 al cierre del Sprint 4A", más arriba.

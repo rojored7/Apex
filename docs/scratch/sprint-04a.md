@@ -394,3 +394,12 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
   - LOW-1: `q` con `@` da página vacía sin consultar `search_user_ids` (`DOMAIN_SEPARATOR` en `audit/queries.py`); prueba parametrizada `test_q_con_arroba_da_pagina_vacia_sin_buscar_usuarios` (4 casos, `search_user_ids` parcheado para fallar si se llama) → S4A-D112.
   - LOW-2: constancia en S4A-D54 (identificadores opacos `user_id`, `record_id`, `table_name`), sin código.
 - `test_member_history.py` + `test_router_member_audit.py`: 54 ok. El contrato no cambió (sin P-API).
+
+### Evidencia de S4A-B5
+
+- Gate 4 sellante `slice-gate.sh members tests/members/test_router_member_audit.py tests/architecture/test_audit_subject.py tests/members/test_router_get.py`: verde, 376 ok. Checkpoint `8cf8ed9` con el trailer `Co-Authored-By: Claude Fable 5.1`.
+- B5.8 (demo 4) por 8181 (api con `--reload` sobre `src` montado; el cierre de LOW-1 estaba cargado): admin desechable `admin-e2e-1793249495@apex.test` (`tools issue-reset-link --as admin@ejemplo.local` rc 0, `POST /auth/reset` 204, login 200); coach desechable `coach-b5-1793255975@apex.test` (`POST /users` 201, reset 204, login 200, `DELETE /users/{id}` 204 al final). Contraseñas aleatorias solo en la shell; el admin real no se tocó.
+  - Socio `1a18bb7a-…` (de `GET /payments?limit=1`, 200): `GET /members/{id}/audit?limit=200` coach 200 y admin 200, `Cache-Control: no-store`, total 11 (4 de pagos, 4 de la ficha, 3 de membresías: 4495 y 4493 `update` `["status"]`, 4490 `insert` `[]`); anulaciones de pago como `["voided","voided_at","voided_by"]`.
+  - `grep -c @` 0, `grep -c apx1.` 0, `void_reason|reference` 0; `cmp` coach frente a admin: idénticos. `q=@` 200 total 0; `offset=100001` 422 `field=offset`.
+  - Desviación de la demo: sin entradas de `Sistema` (el job no hizo transiciones en la base real); el único `user_name` es un admin de E2E.
+- Stack: api, worker, web y db `healthy`; 0 ERROR/Traceback en el log del api. Detalle en el scratchpad (`b5-evidencia.md`).

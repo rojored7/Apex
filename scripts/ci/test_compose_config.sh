@@ -22,7 +22,8 @@ cd "$ROOT"
 [ -f .env ] || cp .env.example .env
 PROD="$(docker compose --env-file .env --profile worker --profile tools -f infra/compose.yml config --format json)"
 DEV="$(docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml config --format json)"
-# S4A-W0-1: worker y tools en desarrollo (binds de código en solo lectura) solo salen con sus perfiles.
+# S4A-W0-1: worker y tools en desarrollo (binds de código en solo lectura); tools solo sale con su
+# perfil. Desde S4A-W0-2 el worker no tiene perfil y `--profile worker` queda inofensivo.
 DEV_PERFILES="$(docker compose --env-file .env --profile worker --profile tools -f infra/compose.yml -f infra/compose.dev.yml config --format json)"
 COMPOSE_YML="$(cat infra/compose.yml)"
 # V4 del Sprint 2: perfil E2E del borde (infra/compose.e2e.yml); vacío si el archivo falta.
@@ -63,7 +64,7 @@ check(not ({"/run/apex/keys", "/data/uploads"} & destinos_worker), "worker no mo
 tools = [v for v in prod["tools"].get("volumes", []) if v.get("target") == "/run/apex/keys"]
 check(bool(tools) and not tools[0].get("read_only"), "tools monta keys con escritura")
 check(prod["api"]["image"] == prod["worker"]["image"] == prod["tools"]["image"], "api, worker y tools usan la misma imagen")
-check("worker" in prod["worker"].get("profiles", []), "worker queda tras un perfil hasta S4A-W0-2")
+check("profiles" not in prod["worker"], "worker sin perfil desde S4A-W0-2")
 check("db_test" not in prod, "db_test no existe en compose.yml")
 check({"pgdata", "uploads", "keys"} <= set(prod_doc.get("volumes", {})), "volumenes pgdata, uploads y keys en uso")
 check(all(f"\n  {v}:" in texto for v in ("pgdata", "uploads", "keys", "backups")), "volumenes pgdata, uploads, keys y backups declarados")

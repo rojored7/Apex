@@ -99,6 +99,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
   - Se quita `profiles: ["worker"]`.
   - Cierra el criterio diferido de US-005.
   - Gate: smoke de Compose con `worker` en marcha, `healthy` y sin reinicios, y `docker compose run --rm worker python -m app.worker.main --run-once expirations` dos veces: la primera acepta 0 o 3 y la segunda exige 0 (enmienda E6); `--status expirations` con `result: ok`. `grep -rn "job_runs\|audit_log" web/tests` vacío (S4A-D59).
+  - **Cumplido** (checkpoint de S4A-W0-2): perfil fuera de `infra/compose.yml`, `apex-api:local` reconstruida con buildx, `worker` `healthy` con 0 reinicios, `--run-once expirations` ×2 con salida 0 sobre la misma fila y `--status` con `result: ok`; `compose-smoke.sh` gana esos pasos. Criterio diferido de US-005 cerrado. Evidencia en `docs/scratch/sprint-04a.md`.
 
 ### Waves 3a/3b · Backend, alternadas por slice
 

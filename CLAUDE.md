@@ -185,7 +185,7 @@ docker compose run --rm tools recompute-memberships --as <email>
 docker compose run --rm tools verify-audit --as <email>
 ```
 
-`--date <fecha> --simulate` solo con `ENV=dev` y contra una base `*_sim` o `apex_test` (S4A-D48, S4A-D63); con `ENV=production`, `verify-audit` y `recompute-memberships` exigen `--as` (S4A-D53). El worker vive tras `--profile worker` hasta S4A-W0-2.
+`--date <fecha> --simulate` solo con `ENV=dev` y contra una base `*_sim` o `apex_test` (S4A-D48, S4A-D63); con `ENV=production`, `verify-audit` y `recompute-memberships` exigen `--as` (S4A-D53). El worker arranca con el stack (`up -d`, sin perfil desde S4A-W0-2), después de `db` y `api` `healthy`.
 
 ## Cómo trabajar conmigo
 

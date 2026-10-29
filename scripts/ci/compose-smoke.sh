@@ -9,6 +9,8 @@
 # S2-W0-1: con api healthy corre `tools seed` leyendo ADMIN_* de .env.seed (si no existe,
 # crea uno efímero con una contraseña aleatoria y lo borra al salir; uno existente no se
 # toca) y comprueba que web tiene la IP fija de TRUSTED_PROXIES.
+# S4A-W0-2: con api healthy levanta worker (sin perfil), exige healthy y 0 reinicios tras
+# 30 s, corre `--run-once expirations` dos veces y compara el id de las dos `--status`.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -63,6 +65,52 @@ if [ "${SMOKE_ALLOW_UNHEALTHY:-0}" = "1" ]; then
 else
   esperar_healthy api 90
 fi
+
+# S4A-W0-2 (US-113, S4A-D9): el worker es parte del stack por defecto (sin perfil), llega a
+# healthy por el latido y no se reinicia; `--run-once expirations` dos veces el mismo día
+# reutiliza la misma fila de worker.job_runs (mismo id en --status). Enmienda E6: la primera
+# invocación acepta 0 o 3 (el serve del contenedor puede estar recuperando el ciclo del día).
+if ! "${DC[@]}" config --services | tr -d '\r' | grep -qx worker; then
+  echo "compose-smoke: worker no está en el stack por defecto (sigue tras un perfil)" >&2; exit 1
+fi
+"${DC[@]}" up -d worker
+esperar_healthy worker 120
+sleep 30
+reinicios="$(docker inspect -f '{{.RestartCount}}' "$("${DC[@]}" ps -q worker | tr -d '\r')" | tr -d '\r')"
+[ "$reinicios" = "0" ] || { echo "compose-smoke: worker con $reinicios reinicios" >&2; "${DC[@]}" logs --tail 40 worker >&2; exit 1; }
+echo "compose-smoke: worker sin reinicios tras 30s"
+
+worker_cli() { "${DC[@]}" run --rm -T worker python -m app.worker.main "$@"; }
+estado_job() {
+  local salida linea
+  salida="$(worker_cli --status expirations | tr -d '\r')" || { echo "compose-smoke: --status expirations falló" >&2; return 1; }
+  linea="$(printf '%s\n' "$salida" | grep '^{"details": ' | tail -1)"
+  [ -n "$linea" ] || { echo "compose-smoke: --status expirations sin JSON" >&2; return 1; }
+  printf '%s\n' "$linea"
+}
+id_de() { printf '%s\n' "$1" | sed -n 's/.*"id": "\([^"]*\)".*/\1/p'; }
+resultado_de() { printf '%s\n' "$1" | sed -n 's/.*"result": "\([^"]*\)".*/\1/p'; }
+
+set +e; worker_cli --run-once expirations > /dev/null; codigo=$?; set -e
+case "$codigo" in
+  0) echo "compose-smoke: --run-once expirations (1) salida 0" ;;
+  3) echo "compose-smoke: --run-once expirations (1) salida 3 (corrida running vigente, E6); se espera a que cierre"
+     for _ in $(seq 1 20); do
+       [ "$(resultado_de "$(estado_job)")" = "running" ] || break
+       sleep 3
+     done ;;
+  *) echo "compose-smoke: --run-once expirations (1) salida $codigo (se esperaba 0 o 3)" >&2; exit 1 ;;
+esac
+primero="$(estado_job)"
+[ "$(resultado_de "$primero")" = "ok" ] || { echo "compose-smoke: --status tras la primera corrida: $primero" >&2; exit 1; }
+set +e; worker_cli --run-once expirations > /dev/null; codigo=$?; set -e
+[ "$codigo" = "0" ] || { echo "compose-smoke: --run-once expirations (2) salida $codigo (se esperaba 0)" >&2; exit 1; }
+echo "compose-smoke: --run-once expirations (2) salida 0"
+segundo="$(estado_job)"
+[ "$(resultado_de "$segundo")" = "ok" ] || { echo "compose-smoke: --status tras la segunda corrida: $segundo" >&2; exit 1; }
+[ -n "$(id_de "$primero")" ] && [ "$(id_de "$primero")" = "$(id_de "$segundo")" ] \
+  || { echo "compose-smoke: las dos corridas del día no usan la misma fila ($(id_de "$primero") / $(id_de "$segundo"))" >&2; exit 1; }
+echo "compose-smoke: --status expirations ok, misma fila en las dos corridas"
 
 # M-8: ADMIN_* solo llegan a tools por .env.seed. Seed idempotente: con un admin activo
 # responde "omitido".

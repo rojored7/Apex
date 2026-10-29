@@ -45,10 +45,10 @@ services:
     restart: unless-stopped
 
   worker:
-    # Jobs diarios (US-113). Endurecido (S4A-D49, M-5): en 4A no cifra ni descifra, así que
-    # no monta keys ni uploads (el Sprint 5 vuelve a montar keys:ro), raíz de solo lectura con
-    # /tmp en memoria, sin capacidades y sin escalada de privilegios. Usa la credencial del api
-    # hasta el rol de base separado (S4B-W0-2).
+    # Jobs diarios (US-113), a las 07:00 de Bogotá. Endurecido (S4A-D49, M-5): en 4A no
+    # cifra ni descifra, así que no monta keys ni uploads (el Sprint 5 vuelve a montar
+    # keys:ro), raíz de solo lectura con /tmp en memoria, sin capacidades y sin escalada de
+    # privilegios. Usa la credencial del api hasta el rol de base separado (S4B-W0-2).
     image: apex-api:local
     command: ["python", "-m", "app.worker.main"]
     env_file: ../.env
@@ -73,9 +73,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
-    # Hasta S4A-W0-2, que quita el perfil cuando existe app/worker/main.py (CRITICA-2 N-3):
-    # mientras tanto el worker solo arranca con --profile worker.
-    profiles: ["worker"]
+    # Sin perfil desde S4A-W0-2 (CRITICA-2 N-3): `up -d` lo arranca con el resto del stack,
+    # siempre después de db y api healthy. Corridas a mano y estado: `run --rm worker python
+    # -m app.worker.main --run-once <job>` / `--status <job>` (docs/RUNBOOK.md §9, "Worker").
     restart: unless-stopped
 
   tools:

@@ -213,3 +213,7 @@ Checkpoint: bcc1c65. Sello: wave0-gate.sh W0-3 (568 passed con tests/architectur
 ### S4B-B0 · Revisión Python
 
 `python-reviewer`: APROBAR, 0 bloqueantes. Aplicado: LOW 3 (`reject` público con `comando` obligatorio; `cli.py`, `recompute.py`, `verify_audit.py` y `test_cli_base.py` actualizados) y LOW 4 (comentarios de no-op en `_apoyo.py` y `test_db_timeouts_cli.py`). Constancias en DECISIONES: MEDIUM 1 (sin llamador hasta B1/B3), LOW 2 (duplicación con `_admin_actor_and_target`, a unificar en B1) y el tope de 200 líneas de `cli_base.py`.
+
+### Evidencia de S4B-B0
+
+Checkpoint `cf7a53f` (trailer verificado con `git log -1 --format=%B`). Sellante: `slice-gate.sh cli tests/cli/test_cli_base.py tests/cli/test_db_timeouts_cli.py tests/cli/test_seed_cli.py tests/cli/test_verify_audit.py` = 479 passed; antes `slice-gate.sh architecture` con las 5 pruebas del plan = 415 passed. `ruff check`, `ruff format --check` y `mypy src` limpios. `/health` 200. Contenedor `tools` (bind de desarrollo, sin datos): `--help` lista los comandos, `export-openapi /tmp/o.json` escribe, `import app.cli_base, app.cli_ops.keys` ok y `/app/src/app/cli_base.py` y `cli_ops/` presentes.

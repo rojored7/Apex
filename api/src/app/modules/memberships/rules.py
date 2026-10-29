@@ -475,3 +475,19 @@ def resolve_member_membership(
 def resolve_member_status(items: Iterable[MembershipSnapshot], today: date) -> ResolvedStatus:
     """El estado del socio (docstring del módulo)."""
     return resolve_member_membership(items, today)[0]
+
+
+def transition_event(
+    old: MembershipStatus, new: MembershipStatus
+) -> Literal["expiring", "expired"] | None:
+    """El evento de transición que emite el recálculo diario (S4A-B2, S4A-D1): `"expiring"` al
+    pasar a `expiring` desde `active` o `frozen`; `"expired"` al pasar a `expired` desde
+    cualquier otro estado; `None` en lo demás (sin cambio, `active` y `frozen` entre sí, y todo
+    lo que sale de `pending_payment`, `cancelled` o `expired`, que el recálculo nunca toca)."""
+    if old == new or old not in _VIGENTES:
+        return None
+    if new is MembershipStatus.expiring and old is not MembershipStatus.expiring:
+        return "expiring"
+    if new is MembershipStatus.expired:
+        return "expired"
+    return None

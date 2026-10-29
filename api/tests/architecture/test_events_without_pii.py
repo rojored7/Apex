@@ -25,7 +25,10 @@ import dataclasses
 import types
 import typing
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Literal
+
+import pytest
 
 from app.core.events import DomainEvent
 from app.main import load_module_services
@@ -107,6 +110,20 @@ def test_membership_cancelled_lleva_el_largo_del_motivo_y_no_el_texto() -> None:
     assert campos == {"occurred_at", "membership_id", "member_id", "reason_len"}
     assert typing.get_type_hints(MembershipCancelled)["reason_len"] is int
     assert violaciones(MembershipCancelled) == []
+
+
+@pytest.mark.parametrize("nombre", ["MembershipExpiring", "MembershipExpired"])
+def test_los_eventos_de_transicion_solo_llevan_ids_y_fechas(nombre: str) -> None:
+    """S4A-B2 (S4A-D1, S4A-D48): `membership_id`, `member_id`, `end_date` y `on_date`."""
+    from app.modules.memberships import service as memberships_service
+
+    evento = getattr(memberships_service, nombre)
+    campos = {campo.name for campo in dataclasses.fields(evento)}
+    assert campos == {"occurred_at", "membership_id", "member_id", "end_date", "on_date"}
+    tipos = typing.get_type_hints(evento)
+    assert tipos["end_date"] is date and tipos["on_date"] is date
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
 
 
 # S3-B10 (S3-D70, L-7): los eventos de editar y dar de baja ---------------------------------------

@@ -64,6 +64,7 @@ from app.modules.memberships.rules import (
     resolve_member_membership,
     resolve_member_status,
     snapshot,
+    transition_event,
     validate_start_date,
 )
 from app.modules.memberships.sell import reraise_with_prefix
@@ -756,3 +757,35 @@ def test_snapshot_de_una_fila_de_columnas_convierte_el_estado() -> None:
 def test_snapshot_con_un_estado_desconocido_es_value_error() -> None:
     with pytest.raises(ValueError, match="no_existe"):
         snapshot(_FilaDeColumnas(uuid4(), "no_existe", HOY, HOY, None))
+
+
+# transition_event (S4A-B2, US-094; S4A-D1) --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("viejo", "nuevo", "esperado"),
+    [
+        (S.active, S.expiring, "expiring"),
+        (S.active, S.expired, "expired"),
+        (S.expiring, S.expired, "expired"),
+        (S.frozen, S.expiring, "expiring"),
+        (S.frozen, S.expired, "expired"),
+        (S.frozen, S.active, None),
+        (S.active, S.frozen, None),
+        (S.expiring, S.frozen, None),
+        (S.expiring, S.active, None),
+        (S.active, S.active, None),
+        (S.expiring, S.expiring, None),
+        (S.expired, S.expired, None),
+        (S.pending_payment, S.active, None),
+        (S.pending_payment, S.expiring, None),
+        (S.pending_payment, S.expired, None),
+        (S.pending_payment, S.frozen, None),
+    ],
+)
+def test_transition_event(
+    viejo: MembershipStatus, nuevo: MembershipStatus, esperado: str | None
+) -> None:
+    """A `expiring` desde `active` o `frozen`; a `expired` desde un estado candidato; `active` y
+    `frozen` entre sí, sin cambio y todo lo que sale de `pending_payment`, sin evento."""
+    assert transition_event(viejo, nuevo) == esperado

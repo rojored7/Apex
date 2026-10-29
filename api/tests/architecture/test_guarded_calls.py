@@ -144,6 +144,20 @@ def test_lock_membership_es_la_unica_puerta_de_for_update_en_memberships() -> No
     )
 
 
+def test_expirations_no_llama_with_for_update() -> None:
+    """S4A-B2 (S4A-D2): el recálculo toma la fila por `sell.lock_membership`, nunca con su propio
+    `FOR UPDATE` (y el archivo existe: la regla de arriba no lo cubriría si faltara)."""
+    archivo = MEMBERSHIPS / "expirations.py"
+    assert archivo.is_file()
+    fuente = archivo.read_text(encoding="utf-8")
+    assert for_update_por_funcion(fuente) == {}
+    assert not [
+        n
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.Call) and _nombre_llamado(n) == "with_for_update"
+    ]
+
+
 def test_lock_membership_usa_populate_existing() -> None:
     arbol = ast.parse((MEMBERSHIPS / "sell.py").read_text(encoding="utf-8"))
     funcion = next(

@@ -15,6 +15,9 @@
   `count_active_by_plan` (contratos para `members`, `plans` y `dashboard`) y el tipo
   `MemberMembership`. `list` sombrea al `list` de Python: aquí se usa `builtins.list`.
 - S3-B11 (US-093, D28): `list_for_member` (la pestaña de membresías de la ficha).
+- S4A-B2 (US-094; S4A-D1, S4A-D2): `recompute_statuses` y `RecomputeSummary` (el recálculo
+  diario que usan el worker y el CLI) y los eventos `MembershipExpiring` y `MembershipExpired`,
+  sin suscriptores hasta el Sprint 5 (ni la caché del resumen, S4A-D1).
 
 Al final del archivo, al importarse (lo hace `main.load_module_services()` en el api, el CLI y
 las pruebas): el registro del gate (`payments_service.set_membership_gate`, única llamada del api,
@@ -34,9 +37,12 @@ from app.modules.memberships.events import (
     MembershipActivated,
     MembershipActivationReverted,
     MembershipCancelled,
+    MembershipExpired,
+    MembershipExpiring,
     MembershipFrozen,
     MembershipSold,
 )
+from app.modules.memberships.expirations import RecomputeSummary, recompute_statuses
 from app.modules.memberships.lifecycle import (
     cancel,
     freeze,
@@ -66,8 +72,11 @@ __all__: builtins.list[str] = [
     "MembershipActivated",
     "MembershipActivationReverted",
     "MembershipCancelled",
+    "MembershipExpired",
+    "MembershipExpiring",
     "MembershipFrozen",
     "MembershipSold",
+    "RecomputeSummary",
     "cancel",
     "count_active_by_plan",
     "freeze",
@@ -78,6 +87,7 @@ __all__: builtins.list[str] = [
     "membership_payability",
     "on_payment_registered",
     "on_payment_voided",
+    "recompute_statuses",
     "refs_for",
     "renewal_preview",
     "sell",

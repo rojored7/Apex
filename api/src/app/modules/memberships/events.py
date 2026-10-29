@@ -2,6 +2,18 @@
 `service.py`). Privado (D7): los suscriptores los importan de `memberships.service`.
 
 Solo ids, fechas y montos: ningún evento lleva datos personales (S3-D70).
+
+Eventos de transición (S4A-B2, US-094; S4A-D1): `MembershipExpiring` y `MembershipExpired` los
+emite solo el recálculo diario (`expirations.recompute_statuses`, el job `expirations` del worker
+o `recompute-memberships` del CLI) cuando la columna `status` guardada pasa a `expiring` o a
+`expired` (`rules.transition_event`). Hasta el Sprint 5 no tienen suscriptores (ni siquiera la
+caché del resumen: el resumen se deriva con `status_expr`, S4A-D1).
+
+Regla de `on_date` para los consumidores (S4A-D48 punto 3, M-4): `on_date` es el "hoy" de Bogotá
+con el que corrió el recálculo; con `--date ... --simulate` (solo en desarrollo, contra una base
+de simulación) puede ser un día futuro. Un consumidor (Notifications, Sprint 5) **descarta** todo
+`MembershipExpiring` o `MembershipExpired` cuyo `on_date` no sea `today_bogota()` ni el día
+anterior: así una corrida simulada o atrasada nunca avisa a un socio fuera de fecha.
 """
 
 from __future__ import annotations
@@ -68,3 +80,26 @@ class MembershipCancelled(DomainEvent):
     membership_id: UUID
     member_id: UUID
     reason_len: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipExpiring(DomainEvent):
+    """La columna `status` pasó a `expiring` desde `active` o `frozen` en el recálculo diario
+    (S4A-B2, S4A-D1). `on_date` es el día de Bogotá del recálculo (regla de `on_date` en el
+    docstring del módulo)."""
+
+    membership_id: UUID
+    member_id: UUID
+    end_date: date
+    on_date: date
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MembershipExpired(DomainEvent):
+    """La columna `status` pasó a `expired` (desde cualquier estado candidato) en el recálculo
+    diario (S4A-B2, S4A-D1). Un `active` que venció hace días emite solo este evento."""
+
+    membership_id: UUID
+    member_id: UUID
+    end_date: date
+    on_date: date

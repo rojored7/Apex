@@ -5,8 +5,9 @@ S4A-D56, S4A-D64; enmiendas E1 y E5).
 `settings_prueba` (base `apex_test`, `ENV=dev`) o una copia con `model_copy`; nunca se toca
 `os.environ`. El reloj es `reloj_worker` (`2026-10-21T15:00Z`, hoy `2026-10-21` en Bogotá): `main`
 corre en un hilo con copia del contexto si ya hay un loop (como `cli._run`), así que lo ve.
-- `--run-once expirations` da 0 y deja una fila `ok` con `details["placeholder_ok"] == 1` (marcador
-  de S4A-D64: nace verde por E1); dos veces el mismo día reutiliza la fila;
+- `--run-once expirations` sobre la base vacía da 0 y deja una fila `ok` con
+  `details["revisados"] == 0` (el recálculo real de S4A-B2 reemplazó el marcador de S4A-D64);
+  dos veces el mismo día reutiliza la fila;
 - un job de prueba que falla da 1; un job inexistente da 2 y lista los registrados; con una corrida
   `running` vigente da 3;
 - `--date` (S4A-D48, E5): fecha distinta de hoy sin `--simulate` da 2; con `--simulate`, `ENV=dev` y
@@ -119,14 +120,15 @@ def _json_de_status(salida: str) -> dict[str, Any]:
 # --run-once ---------------------------------------------------------------------------------------
 
 
-async def test_run_once_expirations_da_0_y_deja_el_marcador(
+async def test_run_once_expirations_sobre_base_vacia_da_0_con_revisados_0(
     con_prueba: Settings, session_factory: Fabrica, reloj_worker: FrozenClock
 ) -> None:
     assert worker_main.main(["--run-once", "expirations"]) == 0
 
     corridas = await _corridas(session_factory)
     assert [(c.job_name, c.run_date, c.result) for c in corridas] == [("expirations", HOY, "ok")]
-    assert corridas[0].details["placeholder_ok"] == 1
+    assert corridas[0].details["revisados"] == 0
+    assert "placeholder_ok" not in corridas[0].details
     assert "clock_override" not in corridas[0].details
 
 
@@ -230,7 +232,7 @@ async def test_date_con_simulate_en_dev_y_apex_test_simula_el_dia(
     ]
     assert corridas[0].started_at == MEDIODIA_FUTURA_UTC
     assert corridas[0].details["clock_override"] is True
-    assert corridas[0].details["placeholder_ok"] == 1
+    assert corridas[0].details["revisados"] == 0
 
 
 async def test_date_con_simulate_y_env_production_da_2(

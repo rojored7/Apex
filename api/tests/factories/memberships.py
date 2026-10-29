@@ -16,12 +16,20 @@
   `days = (frozen_to - frozen_from) + 1` (RN-07) y confirma el savepoint. Por defecto la ventana es
   de un día en el inicio de la membresía. **No** corre `end_date` ni cambia el estado: prepara
   historiales (congelaciones pasadas, ya programadas) para las reglas de `freeze`.
+- `make_memberships_para_recalculo(session, *, n_socios, por_socio, hoy, status="active",
+  plan=None)` (S4A-B2, plan del Sprint 4A, sección 2, bloque B2): `n_socios` socios (con
+  `make_members`, necesita el bus confirmado) con `por_socio` membresías consecutivas de un plan de
+  30 días cada uno, sin solaparse, todas guardadas con `status`. Para el socio `k` la última
+  empieza `hoy - (k % 31)` (vigente: `active` o `expiring` según los días que le queden) y las
+  anteriores, 31 días antes cada una (vencidas). Con `status="active"` todas las anteriores y las
+  que están por vencer son candidatas del recálculo. Devuelve `[(socio, [membresías])]`, en el
+  orden de creación.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +41,7 @@ from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.memberships.rules import PlanTerms, compute_end_date
 from app.modules.plans.models import Plan
 from tests.factories.members import make_members
+from tests.factories.plans import make_plan
 
 MOTIVO_ANULACION: Final = "Anulada en la fábrica de pruebas"
 
@@ -119,3 +128,34 @@ async def make_freeze(
         await session.flush()
         await session.commit()
     return congelacion
+
+
+BLOQUE_RECALCULO: Final = 31
+"""Días de cada membresía del recálculo (plan de 30 días: fin inclusivo a los 30, RN-05)."""
+
+
+async def make_memberships_para_recalculo(
+    session: AsyncSession,
+    *,
+    n_socios: int,
+    por_socio: int,
+    hoy: date,
+    status: str = "active",
+    plan: Plan | None = None,
+) -> list[tuple[Member, list[Membership]]]:
+    """Socios con `por_socio` membresías consecutivas guardadas con `status` (docstring)."""
+    del_plan = plan or await make_plan(session, name=f"Recálculo {hoy.isoformat()}")
+    socios = await make_members(session, n_socios)
+    salida: list[tuple[Member, list[Membership]]] = []
+    for indice, socio in enumerate(socios):
+        ultima = hoy - timedelta(days=indice % BLOQUE_RECALCULO)
+        inicios = [
+            ultima - timedelta(days=BLOQUE_RECALCULO * atras)
+            for atras in range(por_socio - 1, -1, -1)
+        ]
+        filas = [
+            await make_membership(session, socio, del_plan, status=status, start=inicio)
+            for inicio in inicios
+        ]
+        salida.append((socio, filas))
+    return salida

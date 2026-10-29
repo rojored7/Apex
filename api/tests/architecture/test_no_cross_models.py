@@ -133,7 +133,7 @@ def test_nadie_importa_los_helpers_privados_de_otro_modulo() -> None:
 
 def test_los_privados_de_memberships_son_los_de_d7() -> None:
     assert (
-        frozenset({"rules", "events", "sell", "lifecycle", "queries", "summary"})
+        frozenset({"rules", "events", "sell", "lifecycle", "queries", "summary", "expirations"})
         == PRIVATE_HELPERS["memberships"]
     )
     for archivo in PRIVATE_HELPERS["memberships"]:

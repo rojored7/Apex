@@ -210,6 +210,10 @@ SUSCRIPTORES_ESPERADOS: dict[str, list[str]] = {
     # Fase 4 del Sprint 3 (M1, PM1; S3-D89; cierra B7 LOW-1): baja y reactivación del socio.
     "MemberDeactivated": [MARCA],
     "MemberReactivated": [MARCA],
+    # S4A-B2 (S4A-D1): los eventos de transición del recálculo diario no tienen suscriptores hasta
+    # el Sprint 5; tampoco `_mark_summary_dirty` (el resumen se deriva con `status_expr`).
+    "MembershipExpiring": [],
+    "MembershipExpired": [],
 }
 
 
@@ -275,6 +279,8 @@ def test_los_suscriptores_de_los_eventos_del_resumen_son_exactamente_los_esperad
         "PaymentVoided": payments_service.PaymentVoided,
         "MemberDeactivated": members_service.MemberDeactivated,
         "MemberReactivated": members_service.MemberReactivated,
+        "MembershipExpiring": memberships_service.MembershipExpiring,
+        "MembershipExpired": memberships_service.MembershipExpired,
     }
     obtenidos = {
         nombre: [f"{h.__module__}.{h.__qualname__}" for h in events.subscribers_for(tipo)]
@@ -309,3 +315,23 @@ def test_el_analizador_de_cache_ve_los_handlers_y_sus_usos() -> None:
             "_mark_mal:8: usa la sesión fuera de info",
         ]
     )
+
+
+# Recálculo diario (S4A-B2; S4A-D1, S4A-D2) ----------------------------------------------------
+
+EXPIRATIONS = LIFECYCLE.parent / "expirations.py"
+
+
+def test_expirations_no_define_handlers() -> None:
+    """S4A-D2: el recálculo toma `lock_member` (es emisor, como `freeze`); ninguna de sus
+    funciones puede llamarse `on_*` ni contarse como handler."""
+    assert EXPIRATIONS.is_file()
+    fuente = EXPIRATIONS.read_text(encoding="utf-8")
+    funciones = {
+        n.name
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.AsyncFunctionDef | ast.FunctionDef)
+    }
+    assert {"recompute_statuses", "_recompute_member", "_apply_to_member"} <= funciones
+    assert handlers(fuente) == []
+    assert {f for f in funciones if f.startswith("on_")} == set()

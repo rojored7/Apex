@@ -621,3 +621,206 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 - V4: `tests/e2e/audit.spec.ts` captura a 320, 768, 1024 y 1440 px en claro y oscuro (`WIDTHS`, como `home.spec.ts`); `playwright --project=preview` 10 ok con axe.
 - V6: el texto de `audit.forbid_mutation()` (`0002`) nombra `audit.audit_log` también al rechazar `audit.verifications`: LOW aceptado, dueño Sprint 4B junto a `0014_audit_log_triggers_always` (S4A-D98); DECISIONES y SPRINT-04A "Deuda con dueño".
 - Docs: DECISIONES (S4A-D87 con la excepción, sección "V5/V10 · Correcciones finales" con S4A-D127, V6, L-1 y L-3), SPRINT-04A "Deuda con dueño" (V6), RUNBOOK §11 (nota de la prueba perf con `gc.freeze`).
+
+## Validación V2–V8 (stack real; HEAD de partida `e36fff6`, correcciones en `360d816`)
+
+
+Antes: apex-api:local c5e65130e26a, apex-web:local 41d84d659a6c; cinco servicios healthy.
+
+### V2 · Stack desde cero de código y ciclo de Alembic (09:26–09:29Z)
+1. `docker buildx build --load --network host --allow network.host -t apex-api:local -f api/Dockerfile api` → 0 (9 s); `apex-api:local` pasa de `c5e65130e26a` a `sha256:329e3396b325d84229c0b8651c3518d663f74d4cbdbe7029535aee356dba3290` (Created 2026-10-29T09:26:40Z, 359 MB). `docker buildx build ... -t apex-web:local -f web/Dockerfile .` → 0, todo en caché: `sha256:b8cd258b1cab3b4ba85bd7c42c0c8c86677b205c373f26a615f0f8ecc5a68035` (Created 09:16:37Z, 94 MB; capas idénticas a la build de F3, el árbol de `web/` no cambió desde entonces). `$DC up -d --no-build` → recrea api y worker; web NO se recreó (su contenedor seguía con el id previo `41d84d659a6c`, mismo contenido): `$DC up -d --no-build --force-recreate web` → web con `b8cd258b1cab`. Cinco servicios `healthy`; RestartCount 0 en api, web y worker.
+2. `$DC run --rm -T tools init-keys` → 0: KEK, llave de firma y par JWT "ya existe".
+3. `$DC exec api alembic current` → `0013_audit_verifications (head)`; `cd api && uv run alembic heads` → una sola, `0013_audit_verifications (head)`.
+4. `uv run pytest tests/core/test_migrations.py tests/migrations -q` (db_test 5443) → **244 passed** en 10,2 s (incluye `test_downgrade_a_base_vacia_y_vuelta_a_head`, `test_single_head`, `test_0012_*`, `test_0013_*`).
+5. Ciclo autorizado sobre apex-db-1 (E4): antes job_runs 1, audit.verifications 7, audit_log 4.752 (max seq 4.752), auth.users 223. `$DC stop worker`; `alembic downgrade 0011_payments_immutability` → 0 (0013→0012→0011); `current` = `0011_payments_immutability`, `to_regclass` de las dos tablas nulo; `alembic upgrade head` → 0 (0011→0012→0013); `current` = `0013_audit_verifications (head)`. Después: job_runs 0, verifications 0, audit_log 4.752 (la cadena no se tocó), auth.users 223 (el admin desechable sigue). `\d worker.job_runs`: `pk_job_runs`, `ix_job_runs_name_started (job_name, started_at DESC)` y CHECKs; `\d audit.verifications`: `pk_verifications`, `ix_verifications_finished_at (finished_at DESC)`, CHECKs y "Triggers firing always" `verifications_forbid_mutation` (BEFORE DELETE OR UPDATE) y `verifications_forbid_truncate` (salida completa en `v2-d-tablas.txt`). `$DC logs --tail 50 api`: 0 líneas ERROR/CRITICAL/Traceback.
+6. `$DC start worker` (healthy, RestartCount 0, `worker started` America/Bogota 09:28:44Z) y `$DC restart worker` → healthy, `RestartCount` **0**.
+
+### V3 · Datos reales antes de navegar (09:30–09:32Z, 04:30 de Bogotá)
+- Credenciales: admin desechable `admin-e2e-1793249495@apex.test` (sigue en `auth.users` tras V2; `tools issue-reset-link --as admin@ejemplo.local` rc 0, `POST /api/v1/auth/reset` 204, login con `Origin: http://localhost:8180` 200; contraseña aleatoria solo en memoria del script `lib.mjs`). El admin real no se tocó. Nota: la API directa en 8181 cuelga de `/api/v1` (el primer intento contra `/auth/reset` dio 404 de ruta).
+- psql de lectura: usuarios vivos 6 (`admin@ejemplo.local`, `system@apex.local`, el admin desechable y 3 coaches de smoke); planes vivos 168 (todos activos). **Desviación:** no existe un plan llamado exactamente "Mensual" 120.000/30: existen `Mensual mvjipju3` (120.000, 30 días) y `mensual` (320.000, 90 días); se usó `Mensual mvjipju3`. `audit.audit_log` 4.752 filas (max seq 4.752).
+- Por API (script `v3.mjs`, ids en `v3-ids.json`): planes `S4A-V3-corto-mvtcfyaf` (50.000, 3 días) y `S4A-V7-plan-mvtcfyaf` (120.000, 30 días) 201; socios `demo-s4a-expira`, `demo-s4a-historial`, `demo-s4a-plan` 201 (documento, teléfono y correo aleatorios); `PATCH` del teléfono de `demo-s4a-historial` 200; ventas con primer pago en efectivo 201: `demo-s4a-expira` con plan corto y `start_date` 2026-10-22 (7 días atrás, el tope de `max_retroactive_days`) → nace `expired` (fin 2026-10-25); `demo-s4a-historial` con `Mensual mvjipju3` y `demo-s4a-plan` con `S4A-V7-plan` → `active` 2026-10-29..2026-11-28.
+- **Observación:** la venta retroactiva calcula el estado al vender, así que nace `expired` y no queda ninguna fila desalineada para que el job la corrija en `apex-db-1` (lo mismo que B2: la base viva no tiene filas cuyo estado guardado difiera del efectivo de hoy). La transición real se demuestra en V7.2 con la copia `apex_sim`.
+- psql antes del `--run-once`: audit_log 4.781; estados active 71, cancelled 25, expired 1, frozen 22, pending_payment 26; job_runs 0. `$DC run --rm worker python -m app.worker.main --run-once expirations` → **0**; `membership statuses recomputed` revisados 0, cambiadas 0, errores 0; `job finished` ok `run_date` 2026-10-29. Después: audit_log 4.781 (sin cambio); `worker.job_runs` 1 fila `expirations|2026-10-29|ok|1 intento` (id `6861ce21-c1fd-4675-9a2f-03c90dfdd101`). `--status expirations` → 0 con esa fila.
+
+### V4 · E2E contra el stack (09:32–09:41Z)
+- `.env` copiado al scratchpad (sha256 `128adc5675d354b0…` en los dos); ninguna de las 19 variables existía; bloque añadido al final (las 7 `LOGIN_*`/`*_IP_LIMIT` = 1000, `LOGIN_ACCOUNT_GLOBAL_LIMIT=10000`, las ocho `USER_*` del Sprint 3 ×100 y `USER_READ_LIMIT_PER_MIN=12000`, `USER_AUDIT_VERIFY_LIMIT_PER_MIN=300`, `USER_AUDIT_VERIFY_LIMIT_PER_HOUR=2000`). `$DC -f infra/compose.e2e.yml up -d --no-build api web` → api y web recreados y `healthy` (también recreó `db`, por el cambio de `.env`; mismo volumen, audit_log 4.781 intacto); 19 variables de topes dentro del api; `rate=6000r/m` en `auth-zone.conf` de web.
+- `npm run e2e:stack -- --workers=1` (vía `npx playwright test --project=stack --workers=1`, `E2E_BASE_URL=http://localhost:8180`, admin desechable con contraseña aleatoria fijada por `with-admin.mjs` y pasada solo al entorno del proceso): corrida 1 **40 passed (59,0 s)**, corrida 2 **40 passed (57,6 s)**; 0 fallos, 0 flaky (`retries: 0`), 0 saltadas. 18 specs (incluye `stack/audit`, `stack/home`, `stack/member-history`, `stack/plans` con editar/desactivar/baja).
+- `npx playwright test --project=preview --workers=1` → **161 passed (2,3 min)**, rc 0. 137 capturas en `web/test-results` (ignorado por git; árbol limpio). Inicio: 320, 768, 1024 y 1440 en claro y oscuro (8). Auditoría: **solo 390 y 1440** en claro y oscuro (lista y detalle, 8): `web/tests/e2e/audit.spec.ts:130` itera `[390, 1440]`. Desviación frente al texto de V4 ("320, 768, 1024 y 1440"): la spec del preview la fijó F1; no es fallo del producto. Copia de las 16 en `v4-capturas/`.
+- Restauración: `.env` copiado de vuelta, `cmp` idéntico, copia borrada; `$DC up -d --no-build api web` sin `compose.e2e.yml` → los cinco `healthy`; 0 variables de topes en el api (solo `RATE_LIMIT_MAX_KEYS`, que es del producto); `rate=60r/m`; web sin el montaje E2E. `git status` limpio.
+- Topes de producción: `POST /audit/verify` ×4 en el mismo minuto → 200 (ok, 5.117 filas), 200 (5.118), 200 (5.119), **429** `rate_limited` `Retry-After: 60`. Tras 65 s, seis logins fallidos de la misma IP → **401 ×5, 429**.
+- CI: `ci.yml:294-295` `grep -cE ... = "11"` ("E15: se esperaban 11 cubetas USER_* subidas"), coincide con las 11 de B3.8.
+
+### V5 · Rendimiento (09:40–10:05Z) — FALLO de una prueba perf
+- `cd api && uv run pytest -m perf -q -s` (TEST_DATABASE_URL en 127.0.0.1:5443), 23 pruebas. Cuatro corridas completas: **22 ok, 1 falla** las cuatro (rc 1): `tests/audit/test_verify_performance.py::test_cien_mil_filas_en_menos_de_60_s_y_bloques_de_menos_de_100_ms`, peor bloque **115,9 / 123,3 / 104,5 / 112,7 ms** (tope 100 ms); total 2,29–2,39 s (< 60 s). Las corridas 3 y 4 fueron después de `VACUUM (ANALYZE, PARALLEL 0) audit.audit_log` en db_test (nota operativa de V5: 0 tuplas muertas, 189 MB), así que la hinchazón de db_test NO es la causa esta vez.
+- Diagnóstico (sin tocar el árbol; plugin `gcprobe.py` en el scratchpad con `gc.callbacks`):
+  - la prueba sola (`pytest -m perf tests/audit/test_verify_performance.py`) pasa: 62,8 / 66,7 / 62,2 ms; `pytest -m perf tests/audit` (las tres de auditoría) pasa: 63,1 ms;
+  - la misma prueba sola pero con la colección completa (`pytest -m perf -k test_cien_mil_filas`, 5.018 deseleccionadas, ninguna otra prueba corre) da 97,2 / 109,2 / 120,7 ms;
+  - recolecciones de generación 2 durante la prueba: con colección completa 87–110 ms cada una (9 por corrida; 302.581 objetos vivos); con un solo archivo 33–50 ms (12 por corrida; 162.070 objetos vivos).
+  - Causa: el peor bloque es una pausa del GC de generación 2 que cae dentro de un lote; su duración crece con el heap del proceso de pytest (colección de ~5.000 pruebas). No es el código de `_read_batch` ni la base. La corrección S4A-D120 se midió con colección parcial (archivos de auditoría y dashboard), no con `-m perf` sobre todo `tests/`, que es lo que pide V5.
+  - Hay que decidir y corregir fuera de esta validación (no corregido aquí): o la prueba aísla el GC (`gc.freeze()`/`gc.collect()` antes de medir, o mide el bloque sin la pausa del GC) y se documenta, o el código reduce la presión del GC en la verificación, o el tope y la línea de V5 cambian (correr el archivo por separado). Ojo: el api de producción también tiene el heap de toda la app; la pausa de gen 2 en el proceso del api puede ser del mismo orden.
+- Resto de tiempos (corrida 1 / corrida 2), todas en verde: vencimientos 1.000 socios y 3.000 membresías 31,5 s (< 60); lista de auditoría `limit=25` sin filtros 13,4 / 16,4 ms, por tabla 14,4 / 36,3, por usuario 7,9 / 8,7, tabla y usuario 27,0 / 53,9 (< 500); `count(*)` sin filtros 20,6 / 11,0, con tabla 64,6 / 39,2; `recent` (100.000 lecturas y 5.000 del sistema) y `EXPLAIN` por tabla sin `Seq Scan`: ok (5.000 del sistema 0,22 s de llamada con preparación); tablero ok (0,16 s de llamada); búsqueda por documento 29,4 / 31,2 ms; L-11 p95 0,414 / 0,414 s; lista de pagos 10.000 17,1 / 12,9 ms; resumen del mes 8,0 ms; `expiring` con 3.000 membresías 17,5 / 17,0 ms; resumen sin caché 16,3 / 15,4 ms. Logs completos `v5-perf-1..4.log`.
+- Al terminar: otro `VACUUM` de `audit.audit_log` en db_test (nunca en apex-db-1).
+
+### V6 · Smoke con evidencia SQL y `verify_chain` (parte 1, 09:55–09:59Z; la parte SQL final va tras V8)
+- Triggers (única excepción a "psql solo lectura", cada sentencia en `BEGIN; … ROLLBACK;`, script `v6-triggers.sql`, con 5 filas en `audit.verifications`, todas `ok`): `UPDATE audit.verifications SET ok = false` → ERROR; `DELETE` → ERROR; `TRUNCATE` → ERROR; `SET LOCAL session_replication_role = replica; UPDATE …` → ERROR (el rol `apex` es superusuario y aun así el trigger "firing always" dispara). Después: 5 filas, `bool_and(ok)` true. **Observación (LOW, texto):** el mensaje de los cuatro rechazos es "audit.audit_log es append-only" (la función compartida `audit.forbid_mutation()` lleva el nombre de la tabla fijo), aunque la tabla rechazada es `audit.verifications`.
+- Coach desechable `coach-v6-mvtcfyaf@apex.test` (`POST /users` 201, activación con su `activation_url` → `POST /auth/reset` 204, login 200; contraseña aleatoria solo en memoria).
+- `GET /members/<demo-s4a-historial>/audit?limit=200`: coach 200 y admin 200, `Cache-Control: no-store`, total 5 (insert del socio, update `["phone"]`, insert de membresía, insert de pago, update `["status"]` de la membresía), cuerpos idénticos; `@` 0, `apx1.` 0, `reference` 0, `void_reason` 0.
+- `GET /dashboard`: coach 200 (`income_month_cop` null) y admin 200 (14.152.000); en los dos `apx1.` 0, `reference` 0, `void_reason` 0, `@` 0.
+- `GET /audit/4772` (update de `members.members` del teléfono de `demo-s4a-historial`) 200: `phone` `changed` con `before`/`after` `{"encrypted": true, "key_id": "1e9897a6-…", "alg": "A256GCM"}`; `apx1.` 0 (marcador, sin blob).
+- `verify_chain` por las dos vías: `$DC run --rm tools verify-audit --as admin-e2e-1793249495@apex.test` → **0**, "Cadena íntegra: 5138 registros verificados hasta el seq 5138." (max seq antes 5.138); luego `POST /audit/verify` → **200** `ok: true`, 5.139 filas, `through_seq` 5.139, `source = api`. No coinciden en `through_seq` porque cada verificación escribe su fila `verify` en la cadena (la de la CLI es la 5.139): es lo esperado, no hubo otras escrituras entre las dos. `$DC logs api | grep "audit anchor" | tail -2`: `through_seq` 5.119 (V4) y 5.139 (esta), con `through_hash` (64 hex; prefijo `1efea8bdfbf5` en la última).
+
+### V7 · Demo (los 6 puntos)
+### V7.1 (10:00Z)
+- `$DC ps`: api, db, db_test, web y worker `healthy` (worker "Up 29 minutes"). `$DC config --format json`: `worker` sin `profiles` y sin `ports`. `$DC exec api alembic current` → `0013_audit_verifications (head)`.
+### V7.2 (10:00–10:04Z)
+- apex-db-1 (sin fecha), antes: audit_log 5.140 (max seq 5.140); estados active 77, cancelled 27, expired 1, frozen 24, pending_payment 28; job_runs `expirations|2026-10-29|ok|1 intento|6861ce21`.
+- `$DC run --rm worker python -m app.worker.main --run-once expirations` ×2 → **0 y 0**; las dos `revisados 0, cambiadas 0` y `job finished` ok 2026-10-29; audit_log 5.140 las dos veces (sin duplicar); la misma fila `6861ce21` con 2 y luego 3 intentos. `--status expirations` → 0 con esa fila. Cero transiciones: la base viva no tiene filas desalineadas hoy (ver V3).
+- Guardas E5 sobre apex: `--date 2026-11-01` sin `--simulate` → **2** ("--date distinta de hoy exige --simulate (y ENV=dev y una base de simulación)"); `--date 2026-11-01 --simulate` → **2** ("--simulate exige una base de simulación (nombre terminado en _sim o apex_test); la actual es 'apex'").
+- Copia `apex_sim` (S4A-D63) sin volcado en disco: `createdb apex_sim` en db_test → 0; `pg_dump -Fc apex` (apex-db-1) por tubería a `pg_restore --no-owner --no-privileges -d apex_sim` → 0. apex_sim antes: audit_log 5.140, mismos estados, 0 `update` del sistema.
+- `$DC run --rm -e DATABASE_URL worker … --run-once expirations --date <d> --simulate` (`DATABASE_URL` hacia `db_test/apex_sim` solo en el entorno de ese comando; ningún log la contiene):
+  - `2026-11-01` → 0; 1.ª línea de stdout `RELOJ SIMULADO: 2026-11-01`; revisados 0 (el primer fin `active` está a más de 7 días).
+  - `2026-12-10` → 0; `RELOJ SIMULADO: 2026-12-10`; revisados 100, cambiadas 100, vencidas 100; apex_sim: active 1, cancelled 27, expired 101, pending_payment 28; audit_log 5.240 (+100 `update` de `memberships.memberships` con SYSTEM_USER_ID).
+  - `2026-12-10` otra vez → 0, revisados 0 (idempotente); audit_log 5.240.
+  - `--status expirations_sim` → `clock_override: true`, ok, `run_date` 2026-12-10. job_runs de apex_sim: `expirations|2026-10-29|ok|3` (copiada), `expirations_sim|2026-11-01|ok|1`, `expirations_sim|2026-12-10|ok|2`.
+- Limpieza: `dropdb apex_sim` → 0 (0 filas en `pg_database`). apex-db-1 después: 0 filas `*_sim` en `worker.job_runs`; `SELECT max(at) <= now() FROM audit.audit_log` → t.
+
+### V7.3 Auditoría por la pantalla (8180, Playwright como librería con el script de la sesión `v7.mjs`; capturas en `v7-capturas/`)
+- Filtros: Entidad `members.members` → URL `?table=members.members`, 25 filas en la página (`73-entidad.png`); Usuario: 8 opciones con "Sistema (worker)" → URL `?user_id=00000000-0000-0000-0000-000000000001`, **2 filas = psql 2** (`73-usuario-sistema.png`); Fecha Desde/Hasta 2026-10-29 → `?from=2026-10-29&to=2026-10-29`, 25 filas (`73-fecha.png`). El filtro por `record_id` del socio `demo-s4a-historial` pide `GET /api/v1/audit?…&table=members.members&record_id=…` y pinta 2 filas (Crear, Cambiar) = psql 2.
+- Detalle del update del socio: "Entrada #4772", acción Cambiar, entidad Socio; "Cifrado" ×2 (antes y después) con `key_id` `1e9897a6…` visible; 0 `apx1.`; 0 botones de mostrar/descifrar (`73-detalle-cifrado.png`).
+- "Verificar ahora" → "Cadena íntegra: 5.146 filas verificadas (29 oct 2026, 5:03 a. m.)" (`73-verificar.png`); `audit.verifications` +1, última `ok=t, rows 5.146, through_seq 5.146, hash 302dbe657064…, source api`, `triggered_by` = admin desechable. `$DC run --rm tools verify-audit --as <admin desechable>` → **0**, "Cadena íntegra: 5147 registros verificados hasta el seq 5147." (la +1 es la fila `verify` de la pantalla). Repetido una vez más al rehacer los filtros: pantalla 5.160 y CLI 5.161, rc 0.
+- Nota de método: la primera pasada contó filas antes de que la tabla se refrescara y usó la etiqueta "Sistema" (la real es "Sistema (worker)"); se corrigió el script (esperar `networkidle`) y se repitió. Ningún defecto del producto.
+### V7.4 Historial de `demo-s4a-historial` (`/socios/ffc1fee0…/historial`)
+- Admin y coach (`coach-v6-mvtcfyaf@apex.test`) ven las mismas 5 frases, de la más nueva a la más vieja: "admin-e2e-1793249495 modificó una membresía: estado", "… registró un pago", "… vendió una membresía", "… editó teléfono", "… creó el socio" (ficha, membresía y pago; sin montos ni valores). 0 de los documentos, teléfonos y correos de V3 en el HTML; 0 `apx1.` (`74-historial-admin.png`, `74-historial-coach.png`).
+### V7.5 Inicio
+- KPI (nombre accesible): "Socios al día: 5", "Por vencer: 0", "Vencidos: 1", "Ingresos de octubre 2026: $ 14.152.000". `GET /memberships/summary` = `{active 5, expiring 0, expired 1, frozen 0, pending_payment 2}` (lo que pinta `/membresias`) y `GET /dashboard` igual; `GET /payments/summary?month=2026-10` `total_cop` 14.152.000 = ingresos del Inicio. "Últimos movimientos": 10 frases ("admin-e2e-1793249495 dio de baja a Sofía V.", "La membresía 0 E2E 2wq4d8h2r de Sofía V. quedó al día", "… registró un pago de $ 120.000 de Sofía V.", …), 0 de "Sistema", 0 `apx1.` (`75-inicio.png`, `75-membresias.png`, `75-pagos.png`). Los KPI cuentan socios (no membresías), por eso 5 frente a 77 membresías `active`.
+### V7.6 Planes por la pantalla (plan `S4A-V7-plan-mvtcfyaf`, `535fc523-d459-4f75-a0c6-f039bc1db4ed`)
+- Editar (fila → "Editar") con el aviso "Cambiar el precio no modifica las membresías ya vendidas."; precio 135.000 → "Plan guardado"; fila `$ 135.000 · 30 días · 1 · Activo`. Ficha de `demo-s4a-plan` → Membresías: "S4A-V7-plan-mvtcfyaf · $ 120.000 … Al día"; psql `agreed_price_cop` 120.000, `price_cop` del plan 135.000 (`76-editar.png`, `76-guardado.png`, `76-ficha-membresias.png`).
+- "Dar de baja" con la membresía activa → `DELETE` **409**; aviso "Este plan tiene 1 membresía activa, desactívalo en su lugar." con el botón "Desactivar" (`76-baja-409.png`); el botón → `POST …/deactivate` **200**, "Plan desactivado" (`76-desactivado.png`).
+- Vender: `POST /members/<demo-s4a-expira>/memberships` con el plan inactivo → **422 `plan_inactive`**. En `/membresias/vender` el plan no aparece, pero **tampoco aparecía antes de desactivarlo**: la lista muestra 100 de 178 planes activos ("Se muestran 100 de 178 planes…"); la prueba por pantalla no es concluyente hasta la limpieza P2-1 de V12 (`76-vender-sin-plan.png`).
+- `POST /memberships/<a9de5a91…>/cancel` 200 `cancelled`; desde `/planes?active=false` "Dar de baja" → `DELETE` **204**, "Plan dado de baja" (`76-baja-204.png`); psql: plan `is_active f`, `deleted_at` no nulo; la membresía `cancelled` conserva `agreed_price_cop` 120.000.
+
+### V8 · Repetición e idempotencia (10:12–10:20Z)
+- `--run-once expirations` ×2 sobre apex-db-1 (además de las dos de V7.2): **0 y 0**, revisados 0, `run_date` 2026-10-29 ok; la misma fila `6861ce21` pasa de 3 a 4 y a 5 intentos; audit_log 5.202 sin cambio; estados iguales.
+- `tools verify-audit --as <admin desechable>` ×2: **0 y 0**; "5202 registros verificados hasta el seq 5202" y "5203 … hasta el seq 5203" (la segunda incluye la fila `verify` 5.203 de la primera).
+- `POST /audit/verify` ×4 en un minuto (tras 61 s de pausa): 200 (`through_seq` 5.214), 200 (5.215), 200 (5.216), **429** `rate_limited` `Retry-After: 60`.
+- `tools seed` ×2 con `ADMIN_EMAIL`/`ADMIN_INITIAL_PASSWORD` solo en el entorno del `run` (`-e`, sin `.env.seed` en disco): "seed: omitido: ya existe un admin activo", rc 0 y 0. `init-keys` ×2: "ya existe" ×3, rc 0 y 0. `cd api && uv run python -m app.cli export-openapi <scratchpad>` ×2 → idénticos entre sí e iguales a `docs/openapi.json` (`cmp`; sha256 `d5fb3be44517b665…`).
+- Plan `S4A-V8-plan-mvtcfyaf` (`313c3bc7-cc65-4c42-85df-9e6eece39db8`) por API: `POST` 201 (1 fila de auditoría); `PATCH {price_cop 95000, duration_days 31}` ×2 → 200 y 200, filas 2 y **2** (la segunda no audita); `POST …/deactivate` ×2 → 200 y 200, filas 3 y **3**; `DELETE` ×2 → **204 y 404** `plan_not_found`, filas 4 y 4. `DELETE` del plan de V7.6 (ya de baja) → 404.
+- Specs `stack` dos veces: ver V4 (40/40 ×2).
+- Smoke: copia `compose-smoke-v8.sh` (solo `build api` omitido y `--build` → `--no-build` en db/db_test y web, como en W0-2), `SMOKE_KEEP=1` → **verde en 61 s**, rc 0: db, db_test, api, worker y web healthy; worker sin reinicios tras 30 s; `--run-once` (1) 0 y (2) 0; `--status` ok con la misma fila; `.env.seed` efímero creado y borrado (no queda en disco); seed "omitido"; api sin `ADMIN_*`; web en 172.30.0.10 = `TRUSTED_PROXIES`; `web-smoke` 0 fallas; `headers` 0 fallas. Ningún contenedor recreado (mismos `StartedAt`).
+
+### V6 · parte 2 (SQL de solo lectura tras V7 y V8; salida completa en `v6-sql-final.txt`)
+- `worker.job_runs`: **una fila** `expirations | 2026-10-29 | ok | 7 intentos` (V3 1, V7.2 2, V8 2, smoke 2); 0 filas `*_sim`.
+- Estados antes de V8 = después: active 76, cancelled 28, expired 1, frozen 24, pending_payment 28 (frente a V7.2: +1 cancelled y −1 active por la anulación de V7.6).
+- `audit_log` con `user_id = SYSTEM_USER_ID`: solo 2 filas de `auth.users` (seq 1 y 707), **ninguna `update` de `memberships.memberships`**. Desviación frente al texto de V6: el job no tuvo nada que corregir en apex-db-1 (V3, V7.2); las transiciones con auditoría del sistema se probaron en `apex_sim` (V7.2: +100 `update` con SYSTEM_USER_ID).
+- `audit.verifications` (16 filas, por `finished_at`): todas `ok = t`, `triggered_by` = admin desechable, `through_seq` estrictamente creciente 4.793 → 5.216, fuentes `api` y `cli` (las de V7: 5.146 api, 5.147 cli, 5.160 api, 5.161 cli). `audit_log` `action='verify'` más recientes: seq 5.217 (`through_hash` 4e40b95bfa26…) y 5.216 (7928f11d8eaf…), iguales a los de sus verificaciones.
+- Plan de V7.6: `agreed_price_cop` 120.000 (membresía `cancelled`) tras el `PATCH` a 135.000.
+- `SELECT max(at) <= now()` → t; 23 filas `verify` en total.
+- `$DC logs api worker` (705 líneas): 0 de los 10 valores de V3 (documentos, teléfonos, correos), 0 `apx1.`, 0 del motivo de anulación de V7.6, 0 direcciones de correo de ningún tipo, 0 ERROR/CRITICAL/Traceback.
+- Coach desechable `coach-v6-mvtcfyaf@apex.test` (`dcb68975-bfe8-42a0-919d-3c275768e41d`) dado de baja: `DELETE /users/{id}` 204, `deleted_at` no nulo.
+
+### Estado final (10:22Z)
+- api, db, db_test, web y worker `healthy`; RestartCount 0 en api, web y worker; api y worker con `apex-api:local` `329e3396b325`, web con `apex-web:local` `b8cd258b1cab`; `alembic current` = `0013_audit_verifications (head)`; `.env` restaurado (`cmp` idéntico en V4, copia borrada); sin `compose.e2e.yml` (`rate=60r/m`, 0 variables de topes en el api); sin `.env.seed`; `apex_sim` borrada; db_test con `VACUUM` de `audit.audit_log`; `git status` limpio.
+
+### Datos de prueba para V12
+- Socios: `demo-s4a-expira` `fc699bcd-e312-4c0f-bf72-f4bf4c091c1e` (membresía `a57184e0-c964-454d-b181-f704e95b8d1f` expired, pago `8bcf3b99-f667-49d2-987b-93ae76f074c2` 50.000), `demo-s4a-historial` `ffc1fee0-0247-4a36-aa3d-78e90efecc62` (membresía `b5b93f6f-7399-4b31-a0b1-4aeec3dde4b6` active con `Mensual mvjipju3`, pago `28ee25cf-5d7e-4c87-8dc4-950e0f189638` 120.000), `demo-s4a-plan` `fc91aba1-c237-4579-a7dd-b247cfd06b6c` (membresía `a9de5a91-6af6-4d29-9e87-ac524603fae8` cancelled, pago `de69d378-3a0e-48d5-a23f-ff239e9c9e53` 120.000 sin anular).
+- Planes: `S4A-V3-corto-mvtcfyaf` `2c97674b-3dc5-47a6-a2cf-4366811a49b9` (**activo**, con la membresía expired de `demo-s4a-expira`); `S4A-V7-plan-mvtcfyaf` `535fc523-d459-4f75-a0c6-f039bc1db4ed` (dado de baja); `S4A-V8-plan-mvtcfyaf` `313c3bc7-cc65-4c42-85df-9e6eece39db8` (dado de baja).
+- Coach `coach-v6-mvtcfyaf@apex.test` `dcb68975-bfe8-42a0-919d-3c275768e41d` (dado de baja). Admin desechable `admin-e2e-1793249495@apex.test` `8378cdeb-44dd-48e0-8bb0-13a4c740984d` sigue activo con una contraseña aleatoria que nadie conoce. Las specs `stack` (×2) dejaron planes `0 E2E …`: hay 178 planes activos (eran 168).
+
+### Evidencia de V5/V10 · Correcciones finales (posterior al sello; checkpoint `360d816`)
+
+- Perf de la verificación con `gc.freeze()` y sin copias a `dict` por fila: sola ×3 21,5 / 22,7 / 23,2 ms (2,20–2,26 s); corrida completa `-m perf` ×2: 17,9 y 20,4 ms (23 ok cada vez); tras los gates una más: 22,2 ms. Sin `VACUUM`.
+- Gates: `audit` 450 ok; `web/shared` 7 ok (último que tocó el árbol). Suite web completa 3.125 ok; `audit.spec.ts` preview 10 ok con axe a 320/768/1024/1440 en claro y oscuro.
+
+## V10 · Revisión de seguridad del código fusionado (HEAD `e36fff6`; LOW corregidos en `360d816` salvo L-4, que se cierra en V12)
+
+
+Rama `feat/sprint-04a-worker-auditoria-tablero`, HEAD `e36fff6`, árbol limpio al empezar. Solo lectura: sin ediciones ni commits. Se corrieron pruebas sueltas y `SELECT` contra `apex-db-1`.
+
+**Resultado: CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW 4 (más 1 nota informativa).** Aprobado para V11. Las cuatro LOW tienen dueño.
+
+### Hallazgos
+
+**L-1 · LOW · `planRowSchema` no es `.strict()`.**
+- Dónde: `web/src/shared/data/plans.ts:23`. El alcance de V10 lista `plans` entre los esquemas estrictos. `audit` (`features/system/schemas.ts:213-285`), `members` historial (`features/members/schemas.ts:516-528`) y `dashboard` (`features/dashboard/schemas.ts:38,57`) sí lo son.
+- Riesgo: una fila de plan con una clave de más pasa sin avisar. `PlanRowOut` no lleva datos sensibles, así que el daño es bajo. Rompe la coherencia con los otros esquemas.
+- Corrección: `.strict()` en `planRowSchema` y ajustar `plans.test.ts`. Cuidado con `active_members_count`, que es `optional().default(0)`. Dueño: front, S4B (o V11 si cabe).
+
+**L-2 · LOW · `print` en `api/src/app/worker/main.py` (líneas 106, 112, 117, 163, 165).**
+- Es la salida de la CLI del worker: `--status` imprime JSON por stdout (S4A-D87), los rechazos van a stderr, y `RELOJ SIMULADO` también.
+- Los textos son fijos o llevan solo el nombre del job o de la base. No hay datos personales ni secretos.
+- Contradice la letra de "sin `print` nuevos". Ruff no activa `T201`, así que no hay regla que lo detecte.
+- Corrección: dejarlo y anotarlo como excepción de la CLI en `DECISIONES.md` (S4A-D87), o usar `sys.stdout.write`/`typer.echo`. Dueño: backend, cierre documental V12.
+
+**L-3 · LOW · `GET /audit/{seq}` muestra valores `*_idx` (índice ciego) e `ip` en `before`/`after` al admin.**
+- Dónde: `api/src/app/modules/audit/queries.py:get` y `diff.redact_blobs` (`diff.py:118`). Solo se tapa lo que contiene `apx1.`.
+- Los `*_idx` son HMAC con llave propia por `data_class`. Sin la llave no sirven para adivinar valores. El historial del socio ya los oculta (`INDEX_SUFFIX`, `diff.py:174`), y el endpoint es solo admin con `staff-read`.
+- Corrección: decidir si el detalle también oculta o enmascara `*_idx` (como el historial), o registrar el riesgo aceptado. Dueño: backend, S4B.
+
+**L-4 · LOW · Volcados de la base viva en el disco.**
+- Archivos: `docs/scratch/sprint-04a-antes-0012.dump` (1,2 MB) y `sprint-04a-antes-0013.dump` (1,2 MB).
+- Están ignorados por git (`.gitignore:46 *.dump`), no están confirmados y `git log --all -- '*.dump'` sale vacío. Contienen hashes de contraseña y blobs cifrados de la base viva.
+- Corrección: borrarlos en V12, tras el push y el cierre de la reversión de P-MIG (misma deuda que el V12 de Sprint 3). Dueño: orquestador, V12.
+
+**Nota informativa.** `web/src/pages/RouteError.tsx:41-43` usa `sessionStorage` fuera de `core/`. Viene del Sprint 2 (`dd36384`) y guarda solo una marca de tiempo contra el bucle de recarga de chunks. No es dato sensible. Conviene permitirlo explícitamente en el lint, no cambiarlo.
+
+### Verificado sin hallazgo (con evidencia)
+
+**1. Definición de hecho.**
+- Marcador de blobs: `diff.py:81-122,146`. `blob_marker` solo da marcador a un blob bien formado. `_is_blob_like` (`"apx1." in value`) sustituye cualquier otro texto por `MALFORMED_BLOB_MARKER` (D105, D107). Hay tope `MAX_DEPTH = 32`. `AuditRow` no lleva `before` ni `after` (`schemas.py`).
+- Vista reducida del tablero: `REDUCED_FIELDS` es lista blanca (`diff.py:216-241`). `reference` y `void_reason` no están (`HIDDEN_HISTORY_FIELDS`, `diff.py:171`).
+- Historial `GET /members/{id}/audit`: `fields` son solo nombres. `*_idx`, columnas técnicas y ocultas fuera (`diff.py:178-197`). `MemberHistoryItem` es `extra="forbid"` y sin correo. `StaffDep` y `queries.member_history` no ramifican por rol: mismo cuerpo para admin y coach. `ensure_exists(include_deleted=True)` va antes (D111, `members/service.py:513-519`).
+- Datos secretos del audit: `auth.users.password_hash` y `one_time_tokens.token_hash` se redactan con `__audit_redact__` (`auth/models.py:48,105`).
+- `verify-audit`: `--as` atribuye. Sin `--as` usa `SYSTEM_USER_ID`, y `production_guard_error` (`cli.py:601-613`) lo rechaza con `ENV=production`. `Settings.ENV` es `Literal["dev","production"]` con default `production` (`config.py:134`).
+- Compose del worker (`infra/compose.yml:47-79`): sin `ports`, sin `volumes` (no monta keys ni uploads), `read_only: true`, `tmpfs /tmp`, `cap_drop: [ALL]`, `no-new-privileges:true`. Los binds `:ro` están solo en `infra/compose.dev.yml:21-27`.
+
+**2. H-1 y H-2.**
+- H-1 (ancla): `core/audit_verify.py:246-258` (`_check_anchor`: la cadena debe llegar a `ancla.through_seq` y conservar `through_hash`). `_verified_through_hash` y `ZERO_HASH` (D99, líneas 186-192). Lote vacío = ruptura (líneas 232-235).
+- H-2: conexión `AUTOCOMMIT` con `invalidate()` y `release_verify_lock` que nunca lanza (`modules/audit/verify.py:81-126`). `VERIFY_MAX_SECONDS = 900` (`audit_verify.py:49`) aplicado con `asyncio.timeout` (`verify.py:135`). Plazo síncrono `SYNC_VERIFY_MAX_SECONDS = 45` con SAVEPOINT y paso a 202 (líneas 55,158-170,173-192). `cancel_background_verifications` y `_TASK_LOCKS` (líneas 61,205-216), llamados desde el shutdown (`main.py:155-160,210`) antes de `dispose_engine`.
+- `_read_batch` por rango acotado, lote de 500 (`audit_verify.py:46,201-243`, D120).
+- Pruebas: `tests/audit/test_verify.py` 23 ok, `test_verify_concurrency.py` 13 ok, `test_filters.py` 103 ok.
+
+**3. M-1..M-7, L-1..L-10 y las 46 decisiones S4A-D75..D120.**
+- Todas encontradas; ninguna "no encontrada".
+- Código:
+  - Worker y jobs (D75..D84): `worker/runtime.py:217` (D75), `core/jobs.py:235` (D76), `core/jobs.py:259-292` (D77, D80), `core/jobs.py:75,172,87` (D78), `core/jobs.py:187,206` (D79), `core/db.py:177` (D81), `core/alerts.py:44-61` (D82), `worker/main.py:137` (D83), `worker/runtime.py:176`, `worker/main.py:187` (D84).
+  - CLI y smoke (D85..D90): `compose-smoke.sh:73,79,94` (D86, D87), `cli.py` (D89, D90).
+  - Auditoría (D91..D112): `verify.py:49` (D91), `core/audit.py:155-156` (D93), `audit_verify.py:56-57` (D94), `cli.py:601,687` (D95), `verify.py:98-126` (D96), `0013:54` (D97), `audit_verify.py:186-192,232` (D99), `verify.py:55` (D100), `verify.py:61,205` (D101), `core/audit.py:68` (D102), `queries.py:build_audit_filters` y `core/pagination.py:101-108` (D104..D106, D110), `diff.py` (D105, D107, D109), `queries.py:95,244` (D112).
+  - Tablero y front (D113..D120): `modules/dashboard/service.py:70,229-252` (D116..D118), `test_crypto_bus_importers.py` (D113), `audit_verify.py:219-235` (D120).
+- Pruebas por comportamiento en: `worker/test_main.py:336` (D75), `worker/test_runner.py:330` (D76), `worker/test_jobs_core.py:276` (D77), `test_alerts.py:113,154` (D82), `audit/test_verify_concurrency.py:136,214,254,317,340` (D96..D101), `tests/dashboard/test_movement_phrase.py` (D116, D117), `tests/auth/test_user_refs.py` (D108).
+- Decisiones de solo documento (D92, D98, D103, D119): confirmadas en `docs/RUNBOOK.md` (líneas 401, 728) y en `SPRINT-04A.md:301-303`.
+
+**4. Riesgos aceptados.** D43/D92, D49, D54/D108, D60, D61, D98, D103, D106 c, D115 y D119 están registrados en `DECISIONES.md`. D98 y D106 c llevan dueño (Sprint 4B). D98 confirmado en la base viva: `audit_log_forbid_mutation` y `audit_log_forbid_truncate` con `tgenabled='O'`; los dos triggers de `audit.verifications` con `'A'`.
+
+**5. `USER_LIMITS`.**
+- 12 cubetas en `core/ratelimit.py:316-330`.
+- Once variables `USER_*` en `config.py:199-211`, `.env.example:119-136` y `ci.yml:281-288`. Coinciden.
+- Las cuatro lecturas de D45 consumen `staff-read` como literal: `audit/router.py:114,135`, `members/router.py:151`, `dashboard/router.py:34`.
+- Pruebas en verde: `test_writes_have_user_limit` 7, `test_user_limits_catalog` 9, `test_error_codes_per_route` 14, `test_env_example` y `test_config` 90.
+
+**6. Candados.** `test_handlers_no_new_locks` 11 ok, `test_expirations_lock_order` 7 ok, `test_guarded_calls` 19 ok. La excepción `AUTOCOMMIT` es por ruta exacta (`AUTOCOMMIT_PERMITIDO`, líneas 127-175). `test_sql_literals_constant` 8 ok, `test_user_refs_scope` 6 ok, `test_crypto_bus_importers` 8 ok.
+
+**7. Base viva (`apex-db-1`, solo `SELECT`).**
+- `worker.job_runs ... LIKE '%_sim'` = 0.
+- `max(at) <= now()` en `audit.audit_log` = `t`.
+- `audit_log WHERE at > now()` = 0.
+- `worker.job_runs` sin filas. `alembic_version` = `0013_audit_verifications`. `audit.verifications` con `source='cli'` = 0.
+
+**8. Front fusionado.**
+- `encryptedBlob.ts`/`isEncryptedValue` reconocen el marcador y cualquier texto con `apx1.`. No hay `dangerouslySetInnerHTML` ni `innerHTML` en `src`.
+- Sondeo acotado: `VERIFY_POLL_MS`, `VERIFY_MAX_POLLS`, `maxUpdates` (`features/system/api.ts:370-429`).
+- `useSensitiveMutation`: `useVerifyChain` (`api.ts:439`), `useUpdatePlan`, `useSetPlanActive` y `useDeletePlan` (`features/plans/api.ts:69,85,96`). La lista blanca de `tests/lint/sensitive-mutations.test.ts` no incluye esos tres: no cambió con la lista.
+- `isUuid` en enlaces y peticiones (`LastMovements.tsx:30`, `dashboard/schemas.ts:27`, `PlanFilter.tsx`, `memberLinks.ts`, `membershipLinks.ts`).
+- `role="status"` en `AuditDetailPanel.tsx:132` y `VerifyChainButton.tsx:137`.
+- Sin `console`, `fetch`, `Intl` ni `localStorage` fuera de `core/` (solo comentarios, y la nota informativa de `sessionStorage`).
+- `InicioPage` usa `can(role, ...)`; el rol solo se decide en `permissions.ts`.
+- E2E: `tests/e2e/helpers/stack.ts` lee `E2E_ADMIN_EMAIL` y `E2E_ADMIN_PASSWORD` del entorno y no hay credenciales fijas. Ningún test toca `job_runs` ni `audit_log`.
+
+**9. Secretos e higiene.**
+- `git log -p --since=2026-10-28 -- docs/scratch | grep ...` solo devuelve la frase que describe el literal `-----BEGIN PRIVATE KEY-----` de `test_init_keys_cli.py`. Sin `password=`, JWT ni `apex_sim...@`.
+- `git ls-files` no tiene `.dump`, `.pem`, `.key` ni `.env` (solo `.example`).
+- `api/tests/cli/test_init_keys_cli.py:34` parte el literal (`b"-----BEGIN " + b"PRIVATE KEY-----"`), sin llave completa.
+- Sin `console.*` en `web/src`. El único `print` nuevo es el de L-2.
+
+**Otros.**
+- `nginx/default.conf` usa el `proxy_read_timeout` por defecto (60 s), por encima de los 45 s del plazo síncrono.
+- El coach ve el tablero sin ingresos ni montos (D118): `with_amount` en `_payment_phrase` y `income_month_cop=None`.

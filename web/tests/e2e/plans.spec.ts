@@ -1,7 +1,8 @@
 // S2-F7 (US-078, US-079) contra `vite preview`: /planes en un navegador real con el api simulado
 // por page.route. Lista (búsqueda fuera de la URL, el filtro de estado en la URL), alta con el precio en
 // formato "$ 120.000" (409 bajo "Nombre" y 201 con "Plan creado"), detalle de solo lectura y
-// axe-core en claro y oscuro a 390 y 1440 px, sin desborde y con capturas. La variante contra el
+// axe-core en claro y oscuro a 390 y 1440 px, sin desborde y con capturas (S4A-F4: el total partido
+// y las acciones de la fila). La variante contra el
 // stack es stack/plans.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
@@ -102,7 +103,8 @@ for (const [theme, width] of [
     await fakeApi(page);
     await open(page, "/planes", theme, width);
 
-    await expect(page.getByText("3 en total")).toBeVisible();
+    await expect(page.getByText("2 activos · 1 inactivo")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Desactivar: Mensual" })).toBeVisible();
     await expect(page.getByText("$ 110.000").first()).toBeVisible();
     await expect(page.locator("[data-account=inactive]")).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);

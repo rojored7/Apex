@@ -9,10 +9,19 @@
 //   inválida como aviso general.
 // - 201: avisa al padre (onCreated, que muestra "Plan creado"), cierra el panel; useCreatePlan ya
 //   invalidó ["plans"].
+// S4A-F4 · US-080 (S4A-D22, S4A-D34, S4A-D114): con `plan`, el mismo panel edita ("Editar plan ·
+// <nombre>", "Guardar"). Precarga el plan (planToFormValues), muestra el aviso fijo PLAN_EDIT_NOTICE y
+// envía a PATCH /plans/{id} solo los campos modificados (`dirtyFields`, toPlanPatch; al pasar de
+// clases a días viaja `class_count: null`). Sin cambios no sale nada y el panel se cierra. Los
+// errores de campo son los del alta; 404, 403, 429 y 5xx van como aviso (updateErrorMessage). El 200
+// deja el formulario en los valores guardados (`reset()`), avisa al padre (onSaved) y cierra. El
+// padre monta un panel por plan (`key`): los valores iniciales salen del plan al montar.
 // DESIGN-GAP:
-// - Sin "Descripción (la ve el socio en su portal)" ni la casilla "Activo (se puede vender)":
-//   PlanCreate no los tiene (B9); todo plan nace activo. Llegan con la edición del Sprint 4A.
-// - Planes.html dibuja "Editar plan"; en este sprint el panel solo crea.
+// - Sin "Descripción (la ve el socio en su portal)": ni PlanCreate ni PlanPatch la tienen (S4A-D25).
+// - Sin la casilla "Activo (se puede vender)": todo plan nace activo y, al editar, activar y
+//   desactivar son acciones de la fila con su propio POST (S4A-D23); PlanPatch rechaza `is_active`.
+// - "Días para usarlas" es el campo de la duración del plan por clases (Planes.html lo dibuja
+//   opcional); aquí es obligatorio porque `duration_days` lo es en el api.
 import { useId, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router";
@@ -20,33 +29,57 @@ import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { SidePanel } from "../../../shared/ui/SidePanel";
-import { useCreatePlan } from "../api";
-import { createErrorMessage, fieldErrorOf } from "../planErrors";
+import { useCreatePlan, useUpdatePlan } from "../api";
+import { createErrorMessage, fieldErrorOf, updateErrorMessage } from "../planErrors";
 import { planHref } from "../planLinks";
-import { EMPTY_PLAN_FORM, PLAN_KIND_LABELS, PLAN_KINDS, planFormSchema, priceInputText, toPlanCreate, type PlanFormValues, type PlanRowView } from "../schemas";
+import {
+  EMPTY_PLAN_FORM,
+  PLAN_EDIT_NOTICE,
+  PLAN_KIND_LABELS,
+  PLAN_KINDS,
+  planFormSchema,
+  planToFormValues,
+  priceInputText,
+  toPlanCreate,
+  toPlanPatch,
+  type PlanFormValues,
+  type PlanRowView,
+} from "../schemas";
 import styles from "./PlanForm.module.css";
 
 export interface PlanFormProps {
   open: boolean;
   onClose: () => void;
   /** El plan recién creado (el padre muestra el aviso "Plan creado"). */
-  onCreated: (plan: PlanRowView) => void;
+  onCreated?: (plan: PlanRowView) => void;
+  /** S4A-F4: el plan a editar; sin él, el panel crea uno nuevo. */
+  plan?: PlanRowView | null;
+  /** S4A-F4: el plan ya guardado (el padre muestra el aviso). */
+  onSaved?: (plan: PlanRowView) => void;
 }
 
 export const NEW_PLAN_TITLE = "Nuevo plan";
 
+/** "Editar plan · 12 clases" (Planes.html). */
+export function editPlanTitle(name: string): string {
+  return `Editar plan · ${name}`;
+}
+
 const resolver = zodResolver(planFormSchema);
 
-export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
+export function PlanForm({ open, onClose, onCreated, plan = null, onSaved }: PlanFormProps) {
   const formId = useId();
   const create = useCreatePlan();
+  const update = useUpdatePlan(plan?.id ?? "");
   const navigate = useNavigate();
   const location = useLocation();
-  const form = useForm<PlanFormValues>({ resolver, defaultValues: EMPTY_PLAN_FORM });
+  const [initialValues] = useState<PlanFormValues>(() => (plan ? planToFormValues(plan) : EMPTY_PLAN_FORM));
+  const form = useForm<PlanFormValues>({ resolver, defaultValues: initialValues });
   const {
     register,
     control,
-    formState: { errors, isDirty },
+    // dirtyFields se lee aquí para que React Hook Form lo calcule (formState es un proxy).
+    formState: { errors, isDirty, dirtyFields },
   } = form;
   // useWatch y no form.watch: el compilador de React no puede memorizar watch() (react-hooks).
   const kind = useWatch({ control, name: "kind" });
@@ -54,17 +87,25 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
   const [generalError, setGeneralError] = useState<string | null>(null);
   // Un segundo envío (Enter o clic) mientras el primero sigue en curso no sale.
   const inFlight = useRef(false);
+  const isEditing = plan !== null;
+  const isPending = create.isPending || update.isPending;
+  const title = plan ? editPlanTitle(plan.name) : NEW_PLAN_TITLE;
 
-  const resetAll = (): void => {
-    create.reset();
-    form.reset(EMPTY_PLAN_FORM);
+  const clearMessages = (): void => {
     setExistingId(null);
     setGeneralError(null);
   };
 
-  /** Mientras el alta está en curso no se cierra: el plan podría quedar creado sin aviso. */
+  const resetAll = (): void => {
+    create.reset();
+    update.reset();
+    form.reset();
+    clearMessages();
+  };
+
+  /** Mientras se guarda no se cierra: el plan podría quedar guardado sin aviso. */
   const close = (): void => {
-    if (create.isPending) return;
+    if (isPending) return;
     resetAll();
     onClose();
   };
@@ -75,16 +116,33 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
     void navigate(href);
   };
 
+  const submit = async (values: PlanFormValues): Promise<void> => {
+    if (!plan) {
+      const created = await create.mutateAsync(toPlanCreate(values));
+      resetAll();
+      onCreated?.(created);
+      onClose();
+      return;
+    }
+    const patch = toPlanPatch(values, dirtyFields);
+    if (Object.keys(patch).length === 0) {
+      close();
+      return;
+    }
+    const saved = await update.mutateAsync(patch);
+    // reset() con lo guardado: al reabrir no quedan cambios pendientes ni valores viejos.
+    form.reset(planToFormValues(saved));
+    clearMessages();
+    onSaved?.(saved);
+    onClose();
+  };
+
   const save = async (values: PlanFormValues): Promise<void> => {
     if (inFlight.current) return;
     inFlight.current = true;
-    setExistingId(null);
-    setGeneralError(null);
+    clearMessages();
     try {
-      const created = await create.mutateAsync(toPlanCreate(values));
-      resetAll();
-      onCreated(created);
-      onClose();
+      await submit(values);
     } catch (error) {
       const target = fieldErrorOf(error);
       if (target) {
@@ -92,7 +150,7 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
         form.setError(target.path, { type: "server", message: target.message }, { shouldFocus: true });
         return;
       }
-      setGeneralError(createErrorMessage(error));
+      setGeneralError(isEditing ? updateErrorMessage(error) : createErrorMessage(error));
     } finally {
       inFlight.current = false;
     }
@@ -100,20 +158,22 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
 
   // Revisión M2: el enlace solo acompaña al error del servidor; uno del cliente (vacío, largo) no.
   const nameAction = existingId && errors.name?.type === "server" ? { errorAction: { href: planHref(existingId, location.search), text: "Ver el plan existente", onNavigate: goToExisting } } : {};
+  const idleLabel = isEditing ? "Guardar" : "Crear plan";
 
   return (
     <SidePanel
       open={open}
-      title={NEW_PLAN_TITLE}
-      isDirty={!create.isPending && isDirty}
+      title={title}
+      isDirty={!isPending && isDirty}
       onClose={close}
       footer={
-        <Button type="submit" form={formId} loading={create.isPending}>
-          {create.isPending ? "Guardando…" : "Crear plan"}
+        <Button type="submit" form={formId} loading={isPending}>
+          {isPending ? "Guardando…" : idleLabel}
         </Button>
       }
     >
-      <form id={formId} className={styles.form} noValidate aria-label={NEW_PLAN_TITLE} onSubmit={(event) => void form.handleSubmit(save)(event)}>
+      <form id={formId} className={styles.form} noValidate aria-label={title} onSubmit={(event) => void form.handleSubmit(save)(event)}>
+        {isEditing ? <p className={styles.notice}>{PLAN_EDIT_NOTICE}</p> : null}
         {generalError ? (
           <p className={styles.error} role="alert">
             {generalError}
@@ -160,7 +220,7 @@ export function PlanForm({ open, onClose, onCreated }: PlanFormProps) {
         ) : (
           <Field label="Duración en días" inputMode="numeric" autoComplete="off" required error={errors.duration_days?.message} {...register("duration_days")} />
         )}
-        <p className={styles.note}>Las membresías ya vendidas guardan su propio precio: cambiar el precio de un plan no cambia lo vendido.</p>
+        {isEditing ? null : <p className={styles.note}>Las membresías ya vendidas guardan su propio precio: cambiar el precio de un plan no cambia lo vendido.</p>}
       </form>
     </SidePanel>
   );

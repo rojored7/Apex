@@ -103,3 +103,9 @@ describe("códigos del Sprint 4A (S4A-F1)", () => {
     });
   });
 });
+
+describe("códigos del Sprint 4A (S4A-F4)", () => {
+  it("incluye el de dar de baja un plan con membresías activas (plans/exceptions.py, S4A-D24)", () => {
+    expect(API_ERROR_CODES).toMatchObject({ planHasActiveMemberships: "plan_has_active_memberships" });
+  });
+});

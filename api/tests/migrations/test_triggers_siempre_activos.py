@@ -32,6 +32,7 @@ import inspect
 
 import pytest
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.audit import AuditEntry
@@ -46,6 +47,12 @@ from tests.conftest import (
     TRIGGERS_DE_PAGOS,
     TRIGGERS_DE_VERIFICATIONS,
     limpiar_tras_dos_sesiones,
+)
+from tests.factories.triggers import (
+    ALWAYS_TRIGGERS,
+    AUDIT_LOG_TRIGGERS,
+    CRYPTO_TRIGGERS,
+    rearm_always_sql,
 )
 
 TRIGGERS_MEMBRESIAS = (
@@ -188,3 +195,54 @@ async def test_tras_la_limpieza_de_dos_sesiones_los_triggers_siguen_en_always(
     await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
     await _pagos_en_always(engine)
+
+
+# S4B-W0-2 (S4B-D4, S4B-D6) · `audit.audit_log` y `crypto.*` -------------------------------------
+
+TRIGGERS_DE_AUDIT_LOG = AUDIT_LOG_TRIGGERS
+TRIGGERS_DE_CRYPTO = tuple(n for nombres in CRYPTO_TRIGGERS.values() for n in nombres)
+LOS_DIEZ = tuple(n for nombres in ALWAYS_TRIGGERS.values() for n in nombres)
+
+
+async def test_los_dos_triggers_de_audit_log_estan_en_always(engine: AsyncEngine) -> None:
+    assert await _estados(engine, TRIGGERS_DE_AUDIT_LOG) == dict.fromkeys(
+        TRIGGERS_DE_AUDIT_LOG, "A"
+    )
+
+
+async def test_los_seis_triggers_de_crypto_estan_en_always(engine: AsyncEngine) -> None:
+    assert len(TRIGGERS_DE_CRYPTO) == 6
+    assert await _estados(engine, TRIGGERS_DE_CRYPTO) == dict.fromkeys(TRIGGERS_DE_CRYPTO, "A")
+
+
+@pytest.mark.parametrize("tabla", list(ALWAYS_TRIGGERS), ids=list(ALWAYS_TRIGGERS))
+async def test_bajo_replica_el_truncate_sigue_rechazado(engine: AsyncEngine, tabla: str) -> None:
+    """`TRUNCATE` no necesita filas: si el trigger no estuviera en `'A'`, `replica` lo saltaría."""
+    async with engine.connect() as conexion:
+        try:
+            await conexion.execute(text("SET LOCAL session_replication_role = replica"))
+            with pytest.raises(DBAPIError, match=r"append-only|nunca se borran"):
+                await conexion.execute(text(f"TRUNCATE {tabla}"))
+        finally:
+            await conexion.rollback()  # nunca confirma un TRUNCATE, aunque el trigger falte
+
+
+def test_el_ayudante_de_rearmado_enciende_cada_trigger_por_nombre() -> None:
+    for tabla, nombres in ALWAYS_TRIGGERS.items():
+        sql = rearm_always_sql(tabla)
+        assert "ENABLE TRIGGER USER" not in sql
+        for nombre in nombres:
+            assert f"ALTER TABLE {tabla} ENABLE ALWAYS TRIGGER {nombre};" in sql
+
+
+async def test_tras_la_limpieza_de_sesion_los_diez_triggers_siguen_en_always(
+    engine: AsyncEngine,
+) -> None:
+    """Ejecuta `LIMPIEZA_DE_SESION` y la de `dos_sesiones`; después consulta `pg_trigger`."""
+    async with engine.begin() as conexion:
+        for sentencia in LIMPIEZA_DE_SESION:
+            await conexion.execute(text(sentencia))
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
+    assert await _estados(engine, LOS_DIEZ) == dict.fromkeys(LOS_DIEZ, "A")

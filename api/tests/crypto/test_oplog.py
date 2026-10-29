@@ -21,6 +21,7 @@ from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.models import CryptoOp
 from app.core.crypto.oplog import install_oplog_listeners, reset_buffer
 from tests.crypto.conftest import limpiar_llaves_con_commit
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 ACTOR = UUID(int=42)
 CLARO = b"1020304-texto-claro"
@@ -28,9 +29,9 @@ CLARO = b"1020304-texto-claro"
 
 async def _limpiar_ops(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER"))
+        await conn.execute(text(disable_user_sql("crypto.crypto_ops")))
         await conn.execute(text("DELETE FROM crypto.crypto_ops"))
-        await conn.execute(text("ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER"))
+        await conn.execute(text(rearm_always_sql("crypto.crypto_ops")))
 
 
 @pytest.fixture

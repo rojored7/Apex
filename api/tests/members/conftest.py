@@ -23,15 +23,16 @@ from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import LocalFileProvider
 from tests.conftest import LIMPIAR_LLAVES
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 
 async def _limpiar(engine: AsyncEngine, desde: object) -> None:
     async with engine.begin() as conexion:
         for sql in LIMPIAR_LLAVES:
             await conexion.execute(text(sql))
-        await conexion.execute(text("ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER"))
+        await conexion.execute(text(disable_user_sql("crypto.crypto_ops")))
         await conexion.execute(text("DELETE FROM crypto.crypto_ops WHERE at >= :t"), {"t": desde})
-        await conexion.execute(text("ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER"))
+        await conexion.execute(text(rearm_always_sql("crypto.crypto_ops")))
 
 
 @pytest.fixture
@@ -70,8 +71,8 @@ async def ops_tras_el_rollback(engine: AsyncEngine) -> AsyncIterator[None]:
     finally:
         async with engine.begin() as conexion:
             await conexion.execute(text("SET LOCAL lock_timeout = '5s'"))
-            await conexion.execute(text("ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER"))
+            await conexion.execute(text(disable_user_sql("crypto.crypto_ops")))
             await conexion.execute(
                 text("DELETE FROM crypto.crypto_ops WHERE at >= :t"), {"t": desde}
             )
-            await conexion.execute(text("ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER"))
+            await conexion.execute(text(rearm_always_sql("crypto.crypto_ops")))

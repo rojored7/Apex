@@ -16,6 +16,7 @@ from app.core.crypto.keyring import Keyring
 from app.core.crypto.secret import Secret
 from app.core.crypto.types import BlindIndexed, Encrypted, install_crypto_type_listeners
 from app.core.db import Base, CommonColumnsMixin
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 CLARO = "1020304-claro"
 
@@ -37,9 +38,9 @@ class SocioCifradoAuditado(CommonColumnsMixin, Base):
 async def db(bus_listo: Keyring, session: AsyncSession) -> AsyncIterator[AsyncSession]:
     install_audit_listeners()
     install_crypto_type_listeners()
-    await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+    await session.execute(text(disable_user_sql("audit.audit_log")))
     await session.execute(text("TRUNCATE audit.audit_log"))
-    await session.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+    await session.execute(text(rearm_always_sql("audit.audit_log")))
     await session.run_sync(
         lambda s: SocioCifradoAuditado.__table__.create(s.connection(), checkfirst=True)
     )

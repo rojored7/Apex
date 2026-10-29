@@ -93,6 +93,7 @@ from app.core.security import (
     register_principal_loader,
 )
 from app.main import load_module_services
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 # E7/E9: los services se importan (y suscriben sus handlers) antes de cualquier foto del bus y
 # antes de registrar el doble; así `register_principal_loader(principal_double)` queda último.
@@ -182,9 +183,9 @@ def alembic_config(test_database_url: str) -> Config:
 
 
 LIMPIAR_LLAVES = (
-    "ALTER TABLE crypto.crypto_keys DISABLE TRIGGER USER",
+    disable_user_sql("crypto.crypto_keys"),
     "DELETE FROM crypto.crypto_keys",
-    "ALTER TABLE crypto.crypto_keys ENABLE TRIGGER USER",
+    rearm_always_sql("crypto.crypto_keys"),
 )
 
 # `settings.settings_sections` nace en `0005_settings` (S2-B1). Mientras no exista (Rojo de
@@ -303,13 +304,13 @@ LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
     *LIMPIAR_LLAVES,
-    "ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER",
+    disable_user_sql("crypto.crypto_ops"),
     "DELETE FROM crypto.crypto_ops",
-    "ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER",
+    rearm_always_sql("crypto.crypto_ops"),
     LIMPIAR_VERIFICATIONS,  # S4A-D70 (plan del Sprint 4A, sección 2, B3): antes que audit_log
-    "ALTER TABLE audit.audit_log DISABLE TRIGGER USER",
+    disable_user_sql("audit.audit_log"),
     "DELETE FROM audit.audit_log",
-    "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
+    rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
     *LIMPIAR_AUTH,
     LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
@@ -712,11 +713,11 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))
         await conexion.execute(text(LIMPIAR_VERIFICATIONS))  # S4A-D70: antes que audit_log
-        await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conexion.execute(text(disable_user_sql("audit.audit_log")))
         await conexion.execute(
             text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq}
         )
-        await conexion.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await conexion.execute(text(rearm_always_sql("audit.audit_log")))
 
 
 # Contador de sentencias (S3-B7; plan del Sprint 3, sección 2) ---------------------------------

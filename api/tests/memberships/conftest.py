@@ -32,15 +32,16 @@ from app.modules.memberships.summary import (
     reset_summary_cache,
 )
 from tests.conftest import LIMPIAR_LLAVES
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 
 async def _limpiar(engine: AsyncEngine, desde: object) -> None:
     async with engine.begin() as conexion:
         for sql in LIMPIAR_LLAVES:
             await conexion.execute(text(sql))
-        await conexion.execute(text("ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER"))
+        await conexion.execute(text(disable_user_sql("crypto.crypto_ops")))
         await conexion.execute(text("DELETE FROM crypto.crypto_ops WHERE at >= :t"), {"t": desde})
-        await conexion.execute(text("ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER"))
+        await conexion.execute(text(rearm_always_sql("crypto.crypto_ops")))
 
 
 @pytest.fixture

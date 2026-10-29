@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.audit import AuditEntry, install_audit_listeners, verify_chain
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.db import Base, CommonColumnsMixin
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 LIMITE_S = 5.0
 N = 500
@@ -27,9 +28,9 @@ class FilaDeLote(CommonColumnsMixin, Base):
 
 async def test_500_inserciones_auditadas_en_menos_de_5_s(session: AsyncSession) -> None:
     install_audit_listeners()
-    await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+    await session.execute(text(disable_user_sql("audit.audit_log")))
     await session.execute(text("TRUNCATE audit.audit_log"))
-    await session.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+    await session.execute(text(rearm_always_sql("audit.audit_log")))
     await session.run_sync(
         lambda s: Base.metadata.create_all(s.connection(), tables=[FilaDeLote.__table__])
     )

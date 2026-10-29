@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.audit import AuditEntry, install_audit_listeners
 from app.core.context import current_actor
 from app.core.db import Base, CommonColumnsMixin, configure_sessionmaker, get_session
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 ACTOR = UUID(int=9)
 
@@ -32,9 +33,9 @@ class NotaAuditada(CommonColumnsMixin, Base):
 
 async def _vaciar_auditoria(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conn.execute(text(disable_user_sql("audit.audit_log")))
         await conn.execute(text("TRUNCATE audit.audit_log"))
-        await conn.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await conn.execute(text(rearm_always_sql("audit.audit_log")))
 
 
 @pytest.fixture

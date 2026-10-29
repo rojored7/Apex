@@ -197,7 +197,7 @@ Detalle de cada paso en `docs/ddd/blueprints/sprint-04b-plan.md`, sección 7:
 
 ## Migraciones que aplica
 
-`0014_audit_log_triggers_always` (`down_revision = "0013_audit_verifications"`), en el slice W0-2: `ENABLE ALWAYS` de los triggers de `audit_log` y `verifications`, y el texto de `forbid_mutation`. El esquema de v0.1 se cierra en `0014`. Los roles y permisos de base los aplica `dbsetup`, no Alembic.
+`0014_audit_log_triggers_always` (`down_revision = "0013_audit_verifications"`), en el slice W0-2: `ENABLE ALWAYS` de los ocho triggers que estaban en `O` (dos de `audit_log` y seis de `crypto.*`; con los dos de `verifications` quedan diez en `A`) y `CREATE OR REPLACE` de `audit.forbid_mutation()` con `TG_TABLE_SCHEMA`/`TG_TABLE_NAME`. El esquema de v0.1 se cierra en `0014`. Los roles y permisos de base los aplica `dbsetup`, no Alembic.
 
 Los índices de `audit_log` solo entran (`0015_audit_log_indexes`, con `CONCURRENTLY` fuera de transacción) si `max(seq) > 500.000` o una prueba `perf` de `tests/audit` supera su tope (S4B-D5); V5 deja la línea base.
 

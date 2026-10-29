@@ -13,6 +13,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import ZERO_HASH, AuditEntry, record, verify_chain
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 USER = UUID("00000000-0000-0000-0000-000000000001")
 
@@ -20,9 +21,9 @@ USER = UUID("00000000-0000-0000-0000-000000000001")
 @pytest.fixture
 async def tabla_vacia(session: AsyncSession) -> AsyncSession:
     """Vacía la tabla dentro del savepoint de la prueba (TRUNCATE es transaccional)."""
-    await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+    await session.execute(text(disable_user_sql("audit.audit_log")))
     await session.execute(text("TRUNCATE audit.audit_log"))
-    await session.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+    await session.execute(text(rearm_always_sql("audit.audit_log")))
     return session
 
 

@@ -20,6 +20,7 @@ from app.core.audit import (
 )
 from app.core.context import SYSTEM_USER_ID, MissingActorError, actor_scope
 from app.core.db import Base, CommonColumnsMixin, SoftDeleteMixin
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 ACTOR = UUID(int=42)
 SOCIO = UUID(int=77)
@@ -77,9 +78,9 @@ TABLAS = [SocioAuditado.__table__, PagoAuditado.__table__, CosaNoAuditada.__tabl
 @pytest.fixture
 async def db(session: AsyncSession) -> AsyncIterator[AsyncSession]:
     install_audit_listeners()
-    await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+    await session.execute(text(disable_user_sql("audit.audit_log")))
     await session.execute(text("TRUNCATE audit.audit_log"))
-    await session.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+    await session.execute(text(rearm_always_sql("audit.audit_log")))
     await session.run_sync(lambda s: Base.metadata.create_all(s.connection(), tables=TABLAS))
     with actor_scope(ACTOR):
         yield session

@@ -43,3 +43,32 @@ Rama `feat/sprint-04b-continuidad-release`. Plan: `docs/ddd/blueprints/sprint-04
 - Checkpoint `f35ff39` (`chore(checkpoint): S4B-W0-1 imagen y servicio backup, age, .env.ops.example, wave0-gate y decisiones del sprint`), con el trailer `Co-Authored-By: Claude Fable 5.1`. `git check-ignore -q .env.ops.example` sale con 1 (no ignorado) y estaba en `git status` como no rastreado antes del sello. Los `.sh` nuevos entraron con modo 100755.
 - Agente de documentación: 9 desgloses con bloque "Corregido en S4B-W0-1" (54 viñetas) y `SPRINT-04B.md` reescrito; `verificar.mjs` (en `08_implementation_breakdown/`) da solo el error previo de US-008. Dos puntos a revisar por el orquestador: la redacción de varias viñetas combina palabras clave del plan, y el nombre de la prueba de `rotate-key` usa `tests/cli/test_rotate_key_cli.py` (viñeta de W0-1.8) frente a `test_cli_rotate_key.py` de S4B-D2.
 - Estado final del stack: `apex` con `api`, `db`, `db_test`, `web`, `worker` y `backup` `healthy`; `alembic current` `0013`; volumen `backups` vacío.
+
+## S4B-W0-2 · Migración `0014_audit_log_triggers_always` y re-armado de triggers
+
+### Evidencia de S4B-W0-1
+
+- Checkpoint `f35ff39` y commit de evidencia `b33e38b` (ver bloque anterior).
+
+- **W0-2.1 (P-MIG 1 y 2):** volcado `docs/scratch/sprint-04b-antes-0014.dump` de `apex-db-1` con `pg_dump -Fc` desde Bash (`-T`): 1.515.249 bytes; `chmod 600` sin efecto en NTFS (`-rw-r--r--`); `git check-ignore -v` → `.gitignore:47:*.dump`. `$DC stop api` hecho antes de crear ningún archivo en `migrations/versions/` (último: `0013`); el worker y `backup` siguen `healthy`. El api queda parado hasta W0-2.7.
+- **Rojo (W0-2.2):**
+  - `tests/factories/triggers.py` nuevo (`AUDIT_LOG_TRIGGERS`, `VERIFICATIONS_TRIGGERS`, `CRYPTO_TRIGGERS`, `ALWAYS_TRIGGERS` por tabla con los diez, `disable_user_sql`, `rearm_always_sql` = un bloque `DO` por tabla).
+  - Las 4 sentencias `ENABLE TRIGGER USER` de `tests/conftest.py` (y los `DISABLE`) y los 14 archivos restantes de la lista de S4B-D6 usan el ayudante (15 archivos en total); `tests/factories/audit_chain.py` deriva `APAGAR`/`ENCENDER` del ayudante. `test_no_trigger_tampering.py` intacto.
+  - `test_0014_audit_log_triggers_always.py` (nuevo): 44 pruebas, todas en rojo hoy (1 FAILED + 43 ERROR del fixture `base`, motivo: "no existe la revisión 0014_audit_log_triggers_always"); 0 verdes.
+  - `test_0013`: "es head" pasó a "está en la cadena hasta head" (verde hoy y con `0014`).
+  - `test_triggers_siempre_activos.py`: +9 casos (`audit_log` 2 en `A`, `crypto.*` 6 en `A`, TRUNCATE bajo `replica` ×5 tablas con rollback, ayudante, y `test_tras_la_limpieza_de_sesion_los_diez_triggers_siguen_en_always`). En rojo hoy: 5 (`seis_triggers_de_crypto`, 3 TRUNCATE de `crypto.*`, el de los diez). Los de `audit_log`/`verifications` pasan hoy porque las limpiezas con el ayudante ya dejan `audit_log` en `A` (efecto buscado, válido antes y después de `0014`).
+  - Corrida `pytest tests/migrations tests/core/test_migrations.py tests/architecture -m "not perf"`: 642 ok, 6 FAILED, 43 ERROR (rojo 49 = 44 de `test_0014` + 5 de `test_triggers_siempre_activos`).
+  - Limpiezas: `tests/audit tests/core/test_audit_log_db.py tests/crypto`: 533 ok, 2 saltadas (NTFS sin modo POSIX), 0 fallas.
+  - `ruff check`, `ruff format --check` y `mypy src` limpios.
+
+### S4B-W0-2 · Verde (W0-2.3 a W0-2.5)
+
+- **Migración** `api/migrations/versions/0014_audit_log_triggers_always.py` (`down_revision = "0013_audit_verifications"`): `CREATE OR REPLACE FUNCTION audit.forbid_mutation()` con `TG_TABLE_SCHEMA`/`TG_TABLE_NAME`, `SECURITY INVOKER`, `search_path = pg_catalog`, `P0001`; ocho `ENABLE ALWAYS TRIGGER` literales; `downgrade` simétrico con el cuerpo de `0002`. `uv run alembic heads` = `0014_audit_log_triggers_always (head)`. Api parado; Alembic solo contra `db_test` por pytest.
+- **Correcciones a las pruebas del Rojo (no a la función):** (1) `crypto.*` rechaza con `ERRCODE check_violation` (`23514`), no `P0001` (`Tabla.sqlstate`, `CHECK_VIOLATION`); (2) `data_class` de la fila de `crypto_keys` pasó de `prueba.cero14` a `prueba.cero_cat` (el CHECK no admite dígitos). Los mensajes de `crypto_keys`/`crypto_jobs` coinciden con `0003`.
+- **Pruebas de migraciones** (`tests/core/test_migrations.py`, `test_0014_*`, `test_0013_*`, `test_triggers_siempre_activos.py`): 88 passed.
+- **Docs:** RUNBOOK §6 (`0014` completa, con la nota de que todo `downgrade` deja los triggers en `O` y la función antigua), DECISIONES (S4A-D98 y V6 cerrados; S4B-D4/D5/D6 en forma final), SPRINT-04B "Migraciones".
+- **W0-2.5 (suite en dos mitades, sin `--cov`):** mitad 1 (`architecture core crypto auth settings migrations cli worker`): 2442 passed, 3 skipped (NTFS sin modo POSIX), 1 deselected; mitad 2 (`members plans memberships payments audit dashboard integration`): 2607 passed, 22 deselected. 0 fallas. `ruff check`, `ruff format --check` y `mypy src` limpios.
+
+### S4B-W0-2 · Revisiones
+
+- `database-reviewer`: APROBAR, sin bloqueantes. (1) BAJA: RUNBOOK §6 y DECISIONES (junto a S4B-D4) dicen ahora que `0014` se aplica con el api y el worker parados (`ShareRowExclusiveLock` sobre `audit_log` y `crypto.*` hasta el commit; `env.py` comparte una transacción para todas las pendientes) y que `pg_restore --disable-triggers` (modo `replica`) ya no omite estas tablas. (2) INFO: nada que cambiar.

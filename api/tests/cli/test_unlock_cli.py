@@ -34,6 +34,7 @@ from app.core.context import SYSTEM_USER_ID
 from app.core.security import configure_password_hasher
 from app.modules.auth.models import User
 from tests.conftest import CLAVE_PRUEBA, LIMPIAR_AUTH
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 from tests.factories.users import make_user
 
 runner = CliRunner()
@@ -45,9 +46,9 @@ async def _limpiar(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         for sql in LIMPIAR_AUTH:
             await conn.execute(text(sql))
-        await conn.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conn.execute(text(disable_user_sql("audit.audit_log")))
         await conn.execute(text("DELETE FROM audit.audit_log"))
-        await conn.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await conn.execute(text(rearm_always_sql("audit.audit_log")))
 
 
 @pytest.fixture

@@ -15,6 +15,7 @@ from app.core.security import configure_password_hasher
 from app.modules.auth.models import User
 from app.modules.auth.service import UserCreated, seed_admin
 from tests.conftest import CapturarEventos
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 CLAVE = "Zanahoria-Lunar-42x"
 
@@ -23,9 +24,9 @@ CLAVE = "Zanahoria-Lunar-42x"
 async def db(session: AsyncSession) -> AsyncIterator[AsyncSession]:
     install_audit_listeners()
     configure_password_hasher(time_cost=1, memory_cost_kib=8, parallelism=1)
-    await session.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+    await session.execute(text(disable_user_sql("audit.audit_log")))
     await session.execute(text("TRUNCATE audit.audit_log"))
-    await session.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+    await session.execute(text(rearm_always_sql("audit.audit_log")))
     with actor_scope(SYSTEM_USER_ID):
         yield session
     configure_password_hasher(time_cost=3, memory_cost_kib=65536, parallelism=4)

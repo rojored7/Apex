@@ -1,6 +1,6 @@
 """`0013_audit_verifications` (S4A-B3, US-104; S4A-D38, S4A-D43).
 
-Padre `0012_worker_job_runs`; es head. Crea `audit.verifications`:
+Padre `0012_worker_job_runs`; está en la cadena hasta head (S4B-W0-2). Crea `audit.verifications`:
 - `id uuid` PK; `started_at`, `finished_at timestamptz NOT NULL`; `through_seq bigint NOT NULL`
   (CHECK >= 0); `through_hash char(64) NOT NULL` (CHECK `^[0-9a-f]{64}$`, H-1); `rows_checked
   bigint NOT NULL` (CHECK >= 0); `ok boolean NOT NULL`; `broken_at_seq bigint NULL`;
@@ -150,12 +150,17 @@ def base(alembic_config: Config, migrated_database: str) -> Iterator[str]:
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0012_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0012_y_esta_en_la_cadena_hasta_head(
+    alembic_config: Config,
+) -> None:
+    """S4B-W0-2 (P-MIG 9): ya no es head (la `0014` cuelga de ella); sigue en la cadena."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    (head,) = scripts.get_heads()
+    cadena = {r.revision for r in scripts.iterate_revisions(head, "base")}
+    assert REVISION in cadena
 
 
 # Forma ------------------------------------------------------------------------------------------

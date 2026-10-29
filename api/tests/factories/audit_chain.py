@@ -36,15 +36,15 @@ from app.core.audit import ZERO_HASH, AuditEntry, chain_hash
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID
 from tests.conftest import LIMPIAR_VERIFICATIONS
+from tests.factories.triggers import AUDIT_LOG_TABLE, AUDIT_LOG_TRIGGERS, disable_user_sql
 
 INSERT_BATCH: Final = 5000
 MARCA_AFTER: Final = "marca-de-auditoria-7731"
 """Valor que viaja en `after` de cada fila de la fábrica; nunca debe salir en la CLI ni en logs."""
 
-APAGAR: Final = "ALTER TABLE audit.audit_log DISABLE TRIGGER USER"
-ENCENDER: Final = (
-    "ALTER TABLE audit.audit_log ENABLE ALWAYS TRIGGER audit_log_forbid_mutation",
-    "ALTER TABLE audit.audit_log ENABLE ALWAYS TRIGGER audit_log_forbid_truncate",
+APAGAR: Final = disable_user_sql(AUDIT_LOG_TABLE)
+ENCENDER: Final = tuple(
+    f"ALTER TABLE {AUDIT_LOG_TABLE} ENABLE ALWAYS TRIGGER {nombre}" for nombre in AUDIT_LOG_TRIGGERS
 )
 TABLA = AuditEntry.__table__
 DIGEST_SQL: Final = (

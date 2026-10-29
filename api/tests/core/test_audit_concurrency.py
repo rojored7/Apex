@@ -17,15 +17,16 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.audit import AuditEntry, AuditRow, append_entry, verify_chain
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 USER = UUID("00000000-0000-0000-0000-000000000001")
 
 
 async def _vaciar(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conn.execute(text(disable_user_sql("audit.audit_log")))
         await conn.execute(text("TRUNCATE audit.audit_log"))
-        await conn.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await conn.execute(text(rearm_always_sql("audit.audit_log")))
 
 
 @pytest.fixture

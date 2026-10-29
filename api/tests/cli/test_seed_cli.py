@@ -22,6 +22,7 @@ from app.core.config import Settings, reset_settings_cache
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.security import configure_password_hasher
 from app.modules.auth.models import User
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 from tests.factories.users import make_user
 
 runner = CliRunner()
@@ -33,9 +34,9 @@ async def _limpiar_usuarios(engine: AsyncEngine) -> None:
         await conn.execute(text("DELETE FROM auth.refresh_tokens"))
         await conn.execute(text("DELETE FROM auth.one_time_tokens"))
         await conn.execute(text("DELETE FROM auth.users WHERE id <> :s"), {"s": SYSTEM_USER_ID})
-        await conn.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
+        await conn.execute(text(disable_user_sql("audit.audit_log")))
         await conn.execute(text("DELETE FROM audit.audit_log"))
-        await conn.execute(text("ALTER TABLE audit.audit_log ENABLE TRIGGER USER"))
+        await conn.execute(text(rearm_always_sql("audit.audit_log")))
 
 
 @pytest.fixture

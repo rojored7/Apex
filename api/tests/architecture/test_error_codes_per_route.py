@@ -81,7 +81,20 @@ CON_LIMITE = {
     ("get", "/api/v1/audit/{seq}"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
+    # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen
+    # `admin-write` (compartida con `POST /plans`); las lecturas de planes no limitan.
+    ("patch", "/api/v1/plans/{plan_id}"),
+    ("post", "/api/v1/plans/{plan_id}/activate"),
+    ("post", "/api/v1/plans/{plan_id}/deactivate"),
+    ("delete", "/api/v1/plans/{plan_id}"),
 }
+PLANES_B7 = {
+    ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},
+    ("post", "/api/v1/plans/{plan_id}/activate"): {"200", "401", "403", "404", "422", "429"},
+    ("post", "/api/v1/plans/{plan_id}/deactivate"): {"200", "401", "403", "404", "422", "429"},
+    ("delete", "/api/v1/plans/{plan_id}"): {"204", "401", "403", "404", "409", "422", "429"},
+}
+"""S4A-B7 (S4A-D22 a D26): códigos exactos de cada escritura de planes (más `500` y `503`)."""
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),
     ("post", "/api/v1/auth/refresh"),
@@ -157,3 +170,21 @@ def test_responses_for_rechaza_un_codigo_fuera_del_catalogo() -> None:
     assert set(responses_for(401, 403)) == {401, 403}
     with pytest.raises(ValueError, match="418"):
         responses_for(418)
+
+
+@pytest.mark.parametrize(("metodo", "ruta"), sorted(PLANES_B7), ids=lambda v: str(v))
+def test_las_escrituras_de_planes_declaran_sus_codigos_exactos(
+    esquema: dict[str, Any], metodo: str, ruta: str
+) -> None:
+    """S4A-B7: 422 por el `{plan_id}` (y el cuerpo del PATCH), 409 solo en PATCH (nombre) y
+    DELETE (membresías activas), 204 sin cuerpo en DELETE y 429 de `admin-write` en las cuatro."""
+    operacion = esquema["paths"][ruta][metodo]
+    assert set(operacion["responses"]) == PLANES_B7[(metodo, ruta)] | {"500", "503"}
+    assert (metodo, ruta) in CON_LIMITE
+    parametros = {p["name"] for p in operacion.get("parameters", [])}
+    assert "plan_id" in parametros
+
+
+def test_delete_de_planes_responde_204_sin_cuerpo(esquema: dict[str, Any]) -> None:
+    respuesta = esquema["paths"]["/api/v1/plans/{plan_id}"]["delete"]["responses"]["204"]
+    assert "content" not in respuesta

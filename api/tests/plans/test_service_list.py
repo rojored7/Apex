@@ -16,6 +16,10 @@ Contratos para otros módulos:
 - `get_including_deleted` lee también los dados de baja;
 - `names_for(ids)`: `{id: nombre}` en una sola sentencia, con dados de baja, sin los inexistentes;
   `names_for([])` da `{}` sin consultar.
+S4A-B7 (S4A-D25): cada fila de `list` y la salida de `detail` llevan `active_members_count`
+(membresías con estado efectivo distinto de `cancelled` y `expired`), contado por lote en una
+sola consulta a `memberships.memberships` por página; `create` devuelve 0 sin consultar
+`memberships`.
 """
 
 from __future__ import annotations
@@ -31,15 +35,18 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.core.clock import FrozenClock
+from app.core.context import SYSTEM_USER_ID
+from app.core.crypto.keyring import Keyring
 from app.core.pagination import PageParams
 from app.core.security import Role
 from app.modules.plans import service
 from app.modules.plans.exceptions import PlanNotFound, PlanScopeForbidden
 from app.modules.plans.models import Plan
 from app.modules.plans.schemas import PlanOut, PlanSnapshot
-from tests.conftest import T0
+from tests.conftest import T0, ContadorDeConsultas
 from tests.factories.plans import make_plan, make_plans
-from tests.plans._apoyo import CAMPOS_PLAN
+from tests.plans._apoyo import CAMPOS_PLAN, con_membresias, crear, entrada
 
 LOCK_NOT_AVAILABLE = "55P03"
 
@@ -340,3 +347,59 @@ async def test_names_for_acepta_cualquier_iterable_y_repetidos(session: AsyncSes
     plan = await make_plan(session)
     ids: tuple[UUID, ...] = (plan.id, plan.id)
     assert await service.names_for(session, iter(ids)) == {plan.id: "Mensual"}
+
+
+# S4A-B7 (S4A-D25): `active_members_count` -------------------------------------------------------
+
+
+async def test_cada_fila_de_la_lista_lleva_active_members_count(
+    session: AsyncSession, reloj: FrozenClock, bus_listo: Keyring
+) -> None:
+    planes = await catalogo(session)
+    estados = ["active", "expiring", "pending_payment", "frozen", "expired", "cancelled"]
+    await con_membresias(session, planes["Mensual"], estados)
+    await con_membresias(session, planes["Trimestral"], ["expired", "pending_payment"])
+    await con_membresias(session, planes["Anual"], ["frozen"])
+    pagina = await listar(session)
+    conteos = {fila.name: fila.active_members_count for fila in pagina.items}
+    assert conteos == {
+        "Anual": 1,
+        "Mensual": 4,
+        "Mensual Promo": 0,
+        "Promoción": 0,
+        "Trimestral": 1,
+    }
+
+
+async def test_la_lista_cuenta_con_una_sola_consulta_a_memberships(
+    session: AsyncSession,
+    reloj: FrozenClock,
+    bus_listo: Keyring,
+    contador_de_consultas: ContadorDeConsultas,
+) -> None:
+    planes = await make_plans(session, 30)
+    await con_membresias(session, planes[0], ["active"])
+    with contador_de_consultas.midiendo() as medido:
+        pagina = await listar(session, limit=25)
+    assert len(pagina.items) == 25
+    assert medido.de("memberships.memberships") == 1
+    assert [f.active_members_count for f in pagina.items][:2] == [1, 0]
+
+
+async def test_el_detalle_lleva_active_members_count(
+    session: AsyncSession, reloj: FrozenClock, bus_listo: Keyring
+) -> None:
+    plan = await make_plan(session)
+    await con_membresias(session, plan, ["active", "pending_payment", "expired"])
+    salida = await service.detail(session, plan.id, role="admin")
+    assert salida.active_members_count == 2
+
+
+async def test_create_devuelve_cero_sin_consultar_memberships(
+    session: AsyncSession, reloj: FrozenClock, contador_de_consultas: ContadorDeConsultas
+) -> None:
+    with contador_de_consultas.midiendo() as medido:
+        salida = await crear(session, SYSTEM_USER_ID, entrada(name="Quincenal", duration_days=15))
+    assert salida.active_members_count == 0
+    assert set(salida.model_dump()) == CAMPOS_PLAN
+    assert medido.de("memberships.memberships") == 0

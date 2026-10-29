@@ -53,3 +53,18 @@ class PlanScopeForbidden(PlanError):
     status = 403
     code = "forbidden"
     default_message = "No tienes permiso para esta acción."
+
+
+class PlanHasActiveMemberships(PlanError):
+    """S4A-D24 (US-082): la baja de un plan con membresías activas (estado efectivo distinto de
+    `cancelled` y `expired`, incluidas `pending_payment` y `frozen`). 409 con solo el conteo
+    (S4A-D60, L-9): ni ids ni nombres."""
+
+    status = 409
+    code = "plan_has_active_memberships"
+    default_message = "Este plan tiene membresías activas, desactívalo en su lugar."
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+        palabra = "membresía activa" if count == 1 else "membresías activas"
+        super().__init__(message=f"Este plan tiene {count} {palabra}, desactívalo en su lugar.")

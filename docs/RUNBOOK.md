@@ -373,6 +373,15 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin ac
 - Alcance del coach: `GET /api/v1/plans?active=true` y `GET /api/v1/plans/{id}` de planes activos; sin `active=true` o sobre un plan inactivo recibe 403 `forbidden`. El admin ve activos e inactivos. Los dados de baja no aparecen nunca (404 en el detalle).
 - La búsqueda `q` no distingue mayúsculas ni tildes. En todas las listas (`/users`, `/members`, `/plans`) un `q` con caracteres de control (por ejemplo `%00`) da 422 con `field="q"`.
 
+### Editar, activar o desactivar y dar de baja (S4A-B7, US-080 a US-082)
+
+- Las cuatro escrituras son solo del admin y comparten la cubeta `admin-write` con `POST /plans` (30 por minuto; la 31 da 429). Las cuatro toman el plan con `SELECT ... FOR UPDATE`: dos cambios del mismo plan se serializan.
+- Editar: `PATCH /api/v1/plans/{id}` con solo los campos que cambian (`name`, `price_cop`, `kind`, `duration_days`, `class_count`). `is_active` o `deleted_at` en el cuerpo dan 422. Pasar a `classes` exige `class_count`; pasar a `days` exige `class_count: null` explícito (si no, 422 con `field="class_count"`). Un nombre de otro plan vivo da 409 `plan_name_duplicated` con `existing_id`; el propio nombre con otras mayúsculas no cuenta como repetido. Sin cambios efectivos responde 200 sin tocar la fila, sin auditoría y sin evento.
+- Cambiar el precio no toca las membresías ya vendidas: guardan su `agreed_price_cop` (y `guard_identity` impide cambiarlo por SQL). Una venta posterior cobra el precio vigente al vender (S4A-D60, riesgo aceptado: no hay `version` ni `expected_price_cop`).
+- Activar o desactivar: `POST /api/v1/plans/{id}/activate` y `/deactivate`, idempotentes (repetir no audita ni emite). Un plan inactivo no se vende (422 `plan_inactive`), sigue en la lista del admin con `active=false` y sus membresías no cambian.
+- Dar de baja: `DELETE /api/v1/plans/{id}` → 204 con `deleted_at` (hora del reloj de la app) e `is_active` falso en una sola fila `update` de la auditoría. Si el plan tiene membresías activas por estado efectivo (todo menos `cancelled` y `expired`, incluidas `pending_payment` y `frozen`) responde 409 `plan_has_active_memberships` con solo el conteo ("1 membresía activa" o "N membresías activas"), sin ids ni nombres: se desactiva en su lugar, o se anulan antes las `pending_payment` con `POST /memberships/{id}/cancel`. Un plan dado de baja da 404 en todas las rutas y libera su nombre.
+- La columna "Socios con él" es `active_members_count` de `GET /plans` y `GET /plans/{id}`: el mismo conteo, en una sola consulta a `memberships.memberships` por página.
+
 ## 6. Rollback por migración
 
 Regla general:
@@ -734,3 +743,9 @@ Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-0
 ### Limpieza P2-1 de planes de prueba (S4A-B7 y V12)
 
 - Los planes `E2E-tope-*` y los de las specs se retiran por la API (`DELETE /plans/{id}`) con un admin desechable, respetando el tope de `admin-write` (30 por minuto); nunca por SQL. El 409 `plan_has_active_memberships` solo da el conteo: esos planes se desactivan y quedan.
+- Procedimiento:
+  1. Listar los candidatos: `GET /api/v1/plans?q=E2E-tope-&limit=200` (y `offset` hasta cubrir `total`), más los nombres que crean las specs del front; guardar los ids en un archivo del scratchpad.
+  2. Por cada plan, buscar sus membresías `pending_payment` (`GET /api/v1/memberships?plan_id=<id>&status=pending_payment`) y anularlas con `POST /api/v1/memberships/{id}/cancel`.
+  3. `DELETE /api/v1/plans/{id}`: 204 lo retira; 409 `plan_has_active_memberships` (quedan activas pagadas) → `POST /api/v1/plans/{id}/deactivate` y el plan se queda.
+  4. Ritmo: todas las escrituras (anular, borrar, desactivar) cuentan en `admin-write`; el script del scratchpad espera 2 s entre llamadas (30 por minuto) y ante un 429 respeta `Retry-After`.
+  5. Al cerrar, dar de baja el admin desechable, como en la validación final del Sprint 3 (sección 8: nunca se resetea la contraseña del admin real).

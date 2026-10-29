@@ -73,6 +73,35 @@ def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
     assert USER_LIMITS["staff-read"] == (120, 60)
 
 
+def test_las_cuatro_escrituras_de_planes_consumen_solo_admin_write() -> None:
+    """S4A-B7 (S4A-D26, C8): PATCH, activar, desactivar y DELETE de planes llaman
+    `enforce_user_limit(request, "admin-write", ...)` (la cubeta de `POST /plans`); `GET /plans`
+    y `GET /plans/{plan_id}` no consumen ninguna."""
+    fuente = (MODULES / "plans" / "router.py").read_text(encoding="utf-8")
+    por_ruta: dict[tuple[str, str] | None, list[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), []).extend(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    plan = f"{API_PREFIX}/plans/{{plan_id}}"
+    for ruta in (
+        ("patch", plan),
+        ("post", f"{plan}/activate"),
+        ("post", f"{plan}/deactivate"),
+        ("delete", plan),
+        ("post", f"{API_PREFIX}/plans"),
+    ):
+        assert por_ruta.get(ruta) == ["admin-write"], ruta
+    assert por_ruta.get(("get", f"{API_PREFIX}/plans")) == []
+    assert por_ruta.get(("get", plan)) == []
+    assert USER_LIMITS["admin-write"] == (30, 60)
+
+
 def test_las_tres_ventanas_de_reveal_viven_en_la_misma_ruta() -> None:
     """S3-D44 (M-1): minuto, hora y día se aplican en `POST /members/{member_id}/reveal`."""
     fuente = (MODULES / "members" / "router.py").read_text(encoding="utf-8")

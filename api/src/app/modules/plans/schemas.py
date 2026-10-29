@@ -9,6 +9,11 @@
 - `PlanSnapshot`: dataclass congelada, el contrato que `memberships` importará (nunca el ORM).
 - `PlanListQuery`: filtros de la lista (`q` hasta 100 caracteres sin controles, como
   `SearchQuery`; nunca se registra; `active`).
+- S4A-B7 (US-080, S4A-D22): `PlanPatch` (`extra="forbid"`: `is_active` y `deleted_at` en el
+  cuerpo dan 422), todos opcionales con los topes de `PlanCreate`; `model_fields_set` distingue
+  no enviado de `null`. `PlanState`: el plan resultante de `service.merge_plan` (pura).
+  S4A-D25: `PlanOut.active_members_count` (membresías con estado efectivo distinto de
+  `cancelled` y `expired`).
 """
 
 from __future__ import annotations
@@ -47,6 +52,32 @@ class PlanCreate(BaseModel):
     class_count: StrictInt | None = Field(default=None, ge=CLASS_COUNT_MIN, le=CLASS_COUNT_MAX)
 
 
+class PlanPatch(BaseModel):
+    """`PATCH /plans/{plan_id}` (S4A-D22): todo opcional; `class_count: null` explícito es un
+    cambio (pasar a `days`), un campo ausente no lo es (`model_fields_set`)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: SafeText | None = Field(default=None, min_length=1, max_length=NAME_MAX_LENGTH)
+    price_cop: StrictInt | None = Field(default=None, ge=PRICE_COP_MIN, le=PRICE_COP_MAX)
+    kind: PlanKind | None = None
+    duration_days: StrictInt | None = Field(
+        default=None, ge=DURATION_DAYS_MIN, le=DURATION_DAYS_MAX
+    )
+    class_count: StrictInt | None = Field(default=None, ge=CLASS_COUNT_MIN, le=CLASS_COUNT_MAX)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlanState:
+    """Los campos editables del plan tras aplicar un `PlanPatch` (`service.merge_plan`)."""
+
+    name: str
+    price_cop: int
+    kind: str
+    duration_days: int
+    class_count: int | None
+
+
 class PlanOut(BaseModel):
     id: UUID
     name: str
@@ -57,6 +88,7 @@ class PlanOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    active_members_count: int  # S4A-D25: "Socios con él"
 
 
 @dataclass(frozen=True)

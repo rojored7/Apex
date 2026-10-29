@@ -450,8 +450,8 @@ Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `doc
 ### 11.3 Planes (`Planes.html`, `/planes`; S4A-F4, US-080 a US-082)
 
 - "Descripción" y "Días para usarlas": el modelo de plan no tiene esas columnas y ninguna historia de v0.1 las crea. Pendiente de diseño (sin dueño de código hasta que el diseño decida si entran al modelo). Slice S4A-F4 deja el `// DESIGN-GAP:`.
-- Casilla "Activo" en la edición: activar y desactivar son acciones aparte (`POST /plans/:id/activate` y `/deactivate`); el PATCH rechaza `is_active` con 422 (US-080, US-081). Aceptada para v0.1. Slice S4A-B7 y S4A-F4.
-- "Socios con él": entra en el Sprint 4A por `active_members_count` de `GET /plans` (S4A-D25); cierra la fila de 10.12. Slice S4A-B7 y S4A-F4.
+- Casilla "Activo" en la edición: activar y desactivar son acciones aparte (`POST /plans/:id/activate` y `/deactivate`); el PATCH rechaza `is_active` con 422 (US-080, US-081). Aceptada para v0.1. Slice S4A-B7 y S4A-F4; backend confirmado en el Verde de S4A-B7 (`tests/plans/test_router_update.py`, `test_router_set_active.py`).
+- "Socios con él": entra en el Sprint 4A por `active_members_count` de `GET /plans` (S4A-D25); cierra la fila de 10.12. Slice S4A-B7 y S4A-F4; backend confirmado en el Verde de S4A-B7 (`GET /plans` y `GET /plans/{id}` con una consulta de conteo por página).
 - Total partido en activos e inactivos: se muestra "N activos · M inactivos". Slice S4A-F4.
 
 ### 11.4 Rutas y contratos del Sprint 4A

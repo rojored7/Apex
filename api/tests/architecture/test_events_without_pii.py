@@ -161,6 +161,34 @@ def test_el_evento_de_la_baja_y_el_409_no_comparten_nombre() -> None:
     assert (MemberIsDeactivated.status, MemberIsDeactivated.code) == (409, "member_deactivated")
 
 
+# S4A-B7 (S4A-D22, D23, D24): los eventos de editar, desactivar y dar de baja un plan ----------
+
+
+def test_plan_updated_lleva_nombres_de_campo_y_no_valores() -> None:
+    """`changed_fields` son nombres de columna (`tuple[str, ...]`), nunca precios ni nombres."""
+    from app.modules.plans import service as plans_service
+
+    evento = plans_service.PlanUpdated
+    campos = {campo.name for campo in dataclasses.fields(evento)}
+    assert campos == {"occurred_at", "plan_id", "changed_fields"}
+    assert typing.get_type_hints(evento)["changed_fields"] == tuple[str, ...]
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+    assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]
+    assert "__slots__" in vars(evento)  # slots=True propio, no el heredado
+
+
+def test_plan_deactivated_solo_lleva_el_plan() -> None:
+    from app.modules.plans import service as plans_service
+
+    evento = plans_service.PlanDeactivated
+    assert {campo.name for campo in dataclasses.fields(evento)} == {"occurred_at", "plan_id"}
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+    assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]
+    assert "__slots__" in vars(evento)  # slots=True propio, no el heredado
+
+
 # Controles con eventos falsos ------------------------------------------------------------------
 
 

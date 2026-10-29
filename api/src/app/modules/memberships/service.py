@@ -18,6 +18,8 @@
 - S4A-B2 (US-094; S4A-D1, S4A-D2): `recompute_statuses` y `RecomputeSummary` (el recálculo
   diario que usan el worker y el CLI) y los eventos `MembershipExpiring` y `MembershipExpired`,
   sin suscriptores hasta el Sprint 5 (ni la caché del resumen, S4A-D1).
+- S4A-B7 (S4A-D25): `counts_active_by_plans` (el conteo de `count_active_by_plan` por lote, para
+  `active_members_count` de `plans`).
 
 Al final del archivo, al importarse (lo hace `main.load_module_services()` en el api, el CLI y
 las pruebas): el registro del gate (`payments_service.set_membership_gate`, única llamada del api,
@@ -51,6 +53,7 @@ from app.modules.memberships.lifecycle import (
 )
 from app.modules.memberships.queries import (
     count_active_by_plan,
+    counts_active_by_plans,
     get,
     list,
     list_for_member,
@@ -79,6 +82,7 @@ __all__: builtins.list[str] = [
     "RecomputeSummary",
     "cancel",
     "count_active_by_plan",
+    "counts_active_by_plans",
     "freeze",
     "get",
     "list",

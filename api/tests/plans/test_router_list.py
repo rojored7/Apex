@@ -9,6 +9,9 @@
 - 422 con `field`: `limit` 500, 201 y 0, `offset` -1, `active=talvez` y `q` de 101;
 - un `q` con caracteres de control (`%00`, `%1f`) da 422 `field=q` (contrato común
   `SearchQuery`, deuda de S2-B8), nunca 500.
+- S4A-B7 (S4A-D25): cada fila de `GET /plans` y la respuesta de `GET /plans/{id}` llevan
+  `active_members_count` (entero) para admin y coach; el total de activos e inactivos sale de dos
+  lecturas con `limit=1` (`total`).
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import T0, Cabeceras, CrearUsuario
 from tests.factories.plans import make_plan
-from tests.plans._apoyo import CAMPOS_PLAN, PLANS
+from tests.plans._apoyo import CAMPOS_PLAN, PLANS, con_membresias
 
 
 async def _planes(session: AsyncSession) -> dict[str, str]:
@@ -251,3 +254,45 @@ async def test_offset_fuera_de_int64_da_422_field_offset(
     )
     assert r.status_code == 422, r.text
     assert r.json()["error"]["field"] == "offset"
+
+
+# S4A-B7 (S4A-D25): `active_members_count` y totales ---------------------------------------------
+
+
+async def test_la_lista_y_el_detalle_llevan_active_members_count(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras, session: AsyncSession
+) -> None:
+    planes = await _planes(session)
+    activo = await make_plan(session, name="Trimestral", duration_days=90)
+    await con_membresias(session, activo, ["active", "frozen", "expired", "cancelled"])
+    admin = await usuario_real("admin")
+    coach = await usuario_real("coach")
+    r = await app_http.get(PLANS, headers=cabeceras(admin))
+    assert r.status_code == 200, r.text
+    conteos = {fila["id"]: fila["active_members_count"] for fila in r.json()["items"]}
+    assert conteos == {planes["inactivo"]: 0, planes["activo"]: 0, str(activo.id): 2}
+    assert all(type(v) is int for v in conteos.values())
+    r = await app_http.get(PLANS, params={"active": "true"}, headers=cabeceras(coach))
+    assert r.status_code == 200, r.text
+    assert {f["id"]: f["active_members_count"] for f in r.json()["items"]}[str(activo.id)] == 2
+    r = await app_http.get(f"{PLANS}/{activo.id}", headers=cabeceras(coach))
+    assert r.status_code == 200, r.text
+    assert set(r.json()) == CAMPOS_PLAN
+    assert r.json()["active_members_count"] == 2
+
+
+async def test_el_total_de_activos_e_inactivos_sale_de_dos_lecturas_con_limit_1(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras, session: AsyncSession
+) -> None:
+    await _planes(session)
+    await make_plan(session, name="Trimestral", duration_days=90)
+    admin = await usuario_real("admin")
+    totales = {}
+    for activo in ("true", "false"):
+        r = await app_http.get(
+            PLANS, params={"limit": 1, "active": activo}, headers=cabeceras(admin)
+        )
+        assert r.status_code == 200, r.text
+        assert len(r.json()["items"]) == 1
+        totales[activo] = r.json()["total"]
+    assert totales == {"true": 2, "false": 1}

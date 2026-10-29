@@ -30,6 +30,8 @@ export const planRowSchema = z.object({
   is_active: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
+  // S4A-B7 (S4A-D25): "Socios con él"; opcional con 0 por defecto (P-API paso 6).
+  active_members_count: z.number().int().optional().default(0),
 });
 export type PlanRowView = z.infer<typeof planRowSchema>;
 

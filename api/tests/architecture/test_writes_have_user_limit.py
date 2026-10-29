@@ -96,6 +96,21 @@ def test_las_escrituras_de_admin_de_v10_estan_en_con_limite() -> None:
     assert esperadas <= CON_LIMITE
 
 
+def test_las_cuatro_escrituras_de_planes_de_b7_estan_en_con_limite_y_existen() -> None:
+    """S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan tienen tope
+    (`admin-write`); no van a `EXENTAS`."""
+    plan = f"{API_PREFIX}/plans/{{plan_id}}"
+    esperadas = {
+        ("patch", plan),
+        ("post", f"{plan}/activate"),
+        ("post", f"{plan}/deactivate"),
+        ("delete", plan),
+    }
+    assert esperadas <= CON_LIMITE
+    assert esperadas <= _todas_las_escrituras()
+    assert not esperadas & set(EXENTAS)
+
+
 # Control del analizador (fuente falsa) -------------------------------------------------------
 
 FUENTE = """

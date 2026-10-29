@@ -50,6 +50,9 @@ S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` som
   decide. El complemento `none` lo calcula `members`.
 - `count_active_by_plan(session, plan_id) -> int`: membresías del plan con estado EFECTIVO
   distinto de `cancelled` y de `expired` (G-04, N-22 sobre D5).
+- S4A-B7 (S4A-D25): `counts_active_by_plans(session, plan_ids) -> dict[UUID, int]`: el mismo
+  conteo por lote (`GROUP BY plan_id`, trozos de `ID_BATCH`); todo id pedido aparece (0 si no
+  tiene); sin ids no consulta.
 """
 
 from __future__ import annotations
@@ -563,17 +566,38 @@ async def member_ids_by_status(
     return set(await session.scalars(consulta))
 
 
+def _active_effective() -> ColumnElement[bool]:
+    """Estado EFECTIVO distinto de `cancelled` y de `expired` (G-04, N-22 sobre D5).
+    `expiring_days` no cambia si una fila es `cancelled` o `expired`: va 0 y no se lee la
+    política."""
+    excluidos = (MembershipStatus.cancelled.value, MembershipStatus.expired.value)
+    return status_expr(current_clock().today_bogota(), 0).not_in(excluidos)
+
+
 async def count_active_by_plan(session: AsyncSession, plan_id: UUID) -> int:
     """Membresías del plan con estado EFECTIVO distinto de `cancelled` y de `expired` (G-04,
-    N-22 sobre D5). `expiring_days` no cambia si una fila es `cancelled` o `expired`: va 0 y no
-    se lee la política."""
-    excluidos = (MembershipStatus.cancelled.value, MembershipStatus.expired.value)
+    N-22 sobre D5)."""
     consulta = (
         select(func.count())
         .select_from(Membership)
-        .where(
-            Membership.plan_id == plan_id,
-            status_expr(current_clock().today_bogota(), 0).not_in(excluidos),
-        )
+        .where(Membership.plan_id == plan_id, _active_effective())
     )
     return int(await session.scalar(consulta) or 0)
+
+
+async def counts_active_by_plans(
+    session: AsyncSession, plan_ids: Iterable[UUID]
+) -> dict[UUID, int]:
+    """S4A-D25: `count_active_by_plan` por lote (docstring del módulo): `GROUP BY plan_id` en
+    trozos de `ID_BATCH`; todo id pedido aparece (0 si no tiene); sin ids no consulta."""
+    buscados = builtins.list(dict.fromkeys(plan_ids))
+    salida: dict[UUID, int] = dict.fromkeys(buscados, 0)
+    for lote in chunked(buscados):
+        consulta = (
+            select(Membership.plan_id, func.count())
+            .where(Membership.plan_id == any_uuids(lote), _active_effective())
+            .group_by(Membership.plan_id)
+        )
+        for plan_id, cantidad in await session.execute(consulta):
+            salida[plan_id] = int(cantidad)
+    return salida

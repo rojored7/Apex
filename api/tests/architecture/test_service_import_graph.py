@@ -285,11 +285,91 @@ def test_la_perezosa_de_members_vive_en_service_y_detail() -> None:
 
 
 def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
-    """Reescrita en S3-B1 (D2; antes `test_plans_no_agrega_aristas`)."""
+    """Reescrita en S3-B1 (D2; antes `test_plans_no_agrega_aristas`). S4A-B7 (S4A-D24, D25,
+    C8): `plans` gana su perezosa `plans → memberships` (lista blanca de G-03): la baja cuenta
+    las membresías activas (`count_active_by_plan`) y las salidas llevan
+    `active_members_count` (`counts_active_by_plans`). A nivel de módulo sigue sin importar
+    ningún service, y solo `memberships` lo importa (B8 no lo cambia: `dashboard` no importa
+    `plans`)."""
     arriba, perezosas = _grafo_real()
-    assert arriba["plans"] == set() and perezosas["plans"] == set()
+    assert arriba["plans"] == set()
+    assert perezosas["plans"] == {"memberships"}
+    assert ("plans", "memberships") in LAZY_IMPORT_WHITELIST
+    assert ("plans", "memberships") not in ALLOWED_EDGES
     importadores = {a for a, destinos in arriba.items() if "plans" in destinos}
     assert importadores == {"memberships"}
+
+
+PLANS_LAZY_MARK: Final = "# lazy: G-03 (plans -> memberships)"
+
+
+def test_la_perezosa_de_plans_vive_en_service_con_su_comentario_y_sin_nombrar_membership() -> None:
+    """S4A-B7 (S4A-D24, D25): la perezosa de `plans` vive solo en `plans/service.py` (o en
+    `plans/changes.py` si S4A-D72 parte el archivo), cada una lleva el comentario exacto
+    `# lazy: G-03 (plans -> memberships)` en su línea o en la anterior, y ningún archivo de
+    `plans` nombra `Membership` (el ORM de otro módulo; cuenta por el contrato de
+    `memberships.service`)."""
+    archivos = sorted((MODULES_DIR / "plans").glob("*.py"))
+    con_perezosa = sorted(
+        archivo.name
+        for archivo in archivos
+        if service_edges(archivo.read_text(encoding="utf-8"), "plans")[1] == {"memberships"}
+    )
+    assert con_perezosa and set(con_perezosa) <= {"service.py", "changes.py"}, con_perezosa
+    assert "service.py" in con_perezosa, con_perezosa
+    for nombre in con_perezosa:
+        fuente = (MODULES_DIR / "plans" / nombre).read_text(encoding="utf-8")
+        lineas = fuente.splitlines()
+        perezosas = _lineas_de_imports_perezosos(fuente, "plans")
+        assert perezosas, nombre
+        for numero in perezosas:
+            vecinas = lineas[max(0, numero - 2) : numero]
+            assert any(PLANS_LAZY_MARK in linea for linea in vecinas), (nombre, numero)
+    nombran = sorted(
+        archivo.name
+        for archivo in archivos
+        if any(
+            isinstance(nodo, ast.Name | ast.alias | ast.Attribute)
+            and "Membership"
+            in {getattr(nodo, "id", None), getattr(nodo, "name", None), getattr(nodo, "attr", None)}
+            for nodo in ast.walk(ast.parse(archivo.read_text(encoding="utf-8")))
+        )
+    )
+    assert nombran == [], f"plans nombra Membership en {nombran}"
+
+
+def _lineas_de_imports_perezosos(fuente: str, modulo: str) -> list[int]:
+    """Líneas de los imports de otro service dentro de funciones (con o sin comentario)."""
+    lineas: list[int] = []
+
+    def visitar(nodo: ast.AST, dentro_de_funcion: bool) -> None:
+        for hijo in ast.iter_child_nodes(nodo):
+            en_funcion = dentro_de_funcion or isinstance(
+                hijo, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+            )
+            destinos = {_destino(n) for n in _nombres(hijo, modulo)} - {None, modulo}
+            if en_funcion and destinos and isinstance(hijo, ast.stmt):
+                lineas.append(hijo.lineno)
+            visitar(hijo, en_funcion)
+
+    visitar(ast.parse(fuente), False)
+    return lineas
+
+
+def test_control_la_marca_de_plans_exige_el_par_exacto() -> None:
+    """Control negativo: una perezosa con la marca genérica de otro par no cuenta como la de
+    `plans`, y una fuente que nombra `Membership` se detecta."""
+    fuente = (
+        "def contar():\n"
+        "    # lazy: G-03 (payments -> memberships)\n"
+        "    from app.modules.memberships import service\n"
+    )
+    numero = _lineas_de_imports_perezosos(fuente, "plans")
+    assert numero == [3]
+    vecinas = fuente.splitlines()[0:3]
+    assert not any(PLANS_LAZY_MARK in linea for linea in vecinas)
+    arbol = ast.parse("from app.modules.memberships.models import Membership\n")
+    assert any(isinstance(n, ast.alias) and n.name == "Membership" for n in ast.walk(arbol))
 
 
 def test_ningun_import_perezoso_fuera_de_la_lista_blanca() -> None:

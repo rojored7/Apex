@@ -129,7 +129,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `tests/core/test_format_verify_message.py`.
   - **Verde:**
     - migración `0013_audit_verifications`;
-    - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 1.000 y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
+    - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 500 por rango acotado de `seq` (S4A-D120; eran 1.000) y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
     - `POST /audit/verify` y `GET /audit/verify/last`;
     - `cli verify-audit --as`.
     - Hecho en el Verde: `audit.verifications` guarda `through_hash char(64)` (el `hash` de la fila `through_seq`, o `ZERO_HASH` con la cadena vacía) y la siguiente verificación lo exige como ancla; tres cubetas nuevas en el catálogo (12 cubetas y 11 variables `USER_*`): `staff-read` (`USER_READ_LIMIT_PER_MIN`, 120 por minuto; la consumen B4, B5 y B8), `audit-verify` (`USER_AUDIT_VERIFY_LIMIT_PER_MIN`, 3 por minuto) y `audit-verify-hour` (`USER_AUDIT_VERIFY_LIMIT_PER_HOUR`, 20 por hora); el job `e2e-stack` de la CI las sube ×100 (E9). `SYNC_VERIFY_MAX_ROWS` calibrado en 100.000 (S4A-D91).

@@ -43,8 +43,9 @@ from app.core.db import Base, CommonColumnsMixin
 
 logger = logging.getLogger("app.audit")
 
-VERIFY_BATCH_SIZE: Final = 1000
-"""Filas por lote del recorrido (S4A-D47); las pruebas lo bajan con `monkeypatch`."""
+VERIFY_BATCH_SIZE: Final = 500
+"""Filas por lote del recorrido (S4A-D47; 500 desde S4A-D120 para dejar el peor bloque síncrono
+bajo 100 ms con margen también bajo carga); las pruebas lo bajan con `monkeypatch`."""
 VERIFY_MAX_SECONDS: Final = 900
 """Plazo máximo de una verificación en segundo plano (S4A-D44, H-2)."""
 AUDIT_VERIFY_LOCK_KEY: Final[int] = 4_270_003
@@ -197,21 +198,37 @@ async def _hash_at(session: AsyncSession, seq: int) -> str | None:
     return None if valor is None else str(valor)
 
 
+async def _read_batch(
+    session: AsyncSession, after_seq: int, until_seq: int, limit: int
+) -> list[dict[str, object]]:
+    """Filas con `after_seq < seq <= until_seq`, `seq` ascendente, a lo sumo `limit`."""
+    lote = await session.execute(
+        select(_LOG)
+        .where(_LOG.c.seq > after_seq, _LOG.c.seq <= until_seq)
+        .order_by(_LOG.c.seq)
+        .limit(limit)
+    )
+    return [dict(fila) for fila in lote.mappings()]
+
+
 async def _scan_chain(session: AsyncSession, through_seq: int) -> VerifyResult:
     """Recorrido por lotes de `VERIFY_BATCH_SIZE` filas (`seq` ascendente) hasta `through_seq`,
     parado en la primera ruptura; cede el loop entre lotes. `VERIFY_BATCH_SIZE` y
-    `_pause_between_batches` se leen del módulo en cada uso (las pruebas los cambian)."""
+    `_pause_between_batches` se leen del módulo en cada uso (las pruebas los cambian).
+
+    Cada lote pide un rango acotado de `seq` (`last_seq < seq <= last_seq + VERIFY_BATCH_SIZE`,
+    S4A-D120): el trabajo de la base por lote no depende del plan que elija con estadísticas
+    viejas ni de las tuplas muertas fuera del rango. Si el rango entero falta (hueco), la fila
+    siguiente que exista entra sola al lote y `verify_chain` marca la ruptura en ella, igual que
+    con el rango abierto."""
     last_seq, last_hash, checked = 0, ZERO_HASH, 0
     while last_seq < through_seq:
         if checked:
             await _pause_between_batches()
-        lote = await session.execute(
-            select(_LOG)
-            .where(_LOG.c.seq > last_seq, _LOG.c.seq <= through_seq)
-            .order_by(_LOG.c.seq)
-            .limit(VERIFY_BATCH_SIZE)
-        )
-        filas = [dict(fila) for fila in lote.mappings()]
+        tope = min(last_seq + VERIFY_BATCH_SIZE, through_seq)
+        filas = await _read_batch(session, last_seq, tope, VERIFY_BATCH_SIZE)
+        if not filas and tope < through_seq:  # hueco que cubre todo el rango
+            filas = await _read_batch(session, last_seq, through_seq, 1)
         if not filas:  # la cadena acaba antes de `through_seq` (filas borradas entre lotes)
             return VerifyResult(
                 False, checked, last_seq + 1, last_seq or None, last_hash if last_seq else None

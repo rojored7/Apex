@@ -2,7 +2,7 @@
 es gate (`-m "not perf"`); se corre aparte con `uv run pytest -m perf
 tests/audit/test_verify_performance.py -q` y sus tiempos van al cuaderno.
 
-100.000 filas con `VERIFY_BATCH_SIZE = 1000`:
+100.000 filas con `VERIFY_BATCH_SIZE = 500` (S4A-D120; antes 1000):
 - la verificación completa tarda menos de 60 s;
 - ningún bloque entre dos cesiones del loop (`_pause_between_batches`, el `sleep(0)` entre lotes)
   pasa de 100 ms: cota superior del bloque síncrono de un lote (incluye su lectura).
@@ -30,7 +30,7 @@ TOPE_BLOQUE_S = 0.100
 async def test_cien_mil_filas_en_menos_de_60_s_y_bloques_de_menos_de_100_ms(
     audit_chain_factory: CadenaDePrueba, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert audit_verify.VERIFY_BATCH_SIZE == 1000
+    assert audit_verify.VERIFY_BATCH_SIZE == 500
     await audit_chain_factory.make(FILAS)
     marcas: list[float] = []
     original = audit_verify._pause_between_batches
@@ -50,7 +50,7 @@ async def test_cien_mil_filas_en_menos_de_60_s_y_bloques_de_menos_de_100_ms(
     total = time.perf_counter() - inicio
 
     assert (resultado.ok, resultado.rows_checked) == (True, FILAS)
-    assert len(marcas) >= 2 * (FILAS // 1000 - 1)
+    assert len(marcas) >= 2 * (FILAS // audit_verify.VERIFY_BATCH_SIZE - 1)
     # Bloques: del inicio a la 1.ª pausa y de la salida de cada pausa a la entrada de la siguiente.
     bloques = [marcas[0] - inicio] + [
         marcas[i + 1] - marcas[i] for i in range(1, len(marcas) - 1, 2)

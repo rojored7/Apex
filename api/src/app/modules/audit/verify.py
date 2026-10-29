@@ -49,7 +49,8 @@ logger = logging.getLogger("app.audit")
 SYNC_VERIFY_MAX_ROWS: Final = 100_000
 """Umbral síncrono (S4A-D13, contradicción 3), calibrado en B3.12 con `test_verify_performance.py`:
 100.000 filas con lotes de 1.000 tardan ~2,4 s (< 20 s), así que sube de 50.000 a 100.000 (la
-regla de la contradicción 3 de `DECISIONES.md`)."""
+regla de la contradicción 3 de `DECISIONES.md`). Con el lote de 500 por rango acotado (S4A-D120)
+siguen en ~2,5 s."""
 
 SYNC_VERIFY_MAX_SECONDS: Final = 45
 """Plazo de la rama síncrona (S4A-D100): por debajo de los 60 s de Nginx. Si vence, la petición

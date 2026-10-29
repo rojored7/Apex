@@ -98,6 +98,22 @@ async def test_fila_1234_borrada_rompe_en_1235(audit_chain_factory: CadenaDePrue
     assert resultado.rows_checked == 1234
 
 
+async def test_hueco_que_cubre_un_lote_entero_rompe_en_la_fila_siguiente(
+    audit_chain_factory: CadenaDePrueba,
+) -> None:
+    """S4A-D120: con el rango acotado, el lote 501..1000 sale vacío; la fila siguiente que existe
+    (1001) entra sola y marca la ruptura, igual que con el rango abierto (1.º lote: 500 filas,
+    más la que rompe)."""
+    assert audit_verify.VERIFY_BATCH_SIZE == 500
+    await audit_chain_factory.make(1200)
+    await audit_chain_factory.drop_rows(range(501, 1001))
+
+    resultado = await _verificar(audit_chain_factory.session)
+
+    assert (resultado.ok, resultado.through_seq) == (False, 1200)
+    assert (resultado.broken_at_seq, resultado.rows_checked) == (1001, 501)
+
+
 async def test_cadena_vacia_es_integra_con_through_seq_0(
     audit_chain_factory: CadenaDePrueba,
 ) -> None:
@@ -309,13 +325,14 @@ async def test_una_verificacion_rota_no_escribe_audit_anchor(
     assert not [r for r in caplog.records if r.getMessage() == "audit anchor"]
 
 
-async def test_con_lote_de_mil_2500_filas_son_tres_lotes(
+async def test_con_lote_de_quinientas_2500_filas_son_cinco_lotes(
     audit_chain_factory: CadenaDePrueba, contador_de_consultas: ContadorDeConsultas
 ) -> None:
-    """S4A-D47: `VERIFY_BATCH_SIZE = 1000` y el recorrido se detiene en `through_seq` (2500):
-    1.000 + 1.000 + 500. Un lote es una lectura de `audit.audit_log` ordenada por `seq` ascendente
-    con `LIMIT` (la de `record`, `seq DESC`, no cuenta)."""
-    assert audit_verify.VERIFY_BATCH_SIZE == 1000
+    """S4A-D47 y S4A-D120: `VERIFY_BATCH_SIZE = 500` y el recorrido se detiene en `through_seq`
+    (2500): 5 x 500, sin un sexto lote vacío (el bucle para al llegar a `through_seq`). Un lote es
+    una lectura de `audit.audit_log` ordenada por `seq` ascendente con `LIMIT` (la de `record`,
+    `seq DESC`, no cuenta)."""
+    assert audit_verify.VERIFY_BATCH_SIZE == 500
     await audit_chain_factory.make(2500)
 
     with contador_de_consultas.midiendo():
@@ -323,14 +340,14 @@ async def test_con_lote_de_mil_2500_filas_son_tres_lotes(
 
     assert (resultado.ok, resultado.rows_checked) == (True, 2500)
     lotes = [s for s in contador_de_consultas.sentencias if LOTE_ASCENDENTE.search(s)]
-    assert len(lotes) == 3, lotes
+    assert len(lotes) == 5, lotes
 
 
 async def test_entre_lotes_cede_el_loop(
     audit_chain_factory: CadenaDePrueba, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """S4A-D47: `_pause_between_batches` (que hace `asyncio.sleep(0)`) corre entre lotes: con
-    2.500 filas, dos veces como mínimo (entre el 1.º y el 2.º y entre el 2.º y el 3.º)."""
+    2.500 filas, dos veces como mínimo (con el lote de 500 son cuatro: una entre cada par)."""
     pausas: list[int] = []
 
     async def contar() -> None:
@@ -426,4 +443,5 @@ async def test_run_verification_escribe_auditoria_una_sola_vez_y_al_final(
 
     await _verificar(audit_chain_factory.session)
 
-    assert eventos == ["pausa", "pausa", "record:audit.verifications"]
+    # Lote de 500 (S4A-D120): 2.500 filas son 5 lotes y 4 pausas; `record` va después de todas.
+    assert eventos == ["pausa"] * 4 + ["record:audit.verifications"]

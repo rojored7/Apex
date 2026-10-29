@@ -7,7 +7,8 @@ reexporta lo público de
   `PasswordChanged` (los escucha `audit.service`);
 - `sessions.py`: `login`, `refresh`, `logout`, `load_active_principal`, `configure_sleeper`,
   `LoginResult`, `RefreshResult` y los buckets del límite por cuenta;
-- `users.py`: seed, lecturas para otros módulos, "Mi cuenta" y el ciclo de vida del usuario;
+- `users.py`: seed, lecturas para otros módulos (S4A-B4: `user_names_for`, `user_refs_for`,
+  `search_user_ids`), "Mi cuenta" y el ciclo de vida del usuario;
 - `links.py`: `reset`, `forgot`, `issue_link` y `resend_link`;
 - `rules.py`: `normalize_login_email`, `is_active_admin` y `user_status`.
 
@@ -61,9 +62,12 @@ from app.modules.auth.users import (
     me,
     names_for,
     revoke_sessions,
+    search_user_ids,
     seed_admin,
     unlock,
     update_user,
+    user_names_for,
+    user_refs_for,
     validate_password_policy,
     validate_user_role,
 )
@@ -108,9 +112,12 @@ __all__ = [
     "resend_link",
     "reset",
     "revoke_sessions",
+    "search_user_ids",
     "seed_admin",
     "unlock",
     "update_user",
+    "user_names_for",
+    "user_refs_for",
     "user_status",
     "validate_password_policy",
     "validate_user_role",

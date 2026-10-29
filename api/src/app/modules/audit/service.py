@@ -15,6 +15,11 @@ S4A-B3 (S4A-D18): la fachada re-exporta la verificación de la cadena del privad
 (`verify`, `last_verification`, `cancel_background_verifications`, `Finished`, `Started` y el
 candado `acquire_verify_lock`/`release_verify_lock`, que también usa `verify-audit` del CLI).
 
+S4A-B4 (US-102, US-103; S4A-D16, S4A-D17): la lectura vive en los privados `queries.py` y
+`diff.py`; la fachada expone `AUDITABLE_TABLES`, `AuditFilters`, `build_audit_filters`,
+`list_entries(session, query, page)` (arma los filtros con `current_clock()` y llama a
+`queries.list`) y `get_entry(session, seq)` (`queries.get`).
+
 Los handlers se suscriben al importarse este módulo (`main.load_module_services()` lo importa
 en el api y en el CLI); `events.subscribe` es idempotente, así que cada uno queda una vez.
 """
@@ -27,6 +32,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
 from app.core.audit import record
+from app.core.clock import current_clock
+from app.core.pagination import Page, PageParams
+from app.modules.audit import queries
+from app.modules.audit.queries import AUDITABLE_TABLES, AuditFilters, build_audit_filters
+from app.modules.audit.schemas import AuditDetail, AuditListQuery, AuditRow
 from app.modules.audit.verify import (
     Finished,
     Started,
@@ -44,11 +54,16 @@ from app.modules.auth.service import (
 )
 
 __all__ = [
+    "AUDITABLE_TABLES",
+    "AuditFilters",
     "Finished",
     "Started",
     "acquire_verify_lock",
+    "build_audit_filters",
     "cancel_background_verifications",
+    "get_entry",
     "last_verification",
+    "list_entries",
     "on_login_attempted",
     "on_password_changed",
     "on_sessions_revoked",
@@ -58,6 +73,19 @@ __all__ = [
 ]
 
 USERS_TABLE: Final = "auth.users"
+
+
+async def list_entries(
+    session: AsyncSession, query: AuditListQuery, page: PageParams
+) -> Page[AuditRow]:
+    """`GET /audit` (US-102): filtros validados contra el reloj de la app y la página."""
+    filtros = build_audit_filters(query, page, now=current_clock().now_utc())
+    return await queries.list(session, filtros, page)
+
+
+async def get_entry(session: AsyncSession, seq: int) -> AuditDetail:
+    """`GET /audit/{seq}` (US-103): el detalle con el diff y sin blobs."""
+    return await queries.get(session, seq)
 
 
 async def on_login_attempted(event: LoginAttempted, session: AsyncSession) -> None:

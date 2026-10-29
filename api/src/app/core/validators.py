@@ -17,12 +17,22 @@ visual). Por eso:
   saltos de línea; rechaza los demás `Cc` y los controles bidireccionales (U+202A..U+202E,
   U+2066..U+2069); otros `Cf` (guion suave, ZWJ de un emoji) se aceptan porque llegan al pegar
   texto de un procesador y no rompen nada. Exige algo visible.
+
+Rango de instantes de un filtro (S4A-B4; S4A-D46, S4A-D66; generaliza S3-D47 de pagos, que
+`audit` no puede importar):
+- `INSTANT_FLOOR` (2020-01-01T00:00Z) e `instant_ceiling(now)` (`now + 1 día`);
+- `check_instant_range(start, end, *, now, field_start, field_end)`: `None` si el rango es válido;
+  si no, `ValueError(<campo>)` (el único argumento es el nombre del campo, nunca el valor): sin
+  zona horaria, antes del piso o después del techo da el campo de ese extremo; `start >= end` da
+  `field_end`. Cada extremo puede ser `None`. Compara contra el piso y el techo antes de cualquier
+  conversión, así un `0001-01-01T00:00:00+05:00` no rebasa el rango de `datetime`.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Final
 
 from pydantic import AfterValidator, StringConstraints
@@ -83,3 +93,40 @@ EmailAddress = Annotated[
     StringConstraints(strip_whitespace=True, to_lower=True, max_length=EMAIL_MAX_LENGTH),
     AfterValidator(check_email_shape),
 ]
+
+
+# Rango de instantes de un filtro (S4A-B4; S4A-D46, S4A-D66) ---------------------------------
+
+INSTANT_FLOOR: Final = datetime(2020, 1, 1, tzinfo=UTC)
+INSTANT_CEILING_TOLERANCE: Final = timedelta(days=1)
+
+
+def instant_ceiling(now: datetime) -> datetime:
+    """Techo de un filtro de instantes: `now + 1 día` (S4A-D46)."""
+    return now + INSTANT_CEILING_TOLERANCE
+
+
+def _instant_in_range(value: datetime, ceiling: datetime) -> bool:
+    """Con zona y dentro de `[INSTANT_FLOOR, ceiling]`. Comparar dos `datetime` con zona no
+    convierte a UTC, así que un extremo como el año 1 no rebasa el rango de `datetime`."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        return False
+    return INSTANT_FLOOR <= value <= ceiling
+
+
+def check_instant_range(
+    start: datetime | None,
+    end: datetime | None,
+    *,
+    now: datetime,
+    field_start: str,
+    field_end: str,
+) -> None:
+    """`None` si `[start, end)` es válido; si no, `ValueError(<campo>)` (ver el docstring)."""
+    ceiling = instant_ceiling(now)
+    if start is not None and not _instant_in_range(start, ceiling):
+        raise ValueError(field_start)
+    if end is not None and not _instant_in_range(end, ceiling):
+        raise ValueError(field_end)
+    if start is not None and end is not None and start >= end:
+        raise ValueError(field_end)

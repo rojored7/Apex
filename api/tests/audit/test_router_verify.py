@@ -9,7 +9,8 @@ Contrato:
   2 min cada tres, la 21.ª de la hora da 429;
 - `GET /audit/verify/last`: 200 `null` sin verificaciones, la última después; sin 429;
 - coach 403, sin token 401 (las dos rutas); el 202, el 409 y el 429 están en el OpenAPI del
-  `POST` y el `GET` no declara 429 ni 422; `/audit/99` aún no existe (404 de FastAPI).
+  `POST` y el `GET` no declara 429 ni 422; desde S4A-B4 `/audit/99` es el detalle: con la
+  cadena vacía da 404 `audit_entry_not_found` (y `/audit/verify/last` no cae en `{seq}`).
 La cadena vive en la transacción de la prueba (`audit_chain_factory`); `app_http` comparte esa
 sesión.
 """
@@ -217,9 +218,14 @@ def test_el_openapi_declara_202_409_y_429_en_el_post_y_nada_de_eso_en_el_get(
     assert not {"422", "429", "409"} & set(get)
 
 
-async def test_verify_last_no_cae_en_una_ruta_de_seq_que_aun_no_existe(
-    app_http: AsyncClient, admin: UsuarioPrueba, cabeceras: Cabeceras
+async def test_audit_99_es_el_detalle_y_sin_esa_fila_da_audit_entry_not_found(
+    app_http: AsyncClient,
+    audit_chain_factory: CadenaDePrueba,
+    admin: UsuarioPrueba,
+    cabeceras: Cabeceras,
 ) -> None:
+    """S4A-B4: la ruta del detalle existe; con la cadena vacía (solo el alta del admin) el `seq` 99
+    no existe."""
     r = await app_http.get("/api/v1/audit/99", headers=cabeceras(admin))
     assert r.status_code == 404, r.text
-    assert r.json()["error"]["code"] == "not_found"
+    assert r.json()["error"]["code"] == "audit_entry_not_found"

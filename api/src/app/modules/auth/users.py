@@ -6,6 +6,8 @@
   y `validate_password_policy` (la de `rules`, con `field="password"`; seed y CLI).
 - `seed_admin(force_change=True)`: el primer admin activo si no hay otro (el técnico no
   cuenta), con `must_change_password` (M-8); emite `UserCreated`.
+- S4A-B4 (S4A-D16, D19, D54): `user_names_for` (solo `display_name`), `user_refs_for` (con
+  correo, solo para `audit`) y `search_user_ids` (correo parcial, sin mayúsculas ni tildes).
 - `names_for`, `ids_by_email`, `active_user_id_by_email`, `active_admin_id_by_email`: lecturas
   para la auditoría (US-110) y el `--as` del CLI (N-15; solo cuentas `active`, L-4 del Sprint 1).
 - `me` (S2-D14: el usuario y `settings.service.gym_name`) y `change_password` (US-046; H-3,
@@ -38,8 +40,8 @@ from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID
 from app.core.db import violated_constraint
 from app.core.errors import UnauthorizedError
-from app.core.pagination import Page, PageParams, paginate, to_page
-from app.core.search import LIKE_ESCAPE, contains_pattern
+from app.core.pagination import Page, PageParams, chunked, paginate, to_page
+from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold, strip_accents
 from app.core.security import (
     SESSION_INVALID_MESSAGE,
     Principal,
@@ -76,6 +78,7 @@ from app.modules.auth.schemas import (
     MeOut,
     Role,
     StaffRole,
+    UserRef,
     UserRow,
     UserStatus,
 )
@@ -156,6 +159,66 @@ async def ids_by_email(session: AsyncSession, emails: Sequence[str]) -> dict[str
         select(User.email, User.id).where(User.email.in_(normalizados), User.deleted_at.is_(None))
     )
     return {fila.email: fila.id for fila in filas}
+
+
+SYSTEM_DISPLAY_NAME: Final = "Sistema"
+"""`display_name` del usuario técnico (S4A-D19)."""
+USER_SEARCH_LIMIT: Final = 200
+"""Tope por defecto de `search_user_ids` (S4A-D16)."""
+
+
+async def user_names_for(session: AsyncSession, user_ids: Sequence[UUID]) -> dict[UUID, str]:
+    """S4A-D19/D54: `display_name` por id (parte local del correo; `Sistema` para el técnico),
+    por lotes de `ID_BATCH`; incluye borrados; un id inexistente no aparece. Sin correo: es la que
+    importan `members` y `dashboard`."""
+    refs = await user_refs_for(session, user_ids)
+    return {user_id: ref.display_name for user_id, ref in refs.items()}
+
+
+def _display_name(user_id: UUID, email: str) -> str:
+    """Parte local del correo; `Sistema` para el técnico (S4A-D19)."""
+    if user_id == SYSTEM_USER_ID:
+        return SYSTEM_DISPLAY_NAME
+    return email.split("@", 1)[0]
+
+
+async def user_refs_for(session: AsyncSession, user_ids: Sequence[UUID]) -> dict[UUID, UserRef]:
+    """S4A-D19/D54: `UserRef(id, email, display_name)` por id, por lotes; incluye borrados. Solo
+    la importa `audit` (el admin ve el correo)."""
+    buscados = list(dict.fromkeys(user_ids))
+    refs: dict[UUID, UserRef] = {}
+    for lote in chunked(buscados):
+        filas = await session.execute(select(User.id, User.email).where(User.id.in_(lote)))
+        for fila in filas:
+            refs[fila.id] = UserRef(
+                id=fila.id, email=fila.email, display_name=_display_name(fila.id, fila.email)
+            )
+    return refs
+
+
+async def search_user_ids(
+    session: AsyncSession,
+    term: str,
+    *,
+    local_part_only: bool = False,
+    limit: int = USER_SEARCH_LIMIT,
+) -> set[UUID]:
+    """S4A-D16: ids de los usuarios (incluidos borrados y el técnico) cuyo correo contiene `term`
+    (`core.search.clean_query`; sin mayúsculas ni tildes con `sql_fold`; `%`, `_` y `\\` escapados
+    con `contains_pattern`, valor ligado). Con `local_part_only` solo mira lo que va antes de la
+    `@`. Como máximo `limit` ids; un término vacío da un conjunto vacío."""
+    termino = strip_accents(clean_query(term))
+    if not termino:
+        return set()
+    campo = func.split_part(User.email, "@", 1) if local_part_only else User.email
+    patron = contains_pattern(termino)  # valor ligado, nunca texto SQL (core/search, H3)
+    consulta = (
+        select(User.id)
+        .where(sql_fold(campo).ilike(patron, escape=LIKE_ESCAPE))
+        .order_by(User.id)
+        .limit(limit)
+    )
+    return set((await session.scalars(consulta)).all())
 
 
 async def active_user_id_by_email(session: AsyncSession, email: str) -> UUID | None:

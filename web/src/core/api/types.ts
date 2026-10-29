@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description Auditoría en `seq` descendente (solo admin). `total` se satura en 100001 (S4A-D106). `record_id` exige `table`; un `q` UUID filtra `record_id` solo con `table`; `table` debe ser una tabla auditada.
+         */
+        get: operations["list_audit_api_v1_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/verify": {
         parameters: {
             query?: never;
@@ -30,6 +50,23 @@ export interface paths {
         };
         /** Last Verification */
         get: operations["last_verification_api_v1_audit_verify_last_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/{seq}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Entry */
+        get: operations["audit_entry_api_v1_audit__seq__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -752,6 +789,86 @@ export interface components {
             token_type: "bearer";
         };
         /**
+         * AuditDetail
+         * @description `GET /audit/{seq}` (S4A-D17): la fila completa, sin blobs (marcador) y con `changes`.
+         */
+        AuditDetail: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "insert" | "update" | "delete" | "reveal" | "export" | "download" | "login" | "verify";
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            /** Hash */
+            hash: string;
+            /** Prev Hash */
+            prev_hash: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number;
+            /** Subject Member Id */
+            subject_member_id: string | null;
+            /** Table Name */
+            table_name: string;
+            /** User Email */
+            user_email: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string | null;
+        };
+        /**
+         * AuditRow
+         * @description Una fila de `GET /audit`: sin `before` ni `after` (S4A-D16).
+         */
+        AuditRow: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "insert" | "update" | "delete" | "reveal" | "export" | "download" | "login" | "verify";
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number;
+            /** Subject Member Id */
+            subject_member_id: string | null;
+            /** Table Name */
+            table_name: string;
+            /** User Email */
+            user_email: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string | null;
+        };
+        /**
          * CancelMembershipIn
          * @description Cuerpo de `POST /memberships/{membership_id}/cancel` (S3-B6).
          */
@@ -842,6 +959,25 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /**
+         * FieldChange
+         * @description Un campo del diff (S4A-D17, S4A-D52); `before`/`after` ya con el marcador de blobs.
+         */
+        FieldChange: {
+            /** After */
+            after?: unknown;
+            /** Before */
+            before?: unknown;
+            /** Encrypted */
+            encrypted: boolean;
+            /** Field */
+            field: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "added" | "removed" | "changed";
         };
         /**
          * ForgotIn
@@ -1359,6 +1495,17 @@ export interface components {
             hint: string;
             /** Label */
             label: string;
+        };
+        /** Page[AuditRow] */
+        Page_AuditRow_: {
+            /** Items */
+            items: components["schemas"]["AuditRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** Page[MemberRowOut] */
         Page_MemberRowOut_: {
@@ -2137,6 +2284,92 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_audit_api_v1_audit_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                from?: string | null;
+                to?: string | null;
+                user_id?: string | null;
+                table?: string | null;
+                record_id?: string | null;
+                subject_member_id?: string | null;
+                action?: ("insert" | "update" | "delete" | "reveal" | "export" | "download" | "login" | "verify") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     verify_chain_api_v1_audit_verify_post: {
         parameters: {
             query?: never;
@@ -2249,6 +2482,91 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    audit_entry_api_v1_audit__seq__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDetail"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

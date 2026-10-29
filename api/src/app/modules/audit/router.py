@@ -9,21 +9,51 @@ decorador (S2-D3).
   `SYNC_VERIFY_MAX_ROWS` filas), 202 `VerifyStartedOut` (segundo plano; la respuesta lleva
   `Cache-Control: no-store` a mano porque es un `JSONResponse`), 409 `verification_running`,
   429. Sin cuerpo: sin 422.
+- `GET /audit` (admin; S4A-B4, US-102; S4A-D16, S4A-D45, S4A-D46): `Page[AuditRow]` con
+  `PageParams`, `q` y los filtros `from` (alias), `to`, `user_id`, `table` (patrón y longitud),
+  `record_id`, `subject_member_id` y `action`; consume `staff-read`; 422 y 429. S4A-D106:
+  `record_id` exige `table`, `table` debe ser auditada y `total` se satura en 100.001 (lo dice
+  `AUDIT_LIST_DESCRIPTION` en el contrato).
+- `GET /audit/{seq}` (admin; S4A-B4, US-103; S4A-D17, S4A-D46): `seq` entre 1 y `MAX_SEQ`
+  (422 fuera de rango, nunca 500), `AuditDetail`, consume `staff-read`; 404
+  `audit_entry_not_found`, 422 y 429. Se registra DESPUÉS de `GET /audit/verify/last`.
 Las rutas no hacen `select`: aplican el límite, llaman al service y devuelven.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from typing import Annotated, Final
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi.responses import JSONResponse
+from pydantic import AwareDatetime
+
+from app.core.audit import AuditAction
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import NO_STORE, no_store
+from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import enforce_user_limit
 from app.core.security import AdminDep
 from app.modules.audit import service
-from app.modules.audit.schemas import VerifyResultOut, VerifyStartedOut
+from app.modules.audit.schemas import (
+    MAX_AUDIT_OFFSET,
+    MAX_SEQ,
+    TABLE_MAX_LENGTH,
+    TABLE_PATTERN,
+    AuditDetail,
+    AuditListQuery,
+    AuditRow,
+    VerifyResultOut,
+    VerifyStartedOut,
+)
+
+AUDIT_LIST_DESCRIPTION: Final = (
+    "Auditoría en `seq` descendente (solo admin). `total` se satura en "
+    f"{MAX_AUDIT_OFFSET + 1} (S4A-D106). `record_id` exige `table`; un `q` UUID filtra "
+    "`record_id` solo con `table`; `table` debe ser una tabla auditada."
+)
 
 router = APIRouter(
     tags=["audit"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
@@ -59,3 +89,48 @@ async def verify_chain(
         cuerpo = VerifyStartedOut(last=last).model_dump(mode="json")
         return JSONResponse(status_code=202, content=cuerpo, headers={"Cache-Control": NO_STORE})
     return VerifyResultOut.model_validate(salida.result, from_attributes=True)
+
+
+@router.get(
+    "/audit",
+    response_model=Page[AuditRow],
+    responses=responses_for(422, 429),
+    description=AUDIT_LIST_DESCRIPTION,
+)
+async def list_audit(
+    request: Request,
+    principal: AdminDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    from_: Annotated[AwareDatetime | None, Query(alias="from")] = None,
+    to: AwareDatetime | None = None,
+    user_id: UUID | None = None,
+    table: Annotated[str | None, Query(pattern=TABLE_PATTERN, max_length=TABLE_MAX_LENGTH)] = None,
+    record_id: UUID | None = None,
+    subject_member_id: UUID | None = None,
+    action: AuditAction | None = None,
+) -> Page[AuditRow]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    filtros = AuditListQuery(
+        q=q,
+        from_=from_,
+        to=to,
+        user_id=user_id,
+        table=table,
+        record_id=record_id,
+        subject_member_id=subject_member_id,
+        action=action,
+    )
+    return await service.list_entries(session, filtros, page)
+
+
+@router.get("/audit/{seq}", response_model=AuditDetail, responses=responses_for(404, 422, 429))
+async def audit_entry(
+    request: Request,
+    seq: Annotated[int, Path(ge=1, le=MAX_SEQ)],
+    principal: AdminDep,
+    session: SessionDep,
+) -> AuditDetail:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.get_entry(session, seq)

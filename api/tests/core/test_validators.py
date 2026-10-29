@@ -1,11 +1,22 @@
-"""`EmailAddress` de `core/validators.py` (blueprint S2, decisión 5): pruebas puras."""
+"""`EmailAddress` de `core/validators.py` (blueprint S2, decisión 5) y, desde S4A-B4,
+`check_instant_range` (S4A-D46, S4A-D66): pruebas puras."""
 
 from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from app.core.validators import EMAIL_MAX_LENGTH, EmailAddress, check_email_shape
+from app.core.validators import (
+    EMAIL_MAX_LENGTH,
+    INSTANT_FLOOR,
+    EmailAddress,
+    check_email_shape,
+    check_instant_range,
+    instant_ceiling,
+)
+from app.modules.payments.rules import PAID_AT_FLOOR
 
 
 class _Correo(BaseModel):
@@ -158,3 +169,100 @@ def test_safe_multiline_text_rechaza_nul_controles_y_bidi(valor: str) -> None:
 def test_email_address_rechaza_nul_y_formato(correo: str) -> None:
     with pytest.raises(ValidationError):
         _valida(correo)
+
+
+# S4A-B4 (S4A-D46, S4A-D66): rango de instantes de un filtro ---------------------------------
+#
+# Valores a mano con `AHORA = 2026-10-21T15:00:00Z`: piso 2020-01-01T00:00Z, techo
+# 2026-10-22T15:00:00Z (`now + 1 día`). El error es `ValueError(<campo>)`: su único argumento es
+# el nombre del campo y nunca el valor.
+
+AHORA = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
+TECHO = datetime(2026, 10, 22, 15, 0, tzinfo=UTC)
+UN_MICRO = timedelta(microseconds=1)
+MAS_CINCO = timezone(timedelta(hours=5))
+
+
+def _rango(start: datetime | None, end: datetime | None) -> None:
+    check_instant_range(start, end, now=AHORA, field_start="from", field_end="to")
+
+
+def _campo_del_error(start: datetime | None, end: datetime | None) -> str:
+    with pytest.raises(ValueError) as capturado:
+        _rango(start, end)
+    assert len(capturado.value.args) == 1
+    return str(capturado.value.args[0])
+
+
+def test_piso_y_techo_de_instantes() -> None:
+    assert datetime(2020, 1, 1, tzinfo=UTC) == INSTANT_FLOOR
+    assert instant_ceiling(AHORA) == TECHO
+
+
+def test_paid_at_floor_de_pagos_es_el_mismo_piso() -> None:
+    """S4A-D66: `payments.rules` no cambia; su piso coincide con el de `core/validators`."""
+    assert PAID_AT_FLOOR == INSTANT_FLOOR
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        (None, None),
+        (INSTANT_FLOOR, None),
+        (None, TECHO),
+        (INSTANT_FLOOR, TECHO),
+        (AHORA - timedelta(days=30), AHORA),
+        (TECHO - UN_MICRO, TECHO),
+        (datetime(2026, 10, 21, 5, 0, tzinfo=timezone(timedelta(hours=-5))), None),
+    ],
+    ids=["sin-rango", "piso", "techo", "todo", "mes", "un-micro", "bogota"],
+)
+def test_rangos_validos(start: datetime | None, end: datetime | None) -> None:
+    assert _rango(start, end) is None
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "campo"),
+    [
+        (INSTANT_FLOOR - UN_MICRO, None, "from"),
+        (None, INSTANT_FLOOR - UN_MICRO, "to"),
+        (TECHO + UN_MICRO, None, "from"),
+        (None, TECHO + UN_MICRO, "to"),
+        (datetime(1, 1, 1, tzinfo=MAS_CINCO), None, "from"),
+        (None, datetime(9999, 12, 31, tzinfo=UTC), "to"),
+        (datetime(1, 1, 1, tzinfo=MAS_CINCO), datetime(9999, 12, 31, 23, 59, tzinfo=UTC), "from"),
+        (AHORA, AHORA - UN_MICRO, "to"),
+        (AHORA, AHORA, "to"),
+        (datetime(2026, 10, 1), None, "from"),
+        (None, datetime(2026, 10, 1), "to"),
+    ],
+    ids=[
+        "from-bajo-piso",
+        "to-bajo-piso",
+        "from-sobre-techo",
+        "to-sobre-techo",
+        "from-anio-1",
+        "to-anio-9999",
+        "ambos-extremos",
+        "invertido",
+        "iguales",
+        "from-sin-zona",
+        "to-sin-zona",
+    ],
+)
+def test_rangos_invalidos_dan_el_campo(
+    start: datetime | None, end: datetime | None, campo: str
+) -> None:
+    assert _campo_del_error(start, end) == campo
+
+
+def test_los_nombres_de_campo_los_elige_quien_llama() -> None:
+    with pytest.raises(ValueError) as capturado:
+        check_instant_range(AHORA, AHORA, now=AHORA, field_start="desde", field_end="hasta")
+    assert capturado.value.args == ("hasta",)
+
+
+def test_el_error_no_repite_el_valor() -> None:
+    with pytest.raises(ValueError) as capturado:
+        _rango(datetime(1999, 12, 31, 23, 59, tzinfo=UTC), None)
+    assert "1999" not in str(capturado.value)

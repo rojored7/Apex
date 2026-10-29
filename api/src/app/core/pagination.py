@@ -94,10 +94,22 @@ def _with_stable_order(stmt: Select[Any]) -> Select[Any]:
 
 
 async def paginate[T](
-    session: AsyncSession, stmt: Select[T], params: PageParams
+    session: AsyncSession,
+    stmt: Select[T],
+    params: PageParams,
+    *,
+    count_limit: int | None = None,
 ) -> tuple[list[T], int]:
-    """`(items, total)` de una página. `total` respeta los filtros y no depende de la página."""
-    total = await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    """`(items, total)` de una página. `total` respeta los filtros y no depende de la página.
+
+    Con `count_limit` (S4A-D106) el conteo recorre como mucho `count_limit` filas y `total` se
+    satura en ese valor; sin él (todas las listas previas) cuenta todo, como antes."""
+    contadas = stmt.order_by(None)
+    if count_limit is not None:
+        if count_limit <= 0:
+            raise ValueError(f"paginate exige count_limit > 0 (count_limit={count_limit})")
+        contadas = contadas.limit(count_limit)
+    total = await session.scalar(select(func.count()).select_from(contadas.subquery()))
     pagina = _with_stable_order(stmt).limit(params.limit).offset(params.offset)
     items = list((await session.execute(pagina)).scalars().all())
     return items, int(total or 0)

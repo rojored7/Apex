@@ -6,10 +6,14 @@ solo en la cookie `HttpOnly`. `CreateUserIn.role` admite solo `admin` y `coach`,
 `AccessTokenOut` con un access nuevo (S2-D37, H-3). `CreateUserOut.activation_url` viaja una
 sola vez (blueprint 7.2). S2-B4: `ResetIn`, `ForgotIn` e `IssuedLinkOut` (`extra="forbid"`).
 S2-B5: `UpdateUserIn` (`extra="forbid"`; un campo ausente o nulo no cambia) y `RevokeSessionsOut`.
+S4A-B4 (S4A-D19, S4A-D54): `UserRef(id, email, display_name)`, dataclass congelada que devuelve
+`service.user_refs_for` (solo la importa `audit`); `display_name` es la parte local del correo y
+`Sistema` para `SYSTEM_USER_ID` hasta que exista la columna (v0.2).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -183,3 +187,13 @@ class RevokeSessionsOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revoked: int
+
+
+@dataclass(frozen=True)
+class UserRef:
+    """Quién actuó, para la auditoría del admin (S4A-D19, S4A-D54). `display_name` es la parte
+    local del correo (`ana.perez` de `ana.perez@ejemplo.local`) y `Sistema` para el técnico."""
+
+    id: UUID
+    email: str
+    display_name: str

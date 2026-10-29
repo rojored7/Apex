@@ -76,6 +76,9 @@ CON_LIMITE = {
     # S4A-B3 (S4A-D47, M-3): verificar la cadena consume `audit-verify` y `audit-verify-hour`;
     # `GET /audit/verify/last` no tiene límite (lee una fila).
     ("post", "/api/v1/audit/verify"),
+    # S4A-B4 (S4A-D45, M-1): la lista y el detalle de la auditoría consumen `staff-read`.
+    ("get", "/api/v1/audit"),
+    ("get", "/api/v1/audit/{seq}"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

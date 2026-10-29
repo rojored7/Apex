@@ -7,10 +7,10 @@
 - `load_module_services()` deja suscritos los cuatro handlers de `audit.service` a sus eventos,
   una sola vez cada uno (se compara por identidad de función).
 - `modules/audit` tiene `router.py` (desde S4A-B3 con `POST /audit/verify` y
-  `GET /audit/verify/last`, y `no_store`), `service.py` y ningún `models.py` (las tablas viven en
-  `core/audit.py` y `core/audit_verify.py`); importa de `auth` solo `service.py` (las clases
-  de evento), nunca sus
-  `models.py`, `router.py` ni helpers privados.
+  `GET /audit/verify/last`; desde S4A-B4 también `GET /audit` y `GET /audit/{seq}`, registrada
+  después de `/audit/verify/last`; y `no_store`), `service.py` y ningún `models.py` (las
+  tablas viven en `core/audit.py` y `core/audit_verify.py`); importa de `auth` solo
+  `service.py` y `schemas.py`, nunca sus `models.py`, `router.py` ni helpers privados.
 - `auth` no importa nada de `audit` (el sentido es `audit → auth`).
 """
 
@@ -70,10 +70,10 @@ def test_load_module_services_suscribe_cada_handler_una_vez(
     assert sum(1 for h in suscritos if h is handler) == 1, (nombre, suscritos)
 
 
-def test_audit_publica_verify_y_sigue_sin_models() -> None:
-    """S4A-B3 (S4A-D14, S4A-D18): el router de `audit` tiene exactamente `POST /audit/verify` y
-    `GET /audit/verify/last` (B4 sumará la lista y el detalle), lleva `no_store` en el `APIRouter`
-    y el módulo sigue sin `models.py` (`AuditVerification` vive en `core/audit_verify.py`)."""
+def test_audit_publica_verify_lista_y_detalle_y_sigue_sin_models() -> None:
+    """S4A-B3 y S4A-B4 (S4A-D14, S4A-D16, S4A-D17, S4A-D18): el router de `audit` tiene exactamente
+    las cuatro rutas, lleva `no_store` en el `APIRouter` y el módulo sigue sin `models.py`
+    (`AuditEntry` vive en `core/audit.py` y `AuditVerification` en `core/audit_verify.py`)."""
     router = importlib.import_module("app.modules.audit.router").router
     rutas = {
         (metodo, ruta.path)
@@ -81,10 +81,24 @@ def test_audit_publica_verify_y_sigue_sin_models() -> None:
         if isinstance(ruta, APIRoute)
         for metodo in ruta.methods
     }
-    assert rutas == {("POST", "/audit/verify"), ("GET", "/audit/verify/last")}
+    assert rutas == {
+        ("POST", "/audit/verify"),
+        ("GET", "/audit/verify/last"),
+        ("GET", "/audit"),
+        ("GET", "/audit/{seq}"),
+    }
     assert any(d.dependency is no_store for d in router.dependencies)
     assert find_spec("app.modules.audit.service") is not None
     assert find_spec("app.modules.audit.models") is None
+
+
+def test_el_detalle_se_registra_despues_de_verify_last() -> None:
+    """S4A-B4: `GET /audit/{seq}` va después de `GET /audit/verify/last` en el router."""
+    router = importlib.import_module("app.modules.audit.router").router
+    orden = [
+        ruta.path for ruta in router.routes if isinstance(ruta, APIRoute) and "GET" in ruta.methods
+    ]
+    assert orden.index("/audit/verify/last") < orden.index("/audit/{seq}"), orden
 
 
 def test_audit_no_importa_models_router_ni_helpers_de_otros_modulos() -> None:

@@ -30,13 +30,15 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `admin-write` con `POST /payments/{payment_id}/void`, S3-B9b `members-detail` con
 # `GET /members/{member_id}`; S3-B10 sacó los tres de `members-reveal` con
 # `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
-# S4A-B3 (S4A-D65): `staff-read` nace en el catálogo sin ruta; la saca B4 con `GET /audit`.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"staff-read"})
+# S4A-B3 (S4A-D65): `staff-read` nació en el catálogo sin ruta; S4A-B4 la sacó con `GET /audit` y
+# `GET /audit/{seq}`. El catálogo entero vuelve a tener ruta.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
     """S4A-D47 (M-3): minuto y hora se aplican en `POST /audit/verify`; `GET /audit/verify/last`
-    no consume ninguna cubeta."""
+    no consume ninguna cubeta. S4A-D45 (S4A-B4): `GET /audit` y `GET /audit/{seq}` consumen
+    `staff-read`."""
     fuente = (MODULES / "audit" / "router.py").read_text(encoding="utf-8")
     por_ruta: dict[tuple[str, str] | None, set[str]] = {}
     for funcion in ast.walk(ast.parse(fuente)):
@@ -50,6 +52,9 @@ def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
             )
     assert por_ruta[("post", f"{API_PREFIX}/audit/verify")] == {"audit-verify", "audit-verify-hour"}
     assert por_ruta[("get", f"{API_PREFIX}/audit/verify/last")] == set()
+    # S4A-B4 (S4A-D45): la lista y el detalle consumen solo `staff-read`.
+    assert por_ruta[("get", f"{API_PREFIX}/audit")] == {"staff-read"}
+    assert por_ruta[("get", f"{API_PREFIX}/audit/{{seq}}")] == {"staff-read"}
     assert USER_LIMITS["audit-verify"] == (3, 60)
     assert USER_LIMITS["audit-verify-hour"] == (20, 3600)
     assert USER_LIMITS["staff-read"] == (120, 60)

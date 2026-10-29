@@ -19,6 +19,12 @@
 - `umbral_bajo` (`SYNC_VERIFY_MAX_ROWS = 10`) y `plazo_corto` (`VERIFY_MAX_SECONDS = 2`), por
   `monkeypatch` en el módulo que los define y, si lo importa, en `audit/verify.py`.
 - `espia_de_conexiones`: `EspiaDeConexiones` instalado (H-2).
+
+Bloque B4: `ana` (admin, `ana.perez@ejemplo.local`) y `juan` (coach, `juan.rios@ejemplo.local`),
+usuarios reales creados DESPUÉS de vaciar la auditoría (`audit_chain_factory`): sus dos `insert`
+sobre `auth.users` (actor `SYSTEM_USER_ID`) son las filas 1 y 2 de la cadena de la prueba.
+`memberships_service` y `payments_service` se importan al nivel del módulo (gate y suscriptores
+de pagos en el bus antes de la foto de `restaurar_bus`).
 """
 
 from __future__ import annotations
@@ -32,15 +38,22 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 import app.modules.audit.service as audit_service
+import app.modules.memberships.service as memberships_service
+import app.modules.payments.service as payments_service
 from app.core import audit_verify, db
 from app.core.audit import AuditEntry
 from app.core.config import Settings
 from app.modules.audit import verify as verify_mod
-from tests.audit._apoyo import EspiaDeConexiones
-from tests.conftest import LIMPIAR_VERIFICATIONS, limpiar_tras_dos_sesiones
+from tests.audit._apoyo import ANA_EMAIL, JUAN_EMAIL, EspiaDeConexiones
+from tests.conftest import (
+    LIMPIAR_VERIFICATIONS,
+    CrearUsuario,
+    UsuarioPrueba,
+    limpiar_tras_dos_sesiones,
+)
 from tests.factories import audit_chain
 
-__all__ = ["audit_service"]
+__all__ = ["audit_service", "memberships_service", "payments_service"]
 
 IDLE_IN_TX_DE_PRUEBA_MS = 2000
 TRY_LOCK = text("SELECT pg_try_advisory_lock(:key)")
@@ -137,3 +150,13 @@ def plazo_corto(monkeypatch: pytest.MonkeyPatch) -> int:
 @pytest.fixture
 def espia_de_conexiones(monkeypatch: pytest.MonkeyPatch) -> EspiaDeConexiones:
     return EspiaDeConexiones().instalar(monkeypatch)
+
+
+@pytest.fixture
+async def ana(audit_chain_factory: CadenaDePrueba, usuario_real: CrearUsuario) -> UsuarioPrueba:
+    return await usuario_real("admin", email=ANA_EMAIL)
+
+
+@pytest.fixture
+async def juan(ana: UsuarioPrueba, usuario_real: CrearUsuario) -> UsuarioPrueba:
+    return await usuario_real("coach", email=JUAN_EMAIL)

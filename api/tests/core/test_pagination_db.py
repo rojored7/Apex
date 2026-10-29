@@ -81,3 +81,22 @@ async def test_un_select_sin_order_by_queda_ordenado_por_id(filas: AsyncSession)
 async def test_offset_mas_alla_del_final_da_lista_vacia(filas: AsyncSession) -> None:
     items, total = await paginate(filas, select(FilaPaginada), PageParams(limit=10, offset=100))
     assert items == [] and total == N
+
+
+async def test_count_limit_satura_el_total_y_no_cambia_los_items(filas: AsyncSession) -> None:
+    """S4A-D106: el conteo recorre como mucho `count_limit` filas; los items no cambian."""
+    stmt = select(FilaPaginada)
+    items, total = await paginate(filas, stmt, PageParams(limit=10), count_limit=12)
+    assert (len(items), total) == (10, 12)
+    _, total_holgado = await paginate(filas, stmt, PageParams(limit=10), count_limit=N + 5)
+    assert total_holgado == N
+    _, total_filtrado = await paginate(
+        filas, stmt.where(FilaPaginada.grupo < 2), PageParams(), count_limit=12
+    )
+    assert total_filtrado == 6
+
+
+@pytest.mark.parametrize("tope", [0, -1])
+async def test_count_limit_no_positivo_se_rechaza(filas: AsyncSession, tope: int) -> None:
+    with pytest.raises(ValueError, match="count_limit"):
+        await paginate(filas, select(FilaPaginada), PageParams(), count_limit=tope)

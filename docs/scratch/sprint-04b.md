@@ -256,3 +256,9 @@ Checkpoint `cf7a53f` (trailer verificado con `git log -1 --format=%B`). Sellante
 - LOW correos de demostración `@ejemplo.invalid`: S4B-D113.
 - LOW constancia (sin cambio de código): las filas `unwrap` de `crypto_ops` de cada corrida del CLI se pierden por el rollback (S4B-D106); coste aceptado.
 - Pendiente de B4 (dueño B4): `tools` no monta `IMPORT_DIR`; se anotó en DECISIONES y en `SPRINT-04B.md`.
+
+### Evidencia de S4B-B1
+
+Checkpoint `fa04fec` (trailer verificado con `git log -1 --format=%B`). Gates: `slice-gate.sh architecture` (5 pruebas del plan) 456 passed; `slice-gate.sh core/config` 581 passed; `run-gates.sh` en primer plano: api 5505 passed, 5 skipped, cobertura 96,68 % (`cli.py` 97 %, `cli_base.py` 100 %, `cli_keyring.py` 100 %, `cli_session.py` 100 %, `seed/` e `imports/` de 85 a 100 %), scripts de infraestructura y web (172 archivos, 3125 pruebas, lint, tsc, build) en verde; sellante `slice-gate.sh cli` con las 6 pruebas del plan 663 passed, 2 skipped (enlaces simbólicos en Windows), como último comando que tocó el árbol. `ruff check`, `ruff format --check` y `mypy src` limpios.
+
+B1.9 sobre `apex_demo` (`apex-db_test-1`; `apex-db-1` no se tocó; evidencia completa en el scratchpad `b1-evidencia.md`): `alembic upgrade head` 0; `seed --demo --as` 0 con `planes=3 socios=30 membresias=31 pagos=33` y la segunda vez 0 `ya aplicado`; `verify-audit --as` 0 «Cadena íntegra: 132 registros»; psql: los seis estados (12/5/6/2/4/2), 30 socios con `document`, `phone` y `email` en `apx1.`; `import-members` por bind temporal: `--dry-run` 0, real 0 (`created=3 rejected=1`), repetida 0 (`skipped_existing=3`), CSV del dry-run y de la real idénticos, 5.001 filas 2, reporte existente 2, fuera de `IMPORT_DIR` 2, reportes sin cifras de 7 o más dígitos y logs de `api` y `worker` sin datos de la demo. `apex_demo` se conserva hasta V12 (S4B-D92). La demostración de `GET /dashboard` (T8 de US-109) es de V4 (S4B-D88).

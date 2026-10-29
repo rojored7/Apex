@@ -512,3 +512,16 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 - `security-reviewer`: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW, ambos aceptados sin cambio de código.
   - LOW-1: `PlanNameDuplicated.existing_id` como oráculo para el admin. Aceptado (mismo patrón que `EmailTaken`; el nombre y el id ya los ve el admin en `GET /plans`). Constancia en `DECISIONES.md`, S4A-D22.
   - LOW-2: activar un plan ya activo y dar de baja uno ya inactivo no emiten evento (coherente con S4A-D23 y D24). Ya lo fijan pruebas del Rojo: `tests/plans/test_service_set_active.py::test_activar_un_activo_no_agrega_auditoria_ni_evento`, `::test_desactivar_dos_veces_no_agrega_auditoria_ni_evento` y `tests/plans/test_service_deactivate_or_fail.py::test_la_baja_de_un_inactivo_no_emite_y_solo_cambia_deleted_at` (`recibidos == []` con `PlanDeactivated` y `PlanUpdated`). No se añadieron pruebas.
+
+### S4A-B7 · Evidencia
+
+- Gate 3 (`plans`, sellante): 601 ok (las 11 rutas del slice más `tests/architecture`); `ruff check`, `ruff format --check` y `mypy src` (115) limpios antes del sello. Checkpoint `d702727` con el trailer de coautoría.
+- B7.9 (demo 6, backend) por 8181 con el admin desechable `admin-e2e-1793249495@apex.test` (`tools issue-reset-link --as admin@ejemplo.local` rc 0, `POST /auth/reset` 204, login 200; contraseña aleatoria solo en memoria del script; el admin real no se tocó; script `b7-demo.mjs` y salida en el scratchpad, sin tokens ni contraseñas):
+  - `POST /plans` `S4A-demo-1793259548` (120.000, 30 días) 201, `active_members_count` 0.
+  - Venta a un socio de demo (`GET /members?q=Demo&membership_status=none`, total 8) con `first_payment` 120.000 en efectivo: 201, `active`, `agreed_price_cop` 120.000.
+  - `PATCH` `price_cop` 135.000: 200, `active_members_count` 1, `Cache-Control: no-store`. psql de lectura: la membresía conserva `agreed_price_cop = 120000`; el plan tiene 135.000.
+  - `POST .../deactivate` 200 (`is_active` falso); una venta a otro socio con el plan inactivo: 422 `plan_inactive`; psql: el plan sigue con 1 membresía.
+  - `DELETE` 409 `plan_has_active_memberships` "Este plan tiene 1 membresía activa, desactívalo en su lugar."
+  - `POST /memberships/{id}/cancel` 200 (`cancelled`); `DELETE` 204; psql: `deleted_at` no nulo e `is_active` falso; `GET /plans/{id}` 404.
+  - `GET /plans?limit=1&active=true` 200 total 168; `active=false` 200 total 0 (el de la demo ya está dado de baja); `GET /plans?limit=200` 200: toda fila trae `active_members_count` entero (planes de E2E con 1 y 2, los `E2E-tope-*` con 0).
+- Datos de prueba que quedan para V12: el plan `S4A-demo-1793259548` (`f26dcda1-…`, dado de baja); la membresía `5ddb4d69-…` del socio de demo `d7345990-…` (anulada); el pago de 120.000 de su venta (inmutable, sin anular); las filas de auditoría; el admin desechable sigue activo con una contraseña que nadie conoce.

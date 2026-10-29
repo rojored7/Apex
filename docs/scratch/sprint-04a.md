@@ -582,7 +582,7 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 - Docs: DECISIONES S4A-D118 y S4A-D119; SPRINT-04A "Deuda con dueño" (+S4A-D118 con dueño F3; S4A-D115 ampliada); RUNBOOK §11 (finanzas solo admin, ingresos sin caché); BRECHAS §11.2.
 - P-API de nuevo: export ×2 idénticas, `gen:api` (`income_month_cop: number | null`), `types.contract.test.ts` 5/5, `tsc` limpio, `test_openapi_export.py` 6/6.
 - `tests/dashboard -m "not perf"` 85 ok. Gates 1 a 3 de nuevo: `audit` 444 ok (5 perf fuera), `main` 398 ok, `architecture` 394 ok. `ruff check`, `ruff format --check` (510) y `mypy src` (119) limpios. Siguiente: gate 6 sellante (último comando que toca el árbol).
-- Cambio del árbol después del primer sello (B8.9, paso 4): `uvx pre-commit run --all-files` fallaba en `detect-private-key` por `api/tests/cli/test_init_keys_cli.py` (literal `-----BEGIN PRIVATE KEY-----` de S4A-B1, `dbc352e`; preexistente, no de B8). Se partió el literal (`b"-----BEGIN " + b"PRIVATE KEY-----"`, misma aserción) con comentario; `tests/cli/test_init_keys_cli.py` 3 ok; pre-commit en verde. Se vuelve a sellar con el gate 6.
+- Cambio del árbol después del primer sello (B8.9, paso 4): `uvx pre-commit run --all-files` fallaba en `detect-private-key` por `api/tests/cli/test_init_keys_cli.py` (literal la cabecera PEM `BEGIN PRIVATE KEY` (con sus guiones) de S4A-B1, `dbc352e`; preexistente, no de B8). Se partió el literal (dos literales concatenados (`BEGIN` y `PRIVATE KEY` con sus guiones), misma aserción) con comentario; `tests/cli/test_init_keys_cli.py` 3 ok; pre-commit en verde. Se vuelve a sellar con el gate 6.
 
 ### Evidencia de S4A-B8 (después del sello)
 
@@ -816,9 +816,9 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`, HEAD `e36fff6`, árbol limpio a
 - E2E: `tests/e2e/helpers/stack.ts` lee `E2E_ADMIN_EMAIL` y `E2E_ADMIN_PASSWORD` del entorno y no hay credenciales fijas. Ningún test toca `job_runs` ni `audit_log`.
 
 **9. Secretos e higiene.**
-- `git log -p --since=2026-10-28 -- docs/scratch | grep ...` solo devuelve la frase que describe el literal `-----BEGIN PRIVATE KEY-----` de `test_init_keys_cli.py`. Sin `password=`, JWT ni `apex_sim...@`.
+- `git log -p --since=2026-10-28 -- docs/scratch | grep ...` solo devuelve la frase que describe el literal la cabecera PEM `BEGIN PRIVATE KEY` (con sus guiones) de `test_init_keys_cli.py`. Sin `password=`, JWT ni `apex_sim...@`.
 - `git ls-files` no tiene `.dump`, `.pem`, `.key` ni `.env` (solo `.example`).
-- `api/tests/cli/test_init_keys_cli.py:34` parte el literal (`b"-----BEGIN " + b"PRIVATE KEY-----"`), sin llave completa.
+- `api/tests/cli/test_init_keys_cli.py:34` parte el literal (dos literales concatenados (`BEGIN` y `PRIVATE KEY` con sus guiones)), sin llave completa.
 - Sin `console.*` en `web/src`. El único `print` nuevo es el de L-2.
 
 **Otros.**
@@ -926,3 +926,13 @@ API antes: active=true 177 | active=false 0.
 Después psql: vivos 75 (activos 3: mensual, Mensual V50137, Tiquetera 12), total filas 190; pending_payment candidatas 0 (cancelled 54 incluye los S4A-demo ya dados de baja).
 verify-audit --as admin-e2e-1793249495@apex.test: 'Cadena íntegra: 5432 registros verificados hasta el seq 5432.' exit=0
 429 recibidos: 0. 5xx: 0.
+
+## V9 · Gates completos (HEAD `89998b0` más la lista blanca de gitleaks de este commit)
+
+- `run-gates.sh` (primera corrida, en segundo plano): api `-m "not perf"` 4.995 ok, 3 saltadas, 23 deseleccionadas en 14 min 40 s; cobertura global 97 % sin `omit`; scripts de infraestructura 4 de 4 en verde; web lint y tsc en verde; el sistema mató `vitest` por falta de memoria con la sesión inactiva.
+- Parte web repetida en primer plano con los comandos del script: `npm test -- --run --coverage` 3.125 ok, 97,87 % de sentencias y 98,82 % de líneas; `npm run build` en verde (2,63 s); `npm run licenses` en verde (MIT 12, ISC 1).
+- `tests/architecture`: 394 ok, 0 saltadas. `uvx pre-commit run --all-files`: en verde. `scripts/workflow/tests/run.sh`: 5 de 5.
+- `check-licenses-api.sh` en verde; `npm audit --omit=dev --audit-level=high` y `npm audit --audit-level=high`: 0 vulnerabilidades; `pip-audit@2.10.1 --strict --disable-pip --require-hashes` sobre `uv export --frozen --no-dev --no-emit-project`: sin vulnerabilidades conocidas.
+- gitleaks (imagen por digest de `ci.yml`, modo `git` con `--log-opts=--all` y `.gitleaks.toml`): 177 commits, "no leaks found", tras dos ajustes: el cuaderno ya no cita la cabecera PEM con sus guiones, y `.gitleaks.toml` añade por valor exacto los dos `key_id` ficticios de los blobs de prueba (`encryptedBlob.test.ts`, `audit.spec.ts`, `test_filters.py`) y los tres commits intermedios `dbc352e`, `8339138` y `fa0787d` que citaban la cabecera como texto (nunca hubo material de llave). El modo `dir` sobre el árbol solo marca archivos de `api/.venv*` (no versionados).
+- `check-image-secrets.sh apex-api:local` en verde. `npm run gen:api` sin deriva en `types.ts`. `grep -rn "job_runs\|audit_log" web/tests` vacío.
+- Pendiente del cierre: reconstruir las dos imágenes con el código final y repetir `test_api_image.sh`, el smoke y los E2E (V12).

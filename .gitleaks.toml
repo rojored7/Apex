@@ -38,4 +38,16 @@ regexes = [
   '''Clave-nueva-segura-2026''',
   '''Zanahoria-Lunar-42x''',
   '''Qm9uaXRvLXRva2VuLWRlLXVuLXNvbG8tdXNvXzEyMzQ1Ng''',
+  # Sprint 4A: key_id ficticios de los blobs de prueba (encryptedBlob.test.ts, audit.spec.ts,
+  # test_filters.py); la regla genérica los toma por una clave API. Por valor exacto.
+  '''5f0c2a7e-1b3d-4c5e-8f9a-0b1c2d3e4f5a''',
+  '''328c1948-e343-48a1-9ef4-1b9dab140c4f''',
+]
+# Sprint 4A (V9.7): tres commits intermedios, nunca publicados con secretos reales, que citan la
+# cabecera PEM como texto: dbc352e (literal de prueba de init-keys, partido en 8339138) y las dos
+# notas del cuaderno que lo describen (8339138 y fa0787d; el texto se reescribió en HEAD).
+commits = [
+  "dbc352eb657a2c90610e472f590bd0d0255ccbf1",
+  "83391385f885d8b44807a04bf2e1bf4d4213241c",
+  "fa0787df28de3bcf5b5cdb706a0323e61d28903a",
 ]

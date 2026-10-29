@@ -174,3 +174,36 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
   2. L-2 deuda de pruebas de S4A-D90 (handler colgado sobre un stdout cerrado de `CliRunner`): fixture autouse `sin_handlers_sobre_flujos_cerrados` en `tests/cli/conftest.py` (quita al terminar cada prueba los `StreamHandler` con `stream.closed` del raíz y de `app.*`; sin código de producción). `pytest tests/cli tests/architecture -q -s -m "not perf"`: 380 ok y 0 `Logging error` (antes aparecía en la salida del comando, con el documento encadenado). S4A-D90 reescrita como cerrada.
   3. L-3 caché del resumen (S3-D93) no invalidada desde el worker: RUNBOOK §11 lo dice con el motivo (otro proceso), por qué no es riesgo de datos (el resumen se deriva con `status_expr`) y que el TTL `SUMMARY_CACHE_TTL_S` acota la lectura rancia.
 
+
+### Evidencia de S4A-B2 (posterior al sello; checkpoint `7f4756f`)
+
+- Gate 4 sellante (`slice-gate.sh worker …`): 396 ok. Gate 2 (`cli`): 327 ok.
+- `run-gates.sh` (B2.8, C12): api 4.121 ok, 3 saltadas, 9 deseleccionadas (641 s), cobertura global 96,54 % sin `omit` (`cli.py` 96 %, `worker/main.py` 90 %, `runner.py` 98 %, `runtime.py` 95 %, `memberships/expirations.py` 96 %); scripts (check_key_files, images_pinned, nginx_conf, compose_config) 0 fallas; web lint y tsc limpios. El sistema mató `vitest` por memoria dentro del script; el orquestador repitió los dos pasos del front con los mismos comandos del script: `npm test -- --run --coverage` 156 archivos, 2.788 ok, 97,98 % de sentencias y 98,87 % de líneas; `npm run build` en verde (2,51 s). Ningún paso tocó el árbol: el sello del gate 4 siguió válido.
+
+#### 1. psql de lectura ANTES (apex-db-1, 2026-10-29T03:28Z = 2026-10-28 22:28 Bogotá)
+- `SELECT count(*) FROM audit.audit_log` -> 4504
+- `SELECT status, count(*) FROM memberships.memberships GROUP BY 1` -> active 69, cancelled 23, frozen 22, pending_payment 24
+- filas `update` de `memberships.memberships` con `user_id = SYSTEM_USER_ID` -> 0
+- `worker.job_runs`: una fila `expirations` 2026-10-28 `ok`, 5 intentos, `details` del marcador.
+
+#### 2. `$DC start worker`
+- `healthy`, `RestartCount` 0; log `worker started` (`America/Bogota`) a las 03:28:46Z.
+- `--status expirations` -> salida 0, misma fila `7198e11f-7340-401e-ae2a-05235e9ba9f2`, `started_at` 02:47:28Z, `details` `{"placeholder_ok": 1}`: la recuperación del arranque NO hizo un intento automático (día cerrado, `reclaim_finished=False`, S4A-D79).
+
+#### 3. Corrida real
+- `--run-once expirations` (1) -> salida 0; log `membership statuses recomputed` revisados=0 cambiadas=0 ... errores=0; `job finished` ok 2026-10-28.
+- psql DESPUÉS: `audit_log` 4504 (sin cambio); estados iguales; 0 filas `update` con SYSTEM_USER_ID.
+- Motivo (lectura SQL estado guardado vs efectivo del 28): active->active 69 (fin 2026-11-21..2026-12-25), frozen->frozen 22 (fin 2026-12-04..2026-12-07). La base viva no tenía ninguna fila desalineada: la suposición del plan ("la base tenía active vencidas") no se cumple; cero `update` es el resultado correcto. La corrección real con eventos se demuestra en el paso 4 (copia con fecha).
+- `--run-once expirations` (2) -> salida 0; `audit_log` 4504 sin cambio.
+- `--status expirations` -> salida 0, misma fila `7198e11f-...`, `details` con los siete conteos en 0; 7 intentos (5 + 2).
+
+#### 4. Demo con fecha (S4A-D63) sobre copia `apex_sim` en db_test
+- `pg_dump -Fc apex` -> 0 (1.260.790 bytes, chmod 600, ignorado por `.gitignore:46 *.dump`); `createdb apex_sim` -> 0; `pg_restore --no-owner --no-privileges` -> 0.
+- apex_sim antes: active 69, cancelled 23, frozen 22, pending_payment 24; audit_log 4504.
+- `--run-once expirations --date 2026-11-01 --simulate` -> 0; `RELOJ SIMULADO: 2026-11-01` es la primera línea de stdout (en el log combinado aparece tras las líneas de Compose por stderr); `clock override`; revisados=0 (la primera `active` vence el 2026-11-21: 20 días > 7). `--status expirations_sim` -> 0, `clock_override: true`.
+- Extra para mostrar transiciones: `--date 2026-12-10 --simulate` -> 0, revisados=90 cambiadas=90 vencidas=90 errores=0; repetida -> 0 con revisados=0 (idempotente). apex_sim después: active 1, cancelled 23, expired 90, pending_payment 24; audit_log 4594 (+90 `update` con SYSTEM_USER_ID). job_runs: expirations_sim 2026-11-01 (1 intento) y 2026-12-10 (2 intentos).
+- Limpieza: `dropdb apex_sim` -> 0 (no aparece en `psql -l`); volcado borrado; `unset DATABASE_URL`.
+- apex-db-1 después: 0 filas `expirations_sim`; audit_log 4504; 0 filas con `created_at >= 2026-11-01`; estados sin cambio.
+
+#### 5. Logs
+- `$DC logs --tail 50 worker` y `api`: 0 coincidencias de `V50137|Demo |apx1.|@apex.test|V7-REN-|V7-CONG-|Traceback|"level": "ERROR"`.

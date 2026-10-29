@@ -1,0 +1,43 @@
+/* S4A-F3: tarjetas futuras de Inicio. Solo variables de tokens.css. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font: var(--text-section-title);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-3);
+}
+
+/* El WOD llega como texto (v0.5): mismo marco que KpiCard. */
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.textLabel {
+  font: var(--text-label);
+  color: var(--muted);
+}
+
+.textValue {
+  font: var(--text-h2);
+  overflow-wrap: anywhere;
+}

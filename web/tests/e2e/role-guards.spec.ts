@@ -62,7 +62,7 @@ test("el token de acceso no queda en localStorage ni en sessionStorage", async (
   await sessionAs(page, "admin");
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { level: 1, name: "Hola, admin@apex.test" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /^Hola, admin · / })).toBeVisible();
   const stored = await page.evaluate(() =>
     [localStorage, sessionStorage]
       .flatMap((storage) => Array.from({ length: storage.length }, (_, i) => storage.getItem(storage.key(i) ?? "") ?? ""))

@@ -231,3 +231,37 @@ export function formatDateRange(start: string, end: string): string {
   const dayMonth = ({ month, day }: CivilDate): string => `${String(day)} ${MONTHS_SHORT[month - 1] ?? ""}`;
   return `${dayMonth(from)}–${dayMonth(to)}`;
 }
+
+// S4A-F3 (US-109, US-110): el saludo de Inicio ("martes 20 de octubre") y la hora relativa de los
+// últimos movimientos, en hora de Bogotá y sin depender de la zona del equipo.
+const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"] as const;
+const MS_PER_MINUTE = 60_000;
+const MINUTES_PER_HOUR = 60;
+
+/** "martes 20 de octubre" de una fecha civil "AAAA-MM-DD"; "—" si no es una fecha real. */
+export function formatLongDate(value: string): string {
+  const civil = parseCivilDate(value);
+  if (!civil) return EMPTY_VALUE;
+  const weekday = WEEKDAYS[new Date(Date.UTC(civil.year, civil.month - 1, civil.day)).getUTCDay()] ?? "";
+  return `${weekday} ${String(civil.day)} de ${MONTHS_LONG[civil.month - 1] ?? ""}`;
+}
+
+/**
+ * Hora relativa de un instante UTC visto desde `nowMs`, en Bogotá: "hace un momento", "hace 5 min",
+ * "hoy, 2:10 p. m.", "ayer, 2:10 p. m." o la fecha completa; "—" si el instante no es válido.
+ * Un instante en el futuro (reloj del equipo atrasado) cuenta como "hace un momento". Revisión de
+ * seguridad de F3 (L4): `nowMs` es obligatorio; quien llama decide el reloj (el render queda puro).
+ */
+export function formatRelativeTime(isoUtc: string, nowMs: number): string {
+  if (!Number.isFinite(nowMs)) return EMPTY_VALUE;
+  const instant = toBogota(isoUtc);
+  const now = toBogota(new Date(nowMs).toISOString());
+  if (!instant || !now) return EMPTY_VALUE;
+  const minutes = Math.floor((nowMs - new Date(isoUtc).getTime()) / MS_PER_MINUTE);
+  if (minutes < 1) return "hace un momento";
+  if (minutes < MINUTES_PER_HOUR) return `hace ${String(minutes)} min`;
+  const days = civilDaysBetween(civilIso(instant), civilIso(now));
+  if (days === 0) return `hoy, ${timeText(instant)}`;
+  if (days === 1) return `ayer, ${timeText(instant)}`;
+  return `${civilText(instant)}, ${timeText(instant)}`;
+}

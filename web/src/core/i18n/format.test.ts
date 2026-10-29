@@ -17,6 +17,8 @@ import {
   civilDaysBetween,
   bogotaInputToUtc,
   nowBogotaInput,
+  formatLongDate,
+  formatRelativeTime,
 } from "./format";
 import { LOCALE, TZ_DISPLAY } from "../../config/locale";
 
@@ -226,5 +228,68 @@ describe("civilDaysBetween", () => {
     ["1 oct", "2026-10-01"],
   ])("null si alguna no es una fecha real (%s, %s)", (from, to) => {
     expect(civilDaysBetween(from, to)).toBeNull();
+  });
+});
+
+// S4A-F3 (US-109, US-110): el día del saludo de Inicio y la hora relativa de los últimos movimientos.
+describe("formatLongDate (S4A-F3)", () => {
+  it.each([
+    ["2026-10-20", "martes 20 de octubre"],
+    ["2026-10-25", "domingo 25 de octubre"],
+    ["2026-11-01", "domingo 1 de noviembre"],
+    ["2027-01-04", "lunes 4 de enero"],
+    ["2028-02-29", "martes 29 de febrero"],
+  ])("%s → %s en cualquier zona", (value, text) => {
+    for (const zone of ZONES) {
+      process.env.TZ = zone;
+      expect(formatLongDate(value)).toBe(text);
+    }
+  });
+
+  it.each(["2026-02-30", "", "20 oct", "2026-10-20T19:32:00Z"])("%j no es una fecha civil real: raya", (value) => {
+    expect(formatLongDate(value)).toBe("—");
+  });
+});
+
+describe("formatRelativeTime (S4A-F3)", () => {
+  const now = Date.parse("2026-10-20T19:32:00Z"); // 2:32 p. m. en Bogotá
+
+  it.each([
+    ["2026-10-20T19:31:30Z", "hace un momento"],
+    ["2026-10-20T19:32:00Z", "hace un momento"],
+    ["2026-10-20T19:35:00Z", "hace un momento"],
+    ["2026-10-20T19:31:00Z", "hace 1 min"],
+    ["2026-10-20T19:20:00Z", "hace 12 min"],
+    ["2026-10-20T18:32:01Z", "hace 59 min"],
+    ["2026-10-20T18:32:00Z", "hoy, 1:32 p. m."],
+    ["2026-10-20T05:00:00Z", "hoy, 12:00 a. m."],
+    ["2026-10-20T04:59:00Z", "ayer, 11:59 p. m."],
+    ["2026-10-19T12:00:00Z", "ayer, 7:00 a. m."],
+    ["2026-10-19T04:59:00Z", "18 oct 2026, 11:59 p. m."],
+  ])("%s visto a las 2:32 p. m. de Bogotá → %s", (iso, text) => {
+    for (const zone of ZONES) {
+      process.env.TZ = zone;
+      expect(formatRelativeTime(iso, now)).toBe(text);
+    }
+  });
+
+  it("el día de Bogotá manda, no el de UTC: 11:30 p. m. del 20 sigue siendo hoy a la medianoche UTC", () => {
+    const lateNow = Date.parse("2026-10-21T04:45:00Z"); // 11:45 p. m. del 20 en Bogotá
+    expect(formatRelativeTime("2026-10-20T06:00:00Z", lateNow)).toBe("hoy, 1:00 a. m.");
+  });
+
+  it("revisión de seguridad de F3 (L4): `nowMs` es obligatorio y no mira el reloj del equipo", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
+    expect(formatRelativeTime("2026-10-20T19:22:00Z", now)).toBe("hace 10 min");
+    expect(formatRelativeTime.length).toBe(2);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])("un `nowMs` no finito (%s) da la raya sin lanzar", (bad) => {
+    expect(formatRelativeTime("2026-10-20T19:22:00Z", bad)).toBe("—");
+  });
+
+  it.each(["", "ayer", "2026-10-20", "2026-13-20T19:00:00Z"])("%j no es un instante: raya", (iso) => {
+    expect(formatRelativeTime(iso, now)).toBe("—");
   });
 });

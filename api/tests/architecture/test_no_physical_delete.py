@@ -9,7 +9,8 @@ ni las llaves del bus. Se busca en el texto de cada `.py`:
   `Payment`, `AuditEntry`, `CryptoKey` y `CryptoOp`;
 - `DELETE FROM` y `TRUNCATE` sobre sus tablas (`members.members`, `plans.plans`, `auth.users`,
   `memberships.memberships`, `memberships.membership_freezes`, `payments.payments`,
-  `audit.audit_log`, `crypto.crypto_keys`, `crypto.crypto_ops`).
+  `audit.audit_log`, `crypto.crypto_keys`, `crypto.crypto_ops`); S4A-B3 (S4A-D74) suma
+  `AuditVerification` y `audit.verifications` (append-only, N-30).
 `delete(RefreshToken)` (purga de sesiones caducadas) y `@router.delete(` no son borrados de estas
 tablas y pasan. Controles con fuentes falsas.
 """
@@ -30,6 +31,7 @@ MODELOS = (
     "AuditEntry",
     "CryptoKey",
     "CryptoOp",
+    "AuditVerification",  # S4A-B3 (S4A-D74): append-only (N-30)
 )
 TABLAS = (
     "members.members",
@@ -41,6 +43,7 @@ TABLAS = (
     "audit.audit_log",
     "crypto.crypto_keys",
     "crypto.crypto_ops",
+    "audit.verifications",  # S4A-B3 (S4A-D74)
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -86,8 +89,11 @@ def test_el_patron_detecta_cada_forma_de_borrado() -> None:
         "SQL = 'DELETE FROM ONLY auth.users'\n"
         "SQL = 'TRUNCATE memberships.memberships'\n"
         "SQL = 'TRUNCATE TABLE audit.audit_log'\n"
+        "stmt = delete(AuditVerification)\n"
+        "SQL = 'DELETE FROM audit.verifications'\n"
+        "SQL = 'TRUNCATE audit.verifications'\n"
     )
-    assert len(violaciones_en(fuente)) == 10
+    assert len(violaciones_en(fuente)) == 13
 
 
 def test_el_patron_deja_pasar_lo_legitimo() -> None:

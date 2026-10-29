@@ -204,6 +204,11 @@ class Settings(BaseSettings):
     USER_REVEAL_LIMIT_PER_MIN: int = Field(default=30, gt=0)
     USER_REVEAL_LIMIT_PER_HOUR: int = Field(default=200, gt=0)
     USER_REVEAL_LIMIT_PER_DAY: int = Field(default=600, gt=0)
+    # S4A-B3 (S4A-D45, M-1): `staff-read`, lecturas caras de auditoría y tablero (rutas en B4, B5
+    # y B8). S4A-D47 (M-3): `audit-verify` y `audit-verify-hour` en `POST /audit/verify`.
+    USER_READ_LIMIT_PER_MIN: int = Field(default=120, gt=0)
+    USER_AUDIT_VERIFY_LIMIT_PER_MIN: int = Field(default=3, gt=0)
+    USER_AUDIT_VERIFY_LIMIT_PER_HOUR: int = Field(default=20, gt=0)
 
     @field_validator("DATABASE_URL")
     @classmethod

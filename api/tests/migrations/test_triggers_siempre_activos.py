@@ -21,6 +21,9 @@ uno bajo su guarda en `pg_trigger` (escrita cuando los triggers aún no existía
 S3-B4 (E1): con `0011_payments_immutability` los dos triggers de `payments.payments` son
 obligatorios: tras las dos limpiezas existen y siguen en `'A'`, igual que los cinco de
 `memberships` (la lista es exacta).
+S4A-B3 (S4A-D70): `LIMPIAR_VERIFICATIONS` va antes de borrar `audit.audit_log` en las dos limpiezas
+y deja `verifications_forbid_mutation` y `verifications_forbid_truncate` en `'A'` (obligatorios con
+`0013`).
 """
 
 from __future__ import annotations
@@ -36,10 +39,12 @@ from tests.conftest import (
     LIMPIAR_MEMBERS,
     LIMPIAR_MEMBERSHIPS,
     LIMPIAR_PAYMENTS,
+    LIMPIAR_VERIFICATIONS,
     LIMPIEZA_DE_SESION,
     TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
     TRIGGERS_DE_PAGOS,
+    TRIGGERS_DE_VERIFICATIONS,
     limpiar_tras_dos_sesiones,
 )
 
@@ -129,6 +134,49 @@ async def test_tras_limpiar_pagos_y_membresias_los_triggers_siguen_en_always(
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
     assert await _estados(engine) == dict.fromkeys(TRIGGERS, "A")
     await _pagos_en_always(engine)
+
+
+# S4A-B3 (S4A-D70) · `audit.verifications` ------------------------------------------------------
+
+TRIGGERS_VERIFICACIONES = ("verifications_forbid_mutation", "verifications_forbid_truncate")
+
+
+def test_la_limpieza_de_verificaciones_enciende_sus_triggers_con_enable_always() -> None:
+    """`to_regclass` de la tabla; `ENABLE ALWAYS` por nombre bajo su guarda en `pg_trigger` (escrita
+    cuando `0013` aún no existía); nunca `ENABLE TRIGGER USER`."""
+    assert tuple(TRIGGERS_DE_VERIFICATIONS) == TRIGGERS_VERIFICACIONES
+    assert "to_regclass('audit.verifications')" in LIMPIAR_VERIFICATIONS
+    assert "ALTER TABLE audit.verifications DISABLE TRIGGER USER;" in LIMPIAR_VERIFICATIONS
+    assert "DELETE FROM audit.verifications;" in LIMPIAR_VERIFICATIONS
+    for nombre in TRIGGERS_VERIFICACIONES:
+        assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_VERIFICATIONS, nombre
+        assert f"tgname = '{nombre}'" in LIMPIAR_VERIFICATIONS, nombre
+    assert "ENABLE TRIGGER USER" not in LIMPIAR_VERIFICATIONS
+
+
+def test_las_verificaciones_se_borran_antes_que_la_auditoria_en_las_dos_limpiezas() -> None:
+    orden = list(LIMPIEZA_DE_SESION)
+    assert orden.index(LIMPIAR_VERIFICATIONS) < orden.index(
+        "ALTER TABLE audit.audit_log DISABLE TRIGGER USER"
+    )
+    fuente = inspect.getsource(limpiar_tras_dos_sesiones)
+    assert "text(LIMPIAR_VERIFICATIONS)" in fuente
+    assert fuente.index("text(LIMPIAR_VERIFICATIONS)") < fuente.index("DELETE FROM audit.audit_log")
+
+
+async def test_tras_limpiar_verificaciones_sus_dos_triggers_existen_y_siguen_en_always(
+    engine: AsyncEngine,
+) -> None:
+    """Con `0013` los dos triggers de `audit.verifications` son obligatorios y quedan en `'A'`
+    tras `LIMPIAR_VERIFICATIONS` y tras la limpieza de `dos_sesiones`."""
+    async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_VERIFICATIONS))
+    esperados = dict.fromkeys(TRIGGERS_VERIFICACIONES, "A")
+    assert await _estados(engine, TRIGGERS_VERIFICACIONES) == esperados
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
+    assert await _estados(engine, TRIGGERS_VERIFICACIONES) == esperados
 
 
 @pytest.mark.usefixtures("migrated_database")

@@ -2,8 +2,9 @@
 
 Exclusiones explícitas: `audit.audit_log` (es la cadena), las tres tablas de `crypto`
 (bitácora propia en `crypto_ops`), `auth.refresh_tokens` y `worker.job_runs` (bitácora operativa del
-worker, S4A-D3; `_cargar_modelos` importa `app.core.jobs`). Los modelos de prueba (esquema
-`worker`, fuera de `app.`) no cuentan.
+worker, S4A-D3; `_cargar_modelos` importa `app.core.jobs`) y `audit.verifications` (su resultado
+entra a la cadena como fila `verify`, S4A-D12; `_cargar_modelos` importa `app.core.audit_verify`).
+Los modelos de prueba (esquema `worker`, fuera de `app.`) no cuentan.
 
 S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit`, `dashboard`,
 `tv`, `portal`), así que `_cargar_modelos()` importa `models` solo si `find_spec` lo encuentra.
@@ -37,6 +38,7 @@ EXCLUIDAS: dict[str, str] = {
     "crypto.crypto_jobs": "bitácora propia en crypto_ops",
     "auth.refresh_tokens": "rota cada 15 minutos; su ciclo lo registran los timestamps (US-041)",
     "worker.job_runs": "bitácora operativa del worker; no se audita (US-113, S4A-D3)",
+    "audit.verifications": "su resultado entra a la cadena como fila verify (N-30, S4A-D12)",
 }
 
 REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
@@ -61,6 +63,7 @@ def _cargar_modelos(modulos: Iterable[str] = MODULES) -> None:
     importlib.import_module("app.core.audit")
     importlib.import_module("app.core.crypto.models")
     importlib.import_module("app.core.jobs")  # S4A-B1: `worker.job_runs` (S4A-D3)
+    importlib.import_module("app.core.audit_verify")  # S4A-B3: `audit.verifications` (S4A-D12)
     for nombre in modulos:
         ruta = f"app.modules.{nombre}.models"
         if find_spec(ruta) is not None:

@@ -39,6 +39,8 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "payments": frozenset({"rules", "events", "queries"}),
     # S3-B9a (D7, S3-D73): `members/service.py` se parte en `rules`, `detail` y `changes`.
     "members": frozenset({"rules", "detail", "changes"}),
+    # S4A-B3 (S4A-D18): `audit` nace partido; B3 suma `verify` (B4 sumará `queries` y `diff`).
+    "audit": frozenset({"verify"}),
 }
 
 Rule = Literal[

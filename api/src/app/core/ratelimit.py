@@ -323,6 +323,10 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "memberships-write": (30, 60),
     "payments-write": (30, 60),
     "admin-write": (30, 60),
+    # S4A-B3: `staff-read` (S4A-D45, M-1) y la verificación de la cadena (S4A-D47, M-3).
+    "staff-read": (120, 60),
+    "audit-verify": (3, 60),
+    "audit-verify-hour": (20, 3600),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -344,6 +348,9 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "memberships-write": settings.USER_WRITE_LIMIT_PER_MIN,
         "payments-write": settings.USER_WRITE_LIMIT_PER_MIN,
         "admin-write": settings.USER_ADMIN_WRITE_LIMIT_PER_MIN,
+        "staff-read": settings.USER_READ_LIMIT_PER_MIN,
+        "audit-verify": settings.USER_AUDIT_VERIFY_LIMIT_PER_MIN,
+        "audit-verify-hour": settings.USER_AUDIT_VERIFY_LIMIT_PER_HOUR,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

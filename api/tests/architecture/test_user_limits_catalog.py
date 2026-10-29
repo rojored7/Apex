@@ -30,7 +30,29 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `admin-write` con `POST /payments/{payment_id}/void`, S3-B9b `members-detail` con
 # `GET /members/{member_id}`; S3-B10 sacó los tres de `members-reveal` con
 # `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
+# S4A-B3 (S4A-D65): `staff-read` nace en el catálogo sin ruta; la saca B4 con `GET /audit`.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"staff-read"})
+
+
+def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
+    """S4A-D47 (M-3): minuto y hora se aplican en `POST /audit/verify`; `GET /audit/verify/last`
+    no consume ninguna cubeta."""
+    fuente = (MODULES / "audit" / "router.py").read_text(encoding="utf-8")
+    por_ruta: dict[tuple[str, str] | None, set[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), set()).update(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    assert por_ruta[("post", f"{API_PREFIX}/audit/verify")] == {"audit-verify", "audit-verify-hour"}
+    assert por_ruta[("get", f"{API_PREFIX}/audit/verify/last")] == set()
+    assert USER_LIMITS["audit-verify"] == (3, 60)
+    assert USER_LIMITS["audit-verify-hour"] == (20, 3600)
+    assert USER_LIMITS["staff-read"] == (120, 60)
 
 
 def test_las_tres_ventanas_de_reveal_viven_en_la_misma_ruta() -> None:

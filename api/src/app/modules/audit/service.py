@@ -11,6 +11,10 @@ Las filas de `UserLocked`, `SessionsRevoked` y `PasswordChanged` son `update` so
 `auth.users` con `after.event`; el hook ORM (US-016) deja además su propio `update` de las
 columnas auditadas (dos filas por bloqueo, a propósito; blueprint 7.5).
 
+S4A-B3 (S4A-D18): la fachada re-exporta la verificación de la cadena del privado `verify.py`
+(`verify`, `last_verification`, `cancel_background_verifications`, `Finished`, `Started` y el
+candado `acquire_verify_lock`/`release_verify_lock`, que también usa `verify-audit` del CLI).
+
 Los handlers se suscriben al importarse este módulo (`main.load_module_services()` lo importa
 en el api y en el CLI); `events.subscribe` es idempotente, así que cada uno queda una vez.
 """
@@ -23,6 +27,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
 from app.core.audit import record
+from app.modules.audit.verify import (
+    Finished,
+    Started,
+    acquire_verify_lock,
+    cancel_background_verifications,
+    last_verification,
+    release_verify_lock,
+    verify,
+)
 from app.modules.auth.service import (
     LoginAttempted,
     PasswordChanged,
@@ -31,10 +44,17 @@ from app.modules.auth.service import (
 )
 
 __all__ = [
+    "Finished",
+    "Started",
+    "acquire_verify_lock",
+    "cancel_background_verifications",
+    "last_verification",
     "on_login_attempted",
     "on_password_changed",
     "on_sessions_revoked",
     "on_user_locked",
+    "release_verify_lock",
+    "verify",
 ]
 
 USERS_TABLE: Final = "auth.users"

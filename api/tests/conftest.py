@@ -279,6 +279,26 @@ LIMPIAR_JOB_RUNS = (
     "DELETE FROM worker.job_runs; END IF; END $$"
 )
 
+# S4A-B3 (S4A-D70): las verificaciones que una prueba con commit real, la CLI o una tarea 202 hayan
+# dejado en `audit.verifications`; se borran ANTES que `audit.audit_log` en las tres limpiezas. La
+# tabla nace en `0013_audit_verifications`: mientras no exista (Rojo de B3) no se toca. Sus triggers
+# rechazan `DELETE`: se apagan, se borra y se vuelven a encender UNO POR UNO con `ENABLE ALWAYS`
+# (S3-D49), cada uno bajo su guarda en `pg_trigger` mientras `0013` no exista. Nunca
+# `ENABLE TRIGGER USER` (`tests/migrations/test_triggers_siempre_activos.py`).
+TRIGGERS_DE_VERIFICATIONS = ("verifications_forbid_mutation", "verifications_forbid_truncate")
+LIMPIAR_VERIFICATIONS = (
+    "DO $$ BEGIN IF to_regclass('audit.verifications') IS NOT NULL THEN "
+    "ALTER TABLE audit.verifications DISABLE TRIGGER USER; "
+    "DELETE FROM audit.verifications; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'verifications_forbid_mutation') THEN "
+    "ALTER TABLE audit.verifications ENABLE ALWAYS TRIGGER verifications_forbid_mutation; "
+    "END IF; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'verifications_forbid_truncate') THEN "
+    "ALTER TABLE audit.verifications ENABLE ALWAYS TRIGGER verifications_forbid_truncate; "
+    "END IF; "
+    "END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -286,6 +306,7 @@ LIMPIEZA_DE_SESION = (
     "ALTER TABLE crypto.crypto_ops DISABLE TRIGGER USER",
     "DELETE FROM crypto.crypto_ops",
     "ALTER TABLE crypto.crypto_ops ENABLE TRIGGER USER",
+    LIMPIAR_VERIFICATIONS,  # S4A-D70 (plan del Sprint 4A, sección 2, B3): antes que audit_log
     "ALTER TABLE audit.audit_log DISABLE TRIGGER USER",
     "DELETE FROM audit.audit_log",
     "ALTER TABLE audit.audit_log ENABLE TRIGGER USER",
@@ -690,6 +711,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))
+        await conexion.execute(text(LIMPIAR_VERIFICATIONS))  # S4A-D70: antes que audit_log
         await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))
         await conexion.execute(
             text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq}

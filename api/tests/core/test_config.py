@@ -367,6 +367,10 @@ USER_TOPES: dict[str, int] = {
     "USER_REVEAL_LIMIT_PER_MIN": 30,
     "USER_REVEAL_LIMIT_PER_HOUR": 200,
     "USER_REVEAL_LIMIT_PER_DAY": 600,
+    # S4A-B3 (S4A-D45, S4A-D47, S4A-D65): `staff-read`, `audit-verify` y `audit-verify-hour`.
+    "USER_READ_LIMIT_PER_MIN": 120,
+    "USER_AUDIT_VERIFY_LIMIT_PER_MIN": 3,
+    "USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 20,
 }
 
 

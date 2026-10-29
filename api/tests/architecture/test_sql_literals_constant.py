@@ -8,7 +8,8 @@ cualquier cadena construida en tiempo de ejecución: f-string (`JoinedStr`), `Bi
 ligados (`:id`). `execute(<sentencia ORM o Core>)` no se inspecciona.
 
 La misma prueba fija las llaves de los candados asesores fijos (`AUDIT_CHAIN_LOCK_KEY ==
-4_270_002`, `MIGRATION_LOCK_KEY == 4_270_001`) y que el candado del socio (`core/locks.py`) usa
+4_270_002`, `MIGRATION_LOCK_KEY == 4_270_001` y, desde S4A-B3, `AUDIT_VERIFY_LOCK_KEY ==
+4_270_003`, distinta de las otras dos) y que el candado del socio (`core/locks.py`) usa
 `hashtextextended` en SQL (S3-D54), para que ninguna llave nueva choque con ellas.
 """
 
@@ -18,8 +19,10 @@ import ast
 from pathlib import Path
 
 from app.core.audit import AUDIT_CHAIN_LOCK_KEY
+from app.core.audit_verify import AUDIT_VERIFY_LOCK_KEY, TRY_LOCK_SQL, UNLOCK_SQL
 from app.core.db import MIGRATION_LOCK_KEY
 from app.core.locks import MEMBER_LOCK_SQL
+from app.main import MIGRATION_LOCK_KEY as MAIN_LOCK_KEY
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 RAICES = (SRC / "app" / "modules", SRC / "app" / "core")
@@ -99,6 +102,24 @@ def test_ningun_sql_literal_se_construye_en_tiempo_de_ejecucion() -> None:
 def test_las_llaves_de_los_candados_fijos_no_cambian() -> None:
     assert AUDIT_CHAIN_LOCK_KEY == 4_270_002
     assert MIGRATION_LOCK_KEY == 4_270_001
+
+
+def test_la_llave_del_candado_de_verificacion_es_la_tercera_y_distinta() -> None:
+    """S4A-B3 (S4A-D12, S4A-D44): `AUDIT_VERIFY_LOCK_KEY == 4_270_003`, comparada con las
+    constantes reales de las otras dos llaves (no con sus valores copiados)."""
+    assert AUDIT_VERIFY_LOCK_KEY == 4_270_003
+    assert AUDIT_VERIFY_LOCK_KEY not in {AUDIT_CHAIN_LOCK_KEY, MIGRATION_LOCK_KEY, MAIN_LOCK_KEY}
+    assert len({AUDIT_VERIFY_LOCK_KEY, AUDIT_CHAIN_LOCK_KEY, MIGRATION_LOCK_KEY}) == 3
+
+
+def test_las_sentencias_del_candado_de_verificacion_son_constantes_con_llave_ligada() -> None:
+    """S4A-B3: `TRY_LOCK_SQL` y `UNLOCK_SQL` son constantes de módulo y la llave viaja ligada."""
+    assert "pg_try_advisory_lock(:key)" in TRY_LOCK_SQL
+    assert "pg_advisory_unlock(:key)" in UNLOCK_SQL
+    fuente = (SRC / "app" / "core" / "audit_verify.py").read_text(encoding="utf-8")
+    constantes = _constantes_de_modulo(ast.parse(fuente))
+    assert {"TRY_LOCK_SQL", "UNLOCK_SQL"} <= constantes
+    assert hallazgos(fuente, "app/core/audit_verify.py") == []
 
 
 def test_el_candado_del_socio_usa_hashtextextended_con_parametro_ligado() -> None:

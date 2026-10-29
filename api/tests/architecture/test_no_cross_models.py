@@ -147,6 +147,14 @@ def test_los_privados_de_payments_son_los_de_d7() -> None:
         assert (MODULES_DIR / "payments" / f"{archivo}.py").is_file(), archivo
 
 
+def test_los_privados_de_audit_son_los_de_b3() -> None:
+    """S4A-B3 (S4A-D18): `audit` nace partido; en B3 su único privado es `verify` (B4 suma
+    `queries` y `diff`)."""
+    assert frozenset({"verify"}) == PRIVATE_HELPERS.get("audit")
+    for archivo in PRIVATE_HELPERS["audit"]:
+        assert (MODULES_DIR / "audit" / f"{archivo}.py").is_file(), archivo
+
+
 def test_los_privados_de_members_son_los_de_b9a() -> None:
     """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`."""
     assert frozenset({"rules", "detail", "changes"}) == PRIVATE_HELPERS.get("members")

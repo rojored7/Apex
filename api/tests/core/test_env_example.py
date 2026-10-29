@@ -145,6 +145,38 @@ def test_las_once_variables_de_s3_w0_2_van_activas_con_sus_valores() -> None:
         assert Settings.model_fields[nombre].default == int(valor), nombre
 
 
+ACTIVAS_S4A_B3: dict[str, str] = {
+    "USER_READ_LIMIT_PER_MIN": "120",
+    "USER_AUDIT_VERIFY_LIMIT_PER_MIN": "3",
+    "USER_AUDIT_VERIFY_LIMIT_PER_HOUR": "20",
+}
+
+
+def test_las_tres_variables_de_s4a_b3_van_activas_con_sus_valores() -> None:
+    """S4A-D65: las tres variables nuevas son líneas activas con el valor por defecto de
+    `Settings` (V4 y el job `e2e-stack` de la CI las multiplican por 100, E9)."""
+    claves = _claves()
+    faltan = {n: claves.get(n) for n, v in ACTIVAS_S4A_B3.items() if claves.get(n) != v}
+    assert faltan == {}, f"valores distintos o ausentes en .env.example: {faltan}"
+    for nombre, valor in ACTIVAS_S4A_B3.items():
+        assert Settings.model_fields[nombre].default == int(valor), nombre
+
+
+def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
+    """E9: el comentario del bloque dice de dónde vienen (S4A-B3, M-1 y M-3) y el conteo nuevo
+    del catálogo (12 cubetas y 11 variables `USER_*`)."""
+    lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
+    indices = [i for i, linea in enumerate(lineas) if linea.startswith("USER_READ_LIMIT_PER_MIN=")]
+    assert len(indices) == 1, "USER_READ_LIMIT_PER_MIN debe ir una vez como línea activa"
+    comentario = " ".join(
+        linea for linea in lineas[max(0, indices[0] - 4) : indices[0]] if linea.startswith("#")
+    )
+    assert "S4A-B3, M-1 y M-3" in comentario
+    assert "12 cubetas" in comentario and "11 variables" in comentario
+    activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
+    assert len(activas) == 11, activas
+
+
 def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
     """W0-2.3: el comentario de las `DB_*` dice que 0 desactiva y que es solo para el CLI con
     `--db-timeouts off`."""

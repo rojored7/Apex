@@ -1,7 +1,7 @@
 """`0012_worker_job_runs` (S4A-B1, US-113; S4A-D3, S4A-D38).
 
-Padre `0011_payments_immutability`; es head (hasta que `0013_audit_verifications` cuelgue de ella
-en S4A-B3). Crea `worker.job_runs`:
+Padre `0011_payments_immutability`; desde S4A-B3 `0013_audit_verifications` cuelga de ella (está en
+la cadena de head, ya no es head). Crea `worker.job_runs`:
 - `id uuid` PK; `job_name text NOT NULL` con CHECK `^[a-z][a-z0-9_]{1,62}$` (2 a 63 caracteres,
   minúscula inicial); `run_date date NOT NULL`; `started_at timestamptz NOT NULL`; `finished_at
   timestamptz NULL`; `result text NOT NULL` con CHECK en `running`, `ok`, `error` y los de backup
@@ -144,12 +144,23 @@ def base(alembic_config: Config, migrated_database: str) -> Iterator[str]:
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0011_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0011_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S4A-B3 `0013_audit_verifications` cuelga de esta revisión (P-MIG paso 9, S4A-D38): ya
+    no es head, pero sigue en la cadena que llega a head y es la madre directa de `0013` (la
+    cabeza única la exige `test_single_head`)."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
+    assert scripts.get_heads() != [REVISION]
+    hijas = [
+        r.revision for r in scripts.walk_revisions("base", "heads") if r.down_revision == REVISION
+    ]
+    assert hijas == ["0013_audit_verifications"]
 
 
 # Forma de la tabla ------------------------------------------------------------------------------

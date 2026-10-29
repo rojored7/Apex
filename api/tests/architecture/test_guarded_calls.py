@@ -6,7 +6,10 @@ Por AST sobre `src/app`:
   puede saltarse el límite retroactivo de la venta.
 - L-11: ninguna llamada a `create_async_engine(...)` ni a `.execution_options(...)` lleva
   `isolation_level`: todo el api corre en `READ COMMITTED`, el nivel sobre el que se diseñaron el
-  orden de candados de D3 y la `EXCLUDE`.
+  orden de candados de D3 y la `EXCLUDE`. Excepción única (S4A-D44, H-2; E10): la conexión del
+  candado de verificación `4_270_003` en `core/audit_verify.py` y `modules/audit/verify.py` (ruta
+  relativa exacta), solo con `AUTOCOMMIT` (no abre transacción: ni lecturas ni escrituras de
+  negocio), con controles de que cualquier otro archivo sigue fallando.
 - D-3: `with_for_update` sobre `Membership` solo existe en `memberships/sell.py::lock_membership`
   (única puerta, con `populate_existing=True`); ningún otro archivo de `memberships` lo llama, y
   ningún archivo fuera de `memberships` nombra `Membership`.
@@ -20,6 +23,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+
+import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 APP = SRC / "app"
@@ -119,13 +124,55 @@ def test_enforce_retroactive_limit_solo_desde_el_cli() -> None:
     assert not any(archivo.endswith("router.py") for archivo in llamadas)
 
 
+AUTOCOMMIT_PERMITIDO: frozenset[str] = frozenset(
+    {"core/audit_verify.py", "modules/audit/verify.py"}
+)
+"""S4A-D44 (H-2, E10): la conexión del candado `4_270_003` es la única con `isolation_level`, y
+solo `AUTOCOMMIT`. Ruta relativa a `src/app` exacta (nunca un prefijo ni un nombre de archivo)."""
+
+
+def fuera_de_la_excepcion(encontrados: dict[str, list[int]]) -> dict[str, list[int]]:
+    """Los hallazgos de L-11 cuyo archivo no es exactamente uno de `AUTOCOMMIT_PERMITIDO`."""
+    return {
+        archivo: lineas
+        for archivo, lineas in encontrados.items()
+        if archivo not in AUTOCOMMIT_PERMITIDO
+    }
+
+
+def niveles_de_aislamiento(fuente: str) -> list[object]:
+    """Valor (literal o `None` si no es constante) de cada `isolation_level=` de L-11."""
+    return [
+        k.value.value if isinstance(k.value, ast.Constant) else None
+        for nodo in ast.walk(ast.parse(fuente))
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) in {"create_async_engine", "create_engine", "execution_options"}
+        for k in nodo.keywords
+        if k.arg == "isolation_level"
+    ]
+
+
 def test_ningun_engine_ni_execution_options_fija_isolation_level() -> None:
+    """L-11 con la excepción única de S4A-D44 (`AUTOCOMMIT_PERMITIDO`)."""
     encontrados = {
         _relativo(path): lineas
         for path in _archivos()
         if (lineas := con_isolation_level(path.read_text(encoding="utf-8")))
     }
-    assert encontrados == {}
+    assert fuera_de_la_excepcion(encontrados) == {}
+
+
+def test_la_excepcion_solo_admite_autocommit_y_se_usa() -> None:
+    """S4A-D44: dentro de la excepción todo `isolation_level` es el literal `"AUTOCOMMIT"` y la
+    conexión del candado existe (al menos un uso entre los dos archivos)."""
+    niveles = [
+        nivel
+        for relativo in sorted(AUTOCOMMIT_PERMITIDO)
+        if (APP / relativo).is_file()
+        for nivel in niveles_de_aislamiento((APP / relativo).read_text(encoding="utf-8"))
+    ]
+    assert niveles, "la conexión del candado de verificación debe abrirse en AUTOCOMMIT"
+    assert set(niveles) == {"AUTOCOMMIT"}, niveles
 
 
 def test_lock_membership_es_la_unica_puerta_de_for_update_en_memberships() -> None:
@@ -223,3 +270,45 @@ def test_los_analizadores_detectan_las_llamadas_prohibidas() -> None:
         (1, True, ["membership_payability"]),
         (3, False, ["None"]),
     ]
+
+
+CANDADO_FALSO = (
+    "async def acquire():\n"
+    "    conn = await db.get_engine().connect()\n"
+    '    conn = await conn.execution_options(isolation_level="AUTOCOMMIT")\n'
+    "    return conn\n"
+    "async def otra():\n"
+    '    return await (await engine.connect()).execution_options(isolation_level="AUTOCOMMIT")\n'
+    "async def tercera():\n"
+    "    async with engine.connect() as c:\n"
+    "        await c.execution_options(isolation_level=NIVEL)\n"
+)
+
+
+@pytest.mark.parametrize(
+    "archivo",
+    [
+        "modules/members/service.py",
+        "modules/audit/router.py",
+        "modules/audit/verify_extra.py",
+        "core/audit_verify_copia.py",
+        "audit_verify.py",
+        "cli.py",
+        "worker/runner.py",
+    ],
+)
+def test_control_la_excepcion_de_l11_no_cubre_otro_archivo(archivo: str) -> None:
+    """E10: la conexión `AUTOCOMMIT` dentro de una función (asignada, encadenada tras
+    `connect(...)` o en un `async with`) se detecta y, fuera de las dos rutas exactas, falla."""
+    lineas = con_isolation_level(CANDADO_FALSO)
+    assert lineas == [3, 6, 9]
+    assert fuera_de_la_excepcion({archivo: lineas}) == {archivo: [3, 6, 9]}
+
+
+@pytest.mark.parametrize("archivo", sorted(AUTOCOMMIT_PERMITIDO))
+def test_control_las_dos_rutas_exactas_si_quedan_exentas(archivo: str) -> None:
+    assert fuera_de_la_excepcion({archivo: con_isolation_level(CANDADO_FALSO)}) == {}
+
+
+def test_control_niveles_de_aislamiento_lee_el_literal_o_marca_lo_dinamico() -> None:
+    assert niveles_de_aislamiento(CANDADO_FALSO) == ["AUTOCOMMIT", "AUTOCOMMIT", None]

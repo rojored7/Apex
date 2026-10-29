@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/v1/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Chain */
+        post: operations["verify_chain_api_v1_audit_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/verify/last": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Last Verification */
+        get: operations["last_verification_api_v1_audit_verify_last_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot": {
         parameters: {
             query?: never;
@@ -2042,6 +2076,50 @@ export interface components {
              */
             role: "admin" | "coach" | "member";
         };
+        /** VerifyResultOut */
+        VerifyResultOut: {
+            /** Broken At Seq */
+            broken_at_seq: number | null;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /** Ok */
+            ok: boolean;
+            /** Rows Checked */
+            rows_checked: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "api" | "cli";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Through Seq */
+            through_seq: number;
+            /**
+             * Triggered By
+             * Format: uuid
+             */
+            triggered_by: string;
+        };
+        /**
+         * VerifyStartedOut
+         * @description Respuesta 202: la verificación sigue en segundo plano; `last` es la última terminada.
+         */
+        VerifyStartedOut: {
+            last: components["schemas"]["VerifyResultOut"] | null;
+            /**
+             * Status
+             * @default running
+             * @constant
+             */
+            status: "running";
+        };
         /**
          * VoidPaymentIn
          * @description Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).
@@ -2059,6 +2137,145 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    verify_chain_api_v1_audit_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResultOut"];
+                };
+            };
+            /** @description La verificación sigue en segundo plano. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyStartedOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    last_verification_api_v1_audit_verify_last_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResultOut"] | null;
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     forgot_api_v1_auth_forgot_post: {
         parameters: {
             query?: never;

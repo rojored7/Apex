@@ -3450,6 +3450,94 @@
         "title": "UserSummary",
         "type": "object"
       },
+      "VerifyResultOut": {
+        "properties": {
+          "broken_at_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broken At Seq"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "rows_checked": {
+            "title": "Rows Checked",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "api",
+              "cli"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "through_seq": {
+            "title": "Through Seq",
+            "type": "integer"
+          },
+          "triggered_by": {
+            "format": "uuid",
+            "title": "Triggered By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "rows_checked",
+          "through_seq",
+          "broken_at_seq",
+          "started_at",
+          "finished_at",
+          "triggered_by",
+          "source"
+        ],
+        "title": "VerifyResultOut",
+        "type": "object"
+      },
+      "VerifyStartedOut": {
+        "description": "Respuesta 202: la verificación sigue en segundo plano; `last` es la última terminada.",
+        "properties": {
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerifyResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "const": "running",
+            "default": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "last"
+        ],
+        "title": "VerifyStartedOut",
+        "type": "object"
+      },
       "VoidPaymentIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).",
@@ -3474,6 +3562,166 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/audit/verify": {
+      "post": {
+        "operationId": "verify_chain_api_v1_audit_verify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyStartedOut"
+                }
+              }
+            },
+            "description": "La verificación sigue en segundo plano."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Verify Chain",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/v1/audit/verify/last": {
+      "get": {
+        "operationId": "last_verification_api_v1_audit_verify_last_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/VerifyResultOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Last Verification Api V1 Audit Verify Last Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Last Verification",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/api/v1/auth/forgot": {
       "post": {
         "operationId": "forgot_api_v1_auth_forgot_post",

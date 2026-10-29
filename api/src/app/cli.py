@@ -593,9 +593,23 @@ SIMULATE_WITH_AS_REJECTED: Final = (
 dejaría creer que la auditoría simulada va a nombre de esa persona."""
 
 
-def _reject(mensaje: str) -> NoReturn:
-    typer.echo(f"recompute-memberships: {mensaje}", err=True)
+def _reject(mensaje: str, comando: str = "recompute-memberships") -> NoReturn:
+    typer.echo(f"{comando}: {mensaje}", err=True)
     raise typer.Exit(code=2)
+
+
+def production_guard_error(
+    settings: Settings, opciones: RuntimeOptions, actor: str | None
+) -> str | None:
+    """S4A-D53: con `ENV=production` un comando que escribe exige `--as` y rechaza
+    `--db-timeouts off`; `None` si se puede seguir."""
+    if settings.ENV != "production":
+        return None
+    if actor is None:
+        return "--as <correo> es obligatorio con ENV=production"
+    if not opciones.db_timeouts:
+        return "--db-timeouts off no se acepta con ENV=production"
+    return None
 
 
 def _recompute_target(
@@ -618,10 +632,8 @@ def _recompute_target(
         _reject("--date inválida (use AAAA-MM-DD)")
     if simulate and actor is not None:
         _reject(SIMULATE_WITH_AS_REJECTED)
-    if settings.ENV == "production" and actor is None:
-        _reject("--as <correo> es obligatorio con ENV=production")
-    if settings.ENV == "production" and not opciones.db_timeouts:
-        _reject("--db-timeouts off no se acepta con ENV=production")
+    if (rechazo_prod := production_guard_error(settings, opciones, actor)) is not None:
+        _reject(rechazo_prod)
     hoy = current_clock().today_bogota()
     objetivo = pedido or hoy
     rechazo = clock_override_error(objetivo, hoy, simulate=simulate, settings=settings)
@@ -670,6 +682,78 @@ async def _recompute_simulated(session_factory: Any, objetivo: date) -> tuple[di
     reloj = FrozenClock(datetime(objetivo.year, objetivo.month, objetivo.day, 12, tzinfo=zona))
     salida = await run_job(spec, clock=reloj, session_factory=session_factory, simulated=True)
     return dict(salida.details), EXIT_BY_SIMULATED_RESULT.get(salida.result, 1)
+
+
+VERIFY_LOCK_POLL_S: Final = 2.0
+"""Espera entre intentos de `pg_try_advisory_lock` de `verify-audit` (S4A-D15)."""
+
+
+@app.command("verify-audit")
+def verify_audit(
+    ctx: typer.Context,
+    actor: Annotated[str | None, typer.Option("--as")] = None,
+    wait_timeout: Annotated[int, typer.Option("--wait-timeout", min=0)] = 300,
+) -> None:
+    """Verifica la cadena de auditoría (S4A-B3, US-105; S4A-D15, S4A-D43, S4A-D44, S4A-D53).
+
+    - toma el candado `4_270_003` con `pg_try_advisory_lock` cada `VERIFY_LOCK_POLL_S` segundos
+      hasta `--wait-timeout` (por `audit.service.acquire_verify_lock`: conexión `AUTOCOMMIT` que
+      `release_verify_lock` invalida al terminar);
+    - corre `core.audit_verify.run_verification(session, source="cli", by=actor)` bajo
+      `unit_of_work(actor)` (`--as`, o `SYSTEM_USER_ID` sin él) y confirma;
+    - imprime `format_verify_message` (nunca `before` ni `after`) y sale 0 (íntegra) o 1 (rota);
+    - sale 2 si `--as` no sirve, si la base no responde (mensaje genérico, sin URL ni contraseña),
+      si `--wait-timeout` se agota, o con `ENV=production` sin `--as` o con `--db-timeouts off`.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    settings = get_settings()
+    opciones = runtime_options(ctx)
+    if (rechazo := production_guard_error(settings, opciones, actor)) is not None:
+        _reject(rechazo, "verify-audit")
+    try:
+        texto, codigo = _run(_verify_audit(settings, opciones, actor, wait_timeout))
+    except (OSError, SQLAlchemyError):
+        _reject("la base de datos no responde", "verify-audit")
+    typer.echo(texto)
+    raise typer.Exit(code=codigo)
+
+
+async def _verify_audit(
+    settings: Settings, options: RuntimeOptions, actor_email: str | None, wait_timeout: int
+) -> tuple[str, int]:
+    """`(mensaje, código)`: espera el candado, verifica bajo el actor y confirma."""
+    from app.core.audit_verify import format_verify_message, run_verification
+    from app.modules.audit.service import release_verify_lock
+
+    async with cli_runtime(settings, options) as session:
+        async with session.begin():
+            actor = await resolve_actor(session, actor_email)
+        conn = await _wait_verify_lock(wait_timeout)
+        try:
+            with unit_of_work(actor):
+                async with session.begin():
+                    vista = await run_verification(session, source="cli", by=actor)
+        finally:
+            await release_verify_lock(conn)
+    return format_verify_message(vista)
+
+
+async def _wait_verify_lock(wait_timeout: int) -> Any:
+    """La conexión del candado `4_270_003` (`AUTOCOMMIT`), reintentando cada
+    `VERIFY_LOCK_POLL_S` segundos; sale con 2 si `wait_timeout` se agota."""
+    import asyncio
+    import time
+
+    from app.modules.audit.service import acquire_verify_lock
+
+    limite = time.monotonic() + wait_timeout
+    while (conn := await acquire_verify_lock()) is None:
+        restante = limite - time.monotonic()
+        if restante <= 0:
+            _reject("otra verificación sigue en curso (--wait-timeout agotado)", "verify-audit")
+        await asyncio.sleep(min(VERIFY_LOCK_POLL_S, restante))
+    return conn
 
 
 if __name__ == "__main__":

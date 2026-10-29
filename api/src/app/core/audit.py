@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any, Final, Literal
@@ -143,9 +143,17 @@ class AuditEntry(Base):
 
 @dataclass(frozen=True)
 class VerifyResult:
+    """Resultado de `verify_chain` (S4A-D11). `last_seq` y `last_hash` van al final y con valor
+    por defecto (las construcciones posicionales de `tests/core/test_audit_chain.py` siguen
+    válidas): son los de la última fila verificada en orden, o `None` si no hubo filas. Son el
+    cursor de la continuación, no parte del veredicto: no entran en la igualdad (`compare=False`),
+    así que `VerifyResult(True, 5, None)` sigue igual al resultado de una cadena de 5 filas."""
+
     ok: bool
     rows_checked: int
     broken_at_seq: int | None
+    last_seq: int | None = field(default=None, compare=False)
+    last_hash: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -223,19 +231,30 @@ def chain_hash(prev_hash: str, row: Mapping[str, object]) -> str:
     return sha256_hex(prev_hash.encode("ascii") + canonical(_hashed_keys(row)))
 
 
-def verify_chain(rows: Iterable[Mapping[str, object]]) -> VerifyResult:
+def verify_chain(
+    rows: Iterable[Mapping[str, object]],
+    *,
+    start_prev_hash: str = ZERO_HASH,
+    start_seq: int = 1,
+) -> VerifyResult:
     """Recorre las filas en orden y marca la primera ruptura (RN-16, N-30).
 
-    Ruptura: `seq` no es el anterior más 1 (el primero debe ser 1), `prev_hash` no es el
-    `hash` anterior (`ZERO_HASH` en la primera), el `hash` recalculado no coincide, o una
-    columna espejo difiere de `at` o `user_id`. `rows_checked` cuenta hasta la ruptura.
+    Ruptura: `seq` no es el anterior más 1 (el primero debe ser `start_seq`), `prev_hash` no es
+    el `hash` anterior (`start_prev_hash` en la primera), el `hash` recalculado no coincide, o
+    una columna espejo difiere de `at` o `user_id`. `rows_checked` cuenta hasta la ruptura
+    (incluida). Continuación por lotes (S4A-D11): el lote siguiente pasa
+    `start_prev_hash=resultado.last_hash` y `start_seq=resultado.last_seq + 1`. `last_seq` y
+    `last_hash` son los de la última fila recorrida (la que rompe incluida), o `None` sin filas.
     """
     checked = 0
-    prev_seq = 0
-    prev_hash = ZERO_HASH
+    prev_seq = start_seq - 1
+    prev_hash = start_prev_hash
+    last_seq: int | None = None
+    last_hash: str | None = None
     for row in rows:
         checked += 1
         seq = int(str(row.get("seq")))
+        last_seq, last_hash = seq, str(row.get("hash"))
         mirrors_ok = all(row.get(k) == row.get(src) for k, src in MIRROR_KEYS if k in row)
         if (
             seq != prev_seq + 1
@@ -243,10 +262,10 @@ def verify_chain(rows: Iterable[Mapping[str, object]]) -> VerifyResult:
             or row.get("hash") != chain_hash(prev_hash, row)
             or not mirrors_ok
         ):
-            return VerifyResult(ok=False, rows_checked=checked, broken_at_seq=seq)
+            return VerifyResult(False, checked, seq, last_seq, last_hash)
         prev_seq = seq
         prev_hash = str(row["hash"])
-    return VerifyResult(ok=True, rows_checked=checked, broken_at_seq=None)
+    return VerifyResult(True, checked, None, last_seq, last_hash)
 
 
 # Escritura -------------------------------------------------------------------------

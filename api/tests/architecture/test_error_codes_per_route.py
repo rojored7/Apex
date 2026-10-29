@@ -73,6 +73,9 @@ CON_LIMITE = {
     ("post", "/api/v1/users/{user_id}/resend-link"),
     ("patch", "/api/v1/users/{user_id}"),
     ("delete", "/api/v1/users/{user_id}"),
+    # S4A-B3 (S4A-D47, M-3): verificar la cadena consume `audit-verify` y `audit-verify-hour`;
+    # `GET /audit/verify/last` no tiene límite (lee una fila).
+    ("post", "/api/v1/audit/verify"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

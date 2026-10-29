@@ -132,6 +132,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 1.000 y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
     - `POST /audit/verify` y `GET /audit/verify/last`;
     - `cli verify-audit --as`.
+    - Hecho en el Verde: `audit.verifications` guarda `through_hash char(64)` (el `hash` de la fila `through_seq`, o `ZERO_HASH` con la cadena vacía) y la siguiente verificación lo exige como ancla; tres cubetas nuevas en el catálogo (12 cubetas y 11 variables `USER_*`): `staff-read` (`USER_READ_LIMIT_PER_MIN`, 120 por minuto; la consumen B4, B5 y B8), `audit-verify` (`USER_AUDIT_VERIFY_LIMIT_PER_MIN`, 3 por minuto) y `audit-verify-hour` (`USER_AUDIT_VERIFY_LIMIT_PER_HOUR`, 20 por hora); el job `e2e-stack` de la CI las sube ×100 (E9). `SYNC_VERIFY_MAX_ROWS` calibrado en 100.000 (S4A-D91).
   - **Gate:** `slice-gate.sh audit`, `slice-gate.sh core/audit`, `slice-gate.sh core/audit_verify` y `slice-gate.sh cli`, con los archivos de cada uno, más el ciclo de Alembic.
 - **Slice S4A-B4 · Consultar la auditoría y ver el detalle.** Historias: US-102 y US-103.
   - **Rojo:**
@@ -291,3 +292,8 @@ Corren en cada gate de slice (A-5).
   - el worker no expone puertos.
 - Paso humano: push, PR con CI en verde y merge.
 - `verify-delivery`.
+
+## Deuda con dueño (registrada durante el sprint)
+
+- S4A-D98 (revisión de S4A-B3): los triggers `audit_log_forbid_mutation` y `audit_log_forbid_truncate` de `0002` tienen `tgenabled = 'O'` y no disparan bajo `session_replication_role = replica`; la cadena y el ancla lo detectan. Dueño: Sprint 4B, migración `0014_audit_log_triggers_always` (nunca se edita `0002`).
+- S4A-D103 (revisión de S4A-B3): las cubetas por usuario (`audit-verify`, `audit-verify-hour`, `staff-read` y las anteriores) viven en la memoria del único proceso de Uvicorn; restricción conocida junto a S3-D93, sin dueño de código hasta que el api pase a varios procesos.

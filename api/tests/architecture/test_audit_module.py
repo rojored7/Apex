@@ -6,8 +6,10 @@
   la tupla final de v0.1).
 - `load_module_services()` deja suscritos los cuatro handlers de `audit.service` a sus eventos,
   una sola vez cada uno (se compara por identidad de función).
-- `modules/audit` tiene `router.py` vacío, `service.py` y ningún `models.py` (la tabla vive en
-  `core/audit.py`); importa de `auth` solo `service.py` (las clases de evento), nunca sus
+- `modules/audit` tiene `router.py` (desde S4A-B3 con `POST /audit/verify` y
+  `GET /audit/verify/last`, y `no_store`), `service.py` y ningún `models.py` (las tablas viven en
+  `core/audit.py` y `core/audit_verify.py`); importa de `auth` solo `service.py` (las clases
+  de evento), nunca sus
   `models.py`, `router.py` ni helpers privados.
 - `auth` no importa nada de `audit` (el sentido es `audit → auth`).
 """
@@ -20,9 +22,11 @@ from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 
 import app
 from app.core import events
+from app.core.http import no_store
 from app.main import MODULES, load_module_services
 from app.modules.auth.service import (
     LoginAttempted,
@@ -66,9 +70,19 @@ def test_load_module_services_suscribe_cada_handler_una_vez(
     assert sum(1 for h in suscritos if h is handler) == 1, (nombre, suscritos)
 
 
-def test_audit_tiene_router_vacio_y_no_tiene_models() -> None:
+def test_audit_publica_verify_y_sigue_sin_models() -> None:
+    """S4A-B3 (S4A-D14, S4A-D18): el router de `audit` tiene exactamente `POST /audit/verify` y
+    `GET /audit/verify/last` (B4 sumará la lista y el detalle), lleva `no_store` en el `APIRouter`
+    y el módulo sigue sin `models.py` (`AuditVerification` vive en `core/audit_verify.py`)."""
     router = importlib.import_module("app.modules.audit.router").router
-    assert list(router.routes) == []
+    rutas = {
+        (metodo, ruta.path)
+        for ruta in router.routes
+        if isinstance(ruta, APIRoute)
+        for metodo in ruta.methods
+    }
+    assert rutas == {("POST", "/audit/verify"), ("GET", "/audit/verify/last")}
+    assert any(d.dependency is no_store for d in router.dependencies)
     assert find_spec("app.modules.audit.service") is not None
     assert find_spec("app.modules.audit.models") is None
 

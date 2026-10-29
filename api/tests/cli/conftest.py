@@ -14,6 +14,11 @@ from collections.abc import Iterator
 import pytest
 
 from app.core.config import DB_TIMEOUT_FLOOR_MS, Settings
+from tests.audit.conftest import (  # noqa: F401  (S4A-B3: `verify-audit` usa las de la auditoría)
+    candado_tomado,
+    espia_de_conexiones,
+    fabrica_confirmada,
+)
 
 
 def _loggers_de_la_app() -> list[logging.Logger]:

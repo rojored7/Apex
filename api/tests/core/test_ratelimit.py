@@ -386,6 +386,10 @@ CATALOGO = {
     "memberships-write": (30, 60),
     "payments-write": (30, 60),
     "admin-write": (30, 60),
+    # S4A-B3 (S4A-D45, S4A-D47, S4A-D65).
+    "staff-read": (120, 60),
+    "audit-verify": (3, 60),
+    "audit-verify-hour": (20, 3600),
 }
 
 
@@ -437,9 +441,15 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_REVEAL_LIMIT_PER_MIN": 16,
             "USER_REVEAL_LIMIT_PER_HOUR": 17,
             "USER_REVEAL_LIMIT_PER_DAY": 18,
+            "USER_READ_LIMIT_PER_MIN": 19,
+            "USER_AUDIT_VERIFY_LIMIT_PER_MIN": 20,
+            "USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 21,
         }
     )
     assert user_limits_from(ajustes) == {
+        "staff-read": (19, 60),
+        "audit-verify": (20, 60),
+        "audit-verify-hour": (21, 3600),
         "members-write": (13, 60),
         "members-search": (14, 60),
         "members-detail": (15, 60),
@@ -450,6 +460,38 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         "payments-write": (11, 60),
         "admin-write": (12, 60),
     }
+
+
+def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventana() -> None:
+    """S4A-D65 (contradicción 1): el catálogo pasa de 9 a 12 cubetas; `audit-verify-hour` mide
+    3.600 s aunque su tope venga de `Settings`."""
+    from app.cli import export_settings
+    from app.core.ratelimit import user_limits_from
+
+    topes = user_limits_from(
+        export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
+    )
+    assert len(topes) == 12
+    assert topes["audit-verify-hour"] == (7, 3600)
+    assert topes["audit-verify"][1] == 60
+    assert topes["staff-read"][1] == 60
+
+
+async def test_la_cuarta_verificacion_del_minuto_da_429_y_las_lecturas_no_la_consumen(
+    reloj_t0: FrozenClock,
+) -> None:
+    """S4A-D47 (M-3): `audit-verify` admite 3 por minuto y por usuario; `staff-read` es otra
+    cubeta."""
+    from app.core.errors import TooManyRequestsError
+    from app.core.ratelimit import USER_LIMITS, enforce_user_limit
+
+    peticion = _peticion(dict(USER_LIMITS))
+    for _ in range(3):
+        await enforce_user_limit(peticion, "audit-verify", USUARIO)
+    with pytest.raises(TooManyRequestsError):
+        await enforce_user_limit(peticion, "audit-verify", USUARIO)
+    await enforce_user_limit(peticion, "staff-read", USUARIO)
+    await enforce_user_limit(peticion, "audit-verify", OTRO)
 
 
 async def test_enforce_user_limit_la_llamada_31_de_memberships_write_da_429(

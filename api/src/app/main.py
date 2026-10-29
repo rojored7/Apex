@@ -151,6 +151,14 @@ async def _startup(
             await paso(settings)
 
 
+async def _cancel_background_verifications() -> None:
+    """S4A-D44 (H-2): el `shutdown` cancela las verificaciones 202 en curso y espera su `finally`
+    (sueltan el candado `4_270_003`) antes de cerrar el engine. Import por nombre, como
+    `load_module_services`: `main.py` es el único que conoce los módulos."""
+    audit_service = importlib.import_module("app.modules.audit.service")
+    await audit_service.cancel_background_verifications()
+
+
 def _install_middleware(app: FastAPI, settings: Settings) -> None:
     """Envelope de errores, log de acceso, límites (US-036) y CORS cerrado (US-037)."""
     register_error_handlers(app)
@@ -198,6 +206,7 @@ def create_app(
             )
             yield
         finally:
+            await _cancel_background_verifications()
             configure_keyring(None)
             configure_provider(None)
             await db.dispose_engine()

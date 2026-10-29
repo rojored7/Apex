@@ -18,8 +18,9 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
   `memberships → payments` (`register`, el puerto `MembershipGate`,
   `PaymentRegistered`, `sum_not_voided`); B8 `payments → members` (`search_ids`,
   `ensure_exists`) y `payments → auth` (`names_for`), donde tienen uso real (S3-D80; entran en
-  el Rojo de S3-B8 con la lista, el detalle y el resumen). Cada arista permitida existe de
-  verdad.
+  el Rojo de S3-B8 con la lista, el detalle y el resumen). S4A-B8 (S4A-D27, C9) agrega las cinco
+  de `dashboard` (`audit`, `auth`, `members`, `memberships` y `payments`; nunca `plans`: el nombre
+  del plan sale de `memberships.refs_for`). Cada arista permitida existe de verdad.
 - `payments` no importa `memberships` a nivel de módulo (D1: habla con él solo por el puerto
   `MembershipGate`, que `memberships` registra al importarse); la perezosa `payments → memberships`
   (lista blanca) llega con B8: `payments/queries.py` pide `memberships.service.refs_for` dentro
@@ -54,6 +55,12 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("audit", "auth"),
         ("auth", "settings"),
+        # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
+        ("dashboard", "audit"),
+        ("dashboard", "auth"),
+        ("dashboard", "members"),
+        ("dashboard", "memberships"),
+        ("dashboard", "payments"),
         # S4A-B5 (S4A-D20, C6): `members.service.history` delega en `audit.service.member_history`.
         ("members", "audit"),
         ("memberships", "members"),
@@ -298,6 +305,20 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
     assert ("plans", "memberships") not in ALLOWED_EDGES
     importadores = {a for a, destinos in arriba.items() if "plans" in destinos}
     assert importadores == {"memberships"}
+
+
+def test_dashboard_importa_cinco_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
+    """S4A-B8 (S4A-D27, C9): `dashboard` importa arriba exactamente `audit`, `auth`, `members`,
+    `memberships` y `payments` (nunca `plans`, ni perezosas), y ningún módulo lo importa (va
+    al final de `MODULES`); `plans` sigue importado solo por `memberships`."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["dashboard"] == {"audit", "auth", "members", "memberships", "payments"}
+    assert perezosas["dashboard"] == set()
+    assert "plans" not in arriba["dashboard"]
+    importadores = {a for a, destinos in arriba.items() if "dashboard" in destinos}
+    perezosos = {a for a, destinos in perezosas.items() if "dashboard" in destinos}
+    assert importadores == set() and perezosos == set()
+    assert {a for a, destinos in arriba.items() if "plans" in destinos} == {"memberships"}
 
 
 PLANS_LAZY_MARK: Final = "# lazy: G-03 (plans -> memberships)"

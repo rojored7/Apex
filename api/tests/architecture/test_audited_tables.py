@@ -18,6 +18,12 @@ con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-
 (con `__audit_subject__ = "member_id"`, G-05).
 `PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`,
 `notifications.notifications`) para no dejar vacía la parametrización.
+
+S4A-B8 (S4A-D61 b, L-10): todo modelo con `__audited__ = True` está en la constante única
+`audit/queries.py::AUDITABLE_TABLES`, y toda tabla de esa constante está en
+`RECENT_TABLES_ALLOWED` (lo que lee el tablero) o en `AUDIT_TABLES_EXCLUDED_FROM_RECENT` con un
+motivo, nunca en las dos. La prueba inversa no exige `__audited__` a `audit.verifications`
+(observación de la crítica 1: su resultado entra a la cadena como fila `verify`).
 """
 
 from __future__ import annotations
@@ -30,6 +36,11 @@ import pytest
 
 from app.core.db import Base
 from app.main import MODULES
+from app.modules.audit.queries import (
+    AUDIT_TABLES_EXCLUDED_FROM_RECENT,
+    AUDITABLE_TABLES,
+    RECENT_TABLES_ALLOWED,
+)
 
 EXCLUIDAS: dict[str, str] = {
     "audit.audit_log": "es la cadena de auditoría",
@@ -215,3 +226,83 @@ def test_cargar_modelos_tolera_un_modulo_sin_models() -> None:
     """Decisión 21: `audit` no tiene `models.py` (sus models viven en `core/audit.py`)."""
     assert find_spec("app.modules.audit.models") is None
     _cargar_modelos(("auth", "settings", "audit"))
+
+
+# S4A-B8 (S4A-D61 b): una sola lista de tablas auditables ------------------------------------
+
+RECIENTES_ESPERADAS: frozenset[str] = frozenset(
+    {
+        "members.members",
+        "memberships.memberships",
+        "payments.payments",
+        "plans.plans",
+        "auth.users",
+        "settings.settings_sections",
+    }
+)
+"""S4A-D28: la lista blanca de `recent` (nombres reales `esquema.tabla`, como mucho seis)."""
+
+
+def auditadas_fuera_de_la_lista(tablas: Mapping[str, type], lista: frozenset[str]) -> list[str]:
+    """Modelos con `__audited__ = True` que no están en `lista`."""
+    return sorted(
+        nombre
+        for nombre, clase in tablas.items()
+        if getattr(clase, "__audited__", False) and nombre not in lista
+    )
+
+
+def sin_destino_en_recent(
+    auditables: frozenset[str], recientes: frozenset[str], excluidas: Mapping[str, str]
+) -> list[str]:
+    """Tablas auditables sin destino único: ni en `recientes` ni excluidas con motivo, en las
+    dos, o excluidas con un motivo vacío."""
+    malas = [f"{t}: sin destino" for t in sorted(auditables - recientes - set(excluidas))]
+    malas += [f"{t}: en las dos" for t in sorted(recientes & set(excluidas))]
+    malas += [f"{t}: sin motivo" for t, motivo in sorted(excluidas.items()) if not motivo.strip()]
+    malas += [f"{t}: no es auditable" for t in sorted((recientes | set(excluidas)) - auditables)]
+    return malas
+
+
+def test_todo_modelo_auditado_esta_en_auditable_tables() -> None:
+    assert auditadas_fuera_de_la_lista(_tablas_de_la_app(), AUDITABLE_TABLES) == []
+
+
+def test_toda_tabla_auditable_va_a_recent_o_esta_excluida_con_motivo() -> None:
+    assert (
+        sin_destino_en_recent(
+            AUDITABLE_TABLES, RECENT_TABLES_ALLOWED, AUDIT_TABLES_EXCLUDED_FROM_RECENT
+        )
+        == []
+    )
+    assert RECENT_TABLES_ALLOWED == AUDITABLE_TABLES - set(AUDIT_TABLES_EXCLUDED_FROM_RECENT)
+
+
+def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -> None:
+    assert RECENT_TABLES_ALLOWED == RECIENTES_ESPERADAS
+    assert len(RECENT_TABLES_ALLOWED) <= 6
+    assert set(AUDIT_TABLES_EXCLUDED_FROM_RECENT) == {
+        "memberships.membership_freezes",
+        "auth.one_time_tokens",
+        "audit.verifications",
+    }
+    assert not any(t.startswith("crypto.") for t in RECENT_TABLES_ALLOWED)
+
+
+def test_control_un_modelo_auditado_nuevo_fuera_de_la_lista_falla() -> None:
+    tablas = {"members.members": _Auditada, "clases.nueva": _Auditada, "x.y": _SinAuditar}
+    assert auditadas_fuera_de_la_lista(tablas, frozenset({"members.members"})) == ["clases.nueva"]
+
+
+def test_control_una_tabla_sin_destino_o_sin_motivo_falla() -> None:
+    malas = sin_destino_en_recent(
+        frozenset({"a.a", "b.b", "c.c", "d.d"}),
+        frozenset({"a.a", "c.c", "z.z"}),
+        {"c.c": "doble", "d.d": " "},
+    )
+    assert malas == [
+        "b.b: sin destino",
+        "c.c: en las dos",
+        "d.d: sin motivo",
+        "z.z: no es auditable",
+    ]

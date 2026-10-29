@@ -23,6 +23,11 @@ S4A-B4 (US-102, US-103; S4A-D16, S4A-D17): la lectura vive en los privados `quer
 S4A-B5 (US-106; S4A-D20): re-exporta `member_history(session, member_id, page, q)` de
 `queries.py`; la ruta vive en `members/router.py` (arista `members -> audit`), no aquí.
 
+S4A-B8 (US-110; S4A-D28, S4A-D51): re-exporta `recent(session, tables, limit, *, actions,
+exclude_user_ids)` de `queries.py` y las constantes `RECENT_TABLES_ALLOWED`,
+`AUDIT_TABLES_EXCLUDED_FROM_RECENT` y `MAX_RECENT_LIMIT`, más `AuditEntryView`; los lee el
+tablero (arista `dashboard -> audit`).
+
 Los handlers se suscriben al importarse este módulo (`main.load_module_services()` lo importa
 en el api y en el CLI); `events.subscribe` es idempotente, así que cada uno queda una vez.
 """
@@ -39,12 +44,16 @@ from app.core.clock import current_clock
 from app.core.pagination import Page, PageParams
 from app.modules.audit import queries
 from app.modules.audit.queries import (
+    AUDIT_TABLES_EXCLUDED_FROM_RECENT,
     AUDITABLE_TABLES,
+    MAX_RECENT_LIMIT,
+    RECENT_TABLES_ALLOWED,
     AuditFilters,
     build_audit_filters,
     member_history,
+    recent,
 )
-from app.modules.audit.schemas import AuditDetail, AuditListQuery, AuditRow
+from app.modules.audit.schemas import AuditDetail, AuditEntryView, AuditListQuery, AuditRow
 from app.modules.audit.verify import (
     Finished,
     Started,
@@ -63,6 +72,10 @@ from app.modules.auth.service import (
 
 __all__ = [
     "AUDITABLE_TABLES",
+    "AUDIT_TABLES_EXCLUDED_FROM_RECENT",
+    "MAX_RECENT_LIMIT",
+    "RECENT_TABLES_ALLOWED",
+    "AuditEntryView",
     "AuditFilters",
     "Finished",
     "Started",
@@ -77,6 +90,7 @@ __all__ = [
     "on_password_changed",
     "on_sessions_revoked",
     "on_user_locked",
+    "recent",
     "release_verify_lock",
     "verify",
 ]

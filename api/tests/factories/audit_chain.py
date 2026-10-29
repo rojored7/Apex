@@ -1,11 +1,13 @@
 """Fábrica de la cadena de auditoría (plan del Sprint 4A, sección 2, bloque B3; S4A-D69).
 
-- `make_audit_chain(session, n, *, table_name, user_id)`: agrega `n` filas a continuación de la
-  última (`seq` y `prev_hash` reales) con `chain_hash` de `core/audit.py` (la misma `canonical`),
+- `make_audit_chain(session, n, *, table_name, user_id, action="insert")`: agrega `n` filas a
+  continuación de la última (`seq` y `prev_hash` reales) con `chain_hash` de `core/audit.py` (la
+  misma `canonical`),
   por lotes de `INSERT_BATCH` con `insert(AuditEntry.__table__)` de Core (los 100.000 de la prueba
   perf no pasan por `record()`), y confirma (con la `session` de savepoint libera el savepoint).
   Cada fila lleva `after = {"n": seq, "marca": MARCA_AFTER}`: las pruebas de la CLI comprueban que
-  esa marca nunca sale en la salida. Devuelve el último `seq`.
+  esa marca nunca sale en la salida. Devuelve el último `seq`. `action` (S4A-B8) permite filas
+  `login` o `reveal` para la prueba perf de `recent`.
 - `tamper_row(session, seq, column, value, *, rehash=False)`: altera una columna de una fila con
   `ALTER TABLE ... DISABLE TRIGGER USER` dentro de la transacción de quien llama y vuelve a encender
   los dos triggers por nombre con `ENABLE ALWAYS` (regla E1 del Sprint 3). Con `rehash=True`
@@ -68,13 +70,15 @@ async def _ultimo(session: AsyncSession) -> tuple[int, str]:
     return (int(fila.seq), str(fila.hash)) if fila is not None else (0, ZERO_HASH)
 
 
-def _fila(seq: int, prev_hash: str, at: Any, table_name: str, user_id: UUID) -> dict[str, Any]:
+def _fila(
+    seq: int, prev_hash: str, at: Any, table_name: str, user_id: UUID, action: str = "insert"
+) -> dict[str, Any]:
     valores: dict[str, Any] = {
         "id": uuid4(),
         "seq": seq,
         "at": at,
         "user_id": user_id,
-        "action": "insert",
+        "action": action,
         "table_name": table_name,
         "record_id": uuid4(),
         "before": None,
@@ -92,13 +96,14 @@ async def make_audit_chain(
     *,
     table_name: str = "members.members",
     user_id: UUID = SYSTEM_USER_ID,
+    action: str = "insert",
 ) -> int:
     """Agrega `n` filas válidas tras la última y confirma; devuelve el último `seq`."""
     seq, prev = await _ultimo(session)
     base = current_clock().now_utc() - timedelta(milliseconds=n)
     lote: list[dict[str, Any]] = []
     for i in range(1, n + 1):
-        fila = _fila(seq + i, prev, base + timedelta(milliseconds=i), table_name, user_id)
+        fila = _fila(seq + i, prev, base + timedelta(milliseconds=i), table_name, user_id, action)
         prev = fila["hash"]
         lote.append(fila)
         if len(lote) == INSERT_BATCH:

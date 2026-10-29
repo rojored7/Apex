@@ -11,12 +11,16 @@ por el marcador `{"encrypted": True, "key_id", "alg"}`; `***` (índice ciego) no
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
-from app.modules.audit.diff import diff
-from app.modules.audit.schemas import FieldChange
+from app.core.audit import AuditEntry
+from app.modules.audit.diff import REDUCED_FIELDS, diff, reduce_entry
+from app.modules.audit.schemas import AuditEntryView, FieldChange
 
 K1 = "328c1948-e343-48a1-9ef4-1b9dab140c4f"
 K2 = "83bce44d-f4a9-4c49-9e3f-15c82fa8616a"
@@ -142,3 +146,106 @@ def test_diff_no_muta_la_entrada() -> None:
     despues = {"phone": NUEVO}
     diff(antes, despues, "update")
     assert (antes, despues) == ({"phone": VIEJO}, {"phone": NUEVO})
+
+
+# `reduce_entry` (S4A-B8, US-110; S4A-D28): la vista reducida del tablero ---------------------
+
+
+def _fila(
+    action: str, table_name: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> AuditEntry:
+    return AuditEntry(
+        id=uuid4(),
+        seq=42,
+        at=datetime(2026, 10, 20, 15, 0, tzinfo=UTC),
+        user_id=uuid4(),
+        action=action,
+        table_name=table_name,
+        record_id=uuid4(),
+        subject_member_id=uuid4(),
+        before=before,
+        after=after,
+        prev_hash="0" * 64,
+        hash="1" * 64,
+    )
+
+
+def test_reduced_fields_es_la_lista_blanca_de_s4a_d28() -> None:
+    assert (
+        frozenset(
+            {
+                "member_id",
+                "plan_id",
+                "membership_id",
+                "amount_cop",
+                "voided",
+                "deleted_at",
+                "status",
+            }
+        )
+        == REDUCED_FIELDS
+    )
+
+
+def test_reduce_entry_copia_la_cabecera_y_filtra_before_y_after() -> None:
+    fila = _fila(
+        "insert",
+        "payments.payments",
+        None,
+        {
+            "amount_cop": 120_000,
+            "member_id": "m",
+            "membership_id": "x",
+            "method": "cash",
+            "reference": "NEQ-778812",
+            "void_reason": None,
+            "voided": False,
+            "registered_by": "u",
+        },
+    )
+    vista = reduce_entry(fila)
+    assert isinstance(vista, AuditEntryView)
+    assert (vista.seq, vista.at, vista.user_id, vista.action) == (
+        fila.seq,
+        fila.at,
+        fila.user_id,
+        "insert",
+    )
+    assert (vista.table_name, vista.record_id, vista.subject_member_id) == (
+        "payments.payments",
+        fila.record_id,
+        fila.subject_member_id,
+    )
+    assert vista.before is None
+    assert dict(vista.after or {}) == {
+        "amount_cop": 120_000,
+        "member_id": "m",
+        "membership_id": "x",
+        "voided": False,
+    }
+
+
+def test_reduce_entry_descarta_blobs_reference_y_void_reason_del_update() -> None:
+    fila = _fila(
+        "update",
+        "payments.payments",
+        {"voided": False, "void_reason": None, "voided_at": None},
+        {"voided": True, "void_reason": "Pago duplicado", "voided_at": "2026-10-20"},
+    )
+    vista = reduce_entry(fila)
+    assert dict(vista.before or {}) == {"voided": False}
+    assert dict(vista.after or {}) == {"voided": True}
+    socio = reduce_entry(
+        _fila("update", "members.members", {"phone": VIEJO, "phone_idx": "***"}, {"phone": NUEVO})
+    )
+    assert (dict(socio.before or {}), dict(socio.after or {})) == ({}, {})
+    assert "apx1." not in repr(socio)
+
+
+def test_reduce_entry_no_muta_la_fila_y_la_vista_es_inmutable() -> None:
+    after = {"status": "active", "end_date": "2026-11-19"}
+    fila = _fila("update", "memberships.memberships", {"status": "pending_payment"}, after)
+    vista = reduce_entry(fila)
+    assert fila.after == {"status": "active", "end_date": "2026-11-19"}
+    with pytest.raises(FrozenInstanceError):
+        vista.seq = 1  # type: ignore[misc]

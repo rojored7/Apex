@@ -740,6 +740,20 @@ Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-0
 - Por qué no se audita la lectura (S4A-D61 c): escribir una fila por consulta haría crecer la cadena con cada vistazo del admin y cada recarga del front, y una lectura no cambia datos; el rastro de quién consultó es el log de acceso del api, y el abuso lo frena `staff-read` (`USER_READ_LIMIT_PER_MIN`, 120 por minuto por usuario por defecto, compartida entre lista y detalle; `GET /audit/verify/last` no la consume).
 - El tablero excluye al usuario del sistema en los últimos movimientos.
 
+### Tablero de inicio (S4A-B8, US-108 a US-110)
+
+- `GET /api/v1/dashboard` (admin y coach; mismo cuerpo salvo las finanzas, ver abajo; cubeta `staff-read`; `Cache-Control: no-store`; sin parámetros). El módulo `dashboard` no tiene tablas ni ejecuta SQL: solo compone los services de `memberships`, `payments`, `audit`, `members` y `auth`.
+- De dónde sale cada número:
+  - `today`: el día de Bogotá del reloj del api (`current_clock().today_bogota()`).
+  - `members_active`, `members_expiring`, `members_expired`, `members_frozen` y `members_pending_payment`: los mismos cinco conteos de `GET /memberships/summary` con ese `today` (socios no dados de baja por el estado resuelto de su membresía). Comprobación: deben coincidir con ese endpoint.
+  - `income_month` (`AAAA-MM` de `today`) e `income_month_cop`: para el admin, el `total_cop` de `GET /payments/summary?month=<income_month>` (pagos no anulados del mes de Bogotá; un pago de las 22:00 del 31 en Bogotá cuenta en ese mes aunque en UTC ya sea el día 1).
+  - `last_movements`: hasta 10 frases de `audit.service.recent` sobre `members.members`, `memberships.memberships` y `payments.payments`, solo `insert`, `update` y `delete` (nunca `reveal`, `login`, `export` ni `verify`), una consulta por tabla con el índice `(table_name, seq DESC)` y la más reciente primero. La frase sale del catálogo de S4A-D28 con el actor como parte local del correo (nunca el correo), el socio como "Nombre I." y el monto como `$ 120.000`; la vista reducida solo lleva `member_id`, `plan_id`, `membership_id`, `amount_cop`, `voided`, `deleted_at` y `status` (nunca blobs `apx1.`, `reference` ni `void_reason`). Socio o plan sin nombre: "un socio" o "un plan"; actor inexistente: "Alguien".
+  - `notifications_today`, `members_without_consent`, `attendance_week`, `sessions_today` y `wod_today`: siempre presentes y `null` en v0.1 (llegan en v0.2, v0.4 y v0.5).
+- Caché de 30 s: los conteos de membresías vienen de la caché de proceso del resumen (`SUMMARY_CACHE_TTL_S = 30`), que se invalida con cada venta, pago, anulación o congelamiento en ese mismo proceso; con varios procesos, otro puede servir su copia hasta que venza. Ingresos y movimientos se leen en cada llamada.
+- Solo el admin ve finanzas (S4A-D118): para el coach `income_month_cop` llega `null` (no se consulta `payments`) y las frases de pagos no llevan monto ("registró un pago de Laura G."). Los ingresos no tienen caché (S4A-D119 a): cada llamada del admin suma los pagos del mes por el índice `paid_at DESC`, y `staff-read` acota a 120 por minuto por usuario.
+- Por qué el sistema no aparece en los movimientos (`exclude_user_ids=(SYSTEM_USER_ID,)`, Q10 y US-110): el job de vencimientos, el seed y la importación escriben como el usuario técnico y taparían lo que hace recepción; el filtro se aplica antes del límite de 10, así que las 10 frases son siempre de personas. Lo del sistema sigue en `GET /audit` con `user_id` del sistema.
+- Comprobación rápida: `grep -c apx1.` sobre el cuerpo da 0 y ninguna frase empieza con `Sistema`.
+
 ### Limpieza P2-1 de planes de prueba (S4A-B7 y V12)
 
 - Los planes `E2E-tope-*` y los de las specs se retiran por la API (`DELETE /plans/{id}`) con un admin desechable, respetando el tope de `admin-write` (30 por minuto); nunca por SQL. El 409 `plan_has_active_memberships` solo da el conteo: esos planes se desactivan y quedan.

@@ -24,22 +24,30 @@ fachada `service.py`.
 - `member_history(session, member_id, page, q) -> Page[MemberHistoryItem]` (S4A-B5, US-106;
   S4A-D20): las entradas con `subject_member_id` del socio, sin correo ni valores; nombres por
   `auth.service.user_names_for` (S4A-D54).
+- `recent(session, tables, limit, *, actions, exclude_user_ids) -> list[AuditEntryView]` (S4A-B8,
+  US-110; S4A-D28, S4A-D51): las últimas filas de las tablas pedidas, una consulta por tabla
+  (`table_name = :t AND action = ANY(:acciones) AND user_id <> ALL(:excluidos) ORDER BY seq DESC
+  LIMIT :limit`, por `ix_audit_log_table_seq`), unidas por `seq` descendente en memoria y
+  recortadas a `limit`; cada una pasa por `diff.reduce_entry`. `tables` dentro de
+  `RECENT_TABLES_ALLOWED` y `limit` de 1 a `MAX_RECENT_LIMIT`; si no, `ValueError`. Solo lee.
+- `RECENT_TABLES_ALLOWED` (S4A-D61 b): `AUDITABLE_TABLES` menos
+  `AUDIT_TABLES_EXCLUDED_FROM_RECENT` (cada excluida con su motivo).
 """
 
 from __future__ import annotations
 
 import builtins
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, all_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import AuditEntry
-from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page
+from app.core.audit import AuditAction, AuditEntry
+from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page, uuid_array
 from app.core.search import clean_query
 from app.core.validators import check_instant_range
 from app.modules.audit import diff
@@ -47,6 +55,7 @@ from app.modules.audit.exceptions import AuditEntryNotFound, AuditRangeInvalid
 from app.modules.audit.schemas import (
     MAX_AUDIT_OFFSET,
     AuditDetail,
+    AuditEntryView,
     AuditListQuery,
     AuditRow,
     MemberHistoryItem,
@@ -69,6 +78,20 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "audit.verifications",
     }
 )
+AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
+    "memberships.membership_freezes": "aparece por el update de la membresía",
+    "auth.one_time_tokens": "técnica",
+    "audit.verifications": "es la verificación misma",
+}
+"""Tablas auditadas que `recent` nunca lee, con su motivo (S4A-D61 b)."""
+RECENT_TABLES_ALLOWED: Final[frozenset[str]] = AUDITABLE_TABLES - frozenset(
+    AUDIT_TABLES_EXCLUDED_FROM_RECENT
+)
+"""Lista blanca de `recent` (S4A-D28): las seis tablas de negocio y configuración."""
+MAX_RECENT_LIMIT: Final = 50
+"""Tope de `limit` en `recent` (S4A-D51: como mucho 6 x 50 filas se unen en memoria)."""
+RECENT_ACTIONS: Final[tuple[AuditAction, ...]] = ("insert", "update", "delete")
+"""Acciones por defecto de `recent`: las escrituras (nunca lecturas como `reveal` o `login`)."""
 DOMAIN_SEPARATOR: Final = "@"
 """Un `q` del historial con `@` no es una parte local: página vacía sin consultar (S4A-D112)."""
 UNKNOWN_TABLE_MESSAGE: Final = "Esa tabla no está en la auditoría."
@@ -246,3 +269,35 @@ def _history_item(entrada: AuditEntry, nombres: Mapping[UUID, str]) -> MemberHis
         fields=diff.history_fields(entrada),
         purpose=diff.history_purpose(entrada),
     )
+
+
+async def recent(
+    session: AsyncSession,
+    tables: Sequence[str],
+    limit: int,
+    *,
+    actions: Sequence[AuditAction] = RECENT_ACTIONS,
+    exclude_user_ids: Sequence[UUID] = (),
+) -> builtins.list[AuditEntryView]:
+    """Últimas filas reducidas de `tables` (S4A-D28, S4A-D51; ver el docstring del módulo)."""
+    unicas = builtins.list(dict.fromkeys(tables))
+    fuera = [tabla for tabla in unicas if tabla not in RECENT_TABLES_ALLOWED]
+    if fuera:
+        raise ValueError(f"recent: tablas fuera de la lista blanca: {fuera}")
+    if not 1 <= limit <= MAX_RECENT_LIMIT:
+        raise ValueError(f"recent: limit debe ir de 1 a {MAX_RECENT_LIMIT}")
+    entradas: builtins.list[AuditEntry] = []
+    for tabla in unicas:
+        # S4A-D51: una sentencia por tabla (índice `ix_audit_log_table_seq`); valores ligados.
+        condiciones: builtins.list[ColumnElement[bool]] = [
+            AuditEntry.table_name == tabla,
+            AuditEntry.action.in_(builtins.list(actions)),
+        ]
+        if exclude_user_ids:
+            condiciones.append(AuditEntry.user_id != all_(uuid_array(exclude_user_ids)))
+        consulta = (
+            select(AuditEntry).where(*condiciones).order_by(AuditEntry.seq.desc()).limit(limit)
+        )
+        entradas.extend(await session.scalars(consulta))
+    entradas.sort(key=lambda entrada: entrada.seq, reverse=True)
+    return [diff.reduce_entry(entrada) for entrada in entradas[:limit]]

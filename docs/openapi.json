@@ -356,6 +356,130 @@
         "title": "CreateUserOut",
         "type": "object"
       },
+      "DashboardOut": {
+        "additionalProperties": false,
+        "description": "`GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.",
+        "properties": {
+          "attendance_week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance Week"
+          },
+          "income_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Income Month",
+            "type": "string"
+          },
+          "income_month_cop": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ingresos del mes en COP (pagos no anulados). null para el coach: solo el admin ve ingresos y montos (S4A-D118).",
+            "title": "Income Month Cop"
+          },
+          "last_movements": {
+            "items": {
+              "$ref": "#/components/schemas/MovementOut"
+            },
+            "maxItems": 10,
+            "title": "Last Movements",
+            "type": "array"
+          },
+          "members_active": {
+            "title": "Members Active",
+            "type": "integer"
+          },
+          "members_expired": {
+            "title": "Members Expired",
+            "type": "integer"
+          },
+          "members_expiring": {
+            "title": "Members Expiring",
+            "type": "integer"
+          },
+          "members_frozen": {
+            "title": "Members Frozen",
+            "type": "integer"
+          },
+          "members_pending_payment": {
+            "title": "Members Pending Payment",
+            "type": "integer"
+          },
+          "members_without_consent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Members Without Consent"
+          },
+          "notifications_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notifications Today"
+          },
+          "sessions_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessions Today"
+          },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
+          "wod_today": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Today"
+          }
+        },
+        "required": [
+          "today",
+          "members_active",
+          "members_expiring",
+          "members_expired",
+          "members_frozen",
+          "members_pending_payment",
+          "income_month",
+          "income_month_cop",
+          "last_movements"
+        ],
+        "title": "DashboardOut",
+        "type": "object"
+      },
       "EmergencyContactIn": {
         "additionalProperties": false,
         "properties": {
@@ -2045,6 +2169,68 @@
           "label"
         ],
         "title": "MethodLabel",
+        "type": "object"
+      },
+      "MovementOut": {
+        "additionalProperties": false,
+        "description": "Una frase de los últimos movimientos (S4A-D28).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "phrase": {
+            "title": "Phrase",
+            "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "table_name": {
+            "enum": [
+              "members.members",
+              "memberships.memberships",
+              "payments.payments"
+            ],
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "phrase",
+          "table_name",
+          "record_id",
+          "member_id"
+        ],
+        "title": "MovementOut",
         "type": "object"
       },
       "Page_AuditRow_": {
@@ -5030,6 +5216,77 @@
         "summary": "Reset",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "operationId": "dashboard_api_v1_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Dashboard",
+        "tags": [
+          "dashboard"
         ]
       }
     },

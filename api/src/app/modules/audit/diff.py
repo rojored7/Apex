@@ -23,6 +23,9 @@ la paridad del prefijo y del separador con `core/crypto`).
 - `history_fields(entry)` y `history_purpose(entry)` (S4A-B5, US-106; S4A-D20, S4A-D50): los
   nombres de campo (nunca valores) y el propósito de un `reveal` automático para el historial
   del socio que ve el coach.
+- `reduce_entry(entry) -> AuditEntryView` (S4A-B8, US-110; S4A-D28): la vista reducida del
+  tablero; `before` y `after` solo con las llaves de `REDUCED_FIELDS` (`None` sigue `None`).
+  Ningún blob `apx1.`, ni `reference`, ni `void_reason`, ni otra columna sale de aquí. Pura.
 """
 
 from __future__ import annotations
@@ -30,11 +33,11 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Final, cast
 from uuid import UUID
 
-from app.core.audit import TECHNICAL_COLUMNS, AuditEntry
-from app.modules.audit.schemas import ChangeKind, FieldChange, HistoryPurpose
+from app.core.audit import TECHNICAL_COLUMNS, AuditAction, AuditEntry
+from app.modules.audit.schemas import AuditEntryView, ChangeKind, FieldChange, HistoryPurpose
 
 __all__ = [
     "BLOB_PARTS",
@@ -44,6 +47,7 @@ __all__ = [
     "MALFORMED_BLOB_MARKER",
     "MAX_DEPTH",
     "READ_ACTIONS",
+    "REDUCED_FIELDS",
     "TRUNCATED_MARKER",
     "FieldChange",
     "blob_marker",
@@ -51,6 +55,7 @@ __all__ = [
     "history_fields",
     "history_purpose",
     "redact_blobs",
+    "reduce_entry",
 ]
 
 BLOB_SEPARATOR: Final = "."
@@ -204,3 +209,33 @@ def history_purpose(entry: AuditEntry) -> HistoryPurpose | None:
     if proposito == "auth_link":
         return "auth_link"
     return None
+
+
+# Vista reducida del tablero (S4A-B8, US-110; S4A-D28) -------------------------------------
+
+REDUCED_FIELDS: Final[frozenset[str]] = frozenset(
+    {"member_id", "plan_id", "membership_id", "amount_cop", "voided", "deleted_at", "status"}
+)
+"""Lista blanca de llaves de `before`/`after` que llegan al tablero (S4A-D28)."""
+
+
+def reduce_entry(entry: AuditEntry) -> AuditEntryView:
+    """La fila como `AuditEntryView` con `before`/`after` filtrados por `REDUCED_FIELDS`."""
+    return AuditEntryView(
+        seq=entry.seq,
+        at=entry.at,
+        user_id=entry.user_id,
+        action=cast("AuditAction", entry.action),
+        table_name=entry.table_name,
+        record_id=entry.record_id,
+        subject_member_id=entry.subject_member_id,
+        before=_reduced(entry.before),
+        after=_reduced(entry.after),
+    )
+
+
+def _reduced(values: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """Copia nueva de solo lectura con las llaves de `REDUCED_FIELDS`; `None` sigue `None`."""
+    if values is None:
+        return None
+    return MappingProxyType({k: v for k, v in values.items() if k in REDUCED_FIELDS})

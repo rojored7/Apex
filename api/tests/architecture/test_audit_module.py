@@ -1,9 +1,10 @@
 """El módulo `audit` (S2-B6; US-107; riesgo 6.10, decisión 21; CLAUDE.md, reglas de módulos).
 
-- `MODULES == ("auth", "settings", "audit", "members", "plans", "memberships", "payments")`:
-  `audit` va después de `auth`, cuyo `service.py` declara los eventos que escucha; S2-B7 agrega
-  `members`, S2-B9 `plans`, S3-B1 `memberships` y S3-B3 `payments` al final (D1 del Sprint 3:
-  la tupla final de v0.1).
+- `MODULES == ("auth", "settings", "audit", "members", "plans", "memberships", "payments",
+  "dashboard")`: `audit` va después de `auth`, cuyo `service.py` declara los eventos que
+  escucha; S2-B7 agrega `members`, S2-B9 `plans`, S3-B1 `memberships`, S3-B3 `payments` y
+  S4A-B8 `dashboard` al final (S4A-D27: módulo de lectura que importa a los demás y que nadie
+  importa; la tupla final de v0.1).
 - `load_module_services()` deja suscritos los cuatro handlers de `audit.service` a sus eventos,
   una sola vez cada uno (se compara por identidad de función).
 - `modules/audit` tiene `router.py` (desde S4A-B3 con `POST /audit/verify` y
@@ -47,7 +48,8 @@ HANDLERS = (
 
 def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
     """S2-B7 suma `members`, S2-B9 `plans`, S3-B1 `memberships` y S3-B3 `payments` al final (D1 del
-    Sprint 3: `memberships` antes que `payments`; tupla final de v0.1)."""
+    Sprint 3: `memberships` antes que `payments`); S4A-B8 (S4A-D27) suma `dashboard` al final:
+    tupla de ocho, la final de v0.1."""
     assert MODULES == (
         "auth",
         "settings",
@@ -56,6 +58,7 @@ def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
         "plans",
         "memberships",
         "payments",
+        "dashboard",
     )
 
 

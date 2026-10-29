@@ -446,6 +446,7 @@ Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `doc
 - "Hoy en el box" (sesiones de hoy), "Asistencia de la semana" y "WOD de hoy": `sessions_today`, `attendance_week` y `wod_today` vienen en `null` y la tarjeta dice "Disponible en v0.x" (v0.4 y v0.5). Depende de versión futura. Slice S4A-F3.
 - "Por avisar hoy": `notifications_today` y `members_without_consent` en `null` hasta v0.2 (EP-14). Depende de versión futura. Slice S4A-F3.
 - Línea de pendientes de pago: el diseño no la dibuja; `members_pending_payment` se muestra con el chip "Pendiente de pago" (Q3, S4A-D29). Aceptada para v0.1. Slice S4A-F3.
+- Backend confirmado en el Verde de S4A-B8: `GET /dashboard` trae los cinco conteos de `memberships.service.summary`, `income_month_cop` de `payments.service.summary` (solo admin; `null` para el coach, que tampoco ve montos en las frases: S4A-D118; el KPI de ingresos dice "Solo administración"), `last_movements` sin el sistema (máximo 10, frases de S4A-D28 sin correos ni valores) y los cinco futuros presentes y en `null` (`tests/dashboard/test_service.py`, `test_last_movements.py`, `test_router.py`). Las filas de esta sección se confirman en pantalla con el slice S4A-F3.
 
 ### 11.3 Planes (`Planes.html`, `/planes`; S4A-F4, US-080 a US-082)
 

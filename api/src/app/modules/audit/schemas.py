@@ -11,10 +11,15 @@
 - `MemberHistoryItem` (S4A-B5, S4A-D20): el historial del socio para admin y coach, sin correo
   ni valores (`fields` con nombres, `purpose` del `reveal` automático).
 - `MAX_AUDIT_OFFSET = 100_000` (S4A-D45: 422 `field="offset"`) y `MAX_SEQ = 2**63 - 1` (S4A-D46).
+- `AuditEntryView` (S4A-B8, US-110; S4A-D28, S4A-D51): la vista reducida e inmutable que
+  devuelve `recent` al tablero; `before` y `after` solo con las llaves de
+  `diff.REDUCED_FIELDS` (nunca blobs `apx1.`, `reference` ni `void_reason`). No es contrato HTTP.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, Literal
 from uuid import UUID
@@ -125,3 +130,21 @@ class AuditDetail(AuditRow):
     prev_hash: str
     hash: str
     changes: list[FieldChange]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AuditEntryView:
+    """Vista reducida de una fila de la cadena para el tablero (S4A-B8; S4A-D28, S4A-D51).
+
+    La arma `diff.reduce_entry`: `before` y `after` llevan solo `diff.REDUCED_FIELDS` (o `None`).
+    Inmutable: asignar un atributo lanza `FrozenInstanceError`."""
+
+    seq: int
+    at: datetime
+    user_id: UUID
+    action: AuditAction
+    table_name: str
+    record_id: UUID | None
+    subject_member_id: UUID | None
+    before: Mapping[str, Any] | None
+    after: Mapping[str, Any] | None

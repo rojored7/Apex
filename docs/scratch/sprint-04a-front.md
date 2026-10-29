@@ -150,3 +150,7 @@ Worktree creado desde `2464030` (checkpoint de B4 más su evidencia); `SLICE_BAS
   - En una membresía vendida con abono y luego saldada, la pestaña muestra dos "modificó una membresía: estado" del admin. Son los cambios de estado que el api registra al pagar; el job del sistema no participó.
   - En la barra de pestañas a 1440 px, "Membresías" queda recortada a la izquierda cuando la activa es Historial. Es el desplazamiento horizontal del `Tabs` existente con nueve pestañas, no algo nuevo de F2.
 - **Checkpoint:** `1ee7804` con el trailer `Co-Authored-By: Claude Fable 5.1`.
+
+## Para F3 (nota del backend, revisión de S4A-B8)
+
+- S4A-D118 (ajusta S4A-D29): `GET /dashboard` ya no da el mismo cuerpo al admin y al coach. Para el coach `income_month_cop` llega `null` y las frases de pagos de `last_movements` no llevan monto ("registró un pago de Laura G."). El esquema Zod del tablero valida `income_month_cop` como `z.number().int().nullable()`, y el KPI de ingresos muestra "Solo administración" cuando llega `null` (no "$ 0" ni "Disponible en v0.x"). El resto del cuerpo es idéntico para los dos roles. `types.ts` ya trae `income_month_cop: number | null` desde el P-API de B8.

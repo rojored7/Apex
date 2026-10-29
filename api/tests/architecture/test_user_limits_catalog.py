@@ -69,6 +69,19 @@ def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
         and isinstance(nodo.args[1], ast.Constant)
     ]
     assert llamadas == ["staff-read"]
+    # S4A-B8 (S4A-D27, S4A-D45): el tablero, en `dashboard/router.py`, consume solo `staff-read`.
+    tablero = (MODULES / "dashboard" / "router.py").read_text(encoding="utf-8")
+    del_tablero = [
+        nodo.args[1].value
+        for funcion in ast.walk(ast.parse(tablero))
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef)
+        and _ruta_de(funcion) == ("get", f"{API_PREFIX}/dashboard")
+        for nodo in ast.walk(funcion)
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) == "enforce_user_limit"
+        and isinstance(nodo.args[1], ast.Constant)
+    ]
+    assert del_tablero == ["staff-read"]
     assert USER_LIMITS["audit-verify-hour"] == (20, 3600)
     assert USER_LIMITS["staff-read"] == (120, 60)
 

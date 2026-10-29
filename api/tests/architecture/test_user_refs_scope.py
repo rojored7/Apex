@@ -10,6 +10,8 @@ en `audit`). Por AST, sobre todo el árbol de cada archivo (también dentro de f
   usan desde S4A-B4);
 - S4A-B5: `audit/queries.py::member_history` (el historial del socio que sirve `members`) usa
   `user_names_for` y no `user_refs_for` ni `UserRef`.
+- S4A-B8 (S4A-D54, L-3): `dashboard` existe y toma el actor de las frases con `user_names_for`
+  (en `dashboard/service.py`), nunca con `user_refs_for` ni `UserRef`.
 Los controles (fuentes falsas) prueban que el detector ve cada forma.
 """
 
@@ -105,6 +107,17 @@ def test_el_historial_del_socio_usa_user_names_for_y_no_user_refs_for() -> None:
     assert not _nombra(funcion, "UserRef")
     servicio = (MODULES_DIR / "members" / "service.py").read_text(encoding="utf-8")
     assert nombres_prohibidos(servicio) == []
+
+
+def test_el_tablero_usa_user_names_for_y_no_user_refs_for() -> None:
+    """S4A-B8 (S4A-D28, S4A-D54, L-3): el actor de "últimos movimientos" es el `display_name` de
+    `auth.service.user_names_for`; ningún archivo de `dashboard` nombra `user_refs_for` ni
+    `UserRef` (sin correo para el coach)."""
+    assert _archivos("dashboard"), "no se encontró app/modules/dashboard"
+    fuente = (MODULES_DIR / "dashboard" / "service.py").read_text(encoding="utf-8")
+    assert _nombra(ast.parse(fuente), "user_names_for"), "dashboard debe usar user_names_for"
+    for archivo in _archivos("dashboard"):
+        assert nombres_prohibidos(archivo.read_text(encoding="utf-8")) == [], archivo.name
 
 
 # Controles del detector --------------------------------------------------------------------

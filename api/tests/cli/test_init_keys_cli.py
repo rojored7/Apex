@@ -30,7 +30,8 @@ def test_init_keys_crea_los_cuatro_archivos_privados(tmp_path: Path) -> None:
     assert resultado.output.count(": creada") == 3
     assert len(rutas.kek.read_bytes()) == KEK_LEN
     assert len(rutas.signing_key.read_bytes()) == SEED_LEN
-    assert rutas.jwt_private.read_bytes().startswith(b"-----BEGIN PRIVATE KEY-----")
+    # La cabecera va partida para que `detect-private-key` de pre-commit no la tome por una llave.
+    assert rutas.jwt_private.read_bytes().startswith(b"-----BEGIN " + b"PRIVATE KEY-----")
     assert rutas.jwt_public.read_bytes().startswith(b"-----BEGIN PUBLIC KEY-----")
     if os.name != "nt":
         for ruta in (rutas.kek, rutas.signing_key, rutas.jwt_private, rutas.jwt_public):

@@ -194,6 +194,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard */
+        get: operations["dashboard_api_v1_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -963,6 +980,46 @@ export interface components {
             expires_at: string;
             user: components["schemas"]["UserOut"];
         };
+        /**
+         * DashboardOut
+         * @description `GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.
+         */
+        DashboardOut: {
+            /** Attendance Week */
+            attendance_week?: number | null;
+            /** Income Month */
+            income_month: string;
+            /**
+             * Income Month Cop
+             * @description Ingresos del mes en COP (pagos no anulados). null para el coach: solo el admin ve ingresos y montos (S4A-D118).
+             */
+            income_month_cop: number | null;
+            /** Last Movements */
+            last_movements: components["schemas"]["MovementOut"][];
+            /** Members Active */
+            members_active: number;
+            /** Members Expired */
+            members_expired: number;
+            /** Members Expiring */
+            members_expiring: number;
+            /** Members Frozen */
+            members_frozen: number;
+            /** Members Pending Payment */
+            members_pending_payment: number;
+            /** Members Without Consent */
+            members_without_consent?: number | null;
+            /** Notifications Today */
+            notifications_today?: number | null;
+            /** Sessions Today */
+            sessions_today?: number | null;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Wod Today */
+            wod_today?: string | null;
+        };
         /** EmergencyContactIn */
         EmergencyContactIn: {
             /** Name */
@@ -1586,6 +1643,30 @@ export interface components {
             hint: string;
             /** Label */
             label: string;
+        };
+        /**
+         * MovementOut
+         * @description Una frase de los últimos movimientos (S4A-D28).
+         */
+        MovementOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Member Id */
+            member_id: string | null;
+            /** Phrase */
+            phrase: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Table Name
+             * @enum {string}
+             */
+            table_name: "members.members" | "memberships.memberships" | "payments.payments";
         };
         /** Page[AuditRow] */
         Page_AuditRow_: {
@@ -3099,6 +3180,71 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    dashboard_api_v1_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

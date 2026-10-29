@@ -87,6 +87,8 @@ CON_LIMITE = {
     ("post", "/api/v1/plans/{plan_id}/activate"),
     ("post", "/api/v1/plans/{plan_id}/deactivate"),
     ("delete", "/api/v1/plans/{plan_id}"),
+    # S4A-B8 (S4A-D27 con S4A-D45, M-1): el tablero consume `staff-read`; sin parámetros, sin 422.
+    ("get", "/api/v1/dashboard"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},
@@ -188,3 +190,12 @@ def test_las_escrituras_de_planes_declaran_sus_codigos_exactos(
 def test_delete_de_planes_responde_204_sin_cuerpo(esquema: dict[str, Any]) -> None:
     respuesta = esquema["paths"]["/api/v1/plans/{plan_id}"]["delete"]["responses"]["204"]
     assert "content" not in respuesta
+
+
+def test_el_tablero_declara_200_401_403_y_429_sin_422(esquema: dict[str, Any]) -> None:
+    """S4A-B8 (S4A-D27, S4A-D45): `GET /dashboard` no tiene parámetros ni cuerpo (sin 422) y
+    consume `staff-read` (429); el resto lo pone el gancho del OpenAPI (500 y 503)."""
+    operacion = esquema["paths"]["/api/v1/dashboard"]["get"]
+    assert set(operacion["responses"]) == {"200", "401", "403", "429", "500", "503"}
+    assert not operacion.get("parameters")
+    assert "requestBody" not in operacion

@@ -65,3 +65,14 @@ Worktree creado desde `2464030` (checkpoint de B4 más su evidencia); `SLICE_BAS
 2. **LOW** `auditValues.ts`, `flatten`: una clave que contiene `apx1.` se pinta "(clave cifrada)" (`auditKeyText`, con `isEncryptedValue`); el nombre del campo de un cambio usa la misma regla. Prueba en `AuditDetailPanel.test.tsx`.
 3. **LOW** `schemas.ts`, `auditDetailSchema`: `before` y `after` se validan y se descartan con un `.transform`; la vista ya no los guarda (el api los sigue enviando; el `.strict()` sigue rechazando claves desconocidas). Prueba en `AuditDetailPanel.test.tsx`.
 4. **LOW** `tests/e2e/stack/audit.spec.ts`: el contexto del coach se cierra en el `finally`.
+
+### Evidencia de S4A-F1 (después del sello)
+
+- Antes del sello: `npm run lint` y `npx tsc --noEmit` limpios; `npx vitest run tests/lint src/features/system` 27 archivos y 414 pruebas en verde; preview `audit.spec.ts` 6 de 6.
+- **Gate 6 (sellante):** `slice-gate.sh web/system src/features/system/pages/AuditPage.test.tsx src/features/system/components/AuditDetailPanel.test.tsx src/features/system/components/VerifyChainButton.test.tsx src/features/system/auditFilters.test.ts src/test/setup.ts src/test/vitest-axe.d.ts`: verde, 4 archivos y 87 pruebas. Hubo un solo aviso de eslint, de un archivo ignorado por configuración.
+- **F1.6, imagen:** `apex-web:local` pasó de `sha256:695f6e2f027d…` (2026-10-28T21:24Z) a `sha256:62458b7264fb…` (2026-10-29T06:40Z), con buildx desde la raíz del worktree. `up -d --no-build web` se lanzó desde el repo principal y `apex-web-1` quedó `healthy` con la imagen nueva.
+- **E2E stack:** `E2E_BASE_URL=http://localhost:8180 npx playwright test --project=stack tests/e2e/stack/audit.spec.ts` con el admin desechable `admin-e2e-1793249495@apex.test` dio 1 de 1 (2,4 s).
+  - La contraseña se fijó con `tools issue-reset-link --as admin@ejemplo.local` y `POST /auth/reset` (204). Solo vivió en variables de ese comando y no está escrita en ningún archivo. El admin real no se tocó.
+  - Una segunda corrida, más de 65 s después, con una contraseña nueva y una configuración temporal del scratchpad que solo añade `screenshot: "on"`, dio 1 de 1 (2,6 s). Las dos corridas pasan, así que la spec se puede repetir.
+  - La verificación salió por 200 con "Cadena íntegra: 4.576 filas verificadas (29 oct 2026, 1:47 a. m.)".
+  - Captura: lista filtrada por `auth.users` y el registro del coach, con 3 entradas (alta del admin y dos cambios), aviso "Quitar el filtro de registro" y línea de la última verificación. Está en el scratchpad de la sesión (`f1-stack-results/.../test-finished-1.png`) y no entra al repo.

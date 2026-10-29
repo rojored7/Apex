@@ -125,6 +125,8 @@ async function fakeApi(page: Page): Promise<FakeApi> {
     state.detailCalls += 1;
     return json(route, 200, DETAIL);
   });
+  // S4A-F2: la caja "Historial reciente" de Datos pide GET /members/{id}/audit; aquí, vacía.
+  await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/audit(\\?.*)?$`), (route) => json(route, 200, page25([])));
   await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/memberships(\\?.*)?$`), (route) => json(route, 200, page25(MEMBERSHIPS)));
   await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/payments(\\?.*)?$`), (route) => {
     const query = new URL(route.request().url()).searchParams;

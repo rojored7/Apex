@@ -504,3 +504,27 @@ export function toMemberPatch(values: MemberEditValues, dirtyFields: MemberEditD
     ...(dirtyFields.data_consent && values.data_consent ? { data_consent: true } : {}),
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// S4A-F2 · US-106 (front): una entrada de GET /members/{id}/audit (MemberHistoryItem de S4A-B5).
+// Estricto: una entrada con `before`, `after`, `user_email` o cualquier valor es una respuesta
+// inválida y no se pinta (S4A-D20, S4A-D54). `fields` son solo nombres de campo (sin `reference` ni
+// `void_reason`, S4A-D109) y `purpose` es `notify`, `auth_link` o null (S4A-D50).
+export const HISTORY_ACTIONS = ["insert", "update", "delete", "reveal", "export", "download", "login", "verify"] as const satisfies readonly components["schemas"]["MemberHistoryItem"]["action"][];
+export const HISTORY_PURPOSES = ["notify", "auth_link"] as const;
+
+export const memberHistoryItemSchema = z
+  .object({
+    seq: z.number().int().positive(),
+    at: z.string().min(1),
+    user_id: z.string().min(1),
+    user_name: z.string().nullable(),
+    action: z.enum(HISTORY_ACTIONS),
+    table_name: z.string().min(1),
+    record_id: z.string().nullable(),
+    fields: z.array(z.string()),
+    purpose: z.enum(HISTORY_PURPOSES).nullable(),
+  })
+  .strict();
+export type MemberHistoryItemView = z.infer<typeof memberHistoryItemSchema>;
+export const memberHistoryPageSchema = pageSchema(memberHistoryItemSchema);

@@ -5,10 +5,12 @@ import {
   ACTION_LABELS,
   ENCRYPTED_FIELDS,
   ENTITY_LABELS,
+  PURPOSE_LABEL,
   SYSTEM_USER_ID,
   actionLabel,
   actorLabel,
   entityLabel,
+  fieldNameLabel,
   maskValue,
   summarizeChange,
   type AuditEntryView,
@@ -162,5 +164,84 @@ describe("summarizeChange", () => {
 
     expect(all.join("\n")).not.toContain("apx1.");
     expect(all).toContain("Correo: dato cifrado modificado");
+  });
+});
+
+describe("S4A-F2 · historial del socio (S4A-D32)", () => {
+  it("ENTITY_LABELS tiene las tablas reales de GET /members/{id}/audit y conserva las viejas", () => {
+    expect(ENTITY_LABELS).toMatchObject({
+      "members.members": "Socio",
+      "memberships.memberships": "Membresía",
+      "payments.payments": "Pago",
+      members: "Socio",
+      memberships: "Membresía",
+      payments: "Pago",
+    });
+    expect(entityLabel("memberships.memberships")).toBe("Membresía");
+  });
+
+  it("con fields y sin before ni after da una línea 'Cambió:' con las etiquetas, sin valores", () => {
+    expect(summarizeChange(entry({ entity: "members.members", fields: ["phone", "email"] }))).toEqual(["Cambió: Teléfono, Correo"]);
+  });
+
+  it("un campo sin etiqueta usa su nombre y un fields vacío no da líneas", () => {
+    expect(summarizeChange(entry({ fields: ["status", "notes"] }))).toEqual(["Cambió: Estado, notes"]);
+    expect(summarizeChange(entry({ fields: [] }))).toEqual([]);
+  });
+
+  it("los campos de anulación y de auditoría tienen etiqueta (S4A-D109: sin void_reason ni reference)", () => {
+    expect(summarizeChange(entry({ entity: "payments.payments", fields: ["voided", "voided_at", "voided_by"] }))).toEqual(["Cambió: Anulado, Fecha de anulación, Anulado por"]);
+  });
+
+  it("un reveal con fields nombra el campo mostrado", () => {
+    expect(summarizeChange(entry({ action: "reveal", fields: ["document"] }))).toEqual(["Campo: Documento"]);
+  });
+
+  it("con before o after sigue el resumen de valores (fields no manda)", () => {
+    expect(summarizeChange(entry({ before: { first_name: "Ana" }, after: { first_name: "Ana María" }, fields: ["first_name"] }))).toEqual(["Nombres: Ana → Ana María"]);
+  });
+
+  it("una columna de índice ciego en fields se nombra sin valor", () => {
+    const lines = summarizeChange(entry({ fields: ["phone_idx"] }));
+
+    expect(lines).toEqual(["Cambió: phone_idx"]);
+    expect(lines.join("")).not.toContain("apx1.");
+  });
+
+  it("actorLabel acepta solo el id y el nombre", () => {
+    expect(actorLabel({ actor_id: SYSTEM_USER_ID, actor_name: "Sistema" })).toBe("Sistema");
+    expect(actorLabel({ actor_id: "u9", actor_name: "juan" })).toBe("juan");
+  });
+
+  it("PURPOSE_LABEL es la etiqueta de un reveal automático", () => {
+    expect(PURPOSE_LABEL).toBe("automático (aviso)");
+  });
+});
+
+describe("fieldNameLabel · revisión de seguridad S4A-F2 (LOW-2)", () => {
+  it("un campo con etiqueta da la etiqueta y uno desconocido con forma de columna se nombra tal cual", () => {
+    expect(fieldNameLabel("phone")).toBe("Teléfono");
+    expect(fieldNameLabel("notes")).toBe("notes");
+    expect(fieldNameLabel("phone_idx")).toBe("phone_idx");
+  });
+
+  it.each([
+    ["<img src=x onerror=alert(1)>"],
+    ["Teléfono"],
+    ["phone; drop"],
+    ["a".repeat(41)],
+    [""],
+    ["3001234567"],
+    ["laura@correo.co"],
+  ])("un nombre que no cumple ^[a-z_]{1,40}$ se dice 'campo' (%s)", (field) => {
+    expect(fieldNameLabel(field)).toBe("campo");
+  });
+
+  it("un nombre con apx1. sigue siendo 'campo cifrado'", () => {
+    expect(fieldNameLabel("apx1.k1.A256GCM.bm9uY2U.Y2lwaGVy")).toBe("campo cifrado");
+  });
+
+  it("el resumen con fields usa la misma regla", () => {
+    expect(summarizeChange(entry({ fields: ["phone", "<b>x</b>"] }))).toEqual(["Cambió: Teléfono, campo"]);
   });
 });

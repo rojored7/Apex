@@ -108,5 +108,21 @@ test.describe("pestañas Membresías y Pagos de la ficha contra el stack", () =>
     await expect(tabla.getByRole("row")).toHaveCount(2);
     await expect(tabla.getByText(`Motivo: ${REASON}`)).toHaveCount(0);
     await capture(page, "ficha-pagos-stack-movil", "light", 390);
+
+    // S4A-F2 (US-106): la pestaña Historial, la última, cuenta la venta, los pagos y la anulación sin
+    // valores (ni el motivo ni la referencia, S4A-D109).
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const tabs = page.getByRole("tablist", { name: "Secciones del socio" }).getByRole("tab");
+    await expect(tabs.last()).toHaveText("Historial");
+    await page.getByRole("tab", { name: "Historial" }).click();
+    // Cambiar de pestaña conserva la URL salvo `offset` (ROUTES.md): `?voided=false` de Pagos viaja.
+    await expect(page).toHaveURL(new RegExp(`/socios/${socio.id}/historial(\\?.*)?$`));
+    const historial = page.getByRole("tabpanel").getByRole("complementary", { name: "Historial" });
+    await expect(historial.getByText(/ vendió una membresía$/)).toBeVisible();
+    await expect(historial.getByText(/ registró un pago$/).first()).toBeVisible();
+    await expect(historial.getByText(/ anuló un pago$/)).toBeVisible();
+    await expect(historial).not.toContainText(REASON);
+    expect(await axeViolations(page)).toEqual([]);
+    await capture(page, "ficha-historial-stack", "light", 1440);
   });
 });

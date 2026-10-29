@@ -36,10 +36,12 @@ import {
   DATA_CONSENT_MISSING,
   memberDetailSchema,
   memberDetailViewSchema,
+  memberHistoryPageSchema,
   membersPageSchema,
   revealOutSchema,
   type MemberCreateBody,
   type MemberDetailView,
+  type MemberHistoryItemView,
   type MemberPatchBody,
   type MemberRowView,
   type MembershipFilterStatus,
@@ -233,5 +235,52 @@ export function useReactivateMember(): UseMutationResult<MemberDetailView, Error
       queryClient.setQueryData(memberDetailKey(member.id), member);
       void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// S4A-F2 · US-106: el historial del socio (GET /members/{id}/audit, cubeta `staff-read`, S4A-D45).
+// - useMemberHistory(id): la pestaña Historial. useInfiniteQuery con páginas de 25 por `offset`,
+//   hasta MEMBER_HISTORY_MAX_PAGES (la pestaña deja de ofrecer "Cargar más" en el tope), sin releer
+//   al volver a la ventana (pediría en serie todas las páginas) y fuera de la caché al desmontarse.
+// - useMemberHistoryPreview(id): la caja "Historial reciente" de la pestaña Datos, las 5 últimas.
+// Las dos claves cuelgan de ["members"]: editar, dar de baja o reactivar las releen. Solo lecturas;
+// las entradas no traen valores (S4A-D20), solo nombres de campo.
+export const MEMBER_HISTORY_PAGE_SIZE = 25;
+export const MEMBER_HISTORY_MAX_PAGES = 20;
+export const MEMBER_HISTORY_PREVIEW_SIZE = 5;
+
+export function memberHistoryKey(id: string): readonly ["members", "history", string] {
+  return ["members", "history", id];
+}
+
+export function memberHistoryPreviewKey(id: string): readonly ["members", "history-preview", string] {
+  return ["members", "history-preview", id];
+}
+
+async function fetchMemberHistory(id: string, limit: number, offset: number, signal: AbortSignal): Promise<Page<MemberHistoryItemView>> {
+  return parseResponse(memberHistoryPageSchema, await api.get<unknown>(`${memberPath(id)}/audit`, { query: listParams({ limit, offset }), signal }));
+}
+
+export function useMemberHistory(id: string): UseInfiniteQueryResult<InfiniteData<Page<MemberHistoryItemView>, number>> {
+  return useInfiniteQuery({
+    queryKey: memberHistoryKey(id),
+    queryFn: ({ pageParam, signal }) => fetchMemberHistory(id, MEMBER_HISTORY_PAGE_SIZE, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: nextMembersOffset,
+    maxPages: MEMBER_HISTORY_MAX_PAGES,
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+    enabled: isMemberId(id),
+  });
+}
+
+export function useMemberHistoryPreview(id: string): UseQueryResult<Page<MemberHistoryItemView>> {
+  return useQuery({
+    queryKey: memberHistoryPreviewKey(id),
+    queryFn: ({ signal }) => fetchMemberHistory(id, MEMBER_HISTORY_PREVIEW_SIZE, 0, signal),
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+    enabled: isMemberId(id),
   });
 }

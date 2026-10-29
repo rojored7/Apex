@@ -4,7 +4,7 @@
 //   memberships.sell, Dar de baja solo con members.delete).
 // - Tabs con las pestañas de la ficha: Datos es la ruta hija índice (<Outlet />, S3-D65); Membresías
 //   y Pagos son rutas hijas que navegan y montan su pestaña (S3-F7; deshabilitadas si su ruta no está
-//   disponible, isPageAvailable); Historial deshabilitada (US-106) y la última.
+//   disponible, isPageAvailable); Historial (S4A-F2, US-106) es hija de members, habilitada y la última.
 // - Los cinco sensibles enmascarados con el texto del api y "Mostrar"; aviso si falta la
 //   autorización de datos (Q16); un dado de baja es de solo lectura con "Dado de baja" y
 //   "Reactivar" solo para el admin; 404 "Socio no encontrado"; error con "Reintentar".
@@ -98,22 +98,40 @@ describe("MemberDetailPage · acciones por rol (useCan)", () => {
 });
 
 describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
-  it("Datos es la activa en /socios/:id; Membresías y Pagos están habilitadas (S3-F7); Historial y las demás, deshabilitadas, e Historial es la última", async () => {
+  it("Datos es la activa en /socios/:id; Membresías, Pagos (S3-F7) e Historial (S4A-F2) están habilitadas; las demás, deshabilitadas, e Historial es la última", async () => {
     renderMemberDetail();
     const tablist = await screen.findByRole("tablist", { name: "Secciones del socio" });
     const tabs = within(tablist).getAllByRole("tab");
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of ["Membresías", "Pagos"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
-    for (const name of [/^Historial/, /^Asistencia/, /^Resultados/, /^Atleta/, /^Avisos/, /^Adjuntos/]) {
+    for (const name of ["Membresías", "Pagos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    for (const name of [/^Asistencia/, /^Resultados/, /^Atleta/, /^Avisos/, /^Adjuntos/]) {
       expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
     }
     expect(within(tablist).getByRole("tab", { name: /^Asistencia/ })).toHaveTextContent("Disponible en v0.4");
     expect(within(tablist).getByRole("tab", { name: /^Avisos/ })).toHaveTextContent("Disponible en v0.2");
-    // Pendiente 4 de V1: Historial es de US-106 (Sprint 4A), no de un v0.1 ya entregado.
-    expect(within(tablist).getByRole("tab", { name: /^Historial/ })).toHaveTextContent("Disponible en v0.1 · Sprint 4A");
+    expect(within(tablist).getByRole("tab", { name: "Historial" })).not.toHaveTextContent("Disponible en");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
+  });
+
+  it("S4A-F2: Historial navega a /socios/:id/historial y monta la pestaña con GET /members/{id}/audit sin volver a pedir la ficha", async () => {
+    const { mock, user } = renderMemberDetail();
+    await user.click(await screen.findByRole("tab", { name: "Historial" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/historial`);
+    expect(screen.getByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    expect(await within(screen.getByRole("tabpanel")).findByText("Sin cambios registrados")).toBeInTheDocument();
+    expect(mock.callsTo(`GET ${DETAIL_PATH}/audit`).some((call) => new URL(call.url, "http://apex.test").searchParams.get("limit") === "25")).toBe(true);
+    expect(mock.callsTo(`GET ${DETAIL_PATH}`)).toHaveLength(1);
+  });
+
+  it("S4A-F2: el coach también ve la pestaña Historial habilitada (members.history.view)", async () => {
+    signInAs("coach");
+    renderMemberDetail(`/socios/${MEMBER_ID}/historial`);
+
+    expect(await screen.findByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Historial" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("pulsar Datos estando en Datos no cambia de ruta (la hija índice vive en la ruta del padre)", async () => {

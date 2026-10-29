@@ -119,6 +119,12 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "payments.view",
     load: () => import("../features/payments/components/MemberPaymentsTab"),
   }),
+  // S4A-F2 (US-106, S4A-D30): Historial es hija de la feature members (el coach la ve) con
+  // members.history.view; siempre la última pestaña (DESIGN.md, Tabs).
+  childRoute(MEMBER_DETAIL, "/socios/:id/historial", "Historial", {
+    access: "members.history.view",
+    load: () => import("../features/members/components/MemberHistoryTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).

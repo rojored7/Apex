@@ -51,3 +51,8 @@ export function readUpdatedNotice(state: unknown): boolean {
 export function isMemberId(id: string): boolean {
   return isUuid(id);
 }
+
+// S4A-F2 (US-106): la pestaña Historial de la ficha, hija /socios/:id/historial (S4A-D30).
+export function memberHistoryHref(id: string): string {
+  return `${memberHref(id)}/historial`;
+}

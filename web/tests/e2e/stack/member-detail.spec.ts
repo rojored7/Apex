@@ -114,6 +114,11 @@ test.describe("ficha del socio contra el stack", () => {
     await expect(page.getByText("Cambios guardados")).toBeVisible();
     await expect(datos.getByText(`••• ••• ${telefono.slice(-4)}`)).toBeVisible();
     expect(patches).toEqual([JSON.stringify({ phone: telefono })]);
+    // S4A-F2 (US-106): la caja "Historial reciente" de Datos cuenta la edición sin el número.
+    const reciente = page.getByRole("complementary", { name: "Historial" });
+    await expect(reciente.getByText(/ editó teléfono$/)).toBeVisible();
+    await expect(reciente.getByText(/ mostró el documento$/)).toBeVisible();
+    await expect(reciente).not.toContainText(telefono);
 
     // US-076: dar de baja (solo lectura) y reactivar.
     await page.getByRole("button", { name: "Dar de baja" }).click();
@@ -145,6 +150,10 @@ test.describe("ficha del socio contra el stack", () => {
       await expect(coachPage.getByRole("link", { name: "Editar" })).toBeVisible();
       await expect(coachPage.getByRole("button", { name: "Dar de baja" })).toHaveCount(0);
       await expect(coachPage.getByRole("button", { name: "Reactivar" })).toHaveCount(0);
+      // S4A-F2 (US-106): el coach abre la pestaña Historial (members.history.view).
+      await coachPage.getByRole("tab", { name: "Historial" }).click();
+      await expect(coachPage.getByRole("tabpanel").getByText(/ mostró el documento$/).first()).toBeVisible();
+      await expect(coachPage.getByRole("tabpanel")).not.toContainText(socio.documento);
     } finally {
       await context.close();
       if (creadoId) await borrarUsuario(page, creadoId, admin);

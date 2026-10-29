@@ -8,7 +8,7 @@
 // - 409 version_conflict: isConflict y sin reintento (las mutaciones no se reintentan);
 //   reload() limpia el conflicto y vuelve a leer, sin sobrescribir lo de la otra persona.
 // - Nada se guarda en localStorage: la única copia local es la caché de TanStack Query.
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
@@ -17,7 +17,24 @@ import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
-import { LINK_PURPOSES, userOutSchema, usersPageSchema, type CreateUserForm, type LinkPurpose, type UserRowView, type UserView } from "./schemas";
+import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import {
+  LINK_PURPOSES,
+  auditDetailSchema,
+  auditPageSchema,
+  lastVerificationSchema,
+  userOutSchema,
+  usersPageSchema,
+  verifyResultSchema,
+  verifyStartedSchema,
+  type AuditDetailView,
+  type AuditRowView,
+  type CreateUserForm,
+  type LinkPurpose,
+  type UserRowView,
+  type UserView,
+  type VerifyResultView,
+} from "./schemas";
 
 // S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
 export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods";
@@ -336,4 +353,97 @@ export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget
     },
     { gcTime: 0 },
   );
+}
+
+// ---------------------------------------------------------------------------------------
+// S4A-F1 · US-102 a US-104: auditoría (S4A-D31, S4A-D35, S4A-D58).
+// - useAudit(params): GET /audit con los parámetros ya validados por auditFilters.toApiParams
+//   (URLSearchParams); la clave es ["audit", "list", <query>]. Con búsqueda no queda en caché.
+// - useAuditEntry(seq): GET /audit/{seq} solo con un `seq` entero seguro >= 1; `gcTime: 0` (el
+//   detalle trae los valores antes y después) y sin relectura al volver a la ventana.
+// - useLastVerification({ polling, baseline }): GET /audit/verify/last; `refetchInterval` solo mientras
+//   la pantalla espera una verificación en segundo plano y la última terminada sigue siendo `baseline`
+//   (su `finished_at`); un error lo frena y `maxUpdates` lo corta tras VERIFY_MAX_POLLS lecturas. El
+//   tope en tiempo (VERIFY_MAX_MS) lo aplica quien sondea.
+// - useVerifyChain(): POST /audit/verify por useSensitiveMutation (S3-D104): 200 con el resultado
+//   o 202 con la última terminada; nada queda en la caché de mutaciones.
+export const AUDIT_QUERY_KEY = ["audit"] as const;
+export const LAST_VERIFICATION_KEY = ["audit", "verify", "last"] as const;
+/** Cada cuánto se pregunta por la verificación en segundo plano. */
+export const VERIFY_POLL_MS = 3_000;
+/** VERIFY_MAX_SECONDS del api (core/audit_verify.py): después de esto la verificación no terminó. */
+export const VERIFY_MAX_MS = 900_000;
+export const VERIFY_MAX_POLLS = VERIFY_MAX_MS / VERIFY_POLL_MS;
+
+export type VerifyOutcome = { kind: "done"; result: VerifyResultView } | { kind: "started"; last: VerifyResultView | null };
+
+const verifyOutcomeSchema = z.union([
+  verifyResultSchema.transform((result): VerifyOutcome => ({ kind: "done", result })),
+  verifyStartedSchema.transform(({ last }): VerifyOutcome => ({ kind: "started", last })),
+]);
+
+export function useAudit(params: URLSearchParams): UseQueryResult<Page<AuditRowView>> {
+  const query = params.toString();
+  return useQuery({
+    queryKey: [...AUDIT_QUERY_KEY, "list", query],
+    queryFn: async ({ signal }) => parseResponse(auditPageSchema, await api.get<unknown>("/audit", { query: Object.fromEntries(params), signal })),
+    placeholderData: keepPreviousData,
+    ...(params.has("q") ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
+  });
+}
+
+export function useAuditEntry(seq: number | null): UseQueryResult<AuditDetailView> {
+  return useQuery({
+    queryKey: [...AUDIT_QUERY_KEY, "entry", seq ?? 0],
+    queryFn: async ({ signal }) => parseResponse(auditDetailSchema, await api.get<unknown>(`/audit/${String(seq ?? 0)}`, { signal })),
+    enabled: seq !== null,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** El tope del sondeo para una espera que empieza ahora: lecturas hechas más VERIFY_MAX_POLLS. */
+export function lastVerificationPollLimit(client: QueryClient): number {
+  return (client.getQueryState(LAST_VERIFICATION_KEY)?.dataUpdateCount ?? 0) + VERIFY_MAX_POLLS;
+}
+
+export interface LastVerificationOptions {
+  /** La pantalla espera una verificación en segundo plano. */
+  polling: boolean;
+  /** `finished_at` de la última terminada al empezar a esperar (null si no había ninguna). */
+  baseline?: string | null;
+  /**
+   * `dataUpdateCount` de la consulta a partir del cual se deja de sondear: el de cuando empezó la
+   * espera más VERIFY_MAX_POLLS (lastVerificationPollLimit).
+   */
+  maxUpdates?: number;
+}
+
+export function useLastVerification({ polling, baseline = null, maxUpdates }: LastVerificationOptions): UseQueryResult<VerifyResultView | null> {
+  return useQuery({
+    queryKey: LAST_VERIFICATION_KEY,
+    queryFn: async ({ signal }) => parseResponse(lastVerificationSchema, await api.get<unknown>("/audit/verify/last", { signal })),
+    // Se pregunta solo mientras la última terminada siga siendo la de antes: al llegar otra, se para.
+    // Revisión de seguridad de F1 (MEDIUM 1): un error (429, 5xx, red) frena el sondeo, y nunca pasa
+    // de `maxUpdates` lecturas (las del inicio más VERIFY_MAX_POLLS) aunque `finished_at` no cambie.
+    refetchInterval: (query) => {
+      const { state } = query;
+      if (!polling || state.status === "error" || state.fetchFailureCount > 0) return false;
+      if (maxUpdates !== undefined && state.dataUpdateCount >= maxUpdates) return false;
+      return (state.data?.finished_at ?? null) === baseline ? VERIFY_POLL_MS : false;
+    },
+    refetchIntervalInBackground: polling,
+  });
+}
+
+export function useVerifyChain(): UseMutationResult<VerifyOutcome, Error, void> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<VerifyOutcome>({
+    mutationFn: async () => parseResponse(verifyOutcomeSchema, await api.post<unknown>("/audit/verify")),
+    // 200: el resultado ya es la última verificación. 202: la última terminada que trae la respuesta es
+    // la referencia del sondeo (así una copia vieja de la caché no se toma por el resultado nuevo).
+    onSuccess: (outcome) => {
+      queryClient.setQueryData(LAST_VERIFICATION_KEY, outcome.kind === "done" ? outcome.result : outcome.last);
+    },
+  });
 }

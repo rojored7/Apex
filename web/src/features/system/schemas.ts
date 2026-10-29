@@ -200,3 +200,95 @@ export const editUserSchema = z.object({
 
 export type UserView = z.infer<typeof userOutSchema>;
 export type EditUserForm = z.infer<typeof editUserSchema>;
+
+// S4A-F1 · US-102 a US-104: auditoría (AuditRow, AuditDetail, FieldChange, VerifyResultOut y
+// VerifyStartedOut de audit/schemas.py). Estrictos (como el api, `extra="forbid"`): una fila de la
+// lista con `before` o `after` es una respuesta inválida, nunca datos (S4A-D16).
+export const AUDIT_ACTIONS = ["insert", "update", "delete", "reveal", "export", "download", "login", "verify"] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+const instant = z.iso.datetime({ offset: true });
+const seqSchema = z.number().int().positive();
+
+export const auditRowSchema = z
+  .object({
+    seq: seqSchema,
+    at: instant,
+    user_id: z.string().min(1),
+    user_email: z.string().nullable(),
+    user_name: z.string().nullable(),
+    action: z.enum(AUDIT_ACTIONS),
+    table_name: z.string().min(1),
+    record_id: z.string().nullable(),
+    subject_member_id: z.string().nullable(),
+  })
+  .strict();
+
+export const auditPageSchema = pageSchema(auditRowSchema);
+
+export const fieldChangeSchema = z
+  .object({
+    field: z.string(),
+    kind: z.enum(["added", "removed", "changed"]),
+    before: z.unknown(),
+    after: z.unknown(),
+    encrypted: z.boolean(),
+  })
+  .strict();
+
+const snapshotSchema = z.record(z.string(), z.unknown()).nullable();
+
+export const auditDetailSchema = auditRowSchema
+  .extend({
+    before: snapshotSchema,
+    after: snapshotSchema,
+    prev_hash: z.string(),
+    hash: z.string(),
+    changes: z.array(fieldChangeSchema),
+  })
+  .strict()
+  // Revisión de seguridad de F1 (LOW 3): la pantalla pinta solo `changes`; las fotos completas
+  // `before` y `after` se validan y se descartan, así no quedan en la caché de la consulta.
+  .transform(({ seq, at, user_id, user_email, user_name, action, table_name, record_id, subject_member_id, prev_hash, hash, changes }) => ({
+    seq,
+    at,
+    user_id,
+    user_email,
+    user_name,
+    action,
+    table_name,
+    record_id,
+    subject_member_id,
+    prev_hash,
+    hash,
+    changes,
+  }));
+
+export const verifyResultSchema = z
+  .object({
+    ok: z.boolean(),
+    rows_checked: z.number().int().nonnegative(),
+    through_seq: z.number().int().nonnegative(),
+    broken_at_seq: seqSchema.nullable(),
+    started_at: instant,
+    finished_at: instant,
+    triggered_by: z.string().min(1),
+    source: z.enum(["api", "cli"]),
+  })
+  .strict();
+
+export const verifyStartedSchema = z
+  .object({
+    status: z.literal("running"),
+    last: verifyResultSchema.nullable(),
+  })
+  .strict();
+
+/** GET /audit/verify/last: la última verificación terminada o null (nunca 404). */
+export const lastVerificationSchema = verifyResultSchema.nullable();
+
+export type AuditRowView = z.infer<typeof auditRowSchema>;
+export type FieldChangeView = z.infer<typeof fieldChangeSchema>;
+export type AuditDetailView = z.infer<typeof auditDetailSchema>;
+export type VerifyResultView = z.infer<typeof verifyResultSchema>;
+export type VerifyStartedView = z.infer<typeof verifyStartedSchema>;

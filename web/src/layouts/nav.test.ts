@@ -8,10 +8,10 @@ const labels = (groups: NavGroup[]): string[] => groups.flatMap((g) => g.items.m
 const ALL: ReadonlySet<Feature> = new Set(FEATURES);
 
 describe("buildNavItems", () => {
-  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Usuarios y Configuración", () => {
+  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Usuarios, Auditoría (S4A-F1) y Configuración", () => {
     const groups = buildNavItems("admin", ENABLED_FEATURES);
 
-    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Usuarios y roles", "Configuración"]);
+    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Usuarios y roles", "Auditoría", "Configuración"]);
     expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "sistema"]);
     expect(groups.find((g) => g.id === "sistema")?.title).toBe("Sistema");
     expect(groups.find((g) => g.id === "inicio")?.title).toBeNull();
@@ -114,5 +114,18 @@ describe("menú y rutas hijas (S3-F3, E14)", () => {
 
   it("NAV_CATALOG es estático y no tiene entradas con parámetros (:)", () => {
     expect(NAV_CATALOG.filter((item) => item.to.includes(":")).map((item) => item.to)).toEqual([]);
+  });
+});
+
+describe("Auditoría en el menú (S4A-F1, S4A-D30)", () => {
+  it("lleva a /sistema/auditoria con la feature audit, entre Usuarios y roles y Configuración, solo para el admin", () => {
+    const auditoria = NAV_CATALOG.find((item) => item.label === "Auditoría");
+    const admin = labels(buildNavItems("admin", ENABLED_FEATURES));
+
+    expect(auditoria).toMatchObject({ to: "/sistema/auditoria", feature: "audit", group: "sistema" });
+    expect(admin.slice(admin.indexOf("Usuarios y roles"))).toEqual(["Usuarios y roles", "Auditoría", "Configuración"]);
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).not.toContain("Auditoría");
+    expect(canAccessRoute("coach", "/sistema/auditoria")).toBe(false);
+    expect(findRoute("/sistema/auditoria")?.access).toBe("audit.view");
   });
 });

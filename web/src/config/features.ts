@@ -30,7 +30,7 @@ export function isRouteEnabled(route: { feature?: Feature | undefined }, enabled
   return route.feature === undefined || enabled.has(route.feature);
 }
 
-/** Features del Sprint 2 (decisión 25 del blueprint), membresías desde S3-F3 y pagos desde S3-F4 (D36). */
+/** Features del Sprint 2 (decisión 25 del blueprint), membresías desde S3-F3, pagos desde S3-F4 (D36) y auditoría desde S4A-F1 (S4A-D30). */
 export const ENABLED_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   "auth",
   "dashboard",
@@ -39,5 +39,6 @@ export const ENABLED_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   "memberships",
   "payments",
   "users",
+  "audit",
   "settings",
 ]);

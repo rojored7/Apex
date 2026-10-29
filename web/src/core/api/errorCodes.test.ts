@@ -94,3 +94,12 @@ describe("códigos del Sprint 3 (S3-F1)", () => {
     );
   });
 });
+
+describe("códigos del Sprint 4A (S4A-F1)", () => {
+  it("incluye los de la auditoría (audit/exceptions.py, S4A-D35)", () => {
+    expect(API_ERROR_CODES).toMatchObject({
+      verificationRunning: "verification_running",
+      auditEntryNotFound: "audit_entry_not_found",
+    });
+  });
+});

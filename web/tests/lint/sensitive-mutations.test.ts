@@ -73,7 +73,7 @@ describe("mutaciones con valores sensibles (S3-D52)", () => {
     expect(hook).toMatch(/onSettled:\s*\(\)\s*=>\s*\{\s*resetRef\.current\(\);/);
   });
 
-  it("las seis mutaciones de S3-D52 usan useSensitiveMutation", () => {
+  it("las seis mutaciones de S3-D52 y useVerifyChain (S4A-D35) usan useSensitiveMutation", () => {
     const uses = (file: string, name: string): boolean => {
       const source = readFileSync(join(SRC, file), "utf8");
       const start = source.indexOf(`function ${name}(`);
@@ -89,6 +89,8 @@ describe("mutaciones con valores sensibles (S3-D52)", () => {
         ["features/memberships/api.ts", "useCancelMembership"],
         ["features/payments/api.ts", "useRegisterPayment"],
         ["features/payments/api.ts", "useVoidPayment"],
+        // S4A-F1 (S4A-D35): verificar la cadena tampoco deja su resultado en la caché de mutaciones.
+        ["features/system/api.ts", "useVerifyChain"],
       ].filter(([file, name]) => !uses(file ?? "", name ?? "")),
     ).toEqual([]);
   });

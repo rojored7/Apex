@@ -143,7 +143,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/avisos/historial", "Historial de envíos", "notifications", "notifications.view", "panel"),
   // S2-F4a: lista y alta; la gestión (editar, bloquear, sesiones, reenviar) llega en S2-F4b.
   route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", { load: () => import("../features/system/pages/UsersPage") }),
-  route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel"),
+  // S4A-F1: consulta, detalle sin descifrar y verificación de la cadena (US-102 a US-104, S4A-D31).
+  route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel", { load: () => import("../features/system/pages/AuditPage") }),
   route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel"),
   // S2-F5: Gimnasio, Privacidad y Membresías (S2-D15).
   route("/sistema/configuracion", "Configuración", "settings", "settings.manage", "panel", { load: () => import("../features/system/pages/ConfigPage") }),

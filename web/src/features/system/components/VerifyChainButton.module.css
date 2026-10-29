@@ -1,0 +1,54 @@
+/* S4A-F1: estado de la cadena y "Verificar ahora" (Auditoria.html, nota bajo el título). Solo variables de tokens.css. */
+.box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.row {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.result {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.result:empty {
+  display: none;
+}
+
+.result p {
+  margin: 0;
+}
+
+.note {
+  flex: 1 1 240px;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.ok {
+  color: var(--ink);
+  font: var(--text-body);
+  font-weight: 700;
+}
+
+.broken,
+.error {
+  color: var(--danger);
+  font: var(--text-body);
+  font-weight: 700;
+}
+
+.broken a {
+  color: var(--ink);
+  text-decoration: underline;
+}

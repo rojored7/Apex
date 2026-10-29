@@ -1,0 +1,108 @@
+/* S4A-F1: detalle de una entrada (Auditoria.html, "Detalle de una entrada"). Solo variables de tokens.css. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font: var(--text-body);
+}
+
+.meta dt {
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.meta dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin: var(--space-2) 0 0;
+  font: var(--text-h2);
+  color: var(--ink);
+}
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.field {
+  font: var(--text-label);
+  color: var(--ink);
+}
+
+.diff {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.before {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.after {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.alert {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.alert p {
+  margin: 0;
+}
+
+.meta a {
+  color: var(--blue-deep);
+  text-decoration: underline;
+}

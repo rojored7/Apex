@@ -71,6 +71,9 @@ export const API_ERROR_CODES = {
   memberAlreadyDeactivated: "member_already_deactivated",
   memberNotDeactivated: "member_not_deactivated",
   consentCannotBeWithdrawn: "consent_cannot_be_withdrawn",
+  // S4A-F1: auditoría (US-103, US-104; audit/exceptions.py, S4A-D35).
+  verificationRunning: "verification_running",
+  auditEntryNotFound: "audit_entry_not_found",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

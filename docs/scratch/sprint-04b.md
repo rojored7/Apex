@@ -72,3 +72,11 @@ Rama `feat/sprint-04b-continuidad-release`. Plan: `docs/ddd/blueprints/sprint-04
 ### S4B-W0-2 · Revisiones
 
 - `database-reviewer`: APROBAR, sin bloqueantes. (1) BAJA: RUNBOOK §6 y DECISIONES (junto a S4B-D4) dicen ahora que `0014` se aplica con el api y el worker parados (`ShareRowExclusiveLock` sobre `audit_log` y `crypto.*` hasta el commit; `env.py` comparte una transacción para todas las pendientes) y que `pg_restore --disable-triggers` (modo `replica`) ya no omite estas tablas. (2) INFO: nada que cambiar.
+
+### Evidencia de S4B-W0-2
+
+- Checkpoint `f508b73`. Gate `wave0-gate.sh W0-2` sellado: 482 passed (4 archivos de migraciones + `tests/architecture`); ruff/format/mypy limpios.
+- W0-2.7 en `apex-db-1`: `$DC stop worker` antes de arrancar el api (decisión del revisor); `$DC start api` aplicó `0014` ("Running upgrade 0013_audit_verifications -> 0014_audit_log_triggers_always"), `alembic current` = `0014_audit_log_triggers_always (head)`. Ciclo `downgrade -1` (ocho en `O`, `verifications` en `A`) → `upgrade head` → `current` 0014.
+- `tgenabled`: los diez inmutables en `A` (`audit_log` 2, `verifications` 2, `crypto_ops` 2, `crypto_keys` 2, `crypto_jobs` 2) y los siete de `memberships`/`payments` también en `A` (17 filas).
+- Bajo `replica` y dentro de `BEGIN; ... ROLLBACK;`: "audit.audit_log es append-only", "audit.verifications es append-only", "crypto.crypto_ops es append-only".
+- Stack: api `healthy` en `0014`, worker `healthy` (RestartCount 0), `/health` y `/api/v1/health` 200. Evidencia también en el scratchpad (`w02-evidencia.md`).

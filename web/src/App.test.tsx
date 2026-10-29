@@ -38,7 +38,7 @@ describe("App", () => {
     });
     render(<App router={createAppRouter({ initialEntries: ["/"] })} />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Hola, ana@apex.test" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: /^Hola, ana · / })).toBeInTheDocument();
     expect(screen.getByText("Box Norte")).toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "Menú principal" })).getByRole("link", { name: "Configuración" })).toBeInTheDocument();
   });

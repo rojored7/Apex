@@ -1,0 +1,91 @@
+/* S4A-F3: KPI de Inicio (Inicio.html). Solo variables de tokens.css. Cuatro columnas en escritorio,
+   dos en tableta y una en celular. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* Ingresos del coach (S4A-D118): la tarjeta sin cifra, con el mismo marco que KpiCard. */
+.restricted {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.restrictedLabel {
+  font: var(--text-label);
+  color: var(--muted);
+}
+
+.restrictedValue {
+  font: var(--text-h2);
+  color: var(--muted);
+}
+
+/* Sobre --card: --blue-deep sobre --surface queda en 4,48:1 (axe exige 4,5:1). */
+.pending {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: var(--text-body);
+  color: var(--muted);
+}
+
+.pendingLink {
+  color: var(--blue-deep);
+  font-weight: 600;
+}
+
+.pendingLink:hover {
+  color: var(--ink);
+}
+
+.pendingLink:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--card);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+}
+
+.errorText {
+  flex: 1 1 240px;
+  margin: 0;
+  font: var(--text-body);
+  color: var(--ink);
+}
+
+@media (width < 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width < 480px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

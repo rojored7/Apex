@@ -1,48 +1,46 @@
-// S2-D25: Inicio mínima hasta GET /dashboard (Sprint 3): saludo con el correo y accesos a lo
-// que el Sprint 2 trae para el rol.
-// DESIGN-GAP: Inicio.html trae KPIs, "Hoy en el box", "Por avisar hoy", asistencia y últimos
-// movimientos; llegan con GET /dashboard (S3). El nombre de la persona llega con US-110.
-import { Link } from "react-router";
-import { Can, useSession, type Action } from "../../../core/auth";
-import { PageHeader } from "../../../shared/ui/PageHeader";
+// S4A-F3 · US-108 a US-110 (front; reemplaza la Inicio mínima de S2-D25): Inicio.html con GET
+// /dashboard. Saludo con el día de Bogotá, accesos del encabezado según el rol, los KPI de v0.1
+// (KpiGrid), las tarjetas futuras (FutureKpis) y los últimos movimientos (LastMovements). Las tres
+// piezas comparten la consulta ["dashboard"]: una sola petición. El member nunca llega aquí: RequireRole
+// lo manda a /mi antes de pintar el panel.
+// DESIGN-GAP: "Hola, Ana": el saludo usa la parte local del correo; `display_name` llega en v0.2 con
+// EP-04 (S4A-D19).
+// DESIGN-GAP: "Registrar pago" y "Check-in" del encabezado: el registro de pagos se abre desde /pagos
+// (sin enlace directo al panel) y Check-in llega con clases en v0.4.
+import { useSession } from "../../../core/auth";
+import { can } from "../../../core/auth/permissions";
+import { formatLongDate, todayBogota } from "../../../core/i18n/format";
+import { NEW_MEMBER_PATH, SELL_PATH } from "../../../shared/lib/routes";
+import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
+import { useDashboard } from "../api";
+import { FutureKpis } from "../components/FutureKpis";
+import { KpiGrid } from "../components/KpiGrid";
+import { LastMovements } from "../components/LastMovements";
 import styles from "./InicioPage.module.css";
 
-interface Shortcut {
-  label: string;
-  to: string;
-  action: Action;
-  note: string;
+/** "ana" de "ana@apex.test"; el correo entero si no tiene arroba. */
+function localPart(email: string): string {
+  const at = email.indexOf("@");
+  return at > 0 ? email.slice(0, at) : email;
 }
-
-const SHORTCUTS: readonly Shortcut[] = [
-  { label: "Socios", to: "/socios", action: "members.view", note: "Registrar y buscar socios." },
-  { label: "Planes", to: "/planes", action: "plans.view", note: "Crear y revisar los planes del gimnasio." },
-  { label: "Usuarios y roles", to: "/sistema/usuarios", action: "users.manage", note: "Cuentas del equipo y enlaces de activación." },
-  { label: "Configuración", to: "/sistema/configuracion", action: "settings.manage", note: "Datos del gimnasio, privacidad y membresías." },
-];
 
 export default function InicioPage() {
   const { user } = useSession();
+  const { data } = useDashboard();
+  const day = formatLongDate(data?.today ?? todayBogota());
+  const title = user ? `Hola, ${localPart(user.email)} · ${day}` : "Inicio";
+  const role = user?.role ?? null;
+  const actions: PageAction[] = [
+    ...(can(role, "members.create") ? [{ id: "nuevo-socio", label: "+ Nuevo socio", href: NEW_MEMBER_PATH, variant: "primary" as const }] : []),
+    ...(can(role, "memberships.sell") ? [{ id: "vender", label: "Vender membresía", href: SELL_PATH }] : []),
+  ];
+
   return (
     <div className={styles.page}>
-      <PageHeader title={user ? `Hola, ${user.email}` : "Inicio"} />
-      <p className={styles.note}>El tablero con socios al día, vencimientos e ingresos llega en la próxima versión.</p>
-      <nav aria-label="Accesos rápidos">
-        <ul className={styles.grid}>
-          {SHORTCUTS.map((shortcut) => (
-            <Can key={shortcut.to} action={shortcut.action}>
-              <li>
-                <Link to={shortcut.to} className={styles.card} aria-describedby={`acceso-${shortcut.action}`}>
-                  {shortcut.label}
-                </Link>
-                <p id={`acceso-${shortcut.action}`} className={styles.cardNote}>
-                  {shortcut.note}
-                </p>
-              </li>
-            </Can>
-          ))}
-        </ul>
-      </nav>
+      <PageHeader title={title} actions={actions} />
+      <KpiGrid />
+      <FutureKpis />
+      <LastMovements />
     </div>
   );
 }

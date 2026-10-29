@@ -1,61 +1,7 @@
-/* S2-D25: Inicio mínima. Solo variables de tokens.css. */
+/* S4A-F3: Inicio (Inicio.html). Solo variables de tokens.css. */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-}
-
-.note {
-  margin: 0;
-  color: var(--muted);
-  font: var(--text-body);
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(calc(var(--sidebar) + var(--space-6)), 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.grid > li {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-}
-
-.card {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--control);
-  color: var(--blue-deep);
-  font: var(--text-h2);
-  text-decoration: none;
-}
-
-.card:hover {
-  text-decoration: underline;
-}
-
-.card:focus-visible {
-  outline: 3px solid var(--blue-deep);
-  outline-offset: 2px;
-}
-
-.cardNote {
-  margin: 0;
-  color: var(--muted);
-  font: var(--text-caption);
-}
-
-@media (width < 768px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
+  min-width: 0;
 }

@@ -1,0 +1,101 @@
+/* S4A-F3: últimos movimientos de Inicio. Solo variables de tokens.css. */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  flex: 1 1 auto;
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  font: var(--text-label);
+  color: var(--blue-deep);
+}
+
+.more:hover {
+  color: var(--ink);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font: var(--text-body);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.phrase {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+a.phrase {
+  color: var(--blue-deep);
+}
+
+a.phrase:hover {
+  color: var(--ink);
+}
+
+.more:focus-visible,
+a.phrase:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.time {
+  font: var(--text-caption);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--muted);
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.errorText {
+  flex: 1 1 240px;
+  margin: 0;
+  font: var(--text-body);
+}

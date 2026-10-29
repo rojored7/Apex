@@ -19,7 +19,7 @@ from uuid import uuid4
 import pytest
 
 from app.core.audit import AuditEntry
-from app.modules.audit.diff import REDUCED_FIELDS, diff, reduce_entry
+from app.modules.audit.diff import REDUCED_FIELDS, diff, redact_blobs, reduce_entry
 from app.modules.audit.schemas import AuditEntryView, FieldChange
 
 K1 = "328c1948-e343-48a1-9ef4-1b9dab140c4f"
@@ -249,3 +249,24 @@ def test_reduce_entry_no_muta_la_fila_y_la_vista_es_inmutable() -> None:
     assert fila.after == {"status": "active", "end_date": "2026-11-19"}
     with pytest.raises(FrozenInstanceError):
         vista.seq = 1  # type: ignore[misc]
+
+
+# `*_idx` con el HMAC de una fila antigua (S4A-V10 L-3) --------------------------------------
+
+HMAC = "9f2c" * 16
+
+
+def test_un_idx_con_hmac_sale_como_asteriscos_en_changes_y_en_redact_blobs() -> None:
+    antes = {"phone_idx": HMAC, "phone": VIEJO, "ip": "203.0.113.9"}
+    despues = {"phone_idx": HMAC[::-1], "phone": NUEVO, "ip": "203.0.113.9"}
+
+    assert diff(antes, despues, "update") == [
+        _c("phone", "changed", M_VIEJO, M_NUEVO, enc=True),
+        _c("phone_idx", "changed", "***", "***"),
+    ]
+    assert redact_blobs(antes) == {"phone_idx": "***", "phone": M_VIEJO, "ip": "203.0.113.9"}
+    assert redact_blobs({"x": {"email_idx": HMAC}, "document_idx": None}) == {
+        "x": {"email_idx": "***"},
+        "document_idx": None,
+    }
+    assert antes["phone_idx"] == HMAC  # no muta

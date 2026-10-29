@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import record
 from app.core.clock import FrozenClock
 from app.core.crypto import bus
 from app.core.crypto import types as crypto_types
@@ -194,3 +195,33 @@ async def test_el_detalle_no_modifica_audit_log(
     for seq in (1, 5, 11):
         await audit_service.get_entry(audit_chain_factory.session, seq)
     assert (await audit_chain_factory.digest(), await audit_chain_factory.last_seq()) == antes
+
+
+async def test_un_idx_con_hmac_de_una_fila_antigua_llega_como_asteriscos(
+    session: AsyncSession, actividad: Actividad, juan: UsuarioPrueba
+) -> None:
+    """S4A-V10 L-3: una fila sembrada por `audit.record` directo con el HMAC en `phone_idx` (como
+    las anteriores a la redacción) sale con `***` en `before`, `after` y `changes`; `ip` sigue
+    visible para el admin."""
+    hmac_viejo, hmac_nuevo = "ab12" * 16, "cd34" * 16
+    fila = await record(
+        session,
+        action="update",
+        table_name="members.members",
+        record_id=actividad.member_id,
+        before={"phone_idx": hmac_viejo, "ip": IP_REVELAR},
+        after={"phone_idx": hmac_nuevo, "ip": IP_REVELAR},
+        user_id=juan.id,
+    )
+    cruda = await leer_entrada(session, fila.seq)
+    assert cruda is not None and cruda["after"]["phone_idx"] == hmac_nuevo
+
+    detalle = await audit_service.get_entry(session, fila.seq)
+
+    assert detalle.before == {"phone_idx": "***", "ip": IP_REVELAR}
+    assert detalle.after == {"phone_idx": "***", "ip": IP_REVELAR}
+    assert [(c.field, c.kind, c.before, c.after) for c in detalle.changes] == [
+        ("phone_idx", "changed", "***", "***")
+    ]
+    volcado = detalle.model_dump_json()
+    assert hmac_viejo not in volcado and hmac_nuevo not in volcado

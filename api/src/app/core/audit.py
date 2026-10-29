@@ -251,21 +251,31 @@ def verify_chain(
     prev_hash = start_prev_hash
     last_seq: int | None = None
     last_hash: str | None = None
+    # Sin objetos temporales por fila más allá del hash (S4A-D127): `hash` se lee una vez y las
+    # columnas espejo se comparan en un bucle, sin generador.
     for row in rows:
         checked += 1
         seq = int(str(row.get("seq")))
-        last_seq, last_hash = seq, str(row.get("hash"))
-        mirrors_ok = all(row.get(k) == row.get(src) for k, src in MIRROR_KEYS if k in row)
+        row_hash = row.get("hash")
+        last_seq, last_hash = seq, str(row_hash)
         if (
             seq != prev_seq + 1
             or row.get("prev_hash") != prev_hash
-            or row.get("hash") != chain_hash(prev_hash, row)
-            or not mirrors_ok
+            or row_hash != chain_hash(prev_hash, row)
+            or not _mirrors_ok(row)
         ):
             return VerifyResult(False, checked, seq, last_seq, last_hash)
         prev_seq = seq
-        prev_hash = str(row["hash"])
+        prev_hash = last_hash
     return VerifyResult(True, checked, None, last_seq, last_hash)
+
+
+def _mirrors_ok(row: Mapping[str, object]) -> bool:
+    """Cada columna espejo presente en la fila coincide con su fuente (`MIRROR_KEYS`)."""
+    for key, src in MIRROR_KEYS:
+        if key in row and row.get(key) != row.get(src):
+            return False
+    return True
 
 
 # Escritura -------------------------------------------------------------------------

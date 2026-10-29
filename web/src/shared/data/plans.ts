@@ -32,7 +32,10 @@ export const planRowSchema = z.object({
   updated_at: z.string(),
   // S4A-B7 (S4A-D25): "Socios con él"; opcional con 0 por defecto (P-API paso 6).
   active_members_count: z.number().int().optional().default(0),
-});
+})
+  // S4A-V10 L-1: estricto como los demás esquemas de fila; un campo que el contrato (PlanOut)
+  // no declara es `invalid_response`.
+  .strict();
 export type PlanRowView = z.infer<typeof planRowSchema>;
 
 export const plansPageSchema = pageSchema(planRowSchema);

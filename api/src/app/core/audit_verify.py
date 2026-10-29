@@ -28,9 +28,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Final, Literal
+from typing import Final, Literal, cast
 from uuid import UUID
 
 from sqlalchemy import CHAR, BigInteger, Boolean, Text, func, select, text
@@ -200,15 +201,17 @@ async def _hash_at(session: AsyncSession, seq: int) -> str | None:
 
 async def _read_batch(
     session: AsyncSession, after_seq: int, until_seq: int, limit: int
-) -> list[dict[str, object]]:
-    """Filas con `after_seq < seq <= until_seq`, `seq` ascendente, a lo sumo `limit`."""
+) -> Sequence[Mapping[str, object]]:
+    """Filas con `after_seq < seq <= until_seq`, `seq` ascendente, a lo sumo `limit`. Devuelve
+    los `RowMapping` tal cual, sin copiarlos a `dict` (S4A-D127: menos objetos por fila para el
+    GC; `verify_chain` solo lee con `get` e `in`)."""
     lote = await session.execute(
         select(_LOG)
         .where(_LOG.c.seq > after_seq, _LOG.c.seq <= until_seq)
         .order_by(_LOG.c.seq)
         .limit(limit)
     )
-    return [dict(fila) for fila in lote.mappings()]
+    return cast("Sequence[Mapping[str, object]]", lote.mappings().all())
 
 
 async def _scan_chain(session: AsyncSession, through_seq: int) -> VerifyResult:

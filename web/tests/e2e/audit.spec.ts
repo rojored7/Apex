@@ -2,12 +2,14 @@
 // simulado por page.route (enmienda E8: esta captura en preview se crea en el Rojo de F1). Filtros en
 // la URL con los nombres del api, detalle por `?seq=` sin ninguna acción de descifrar, "Verificar
 // ahora" con 202 y sondeo de GET /audit/verify/last, y el coach en "Sin permiso". axe-core en claro y
-// oscuro a 390 y 1440 px, sin desborde horizontal y con capturas. La variante real es stack/audit.spec.ts.
+// oscuro a 320, 768, 1024 y 1440 px (S4A-V4, como home.spec.ts), sin desborde horizontal y con
+// capturas. La variante real es stack/audit.spec.ts.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { json, mockSession } from "./helpers/session";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
+const WIDTHS = [320, 768, 1024, 1440] as const;
 const ADMIN = { id: "11111111-1111-4111-8111-111111111111", email: "admin@apex.test", role: "admin" } as const;
 const COACH = { id: "22222222-2222-4222-8222-222222222222", email: "coach@apex.test", role: "coach" } as const;
 const SYSTEM = "00000000-0000-0000-0000-000000000001";
@@ -127,7 +129,7 @@ test.describe("auditoría (preview)", () => {
   });
 
   for (const scheme of ["light", "dark"] as const) {
-    for (const width of [390, 1440]) {
+    for (const width of WIDTHS) {
       test(`lista y detalle sin violaciones de axe en ${scheme} a ${String(width)} px`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         await page.setViewportSize({ width, height: 900 });

@@ -9,7 +9,9 @@ la paridad del prefijo y del separador con `core/crypto`).
   "<uuid en minúsculas>", "alg": "<alg>"}`; cualquier otra cosa (texto sin el prefijo, blob mal
   formado, no texto) da `None`.
 - `redact_blobs(mapping)`: copia del diccionario con cada blob sustituido por su marcador, también
-  dentro de diccionarios y listas anidados; `None` da `None`. Nunca muta la entrada. Un texto que
+  dentro de diccionarios y listas anidados; `None` da `None`. Nunca muta la entrada. Toda clave
+  `*_idx` con valor sale como `***` (`REDACTED`), también en `changes`, aunque la fila antigua
+  traiga el HMAC (S4A-V10 L-3); `ip` y el resto siguen tal cual para el admin. Un texto que
   contiene `apx1.` en cualquier posición y no es un blob bien formado desde el inicio tampoco sale
   tal cual: va como `MALFORMED_BLOB_MARKER` (`key_id` y `alg` nulos) y su `FieldChange.encrypted`
   es verdadero (S4A-D105, revisión de B4). Más allá de `MAX_DEPTH` (32) niveles el valor sale
@@ -36,7 +38,7 @@ from types import MappingProxyType
 from typing import Any, Final, cast
 from uuid import UUID
 
-from app.core.audit import TECHNICAL_COLUMNS, AuditAction, AuditEntry
+from app.core.audit import REDACTED, TECHNICAL_COLUMNS, AuditAction, AuditEntry
 from app.modules.audit.schemas import AuditEntryView, ChangeKind, FieldChange, HistoryPurpose
 
 __all__ = [
@@ -71,6 +73,9 @@ MAX_DEPTH: Final = 32
 """Profundidad máxima que recorren `redact_blobs` y `diff` (revisión de B4, L): más abajo, el
 valor se sustituye por `TRUNCATED_MARKER` en vez de agotar la pila (500)."""
 TRUNCATED_MARKER: Final[Mapping[str, Any]] = MappingProxyType({"truncated": True})
+INDEX_SUFFIX: Final = "_idx"
+"""Sufijo de las columnas de índice ciego: nunca salen en el historial y en el detalle su valor va
+como `REDACTED` (`***`), aunque una fila antigua traiga el HMAC (S4A-V10 L-3)."""
 FIELD_DEPTH: Final = 2
 """Nivel de un campo de `before`/`after` (el diccionario de la fila es el nivel 1)."""
 _TOKEN: Final = re.compile(r"[A-Za-z0-9_-]+")
@@ -109,17 +114,26 @@ def _redact_value(value: Any, depth: int) -> Any:
     if _is_blob_like(value):
         return blob_marker(value) or dict(MALFORMED_BLOB_MARKER)
     if isinstance(value, Mapping):
-        return {clave: _redact_value(interno, depth + 1) for clave, interno in value.items()}
+        return {clave: _redact_item(clave, interno, depth + 1) for clave, interno in value.items()}
     if isinstance(value, list | tuple):
         return [_redact_value(interno, depth + 1) for interno in value]
     return value
 
 
+def _redact_item(key: object, value: Any, depth: int) -> Any:
+    """El valor de la clave `key`: `REDACTED` si es un índice ciego (`*_idx`) con valor (un `None`
+    sigue `None`: no hay nada que tapar); si no, `_redact_value`."""
+    if isinstance(key, str) and key.endswith(INDEX_SUFFIX) and value is not None:
+        return REDACTED
+    return _redact_value(value, depth)
+
+
 def redact_blobs(mapping: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Copia de `mapping` con cada blob (también anidado) sustituido por su marcador."""
+    """Copia de `mapping` con cada blob (también anidado) sustituido por su marcador y cada
+    `*_idx` con valor como `***`."""
     if mapping is None:
         return None
-    return {clave: _redact_value(valor, FIELD_DEPTH) for clave, valor in mapping.items()}
+    return {clave: _redact_item(clave, valor, FIELD_DEPTH) for clave, valor in mapping.items()}
 
 
 def _change(field: str, before: Mapping[str, Any], after: Mapping[str, Any]) -> FieldChange | None:
@@ -137,8 +151,8 @@ def _change(field: str, before: Mapping[str, Any], after: Mapping[str, Any]) -> 
     return FieldChange(
         field=field,
         kind=kind,
-        before=_redact_value(antes, FIELD_DEPTH),
-        after=_redact_value(despues, FIELD_DEPTH),
+        before=_redact_item(field, antes, FIELD_DEPTH),
+        after=_redact_item(field, despues, FIELD_DEPTH),
         encrypted=_contains_blob(antes, FIELD_DEPTH) or _contains_blob(despues, FIELD_DEPTH),
     )
 
@@ -171,8 +185,6 @@ def diff(
 HIDDEN_HISTORY_FIELDS: Final[frozenset[str]] = frozenset({"reference", "void_reason"})
 """Nombres que el historial del socio nunca muestra (S4A-D20: de `payments.payments` no salen
 `reference` ni `void_reason`, ni su nombre)."""
-INDEX_SUFFIX: Final = "_idx"
-"""Sufijo de las columnas de índice ciego: nunca salen en el historial."""
 
 
 def history_fields(entry: AuditEntry) -> list[str]:

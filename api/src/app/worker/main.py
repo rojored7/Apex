@@ -103,17 +103,20 @@ async def run_once(job: str, *, date: date | None, simulate: bool, settings: Set
     spec = _buscar(job)
     if spec is None:
         nombres = ", ".join(s.name for s in get_registry())
+        # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
         print(f"job inexistente: {job}. Registrados: {nombres}", file=sys.stderr)
         return EXIT_USAGE
     hoy = current_clock().today_bogota()
     objetivo = date or hoy
     rechazo = _rechazo_de_fecha(objetivo, hoy, simulate=simulate, settings=settings)
     if rechazo is not None:
+        # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
         print(rechazo, file=sys.stderr)
         return EXIT_USAGE
     reloj: Clock = _reloj_simulado(objetivo) if simulate else current_clock()
     if simulate:
         # Antes de `configure_logging`: su handler escribe JSON en stdout (S4A-D48).
+        # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
         print(f"RELOJ SIMULADO: {objetivo.isoformat()}", flush=True)
     token = set_clock(reloj)
     try:
@@ -160,8 +163,10 @@ async def status(job: str, settings: Settings) -> int:
     async with runtime.worker_runtime(settings) as fabrica, fabrica() as sesion:
         vista = await last_run(sesion, job)
     if vista is None:
+        # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
         print(f"sin corridas de {job}", file=sys.stderr)
         return EXIT_USAGE
+    # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
     print(_status_json(vista), flush=True)
     return EXIT_OK
 
@@ -222,6 +227,7 @@ def _argumentos(argv: Sequence[str] | None) -> argparse.Namespace | int:
     except SystemExit as salida:  # argparse ya imprimió el uso (o la ayuda, con 0)
         return salida.code if isinstance(salida.code, int) else EXIT_USAGE
     if (args.date is not None or args.simulate) and args.run_once is None:
+        # Salida intencional de la CLI del worker, sin PII (excepción S4A-D87).
         print("--date y --simulate solo acompañan a --run-once", file=sys.stderr)
         return EXIT_USAGE
     return args

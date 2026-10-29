@@ -41,6 +41,18 @@ describe("usePlans (shared/data)", () => {
     expect(result.current.error).toMatchObject({ code: "invalid_response" });
   });
 
+  it("un campo que el contrato no declara es invalid_response (planRowSchema estricto)", async () => {
+    const conExtra = { ...PLANS.mensual, campo_extra: "x" }; // variable: sin el chequeo de exceso del literal
+    mockApi({ "GET /plans": (call) => planPage(call, [conExtra]) });
+    const { result } = renderHook(() => usePlans({ limit: 25, offset: 0 }), { wrapper: wrapper(testQueryClient()) });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+    expect(result.current.error).toMatchObject({ code: "invalid_response" });
+    expect(planRowSchema.safeParse(conExtra).success).toBe(false);
+  });
+
   it("la clave es ['plans', params], bajo ['plans']", () => {
     expect(plansQueryKey({ limit: 25, offset: 0 })).toEqual(["plans", { limit: 25, offset: 0 }]);
     expect(PLANS_QUERY_KEY).toEqual(["plans"]);

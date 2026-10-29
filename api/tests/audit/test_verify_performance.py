@@ -8,10 +8,19 @@ tests/audit/test_verify_performance.py -q` y sus tiempos van al cuaderno.
   pasa de 100 ms: cota superior del bloque síncrono de un lote (incluye su lectura).
 La medida decide `SYNC_VERIFY_MAX_ROWS` (si 100.000 caben en 20 s sube a 100.000; si 50.000 no
 caben, baja a 20.000); el valor y los tiempos se anotan en el cuaderno.
+
+Aislamiento del GC (S4A-D127): la prueba mide el bloque del código de la verificación, no el heap
+ajeno de la sesión de pytest. Con toda la suite `-m perf` recolectada viven ~300.000 objetos y una
+pausa del GC de generación 2 que los escanea cae dentro de un bloque (104-123 ms medidos); con solo
+este archivo la pausa es de 33-50 ms. Antes de medir, `gc.collect()` y `gc.freeze()` pasan los
+objetos existentes a la generación permanente (el GC no los vuelve a escanear) y `gc.unfreeze()`
+los devuelve en el `finally`. Los objetos que crea la verificación siguen bajo el GC normal, así
+que su presión sí cuenta; el tope de 100 ms no cambia.
 """
 
 from __future__ import annotations
 
+import gc
 import time
 
 import pytest
@@ -42,12 +51,17 @@ async def test_cien_mil_filas_en_menos_de_60_s_y_bloques_de_menos_de_100_ms(
 
     monkeypatch.setattr(audit_verify, "_pause_between_batches", medir)
 
-    inicio = time.perf_counter()
-    with actor_scope(SYSTEM_USER_ID):
-        resultado = await run_verification(
-            audit_chain_factory.session, source="cli", by=SYSTEM_USER_ID
-        )
-    total = time.perf_counter() - inicio
+    gc.collect()
+    gc.freeze()  # el heap de la sesión de pytest queda fuera de la medida (S4A-D127)
+    try:
+        inicio = time.perf_counter()
+        with actor_scope(SYSTEM_USER_ID):
+            resultado = await run_verification(
+                audit_chain_factory.session, source="cli", by=SYSTEM_USER_ID
+            )
+        total = time.perf_counter() - inicio
+    finally:
+        gc.unfreeze()
 
     assert (resultado.ok, resultado.rows_checked) == (True, FILAS)
     assert len(marcas) >= 2 * (FILAS // audit_verify.VERIFY_BATCH_SIZE - 1)

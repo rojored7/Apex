@@ -336,3 +336,13 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 3. LOW, recursión sin tope → **S4A-D107**: `MAX_DEPTH = 32` (`FIELD_DEPTH = 2` para los campos de la fila); más abajo `{"truncated": true}`. Pruebas con 40 niveles en `redact_blobs` y `diff`.
 4. LOW, PII parcial → **S4A-D108** (`display_name` = parte local del correo; dueño v0.2 EP-04) y validación de `table` contra `AUDITABLE_TABLES` (punto 1 a).
 - RUNBOOK §11 actualizado (filtros, `total` saturado, marcador). `ruff`, `ruff format --check` y `mypy src` limpios; P-API: export ×2 idénticas, `gen:api`, contrato 5/5, `tsc` limpio. Gate 3 (`architecture`) repetido: 334 ok. Perf con los cambios: lista 13,2 / 12,6 / 8,7 / 25,9 ms; `count(*)` 21,2 y 61,8 ms; `EXPLAIN` verde.
+
+### Evidencia de S4A-B4
+
+- Gate 6 sellante (`slice-gate.sh audit` con los ocho archivos, `-m "not perf"`): 570 ok (incluye `tests/architecture`), sello escrito. Checkpoint `2044bf8` con el trailer.
+- B4.9 (demo 3) por 8181 con el admin desechable `admin-e2e-1793249495@apex.test` (dos enlaces de `tools issue-reset-link --as admin@ejemplo.local`, código 0; `POST /auth/reset` 204; login con `Origin` del front 200; contraseña aleatoria solo en la shell; el admin real no se tocó):
+  - `GET /audit?table=memberships.memberships&limit=5` 200 (total 398; updates e inserts de admins de E2E; ninguna de `Sistema`: el job de B2 no ha hecho transiciones en la base real).
+  - `GET /audit?user_id=<SYSTEM_USER_ID>` 200 (total 2, `Sistema`, `auth.users`).
+  - `GET /audit/4501` 200 (update de `members.members`: `deleted_at`, `status`); `GET /audit/4356` 200 (`phone` `changed` con `encrypted` y el marcador `A256GCM`); `grep -c apx1.` = 0 en todos los cuerpos.
+  - 422 `validation_error`: `from=0001-01-01T00:00:00+05:00` (`from`), `/audit/99999999999999999999` (`seq`), `record_id` sin `table` (`record_id`), `table=members.socios` (`table`).
+- Stack: api, worker, web y db `healthy`, RestartCount 0; `alembic current` = `0013_audit_verifications (head)`; 0 líneas ERROR/Traceback en el log del api. Detalle en el scratchpad (`b4-evidencia.md`).

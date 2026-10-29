@@ -1,0 +1,58 @@
+/* S4A-F4: acciones de una fila de Planes.html ("Editar · Desactivar · Dar de baja"). Solo tokens.css.
+   Botones con aspecto de enlace, de 44 px de alto (DESIGN.md regla 9), como en Membresías. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  column-gap: var(--space-1);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--blue-deep);
+  font: var(--text-body);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--ink);
+}
+
+.action:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.danger:hover {
+  color: var(--danger);
+  text-decoration-thickness: 2px;
+}
+
+/* En las tarjetas del celular van al inicio. */
+@media (width < 768px) {
+  .actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Revisión de seguridad de F4 (LOW-2): mientras cambia el estado de un plan. */
+.action:disabled {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: not-allowed;
+}

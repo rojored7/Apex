@@ -4,7 +4,8 @@
 // - S2-D41: la búsqueda ("Nombre del plan") espera 300 ms, va al api y vive en memoria; en la URL
 //   quedan `active`, `limit` y `offset`. Un `active` desconocido no viaja.
 // - Columnas: plan (enlace a /planes?plan=<id>), tipo, precio "$ 120.000", duración, clases y
-//   estado con StatusTag ("Activo" o "Inactivo", con texto).
+//   estado con StatusTag ("Activo" o "Inactivo", con texto). S4A-F4: más "Socios con él" y "Acción"
+//   (sus casos en PlansPage.actions.test.tsx) y el total "N activos · M inactivos" para el admin.
 // - Estados: carga, vacío ("No hay planes"), sin coincidencias, página fuera de rango, error con
 //   Reintentar, 403 y respuesta inválida.
 // - `?plan=<id>` abre el detalle de solo lectura (usePlan); 403 del coach sobre un inactivo y 404
@@ -36,11 +37,11 @@ describe("PlansPage · estructura (Planes.html)", () => {
     renderPlans();
 
     expect(screen.getByRole("heading", { level: 1, name: /Planes/ })).toBeInTheDocument();
-    expect(await screen.findByText("3 en total")).toBeInTheDocument();
+    expect(await screen.findByText("2 activos · 1 inactivo")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nuevo plan" })).toBeInTheDocument();
     expect(searchbox()).toHaveAttribute("placeholder", "Nombre del plan");
     expect(within(showSelect()).getAllByRole("option").map((o) => o.textContent)).toEqual(["Todos", "Activos", "Inactivos"]);
-    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Plan", "Tipo", "Precio", "Duración", "Clases", "Estado"]);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Plan", "Tipo", "Precio", "Duración", "Clases", "Socios con él", "Estado", "Acción"]);
   });
 
   it("cada fila trae el nombre como enlace al detalle, el precio en COP y el estado con texto", async () => {
@@ -49,15 +50,16 @@ describe("PlansPage · estructura (Planes.html)", () => {
     const link = await screen.findByRole("link", { name: "Mensual" });
     expect(link).toHaveAttribute("href", `/planes?plan=${PLANS.mensual.id}`);
     const [, clases, mensual, promo] = within(table()).getAllByRole("row");
-    expect(within(clases as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual([
+    expect(within(clases as HTMLElement).getAllByRole("cell").map((c) => c.textContent).slice(0, 7)).toEqual([
       "12 clases",
       "Por número de clases",
       "$ 110.000",
       "60 días",
       "12 clases",
+      "12",
       "Activo",
     ]);
-    expect(within(mensual as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Mensual", "Por días", "$ 120.000", "30 días", "—", "Activo"]);
+    expect(within(mensual as HTMLElement).getAllByRole("cell").map((c) => c.textContent).slice(0, 7)).toEqual(["Mensual", "Por días", "$ 120.000", "30 días", "—", "4", "Activo"]);
     expect(within(promo as HTMLElement).getByText("Inactivo")).toHaveAttribute("data-account", "inactive");
     expect(within(mensual as HTMLElement).getByText("Activo")).toHaveAttribute("data-account", "active");
   });
@@ -66,8 +68,8 @@ describe("PlansPage · estructura (Planes.html)", () => {
     renderPlans("/planes", { rows: [{ ...PLANS.clases, name: "Clase suelta", duration_days: 1, class_count: 1, price_cop: 15_000 }] });
 
     const link = await screen.findByRole("link", { name: "Clase suelta" });
-    const cells = within(link.closest("tr") as HTMLElement).getAllByRole("cell").map((c) => c.textContent);
-    expect(cells).toEqual(["Clase suelta", "Por número de clases", "$ 15.000", "1 día", "1 clase", "Activo"]);
+    const cells = within(link.closest("tr") as HTMLElement).getAllByRole("cell").map((c) => c.textContent).slice(0, 7);
+    expect(cells).toEqual(["Clase suelta", "Por número de clases", "$ 15.000", "1 día", "1 clase", "0", "Activo"]);
   });
 
   it("la primera petición pide la primera página de 25 sin búsqueda ni filtro", async () => {
@@ -220,7 +222,8 @@ describe("PlansPage · estados", () => {
     expect(screen.getByRole("region", { name: "Planes" })).toHaveAttribute("aria-busy", "true");
   });
 
-  it("revisión L6: mientras llega una búsqueda no se muestra el total de la consulta anterior", async () => {
+  it("revisión L6: mientras llega una búsqueda no se muestra el total de la consulta anterior (S4A-F4: el del coach; el del admin no depende de la búsqueda)", async () => {
+    signInAs("coach");
     const { user } = renderPlans("/planes", {
       handlers: { "GET /plans": (call) => (new URL(call.url, "http://apex.test").searchParams.has("q") ? new Promise(() => undefined) : planPage(call)) },
     });
@@ -281,7 +284,7 @@ describe("PlansPage · estados", () => {
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
 
     expect(await screen.findByRole("link", { name: "Mensual" })).toBeInTheDocument();
-    expect(mock.callsTo("GET /plans")).toHaveLength(2);
+    expect(listCalls(mock)).toHaveLength(2);
   });
 
   it("un 403 dice que no tienes permiso y a quién pedirlo", async () => {
@@ -370,6 +373,14 @@ describe("PlansPage · detalle de solo lectura (?plan=<id>)", () => {
 
     expect(await screen.findByRole("dialog", { name: "Mensual" })).toBeInTheDocument();
     expect(mock.callsTo(`GET /plans/${PLANS.mensual.id}`)).toHaveLength(2);
+  });
+
+  it.each(["abc", "12345", "..%2Fusers", "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa%3F"])("revisión de seguridad de F4 (LOW-1): un ?plan=%s sin forma de UUID no abre nada ni pide nada", async (value) => {
+    const { mock } = renderPlans(`/planes?plan=${value}`);
+    await screen.findByRole("link", { name: "Mensual" });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mock.calls.filter((c) => c.path.startsWith("/plans/"))).toHaveLength(0);
   });
 
   it("un ?plan= vacío no abre nada ni pide nada", async () => {

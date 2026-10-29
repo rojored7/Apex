@@ -74,6 +74,8 @@ export const API_ERROR_CODES = {
   // S4A-F1: auditoría (US-103, US-104; audit/exceptions.py, S4A-D35).
   verificationRunning: "verification_running",
   auditEntryNotFound: "audit_entry_not_found",
+  // S4A-F4: dar de baja un plan con membresías activas (US-082; plans/exceptions.py, S4A-D24).
+  planHasActiveMemberships: "plan_has_active_memberships",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

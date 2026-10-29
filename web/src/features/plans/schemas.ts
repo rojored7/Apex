@@ -15,7 +15,7 @@
 import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { formatCop, formatCount, parseCop } from "../../core/i18n/format";
-import { PLAN_KINDS, type PlanKind } from "../../shared/data/plans";
+import { PLAN_KINDS, type PlanKind, type PlanRowView } from "../../shared/data/plans";
 import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 export { PLAN_KINDS, planRowSchema, plansPageSchema, type PlanKind, type PlanRowView } from "../../shared/data/plans";
@@ -140,6 +140,44 @@ export function toPlanCreate(values: PlanFormValues): PlanCreateBody {
   return values.kind === "classes" ? { ...base, class_count: required(integerOf(values.class_count), "class_count") } : base;
 }
 
+/** S4A-F4: el cuerpo de PATCH /plans/{id} (todo opcional; `class_count: null` al pasar a días). */
+export type PlanPatchBody = components["schemas"]["PlanPatch"];
+
+/** S4A-F4 (S4A-D34): el aviso fijo del modo edición. */
+export const PLAN_EDIT_NOTICE = "Cambiar el precio no modifica las membresías ya vendidas.";
+
+/** Los campos del formulario que el usuario cambió (`dirtyFields` de React Hook Form). */
+export type PlanDirtyFields = Partial<Readonly<Record<keyof PlanFormValues, boolean | undefined>>>;
+
+/** S4A-F4: el formulario precargado con un plan. */
+export function planToFormValues(plan: PlanRowView): PlanFormValues {
+  return {
+    name: plan.name,
+    price: formatCop(plan.price_cop),
+    kind: plan.kind,
+    duration_days: String(plan.duration_days),
+    class_count: plan.class_count === null ? "" : String(plan.class_count),
+  };
+}
+
+/**
+ * S4A-F4 (S4A-D22, S4A-D114): el PATCH con solo lo modificado, a partir de un formulario ya
+ * validado. Por días, `class_count` viaja como `null` solo si cambió el tipo (el plan tenía clases);
+ * por clases, un cambio de tipo lleva siempre el número de clases. Ningún otro campo viaja en null.
+ */
+export function toPlanPatch(values: PlanFormValues, dirty: PlanDirtyFields): PlanPatchBody {
+  const kindChanged = dirty.kind === true;
+  const byClasses = values.kind === "classes";
+  return {
+    ...(dirty.name ? { name: values.name.trim() } : {}),
+    ...(dirty.price ? { price_cop: required(parseCop(values.price), "price") } : {}),
+    ...(kindChanged ? { kind: values.kind } : {}),
+    ...(dirty.duration_days ? { duration_days: required(integerOf(values.duration_days), "duration_days") } : {}),
+    ...(byClasses && (kindChanged || dirty.class_count) ? { class_count: required(integerOf(values.class_count), "class_count") } : {}),
+    ...(!byClasses && kindChanged ? { class_count: null } : {}),
+  };
+}
+
 /** El filtro `active` de la URL ("true" o "false"); cualquier otro valor no viaja. */
 export const ACTIVE_FILTERS = ["true", "false"] as const;
 export type ActiveFilter = (typeof ACTIVE_FILTERS)[number];
@@ -152,4 +190,11 @@ export function daysText(days: number): string {
 /** "1 clase", "12 clases". */
 export function classesText(classes: number): string {
   return classes === 1 ? "1 clase" : `${formatCount(classes)} clases`;
+}
+
+/** S4A-F4 (Planes.html): "5 activos · 2 inactivos", "1 activo · 0 inactivos". */
+export function planTotalsText(active: number, inactive: number): string {
+  const activeText = active === 1 ? "1 activo" : `${formatCount(active)} activos`;
+  const inactiveText = inactive === 1 ? "1 inactivo" : `${formatCount(inactive)} inactivos`;
+  return `${activeText} · ${inactiveText}`;
 }

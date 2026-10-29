@@ -2,10 +2,10 @@
 // - usePlan(id): carga, el plan en una lista de definiciones (precio en COP, tipo, clases o
 //   duración, estado con StatusTag y fecha de creación) y los errores con mensaje propio: 403 (el
 //   coach sobre un plan inactivo, S2-D26), 404 y el resto con "Reintentar".
-// DESIGN-GAP:
-// - Planes.html abre "Editar plan" desde la fila; la edición (PATCH /plans/{id}) llega con el
-//   Sprint 4A. Hasta entonces el panel solo muestra el plan, sin campos editables.
-// - Sin "Socios con él": el conteo llega con las membresías (Sprint 3).
+// S4A-F4: la edición (PATCH /plans/{id}) se abre con "Editar" en la fila (PlanRowActions); este
+// panel sigue de solo lectura y lo dice.
+// DESIGN-GAP: Planes.html no tiene un detalle de solo lectura (el nombre abre "Editar plan"); el
+// detalle se conserva para el enlace del 409 del alta y para quien no puede editar.
 import { formatCop, formatDate } from "../../../core/i18n/format";
 import { Button } from "../../../shared/ui/Button";
 import { SidePanel } from "../../../shared/ui/SidePanel";
@@ -76,7 +76,7 @@ export function PlanDetailPanel({ planId, onClose }: PlanDetailPanelProps) {
       {plan ? (
         <div className={styles.body}>
           <PlanFacts plan={plan} />
-          <p className={styles.note}>La edición de planes llega en una próxima versión.</p>
+          <p className={styles.note}>Para cambiarlo, usa Editar en la fila del plan.</p>
         </div>
       ) : query.error ? (
         <div className={styles.body}>

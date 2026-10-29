@@ -217,6 +217,36 @@ export async function crearPlan(page: Page, precio = 120_000, admin: Credentials
   return { id: body.id, nombre, precio };
 }
 
+export interface BajaPlanOpciones {
+  admin?: Credentials;
+  /**
+   * Revisión de seguridad de F4 (LOW-3): dentro de un `finally` la limpieza no lanza (un 409, otro
+   * estado o un error de red taparían el fallo original): entrega el aviso, con el id del plan para la
+   * limpieza P2-1 de V12, a esta función (la spec lo anota con `test.info().annotations`). El helper
+   * no importa `test`: también lo cargan las pruebas de vitest de tests/unit.
+   */
+  tolerante?: (aviso: string) => void;
+}
+
+/**
+ * S4A-F4 (P2-1, S4A-D24): da de baja un plan que creó la spec (DELETE /plans/{id}) para no acumular
+ * planes de prueba. 204 o 404 (ya dado de baja) cuentan como hecho; un 409 (membresías activas) falla,
+ * salvo con `tolerante`, que lo anota.
+ */
+export async function darDeBajaPlan(page: Page, planId: string, { admin = datosDeBase(), tolerante }: BajaPlanOpciones = {}): Promise<void> {
+  let problema: string | null = null;
+  try {
+    const response = await page.request.delete(`${API}/plans/${encodeURIComponent(planId)}`, { headers: await accessDe(page, admin) });
+    if (!response.ok() && response.status() !== 404) problema = `DELETE /plans/${planId} respondió ${String(response.status())}.`;
+  } catch (error) {
+    if (!tolerante) throw error;
+    problema = `DELETE /plans/${planId} no se pudo enviar: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (problema === null) return;
+  if (!tolerante) throw new Error(problema);
+  tolerante(`${problema} Queda el plan ${planId} para la limpieza de V12.`);
+}
+
 export interface PagoInicial {
   amount_cop: number;
   method: "cash" | "nequi" | "breb";

@@ -30,3 +30,15 @@
   color: var(--ink);
   font: var(--text-body);
 }
+
+/* S4A-F4: aviso fijo del modo edición (RN-04), con el borde azul de los avisos informativos. */
+.notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+}

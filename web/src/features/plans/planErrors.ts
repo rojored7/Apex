@@ -8,7 +8,7 @@ import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
 import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_SERVER_ERROR, HTTP_TOO_MANY, HTTP_UNPROCESSABLE, isClientErrorStatus } from "../../core/api/status";
-import { connectionMessage, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { PLAN_MESSAGES, type PlanFormValues } from "./schemas";
 
 export const CREATE_MESSAGES = {
@@ -90,4 +90,57 @@ export function detailErrorMessage(error: unknown): string {
     DETAIL_MESSAGES.failed,
   );
   return screen?.message ?? DETAIL_MESSAGES.failed;
+}
+
+// S4A-F4 · US-080 a US-082: errores de editar, activar o desactivar y dar de baja.
+export const UPDATE_MESSAGES = {
+  forbidden: "Solo un administrador puede editar planes. Si lo necesitas, pídeselo a uno.",
+  notFound: "Este plan ya no existe: lo dieron de baja. Cierra el panel y elige otro de la lista.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos guardar el plan. Intenta de nuevo en un momento.",
+  generic: "No pudimos guardar el plan. Revisa los datos e intenta de nuevo.",
+} as const;
+
+export const ACTIVE_MESSAGES = {
+  forbidden: "Solo un administrador puede activar o desactivar planes. Si lo necesitas, pídeselo a uno.",
+  notFound: "Este plan ya no existe: lo dieron de baja. La lista se actualiza sola.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  generic: "No pudimos cambiar el estado del plan. Intenta de nuevo en un momento.",
+} as const;
+
+export const DELETE_MESSAGES = {
+  forbidden: "Solo un administrador puede dar de baja planes. Si lo necesitas, pídeselo a uno.",
+  notFound: "Este plan ya estaba dado de baja. La lista se actualiza sola.",
+  tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
+  inUse: "Este plan tiene membresías activas, desactívalo en su lugar.",
+  generic: "No pudimos dar de baja el plan. Intenta de nuevo en un momento.",
+} as const;
+
+/** Mensaje general de una edición fallida (lo que no va bajo un campo). */
+export function updateErrorMessage(error: unknown): string {
+  if (!isApiError(error)) return UPDATE_MESSAGES.generic;
+  return connectionMessage(error) ?? statusMessage(error, UPDATE_MESSAGES);
+}
+
+/** El error de activar o desactivar con el mensaje de la pantalla (ConfirmModal o aviso). */
+export function activeError(error: unknown): ApiError {
+  return toFormError(error, (e) => statusMessage(e, ACTIVE_MESSAGES), ACTIVE_MESSAGES.generic);
+}
+
+/** El error de la baja con el mensaje de la pantalla (ConfirmModal). */
+export function deleteError(error: unknown): ApiError {
+  return toFormError(error, (e) => statusMessage(e, DELETE_MESSAGES), DELETE_MESSAGES.generic);
+}
+
+/** Tope del mensaje del api que se pinta (el del 409 es corto; uno anómalo no desborda el aviso). */
+const IN_USE_MAX_LENGTH = 300;
+
+/**
+ * El 409 `plan_has_active_memberships`: el mensaje del api (solo el conteo, S4A-D60), o null si es
+ * otro error. Se pinta como texto; sin mensaje, el propio.
+ */
+export function planInUseMessage(error: unknown): string | null {
+  if (!isApiError(error) || error.status !== HTTP_CONFLICT || error.code !== API_ERROR_CODES.planHasActiveMemberships) return null;
+  const text = error.message.trim();
+  return text === "" ? DELETE_MESSAGES.inUse : Array.from(text).slice(0, IN_USE_MAX_LENGTH).join("");
 }

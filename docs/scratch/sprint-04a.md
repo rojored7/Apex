@@ -90,3 +90,16 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 - Desviaciones del Verde, ya en DECISIONES: S4A-D75 (`simulation_error` para `--simulate` de hoy), S4A-D76 (`check_details` pública; job en `error` con `ValueError` si `details` sale del contrato), S4A-D80 (`finished_at = greatest(reloj, started_at)`), S4A-D85 (`type: ignore[import-untyped]` de apscheduler; `CycleTasks` y `build_scheduler` en `runtime.py`). S4A-D55 anota el cambio de firma de `finish_run`. RUNBOOK §9 "Worker" suma `reclaim_finished`, el candado del ciclo, `job claim busy`, `stale`, `lost_claim` y los registros de fallo.
 - Tras las correcciones: `tests/worker` 110 ok, `tests/core/test_alerts.py` 15 ok. Cobertura (`tests/worker tests/cli tests/core/test_alerts.py`, 178 ok): `cli.py` 94 %, `core/jobs.py` 98 %, `core/alerts.py` 100 %, `worker/main.py` 89 %, `runner.py` 98 %, `runtime.py` 95 %, el resto de `worker/` 100 %. `ruff check`, `ruff format --check` y `mypy src` limpios.
 - Gates 1 a 4 de B1.9 repetidos tras las correcciones (con `ls` previo y `PYTEST_ADDOPTS="-m 'not perf'"`), verdes al primer intento: `core/alerts` 316 ok; `core/jobs` 362 ok; `cli` 320 ok; `architecture` 301 ok. Lo siguiente que toca el árbol es el gate 5 (sellante); su conteo y la evidencia de B1.10 van en el commit de evidencia.
+
+### Evidencia de S4A-B1
+
+- Gate 5 sellante (`slice-gate.sh worker tests/worker/test_schedule.py tests/worker/test_runner.py tests/worker/test_main.py tests/worker/test_jobs_core.py`, `ls` previo, `-m "not perf"`): 411 ok, verde. Checkpoint `dbc352e` (`chore(checkpoint): S4A-B1 worker programado, core/jobs y core/alerts, migración 0012`) con el trailer.
+- B1.10 (P-MIG 6 a 8 y E7; salida completa en el scratchpad de la sesión, `b1-evidencia.md`, sin secretos):
+  1. `$DC start api` → `healthy`; el log muestra `Running upgrade 0011_payments_immutability -> 0012_worker_job_runs` y `migraciones al día`, sin errores; `alembic current` = `0012_worker_job_runs (head)` (salida 0).
+  2. Ciclo en `apex-db-1`: `downgrade -1` (0), `upgrade head` (0), `current` = `0012_worker_job_runs (head)` (0). El worker no corría (sigue con perfil): no hizo falta pararlo.
+  3. `\d worker.job_runs`: las 11 columnas con su nulabilidad, `details` con `'{}'::jsonb`, `pk_job_runs`, `ix_job_runs_name_started (job_name, started_at DESC)`, `uq_job_runs_name_date` único, y los CHECKs `ck_job_runs_finished_after_started`, `ck_job_runs_job_name_shape` y `ck_job_runs_result` (ocho valores).
+  4. `curl http://127.0.0.1:8181/health` → 200.
+  5. `$DC --profile worker run --rm worker python -m app.worker.main --status expirations` → "sin corridas de expirations", salida 2.
+  6. E7: `--run-once expirations` en el contenedor endurecido (`read_only`, sin `keys`) → `job finished` `ok` con `run_date` `2026-10-28` (día de Bogotá), salida 0 (`load_module_services` corrió sin llaves).
+  7. `--status expirations` → JSON en una línea con `result` `ok`, `details` `{"placeholder_ok": 1}` (sin `attempts`), salida 0.
+  8. Stack al cerrar: api, db, db_test y web `healthy`; ningún contenedor `worker` (sigue tras el perfil hasta W0-2). En `apex-db-1` queda una fila de `worker.job_runs` (`expirations`, `2026-10-28`, `ok`) de la prueba E7.

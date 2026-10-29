@@ -271,6 +271,14 @@ LIMPIAR_PAYMENTS = (
     "END IF; END $$"
 )
 
+# S4A-B1 (S4A-D70): las corridas que el worker, la CLI o una prueba con commit real hayan dejado en
+# `worker.job_runs`. La tabla nace en `0012_worker_job_runs`: mientras no exista (Rojo de B1) no se
+# toca. No tiene triggers (S4A-D38): un `DELETE` directo basta.
+LIMPIAR_JOB_RUNS = (
+    "DO $$ BEGIN IF to_regclass('worker.job_runs') IS NOT NULL THEN "
+    "DELETE FROM worker.job_runs; END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -287,6 +295,7 @@ LIMPIEZA_DE_SESION = (
     LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
     LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
     LIMPIAR_PLANS,  # E6 y plan, sección 2 (B9)
+    LIMPIAR_JOB_RUNS,  # S4A-D70 (plan del Sprint 4A, sección 2, B1)
 )
 
 
@@ -678,6 +687,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
+        await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))
         await conexion.execute(text("ALTER TABLE audit.audit_log DISABLE TRIGGER USER"))

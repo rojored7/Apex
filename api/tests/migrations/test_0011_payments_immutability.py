@@ -1,6 +1,6 @@
 """`0011_payments_immutability` (S3-B4, US-096; blueprint B4; D13, M-6, L-10, S3-D49).
 
-Padre `0010_payments`; es head. Agrega:
+Padre `0010_payments`; desde S4A-B1 madre de `0012_worker_job_runs` (ya no es head). Agrega:
 - la función `payments.forbid_mutation()` (`plpgsql`, `SECURITY INVOKER`, `SET search_path =
   pg_catalog`; su comportamiento lo prueba `tests/payments/test_immutability.py`);
 - los triggers `payments_forbid_mutation` (`BEFORE UPDATE OR DELETE ... FOR EACH ROW`) y
@@ -109,12 +109,23 @@ def _insertar_confirmado(url: str) -> UUID:
     return pago_id
 
 
-def test_la_revision_existe_cuelga_de_0010_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0010_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S4A-B1 `0012_worker_job_runs` cuelga de esta revisión (P-MIG paso 9, S4A-D38): ya no
+    es head, pero sigue en la cadena que llega a head y es la madre directa de `0012` (la cabeza
+    única la exige `test_single_head`)."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
+    assert scripts.get_heads() != [REVISION]
+    hijas = [
+        r.revision for r in scripts.walk_revisions("base", "heads") if r.down_revision == REVISION
+    ]
+    assert hijas == ["0012_worker_job_runs"]
 
 
 def test_la_funcion_existe_como_security_invoker_plpgsql(

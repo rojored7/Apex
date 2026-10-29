@@ -5,7 +5,7 @@
 quedan fuera de lo que una petición fallida revierte. B7 agrega `members.members` (necesita el
 bus listo) y B9 `plans.plans` (sin columnas cifradas); S3-B1 `memberships.memberships` (pide
 el socio y el plan); S3-B2 `memberships.membership_freezes` (pide la membresía); S3-B3
-`payments.payments` (pide la membresía).
+`payments.payments` (pide la membresía); S4A-B1 `worker.job_runs` (sin columnas cifradas).
 `test_no_plaintext_at_rest.py` exige una fábrica por cada tabla con columnas cifradas.
 """
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from tests.factories.job_runs import make_job_run
 from tests.factories.members import make_member
 from tests.factories.memberships import make_freeze, make_membership
 from tests.factories.payments import make_payment
@@ -28,4 +29,5 @@ FACTORIES: dict[str, Callable[..., Awaitable[Any]]] = {
     "memberships.membership_freezes": make_freeze,
     "payments.payments": make_payment,
     "plans.plans": make_plan,
+    "worker.job_runs": make_job_run,
 }

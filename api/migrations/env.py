@@ -24,6 +24,7 @@ from alembic import context
 from sqlalchemy import Connection, pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.core import jobs  # noqa: F401  (US-113, 0012_worker_job_runs; S4A-D3)
 from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 
 # Models de cada módulo (se agregan en su historia):

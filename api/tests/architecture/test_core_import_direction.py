@@ -109,3 +109,38 @@ def test_sin_ciclos_entre_modulos_de_core() -> None:
         if origen not in estado:
             visitar(origen)
     assert ciclos == []
+
+
+def test_jobs_y_alerts_no_importan_modulos_ni_audit() -> None:
+    """S4A-B1 (S4A-D3, S4A-D7, S4A-D73): `core/jobs.py` y `core/alerts.py` no importan
+    `app.modules` ni `app.core.audit`; `core/audit.py` y `core/health.py` no importan
+    `app.core.jobs` (ni perezoso). Los dos archivos deben existir: sin ellos la regla no vigila."""
+    violaciones: list[str] = []
+    for nombre in ("jobs.py", "alerts.py"):
+        path = CORE / nombre
+        assert path.is_file(), f"falta core/{nombre}"
+        violaciones += [
+            f"{nombre}: {n}"
+            for n in _imports(path)
+            if n.startswith(("app.modules", "app.core.audit"))
+        ]
+    for nombre in ("audit.py", "health.py"):
+        violaciones += [
+            f"{nombre}: {n}"
+            for n in _imports(CORE / nombre)
+            if n == "app.core.jobs" or n.startswith("app.core.jobs.")
+        ]
+        violaciones += _desde_core_importa_jobs(CORE / nombre)
+    assert violaciones == []
+
+
+def _desde_core_importa_jobs(path: Path) -> list[str]:
+    """`from app.core import jobs` (o `from . import jobs`) dentro de `path`."""
+    arbol = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return [
+        f"{path.name}:{nodo.lineno}: from {nodo.module or '.'} import jobs"
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.ImportFrom)
+        and (nodo.module == "app.core" or (nodo.level == 1 and nodo.module is None))
+        and any(a.name == "jobs" for a in nodo.names)
+    ]

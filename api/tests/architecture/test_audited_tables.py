@@ -1,7 +1,8 @@
 """Toda tabla de negocio declara `__audited__ = True` (US-024 T8; la completa US-107 en S2-B6).
 
 Exclusiones explícitas: `audit.audit_log` (es la cadena), las tres tablas de `crypto`
-(bitácora propia en `crypto_ops`) y `auth.refresh_tokens`. Los modelos de prueba (esquema
+(bitácora propia en `crypto_ops`), `auth.refresh_tokens` y `worker.job_runs` (bitácora operativa del
+worker, S4A-D3; `_cargar_modelos` importa `app.core.jobs`). Los modelos de prueba (esquema
 `worker`, fuera de `app.`) no cuentan.
 
 S2-B6 (decisión 21, riesgo 6.10): un módulo puede no tener `models.py` (`audit`, `dashboard`,
@@ -35,6 +36,7 @@ EXCLUIDAS: dict[str, str] = {
     "crypto.crypto_ops": "bitácora propia",
     "crypto.crypto_jobs": "bitácora propia en crypto_ops",
     "auth.refresh_tokens": "rota cada 15 minutos; su ciclo lo registran los timestamps (US-041)",
+    "worker.job_runs": "bitácora operativa del worker; no se audita (US-113, S4A-D3)",
 }
 
 REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
@@ -58,6 +60,7 @@ PENDING_AUDITED: dict[str, str] = {
 def _cargar_modelos(modulos: Iterable[str] = MODULES) -> None:
     importlib.import_module("app.core.audit")
     importlib.import_module("app.core.crypto.models")
+    importlib.import_module("app.core.jobs")  # S4A-B1: `worker.job_runs` (S4A-D3)
     for nombre in modulos:
         ruta = f"app.modules.{nombre}.models"
         if find_spec(ruta) is not None:

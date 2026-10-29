@@ -7,7 +7,8 @@
 # Imprime qué gate falló. El argumento de wave es informativo.
 #
 # Cobertura (M-6): hasta el Sprint 3, `[tool.coverage.run] omit` de api/pyproject.toml
-# excluye src/app/cli.py y src/app/worker/*; desde el Sprint 4A se quita esa exclusión.
+# excluía src/app/cli.py y src/app/worker/*; desde S4A-B1 (S4A-D39) no hay `omit` y los
+# dos cuentan para el 80 % global.
 #
 # Política `perf` (S2-D27, revisión de Fase 4 del Sprint 2): las pruebas marcadas `perf`
 # miden con reloj y no son gate; aquí corren con `-m "not perf"`. Se corren a mano con

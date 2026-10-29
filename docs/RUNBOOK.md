@@ -194,7 +194,7 @@ al log (S2-W0-1). El costo es que `docker logs apex-web-1` **no** muestra
 `$DC run --rm tools seed`. El admin sembrado debe cambiar la contraseña al entrar
 (`must_change_password`); `--no-force-change` solo se acepta con `ENV=dev`. Una segunda corrida
 dice "omitido". Borrar `.env.seed` después del primer seed; la contraseña queda en el gestor de
-contraseñas del operador y, si se pierde, se recupera sin el archivo (sección 8). Tras cambiar `cli.py` hay que
+contraseñas del operador y, si se pierde, se recupera sin el archivo (sección 8). Tras cambiar `cli.py`, `cli_base.py` o `cli_ops/` hay que
 reconstruir la imagen (`$DC build api`) antes de usar `tools`.
 
 ### Enlaces de activación y restablecimiento (S2-B4)
@@ -207,7 +207,7 @@ contraseña (L-13): un admin no puede tomar la cuenta de otro desde el panel. Pa
 y para el admin que olvidó su contraseña, se usa el CLI desde el servidor:
 
 ```
-$DC build api   # solo si cambió cli.py desde la última imagen
+$DC build api   # solo si cambió cli.py, cli_base.py o cli_ops/ desde la última imagen
 $DC run --rm tools issue-reset-link <correo de la cuenta> --as <correo de un admin activo>
 ```
 
@@ -244,7 +244,7 @@ Desde el panel, "Desbloquear" (`POST /users/{id}/unlock`, solo admin). Desde el 
 ejemplo cuando el bloqueado es el único admin:
 
 ```
-$DC build api   # solo si cambió cli.py desde la última imagen
+$DC build api   # solo si cambió cli.py, cli_base.py o cli_ops/ desde la última imagen
 $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin activo>
 ```
 

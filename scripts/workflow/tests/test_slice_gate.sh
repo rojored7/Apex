@@ -52,6 +52,25 @@ mkdir -p "$REPO/api/src/app/modules/notification-rules" "$REPO/api/tests/notific
 printf 'X = 1\n' > "$REPO/api/src/app/modules/notification-rules/service.py"
 assert_exit 0 "nombre con guiones es válido" bash "$GATE" notification-rules tests/core/test_config.py
 
+
+# Mapeo de cli (S4B-D28): cli.py obligatorio; cli_base.py, cli_ops/, seed/ e imports/ si existen.
+mkdir -p "$REPO/api/tests/cli"
+assert_nonzero "cli sin cli.py falla" bash "$GATE" cli tests/core/test_config.py
+printf 'X = 1\n' > "$REPO/api/src/app/cli.py"
+clear_log
+assert_exit 0 "cli solo con cli.py" bash "$GATE" cli tests/core/test_config.py
+assert_log_has "ruff check src/app/cli.py"
+assert_log_lacks "cli_base.py"
+printf 'Y = 1\n' > "$REPO/api/src/app/cli_base.py"
+mkdir -p "$REPO/api/src/app/cli_ops"
+printf 'Z = 1\n' > "$REPO/api/src/app/cli_ops/__init__.py"
+clear_log
+assert_exit 0 "cli con cli_base.py y cli_ops/" bash "$GATE" cli tests/core/test_config.py
+assert_log_has "ruff check src/app/cli.py src/app/cli_base.py src/app/cli_ops"
+assert_log_has "ruff format --check src/app/cli.py src/app/cli_base.py src/app/cli_ops"
+assert_log_has "mypy src/app/cli.py src/app/cli_base.py src/app/cli_ops"
+assert_log_lacks "src/app/seed"
+
 # Con mypy en rojo: falla y no escribe sello.
 rm -f "$REPO/.git/apex/slice-gate.ok"
 stub_tool_fail_on uv "mypy" 1

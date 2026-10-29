@@ -153,6 +153,7 @@ Rama `feat/sprint-04b-continuidad-release`. Plan: `docs/ddd/blueprints/sprint-04
 ### Evidencia de S4B-W0-3
 
 Checkpoint `bcc1c65` (sello `wave0-gate.sh W0-3`, 568 passed).
+Commit de evidencia posterior al sello: `d5f3890` (`docs(sprint-04b): evidencia de S4B-W0-3`, solo este cuaderno).
 
 Checkpoint: bcc1c65. Sello: wave0-gate.sh W0-3 (568 passed con tests/architecture).
 
@@ -176,3 +177,39 @@ Checkpoint: bcc1c65. Sello: wave0-gate.sh W0-3 (568 passed con tests/architectur
 - test_db_roles.sh contra apex-db-1: 0 fallas.
 - .env: solo cambiaron APEX_API_DB_PASSWORD, APEX_WORKER_DB_PASSWORD y APEX_BACKUP_DB_PASSWORD (sha256 antes 5ab9b973..., después 812bbba4...). .env.ops creado desde el ejemplo con los valores de .env; ambos ignorados por git.
 - Desarrollo: api, worker y backup se recrearon (force-recreate) y quedan healthy, pero usan al PROPIETARIO por diseño (compose.dev.yml, S4B-D11): pg_stat_activity de apex-db-1 muestra apex x3. Los roles se ejercitan con tráfico real en el ensayo.
+
+## S4B-B0 · Partir el CLI sin comportamiento nuevo
+
+### S4B-B0 · Línea base y B0.1 (extracción pura)
+
+- Línea base en HEAD `d5f3890`: `pytest tests/cli tests/architecture tests/worker -q -m "not perf"` = 612 passed (1 perf deseleccionada); `/health` 200.
+- B0.1: `cli_base.py` (unit_of_work, resolve_actor, DB_TIMEOUTS_CHOICES, RuntimeOptions, runtime_options, _sin_tiempos_de_espera, _load_module_services, cli_runtime, _run, _reject, production_guard_error, get_settings) y, para llegar a `cli.py` en 323 líneas, `cli_ops/{keys,openapi,accounts,recompute,verify_audit}.py` con el código de implementación de los siete comandos movido sin cambiar firmas ni mensajes; `cli_ops/__init__.py` con `register_ops(app)` vacío. `cli.py` reexporta por `__all__`.
+- Única prueba tocada en B0.1: `test_crypto_bus_importers.py` (`IMPORTADORES_REALES`, `ARRANQUE` y un control: `cli.py` -> `cli_base.py`).
+- Mapeo del gate: `slice-gate.sh` `cli` lintea, formatea y tipa `cli.py` + lo que exista de `cli_base.py`, `cli_ops`, `seed`, `imports`; caso nuevo en `scripts/workflow/tests/test_slice_gate.sh` (45 ok, 0 fallas); README actualizado.
+- B0.1 verde por sí solo: `tests/cli tests/architecture tests/worker` = 612 passed (misma cuenta que HEAD); `slice-gate.sh cli` sin lista = 476 passed.
+
+### S4B-B0 · Rojo
+
+- Stubs en `cli_base.py`: `resolve_admin_actor` y `crypto_runtime` con `NotImplementedError`.
+- `tests/cli/test_cli_base.py` (28 pruebas): 12 en rojo por `NotImplementedError` (8 de `resolve_admin_actor` y 4 de `crypto_runtime`: keyring y engine liberado, engine liberado si falla el cuerpo, KEK ausente, DEK que no se desenvuelve) y 16 en verde desde el Rojo (reexportación, `get_settings`, tamaños).
+- Arquitectura: `test_app_layer_importers.py` (nueva, 14 pruebas) y `test_worker_boundaries.py` (+2) quedan en VERDE desde el Rojo, porque la extracción de B0.1 ya existe: el plan preveía rojo por archivos ausentes, pero tras B0.1 no hay ausentes. Rojo real de arquitectura: 0. Dos fallos de las propias pruebas nuevas se corrigieron en el acto (`cli_ops/openapi.py` importa `app.main` perezosamente como antes; `models` agrupaba `Member` como submódulo).
+- Total del Rojo: 12 failed, 39 passed en los tres archivos.
+
+### S4B-B0 · Verde
+
+- `resolve_admin_actor` (`auth.service.active_admin_id_by_email`) y `crypto_runtime` (`configure_provider(get_key_provider(settings))`; en `cli_runtime`, bajo `actor_scope(SYSTEM_USER_ID)` y su transacción, desenvuelve cada DEK `active` no `sign` y recién entonces `ensure_keys`). Ningún comando los usa todavía.
+- `_apoyo.correr` y `test_db_timeouts_cli.py` fijan `cli.get_settings` y `cli_base.get_settings`.
+- `tests/cli tests/architecture tests/worker` = 656 passed (612 + 44 nuevas).
+- Tamaños: `cli.py` 323, `cli_base.py` 200, `cli_ops/__init__` 15, `keys` 95, `openapi` 64, `accounts` 122, `recompute` 110, `verify_audit` 52. Ruff check, ruff format --check y mypy src (126 archivos) limpios.
+- `test_guarded_calls`: `enforce_retroactive_limit` ya no aparece en ningún archivo (lo trae B1); la regla `archivo != "cli.py"` no cambia.
+
+### S4B-B0 · Gates no sellantes (B0.5)
+
+- `slice-gate.sh architecture` con las cinco pruebas del plan: 415 passed, verde (sello de `architecture`; el sellante será `slice-gate.sh cli ...` al cierre).
+- `pytest tests/cli tests/worker -q -m "not perf"`: 241 passed.
+- `scripts/workflow/tests/*.sh`: checkpoint 16, permisos 24, run_gates 22, slice_gate 45, validate_impact 16, wave0_gate 23, todos sin fallas.
+- Nota: durante B0.1 se corrió `slice-gate.sh cli` (476 passed) y dejó un sello que ya está invalidado por los cambios posteriores.
+
+### S4B-B0 · Revisión Python
+
+`python-reviewer`: APROBAR, 0 bloqueantes. Aplicado: LOW 3 (`reject` público con `comando` obligatorio; `cli.py`, `recompute.py`, `verify_audit.py` y `test_cli_base.py` actualizados) y LOW 4 (comentarios de no-op en `_apoyo.py` y `test_db_timeouts_cli.py`). Constancias en DECISIONES: MEDIUM 1 (sin llamador hasta B1/B3), LOW 2 (duplicación con `_admin_actor_and_target`, a unificar en B1) y el tope de 200 líneas de `cli_base.py`.

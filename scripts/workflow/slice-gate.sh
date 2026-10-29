@@ -104,12 +104,21 @@ gate_api() {
     crypto)       codigo="src/app/core/crypto"; pruebas_dir="tests/crypto" ;;
     main)         codigo="src/app/main.py";     pruebas_dir="tests/core" ;;
     worker)       codigo="src/app/worker";      pruebas_dir="tests/worker" ;;
-    cli)          codigo="src/app/cli.py";      pruebas_dir="tests/cli" ;;
+    cli)
+      # S4B-D28: la capa de aplicación del CLI. `cli.py` es obligatorio; el resto, si existe.
+      [ -e "$API/src/app/cli.py" ] || fallo "módulo inexistente: api/src/app/cli.py"
+      codigo="src/app/cli.py"
+      local extra
+      for extra in src/app/cli_base.py src/app/cli_ops src/app/seed src/app/imports; do
+        [ -e "$API/$extra" ] && codigo="$codigo $extra"
+      done
+      pruebas_dir="tests/cli" ;;
     architecture) codigo="";                    pruebas_dir="tests/architecture" ;;
     */*)          fallo "módulo del api con varios niveles no mapeado: '$MODULO'" ;;
     *)            codigo="src/app/modules/$MODULO"; pruebas_dir="tests/$MODULO" ;;
   esac
-  [ -n "$codigo" ] && [ ! -e "$API/$codigo" ] && fallo "módulo inexistente: api/$codigo"
+  local c1
+  for c1 in $codigo; do [ -e "$API/$c1" ] || fallo "módulo inexistente: api/$c1"; done
 
   local pruebas=()
   if [ "${#ARCHIVOS[@]}" -eq 0 ]; then
@@ -131,9 +140,9 @@ gate_api() {
 
   cd "$API"
   if [ -n "$codigo" ]; then
-    echo "slice-gate: ruff check $codigo";            uv run ruff check "$codigo"
-    echo "slice-gate: ruff format --check $codigo";   uv run ruff format --check "$codigo"
-    echo "slice-gate: mypy $codigo";                  uv run mypy "$codigo"
+    echo "slice-gate: ruff check $codigo";            uv run ruff check $codigo
+    echo "slice-gate: ruff format --check $codigo";   uv run ruff format --check $codigo
+    echo "slice-gate: mypy $codigo";                  uv run mypy $codigo
   fi
   echo "slice-gate: pytest ${pruebas[*]}";            uv run pytest "${pruebas[@]}" -q
 }

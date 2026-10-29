@@ -23,7 +23,7 @@ import typer
 from sqlalchemy.ext.asyncio import AsyncEngine
 from typer.testing import CliRunner
 
-from app import cli
+from app import cli, cli_base
 from app.cli import RuntimeOptions, app, export_settings
 from app.core import db
 from app.core.config import Settings
@@ -155,6 +155,9 @@ def test_off_llega_al_engine_del_comando_y_no_se_arrastra(
     comando: list[str], vistos: list[Settings], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cli, "get_settings", export_settings)
+    monkeypatch.setattr(
+        cli_base, "get_settings", export_settings
+    )  # no-op prudente hoy (S4B-D29): ningún comando lee cli_base.get_settings aún
     apagado = runner.invoke(app, ["--db-timeouts", "off", *comando])
     assert isinstance(apagado.exception, _EngineCapturado), apagado.output
     sin_opcion = runner.invoke(app, comando)

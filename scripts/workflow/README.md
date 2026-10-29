@@ -14,7 +14,7 @@ Mapeo de módulos (A-01):
 - `crypto`: `api/src/app/core/crypto/`; pruebas en `api/tests/crypto`.
 - `main`: `api/src/app/main.py`; pruebas en `api/tests/core`.
 - `worker`: `api/src/app/worker/`; pruebas en `api/tests/worker` (`slice-gate.sh worker tests/worker/test_runner.py ...`; el directorio lo crea el Rojo de S4A-B1).
-- `cli`: `api/src/app/cli.py`; pruebas en `api/tests/cli`.
+- `cli`: `api/src/app/cli.py` (obligatorio) más lo que exista de `cli_base.py`, `cli_ops/`, `seed/` e `imports/` (S4B-D28: `ruff check`, `ruff format --check` y `mypy` reciben todas las rutas existentes); pruebas en `api/tests/cli`. `seed` e `imports` no son módulos de negocio y no llevan `tests/seed`. Ejemplo: `slice-gate.sh cli tests/cli/test_cli_base.py`.
 - `architecture`: sin código; `api/tests/architecture`. Con lista, sirve para pruebas en la raíz de `api/tests/`, como `test_ci_database.py`.
 - `<modulo>` (`auth`, `settings`, `members`, `memberships`, `payments`, `audit`, `dashboard`, ...): `api/src/app/modules/<modulo>/`; pruebas en `api/tests/<modulo>` (`dashboard` existe desde el Rojo de S4A-B8).
 - `web/<feature>` (`web/members`, `web/memberships`, `web/payments`, `web/system`, `web/dashboard`, ...): `web/src/features/<feature>`. `web/shared`: `web/src/shared`. `web/core`: `web/src/core`. `web/layouts`: `web/src/layouts`. `web/app`: `web/src/App.tsx`, `web/src/routes*`, `web/src/config`, `web/src/styles`, `index.html`, `web/tests/unit`, `web/tests/lint`.
@@ -35,7 +35,7 @@ bash scripts/workflow/slice-gate.sh core/config tests/core/test_config.py tests/
 bash scripts/workflow/wave0-gate.sh W0-1 tests/core/test_env_example.py tests/core/test_config.py
 ```
 
-Mapeo futuro de `cli` (B0, S4B-D28): `cli` pasará a lintear, formatear y tipar la lista de lo que exista entre `src/app/cli.py` (obligatorio), `cli_base.py`, `cli_ops/`, `seed/` e `imports/`; `seed` e `imports` no son módulos de negocio.
+Mapeo de `cli` (B0, S4B-D28): vigente desde S4B-B0.1; sin `cli_base.py` ni `cli_ops/` solo se procesa `cli.py`. Su prueba está en `scripts/workflow/tests/test_slice_gate.sh`.
 
 ## checkpoint-commit.sh `"<mensaje>"`
 

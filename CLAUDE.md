@@ -25,7 +25,9 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # comandos: seed, init-keys, export-openapi, issue-reset-link, verify-audit y recompute-memberships (Sprint 4A), import-members, rotate-key, sign-audit; cli_ops.py si cli.py pasa de 760 líneas (S4A-D72; en 4A cli.py mide 760 y no se extrajo)
+      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; reexporta cli_base (S4B-D28); import-members, rotate-key, sign-audit llegan en 4B/Sprint 5
+      cli_base.py        # base común del CLI (S4B-B0): unit_of_work, resolve_actor, resolve_admin_actor, cli_runtime, crypto_runtime, production_guard_error, get_settings; único archivo de la capa que arranca el cifrado de columnas (install_crypto_type_listeners)
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, openapi, recompute, verify_audit; register_ops(app); nunca se importan entre sí ni importan cli
       core/
         config.py        # Settings con pydantic-settings, todo desde .env
         db.py            # engine async, sesión, Base, CommonColumnsMixin

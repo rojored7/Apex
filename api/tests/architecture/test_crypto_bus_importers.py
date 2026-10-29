@@ -6,7 +6,7 @@ cadena literal). Los importadores reales, calculados con grep al abrir B6 y fija
 - `modules/members/service.py` y `changes.py` (`bus`: índices ciegos y cifrado del documento);
 - `modules/members/detail.py` (`types`: la única puerta `_decrypt_fields`) y `models.py`
   (`types`: los tipos de columna `Encrypted` y `BlindIndexed`);
-- el arranque: `main.py`, `cli.py` y `worker/runtime.py`, que solo importan
+- el arranque: `main.py`, `cli_base.py` (S4B-D30) y `worker/runtime.py`, que solo importan
   `install_crypto_type_listeners` de `types` (cablean los listeners al crear el proceso).
 
 Lista blanca: `app.core.*`, `app.modules.members.*`, `athletes` y `attachments` cuando existan
@@ -34,7 +34,7 @@ INSTALADOR: Final = "install_crypto_type_listeners"
 
 IMPORTADORES_REALES: Final = frozenset(
     {
-        "cli.py",
+        "cli_base.py",
         "main.py",
         "worker/runtime.py",
         "modules/members/changes.py",
@@ -43,7 +43,7 @@ IMPORTADORES_REALES: Final = frozenset(
         "modules/members/service.py",
     }
 )
-ARRANQUE: Final = frozenset({"cli.py", "main.py", "worker/runtime.py"})
+ARRANQUE: Final = frozenset({"cli_base.py", "main.py", "worker/runtime.py"})
 PREFIJOS_PERMITIDOS: Final = (
     "core/",
     "modules/members/",
@@ -198,7 +198,7 @@ def test_control_el_arranque_con_otro_nombre_falla_y_la_lista_blanca_pasa() -> N
     otro = importaciones("from app.core.crypto.types import reveal\n")
     assert not permitido("worker/runtime.py", otro)
     instalador = importaciones(f"from app.core.crypto.types import {INSTALADOR}\n")
-    assert permitido("cli.py", instalador)
+    assert permitido("cli_base.py", instalador)
     assert permitido("modules/attachments/service.py", con_bus)
     assert permitido("modules/athletes/service.py", con_bus)
     assert not permitido("modules/payments/service.py", con_bus)

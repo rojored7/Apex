@@ -2,7 +2,8 @@
 
 `correr(app, args, env, *, base, monkeypatch)`: invoca el Typer `app` con `CliRunner`. Si `env`
 no es `None`, el comando ve `base.model_copy(update={"ENV": env})` como su `Settings`
-(`monkeypatch` de `app.cli.get_settings`): nunca se toca `os.environ`
+(`monkeypatch` de `app.cli.get_settings` y `app.cli_base.get_settings`, S4B-D29): nunca se toca
+`os.environ`
 (`tests/architecture/test_no_os_environ.py`).
 """
 
@@ -16,7 +17,7 @@ import typer
 from click.testing import Result
 from typer.testing import CliRunner
 
-from app import cli
+from app import cli, cli_base
 from app.core.config import Settings
 
 _runner = CliRunner()
@@ -36,4 +37,7 @@ def correr(
             raise ValueError("con env hacen falta base y monkeypatch")
         efectivo = base.model_copy(update={"ENV": env})
         monkeypatch.setattr(cli, "get_settings", lambda: efectivo)
+        monkeypatch.setattr(
+            cli_base, "get_settings", lambda: efectivo
+        )  # no-op prudente hoy (S4B-D29): ningún comando lee cli_base.get_settings aún
     return _runner.invoke(app, list(args))

@@ -3,8 +3,8 @@
 El worker es capa de aplicación como `cli.py`: de los módulos solo importa `service`, `schemas` y
 `exceptions`. Se vigila por `ast` (con `find_forbidden_imports` de `_imports.py`, que
 `test_no_cross_models.py` no aplica fuera de `app/modules/`):
-- ningún archivo de `app/worker/**` ni `app/cli.py` importa `app.modules.<x>.models`,
-  `app.modules.<x>.router` ni un helper privado de `PRIVATE_HELPERS`;
+- ningún archivo de `app/worker/**`, `cli.py`, `cli_base.py` ni `cli_ops/**` importa
+  `app.modules.<x>.models`, `app.modules.<x>.router` ni un helper privado de `PRIVATE_HELPERS`;
 - ningún archivo de `app/worker/**` escribe SQL: sin llamadas `text(...)` ni
   `.exec_driver_sql(...)` (todo el SQL del worker vive en `core/jobs.py` o llega por services);
 - los únicos importadores de `app.core.jobs` dentro de `src/app` son archivos de `app/worker/`
@@ -23,6 +23,10 @@ from tests.architecture._imports import find_forbidden_imports
 SRC = Path(__file__).resolve().parents[2] / "src" / "app"
 WORKER = SRC / "worker"
 CLI = SRC / "cli.py"
+CLI_BASE = SRC / "cli_base.py"
+CLI_OPS = SRC / "cli_ops"
+SEED = SRC / "seed"
+IMPORTS = SRC / "imports"
 MODULO_AJENO = "__capa_de_aplicacion__"
 """Nombre de módulo que no existe: así todo `models`/`router`/privado de un módulo es ajeno."""
 
@@ -30,7 +34,10 @@ SQL_LLAMADAS = frozenset({"text", "exec_driver_sql"})
 
 
 def _archivos_de_aplicacion() -> list[Path]:
-    return [*sorted(WORKER.rglob("*.py")), CLI]
+    """La capa de aplicación (S4B-D53): `worker/**`, `cli.py`, `cli_base.py`, `cli_ops/**` y,
+    cuando existan (B1), `seed/**` e `imports/**`; un directorio ausente no aporta archivos."""
+    carpetas = (WORKER, CLI_OPS, SEED, IMPORTS)
+    return [*(p for carpeta in carpetas for p in sorted(carpeta.rglob("*.py"))), CLI, CLI_BASE]
 
 
 def _violaciones_de_imports(path: Path, fuente: str | None = None) -> list[str]:
@@ -102,6 +109,12 @@ def test_el_worker_existe_y_tiene_archivos_que_revisar() -> None:
         "jobs/expirations.py",
     }
     assert esperados <= nombres, sorted(esperados - nombres)
+
+
+def test_la_capa_de_aplicacion_incluye_cli_base_y_cli_ops() -> None:
+    nombres = {p.relative_to(SRC).as_posix() for p in _archivos_de_aplicacion()}
+    assert {"cli.py", "cli_base.py", "cli_ops/__init__.py"} <= nombres
+    assert any(n.startswith("worker/") for n in nombres)
 
 
 def test_worker_y_cli_no_importan_models_router_ni_privados() -> None:
@@ -181,3 +194,10 @@ def test_control_importadores_de_core_jobs_se_detectan() -> None:
     perezoso = "def f():\n    from app.core.jobs import last_run\n"
     assert importa_core_jobs(perezoso, SRC / "core" / "health.py") == [2]
     assert importa_core_jobs("from app.core import clock\n", SRC / "main.py") == []
+
+
+def test_control_una_fuente_falsa_en_cli_ops_se_detecta() -> None:
+    falsa = "from app.modules.members.models import Member\nfrom app.modules.auth import tokens\n"
+    violaciones = _violaciones_de_imports(CLI_OPS / "falso.py", falsa)
+    reglas = sorted(v.rsplit("(", 1)[1].rstrip(")") for v in violaciones)
+    assert reglas == ["foreign_models", "private_helper"]

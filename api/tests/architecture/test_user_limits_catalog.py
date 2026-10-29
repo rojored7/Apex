@@ -56,6 +56,19 @@ def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
     assert por_ruta[("get", f"{API_PREFIX}/audit")] == {"staff-read"}
     assert por_ruta[("get", f"{API_PREFIX}/audit/{{seq}}")] == {"staff-read"}
     assert USER_LIMITS["audit-verify"] == (3, 60)
+    # S4A-B5 (S4A-D20, S4A-D45): el historial del socio, en `members/router.py`, también.
+    miembros = (MODULES / "members" / "router.py").read_text(encoding="utf-8")
+    llamadas = [
+        nodo.args[1].value
+        for funcion in ast.walk(ast.parse(miembros))
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef)
+        and _ruta_de(funcion) == ("get", f"{API_PREFIX}/members/{{member_id}}/audit")
+        for nodo in ast.walk(funcion)
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) == "enforce_user_limit"
+        and isinstance(nodo.args[1], ast.Constant)
+    ]
+    assert llamadas == ["staff-read"]
     assert USER_LIMITS["audit-verify-hour"] == (20, 3600)
     assert USER_LIMITS["staff-read"] == (120, 60)
 

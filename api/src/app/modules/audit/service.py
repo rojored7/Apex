@@ -20,6 +20,9 @@ S4A-B4 (US-102, US-103; S4A-D16, S4A-D17): la lectura vive en los privados `quer
 `list_entries(session, query, page)` (arma los filtros con `current_clock()` y llama a
 `queries.list`) y `get_entry(session, seq)` (`queries.get`).
 
+S4A-B5 (US-106; S4A-D20): re-exporta `member_history(session, member_id, page, q)` de
+`queries.py`; la ruta vive en `members/router.py` (arista `members -> audit`), no aquí.
+
 Los handlers se suscriben al importarse este módulo (`main.load_module_services()` lo importa
 en el api y en el CLI); `events.subscribe` es idempotente, así que cada uno queda una vez.
 """
@@ -35,7 +38,12 @@ from app.core.audit import record
 from app.core.clock import current_clock
 from app.core.pagination import Page, PageParams
 from app.modules.audit import queries
-from app.modules.audit.queries import AUDITABLE_TABLES, AuditFilters, build_audit_filters
+from app.modules.audit.queries import (
+    AUDITABLE_TABLES,
+    AuditFilters,
+    build_audit_filters,
+    member_history,
+)
 from app.modules.audit.schemas import AuditDetail, AuditListQuery, AuditRow
 from app.modules.audit.verify import (
     Finished,
@@ -64,6 +72,7 @@ __all__ = [
     "get_entry",
     "last_verification",
     "list_entries",
+    "member_history",
     "on_login_attempted",
     "on_password_changed",
     "on_sessions_revoked",

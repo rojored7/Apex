@@ -79,6 +79,8 @@ CON_LIMITE = {
     # S4A-B4 (S4A-D45, M-1): la lista y el detalle de la auditoría consumen `staff-read`.
     ("get", "/api/v1/audit"),
     ("get", "/api/v1/audit/{seq}"),
+    # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
+    ("get", "/api/v1/members/{member_id}/audit"),
 }
 PUBLICAS = {
     ("post", "/api/v1/auth/login"),

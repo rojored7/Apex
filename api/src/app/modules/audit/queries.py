@@ -21,6 +21,9 @@ fachada `service.py`.
 - `get(session, seq) -> AuditDetail`: la fila completa con `before`/`after` pasados por
   `diff.redact_blobs` y `changes = diff.diff(...)`; nunca descifra ni importa el bus (S4A-D17).
   `AuditEntryNotFound` si no existe.
+- `member_history(session, member_id, page, q) -> Page[MemberHistoryItem]` (S4A-B5, US-106;
+  S4A-D20): las entradas con `subject_member_id` del socio, sin correo ni valores; nombres por
+  `auth.service.user_names_for` (S4A-D54).
 """
 
 from __future__ import annotations
@@ -41,7 +44,13 @@ from app.core.search import clean_query
 from app.core.validators import check_instant_range
 from app.modules.audit import diff
 from app.modules.audit.exceptions import AuditEntryNotFound, AuditRangeInvalid
-from app.modules.audit.schemas import MAX_AUDIT_OFFSET, AuditDetail, AuditListQuery, AuditRow
+from app.modules.audit.schemas import (
+    MAX_AUDIT_OFFSET,
+    AuditDetail,
+    AuditListQuery,
+    AuditRow,
+    MemberHistoryItem,
+)
 
 # Arista `audit → auth` del grafo de services (S4A-D19): import a nivel de módulo (duda e).
 from app.modules.auth import service as auth_service
@@ -60,6 +69,8 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "audit.verifications",
     }
 )
+DOMAIN_SEPARATOR: Final = "@"
+"""Un `q` del historial con `@` no es una parte local: página vacía sin consultar (S4A-D112)."""
 UNKNOWN_TABLE_MESSAGE: Final = "Esa tabla no está en la auditoría."
 RECORD_WITHOUT_TABLE_MESSAGE: Final = "Para filtrar por registro indica también la tabla."
 
@@ -187,4 +198,51 @@ async def get(session: AsyncSession, seq: int) -> AuditDetail:
             "hash": entrada.hash,
             "changes": diff.diff(entrada.before, entrada.after, entrada.action),
         }
+    )
+
+
+async def member_history(
+    session: AsyncSession, member_id: UUID, page: PageParams, q: str | None
+) -> Page[MemberHistoryItem]:
+    """Historial del socio (S4A-B5, US-106; S4A-D20, S4A-D45, S4A-D54).
+
+    `subject_member_id = member_id` por `seq DESC` (índice `ix_audit_log_subject_member_seq`) con
+    `PageParams`; `page.offset > MAX_AUDIT_OFFSET` da `AuditRangeInvalid(field="offset")`. `q`
+    (limpio con `clean_query`) filtra por quién actuó con
+    `auth_service.search_user_ids(..., local_part_only=True)` (sin coincidencias, página vacía con
+    `total = 0`; nunca por el dominio). Los nombres salen de `auth_service.user_names_for` (nunca
+    `user_refs_for`: el coach no recibe correos); `fields` y `purpose` de `diff.history_fields` y
+    `diff.history_purpose`. Solo lee: no escribe ni audita la lectura."""
+    if page.offset > MAX_AUDIT_OFFSET:
+        raise AuditRangeInvalid(field="offset")
+    condiciones: builtins.list[ColumnElement[bool]] = [AuditEntry.subject_member_id == member_id]
+    termino = clean_query(q)
+    if termino:
+        if DOMAIN_SEPARATOR in termino:
+            # Revisión de B5 (LOW-1): la parte local nunca lleva `@`; ni se consulta.
+            return to_page([], 0, page)
+        ids = await auth_service.search_user_ids(session, termino, local_part_only=True)
+        if not ids:
+            return to_page([], 0, page)
+        condiciones.append(AuditEntry.user_id == any_uuids(ids))
+    consulta = select(AuditEntry).where(*condiciones).order_by(AuditEntry.seq.desc())
+    # S4A-D106 b (duda 3 de B5): el mismo conteo acotado que `GET /audit` (leído al llamar).
+    entradas, total = await paginate(session, consulta, page, count_limit=MAX_AUDIT_OFFSET + 1)
+    nombres = await auth_service.user_names_for(session, [e.user_id for e in entradas])
+    filas = [_history_item(entrada, nombres) for entrada in entradas]
+    return to_page(filas, total, page)
+
+
+def _history_item(entrada: AuditEntry, nombres: Mapping[UUID, str]) -> MemberHistoryItem:
+    """Una fila del historial: nombre (nunca correo), nombres de campo y propósito."""
+    return MemberHistoryItem(
+        seq=entrada.seq,
+        at=entrada.at,
+        user_id=entrada.user_id,
+        user_name=nombres.get(entrada.user_id),
+        action=entrada.action,
+        table_name=entrada.table_name,
+        record_id=entrada.record_id,
+        fields=diff.history_fields(entrada),
+        purpose=diff.history_purpose(entrada),
     )

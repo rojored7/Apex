@@ -40,6 +40,10 @@ Buscar y listar (S2-B8, US-070; RN-13, RN-14, N-01, N-20, L-1):
   `crypto_ops`).
 - `search_ids(session, q, include_deleted=False)` y `names_for(session, ids)`: una consulta
   cada una; `names_for` incluye dados de baja (contratos de US-091 y US-110).
+
+Historial (S4A-B5, US-106; S4A-D20): `history(session, member_id, page, q)` hace
+`ensure_exists(member_id, include_deleted=True)` y delega en `audit.service.member_history`
+(import de nivel de módulo: arista `members -> audit`; `audit` nunca importa `members`).
 """
 
 from __future__ import annotations
@@ -76,6 +80,10 @@ from app.core.db import violated_constraint
 from app.core.events import DomainEvent
 from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page, uuid_array
 from app.core.search import sql_fold
+
+# Arista `members -> audit` de nivel de módulo (S4A-D20): el historial del socio.
+from app.modules.audit import service as audit_service
+from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members.changes import (
     DOCUMENT_ALIVE_INDEX,
     DOCUMENT_DATA_CLASS,
@@ -144,6 +152,7 @@ __all__ = [
     "ensure_exists",
     "get",
     "get_ref",
+    "history",
     "id_by_document",
     "list",
     "mask",
@@ -481,3 +490,15 @@ async def names_for(session: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, Me
         )
         for fila in await session.execute(consulta)
     }
+
+
+# Historial del socio (S4A-B5, US-106; S4A-D20) -----------------------------------------
+
+
+async def history(
+    session: AsyncSession, member_id: UUID, page: PageParams, q: str | None
+) -> Page[MemberHistoryItem]:
+    """El historial del socio (también dado de baja) o `MemberNotFound`; delega en
+    `audit.service.member_history` (arista de nivel de módulo `members -> audit`, S4A-D20)."""
+    await ensure_exists(session, member_id, include_deleted=True)
+    return await audit_service.member_history(session, member_id, page, q)

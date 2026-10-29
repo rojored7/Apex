@@ -89,6 +89,18 @@ def test_las_filas_de_las_listas_de_socios_no_declaran_campos_sensibles(
     assert "GET /api/v1/members" in listas
 
 
+def test_el_historial_del_socio_se_barre_y_no_lleva_correo(settings_prueba: Settings) -> None:
+    """S4A-B5 (S4A-D20, S4A-D54): `GET /members/{member_id}/audit` es una lista bajo `/members`;
+    el recorrido la ve y `MemberHistoryItem` no declara `user_email` ni otro sufijo sensible."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app)
+    assert problemas == [], "\n".join(problemas)
+    assert "GET /api/v1/members/{member_id}/audit" in listas
+    fila = app.openapi()["components"]["schemas"]["MemberHistoryItem"]["properties"]
+    assert "user_email" not in fila
+    assert {"user_name", "fields", "purpose"} <= set(fila)
+
+
 @pytest.mark.parametrize(
     ("prefijo", "lista"),
     [

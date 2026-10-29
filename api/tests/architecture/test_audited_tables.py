@@ -188,10 +188,12 @@ def test_membership_y_payment_declaran_sujeto() -> None:
         assert getattr(clase, "__audit_subject__", None) == "member_id", tabla
 
 
-def test_membership_freezes_es_requerida_y_no_declara_sujeto_hasta_us_106() -> None:
-    """S3-B2 (D14): `memberships.membership_freezes` es requerida y auditada. No declara
-    `__audit_subject__` (no tiene `member_id`); la fila `update` de `memberships.memberships`
-    (fin y estado) lleva el socio. US-106 (Sprint 4A) decide cómo mostrarla en el historial."""
+def test_membership_freezes_es_requerida_y_no_declara_sujeto_por_decision_s4a_d20() -> None:
+    """S3-B2 (D14): `memberships.membership_freezes` es requerida y auditada. S4A-D20 (US-106):
+    no declara `__audit_subject__` y no se le agrega, porque necesitaría `member_id`, una columna
+    nueva en una tabla append-only con trigger (el relleno con `UPDATE` está bloqueado). La
+    congelación aparece en el historial del socio por la fila `update` de
+    `memberships.memberships` (`end_date` y `status`), que sí lleva el socio."""
     assert "memberships.membership_freezes" in REQUIRED_AUDITED_TABLES_V01
     assert "memberships.membership_freezes" not in PENDING_AUDITED
     tablas = _tablas_de_la_app()

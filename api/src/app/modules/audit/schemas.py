@@ -8,6 +8,8 @@
   `user_id` no está en `auth.users`.
 - `AuditDetail` y `FieldChange` (S4A-D17, S4A-D52): todo valor `apx1.` sale como el marcador
   `{"encrypted": true, "key_id", "alg"}`; `FieldChange.encrypted` dice si el valor estaba cifrado.
+- `MemberHistoryItem` (S4A-B5, S4A-D20): el historial del socio para admin y coach, sin correo
+  ni valores (`fields` con nombres, `purpose` del `reveal` automático).
 - `MAX_AUDIT_OFFSET = 100_000` (S4A-D45: 422 `field="offset"`) y `MAX_SEQ = 2**63 - 1` (S4A-D46).
 """
 
@@ -89,6 +91,30 @@ class FieldChange(BaseModel):
     before: Any = None
     after: Any = None
     encrypted: bool
+
+
+HistoryPurpose = Literal["notify", "auth_link"]
+
+
+class MemberHistoryItem(BaseModel):
+    """Una entrada del historial del socio (S4A-B5, US-106; S4A-D20, S4A-D50, S4A-D54).
+
+    Sin `user_email` (el sufijo `_email` está prohibido en las listas bajo `/members`), sin
+    `before`/`after` ni valores: `fields` son solo nombres de campo (`audit.diff.history_fields`)
+    y `purpose` es el propósito de un `reveal` automático (`None` en el interactivo). Mismos
+    campos para admin y coach; `user_name` es la parte local del correo o `Sistema`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    seq: int
+    at: datetime
+    user_id: UUID
+    user_name: str | None
+    action: AuditAction
+    table_name: str
+    record_id: UUID | None
+    fields: list[str]
+    purpose: HistoryPurpose | None
 
 
 class AuditDetail(AuditRow):

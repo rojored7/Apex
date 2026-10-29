@@ -14,7 +14,8 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
   `auth → settings` (S2-D14) y, desde S3-B1, `memberships → members` (`get_ref`, `names_for`),
   `memberships → plans` (`get(for_share=True)`, `names_for`) y `memberships → settings`
   (`memberships_policy`). S3-B3 agrega `payments → settings` (`memberships_policy`,
-  `payment_methods`); S3-B4 `memberships → payments` (`register`, el puerto `MembershipGate`,
+  `payment_methods`); S4A-B5 `members → audit` (historial del socio, S4A-D20); S3-B4
+  `memberships → payments` (`register`, el puerto `MembershipGate`,
   `PaymentRegistered`, `sum_not_voided`); B8 `payments → members` (`search_ids`,
   `ensure_exists`) y `payments → auth` (`names_for`), donde tienen uso real (S3-D80; entran en
   el Rojo de S3-B8 con la lista, el detalle y el resumen). Cada arista permitida existe de
@@ -53,6 +54,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("audit", "auth"),
         ("auth", "settings"),
+        # S4A-B5 (S4A-D20, C6): `members.service.history` delega en `audit.service.member_history`.
+        ("members", "audit"),
         ("memberships", "members"),
         ("memberships", "payments"),
         ("memberships", "plans"),
@@ -257,11 +260,14 @@ def test_el_par_perezoso_payments_memberships_existe_y_esta_permitido() -> None:
 def test_el_par_perezoso_members_memberships_existe_y_esta_permitido() -> None:
     """S3-B9b (D22, G-03, condición 1): `members` pide a `memberships` el conjunto de ids de la
     lista (`member_ids_by_status`) y el estado de cada página y de la ficha (`status_for`) con
-    imports dentro de la función. Es su única perezosa; a nivel de módulo `members` no importa
-    ningún service (`memberships → members` es el sentido mayoritario)."""
+    imports dentro de la función. Es su única perezosa (`memberships → members` es el sentido
+    mayoritario). S4A-B5 (S4A-D20, C6): a nivel de módulo `members` importa solo `audit` (el
+    historial del socio); nunca `memberships` ni `payments`."""
     arriba, perezosas = _grafo_real()
     assert perezosas["members"] == {"memberships"}
-    assert arriba["members"] == set()
+    assert arriba["members"] == {"audit"}
+    assert ("members", "audit") in ALLOWED_EDGES
+    assert "members" not in arriba["audit"], "audit -> members crearía un ciclo (S4A-D20)"
     assert ("members", "memberships") in LAZY_IMPORT_WHITELIST
     assert ("members", "memberships") not in ALLOWED_EDGES
     assert "members" in arriba["memberships"]

@@ -27,6 +27,11 @@ S3-B10 (US-074, US-075, US-076; D19, D21, M-1, M-3, S3-D44, S3-D46):
   404, 409, 422 y 429.
 - Las dos consumen `admin-write` (30 por minuto, `USER_ADMIN_WRITE_LIMIT_PER_MIN`; L1 de la
   revisión de Fase 4 del Sprint 3), la cubeta de anular un pago y anular una membresía.
+S4A-B5 (US-106; S4A-D20, S4A-D45):
+- `GET /members/{member_id}/audit` (admin y coach, también sobre un dado de baja):
+  `Page[MemberHistoryItem]` con `PageParams` y `q`; consume `staff-read` (120 por minuto,
+  compartida con `GET /audit`, `GET /audit/{seq}` y el tablero). Códigos 200, 401, 403, 404, 422
+  (`offset` mayor que 100.000 con `field="offset"`) y 429.
 El 429 se declara por ruta, nunca en el `APIRouter` (D27, E2). Las rutas no hacen `select`:
 validan, llaman al service y devuelven.
 """
@@ -53,6 +58,7 @@ from app.core.ratelimit import (
     usage,
 )
 from app.core.security import AdminDep, StaffDep
+from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import service
 from app.modules.members.schemas import (
     DEFAULT_MEMBER_SORT,
@@ -127,6 +133,24 @@ async def get_member(
 ) -> MemberDetailOut:
     await enforce_user_limit(request, "members-detail", principal.user_id)
     return await service.get(session, member_id)
+
+
+@router.get(
+    "/members/{member_id}/audit",
+    response_model=Page[MemberHistoryItem],
+    responses=responses_for(404, 422, 429),
+)
+async def member_history(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+) -> Page[MemberHistoryItem]:
+    # Literal: `test_user_limits_catalog.py` exige la cubeta como constante (S4A-D45).
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.history(session, member_id, page, q)
 
 
 def _ip(request: Request) -> str:

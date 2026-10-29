@@ -20,6 +20,9 @@ la paridad del prefijo y del separador con `core/crypto`).
   cambios da `[]`; en las lecturas (`reveal`, `login`, `verify`, `download`, `export`) se ignora
   `before` y todo `after` es `added`. `encrypted` es verdadero si el valor de antes o de después
   es un blob; los valores salen ya con el marcador.
+- `history_fields(entry)` y `history_purpose(entry)` (S4A-B5, US-106; S4A-D20, S4A-D50): los
+  nombres de campo (nunca valores) y el propósito de un `reveal` automático para el historial
+  del socio que ve el coach.
 """
 
 from __future__ import annotations
@@ -30,12 +33,14 @@ from types import MappingProxyType
 from typing import Any, Final
 from uuid import UUID
 
-from app.modules.audit.schemas import ChangeKind, FieldChange
+from app.core.audit import TECHNICAL_COLUMNS, AuditEntry
+from app.modules.audit.schemas import ChangeKind, FieldChange, HistoryPurpose
 
 __all__ = [
     "BLOB_PARTS",
     "BLOB_PREFIX",
     "BLOB_SEPARATOR",
+    "HIDDEN_HISTORY_FIELDS",
     "MALFORMED_BLOB_MARKER",
     "MAX_DEPTH",
     "READ_ACTIONS",
@@ -43,6 +48,8 @@ __all__ = [
     "FieldChange",
     "blob_marker",
     "diff",
+    "history_fields",
+    "history_purpose",
     "redact_blobs",
 ]
 
@@ -152,3 +159,48 @@ def diff(
     despues: Mapping[str, Any] = {} if after is None else after
     cambios = (_change(campo, antes, despues) for campo in sorted({*antes, *despues}))
     return [cambio for cambio in cambios if cambio is not None]
+
+
+# Historial del socio (S4A-B5, US-106; S4A-D20, S4A-D50) ------------------------------------
+
+HIDDEN_HISTORY_FIELDS: Final[frozenset[str]] = frozenset({"reference", "void_reason"})
+"""Nombres que el historial del socio nunca muestra (S4A-D20: de `payments.payments` no salen
+`reference` ni `void_reason`, ni su nombre)."""
+INDEX_SUFFIX: Final = "_idx"
+"""Sufijo de las columnas de índice ciego: nunca salen en el historial."""
+
+
+def history_fields(entry: AuditEntry) -> list[str]:
+    """Nombres de campo de una entrada para el historial del socio, sin valores (S4A-D20).
+
+    `insert` y `delete` -> `[]`; `update` -> las columnas que cambiaron, ordenadas, sin `*_idx`,
+    sin las técnicas (`core.audit.TECHNICAL_COLUMNS`) y sin `HIDDEN_HISTORY_FIELDS`; `reveal` ->
+    `[after["field"]]` (nunca `ip` ni `purpose`); cualquier otra acción -> `[]`. Pura."""
+    if entry.action == "update":
+        claves = {*(entry.before or {}), *(entry.after or {})}
+        return sorted(clave for clave in claves if _shown_in_history(clave))
+    if entry.action == "reveal":
+        campo = (entry.after or {}).get("field")
+        return [campo] if isinstance(campo, str) and campo else []
+    return []
+
+
+def _shown_in_history(key: str) -> bool:
+    """Falso para `*_idx`, las columnas técnicas y `HIDDEN_HISTORY_FIELDS` (S4A-D20)."""
+    return not (
+        key.endswith(INDEX_SUFFIX) or key in TECHNICAL_COLUMNS or key in HIDDEN_HISTORY_FIELDS
+    )
+
+
+def history_purpose(entry: AuditEntry) -> HistoryPurpose | None:
+    """El propósito de un `reveal` automático (`after["purpose"]`, `notify` o `auth_link`;
+    S4A-D50, M-6.3); `None` en el `reveal` interactivo, en otra acción o con un valor fuera del
+    conjunto cerrado. Pura."""
+    if entry.action != "reveal":
+        return None
+    proposito = (entry.after or {}).get("purpose")
+    if proposito == "notify":
+        return "notify"
+    if proposito == "auth_link":
+        return "auth_link"
+    return None

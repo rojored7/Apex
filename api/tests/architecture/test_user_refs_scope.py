@@ -7,7 +7,9 @@ en `audit`). Por AST, sobre todo el árbol de cada archivo (también dentro de f
   `user_refs_for` (llamada, atributo, `from ... import` o `importlib.import_module`) ni `UserRef`;
   sin `UserRef` no pueden leer su `.email`;
 - fuera de `auth`, el único módulo que nombra `user_refs_for` es `audit` (su lista y detalle lo
-  usan desde S4A-B4).
+  usan desde S4A-B4);
+- S4A-B5: `audit/queries.py::member_history` (el historial del socio que sirve `members`) usa
+  `user_names_for` y no `user_refs_for` ni `UserRef`.
 Los controles (fuentes falsas) prueban que el detector ve cada forma.
 """
 
@@ -74,6 +76,35 @@ def test_fuera_de_auth_solo_audit_usa_user_refs_for() -> None:
         if nombres_prohibidos(archivo.read_text(encoding="utf-8"), frozenset({"user_refs_for"}))
     }
     assert usuarios == {"audit"}
+
+
+def _funcion(fuente: str, nombre: str) -> ast.AsyncFunctionDef | ast.FunctionDef | None:
+    for nodo in ast.walk(ast.parse(fuente)):
+        if isinstance(nodo, ast.AsyncFunctionDef | ast.FunctionDef) and nodo.name == nombre:
+            return nodo
+    return None
+
+
+def _nombra(nodo: ast.AST, nombre: str) -> bool:
+    return any(
+        (isinstance(n, ast.Name) and n.id == nombre)
+        or (isinstance(n, ast.Attribute) and n.attr == nombre)
+        for n in ast.walk(nodo)
+    )
+
+
+def test_el_historial_del_socio_usa_user_names_for_y_no_user_refs_for() -> None:
+    """S4A-B5 (S4A-D20, S4A-D54, L-3): el historial que sirve `members` (lo ve el coach) toma los
+    nombres de `user_names_for` en `audit/queries.py::member_history`, nunca `user_refs_for` ni
+    `UserRef` (con el correo). `members` delega sin tocar ninguno de los dos."""
+    fuente = (MODULES_DIR / "audit" / "queries.py").read_text(encoding="utf-8")
+    funcion = _funcion(fuente, "member_history")
+    assert funcion is not None, "audit/queries.py sin member_history"
+    assert _nombra(funcion, "user_names_for"), "member_history debe usar user_names_for"
+    assert not _nombra(funcion, "user_refs_for")
+    assert not _nombra(funcion, "UserRef")
+    servicio = (MODULES_DIR / "members" / "service.py").read_text(encoding="utf-8")
+    assert nombres_prohibidos(servicio) == []
 
 
 # Controles del detector --------------------------------------------------------------------

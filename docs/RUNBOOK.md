@@ -14,7 +14,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 1. [Sesión y límites](#1-sesión-y-límites-s2-b2)
 2. [Cuentas](#2-cuentas): primer admin, enlaces de activación y recuperación, ciclo de vida
 3. [Auditoría de eventos de seguridad](#3-auditoría-de-eventos-de-seguridad-s2-b6)
-4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado, ficha, revelar y editar, pestañas de membresías y pagos
+4. [Socios](#4-socios): cifrado en reposo, búsqueda y listado, ficha, revelar y editar, pestañas de membresías y pagos, historial de la ficha
 5. [Planes](#5-planes-s2-b9)
 6. [Rollback por migración](#6-rollback-por-migración)
 7. [Imágenes base por digest y su renovación](#7-imágenes-base-por-digest-y-su-renovación-s3-d62)
@@ -345,6 +345,17 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin ac
 - **Sin cupo propio:** ninguna de las dos lleva límite por usuario ni responde 429 (D28). `q` no toca datos de personas (nombre de plan o referencia de pago), así que no gasta la cubeta de búsquedas de `GET /members` (60 por minuto, ver "Búsqueda y listado"). Ninguna descifra ni calcula índices ciegos: abrir las pestañas no deja filas en `crypto.crypto_ops`. Las dos responden `Cache-Control: no-store`.
 - **Costo:** cada página hace un número fijo de sentencias (el socio, la página y el total, y una por vecino: nombres de socios y planes, sumas de pagos y congelaciones, o los datos de quien registró), sin importar cuántas filas tenga.
 - **Verificar con psql:** `SELECT count(*) FROM memberships.memberships WHERE member_id = '<id>';` y `SELECT count(*) FROM payments.payments WHERE member_id = '<id>';` coinciden con el `total` de cada pestaña sin `q` (y, para pagos, `... AND NOT voided` con `voided=false`).
+
+### Historial de la ficha (S4A-B5, US-106; S4A-D20, S4A-D109 a S4A-D111)
+
+- **`GET /api/v1/members/{member_id}/audit` (admin y coach, también sobre un socio dado de baja).** Página de `MemberHistoryItem` con `limit` (1 a 200), `offset` (hasta 100.000) y `q`, en `seq` descendente. Trae las entradas de `audit.audit_log` cuyo `subject_member_id` es el socio: altas, ediciones, revelaciones y bajas de la ficha, y las ventas, activaciones, congelaciones, anulaciones y pagos de sus membresías. Responde `Cache-Control: no-store`.
+- **Qué ve el coach (lo mismo que el admin).** Cada fila trae `seq`, `at`, `user_id`, `user_name` (la parte local del correo de quien actuó, o `Sistema`; nunca el correo completo), `action`, `table_name`, `record_id`, `fields` y `purpose`. `fields` son solo NOMBRES de campo, nunca valores: en una edición, las columnas que cambiaron (sin `*_idx`, `created_at` ni `updated_at`); en una revelación, el campo revelado (nunca la IP); en altas y bajas físicas, vacío. De los pagos jamás salen `reference` ni `void_reason`, ni siquiera el nombre: una anulación se ve como `voided`, `voided_at` y `voided_by`. El detalle con valores sigue siendo solo del admin en `GET /audit/{seq}`.
+- **`purpose`.** Solo en una revelación automática: `notify` (el sistema descifró el contacto para avisar al socio) o `auth_link` (para un enlace de cuenta). En una revelación hecha por una persona desde la ficha es `null`; en cualquier otra acción también.
+- **Por qué una congelación aparece por la membresía.** La fila de `memberships.membership_freezes` no lleva `subject_member_id` (es append-only y su dueño es la membresía), así que no sale en el historial. La congelación se ve por el `update` de `memberships.memberships` que la acompaña, con `fields` `["end_date", "status"]` y `record_id` de la membresía.
+- **`q`.** Filtra por la parte local del correo de quien actuó, sin tildes ni mayúsculas (`PÉREZ` encuentra `ana.perez`); nunca por el dominio (`ejemplo` no encuentra nada). Si nadie coincide, la página sale vacía con `total` 0.
+- **Errores y límites:** socio inexistente 404 `member_not_found` (gana sobre un `offset` fuera de rango); `offset` mayor que 100.000 da 422 con `field="offset"`; `limit` fuera de rango, `offset` negativo, `q` con controles o `member_id` que no es UUID dan 422 con `field`; el rol `member` 403; sin sesión 401. Consume `staff-read` (120 lecturas por minuto por usuario, compartida con `GET /audit`, `GET /audit/{seq}` y el tablero): la 121.ª da 429 con `Retry-After`. El `total` se satura en 100.001, como en `GET /audit`.
+- **Solo lee:** abrir el historial no escribe en `audit.audit_log` ni en `crypto.crypto_ops`, y no descifra nada.
+- **Verificar con psql:** `SELECT seq, action, table_name FROM audit.audit_log WHERE subject_member_id = '<id>' ORDER BY seq DESC LIMIT 25;` coincide con la primera página sin `q`.
 
 ## 5. Planes (S2-B9)
 

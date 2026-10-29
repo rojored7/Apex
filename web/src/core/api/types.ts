@@ -248,6 +248,23 @@ export interface paths {
         patch: operations["update_member_api_v1_members__member_id__patch"];
         trace?: never;
     };
+    "/api/v1/members/{member_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Member History */
+        get: operations["member_history_api_v1_members__member_id__audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members/{member_id}/memberships": {
         parameters: {
             query?: never;
@@ -1265,6 +1282,44 @@ export interface components {
             warnings: string[];
         };
         /**
+         * MemberHistoryItem
+         * @description Una entrada del historial del socio (S4A-B5, US-106; S4A-D20, S4A-D50, S4A-D54).
+         *
+         *     Sin `user_email` (el sufijo `_email` está prohibido en las listas bajo `/members`), sin
+         *     `before`/`after` ni valores: `fields` son solo nombres de campo (`audit.diff.history_fields`)
+         *     y `purpose` es el propósito de un `reveal` automático (`None` en el interactivo). Mismos
+         *     campos para admin y coach; `user_name` es la parte local del correo o `Sistema`.
+         */
+        MemberHistoryItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "insert" | "update" | "delete" | "reveal" | "export" | "download" | "login" | "verify";
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Fields */
+            fields: string[];
+            /** Purpose */
+            purpose: ("notify" | "auth_link") | null;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number;
+            /** Table Name */
+            table_name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string | null;
+        };
+        /**
          * MemberPatch
          * @description `PATCH /members/{member_id}` cerrado (S3-D46): exactamente estos diez campos, todos
          *     opcionales; `model_fields_set` distingue "no enviado" de `null`. `document` y
@@ -1500,6 +1555,17 @@ export interface components {
         Page_AuditRow_: {
             /** Items */
             items: components["schemas"]["AuditRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[MemberHistoryItem] */
+        Page_MemberHistoryItem_: {
+            /** Items */
+            items: components["schemas"]["MemberHistoryItem"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -3425,6 +3491,96 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    member_history_api_v1_members__member_id__audit_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MemberHistoryItem_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

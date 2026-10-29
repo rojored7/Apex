@@ -346,3 +346,51 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
   - `GET /audit/4501` 200 (update de `members.members`: `deleted_at`, `status`); `GET /audit/4356` 200 (`phone` `changed` con `encrypted` y el marcador `A256GCM`); `grep -c apx1.` = 0 en todos los cuerpos.
   - 422 `validation_error`: `from=0001-01-01T00:00:00+05:00` (`from`), `/audit/99999999999999999999` (`seq`), `record_id` sin `table` (`record_id`), `table=members.socios` (`table`).
 - Stack: api, worker, web y db `healthy`, RestartCount 0; `alembic current` = `0013_audit_verifications (head)`; 0 líneas ERROR/Traceback en el log del api. Detalle en el scratchpad (`b4-evidencia.md`).
+
+### S4A-B5 · Rojo (B5.1 a B5.3)
+
+- Línea base sobre `2464030` (árbol limpio). Sin migración; api, worker y worktree del front no se tocaron. Antes de escribir pruebas se volcó una vez la cadena de `sembrar_actividad` más un pago nuevo, una congelación (21 al 27 de octubre) y la baja (archivo temporal ya borrado) para calcular cada `fields` a mano.
+- B5.1, stubs (`NotImplementedError` en las tres funciones nuevas; esquema, fachada, service de `members` y ruta reales):
+  - `audit/schemas.py`: `HistoryPurpose = Literal["notify", "auth_link"]`; `MemberHistoryItem {seq, at, user_id, user_name, action, table_name, record_id, fields: list[str], purpose: HistoryPurpose | None}` (`extra="forbid"`, sin `user_email`).
+  - `audit/diff.py`: `HIDDEN_HISTORY_FIELDS = {"reference", "void_reason"}`; stubs `history_fields(entry: AuditEntry) -> list[str]` y `history_purpose(entry: AuditEntry) -> HistoryPurpose | None` (importa `AuditEntry` de `core.audit`, sigue sin bus).
+  - `audit/queries.py`: stub `member_history(session, member_id, page, q: str | None) -> Page[MemberHistoryItem]`; `audit/service.py` lo re-exporta (`__all__`).
+  - `members/service.py` (504 líneas): `from app.modules.audit import service as audit_service` y `MemberHistoryItem` arriba; `history(session, member_id, page, q)` real (`ensure_exists(..., include_deleted=True)` y delega); en `__all__`.
+  - `members/router.py`: `GET /members/{member_id}/audit` (`StaffDep`, `enforce_user_limit(request, "staff-read", ...)` literal, `PageParams`, `q: SearchQuery`, `responses_for(404, 422, 429)`).
+- B5.2 arquitectura (C6): `test_service_import_graph` (`("members", "audit")` en `ALLOWED_EDGES`; `arriba["members"] == {"audit"}` con `perezosas["members"] == {"memberships"}`; `audit` no importa `members`; el subproceso cubre `audit-members` y `members-audit`); `test_audited_tables` (`..._por_decision_s4a_d20` con docstring); `test_error_codes_per_route` (`CON_LIMITE` + la ruta); `test_user_limits_catalog` (la ruta consume solo `staff-read`); `test_list_rows_without_sensitive_fields` (+1: la ruta se barre y `MemberHistoryItem` no tiene `user_email`); `test_user_refs_scope` (+1: `queries.member_history` nombra `user_names_for` y no `user_refs_for` ni `UserRef`; `members/service.py` limpio); nueva `test_audit_subject.py` (7: `Member` `id`, `Membership` y `Payment` `member_id` como columna mapeada; `MembershipFreeze` sin sujeto ni `member_id`; control de `core.audit._subject`; `members/service.py` sin `memberships`/`payments` arriba, perezosas solo `memberships`; control del detector).
+- B5.3, conteo por archivo (rojo = `NotImplementedError` de los stubs, ninguna por defecto de la prueba):
+  - `tests/architecture`: 1 rojo / 344 ok (rojo: `test_el_historial_del_socio_usa_user_names_for_y_no_user_refs_for`). `test_audit_subject.py`: 0 / 7.
+  - `tests/audit/test_history_fields.py`: 27 / 2 (verdes: `canonical` con y sin `subject_member_id`, ya cubiertas por `core/audit`).
+  - `tests/audit/test_member_history.py`: 29 / 1 (verde: `MemberNotFound` de un socio inexistente, `ensure_exists` real).
+  - `tests/members/test_router_member_audit.py`: 8 / 9 (verdes: 404, 403 member, 401, 422 de `limit` 0 y 201, `offset` negativo, `q` con NUL, `member_id` no UUID y OpenAPI; rojos: los 200, el 422 de `offset` 100.001 y los dos de `staff-read`, que llegan a 500).
+  - Total: **65 rojo**.
+- **Verde desechable** (solo `db_test`; copia y `sha256sum -c` en el scratchpad `b5stub/`, `diff.py` y `queries.py` volvieron idénticos al stub): los tres archivos más `tests/architecture` 421/421; `tests/audit tests/members -m "not perf"` 885 ok sin regresiones (la arista nueva no rompe imports).
+- Firmas fijadas por el Rojo:
+  - `history_fields`: `update` = unión de claves de `before` y `after` (también con `before = None`), ordenada, sin `*_idx`, sin `created_at`/`updated_at` y sin `reference`/`void_reason` (el nombre tampoco: la anulación da `["voided", "voided_at", "voided_by"]`); `reveal` = `[after["field"]]` si es texto, si no `[]`; `insert`, `delete` y el resto `[]`; no muta.
+  - `history_purpose`: solo `reveal` y solo `notify`/`auth_link`; otro valor, tipo o acción da `None`.
+  - `member_history`: `offset > 100_000` → `AuditRangeInvalid(field="offset")` antes de leer; `offset = 100_000` da 200 vacío con `total`; `q` por `clean_query` y `search_user_ids(..., local_part_only=True)` (sin coincidencias, página vacía `total = 0`; vacío o `None` no filtra); `user_name` por `user_names_for`; `seq DESC`; solo lee.
+  - Esperado a mano: socia = seqs 11..4 con `fields` `[status]`, `[voided, voided_at, voided_by]`, `[status]`, `[]`, `[]`, `[phone]`, `[email, phone]`, `[]`; `q="juan"` → 9, 8, 6, 5; `"PÉREZ"`/`"ana"` → 11, 10, 7, 4; dominio → vacío; congelación → 15 (`end_date`, `status`), la 14 (`membership_freezes`) sin sujeto; baja → 12 (`deleted_at`, `status`).
+  - Ruta: el mismo JSON para admin y coach; `staff-read` compartida con `GET /audit` (60 + 60 pasan, la 121.ª da 429 en las dos rutas).
+- Dudas para el Verde:
+  1. `HIDDEN_HISTORY_FIELDS` oculta el NOMBRE `void_reason` (lectura de S4A-D20 "jamás `reference` ni `void_reason`" y del paso 66, que busca el texto en el JSON). Si el Verde prefiere mostrar el nombre sin valor, cambia `test_anulacion_de_pago_...`, el `ESPERADO` de las dos pruebas y la búsqueda de texto, con decisión anotada.
+  2. Columnas técnicas: el Rojo exige quitar `created_at`/`updated_at` (`core.audit.TECHNICAL_COLUMNS`, que el hook ya no escribe en `update`); `created_by` y `voided_by` no son técnicas y salen.
+  3. `member_history` pagina con `count_limit=MAX_AUDIT_OFFSET + 1` (como la lista) sobre `ix_audit_log_subject_member_seq`; ninguna prueba fija la saturación del `total` en el historial.
+  4. El orden 404 frente a 422 de `offset` 100.001 sobre un socio inexistente no tiene prueba (`members.history` llama a `ensure_exists` primero).
+  5. `test_user_refs_scope` exige `user_names_for` dentro del cuerpo de `member_history`; si el Verde lo mueve a un ayudante, ajusta la prueba con motivo.
+- Archivos creados: `api/tests/architecture/test_audit_subject.py`, `api/tests/audit/{test_history_fields,test_member_history}.py`, `api/tests/members/test_router_member_audit.py`. Tocados: `api/src/app/modules/audit/{diff,queries,schemas,service}.py`, `api/src/app/modules/members/{service,router}.py`, `api/tests/architecture/{test_service_import_graph,test_audited_tables,test_error_codes_per_route,test_user_limits_catalog,test_list_rows_without_sensitive_fields,test_user_refs_scope}.py`, este cuaderno. `ruff check`, `ruff format --check` (477 archivos) y `mypy src` (114 archivos) limpios. Sin commit (lo hace el Verde).
+
+### S4A-B5 · Verde (B5.4 a B5.7, gates 1 y 2)
+
+- B5.4 `audit/diff.py`: `history_fields` (`update` = unión ordenada de claves de `before`/`after` filtrada por `_shown_in_history`: sin `INDEX_SUFFIX = "_idx"`, sin `core.audit.TECHNICAL_COLUMNS`, sin `HIDDEN_HISTORY_FIELDS`; `reveal` = `[after["field"]]` si es texto no vacío; resto `[]`) y `history_purpose` (solo `reveal`, solo `notify`/`auth_link`). Puras, sin bus.
+- B5.5 `audit/queries.py`: `member_history` (offset > `MAX_AUDIT_OFFSET` → `AuditRangeInvalid(field="offset")`; `subject_member_id` igual; `q` por `clean_query` + `search_user_ids(..., local_part_only=True)`, vacío no filtra, sin coincidencias página vacía; `seq DESC`; `paginate(..., count_limit=MAX_AUDIT_OFFSET + 1)`; `user_names_for` en el cuerpo) y `_history_item`. `members.history` y la ruta ya venían reales del Rojo.
+- Dudas: (1) `void_reason` oculto como nombre → S4A-D109; (2) 429 `staff-read` se mantiene; (3) saturación del `total` con prueba nueva `test_total_se_satura_en_max_audit_offset_mas_uno` → S4A-D110; (4) 404 antes que 422, pruebas nuevas `test_socio_inexistente_con_offset_fuera_de_rango_da_member_not_found` (service) y `test_socio_inexistente_con_offset_fuera_de_rango_da_404` (ruta) → S4A-D111; (5) `user_names_for` sigue en el cuerpo. Ninguna aserción del Rojo cambió.
+- B5.6 docs: RUNBOOK §4 "Historial de la ficha" (+ índice); DECISIONES "S4A-B5" con S4A-D109 a S4A-D111. `ROUTES.md` queda para F2.
+- P-API: `export-openapi` ×2 idénticas (sha256 `d88e36b1…`, +275 líneas), `npm run gen:api`, `types.contract.test.ts` 5/5, `tsc --noEmit` limpio (repo principal).
+- Gates: 1 `slice-gate.sh audit ...` verde, 406 ok; 2 `slice-gate.sh architecture ...` verde, 345 ok. Lectura del gate 4 (sin sellar): `test_router_member_audit.py` + `test_audit_subject.py` + `test_router_get.py` 38 ok. Regresión `tests/audit tests/members -m "not perf"` 888 ok (885 + 3 nuevas). `ruff check`, `ruff format --check` (477) y `mypy src` (114) limpios.
+- Pendiente para el cierre: revisión `security-reviewer`, gate 4 sellante, B5.8 y checkpoint.
+
+### S4A-B5 · Revisiones
+
+- `security-reviewer`: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW, las dos cerradas.
+  - LOW-1: `q` con `@` da página vacía sin consultar `search_user_ids` (`DOMAIN_SEPARATOR` en `audit/queries.py`); prueba parametrizada `test_q_con_arroba_da_pagina_vacia_sin_buscar_usuarios` (4 casos, `search_user_ids` parcheado para fallar si se llama) → S4A-D112.
+  - LOW-2: constancia en S4A-D54 (identificadores opacos `user_id`, `record_id`, `table_name`), sin código.
+- `test_member_history.py` + `test_router_member_audit.py`: 54 ok. El contrato no cambió (sin P-API).

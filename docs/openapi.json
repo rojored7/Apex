@@ -1331,6 +1331,102 @@
         "title": "MemberDetailOut",
         "type": "object"
       },
+      "MemberHistoryItem": {
+        "additionalProperties": false,
+        "description": "Una entrada del historial del socio (S4A-B5, US-106; S4A-D20, S4A-D50, S4A-D54).\n\nSin `user_email` (el sufijo `_email` está prohibido en las listas bajo `/members`), sin\n`before`/`after` ni valores: `fields` son solo nombres de campo (`audit.diff.history_fields`)\ny `purpose` es el propósito de un `reveal` automático (`None` en el interactivo). Mismos\ncampos para admin y coach; `user_name` es la parte local del correo o `Sistema`.",
+        "properties": {
+          "action": {
+            "enum": [
+              "insert",
+              "update",
+              "delete",
+              "reveal",
+              "export",
+              "download",
+              "login",
+              "verify"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "enum": [
+                  "notify",
+                  "auth_link"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "user_id",
+          "user_name",
+          "action",
+          "table_name",
+          "record_id",
+          "fields",
+          "purpose"
+        ],
+        "title": "MemberHistoryItem",
+        "type": "object"
+      },
       "MemberPatch": {
         "additionalProperties": false,
         "description": "`PATCH /members/{member_id}` cerrado (S3-D46): exactamente estos diez campos, todos\nopcionales; `model_fields_set` distingue \"no enviado\" de `null`. `document` y\n`document_type` son de admin (por presencia, M-3). `status`, `deleted_at` y\n`data_consent_at` nunca entran (`extra=\"forbid\"`). `data_consent` solo `true` (un `false`\nlo rechaza el service con 422).",
@@ -1981,6 +2077,38 @@
           "offset"
         ],
         "title": "Page[AuditRow]",
+        "type": "object"
+      },
+      "Page_MemberHistoryItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[MemberHistoryItem]",
         "type": "object"
       },
       "Page_MemberRowOut_": {
@@ -5495,6 +5623,153 @@
           }
         },
         "summary": "Update Member",
+        "tags": [
+          "members"
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/audit": {
+      "get": {
+        "operationId": "member_history_api_v1_members__member_id__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MemberHistoryItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada"
+          }
+        },
+        "summary": "Member History",
         "tags": [
           "members"
         ]

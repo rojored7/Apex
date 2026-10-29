@@ -15,10 +15,15 @@ from typing import Literal
 import pytest
 import typer
 from click.testing import Result
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
 from app import cli, cli_base
+from app.core.audit import AuditEntry
 from app.core.config import Settings
+from app.core.crypto.models import CryptoOp
+from app.modules.members.models import Member
 
 _runner = CliRunner()
 
@@ -41,3 +46,12 @@ def correr(
             cli_base, "get_settings", lambda: efectivo
         )  # no-op prudente hoy (S4B-D29): ningún comando lee cli_base.get_settings aún
     return _runner.invoke(app, list(args))
+
+
+async def conteos_de_tablas(session: AsyncSession) -> dict[str, int]:
+    """Filas de `members`, `audit_log` y `crypto_ops` (S4B-B1): "no escribió nada" / "no cambió"."""
+    return {
+        "members": int(await session.scalar(select(func.count()).select_from(Member)) or 0),
+        "audit_log": int(await session.scalar(select(func.count()).select_from(AuditEntry)) or 0),
+        "crypto_ops": int(await session.scalar(select(func.count()).select_from(CryptoOp)) or 0),
+    }

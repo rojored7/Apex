@@ -156,10 +156,11 @@ async def resolve_admin_actor(session: Any, email: str | None, *, required: bool
 
 @asynccontextmanager
 async def crypto_runtime(
-    settings: Settings, options: RuntimeOptions | None = None
+    settings: Settings, options: RuntimeOptions | None = None, *, persist_keys: bool = True
 ) -> AsyncIterator[Any]:
     """`cli_runtime` con proveedor y keyring cargados (S4B-D30), para los comandos que cifran
-    (no para los de KEK, S4B-D62). Sin KEK sale con 2 y un mensaje sin ruta."""
+    (no para los de KEK, S4B-D62). Sin KEK sale con 2 y un mensaje sin ruta. `persist_keys=False`
+    no escribe llaves nuevas (`--dry-run`)."""
     from app.core.crypto.errors import CryptoError
     from app.core.crypto.provider import configure_provider, get_key_provider
 
@@ -168,33 +169,8 @@ async def crypto_runtime(
     except CryptoError:
         typer.echo("proveedor de llaves no disponible: revise CRYPTO_PROVIDER y la KEK", err=True)
         raise typer.Exit(code=2) from None
+    from app.cli_keyring import load_keyring
+
     async with cli_runtime(settings, options) as session:
-        await _load_keyring(session)
+        await load_keyring(session, persist=persist_keys)
         yield session
-
-
-async def _load_keyring(session: Any) -> None:
-    """Bajo `SYSTEM_USER_ID`: abre cada DEK `active` existente (si una no se desenvuelve,
-    `unwrap_failed`, salida 2 y ningún `INSERT`: S4B-D62) y luego `ensure_keys`."""
-    from sqlalchemy import select
-
-    from app.core.crypto.bootstrap import ensure_keys
-    from app.core.crypto.errors import CryptoError
-    from app.core.crypto.models import CryptoKey
-    from app.core.crypto.provider import current_provider
-
-    proveedor = current_provider()
-    with actor_scope(SYSTEM_USER_ID):
-        async with session.begin():
-            filas = await session.scalars(
-                select(CryptoKey.wrapped_material).where(
-                    CryptoKey.state == "active", CryptoKey.purpose != "sign"
-                )
-            )
-            try:
-                for envuelta in filas.all():
-                    await proveedor.unwrap(envuelta)
-            except CryptoError:
-                typer.echo("crypto: unwrap_failed: una DEK activa no se abre con la KEK", err=True)
-                raise typer.Exit(code=2) from None
-            await ensure_keys(session, proveedor)

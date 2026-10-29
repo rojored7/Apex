@@ -249,3 +249,13 @@ def test_control_el_acceso_por_atributo_al_paquete_cuenta_como_import() -> None:
     assert vistas == {f"{PAQUETE}.bus": {"*"}, f"{PAQUETE}.types": {"*"}}
     assert not permitido("modules/notifications/service.py", vistas)
     assert importaciones(FUENTE_POR_ATRIBUTO_LIMPIA) == {}
+
+
+def test_control_una_fuente_falsa_en_imports_o_seed_que_importe_el_bus_falla() -> None:
+    """S4B-B1: ningún archivo nuevo importa el bus (la lista de importadores no cambia)."""
+    for relativo in ("imports/members_xlsx.py", "imports/report.py", "seed/apply.py"):
+        con_bus = importaciones("from app.core.crypto import bus\n", _paquete_de(relativo))
+        assert con_bus and not permitido(relativo, con_bus), relativo
+        con_types = importaciones("from app.core.crypto.types import reveal\n")
+        assert not permitido(relativo, con_types), relativo
+    assert not any(r.startswith(("imports/", "seed/")) for r in IMPORTADORES_REALES)

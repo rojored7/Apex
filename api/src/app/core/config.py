@@ -148,6 +148,13 @@ class _DotEnvSinAjenas(DotEnvSettingsSource):
         return {clave: valor for clave, valor in datos.items() if clave.lower() not in ajenas}
 
 
+def _anidadas(a: Path, b: Path) -> bool:
+    """Una ruta es la otra o está dentro de ella (comparación léxica, sin tocar el disco)."""
+    pa = Path(os.path.normcase(os.path.normpath(a)))
+    pb = Path(os.path.normcase(os.path.normpath(b)))
+    return pa == pb or pa in pb.parents or pb in pa.parents
+
+
 class Settings(BaseSettings):
     """Variables del api. Nombres en mayúsculas, iguales a los de `.env.example`."""
 
@@ -174,6 +181,8 @@ class Settings(BaseSettings):
     ENV: Literal["dev", "production"] = "production"  # falla cerrado: /docs solo con ENV=dev
     TZ_DISPLAY: str = "America/Bogota"  # solo para mostrar; el "hoy" lo da core/clock.py (Q28)
     UPLOADS_DIR: Path
+    # S4B-D90: única carpeta de la que `import-members` lee y en la que escribe su reporte.
+    IMPORT_DIR: Path = Path("/data/imports")
     # Orígenes exactos separados por coma (o lista JSON); vacío = sin CORS; nunca `*` (US-037).
     CORS_ORIGINS: Annotated[list[str], NoDecode] = []
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -341,6 +350,25 @@ class Settings(BaseSettings):
             presentes = ops_secret_names(os.environ)
             if presentes:
                 raise ConfigError(missing=[], invalid=presentes)
+        return self
+
+    @model_validator(mode="after")
+    def _import_dir_aparte_de_los_datos_y_las_llaves(self) -> Settings:
+        """S4B-B1 (revisión de seguridad, LOW): la carpeta de importación no puede ser, contener
+        ni estar dentro de `UPLOADS_DIR` ni de la carpeta de la KEK; si no, un `--report` o un
+        archivo de importación tocaría archivos del api o llaves. Solo se comprueba un
+        `IMPORT_DIR` configurado: el valor por defecto (`/data/imports`) vive aparte en la
+        imagen."""
+        if "IMPORT_DIR" not in self.model_fields_set:
+            return self
+        ajenos = {"UPLOADS_DIR": self.UPLOADS_DIR}
+        if self.CRYPTO_LOCAL_KEK_PATH is not None:
+            ajenos["CRYPTO_LOCAL_KEK_PATH"] = self.CRYPTO_LOCAL_KEK_PATH.parent
+        invalidas = [n for n, ruta in ajenos.items() if _anidadas(self.IMPORT_DIR, ruta)]
+        if invalidas:
+            raise ValueError(
+                "IMPORT_DIR no puede ser, contener ni estar dentro de: " + ", ".join(invalidas)
+            )
         return self
 
     @model_validator(mode="after")

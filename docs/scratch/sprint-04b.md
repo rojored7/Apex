@@ -217,3 +217,42 @@ Checkpoint: bcc1c65. Sello: wave0-gate.sh W0-3 (568 passed con tests/architectur
 ### Evidencia de S4B-B0
 
 Checkpoint `cf7a53f` (trailer verificado con `git log -1 --format=%B`). Sellante: `slice-gate.sh cli tests/cli/test_cli_base.py tests/cli/test_db_timeouts_cli.py tests/cli/test_seed_cli.py tests/cli/test_verify_audit.py` = 479 passed; antes `slice-gate.sh architecture` con las 5 pruebas del plan = 415 passed. `ruff check`, `ruff format --check` y `mypy src` limpios. `/health` 200. Contenedor `tools` (bind de desarrollo, sin datos): `--help` lista los comandos, `export-openapi /tmp/o.json` escribe, `import app.cli_base, app.cli_ops.keys` ok y `/app/src/app/cli_base.py` y `cli_ops/` presentes.
+
+## S4B-B1 · Datos de demostración e importación de socios
+
+### S4B-B1 · Rojo
+
+- Línea base en HEAD `1344ac1` (árbol limpio; "Evidencia de S4B-B0" ya registrada arriba con `cf7a53f`/`1344ac1`): `/health` 200.
+- B1.1 stubs: `seed/{__init__,dataset,apply}.py` (`dataset` solo tipos: `DemoPlan`, `DemoPayment`, `DemoFreeze`, `DemoSale`, `DemoMember`, `DemoSpec`; `demo_dataset` y `apply_demo`/`_sell_back_dated`/`_ensure_plans`/`_ensure_member`/`_sell_and_pay`/`_finish` con `NotImplementedError`), `imports/{__init__,members_xlsx,report}.py` (constantes de límites, `HeaderError`, `LimitError`, `RowError`, `RowResult`, `ImportResult`, `validate_header`, `parse_member_row`, `mask_document`, `check_limits`, `resolve_input`, `read_rows`, `import_members`, `report_path`, `write_report` con `NotImplementedError`), `cli_ops/seed_demo.py` (`run_seed_demo`, `CURRENT_DATABASE_SQL`, `SAFE_DATABASE_SUFFIXES`), `cli_ops/import_members.py` (`register(app)`), `register_ops` registra `import-members`, `cli.py` (`seed --demo --force-demo-on-non-empty --allow-production`; el cuerpo del seed del admin pasó a `_seed_admin` para no pasar de 50 líneas), `Settings.IMPORT_DIR` y `.env.example`, `scripts/plantillas/generar_importar_socios.py` (stub).
+- Fixtures: `tests/factories/xlsx.py`, `tests/cli/conftest.py` (`import_dir`, `settings_importacion`, `settings_importacion_produccion`, `limpiar_demo`), `tests/cli/_apoyo.py` (`conteos_de_tablas`), `tests/cli/_apoyo_demo.py`.
+- Rojo (suite acotada `tests/architecture tests/core/test_config.py tests/core/test_env_example.py tests/cli -m "not perf"`: 676 passed, 146 rojas = 135 failed + 11 errors, 2 saltadas):
+  - `test_demo_dataset.py` 15 rojas (`NotImplementedError: demo_dataset`), 0 verdes.
+  - `test_members_xlsx_parse.py` 58 rojas (`NotImplementedError`), 1 verde (la cabecera exportada es la de Q17).
+  - `test_seed_demo.py` 26 rojas (salida 1 por `NotImplementedError` en lugar de 0/2), 0 verdes.
+  - `test_seed_cli.py` +5 rojas (`--demo`), 13 verdes previas intactas.
+  - `test_import_members.py` 38 rojas, 1 verde (`openpyxl.xml.DEFUSEDXML` y sin lxml), 2 saltadas (enlaces simbólicos sin privilegios en Windows; corren en CI/Linux).
+  - `test_import_members_perf.py` 2 `perf` rojas (deseleccionadas del gate).
+  - Arquitectura: 4 rojas (`test_guarded_calls` x2: una sola llamada de `enforce_retroactive_limit` en `_sell_back_dated` de `seed/apply.py`; `test_app_layer_importers` x1: `cli_ops/seed_demo.py` e `import_members.py` importan su paquete; `test_third_party_confinement` x1: `members_xlsx.py` importa `openpyxl`); el resto de `tests/architecture` en verde (493 con las pruebas de B0).
+  - `test_config.py` (+3) y `test_env_example.py` (+1) para `IMPORT_DIR`: verdes desde el Rojo (el campo y la línea ya son parte de B1.1).
+- `ruff check`, `ruff format --check` y `mypy src` (134 archivos) limpios. `/health` 200 al final.
+
+### S4B-B1 · Verde
+
+- Pasos B1.4 a B1.7 hechos; B1.8 sin el sello (`slice-gate.sh cli ...`), sin `run-gates.sh`, sin B1.9 ni checkpoint (esperan los hallazgos de `security-reviewer`).
+- Archivos nuevos: `seed/{dataset,apply}.py`, `imports/{members_xlsx,limits,parse,persist,report,results}.py`, `cli_ops/{seed_demo,import_members}.py`, `cli_keyring.py`, `cli_session.py`, `tests/cli/test_seed_demo_fechas.py`, `scripts/plantillas/generar_importar_socios.py` (real), `docs/plantillas/importar-socios.xlsx`, `docs/operacion/{importar-socios,demo}.md`. Tocados: `cli_base.py` (176 líneas: `_load_keyring` salió a `cli_keyring.py`; `crypto_runtime(..., persist_keys=)`), RUNBOOK §12, CLAUDE.md, DECISIONES (bloque «S4B-B1», D105 a D108), SPRINT-04B.
+- Conteos: `tests/architecture` + `test_config` + `test_env_example` + `tests/cli` (`-m "not perf"`) = 823 passed, 2 skipped (enlaces simbólicos sin privilegios en Windows; corren en CI), 2 perf deseleccionadas. Los 146 rojos y las 4 de arquitectura pasaron a verde sin cambiar una aserción. `slice-gate.sh architecture` (las cinco pruebas del plan) y `slice-gate.sh core/config` en verde. `ruff check`, `ruff format --check` y `mypy src` (140 archivos) limpios; `/health` 200.
+- Perf (`uv run pytest -m perf tests/cli/test_import_members_perf.py`): 1.000 filas en 19,2 s (techo 120) y 5.000 en 95,4 s (techo 600). Una primera corrida dio salida 2 a los 0,23 s en la de 1.000 con un proceso de pytest en segundo plano colgado en la misma base de pruebas; no se reprodujo en dos corridas limpias.
+- Desviaciones: D105 (firmas de `check_limits`/`read_rows` sobre bytes, `members_xlsx` como fachada), D106 (`cli_keyring.py`, `cli_session.py`, `persist_keys`: necesarios para que la segunda corrida y `--dry-run` no dejen `crypto_ops`, que el Rojo exige y el comportamiento de B0 contradecía), D107 (sin reporte por omisión, manda S4B-D34), nombre del contacto de emergencia también contra fórmulas.
+- Dudas 1 a 12: resueltas como indicó el orquestador (ver DECISIONES, «Dudas del Rojo resueltas»); la 12 no exigió ajustar el catálogo.
+- Falta para el cierre: `security-reviewer` de B1 (confinamiento de rutas, XXE, zip, celdas, reporte `O_EXCL`, PII, guarda de producción, orden de candados), `slice-gate.sh cli ...` sellante, `run-gates.sh`, B1.9 (demos 2 y 3 sobre `apex_demo`), checkpoint y «Evidencia de S4B-B1».
+
+### S4B-B1 · Revisiones
+
+`security-reviewer`: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 4 LOW. Corregidos con prueba (detalle y decisión en DECISIONES, «S4B-B1 · Revisión de seguridad»):
+- MEDIUM resumen y reporte parciales ante un fallo a mitad: S4B-D109.
+- MEDIUM guarda de la base antes de las llaves: S4B-D110.
+- LOW fórmulas en todo campo de texto: S4B-D111.
+- LOW `IMPORT_DIR` aparte de `UPLOADS_DIR` y de la KEK: S4B-D112.
+- LOW correos de demostración `@ejemplo.invalid`: S4B-D113.
+- LOW constancia (sin cambio de código): las filas `unwrap` de `crypto_ops` de cada corrida del CLI se pierden por el rollback (S4B-D106); coste aceptado.
+- Pendiente de B4 (dueño B4): `tools` no monta `IMPORT_DIR`; se anotó en DECISIONES y en `SPRINT-04B.md`.

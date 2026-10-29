@@ -25,9 +25,13 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; reexporta cli_base (S4B-D28); import-members, rotate-key, sign-audit llegan en 4B/Sprint 5
+      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; `seed --demo` (S4B-D32) y reexporta cli_base (S4B-D28); `import-members` vive en `cli_ops/` (B1); rotate-key, sign-audit llegan en 4B/Sprint 5
       cli_base.py        # base común del CLI (S4B-B0): unit_of_work, resolve_actor, resolve_admin_actor, cli_runtime, crypto_runtime, production_guard_error, get_settings; único archivo de la capa que arranca el cifrado de columnas (install_crypto_type_listeners)
-      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, openapi, recompute, verify_audit; register_ops(app); nunca se importan entre sí ni importan cli
+      cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
+      cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, openapi, recompute, seed_demo, import_members, verify_audit; register_ops(app); nunca se importan entre sí ni importan cli
+      seed/              # `seed --demo` (S4B-D32): dataset.py puro (3 planes, 30 socios ficticios) y apply.py (dos transacciones por socio, lock_member primero; única llamada a enforce_retroactive_limit=False fuera de cli.py, S4B-D33); solo lo importa cli_ops/seed_demo.py
+      imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
         config.py        # Settings con pydantic-settings, todo desde .env
         db.py            # engine async, sesión, Base, CommonColumnsMixin
@@ -177,6 +181,8 @@ uv run ruff check . && uv run ruff format . && uv run mypy src
 docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build
 bash scripts/workflow/slice-gate.sh core/config tests/core/test_config.py
 bash scripts/workflow/run-gates.sh
+docker compose --env-file .env -f infra/compose.yml run --rm tools seed --demo   # SOLO sobre bases *_demo|*_ensayo|*_smoke (docs/operacion/demo.md)
+docker compose --env-file .env -f infra/compose.yml run --rm -v "$PWD/importar:/data/imports" tools import-members /data/imports/socios.xlsx --as <correo> [--dry-run] [--report r.csv]   # IMPORT_DIR, docs/operacion/importar-socios.md
 cd web && npm run lint && npx tsc --noEmit && npm test && npm run build
 ```
 

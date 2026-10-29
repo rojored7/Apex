@@ -137,6 +137,42 @@ def test_cli_py_importa_cli_base_y_cli_ops() -> None:
     assert importadores_de(fuente, "cli.py", RAIZ_DE_LA_CAPA) >= {"app.cli_base", "app.cli_ops"}
 
 
+def test_seed_e_imports_existen_y_solo_los_importa_su_comando_de_cli_ops() -> None:
+    """S4B-B1 (S4B-D76): `app.seed` solo lo importa `cli_ops/seed_demo.py` y `app.imports` solo
+    `cli_ops/import_members.py` (más los propios paquetes); ni `cli.py` ni nadie más."""
+    archivos = _archivos()
+    relativos = {r for r, _ in archivos}
+    assert {
+        "seed/apply.py",
+        "seed/dataset.py",
+        "imports/members_xlsx.py",
+        "imports/report.py",
+        "cli_ops/seed_demo.py",
+        "cli_ops/import_members.py",
+    } <= relativos
+    de_seed = {
+        r for r, f in archivos if not r.startswith("seed/") and importadores_de(f, r, ("app.seed",))
+    }
+    de_imports = {
+        r
+        for r, f in archivos
+        if not r.startswith("imports/") and importadores_de(f, r, ("app.imports",))
+    }
+    assert de_seed == {"cli_ops/seed_demo.py"}, de_seed
+    assert de_imports == {"cli_ops/import_members.py"}, de_imports
+
+
+def test_seed_e_imports_no_importan_cli_ni_cli_ops() -> None:
+    """La capa cuelga de `cli.py`: sus paquetes de lógica nunca la importan de vuelta (ciclo)."""
+    malos = {
+        r: v
+        for r, f in _archivos()
+        if r.split("/")[0] in ("seed", "imports")
+        and (v := importadores_de(f, r, ("app.cli", "app.cli_ops")))
+    }
+    assert malos == {}, malos
+
+
 def test_los_archivos_de_cli_ops_no_se_importan_entre_si_ni_importan_cli() -> None:
     malos = {r: v for r, f in _archivos() if (v := violaciones_entre_hermanos(f, r))}
     assert malos == {}, malos

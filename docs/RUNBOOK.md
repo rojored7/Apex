@@ -833,6 +833,19 @@ Sale 0 con `roles aplicados; N tablas clasificadas`. Es idempotente: vuelve a fi
 
 **Política del cubo remoto (sin borrado).** La credencial de `rclone` solo necesita `PutObject` y `ListBucket`; ver «Qué hace el servicio backup». Un respaldo en el mismo disco de la base no es un respaldo fuera de la máquina.
 
+### Importar socios desde Excel y datos de demostración (S4B-B1)
+
+Guías para el box: `docs/operacion/importar-socios.md` (paso a paso, columnas de Q17) y `docs/operacion/demo.md`. Plantilla: `docs/plantillas/importar-socios.xlsx` (se regenera con `cd api && uv run python ../scripts/plantillas/generar_importar_socios.py`).
+
+- **`import-members <archivo> --as <correo> [--dry-run] [--report <nombre>]`** (`tools`). El archivo y el reporte viven dentro de `IMPORT_DIR` (`/data/imports` en el contenedor; sin volumen nombrado). Se monta una carpeta del servidor al correr: `docker compose --env-file .env -f infra/compose.yml run --rm -v "$PWD/importar:/data/imports" tools import-members /data/imports/socios.xlsx --as <correo> --report reporte.csv`, y se borra la carpeta al terminar (el archivo y el reporte tienen datos personales; no se envían por correo).
+- **Límites (salida 2, sin escribir nada):** archivo regular dentro de `IMPORT_DIR` y sin enlaces simbólicos; ≤ 10 MB; zip con ≤ 200 entradas, ≤ 50 MB descomprimidos, razón de compresión ≤ 100, sin rutas absolutas ni `..`, sin macros (`vbaProject.bin`), vínculos externos, objetos incrustados, ActiveX ni hojas de macros, y `sharedStrings.xml` ≤ 10 MB; extensión `.xlsx` exacta; ≤ 5.000 filas de datos; celdas de ≤ 200 caracteres y ninguna de texto que empiece por `=`, `+`, `-` o `@`; cabecera exactamente la de Q17. El XML con entidades (XXE, "billion laughs") se rechaza (`defusedxml`; sin `lxml`).
+- **`--dry-run`** hace todo menos escribir: cero filas en `members`, `audit_log` y `crypto_ops` (ni siquiera crea las llaves de cifrado que falten), y el reporte sale idéntico al de la corrida real. **`--report`** es solo un nombre, se crea con `O_EXCL | O_NOFOLLOW` y modo 0o600, no pisa un archivo existente y se valida antes de dar de alta a nadie.
+- **Idempotente por documento** (índice ciego): reimportar salta lo existente y no deja auditoría nueva. Una corrida que crea socios deja una entrada resumen `members.import_runs` (huella SHA-256 del archivo y conteos, sin el nombre del archivo).
+- **Salida y reporte sin datos personales:** la salida son conteos (`created`, `skipped_existing`, `rejected`, `consent_missing`, `notes_ignored`, `contacts_omitted`); el reporte lleva `fila;documento;resultado;motivo` con el documento enmascarado.
+- **Ley 1581:** los importados quedan con `data_consent = false`; la salida advierte (`consent_missing`). Sin autorización registrada no se les envían avisos (regla hacia adelante para el Sprint 5, S4B-D77).
+- **Rendimiento:** una transacción por socio bajo el candado de la cadena de auditoría. Si una alta falla a mitad (salida 1), el resumen de auditoría queda con `partial=true` y el reporte lista hasta donde llegó. Medido en el equipo de desarrollo: 1.000 filas en ~19 s y 5.000 en ~95 s (`pytest -m perf tests/cli/test_import_members_perf.py`; techos 120 s y 600 s).
+- **`seed --demo [--as <correo>] [--force-demo-on-non-empty] [--allow-production]`** siembra 3 planes y 30 socios ficticios. **Solo sobre bases `_demo`, `_ensayo` o `_smoke`:** con `ENV=production` exige además `--as` (admin) y `--allow-production`; si el nombre de la base no termina en uno de esos sufijos, sale con 2. **Nunca contra `apex-db-1`.** No es atómico: se reanuda por socio; repetirlo no cambia nada (`seed de demo ya aplicado`). Al terminar, `verify-audit --as <correo>` debe decir "Cadena íntegra".
+
 ### Pendiente de completar por slice
 
 - `backup_check` y sus estados (B2); `restore.sh`, `export-kek`/`restore-kek`/`verify-kek-backup` (B3a); `rotate-key`/`retire-key` (B3b); `deploy.sh`, ensayo en la misma máquina y `prod-smoke.sh` (B4).

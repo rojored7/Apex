@@ -1,15 +1,17 @@
 """Comandos de la capa de aplicación del CLI, un archivo por familia (S4B-D28).
 
-Solo `cli.py` importa este paquete (S4B-D76); cada archivo importa a lo sumo `app.cli_base`.
-`register_ops(app)` registra en el `Typer` los comandos que nacen aquí (B1 en adelante); en B0
-no hay ninguno.
+Solo `cli.py` importa este paquete (S4B-D76); cada archivo importa a lo sumo `app.cli_base`
+(y, para B1, su paquete de aplicación: `seed` o `imports`). `register_ops(app)` registra en el
+`Typer` los comandos que nacen aquí: `import-members` desde B1.
 """
 
 from __future__ import annotations
 
 import typer
 
+from app.cli_ops import import_members
+
 
 def register_ops(app: typer.Typer) -> None:
-    """Registra los comandos de `cli_ops/` en `app`. Vacío hasta B1."""
-    del app
+    """Registra los comandos de `cli_ops/` en `app`."""
+    import_members.register(app)

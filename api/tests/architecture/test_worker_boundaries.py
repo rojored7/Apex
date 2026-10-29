@@ -117,6 +117,32 @@ def test_la_capa_de_aplicacion_incluye_cli_base_y_cli_ops() -> None:
     assert any(n.startswith("worker/") for n in nombres)
 
 
+def test_la_capa_de_aplicacion_barre_seed_e_imports() -> None:
+    """S4B-B1: `seed/**` e `imports/**` entran al barrido (ya existen)."""
+    nombres = {p.relative_to(SRC).as_posix() for p in _archivos_de_aplicacion()}
+    assert {
+        "seed/__init__.py",
+        "seed/dataset.py",
+        "seed/apply.py",
+        "imports/__init__.py",
+        "imports/members_xlsx.py",
+        "imports/report.py",
+        "cli_ops/seed_demo.py",
+        "cli_ops/import_members.py",
+    } <= nombres
+
+
+def test_seed_e_imports_no_escriben_sql() -> None:
+    """S4B-B1: `seed/` e `imports/` solo llegan a la base por services (sin `text(...)`)."""
+    hallazgos = [
+        h
+        for carpeta in (SEED, IMPORTS)
+        for p in sorted(carpeta.rglob("*.py"))
+        for h in llamadas_sql(p.read_text(encoding="utf-8"), p.relative_to(SRC).as_posix())
+    ]
+    assert hallazgos == []
+
+
 def test_worker_y_cli_no_importan_models_router_ni_privados() -> None:
     violaciones = [v for p in _archivos_de_aplicacion() for v in _violaciones_de_imports(p)]
     assert violaciones == []
@@ -201,3 +227,18 @@ def test_control_una_fuente_falsa_en_cli_ops_se_detecta() -> None:
     violaciones = _violaciones_de_imports(CLI_OPS / "falso.py", falsa)
     reglas = sorted(v.rsplit("(", 1)[1].rstrip(")") for v in violaciones)
     assert reglas == ["foreign_models", "private_helper"]
+
+
+def test_control_text_en_seed_y_models_en_imports_se_detectan() -> None:
+    sql = "from sqlalchemy import text\nasync def f(s):\n    await s.execute(text('SELECT 1'))\n"
+    assert llamadas_sql(sql, "seed/falso.py") == ["seed/falso.py:3 text("]
+    assert llamadas_sql(sql, "imports/falso.py") == ["imports/falso.py:3 text("]
+    models = "from app.modules.members.models import Member\n"
+    violaciones = _violaciones_de_imports(IMPORTS / "x.py", models)
+    assert [v.rsplit("(", 1)[1].rstrip(")") for v in violaciones] == ["foreign_models"]
+    privado = (
+        "from app.modules.memberships import sell\nfrom app.modules.payments.router import r\n"
+    )
+    violaciones = _violaciones_de_imports(SEED / "x.py", privado)
+    reglas = sorted(v.rsplit("(", 1)[1].rstrip(")") for v in violaciones)
+    assert reglas == ["foreign_router", "private_helper"]

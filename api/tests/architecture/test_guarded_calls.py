@@ -1,9 +1,11 @@
 """Llamadas que solo pueden aparecer en su sitio (S3-B1; S3-D56: L-6 y L-11; S3-D59: D-3).
 
 Por AST sobre `src/app`:
-- L-6: el argumento con nombre `enforce_retroactive_limit=` solo se pasa desde `cli.py` (la
-  importación de N-24); nunca desde un `router.py` ni desde ningún otro archivo. Un router no
-  puede saltarse el límite retroactivo de la venta.
+- L-6: el argumento con nombre `enforce_retroactive_limit=` solo se pasa desde `cli.py` y, desde
+  S4B-D33, desde `seed/apply.py` (lista exacta `LLAMADORES_DEL_LIMITE`, por ruta relativa); nunca
+  desde un `router.py`, desde `seed/dataset.py`, `import-members` ni desde ningún otro archivo.
+  En `seed/apply.py` el argumento se pasa en UNA sola llamada, dentro de `_sell_back_dated`. Un
+  router no puede saltarse el límite retroactivo de la venta.
 - L-11: ninguna llamada a `create_async_engine(...)` ni a `.execution_options(...)` lleva
   `isolation_level`: todo el api corre en `READ COMMITTED`, el nivel sobre el que se diseñaron el
   orden de candados de D3 y la `EXCLUDE`. Excepción única (S4A-D44, H-2; E10): la conexión del
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -113,15 +116,112 @@ def test_set_membership_gate_solo_desde_la_fachada_de_memberships() -> None:
     assert argumentos == ["membership_payability"]
 
 
-def test_enforce_retroactive_limit_solo_desde_el_cli() -> None:
+LLAMADORES_DEL_LIMITE: Final = frozenset({"cli.py", "seed/apply.py"})
+"""S4B-D33: lista exacta (ruta relativa a `src/app`) de quién pasa `enforce_retroactive_limit=`."""
+
+
+def fuera_de_los_llamadores(encontrados: dict[str, list[int]]) -> dict[str, list[int]]:
+    """Los hallazgos de L-6 cuyo archivo no es exactamente uno de `LLAMADORES_DEL_LIMITE`."""
+    return {
+        archivo: lineas
+        for archivo, lineas in encontrados.items()
+        if archivo not in LLAMADORES_DEL_LIMITE
+    }
+
+
+def llamadas_con_argumento_por_funcion(fuente: str, argumento: str) -> dict[str, list[int]]:
+    """`{función: [líneas]}` de las llamadas que pasan `argumento=` dentro de cada función."""
+    salida: dict[str, list[int]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if not isinstance(funcion, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        lineas = sorted(
+            {
+                nodo.lineno
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call) and any(k.arg == argumento for k in nodo.keywords)
+            }
+        )
+        if lineas:
+            salida[funcion.name] = lineas
+    return salida
+
+
+def test_enforce_retroactive_limit_solo_desde_los_llamadores_autorizados() -> None:
     llamadas = {
         _relativo(path): lineas
         for path in _archivos()
         if (lineas := con_argumento(path.read_text(encoding="utf-8"), "enforce_retroactive_limit"))
     }
-    fuera = {archivo: lineas for archivo, lineas in llamadas.items() if archivo != "cli.py"}
-    assert fuera == {}, fuera
+    assert fuera_de_los_llamadores(llamadas) == {}, llamadas
     assert not any(archivo.endswith("router.py") for archivo in llamadas)
+    assert "seed/dataset.py" not in llamadas
+
+
+def test_en_seed_apply_el_limite_se_pasa_en_una_sola_llamada_de_sell_back_dated() -> None:
+    """S4B-D33: la excepción de `seed/apply.py` cabe en una función con una llamada."""
+    fuente = (APP / "seed" / "apply.py").read_text(encoding="utf-8")
+    por_funcion = llamadas_con_argumento_por_funcion(fuente, "enforce_retroactive_limit")
+    assert list(por_funcion) == ["_sell_back_dated"], por_funcion
+    assert len(por_funcion["_sell_back_dated"]) == 1
+    assert len(con_argumento(fuente, "enforce_retroactive_limit")) == 1
+
+
+def test_sell_back_dated_pasa_el_limite_en_falso_y_el_rol_admin() -> None:
+    """La única llamada fija `enforce_retroactive_limit=False` y `role="admin"` (S4B-D32)."""
+    fuente = (APP / "seed" / "apply.py").read_text(encoding="utf-8")
+    llamadas = [
+        nodo
+        for nodo in ast.walk(ast.parse(fuente))
+        if isinstance(nodo, ast.Call)
+        and any(k.arg == "enforce_retroactive_limit" for k in nodo.keywords)
+    ]
+    assert len(llamadas) == 1, "debe existir exactamente una llamada con el argumento"
+    llamada = llamadas[0]
+    valores = {k.arg: ast.unparse(k.value) for k in llamada.keywords}
+    assert valores["enforce_retroactive_limit"] == "False"
+    assert valores["role"] == "'admin'"
+
+
+@pytest.mark.parametrize(
+    "archivo",
+    [
+        "seed/dataset.py",
+        "seed/otro.py",
+        "cli_ops/seed_demo.py",
+        "cli_ops/import_members.py",
+        "imports/members_xlsx.py",
+        "modules/memberships/service.py",
+        "modules/memberships/router.py",
+        "worker/jobs/expirations.py",
+    ],
+)
+def test_control_un_tercer_archivo_no_puede_pasar_el_limite(archivo: str) -> None:
+    fuente = "async def vender(s):\n    await sell(s, enforce_retroactive_limit=False)\n"
+    lineas = con_argumento(fuente, "enforce_retroactive_limit")
+    assert fuera_de_los_llamadores({archivo: lineas}) == {archivo: [2]}
+
+
+@pytest.mark.parametrize("archivo", sorted(LLAMADORES_DEL_LIMITE))
+def test_control_los_dos_llamadores_si_quedan_exentos(archivo: str) -> None:
+    fuente = "async def f(s):\n    await sell(s, enforce_retroactive_limit=False)\n"
+    lineas = con_argumento(fuente, "enforce_retroactive_limit")
+    assert fuera_de_los_llamadores({archivo: lineas}) == {}
+
+
+def test_control_dos_llamadas_o_otra_funcion_en_seed_apply_se_detectan() -> None:
+    dos = (
+        "async def _sell_back_dated(s):\n"
+        "    await sell(s, enforce_retroactive_limit=False)\n"
+        "    await sell(s, enforce_retroactive_limit=False)\n"
+    )
+    assert llamadas_con_argumento_por_funcion(dos, "enforce_retroactive_limit") == {
+        "_sell_back_dated": [2, 3]
+    }
+    otra = "async def _sell_and_pay(s):\n    await sell(s, enforce_retroactive_limit=False)\n"
+    assert list(llamadas_con_argumento_por_funcion(otra, "enforce_retroactive_limit")) == [
+        "_sell_and_pay"
+    ]
 
 
 AUTOCOMMIT_PERMITIDO: frozenset[str] = frozenset(

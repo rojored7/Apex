@@ -43,3 +43,16 @@ def test_ninguna_funcion_supera_50_lineas() -> None:
                 if lineas > MAX_LINEAS_FUNCION:
                     largas.append(f"{p.relative_to(SRC).as_posix()}:{nodo.lineno} {nodo.name}")
     assert largas == [], "\n".join(largas)
+
+
+def test_los_archivos_de_b1_se_miden() -> None:
+    """S4B-B1: `seed/**`, `imports/**` y `cli_ops/**` están dentro de lo que se mide (rglob)."""
+    medidos = {p.relative_to(SRC).as_posix() for p in _archivos()}
+    assert {
+        "seed/apply.py",
+        "seed/dataset.py",
+        "imports/members_xlsx.py",
+        "imports/report.py",
+        "cli_ops/seed_demo.py",
+        "cli_ops/import_members.py",
+    } <= medidos

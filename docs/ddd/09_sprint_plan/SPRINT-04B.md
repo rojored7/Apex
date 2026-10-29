@@ -135,6 +135,8 @@ Se sella con `scripts/workflow/wave0-gate.sh <slice> [archivos de prueba...]`: `
       - sin `bus.batch()`;
       - una transacción por socio (deuda de PL6 de la revisión de Fase 4 del Sprint 3, S3-D95): alta, venta y primer pago de un socio confirman juntos y el siguiente socio abre otra transacción, así ninguna pide `lock_member` después del primer flush auditado de otro socio (orden de candados de D3, docstring de `core/locks.py`).
   - Gate: `slice-gate.sh cli` con sus archivos (`slice-gate.sh members` no aplica).
+  - Verde (forma final en `DECISIONES.md`, bloque «S4B-B1», S4B-D32 a D36, D105 a D108): `seed/` (dataset puro y `apply.py` en dos transacciones por socio), `imports/` (fachada `members_xlsx.py` y privados `limits`, `parse`, `persist`, `report`, `results`), `cli_ops/seed_demo.py` e `import_members.py`, `cli_keyring.py` y `cli_session.py` (corridas idempotentes sin filas nuevas en `crypto_ops`); guías `docs/operacion/importar-socios.md` y `demo.md`, plantilla `docs/plantillas/importar-socios.xlsx`.
+  - Pendiente de B4 (dueño B4): el servicio `tools` no monta `IMPORT_DIR` (`/data/imports`); hoy se monta con `-v` en cada `run`. B4 decide el bind fijo (S4B-D90; ver DECISIONES, «S4B-B1 · Revisión de seguridad»).
 - **Slice S4B-B2 · Backup y su verificación.** Historias: US-114 (backend) y US-115.
   - Rojo:
     - `tests/crypto/test_archive.py`;

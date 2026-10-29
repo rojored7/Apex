@@ -63,6 +63,7 @@ from app.cli_ops.recompute import (
     _recompute,
     _recompute_target,
 )
+from app.cli_ops.seed_demo import run_seed_demo
 from app.cli_ops.verify_audit import _verify_audit
 
 __all__ = [
@@ -151,8 +152,13 @@ def seed(
     ctx: typer.Context,
     actor: Annotated[str | None, typer.Option("--as")] = None,
     no_force_change: Annotated[bool, typer.Option("--no-force-change")] = False,
+    demo: Annotated[bool, typer.Option("--demo")] = False,
+    force_demo_on_non_empty: Annotated[bool, typer.Option("--force-demo-on-non-empty")] = False,
+    allow_production: Annotated[bool, typer.Option("--allow-production")] = False,
 ) -> None:
     """Crea el primer admin activo con ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD (idempotente).
+
+    Con `--demo` siembra los datos de demostración en su lugar (S4B-D32; no lee `.env.seed`).
 
     Las dos variables salen de `.env.seed` o del entorno del servicio tools (`SeedSettings`,
     M-8), nunca de `Settings`. El admin sembrado debe cambiar la contraseña al entrar; solo con
@@ -160,7 +166,14 @@ def seed(
     contraseña o es débil (L-9: el literal histórico del ejemplo está en la lista de comunes);
     nunca imprime la contraseña.
     """
+    if demo:
+        run_seed_demo(ctx, actor, force_demo_on_non_empty, allow_production)
+        return
+    _seed_admin(ctx, actor, no_force_change=no_force_change)
 
+
+def _seed_admin(ctx: typer.Context, actor: str | None, *, no_force_change: bool) -> None:
+    """Cuerpo de `seed` sin `--demo`: el primer admin desde `.env.seed` (US-041)."""
     from app.core.config import load_seed_settings
     from app.core.security import WeakPasswordError, validate_password_policy
     from app.modules.auth.exceptions import AuthError

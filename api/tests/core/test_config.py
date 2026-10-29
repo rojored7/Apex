@@ -55,6 +55,7 @@ TODAS = (
     "ADMIN_EMAIL",
     "ADMIN_INITIAL_PASSWORD",
     "MIGRATE_ON_STARTUP",
+    "IMPORT_DIR",
 )
 
 
@@ -575,3 +576,47 @@ def test_las_contrasenas_de_rol_y_la_del_propietario_son_ajenas_al_api() -> None
         "APEX_BACKUP_DB_PASSWORD",
         "POSTGRES_PASSWORD",
     } <= NON_API_ENV_VARS
+
+
+# S4B-B1 (S4B-D90): carpeta de importación de socios ----------------------------------------
+
+
+def test_import_dir_por_defecto_es_data_imports(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path))
+    assert s.IMPORT_DIR == Path("/data/imports")
+    assert isinstance(s.IMPORT_DIR, Path)
+
+
+def test_import_dir_se_lee_del_entorno(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, IMPORT_DIR="/srv/apex/importar"))
+    assert s.IMPORT_DIR == Path("/srv/apex/importar")
+
+
+def test_import_dir_no_es_una_variable_ajena_al_api() -> None:
+    assert "IMPORT_DIR" in Settings.model_fields
+    assert "IMPORT_DIR" not in NON_API_ENV_VARS
+
+
+@pytest.mark.parametrize(
+    "ruta",
+    [
+        "/data/uploads",
+        "/data/uploads/importar",
+        "/data",
+        "/run/apex/keys",
+        "/run/apex/keys/importar",
+        "/run/apex",
+        "/data/uploads/../uploads",
+    ],
+)
+def test_import_dir_no_puede_ser_contener_ni_estar_dentro_de_datos_o_llaves(
+    tmp_path: Path, ruta: str
+) -> None:
+    """S4B-B1 (revisión de seguridad, LOW): IMPORT_DIR aparte de UPLOADS_DIR y de la KEK."""
+    with pytest.raises(ConfigError):  # error de modelo: no nombra un campo suelto
+        load_settings(env_file=escribir_env(tmp_path, IMPORT_DIR=ruta))
+
+
+def test_import_dir_aparte_de_los_datos_y_las_llaves_se_acepta(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, IMPORT_DIR="/data/imports"))
+    assert s.IMPORT_DIR == Path("/data/imports")

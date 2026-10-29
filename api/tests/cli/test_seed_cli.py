@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from typer.testing import CliRunner
 
 from app import main as app_main
@@ -22,6 +22,7 @@ from app.core.config import Settings, reset_settings_cache
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.security import configure_password_hasher
 from app.modules.auth.models import User
+from tests.cli import _apoyo_demo as demo
 from tests.factories.triggers import disable_user_sql, rearm_always_sql
 from tests.factories.users import make_user
 
@@ -331,5 +332,81 @@ async def test_issue_reset_link_carga_los_services_de_los_modulos(
     resultado = runner.invoke(
         app, ["issue-reset-link", "espia-link@test.apex", "--as", "espia-link@test.apex"]
     )
+    assert resultado.exit_code == 0, resultado.output
+    assert espia_carga.llamadas >= 1
+
+
+# S4B-B1 · `seed --demo` convive con las opciones del seed del admin (S4B-D31, D32) ------------
+
+
+async def _socios_de_la_base(fabrica: async_sessionmaker[AsyncSession]) -> int:
+    return (await demo.contar(fabrica))["socios"]
+
+
+@pytest.mark.usefixtures("reloj")
+async def test_demo_no_lee_env_seed_ni_pide_el_admin_inicial(
+    entorno: AsyncEngine,
+    limpiar_demo: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sin `ADMIN_*` y sin `.env.seed` el seed normal sale con 2; `--demo` no los necesita."""
+    _sin_admin_en_el_entorno(monkeypatch)
+    assert runner.invoke(app, ["seed"]).exit_code == 2
+
+    resultado = runner.invoke(app, ["seed", "--demo"])
+
+    assert resultado.exit_code == 0, resultado.output
+    assert await _socios_de_la_base(limpiar_demo) == 30
+    assert await _admins(entorno) == []  # no creó el admin inicial
+
+
+@pytest.mark.usefixtures("reloj")
+async def test_demo_acepta_no_force_change_sin_crear_admin(
+    entorno: AsyncEngine,
+    limpiar_demo: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _sin_admin_en_el_entorno(monkeypatch)
+
+    resultado = runner.invoke(app, ["seed", "--demo", "--no-force-change"])
+
+    assert resultado.exit_code == 0, resultado.output
+    assert await _admins(entorno) == []
+
+
+@pytest.mark.usefixtures("reloj")
+async def test_demo_con_as_de_un_coach_sale_con_2_sin_escribir(
+    entorno: AsyncEngine,
+    limpiar_demo: async_sessionmaker[AsyncSession],
+    argon2_rapido: None,
+) -> None:
+    """S4B-D31: `--as` es opcional, pero si viene debe ser un admin activo."""
+    await _usuario_con_commit(entorno, "coach-demo@test.apex", role="coach")
+
+    resultado = runner.invoke(app, ["seed", "--demo", "--as", "coach-demo@test.apex"])
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "--as" in resultado.output and "coach-demo@test.apex" not in resultado.output
+    assert await _socios_de_la_base(limpiar_demo) == 0
+
+
+@pytest.mark.usefixtures("reloj")
+async def test_demo_con_as_inexistente_sale_con_2_sin_escribir(
+    entorno: AsyncEngine, limpiar_demo: async_sessionmaker[AsyncSession]
+) -> None:
+    resultado = runner.invoke(app, ["seed", "--demo", "--as", "nadie@test.apex"])
+
+    assert resultado.exit_code == 2, resultado.output
+    assert await _socios_de_la_base(limpiar_demo) == 0
+
+
+@pytest.mark.usefixtures("reloj")
+async def test_demo_carga_los_services_de_los_modulos(
+    entorno: AsyncEngine,
+    limpiar_demo: async_sessionmaker[AsyncSession],
+    espia_carga: EspiaCarga,
+) -> None:
+    resultado = runner.invoke(app, ["seed", "--demo"])
+
     assert resultado.exit_code == 0, resultado.output
     assert espia_carga.llamadas >= 1

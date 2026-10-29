@@ -308,3 +308,8 @@ def test_la_cabecera_de_env_example_remite_al_archivo_de_operacion() -> None:
     cabecera = "\n".join(EJEMPLO.read_text(encoding="utf-8").splitlines()[:6])
     assert ".env.ops.example" in cabecera
     assert "DATABASE_URL" in cabecera, "dice que DATABASE_URL ya no vive aqui"
+
+
+def test_import_dir_documentada_con_el_valor_de_la_imagen() -> None:
+    """S4B-D90: `IMPORT_DIR` es campo de `Settings` y la carpeta de la imagen es `/data/imports`."""
+    assert _claves()["IMPORT_DIR"] == "/data/imports"

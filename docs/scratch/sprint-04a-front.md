@@ -129,3 +129,24 @@ Worktree creado desde `2464030` (checkpoint de B4 más su evidencia); `SLICE_BAS
 2. **LOW** `shared/lib/audit-labels.ts`, `fieldNameLabel`: un nombre de campo desconocido se pintaba tal cual. Ahora: etiqueta de `FIELD_LABELS`; "campo cifrado" si contiene `apx1.`; el nombre si cumple `/^[a-z_]{1,40}$/`; si no, "campo". `summarizeChange` y `historyPhrase` usan la misma regla. Pruebas en `audit-labels.test.ts` (HTML, mayúsculas y tildes, punto y coma, 41 caracteres, vacío, dígitos y correo dan "campo"; el resumen con `fields` también); 8 fallaban antes de la corrección.
 - Tras las correcciones: `npm run lint` y `npx tsc --noEmit` limpios; `npx vitest run tests/lint src/features/members src/shared` 81 archivos y 1.313 pruebas en verde. Gate 1 (`web/shared`) reejecutado: verde, 2 archivos y 57 pruebas. El gate 3 sellante va después de este bloque; su resultado, F2.6 y el checkpoint quedan en "Evidencia de S4A-F2".
 - F2.6, primera corrida contra el stack (antes del sello definitivo): `member-history` 1 de 1, `member-detail` 1 de 1, `member-tabs` 0 de 1 por un defecto de la prueba. Cambiar de pestaña conserva la URL salvo `offset`, así que `?voided=false` de Pagos llega a `/socios/:id/historial?voided=false` y la expresión exigía `historial$`. Ahora admite la consulta (`historial(\?.*)?$`). Pagos no cambia y la pestaña Historial ignora ese parámetro. Por ese cambio el gate 3 se vuelve a correr como último comando que toca el árbol.
+
+### Evidencia de S4A-F2 (después del sello)
+
+- **Gate 3 (sellante):** `slice-gate.sh web/members src/features/members/components/MemberHistoryTab.test.tsx src/features/members/lib/historyPhrase.test.ts src/features/members/pages/MemberDetailPage.test.tsx src/features/members/components/MemberDataTab.test.tsx src/test/setup.ts src/test/vitest-axe.d.ts`: verde, 4 archivos y 81 pruebas.
+  - Corrió dos veces. La primera quedó invalidada por la corrección de `member-tabs.spec.ts` (bloque anterior). La segunda fue el último comando que tocó el árbol antes del checkpoint.
+  - El único aviso de eslint es de un archivo ignorado por configuración.
+- **F2.6, imagen:** `apex-web:local` pasó de `sha256:62458b7264fb…` (2026-10-29T06:40Z) a `sha256:0dd855b6db9c…` (2026-10-29T07:10Z). Se construyó con buildx desde la raíz del worktree.
+  - `up -d --no-build web` se lanzó desde el repo principal. `apex-web-1` quedó `healthy` con la imagen nueva; api, worker, db y db_test, `healthy`.
+  - No hizo falta reconstruir tras la corrección de la spec: solo tocó una prueba.
+- **E2E stack** con el admin desechable `admin-e2e-1793249495@apex.test`:
+  - La contraseña se fijó con `tools issue-reset-link --as admin@ejemplo.local` y `POST /auth/reset` con `Origin: http://localhost:8180` (204, dos veces). Solo vivió en variables del comando y no está escrita en ningún archivo. El admin real no se tocó.
+  - Las specs corrieron con `--workers=1` y una pausa de 65 s entre lotes, por el límite de login.
+  - `member-history.spec.ts`: 1 de 1 en las dos corridas (1,7 s y 1,6 s). La caja de Datos muestra "… editó teléfono" con su enlace. La pestaña muestra "editó teléfono" antes de "creó el socio". Ninguno de los dos números ni `apx1.` aparece en el HTML. axe sin violaciones en claro y en oscuro.
+  - `member-tabs.spec.ts`: 0 de 1 en la primera corrida (defecto de la prueba, corregido) y 1 de 1 tras el sello (4,4 s). La pestaña Historial es la última y muestra "vendió una membresía", dos "registró un pago", "anuló un pago" y "modificó una membresía: estado" sin el motivo de la anulación. axe sin violaciones.
+  - `member-detail.spec.ts`: 1 de 1 (3,3 s). La caja de Datos muestra "editó teléfono" y "mostró el documento" sin el número. El coach desechable abre Historial sin ver el documento.
+- **Contraste:** el axe de Playwright (wcag2a, wcag2aa y wcag21aa, con contraste) no dio violaciones en las frases, la etiqueta "automático (aviso)" (no apareció en estas corridas), la entidad y la hora en `--muted`, ni el enlace "Ver historial completo →". Probado en claro y oscuro a 1440 px, más una captura del celular a 390 px.
+- **Capturas:** `ficha-historial-stack-light-1440`, `ficha-historial-socio-stack-{light,dark}-1440` y `ficha-historial-socio-stack-movil-light-390`. Quedan en `web/test-results/captures/`, que no entra al repo.
+- **Observaciones:**
+  - En una membresía vendida con abono y luego saldada, la pestaña muestra dos "modificó una membresía: estado" del admin. Son los cambios de estado que el api registra al pagar; el job del sistema no participó.
+  - En la barra de pestañas a 1440 px, "Membresías" queda recortada a la izquierda cuando la activa es Historial. Es el desplazamiento horizontal del `Tabs` existente con nueve pestañas, no algo nuevo de F2.
+- **Checkpoint:** `1ee7804` con el trailer `Co-Authored-By: Claude Fable 5.1`.

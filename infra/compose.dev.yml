@@ -18,6 +18,20 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
 
+  worker:
+    # Solo desarrollo (S4A-D9): el worker ve el código del repo en solo lectura; la imagen de
+    # producción no cambia. No hay --reload: un cambio en app/worker/ o en un service que use
+    # un job exige `restart worker` (RUNBOOK §7).
+    volumes:
+      - ../api/src:/app/src:ro
+      - ../api/migrations:/app/migrations:ro
+
+  tools:
+    # Solo desarrollo (S4A-D9): mismo código que el api, en solo lectura; la imagen no cambia.
+    volumes:
+      - ../api/src:/app/src:ro
+      - ../api/migrations:/app/migrations:ro
+
   web:
     build:
       network: host

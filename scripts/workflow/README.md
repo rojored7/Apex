@@ -10,14 +10,14 @@ Gate de un slice. Con lista de archivos corre solo esos archivos más `tests/arc
 - front: `npx eslint` solo sobre los archivos que toca el slice (`git diff --name-only` contra la base del slice, más los archivos sin seguimiento y la lista recibida); `npx tsc --noEmit -p tsconfig.slice.json`, donde `tsconfig.slice.json` es un archivo temporal que extiende `tsconfig.json` con `include` = carpetas del módulo más los archivos del slice (pasar archivos sueltos a `tsc` ignora `tsconfig.json`); y `npx vitest run` sobre los archivos de prueba de la lista (o las carpetas del módulo si no hay lista). La base del slice es `SLICE_BASE` si está definida, o `git merge-base HEAD main`.
 
 Mapeo de módulos (A-01):
-- `core/<x>`: `api/src/app/core/<x>.py` o `api/src/app/core/<x>/`; pruebas en `api/tests/core`.
+- `core/<x>`: `api/src/app/core/<x>.py` o `api/src/app/core/<x>/`; pruebas en `api/tests/core`. Ejemplos del Sprint 4A: `core/jobs`, `core/alerts`, `core/audit_verify` (con lista, sus pruebas pueden vivir en `tests/worker/` o `tests/migrations/`).
 - `crypto`: `api/src/app/core/crypto/`; pruebas en `api/tests/crypto`.
 - `main`: `api/src/app/main.py`; pruebas en `api/tests/core`.
-- `worker`: `api/src/app/worker/`; pruebas en `api/tests/worker`.
+- `worker`: `api/src/app/worker/`; pruebas en `api/tests/worker` (`slice-gate.sh worker tests/worker/test_runner.py ...`; el directorio lo crea el Rojo de S4A-B1).
 - `cli`: `api/src/app/cli.py`; pruebas en `api/tests/cli`.
 - `architecture`: sin código; `api/tests/architecture`. Con lista, sirve para pruebas en la raíz de `api/tests/`, como `test_ci_database.py`.
-- `<modulo>` (`auth`, `settings`, `members`, `memberships`, `payments`, ...): `api/src/app/modules/<modulo>/`; pruebas en `api/tests/<modulo>`.
-- `web/<feature>` (`web/members`, `web/memberships`, `web/payments`, ...): `web/src/features/<feature>`. `web/shared`: `web/src/shared`. `web/core`: `web/src/core`. `web/layouts`: `web/src/layouts`. `web/app`: `web/src/App.tsx`, `web/src/routes*`, `web/src/config`, `web/src/styles`, `index.html`, `web/tests/unit`, `web/tests/lint`.
+- `<modulo>` (`auth`, `settings`, `members`, `memberships`, `payments`, `audit`, `dashboard`, ...): `api/src/app/modules/<modulo>/`; pruebas en `api/tests/<modulo>` (`dashboard` existe desde el Rojo de S4A-B8).
+- `web/<feature>` (`web/members`, `web/memberships`, `web/payments`, `web/system`, `web/dashboard`, ...): `web/src/features/<feature>`. `web/shared`: `web/src/shared`. `web/core`: `web/src/core`. `web/layouts`: `web/src/layouts`. `web/app`: `web/src/App.tsx`, `web/src/routes*`, `web/src/config`, `web/src/styles`, `index.html`, `web/tests/unit`, `web/tests/lint`.
 
 Nombre válido: `^(web/)?[a-z][a-z0-9_-]*(/[a-z][a-z0-9_-]*)*$`. Cada archivo de la lista debe existir bajo `api/tests/` o bajo `web/`.
 
@@ -37,7 +37,7 @@ Política `perf` (S2-D27, revisión de Fase 4 del Sprint 2): las pruebas marcada
 
 Auditoría de dependencias (N-5, S3-D63): el gate de la CI es el de producción, `npm audit --omit=dev --audit-level=high` en el job `web` (y `pip-audit` en el job `api`). Desde el Sprint 3 el job `web` corre también `npm audit --audit-level=high` con las dependencias de desarrollo, en un paso informativo con `continue-on-error: true`: no bloquea, pero un hallazgo nuevo se ve en cada PR. `run-gates.sh` no lo corre (necesita red).
 
-Cobertura (M-6): el umbral es global sobre `app`. Hasta el Sprint 3, `[tool.coverage.run] omit` en `api/pyproject.toml` excluye `src/app/cli.py` y `src/app/worker/*`; esa exclusión se quita en el Sprint 4A (US-113), cuando entran a la cobertura. No existe una opción `--cov-omit` en pytest-cov: la exclusión vive en la configuración de coverage.
+Cobertura (M-6): el umbral es global sobre `app`. Hasta el Sprint 3, `[tool.coverage.run] omit` en `api/pyproject.toml` excluía `src/app/cli.py` y `src/app/worker/*`; el Verde de S4A-B1 lo quita (S4A-D39, US-113) y desde S4A-B1 el `omit` ya no existe: `cli.py` y `worker/` cuentan para el 80 % global (sin volver a añadirlo si la cobertura baja: se agregan pruebas). No existe una opción `--cov-omit` en pytest-cov: la exclusión vive en la configuración de coverage.
 
 ## validate-impact-analysis.sh `[--allow-amber] <archivo>`
 

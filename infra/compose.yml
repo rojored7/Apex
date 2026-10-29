@@ -45,17 +45,36 @@ services:
     restart: unless-stopped
 
   worker:
+    # Jobs diarios (US-113). Endurecido (S4A-D49, M-5): en 4A no cifra ni descifra, así que
+    # no monta keys ni uploads (el Sprint 5 vuelve a montar keys:ro), raíz de solo lectura con
+    # /tmp en memoria, sin capacidades y sin escalada de privilegios. Usa la credencial del api
+    # hasta el rol de base separado (S4B-W0-2).
     image: apex-api:local
     command: ["python", "-m", "app.worker.main"]
     env_file: ../.env
-    volumes:
-      - keys:/run/apex/keys:ro
-      - uploads:/data/uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       db:
         condition: service_healthy
-    # Hasta que exista app/worker/main.py (US-113, Sprint 4A) el worker solo arranca
-    # con --profile worker; US-113 quita esta línea.
+      api:
+        # El api aplica las migraciones al arrancar: el worker no corre antes de 0012.
+        condition: service_healthy
+    healthcheck:
+      # Latido (S4A-D8, S4A-D56): el worker toca /tmp/apex-worker-heartbeat cada 30 s solo si
+      # la base responde a SELECT 1; más de 120 s sin latido = unhealthy (el aviso hasta que
+      # /health lea worker.job_runs en v0.2).
+      test: ["CMD", "python", "-c", "import os, sys, time; p = '/tmp/apex-worker-heartbeat'; sys.exit(0 if os.path.exists(p) and time.time() - os.path.getmtime(p) < 120 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    # Hasta S4A-W0-2, que quita el perfil cuando existe app/worker/main.py (CRITICA-2 N-3):
+    # mientras tanto el worker solo arranca con --profile worker.
     profiles: ["worker"]
     restart: unless-stopped
 

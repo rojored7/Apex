@@ -25,7 +25,7 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # comandos: seed, import-members, rotate-key, sign-audit
+      cli.py             # comandos: seed, init-keys, export-openapi, issue-reset-link, verify-audit y recompute-memberships (Sprint 4A), import-members, rotate-key, sign-audit; cli_ops.py si cli.py pasa de 760 líneas (S4A-D72)
       core/
         config.py        # Settings con pydantic-settings, todo desde .env
         db.py            # engine async, sesión, Base, CommonColumnsMixin
@@ -34,16 +34,17 @@ apex/
         security.py      # argon2, JWT Ed25519, Principal, PrincipalLoader, dependencias de rol
         errors.py        # envelope de error y handlers
         pagination.py    # PageParams, Page y SearchQuery (contrato común de listas)
-        validators.py    # tipos de entrada compartidos (EmailAddress)
+        validators.py    # tipos de entrada compartidos (EmailAddress) y check_instant_range (rangos de instantes, S4A-D66)
         search.py        # búsqueda común de las listas: limpieza de q, sin tildes, escape de LIKE
         http.py          # ayudas HTTP comunes a los routers (por ejemplo Cache-Control: no-store)
         ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
         locks.py         # candados de fila y de aviso (lock_member); única puerta del orden de candados (Sprint 3)
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
+        audit_verify.py  # audit.verifications, candado y recorrido por lotes de la cadena (Sprint 4A, S4A-D12)
         events.py        # bus de eventos interno (en memoria)
-        jobs.py          # worker.job_runs y run_job(); lo importan solo el worker y /health
-        alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo
+        jobs.py          # worker.job_runs: claim_run, finish_run, last_run (Sprint 4A); lo importa solo app/worker/ (/health lo leerá en v0.2)
+        alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo (Sprint 4A: LogAlertSink)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
           digest.py      #   SHA-256 sin dependencias (lo usa core/audit)
@@ -54,11 +55,13 @@ apex/
                      sessions.py users.py links.py events.py   # privados tras la fachada service.py (Fase 4 del Sprint 2)
         settings/    router.py schemas.py models.py service.py
         members/     router.py schemas.py models.py service.py
-        plans/       ...
+                     contact.py   # contact_for_notification(session, member_id, purpose), privado (Sprint 4A, S4A-D21)
+        plans/       ...           # changes.py si service.py pasa de 600 líneas (S4A-D72)
         memberships/
+                     expirations.py   # recompute_statuses del job diario, privado (Sprint 4A, S4A-D2)
         payments/
-        audit/       # router (vacío hasta US-102, Sprint 4A), service (se suscribe a los eventos de auth), schemas al llegar US-102; los models viven en core/audit.py
-        dashboard/   # router, schemas, service; sin models
+        audit/       # router, schemas, service (se suscribe a los eventos de auth); privados verify.py (S4A-B3), queries.py y diff.py (S4A-B4); los models viven en core/audit.py y core/audit_verify.py
+        dashboard/   # router, schemas, service; sin models (Sprint 4A)
         notifications/ # v0.2
         attachments/   # v0.3
         classes/       # v0.4
@@ -68,8 +71,12 @@ apex/
         athletes/      # v0.6
         portal/        # v1.0; router, schemas, service; sin models
       worker/
-        main.py          # APScheduler: jobs diarios
-        jobs/            # expirations.py, notify.py, sign_audit.py, backup_check.py
+        main.py          # punto de entrada delgado: --run-once <job> [--date --simulate], --status <job>, serve (APScheduler)
+        schedule.py      # WORKER_TIMEZONE, DAILY_HOUR, DAILY_MINUTE, next_run, should_run, *_sim (S4A-D5, S4A-D48)
+        registry.py      # JobSpec y registro de jobs
+        runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
+        runtime.py       # worker_runtime, espera de la base y latido (/tmp/apex-worker-heartbeat)
+        jobs/            # expirations.py (Sprint 4A); notify.py, sign_audit.py, backup_check.py (v0.2 en adelante)
     migrations/          # Alembic
     tests/
       architecture/      # pruebas de arquitectura; corren en todos los gates
@@ -132,7 +139,7 @@ apex/
 
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
 - Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo las ocho entradas de `PUBLIC_ROUTES` (`core/security.py`): health (dos), login, refresh, logout (por cookie), forgot, reset y la TV con token de dispositivo.
-- Rate limit en login. CORS solo para el dominio del front.
+- Rate limit en login. Límite por usuario en las escrituras y lecturas caras (`USER_LIMITS` de `core/ratelimit.py`); desde S4A-B3 suma `USER_READ_LIMIT_PER_MIN` (cubeta `staff-read`), `USER_AUDIT_VERIFY_LIMIT_PER_MIN` y `USER_AUDIT_VERIFY_LIMIT_PER_HOUR` (cubetas de `POST /audit/verify`). CORS solo para el dominio del front.
 - Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
@@ -150,7 +157,7 @@ Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, O
 - Cada slice se trabaja en TDD: primero pruebas en rojo sobre stubs, luego implementación hasta pasar `scripts/workflow/slice-gate.sh <modulo> [pruebas...]`, y se confirma con `scripts/workflow/checkpoint-commit.sh`. `tests/architecture` corre en todos los gates. Cada wave cierra con `scripts/workflow/run-gates.sh`.
 - Rama `main` protegida; ramas `feat/`, `fix/`, `chore/`; commits en Conventional Commits. Los scripts nunca hacen push: el push y el PR los hace una persona al cerrar cada sprint.
 - CI en cada PR: lint, mypy, pruebas, licencias, auditoría de dependencias de producción, build de imágenes y E2E contra el stack.
-- Logs en JSON a stdout. Healthcheck en `/health`.
+- Logs en JSON a stdout. Healthcheck en `/health`; en el Sprint 4A `/health` no lee `worker.job_runs` (pasa a v0.2): el aviso del worker es su healthcheck por latido (`unhealthy` en `docker compose ps`).
 
 ## Comandos
 
@@ -168,6 +175,17 @@ cd web && npm run lint && npx tsc --noEmit && npm test && npm run build
 ```
 
 `--env-file .env` es obligatorio: Compose interpola `${WEB_PORT:-80}` desde la carpeta de los archivos, no desde la raíz. Dentro de los contenedores no hay `uv` (el `PATH` apunta a `/app/.venv/bin`): `docker compose exec api alembic current`, `docker compose run --rm tools seed`.
+
+Worker y comandos del Sprint 4A (detalle en `docs/RUNBOOK.md` §7 y §11):
+
+```
+docker compose run --rm worker python -m app.worker.main --run-once expirations
+docker compose run --rm worker python -m app.worker.main --status expirations
+docker compose run --rm tools recompute-memberships --as <email>
+docker compose run --rm tools verify-audit --as <email>
+```
+
+`--date <fecha> --simulate` solo con `ENV=dev` y contra una base `*_sim` o `apex_test` (S4A-D48, S4A-D63); con `ENV=production`, `verify-audit` y `recompute-memberships` exigen `--as` (S4A-D53). El worker vive tras `--profile worker` hasta S4A-W0-2.
 
 ## Cómo trabajar conmigo
 

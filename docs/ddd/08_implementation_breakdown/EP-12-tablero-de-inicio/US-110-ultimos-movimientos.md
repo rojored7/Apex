@@ -1,5 +1,16 @@
 # US-110 · Últimos movimientos — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Pregunta 1 cerrada: US-041 no creó `display_name` y no se agrega en 4A (sin `0014`; dueño v0.2 con EP-04); `display_name` es la parte local del correo (`ana.perez` de `ana.perez@x.co`) y "Sistema" para `SYSTEM_USER_ID` (S4A-D19).
+> - Pregunta 2 cerrada: `recent` recibe `exclude_user_ids=(SYSTEM_USER_ID,)` y el límite de 10 se aplica después de excluir al sistema; "Sistema marcó..." de `Inicio.html` queda como `// DESIGN-GAP:` en F3 (S4A-D28).
+> - `memberships.service.refs_for(session, membership_ids)` es el real: `MembershipRef(member_id, member_first_name, member_last_name, plan_name, start_date, end_date)`, con nombres y fechas y sin `plan_id`; el nombre del plan sale de ahí, sin importar `plans` (no hay arista `dashboard -> plans` ni se usa `plans.service.names_for`) (S4A-D27, S4A-D28, S4A-D41).
+> - El actor sale de `auth.service.user_names_for(session, user_ids) -> dict[UUID, str]` (solo `display_name`), no de `auth.service.names_for` ni de `user_refs_for` (que solo importa `audit`); prueba AST en `tests/architecture/test_user_refs_scope.py` (S4A-D54).
+> - Tablas con los nombres reales `esquema.tabla`: `members.members`, `memberships.memberships` y `payments.payments` (en `recent`, en `MovementOut.table_name` y en la lista blanca); `crypto.*` se rechaza (S4A-D28, S4A-D41).
+> - `recent` consulta cada tabla por separado (`table_name = :t AND action = ANY(:acciones) AND user_id <> ALL(:excluidos) ORDER BY seq DESC LIMIT :n`), une por `seq` en memoria y recorta; `limit ≤ 50` (`ValueError` fuera de rango); la prueba `perf` lo exige con `EXPLAIN` por tabla (S4A-D51).
+> - `RECENT_TABLES_ALLOWED` tiene seis tablas como máximo (`members.members`, `memberships.memberships`, `payments.payments`, `plans.plans`, `auth.users`, `settings.settings_sections`) y se deriva de la constante única `AUDITABLE_TABLES` de `audit/queries.py`; una prueba falla si un modelo auditado nuevo no está ni en la lista ni en `AUDIT_TABLES_EXCLUDED_FROM_RECENT` con motivo (S4A-D51, S4A-D61).
+> - La vista reducida (`AuditEntryView`, `reduce_entry`) también lleva `subject_member_id`; el socio se nombra por `subject_member_id` con `members.service.names_for` (incluye bajas); `GET /dashboard` consume `staff-read` con 429 (S4A-D28, S4A-D45).
+> - La prueba de rendimiento se marca `perf`, no `slow`, y se corre fuera del gate (S4A-D41, S4A-D68); la página del front es `InicioPage.tsx`, no `HomePage.tsx` (S4A-D41).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-12-tablero-de-inicio/US-110-ultimos-movimientos.md`
 - **Épica:** EP-12 · Tablero de inicio
 - **Bounded context / módulo:** Dashboard (`api/src/app/modules/dashboard/`), con lectura de Audit (`api/src/app/modules/audit/service.py`), Members, Plans, Memberships y Auth por sus services
@@ -39,8 +50,8 @@ Se agrega `audit.service.recent(tables, limit, exclude_user_ids)` (lectura por e
 - Contratos que se piden a otros módulos (sin leer sus tablas):
   - `members.service.names_for(ids) -> dict[UUID, PersonName]`, que incluye socios dados de baja para poder escribir "dio de baja a Laura G." (US-069/US-070).
   - `plans.service.names_for(ids) -> dict[UUID, str]`, que incluye planes dados de baja (US-078).
-  - `auth.service.names_for(user_ids) -> dict[UUID, str]`, que devuelve "Sistema" para `SYSTEM_USER_ID` (N-15) (US-041).
-  - `memberships.service.refs_for(membership_ids) -> dict[UUID, MembershipRef(member_id, plan_id)]`, contrato nuevo que se pide a EP-09.
+  - `auth.service.user_names_for(session, user_ids) -> dict[UUID, str]`, que devuelve "Sistema" para `SYSTEM_USER_ID` (N-15) (US-041).
+  - `memberships.service.refs_for(session, membership_ids) -> dict[UUID, MembershipRef(member_id, member_first_name, member_last_name, plan_name, start_date, end_date)]`, contrato nuevo que se pide a EP-09.
 - Bus de criptografía: no se usa ni se descifra nada.
 - Lint banned-api: sin cambios.
 - Rol: el campo viaja en `GET /dashboard` con `require_role("admin", "coach")`. El coach no tiene acceso a `GET /audit` (solo admin, US-102). Ve aquí solo frases sin datos personales, que es lo que Q10 autoriza para el tablero.
@@ -63,11 +74,11 @@ Se agrega `audit.service.recent(tables, limit, exclude_user_ids)` (lectura por e
 ### Service
 - [ ] T1 · `modules/audit/service.py`: `async def recent(session, tables: Sequence[str], limit: int, *, actions=("insert", "update", "delete"), exclude_user_ids: Sequence[UUID] = ()) -> list[AuditEntryView]`, con `limit` de 1 a 50, una consulta `WHERE table_name = ANY(:tables) AND action = ANY(:actions) AND user_id <> ALL(:excl) ORDER BY seq DESC LIMIT :limit`; devuelve una vista inmutable (dataclass congelada) con `seq`, `at`, `user_id`, `action`, `table_name`, `record_id` y solo las llaves permitidas de `before`/`after` (`member_id`, `plan_id`, `membership_id`, `amount_cop`, `voided`, `deleted_at`, `status`) — 2 h
 - [ ] T2 · `modules/dashboard/service.py`: funciones puras `short_name(first: str, last: str) -> str`, `format_cop(amount: int) -> str` y `movement_phrase(entry: AuditEntryView, names: NameBook) -> str` con el catálogo del criterio 2 (alta, edición, baja de socio; venta y anulación de membresía; pago y anulación de pago; activación por cobertura si se aprueba la pregunta 2; frase genérica "X modificó <entidad> de Laura G.") — 2 h
-- [ ] T3 · `modules/dashboard/service.py`: `async def last_movements(session) -> list[MovementOut]` que llama a `audit.service.recent(["members", "memberships", "payments"], 10, exclude_user_ids=...)`, junta ids, llama una sola vez a cada `names_for` y a `memberships.service.refs_for`, arma `NameBook` y aplica `movement_phrase`; si un nombre falta usa "un socio" o "un plan" sin fallar; `summary` (US-108) lo incluye en `last_movements` — 1,5 h
+- [ ] T3 · `modules/dashboard/service.py`: `async def last_movements(session) -> list[MovementOut]` que llama a `audit.service.recent(["members.members", "memberships.memberships", "payments.payments"], 10, exclude_user_ids=...)`, junta ids, llama una sola vez a cada `names_for` y a `memberships.service.refs_for`, arma `NameBook` y aplica `movement_phrase`; si un nombre falta usa "un socio" o "un plan" sin fallar; `summary` (US-108) lo incluye en `last_movements` — 1,5 h
 - [ ] T4 · Contratos pedidos a otros módulos, coordinados con sus dueños: `memberships.service.refs_for` (EP-09, consulta única por `id = ANY(...)`) y `auth.service.names_for` con "Sistema" para `SYSTEM_USER_ID`; si EP-07 y EP-08 no traen `names_for` con dados de baja incluidos, se agrega el parámetro `include_deleted=True` en esos services — 1,5 h
 
 ### Schemas
-- [ ] T5 · `modules/dashboard/schemas.py`: `MovementOut` con `seq: int`, `at: datetime` (UTC), `phrase: str`, `table_name: Literal["members", "memberships", "payments"]`, `record_id: UUID` y `member_id: UUID | None` (para el enlace a la ficha); `DashboardOut.last_movements: list[MovementOut]` con máximo 10 elementos — 0,5 h
+- [ ] T5 · `modules/dashboard/schemas.py`: `MovementOut` con `seq: int`, `at: datetime` (UTC), `phrase: str`, `table_name: Literal["members.members", "memberships.memberships", "payments.payments"]`, `record_id: UUID` y `member_id: UUID | None` (para el enlace a la ficha); `DashboardOut.last_movements: list[MovementOut]` con máximo 10 elementos — 0,5 h
 
 ### Router
 - No aplica (el campo viaja en `GET /dashboard` de US-108).
@@ -76,7 +87,7 @@ Se agrega `audit.service.recent(tables, limit, exclude_user_ids)` (lectura por e
 - [ ] T6 · `api/tests/dashboard/test_movement_phrase.py`: una prueba por cada frase del criterio 2 y por la genérica; `short_name` con apellido compuesto ("Gómez Restrepo" → "G.") y con tildes ("Ángela Ñúñez" → "Ángela Ñ."); `format_cop(120000) == "$ 120.000"`; una entrada cuyo `after` trae un blob `apx1.` en `document` no lo incluye en la frase (la vista reducida lo descarta) — 2 h
 
 ### Tests de service con PostgreSQL
-- [ ] T7 · `api/tests/audit/test_recent.py`: filtra por tablas y acciones (las entradas `reveal`, `login`, `export`, `verify` y `download` y las de `plans` o `users` no aparecen), respeta `limit` y el orden por `seq` descendente, excluye `SYSTEM_USER_ID` cuando se pide, y con 100.000 entradas responde en menos de 50 ms con `EXPLAIN` que usa el índice `(table_name, seq DESC)` (marcado `slow`) — 2 h
+- [ ] T7 · `api/tests/audit/test_recent.py`: filtra por tablas y acciones (las entradas `reveal`, `login`, `export`, `verify` y `download` y las de `plans` o `users` no aparecen), respeta `limit` y el orden por `seq` descendente, excluye `SYSTEM_USER_ID` cuando se pide, y con 100.000 entradas responde en menos de 50 ms con `EXPLAIN` que usa el índice `(table_name, seq DESC)` (marcado `perf`) — 2 h
 - [ ] T8 · `api/tests/dashboard/test_last_movements.py`: escenario del BDD (venta de Plan Mensual a Laura Gómez y pago de 120.000 de Juan Ruiz por Ana Pérez) produce las frases esperadas, el más reciente primero; con 3 entradas devuelve 3; sin entradas, lista vacía; un `reveal` del documento no aparece; la respuesta serializada completa no contiene ningún valor de documento, teléfono, correo, fecha de nacimiento ni contacto de emergencia de los socios creados ni ninguna cadena `apx1.` — 2 h
 
 ### Tests de router
@@ -86,7 +97,7 @@ Se agrega `audit.service.recent(tables, limit, exclude_user_ids)` (lectura por e
 - [ ] T10 · `api/tests/architecture/test_read_modules.py` (de US-108): se agrega que `app.modules.dashboard` no importa `app.core.audit`; deben seguir verdes `test_no_cross_models.py` y `test_banned_imports.py` — 0,5 h
 
 ### Front
-- [ ] T11 · `web/src/features/dashboard/components/LastMovements.tsx`: lista con la frase, la hora relativa en Bogotá ("hace 5 min", con la hora exacta en `title` y en texto accesible) y enlace a `/socios/:id` cuando `member_id` existe; estados de carga, vacío ("Todavía no hay movimientos") y error; se integra en `HomePage` de US-109; sin colores literales — 2 h
+- [ ] T11 · `web/src/features/dashboard/components/LastMovements.tsx`: lista con la frase, la hora relativa en Bogotá ("hace 5 min", con la hora exacta en `title` y en texto accesible) y enlace a `/socios/:id` cuando `member_id` existe; estados de carga, vacío ("Todavía no hay movimientos") y error; se integra en `InicioPage` de US-109; sin colores literales — 2 h
 - [ ] T12 · `web/src/features/dashboard/components/LastMovements.test.tsx`: lista con 10 elementos en orden, vacío, enlace a la ficha y hora relativa con reloj falso — 1 h
 
 ### DevOps
@@ -118,7 +129,7 @@ Se agrega `audit.service.recent(tables, limit, exclude_user_ids)` (lectura por e
 - US-041 · `auth.service.names_for(user_ids)` y, si se aprueba la pregunta 1, la columna `display_name` en `0004_auth`.
 - US-091 o US-092 · `memberships.service.refs_for(membership_ids)` (contrato nuevo pedido a EP-09).
 - US-094 · Job de vencimientos: escribe con `SYSTEM_USER_ID` (N-15), base de la pregunta 2.
-- US-109 · Página `HomePage` donde se monta el bloque.
+- US-109 · Página `InicioPage` donde se monta el bloque.
 
 ## Endpoints
 

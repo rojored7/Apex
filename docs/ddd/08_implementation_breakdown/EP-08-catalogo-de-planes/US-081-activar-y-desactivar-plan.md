@@ -1,5 +1,13 @@
 # US-081 · Activar y desactivar plan — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Sin parámetro `by: Actor`: el actor sale de `get_actor()`; la firma es `set_active(session, plan_id, active)` (S4A-D41, S4A-D23).
+> - Las rutas son `POST /plans/{plan_id}/activate` y `/deactivate`, no PATCH `active`; `docs/design/ROUTES.md:39` se corrige a las dos rutas POST, la casilla Activo de la edición de `Planes.html` queda como `// DESIGN-GAP:` y la brecha va a `BRECHAS.md` §11 (S4A-D23).
+> - Desactivar no consulta a `memberships` y se permite con membresías activas, incluidas las `pending_payment` (RN-08); la regla de `pending_payment` como activa solo bloquea la baja de US-082. `sell` ya traduce `plan_inactive` (422): aquí solo se agrega la prueba de integración (S4A-D23, S4A-D24).
+> - `PlanOut` gana `active_members_count`; `set_active` lo llena con `_out_with_counts`, que llama `memberships.service.counts_active_by_plans` por import perezoso (par `plans` ↔ `memberships` de `LAZY_IMPORT_WHITELIST` en `tests/architecture/test_service_import_graph.py`, no `test_service_import_cycles.py` ni `ALLOWED_LAZY`); "no llama a `memberships`" se corrige en ese punto (S4A-D25, S4A-D41).
+> - Las dos rutas consumen la cubeta `admin-write` después del rol, declaran 429 por ruta (`responses_for(404, 429)`) y entran en `CON_LIMITE` (S4A-D26).
+> - `tests/integration/` nace en S4A-B7 con `__init__.py` y `conftest.py` vacío (S4A-D67); `plans/service.py` se parte en `plans/changes.py` solo si pasa de 600 líneas (S4A-D72).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-08-catalogo-de-planes/US-081-activar-y-desactivar-plan.md`
 - **Épica:** EP-08 · Catálogo de planes
 - **Bounded context / módulo:** Plans (`api/src/app/modules/plans/`)
@@ -51,7 +59,7 @@ Ninguna.
 - No aplica.
 
 ### Service
-- [ ] T1 · Caso de uso `async def set_active(session, plan_id: UUID, active: bool, by: Actor) -> PlanOut`: `PlanNotFound` si no existe o tiene `deleted_at`; si `is_active` ya es el pedido, devuelve sin `flush` (idempotente); si cambia, asigna, hace `flush` y emite `PlanDeactivated` (al desactivar) o `PlanUpdated` (al activar) — 2 h
+- [ ] T1 · Caso de uso `async def set_active(session, plan_id: UUID, active: bool) -> PlanOut`: `PlanNotFound` si no existe o tiene `deleted_at`; si `is_active` ya es el pedido, devuelve sin `flush` (idempotente); si cambia, asigna, hace `flush` y emite `PlanDeactivated` (al desactivar) o `PlanUpdated` (al activar) — 2 h
 - [ ] T2 · Evento `PlanDeactivated(DomainEvent)` con `plan_id` en `service.py` (US-082 lo reutiliza) — 0.5 h
 
 ### Schemas

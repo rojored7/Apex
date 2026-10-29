@@ -1,5 +1,13 @@
 # US-103 · Ver detalle antes y después — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Los blobs no salen tal cual: el servidor sustituye todo valor `apx1.` de `AuditDetail.before/after` y de `FieldChange.before/after` por el marcador `{"encrypted": true, "key_id": "<uuid>", "alg": "A256GCM"}`, armado por la pura `blob_marker(value)` de `audit/diff.py`; una prueba exige que la respuesta serializada no contenga `apx1.` (la línea de `curl` de la definición de hecho se lee así) y otra fija la paridad del prefijo y del separador con `core/crypto/types` (S4A-D52, S4A-D17).
+> - `FieldChange.encrypted` se conserva (verdadero si el valor guardado empieza por `apx1.`); el front (`encryptedBlob.ts`) reconoce el marcador y también el prefijo, pinta todo valor como texto y recorta a 2.000 caracteres (S4A-D52, S4A-D58).
+> - `seq: Annotated[int, Path(ge=1, le=MAX_SEQ)]` con `MAX_SEQ = 2**63 - 1` (S4A-D46).
+> - `GET /audit/{seq}` consume la cubeta `staff-read`, declara 429 y entra en `CON_LIMITE` (S4A-D45).
+> - `diff` y `FieldChange` viven en `audit/diff.py` y `get` en `audit/queries.py` (privados de `audit`); el 404 es `AuditEntryNotFound` con código `audit_entry_not_found`; `AuditDetail` suma `subject_member_id` (S4A-D17, S4A-D18).
+> - El nombre y el correo del usuario salen de `auth.service.user_refs_for` (`UserRef(id, email, display_name)`), no de `names_for` (S4A-D19, S4A-D54).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-103-ver-detalle-antes-y-despues.md`
 - **Épica:** EP-11 · Auditoría y trazabilidad
 - **Bounded context / módulo:** Audit (`api/src/app/modules/audit/`; modelo en `api/src/app/core/audit.py`)
@@ -49,7 +57,7 @@ Ninguna.
 
 ### Service
 - [ ] T1 · Función pura `diff(before, after) -> list[FieldChange]` en `modules/audit/service.py` con orden estable por nombre de campo — 1 h
-- [ ] T2 · `async def get(session, seq: int) -> AuditDetail`: `AuditNotFound` (404) si no existe; nombre del usuario por `auth.service.names_for`; `changes = diff(entry.before, entry.after)` — 1 h
+- [ ] T2 · `async def get(session, seq: int) -> AuditDetail`: `AuditEntryNotFound` (404) si no existe; nombre del usuario por `auth.service.names_for`; `changes = diff(entry.before, entry.after)` — 1 h
 
 ### Schemas
 - [ ] T3 · `AuditDetail { seq, at, user_id, user_email, user_name, action, table_name, record_id, before: dict | None, after: dict | None, prev_hash, hash, changes: list[FieldChange] }` — 0,5 h

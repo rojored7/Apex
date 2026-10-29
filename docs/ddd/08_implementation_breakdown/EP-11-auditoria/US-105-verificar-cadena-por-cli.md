@@ -1,5 +1,13 @@
 # US-105 · Verificar cadena por CLI — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El correo de `--as` se resuelve con `cli.resolve_actor(session, email)`, no con `auth.service.get_by_email` (no existe); el comando usa `cli_runtime(settings, runtime_options(ctx))` y fija el actor con `unit_of_work(actor)` durante el commit (S4A-D15, S4A-D41).
+> - `--wait-timeout` (300 s por defecto) espera con `pg_try_advisory_lock` en un bucle de 2 s, no con `pg_advisory_lock` bloqueante (el `lock_timeout` de 10 s lo cortaría); agotado, sale 2 (S4A-D15).
+> - Con `ENV=production`, `--as` es obligatorio (salida 2 si falta) y `--db-timeouts off` se rechaza (salida 2); con `ENV=dev` `--as` sigue opcional (S4A-D53).
+> - `run_verification` y `format_verify_message` viven en `core/audit_verify.py`, no en `core/audit.py`, y `run_verification` recibe una sesión (`run_verification(session, source="cli", by=actor)`) (S4A-D12, S4A-D15).
+> - La conexión del candado es `AUTOCOMMIT` y se invalida en el `finally` tras `pg_advisory_unlock`, con `VERIFY_MAX_SECONDS = 900`, igual que en el API; los lotes son de `VERIFY_BATCH_SIZE = 1000` y la verificación compara contra el ancla de la última verificación `ok` (`through_hash`) (S4A-D44, S4A-D47, S4A-D43).
+> - En la imagen no hay `uv`: el comando del runbook es `docker compose exec api python -m app.cli verify-audit --as <correo>` (CLAUDE.md, "Comandos"); `cli.py` se parte en `app/cli_ops.py` solo si pasa de 760 líneas (S4A-D72).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-105-verificar-cadena-por-cli.md`
 - **Épica:** EP-11 · Auditoría y trazabilidad
 - **Bounded context / módulo:** Audit (`api/src/app/core/audit.py`), comando en `api/src/app/cli.py`
@@ -30,7 +38,7 @@ Agrega el comando `uv run python -m app.cli verify-audit [--as <email>]` (typer)
 
 ## Validación contra la arquitectura
 
-- `cli.py` llama a `core.audit.run_verification` (código de `core`), no a `modules/audit`, y para `--as` a `auth.service.get_by_email` (lectura). No hay router ni rol HTTP; el control de acceso es el acceso al servidor.
+- `cli.py` llama a `core.audit.run_verification` (código de `core`), no a `modules/audit`, y para `--as` a `cli.resolve_actor` (lectura). No hay router ni rol HTTP; el control de acceso es el acceso al servidor.
 - El actor se fija en la variable de contexto `current_actor` de US-016 antes de abrir la transacción; sin actor el hook fallaría (criterio 7 de US-016).
 - Exclusión mutua con la verificación del API por el mismo advisory lock `AUDIT_VERIFY_LOCK_KEY`: si hay una verificación en curso en el API, el comando espera (`pg_advisory_lock`, bloqueante, con `--wait-timeout` por defecto 300 s) en lugar de fallar, porque la CLI no tiene modo en segundo plano.
 - El comando nunca imprime `before` ni `after`. Lint `banned-api`: sin primitivas (el hash pasa por `bus.digest`, N-06).
@@ -49,7 +57,7 @@ Ninguna.
 
 ### Service
 - [ ] T1 · Función pura `format_verify_message(result: VerifyResult) -> tuple[str, int]` en `core/audit.py` (0 íntegra, 1 rota) — 0,5 h
-- [ ] T2 · `api/src/app/cli.py`: comando `verify-audit` con opciones `--as` (correo; resuelve el id con `auth.service.get_by_email`, error y código 2 si no existe) y `--wait-timeout`; fija `current_actor`, abre conexión, toma `pg_advisory_lock` con timeout, llama a `run_verification(conn, source="cli", by=actor)`, confirma, imprime el mensaje y sale con su código; `OperationalError`/`OSError` de conexión imprime el error sin trazas internas y sale con 2 — 2,5 h
+- [ ] T2 · `api/src/app/cli.py`: comando `verify-audit` con opciones `--as` (correo; resuelve el id con `cli.resolve_actor`, error y código 2 si no existe) y `--wait-timeout`; fija `current_actor`, abre conexión, toma `pg_advisory_lock` con timeout, llama a `run_verification(conn, source="cli", by=actor)`, confirma, imprime el mensaje y sale con su código; `OperationalError`/`OSError` de conexión imprime el error sin trazas internas y sale con 2 — 2,5 h
 
 ### Schemas
 - No aplica.
@@ -74,7 +82,7 @@ Ninguna.
 - No aplica.
 
 ### DevOps
-- [ ] T7 · Documentar el comando en el runbook de operación (`docs/runbook.md` de EP-13): `docker compose exec api uv run python -m app.cli verify-audit --as <correo>`, significado de los códigos 0, 1 y 2 — 0,5 h
+- [ ] T7 · Documentar el comando en el runbook de operación (`docs/runbook.md` de EP-13): `docker compose exec api python -m app.cli verify-audit --as <correo>`, significado de los códigos 0, 1 y 2 — 0,5 h
 
 ### Seguridad
 - [ ] T8 · Revisión: el comando no imprime filas ni secretos, el mensaje de error de conexión no muestra la contraseña de la URL de la base — 0,5 h
@@ -92,7 +100,7 @@ Ninguna.
 - US-015 · Tabla de auditoría y cadena de hashes.
 - US-104 · Verificar cadena desde pantalla: `verify_chain`, `run_verification`, tabla `audit.verifications` (`0013_audit_verifications`) y la clave del advisory lock. Si US-105 se implementa primero, crea esas piezas y US-104 las reutiliza.
 - US-016 · `current_actor`.
-- US-041 · Usuario técnico `SYSTEM_USER_ID` (migración `0004_auth`) y `auth.service.get_by_email`.
+- US-041 · Usuario técnico `SYSTEM_USER_ID` (migración `0004_auth`) y `cli.resolve_actor`.
 
 ## Endpoints
 - Ninguno.

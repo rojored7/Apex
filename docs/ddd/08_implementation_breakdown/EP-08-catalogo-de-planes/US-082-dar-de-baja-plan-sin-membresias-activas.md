@@ -1,5 +1,16 @@
 # US-082 · Dar de baja plan sin membresías activas — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Sin parámetro `by: Actor`: el actor sale de `get_actor()`; la firma es `deactivate_or_fail(session, plan_id)` (S4A-D41, S4A-D24).
+> - La prueba del grafo es `tests/architecture/test_service_import_graph.py` y su lista es `LAZY_IMPORT_WHITELIST`, no `test_service_import_cycles.py` ni `ALLOWED_LAZY`; el par `plans` ↔ `memberships` ya está en la lista (G-03), así que T7 solo confirma; el comentario del import perezoso es `# lazy: G-03 (plans -> memberships)` (S4A-D41, S4A-D24).
+> - Regla de `pending_payment`: cuenta como activa (N-22, por estado efectivo junto a `active`, `expiring` y `frozen`); un plan con una venta sin pagar no se da de baja hasta anular esa membresía con `POST /memberships/{id}/cancel`. La limpieza P2-1 de los planes de prueba va por la API con un admin desechable (anular las `pending_payment` y luego `DELETE`), nunca por SQL ni con un endpoint nuevo (S4A-D24, S4A-D60).
+> - El 409 `plan_has_active_memberships` entrega solo un conteo N (no PII); la baja fija `deleted_at` e `is_active = False` en un solo flush (una fila `update`) y emite `PlanDeactivated` solo si estaba activo (S4A-D24, S4A-D60).
+> - Carreras: `sell` toma socio, luego `FOR SHARE` del plan, luego la fila; la baja toma `FOR UPDATE` del plan y cuenta sin pedir socio. Una venta en vuelo hace esperar la baja (503 `busy` si pasan 10 s) y una baja confirmada hace que `sell` reciba `PlanNotFound` convertido en `PlanInvalid` (S4A-D24).
+> - Activar y desactivar van por `POST /plans/{plan_id}/activate` y `/deactivate` (no PATCH `active`); el botón "Desactivar" del 409 llama a esa ruta (S4A-D23).
+> - `DELETE /plans/{plan_id}` consume la cubeta `admin-write` después del rol, declara 429 (`responses_for(404, 409, 429)`) y entra en `CON_LIMITE` (S4A-D26).
+> - `PlanOut` gana `active_members_count`, por lote con `memberships.service.counts_active_by_plans(session, plan_ids)` (mismo `status_expr` y exclusión de `cancelled` y `expired` que `count_active_by_plan`) (S4A-D25).
+> - `plans/service.py` se parte en `plans/changes.py` solo si pasa de 600 líneas (S4A-D72).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-08-catalogo-de-planes/US-082-dar-de-baja-plan-sin-membresias-activas.md`
 - **Épica:** EP-08 · Catálogo de planes
 - **Bounded context / módulo:** Plans, con consulta a Memberships (`api/src/app/modules/plans/`)
@@ -34,7 +45,7 @@ N-22 confirma los dos supuestos de la historia: `DELETE /plans/{id}` es borrado 
 ## Validación contra la arquitectura
 
 - Plans → Memberships es la única llamada en sentido contrario documentada en `03_context_map.md` 2. `plans.service` llama a `memberships.service.count_active_by_plan`; nunca importa `memberships.models` (US-022).
-- Ciclo de imports: `memberships.service` importa `plans.service` a nivel de módulo (leer el plan al vender, US-084). Para no cerrar el ciclo, `plans.service` importa `memberships.service` de forma perezosa dentro de `deactivate_or_fail`, con comentario `# lazy: ciclo documentado plans↔memberships` y `# noqa: PLC0415` si la regla está activa. La prueba `test_service_import_cycles.py` (US-071) agrega el par `("plans", "memberships")` a la lista blanca y sigue exigiendo que el grafo de nivel de módulo sea acíclico. Es un riesgo controlado.
+- Ciclo de imports: `memberships.service` importa `plans.service` a nivel de módulo (leer el plan al vender, US-084). Para no cerrar el ciclo, `plans.service` importa `memberships.service` de forma perezosa dentro de `deactivate_or_fail`, con comentario `# lazy: ciclo documentado plans↔memberships` y `# noqa: PLC0415` si la regla está activa. La prueba `test_service_import_graph.py` (US-071) agrega el par `("plans", "memberships")` a la lista blanca y sigue exigiendo que el grafo de nivel de módulo sea acíclico. Es un riesgo controlado.
 - Concurrencia: el plan se bloquea con `SELECT ... FOR UPDATE` antes de contar; para que una venta simultánea no se cuele, `sell` debe leer el plan con bloqueo compartido (`plans.service.get(plan_id, for_share=True)`), que esta historia agrega al contrato y que US-084 debe usar.
 - Rol: `require_role("admin")`. Auditoría por hook: la baja lógica es `update` (US-016).
 - Ningún `DELETE FROM plans.plans`: lo vigila `test_no_physical_delete.py` (US-076).
@@ -52,7 +63,7 @@ Ninguna.
 - No aplica.
 
 ### Service
-- [ ] T1 · Caso de uso `async def deactivate_or_fail(session, plan_id: UUID, by: Actor) -> None`: lee el plan con `SELECT ... FOR UPDATE` (`PlanNotFound` si no existe o ya tiene `deleted_at`); import perezoso de `memberships.service`; `count = await memberships_service.count_active_by_plan(session, plan_id)`; si `count > 0` lanza `PlanHasActiveMemberships(count)`; si no, fija `deleted_at = clock.now()`, `is_active = False`, hace `flush` y emite `PlanDeactivated` si estaba activo — 2.5 h
+- [ ] T1 · Caso de uso `async def deactivate_or_fail(session, plan_id: UUID) -> None`: lee el plan con `SELECT ... FOR UPDATE` (`PlanNotFound` si no existe o ya tiene `deleted_at`); import perezoso de `memberships.service`; `count = await memberships_service.count_active_by_plan(session, plan_id)`; si `count > 0` lanza `PlanHasActiveMemberships(count)`; si no, fija `deleted_at = clock.now()`, `is_active = False`, hace `flush` y emite `PlanDeactivated` si estaba activo — 2.5 h
 - [ ] T2 · Excepción `PlanHasActiveMemberships(count)` en `exceptions.py` traducida a 409 `plan_has_active_memberships` con `message = "Este plan tiene N membresías activas. Desactívalo en su lugar."` — 0.5 h
 - [ ] T3 · Ampliar el contrato `plans.service.get(session, plan_id, *, for_share: bool = False)` de US-079 con `SELECT ... FOR SHARE` opcional, para que `memberships.service.sell` (US-084) no venda un plan que se está dando de baja en la misma ventana — 0.5 h
 
@@ -72,7 +83,7 @@ Ninguna.
 - [ ] T6 · `api/tests/plans/test_router_delete.py`: 204 admin; 409 con `code = "plan_has_active_memberships"`; 404 inexistente y ya dado de baja; 403 coach; 401 sin token — 1 h
 
 ### Tests de arquitectura
-- [ ] T7 · Agregar `("plans", "memberships")` a `ALLOWED_LAZY` en `api/tests/architecture/test_service_import_cycles.py` (US-071) y confirmar que `test_no_physical_delete.py` (US-076) cubre `plans`; `test_no_cross_models.py` verifica que `plans` no importa `memberships.models` — 0.5 h
+- [ ] T7 · Agregar `("plans", "memberships")` a `LAZY_IMPORT_WHITELIST` en `api/tests/architecture/test_service_import_graph.py` (US-071) y confirmar que `test_no_physical_delete.py` (US-076) cubre `plans`; `test_no_cross_models.py` verifica que `plans` no importa `memberships.models` — 0.5 h
 
 ### Front
 - [ ] T8 · Acción "Dar de baja" en el menú de cada fila de `PlansPage.tsx` con `ConfirmModal`; `useDeletePlan(id)` en `api.ts`; ante 409 el modal muestra el mensaje del API y un botón "Desactivar" que llama a `useSetPlanActive` (US-081); `// DESIGN-GAP:` mensaje de bloqueo por membresías activas — 1.5 h
@@ -99,7 +110,7 @@ Ninguna.
 - US-079 · Listar planes: `get`, `get_including_deleted`.
 - US-092 · Resumen y consultas de estado: `count_active_by_plan(plan_id)`.
 - US-084 · Vender membresía: debe leer el plan con `get(plan_id, for_share=True)` para cerrar la carrera.
-- US-071 · Filtrar socios: prueba `test_service_import_cycles.py`.
+- US-071 · Filtrar socios: prueba `test_service_import_graph.py`.
 - US-076 · Dar de baja socio: prueba `test_no_physical_delete.py`.
 
 ## Endpoints

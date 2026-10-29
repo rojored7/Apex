@@ -1,5 +1,18 @@
 # US-104 · Verificar cadena desde pantalla — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `verify_chain(rows, *, start_prev_hash=ZERO_HASH, start_seq=1) -> VerifyResult` ampliada: `VerifyResult` gana `last_seq` y `last_hash` al final con `None` por defecto (las construcciones posicionales existentes siguen verdes); `broken_at_seq` es la primera fila que no encaja (si falta la 1234, es la 1235) y la cola perdida se marca `last_seq + 1` (S4A-D11).
+> - `core/audit.py` conserva solo `verify_chain`; `AuditVerification`, `run_verification`, `format_verify_message` y las constantes nacen en `core/audit_verify.py`, que importa de `core/audit`, `core/db`, `core/clock` y `core/context` y de nadie más; `AUDIT_VERIFY_LOCK_KEY = 4_270_003` (S4A-D12).
+> - La tabla es `audit.verifications` (migración `0013_audit_verifications`) y la fila `verify` de la cadena lleva `table_name="audit.verifications"`, no `"verifications"` (S4A-D12, S4A-D41).
+> - Un solo nombre, `broken_at_seq`, en la columna y en el API; no existe `broken_seq` (S4A-D14).
+> - `0013` suma `through_hash char(64) NOT NULL` con CHECK `^[0-9a-f]{64}$`; `run_verification` compara contra el ancla de la última verificación `ok` (exige que la fila `seq = ancla.through_seq` exista con `hash = ancla.through_hash`; si no, `ok = false` y `broken_at_seq = min(last_seq + 1, ancla.through_seq)`); solo una `ok` mueve el ancla y cada `ok` escribe `logger.info("audit anchor", ...)`; sin ancla: "íntegra desde el origen, sin verificación anterior que comparar" (S4A-D43).
+> - El 202 se arma a mano en `responses=` (`responses_for` no admite 202 y `core/errors.py` no se toca); la tarea se guarda en `_BACKGROUND_TASKS` y el `shutdown` del lifespan la cancela; la conexión del candado se abre con `execution_options(isolation_level="AUTOCOMMIT")` y se cierra con `await conn.invalidate()` en el `finally` tras intentar `pg_advisory_unlock`; `VERIFY_MAX_SECONDS = 900` con `asyncio.timeout`; `test_guarded_calls.py` gana la excepción por ruta exacta con control negativo (S4A-D14, S4A-D44, enmienda E10).
+> - `POST /audit/verify` consume las cubetas `audit-verify` (3/min, `USER_AUDIT_VERIFY_LIMIT_PER_MIN`) y `audit-verify-hour` (20/h, `USER_AUDIT_VERIFY_LIMIT_PER_HOUR`), no `admin-write`; declara 429 y entra en `CON_LIMITE`; `GET /audit/verify/last` va sin límite (S4A-D47, S4A-D14).
+> - `VERIFY_BATCH_SIZE = 1000` (no 5.000) con `await asyncio.sleep(0)` entre lotes; ningún bloque síncrono pasa de 100 ms con 1.000 filas (S4A-D47).
+> - `SYNC_VERIFY_MAX_ROWS = 50_000` (no 100.000) como valor inicial, calibrado por `test_verify_performance.py` con el lote de 1.000: si 100.000 filas caben en 20 s sube a 100.000; si 50.000 no caben, baja a 20.000; el valor final se anota (contradicción 3 de la sección 1 del plan, S4A-D13).
+> - La prueba de rendimiento se marca `perf`, no `slow`: `uv run pytest -m perf tests/audit/test_verify_performance.py -q`, fuera del gate (S4A-D41, S4A-D68).
+> - El front sondea `GET /audit/verify/last` con tope de `VERIFY_MAX_SECONDS` y luego dice "la verificación no terminó; vuelve a intentarlo" (S4A-D58).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-104-verificar-cadena-desde-pantalla.md`
 - **Épica:** EP-11 · Auditoría y trazabilidad
 - **Bounded context / módulo:** Audit (`api/src/app/modules/audit/` y `api/src/app/core/audit.py`)
@@ -26,9 +39,9 @@ Implementa la verificación de la cadena desde el API: `core.audit.verify_chain(
 ## Validación contra el dominio
 
 - Aggregate `AuditEntry`; RN-16: `hash = SHA-256(prev_hash || canonical(row))`, la verificación recorre toda la cadena y una fila alterada la rompe.
-- Funciones puras en `core/audit.py`: `chain_hash(prev_hash, row)` (US-015) y `verify_chain(rows: Iterable[AuditRowForHash], start_prev_hash: str = GENESIS, start_seq: int = 1) -> VerifyResult(ok, rows_checked, broken_at_seq, last_seq, last_hash)`. Detecta tres rupturas: `prev_hash` distinto del `hash` anterior, `hash` recalculado distinto del guardado y `seq` que no es el anterior más uno. Al aceptar `start_prev_hash` y `start_seq`, se puede llamar por lotes sin cargar la tabla.
+- Funciones puras en `core/audit.py`: `chain_hash(prev_hash, row)` (US-015) y `verify_chain(rows: Iterable[AuditRowForHash], *, start_prev_hash: str = ZERO_HASH, start_seq: int = 1) -> VerifyResult(ok, rows_checked, broken_at_seq, last_seq, last_hash)`. Detecta tres rupturas: `prev_hash` distinto del `hash` anterior, `hash` recalculado distinto del guardado y `seq` que no es el anterior más uno. Al aceptar `start_prev_hash` y `start_seq`, se puede llamar por lotes sin cargar la tabla.
 - Entidad nueva `AuditVerification` (tabla `audit.verifications`), append-only, del contexto Audit. No es un aggregate de negocio; es el registro de resultados que pide N-30.
-- Eventos: ninguno. La verificación escribe una entrada `verify` con `record_id = verifications.id`, `table_name = "verifications"` y `after = { ok, rows_checked, broken_at_seq, through_seq, started_at, finished_at, source: "api" }`.
+- Eventos: ninguno. La verificación escribe una entrada `verify` con `record_id = verifications.id`, `table_name = "audit.verifications"` y `after = { ok, rows_checked, broken_at_seq, through_seq, started_at, finished_at, source: "api" }`.
 
 ## Validación contra la arquitectura
 
@@ -51,12 +64,12 @@ Ninguna.
 - [ ] T2 · `core/audit.py`: modelo `AuditVerification(CommonColumnsMixin, Base)` con `__table_args__ = {"schema": "audit"}`, sin `__audited__` — 0,5 h
 
 ### Service
-- [ ] T3 · `core/audit.py`: `VerifyResult` (dataclass congelada) y función pura `verify_chain(rows, start_prev_hash, start_seq)` según "Validación contra el dominio"; constante `VERIFY_BATCH_SIZE = 5000` — 2 h
-- [ ] T4 · `core/audit.py`: `async def run_verification(conn, *, source: Literal["api","cli"], by: UUID) -> AuditVerification`: toma `through_seq = SELECT max(seq)`, recorre `WHERE seq > :last ORDER BY seq LIMIT :batch` con cursor de servidor, encadena `verify_chain` por lotes, se detiene en la primera ruptura, inserta `AuditVerification` y llama a `record(action="verify", table_name="verifications", record_id=verification.id, after={...}, user_id=by)` en la misma transacción; nunca escribe filas existentes. Se ubica en `core` porque US-105 lo usa desde la CLI sin pasar por un módulo — 3 h
-- [ ] T5 · `modules/audit/service.py`: `async def verify(by: UUID) -> VerifyOutcome` (`Finished(result)` o `Started(last)`): abre conexión dedicada, `pg_try_advisory_lock`; si no se obtiene, `VerificationRunning` (409 `verification_running`); si `max(seq) <= 100_000` (constante `SYNC_VERIFY_MAX_ROWS`), corre `run_verification` y devuelve `Finished`; si no, crea la tarea en segundo plano y devuelve `Started(last=await last_verification())`; `async def last_verification(session) -> AuditVerification | None` — 3 h
+- [ ] T3 · `core/audit.py`: `VerifyResult` (dataclass congelada) y función pura `verify_chain(rows, start_prev_hash, start_seq)` según "Validación contra el dominio"; constante `VERIFY_BATCH_SIZE = 1000` — 2 h
+- [ ] T4 · `core/audit.py`: `async def run_verification(conn, *, source: Literal["api","cli"], by: UUID) -> AuditVerification`: toma `through_seq = SELECT max(seq)`, recorre `WHERE seq > :last ORDER BY seq LIMIT :batch` con cursor de servidor, encadena `verify_chain` por lotes, se detiene en la primera ruptura, inserta `AuditVerification` y llama a `record(action="verify", table_name="audit.verifications", record_id=verification.id, after={...}, user_id=by)` en la misma transacción; nunca escribe filas existentes. Se ubica en `core` porque US-105 lo usa desde la CLI sin pasar por un módulo — 3 h
+- [ ] T5 · `modules/audit/service.py`: `async def verify(by: UUID) -> VerifyOutcome` (`Finished(result)` o `Started(last)`): abre conexión dedicada, `pg_try_advisory_lock`; si no se obtiene, `VerificationRunning` (409 `verification_running`); si `max(seq) <= 50_000` (constante `SYNC_VERIFY_MAX_ROWS`, calibrada), corre `run_verification` y devuelve `Finished`; si no, crea la tarea en segundo plano y devuelve `Started(last=await last_verification())`; `async def last_verification(session) -> AuditVerification | None` — 3 h
 
 ### Schemas
-- [ ] T6 · `modules/audit/schemas.py`: `VerifyResultOut { ok, rows_checked, broken_seq, through_seq, started_at, finished_at, triggered_by, source }` (el API conserva `broken_seq` de la historia; la columna es `broken_at_seq` por N-30) y `VerifyStartedOut { status: "running", last: VerifyResultOut | None }` — 0,5 h
+- [ ] T6 · `modules/audit/schemas.py`: `VerifyResultOut { ok, rows_checked, broken_at_seq, through_seq, started_at, finished_at, triggered_by, source }` (un solo nombre, `broken_at_seq`, en la columna y en el API; S4A-D14) y `VerifyStartedOut { status: "running", last: VerifyResultOut | None }` — 0,5 h
 
 ### Router
 - [ ] T7 · `modules/audit/router.py`: `POST /audit/verify` (200 `VerifyResultOut` o 202 `VerifyStartedOut`, 409) y `GET /audit/verify/last` (200 `VerifyResultOut | null`), ambos con `Depends(require_role("admin"))` y registrados antes de `GET /audit/{seq}`; códigos 200, 202, 401, 403, 409 — 1 h
@@ -67,7 +80,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T9 · `api/tests/audit/test_verify.py`: cadena íntegra de 5.000 entradas (fábrica `audit_chain_factory` con `record()` real y `FrozenClock`) da `ok` y `rows_checked = 5000`; la fila 1234 alterada con `ALTER TABLE audit.audit_log DISABLE TRIGGER` dentro de la transacción de prueba da `broken_at_seq = 1234`; cada verificación deja una fila en `audit.verifications` y una entrada `verify` que entra a la cadena (una segunda verificación sigue íntegra); la verificación no cambia ninguna fila existente (hash de la tabla antes y después); `UPDATE` sobre `audit.verifications` rechazado — 3 h
 - [ ] T10 · `api/tests/audit/test_verify_concurrency.py`: con el advisory lock tomado por otra conexión, `verify` levanta 409; con más de `SYNC_VERIFY_MAX_ROWS` (constante bajada por monkeypatch a 1.000 para la prueba) devuelve `Started` y la tarea termina dejando la fila en `audit.verifications`; mientras corre, otra petición del API responde — 2 h
-- [ ] T11 · `api/tests/audit/test_verify_performance.py` (marca `slow`): 100.000 filas encadenadas generadas por la fábrica, verificación completa en menos de 60 s — 1 h
+- [ ] T11 · `api/tests/audit/test_verify_performance.py` (marca `perf`): 100.000 filas encadenadas generadas por la fábrica, verificación completa en menos de 60 s — 1 h
 
 ### Tests de router
 - [ ] T12 · `api/tests/audit/test_router_verify.py`: 200 admin con resultado, 202 con `status = "running"`, 409 `verification_running`, `GET /audit/verify/last` con y sin verificaciones previas, 403 coach, 401 sin token — 1 h
@@ -139,5 +152,5 @@ Ninguna.
 - [ ] `cd api && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head`
 - [ ] `cd web && npm run lint && npx tsc --noEmit && npm test -- src/features/system/components/VerifyChainButton.test.tsx`
 - [ ] `curl -X POST /api/v1/audit/verify` con token de admin devuelve `ok: true`; `SELECT ok, through_seq, triggered_by FROM audit.verifications ORDER BY finished_at DESC LIMIT 1` muestra el mismo resultado; `SELECT action FROM audit.audit_log ORDER BY seq DESC LIMIT 1` devuelve `verify`
-- [ ] Con una fila alterada en la base de prueba, `curl -X POST /api/v1/audit/verify` devuelve `ok: false` y `broken_seq` igual al `seq` alterado
+- [ ] Con una fila alterada en la base de prueba, `curl -X POST /api/v1/audit/verify` devuelve `ok: false` y `broken_at_seq` igual al `seq` alterado
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.audit --cov=app.core.audit --cov-fail-under=80`

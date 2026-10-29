@@ -1,5 +1,17 @@
 # US-094 · Job diario de vencimientos — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - La precisión "las lecturas devuelven el estado guardado" se corrige: la columna `status` es un espejo persistido del estado efectivo y las lecturas siguen derivadas (`rules.compute_status` y `queries.status_expr` mandan en `list`, `get`, `status_for`, `summary`, `count_active_by_plan` y `classify_open`); el job no cambia nada visible en pantalla, alinea la columna y es la fuente de `MembershipExpiring` y `MembershipExpired`, sin suscriptores en 4A y sin suscribir `_mark_summary_dirty` (S4A-D1).
+> - Los eventos viven en `memberships/events.py` y se re-exportan desde `service.py`; su docstring fija que un consumidor del Sprint 5 descarta los eventos cuyo `on_date` no sea `today_bogota()` ni el día anterior (S4A-D1, S4A-D48).
+> - Se descarta el `FOR UPDATE ... LIMIT 500` por lote: `memberships/expirations.py` (privado) hace fase 1 de lectura sin candados (páginas de `RECOMPUTE_PAGE = 200` ids de socio) y fase 2 con una transacción por socio (`lock_member`, luego `sell.lock_membership`, un solo `flush` al final); `busy` se reintenta hasta `MAX_BUSY_RETRIES = 2` y cuenta en `busy_omitidos`; `RecomputeSummary(revisados, cambiadas, por_vencer, vencidas, otras, busy_omitidos, errores)` solo con conteos (S4A-D2).
+> - La sesión de la fase 1 se cierra antes de la fase 2 y las esperas de reintento ocurren fuera de `session.begin()`; lo vigila `tests/architecture/test_expirations_lock_order.py` por AST (S4A-D57).
+> - La prueba de rendimiento se marca `perf`, no `slow`, y se corre fuera del gate con `uv run pytest -m perf tests/worker/test_expirations.py -q` (S4A-D41, S4A-D68).
+> - `--date` distinto de hoy exige `ENV=dev` y `--simulate`; el job simulado reclama `job_name = "<job>_sim"` con `details["clock_override"] = True`, imprime `RELOJ SIMULADO: <fecha>` y `should_run`, `last_run` y `--status <job>` del job real ignoran `*_sim` (S4A-D48).
+> - Guarda dura de `--date` (enmienda E5): una fecha distinta de hoy exige `--simulate`, `ENV=dev` y que el nombre de la base de `DATABASE_URL` termine en `_sim` o sea `apex_test`; si no, salida 2. La demo con fecha corre contra `apex_sim` en `apex-db_test-1`, nunca contra `apex-db-1` (S4A-D63).
+> - `recompute-memberships`: el correo de `--as` se resuelve con `cli.resolve_actor`; con `ENV=production` `--as` es obligatorio (salida 2 si falta) y `--db-timeouts off` se rechaza (salida 2); con `ENV=dev` `--as` sigue opcional (S4A-D15, S4A-D53).
+> - El worker fija `actor_scope(SYSTEM_USER_ID)` y `batch_scope` antes de `claim_run`; el job devuelve `ok` si `busy_omitidos + errores == 0` y sus `details` solo llevan claves enteras de `DETAIL_KEYS` (S4A-D55; prueba de la enmienda E2).
+> - En la imagen no hay `uv`: el worker corre con `python -m app.worker.main` (S4A-D9); mientras se edita `memberships/expirations.py` el worker se para (`$DC stop worker`) y se arranca en el checkpoint.
+
 - **Historia:** `docs/ddd/07_user_stories/EP-09-membresias/US-094-job-diario-de-vencimientos.md`
 - **Épica:** EP-09 · Venta y ciclo de vida de membresías
 - **Bounded context / módulo:** Memberships (`api/src/app/modules/memberships/service.py`) y worker (`api/src/app/worker/jobs/expirations.py`), con comando en `api/src/app/cli.py`
@@ -72,7 +84,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T6 · `api/tests/worker/test_expirations.py` con `FrozenClock` y base real: 2026-10-24 `active→expiring` con un `MembershipExpiring`; 2026-11-01 `expiring→expired` con un `MembershipExpired`; dos corridas el mismo día → un solo evento y una sola fila de auditoría; 2026-11-03 sobre `active` con fin 2026-10-31 → `expired` y solo `MembershipExpired`; congelación que empieza hoy → `frozen`, que terminó ayer → `active` o `expiring` según el nuevo fin; `pending_payment` y `cancelled` intactos; `FrozenClock` en 2026-11-01 02:00 UTC → sigue `expiring`; auditoría con `user_id = SYSTEM_USER_ID`; `expiring_days = 3` desde settings — 4 h
 - [ ] T7 · Error por lote: con `batch_size = 2` y un handler de prueba de `MembershipExpiring` que lanza solo para el segundo lote, los lotes 1 y 3 quedan actualizados, el 2 no, y el resumen informa `errores = 1`; el log del error no contiene nombres ni documentos — 1.5 h
-- [ ] T8 · Rendimiento `@pytest.mark.slow`: 1.000 socios y 3.000 membresías en menos de 60 s — 0.75 h
+- [ ] T8 · Rendimiento `@pytest.mark.perf`: 1.000 socios y 3.000 membresías en menos de 60 s — 0.75 h
 - [ ] T9 · `api/tests/cli/test_recompute_memberships.py` con base real: `--date` y `--as` (actor de auditoría = el usuario indicado), código de salida con y sin errores — 1 h
 
 ### Tests de router
@@ -127,6 +139,6 @@ Ninguna.
 - [ ] `cd api && uv run pytest tests/cli/test_recompute_memberships.py -q`
 - [ ] `cd api && uv run pytest -m perf tests/worker/test_expirations.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
-- [ ] `docker compose -f infra/compose.yml -f infra/compose.dev.yml run --rm worker uv run python -m app.worker.main --run-once expirations` termina con código 0 y deja una fila en `worker.job_runs` con `job_name = 'expirations'` y el resumen en `details`
+- [ ] `docker compose -f infra/compose.yml -f infra/compose.dev.yml run --rm worker python -m app.worker.main --run-once expirations` termina con código 0 y deja una fila en `worker.job_runs` con `job_name = 'expirations'` y el resumen en `details`
 - [ ] Correrlo dos veces seguidas no agrega filas nuevas a `audit.audit_log` para `memberships` en la segunda corrida
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.memberships --cov=app.worker.jobs.expirations --cov-fail-under=80`

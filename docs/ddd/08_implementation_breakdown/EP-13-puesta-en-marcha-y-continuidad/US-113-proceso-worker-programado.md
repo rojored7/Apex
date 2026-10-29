@@ -1,5 +1,21 @@
 # US-113 · Proceso worker programado — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Manda el `infra/compose.yml` real, no `command: uv run` ni `depends_on: api` sin condición: `image: apex-api:local`, `command: ["python", "-m", "app.worker.main"]` (la imagen no trae `uv`), `env_file: ../.env`, `depends_on` de `db` y `api` con `condition: service_healthy`, sin `ports`, `restart: unless-stopped` (S4A-D9, S4A-D41).
+> - Endurecimiento: el worker de 4A no monta volúmenes (ni `keys` ni `uploads` hasta el Sprint 5, porque no cifra ni descifra), con `read_only: true`, `tmpfs: ["/tmp"]`, `cap_drop: ["ALL"]` y `security_opt: ["no-new-privileges:true"]`; `test_compose_config.sh` lo exige. En `compose.dev.yml`, `worker` y `tools` montan `../api/src` y `../api/migrations` en solo lectura (S4A-D49, S4A-D9).
+> - Healthcheck por latido en archivo, no por `job_runs`: `/tmp/apex-worker-heartbeat`, `interval 30s`, `timeout 5s`, `retries 3`, `start_period 90s`; más de 120 s sin latido = `unhealthy`, que es el aviso en `docker compose ps`. El latido solo se toca si `SELECT 1` responde (con `statement_timeout` de 5 s en una sesión corta) (S4A-D8, S4A-D56).
+> - El servicio queda tras `profiles: ["worker"]` hasta S4A-W0-2, que lo quita cuando existe `app/worker/main.py` (S4A-D9).
+> - Horario como constantes de `worker/schedule.py`: `WORKER_TIMEZONE = "America/Bogota"`, `DAILY_HOUR = 7`, `DAILY_MINUTE = 0`; no hay `WORKER_TZ` ni `WORKER_DAILY_HOUR` en `Settings` ni en `.env.example`; `apscheduler 3.11.3` y `tzdata` ya están en `pyproject.toml`, `uv.lock` y la imagen (S4A-D5).
+> - Brecha 1 cerrada con `core/jobs.py`, pero `/health` NO lee `job_runs` en 4A (pasa a v0.2): solo `app.worker.*` importa `app.core.jobs`; la regla vive en `tests/architecture/test_worker_boundaries.py`, que absorbe `test_core_jobs_imports.py` (S4A-D3, S4A-D73).
+> - `claim_run` escribe con Core y toma `now` de `current_clock().now_utc()`, no `now()` de la base; `stale_after = 2 × timeout_s` (30 min con `timeout_s = 900`), no 6 horas fijas; el runner fija `actor_scope(SYSTEM_USER_ID)` y `batch_scope` antes de `claim_run`; `finish_run` se llama bajo `asyncio.shield`, guarda en `error` solo el nombre del tipo (`type(exc).__name__`) y en `details` solo enteros con claves de `DETAIL_KEYS` (más `attempts` y `clock_override`); cualquier otra clave lanza `ValueError` (S4A-D3, S4A-D55).
+> - `--run-once <job>` sale 0 (ok), 1 (falló), 2 (no existe o argumento inválido) o 3 (ya hay una corrida `running` vigente); `--status <job>` imprime el último `JobRunView` en JSON (S4A-D4).
+> - `--date` distinto de hoy exige `ENV=dev` y `--simulate`; el job simulado reclama `job_name = "<job>_sim"` y `--status` y `should_run` del job real ignoran `*_sim`. Guarda dura (enmienda E5): además, el nombre de la base de `DATABASE_URL` debe terminar en `_sim` o ser `apex_test`; si no, salida 2 (S4A-D48, S4A-D63).
+> - En S4A-B1 el job `expirations` es un marcador que devuelve `JobResult(ok=True, details={"placeholder_ok": 1})` sin abrir sesión de negocio; es la única forma (enmienda E1) y S4A-B2 lo reemplaza (S4A-D64).
+> - `core/alerts.py` mínimo nace en S4A-B1 (`AlertSink`, `register_sink`, `alert`, `LogAlertSink` con claves de `ALERT_CONTEXT_KEYS`); Telegram suma su sink en v0.2 (S4A-D7).
+> - El `omit` de cobertura de `cli.py` y `worker/` desaparece en el Verde de S4A-B1 (S4A-D39).
+> - Smoke de compose (S4A-W0-2, enmienda E6): la primera invocación de `--run-once expirations` acepta código 0 o 3 (o se espera a que `--status` no muestre `running`); la segunda exige 0.
+> - Mientras se edita `app/worker/` o `memberships/expirations.py`, el worker se para (`$DC stop worker`) y se arranca en el checkpoint (RUNBOOK §7).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-13-puesta-en-marcha-y-continuidad/US-113-proceso-worker-programado.md`
 - **Épica:** EP-13 · Puesta en marcha y continuidad operativa
 - **Bounded context / módulo:** ninguno de negocio; proceso `worker` (`api/src/app/worker/`) y registro de ejecuciones propuesto en `api/src/app/core/jobs.py`
@@ -99,7 +115,7 @@ El servicio `worker` entra en `infra/compose.yml` con la misma imagen que el api
 - No aplica.
 
 ### DevOps
-- [ ] T13 · `infra/compose.yml`: servicio `worker` con la imagen del api, `command: ["uv", "run", "python", "-m", "app.worker.main"]`, `restart: unless-stopped`, `depends_on: api: condition: service_healthy` (US-118), mismas variables de base y KEK, sin puertos; `WORKER_TZ` y `WORKER_DAILY_HOUR` en `Settings` y `.env.example`; `apscheduler` y `tzdata` en `pyproject.toml` y en `NOTICE` — 1,5 h
+- [ ] T13 · `infra/compose.yml`: servicio `worker` con la imagen del api, `command: ["python", "-m", "app.worker.main"]`, `restart: unless-stopped`, `depends_on: api: condition: service_healthy` (US-118), mismas variables de base y KEK, sin puertos; `WORKER_TZ` y `WORKER_DAILY_HOUR` en `Settings` y `.env.example`; `apscheduler` y `tzdata` en `pyproject.toml` y en `NOTICE` — 1,5 h
 - [ ] T14 · Smoke de Compose en CI: el contenedor `worker` queda en ejecución 30 s sin reiniciarse y `--run-once` con un job de prueba devuelve 0 — 1 h
 
 ### Seguridad
@@ -156,6 +172,6 @@ El servicio `worker` entra en `infra/compose.yml` con la misma imagen que el api
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd api && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head`
 - [ ] `docker compose -f infra/compose.yml -f infra/compose.dev.yml up -d worker` y `docker compose ps worker` muestra el servicio en ejecución sin reinicios
-- [ ] `docker compose run --rm worker uv run python -m app.worker.main --run-once no-existe; echo $?` imprime la lista de jobs y `2`
+- [ ] `docker compose run --rm worker python -m app.worker.main --run-once no-existe; echo $?` imprime la lista de jobs y `2`
 - [ ] `psql -c "SELECT job_name, run_date, result FROM worker.job_runs ORDER BY started_at DESC LIMIT 5"` muestra la ejecución del día
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.worker --cov=app.core.jobs --cov-fail-under=80`

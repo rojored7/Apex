@@ -242,6 +242,7 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 ### Contradicción abierta
 
 - `docs/ddd/09_sprint_plan/SPRINT-01.md` (refinamientos de US-110) planea `display_name` en `0004`. El código no lo tiene, `0004_auth` tampoco, y S2-D17 lo deja para US-110 del Sprint 4A. No se cambió ninguno de los dos documentos; hay que decidir cuál manda.
+- **Cerrada en S4A-W0-1 (S4A-D19).** Manda S4A-D19: `display_name` no entra en v0.1 (sin columna ni migración `0014`); en el Sprint 4A el nombre visible es la parte local del correo y "Sistema" para `SYSTEM_USER_ID`. Dueño de la columna real: v0.2, con EP-04. `SPRINT-01.md` queda como histórico y `SPRINT-04A.md` ya no cita US-041 como dueña.
 
 ## 10. Sprint 3: brechas con el diseño (cierre de V1)
 
@@ -421,3 +422,40 @@ Los cuatro puntos que V1 dejó aquí se cerraron en la Fase 4 del front (`docs/d
 - S3-D98: el orden "Vencimiento más próximo" de la lista de socios no entra en v0.1 (ver 10.1 y `docs/ddd/DECISIONES.md`).
 - S3-D99 (Fase 4 del front): el buscador del panel de pagos ofrece al socio inactivo, marcado (ver 10.7).
 - S3-D103 (Fase 4 del front): a dónde lleva la venta al salir (ver 10.6).
+- **Revisión de diseño previa al Sprint 4A: cerrada en S4A-W0-1 (S4A-D36).** S3-D98 (orden "Vencimiento más próximo") queda fuera de v0.1 con dueño "backlog v0.2, junto a EP-16". Los "Pendiente de diseño" de esta sección 10 conservan su estado, sin cambio de código, hasta que `docs/design/` los resuelva. Las brechas nuevas del Sprint 4A están en la sección 11, cada una con su slice.
+
+## 11. Sprint 4A: brechas con el diseño
+
+Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `docs/ddd/blueprints/sprint-04a-blueprint.md` (S4A-D17, S4A-D19, S4A-D25, S4A-D28, S4A-D29, S4A-D31 a S4A-D36), `docs/ddd/blueprints/sprint-04a-plan.md` y `docs/ddd/DECISIONES.md`, sección "Sprint 4A". Mismos estados que la sección 10. Cada brecha lleva `// DESIGN-GAP:` en el código del slice que la toca; el slice la confirma o la ajusta aquí.
+
+### 11.1 Auditoría (`Auditoria.html`, `/sistema/auditoria`; S4A-F1, US-102 a US-104)
+
+- "Qué cambió" como resumen en la fila: la fila muestra acción, tabla y registro; el resumen de campos solo está en el detalle (`changes` de `GET /audit/:seq`). Aceptada para v0.1. Slice S4A-F1.
+- Búsqueda por nombre de socio: el filtro es `subject_member_id` (desde la ficha) y `q` busca en la parte local del correo del usuario; no hay búsqueda por nombre del socio porque el nombre no está en la cadena. Aceptada para v0.1. Slice S4A-F1.
+- "Descifrar dato" o "Mostrar" en el detalle: no se ofrece. El servidor sustituye todo valor cifrado por el marcador `{"encrypted": true, "key_id", "alg"}` y el front pinta "Cifrado" con el `key_id` (US-103, S4A-D17, S4A-D52). Aceptada para v0.1. Slice S4A-B4 y S4A-F1.
+- "Exportar rango": depende de versión futura (v0.2, EP-16). Slice S4A-F1 deja el `// DESIGN-GAP:`.
+- Última firma nocturna ML-DSA: depende de versión futura (v0.3, EP-17 y `sign-audit`). Slice S4A-F1.
+- Entidades "Resultado", "Llave" y "Configuración" en el filtro de entidad: el filtro `table` ofrece las tablas auditadas que existen en v0.1 con su nombre `esquema.tabla`; Resultado llega en v0.5 y Llave con EP-18. Depende de versión futura. Slice S4A-F1.
+- Columna con valores enmascarados en la lista: la lista no trae valores (solo metadatos); los valores están en el detalle, nunca en claro. Aceptada para v0.1. Slice S4A-F1.
+- Selector de usuario por nombre: `GET /users?limit=200` más "Sistema (worker)" = `SYSTEM_USER_ID`, enviado como `user_id`; los nombres son la parte local del correo (S4A-D19). Aceptada para v0.1. Slice S4A-F1.
+
+### 11.2 Inicio (`Inicio.html`, `/`; S4A-F3, US-108 a US-110)
+
+- "Sistema marcó 3 membresías como vencidas": los últimos movimientos excluyen al usuario del sistema (`exclude_user_ids=(SYSTEM_USER_ID,)`, Q10 y US-110): el job de vencimientos y el seed no tapan lo de recepción. Aceptada para v0.1 (gana US-110). Slice S4A-B8 y S4A-F3.
+- Saludo "Hola, Ana": el saludo usa la parte local del correo; `display_name` llega en v0.2 con EP-04 (S4A-D19). Depende de versión futura. Slice S4A-F3.
+- "Hoy en el box" (sesiones de hoy), "Asistencia de la semana" y "WOD de hoy": `sessions_today`, `attendance_week` y `wod_today` vienen en `null` y la tarjeta dice "Disponible en v0.x" (v0.4 y v0.5). Depende de versión futura. Slice S4A-F3.
+- "Por avisar hoy": `notifications_today` y `members_without_consent` en `null` hasta v0.2 (EP-14). Depende de versión futura. Slice S4A-F3.
+- Línea de pendientes de pago: el diseño no la dibuja; `members_pending_payment` se muestra con el chip "Pendiente de pago" (Q3, S4A-D29). Aceptada para v0.1. Slice S4A-F3.
+
+### 11.3 Planes (`Planes.html`, `/planes`; S4A-F4, US-080 a US-082)
+
+- "Descripción" y "Días para usarlas": el modelo de plan no tiene esas columnas y ninguna historia de v0.1 las crea. Pendiente de diseño (sin dueño de código hasta que el diseño decida si entran al modelo). Slice S4A-F4 deja el `// DESIGN-GAP:`.
+- Casilla "Activo" en la edición: activar y desactivar son acciones aparte (`POST /plans/:id/activate` y `/deactivate`); el PATCH rechaza `is_active` con 422 (US-080, US-081). Aceptada para v0.1. Slice S4A-B7 y S4A-F4.
+- "Socios con él": entra en el Sprint 4A por `active_members_count` de `GET /plans` (S4A-D25); cierra la fila de 10.12. Slice S4A-B7 y S4A-F4.
+- Total partido en activos e inactivos: se muestra "N activos · M inactivos". Slice S4A-F4.
+
+### 11.4 Rutas y contratos del Sprint 4A
+
+- `ROUTES.md` decía "Activar/desactivar: PATCH `active`": corregido en S4A-W0-1 a `POST /plans/:id/activate` y `/deactivate`, más `DELETE /plans/:id`.
+- `ROUTES.md` decía `GET /audit?from&to&user&entity&action&q`: corregido en S4A-W0-1 a los nombres reales (`user_id`, `table`, `record_id`, `subject_member_id`, `action`, `q`, `limit`, `offset`) y al detalle `GET /audit/:seq`.
+- `GET /audit`, `GET /audit/:seq`, `GET /members/:id/audit` y `GET /dashboard` responden 429 (cubeta `staff-read`, S4A-D45); `POST /audit/verify` usa las cubetas `audit-verify` (S4A-D47). El front muestra el 429 con el mensaje común.

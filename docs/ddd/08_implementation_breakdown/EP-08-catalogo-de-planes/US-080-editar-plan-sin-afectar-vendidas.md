@@ -1,5 +1,14 @@
 # US-080 · Editar plan sin afectar vendidas — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Sin parámetro `by: Actor`: el actor sale de `get_actor()` (contextvar de `core/context.py`); la firma es `update(session, plan_id, patch)` (S4A-D41, S4A-D22).
+> - `update` toma `SELECT ... FOR UPDATE` del plan vivo (serializa dos PATCH; `sell` toma `FOR SHARE`); sin `version` ni bloqueo optimista y precio vigente al vender (riesgo aceptado, `SellMembershipIn` sin `expected_price_cop`); `PlanUpdated(plan_id, changed_fields)` lleva nombres de campo, nunca valores (S4A-D22, S4A-D60).
+> - `is_active` en el cuerpo da 422 por `extra="forbid"`: activar y desactivar van por `POST /plans/{plan_id}/activate` y `/deactivate`, no por PATCH `active` (S4A-D23).
+> - `PATCH /plans/{plan_id}` consume la cubeta `admin-write` (`enforce_user_limit(request, "admin-write", principal.user_id)` después del rol), declara 429 por ruta y entra en `CON_LIMITE` (S4A-D26).
+> - `PlanOut` gana `active_members_count: int`, que `plans.service` llena con `_out_with_counts` llamando `memberships.service.counts_active_by_plans(session, plan_ids)` por import perezoso (par `plans` ↔ `memberships` de `LAZY_IMPORT_WHITELIST` en `tests/architecture/test_service_import_graph.py`, no `test_service_import_cycles.py` ni `ALLOWED_LAZY`); "no llama a `memberships`" queda corregido en ese punto (S4A-D25, S4A-D41).
+> - La prueba conjunta de RN-04 vive en `tests/integration/`, que nace en S4A-B7 con `__init__.py` y `conftest.py` vacío (S4A-D67).
+> - `plans/service.py` se parte en `plans/changes.py` solo si pasa de 600 líneas; ninguna función nueva supera 50 líneas (S4A-D72).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-08-catalogo-de-planes/US-080-editar-plan-sin-afectar-vendidas.md`
 - **Épica:** EP-08 · Catálogo de planes
 - **Bounded context / módulo:** Plans (`api/src/app/modules/plans/`)
@@ -53,7 +62,7 @@ Ninguna.
 
 ### Service
 - [ ] T1 · Función pura `merge_plan(current: PlanSnapshot, patch: Mapping[str, object]) -> PlanState`: aplica solo las claves enviadas; si el resultado es `kind = days`, exige que el patch traiga `class_count: null` de forma explícita cuando el plan tenía clases (si no, `PlanValidationError("class_count")`); luego `validate_plan` sobre el resultado — 1.5 h
-- [ ] T2 · Caso de uso `async def update(session, plan_id: UUID, patch: PlanPatch, by: Actor) -> PlanOut`: `PlanNotFound` si no existe o tiene `deleted_at`; `merge_plan`; si cambia el nombre, pre-chequeo entre vivos y traducción de la `IntegrityError` a `PlanNameDuplicated`; si no hay cambios efectivos devuelve sin `flush`; asigna, hace `flush` y emite `PlanUpdated` — 2.5 h
+- [ ] T2 · Caso de uso `async def update(session, plan_id: UUID, patch: PlanPatch) -> PlanOut`: `PlanNotFound` si no existe o tiene `deleted_at`; `merge_plan`; si cambia el nombre, pre-chequeo entre vivos y traducción de la `IntegrityError` a `PlanNameDuplicated`; si no hay cambios efectivos devuelve sin `flush`; asigna, hace `flush` y emite `PlanUpdated` — 2.5 h
 - [ ] T3 · Evento `PlanUpdated(DomainEvent)` con `plan_id` y `changed_fields: tuple[str, ...]` — 0.5 h
 
 ### Schemas

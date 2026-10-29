@@ -1,5 +1,17 @@
 # US-102 · Consultar auditoría — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Filtros reales de `GET /audit`: `from`, `to`, `user_id`, `table`, `record_id`, `subject_member_id`, `action`, `q`, `limit` y `offset`; `AuditRow` suma `subject_member_id`; `ROUTES.md:89` se corrige a este contrato (S4A-D16).
+> - `table` se compara con el `table_name` real `esquema.tabla` (`members.members`, `memberships.memberships`, `memberships.membership_freezes`, `payments.payments`, `plans.plans`, `auth.users`, `settings.settings_sections`, `audit.verifications`) con patrón `^[a-z_]{1,63}\.[a-z_]{1,63}$` y `max_length=127` (S4A-D16, S4A-D46).
+> - `q` por correo parcial se resuelve con la función nueva `auth.service.search_user_ids(session, term, *, local_part_only=False, limit=200) -> set[UUID]`, no con un `ids_by_email(q)` parcial (`ids_by_email` exacta no cambia: la usa `resolve_actor`); buscar por nombre de socio no entra (`// DESIGN-GAP:` en F1) (S4A-D16, S4A-D41).
+> - El correo y el nombre de quien actuó salen de `auth.service.user_refs_for(session, user_ids) -> dict[UUID, UserRef]` con `UserRef(id, email, display_name)`, no de `names_for -> UserRef`; `names_for` no cambia; solo `audit` importa `user_refs_for` (prueba AST `test_user_refs_scope.py`) (S4A-D19, S4A-D54).
+> - `GET /audit` consume la cubeta `staff-read` (120/min, `USER_READ_LIMIT_PER_MIN`), declara 429 y entra en `CON_LIMITE` (S4A-D45).
+> - `from` y `to` acotados entre `2020-01-01T00:00Z` y `now + 1 día`, con `from < to` y 422 con `field`; la regla vive en `core/validators.py` como `check_instant_range` (S4A-D46, S4A-D66).
+> - `MAX_AUDIT_OFFSET = 100_000`: un `offset` mayor da 422 con `field="offset"` (S4A-D45).
+> - La consulta vive en `audit/queries.py` (privado; `PRIVATE_HELPERS["audit"]`); no hay migración `0014_audit_indexes` (los índices ya existen) (S4A-D16, S4A-D18).
+> - La lectura de la auditoría no se audita: el log de acceso del api (ruta y estado, sin parámetros) es el único rastro (S4A-D61).
+> - La prueba de rendimiento se marca `perf`, no `slow`: `uv run pytest -m perf tests/audit/test_list_performance.py -q`, fuera del gate (S4A-D41, S4A-D68).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-102-consultar-auditoria.md`
 - **Épica:** EP-11 · Auditoría y trazabilidad
 - **Bounded context / módulo:** Audit (`api/src/app/modules/audit/`; modelo `AuditEntry` en `api/src/app/core/audit.py`)
@@ -53,7 +65,7 @@ Ninguna.
 - [ ] T2 · `async def list(session, filters: AuditFilters, page: PageParams) -> Page[AuditRow]`: consulta `SELECT seq, at, user_id, action, table_name, record_id ... ORDER BY seq DESC LIMIT/OFFSET` (sin cargar `before`/`after`, con `load_only`), `count(*)` con los mismos filtros, enriquecimiento por lote con `auth.service.names_for`; `SYSTEM_USER_ID` se muestra como "Sistema" — 3 h
 
 ### Schemas
-- [ ] T3 · `modules/audit/schemas.py`: `AuditListQuery` (alias `from` → `from_`, `AwareDatetime`, `table` con patrón `^[a-z_]{1,63}$`, `record_id: UUID | None`, `action: Literal[...] | None`, `q: str | None` máx. 254) y `AuditRow { seq: int, at, user_id, user_email, user_name, action, table_name, record_id }` — 1 h
+- [ ] T3 · `modules/audit/schemas.py`: `AuditListQuery` (alias `from` → `from_`, `AwareDatetime`, `table` con patrón `^[a-z_]{1,63}\.[a-z_]{1,63}$`, `record_id: UUID | None`, `action: Literal[...] | None`, `q: str | None` máx. 254) y `AuditRow { seq: int, at, user_id, user_email, user_name, action, table_name, record_id }` — 1 h
 
 ### Router
 - [ ] T4 · `modules/audit/router.py`: `GET /audit` con `Depends(require_role("admin"))`; registro del router en `main.py`; códigos 200, 401, 403, 422 — 0,5 h
@@ -64,7 +76,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T6 · `api/tests/audit/test_list.py`: cada filtro; orden `seq` descendente; paginación y `total`; `q` por record_id y por correo parcial; filas sin `before`/`after`; la consulta no modifica `audit.audit_log` (conteo y hash de la última fila iguales antes y después) — 3 h
 - [ ] T7 · `api/tests/audit/test_list_coverage_v01.py`: prueba de integración que crea una fila en `members`, `plans`, `memberships`, `payments`, `users` y `settings_sections` por sus services y encuentra cada `insert` con usuario y fecha en `audit.service.list` — 2 h
-- [ ] T8 · `api/tests/audit/test_list_performance.py` (marca `slow`): 100.000 filas insertadas con `COPY` en la base de prueba (con el trigger append-only intacto: solo `INSERT`), `limit=25`, menos de 500 ms con y sin filtros de tabla y usuario (reutiliza la fábrica de cadena de 100.000 filas de US-104) — 1 h
+- [ ] T8 · `api/tests/audit/test_list_performance.py` (marca `perf`): 100.000 filas insertadas con `COPY` en la base de prueba (con el trigger append-only intacto: solo `INSERT`), `limit=25`, menos de 500 ms con y sin filtros de tabla y usuario (reutiliza la fábrica de cadena de 100.000 filas de US-104) — 1 h
 
 ### Tests de router
 - [ ] T9 · `api/tests/audit/test_router_list.py`: 200 admin, 403 coach, 403 member, 401 sin token, 422 `field="action"` con `borrar`, 422 `limit=201` — 1 h
@@ -78,7 +90,7 @@ Ninguna.
 - [ ] T13 · `web/src/features/system/pages/AuditPage.test.tsx`: filtros en la URL, paginación, coach no ve el ítem de menú — 1 h
 
 ### DevOps
-- [ ] T14 · Regenerar `docs/openapi.json` y tipos del front; marca `slow` en CI — 0,5 h
+- [ ] T14 · Regenerar `docs/openapi.json` y tipos del front; marca `perf` en CI — 0,5 h
 
 ### Seguridad
 - [ ] T15 · Revisión: solo admin, sin `before`/`after` en la lista, `q` parametrizado, los correos de usuarios solo se exponen al admin — 0,5 h
@@ -129,6 +141,6 @@ Ninguna.
 - [ ] `cd api && uv run pytest tests/audit/test_router_list.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
 - [ ] `cd web && npm run lint && npx tsc --noEmit && npm test -- src/features/system/pages/AuditPage.test.tsx`
-- [ ] `curl "/api/v1/audit?table=payments&action=update"` con token de admin devuelve solo esas filas y con token de coach devuelve 403; `curl "/api/v1/audit?action=download"` devuelve 200
+- [ ] `curl "/api/v1/audit?table=payments.payments&action=update"` con token de admin devuelve solo esas filas y con token de coach devuelve 403; `curl "/api/v1/audit?action=download"` devuelve 200
 - [ ] `EXPLAIN ANALYZE` con 100.000 filas y `limit=25` tarda menos de 500 ms
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.modules.audit --cov-fail-under=80`

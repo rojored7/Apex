@@ -21,6 +21,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 8. [Primer admin sin `.env.seed`](#8-primer-admin-sin-envseed-s3-d64)
 9. [Tiempos de espera de la base y 503 `busy`](#9-tiempos-de-espera-de-la-base-y-503-busy-s3-w0-2)
 10. [Membresías y pagos](#10-membresías-y-pagos-sprint-3)
+11. [Worker, auditoría verificable y tablero](#11-worker-auditoría-verificable-y-tablero-sprint-4a)
 
 ## 1. Sesión y límites (S2-B2)
 
@@ -367,6 +368,8 @@ Si se revierte primero el código, el archivo de migración desaparece y el arra
 - **`0007_plans`:** `downgrade 0006_members` borra `plans.plans`. Se revierte B9 (y F7).
 - **`0008_memberships`:** `downgrade 0007_plans` borra los tres triggers, las dos funciones, los índices y `memberships.memberships` (con sus filas: antes, el volcado de la sección 10). El esquema `memberships` y `btree_gist` quedan. Se revierte el checkpoint de S3-B1 (y los posteriores que usen la tabla). La auditoría de las ventas queda en `audit.audit_log` (append-only).
 - **`0009_membership_freezes`:** `downgrade 0008_memberships` borra los dos triggers, la función `memberships.forbid_freeze_mutation()`, el índice y `memberships.membership_freezes` (con sus filas: antes, el volcado de la sección 10). Las membresías conservan el `end_date` ya corrido y el `status` guardado; sin la tabla, `compute_status` deja de ver las ventanas (una `frozen` guardada se lee por fecha). Quedan `memberships.memberships`, sus dos funciones, el esquema y `btree_gist`. Se revierte el checkpoint de S3-B2. La auditoría de las congelaciones queda en `audit.audit_log`.
+- **`0012_worker_job_runs` (esqueleto; S4A-B1 lo completa):** `downgrade 0011_payments_immutability` borra los dos índices (`uq_job_runs_name_date`, `ix_job_runs_name_started`) y `worker.job_runs`; nunca el esquema. Solo se pierde la bitácora de corridas del worker. Antes: `$DC stop worker` (enmienda E4: todo `downgrade` que borre `worker.job_runs` exige parar el worker antes y `$DC start worker` después, con `healthy` y `RestartCount` anotados). Se revierte el checkpoint de S4A-B1 (y W0-2 y B2 si existen).
+- **`0013_audit_verifications` (esqueleto; S4A-B3 lo completa):** `downgrade 0012_worker_job_runs` borra los triggers de `audit.verifications` y la tabla (con el ancla `through_hash` de la última verificación `ok`: antes, el volcado de P-MIG y la copia de la línea `audit anchor` del log). No toca `worker.job_runs`: no hace falta parar el worker (B3.14). Se revierte el checkpoint de S4A-B3.
 - En CI y `db_test` no hace falta rollback: `migrated_database` vuelve a migrar desde cero.
 
 ## 7. Imágenes base por digest y su renovación (S3-D62)
@@ -444,6 +447,16 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 2. Si la bloqueante es una sesión de soporte (un `psql` olvidado), cerrarla desde su terminal con `ROLLBACK`; si no hay acceso a ella, `SELECT pg_terminate_backend(<pid>)` sobre ese `pid` (solo la de soporte; nunca la de una migración en curso). `idle_in_transaction_session_timeout` la cierra igual a los 60 s.
 3. Si la bloqueante es una sentencia del api que no termina, `statement_timeout` la corta a los 30 s; si se repite, revisar la consulta (plan, índice) antes de subir el valor.
 4. No subir `DB_LOCK_TIMEOUT_MS` para "arreglar" un 503 repetido: se esconde la causa y el api vuelve a colgarse.
+
+### Worker (US-113, Sprint 4A; esqueleto: S4A-B1 y S4A-W0-2 lo completan)
+
+- Servicio `worker` de `infra/compose.yml`: misma imagen que el api, `command: ["python", "-m", "app.worker.main"]`, sin volúmenes (ni `keys` ni `uploads` hasta el Sprint 5), raíz de solo lectura con `/tmp` en memoria, `cap_drop: ALL` y `no-new-privileges` (S4A-D49). Arranca después de `db` y `api` `healthy` (el api aplica las migraciones). Hasta S4A-W0-2 solo arranca con `--profile worker`.
+- En desarrollo (`compose.dev.yml`) `worker` y `tools` ven `api/src` y `api/migrations` del repo en solo lectura. El worker no tiene `--reload`: mientras se edita `app/worker/` o `memberships/expirations.py` se para con `$DC stop worker` y se arranca en el checkpoint del slice (`$DC start worker`, o `$DC restart worker` tras un cambio). `read_only` no molesta al bind: la imagen trae `PYTHONDONTWRITEBYTECODE=1` y corre como el usuario 10001 (riesgo 9 del plan, verificado).
+- Latido (S4A-D8, S4A-D56): cada 30 s el worker hace `SELECT 1` (con `statement_timeout` de 5 s) y solo si responde toca `/tmp/apex-worker-heartbeat`. El healthcheck (30s/5s/3, `start_period` 90s) da `unhealthy` si el archivo tiene más de 120 s. En el Sprint 4A `unhealthy` en `$DC ps` es el aviso (`/health` del api no lee `worker.job_runs` hasta v0.2).
+- Una corrida a mano: `$DC run --rm worker python -m app.worker.main --run-once expirations`. Códigos: 0 ok, 1 el job falló, 2 job inexistente o argumentos inválidos (lista los registrados), 3 ya hay una corrida `running` vigente. Dos corridas el mismo día reutilizan la misma fila de `worker.job_runs` (`attempts` crece). En el smoke de compose (S4A-W0-2, enmienda E6) la primera invocación acepta 0 o 3 (el `serve` del contenedor pudo estar recuperando el ciclo) y la segunda exige 0.
+- Estado: `$DC run --rm worker python -m app.worker.main --status expirations` imprime el último intento en JSON (sin `attempts`) y sale 0, o 2 si no hay corridas; `--status expirations_sim` muestra la simulada.
+- Fecha simulada (S4A-D48, S4A-D63, enmienda E5): `--date <AAAA-MM-DD> --simulate` solo con `ENV=dev` y contra una base cuyo nombre termine en `_sim` o sea `apex_test`; si falta cualquiera de las tres condiciones, salida 2. La primera línea dice `RELOJ SIMULADO: <fecha>`, el reclamo usa `job_name = "<job>_sim"` y `details["clock_override"] = true`. Nunca contra `apex-db-1`: la demo corre sobre `apex_sim` en `apex-db_test-1` (procedimiento en §11).
+- Horario: todos los días a las 07:00 de Bogotá (constantes de `worker/schedule.py`, S4A-D5). Si el contenedor arranca después de esa hora y el ciclo del día no está hecho, lo recupera una sola vez.
 
 ### CLI, worker y migraciones (E7)
 
@@ -651,3 +664,32 @@ GROUP BY ROLLUP (method) ORDER BY method;
 
   La fila con `method` nulo es el total. Pagos retroactivos: `SELECT id, paid_at, created_at FROM payments.payments WHERE created_at - paid_at > interval '24 hours' ORDER BY paid_at DESC;`.
 - Si una página de la lista sale 500 y el log muestra `payment without membership reference` con un `payment_id`, ese pago apunta a una membresía cuyo socio o plan no aparece. Es un problema de integridad, no de la consulta: revisar la fila en psql antes de tocar nada.
+
+## 11. Worker, auditoría verificable y tablero (Sprint 4A)
+
+Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-04a-plan.md`). Lo que dice cada esqueleto ya es una decisión registrada en `docs/ddd/DECISIONES.md`, sección "Sprint 4A".
+
+### Primera corrida del job de vencimientos (S4A-B2)
+
+- La primera corrida sobre la base viva corrige el `status` guardado de las membresías vencidas o por vencer: deja decenas de filas `update` en `audit.audit_log` con `user_id = 00000000-0000-0000-0000-000000000001` (`SYSTEM_USER_ID`). Es el rastro correcto, no un error.
+- Las lecturas ya derivan el estado (S4A-D1); el job solo alinea la columna espejo y emite `MembershipExpiring` y `MembershipExpired` (sin suscriptores en 4A). Un consumidor del Sprint 5 descarta eventos cuyo `on_date` no sea hoy ni ayer en Bogotá.
+- Caché del resumen: el worker no invalida la caché del resumen de membresías del api; tras las 07:00 el resumen viejo puede verse hasta `SUMMARY_CACHE_TTL_S` (S3-D93).
+- A mano: `$DC run --rm tools recompute-memberships --as <email>` (con `ENV=production`, `--as` es obligatorio y `--db-timeouts off` se rechaza; S4A-D53). Salida 0 sin errores, 1 con socios omitidos por ocupación o con error.
+- Demo con fecha (S4A-D63): `pg_dump -Fc` de `apex` a `docs/scratch/`, `createdb apex_sim` y `pg_restore` en `db_test`, `$DC run --rm -e DATABASE_URL worker python -m app.worker.main --run-once expirations --date <fecha> --simulate` con `DATABASE_URL` apuntando a `apex_sim`, lectura con psql, `dropdb apex_sim` y borrar el volcado. `apex-db-1` nunca recibe una corrida con fecha.
+
+### Verificar la cadena de auditoría (S4A-B3)
+
+- Desde la pantalla: "Verificar ahora" (`POST /audit/verify`, 200 con el resultado o 202 si la cadena pasa de `SYNC_VERIFY_MAX_ROWS`; 409 `verification_running` si ya corre una; cubetas `audit-verify` de 3 por minuto y 20 por hora).
+- Desde la CLI: `$DC run --rm tools verify-audit --as <email> [--wait-timeout <s>]` (con `ENV=production`, `--as` obligatorio).
+- Candado de aviso `4_270_003` en una conexión `AUTOCOMMIT` que se invalida al terminar; tiempo máximo `VERIFY_MAX_SECONDS = 900`.
+- Ancla (S4A-D43): cada verificación `ok` guarda `through_seq` y `through_hash` en `audit.verifications` y escribe la línea `audit anchor` en el log. Copiar esa línea junto a cada respaldo: es la referencia externa hasta la firma de v0.3.
+- Si `verify-audit` contra `apex-db-1` da "rota": parar, no tocar la tabla y escalar (cuarta parada del plan).
+
+### Consultar la auditoría y el tablero (S4A-B4, S4A-B8)
+
+- `GET /audit`, `GET /audit/{seq}`, `GET /members/{id}/audit` y `GET /dashboard` consumen la cubeta `staff-read`; `offset` hasta 100.000. La lectura de la auditoría no se audita: el log de acceso del api es el único rastro.
+- El tablero excluye al usuario del sistema en los últimos movimientos.
+
+### Limpieza P2-1 de planes de prueba (S4A-B7 y V12)
+
+- Los planes `E2E-tope-*` y los de las specs se retiran por la API (`DELETE /plans/{id}`) con un admin desechable, respetando el tope de `admin-write` (30 por minuto); nunca por SQL. El 409 `plan_has_active_memberships` solo da el conteo: esos planes se desactivan y quedan.

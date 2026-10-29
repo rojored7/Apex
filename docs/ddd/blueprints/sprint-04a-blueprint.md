@@ -1,5 +1,7 @@
 # Blueprint de implementación · Sprint 4A · Worker, auditoría verificable, tablero y planes restantes
 
+> **Corregido por `sprint-04a-plan.md`** (sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A", desde S4A-W0-1): D3, D4, D6, D9, D12, D13, D14, D16, D17, D19, D20, D21, D26, D27, D28 y S4A-D62 a S4A-D74. Donde este plano choque con el plan o con `DECISIONES.md`, mandan ellos.
+
 > Fase 1 de `/flow-update`. Resuelve los 11 hallazgos y las 16 preguntas abiertas de `sprint-04a-exploracion.md` y las 13 "Condiciones para VERDE" de `docs/ddd/impacto/sprint-04a.md` (sección 9; se citan como **C1 a C13**). Donde este plano y un desglose chocan, manda este plano; las decisiones se copian a `docs/ddd/DECISIONES.md` (sección "Sprint 4A") en el primer checkpoint (S4A-W0-1), igual que hicieron los Sprints 2 y 3.
 
 - Rama: `feat/sprint-04a-worker-auditoria-tablero`, desde `f5f2503` (= `main`, cierre del Sprint 3). Última migración aplicada: `0011_payments_immutability`. Este sprint aplica `0012_worker_job_runs` y `0013_audit_verifications` y **ninguna más** (S4A-D19, S4A-D38).

@@ -15,7 +15,7 @@ Convenciones fijadas en el gate del 21 de octubre de 2026 (`docs/ddd/DECISIONES.
 ## Panel (layout: TopBar + SideNav) — admin y coach
 
 Inicio
-- `/` → `Inicio.html`. GET `/dashboard` (socios al día, por vencer, vencidos, ingresos del mes, asistencia semana, sesiones de hoy, por avisar, últimos movimientos). Hasta que exista GET `/dashboard` (Sprint 4A, US-108), Inicio es mínima: saludo con el correo y accesos a Socios y, para admin, Planes, Usuarios y Configuración (`// DESIGN-GAP:`, S2-D25).
+- `/` → `Inicio.html`. GET `/dashboard` (socios al día, por vencer, vencidos, ingresos del mes, asistencia semana, sesiones de hoy, por avisar, últimos movimientos). Hasta que exista GET `/dashboard` (Sprint 4A, US-108), Inicio es mínima: saludo con el correo y accesos a Socios y, para admin, Planes, Usuarios y Configuración (`// DESIGN-GAP:`, S2-D25). Deja de ser mínima en S4A-F3 (`InicioPage.tsx`): KPIs de membresías e ingresos y últimos movimientos de GET `/dashboard` (cubeta `staff-read`, 429 declarado); asistencia, sesiones de hoy, por avisar y WOD quedan en `null` hasta su versión (`docs/BRECHAS.md` §11).
 
 Socios (módulo 1)
 - `/socios` → `Socios_Lista.html` (celular: `Socios_Movil.html`). GET `/members?q&status&plan&last_attendance&sort&limit&offset` (`last_attendance` solo desde v0.4; la lista trae `membership_status` resuelto y nunca datos cifrados). Admin y coach. Implementación S2-F6: [detalle](../ddd/blueprints/sprint-02-rutas-front.md).
@@ -36,7 +36,7 @@ Socios (módulo 1)
 - Dar de baja: modal en la ficha. DELETE `/members/:id` (borrado lógico). Solo admin. Reactivar: POST `/members/:id/reactivate` (solo admin). Mostrar un dato cifrado: POST `/members/:id/reveal` `{ field }` (admin y coach, auditado).
 
 Planes (módulo 2) — solo admin
-- `/planes` → `Planes.html`. GET `/plans`. Crear y editar en panel lateral: POST / PATCH `/plans/:id`. Activar/desactivar: PATCH `active`. En el front la ruta es solo admin (`plans.view`); el API además deja al coach `GET /plans?active=true` y `GET /plans/{id}` de planes activos, que el front todavía no ofrece (S2-D26). Implementación S2-F7: [detalle](../ddd/blueprints/sprint-02-rutas-front.md).
+- `/planes` → `Planes.html`. GET `/plans`. Crear y editar en panel lateral: POST / PATCH `/plans/:id`. Activar/desactivar: POST `/plans/:id/activate` y POST `/plans/:id/deactivate` (no PATCH `active`; S4A-B7). Dar de baja: DELETE `/plans/:id` (409 `plan_has_active_memberships` con solo un conteo). La columna "Socios con él" sale de `active_members_count` de GET `/plans` (Sprint 4A, US-082). En el front la ruta es solo admin (`plans.view`); el API además deja al coach `GET /plans?active=true` y `GET /plans/{id}` de planes activos, que el front todavía no ofrece (S2-D26). Implementación S2-F7: [detalle](../ddd/blueprints/sprint-02-rutas-front.md).
 
 Membresías (módulo 3)
 - `/membresias` → `Membresias.html`. GET `/memberships?status&q&plan_id&ends_from&ends_to&limit&offset`.
@@ -86,7 +86,7 @@ Avisos (módulo 10)
 
 Sistema (módulos 11 a 14) — solo admin
 - `/sistema/usuarios` → `Usuarios.html`. GET `/users?q&role&status&limit&offset`; alta POST `/users` (devuelve el enlace de activación); edición GET y PATCH `/users/:id`; acciones por fila: POST `/users/:id/revoke-sessions`, `/resend-link`, `/lock` y `/unlock`, y DELETE `/users/:id`. Implementación S2-F4a y S2-F4b: [detalle](../ddd/blueprints/sprint-02-rutas-front.md).
-- `/sistema/auditoria` → `Auditoria.html`. GET `/audit?from&to&user&entity&action&q&limit&offset`. Verificar cadena: POST `/audit/verify`; última verificación: GET `/audit/verify/last`.
+- `/sistema/auditoria` → `Auditoria.html`. GET `/audit?from&to&user_id&table&record_id&subject_member_id&action&q&limit&offset` (nombres reales del Sprint 4A: `user_id` en lugar de `user`, `table` en lugar de `entity`; cubeta `staff-read`; `offset` hasta 100.000); detalle GET `/audit/:seq`. Verificar cadena: POST `/audit/verify` (200 o 202, 409 `verification_running`; cubetas `audit-verify`); última verificación: GET `/audit/verify/last`.
 - `/sistema/llaves` → `Llaves.html`. GET `/crypto/keys`, GET `/crypto/ops?limit&offset`, GET `/crypto/jobs`. Rotar: POST `/crypto/keys/:id/rotate` {reason, confirm:"ROTAR"}. Exportar CBOM: GET `/crypto/cbom`.
 - `/sistema/configuracion` → `Config.html`. GET/PATCH `/settings` por sección (gym, hours, payment_methods, channels, classes, memberships, tv, privacy). Desde S2-F5, pestañas en `?tab=` para las tres secciones del Sprint 2 (S2-D15): [detalle](../ddd/blueprints/sprint-02-rutas-front.md). Desde S3-F4 (US-056, D24), cuarta pestaña "Medios de pago" en `?tab=medios`: GET y PATCH `/settings/payment_methods` con los tres medios fijos (Efectivo, Nequi, Bre-B), cada uno con su nombre (1 a 30, sin repetirse) y su ayuda (hasta 120); no se agregan ni se quitan medios. Al guardar se relee GET `/payments/methods`.
 

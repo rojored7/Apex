@@ -1,5 +1,11 @@
 # US-109 · KPIs de membresías e ingresos — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - La página es `web/src/features/dashboard/pages/InicioPage.tsx` (con `InicioPage.test.tsx`), que ya existe y deja de ser mínima en S4A-F3; no existe `HomePage.tsx` (S4A-D41).
+> - El cuadre con datos de demostración (US-111) se difiere al Sprint 4B; las pruebas de 4A usan fábricas (S4A-D29).
+> - `home.spec.ts` (stack) usa el admin del seed (`E2E_ADMIN_*`), `crearCoach`, `exigirStackLocal` y `borrarUsuario` de `web/tests/e2e/helpers/stack.ts`, sin depender del orden de `recent` (S4A-D59).
+> - `GET /dashboard` puede responder 429 (`staff-read`): la página lo trata como error con "Reintentar" (S4A-D45).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-12-tablero-de-inicio/US-109-kpis-de-membresias-e-ingresos.md`
 - **Épica:** EP-12 · Tablero de inicio
 - **Bounded context / módulo:** Dashboard, presentación (`web/src/features/dashboard/`); sin cambios en `api/src/app/modules/dashboard/`
@@ -75,10 +81,10 @@ Ninguna.
 - [ ] T3 · `web/src/features/dashboard/links.ts`: función pura `kpiLinks(today: string)` con los destinos del criterio 3 y 4 y conversión del mes de Bogotá a `from`/`to` en UTC con `core/i18n/format.ts` — 1 h
 - [ ] T4 · `web/src/features/dashboard/components/KpiGrid.tsx`: cuatro `KpiCard` de v0.1 con valor, etiqueta y enlace (`<Link>` de React Router 7), línea secundaria "N pendientes de pago" enlazada bajo "Al día", ingreso con `formatCop` y mes con `formatMonth` ("octubre 2026"); foco visible y área de clic de 44 px — 3 h
 - [ ] T5 · `web/src/features/dashboard/components/FutureKpis.tsx`: tarjetas "Por avisar", "Asistencia de la semana", "Sesiones de hoy" y "WOD de hoy" que, con el campo `null`, muestran "Disponible en una próxima versión" y nunca `0`; con valor, lo muestran (así EP-14, EP-21 y EP-22 solo cambian datos) — 1,5 h
-- [ ] T6 · `web/src/features/dashboard/pages/HomePage.tsx`: página en `PanelLayout` con `PageHeader` ("Inicio" y fecha de hoy en Bogotá), `KpiGrid`, `FutureKpis` y el hueco del bloque de US-110; estados de carga (esqueleto de `KpiCard`) y error con "Reintentar" (`refetch`); ruta `/` registrada en `routes.tsx` con la guarda de admin y coach; comentario `// DESIGN-GAP:` en la línea de pendientes de pago — 2 h
-- [ ] T7 · `web/src/features/dashboard/pages/HomePage.test.tsx` (Vitest y Testing Library con MSW): valores del escenario (120, 14, 9, `$ 3.250.000`), tarjetas futuras vacías, enlaces correctos, error con reintento que vuelve a pedir, y que ninguna tarjeta depende solo del color (cada una tiene texto) — 2,5 h
+- [ ] T6 · `web/src/features/dashboard/pages/InicioPage.tsx`: página en `PanelLayout` con `PageHeader` ("Inicio" y fecha de hoy en Bogotá), `KpiGrid`, `FutureKpis` y el hueco del bloque de US-110; estados de carga (esqueleto de `KpiCard`) y error con "Reintentar" (`refetch`); ruta `/` registrada en `routes.tsx` con la guarda de admin y coach; comentario `// DESIGN-GAP:` en la línea de pendientes de pago — 2 h
+- [ ] T7 · `web/src/features/dashboard/pages/InicioPage.test.tsx` (Vitest y Testing Library con MSW): valores del escenario (120, 14, 9, `$ 3.250.000`), tarjetas futuras vacías, enlaces correctos, error con reintento que vuelve a pedir, y que ninguna tarjeta depende solo del color (cada una tiene texto) — 2,5 h
 - [ ] T8 · `web/tests/e2e/home.spec.ts` (Playwright): login como coach con datos de demo, clic en "Por vencer" llega a la lista filtrada; medición del tiempo desde el envío del login hasta que la grilla es visible (menos de 10 s); `member` redirigido a `/mi` — 2 h
-- [ ] T9 · Capturas de `HomePage` en 320, 768, 1024 y 1440, en claro y oscuro (flujo de US-068), revisadas sin desbordes — 1 h
+- [ ] T9 · Capturas de `InicioPage` en 320, 768, 1024 y 1440, en claro y oscuro (flujo de US-068), revisadas sin desbordes — 1 h
 
 ### DevOps
 - No aplica (el build del front ya está en la imagen de Nginx de US-006).

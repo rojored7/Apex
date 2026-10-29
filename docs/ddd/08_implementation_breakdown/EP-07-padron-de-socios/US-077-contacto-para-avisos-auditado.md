@@ -1,5 +1,14 @@
 # US-077 · Contacto para avisos auditado — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Firma única: `async def contact_for_notification(session, member_id: UUID, purpose: str) -> Contact`; sin `fields` ni `by`: el actor sale de `get_actor()` (`SYSTEM_USER_ID` en el worker, el de `--as` en la CLI). Vive en `members/contact.py` (privado nuevo en `PRIVATE_HELPERS["members"]`) y `service.py` re-exporta `contact_for_notification`, `Contact`, `MemberNotContactable` y `validate_purpose` (S4A-D21).
+> - `bus.op_context`, `SensitiveFieldRevealed` y `SYSTEM_ACTOR` no existen (S3-C16): el descifrado va por `detail._decrypt_fields` con el propósito (única puerta de `types.reveal`), la auditoría por `audit.record` (acción `reveal`, tabla `members.members`, `record_id` y `subject_member_id` del socio, `after` con `field` y `purpose`) y el actor técnico es `SYSTEM_USER_ID`; no se emite evento (S4A-D21, S4A-D41).
+> - Sin `bus.batch`: `aggregate_ops` pierde el `record_id`; `crypto_ops` lleva una fila `decrypt` por campo con `purpose` y `record_id` del socio, y el `batch_id` común lo da el `batch_scope` del llamador (S4A-D21).
+> - Un propósito fuera de `notify` y `auth_link` (incluidos `mask`, `reveal` y `export`) lanza `InvalidPurpose` (`MemberError`, código `invalid_purpose`) antes de leer nada; `OP_PURPOSES` ya trae ambos, sin migración (S4A-D21).
+> - `tests/architecture/test_contact_callers.py` (AST sobre `app/`): `CONTACT_CALLERS = frozenset()` en 4A; nada fuera de `modules/members/` (ni `cli.py`, ni `worker/`, ni un `router.py`) referencia `contact_for_notification`; el Sprint 5 suma solo `notifications.service` (S4A-D50).
+> - Regla de composición (docstring y prueba con espía de candados): una unidad por socio, en transacción propia o tras `lock_member` del mismo socio y antes de cualquier candado posterior, nunca en un bucle sobre varios socios en la misma transacción; el llamador confirma antes de enviar (S4A-D50).
+> - `test_crypto_bus_importers.py` parte de los importadores reales de `app.core.crypto.bus` y `types` fuera de `core/` (`members/service.py`, `changes.py`, `detail.py`); lista blanca `app.core.*`, `app.modules.members.*` y `athletes` y `attachments` cuando existan (S4A-D21).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-07-padron-de-socios/US-077-contacto-para-avisos-auditado.md`
 - **Épica:** EP-07 · Padrón de socios
 - **Bounded context / módulo:** Members, proveedor de Notifications (`api/src/app/modules/members/service.py`)
@@ -14,7 +23,7 @@ N-21 acepta el catálogo de propósitos y que el propósito vaya en `after` de l
 
 ## Resumen
 
-- `members.service.contact_for_notification(member_id, purpose, by)` devuelve `Contact { first_name, phone, email }` en claro solo como valor de retorno; nunca se expone por HTTP.
+- `members.service.contact_for_notification(session, member_id, purpose)` devuelve `Contact { first_name, phone, email }` en claro solo como valor de retorno; nunca se expone por HTTP.
 - Admite los propósitos `notify` y `auth_link`; cualquier otro lanza `MemberError` antes de descifrar.
 - Descifra teléfono y correo en un solo lote del bus (mismo `batch_id`), escribe una fila de auditoría `reveal` por campo descifrado con `after = {"field", "purpose"}` y emite `SensitiveFieldRevealed` con el propósito.
 - Un socio dado de baja o inexistente lanza `MemberNotContactable` sin descifrar; un campo vacío vuelve `None` sin operación.

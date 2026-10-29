@@ -1,5 +1,13 @@
 # US-108 · Contrato del tablero — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - `today = current_clock().today_bogota()`, no una dependencia `Depends(Clock)`; el router lleva `StaffDep`, `dependencies=[Depends(no_store)]` y `SessionDep`; los KPI salen de `memberships.service.summary(session, today=today)` (con su caché de 30 s, que el job no invalida) y de `payments.service.summary(session, month_of(today))`; `dashboard` no tiene caché propia (S4A-D27, S4A-D41).
+> - `GET /dashboard` consume la cubeta `staff-read` (120/min), declara 429 y entra en `CON_LIMITE`; deja de ser "sin 429" (S4A-D27, S4A-D45).
+> - `MovementOut` lleva `seq, at, phrase, table_name, record_id, member_id`, con `table_name` como `Literal` de los nombres reales `esquema.tabla` (`members.members`, `memberships.memberships`, `payments.payments`) (S4A-D28).
+> - Aristas de nivel de módulo nuevas, solo las que se importan de verdad: `dashboard -> audit`, `-> auth`, `-> members`, `-> memberships`, `-> payments` (no `-> plans`); `"dashboard"` va al final de `MODULES` (S4A-D27).
+> - `test_read_modules.py` exige además que `dashboard` no importe `app.core.audit` ni `app.core.audit_verify` y no abra `session.execute` (solo compone services) (S4A-D28).
+> - La prueba de rendimiento se marca `perf`, no `slow`: `uv run pytest -m perf tests/dashboard/test_perf.py -q`, fuera del gate (S4A-D41, S4A-D68).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-12-tablero-de-inicio/US-108-contrato-del-tablero.md`
 - **Épica:** EP-12 · Tablero de inicio
 - **Bounded context / módulo:** Dashboard, contexto de lectura sin esquema (`api/src/app/modules/dashboard/`)
@@ -72,7 +80,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T6 · `api/tests/dashboard/test_service.py`: con datos de demo (fixture de US-111 o factory equivalente) y `FrozenClock` en 2026-10-20, los conteos son idénticos a `memberships.service.summary()` y `income_month_cop` es idéntico a `payments.service.summary("2026-10").total_cop` — 2 h
 - [ ] T7 · `api/tests/dashboard/test_service.py`: borde de mes con `FrozenClock` en `2026-11-01T01:00:00Z` (20:00 del 31 de octubre en Bogotá): `income_month == "2026-10"` y un pago con `paid_at = 2026-11-01T03:00:00Z` cuenta en octubre — 1 h
-- [ ] T8 · `api/tests/dashboard/test_perf.py` (marcado `slow`): 1.000 socios y 12 meses de pagos; `summary` responde en menos de 300 ms (mediana de 5 corridas) — 1,5 h
+- [ ] T8 · `api/tests/dashboard/test_perf.py` (marcado `perf`): 1.000 socios y 12 meses de pagos; `summary` responde en menos de 300 ms (mediana de 5 corridas) — 1,5 h
 
 ### Tests de router
 - [ ] T9 · `api/tests/dashboard/test_router.py`: 200 con admin y con coach; 403 con `member`; 401 sin token; prueba de contrato que todas las llaves del criterio 1 están presentes y que las cinco futuras son `null` (no ausentes) en el JSON — 1,5 h

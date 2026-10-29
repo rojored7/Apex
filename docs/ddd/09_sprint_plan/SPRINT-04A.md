@@ -1,5 +1,18 @@
 # Sprint 4A · Worker, auditoría verificable, tablero y planes restantes
 
+> **Corregido en S4A-W0-1.** El plan de ejecución es `docs/ddd/blueprints/sprint-04a-plan.md` (enmiendas E1 a E10 de la crítica 1) y las decisiones están en `docs/ddd/DECISIONES.md`, sección "Sprint 4A" (S4A-D1 a S4A-D74). Donde este texto choque con ellos, mandan ellos. Correcciones de contrato de este archivo:
+> - Las pruebas de rendimiento usan el marcador `perf` (`-m perf`), no `slow`; nunca entran al gate (`-m "not perf"`).
+> - `0014` no se crea: `audit.audit_log.subject_member_id` ya viene de `0002`; el sprint aplica solo `0012_worker_job_runs` y `0013_audit_verifications` (S4A-D19, S4A-D38). `0014_payments_registered_by_idx` tampoco entra.
+> - `GET /audit` filtra por `from`, `to`, `user_id`, `table` (`esquema.tabla`), `record_id`, `subject_member_id`, `action`, `q`, `limit` y `offset` (hasta 100.000), con rangos acotados (S4A-D16, S4A-D45, S4A-D46).
+> - `contact_for_notification(session, member_id, purpose)`, no `(member_id, fields, purpose)` (S4A-D21, S4A-D50).
+> - US-041 no creó `display_name`: en 4A el nombre visible es la parte local del correo y "Sistema" para `SYSTEM_USER_ID`; la columna llega en v0.2 con EP-04 (S4A-D19).
+> - `/health` no lee `worker.job_runs` en 4A (pasa a v0.2): el worker tiene healthcheck por latido (S4A-D8, S4A-D56).
+> - La auditoría se verifica con "Verificar ahora" (`POST /audit/verify`) con las cubetas `audit-verify` (3 por minuto) y `audit-verify-hour` (20 por hora), no con `admin-write` (S4A-D14, S4A-D47).
+> - `GET /members/{id}/audit` y `GET /dashboard` (y `GET /audit`, `GET /audit/{seq}`) consumen la cubeta `staff-read` y declaran 429 (S4A-D45, S4A-D27).
+> - `--date` solo con `--simulate`, `ENV=dev` y una base `*_sim` o `apex_test` (S4A-D48, enmienda E5); la demo con fecha corre contra `apex_sim` en `apex-db_test-1`, nunca contra `apex-db-1` (S4A-D63).
+> - `datosDeBase()` vive en `web/tests/e2e/helpers/stack.ts` y devuelve credenciales, no cuenta tablas: la verificación es `grep -rn "job_runs\|audit_log" web/tests` vacío (S4A-D59).
+> - `list_for_subject(member_id)` es `member_history(session, member_id, page, q)` (S4A-D20).
+
 - **Versión:** v0.1. Es la primera mitad del cierre; la release la hace el Sprint 4B.
 - **Épicas:**
   - EP-11, salvo US-107;
@@ -25,16 +38,16 @@ Que el sistema haga solo lo que pasa todos los días y que se pueda demostrar lo
 
 `docker compose` abrevia `docker compose -f infra/compose.yml -f infra/compose.dev.yml`. Dentro de los contenedores, los comandos van sin `uv run`.
 
-1. `docker compose up -d --build` levanta también el servicio `worker` (ya sin `profiles`).
+1. `docker compose up -d --build` levanta también el servicio `worker` (ya sin `profiles`). En este equipo: imágenes con `docker buildx build --load --network host --allow network.host` y `up -d --no-build` (RUNBOOK §7).
    - `docker compose exec api alembic current` muestra `0013_audit_verifications`.
 2. Con los socios y las membresías de la demo del Sprint 3:
-   - `docker compose run --rm worker python -m app.worker.main --run-once expirations`, con `FrozenClock` adelantado, pasa membresías a `expiring` y a `expired`;
+   - `docker compose run --rm worker python -m app.worker.main --run-once expirations` sobre la base viva, sin fecha, pasa a `expiring` y `expired` lo que el calendario real exige; la fecha adelantada se demuestra con `--date 2026-11-01 --simulate` contra la copia `apex_sim` (S4A-D48, S4A-D63), nunca contra `apex-db-1`;
    - `worker.job_runs` registra la corrida;
    - una segunda corrida el mismo día no duplica nada.
 3. Auditoría:
    - la pantalla filtra por tabla, usuario y fecha;
-   - el detalle muestra antes y después, con "valor cifrado modificado";
-   - "Verificar cadena" responde OK y queda en `audit.verifications`;
+   - el detalle muestra antes y después; los valores cifrados salen como "Cifrado" con su `key_id` (el servidor nunca entrega el blob, S4A-D52);
+   - "Verificar ahora" responde OK y queda en `audit.verifications` con el ancla `through_hash` (S4A-D43);
    - `docker compose run --rm tools verify-audit --as admin@...` da el mismo resultado.
 4. La pestaña Historial de la ficha muestra los cambios del socio, de sus membresías y de sus pagos (N-31).
 5. Inicio muestra:
@@ -57,7 +70,7 @@ Que el sistema haga solo lo que pasa todos los días y que se pueda demostrar lo
   - US-058;
   - US-069 y US-070;
   - US-078 y US-079;
-  - US-041 (`display_name`);
+  - US-041 (sin `display_name`: no lo creó; S4A-D19);
   - US-107.
 - **Sprint 1:**
   - US-015 y US-016 (`record`, `verify_chain`, `subject_member_id`);
@@ -75,36 +88,37 @@ Decisiones que se aplican:
 
 Patrón de v0.1: en cada slice van primero el Rojo (stubs y pruebas) y después el Verde. El gate usa los archivos del slice más `tests/architecture`, y después va el checkpoint.
 
-Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: se quita el `--cov-omit` (M-6).
+Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: el Verde de S4A-B1 quita el `omit` de `[tool.coverage.run]` en `api/pyproject.toml` (M-6, S4A-D39; no existe `--cov-omit`).
 
 ### Wave 0 · Infraestructura (`devops-wsl2-docker`)
 
 - **Slice S4A-W0-1 · Worker en Compose (solo preparación).** Son las tareas DevOps de US-113 que no necesitan código del worker.
-  - Se define el servicio `worker` con la misma imagen y el comando `python -m app.worker.main`, reintento de conexión a la base y healthcheck por `job_runs`, **pero se conserva `profiles: ["worker"]`**: todavía no existe `app/worker/main.py` y el contenedor entraría en bucle de reinicios (CRITICA-2 N-3).
-  - Gate: `docker compose config` valida el archivo; smoke de Compose **sin** el perfil `worker`.
+  - Se define el servicio `worker` con la misma imagen y el comando `python -m app.worker.main`, `depends_on` de `db` y `api` `healthy`, sin volúmenes, endurecido (`read_only`, `tmpfs /tmp`, `cap_drop ALL`, `no-new-privileges`; S4A-D49) y healthcheck por latido (S4A-D8; no por `job_runs`), **pero se conserva `profiles: ["worker"]`**: todavía no existe `app/worker/main.py` y el contenedor entraría en bucle de reinicios (CRITICA-2 N-3). `worker` y `tools` montan `api/src` y `api/migrations` en solo lectura en `compose.dev.yml`.
+  - Gate: `docker compose config` valida el archivo; `test_compose_config.sh` en verde; smoke de Compose **sin** el perfil `worker`; `slice-gate.sh architecture` que sella.
 - **Slice S4A-W0-2 · Activar el worker.** Se ejecuta **después de cerrar S4A-B1**.
   - Se quita `profiles: ["worker"]`.
   - Cierra el criterio diferido de US-005.
-  - Gate: smoke de Compose con `worker` en marcha y `healthy`, y `docker compose run --rm worker python -m app.worker.main --run-once expirations` con código 0.
+  - Gate: smoke de Compose con `worker` en marcha, `healthy` y sin reinicios, y `docker compose run --rm worker python -m app.worker.main --run-once expirations` dos veces: la primera acepta 0 o 3 y la segunda exige 0 (enmienda E6); `--status expirations` con `result: ok`. `grep -rn "job_runs\|audit_log" web/tests` vacío (S4A-D59).
 
 ### Waves 3a/3b · Backend, alternadas por slice
 
 - **Slice S4A-B1 · Proceso worker programado.** Historia: US-113.
-  - **Rojo:** `tests/worker` (registro de jobs, `claim_run`, `finish_run`, `--run-once`, `FrozenClock`), con stubs de `core/jobs.py` y `worker/main.py`.
+  - **Rojo:** `tests/worker` (registro de jobs, `claim_run`, `finish_run`, `--run-once`, `--date --simulate`, `FrozenClock`), `tests/core/test_alerts.py`, `tests/cli/test_export_openapi_cli.py` y `test_init_keys_cli.py`, con stubs de `core/jobs.py`, `core/alerts.py` y `worker/`. El job `expirations` nace como marcador verde (`details={"placeholder_ok": 1}`, S4A-D64).
   - **Verde:**
     - `core/jobs.py` (G-06);
     - migración `0012_worker_job_runs`;
     - APScheduler a las 07:00 `America/Bogota`;
-    - una transacción por lote;
-    - actor `SYSTEM_USER_ID`.
+    - actor `SYSTEM_USER_ID` fijado antes del reclamo (S4A-D55);
+    - latido condicionado a `SELECT 1` (S4A-D56).
   - **Gate:** `slice-gate.sh worker` y `slice-gate.sh core/jobs`, cada uno con sus archivos, más el ciclo de Alembic.
 - **Slice S4A-B2 · Job diario de vencimientos.** Historia: US-094.
   - **Rojo:**
     - `tests/worker/test_expirations.py`, también con `-m perf`;
     - `tests/cli/test_recompute_memberships.py`.
   - **Verde:**
-    - `recompute_statuses(today)` por lotes, con `today_bogota()`;
-    - idempotente: una sola corrida por día.
+    - `recompute_statuses(session_factory, *, today)` en `memberships/expirations.py`: lectura de candidatas y una transacción por socio con `lock_member` (S4A-D2, S4A-D57), con `today_bogota()`;
+    - idempotente: una sola fila de `job_runs` por día;
+    - `recompute-memberships [--date --simulate] [--as]` (S4A-D48, S4A-D53).
   - **Gate:** `slice-gate.sh memberships`, `slice-gate.sh worker` y `slice-gate.sh cli`, con los archivos de cada uno.
 - **Slice S4A-B3 · Verificar la cadena desde la API y desde la CLI.** Historias: US-104 y US-105.
   - **Rojo:**
@@ -114,10 +128,10 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `tests/core/test_format_verify_message.py`.
   - **Verde:**
     - migración `0013_audit_verifications`;
-    - `run_verification` con lock asesor; un salto en `seq` cuenta como ruptura;
+    - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 1.000 y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
     - `POST /audit/verify` y `GET /audit/verify/last`;
     - `cli verify-audit --as`.
-  - **Gate:** `slice-gate.sh audit`, `slice-gate.sh core/audit` y `slice-gate.sh cli`, con los archivos de cada uno, más el ciclo de Alembic.
+  - **Gate:** `slice-gate.sh audit`, `slice-gate.sh core/audit`, `slice-gate.sh core/audit_verify` y `slice-gate.sh cli`, con los archivos de cada uno, más el ciclo de Alembic.
 - **Slice S4A-B4 · Consultar la auditoría y ver el detalle.** Historias: US-102 y US-103.
   - **Rojo:**
     - `tests/audit/test_filters.py`, `test_list.py`, `test_list_coverage_v01.py`, `test_list_performance.py` y `test_router_list.py`;
@@ -133,7 +147,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `tests/members/test_router_member_audit.py`;
     - `tests/architecture/test_audit_subject.py`.
   - **Verde:**
-    - `list_for_subject(member_id)` sobre `subject_member_id` (G-05);
+    - `member_history(session, member_id, page, q)` sobre `subject_member_id` (G-05, S4A-D20);
     - `GET /members/{id}/audit`.
   - **Gate:** `slice-gate.sh audit` y `slice-gate.sh members`, con los archivos de cada uno.
 - **Slice S4A-B6 · Contacto para avisos auditado.** Historia: US-077.
@@ -141,7 +155,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `tests/members/test_service_contact.py` y `test_validate_purpose.py`;
     - `tests/architecture/test_crypto_bus_importers.py`.
   - **Verde:**
-    - `contact_for_notification(member_id, fields, purpose)`, con propósitos `notify` y `auth_link`;
+    - `contact_for_notification(session, member_id, purpose)`, con propósitos `notify` y `auth_link` (S4A-D21);
     - escribe en `crypto_ops` y en la auditoría.
     - Lo consume EP-14 en el Sprint 5.
   - **Gate:** `slice-gate.sh members <archivos de Rojo>`.
@@ -155,7 +169,8 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
   - **Verde:**
     - `PATCH` sin efecto sobre las membresías vendidas;
     - `activate` y `deactivate`, con `plan_inactive` en la venta;
-    - `DELETE` lógico, con 409 si hay membresías activas; usa `count_active_by_plan` mediante un import perezoso de la lista blanca.
+    - `DELETE` lógico, con 409 `plan_has_active_memberships` si hay membresías activas (solo el conteo); usa `count_active_by_plan` mediante un import perezoso de la lista blanca;
+    - columna "Socios con él" por `active_members_count` (`counts_active_by_plans`, S4A-D25).
   - **Gate:** `slice-gate.sh plans` con sus archivos, más los dos archivos de `tests/integration`.
 - **Slice S4A-B8 · Tablero.** Historias: US-108 y US-110 (backend).
   - **Rojo:**
@@ -165,7 +180,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
   - **Verde:**
     - contrato de `GET /dashboard` con los campos futuros en `null`;
     - KPI;
-    - "Últimos movimientos" (Q10), sin `SYSTEM_USER_ID` y con `display_name`.
+    - "Últimos movimientos" (Q10), sin `SYSTEM_USER_ID` y con el nombre de `user_names_for` (parte local del correo; S4A-D19, S4A-D54); una consulta por tabla (S4A-D51).
     - Por ahora, las pruebas de cuadre usan factories en lugar de US-111.
   - **Gate:** `slice-gate.sh dashboard` y `slice-gate.sh audit`, con los archivos de cada uno.
 
@@ -200,10 +215,19 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
 
 ### Validación del sprint
 
-- E2E de `home.spec.ts` y de todos los specs anteriores.
-- `--run-once expirations` dos veces el mismo día.
-- Prueba de rendimiento de la verificación de la cadena (`-m perf`).
-- Paso humano: push y PR.
+Detalle de cada paso en `docs/ddd/blueprints/sprint-04a-plan.md`, sección 7:
+- V1 · Fusión del worktree del front y documentos.
+- V2 · Stack desde cero de código y ciclo de Alembic (con `$DC stop worker` antes de un `downgrade` que borre `worker.job_runs`, enmienda E4).
+- V3 · Datos reales antes de navegar.
+- V4 · E2E contra el stack (preview y stack dos veces), con `home.spec.ts` y todos los specs anteriores.
+- V5 · Rendimiento (`-m perf`: vencimientos, verificación, lista, `recent` y tablero).
+- V6 · Smoke con evidencia SQL y `verify_chain`.
+- V7 · Demo (los 6 puntos de arriba).
+- V8 · Repetición e idempotencia (`--run-once expirations` dos veces el mismo día).
+- V9 · Gates completos (`run-gates.sh`).
+- V10 · Revisión de seguridad posterior.
+- V11 · `verify-delivery`.
+- V12 · Cierre documental y paso humano (push y PR).
 
 ## Migraciones que aplica
 
@@ -230,8 +254,9 @@ Ya no hacen falta `0014_audit_subject_member`, `0014_crypto_ops_purpose` ni `001
 
 Corren en cada gate de slice (A-5).
 - Todos los de los Sprints 0 a 3.
-- `test_core_import_direction.py`, ampliada para `core/jobs.py` (absorbe `test_core_jobs_imports.py`).
-- `test_service_import_graph.py`, ampliada con el par plans↔memberships (US-082).
+- `test_core_import_direction.py`, ampliada para `core/jobs.py` y `core/alerts.py` (absorbe `test_core_jobs_imports.py`).
+- `test_worker_boundaries.py` (S4A-D10, S4A-D73), `test_contact_callers.py` (S4A-D50), `test_expirations_lock_order.py` (S4A-D57) y `test_user_refs_scope.py` (S4A-D54).
+- `test_service_import_graph.py` y `LAZY_IMPORT_WHITELIST`, ampliadas con el par plans↔memberships (US-082; no `test_service_import_cycles.py`).
 - `test_crypto_bus_importers.py` (US-077).
 - `test_audit_subject.py` (US-106).
 - `test_read_modules.py` (US-108 y US-110).
@@ -244,7 +269,7 @@ Corren en cada gate de slice (A-5).
    - Mitigación: índice único `(job_name, run_date)` y prueba de doble corrida.
 3. **[MEDIUM]** La verificación de la cadena puede ser lenta con muchas filas.
    - Mitigación: `test_verify_performance.py` y lock asesor.
-4. **[MEDIUM]** Al quitar el `--cov-omit` puede bajar la cobertura global.
+4. **[MEDIUM]** Al quitar el `omit` de coverage puede bajar la cobertura global.
    - Mitigación: las pruebas de `tests/worker` y `tests/cli` entran en este mismo sprint, y `run-gates.sh` se corre después de B2.
 5. **[LOW]** Sin datos de demostración, el tablero se prueba con factories.
    - Mitigación: el criterio diferido de US-109 queda declarado y se cierra en 4B.
@@ -252,7 +277,7 @@ Corren en cada gate de slice (A-5).
 ## Definición de hecho del sprint
 
 - El slice de Wave 0, los 8 de backend y los 4 de front, confirmados con `checkpoint-commit.sh`.
-- `run-gates.sh` en verde, con cobertura global de `app` de al menos 80 %, ya sin `--cov-omit`.
+- `run-gates.sh` en verde, con cobertura global de `app` de al menos 80 %, ya sin el `omit` de coverage.
 - `cd api && uv run pytest tests/architecture -q` en verde.
 - Ciclo de Alembic sobre `0013`.
 - `docs/openapi.json` y tipos del front regenerados.

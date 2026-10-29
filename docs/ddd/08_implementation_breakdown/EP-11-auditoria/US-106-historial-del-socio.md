@@ -1,5 +1,15 @@
 # US-106 · Historial del socio — desglose técnico
 
+> **Corregido en S4A-W0-1** (`docs/ddd/blueprints/sprint-04a-plan.md`, sección 1 y enmiendas E1 a E10; registro en `docs/ddd/DECISIONES.md`, "Sprint 4A"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - La propuesta A ya está aplicada: `0002_audit_log` trae `subject_member_id` y `ix_audit_log_subject_member_seq`; la migración `0014_audit_subject_member` NO se crea y T1 no aplica (S4A-D41, S4A-D20).
+> - Contrato: `members.service.history(session, member_id, page, q)` hace `ensure_exists(member_id, include_deleted=True)` y delega en `audit.service.member_history(session, member_id, page, q)`, no en `list_for_subject(member_id)`; arista de nivel de módulo nueva `members -> audit` en `ALLOWED_EDGES` de `tests/architecture/test_service_import_graph.py` (S4A-D20).
+> - `q` es real: fragmento de la parte local del correo de quien actuó, resuelto con `auth.service.search_user_ids(..., local_part_only=True)`, sin exponer dominios al coach (S4A-D20).
+> - `MemberHistoryItem {seq, at, user_id, user_name, action, table_name, record_id, fields, purpose}` sin `user_email` (la prueba de sufijo `_email` barre los `GET` bajo `/members`) y con `purpose: Literal["notify", "auth_link"] | None` para los `reveal` de `contact_for_notification`; `fields` sin `*_idx` ni columnas técnicas, nunca `ip`, `reference` ni `void_reason` (S4A-D20, S4A-D50).
+> - `user_name` sale de `auth.service.user_names_for(session, user_ids) -> dict[UUID, str]` (solo `display_name`, parte local del correo o "Sistema"), no de `names_for` ni de `user_refs_for`; prueba AST en `tests/architecture/test_user_refs_scope.py` (S4A-D54, S4A-D19).
+> - `GET /members/{member_id}/audit` consume la cubeta `staff-read`, declara 429 y entra en `CON_LIMITE`; `MAX_AUDIT_OFFSET = 100_000` con 422 `field="offset"` (S4A-D45).
+> - `table_name` va como `esquema.tabla` (`members.members`, `memberships.memberships`, `payments.payments`) (S4A-D41).
+> - Congelaciones: `MembershipFreeze` no declara `__audit_subject__`; la congelación aparece por el `update` de la membresía (`end_date`, `status`); `test_audited_tables.py::test_membership_freezes_es_requerida_y_no_declara_sujeto_hasta_us_106` se renombra `..._por_decision_s4a_d20` (S4A-D20).
+
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-106-historial-del-socio.md`
 - **Épica:** EP-11 · Auditoría y trazabilidad
 - **Bounded context / módulo:** Audit (`api/src/app/modules/audit/`, `api/src/app/core/audit.py`), consumido desde Members (`api/src/app/modules/members/`)
@@ -63,8 +73,8 @@ Expone `GET /members/{id}/audit` (admin y coach) con la línea de tiempo del soc
 
 ### Service
 - [ ] T3 · `core/audit.py`: el hook `after_flush` de US-016 toma `subject_member_id` de `__audit_subject__` cuando el modelo lo declara; `record(...)` acepta `subject_member_id: UUID | None = None` (US-074 lo pasa en el `reveal`) — 1,5 h
-- [ ] T4 · `modules/audit/service.py`: función pura `history_fields(entry) -> list[str]` y `async def member_history(session, subject_member_id: UUID, page: PageParams) -> Page[MemberHistoryItem]` (consulta por `subject_member_id ORDER BY seq DESC` sin cargar valores; nombres por `auth.service.names_for`) — 1,5 h
-- [ ] T5 · `modules/members/service.py`: `async def history(session, member_id: UUID, page) -> Page[MemberHistoryItem]` que llama a `ensure_exists(member_id, include_deleted=True)` (404) y a `audit.service.member_history` — 0,5 h
+- [ ] T4 · `modules/audit/service.py`: función pura `history_fields(entry) -> list[str]` y `async def member_history(session, member_id: UUID, page: PageParams, q) -> Page[MemberHistoryItem]` (consulta por `subject_member_id ORDER BY seq DESC` sin cargar valores; nombres por `auth.service.user_names_for`) — 1,5 h
+- [ ] T5 · `modules/members/service.py`: `async def history(session, member_id: UUID, page, q) -> Page[MemberHistoryItem]` que llama a `ensure_exists(member_id, include_deleted=True)` (404) y a `audit.service.member_history` — 0,5 h
 
 ### Schemas
 - [ ] T6 · `modules/audit/schemas.py`: `MemberHistoryItem { seq, at, user_id, user_name, action, table_name, record_id, fields: list[str] }` — 0,5 h

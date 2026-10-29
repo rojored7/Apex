@@ -149,3 +149,30 @@ Rama `feat/sprint-04b-continuidad-release`. Plan: `docs/ddd/blueprints/sprint-04
 10. **LOW (L2)** `roles.sql`: `SET log_min_duration_statement = -1` y `SET log_duration = off` junto a los otros dos `SET`.
 
 **Constancias.** `GIT_SHA` es público en `/health.version`; `tools` sin `read_only` (perfil de operador); `TRUSTED_PROXIES` manual en los ensayos.
+
+### Evidencia de S4B-W0-3
+
+Checkpoint `bcc1c65` (sello `wave0-gate.sh W0-3`, 568 passed).
+
+Checkpoint: bcc1c65. Sello: wave0-gate.sh W0-3 (568 passed con tests/architecture).
+
+### Imágenes (reconstruidas con buildx, S4B-D98)
+- apex-api:local  sha256:84f04df0428016bbec526172b10b103b971ff9642f7eb01926c9250ae8966d99 (antes da6d45f9...)
+- apex-web:local  sha256:1f4f49377584194cf69ebf4bd0b54b228bb03cc788250433883a0083d1aaf312 (antes 6745c50b...)
+
+### Ensayo apex-ensayo (subred 172.31.0.0/24, WEB_PORT 8280, POSTGRES_DB apex_ensayo, ENV=production)
+- migrate: 15 revisiones, la última `0013_audit_verifications -> 0014_audit_log_triggers_always`, código 0; dbsetup código 0 ("roles aplicados; 16 tablas clasificadas").
+- api, worker, backup, web, db: healthy; StartedAt de worker y web posterior al healthy del api; worker RestartCount 0.
+- test_db_roles.sh contra el ensayo: 0 fallas (44 comprobaciones). test_env_isolation.sh: 0 fallas (api, worker, backup).
+- Primer intento: test_env_isolation.sh detectó que env_file ../.env leía el .env de desarrollo; corregido con APEX_ENV_DIR y resellado.
+- /api/v1/health 200 {"status":"ok","db":"ok","version":"dev"}; 45 GET seguidos: 11 con 200 y 34 con 429; el log del api no contiene "alembic".
+- pg_stat_activity (apex_ensayo): apex (psql), apex_api, apex_worker.
+- Tráfico real como apex_api: login, cambio de contraseña, GET /members 200, POST /plans 201/200 (fila creada), GET /dashboard 200; "permission denied" en el log del api: 0. Admin desechable admin-ensayo@apex.test solo en apex_ensayo (se borra con el volumen en V12).
+- Ensayo detenido con `stop` (sin -v).
+
+### P-ROL sobre apex-db-1
+- `alembic current` = 0014_audit_log_triggers_always (head) antes; `dbsetup` con --no-deps: código 0, "roles aplicados; 16 tablas clasificadas"; no existe contenedor migrate del proyecto apex.
+- pg_roles: apex_api, apex_backup, apex_worker: rolsuper/createrole/createdb/bypassrls = f; rolconnlimit 20, 2, 5.
+- test_db_roles.sh contra apex-db-1: 0 fallas.
+- .env: solo cambiaron APEX_API_DB_PASSWORD, APEX_WORKER_DB_PASSWORD y APEX_BACKUP_DB_PASSWORD (sha256 antes 5ab9b973..., después 812bbba4...). .env.ops creado desde el ejemplo con los valores de .env; ambos ignorados por git.
+- Desarrollo: api, worker y backup se recrearon (force-recreate) y quedan healthy, pero usan al PROPIETARIO por diseño (compose.dev.yml, S4B-D11): pg_stat_activity de apex-db-1 muestra apex x3. Los roles se ejercitan con tráfico real en el ensayo.

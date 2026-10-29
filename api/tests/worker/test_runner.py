@@ -188,6 +188,37 @@ async def test_ni_el_log_ni_stdout_llevan_el_documento(
     assert any(r.levelno >= logging.ERROR for r in caplog.records), "el fallo no quedó en el log"
 
 
+@pytest.mark.parametrize("fixture_spec", ["spec_que_escribe", "spec_que_lanza"])
+async def test_el_log_job_finished_lleva_inicio_fin_y_duracion_de_la_fila(
+    fixture_spec: str,
+    request: pytest.FixtureRequest,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """US-113 criterio 6 (S4A-D128): `started_at` y `finished_at` en ISO 8601 UTC, los mismos de
+    `job_runs`, y `duration_ms` entero; también cuando el job falla, sin el mensaje del error."""
+    observado: SpecObservado = request.getfixturevalue(fixture_spec)
+    caplog.set_level(logging.INFO, logger="app.worker")
+
+    await run_job(observado.spec, clock=reloj_worker, session_factory=session_factory)
+
+    registros = [r for r in caplog.records if r.getMessage() == "job finished"]
+    assert len(registros) == 1
+    datos = vars(registros[0])
+    fila = (await _corridas(session_factory))[observado.spec.name]
+    assert fila.finished_at is not None
+    inicio, fin = fila.started_at.astimezone(UTC), fila.finished_at.astimezone(UTC)
+    assert datos["started_at"] == inicio.isoformat()
+    assert datos["finished_at"] == fin.isoformat()
+    assert datetime.fromisoformat(datos["started_at"]).utcoffset() == timedelta(0)
+    assert datetime.fromisoformat(datos["finished_at"]).utcoffset() == timedelta(0)
+    assert type(datos["duration_ms"]) is int and datos["duration_ms"] >= 0
+    assert datos["duration_ms"] == int((fin - inicio).total_seconds() * 1000)
+    assert datos["result"] == fila.result
+    assert DOCUMENTO not in _texto_de_registros(caplog)
+
+
 # Tiempo máximo ----------------------------------------------------------------------------------
 
 

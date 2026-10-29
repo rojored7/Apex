@@ -17,7 +17,9 @@ detiene a los demás. Devuelve los `JobOutcome` de los que corrió.
 
 `JobOutcome.result` es el de la fila (`ok` o `error`), o `running` si otra corrida vigente tenía el
 reclamo (la CLI lo traduce a la salida 3). Los logs llevan el nombre del job, el día, el resultado
-y el tipo del error; nunca el mensaje de la excepción (puede traer datos de un socio).
+y el tipo del error, y `job finished` además `started_at` y `finished_at` (los de la fila, ISO 8601
+UTC) y `duration_ms` (US-113 criterio 6, S4A-D128); nunca el mensaje de la excepción (puede traer
+datos de un socio).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -88,6 +90,8 @@ class JobOutcome:
     result: str
     error_type: str | None
     details: dict[str, Any] = field(default_factory=dict)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 async def _reclamar(
@@ -127,8 +131,8 @@ async def _cerrar(
     result: str,
     error: str | None,
     details: dict[str, Any],
-) -> bool:
-    """Cierra el intento; `False` si la fila ya no era de este intento (S4A-D77)."""
+) -> JobRunView | None:
+    """Cierra el intento; `None` si la fila ya no era de este intento (S4A-D77)."""
     async with session_factory() as sesion:
         vista = await finish_run(
             sesion,
@@ -139,7 +143,7 @@ async def _cerrar(
             details=details,
         )
         await sesion.commit()
-    return vista is not None
+    return vista
 
 
 async def _ejecutar(spec: JobSpec, ctx: JobContext, reclamo: JobRunView) -> JobOutcome:
@@ -162,10 +166,27 @@ async def _ejecutar(spec: JobSpec, ctx: JobContext, reclamo: JobRunView) -> JobO
         cerrado = await asyncio.shield(
             _cerrar(ctx.session_factory, reclamo, result=result, error=error_type, details=details)
         )
-    if not cerrado:
+    fin: datetime | None
+    if cerrado is None:
         logger.warning(LOST_CLAIM, extra={"job": reclamo.job_name, "result": result})
         result, error_type = "error", LOST_CLAIM_ERROR
-    return JobOutcome(reclamo.job_name, ctx.today, result, error_type, details)
+        inicio, fin = reclamo.started_at, max(ctx.clock.now_utc(), reclamo.started_at)
+    else:
+        inicio, fin = cerrado.started_at, cerrado.finished_at
+    return JobOutcome(reclamo.job_name, ctx.today, result, error_type, details, inicio, fin)
+
+
+def _tiempos(outcome: JobOutcome) -> dict[str, Any]:
+    """`started_at` y `finished_at` en ISO 8601 UTC y `duration_ms` entero (US-113 c6, S4A-D128)."""
+    if outcome.started_at is None or outcome.finished_at is None:
+        return {}
+    inicio = outcome.started_at.astimezone(UTC)
+    fin = outcome.finished_at.astimezone(UTC)
+    return {
+        "started_at": inicio.isoformat(),
+        "finished_at": fin.isoformat(),
+        "duration_ms": int((fin - inicio).total_seconds() * 1000),
+    }
 
 
 def _informar(outcome: JobOutcome) -> None:
@@ -175,7 +196,7 @@ def _informar(outcome: JobOutcome) -> None:
         "result": outcome.result,
         "error_type": outcome.error_type,
     }
-    logger.info("job finished", extra=datos)
+    logger.info("job finished", extra=datos | _tiempos(outcome))
     if outcome.result == "error":
         contexto = {k: v for k, v in datos.items() if v is not None}
         alert("job_failed", **contexto)

@@ -824,3 +824,105 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`, HEAD `e36fff6`, árbol limpio a
 **Otros.**
 - `nginx/default.conf` usa el `proxy_read_timeout` por defecto (60 s), por encima de los 45 s del plazo síncrono.
 - El coach ve el tablero sin ingresos ni montos (D118): `with_amount` en `_payment_phrase` y `income_month_cop=None`.
+
+## V11 · Cierre de avisos (2026-10-29)
+
+Avisos 1, 5 y 6 de `docs/scratch/sprint-04a-verify-delivery.md` (§16).
+
+- Aviso 1 · US-113 criterio 6 (S4A-D128, cumplido): `api/src/app/worker/runner.py` agrega a `job finished` `started_at` y `finished_at` (los de la fila que devuelve `finish_run`, ISO 8601 UTC) y `duration_ms` (entero). `_cerrar` devuelve la vista de `finish_run` (o `None` si `lost_claim`) y `JobOutcome` gana `started_at` y `finished_at` opcionales. La alerta `job_failed` no cambia de claves. Prueba en rojo primero (2 fallos) y luego verde: `tests/worker/test_runner.py::test_el_log_job_finished_lleva_inicio_fin_y_duracion_de_la_fila` (parametrizada: job bueno y job que lanza; exige que el documento del mensaje no llegue al log).
+- Aviso 5 · R-3 de S4A-D127: dueño Sprint 4B (medir con `gc.callbacks` en el api bajo carga; `gc.freeze()` tras el arranque si hace falta).
+- Aviso 6 · S4A-D103: dueño v0.2, junto a OpenBao/despliegue con varios workers. `sessionStorage` en `web/src/pages/RouteError.tsx:41-43`: aceptada (marca de tiempo del Sprint 2); dueño front, regla de lint explícita en 4B.
+- Registro: `DECISIONES.md`, "V11 · Cierre de avisos del verify-delivery (S4A-D128 y dueños)"; `SPRINT-04A.md`, "Deuda con dueño" (tres filas nuevas y la fila de S4A-D103 apunta a su dueño).
+- Verificación: `ruff check`, `ruff format --check` y `mypy src` limpios; gate `slice-gate.sh worker` con `tests/worker/test_runner.py` y `tests/worker/test_main.py`.
+
+## V12 · Limpieza P2-1 por API (2026-10-29 10:34–10:46Z)
+
+Pegada desde la nota del orquestador (sin tokens ni contraseñas; comprobado con grep). Los planes candidatos con membresías activas se desactivaron (`deactivate 200`) en vez de borrarse.
+
+Evidencia (2026-10-29, 10:34–10:46 UTC)
+
+Antes psql: vivos 177 (activos 177), total filas 190; candidatos 174; membresías candidatas: active 72, pending_payment 27, cancelled 24, expired 1, frozen 24.
+API antes: active=true 177 | active=false 0.
+
+```
+2026-10-29T10:35:31.583Z TOTALES ANTES: active=true total=177 | active=false total=0
+2026-10-29T10:35:32.206Z planes vivos por API=177 candidatos=174 no tocados=mensual ; Mensual V50137 ; Tiquetera 12
+2026-10-29T10:45:06.714Z RESUMEN borrados=102 desactivados=72 anuladas=27 otros=0
+2026-10-29T10:45:06.714Z DESACTIVADO 52322d09-d473-42da-b7aa-e1374d9506cf 0 E2E 2wq4d8h2r -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.714Z DESACTIVADO 719e96b3-da9d-4167-a14e-726b75875c54 0 E2E 2wq4d8ppi -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.714Z DESACTIVADO 7f0f40d6-92b8-4de6-9d88-3a12e1b8d176 0 E2E 2wq4d8umi -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.714Z DESACTIVADO c01d14a9-e1bc-4638-87f3-3f183fbaf40e 0 E2E 2wq4d9x1r -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 9dc884d9-a671-45c9-bf3a-c40e0cf2b9d8 0 E2E 2wq4da5iu -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 1bc3eb03-881b-40de-8ab3-eeae2f606a0a 0 E2E 2wq4daaq3 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 91e0815a-abb6-4dfe-be1a-70f3e2183d24 0 E2E 2wq5361c5 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 7ff7a24c-a616-42bf-8955-0730435edeb1 0 E2E 2wq5368d2 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 56bbd91a-c9ad-4d98-a979-e0a10d756c7c 0 E2E 2wq536e3z -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO f585384d-c6eb-4c2d-b4bf-f07d26336dec 0 E2E 2wq537bmj -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 6b2e4b9c-76bc-4de1-a80a-249bf4d21fb0 0 E2E 2wq537iyn -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 48e925d5-a429-4aa9-8aa1-1b4dba5f3080 0 E2E 2wq537oai -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.715Z DESACTIVADO 1a87f0c1-bf18-4ed2-b13b-8db3610bfab9 0 E2E 2wq54bqnw -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO b5c2a698-e8e2-4c3e-a932-b0ff91d21f34 0 E2E 2wq54bxj6 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO 575d4f09-933c-4a68-95a7-378cd974b342 0 E2E 2wq54c32i -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO 82b7d65a-50df-4bb3-97d5-347fe44a9226 0 E2E 2wq54cx4l -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO 32d1e7e8-3113-4163-a851-81c9f9542704 0 E2E 2wq54d41z -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO e262acba-cd73-44f2-a109-28aacb37adb0 0 E2E 2wq54d9h9 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO 67e6ee6a-9f95-487d-bfc5-099a35f82ce0 0 E2E 2wq54gcvt -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO d3e66c3a-a25f-46dc-adef-b9c8bfad167d 0 E2E 2wq54gk8c -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.716Z DESACTIVADO 2f46cdee-a2e7-4943-b64a-480e46db88ee 0 E2E 2wq54gpp2 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO b02deea5-f3fc-4628-85ed-f07afe98348a 0 E2E 2wq54hp82 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO 19529a14-6fad-42aa-a79f-660cd60e7d24 0 E2E 2wq54hw7d -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO e77d2838-6d33-4b81-8f5d-3290cebbf32f 0 E2E 2wq54i1k8 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO b6fab314-72cb-4320-8e50-77bc7fb7ef44 Mensual mvjipju3 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO 5671865b-68c6-4c2b-8cd3-03368a906f9e Mensual mvo49gmg -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO 70f90040-007d-4dba-8e1d-e167e6578395 Mensual mvo49irz -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO 893e6035-5e45-4212-9dcc-82298b29f402 Mensual mvo49p1l -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.717Z DESACTIVADO f11c6bb8-6d1a-4c85-9700-acd103ee8d6b Mensual mvo4bhas -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO 81fef5e2-b627-4b6c-8e26-48fc1c4cd504 Mensual mvo4bjkk -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO adffe324-9444-466a-915e-c58fc1808332 Mensual mvo4bqay -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO d2d32afa-55d3-483d-bb3f-139384b9f0bd Mensual mvo4cffq -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO 64145cb1-0c79-4ca3-9080-3dc3c5f33802 Mensual mvo4chuh -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO f8a8c4f9-e070-4334-a743-c15fbfa88fca Mensual mvo4coeg -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO a76f8d7e-9ea2-4807-8cd5-823527c31b6f Mensual mvo4dr0g -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO 615de2fa-b6d2-40f5-973e-73b431d4d326 Mensual mvo4dtr7 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.718Z DESACTIVADO 8537f2e8-de41-487a-af88-29a45ee3d41f Mensual mvo4e0nz -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 7b8c505d-1e8a-4f31-a077-ff729a3819c6 Mensual mvo4f7ta -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 503fe5e1-eb95-411b-9bb5-88a0051bba14 Mensual mvo4fdhg -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO a6de73cd-a961-4cfe-819f-d8d7908a4531 Mensual mvo4fkxc -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 76c92526-7bde-4695-afdc-fa1dad28e24b Mensual mvo4gctw -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 28493352-8e85-458f-a4a6-278fd28a982c Mensual mvo4gfwd -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 9ac53559-74f8-4669-8808-e1cc59005f5f Mensual mvo4gmkx -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.719Z DESACTIVADO 66487a6c-6021-4ef7-8f4a-78dac5be9107 Mensual mvo4im31 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO f7efcf98-e9f1-4711-8630-d6b7e4d3059c Mensual mvo4ipag -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 6df99fd2-fab6-481f-8aac-626c5ff202bc Mensual mvo4iw6f -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 977be489-2538-479d-ae28-ad68a2746771 Mensual mvo4jmh6 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 40f2be08-3c21-4924-a3e8-3cb8119f7819 Mensual mvo4jpqj -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 8d7d99e7-2647-451f-ba9b-47d7a85e37da Mensual mvo4jwi0 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 57391f97-0b9c-44cc-a4d7-b71bd0476050 Mensual mvo4kmmo -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO e59cd0f1-046b-452b-9fbc-57b1c3659241 Mensual mvo4kqi5 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 1c52b60a-bebc-4bf8-8985-00fcb978e444 Mensual mvo4kxn8 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.720Z DESACTIVADO 1aea8153-3d8d-4a2d-b252-af549e5bc077 Mensual mvo4lqht -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO 7b251564-9291-49e4-a9d9-f8fe928e4088 Mensual mvo4lwh5 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO f57da622-a01c-4a0e-b9ad-7cb42a7699ea Mensual mvo4m4ly -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO c08f90a0-c37c-45a9-9890-38622369d6c3 Mensual mvo4p0m9 -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO b1b06baa-67dd-4d64-83a0-7de969b32e1a Mensual mvo4p4g5 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO d998e792-a88c-4d78-8d1e-5928dc3c6849 Mensual mvo4pal2 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO 94c9a3fe-a29c-4b16-8dce-f5f2a536730b Mensual mvo4q1is -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO 38d53394-8b20-459f-aaf8-6117cdc05eaf Mensual mvo4q4u6 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.721Z DESACTIVADO bc56b736-fe8c-4440-9bd6-1cedd43ac75d Mensual mvo4qbn3 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO 2fa4d291-52dc-450d-815b-200f86042dde Mensual mvo4yyun -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO 2aea11a2-9b44-45a8-b6a9-5a348bdf43ba Mensual mvo4z34m -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO d7734685-31e6-4e82-bb92-562fff94d91a Mensual mvo4z9g9 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO 533a53e1-0fde-4f17-bcaf-636f4cec44cb Mensual mvsl11af -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO a6601d42-ebf2-4bdb-9bdb-0ef6bca268a6 Mensual mvsl16x9 -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO 2530b536-dc16-4a79-980c-8610419fc8f2 Mensual mvsl1e6c -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO 3b3f4817-5dfa-4daf-9c62-3cf859edd974 Mensual mvsl55bm -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO ed745997-5d4b-426d-bd24-9750a55b1c6d Mensual mvsl5azf -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.722Z DESACTIVADO c12f47d8-852d-410a-acbb-ba9a8a097f52 Mensual mvsl5hdk -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.723Z DESACTIVADO e66ca1ed-e538-4143-8bc9-e5ab960fec5b Mensual mvsl6g3h -> plan_has_active_memberships Este plan tiene 2 membresías activas, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:06.723Z DESACTIVADO 4b03c10a-47dd-4a30-88a6-0a246f52b031 Mensual mvsl6kou -> plan_has_active_memberships Este plan tiene 1 membresía activa, desactívalo en su lugar. -> deactivate 200
+2026-10-29T10:45:07.957Z TOTALES DESPUES: active=true total=3 | active=false total=72
+```
+
+Después psql: vivos 75 (activos 3: mensual, Mensual V50137, Tiquetera 12), total filas 190; pending_payment candidatas 0 (cancelled 54 incluye los S4A-demo ya dados de baja).
+verify-audit --as admin-e2e-1793249495@apex.test: 'Cadena íntegra: 5432 registros verificados hasta el seq 5432.' exit=0
+429 recibidos: 0. 5xx: 0.

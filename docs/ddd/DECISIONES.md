@@ -1304,3 +1304,10 @@ Decisiones que fijaron los cuadernos del front al implementar y que aún no esta
 ### Deuda de front con dueño (V1)
 
 - Observación de S4A-F2 (no es una marca `DESIGN-GAP`): en la barra `Tabs` de la ficha, con nueve pestañas, a 1440 px "Membresías" queda recortada cuando la activa es Historial (desplazamiento horizontal del `Tabs` existente, no algo nuevo de F2). Además, la etiqueta "automático (aviso)" del historial no tiene contraste verificado en navegador: el axe de las corridas no la encontró. Dueño: **Sprint 4B, pantalla de ficha**.
+
+### V11 · Cierre de avisos del verify-delivery (S4A-D128 y dueños)
+
+- **S4A-D128 · El log `job finished` del worker lleva `started_at`, `finished_at` y `duration_ms` (US-113 criterio 6; aviso 1 de V11; cumplido en este cierre).** `run_job` toma `started_at` y `finished_at` de la fila que devuelve `finish_run` (los mismos de `worker.job_runs`) y los escribe en ISO 8601 UTC; `duration_ms` es el entero de milisegundos entre los dos. Si el cierre fue `lost_claim`, `started_at` es el del reclamo y `finished_at` el reloj del proceso. Sin PII y sin mensaje de excepción; la alerta `job_failed` sigue con las claves de `ALERT_CONTEXT_KEYS`. Prueba: `tests/worker/test_runner.py::test_el_log_job_finished_lleva_inicio_fin_y_duracion_de_la_fila` (caso bueno y caso de error).
+- **Dueño de S4A-D103 (aviso 6 de V11).** Las cubetas por usuario en la memoria del único proceso de Uvicorn pasan a almacén compartido cuando haya más de un proceso. Dueño: **v0.2, junto a OpenBao/despliegue con varios workers**.
+- **Dueño de R-3 de S4A-D127 (aviso 5 de V11).** La pausa del GC de generación 2 en el proceso real del api durante una verificación síncrona no se midió. Dueño: **Sprint 4B, medir con `gc.callbacks` en el api bajo carga y fijar `gc.freeze()` tras el arranque si hace falta**.
+- **Nota de V10 sobre `sessionStorage` en `web/src/pages/RouteError.tsx:41-43` (aviso 6 de V11).** Guarda solo la marca de tiempo de la única recarga automática por chunk (Sprint 2), sin datos del usuario ni tokens: aceptada. Dueño: **front, regla de lint explícita en 4B** (lista blanca de usos de `sessionStorage`).

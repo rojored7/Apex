@@ -14,7 +14,8 @@ arranque, esas claves se quitan del origen dotenv antes de validar: están en
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Mapping
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
@@ -42,6 +43,23 @@ from pydantic_settings import (
 # Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
 # pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041: vive en `.env.seed`
 # y solo lo lee `SeedSettings` en el servicio tools; M-8).
+# H-1 / M2 (S4B-D56): con ENV=production el entorno de un servicio que lee Settings no puede traer
+# secretos de operación (`.env.ops` mezclado en `.env`). Nombres exactos y prefijos; nunca valores.
+OPS_SECRET_NAMES: Final[frozenset[str]] = frozenset({"POSTGRES_PASSWORD"})
+OPS_SECRET_PREFIXES: Final[tuple[str, ...]] = ("RCLONE_", "BACKUP_SIGN_", "BACKUP_VERIFY_")
+
+
+def ops_secret_names(environ: Mapping[str, str]) -> list[str]:
+    """Nombres (jamás valores) de las variables de operación secretas presentes en `environ`."""
+    return sorted(
+        nombre
+        for nombre in environ
+        if nombre in OPS_SECRET_NAMES
+        or nombre.startswith(OPS_SECRET_PREFIXES)
+        or (nombre.startswith("APEX_") and nombre.endswith("_DB_PASSWORD"))
+    )
+
+
 NON_API_ENV_VARS: frozenset[str] = frozenset(
     {
         "ADMIN_EMAIL",
@@ -168,6 +186,9 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
     FRONT_BASE_URL: str = "http://localhost"
     APP_VERSION: str = "dev"  # SHA corto de git en la imagen (ARG GIT_SHA)
+    # S4B-D8: cerrado por defecto (el api de producción no migra: lo hace el servicio `migrate`
+    # con el propietario). Desarrollo y pruebas lo ponen en true explícito (compose.dev.yml).
+    MIGRATE_ON_STARTUP: bool = False
 
     # Contraseñas (US-032): argon2id con los valores por defecto de argon2-cffi; en producción
     # no se aceptan por debajo de ellos. Política N-10: longitud mínima y lista de comunes.
@@ -312,6 +333,15 @@ class Settings(BaseSettings):
         if not valor.startswith(("http://", "https://")):
             raise ValueError("FRONT_BASE_URL debe empezar por http:// o https://")
         return valor.rstrip("/")
+
+    @model_validator(mode="after")
+    def _sin_secretos_de_operacion_en_produccion(self) -> Settings:
+        """M2 (S4B-D56): un `.env` mezclado con `.env.ops` no arranca en producción."""
+        if self.ENV == "production":
+            presentes = ops_secret_names(os.environ)
+            if presentes:
+                raise ConfigError(missing=[], invalid=presentes)
+        return self
 
     @model_validator(mode="after")
     def _argon2_no_mas_debil_que_el_defecto_en_produccion(self) -> Settings:

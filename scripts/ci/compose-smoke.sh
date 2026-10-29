@@ -10,6 +10,7 @@
 # crea uno efímero con una contraseña aleatoria y lo borra al salir; uno existente no se
 # toca) y comprueba que web tiene la IP fija de TRUSTED_PROXIES.
 # S4B-W0-1: tras el seed levanta backup y hace una corrida real con claves de prueba.
+# S4B-W0-3: sin perfil no se listan migrate ni dbsetup; los dos --env-file (.env y .env.ops).
 # S4A-W0-2: con api healthy levanta worker (sin perfil), exige healthy y 0 reinicios tras
 # 30 s, corre `--run-once expirations` dos veces y compara el id de las dos `--status`.
 set -euo pipefail
@@ -17,7 +18,13 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 [ -f .env ] || cp .env.example .env
-DC=(docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml)
+# S4B-W0-3 (S4B-D79, E7): las variables de operación (POSTGRES_*, puertos...) viven en .env.ops. En
+# este equipo .env es la suma de los dos ejemplos y no hace falta; en un clon limpio .env.ops sale
+# del ejemplo. Compose recibe los dos --env-file (el segundo manda si repite una clave).
+if ! grep -q "^POSTGRES_PASSWORD=" .env && [ ! -f .env.ops ]; then cp .env.ops.example .env.ops; fi
+ENVS=(--env-file .env)
+if [ -f .env.ops ]; then ENVS+=(--env-file .env.ops); fi
+DC=(docker compose "${ENVS[@]}" -f infra/compose.yml -f infra/compose.dev.yml)
 
 SEED_EFIMERO=0
 bajar() {
@@ -50,6 +57,16 @@ esperar_healthy() {
 }
 
 inicio=$(date +%s)
+# S4B-W0-3 (S4B-D99, S4B-D100): en desarrollo migrate y dbsetup llevan el perfil prod-init: sin él no
+# se listan y nada depende de ellos (el api migra al arrancar con el propietario). test_db_roles.sh
+# no corre aquí: este smoke no aplica roles.
+servicios="$("${DC[@]}" config --services | tr -d '\r')"
+for svc in migrate dbsetup; do
+  if printf '%s\n' "$servicios" | grep -qx "$svc"; then
+    echo "compose-smoke: $svc aparece sin el perfil prod-init" >&2; exit 1
+  fi
+done
+echo "compose-smoke: migrate y dbsetup solo existen con el perfil prod-init"
 "${DC[@]}" build api
 "${DC[@]}" up -d --build db db_test
 esperar_healthy db 120

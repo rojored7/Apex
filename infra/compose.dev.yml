@@ -2,7 +2,17 @@
 #   docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build
 # Recarga en caliente del api, puertos publicados en el host (parametrizados porque
 # otros proyectos pueden ocupar 80, 8000, 5432 o 5433) y db_test efímera para pytest.
+# S4B-W0-3 (S4B-D11, E9): en desarrollo api, worker, tools y backup usan la credencial del
+# PROPIETARIO (${POSTGRES_USER}) y el api migra al arrancar (MIGRATE_ON_STARTUP=true); migrate y
+# dbsetup solo existen con `--profile prod-init` y ningún servicio depende de ellos
+# (`depends_on: !override`). Los roles se aplican a mano: docs/RUNBOOK.md §12.
 services:
+  migrate:
+    profiles: ["prod-init"]
+
+  dbsetup:
+    profiles: ["prod-init"]
+
   api:
     build:
       # Solo en desarrollo: el build usa la red del host. En Docker Desktop con WSL2
@@ -12,6 +22,11 @@ services:
     environment:
       # Los eventos de archivos no cruzan de NTFS a WSL2; se usa polling.
       WATCHFILES_FORCE_POLLING: "true"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MIGRATE_ON_STARTUP: "true"
+    depends_on: !override
+      db:
+        condition: service_healthy
     volumes:
       - ../api/src:/app/src
       - ../api/migrations:/app/migrations
@@ -22,6 +37,12 @@ services:
     # Solo desarrollo (S4A-D9): el worker ve el código del repo en solo lectura; la imagen de
     # producción no cambia. No hay --reload: un cambio en app/worker/ o en un service que use
     # un job exige `restart worker` (RUNBOOK §7).
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MIGRATE_ON_STARTUP: "true"
+    depends_on: !override
+      db:
+        condition: service_healthy
     volumes:
       - ../api/src:/app/src:ro
       - ../api/migrations:/app/migrations:ro
@@ -35,6 +56,15 @@ services:
   web:
     build:
       network: host
+
+  backup:
+    # E9 (S4B-W0-3): sin dbsetup en desarrollo no existe apex_backup; usa al propietario.
+    environment:
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    depends_on: !override
+      db:
+        condition: service_healthy
 
   db:
     ports:

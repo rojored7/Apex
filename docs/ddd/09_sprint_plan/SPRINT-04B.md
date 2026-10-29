@@ -106,6 +106,7 @@ Se sella con `scripts/workflow/wave0-gate.sh <slice> [archivos de prueba...]`: `
   - `.env.ops.example`, dependencias y documentación de contrato (T-DOC) en los desgloses y este archivo.
 - **Slice S4B-W0-2 · Migración `0014_audit_log_triggers_always` y re-armado de triggers.** Deuda S4A-D98: `ENABLE ALWAYS` de los triggers de `audit_log` y `verifications`, y el texto de `forbid_mutation`. Con la condición de los índices de `audit_log` escrita (S4B-D5).
 - **Slice S4B-W0-3 · Roles de base, migraciones fuera del api, entorno por servicio y endurecimiento.** Son las tareas DevOps de US-118, US-117 y US-116.
+  - **Hecho en S4B-W0-3:** `infra/db/` (roles, permisos por tabla y columna, `revoke.sql`, `apply.sh`), servicios `migrate` y `dbsetup`, `MIGRATE_ON_STARTUP`, `.env`/`.env.ops` por servicio, red parametrizada, endurecimiento (L-7), zona `apex_health` de Nginx, `25P03` y el rollback de `crypto_ops`. Ver el bloque S4B-W0-3 de `docs/ddd/DECISIONES.md`.
   - Servicios `migrate` y `dbsetup`; `depends_on` con `service_healthy`.
   - Healthchecks de `db`, `api`, `web` y `backup`.
   - Rol de base del api separado (S3-D49, reforzado por I-2 de la revisión V10 del Sprint 3): el api y el worker se conectan con roles que no son superusuario ni dueños de los esquemas; las migraciones corren con el rol dueño. Así el api no puede apagar ni borrar los triggers de inmutabilidad con SQL propio.

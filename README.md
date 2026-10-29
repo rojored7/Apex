@@ -35,7 +35,7 @@ Requisitos: Docker Engine con Compose v2 (en Windows, Docker Desktop con WSL2), 
 
 Todos los comandos se corren desde la raíz del repositorio.
 
-1. `cp .env.example .env` y cambia todos los `cambiar-esto`. Si otro proyecto ocupa el 80, el 8000, el 5432 o el 5433, ajusta `WEB_PORT`, `API_PORT`, `DB_PORT` y `DB_TEST_PORT` (y el puerto de `TEST_DATABASE_URL`).
+1. `cat .env.example .env.ops.example > .env` (en desarrollo `.env` es la suma de los dos ejemplos, S4B-D79; en un servidor van separados en `.env` y `.env.ops`, ver `infra/README.md`) y cambia todos los `cambiar-esto`. Si otro proyecto ocupa el 80, el 8000, el 5432 o el 5433, ajusta `WEB_PORT`, `API_PORT`, `DB_PORT` y `DB_TEST_PORT` (y el puerto de `TEST_DATABASE_URL`).
 2. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml up -d --build` levanta `db`, `db_test`, `api` y `web`. El `--env-file .env` es obligatorio: Compose interpola los puertos desde la carpeta `infra/`.
 3. `docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml run --rm tools init-keys` crea la KEK, la llave de firma del bus y el par JWT Ed25519 en el volumen `keys`, con modo 600; es idempotente, nunca sobrescribe. Las DEK por clase de dato las crea el api al arrancar (US-025).
 4. `curl http://localhost:${API_PORT:-8000}/health` y `curl http://localhost:${WEB_PORT:-80}/api/v1/health` responden 200. Al arrancar, el api aplica las migraciones y crea las llaves de datos (DEK) que falten.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from logging.config import fileConfig
 from typing import Any
 
@@ -54,6 +55,10 @@ def _url() -> str:
     url = config.get_main_option("sqlalchemy.url")
     if url:
         return url
+    # Servicio `migrate` (S4B-D8): solo trae DATABASE_URL del propietario, no el resto de Settings.
+    url_entorno = os.environ.get("DATABASE_URL")
+    if url_entorno:
+        return url_entorno
     from app.core.config import get_settings
 
     return get_settings().DATABASE_URL.get_secret_value()
@@ -65,6 +70,11 @@ def include_name(name: str | None, type_: str, parent_names: dict[str, Any]) -> 
     return True
 
 
+def _anotar_revision(*, step: Any, **_: Any) -> None:
+    """Última revisión aplicada: `main.run_migrations` nombra la que sigue si falla (S4B-D8)."""
+    config.attributes["ultima_revision"] = step.up_revision_id
+
+
 def do_run_migrations(connection: Connection) -> None:
     connection.execute(text("SELECT pg_advisory_lock(:clave)"), {"clave": MIGRATION_LOCK_KEY})
     try:
@@ -74,7 +84,9 @@ def do_run_migrations(connection: Connection) -> None:
             include_schemas=True,
             include_name=include_name,
             compare_type=True,
+            on_version_apply=_anotar_revision,
         )
+        config.attributes["ultima_revision"] = context.get_context().get_current_revision()
         with context.begin_transaction():
             context.run_migrations()
         connection.commit()

@@ -171,7 +171,8 @@ def settings_prueba(tmp_path: Path, migrated_database: str, claves_prueba: Path)
         "UPLOADS_DIR=/data/uploads\n"
         'CORS_ORIGINS=["http://localhost"]\n'
         "LOG_LEVEL=INFO\n"
-        "ENV=dev\n",
+        "ENV=dev\n"
+        "MIGRATE_ON_STARTUP=true\n",
         encoding="utf-8",
     )
     return load_settings(env_file=env)

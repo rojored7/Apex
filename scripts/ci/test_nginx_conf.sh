@@ -132,6 +132,20 @@ if grep -Fq "return 429 '{\"error\":{\"code\":\"rate_limited\",\"message\":\"Dem
 if grep -Eq '^\s*add_header\s+Retry-After\s+"60"\s+always;' <<< "$lim_loc"; then ok "@rate_limited con Retry-After 60"; else falla "@rate_limited sin Retry-After 60"; fi
 if grep -Eq '^\s*default_type\s+application/json;' <<< "$lim_loc"; then ok "@rate_limited con application/json"; else falla "@rate_limited sin default_type application/json"; fi
 
+# S4B-W0-3 (S4B-D60, M-2): /api/v1/health tiene su propia zona (30r/m por IP, burst 10 nodelay) y el
+# 429 sale en el envelope; la zona vive en un snippet (default.conf no define zonas) y NO es apex_auth.
+directiva '^\s*limit_req_zone\s+\$binary_remote_addr\s+zone=apex_health:1m\s+rate=30r/m;' "limit_req_zone apex_health a 30r/m por IP (S4B-D60)"
+health_loc="$(bloque '= /api/v1/health')"
+if [ -n "$health_loc" ]; then ok "existe location = /api/v1/health"; else falla "falta location = /api/v1/health"; fi
+if grep -Eq '^\s*limit_req\s+zone=apex_health\s+burst=10\s+nodelay;' <<< "$health_loc"; then ok "/api/v1/health: limit_req zone=apex_health burst=10 nodelay"; else falla "/api/v1/health sin limit_req zone=apex_health burst=10 nodelay"; fi
+if grep -Eq '^\s*error_page\s+429\s+=\s+@rate_limited;' <<< "$health_loc"; then ok "/api/v1/health: error_page 429 = @rate_limited (envelope)"; else falla "/api/v1/health sin error_page 429 = @rate_limited"; fi
+if grep -q 'include snippets/proxy-api.conf;' <<< "$health_loc"; then ok "/api/v1/health hace proxy al api con las cabeceras comunes"; else falla "/api/v1/health no incluye proxy-api.conf"; fi
+if grep -q 'apex_auth' <<< "$health_loc"; then falla "/api/v1/health no debe usar la zona apex_auth"; else ok "/api/v1/health sin limit_req de apex_auth"; fi
+cuerpo_max "= /api/v1/health" 64k
+n_zonas_health="$(cat "$CONF" "$SNIP"/*.conf | grep -c 'zone=apex_health:' || true)"
+if [ "$n_zonas_health" = "1" ]; then ok "la zona apex_health se declara una sola vez"; else falla "la zona apex_health se declara $n_zonas_health veces (se esperaba 1)"; fi
+if [ -f "$SNIP/health-zone.conf" ] || grep -Eq 'zone=apex_health:' "$SNIP"/*.conf; then ok "la zona apex_health vive en snippets/ (default.conf no define zonas)"; else falla "la zona apex_health debe vivir en un snippet de snippets/"; fi
+
 # V4 del Sprint 2 (perfil E2E del borde): la zona de limit_req vive en snippets/auth-zone.conf,
 # incluida en el contexto http por default.conf; la imagen lleva la de producción (60r/m) y
 # solo infra/compose.e2e.yml monta encima infra/nginx/e2e/auth-zone.conf (fuera de snippets/,
@@ -160,6 +174,8 @@ FUNCIONAL+=" && head -c 100000 /dev/zero | curl -s -o /dev/null -w 'PRIV100 %{ht
 FUNCIONAL+=" && head -c 140000 /dev/zero | curl -s -o /dev/null -w 'PRIV140 %{http_code}\n' -X PATCH --data-binary @- http://127.0.0.1/api/v1/settings/privacy"
 FUNCIONAL+=" && for i in \$(seq 1 45); do curl -s -o /dev/null -w 'CODE %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1/api/v1/auth/login; done"
 FUNCIONAL+=" && curl -s -D - -o /tmp/b429 -X POST -d '{}' http://127.0.0.1/api/v1/auth/login | sed 's/^/H429 /' && sed 's/^/B429 /' /tmp/b429 && echo"
+FUNCIONAL+=" && for i in \$(seq 1 45); do curl -s -o /dev/null -w 'HCODE %{http_code}\n' http://127.0.0.1/api/v1/health; done"
+FUNCIONAL+=" && curl -s -D - -o /tmp/h429 http://127.0.0.1/api/v1/health | sed 's/^/HH429 /' && sed 's/^/HB429 /' /tmp/h429 && echo"
 FUNCIONAL+=" && sleep 0.3 && nginx -s quit; sleep 0.3"
 salida="$(tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$FUNCIONAL" 2>&1 | tr -d '\r' || true)"
 if grep -q '"uri":"/index.html"' <<< "$salida"; then ok "funcional: /restablecer/<token> queda en el log como /index.html"; else falla "funcional: no apareció la línea de /restablecer/ en el access log"; fi
@@ -172,6 +188,13 @@ if [ "$n429" -ge 1 ] && [ "$npass" -ge 31 ]; then ok "funcional: 45 POST a /auth
 if grep -Fq 'B429 {"error":{"code":"rate_limited","message":"Demasiados intentos. Espera un momento."}}' <<< "$salida"; then ok "funcional: el 429 de Nginx lleva el envelope"; else falla "funcional: el 429 de Nginx no lleva el envelope"; fi
 if grep -qi '^H429 Retry-After: 60$' <<< "$salida" && grep -qi '^H429 Content-Type: application/json' <<< "$salida"; then ok "funcional: el 429 lleva Retry-After 60 y application/json"; else falla "funcional: el 429 sin Retry-After 60 o sin application/json"; fi
 if grep -qi '^H429 Cache-Control: no-store$' <<< "$salida"; then ok "funcional: el 429 lleva Cache-Control no-store"; else falla "funcional: el 429 sin Cache-Control no-store"; fi
+
+# S4B-D60: 45 GET seguidos a /api/v1/health: pasan las ráfagas (502 con el upstream cerrado) y el resto 429.
+nh429="$(grep -c '^HCODE 429$' <<< "$salida" || true)"
+nhpass="$(grep -c '^HCODE 502$' <<< "$salida" || true)"
+if [ "$nh429" -ge 1 ] && [ "$nhpass" -ge 10 ]; then ok "funcional: 45 GET a /api/v1/health: $nhpass pasan (burst 10) y $nh429 reciben 429"; else falla "funcional: ráfaga a /api/v1/health con $nhpass pasados y $nh429 con 429 (se esperaba >= 10 y >= 1)"; fi
+if grep -Fq 'HB429 {"error":{"code":"rate_limited","message":"Demasiados intentos. Espera un momento."}}' <<< "$salida"; then ok "funcional: el 429 de /api/v1/health lleva el envelope"; else falla "funcional: el 429 de /api/v1/health no lleva el envelope"; fi
+if grep -qi '^HH429 Retry-After: 60$' <<< "$salida" && grep -qi '^HH429 Cache-Control: no-store$' <<< "$salida"; then ok "funcional: el 429 de /api/v1/health lleva Retry-After y no-store"; else falla "funcional: el 429 de /api/v1/health sin Retry-After 60 o sin no-store"; fi
 
 codigo_de() { grep "^$1 " <<< "$salida" | awk '{print $2}' || true; }
 for par in "API60 502" "API70 413" "PRIV100 502" "PRIV140 413"; do

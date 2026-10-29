@@ -55,7 +55,10 @@ def _texto(registro: logging.LogRecord) -> str:
 
 
 def test_las_claves_de_contexto_son_las_del_plan() -> None:
-    assert frozenset({"job", "result", "error_type", "attempts", "run_date"}) == ALERT_CONTEXT_KEYS
+    assert (
+        frozenset({"job", "result", "error_type", "attempts", "run_date", "sqlstate"})
+        == ALERT_CONTEXT_KEYS
+    )
 
 
 def test_log_alert_sink_esta_registrado_por_defecto() -> None:

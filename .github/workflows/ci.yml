@@ -64,6 +64,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends age=1.1.1-1ubuntu0.24.04.3
           age --version
+      - name: contenedor de la base de prueba (S4B-D101)
+        # tests/migrations/test_db_grants.py y test_db_apply.py ejecutan roles.sql y grants.sql REALES con
+        # `docker exec <contenedor> psql` (psql 16 de la propia imagen de la base); en el runner el
+        # contenedor del servicio postgres no se llama apex-db_test-1, así que se busca por su puerto.
+        run: |
+          nombre="$(docker ps --filter publish=5432 --format "{{.Names}}" | head -1)"
+          [ -n "$nombre" ] || { echo "::error::no se encontró el contenedor del servicio postgres"; exit 1; }
+          docker exec "$nombre" psql --version
+          echo "APEX_DB_TEST_CONTAINER=$nombre" >> "$GITHUB_ENV"
       - name: lint
         working-directory: api
         run: uv run ruff check .
@@ -272,6 +281,7 @@ jobs:
         if: steps.img.outputs.smoke == 'true'
         run: |
           cp .env.example .env
+          cp .env.ops.example .env.ops
           bash scripts/ci/compose-smoke.sh
 
   e2e-stack:
@@ -286,7 +296,9 @@ jobs:
       # V4 del Sprint 2 (E5): perfil E2E del borde. compose.e2e.yml monta sobre la zona de
       # limit_req de la imagen (60r/m) otra con un tope alto: todo el tráfico del runner llega
       # a Nginx desde la misma IP y la suite agota los 60r/m con ráfaga 30 en segundos.
-      DC: docker compose --env-file .env -f infra/compose.yml -f infra/compose.e2e.yml
+      # S4B-W0-3 (S4B-D79): dos archivos de entorno; el stack arranca como en producción (migrate y
+      # dbsetup completados antes del api, que corre como apex_api).
+      DC: docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.e2e.yml
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -317,6 +329,18 @@ jobs:
           subidas="$(grep -cE '^USER_(WRITE|ADMIN_WRITE|REVEAL)_LIMIT_PER_MIN=3000$|^USER_(MEMBERS_WRITE|SEARCH)_LIMIT_PER_MIN=6000$|^USER_DETAIL_LIMIT_PER_MIN=12000$|^USER_REVEAL_LIMIT_PER_(HOUR=20000|DAY=60000)$|^USER_READ_LIMIT_PER_MIN=12000$|^USER_AUDIT_VERIFY_LIMIT_PER_MIN=300$|^USER_AUDIT_VERIFY_LIMIT_PER_HOUR=2000$' .env)"
           [ "$subidas" = "11" ] || { echo "E15: se esperaban 11 cubetas USER_* subidas y hay $subidas" >&2; exit 1; }
           umask 077
+          # .env.ops (S4B-D56): contraseña del propietario y de cada rol, de 48 caracteres (hex 24), distintas y
+          # enmascaradas antes de escribirlas. DATABASE_URL del propietario lleva la misma contraseña.
+          cp .env.ops.example .env.ops
+          for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD; do
+            valor="$(openssl rand -hex 24)"
+            echo "::add-mask::$valor"
+            sed -i "s/^$var=.*/$var=$valor/" .env.ops
+            if [ "$var" = "POSTGRES_PASSWORD" ]; then
+              sed -i "s#^DATABASE_URL=postgresql+asyncpg://apex:cambiar-esto@#DATABASE_URL=postgresql+asyncpg://apex:$valor@#" .env.ops
+            fi
+          done
+          [ "$(grep -c "cambiar-esto" .env.ops)" = "0" ] || { echo "::error::.env.ops conserva cambiar-esto"; exit 1; }
           clave="$(openssl rand -hex 16)"
           # La máscara va antes de cualquier uso: desde aquí el valor sale como *** en el log.
           echo "::add-mask::$clave"
@@ -336,6 +360,18 @@ jobs:
           $DC --profile tools run --rm tools init-keys
       - name: levantar el stack
         run: $DC up -d --build
+      - name: esperar migrate y dbsetup completados (S4B-D11)
+        run: |
+          for svc in migrate dbsetup; do
+            for i in $(seq 1 60); do
+              id="$($DC ps -a -q "$svc" | head -1)"
+              estado="$([ -n "$id" ] && docker inspect -f "{{.State.Status}} {{.State.ExitCode}}" "$id" || true)"
+              [ "$estado" = "exited 0" ] && { echo "$svc completado"; break; }
+              case "$estado" in "exited "[1-9]*) $DC logs --tail 60 "$svc"; exit 1 ;; esac
+              [ "$i" = "60" ] && { echo "$svc no terminó (estado: $estado)"; $DC logs --tail 60 "$svc"; exit 1; }
+              sleep 3
+            done
+          done
       - name: esperar api y web healthy
         run: |
           for svc in api web; do
@@ -346,6 +382,13 @@ jobs:
               sleep 3
             done
           done
+      - name: aislamiento del entorno por servicio (H-1, S4B-D56)
+        # Prueba viva: /proc/1/environ de api, worker y backup. Solo imprime nombres de variable.
+        run: bash scripts/ci/test_env_isolation.sh
+      - name: roles de base de datos (S4B-D100, test_db_roles.sh)
+        # Justo después de dbsetup y antes de los E2E: e2e-stack sí aplica los roles y el api corre
+        # como apex_api, así que los grants se ejercitan con tráfico real. Nunca imprime contraseñas.
+        run: bash scripts/ci/test_db_roles.sh
       - name: seed del primer admin
         # --no-force-change (S2-B2) solo se acepta con ENV=dev, el valor de .env.example: las
         # specs no pasan por el cambio obligatorio de contraseña.

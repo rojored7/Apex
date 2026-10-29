@@ -102,3 +102,13 @@ async def test_docs_apagados_en_produccion(settings_prueba: Settings, tmp_path: 
         assert (await c.get("/health")).status_code == 200
     async with _cliente(settings_prueba) as c:
         assert (await c.get("/docs")).status_code == 200
+
+
+async def test_la_version_de_health_es_la_de_app_version(settings_prueba: Settings) -> None:
+    """S4B-D13: `build.args.GIT_SHA` -> `APP_VERSION` del contenedor -> `/health.version`."""
+    con_version = settings_prueba.model_copy(update={"APP_VERSION": "v0.1.0"})
+    async with _cliente(con_version) as c:
+        r1 = await c.get("/health")
+        r2 = await c.get("/api/v1/health")
+    assert r1.json()["version"] == r2.json()["version"] == "v0.1.0"
+    assert "-dirty" not in r1.text, "S4B-D67: nunca -dirty en la versión pública"

@@ -137,6 +137,7 @@ def export_settings() -> Settings:
         COOKIE_SECURE=False,
         FRONT_BASE_URL="http://localhost",
         APP_VERSION="export",
+        MIGRATE_ON_STARTUP=True,
     )
 
 

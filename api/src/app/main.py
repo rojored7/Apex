@@ -23,12 +23,13 @@ import asyncio
 import importlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any, Final
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -107,9 +108,28 @@ def alembic_config(settings: Settings, script_location: str | None = None) -> Co
     return cfg
 
 
+def _failed_revision(cfg: Config) -> str | None:
+    """Revisión que estaba aplicando Alembic cuando falló: la que sigue a la última aplicada (que
+    `migrations/env.py` anota en `cfg.attributes`). Solo ids de revisión, nunca la URL."""
+    ultima = cfg.attributes.get("ultima_revision")
+    try:
+        pendientes = list(
+            ScriptDirectory.from_config(cfg).iterate_revisions("head", ultima or "base")
+        )
+    except Exception:  # pragma: no cover - cadena ilegible: se loguea sin revisión
+        return None
+    return pendientes[-1].revision if pendientes else None
+
+
 def run_migrations(settings: Settings, script_location: str | None = None) -> None:
-    """`alembic upgrade head`. Síncrono: desde el loop se llama con `asyncio.to_thread`."""
-    command.upgrade(alembic_config(settings, script_location), "head")
+    """`alembic upgrade head`. Síncrono: desde el loop se llama con `asyncio.to_thread`. Si falla,
+    el error se relanza con `apex_revision` (la revisión que falló) para que el log la nombre."""
+    cfg = alembic_config(settings, script_location)
+    try:
+        command.upgrade(cfg, "head")
+    except Exception as error:
+        error.apex_revision = _failed_revision(cfg)  # type: ignore[attr-defined]
+        raise
 
 
 async def _startup(
@@ -122,8 +142,11 @@ async def _startup(
     if run_migrations_on_startup:
         try:
             await asyncio.to_thread(run_migrations, settings, migrations_script_location)
-        except Exception:
-            logger.exception("las migraciones fallaron al arrancar; el api no acepta tráfico")
+        except Exception as error:
+            logger.exception(
+                "las migraciones fallaron al arrancar; el api no acepta tráfico",
+                extra={"revision": getattr(error, "apex_revision", None)},
+            )
             raise
         logger.info("migraciones al día")
     # US-023/US-033: proveedor de llaves y llaves JWT se abren antes que cualquier paso; sin KEK
@@ -182,27 +205,20 @@ def _install_middleware(app: FastAPI, settings: Settings) -> None:
         logger.info("CORS habilitado para: %s", ", ".join(settings.CORS_ORIGINS))
 
 
-def create_app(
-    settings: Settings | None = None,
-    *,
-    run_migrations_on_startup: bool = True,
-    migrations_script_location: str | None = None,
-) -> FastAPI:
-    """La app del api: logs, engine, listeners del bus y la auditoría, middleware, services de
-    los módulos y routers bajo `/api/v1` (y `/health` también en la raíz)."""
-    settings = settings or get_settings()
-    configure_logging(settings)
-    db.configure_engine(db.create_engine_from(settings))
-    install_audit_listeners()  # US-016: created_by y auditoría en cada flush
-    install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
-    install_crypto_type_listeners()  # US-028: cifra los Secret pendientes en cada flush
+def _should_migrate(settings: Settings, explicito: bool | None) -> bool:
+    """S4B-D8: el argumento explícito de `create_app` manda; con `None`, `MIGRATE_ON_STARTUP`."""
+    return settings.MIGRATE_ON_STARTUP if explicito is None else explicito
 
+
+def _make_lifespan(
+    settings: Settings, migrar: bool, migrations_script_location: str | None
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             await _startup(
                 settings,
-                run_migrations_on_startup=run_migrations_on_startup,
+                run_migrations_on_startup=migrar,
                 migrations_script_location=migrations_script_location,
             )
             yield
@@ -212,6 +228,27 @@ def create_app(
             configure_provider(None)
             await db.dispose_engine()
 
+    return lifespan
+
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    run_migrations_on_startup: bool | None = None,
+    migrations_script_location: str | None = None,
+) -> FastAPI:
+    """La app del api: logs, engine, listeners del bus y la auditoría, middleware, services de
+    los módulos y routers bajo `/api/v1` (y `/health` también en la raíz). Migra al arrancar según
+    `run_migrations_on_startup`; con `None` manda `Settings.MIGRATE_ON_STARTUP` (S4B-D8)."""
+    settings = settings or get_settings()
+    configure_logging(settings)
+    db.configure_engine(db.create_engine_from(settings))
+    install_audit_listeners()  # US-016: created_by y auditoría en cada flush
+    install_oplog_listeners()  # US-029: crypto_ops en el commit de cada unidad de trabajo
+    install_crypto_type_listeners()  # US-028: cifra los Secret pendientes en cada flush
+
+    migrar = _should_migrate(settings, run_migrations_on_startup)
+    lifespan = _make_lifespan(settings, migrar, migrations_script_location)
     produccion = settings.is_production
     app = FastAPI(
         title="APEX API",

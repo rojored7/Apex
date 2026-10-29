@@ -174,8 +174,10 @@ def violated_constraint(error: IntegrityError) -> str | None:
     return nombre if isinstance(nombre, str) else None
 
 
-BUSY_SQLSTATES: Final[frozenset[str]] = frozenset({"55P03", "57014", "40P01"})
-"""`lock_not_available`, `query_canceled` (statement_timeout) y `deadlock_detected` (S3-D67)."""
+BUSY_SQLSTATES: Final[frozenset[str]] = frozenset({"55P03", "57014", "40P01", "25P03"})
+"""`lock_not_available`, `query_canceled` (statement_timeout), `deadlock_detected` (S3-D67) y
+`idle_in_transaction_session_timeout` (25P03, S4B-D12: lo fija el rol de base). `57P01/2/3` (apagado
+de la base) siguen en 500."""
 BUSY_MESSAGE: Final = "La base de datos está ocupada; intenta de nuevo en un momento."
 BUSY_RETRY_AFTER_S: Final = 1
 

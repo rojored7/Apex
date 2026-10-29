@@ -21,7 +21,7 @@ from typing import Final, Protocol
 logger = logging.getLogger("app.alerts")
 
 ALERT_CONTEXT_KEYS: Final[frozenset[str]] = frozenset(
-    {"job", "result", "error_type", "attempts", "run_date"}
+    {"job", "result", "error_type", "attempts", "run_date", "sqlstate"}
 )
 """Únicas claves de contexto admitidas (S4A-D7, precisión de S4A-D56 a D7)."""
 

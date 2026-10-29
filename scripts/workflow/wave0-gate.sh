@@ -18,8 +18,8 @@ Uso: wave0-gate.sh <slice> [archivos de prueba de Python...]
   1. bash -n de cada .sh bajo infra/, scripts/ci/ y scripts/workflow/
   2. scripts/ci: test_check_key_files, test_images_pinned, test_nginx_conf,
      test_compose_config, test_infra_scripts y test_api_image.sh apex-api:local
-  3. docker compose config --quiet: compose.yml, con --profile tools, con compose.verify.yml
-     y con compose.dev.yml
+  3. docker compose config --quiet (con .env y .env.ops, o los dos ejemplos): compose.yml, con
+     --profile tools, con compose.verify.yml, con compose.dev.yml y con compose.dev.yml + prod-init
   4. exec scripts/workflow/slice-gate.sh architecture [archivos...]  (escribe el sello)
 
 Ejemplo: wave0-gate.sh W0-1 tests/core/test_env_example.py tests/core/test_config.py
@@ -55,8 +55,11 @@ if [ "${WAVE0_SKIP_IMAGE:-0}" != "1" ] && [ -f scripts/ci/test_api_image.sh ]; t
   bash scripts/ci/test_api_image.sh apex-api:local || fallo "test_api_image"
 fi
 
-ENVF=.env
-[ -f "$ENVF" ] || ENVF=.env.example
+# S4B-W0-3 (S4B-D79, E7): dos archivos de entorno. Sin .env/.env.ops se usan los ejemplos; en este
+# equipo .env es la suma de los dos y .env.ops puede no existir.
+ENVF=(--env-file .env)
+if [ ! -f .env ]; then ENVF=(--env-file .env.example --env-file .env.ops.example)
+elif [ -f .env.ops ]; then ENVF+=(--env-file .env.ops); fi
 TMP_ID="$(mktemp)"
 trap 'rm -f "$TMP_ID"' EXIT
 combos=(
@@ -64,12 +67,13 @@ combos=(
   "--profile tools -f infra/compose.yml"
   "-f infra/compose.yml -f infra/compose.verify.yml"
   "-f infra/compose.yml -f infra/compose.dev.yml"
+  "--profile prod-init -f infra/compose.yml -f infra/compose.dev.yml"
 )
 for c in "${combos[@]}"; do
   case "$c" in *compose.verify.yml*) [ -f infra/compose.verify.yml ] || continue ;; esac
   echo "wave0-gate: [$SLICE] docker compose $c config --quiet"
   # shellcheck disable=SC2086
-  BACKUP_VERIFY_IDENTITY_FILE="$TMP_ID" docker compose --env-file "$ENVF" $c config --quiet || fallo "docker compose $c config --quiet"
+  BACKUP_VERIFY_IDENTITY_FILE="$TMP_ID" docker compose "${ENVF[@]}" $c config --quiet || fallo "docker compose $c config --quiet"
 done
 
 echo "wave0-gate: [$SLICE] comprobaciones de infraestructura en verde; sellando con slice-gate.sh architecture"

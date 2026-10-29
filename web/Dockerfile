@@ -15,6 +15,9 @@ RUN npm run build
 # nginx:stable-alpine por digest (2026-10-22, S3-D62; el mismo de scripts/ci/test_nginx_conf.sh);
 # renovar: docker buildx imagetools inspect nginx:stable-alpine --format '{{json .Manifest.Digest}}'
 FROM nginx:stable-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+# Revisión de git como etiqueta OCI (S4B-D13, S4B-D67): la misma que el api; deploy.sh la compara.
+ARG GIT_SHA=dev
+LABEL org.opencontainers.image.revision=$GIT_SHA
 COPY --from=build /web/dist /usr/share/nginx/html
 COPY infra/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY infra/nginx/snippets/ /etc/nginx/snippets/

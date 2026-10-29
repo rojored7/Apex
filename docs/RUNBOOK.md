@@ -157,6 +157,10 @@ piso y vuelve a tardar más que la inexistente (N-7).
 Remedir el p99 (no la mediana) si cambian los parámetros de argon2 o el hardware del servidor,
 con carga concurrente, y ajustar `LOGIN_MIN_DURATION_MS` en `.env`.
 
+### Comprobaciones del operador al instalar (N-6 y N-7, S4B-D49)
+
+Las hace el operador una vez por instalación y cada vez que cambie el hardware o el borde. N-6: desde otro equipo de la LAN abrir `/login` y correr `docker logs --tail 5 apex-web-1`, buscando el campo `remote_addr` del access log; umbral: debe salir la IP de ese equipo, no la puerta de enlace de la red de Compose (si sale la puerta de enlace, la instalación no se da por buena). Con un proxy delante, N-6 pasa a bloquear la instalación hasta que Nginx lea la IP real. N-7: medir el p99 de la rama de cuenta existente del login con carga concurrente (procedimiento de arriba); umbral: p99 menor que `LOGIN_MIN_DURATION_MS` (150 ms); si no, subir el piso en `.env`.
+
 ### Cookie sin TLS (riesgo aceptado P7)
 
 En v0.1 el gimnasio corre en la LAN sin TLS. Con `ENV=production` el api no arranca con
@@ -469,6 +473,7 @@ Una transacción detenida (un `psql` de soporte con `BEGIN` abierto, una sentenc
 - `DB_STATEMENT_TIMEOUT_MS` (30.000, `statement_timeout`): máximo que dura una sentencia. Agotado: `57014`.
 - `DB_IDLE_IN_TX_TIMEOUT_MS` (60.000, `idle_in_transaction_session_timeout`): una conexión que deja una transacción abierta sin hacer nada más de ese tiempo es cerrada por PostgreSQL y sus candados se liberan. El pool la descarta (`pool_pre_ping`).
 - Un deadlock (`40P01`) también se responde como `busy`.
+- Una conexión cortada por `idle_in_transaction_session_timeout` (`25P03`, S4B-D12) también se responde como `busy`; los cortes del servidor `57P01`, `57P02` y `57P03` (apagado o reinicio de la base) siguen siendo 500. Los roles de aplicación llevan estos mismos tiempos con `ALTER ROLE ... SET` (`infra/db/roles.sql`).
 - Rango: de `0` a `2147483647` (el máximo de PostgreSQL; fuera de él `Settings` no arranca). `0` desactiva el tiempo correspondiente. Con `ENV=production` el piso es 1.000 ms (S3-D79, `DB_TIMEOUT_FLOOR_MS`): un `.env` de producción con `0` o menos de 1.000 hace que el api no arranque (`ConfigError` con el nombre de la variable). El CLI con `--db-timeouts off` los pone en `0` sobre una copia ya validada del `Settings` (`model_copy`), así que sigue funcionando en producción.
 
 Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from`): `SHOW lock_timeout` ahí da `0`. Los del api los comprueba `tests/core/test_db_timeouts.py` (`SHOW lock_timeout` = `10s` sobre un engine de `create_engine_from`).
@@ -800,7 +805,34 @@ sudo chown 10001:10001 "$HOME/apex-secretos"/* && chmod 600 "$HOME/apex-secretos
 ```
 La identidad de **restauración** (la que descifra el desastre) se genera aparte, se guarda fuera de la máquina y solo su recipiente público (`age1...`) entra a `.env.ops`. Ningún documento cita identidades reales: se escriben como `AGE-SECRET-KEY-1<...>`.
 
+### Roles de base de datos, `.env`/`.env.ops` y `migrate` (S4B-W0-3)
+
+**Dos archivos de entorno (S4B-D56, S4B-D79).** `.env` es lo que lee `Settings` y no lleva ninguna contraseña; `.env.ops` guarda al propietario (`POSTGRES_*`, `DATABASE_URL`), las tres contraseñas de rol (`APEX_API_DB_PASSWORD`, `APEX_WORKER_DB_PASSWORD`, `APEX_BACKUP_DB_PASSWORD`: distintas entre sí, de 24 caracteres o más y solo `[A-Za-z0-9._~-]` porque viajan dentro de una URL; `dbsetup` rechaza cualquier otro alfabeto; se generan con `openssl rand -hex 24`, igual que `POSTGRES_PASSWORD`), `BACKUP_*`, `RCLONE_*`, la firma, los puertos y la red. Los dos con modo 600 y fuera de git. En el servidor Compose se invoca siempre con ambos: `docker compose --env-file .env --env-file .env.ops -f infra/compose.yml ...` (Compose interpola desde `infra/`, por eso `--env-file` es obligatorio). Ningún servicio web recibe `.env.ops` entero: cada uno tiene un bloque `environment` mínimo. En este equipo el `.env` de desarrollo es la suma de los dos ejemplos y se invoca solo con `--env-file .env`.
+
+**Cadena de arranque en producción.** `db` -> `migrate` (propietario, `alembic upgrade head`, código 0) -> `dbsetup` (`infra/db/apply.sh`: valida las contraseñas y aplica `roles.sql` y `grants.sql`) -> `api` (como `apex_api`, `MIGRATE_ON_STARTUP=false`) -> `worker` (como `apex_worker`, con `backups` de solo lectura) y `web` (espera al api `healthy`); `backup` arranca tras `dbsetup` como `apex_backup`. El api de producción nunca ve la credencial del propietario ni migra: si falta una migración, `migrate` falla y nada arranca. En desarrollo (`compose.dev.yml`) `migrate` y `dbsetup` solo existen con `--profile prod-init`, ningún servicio depende de ellos, y api, worker, tools y backup usan al propietario con `MIGRATE_ON_STARTUP=true`.
+
+**Aplicar los roles a una base que ya existe (servidor o desarrollo).** Siempre con `--no-deps`: sin él, `depends_on` arrancaría `migrate` y correría `alembic upgrade head` como propietario sobre la base viva (S4B-D99).
+```
+docker compose --env-file .env --env-file .env.ops -f infra/compose.yml --profile prod-init run --rm --no-deps dbsetup
+# desarrollo de este equipo (un solo .env):
+$DC --profile prod-init run --rm --no-deps dbsetup
+```
+Sale 0 con `roles aplicados; N tablas clasificadas`. Es idempotente: vuelve a fijar atributos, límites de conexión (api 20, worker 5, backup 2), tiempos de espera por rol y contraseñas. `grants.sql` corre en una sola transacción y **falla cerrado**: si una migración nueva crea una tabla que no está en su lista `-- clasificada:`, aborta con `tabla sin clasificar: <esquema.tabla>` y no cambia nada; hay que clasificarla (y a `PRIVILEGIOS` de `tests/migrations/test_db_grants.py`) antes de desplegar. Una tabla nueva no hereda permisos (no hay privilegios por defecto).
+
+**`MIGRATE_ON_STARTUP` y `.env` mezclado (M2, M3 de la revisión).** `Settings.MIGRATE_ON_STARTUP` vale `false` por defecto: un api que pierda la variable no migra. `compose.dev.yml` la pone en `true`; producción la fija en `false` y migra `migrate`. Con `ENV=production`, `Settings` no arranca si su entorno trae `POSTGRES_PASSWORD`, `APEX_*_DB_PASSWORD`, `RCLONE_*`, `BACKUP_SIGN_*` o `BACKUP_VERIFY_*` (un `.env.ops` pegado dentro de `.env`): el error nombra las variables, nunca sus valores. La prueba viva es `bash scripts/ci/test_env_isolation.sh` (lee `/proc/1/environ` de api, worker y backup; corre en `e2e-stack` y en el ensayo). El chequeo de `deploy.sh` queda para B4.
+
+**Comprobar los roles.** `bash scripts/ci/test_db_roles.sh` (psql como cada rol dentro de `BEGIN; ... ROLLBACK;`; lo permitido funciona, lo prohibido falla con `42501`; nunca imprime contraseñas). `SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls, rolconnlimit FROM pg_roles WHERE rolname LIKE 'apex%'` debe dar `f|f|f|f` y los tres límites. Solo corre contra stacks que aplicaron `dbsetup` (`e2e-stack`, `prod-smoke`), nunca contra el smoke de desarrollo.
+
+**Volver atrás.** Parar api, worker y backup (`DROP ROLE` falla con sesiones abiertas de ese rol) y, como propietario, `docker compose ... exec -T db psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f - < infra/db/revoke.sql`. Es idempotente (`DROP OWNED BY` y `DROP ROLE IF EXISTS` de los tres roles). No cambia dueños ni datos.
+
+**Restos conocidos (S4B-D61).** `apex_api` puede insertar en `audit.audit_log` (forjable por un proceso comprometido; `audit.append()` queda para v0.2) y en `crypto.crypto_keys` (lo exige `ensure_keys`; no puede cambiar `state`). `UPDATE (updated_at)` sobre `crypto.crypto_keys` es lo que PostgreSQL exige para `SELECT ... FOR SHARE` del listener de cifrado; lo comprueba `test_for_share_sobre_crypto_keys_funciona_con_apex_api`.
+
+**MEDIUM-1 y MEDIUM-2 del Sprint 3, cerradas.** MEDIUM-1: un `idle_in_transaction_session_timeout` vencido (`25P03`) responde 503 `busy` como un candado agotado (§9). MEDIUM-2: si el `INSERT` de `crypto_ops` que rescata filas `error`/`decrypt` falla durante un rollback, el error se registra con tipo y SQLSTATE y el llamador recibe el error de negocio original.
+
+**Ensayo de producción en la misma máquina (`apex-ensayo`).** Carpeta `docs/scratch/ensayo/` (ignorada por `.env.*`), proyecto aparte `-p apex-ensayo`, subred `172.31.0.0/24` (`APEX_SUBNET`, `APEX_IP_RANGE=172.31.0.128/25`, `APEX_WEB_IP=172.31.0.10` y `TRUSTED_PROXIES=172.31.0.10/32`), `WEB_PORT=8280`, `POSTGRES_DB=apex_ensayo`, `ENV=production`. Antes de usar `migrate` o `dbsetup` del ensayo hay que reconstruir `apex-api:local` (§7, regla de S4B-D98) y comprobar que el log de `migrate` muestra la revisión esperada. El ensayo lleva `APEX_ENV_DIR=../docs/scratch/ensayo` en su `.env.ops`: sin eso, los `env_file` de api, worker y tools leerían el `.env` de desarrollo de la raíz (lo detectó `test_env_isolation.sh` en la primera corrida). Se detiene con `docker compose -p apex-ensayo stop` (nunca `down -v`) mientras corren las suites completas.
+
+**Política del cubo remoto (sin borrado).** La credencial de `rclone` solo necesita `PutObject` y `ListBucket`; ver «Qué hace el servicio backup». Un respaldo en el mismo disco de la base no es un respaldo fuera de la máquina.
+
 ### Pendiente de completar por slice
 
-- Roles y `.env`/`.env.ops` por servicio, `dbsetup` y `revoke.sql` (W0-3; comando de P-ROL: `$DC --profile prod-init run --rm --no-deps dbsetup`).
 - `backup_check` y sus estados (B2); `restore.sh`, `export-kek`/`restore-kek`/`verify-kek-backup` (B3a); `rotate-key`/`retire-key` (B3b); `deploy.sh`, ensayo en la misma máquina y `prod-smoke.sh` (B4).

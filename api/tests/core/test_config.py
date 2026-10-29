@@ -54,6 +54,7 @@ TODAS = (
     "REFRESH_ABSOLUTE_TTL_DAYS",
     "ADMIN_EMAIL",
     "ADMIN_INITIAL_PASSWORD",
+    "MIGRATE_ON_STARTUP",
 )
 
 
@@ -480,4 +481,97 @@ def test_non_api_env_vars_contiene_las_de_operacion_y_las_diez_de_antes() -> Non
         if linea.strip() and not linea.strip().startswith("#") and "=" in linea
     }
     assert claves
-    assert NON_API_ENV_VARS == antes | claves
+    # S4B-W0-3 (E7): `DATABASE_URL` pasa a `.env.ops.example` pero es un campo de `Settings`:
+    # si estuviera en NON_API_ENV_VARS, el origen dotenv lo descartaria y el api no arrancaria.
+    ajenas = claves - set(Settings.model_fields)
+    assert NON_API_ENV_VARS == antes | ajenas
+    assert "DATABASE_URL" not in NON_API_ENV_VARS
+
+
+# M2 (S4B-D56): un .env mezclado con .env.ops no arranca en producción ------------------------
+
+
+def test_produccion_rechaza_secretos_de_operacion_en_el_entorno(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for nombre in (
+        "POSTGRES_PASSWORD",
+        "APEX_API_DB_PASSWORD",
+        "APEX_WORKER_DB_PASSWORD",
+        "APEX_BACKUP_DB_PASSWORD",
+        "RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY",
+        "BACKUP_SIGN_KEY_FILE",
+        "BACKUP_VERIFY_IDENTITY_FILE",
+    ):
+        monkeypatch.setenv(nombre, "valor-secreto-que-no-debe-salir")
+        with pytest.raises(ConfigError) as excinfo:
+            load_settings(env_file=escribir_env(tmp_path, ENV="production"))
+        assert nombre in excinfo.value.invalid
+        assert "valor-secreto-que-no-debe-salir" not in str(excinfo.value)
+        monkeypatch.delenv(nombre)
+
+
+def test_desarrollo_ignora_los_secretos_de_operacion_como_hoy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("POSTGRES_PASSWORD", "x")
+    monkeypatch.setenv("APEX_API_DB_PASSWORD", "x")
+    s = load_settings(env_file=escribir_env(tmp_path, ENV="dev"))
+    assert s.ENV == "dev"
+
+
+def test_produccion_sin_secretos_de_operacion_arranca(tmp_path: Path) -> None:
+    assert load_settings(env_file=escribir_env(tmp_path, ENV="production")).ENV == "production"
+
+
+def test_ops_secret_names_no_confunde_variables_publicas() -> None:
+    from app.core.config import ops_secret_names
+
+    entorno = {"BACKUP_KEEP_DAYS": "14", "APEX_WEB_IP": "172.30.0.10", "POSTGRES_USER": "apex"}
+    assert ops_secret_names(entorno) == []
+
+
+# S4B-W0-3 (S4B-D8): MIGRATE_ON_STARTUP ------------------------------------------------------
+
+
+def test_migrate_on_startup_es_un_bool_con_valor_por_defecto_verdadero() -> None:
+    campo = Settings.model_fields["MIGRATE_ON_STARTUP"]
+    assert campo.annotation is bool
+    assert campo.default is False, "cerrado por defecto (M3): solo desarrollo y pruebas lo activan"
+
+
+@pytest.mark.parametrize(("texto", "esperado"), [("false", False), ("true", True), ("0", False)])
+def test_migrate_on_startup_se_lee_del_env(tmp_path: Path, texto: str, esperado: bool) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, MIGRATE_ON_STARTUP=texto))
+    assert s.MIGRATE_ON_STARTUP is esperado
+
+
+def test_migrate_on_startup_sin_la_variable_vale_falso(tmp_path: Path) -> None:
+    assert load_settings(env_file=escribir_env(tmp_path)).MIGRATE_ON_STARTUP is False
+
+
+def test_migrate_on_startup_invalido_nombra_la_variable_sin_su_valor(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings(env_file=escribir_env(tmp_path, MIGRATE_ON_STARTUP="quizas"))
+    assert "MIGRATE_ON_STARTUP" in excinfo.value.invalid
+    assert "quizas" not in str(excinfo.value)
+
+
+def test_migrate_on_startup_no_es_una_variable_ajena() -> None:
+    assert "MIGRATE_ON_STARTUP" not in NON_API_ENV_VARS
+
+
+def test_el_cli_incluye_migrate_on_startup_en_los_ajustes_de_exportacion() -> None:
+    from app.cli import export_settings
+
+    assert export_settings().MIGRATE_ON_STARTUP is True
+
+
+def test_las_contrasenas_de_rol_y_la_del_propietario_son_ajenas_al_api() -> None:
+    """H-1: un `.env` de desarrollo que sea la suma de los dos ejemplos no tumba al api."""
+    assert {
+        "APEX_API_DB_PASSWORD",
+        "APEX_WORKER_DB_PASSWORD",
+        "APEX_BACKUP_DB_PASSWORD",
+        "POSTGRES_PASSWORD",
+    } <= NON_API_ENV_VARS

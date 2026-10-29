@@ -28,6 +28,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import Session, SessionTransaction
 
+from app.core.alerts import alert
 from app.core.context import MissingActorError, current_actor, current_batch, get_actor
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.models import OP_PURPOSES, OP_VERBS, CryptoOp
@@ -217,10 +218,23 @@ def _after_soft_rollback(session: Session, previous_transaction: SessionTransact
     valores = _materialize(conservar, strict=False)
     if not valores:
         return
-    bind = session.get_bind()
-    engine = bind.engine if isinstance(bind, Connection) else bind
-    with engine.begin() as conn:
-        conn.execute(insert(CryptoOp), valores)
+    try:
+        bind = session.get_bind()
+        engine = bind.engine if isinstance(bind, Connection) else bind
+        with engine.begin() as conn:
+            conn.execute(insert(CryptoOp), valores)
+    except Exception as error:
+        # S4B-D12 (L-5 / S4A-D85): el rescate de las filas `error`/`decrypt` es de mejor esfuerzo.
+        # Si falla (base caída, privilegios), el llamador debe recibir el error de negocio que causó
+        # el rollback, no este. Solo el tipo y el SQLSTATE: nunca la sentencia ni los valores.
+        # Además del log, una alerta interna: se perdió auditoría de operaciones de cifrado.
+        sqlstate = getattr(getattr(error, "orig", None), "sqlstate", None)
+        estado = sqlstate if isinstance(sqlstate, str) else "desconocido"
+        tipo = type(error).__name__
+        logger.error(
+            "no se pudo registrar crypto_ops tras el rollback (%s, sqlstate=%s)", tipo, estado
+        )
+        alert("crypto_ops_lost", error_type=tipo, sqlstate=estado)
 
 
 async def flush_standalone(engine: AsyncEngine) -> int:

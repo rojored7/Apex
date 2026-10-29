@@ -152,7 +152,7 @@ async def test_el_engine_sin_tiempos_los_deja_en_cero(settings_prueba: Settings)
 
 
 def test_busy_sqlstates() -> None:
-    assert frozenset({"55P03", "57014", "40P01"}) == BUSY_SQLSTATES
+    assert frozenset({"55P03", "57014", "40P01", "25P03"}) == BUSY_SQLSTATES  # 25P03: S4B-D12
 
 
 def test_database_busy_es_un_error_de_dominio_503() -> None:
@@ -281,18 +281,19 @@ async def test_get_session_traduce_un_55p03_al_confirmar(
         await duena.rollback()
 
 
+@pytest.mark.parametrize("sqlstate", sorted(BUSY_SQLSTATES))
 async def test_get_session_deja_un_warning_con_solo_el_sqlstate(
-    sesiones_de_get_session: None, caplog: pytest.LogCaptureFixture
+    sesiones_de_get_session: None, caplog: pytest.LogCaptureFixture, sqlstate: str
 ) -> None:
     """Revisión de seguridad de W0-2 (LOW-1): un 503 `busy` deja rastro operativo en el log
     (`db busy` con el SQLSTATE), sin la sentencia ni traza de nivel `ERROR`."""
     generador = get_session()
     await generador.__anext__()
     with caplog.at_level(logging.INFO, logger="app.db"), pytest.raises(DatabaseBusy):
-        await generador.athrow(_dbapi(LOCK_NOT_AVAILABLE))
+        await generador.athrow(_dbapi(sqlstate))
     registros = [r for r in caplog.records if r.name == "app.db"]
     assert [(r.levelno, r.getMessage()) for r in registros] == [(logging.WARNING, "db busy")]
-    assert getattr(registros[0], "sqlstate", None) == LOCK_NOT_AVAILABLE
+    assert getattr(registros[0], "sqlstate", None) == sqlstate
     assert registros[0].exc_info is None
     assert "SELECT 1" not in caplog.text
 

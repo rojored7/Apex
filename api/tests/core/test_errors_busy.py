@@ -18,7 +18,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.context import SYSTEM_USER_ID, current_actor
@@ -172,3 +172,65 @@ async def test_con_get_session_real_sin_espera_el_cambio_se_confirma(
 def test_database_busy_no_es_un_dbapi_error() -> None:
     """El 503 sale por `_handler_dominio` (US-017), nunca por el handler de 500."""
     assert not isinstance(DatabaseBusy(), DBAPIError)
+
+
+# S4B-W0-3 (S4B-D12, MEDIUM-1): 25P03 es busy; los cortes de servidor 57P0x siguen en 500 ------
+
+
+def _app_que_falla_con(estado: str) -> FastAPI:
+    """Ruta con el `get_session` real cuyo cuerpo lanza un `OperationalError` con `estado`."""
+    app = FastAPI()
+    register_error_handlers(app)
+
+    @app.get("/falla")
+    async def falla(session: SessionDep) -> dict[str, str]:
+        await session.execute(text("SELECT 1"))
+        raise OperationalError("SELECT secreto FROM t WHERE x = 1", {}, _ErrorDelAdaptador(estado))
+
+    return app
+
+
+def test_25p03_esta_en_los_estados_de_busy_y_los_57p0x_no() -> None:
+    from app.core.db import BUSY_SQLSTATES, translate_busy
+
+    assert "25P03" in BUSY_SQLSTATES
+    assert BUSY_SQLSTATES.isdisjoint({"57P01", "57P02", "57P03"})
+    error_25 = OperationalError("x", {}, _ErrorDelAdaptador("25P03"))
+    assert isinstance(translate_busy(error_25), DatabaseBusy)
+    for estado in ("57P01", "57P02", "57P03"):
+        assert translate_busy(OperationalError("x", {}, _ErrorDelAdaptador(estado))) is None
+
+
+async def test_un_25p03_en_el_cuerpo_da_503_busy_con_retry_after_y_solo_el_sqlstate_en_el_log(
+    get_session_real: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    transporte = ASGITransport(app=_app_que_falla_con("25P03"), raise_app_exceptions=False)
+    async with AsyncClient(transport=transporte, base_url="http://t") as c:
+        with caplog.at_level(logging.INFO):
+            r = await c.get("/falla")
+    assert r.status_code == 503, r.text
+    assert r.json() == {"error": {"code": "busy", "message": MENSAJE_BUSY}}
+    assert r.headers["retry-after"] == "1"
+    assert r.headers["cache-control"] == "no-store"
+    assert _errores(caplog) == [], "un 503 busy no deja traza de error"
+    avisos = [r_ for r_ in caplog.records if r_.levelno == logging.WARNING]
+    assert [getattr(a, "sqlstate", None) for a in avisos] == ["25P03"]
+    assert "secreto" not in caplog.text, "ni la sentencia ni sus parámetros"
+
+
+@pytest.mark.parametrize("estado", ["57P01", "57P02", "57P03"])
+async def test_los_cortes_de_servidor_siguen_en_500_sin_datos(
+    get_session_real: None, caplog: pytest.LogCaptureFixture, estado: str
+) -> None:
+    """Un corte durante el COMMIT es ambiguo (la escritura pudo confirmarse): no se traduce a
+    `busy` para que nadie reintente a ciegas un pago."""
+    transporte = ASGITransport(app=_app_que_falla_con(estado), raise_app_exceptions=False)
+    async with AsyncClient(transport=transporte, base_url="http://t") as c:
+        with caplog.at_level(logging.INFO):
+            r = await c.get("/falla")
+    assert r.status_code == 500, r.text
+    assert r.json() == {"error": {"code": "internal_error", "message": MENSAJE_500}}
+    assert "retry-after" not in r.headers
+    assert estado not in r.text and "secreto" not in r.text
+    assert _errores(caplog), "el 500 deja un registro de error"
+    assert estado in caplog.text, "el log lleva el SQLSTATE"

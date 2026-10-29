@@ -1,11 +1,19 @@
-# Stack de producción de APEX (US-005, US-006). Se invoca desde la raíz del repo:
-#   docker compose --env-file .env -f infra/compose.yml up -d --build
-# `--env-file .env` es obligatorio: Compose interpola ${WEB_PORT:-80} desde la carpeta
-# de este archivo, no desde la raíz (CRITICA-2 N-4). Los secretos entran solo por
-# env_file; nunca se escriben aquí. db no publica puerto en producción.
-# S2-W0-1: red por defecto con subred fija y `web` (Nginx) con IP fija, para que
-# TRUSTED_PROXIES confíe solo en esa IP /32 (M-1); ADMIN_* solo llega a `tools` por
-# .env.seed (M-8), nunca a api, worker ni db.
+# Stack de producción de APEX (US-005, US-006). Se invoca desde la raíz del repo con los DOS
+# archivos de entorno (S4B-D56, S4B-D79):
+#   docker compose --env-file .env --env-file .env.ops -f infra/compose.yml up -d --build
+# `--env-file` es obligatorio: Compose interpola ${WEB_PORT:-80} desde la carpeta de este archivo,
+# no desde la raíz (CRITICA-2 N-4). `.env` (lo que lee Settings, sin contraseñas) llega a api,
+# worker y tools por env_file; `.env.ops` (propietario, contraseñas de rol, respaldo, red) solo se
+# usa para interpolar el bloque `environment` MÍNIMO de cada servicio: ningún servicio web recibe
+# el archivo entero. db no publica puerto en producción.
+# Cadena de arranque (S4B-D11): db -> migrate (propietario, alembic upgrade head) -> dbsetup
+# (roles y grants) -> api -> worker y web; backup arranca tras dbsetup.
+# S2-W0-1: red por defecto con subred fija y `web` (Nginx) con IP fija, para que TRUSTED_PROXIES
+# confíe solo en esa IP /32 (M-1); ADMIN_* solo llega a `tools` por .env.seed (M-8), nunca a api,
+# worker ni db. S4B-D13: subred, rango e IP de web salen de .env.ops (APEX_SUBNET, APEX_IP_RANGE,
+# APEX_WEB_IP) para poder ensayar en la misma máquina con otra subred. Los `env_file` (.env y
+# .env.seed) salen de ${APEX_ENV_DIR:-..} (relativo a esta carpeta): el ensayo apunta a
+# `../docs/scratch/ensayo` en su .env.ops y así api y worker NO leen el .env de desarrollo.
 name: apex
 
 services:
@@ -13,7 +21,11 @@ services:
     # postgres:16 por digest (2026-10-22, S3-D62; el mismo en compose.dev.yml y ci.yml);
     # renovar (docs/RUNBOOK.md §7): docker buildx imagetools inspect postgres:16 --format '{{json .Manifest.Digest}}'
     image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
-    env_file: ../.env
+    # Sin env_file (S4B-D56): solo las tres POSTGRES_* del propietario.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,35 +35,110 @@ services:
       retries: 12
     restart: unless-stopped
 
+  migrate:
+    # Migraciones con el propietario como unidad aparte (S4B-D8, S4B-D56): el api de producción no
+    # migra (MIGRATE_ON_STARTUP=false) y nunca recibe la credencial del propietario. Sin env_file:
+    # alembic lee DATABASE_URL del entorno (migrations/env.py). Sin bind de código: usa lo que la
+    # imagen trae, por eso hay que reconstruirla tras cambiar src/ o migrations/ (S4B-D98).
+    image: apex-api:local
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  dbsetup:
+    # Roles y grants (S4B-D9, S4B-D72, S4B-D99): apply.sh valida las tres contraseñas y aplica
+    # infra/db/roles.sql y grants.sql con el propietario. Misma imagen que db (trae psql 16).
+    # Sobre una base existente: `... --profile prod-init run --rm --no-deps dbsetup` (sin
+    # --no-deps, depends_on arrancaría migrate; docs/RUNBOOK.md §12).
+    # postgres:16 por digest (2026-10-22, S3-D62; el mismo que db); renovar (docs/RUNBOOK.md §7):
+    # docker buildx imagetools inspect postgres:16 --format '{{json .Manifest.Digest}}'
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    entrypoint: ["/bin/sh", "/opt/db/apply.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      APEX_API_DB_PASSWORD: ${APEX_API_DB_PASSWORD}
+      APEX_WORKER_DB_PASSWORD: ${APEX_WORKER_DB_PASSWORD}
+      APEX_BACKUP_DB_PASSWORD: ${APEX_BACKUP_DB_PASSWORD}
+    volumes:
+      - ./db:/opt/db:ro
+    user: "999:999"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   api:
     build:
       context: ../api
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     image: apex-api:local
-    env_file: ../.env
+    env_file: ${APEX_ENV_DIR:-..}/.env
+    environment:
+      # Su propio rol (S4B-D56): el api no conoce la contraseña del propietario ni la de otros roles.
+      DATABASE_URL: postgresql+asyncpg://apex_api:${APEX_API_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      MIGRATE_ON_STARTUP: "false"
+      APP_VERSION: ${GIT_SHA:-dev}
     volumes:
       - keys:/run/apex/keys:ro
       - uploads:/data/uploads
+    # Solo escribe en uploads (S4B-D75).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       db:
         condition: service_healthy
+      dbsetup:
+        condition: service_completed_successfully
     healthcheck:
       # La imagen slim no trae curl; /health existe desde US-020.
       test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     restart: unless-stopped
 
   worker:
-    # Jobs diarios (US-113), a las 07:00 de Bogotá. Endurecido (S4A-D49, M-5): en 4A no
-    # cifra ni descifra, así que no monta keys ni uploads (el Sprint 5 vuelve a montar
-    # keys:ro), raíz de solo lectura con /tmp en memoria, sin capacidades y sin escalada de
-    # privilegios. Usa la credencial del api hasta el rol de base separado (S4B-W0-2).
+    # Jobs diarios (US-113), a las 07:00 de Bogotá. Endurecido (S4A-D49, M-5): en 4A no cifra ni
+    # descifra, así que no monta keys ni uploads (el Sprint 5 vuelve a montar keys:ro), raíz de solo
+    # lectura con /tmp en memoria, sin capacidades y sin escalada de privilegios. Su propio rol de
+    # base (apex_worker) y, de solo lectura, el volumen de respaldos (S4B-D10, S4B-D11).
     image: apex-api:local
     command: ["python", "-m", "app.worker.main"]
-    env_file: ../.env
+    env_file: ${APEX_ENV_DIR:-..}/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://apex_worker:${APEX_WORKER_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      BACKUP_DIR: /data/backups
+    volumes:
+      - backups:/data/backups:ro
     read_only: true
     tmpfs:
       - /tmp
@@ -62,7 +149,7 @@ services:
       db:
         condition: service_healthy
       api:
-        # El api aplica las migraciones al arrancar: el worker no corre antes de 0012.
+        # Producción: migrate y dbsetup ya corrieron cuando el api está healthy.
         condition: service_healthy
     healthcheck:
       # Latido (S4A-D8, S4A-D56): el worker toca /tmp/apex-worker-heartbeat cada 30 s solo si
@@ -80,18 +167,22 @@ services:
 
   tools:
     # Comandos del CLI: docker compose run --rm tools init-keys | seed | rotate-key ...
-    # Única vía con escritura sobre el volumen keys y único servicio que lee .env.seed
-    # (ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD; se borra tras el primer seed). Opcional:
-    # init-keys y los demás comandos no lo necesitan (Compose >= 2.24).
+    # Superficie de operador (S4B-D56, S4B-D86): usa la credencial del PROPIETARIO por environment,
+    # única vía con escritura sobre el volumen keys, lee los respaldos en solo lectura y es el único
+    # servicio que lee .env.seed (ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD; se borra tras el primer
+    # seed). Opcional: init-keys y los demás comandos no lo necesitan (Compose >= 2.24).
     image: apex-api:local
     entrypoint: ["python", "-m", "app.cli"]
     env_file:
-      - ../.env
-      - path: ../.env.seed
+      - ${APEX_ENV_DIR:-..}/.env
+      - path: ${APEX_ENV_DIR:-..}/.env.seed
         required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
       - keys:/run/apex/keys
       - uploads:/data/uploads
+      - backups:/data/backups:ro
     depends_on:
       db:
         condition: service_healthy
@@ -100,17 +191,18 @@ services:
   backup:
     # Respaldo cifrado y firmado (S4B-W0-1, S4B-D14, D57, D75): pg_dump + uploads -> age, manifiesto
     # firmado con minisign, cron con supercronic. Sin BACKUP_AGE_RECIPIENT queda inerte pero visible
-    # en el log. Sin env_file: solo este bloque (S4B-D56). Hasta W0-3 usa la credencial del
-    # propietario; W0-3 la cambia por el rol apex_backup. La llave de firma se monta de
-    # BACKUP_SIGN_KEY_FILE (archivo 600 de uid 10001 en el anfitrión; sin archivo, run.sh sale con 2
-    # y lo dice). La identidad de verificación llega solo con infra/compose.verify.yml.
+    # en el log. Sin env_file: solo este bloque (S4B-D56). Lee la base con el rol apex_backup
+    # (pg_read_all_data, S4B-D7); compose.dev.yml lo cambia por el propietario porque en desarrollo
+    # no corre dbsetup. La llave de firma se monta de BACKUP_SIGN_KEY_FILE (archivo 600 de uid 10001
+    # en el anfitrión; sin archivo, run.sh sale con 2 y lo dice). La identidad de verificación llega
+    # solo con infra/compose.verify.yml.
     build:
       context: ./backup
     image: apex-backup:local
     environment:
       PGHOST: db
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGUSER: apex_backup
+      PGPASSWORD: ${APEX_BACKUP_DB_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
       BACKUP_AGE_VERIFY_RECIPIENT: ${BACKUP_AGE_VERIFY_RECIPIENT:-}
@@ -137,6 +229,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      dbsetup:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "pgrep", "-x", "supercronic"]
       interval: 30s
@@ -149,16 +243,30 @@ services:
     build:
       context: ..
       dockerfile: web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     image: apex-web:local
     ports:
       - "${WEB_PORT:-80}:80"
     networks:
       default:
-        # Fuera del ip_range dinámico: ningún otro contenedor puede tomarla.
-        ipv4_address: 172.30.0.10
+        # Fuera del ip_range dinámico: ningún otro contenedor puede tomarla. TRUSTED_PROXIES de
+        # .env debe ser esta IP /32 (en el ensayo, 172.31.0.10/32).
+        ipv4_address: ${APEX_WEB_IP:-172.30.0.10}
+    # Endurecimiento (S4B-D75): la imagen oficial arranca como root y baja a `nginx`, de ahí las
+    # cuatro capacidades; escribe solo en estos tmpfs.
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETGID", "SETUID", "NET_BIND_SERVICE"]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/index.html"]
       interval: 10s
@@ -170,10 +278,11 @@ networks:
   default:
     ipam:
       config:
-        # Verificada libre en este host (docker network inspect) el 2026-10-21; si choca
-        # con otra red, usar 172.31.0.0/24 y mover web y TRUSTED_PROXIES con ella.
-        - subnet: 172.30.0.0/24
-          ip_range: 172.30.0.128/25
+        # Verificada libre en este host (docker network inspect) el 2026-10-21. Para ensayar en la
+        # misma máquina: APEX_SUBNET=172.31.0.0/24, APEX_IP_RANGE=172.31.0.128/25 y
+        # APEX_WEB_IP=172.31.0.10 en .env.ops (y TRUSTED_PROXIES=172.31.0.10/32 en .env).
+        - subnet: ${APEX_SUBNET:-172.30.0.0/24}
+          ip_range: ${APEX_IP_RANGE:-172.30.0.128/25}
 
 volumes:
   pgdata:

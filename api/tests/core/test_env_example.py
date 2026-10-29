@@ -30,9 +30,9 @@ def test_el_ejemplo_existe() -> None:
 
 
 def test_toda_variable_de_settings_esta_documentada() -> None:
-    claves = _claves()
+    claves = {**_claves(), **_claves(EJEMPLO_OPS)}  # S4B-D79: DATABASE_URL vive en el de operacion
     faltan = [nombre for nombre in Settings.model_fields if nombre not in claves]
-    assert faltan == [], f"faltan en .env.example: {faltan}"
+    assert faltan == [], f"faltan en .env.example y .env.ops.example: {faltan}"
 
 
 def test_toda_clave_ajena_al_api_esta_en_non_api_env_vars() -> None:
@@ -50,7 +50,7 @@ def test_sin_secretos_reales() -> None:
             assert valor == "" or "cambiar-esto" in valor, f"{clave} parece llevar un valor real"
     # Concatenado para que detect-private-key no marque la propia prueba.
     assert ("BEGIN " + "PRIVATE KEY") not in EJEMPLO.read_text(encoding="utf-8")
-    assert "cambiar-esto" in claves["DATABASE_URL"]
+    assert "cambiar-esto" in _claves(EJEMPLO_OPS)["DATABASE_URL"]
 
 
 def test_ningun_valor_de_ejemplo_parece_real() -> None:
@@ -228,7 +228,8 @@ def test_las_variables_de_s4b_w0_1_van_activas_con_sus_valores() -> None:
 
 
 def test_las_claves_de_operacion_estan_en_non_api_env_vars() -> None:
-    assert set(_claves(EJEMPLO_OPS)) <= NON_API_ENV_VARS
+    # DATABASE_URL es un campo de Settings (S4B-D79, E7): se documenta aqui pero no es ajena.
+    assert set(_claves(EJEMPLO_OPS)) <= NON_API_ENV_VARS | set(Settings.model_fields)
 
 
 def test_sin_claves_repetidas_entre_los_dos_ejemplos() -> None:
@@ -246,3 +247,64 @@ def test_el_ejemplo_de_operacion_no_trae_secretos_reales() -> None:
         assert not valor.startswith("age1"), f"{clave} lleva un destinatario real"
     assert "-----BEGIN" not in texto
     assert "AGE-SECRET-KEY-" not in texto
+
+
+# S4B-W0-3 (S4B-D56, S4B-D79, E7): el recorte de `.env.example` ------------------------------
+
+PREFIJOS_DE_OPERACION = ("POSTGRES_", "RCLONE_", "BACKUP_")
+
+
+def test_env_example_sin_secretos_de_operacion() -> None:
+    """H-1: `.env` (el que leen api y worker por `env_file`) no trae contraseñas ni nada ajeno."""
+    claves = _claves()
+    ajenas = [
+        c
+        for c in claves
+        if c.startswith(PREFIJOS_DE_OPERACION)
+        or c.endswith("_DB_PASSWORD")
+        or c in ("DATABASE_URL", "TEST_DATABASE_URL")
+    ]
+    assert ajenas == [], f"deben vivir en .env.ops.example: {ajenas}"
+    activas = [
+        linea
+        for linea in EJEMPLO.read_text(encoding="utf-8").splitlines()
+        if linea.strip() and not linea.lstrip().startswith("#")
+    ]
+    assert not [linea for linea in activas if "DATABASE_URL=" in linea]
+
+
+def test_las_variables_de_operacion_de_s4b_w0_3_estan_en_env_ops_example() -> None:
+    claves = _claves(EJEMPLO_OPS)
+    esperadas = (
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "DATABASE_URL",
+        "TEST_DATABASE_URL",
+        "WEB_PORT",
+        "API_PORT",
+        "DB_PORT",
+        "DB_TEST_PORT",
+    )
+    assert [n for n in esperadas if n not in claves] == []
+    assert "cambiar-esto" in claves["POSTGRES_PASSWORD"]
+    assert claves["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert "127.0.0.1" in claves["TEST_DATABASE_URL"], "siempre 127.0.0.1, no localhost"
+
+
+def test_migrate_on_startup_va_activo_y_documenta_que_produccion_lo_fija_en_false() -> None:
+    lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
+    indices = [i for i, linea in enumerate(lineas) if linea.startswith("MIGRATE_ON_STARTUP=")]
+    assert len(indices) == 1, "MIGRATE_ON_STARTUP debe ir una vez como línea activa"
+    assert lineas[indices[0]] == "MIGRATE_ON_STARTUP=false"
+    comentario = " ".join(
+        linea for linea in lineas[max(0, indices[0] - 4) : indices[0]] if linea.startswith("#")
+    )
+    assert "en producción lo fija Compose en `false`" in comentario
+    assert Settings.model_fields["MIGRATE_ON_STARTUP"].default is False
+
+
+def test_la_cabecera_de_env_example_remite_al_archivo_de_operacion() -> None:
+    cabecera = "\n".join(EJEMPLO.read_text(encoding="utf-8").splitlines()[:6])
+    assert ".env.ops.example" in cabecera
+    assert "DATABASE_URL" in cabecera, "dice que DATABASE_URL ya no vive aqui"

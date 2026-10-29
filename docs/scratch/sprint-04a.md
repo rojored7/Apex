@@ -603,3 +603,9 @@ Rama `feat/sprint-04a-worker-auditoria-tablero`. Plan: `docs/ddd/blueprints/spri
 - Medidas finales (base todavía inflada, peor caso): sola 64,6 / 74,0 / 58,3 ms con 2,56 / 2,37 / 2,41 s; con `test_list_performance.py`, `test_recent.py` y `tests/dashboard/test_perf.py` en la misma corrida 60,9 / 65,1 ms con 2,36 / 2,63 s (14 ok). `SYNC_VERIFY_MAX_ROWS = 100.000` sigue (~2,5 s < 20 s).
 - Pruebas ajustadas a la constante real: 2.500 filas son 5 lotes y 4 pausas; nueva `test_hueco_que_cubre_un_lote_entero_rompe_en_la_fila_siguiente`. Tope de 100 ms intacto.
 - Docs: DECISIONES S4A-D120, RUNBOOK §11 (lotes de 500), SPRINT-04A (B3), docstring de `SYNC_VERIFY_MAX_ROWS`.
+
+### Evidencia de V5 · Corrección del bloque síncrono (posterior al sello; checkpoint `54ac21e`)
+
+- Gate sellante `slice-gate.sh core/audit_verify` (`-m 'not perf'`): 448 ok.
+- Perf final ×2 tras el sello: la primera 59,0 ms; la segunda falló con un bloque de 40,6 s por la base de prueba, no por el código: `audit.audit_log` de `apex-db_test-1` acumulaba 9,1 millones de tuplas muertas (4,5 GB) y el autovacuum se cancelaba por las corridas de 100.000 filas que se revierten. Se corrió `VACUUM (ANALYZE, PARALLEL 0)` solo sobre esa tabla de `db_test` (0 tuplas muertas, 1.241 MB); después la perf ×2 dio 66,3 y 64,3 ms en el peor bloque, en verde.
+- Nota operativa: las pruebas perf que insertan y revierten 100.000 filas inflan `audit.audit_log` de `db_test`; si V9 o V5 vuelven a degradarse, repetir el `VACUUM` sobre `db_test` (nunca sobre `apex-db-1`).

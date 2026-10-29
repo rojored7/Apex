@@ -426,7 +426,7 @@ Los cuatro puntos que V1 dejó aquí se cerraron en la Fase 4 del front (`docs/d
 
 ## 11. Sprint 4A: brechas con el diseño
 
-Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `docs/ddd/blueprints/sprint-04a-blueprint.md` (S4A-D17, S4A-D19, S4A-D25, S4A-D28, S4A-D29, S4A-D31 a S4A-D36), `docs/ddd/blueprints/sprint-04a-plan.md` y `docs/ddd/DECISIONES.md`, sección "Sprint 4A". Mismos estados que la sección 10. Cada brecha lleva `// DESIGN-GAP:` en el código del slice que la toca; el slice la confirma o la ajusta aquí.
+Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Actualizado en V1 (29 de octubre de 2026): filas de F1 a F4 (11.1 a 11.3 y 11.5) y el inventario de las marcas `DESIGN-GAP` de `web/src` (11.6). Fuentes: `docs/ddd/blueprints/sprint-04a-blueprint.md` (S4A-D17, S4A-D19, S4A-D25, S4A-D28, S4A-D29, S4A-D31 a S4A-D36), `docs/ddd/blueprints/sprint-04a-plan.md` y `docs/ddd/DECISIONES.md`, sección "Sprint 4A". Mismos estados que la sección 10. Cada brecha lleva `// DESIGN-GAP:` en el código del slice que la toca; el slice la confirma o la ajusta aquí.
 
 ### 11.1 Auditoría (`Auditoria.html`, `/sistema/auditoria`; S4A-F1, US-102 a US-104)
 
@@ -439,6 +439,9 @@ Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `doc
 - Columna con valores enmascarados en la lista: la lista no trae valores (solo metadatos); los valores están en el detalle, nunca en claro. Aceptada para v0.1. Slice S4A-F1.
 - Selector de usuario por nombre: `GET /users?limit=200` más "Sistema (worker)" = `SYSTEM_USER_ID`, enviado como `user_id`; los nombres son la parte local del correo (S4A-D19). Aceptada para v0.1. Slice S4A-F1.
 
+- Columna "Ver" con "Detalle": el enlace de la primera columna abre el detalle, como pide DESIGN.md; no se repite como columna aparte. Aceptada para v0.1. Slice S4A-F1 (`AuditPage.tsx`).
+- Total saturado: el api cuenta hasta 100.001 (S4A-D106) y el encabezado dice "Más de 100.000 entradas". Aceptada para v0.1. Slice S4A-F1.
+
 ### 11.2 Inicio (`Inicio.html`, `/`; S4A-F3, US-108 a US-110)
 
 - "Sistema marcó 3 membresías como vencidas": los últimos movimientos excluyen al usuario del sistema (`exclude_user_ids=(SYSTEM_USER_ID,)`, Q10 y US-110): el job de vencimientos y el seed no tapan lo de recepción. Aceptada para v0.1 (gana US-110). Slice S4A-B8 y S4A-F3.
@@ -448,6 +451,11 @@ Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `doc
 - Línea de pendientes de pago: el diseño no la dibuja; `members_pending_payment` se muestra con el chip "Pendiente de pago" (Q3, S4A-D29). Aceptada para v0.1. Slice S4A-F3.
 - Backend confirmado en el Verde de S4A-B8: `GET /dashboard` trae los cinco conteos de `memberships.service.summary`, `income_month_cop` de `payments.service.summary` (solo admin; `null` para el coach, que tampoco ve montos en las frases: S4A-D118; el KPI de ingresos dice "Solo administración"), `last_movements` sin el sistema (máximo 10, frases de S4A-D28 sin correos ni valores) y los cinco futuros presentes y en `null` (`tests/dashboard/test_service.py`, `test_last_movements.py`, `test_router.py`). Las filas de esta sección se confirman en pantalla con el slice S4A-F3.
 
+- "Vencen en 7 días" se llama "Por vencer": los días salen de Configuración (`expiring_days`) y el chip de /socios usa ese nombre. Las notas "3 vencen hoy", "12 hace más de 15 días" y "vs sept" no tienen dato en `GET /dashboard` (v0.1); quedan sin nota. Aceptada para v0.1; las notas, backlog. Slice S4A-F3.
+- "Registrar pago" y "Check-in" del encabezado: el encabezado no lleva botón de pago (el pago se registra desde /pagos o desde la ficha con `?pago=`); Check-in llega con clases (v0.4). Aceptada para v0.1; Check-in, v0.4; "Registrar pago" en el encabezado, backlog. Slice S4A-F3.
+- Ingresos del coach: el KPI dice "Solo administración" y no lleva cifra (S4A-D118: el coach no ve finanzas). Aceptada para v0.1. Slice S4A-F3.
+- Enlace del KPI de ingresos: `/pagos?from=AAAA-MM-DD&to=AAAA-MM-DD` con días civiles, no un instante UTC (S4A-D121; desviación del plan). Slice S4A-F3.
+
 ### 11.3 Planes (`Planes.html`, `/planes`; S4A-F4, US-080 a US-082)
 
 - "Descripción" y "Días para usarlas": el modelo de plan no tiene esas columnas y ninguna historia de v0.1 las crea. Pendiente de diseño (sin dueño de código hasta que el diseño decida si entran al modelo). Slice S4A-F4 deja el `// DESIGN-GAP:`.
@@ -455,8 +463,87 @@ Estado al 28 de octubre de 2026, al abrir el Sprint 4A (S4A-W0-1). Fuentes: `doc
 - "Socios con él": entra en el Sprint 4A por `active_members_count` de `GET /plans` (S4A-D25); cierra la fila de 10.12. Slice S4A-B7 y S4A-F4; backend confirmado en el Verde de S4A-B7 (`GET /plans` y `GET /plans/{id}` con una consulta de conteo por página).
 - Total partido en activos e inactivos: se muestra "N activos · M inactivos". Slice S4A-F4.
 
+- Detalle de solo lectura (`?plan=`): Planes.html no lo dibuja (el nombre abre "Editar plan"). Se conserva para el enlace del 409 del alta y para quien no puede editar. Aceptada para v0.1. Slice S4A-F4.
+- Acciones en la fila como botones con aspecto de enlace, no menú (S4A-D23, S4A-D24, S4A-D124); activar va sin confirmación y desactivar y dar de baja, con `ConfirmModal`. Aceptada para v0.1. Slice S4A-F4.
+- "Duración" y "Clases" en columnas propias: Planes.html las junta ("12 clases · 60 días para usarlas"). Aceptada para v0.1. Slice S4A-F4.
+- Total con dos lecturas `GET /plans?limit=1&active=…` (`usePlanCount`, S4A-D124; `usePlans` no se puede apagar sin `plans.manage`). Aceptada para v0.1. Slice S4A-F4.
+
 ### 11.4 Rutas y contratos del Sprint 4A
 
 - `ROUTES.md` decía "Activar/desactivar: PATCH `active`": corregido en S4A-W0-1 a `POST /plans/:id/activate` y `/deactivate`, más `DELETE /plans/:id`.
 - `ROUTES.md` decía `GET /audit?from&to&user&entity&action&q`: corregido en S4A-W0-1 a los nombres reales (`user_id`, `table`, `record_id`, `subject_member_id`, `action`, `q`, `limit`, `offset`) y al detalle `GET /audit/:seq`.
 - `GET /audit`, `GET /audit/:seq`, `GET /members/:id/audit` y `GET /dashboard` responden 429 (cubeta `staff-read`, S4A-D45); `POST /audit/verify` usa las cubetas `audit-verify` (S4A-D47). El front muestra el 429 con el mensaje común.
+
+### 11.5 Socios y ficha (S4A-F2 y marcas heredadas de Sprint 2 y 3)
+
+- Pestaña Historial: `Socio_Ficha.html` no la dibuja abierta (su enlace va a `Auditoria.html`, la pantalla del admin). Se usa `HistoryAside` a todo el ancho, sin filtros ni búsqueda por usuario (el api acepta `q`; la pantalla no la ofrece todavía). Aceptada para v0.1; el diseño de la pestaña abierta, Sprint 4B (pantalla de ficha); los filtros, backlog. Slice S4A-F2 (S4A-D32, S4A-D123).
+- Caja "Historial reciente" de Datos: el diseño muestra "antes → después" enmascarado ("Cambió teléfono · 310 ••• 221"); el api no manda valores (S4A-D20), solo la frase. Aceptada para v0.1. Slice S4A-F2.
+- Frase de vencimientos: "Sistema marcó la membresía como vencida o por vencer" (el recálculo de S4A-B2 también pasa a "por vencer"; el historial no trae el valor nuevo). Aceptada para v0.1. Slices S4A-B2 y S4A-F2.
+- Las marcas de socios de Sprint 2 y 3 (`MemberCardList`, `MemberDataTab`, `MemberEditFields`, `MemberFormFields`, `MemberStatusChips`, `MemberDetailPage`, `DeactivateMemberModal`, `MemberFormPage`, `MembersListPage`) siguen con su fila en la sección 10 (10.1 a 10.4) y en el inventario de 11.6.
+
+### 11.6 Inventario de las marcas `DESIGN-GAP` de `web/src` (cierre de V1)
+
+Cierre de V1 (29 de octubre de 2026). `grep -rn "DESIGN-GAP" web/src/features web/src/shared` sin los `.test.` da **58 marcas** en **45 archivos**. Cada marca tiene una fila. La columna de dueño dice "—" cuando la brecha se acepta para v0.1 sin dueño de versión.
+
+| # | Archivo (línea) | Pantalla | Qué pide el diseño y qué se hizo | Decisión / motivo | Slice | Dueño |
+|---|---|---|---|---|---|---|
+| 1 | `features/system/auditFilters.ts` (36) | Auditoría | Entidades Resultado y Llave en el filtro. Se ofrecen las nueve tablas auditadas hoy (`AUDITABLE_TABLES`). | El api solo audita esas tablas (S4A-D106) | F1 | Resultado: v0.5; Llave: v0.2 (EP-18) |
+| 2 | `features/system/components/AuditDetailPanel.tsx` (8-9) | Auditoría | "Descifrar dato" y "Mostrar" por cada cifrado. Solo se pinta "Cifrado" con la llave. | US-103 lo prohíbe en la auditoría; S4A-D52, S4A-D17 | F1 | — |
+| 3 | `AuditDetailPanel.tsx` (10-11) | Auditoría | IP de origen y "hash ok · hash anterior ok" por fila. No se muestran. | `AuditDetail` no trae la IP; la integridad se comprueba con "Verificar ahora" (US-104) | F1 | IP: backlog |
+| 4 | `AuditDetailPanel.tsx` (12-13) | Auditoría | Valores enmascarados (310•••221). No hay: los cifrados nunca salen de la auditoría. | S4A-D52 | F1 | — |
+| 5 | `features/system/components/AuditFilters.tsx` (4-6) | Auditoría | Búsqueda por "Nombre del socio o id del registro". Hay filtro `subject_member_id` desde la ficha y `q` por correo del usuario. | El nombre no está en la cadena (RN-13; S4A-D16) | F1 | — |
+| 6 | `AuditFilters.tsx` (7) | Auditoría | Selector de usuario con `GET /users?limit=200` más "Sistema (worker)". Más de 200 cuentas no aparecen en el selector. | `GET /users` no pagina en un select | F1 | backlog (buscador de usuarios) |
+| 7 | `features/system/components/EditUserPanel.tsx` (10-12) | Usuarios | Panel con nombre, tabla de permisos por rol y acciones dentro del panel. Las acciones van en la fila y la tabla de permisos no se dibuja. | Nombre: S2-D17 y S4A-D19 (parte local del correo); acciones en la fila: S2-F4b | S2-F4b | Nombre: v0.2 (EP-04); permisos: backlog |
+| 8 | `features/system/components/GymSettingsForm.tsx` (4-7) | Configuración · Gimnasio | Cuadro de logo, "Zona horaria" como campo, NIT, ciudad y correo. El logo no entra; la zona es una nota fija (America/Bogota); NIT, ciudad y correo están en el contrato y no en Config.html. | Logo: adjuntos (v0.3); BRECHAS §9 | S2-F5 | Logo: v0.3; resto: backlog |
+| 9 | `features/system/components/LinkModal.tsx` (11-13) | Usuarios | "Enviar enlace de nueva contraseña" dentro del panel; el diseño no dibuja dónde se ve el enlace. Es un diálogo propio con el mismo campo y "Copiar". | Decisión de S2-F4b | S2-F4b | — |
+| 10 | `features/system/components/MembershipsSettingsForm.tsx` (3-6) | Configuración · Membresías | "Días de gracia", "Check-in vencido" y unidad de carga. Quedan los cuatro parámetros de membresías del contrato. | No están en el contrato de US-058 (BRECHAS §9) | S2-F5 | Check-in y clases: v0.4 (US-154); días de gracia: backlog |
+| 11 | `features/system/components/NewUserPanel.tsx` (9-11) | Usuarios | Alta con el panel de edición sin nombre y sin acciones. Tras crear, muestra el enlace, que la pantalla no dibuja. | S2-D17 (nombre) y S2-F4b (acciones) | S2-F4b | Nombre: v0.2 |
+| 12 | `features/system/components/PaymentMethodsForm.tsx` (8-10) | Configuración · Medios de pago | Casilla para habilitar cada medio, número de Nequi, llave Bre-B y "Exigir referencia". No se muestran. | El contrato (D24) trae solo `label` y `hint`, con los tres medios siempre habilitados (BRECHAS §10.7) | S3-F4 | backlog |
+| 13 | `features/system/components/PrivacySettingsForm.tsx` (9-11) | Configuración · Privacidad | Caja "TV · Datos personales" con textarea de dos líneas. Sección propia con los cuatro campos del contrato. | Decisión tomada (blueprint F5; BRECHAS §9) | S2-F5 | — |
+| 14 | `features/system/components/UserRowActions.tsx` (5-6) | Usuarios | DESIGN.md pide filas sin editar ni borrar; Usuarios.html solo tiene "Editar". Las acciones del ciclo de vida van en la fila. | Decisión de S2-F4b (BRECHAS §9) | S2-F4b | — |
+| 15 | `features/system/components/VerifyChainButton.tsx` (8-9) | Auditoría | "Última firma nocturna: hoy 02:00 (ML-DSA)". Se muestra la última verificación de la cadena. | La firma llega con `sign-audit` (EP-17) | F1 | v0.3 |
+| 16 | `features/system/pages/AuditPage.tsx` (9-10) | Auditoría | Columna "Qué cambió (anterior → nuevo)" en la lista. Los cambios salen solo en el detalle. | La lista no trae antes ni después (RN-13; S4A-D16) | F1 | — |
+| 17 | `AuditPage.tsx` (11) | Auditoría | "Exportar rango". No hay botón. | Exportación: EP-16 (US-139) | F1 | v0.2 |
+| 18 | `AuditPage.tsx` (12-13) | Auditoría | Columna "Ver" con "Detalle". El enlace de la primera columna abre el detalle, sin dos enlaces por fila. | Decisión de F1 (DESIGN.md: la primera columna enlaza) | F1 | — |
+| 19 | `AuditPage.tsx` (14) | Auditoría | Total de entradas. El encabezado dice "Más de 100.000 entradas" cuando el api satura el conteo. | El api satura `total` en 100.001 (S4A-D106) | F1 | — |
+| 20 | `features/system/pages/ConfigPage.tsx` (10-13) | Configuración | Ocho secciones apiladas con índice lateral. Pestañas (`?tab=`); solo las secciones con contrato; medios de pago desde S3-F4. | Decisión de S2-D15 | S2-F5 | Canales: v0.2; clases: v0.4; TV: v0.5; horario: backlog |
+| 21 | `features/system/pages/UsersPage.tsx` (15-20) | Usuarios | Columna "Usuario" con nombre; rol como píldora; filtro "Equipo (admin y coach)"; orden; acciones en el panel. Hoy el correo hace de nombre, el rol va como texto, no hay filtro Equipo (`role` es un valor), el orden es el del api y las acciones van en la fila. | S2-D17, S4A-D19, S2-F4b | S2-F4b | Nombre: v0.2 (EP-04); filtro Equipo: backlog |
+| 22 | `features/dashboard/components/FutureKpis.tsx` (4-5) | Inicio | "Hoy en el box" (clases de hoy con cupos y Check-in). `sessions_today` viene `null` y la tarjeta dice "Disponible en v0.x". | S4A-D29 | F3 | v0.4 |
+| 23 | `FutureKpis.tsx` (6-7) | Inicio | "Asistencia de la semana" (gráfico, promedio, socios distintos). `attendance_week` viene `null`. | S4A-D29 | F3 | v0.4 |
+| 24 | `FutureKpis.tsx` (8) | Inicio | "WOD de hoy" (nombre, Ver y Registrar resultados). `wod_today` viene `null`. | S4A-D29 | F3 | v0.5 |
+| 25 | `FutureKpis.tsx` (9-10) | Inicio | "Por avisar hoy" (vencen hoy, en 3 días, vencidos, retención, pendientes de WhatsApp). `notifications_today` y `members_without_consent` vienen `null`. | S4A-D29; EP-14 | F3 | v0.2 |
+| 26 | `features/dashboard/components/KpiGrid.tsx` (9-11) | Inicio | "Vencen en 7 días" con las notas "3 vencen hoy", "12 hace más de 15 días" y "vs sept". La tarjeta se llama "Por vencer" (días de `expiring_days`); las notas no tienen dato en `GET /dashboard`. | Nombre: el chip de /socios; notas sin dato en v0.1 (S4A-D29) | F3 | Notas: backlog |
+| 27 | `KpiGrid.tsx` (12-13) | Inicio | Línea de pendientes de pago. El diseño no la dibuja; `members_pending_payment` enlaza al chip "Pendiente de pago". | Q3; S4A-D29 | F3 | — |
+| 28 | `features/dashboard/components/LastMovements.tsx` (7-8) | Inicio | "Sistema marcó 3 membresías como vencidas" no aparece en "Últimos movimientos". | El api excluye al usuario del sistema (Q10; US-110, que gana) | B8 y F3 | — |
+| 29 | `features/dashboard/pages/InicioPage.tsx` (6-7) | Inicio | Saludo "Hola, Ana". El saludo usa la parte local del correo ("Hola, ana"). | `display_name` llega en v0.2 con EP-04 (S4A-D19, S4A-D108) | F3 | v0.2 (EP-04) |
+| 30 | `InicioPage.tsx` (8-9) | Inicio | "Registrar pago" y "Check-in" en el encabezado. El encabezado no tiene botón de pago (se registra desde /pagos o desde la ficha con `?pago=`); Check-in no existe aún. | S3-D65 (panel `?pago=`) | F3 | Check-in: v0.4; "Registrar pago" en el encabezado: backlog |
+| 31 | `features/plans/components/PlanDetailPanel.tsx` (7-8) | Planes | Planes.html no tiene detalle de solo lectura: el nombre abre "Editar plan". El detalle `?plan=` se conserva para el 409 del alta y para quien no puede editar. | Decisión de S2-F7 y de S4A-F4 | F4 | — |
+| 32 | `features/plans/components/PlanForm.tsx` (19-23) | Planes | "Descripción (la ve el socio en su portal)"; casilla "Activo (se puede vender)"; "Días para usarlas" opcional. Sin descripción; activar y desactivar son POST propios; "Días para usarlas" es obligatorio. | `PlanCreate` y `PlanPatch` no tienen descripción (S4A-D25); S4A-D23; `duration_days` es obligatorio en el api | F4 | Descripción: backlog; resto: — |
+| 33 | `features/plans/components/PlanRowActions.tsx` (8-11) | Planes | Planes.html solo dibuja "Editar" en la fila y la casilla "Activo" en el panel. Activar, desactivar y dar de baja van como botones con aspecto de enlace en la fila. | Activar y desactivar son POST y dar de baja es DELETE (S4A-D23, S4A-D24, S4A-D124) | F4 | — |
+| 34 | `features/plans/pages/PlansPage.tsx` (21-27) | Planes | Planes.html junta duración y clases ("12 clases · 60 días para usarlas"); también trae descripción, casilla Activo y filtro "Mostrar". Duración y clases van en columnas propias; sin descripción; el filtro se llama "Estado" (Mostrar es el tamaño de página). | S4A-D25; blueprint F7 | F4 | Descripción: backlog; resto: — |
+| 35 | `features/members/components/DeactivateMemberModal.tsx` (10-11) | Socio (ficha) | "Dar de baja" en el menú "Más"; el diseño no dibuja la confirmación ni "Reactivar". Es un botón con `ConfirmModal`. | BRECHAS §10.2 (S3-B10) | S3-F1 | — |
+| 36 | `features/members/components/MemberCardList.tsx` (11-15) | Socios (móvil) | Socios_Movil.html pagina con "Anterior" y "Siguiente", pone "+ Nuevo" junto al título, dibuja foto y "12 clases · quedan 2". Se usa "Cargar más", botón "+ Nuevo" flotante, sin foto ni clases restantes. | US-072 y D39 (BRECHAS §10.1) | S3-F2 | Foto: v0.3; clases restantes: v0.4 |
+| 37 | `features/members/components/MemberDataTab.tsx` (10-14) | Socio (ficha, Datos) | Nombre y parentesco del contacto en claro; "Unidad preferida", "Observaciones de salud" y caja "Adjuntos". El contacto va cifrado y enmascarado; no hay unidad ni observaciones (no están en el modelo); no hay caja de adjuntos. | Campos cifrados de CLAUDE.md; M-5 | S3-F1 | Unidad: v0.6; adjuntos: v0.3; observaciones de salud: backlog |
+| 38 | `MemberDataTab.tsx` (19-20) | Socio (ficha, Datos) | Caja de cambios con "antes → después" enmascarado. La caja "Historial reciente" lleva solo la frase, sin valores. | S4A-D20 | F2 | — |
+| 39 | `features/members/components/MemberEditFields.tsx` (10-13) | Socio (edición) | Modo editar sin distinguir roles; el diseño no dice cómo se cambia un dato cifrado; secciones de foto, firma, portal, cargas y salud. Se usan "Cambiar", "Quitar" y "Deshacer" sobre la máscara. | BRECHAS §10.3 | S3-F1 | Foto y firma: v0.3; portal: v1.0; cargas: v0.6; salud: backlog |
+| 40 | `features/members/components/MemberFormFields.tsx` (5-9) | Socio (alta) | Foto, firma, documento firmado, acceso al portal, unidad de cargas y observaciones de salud. No están en `MemberCreate`. | BRECHAS §9 (Socios · `MemberFormFields.tsx`) | S2-F6 | Foto, firma y documento: v0.3; portal: v1.0; cargas: v0.6; salud: backlog |
+| 41 | `features/members/components/MemberHistoryTab.tsx` (11-13) | Socio (ficha, Historial) | `Socio_Ficha.html` no dibuja la pestaña Historial abierta. Se usa `HistoryAside` a todo el ancho, sin filtros ni búsqueda por usuario. | S4A-D32, S4A-D123; sección 11.5 | F2 | Filtros: backlog; diseño de la pestaña: Sprint 4B |
+| 42 | `features/members/components/MemberStatusChips.tsx` (9-13) | Socios | "Pendiente de pago" no está en Socios_Lista.html (va con el tono de "Por vencer"). El móvil del diseño trae cuatro chips y "Filtros ▾"; aquí, los ocho chips del escritorio en una fila desplazable. | Q3; BRECHAS §10.1 | S3-F2 | Plegado "Filtros ▾": v1.0 |
+| 43 | `features/members/pages/MemberDetailPage.tsx` (17-24) | Socio (ficha) | Foto y cuatro tarjetas de resumen; "Renovar" y "Registrar pago" en el encabezado; menú "Más"; aviso de sin autorización (Q16); "Dado de baja" con "Reactivar". Aquí la tarjeta de Membresía es la de la pestaña; "Renovar" y "Registrar pago" van en las pestañas; "Dar de baja" es un botón. | BRECHAS §10.2 y §10.4 (S3-F1 y S3-F7) | S3-F7 | Foto: v0.3; Asistencia: v0.4; Último WOD: v0.5; Avisos: v0.2; menú "Más" (WhatsApp): v0.2; portal: v1.0 |
+| 44 | `features/members/pages/MemberFormPage.tsx` (11-15) | Socio (alta) | "Guardar y vender membresía". Tras guardar, el alta vuelve a la lista con aviso. | Decisión de S2-F6; BRECHAS §10.3 | S2-F6 | Pendiente de diseño (§10.3) |
+| 45 | `features/members/pages/MembersListPage.tsx` (17-21) | Socios (lista) | Columnas de teléfono, última asistencia y "Acción"; documento enmascarado; "Vencido · 5 días", "reanuda 1 nov" y "12 clases · quedan 2". La lista no trae datos cifrados; la asistencia llega con v0.4; "Vence" muestra la fecha con año. | N-01; BRECHAS §10.1 | S3-F2 | Asistencia: v0.4 |
+| 46 | `features/members/schemas.ts` (72) | Socios | "Pendiente de pago" no está en Socios_Lista.html. Su etiqueta usa el tono de "Por vencer". | Q3 | S3-F2 | — |
+| 47 | `shared/ui/Button.module.css` (80) | Kit | Variante `ghost` no definida en DESIGN.md. | Sin decisión de diseño | — | backlog (definir en DESIGN.md) |
+| 48 | `shared/ui/ConfirmModal.module.css` (1) | Kit | tokens.css no define un color de velo para modales. Se usa `--black` al 45 %. | Sin token de velo | — | backlog (token de velo en el diseño) |
+| 49 | `shared/ui/Chips.tsx` (3-4) | Kit | "Pendiente de pago" no está dibujado. Se usa el tono de "Por vencer" (borde y texto `--warning`). | Q3; DESIGN.md | S3-F2 | — |
+| 50 | `shared/ui/FilterBar.tsx` (3-4) | Kit | Plegado "Filtros ▾" del portal. No se construye aquí. | Llega con el portal | — | v1.0 |
+| 51 | `shared/ui/MessagePage.tsx` (4-5) | Kit | El diseño no tiene páginas de error ni de permiso. Se usa una caja como la tarjeta de Login.html. | BRECHAS §9 (Rutas · `NoPermissionPage`, `MessagePage`) | S2-F2 | — |
+| 52 | `shared/ui/Modal.module.css` (2-3) | Kit | Velo de modal sin token. Se usa `--black` al 45 %. | Sin token | — | backlog (token de velo) |
+| 53 | `shared/ui/Modal.tsx` (7) | Kit | DESIGN.md solo nombra `ConfirmModal`; `Modal` es su hermano para contenido. | BRECHAS §9 (Kit · `Modal.tsx`) | — | backlog (añadirlo a DESIGN.md) |
+| 54 | `shared/ui/SideNav.module.css` (102-103) | Kit | Cajón de celular con overlay sin token de velo. Se usa `--black` al 45 %, como SidePanel. | Sin token | — | backlog (token de velo) |
+| 55 | `shared/ui/SideNav.tsx` (8-9) | Kit | El diseño no dibuja el cajón en celular ni el modo plegado a iconos de tablet (768 a 1023 px). Se siguen las pautas de US-061 (T3 y T5). | BRECHAS §9 (Panel · `SideNav.tsx`) | S2-F2 | backlog |
+| 56 | `shared/ui/SidePanel.module.css` (1-2) | Kit | Sin token de velo ni de ancho del panel. Se usan `--black` al 45 % y dos veces `--sidebar` (464 px). | Sin token | — | backlog (tokens) |
+| 57 | `shared/ui/StatusTag.module.css` (34-35) | Kit | Los .dark.html pintan el peligro con el rojo claro y texto blanco; tokens.css no tiene un relleno de peligro que no cambie con el tema. | BRECHAS §9 (Kit · `StatusTag.module.css`) | S2-F4a | backlog (token de peligro por tema) |
+| 58 | `shared/ui/StatusTag.module.css` (44) | Kit | Estilo de "Cancelado" no definido. Se usa el de "Congelado". | Sin estilo en DESIGN.md | — | backlog |
+
+Cobertura: las 58 marcas tienen fila. Las marcas de `features/members` y `features/system` que ya tienen fila en la sección 9 o 10 se citan por su archivo en la columna de decisión; la fila de esta tabla es la que cuenta para V1.

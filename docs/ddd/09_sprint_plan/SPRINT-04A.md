@@ -1,6 +1,6 @@
 # Sprint 4A · Worker, auditoría verificable, tablero y planes restantes
 
-> **Corregido en S4A-W0-1.** El plan de ejecución es `docs/ddd/blueprints/sprint-04a-plan.md` (enmiendas E1 a E10 de la crítica 1) y las decisiones están en `docs/ddd/DECISIONES.md`, sección "Sprint 4A" (S4A-D1 a S4A-D74). Donde este texto choque con ellos, mandan ellos. Correcciones de contrato de este archivo:
+> **Corregido en S4A-W0-1.** El plan de ejecución es `docs/ddd/blueprints/sprint-04a-plan.md` (enmiendas E1 a E10 de la crítica 1) y las decisiones están en `docs/ddd/DECISIONES.md`, sección "Sprint 4A" (S4A-D1 a S4A-D121). Donde este texto choque con ellos, mandan ellos. Correcciones de contrato de este archivo:
 > - Las pruebas de rendimiento usan el marcador `perf` (`-m perf`), no `slow`; nunca entran al gate (`-m "not perf"`).
 > - `0014` no se crea: `audit.audit_log.subject_member_id` ya viene de `0002`; el sprint aplica solo `0012_worker_job_runs` y `0013_audit_verifications` (S4A-D19, S4A-D38). `0014_payments_registered_by_idx` tampoco entra.
 > - `GET /audit` filtra por `from`, `to`, `user_id`, `table` (`esquema.tabla`), `record_id`, `subject_member_id`, `action`, `q`, `limit` y `offset` (hasta 100.000), con rangos acotados (S4A-D16, S4A-D45, S4A-D46).
@@ -12,6 +12,9 @@
 > - `--date` solo con `--simulate`, `ENV=dev` y una base `*_sim` o `apex_test` (S4A-D48, enmienda E5); la demo con fecha corre contra `apex_sim` en `apex-db_test-1`, nunca contra `apex-db-1` (S4A-D63).
 > - `datosDeBase()` vive en `web/tests/e2e/helpers/stack.ts` y devuelve credenciales, no cuenta tablas: la verificación es `grep -rn "job_runs\|audit_log" web/tests` vacío (S4A-D59).
 > - `list_for_subject(member_id)` es `member_history(session, member_id, page, q)` (S4A-D20).
+> - `VERIFY_BATCH_SIZE` = 500, con lectura por rango acotado de `seq` (S4A-D120), y `SYNC_VERIFY_MAX_ROWS` = 100.000 (valor final, S4A-D91); ajustan S4A-D47 y S4A-D13.
+> - El coach no ve ingresos: `income_month_cop` llega `null` y las frases de pagos no llevan monto (S4A-D118).
+> - El enlace de ingresos del tablero es `/pagos?from=AAAA-MM-DD&to=AAAA-MM-DD` con días civiles, no un instante UTC (S4A-D121).
 
 - **Versión:** v0.1. Es la primera mitad del cierre; la release la hace el Sprint 4B.
 - **Épicas:**
@@ -51,7 +54,7 @@ Que el sistema haga solo lo que pasa todos los días y que se pueda demostrar lo
    - `docker compose run --rm tools verify-audit --as admin@...` da el mismo resultado.
 4. La pestaña Historial de la ficha muestra los cambios del socio, de sus membresías y de sus pagos (N-31).
 5. Inicio muestra:
-   - los KPI de membresías e ingresos del mes;
+   - los KPI de membresías y, en el admin, los ingresos del mes (el coach ve «Solo administración», S4A-D118);
    - "Últimos movimientos" en frases, sin entradas del sistema.
 6. Planes:
    - editar el precio no cambia las membresías vendidas (RN-04);
@@ -129,7 +132,7 @@ Desde este sprint, `src/app/cli.py` y `src/app/worker/` entran en la cobertura: 
     - `tests/core/test_format_verify_message.py`.
   - **Verde:**
     - migración `0013_audit_verifications`;
-    - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 500 por rango acotado de `seq` (S4A-D120; eran 1.000) y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
+    - `run_verification` con lock asesor en conexión `AUTOCOMMIT`, lotes de 500 por rango acotado de `seq` (S4A-D120) y ancla `through_hash` (S4A-D43, S4A-D44, S4A-D47); un salto en `seq` cuenta como ruptura (`broken_at_seq`);
     - `POST /audit/verify` y `GET /audit/verify/last`;
     - `cli verify-audit --as`.
     - Hecho en el Verde: `audit.verifications` guarda `through_hash char(64)` (el `hash` de la fila `through_seq`, o `ZERO_HASH` con la cadena vacía) y la siguiente verificación lo exige como ancla; tres cubetas nuevas en el catálogo (12 cubetas y 11 variables `USER_*`): `staff-read` (`USER_READ_LIMIT_PER_MIN`, 120 por minuto; la consumen B4, B5 y B8), `audit-verify` (`USER_AUDIT_VERIFY_LIMIT_PER_MIN`, 3 por minuto) y `audit-verify-hour` (`USER_AUDIT_VERIFY_LIMIT_PER_HOUR`, 20 por hora); el job `e2e-stack` de la CI las sube ×100 (E9). `SYNC_VERIFY_MAX_ROWS` calibrado en 100.000 (S4A-D91).
@@ -244,9 +247,9 @@ Ya no hacen falta `0014_audit_subject_member`, `0014_crypto_ops_purpose` ni `001
 - `GET /api/v1/audit` (admin).
 - `GET /api/v1/audit/verify/last` (admin), registrado antes de `/audit/{seq}`.
 - `GET /api/v1/audit/{seq}` (admin).
-- `POST /api/v1/audit/verify` (admin).
-- `GET /api/v1/members/{id}/audit` (admin y coach).
-- `GET /api/v1/dashboard` (admin y coach).
+- `POST /api/v1/audit/verify` (admin; cubetas `audit-verify` y `audit-verify-hour`, S4A-D47).
+- `GET /api/v1/members/{id}/audit` (admin y coach; cubeta `staff-read`, S4A-D45).
+- `GET /api/v1/dashboard` (admin y coach; cubeta `staff-read`; el coach recibe `income_month_cop` `null`, S4A-D118).
 - `PATCH /api/v1/plans/{id}` (admin).
 - `POST /api/v1/plans/{id}/activate` (admin).
 - `POST /api/v1/plans/{id}/deactivate` (admin).
@@ -300,3 +303,4 @@ Corren en cada gate de slice (A-5).
 - S4A-D106 c (revisión de S4A-B4, `security-reviewer` MEDIUM): `GET /audit` con `action` solo, o con `at` más otro filtro, cuenta sin índice líder (el conteo ya está acotado a 100.001 filas y `record_id` exige `table`). Si el crecimiento de `audit.audit_log` lo exige, índices `(action, seq DESC)` y `(record_id)` en `0014_audit_log_indexes` (o en la migración de auditoría del Sprint 4B que venga primero, junto a S4A-D98). Dueño: Sprint 4B.
 - S4A-D115 (Verde de S4A-B8, M-7): con muchas lecturas (`reveal`) recientes de `members.members`, la consulta por tabla de `audit.service.recent` usa `uq_audit_log_seq` hacia atrás con filtro en vez de `ix_audit_log_table_seq` (20,9 ms con 50.000 lecturas; tope 50 ms; la prueba `perf` acepta los dos índices y nunca `Seq Scan`). Si el crecimiento lo exige, índice `(table_name, action, seq DESC)` (o parcial sobre `insert`, `update` y `delete`) en la misma migración de índices de la auditoría que S4A-D106 c. Dueño: Sprint 4B. El mismo índice cubre el caso de muchas escrituras recientes del sistema (S4A-D119 b: hoy 0,8 ms con 5.000).
 - S4A-D118 (revisión de S4A-B8, MEDIUM): el coach recibe `GET /dashboard` sin `income_month_cop` (`null`) ni montos en las frases; ajusta S4A-D29. Dueño del front: S4A-F3 (KPI de ingresos "Solo administración" cuando llega `null`).
+- S4A-V1 (observación del cuaderno de F2, no es una marca `DESIGN-GAP`): en la barra `Tabs` de la ficha, con nueve pestañas, a 1440 px "Membresías" queda recortada cuando la activa es Historial; y la etiqueta "automático (aviso)" del historial no tiene contraste verificado en navegador. Dueño: Sprint 4B, pantalla de ficha (S4A-V1, `DECISIONES.md`, "Deuda de front con dueño").

@@ -5,7 +5,7 @@
 > - `--wait-timeout` (300 s por defecto) espera con `pg_try_advisory_lock` en un bucle de 2 s, no con `pg_advisory_lock` bloqueante (el `lock_timeout` de 10 s lo cortaría); agotado, sale 2 (S4A-D15).
 > - Con `ENV=production`, `--as` es obligatorio (salida 2 si falta) y `--db-timeouts off` se rechaza (salida 2); con `ENV=dev` `--as` sigue opcional (S4A-D53).
 > - `run_verification` y `format_verify_message` viven en `core/audit_verify.py`, no en `core/audit.py`, y `run_verification` recibe una sesión (`run_verification(session, source="cli", by=actor)`) (S4A-D12, S4A-D15).
-> - La conexión del candado es `AUTOCOMMIT` y se invalida en el `finally` tras `pg_advisory_unlock`, con `VERIFY_MAX_SECONDS = 900`, igual que en el API; los lotes son de `VERIFY_BATCH_SIZE = 1000` y la verificación compara contra el ancla de la última verificación `ok` (`through_hash`) (S4A-D44, S4A-D47, S4A-D43).
+> - La conexión del candado es `AUTOCOMMIT` y se invalida en el `finally` tras `pg_advisory_unlock`, con `VERIFY_MAX_SECONDS = 900`, igual que en el API; los lotes son de `VERIFY_BATCH_SIZE = 500` y la verificación compara contra el ancla de la última verificación `ok` (`through_hash`) (S4A-D44, S4A-D47, S4A-D43).
 > - En la imagen no hay `uv`: el comando del runbook es `docker compose exec api python -m app.cli verify-audit --as <correo>` (CLAUDE.md, "Comandos"); `cli.py` se parte en `app/cli_ops.py` solo si pasa de 760 líneas (S4A-D72).
 
 - **Historia:** `docs/ddd/07_user_stories/EP-11-auditoria/US-105-verificar-cadena-por-cli.md`

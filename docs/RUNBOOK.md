@@ -59,7 +59,7 @@ límite por IP y argon2, para que nadie pueda dejar el sistema sin administrador
 ### Topes de las escrituras de admin y de cuerpo (V10 del Sprint 3)
 
 - **`admin-write`** (30 por minuto por usuario, `USER_ADMIN_WRITE_LIMIT_PER_MIN`): una sola
-  cubeta para toda escritura de solo admin: crear planes, los cinco `PATCH /settings/*`, crear
+  cubeta para toda escritura de solo admin: crear, editar, activar, desactivar y dar de baja planes (S4A-D26), los cinco `PATCH /settings/*`, crear
   usuarios, reenviar su enlace, editarlos y darlos de baja, anular pagos y membresías, y dar de
   baja y reactivar socios. La 31 del minuto da 429 con `Retry-After`; otro admin no se ve
   afectado (S3-D100).
@@ -750,7 +750,7 @@ Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-0
   - `last_movements`: hasta 10 frases de `audit.service.recent` sobre `members.members`, `memberships.memberships` y `payments.payments`, solo `insert`, `update` y `delete` (nunca `reveal`, `login`, `export` ni `verify`), una consulta por tabla con el índice `(table_name, seq DESC)` y la más reciente primero. La frase sale del catálogo de S4A-D28 con el actor como parte local del correo (nunca el correo), el socio como "Nombre I." y el monto como `$ 120.000`; la vista reducida solo lleva `member_id`, `plan_id`, `membership_id`, `amount_cop`, `voided`, `deleted_at` y `status` (nunca blobs `apx1.`, `reference` ni `void_reason`). Socio o plan sin nombre: "un socio" o "un plan"; actor inexistente: "Alguien".
   - `notifications_today`, `members_without_consent`, `attendance_week`, `sessions_today` y `wod_today`: siempre presentes y `null` en v0.1 (llegan en v0.2, v0.4 y v0.5).
 - Caché de 30 s: los conteos de membresías vienen de la caché de proceso del resumen (`SUMMARY_CACHE_TTL_S = 30`), que se invalida con cada venta, pago, anulación o congelamiento en ese mismo proceso; con varios procesos, otro puede servir su copia hasta que venza. Ingresos y movimientos se leen en cada llamada.
-- Solo el admin ve finanzas (S4A-D118): para el coach `income_month_cop` llega `null` (no se consulta `payments`) y las frases de pagos no llevan monto ("registró un pago de Laura G."). Los ingresos no tienen caché (S4A-D119 a): cada llamada del admin suma los pagos del mes por el índice `paid_at DESC`, y `staff-read` acota a 120 por minuto por usuario.
+- Solo el admin ve finanzas (S4A-D118): para el coach `income_month_cop` llega `null` (no se consulta `payments`) y las frases de pagos no llevan monto ("registró un pago de Laura G."). Los ingresos no tienen caché (S4A-D119, punto a): cada llamada del admin suma los pagos del mes por el índice `paid_at DESC`, y `staff-read` acota a 120 por minuto por usuario.
 - Por qué el sistema no aparece en los movimientos (`exclude_user_ids=(SYSTEM_USER_ID,)`, Q10 y US-110): el job de vencimientos, el seed y la importación escriben como el usuario técnico y taparían lo que hace recepción; el filtro se aplica antes del límite de 10, así que las 10 frases son siempre de personas. Lo del sistema sigue en `GET /audit` con `user_id` del sistema.
 - Comprobación rápida: `grep -c apx1.` sobre el cuerpo da 0 y ninguna frase empieza con `Sistema`.
 

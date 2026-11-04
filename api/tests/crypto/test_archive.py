@@ -1,4 +1,5 @@
-"""`core/crypto/archive.py`: `digest_file` (S4B-B2; S4B-D20, S4B-D59).
+"""`core/crypto/digest.py`: `digest_file` (S4B-B2; S4B-D20, S4B-D59; movido desde `archive.py` en la
+revisión de B3a, S4B-D134) y las constantes de `archive.py`.
 
 - coincide con `sha256_hex` del bus para 5 MB, para un archivo vacío y para tamaños de bloque
   distintos (1 byte antes del límite, justo en él, 1 después);
@@ -20,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from app.core.crypto.archive import AGE_BINARY, AGE_TIMEOUT_S, DIGEST_CHUNK, digest_file
-from app.core.crypto.digest import sha256_hex
+from app.core.crypto.archive import AGE_BINARY, AGE_TIMEOUT_S
+from app.core.crypto.digest import DIGEST_CHUNK, digest_file, sha256_hex
 
 MIB = 1 << 20
 

@@ -170,3 +170,34 @@ def test_audit_health_y_main_no_importan_core_jobs() -> None:
         violaciones += _desde_core_importa_jobs(path)
     assert violaciones == []
     assert "app.core.backup_status" in _imports(SRC / "main.py")
+
+
+PROHIBIDOS_DEL_RESPALDO_DE_KEK = ("app.core.audit", "app.modules")
+
+
+def _prohibidos_en(fuente: str) -> list[str]:
+    arbol = ast.parse(fuente)
+    nombres: list[str] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            nombres.extend(a.name for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            nombres.append(nodo.module)
+    return [n for n in nombres if n.startswith(PROHIBIDOS_DEL_RESPALDO_DE_KEK)]
+
+
+def test_kek_backup_y_archive_no_importan_audit_ni_modules() -> None:
+    """S4B-B3a (S4B-D58, S4B-D62): `kek_backup.py` y `archive.py` son de `core/crypto`; la
+    auditoría de `export-kek` la escribe el CLI (`cli_ops/kek.py`), no estos archivos."""
+    for nombre in ("kek_backup.py", "archive.py"):
+        path = CORE / "crypto" / nombre
+        assert path.is_file(), f"falta core/crypto/{nombre}"
+        assert _prohibidos_en(path.read_text(encoding="utf-8")) == [], nombre
+
+
+def test_control_un_import_de_audit_o_modules_en_kek_backup_se_detecta() -> None:
+    assert _prohibidos_en("from app.core.audit import record\n") == ["app.core.audit"]
+    assert _prohibidos_en("def f():\n    from app.modules.auth.service import x\n") == [
+        "app.modules.auth.service"
+    ]
+    assert _prohibidos_en("from app.core.crypto.digest import sha256_hex\n") == []

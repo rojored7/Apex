@@ -96,7 +96,28 @@ jobs:
         working-directory: api
         # Política `perf` (M4, S2-D27): las pruebas con reloj quedan fuera del gate y corren
         # en el paso siguiente, que informa sin bloquear.
-        run: uv run pytest -m "not perf" --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
+        run: uv run pytest -m "not perf" -rs --junitxml="$RUNNER_TEMP/junit.xml" --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
+      - name: las pruebas de age real no se saltan (S4B-D103)
+        # test_archive_real_age.py y test_kek_real_age.py llevan skipif (sin age o sin pty). En la CI
+        # age está instalado y hay pty: si alguna se salta, la prueba de la KEK no se ejecutó y el
+        # paso falla. Exige además que cada archivo haya aportado al menos una prueba.
+        run: |
+          uv run --directory api python - "$RUNNER_TEMP/junit.xml" << 'PYEOF'
+          import sys
+          import xml.etree.ElementTree as ET
+          ARCHIVOS = ("test_archive_real_age", "test_kek_real_age")
+          casos = ET.parse(sys.argv[1]).getroot().iter("testcase")
+          cuentas = {a: [0, 0] for a in ARCHIVOS}
+          for caso in casos:
+              for archivo in ARCHIVOS:
+                  if archivo in caso.get("classname", ""):
+                      cuentas[archivo][0] += 1
+                      cuentas[archivo][1] += caso.find("skipped") is not None
+          for archivo, (total, saltadas) in cuentas.items():
+              print(f"{archivo}: {total} pruebas, {saltadas} saltadas")
+              if total == 0 or saltadas:
+                  sys.exit(f"::error::{archivo} no corrió completo en la CI (S4B-D103)")
+          PYEOF
       - name: pruebas de rendimiento (perf, informativas)
         working-directory: api
         continue-on-error: true
@@ -282,7 +303,20 @@ jobs:
         run: |
           cp .env.example .env
           cp .env.ops.example .env.ops
-          bash scripts/ci/compose-smoke.sh
+          SMOKE_KEEP=1 bash scripts/ci/compose-smoke.sh
+      - name: restauración de punta a punta (S4B-B3a)
+        # Con el stack del smoke arriba: export-kek (pty), run.sh, restore.sh con firma e inspección
+        # del tar, restore-kek en tmpfs y reveal con la KEK restaurada. Las guardas de restore.sh
+        # (test_restore_guard.sh) ya corrieron en el paso de scripts de respaldo.
+        if: steps.img.outputs.smoke == 'true'
+        run: |
+          bash infra/backup/tests/test_restore_guard.sh
+          dbcid="$(docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml ps -q db)"
+          proyecto="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$dbcid")"
+          E2E_ALLOW_PROJECT="$proyecto" bash infra/tests/restore_e2e.sh
+      - name: bajar el stack del smoke
+        if: always() && steps.img.outputs.smoke == 'true'
+        run: docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml down -v --remove-orphans
 
   e2e-stack:
     # S2-W0-1 (US-068 DevOps, S2-D52): Playwright (proyecto stack) contra el stack de

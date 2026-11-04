@@ -12,8 +12,8 @@ RUN apk add --no-cache age=1.3.2-r1 rclone=1.74.1-r3 supercronic=0.2.49-r1 minis
     && adduser -D -u 10001 -G apex apex \
     && mkdir -p /data/backups /opt/backup /run/apex/backup \
     && chown -R apex:apex /data /run/apex
-# restore.sh llega en S4B-B3a: hasta entonces el COPY lista solo lo que existe.
-COPY --chown=apex:apex --chmod=0555 run.sh lib.sh entrypoint.sh healthcheck.sh /opt/backup/
+# restore.sh (S4B-B3a) se corre a mano con `run --rm --entrypoint`, nunca por cron.
+COPY --chown=apex:apex --chmod=0555 run.sh restore.sh lib.sh entrypoint.sh healthcheck.sh /opt/backup/
 COPY --chown=apex:apex --chmod=0444 manifest.schema.json /opt/backup/
 ENV TZ=America/Bogota
 USER apex

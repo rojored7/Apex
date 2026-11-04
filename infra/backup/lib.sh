@@ -112,3 +112,35 @@ manifest_json() {
   fi
   printf '\n}\n'
 }
+
+# valid_tar_listing: lee por stdin el listado de `tar -tv` (GNU o BusyBox) y acepta solo si hay al
+# menos una entrada y TODAS son archivos regulares o directorios (primer carácter `-` o `d`; fuera
+# enlaces simbólicos, duros, dispositivos y FIFO) con nombre relativo bajo `uploads/`, sin `..`,
+# sin ruta absoluta y sin barras dobles (S4B-D42, S4B-D97). BusyBox muestra un enlace duro como
+# tipo `-` con ` -> destino` y GNU como ` link to destino`: se rechazan por el nombre. Tope de
+# entradas (MAX_TAR_ENTRIES, 20000) y de bytes declarados (MAX_TAR_BYTES, 20 GiB). Una línea que no
+# encaja se rechaza.
+valid_tar_listing() {
+  local linea nombre n=0 total=0
+  local max_n="${MAX_TAR_ENTRIES:-20000}" max_b="${MAX_TAR_BYTES:-21474836480}"
+  local re='^[-d][rwxsStT-]{9} [^ ]+ +([0-9]+) [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}(:[0-9]{2})? (.+)$'
+  while IFS= read -r linea || [ -n "$linea" ]; do
+    [[ "$linea" =~ $re ]] || return 1
+    nombre="${BASH_REMATCH[3]}"
+    case "$nombre" in
+      *" -> "* | *" link to "*) return 1 ;;
+    esac
+    nombre="${nombre%/}"
+    case "$nombre" in
+      uploads | uploads/*) ;;
+      *) return 1 ;;
+    esac
+    case "/$nombre/" in
+      */../* | *//* | */./*) return 1 ;;
+    esac
+    n=$((n + 1))
+    total=$((total + 10#${BASH_REMATCH[1]}))
+    [ "$n" -le "$max_n" ] && [ "$total" -le "$max_b" ] || return 1
+  done
+  [ "$n" -gt 0 ]
+}

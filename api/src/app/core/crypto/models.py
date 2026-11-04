@@ -42,7 +42,7 @@ OpVerb = Literal[
     "encrypt", "decrypt", "index", "sign", "verify", "wrap", "unwrap", "rotate", "export"
 ]
 OpResult = Literal["ok", "error"]
-OpPurpose = Literal["mask", "reveal", "notify", "auth_link", "export"]
+OpPurpose = Literal["mask", "reveal", "notify", "auth_link", "export", "restore"]
 JobKind = Literal["rotate", "reencrypt", "migrate_provider", "rewrap"]
 JobStatus = Literal["pending", "running", "done", "failed"]
 
@@ -62,7 +62,7 @@ OP_VERBS: tuple[str, ...] = (
     "export",
 )
 OP_RESULTS: tuple[str, ...] = ("ok", "error")
-OP_PURPOSES: tuple[str, ...] = ("mask", "reveal", "notify", "auth_link", "export")
+OP_PURPOSES: tuple[str, ...] = ("mask", "reveal", "notify", "auth_link", "export", "restore")
 JOB_KINDS: tuple[str, ...] = ("rotate", "reencrypt", "migrate_provider", "rewrap")
 JOB_STATUSES: tuple[str, ...] = ("pending", "running", "done", "failed")
 DATA_CLASS_PATTERN = r"^[a-z_]+\.[a-z_]+$"

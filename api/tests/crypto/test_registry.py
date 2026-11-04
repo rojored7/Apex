@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 
 from app.core.crypto.errors import CryptoError
-from app.core.crypto.registry import REGISTRY, DataClassSpec, get_spec, override_registry
+from app.core.crypto.registry import (
+    REGISTRY,
+    DataClassSpec,
+    encrypting_specs,
+    get_spec,
+    indexing_specs,
+    override_registry,
+    signing_specs,
+)
 
 ESPERADAS = {
     "member.document": ("str", "generic"),
@@ -16,8 +24,12 @@ ESPERADAS = {
 }
 
 
+SIN_LLAVE = {"kek.backup"}
+"""Clases sin llave (S4B-D85): nombran las filas de `crypto_ops` del respaldo de la KEK."""
+
+
 def test_las_cinco_clases_de_v01() -> None:
-    assert set(REGISTRY) == set(ESPERADAS)
+    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE
     for nombre, (tipo, indice) in ESPERADAS.items():
         spec = get_spec(nombre)
         assert spec.name == nombre and spec.encrypt is True and spec.sign is False
@@ -39,3 +51,16 @@ def test_override_solo_para_pruebas() -> None:
         assert get_spec("test.secret") is extra
     with pytest.raises(CryptoError):
         get_spec("test.secret")
+
+
+def test_kek_backup_es_una_clase_sin_llave() -> None:
+    spec = get_spec("kek.backup")
+    assert spec.name == "kek.backup"
+    assert (spec.encrypt, spec.index_kind, spec.sign) == (False, None, False)
+    assert spec.columns == ()
+
+
+def test_kek_backup_no_entra_en_las_listas_que_crean_llaves() -> None:
+    for lista in (encrypting_specs(), indexing_specs(), signing_specs()):
+        assert "kek.backup" not in {s.name for s in lista}
+    assert {s.name for s in encrypting_specs()} == set(ESPERADAS)

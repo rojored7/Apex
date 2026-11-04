@@ -319,3 +319,67 @@ Ensayo `apex-ensayo` (WEB_PORT 8280; par age y llave minisign de prueba generado
 - Ensayo detenido con `stop` (sin `-v`).
 
 Linux: `digest_file` sobre un FIFO dentro de `apex-api:local` lanza `OSError` en 0,0 s ("no es un archivo regular"); las pruebas de FIFO de pytest se omiten en Windows y corren en CI.
+
+## S4B-B3a · Respaldo de la KEK con `age -p`, `restore.sh` y prueba de restauración
+
+### S4B-B3a · Rojo
+
+- Línea base: HEAD `701ba45`, árbol limpio. `tests/crypto tests/architecture tests/cli/test_cli_base.py`: 670 passed, 4 skipped. Tras el Rojo, la misma suite más `test_export_kek.py` y `test_kek_real_age.py`: 690 passed, 34 failed, 42 skipped (0 regresiones: las 34 rojas son todas de archivos nuevos o ampliados).
+- B3a.1 stubs: `core/crypto/archive.py` (`VerifyKekResult` con `ok` derivado, `NoTty`, `AgeError`/`AgeMissing`/`AgeTimeout`, `KekLengthInvalid`, `KekPathRejected`, `KEK_LEN`, `export_kek_file`/`restore_kek_file`/`verify_kek_backup` con `NotImplementedError`, `get_settings` importado para que las pruebas lo reemplacen), `core/crypto/kek_backup.py` (`WrappedDek`, `verify_wrapped`, `load_wrapped`), `core/crypto/registry.py` (`kek.backup` sin llave: ya verde desde el Rojo, como `IMPORT_DIR` en B1), `cli_ops/kek.py` (tres comandos que salen 2 con "no implementado") y su registro en `cli_ops/__init__.py`, `infra/backup/restore.sh` (exit 99), `infra/tests/restore_e2e.sh` (exit 99, Rojo documental).
+- Fixtures: `tests/factories/fake_age.py` (`fake_age`, `configurar`, `llamadas`, `latido`, `envolver_falso`/`desenvolver_falso`), `tests/factories/pty_run.py` (`correr_con_pty`, solo Linux), `tests/cli/_apoyo.correr_con_pty`, `tests/crypto/conftest.py` (`kek_tmp`, `wrapped_de_prueba`, `age_falso`, `entorno_visto`), `tests/cli/conftest.py` (`kek_de_prueba`, `settings_kek`, `ajustes_kek`, `entorno_kek`, `llaves_en_base`).
+- Rojo por archivo (ejecución normal en este equipo / con `APEX_FAKE_AGE_FORZAR=1`, que fuerza el age falso en Windows solo para ver el Rojo):
+  - `tests/crypto/test_kek_backup.py`: 10 rojas (`NotImplementedError` de `verify_wrapped`/`load_wrapped`, y `restore` ausente de `OP_PURPOSES`), 1 verde (no hay lector público de la KEK).
+  - `tests/crypto/test_archive_kek.py`: 10 rojas y 20 saltadas / 29 rojas y 1 saltada (`NotImplementedError` de las tres funciones). Saltadas: las 20 que lanzan el age falso (Windows, ver desviación 1) y el enlace simbólico sin privilegios.
+  - `tests/cli/test_export_kek.py`: 9 rojas y 13 saltadas / 22 rojas (salida 2 "no implementado" donde se esperaba 0, o el texto de contrato ausente), 1 verde (`--passphrase*` no existe).
+  - `tests/architecture/test_kek_path_single_door.py`: 1 roja (`archive.py` aún no abre la KEK), 6 verdes. `test_archive_importers.py`: 2 rojas (`cli_ops/kek.py` aún no importa `archive`), 5 verdes. `test_third_party_confinement.py`: 2 rojas (`archive.py` sin `subprocess` ni `Popen`), 23 verdes. `test_core_import_direction.py` y `test_worker_boundaries.py`: 3 pruebas nuevas verdes de nacimiento (guardas sobre archivos que ya existen como stubs).
+  - `test_registry.py` (+2) y `test_bootstrap.py` (+1): verdes desde el Rojo porque el stub ya registra `kek.backup`; `test_las_cinco_clases_de_v01` se reparó (`ESPERADAS | SIN_LLAVE`).
+  - `tests/crypto/test_fake_age.py`: 5 verdes (autoprueba del falso). `test_archive_real_age.py` (3) y `test_kek_real_age.py` (2): 5 saltadas (Windows sin `pty` ni `age`); corren en CI y contenedor Linux, y la CI las exige sin saltos (S4B-D103).
+  - `infra/backup/tests/test_restore_guard.sh`: 29 fallas y 30 verdes (la mayoría de los verdes son negativas que se cumplen al no tocar nada el stub); `run.sh` de tests: 3 de 4 archivos en verde. `restore_e2e.sh`: Rojo documental, "corre en B3a.4 dentro de apex-ensayo y en CI".
+- `ruff check`, `ruff format` y `mypy src` (145 archivos) limpios. `bash -n` limpio en los tres scripts. Todas las rojas fallan por `NotImplementedError`, "no implementado" o aserción real; ninguna por `ImportError` ni fixture rota.
+- Sin Verde desechable en este slice.
+
+### S4B-B3a · Dudas y desviaciones del Rojo (para el Verde)
+
+1. El age falso no corre en Windows: `Popen(env={})` sobre un `.cmd` falla (cmd.exe no arranca con entorno vacío; verificado). Las pruebas que lo lanzan se saltan en Windows con motivo (`age_falso`) y corren en Linux/CI o en el contenedor; `APEX_FAKE_AGE_FORZAR=1` las fuerza. El Verde debe validarlas en Linux (contenedor) antes de sellar.
+2. Control del falso por archivo (`control.json`), no por `FAKE_AGE_NO_TTY`: con `env={}` el hijo no ve variables.
+3. `AGE_BINARY` sigue siendo `/usr/bin/age` (`test_archive.py` lo fija desde B2); `age_falso` parchea la constante y los `age_binary=` por defecto (`__kwdefaults__`) para conservar la firma exacta del plan.
+4. `OP_PURPOSES` no incluye `restore`: `oplog.record(purpose="restore")` lanzaría `CryptoError`. El plan dice "migración: ninguna", y `crypto_ops.purpose` no tiene CHECK, así que basta añadirlo a la tupla; `test_el_proposito_restore_existe_en_la_bitacora` lo exige.
+5. `archive` lee `BACKUP_DIR` y `dirname(CRYPTO_LOCAL_KEK_PATH)` por `get_settings()` (las pruebas lo reemplazan por un objeto con solo esos dos atributos); no hay otros parámetros en la firma del plan.
+6. Excepciones nuevas fijadas por las pruebas: `KekPathRejected` (ruta bajo `BACKUP_DIR`/KEK viva/enlace; sin la ruta en el mensaje), `KekLengthInvalid(AgeError)` (31/33/0/64 bytes), `AgeError` ante archivo ajeno o frase mala (sin texto del hijo), `NoTty` (el Verde detecta el aviso de age en stderr sin reproducirlo). Una KEK de tamaño incorrecto o ausente lanza `CryptoError` (`kek_invalid`/`kek_missing`, de `check_key_file`).
+7. `test_kek_path_single_door.py`: el plan decía "solo local_provider y archive referencian `CRYPTO_LOCAL_KEK_PATH`"; es falso hoy (config, provider, `cli_ops/keys.py`, `openapi.py`). Se fijó "solo ellos ABREN la KEK" y una lista cerrada de archivos que la NOMBRAN, que incluye `cli_ops/kek.py` (pasa la ruta a `archive`).
+8. Contrato de textos del CLI (todos en `test_export_kek.py`): `--as es obligatorio`; `no existe un admin activo`; `la ruta de salida no es válida`; `el archivo de salida ya existe`; `solo con CRYPTO_PROVIDER=local`; `la KEK no está disponible`; `se requiere una terminal interactiva`; `sin bitácora`; `verify-kek-backup: total=N failed=M` (10 = cinco DEK + cinco llaves de índice de v0.1; la verificación cuenta todas las `active`/`decrypt_only`); `no se pudo abrir el respaldo`.
+9. Contrato de `restore.sh` (cabecera de `test_restore_guard.sh`): `APEX_RESTORE_DATA_ROOT` y `APEX_RESTORE_TMP` como raíces configurables, `run.sh` junto al propio script, firma en `<manifiesto>.minisig`, la inspección del `tar` y la verificación de sha256 ocurren ANTES de la guarda de filas y de `pg_restore`, y las negativas salen con 2 (fallo de `run.sh` sale con 1).
+10. `kek_tmp` vive en `tmp_path/keys/kek.bin` (no en la raíz de `tmp_path`) para que "el directorio de la KEK viva" no abarque las salidas de la prueba.
+11. `restore_e2e.sh` se registró en `infra/tests/` (carpeta nueva); `test_infra_scripts.sh` solo gana una comprobación explícita porque `infra/backup/tests/run.sh` ya recorre `test_*.sh`.
+
+### S4B-B3a · Verde
+
+- Código: `core/crypto/archive.py` (368 líneas; `Popen` por lista con `env={}` y sin shell, KEK por `stdin`/`PIPE`, salida `O_EXCL|O_NOFOLLOW` 0o600, plazo y `kill`, errores tipados sin texto del hijo), `core/crypto/kek_backup.py`, `core/crypto/models.py` (`restore` en `OP_PURPOSES` y `OpPurpose`), `cli_ops/kek.py` (292 líneas, `cli_runtime`, `resolve_admin_actor(required=True)` en export y restore, `audit.record` + `oplog.record`, restore tolera la base caída). `infra/backup/restore.sh`, `lib.sh` (+`valid_tar_listing`), `Dockerfile` (copia `restore.sh`), `infra/tests/restore_e2e.sh`, `.github/workflows/ci.yml` (job `api`: `-rs --junitxml` y paso que exige 0 saltadas en los dos archivos de age real; job `images`: smoke con `SMOKE_KEEP=1`, guardas, e2e y `down -v` con `always()`). Docs: `docs/operacion/respaldo-y-restauracion.md`, RUNBOOK §12, `CLAUDE.md`, DECISIONES (S4B-D121 a D129).
+- Conteos en verde, Windows (host): `tests/crypto` + `tests/architecture` (gate `crypto`): 545 passed, 25 skipped; gate `architecture`: 495 passed; `tests/cli/test_export_kek.py + test_kek_real_age.py + test_cli_base.py`: 38 passed, 15 skipped; `infra/backup/tests`: 4 de 4 archivos (`test_restore_guard.sh` 59 ok, `test_lib.sh` 57 ok); `ruff check`, `ruff format --check` y `mypy src` (145 archivos) limpios.
+- Saltadas en Windows (motivo): 20 de `test_archive_kek.py` y 3 de `test_export_kek.py` (+ las de `test_sin_terminal`) por el `age` falso (cmd.exe no arranca con `env={}`), 1 por enlaces simbólicos sin privilegios, 3 de `test_archive_real_age.py` y 2 de `test_kek_real_age.py` (sin `pty` ni `age`), y las de FIFO/enlaces de `test_archive.py`. Todas corrieron en Linux (siguiente punto); nada saltado se da por verde en Windows.
+- Linux (contenedor `ghcr.io/astral-sh/uv:python3.12-bookworm-slim`, `age` 1.1.1 de Debian, `UV_PROJECT_ENVIRONMENT=/tmp/venv`, base de prueba por `host.docker.internal:5443`): `test_archive_kek + test_fake_age + test_kek_backup + test_archive_real_age + test_export_kek + test_kek_real_age`: **74 passed, 0 skipped** (incluye las 5 con `age` real y `pty`); ampliado con `test_archive + test_registry + test_bootstrap + test_cli_base`: **133 passed, 0 skipped**. Cobertura en Linux de esos 6 archivos: `archive.py` 82 %, `kek_backup.py` 97 %, `cli_ops/kek.py` 90 %. En Windows la cobertura por archivo no se mide (el `age` falso se salta).
+- Scripts: `test_restore_guard.sh` 59 ok / 0 fallas (Git Bash); `restore.sh` real contra PostgreSQL 16, `age`, `minisign` y `tar` de BusyBox reales (contenedores desechables, borrados): restaura 2 filas y el ancla, rechaza una base con datos (salida 2), acepta `--i-know-this-overwrites`, y `run.sh --prefix pre-restore` corre antes de `pg_restore`. `bash -n` limpio en `restore.sh`, `restore_e2e.sh` y `lib.sh`. `restore_e2e.sh` NO se ejecutó de punta a punta en este equipo (necesita el stack del smoke o `apex-ensayo`); su primera corrida es la CI o B3a.7.
+- Imagen `apex-backup:local` reconstruida con buildx: id `7dfddddf3c88` (verificado dentro de la imagen: `bash -n /opt/backup/restore.sh`, `age --version` = 1.3.2, `minisign -v` = 0.12). `apex-api:local` NO se reconstruyó (B3a.7).
+
+#### Desviaciones del Verde respecto al Rojo y al plan (también en DECISIONES)
+
+1. `total=10` -> `total=8` en `test_kek_backup.py`, `test_export_kek.py` y `test_kek_real_age.py`: hay 5 DEK y 3 llaves de índice, no 5 (S4B-D123).
+2. `tests/factories/fake_age.py` no anota `LC_CTYPE` (lo añade el intérprete de Python 3.12 al entorno vacío; PEP 538) (S4B-D122).
+3. `tests/factories/pty_run.py` gana `cwd` (el Rojo lo llamaba desde `_apoyo.correr_con_pty` sin que existiera) (S4B-D126).
+4. `tests/cli/test_cli_base.py`: `TOPE_CLI_OPS = {"kek.py": 400}` (S4B-D121).
+5. `restore-kek` no escribe bajo el volumen `keys` (regla del propio Rojo): la guía restaura a una carpeta y mueve con `install` (S4B-D125).
+6. `verify-kek-backup` sale 1 con `total=0` y registra auditoría `verify` (S4B-D127).
+7. `restore_e2e.sh` quedó como script completo pero sin corrida local de punta a punta.
+
+#### Pendiente
+
+`security-reviewer` de B3a, sello `slice-gate.sh cli`, B3a.7 (Docker y evidencia sobre `apex-ensayo`, con `apex-api:local` reconstruida) y checkpoint. Abierto para el ensayo: `pg_restore` sin `--single-transaction`.
+
+### S4B-B3a · Revisiones
+
+- **security-reviewer:** 0 CRITICAL, 0 HIGH, 4 MEDIUM, 6 LOW. Estado 10/10: 9 corregidos con prueba y 1 aceptado con dueño (L2, v0.2 con OpenBao). Decisiones S4B-D130 a D137 en DECISIONES.
+  - M1 TOCTOU de `restore.sh` (D131), M2 `valid_tar_listing` con enlaces de BusyBox/GNU y topes (D132), M3 `pg_restore` todo o nada y `dbsetup` tras restaurar (D133), M4 la KEK en claro solo en `/dev/shm` (D135): corregidos.
+  - L1 solo errores de conexión degradan `restore-kek`, con línea JSON (D130), L3 la guarda de filas mira seis tablas (D133), L4 secretos fuera de argv y lista de proyectos en `restore_e2e.sh` (D136), L5 dueño y permisos de los uploads restaurados (D133), L6 `digest_file` en `digest.py` y detección por AST de aperturas con alias (D134): corregidos.
+  - L2 copias inmutables de la KEK por `AESGCM(bytes(kek))` (D137): aceptado; `archive.py` ya escribe a `stdin` desde un `memoryview` del `bytearray`.
+- **Conteos tras las correcciones.** Windows: gate `architecture` 497 passed; gate `crypto` 547 passed, 25 skipped; `test_restore_guard.sh` 73 ok, `test_lib.sh` 64 ok (en Linux la guarda da 74 ok: suma la comprobación de permisos 600/700 que NTFS no puede hacer); `tests/worker/test_backup_check*.py` + `tests/core/test_backup_status.py` 127 passed, 3 skipped; `ruff`, `ruff format --check` y `mypy src` limpios. Linux (contenedor uv, `age` 1.1.1): `test_archive_kek`, `test_fake_age`, `test_kek_backup`, `test_archive_real_age`, `test_export_kek` y `test_kek_real_age`: 78 passed, 0 skipped (4 pruebas nuevas de `restore-kek`).
+- **Imágenes reconstruidas con buildx:** `apex-backup:local` id `bf10096a5068`; `apex-api:local` id `5289c8fce66d`.

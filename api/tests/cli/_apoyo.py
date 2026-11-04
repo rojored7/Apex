@@ -10,6 +10,7 @@ no es `None`, el comando ve `base.model_copy(update={"ENV": env})` como su `Sett
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -55,3 +56,18 @@ async def conteos_de_tablas(session: AsyncSession) -> dict[str, int]:
         "audit_log": int(await session.scalar(select(func.count()).select_from(AuditEntry)) or 0),
         "crypto_ops": int(await session.scalar(select(func.count()).select_from(CryptoOp)) or 0),
     }
+
+
+def correr_con_pty(
+    args: Sequence[str],
+    frase: str,
+    *,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> tuple[int, str]:
+    """Corre `args` bajo un pseudoterminal y teclea `frase` cuando `age` la pide (solo Linux;
+    `pytest.skip` en Windows). Devuelve `(código, transcripción)`: la transcripción puede traer la
+    frase generada por `age`, no se imprime ni se registra (S4B-B3a, S4B-D89)."""
+    from tests.factories.pty_run import correr_con_pty as _correr_con_pty
+
+    return _correr_con_pty(args, frase, env=env, cwd=cwd)

@@ -111,3 +111,65 @@ async def limpiar_demo(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
         configure_keyring(None)
         configure_provider(None)
         await _vaciar(engine, ultima)
+
+
+# Respaldo de la KEK (S4B-B3a; S4B-D58, S4B-D62, S4B-D89) -----------------------------------------
+# `kek_de_prueba`: KEK, llave de firma y par JWT reales de `init-keys` en una carpeta propia de la
+# prueba (no las de la sesión). `settings_kek` apunta el `Settings` a ellas y a un `BACKUP_DIR`
+# vacío; `entorno_kek` además deja el `age` falso como binario y hace que `archive` vea esos mismos
+# ajustes. `llaves_en_base` crea las DEK de la base envueltas con ESA KEK (commit real).
+
+from app.cli_ops.keys import KeyPaths, init_keys_files, key_paths_in  # noqa: E402
+from app.core.context import SYSTEM_USER_ID, actor_scope  # noqa: E402
+from app.core.crypto import archive, oplog  # noqa: E402
+from app.core.crypto.bootstrap import ensure_keys  # noqa: E402
+from app.core.crypto.local_provider import LocalFileProvider  # noqa: E402
+from tests.crypto.conftest import age_falso  # noqa: E402,F401
+
+
+@pytest.fixture
+def kek_de_prueba(tmp_path: Path) -> KeyPaths:
+    rutas = key_paths_in(tmp_path / "keys-cli")
+    rutas.kek.parent.mkdir()
+    init_keys_files(rutas)
+    return rutas
+
+
+@pytest.fixture
+def settings_kek(settings_prueba: Settings, kek_de_prueba: KeyPaths, tmp_path: Path) -> Settings:
+    respaldos = tmp_path / "backups"
+    respaldos.mkdir()
+    return settings_prueba.model_copy(
+        update={
+            "CRYPTO_LOCAL_KEK_PATH": kek_de_prueba.kek,
+            "CRYPTO_LOCAL_SIGNING_KEY_PATH": kek_de_prueba.signing_key,
+            "BACKUP_DIR": respaldos,
+        }
+    )
+
+
+@pytest.fixture
+def ajustes_kek(settings_kek: Settings, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    """`settings_kek` visible también para `archive` (sin lanzar `age`)."""
+    monkeypatch.setattr(archive, "get_settings", lambda: settings_kek)
+    return settings_kek
+
+
+@pytest.fixture
+def entorno_kek(ajustes_kek: Settings, age_falso: Path) -> Settings:  # noqa: F811
+    """`ajustes_kek` con el `age` falso como binario (en Windows se omite, ver `age_falso`)."""
+    return ajustes_kek
+
+
+@pytest.fixture
+async def llaves_en_base(
+    limpiar_demo: async_sessionmaker[AsyncSession], kek_de_prueba: KeyPaths
+) -> async_sessionmaker[AsyncSession]:
+    proveedor = LocalFileProvider(kek_de_prueba.kek, kek_de_prueba.signing_key)
+    async with limpiar_demo() as sesion:
+        with actor_scope(SYSTEM_USER_ID):
+            await ensure_keys(sesion, proveedor)
+            await sesion.commit()
+    oplog.reset_buffer()
+    configure_keyring(None)
+    return limpiar_demo

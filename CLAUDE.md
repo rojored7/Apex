@@ -29,7 +29,7 @@ apex/
       cli_base.py        # base común del CLI (S4B-B0): unit_of_work, resolve_actor, resolve_admin_actor, cli_runtime, crypto_runtime, production_guard_error, get_settings; único archivo de la capa que arranca el cifrado de columnas (install_crypto_type_listeners)
       cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
       cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
-      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, openapi, recompute, seed_demo, import_members, verify_audit; register_ops(app); nunca se importan entre sí ni importan cli
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit; register_ops(app); nunca se importan entre sí ni importan cli
       seed/              # `seed --demo` (S4B-D32): dataset.py puro (3 planes, 30 socios ficticios) y apply.py (dos transacciones por socio, lock_member primero; única llamada a enforce_retroactive_limit=False fuera de cli.py, S4B-D33); solo lo importa cli_ops/seed_demo.py
       imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
@@ -54,8 +54,9 @@ apex/
         alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo (Sprint 4A: LogAlertSink)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
-          digest.py      #   SHA-256 sin dependencias (lo usa core/audit)
-          archive.py     #   digest_file() y respaldo de la KEK con age -p (S4B-D20, D58)
+          digest.py      #   SHA-256 sin dependencias (lo usa core/audit) y digest_file(path, chunk, max_bytes=): SHA-256 de un archivo en reposo sin seguir enlaces, el único lector de archivos de respaldo que usa el worker (S4B-D134)
+          archive.py     #   digest_file() y, desde B3a, export_kek_file/restore_kek_file/verify_kek_backup: `age -p`/`age -d` por Popen (lista, env={}, sin shell), la KEK por descriptor, salida O_EXCL 0o600, errores tipados sin texto del hijo (S4B-D20, D58, D121 a D126); única puerta de la KEK junto con local_provider
+          kek_backup.py  #   WrappedDek, verify_wrapped (AESGCM + parse_wrapped; deja el bytearray en ceros) y load_wrapped (un SELECT de solo lectura); la clase de dato `kek.backup` (registry.py, sin llave) da nombre a las filas de crypto_ops de export-kek, verify-kek-backup y restore-kek (S4B-D85)
       modules/
         auth/        router.py schemas.py models.py service.py exceptions.py
                      rules.py tokens.py cookies.py   # ayudas privadas del módulo (S2-D4)
@@ -136,7 +137,7 @@ apex/
 
 ## El bus de criptografía (`core/crypto/`)
 
-1. Única puerta: `encrypt(data_class, plaintext, aad)`, `decrypt(blob, aad)`, `blind_index(data_class, value)`, `sign(data_class, data)`, `verify(data_class, data, signature)`, más `digest(data)` (SHA-256 para la cadena de auditoría, en `core/crypto/digest.py`) y `digest_file(path)` más las funciones de respaldo de la KEK (`age -p` por `subprocess`) en `core/crypto/archive.py`, que existen desde v0.1 (S4B-D20, D58; no hay `verify_age_archive`: la verificación de descifrado de los respaldos la hace el servicio `backup`).
+1. Única puerta: `encrypt(data_class, plaintext, aad)`, `decrypt(blob, aad)`, `blind_index(data_class, value)`, `sign(data_class, data)`, `verify(data_class, data, signature)`, más `digest(data)` (SHA-256 para la cadena de auditoría, en `core/crypto/digest.py`) y `digest_file(path)` (ambos en `core/crypto/digest.py`) más las funciones de respaldo de la KEK (`age -p` por `subprocess`) en `core/crypto/archive.py` (`export_kek_file`, `restore_kek_file`, `verify_kek_backup`; implementadas en B3a y expuestas por los comandos `export-kek`, `verify-kek-backup` y `restore-kek`; S4B-D20, D58; no hay `verify_age_archive`: la verificación de descifrado de los respaldos la hace el servicio `backup`).
 2. `data_class` es un string como `member.document`; decide la llave. El que llama nunca elige llave ni algoritmo.
 3. Envelope: KEK en el `KeyProvider`; DEK por `data_class`, envuelta en la tabla `crypto_keys`, abierta en memoria al arrancar. Campos en AES-256-GCM con `aad = id del registro`.
 4. Formato del blob (texto): `apx1.<key_id>.<alg>.<nonce_b64url>.<ciphertext_b64url>`. `alg` en v0.1 es `A256GCM`. El algoritmo va en el dato, no en el código.
@@ -144,7 +145,7 @@ apex/
 6. `KeyProvider` es una interfaz con `wrap`, `unwrap`, `sign`, `verify`, `rotate`. Implementaciones: `LocalFileProvider` (v0.1, KEK en archivo 600 fuera del repo) y `OpenBaoProvider` (v0.2, Transit).
 7. Tablas `crypto_keys` (metadatos, nunca material de llave en claro) y `crypto_ops` (bitácora inmutable: quién, verbo, data_class, key_id, versión, record_id, resultado).
 8. Regla de lint obligatoria en `pyproject.toml` (ruff `flake8-tidy-imports` banned-api): fuera de `core/crypto` y `core/security` está prohibido importar `cryptography`, `oqs`, `hashlib`, `hmac`, `jwt`, `argon2`. Si el lint lo permite, alguien lo hará.
-9. Campos cifrados en v0.1: `members.document`, `members.phone`, `members.email`, `members.emergency_contact`, `members.birth_date`. Nombre y apellido en claro (van en el leaderboard).
+9. Campos cifrados en v0.1: `members.document`, `members.phone`, `members.email`, `members.emergency_contact`, `members.birth_date`. Nombre y apellido en claro (van en el leaderboard). La clase `kek.backup` (registry, sin llave ni columnas) solo nombra las filas de `crypto_ops` del respaldo de la KEK (S4B-D85).
 
 ## Seguridad
 
@@ -196,6 +197,7 @@ docker compose run --rm worker python -m app.worker.main --run-once expirations
 docker compose run --rm worker python -m app.worker.main --status expirations
 docker compose run --rm tools recompute-memberships --as <email>
 docker compose run --rm tools verify-audit --as <email>
+docker compose --profile tools run --rm -v "$PWD/salida:/salida" tools export-kek --out /salida/kek.age --as <email>   # B3a: age -p pide la frase por la terminal; verify-kek-backup <archivo> [--as] y restore-kek <archivo> --out <ruta> --as <email> (docs/operacion/respaldo-y-restauracion.md)
 ```
 
 `--date <fecha> --simulate` solo con `ENV=dev` y contra una base `*_sim` o `apex_test` (S4A-D48, S4A-D63); con `ENV=production`, `verify-audit` y `recompute-memberships` exigen `--as` (S4A-D53). El worker arranca con el stack (`up -d`, sin perfil desde S4A-W0-2), después de `db` y `api` `healthy`.

@@ -108,4 +108,29 @@ assert_contains "manifest_json lleva format_version" "$M" '"format_version": 1'
 assert_contains "manifest_json escapa las comillas" "$M" 'mal \"texto\"'
 assert_contains "manifest_json lleva el archivo" "$M" '"kind": "db"'
 
+# --- valid_tar_listing (S4B-B3a, S4B-D42): listados de GNU y BusyBox -----------------------
+L_OK=$'drwxr-xr-x 0/0 0 2026-10-21 07:00 uploads/\n-rw-r--r-- 0/0 4 2026-10-21 07:00:05 uploads/a/b c.txt'
+assert_ok "valid_tar_listing acepta archivos y carpetas bajo uploads/" bash -c 'source "$1"; printf "%s\n" "$2" | valid_tar_listing' _ "$LIB" "$L_OK"
+assert_fails "valid_tar_listing rechaza un listado vacío" bash -c 'source "$1"; : | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza un enlace simbólico" bash -c 'source "$1"; printf "%s\n" "lrwxrwxrwx 0/0 0 2026-10-21 07:00 uploads/e -> /etc/passwd" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza un enlace duro" bash -c 'source "$1"; printf "%s\n" "hrw-r--r-- 0/0 0 2026-10-21 07:00 uploads/e link to uploads/a" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza '..'" bash -c 'source "$1"; printf "%s\n" "-rw-r--r-- 0/0 4 2026-10-21 07:00 uploads/../x" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza una ruta absoluta" bash -c 'source "$1"; printf "%s\n" "-rw-r--r-- 0/0 4 2026-10-21 07:00 /etc/x" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza un nombre fuera de uploads/" bash -c 'source "$1"; printf "%s\n" "-rw-r--r-- 0/0 4 2026-10-21 07:00 otro/x" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza un dispositivo" bash -c 'source "$1"; printf "%s\n" "crw-r--r-- 0/0 0 2026-10-21 07:00 uploads/dev" | valid_tar_listing' _ "$LIB"
+assert_fails "valid_tar_listing rechaza una línea que no encaja" bash -c 'source "$1"; printf "%s\n" "basura" | valid_tar_listing' _ "$LIB"
+
+# --- M2: enlaces con "->" o "link to" en el nombre, tipos, topes (S4B-B3a revisión) ----------------
+L_HARD_BUSYBOX='-rw-r--r-- apex/apex 0 2026-10-21 07:00:05 uploads/hard -> uploads/f'
+assert_fails "valid_tar_listing rechaza un enlace duro de BusyBox (tipo - con ->)" bash -c 'source "$1"; printf "%s\n" "$2" | valid_tar_listing' _ "$LIB" "$L_HARD_BUSYBOX"
+L_HARD_GNU='-rw-r--r-- 0/0 0 2026-10-21 07:00 uploads/hard link to uploads/f'
+assert_fails "valid_tar_listing rechaza un enlace duro de GNU (tipo - con link to)" bash -c 'source "$1"; printf "%s\n" "$2" | valid_tar_listing' _ "$LIB" "$L_HARD_GNU"
+L_BUSY_OK='-rw-r--r-- apex/apex 2 2026-10-21 07:00:05 uploads/f'
+assert_ok "valid_tar_listing acepta el formato de BusyBox" bash -c 'source "$1"; printf "%s\n" "$2" | valid_tar_listing' _ "$LIB" "$L_BUSY_OK"
+assert_fails "valid_tar_listing rechaza más entradas que MAX_TAR_ENTRIES" bash -c 'source "$1"; export MAX_TAR_ENTRIES=2; printf "%s\n%s\n%s\n" "$2" "$2" "$2" | valid_tar_listing' _ "$LIB" "$L_BUSY_OK"
+assert_ok "valid_tar_listing acepta exactamente MAX_TAR_ENTRIES" bash -c 'source "$1"; export MAX_TAR_ENTRIES=2; printf "%s\n%s\n" "$2" "$2" | valid_tar_listing' _ "$LIB" "$L_BUSY_OK"
+L_GRANDE='-rw-r--r-- 0/0 12884901888 2026-10-21 07:00 uploads/grande'
+assert_ok "valid_tar_listing acepta un archivo de 12 GiB" bash -c 'source "$1"; printf "%s\n" "$2" | valid_tar_listing' _ "$LIB" "$L_GRANDE"
+assert_fails "valid_tar_listing rechaza una suma sobre MAX_TAR_BYTES (2 x 12 GiB)" bash -c 'source "$1"; printf "%s\n%s\n" "$2" "$2" | valid_tar_listing' _ "$LIB" "$L_GRANDE"
+
 finish

@@ -4,8 +4,8 @@ Por AST sobre `src/app` (también imports dentro de funciones, relativos ignorad
 tercero es relativo, y `importlib.import_module("x")` / `__import__("x")` con cadena literal):
 
 - `openpyxl` y `defusedxml` solo se importan bajo `imports/` (la lectura de la plantilla);
-- `subprocess` solo en `core/crypto/archive.py` (el binario `age`, B2/B3a); vigente desde ya:
-  hoy ningún archivo lo importa;
+- `subprocess` solo en `core/crypto/archive.py` (el binario `age`) y, desde B3a, ese archivo SÍ
+  lo importa (S4B-D21): lista de un solo archivo con un importador real;
 - `pyrage` no se importa en ninguna parte (S4B-D37: se descartó por licencia);
 - `imports/members_xlsx.py` sí usa `openpyxl` (es quien lee el libro).
 Controles con fuentes falsas: cada regla debe fallar ante su violación.
@@ -85,6 +85,30 @@ def test_imports_members_xlsx_es_quien_lee_el_libro_con_openpyxl() -> None:
 def test_subprocess_solo_en_core_crypto_archive() -> None:
     fuera = sorted(importadores("subprocess") - SUBPROCESS_PERMITIDO)
     assert fuera == [], fuera
+
+
+def test_subprocess_tiene_exactamente_un_importador_real_archive() -> None:
+    """S4B-B3a: la regla deja de ser preventiva; `archive.py` importa `subprocess`."""
+    assert importadores("subprocess") == SUBPROCESS_PERMITIDO
+
+
+def test_archive_lanza_age_con_lista_sin_shell_y_con_entorno_vacio() -> None:
+    """S4B-D58: `Popen([...], env={}, shell=False)`; nunca `shell=True`, `os.system` ni `run`
+    con una cadena; la KEK entra por descriptor, no por el entorno."""
+    fuente = (SRC / "core" / "crypto" / "archive.py").read_text(encoding="utf-8")
+    llamadas_popen = [
+        n
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "Popen"
+    ]
+    assert llamadas_popen, "archive.py no lanza age con Popen"
+    for llamada in llamadas_popen:
+        claves = {k.arg: k.value for k in llamada.keywords}
+        assert isinstance(claves.get("env"), ast.Dict) and not claves["env"].keys, "env={}"
+        shell = claves.get("shell")
+        assert shell is None or (isinstance(shell, ast.Constant) and shell.value is False)
+    assert "shell=True" not in fuente and "os.system" not in fuente
+    assert "--passphrase" not in fuente
 
 
 @pytest.mark.parametrize("tercero", NUNCA)

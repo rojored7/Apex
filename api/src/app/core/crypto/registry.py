@@ -42,6 +42,8 @@ _V01: tuple[DataClassSpec, ...] = (
         "json",
         ("members.members.emergency_contact",),
     ),
+    # S4B-D85: clase sin llave; solo da nombre a las filas de `crypto_ops` del respaldo de la KEK.
+    DataClassSpec("kek.backup", False, None, False, "str", ()),
 )
 
 REGISTRY: Mapping[str, DataClassSpec] = {spec.name: spec for spec in _V01}

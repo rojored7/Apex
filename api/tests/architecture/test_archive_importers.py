@@ -2,8 +2,8 @@
 
 `archive.py` guarda `digest_file` y (B3a) las funciones de respaldo de la KEK con `age -p` por
 `subprocess`. Fuera de `core/` solo lo importa el job de verificación del worker:
-`worker/jobs/backup_check.py` (por `digest_file`). B3a suma `cli_ops/kek.py` (S4B-D85) y esta lista
-se amplía en ese slice. Ni `main.py`, ni `core/health.py`, ni `core/backup_status.py`, ni los
+`worker/jobs/backup_check.py` (por `digest_file`) y, desde B3a, `cli_ops/kek.py` (S4B-D85: las
+funciones de la KEK). Ni `main.py`, ni `core/health.py`, ni `core/backup_status.py`, ni los
 services, ni `cli.py` lo importan.
 
 Por AST sobre `src/app` (también imports perezosos y relativos). Controles con fuentes falsas.
@@ -17,7 +17,7 @@ from typing import Final
 
 SRC: Final = Path(__file__).resolve().parents[2] / "src" / "app"
 ARCHIVE: Final = "app.core.crypto.archive"
-PERMITIDOS_FUERA_DE_CORE: Final = frozenset({"worker/jobs/backup_check.py"})
+PERMITIDOS_FUERA_DE_CORE: Final = frozenset({"cli_ops/kek.py"})
 
 
 def _paquete(path: Path) -> list[str]:
@@ -61,10 +61,37 @@ def importadores_fuera_de_core() -> set[str]:
 # Reglas sobre el árbol real -------------------------------------------------------------------
 
 
-def test_archive_existe_y_expone_digest_file() -> None:
+def test_digest_file_vive_en_digest_y_no_en_archive() -> None:
+    """S4B-D134 (L6): el worker toma `digest_file` de `digest.py`, que no carga el proveedor ni
+    `subprocess`; `archive.py` ya no lo define."""
+    digest = (SRC / "core" / "crypto" / "digest.py").read_text(encoding="utf-8")
+    archive = (SRC / "core" / "crypto" / "archive.py").read_text(encoding="utf-8")
+    definidas = {n.name for n in ast.parse(digest).body if isinstance(n, ast.FunctionDef)}
+    assert "digest_file" in definidas
+    assert "def digest_file" not in archive
+
+
+def test_el_worker_no_importa_archive() -> None:
+    worker = [
+        p.relative_to(SRC).as_posix()
+        for p in SRC.glob("worker/**/*.py")
+        if importa_archive(p.read_text(encoding="utf-8"), p)
+    ]
+    assert worker == []
+
+
+def test_archive_expone_las_funciones_de_la_kek() -> None:
+    """S4B-B3a (S4B-D58): `export_kek_file`, `restore_kek_file` y `verify_kek_backup`."""
     fuente = (SRC / "core" / "crypto" / "archive.py").read_text(encoding="utf-8")
     nombres = {n.name for n in ast.parse(fuente).body if isinstance(n, ast.FunctionDef)}
-    assert "digest_file" in nombres
+    assert {"export_kek_file", "restore_kek_file", "verify_kek_backup"} <= nombres
+
+
+def test_cli_ops_kek_es_el_unico_importador_de_archive_en_la_capa_de_aplicacion() -> None:
+    capa = {
+        r for r in importadores_fuera_de_core() if r.startswith(("cli_ops/", "seed/", "imports/"))
+    }
+    assert capa == {"cli_ops/kek.py"}
 
 
 def test_los_importadores_de_archive_fuera_de_core_son_exactamente_los_fijados() -> None:

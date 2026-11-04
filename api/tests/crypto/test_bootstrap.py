@@ -115,3 +115,16 @@ async def test_dos_arranques_concurrentes_dejan_una_sola_llave_por_clase(
     assert len(llaves) == len(CIFRADO) + len(INDICE)
     assert len({(k.purpose, k.data_class) for k in llaves}) == len(llaves)
     assert {k.key_id for k in a.keys()} == {k.key_id for k in b.keys()} == {k.id for k in llaves}
+
+
+async def test_kek_backup_no_crea_ninguna_llave(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    """S4B-D85: la clase `kek.backup` no tiene llave; `_create_missing` no la ve."""
+    with actor_scope(SYSTEM_USER_ID):
+        await ensure_keys(sin_llaves, proveedor_local)
+
+    llaves = await _llaves(sin_llaves)
+
+    assert "kek.backup" not in {k.data_class for k in llaves}
+    assert len(llaves) == len(CIFRADO) + len(INDICE)

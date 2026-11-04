@@ -278,3 +278,22 @@ def test_control_text_en_seed_y_models_en_imports_se_detectan() -> None:
     violaciones = _violaciones_de_imports(SEED / "x.py", privado)
     reglas = sorted(v.rsplit("(", 1)[1].rstrip(")") for v in violaciones)
     assert reglas == ["foreign_router", "private_helper"]
+
+
+def test_la_capa_de_aplicacion_barre_cli_ops_kek() -> None:
+    """S4B-B3a: `cli_ops/kek.py` entra al barrido de imports y no escribe SQL."""
+    nombres = {p.relative_to(SRC).as_posix() for p in _archivos_de_aplicacion()}
+    assert "cli_ops/kek.py" in nombres
+    fuente = (CLI_OPS / "kek.py").read_text(encoding="utf-8")
+    assert llamadas_sql(fuente, "cli_ops/kek.py") == []
+    assert _violaciones_de_imports(CLI_OPS / "kek.py") == []
+
+
+def test_control_models_o_router_en_cli_ops_kek_se_detectan() -> None:
+    falsa = "from app.modules.auth.models import User\nfrom app.modules.members.router import r\n"
+    reglas = sorted(
+        v.rsplit("(", 1)[1].rstrip(")") for v in _violaciones_de_imports(CLI_OPS / "kek.py", falsa)
+    )
+    assert reglas == ["foreign_models", "foreign_router"]
+    sql = "async def f(s):\n    await s.execute(text('SELECT 1'))\n"
+    assert llamadas_sql(sql, "cli_ops/kek.py") == ["cli_ops/kek.py:2 text("]

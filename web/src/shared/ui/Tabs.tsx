@@ -2,7 +2,7 @@
 // La pestaña activa vive en la URL (?tab= o un segmento de la ruta; S3-F1: la pestaña `indexId`
 // vive en la ruta base, la hija índice), nunca en un estado
 // propio duplicado: recargar o volver atrás la conserva. La selección sigue al foco.
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { cx } from "./cx";
 import styles from "./Tabs.module.css";
@@ -45,6 +45,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
   const navigate = useNavigate();
   const baseId = useId();
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const listRef = useRef<HTMLDivElement>(null);
 
   const isOff = (tab: TabItem): boolean => Boolean(tab.disabledUntil ?? tab.disabledNote);
   const enabled = tabs.filter((tab) => !isOff(tab));
@@ -54,6 +55,19 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
   const activeId = enabled.find((tab) => tab.id === requested)?.id ?? enabled[0]?.id ?? "";
   const tabId = (id: string): string => `${baseId}-tab-${id}`;
   const panelId = `${baseId}-panel`;
+
+  // S4B-F1 (S4B-D51): si la pestaña activa queda fuera de la barra (viewport corto, nueve pestañas),
+  // se lleva a la vista; si cabe, no se toca el desplazamiento. `?.` por entornos sin scrollIntoView (jsdom).
+  useEffect(() => {
+    const tab = tabRefs.current.get(activeId);
+    const list = listRef.current;
+    if (!tab || !list) return;
+    const box = tab.getBoundingClientRect();
+    const bar = list.getBoundingClientRect();
+    if (box.left >= bar.left && box.right <= bar.right) return;
+    // jsdom antiguo no lo define: el tipo del DOM lo da por presente.
+    (tab as { scrollIntoView?: HTMLElement["scrollIntoView"] }).scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [activeId]);
 
   const select = (id: string): void => {
     if (urlMode === "query") {
@@ -94,7 +108,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
 
   return (
     <div className={styles.tabs}>
-      <div role="tablist" aria-label={label} className={styles.list} onKeyDown={onKeyDown}>
+      <div ref={listRef} role="tablist" aria-label={label} className={styles.list} onKeyDown={onKeyDown}>
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           const isDisabled = isOff(tab);

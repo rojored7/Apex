@@ -215,3 +215,33 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// S4B-F1 (S4B-D51; deuda de S4A-F2): a 1440 px, con Historial activa, las nueve pestañas de la ficha
+// quedan visibles dentro de la barra (antes "Membresías" salía recortada por el desplazamiento
+// horizontal). Se mide con el boundingBox de cada pestaña contra el de la barra, en claro y oscuro.
+for (const theme of ["light", "dark"] as const) {
+  test(`con Historial activa a 1440 px las nueve pestañas quedan dentro de la barra en ${theme}`, async ({ page }) => {
+    await fakeApi(page);
+    await setTheme(page, theme);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await page.goto(`/socios/${MEMBER_ID}/historial`);
+
+    const bar = page.getByRole("tablist", { name: "Secciones del socio" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.getByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    const tabs = bar.getByRole("tab");
+    await expect(tabs).toHaveCount(9);
+    const barBox = await bar.boundingBox();
+    expect(barBox).not.toBeNull();
+    for (const tab of await tabs.all()) {
+      const name = (await tab.textContent()) ?? "";
+      const box = await tab.boundingBox();
+      expect(box, `la pestaña ${name} tiene caja`).not.toBeNull();
+      expect(box?.x ?? -1, `${name}: borde izquierdo dentro de la barra`).toBeGreaterThanOrEqual((barBox?.x ?? 0) - 0.5);
+      expect((box?.x ?? 0) + (box?.width ?? 0), `${name}: borde derecho dentro de la barra`).toBeLessThanOrEqual((barBox?.x ?? 0) + (barBox?.width ?? 0) + 0.5);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `test-results/captures/ficha-tabs-historial-${theme}-1440.png`, fullPage: true });
+  });
+}

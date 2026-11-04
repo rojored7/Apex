@@ -156,3 +156,40 @@ test.describe("Inicio (preview)", () => {
     expect(api.calls()).toBe(0);
   });
 });
+
+// S4B-F1 (S4B-D51, S4B-D88; T8 de US-109): lo que la spec del stack (stack/home.spec.ts) comprueba
+// contra el ensayo en V4, aquí con el api simulado: el admin ve los KPI del tablero, "Por vencer"
+// lleva a /socios?membership_status=expiring, la grilla de socios es visible en menos de 10 s y el
+// member que abre / va a /mi.
+const ADMIN = { id: "11111111-1111-4111-8111-111111111111", email: "admin@apex.test", role: "admin" } as const;
+const GRID_BUDGET_MS = 10_000;
+
+test.describe("Inicio del admin (preview, T8 de US-109)", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.clock.setFixedTime(NOW);
+  });
+
+  test("Por vencer lleva a /socios?membership_status=expiring y la grilla aparece en menos de 10 s", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await mockSession(page, ADMIN);
+    await fakeDashboard(page, { ...COACH_DASHBOARD, income_month_cop: 4_250_000 });
+    const memberRows = [
+      { id: LAURA, first_name: "Laura", last_name: "Gómez", sex: "f", status: "active", deleted_at: null, membership_status: "expiring", plan_name: "Mensual", membership_end_date: "2026-10-28" },
+    ];
+    await page.route((url) => url.pathname === "/api/v1/members", (route: Route) => json(route, 200, { items: memberRows, total: 1, limit: 25, offset: 0 }));
+
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Socios al día: 120" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Por vencer: 14" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Vencidos: 9" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Ingresos de .+: \$ 4\.250\.000$/ })).toBeVisible();
+
+    const started = Date.now();
+    await page.getByRole("link", { name: "Por vencer: 14" }).click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/socios");
+    expect(new URL(page.url()).searchParams.get("membership_status")).toBe("expiring");
+    await expect(page.getByRole("table")).toBeVisible({ timeout: GRID_BUDGET_MS });
+    await expect(page.getByRole("link", { name: "Laura Gómez" })).toBeVisible();
+    expect(Date.now() - started).toBeLessThan(GRID_BUDGET_MS);
+  });
+});

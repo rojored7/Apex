@@ -1,8 +1,10 @@
 // US-064 T2 y T4: pestañas accesibles con la pestaña activa en la URL.
 // S3-F1 (E14): en modo segmento, `indexId` es la pestaña que vive en la ruta base (hija índice).
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Tabs, type TabItem } from "./Tabs";
 
 const TABS: TabItem[] = [
@@ -258,5 +260,177 @@ describe("Tabs", () => {
     screen.getByRole("tab", { name: "Datos" }).focus();
     await user.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Notas" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+// S4B-F1 (S4B-D51; deuda de S4A-F2): la barra de la ficha tiene nueve pestañas y, a 1440 px con
+// Historial activa, "Membresías" quedaba recortada. jsdom no maqueta: la geometría se simula con
+// getBoundingClientRect (cada pestaña de TAB_WIDTH px, en fila, desplazada por `scrollLeft`) y
+// scrollIntoView mueve ese desplazamiento como lo haría el navegador con `nearest`.
+const NINE_TABS: TabItem[] = [
+  { id: "datos", label: "Datos" },
+  { id: "membresias", label: "Membresías" },
+  { id: "pagos", label: "Pagos" },
+  { id: "asistencia", label: "Asistencia", disabledUntil: "v0.4" },
+  { id: "resultados", label: "Resultados", disabledUntil: "v0.5" },
+  { id: "atleta", label: "Atleta", disabledUntil: "v0.6" },
+  { id: "avisos", label: "Avisos", disabledUntil: "v0.2" },
+  { id: "adjuntos", label: "Adjuntos", disabledUntil: "v0.3" },
+  { id: "historial", label: "Historial" },
+];
+// vitest corre con cwd = web/; el CSS se lee como texto (import ?raw lo procesa como módulo CSS).
+const tabsCss = readFileSync(resolve(process.cwd(), "src/shared/ui/Tabs.module.css"), "utf8");
+const tokensCss = readFileSync(resolve(process.cwd(), "src/core/styles/tokens.css"), "utf8");
+const TAB_WIDTH = 120;
+const NEAREST = { inline: "nearest", block: "nearest" } as const;
+
+interface Box {
+  left: number;
+  right: number;
+}
+
+describe("Tabs · nueve pestañas con Historial activa (1440 px)", () => {
+  const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+  let scrollLeft = 0;
+  let barWidth = 0;
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+
+  function rectOf(element: HTMLElement): DOMRect {
+    let left = 0;
+    let width = 0;
+    if (element.getAttribute("role") === "tablist") {
+      width = barWidth;
+    } else if (element.getAttribute("role") === "tab") {
+      width = TAB_WIDTH;
+      left = Array.from(element.parentElement?.children ?? []).indexOf(element) * TAB_WIDTH - scrollLeft;
+    }
+    return { x: left, y: 0, top: 0, bottom: 44, left, right: left + width, width, height: 44, toJSON: () => ({}) };
+  }
+
+  beforeEach(() => {
+    scrollLeft = 0;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect(this: HTMLElement): DOMRect {
+      return rectOf(this);
+    });
+    // Lo que hace `nearest`: no mueve nada si la caja cabe; si no, la lleva al borde más cercano.
+    scrollIntoView = vi.fn(function scrollIntoViewMock(this: HTMLElement) {
+      const box = rectOf(this);
+      if (box.left < 0) scrollLeft += box.left;
+      else if (box.right > barWidth) scrollLeft += box.right - barWidth;
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: scrollIntoView });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalScroll) Object.defineProperty(Element.prototype, "scrollIntoView", originalScroll);
+    else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+
+  function renderNine(initial: string) {
+    return render(
+      <MemoryRouter initialEntries={[initial]}>
+        <Tabs label="Secciones del socio" tabs={NINE_TABS}>
+          {(active) => <p>{`Panel ${active}`}</p>}
+        </Tabs>
+      </MemoryRouter>,
+    );
+  }
+
+  const boxes = (): { bar: Box; tabs: Box[] } => ({
+    bar: rectOf(screen.getByRole("tablist", { name: "Secciones del socio" })),
+    tabs: screen.getAllByRole("tab").map(rectOf),
+  });
+  const inside = (tab: Box, bar: Box): boolean => tab.left >= bar.left && tab.right <= bar.right;
+
+  it("pinta las nueve pestañas, Historial activa y las cinco futuras deshabilitadas", () => {
+    barWidth = 1200;
+    renderNine("/socios/1?tab=historial");
+
+    expect(screen.getAllByRole("tab")).toHaveLength(9);
+    expect(screen.getByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Panel historial");
+    expect(screen.getAllByRole("tab").filter((tab) => tab.getAttribute("aria-disabled") === "true")).toHaveLength(5);
+  });
+
+  it("si las nueve caben en la barra, todas quedan dentro y no se desplaza nada", () => {
+    barWidth = 9 * TAB_WIDTH + 120;
+    renderNine("/socios/1?tab=historial");
+
+    const { bar, tabs } = boxes();
+    expect(tabs).toHaveLength(9);
+    expect(tabs.every((tab) => inside(tab, bar))).toBe(true);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("si la activa (Historial) no cabe, la lleva a la vista con scrollIntoView nearest y queda dentro de la barra", () => {
+    barWidth = 5 * TAB_WIDTH;
+    renderNine("/socios/1?tab=historial");
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith(NEAREST);
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByRole("tab", { name: "Historial" }));
+    const { bar, tabs } = boxes();
+    expect(inside(tabs[8] as Box, bar)).toBe(true);
+  });
+
+  it("si la activa ya cabe (Datos, la primera), no llama a scrollIntoView aunque otras queden fuera", () => {
+    barWidth = 5 * TAB_WIDTH;
+    renderNine("/socios/1?tab=datos");
+
+    const { bar, tabs } = boxes();
+    expect(inside(tabs[0] as Box, bar)).toBe(true);
+    expect(inside(tabs[8] as Box, bar)).toBe(false);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("al pasar con End a Historial en una barra corta la lleva a la vista, y con Home regresa a Datos", async () => {
+    const user = userEvent.setup();
+    barWidth = 5 * TAB_WIDTH;
+    renderNine("/socios/1?tab=datos");
+    await user.click(screen.getByRole("tab", { name: "Datos" }));
+
+    await user.keyboard("{End}");
+
+    expect(screen.getByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByRole("tab", { name: "Historial" }));
+    expect(scrollIntoView).toHaveBeenLastCalledWith(NEAREST);
+
+    await user.keyboard("{Home}");
+
+    expect(screen.getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
+    const { bar, tabs } = boxes();
+    expect(inside(tabs[0] as Box, bar)).toBe(true);
+  });
+
+  it("sin scrollIntoView en el entorno (jsdom antiguo) no lanza", () => {
+    Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    barWidth = 5 * TAB_WIDTH;
+
+    expect(() => renderNine("/socios/1?tab=historial")).not.toThrow();
+    expect(within(screen.getByRole("tablist")).getAllByRole("tab")).toHaveLength(9);
+  });
+});
+
+describe("Tabs.module.css · sin medidas literales", () => {
+  const css = tabsCss.replace(/\/\*[\s\S]*?\*\//g, "");
+  const tokens = tokensCss;
+  const LAYOUT = /^(width|min-width|max-width|flex-basis|flex|padding(-[a-z]+)?|gap|column-gap|font-size|inline-size|min-inline-size|max-inline-size)$/;
+
+  const declarations = Array.from(css.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/g), (m) => ({ property: m[1] ?? "", value: (m[2] ?? "").trim() }));
+
+  it("el ancho, el relleno y la separación de las pestañas no llevan px, rem, em, vw ni ch literales", () => {
+    const literal = declarations.filter((d) => LAYOUT.test(d.property) && /-?\d*\.?\d+(px|rem|em|vw|ch|%)(?![a-z])/.test(d.value));
+
+    expect(literal).toEqual([]);
+  });
+
+  it("toda variable que usa existe en tokens.css", () => {
+    const used = new Set(Array.from(css.matchAll(/var\((--[a-z0-9-]+)/g), (m) => m[1] ?? ""));
+    const missing = Array.from(used).filter((name) => !new RegExp(`${name}\\s*:`).test(tokens));
+
+    expect(used.size).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
   });
 });

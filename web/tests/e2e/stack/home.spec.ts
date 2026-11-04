@@ -32,7 +32,7 @@ const GRID_BUDGET_MS = 10_000;
  */
 function psqlEscalar(sql: string): number {
   const contenedor = process.env.E2E_DB_CONTAINER ?? "";
-  if (!/^[w][w.-]*$/.test(contenedor)) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(contenedor)) {
     throw new Error("E2E_DB_CONTAINER no es un nombre de contenedor válido (letras, dígitos, punto, guion y guion bajo).");
   }
   const usuario = process.env.E2E_DB_USER ?? "apex";
@@ -89,8 +89,12 @@ test.describe("Inicio contra el stack", () => {
     await expect(page.getByRole("link", { name: /^Socios al día: / })).toBeVisible();
     const api = await dashboardPorApi(page, token);
 
-    // Pendientes de pago: socios distintos con una membresía en ese estado.
-    const pendientes = psqlEscalar("SELECT count(DISTINCT member_id) FROM memberships.memberships WHERE status = 'pending_payment'");
+    // Pendientes de pago: socios cuya membresía que decide (US-092: vigente > pendiente > vencida > futura)
+    // es una pendiente, es decir con una pendiente y sin otra membresía vigente (ni cancelada, ni
+    // pendiente, ni vencida por fecha o sin clases, y ya iniciada) en la fecha de hoy de Bogotá.
+    const pendientes = psqlEscalar(
+      "WITH h AS (SELECT (now() AT TIME ZONE 'America/Bogota')::date AS hoy) SELECT count(DISTINCT m.member_id) FROM memberships.memberships m, h WHERE m.status = 'pending_payment' AND NOT EXISTS (SELECT 1 FROM memberships.memberships c WHERE c.member_id = m.member_id AND c.status NOT IN ('cancelled', 'pending_payment') AND c.end_date >= h.hoy AND c.classes_remaining IS DISTINCT FROM 0 AND c.start_date <= h.hoy)",
+    );
     expect(api.members_pending_payment).toBe(pendientes);
     // Ingresos del mes de Bogotá: pagos no anulados.
     const ingresos = psqlEscalar(

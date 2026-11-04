@@ -5,7 +5,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { canAccessRoute, isPageAvailable } from "../../../core/auth/routeAccess";
-import { AUDIT_PATH, AUDIT_ROWS, COACH_ID, LAURA_ID, SYSTEM_ID, auditPageReply, auditRow, queryOf, renderAuditPage } from "../../../test/audit";
+import { AUDIT_PATH, AUDIT_ROWS, auditDetail, COACH_ID, LAURA_ID, SYSTEM_ID, auditPageReply, auditRow, queryOf, renderAuditPage } from "../../../test/audit";
 import type { RecordedCall } from "../../../test/server";
 
 const SOURCES = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], { query: "?raw", import: "default", eager: true });
@@ -267,5 +267,44 @@ describe("AuditPage · acceso y diseño", () => {
       expect(gaps).toContain(topic);
     }
     expect(code).not.toContain("dangerouslySetInnerHTML");
+  });
+});
+
+// S4B-F1 (S4B-D51): `import-members` y `rotate-key` dejan filas en `members.import_runs` y
+// `crypto.crypto_keys`, tablas que el front no conoce. La lista las pinta con el nombre crudo, sin
+// error ni pantalla en blanco, y las filas conocidas siguen con su etiqueta.
+describe("AuditPage · tabla desconocida (S4B-D51)", () => {
+  const UNKNOWN_ROWS = [
+    auditRow({ seq: 90003, table_name: "members.import_runs", action: "insert", record_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", subject_member_id: null }),
+    auditRow({ seq: 90002, table_name: "crypto.crypto_keys", action: "update", record_id: null, subject_member_id: null }),
+    auditRow({ seq: 90001 }),
+  ];
+
+  it("pinta la fila con el nombre crudo de la tabla y no rompe la lista", async () => {
+    const { mock } = renderAuditPage(AUDIT_PATH, { handlers: { "GET /audit": (call) => auditPageReply(call, UNKNOWN_ROWS) } });
+
+    const table = await loadedTable();
+    const [first, second, third] = within(table).getAllByRole("row").slice(1) as [HTMLElement, HTMLElement, HTMLElement];
+
+    expect(within(table).getAllByRole("row")).toHaveLength(4);
+    expect(within(first).getByText(/^members\.import_runs · #bbbbbbbb$/)).toBeInTheDocument();
+    expect(within(second).getByText(/^crypto\.crypto_keys$/)).toBeInTheDocument();
+    expect(within(third).getByText(/^Socio · #aaaaaaaa$/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("3 entradas")).toBeInTheDocument();
+    expect(mock.calls.filter((c) => c.path === "/audit")).toHaveLength(1);
+  });
+
+  it("la fila de una tabla desconocida abre el detalle por su seq", async () => {
+    renderAuditPage(`${AUDIT_PATH}?seq=90002`, {
+      handlers: {
+        "GET /audit": (call) => auditPageReply(call, UNKNOWN_ROWS),
+        "GET /audit/90002": () => ({ status: 200, body: auditDetail({ seq: 90002, table_name: "crypto.crypto_keys", record_id: null, subject_member_id: null }) }),
+      },
+    });
+
+    const panel = await screen.findByRole("dialog", { name: "Entrada #90002" });
+
+    expect(await within(panel).findByText("crypto.crypto_keys")).toBeInTheDocument();
   });
 });

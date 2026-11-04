@@ -10,7 +10,7 @@
 // Credenciales: E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD. Sin E2E_BASE_URL se omite.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { capture, datosDeBase, documentoAleatorio, esperarTransiciones, loginComo, sameOriginHeaders } from "../helpers/stack";
+import { capture, datosDeBase, documentoAleatorio, esperarTransiciones, exigirStackLocal, loginComo, sameOriginHeaders } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -124,5 +124,37 @@ test.describe("pestañas Membresías y Pagos de la ficha contra el stack", () =>
     await expect(historial).not.toContainText(REASON);
     expect(await axeViolations(page)).toEqual([]);
     await capture(page, "ficha-historial-stack", "light", 1440);
+  });
+
+  // S4B-F1 (S4B-D51; deuda de S4A-F2): a 1440 px con Historial activa las nueve pestañas quedan dentro
+  // de la barra (boundingBox de cada una contra el de la barra), con capturas en claro y oscuro.
+  test("con Historial activa a 1440 px las nueve pestañas de la ficha quedan dentro de la barra", async ({ page }) => {
+    exigirStackLocal(process.env.E2E_BASE_URL);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    token = await loginComo(page, datosDeBase());
+    const socio = await post<{ id: string }>(page, token, "/members", { first_name: "Inés", last_name: `Barra${Date.now().toString(36)}`, document_type: "CC", document: documentoAleatorio(), data_consent: true });
+    socioId = socio.id;
+
+    await page.goto(`/socios/${socio.id}/historial`);
+
+    const bar = page.getByRole("tablist", { name: "Secciones del socio" });
+    await expect(page.getByRole("tab", { name: "Historial" })).toHaveAttribute("aria-selected", "true");
+    const tabs = bar.getByRole("tab");
+    await expect(tabs).toHaveCount(9);
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await esperarTransiciones(page);
+      const barBox = await bar.boundingBox();
+      expect(barBox).not.toBeNull();
+      for (const tab of await tabs.all()) {
+        const name = (await tab.textContent()) ?? "";
+        const box = await tab.boundingBox();
+        expect(box, `la pestaña ${name} tiene caja`).not.toBeNull();
+        expect(box?.x ?? -1, `${name}: borde izquierdo dentro de la barra`).toBeGreaterThanOrEqual((barBox?.x ?? 0) - 0.5);
+        expect((box?.x ?? 0) + (box?.width ?? 0), `${name}: borde derecho dentro de la barra`).toBeLessThanOrEqual((barBox?.x ?? 0) + (barBox?.width ?? 0) + 0.5);
+      }
+      await capture(page, "ficha-tabs-historial-stack", theme, 1440);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
   });
 });

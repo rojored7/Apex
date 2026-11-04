@@ -43,7 +43,11 @@
   font-weight: 700;
 }
 
+/* La nota "Disponible en v0.x" va bajo el rótulo: con nueve pestañas la barra cabe a 1440 px. */
 .disabled {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
   color: var(--muted);
   cursor: not-allowed;
 }

@@ -245,3 +245,18 @@ describe("fieldNameLabel · revisión de seguridad S4A-F2 (LOW-2)", () => {
     expect(summarizeChange(entry({ fields: ["phone", "<b>x</b>"] }))).toEqual(["Cambió: Teléfono, campo"]);
   });
 });
+
+// S4B-F1 (S4B-D51): una tabla que el front no conoce (`members.import_runs` de `import-members`,
+// `crypto.crypto_keys` de `rotate-key`) se muestra con su nombre tal cual, sin romper ni inventar
+// una etiqueta.
+describe("entityLabel con una tabla desconocida", () => {
+  it.each(["members.import_runs", "crypto.crypto_keys"])("devuelve el nombre crudo de %s", (table) => {
+    expect(ENTITY_LABELS[table]).toBeUndefined();
+    expect(entityLabel(table)).toBe(table);
+  });
+
+  it("no confunde un nombre con prefijo conocido con la tabla conocida", () => {
+    expect(entityLabel("members.import_runs")).not.toBe(entityLabel("members.members"));
+    expect(entityLabel("crypto.crypto_keys")).not.toBe("Socio");
+  });
+});

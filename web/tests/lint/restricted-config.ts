@@ -4,6 +4,9 @@
 // tests/lint/no-direct-fetch.test.ts, así que `npm test` falla si alguien las rompe.
 // - US-059: fetch solo en src/core/api; nada de console en src/.
 // - US-060: Intl y toLocale* solo en src/core/i18n.
+// - Acceso calculado a window/globalThis/self prohibido (no-restricted-syntax).
+//   Límite aceptado: un alias (const w = window; w.sessionStorage) no se detecta sin análisis de flujo.
+// - Estas reglas corren con `npm test` (lintSourceTree; gates y CI), no con `npm run lint`.
 // - US-040: el rol nunca se compara con un literal fuera de src/core/auth/permissions.ts y
 //   session.ts.
 // Pendiente: mover este bloque a web/eslint.config.js cuando el usuario lo autorice.
@@ -16,6 +19,21 @@ export const WEB_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 const FETCH_GLOBAL = { name: "fetch", message: "Usa el cliente de src/core/api (api.get, api.post...)." };
 const INTL_GLOBAL = { name: "Intl", message: "El formato de dinero y fechas sale de src/core/i18n/format.ts." };
+const SESSION_GLOBAL = {
+  name: "sessionStorage",
+  message: "sessionStorage solo se usa en src/pages/RouteError.tsx (S4B-D51).",
+};
+const SESSION_PROPERTIES = ["window", "globalThis", "self"].map((object) => ({
+  object,
+  property: "sessionStorage",
+  message: SESSION_GLOBAL.message,
+}));
+const COMPUTED_GLOBAL_SELECTOR = {
+  selector: "MemberExpression[computed=true][object.name=/^(window|globalThis|self)$/]",
+  message: "Acceso calculado a globales prohibido: usa el nombre directo (window.fetch, no window[k]).",
+};
+const ROLE_EXEMPT = ["src/core/auth/permissions.ts", "src/core/auth/session.ts"];
+const SESSION_ALLOWED = ["src/pages/RouteError.tsx", "src/**/*.test.{ts,tsx}"];
 const FETCH_PROPERTIES = ["window", "globalThis", "self"].map((object) => ({
   object,
   property: "fetch",
@@ -37,6 +55,44 @@ const ROLE_SELECTORS = [
   `SwitchCase[test.value=/^(admin|coach|member)$/]`,
 ].map((selector) => ({ selector, message: ROLE_MESSAGE }));
 
+/**
+ * Reglas de globales y propiedades por ámbito. Con `withSession` suman sessionStorage a todo src salvo
+ * la lista blanca; sin él, los mismos ámbitos acotados a la lista blanca conservan las demás reglas.
+ */
+function scopedRules({ withSession }: { withSession: boolean }): Linter.Config[] {
+  const scopes = [
+    {
+      files: ["src/**/*.{ts,tsx}"],
+      ignores: ["src/core/api/**", "src/core/i18n/**"],
+      allowed: ["src/pages/RouteError.tsx", "src/**/*.test.{ts,tsx}"],
+      globals: [FETCH_GLOBAL, INTL_GLOBAL],
+      properties: [...FETCH_PROPERTIES, ...LOCALE_PROPERTIES],
+    },
+    {
+      files: ["src/core/api/**/*.{ts,tsx}"],
+      ignores: [],
+      allowed: ["src/core/api/**/*.test.{ts,tsx}"],
+      globals: [INTL_GLOBAL],
+      properties: LOCALE_PROPERTIES,
+    },
+    {
+      files: ["src/core/i18n/**/*.{ts,tsx}"],
+      ignores: [],
+      allowed: ["src/core/i18n/**/*.test.{ts,tsx}"],
+      globals: [FETCH_GLOBAL],
+      properties: FETCH_PROPERTIES,
+    },
+  ];
+  return scopes.map((scope) => ({
+    files: withSession ? scope.files : scope.allowed,
+    ignores: withSession ? [...scope.ignores, ...scope.allowed] : scope.ignores,
+    rules: {
+      "no-restricted-globals": ["error", ...scope.globals, ...(withSession ? [SESSION_GLOBAL] : [])],
+      "no-restricted-properties": ["error", ...scope.properties, ...(withSession ? SESSION_PROPERTIES : [])],
+    },
+  }));
+}
+
 export const RESTRICTED_CONFIG: Linter.Config[] = [
   {
     files: ["**/*.{ts,tsx}"],
@@ -50,32 +106,24 @@ export const RESTRICTED_CONFIG: Linter.Config[] = [
     files: ["src/**/*.{ts,tsx}"],
     rules: { "no-console": "error" },
   },
+  ...scopedRules({ withSession: true }),
+  // En flat config gana el último bloque que coincide: la lista blanca repite las listas sin sessionStorage.
+  ...scopedRules({ withSession: false }),
+  // no-restricted-syntax: el rol solo se compara en la matriz y la sesión; el acceso calculado a window,
+  // globalThis o self (window[k]) no puede esquivar las reglas de globales salvo en la lista blanca de
+  // sessionStorage. Tres bloques disjuntos porque en flat config gana el último que coincide.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/core/api/**", "src/core/i18n/**"],
-    rules: {
-      "no-restricted-globals": ["error", FETCH_GLOBAL, INTL_GLOBAL],
-      "no-restricted-properties": ["error", ...FETCH_PROPERTIES, ...LOCALE_PROPERTIES],
-    },
+    ignores: [...ROLE_EXEMPT, ...SESSION_ALLOWED],
+    rules: { "no-restricted-syntax": ["error", ...ROLE_SELECTORS, COMPUTED_GLOBAL_SELECTOR] },
   },
   {
-    files: ["src/core/api/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-globals": ["error", INTL_GLOBAL],
-      "no-restricted-properties": ["error", ...LOCALE_PROPERTIES],
-    },
+    files: ROLE_EXEMPT,
+    rules: { "no-restricted-syntax": ["error", COMPUTED_GLOBAL_SELECTOR] },
   },
   {
-    files: ["src/core/i18n/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-globals": ["error", FETCH_GLOBAL],
-      "no-restricted-properties": ["error", ...FETCH_PROPERTIES],
-    },
-  },
-  {
-    // La matriz y la sesión son los únicos lugares donde el rol se compara.
-    files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/core/auth/permissions.ts", "src/core/auth/session.ts"],
+    files: SESSION_ALLOWED,
+    ignores: ROLE_EXEMPT,
     rules: { "no-restricted-syntax": ["error", ...ROLE_SELECTORS] },
   },
 ];

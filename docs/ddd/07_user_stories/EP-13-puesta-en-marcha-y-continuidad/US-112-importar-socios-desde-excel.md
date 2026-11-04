@@ -97,7 +97,7 @@ Característica: Importar socios desde Excel
 - **Migración:** no (usa las tablas de US-069).
 - **Trigger / restricciones:** índice único parcial sobre `document_idx WHERE deleted_at IS NULL` (de US-069) como red de seguridad.
 - **Funciones puras a probar:** `validate_header(cells)`, `parse_member_row(row)` con casos: fecha `2001-02-30` rechazada, sexo `f` en minúscula aceptado, documento con espacios normalizado, correo inválido rechazado.
-- **Pruebas:** puras de parseo; service con base real (idempotencia, duplicado en archivo, cifrado, auditoría, dry-run sin escrituras); prueba de rendimiento marcada `slow` con 1.000 filas; prueba de que el reporte y los logs no contienen datos completos.
+- **Pruebas:** puras de parseo; service con base real (idempotencia, duplicado en archivo, cifrado, auditoría, dry-run sin escrituras); prueba de rendimiento marcada `perf` con 1.000 filas; prueba de que el reporte y los logs no contienen datos completos.
 - **Archivos principales:** `api/src/app/cli.py`, `api/src/app/imports/members_xlsx.py`, `docs/plantillas/importar-socios.xlsx`, `api/tests/cli/test_import_members.py`.
 - **Licencias:** `openpyxl` es MIT (verificar en el chequeo de US-004).
 

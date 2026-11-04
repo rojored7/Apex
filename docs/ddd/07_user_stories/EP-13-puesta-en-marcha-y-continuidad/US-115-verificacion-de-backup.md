@@ -25,7 +25,7 @@ para saber si tengo un respaldo válido de las últimas 24 horas
 
 ## Alcance
 
-- **Backend:** job registrado en el worker (US-113) que lee `latest.json`, verifica que el archivo existe, que su `created_at` tiene menos de 24 horas, que el `sha256` coincide y que se puede descifrar con la identidad de verificación `BACKUP_AGE_VERIFY_IDENTITY_PATH` (montada solo en el worker y solo si el operador la provee); si no hay identidad de verificación, comprueba solo existencia, edad e integridad y lo reporta como `ok_unverified`. Guarda el último resultado en `worker.job_runs` y lo expone como campo `backup` en `GET /health` (sin detalles sensibles). Log JSON de nivel `error` si el estado no es `ok`.
+- **Backend:** job registrado en el worker (US-113) que lee `latest.json`, verifica que el archivo existe, que su `created_at` tiene menos de 24 horas, que el `sha256` coincide y que se puede descifrar (el descifrado lo verifica el servicio `backup` con `BACKUP_VERIFY_IDENTITY_FILE`, montada solo allí con `compose.verify.yml`, S4B-D59; el worker no la recibe); el job lee el manifiesto y comprueba existencia, edad e integridad. Guarda el último resultado en `worker.job_runs` y lo expone como campo `backup` en `GET /health` (sin detalles sensibles). Log JSON de nivel `error` si el estado no es `ok`.
 - **Front:** No aplica.
 
 ## Criterios de aceptación

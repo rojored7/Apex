@@ -31,7 +31,7 @@ Se crea la imagen `infra/backup/Dockerfile`, basada en `postgres:16-alpine` para
 7. Aplica la retención local de `BACKUP_KEEP_DAYS` sin borrar nunca el último exitoso.
 8. Escribe `latest.json` de forma atómica.
 
-Las funciones puras del script (`backup_name`, `retention_to_delete`) se prueban con `bats`. El mismo script acepta `--prefix pre-deploy` para que US-117 lo reutilice.
+Las funciones puras del script (`backup_name`, `retention_to_delete`) se prueban con un arnés en Bash puro (`infra/backup/tests/test_lib.sh`). El mismo script acepta `--prefix pre-deploy` para que US-117 lo reutilice.
 
 ## Correcciones aplicadas por DECISIONES.md
 
@@ -87,17 +87,17 @@ Ninguna.
 - No aplica.
 
 ### Tests unitarios puros
-- [ ] T5 · `infra/backup/tests/lib.bats`: `backup_name` con `2026-10-21T07:00:05Z` → `apex-20261021-070005.sql.age`; `retention_to_delete` con 20 archivos y `keep_days=14` borra solo los de más de 14 días y nunca el último exitoso aunque sea viejo — 1,5 h
+- [ ] T5 · `infra/backup/tests/test_lib.sh`: `backup_name` con `2026-10-21T07:00:05Z` → `apex-20261021-070005.sql.age`; `retention_to_delete` con 20 archivos y `keep_days=14` borra solo los de más de 14 días y nunca el último exitoso aunque sea viejo — 1,5 h
 
 ### Tests de service con PostgreSQL
-- [ ] T6 · `infra/backup/tests/integration.bats` en CI (Compose de prueba con Postgres 16 y MinIO): backup con remoto produce el archivo local y el remoto con el mismo sha256 y `upload: "ok"`; sin remoto, `upload: "skipped"`; con remoto caído, el archivo local queda y `upload: "failed"`; `latest.json` valida contra T4 — 3 h
-- [ ] T7 · `infra/backup/tests/integration.bats`: con la base detenida, `run.sh` sale con código distinto de 0 y no queda ningún archivo con nombre final ni `.partial`; el archivo producido no se descifra sin la identidad (`age -d` sin `-i` falla) y sí con la identidad de prueba; dentro están `db.dump` y `uploads/` — 2 h
+- [ ] T6 · `infra/backup/tests/run.sh` en CI (Compose de prueba con Postgres 16 y MinIO): backup con remoto produce el archivo local y el remoto con el mismo sha256 y `upload: "ok"`; sin remoto, `upload: "skipped"`; con remoto caído, el archivo local queda y `upload: "failed"`; `latest.json` valida contra T4 — 3 h
+- [ ] T7 · `infra/backup/tests/run.sh`: con la base detenida, `run.sh` sale con código distinto de 0 y no queda ningún archivo con nombre final ni `.partial`; el archivo producido no se descifra sin la identidad (`age -d` sin `-i` falla) y sí con la identidad de prueba; dentro están `db.dump` y `uploads/` — 2 h
 
 ### Tests de router
 - No aplica.
 
 ### Tests de arquitectura
-- [ ] T8 · `shellcheck infra/backup/*.sh` en CI (US-003) y prueba de que la imagen no contiene archivos `*.key`, `rclone.conf` ni identidades `age` (`docker run --rm backup sh -c 'find / -name "*.age-identity" -o -name rclone.conf'` vacío) — 1 h
+- [ ] T8 · `bash -n infra/backup/*.sh` en CI (US-003, `test_scripts_static.sh`) y prueba de que la imagen no contiene archivos `*.key`, `rclone.conf` ni identidades `age` (`docker run --rm backup sh -c 'find / -name "*.age-identity" -o -name rclone.conf'` vacío) — 1 h
 
 ### Front
 - No aplica.
@@ -122,7 +122,7 @@ Ninguna.
 ## Dependencias técnicas
 
 - US-005 · Dockerfile del api y Compose: red interna, volúmenes `pgdata`, `uploads` y `backups`, healthcheck de `db`.
-- US-003 · Pipeline de CI: jobs de `shellcheck` y de integración con Compose.
+- US-003 · Pipeline de CI: jobs de `bash -n` y de integración con Compose.
 - US-004 · Chequeo de licencias y `NOTICE`.
 - US-007 · `.env.example`.
 - US-039 · Gestión de secretos (nada en la imagen).
@@ -149,9 +149,9 @@ Ninguna.
 
 ## Definición de hecho
 
-- [ ] `shellcheck infra/backup/*.sh`
-- [ ] `bats infra/backup/tests/lib.bats`
-- [ ] `bats infra/backup/tests/integration.bats` (CI con Postgres 16 y MinIO)
+- [ ] `bash -n infra/backup/*.sh`
+- [ ] `bash infra/backup/tests/test_lib.sh`
+- [ ] `bash infra/backup/tests/run.sh` (CI con Postgres 16 y MinIO)
 - [ ] `docker compose -f infra/compose.yml run --rm backup run.sh` termina con código 0 y deja `apex-*.sql.age` y `latest.json` en el volumen `backups`
 - [ ] `jq -e '.upload == "skipped"' latest.json` con `BACKUP_RCLONE_REMOTE` vacío
 - [ ] `age -d -i <identidad de prueba> apex-*.sql.age | tar -t` lista `db.dump` y `uploads/`

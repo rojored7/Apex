@@ -85,7 +85,7 @@ api/
       crypto/
         registry.py              registro de data_class (constantes, N-04) y puerto Reencryptor (G-09)
         digest.py                digest(data) SHA-256 sin dependencias; lo usa core/audit (N-06)
-        archive.py               digest_file(path), verify_age_archive(path, identity) por subprocess
+        archive.py               digest_file(path) en core/crypto/file_digest.py; export_kek_file, restore_kek_file, verify_kek_backup (age -p, subprocess) en core/crypto/archive.py
                                  sobre el binario age (G-07)
         provider.py              KeyProvider Protocol: wrap(key_ref, dek), unwrap(key_ref, wrapped), sign, verify, rotate
         local_provider.py        LocalFileProvider
@@ -200,7 +200,7 @@ forgot, issue/resend) y `events.py`; `service.py` los reexporta con `__all__`.
 - `decrypt(blob: str, aad: bytes) -> bytes`
 - `blind_index(data_class, value: str) -> str`
 - `sign(data_class, data: bytes) -> str` (formato `apx1.<key_id>.<alg>.<sig_b64url>`, N-04), `verify(data_class, data, signature) -> bool`
-- `digest(data: bytes) -> str` (SHA-256, `core/crypto/digest.py`; lo usa `core/audit`, N-06); `digest_file(path)` y `verify_age_archive(path, identity)` desde v0.2 (G-07).
+- `digest(data: bytes) -> str` (SHA-256, `core/crypto/digest.py`; lo usa `core/audit`, N-06); `digest_file(path)` (`core/crypto/file_digest.py`) y las funciones de la KEK `export_kek_file`, `restore_kek_file`, `verify_kek_backup` con `age -p` (`core/crypto/archive.py`); la verificación de descifrado del respaldo la hace el servicio `backup` (G-07 enmendada, S4B-D59).
 - Registro en `crypto_ops` por operación, con `purpose` cuando aplica (N-21); en lotes, un `batch_id` y `count` por lote (N-05). Actor: `current_actor()` de `core/context.py` (G-01).
 
 ## 4. Contrato HTTP (v0.1, prefijo `/api/v1`)

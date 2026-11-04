@@ -30,7 +30,7 @@ para estar seguro de que puedo recuperar los datos cifrados de los socios
 
 ## Criterios de aceptación
 
-1. `cli export-kek` pide la frase de paso por entrada interactiva (o `--passphrase-file`), nunca por argumento de línea de comandos, y produce un archivo que no contiene los 32 bytes de la KEK en claro.
+1. `cli export-kek` pide la frase de paso por entrada interactiva, nunca por argumento de línea de comandos, y produce un archivo que no contiene los 32 bytes de la KEK en claro.
 2. `cli export-kek` y `cli verify-kek-backup` dejan una fila en `crypto_ops` (verbos `export` y `verify`) y en auditoría, sin material de llave.
 3. `cli verify-kek-backup` termina con código 0 si la KEK del archivo desenvuelve todas las DEK `active` y `decrypt_only`, y con código distinto de 0 si alguna falla.
 4. La prueba de restauración en CI restaura un backup en una base vacía y, con la KEK respaldada, el api arranca y descifra el documento de un socio de prueba; con una KEK distinta, el api no arranca y lo reporta en el log (sin imprimir la llave).

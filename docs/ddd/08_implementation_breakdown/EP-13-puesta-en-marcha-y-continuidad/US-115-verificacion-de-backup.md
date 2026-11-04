@@ -28,7 +28,7 @@ El job `backup_check` corre en el ciclo de las 07:00 del worker (US-113). Lee `l
 1. que el archivo existe;
 2. que su `created_at` tiene menos de 24 horas según el reloj UTC;
 3. que su sha256 coincide, con `core.crypto.bus.digest_file`;
-4. si hay identidad de verificación (`BACKUP_AGE_VERIFY_IDENTITY_PATH`, N-50), que se puede descifrar en streaming sin escribir nada en claro, con `core.crypto.bus.verify_age_archive`.
+4. si hay identidad de verificación (`BACKUP_VERIFY_IDENTITY_FILE`, montada solo en `backup` con `compose.verify.yml`, S4B-D59), que el servicio `backup` descifra en streaming sin escribir nada en claro y lo anota en el manifiesto.
 
 La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale`, `missing`, `corrupt` o `undecryptable`. El resultado queda en `worker.job_runs.result` y en `details`. `/health` expone `backup` como campo informativo, sin cambiar el código 200, mediante `register_health_check(..., informative=True)` de US-020.
 
@@ -63,12 +63,12 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 - Brecha 1 · Operaciones criptográficas sobre archivos de backup fuera del bus. Propuesta:
   - Se agrega `api/src/app/core/crypto/archive.py`, y el bus lo reexpone con dos funciones:
     - `bus.digest_file(path: Path, chunk_size: int = 1 << 20) -> str`: SHA-256 en streaming, con la misma implementación que `digest`.
-    - `bus.verify_age_archive(path: Path, identity_path: Path) -> bool`: invoca el binario `age` (BSD-3-Clause, misma versión fijada que la imagen `backup`) con `subprocess` desde `core/crypto`, con `age -d -i <identidad> <archivo>`. La salida va a un sumidero que solo cuenta bytes (nunca a disco). Hay timeout de 10 minutos y devuelve `False` ante cualquier error, sin propagar la salida de error con contenido.
-  - `verify_age_archive` deja una fila en `crypto_ops` con verbo `verify` y `data_class = "backup.archive"`, registrada en `core/crypto/registry.py` (N-04), sin `key_id` porque la llave no está en `crypto_keys`. `digest_file` no registra nada, igual que `digest` (N-06): un hash no usa llave. El verbo `digest` no existe en el CHECK de `crypto_ops` y no se agrega.
+    - No existe `bus.verify_age_archive` (G-07 enmendada): la verificación la hace `infra/backup` invocando el binario `age` (BSD-3-Clause, misma versión fijada que la imagen `backup`) con `subprocess` desde `core/crypto`, con `age -d -i <identidad> <archivo>`. La salida va a un sumidero que solo cuenta bytes (nunca a disco). Hay timeout de 10 minutos y devuelve `False` ante cualquier error, sin propagar la salida de error con contenido.
+  - No hay `data_class` `backup.archive` (la clase del registro es `kek.backup`, S4B-D85). `digest_file` (`core/crypto/file_digest.py`) no registra nada, igual que `digest` (N-06): un hash no usa llave. El verbo `digest` no existe en el CHECK de `crypto_ops` y no se agrega.
   - La imagen del api (que también usa el worker) agrega el binario `age` y su licencia en `NOTICE`.
   - El test de arquitectura `test_banned_imports.py` (US-031) se amplía para que `subprocess` con `age` solo aparezca en `core/crypto/archive.py`.
-  - Alternativa: `pyrage`, enlaces de Python a `rage`, en `core/crypto`. Se descarta para esta historia porque no descifra en streaming, contra el criterio 7.
-  - `CLAUDE.md` (bus, regla 1) agrega `digest_file` y `verify_age_archive` a la lista de la única puerta al aprobar el gate.
+  - Se descartó `pyrage` (enlaces de Python a `rage`) porque no descifra en streaming, contra el criterio 7.
+  - `CLAUDE.md` (bus, regla 1) agrega `digest_file` a la lista de la única puerta al aprobar el gate.
 - Pregunta asociada (no bloquea si se acepta la propuesta de US-113): cada reejecución del mismo día se guarda en `details.attempts` de la misma fila y no en filas nuevas.
 
 ## Tareas
@@ -80,9 +80,9 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 - No aplica (usa `JobRun` de `core/jobs.py`, US-113).
 
 ### Service
-- [ ] T1 · `core/crypto/archive.py`: `digest_file` (streaming, sin cargar el archivo en memoria) y `verify_age_archive` (subprocess con lista de argumentos, sin `shell=True`, `stdout` a un lector que descarta y cuenta bytes, `stderr` descartado, timeout); registro en `crypto_ops` solo para `verify_age_archive`; reexportados en `core/crypto/bus.py`; `data_class` `backup.archive` en `core/crypto/registry.py` — 3 h
+- [ ] T1 · `core/crypto/file_digest.py`: `digest_file` (streaming, sin cargar el archivo en memoria); la verificación de descifrado queda en el servicio `backup`; sin `verify_age_archive` ni `data_class` `backup.archive` — 3 h
 - [ ] T2 · `worker/jobs/backup_check.py`: función pura `evaluate(...)` y dataclass `Manifest` que se parsea desde `latest.json` con validación del esquema `infra/backup/manifest.schema.json` (US-114); un manifiesto ilegible cuenta como `missing` — 1,5 h
-- [ ] T3 · `worker/jobs/backup_check.py`: `async def run(session, today, clock) -> JobOutcome` que lee `BACKUP_DIR` y `BACKUP_AGE_VERIFY_IDENTITY_PATH` de `Settings`, comprueba existencia, edad, `bus.digest_file` y, si hay identidad, `bus.verify_age_archive`; devuelve el estado y `details` (`status`, `backup_name`, `backup_created_at`, `checked_at`, `verified: bool`); log JSON de nivel `error` si el estado no es `ok`; se registra como `backup_check` en `worker/jobs/__init__.py` después de `expirations` — 2 h
+- [ ] T3 · `worker/jobs/backup_check.py`: `async def run(session, today, clock) -> JobOutcome` que lee `BACKUP_DIR` de `Settings` y comprueba existencia, edad y `bus.digest_file` (sin identidad en el worker); devuelve el estado y `details` (`status`, `backup_name`, `backup_created_at`, `checked_at`, `verified: bool`); log JSON de nivel `error` si el estado no es `ok`; se registra como `backup_check` en `worker/jobs/__init__.py` después de `expirations` — 2 h
 - [ ] T4 · `app/main.py` (o `core/health.py` de US-020): chequeo `backup` registrado con `informative=True` que lee `core.jobs.last_run(session, "backup_check")` y devuelve `ok`, `ok_unverified`, `stale`, `missing`, `corrupt`, `undecryptable` o `unknown`; acordar con US-020 el parámetro `informative` del registro — 1 h
 
 ### Schemas
@@ -96,7 +96,7 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 
 ### Tests de service con PostgreSQL
 - [ ] T7 · `api/tests/worker/test_backup_check.py`: con `FrozenClock` en `2026-10-21T12:00:00Z` y archivos de prueba en un directorio temporal (generados con `age` y una identidad de prueba): backup de las 07:00 del mismo día es `ok`; del día anterior, `stale`; directorio vacío, `missing`; sha256 alterado, `corrupt`; identidad equivocada, `undecryptable`; `job_runs` guarda el estado y, en una segunda corrida del mismo día, `details.attempts` tiene dos entradas — 2 h
-- [ ] T8 · `api/tests/crypto/test_archive.py`: `digest_file` coincide con `digest(bytes)` para un archivo de 5 MB; `verify_age_archive` es verdadero con la identidad correcta y falso con otra o con archivo truncado; durante la verificación no aparece ningún archivo nuevo en el directorio temporal; quedan filas en `crypto_ops` sin material de llave — 1,5 h
+- [ ] T8 · `api/tests/crypto/test_archive.py`: `digest_file` coincide con `digest(bytes)` para un archivo de 5 MB; la verificación de descifrado se prueba en `infra/backup/tests/` (Bash puro) — 1,5 h
 
 ### Tests de router
 - [ ] T9 · `api/tests/core/test_health.py`: sin ejecución, `backup: "unknown"`; con una ejecución `stale`, `/health` y `/api/v1/health` responden 200 con `backup: "stale"`; el cuerpo no tiene nombre de archivo ni error — 1 h
@@ -108,7 +108,7 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 - No aplica.
 
 ### DevOps
-- [ ] T11 · Imagen del api (US-005): binario `age` con versión fijada y checksum; `infra/compose.yml`: en `worker`, volumen `backups:/data/backups:ro` y, comentado como opcional, el montaje de la identidad de verificación en solo lectura; `BACKUP_DIR` y `BACKUP_AGE_VERIFY_IDENTITY_PATH` en `Settings` y `.env.example`; `NOTICE` con `age` en la imagen del api — 1,5 h
+- [ ] T11 · Imagen del api (US-005): binario `age` con versión fijada y checksum; `infra/compose.yml`: en `worker`, volumen `backups:/data/backups:ro` sin montar la identidad de verificación (solo `backup`, `compose.verify.yml`); `BACKUP_DIR` en `Settings` y `.env.example`; `NOTICE` con `age` en la imagen del api — 1,5 h
 
 ### Seguridad
 - [ ] T12 · Revisión: la identidad de verificación es una llave privada; documentar en `docs/operacion/respaldo-y-restauracion.md` (US-116) que su presencia en el servidor permite descifrar los backups locales, y que por eso es opcional y distinta de la identidad maestra si el operador lo prefiere (otro destinatario `age` en `BACKUP_AGE_RECIPIENT`); permisos 400 del archivo montado; `/health` público sin detalles — 1 h
@@ -143,7 +143,7 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 - Identidad de verificación en el servidor: quien robe el servidor puede abrir los backups locales — mitigación: es opcional (sin ella, `ok_unverified`); se documenta usar un segundo destinatario `age` solo para verificar y rotarlo.
 - Archivos grandes en v0.3 (`uploads`): la verificación tarda — mitigación: streaming y timeout de 10 minutos; si se excede, el estado es `undecryptable` con `details.reason = "timeout"`.
 - Que US-020 no acepte chequeos informativos: `/health` respondería 503 por un backup viejo y Compose reiniciaría el api — mitigación: T4 acuerda `informative=True` y T9 lo prueba.
-- Que la brecha se resuelva con `pyrage`: se pierde el streaming del criterio 7 — mitigación: la propuesta usa el binario `age`.
+- Que la brecha se resolviera con `pyrage`: se perdería el streaming del criterio 7 — descartado; se usa el binario `age` en `backup`.
 - Estimación por encima del rango de 3 puntos (10 a 15 h): la suma da 17 h por la ampliación del bus que cierra la brecha (T1, T8 y T10) — mitigación: si el gate aprueba la ampliación tal cual, no hay más trabajo oculto.
 
 ## Estimación
@@ -162,6 +162,6 @@ La función pura `evaluate(...)` decide el estado: `ok`, `ok_unverified`, `stale
 - [ ] `cd api && uv run pytest tests/crypto/test_archive.py -q`
 - [ ] `cd api && uv run pytest tests/core/test_health.py -q`
 - [ ] `cd api && uv run pytest tests/architecture -q`
-- [ ] `docker compose run --rm worker uv run python -m app.worker.main --run-once backup_check` termina con 0 y `curl -s http://localhost/api/v1/health | jq -r .backup` devuelve el estado registrado
+- [ ] `docker compose run --rm worker python -m app.worker.main --run-once backup_check` termina con 0 y `curl -s http://localhost/api/v1/health | jq -r .backup` devuelve el estado registrado
 - [ ] Con un backup de más de 24 horas, `curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v1/health` sigue en `200` y `.backup` es `stale`
 - [ ] Cobertura ≥ 80 % en lo tocado: `cd api && uv run pytest --cov=app.worker.jobs.backup_check --cov=app.core.crypto.archive --cov-fail-under=80`

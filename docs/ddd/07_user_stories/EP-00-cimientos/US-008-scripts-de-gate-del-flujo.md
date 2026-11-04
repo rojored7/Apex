@@ -77,7 +77,7 @@ Característica: Gates automáticos del flujo
 - **Migración:** no.
 - **Trigger / restricciones:** ninguno.
 - **Funciones puras a probar:** ninguna.
-- **Pruebas:** `scripts/workflow/tests/` con casos de éxito y falla (bats o scripts de prueba simples) ejecutados en CI.
+- **Pruebas:** `scripts/workflow/tests/` con casos de éxito y falla (scripts de prueba en Bash puro) ejecutados en CI.
 - **Archivos principales:** `scripts/workflow/slice-gate.sh`, `checkpoint-commit.sh`, `run-gates.sh`, `validate-impact-analysis.sh`.
 
 ## Supuestos

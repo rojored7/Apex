@@ -558,9 +558,9 @@ Cada brecha se decide en el gate. La propuesta es la opción por defecto; mientr
     - Se agrega a la estructura de `CLAUDE.md`.
 - **G-07 · El bus no tiene SHA-256 de archivo en streaming ni verificación de archivos `age` (US-115; v1.0 lo reutiliza en US-196).**
   - Propuesta:
-    - `core/crypto/archive.py`, expuesto en el bus como `digest_file(path)` y `verify_age_archive(path, identity_path)`.
+    - `core/crypto/file_digest.py`, expuesto en el bus como `digest_file(path)`; `core/crypto/archive.py` guarda las funciones de la KEK (`export_kek_file`, `restore_kek_file`, `verify_kek_backup`, `age -p`). No existe `verify_age_archive`: la verificación de descifrado la hace el servicio `backup` (G-07 enmendada, S4B-D59).
     - Llama al binario `age` (BSD-3) por `subprocess`, solo desde `core/crypto`, y la salida se descarta.
-    - Queda en `crypto_ops` con el verbo `verify` y la clase de dato `backup.archive`, que se agrega a `registry.py`.
+    - La clase de dato del registro es `kek.backup` (S4B-D85), no `backup.archive`.
     - La imagen del api incluye `age`.
 - **G-08 · Alertas internas sin puerto (US-126, v0.2; afecta a US-136 y US-141).**
   - Problema: N-34 pone `core/alerts.py` → `TelegramChannel`, pero el canal vive en `modules/notifications`.

@@ -25,7 +25,7 @@ para que se haga un `pg_dump` previo, se bajen las imágenes nuevas, se levanten
 
 ## Alcance
 
-- **Backend:** script `infra/deploy.sh` con `set -euo pipefail` que: verifica que existan `.env` y la KEK; ejecuta un `pg_dump` previo cifrado con `age` en `backups/pre-deploy-<fecha>.sql.age`; registra las etiquetas de imagen actuales; hace `docker compose pull`; `docker compose up -d`; espera hasta 120 s a que `/health` responda 200 con `db: "ok"`; si no responde, imprime los últimos logs de `api`, deja el dump previo y las etiquetas anteriores en un archivo `rollback-<fecha>.txt` con el comando para volver, y termina con código distinto de 0. Documento corto en `docs/operacion/actualizar.md`.
+- **Backend:** script `infra/deploy.sh` con `set -euo pipefail` que: verifica que existan `.env` y la KEK; ejecuta un `pg_dump` previo cifrado con `age` en `backups/pre-deploy-<fecha>.sql.age`; registra las etiquetas de imagen actuales; construye las imágenes del `--ref` verificado con `--expect-sha`; `docker compose up -d`; espera hasta 120 s a que `/health` responda 200 con `db: "ok"`; si no responde, imprime los últimos logs de `api`, deja el dump previo y las etiquetas anteriores en un archivo `rollback-<fecha>.txt` con el comando para volver, y termina con código distinto de 0. Documento corto en `docs/operacion/actualizar.md`.
 - **Front:** No aplica.
 
 ## Criterios de aceptación
@@ -81,7 +81,7 @@ Característica: Despliegue seguro
 
 - **Migración:** no.
 - **Trigger / restricciones:** no aplica.
-- **Funciones puras a probar:** ninguna; `shellcheck` y prueba en CI con un api de prueba que falla al arrancar.
+- **Funciones puras a probar:** ninguna; `bash -n` y prueba en CI con un api de prueba que falla al arrancar.
 - **Pruebas:** integración en CI con Compose (camino feliz y api roto).
 - **Archivos principales:** `infra/deploy.sh`, `docs/operacion/actualizar.md`.
 
@@ -113,7 +113,7 @@ Característica: Despliegue seguro
 
 ## Definición de terminado
 
-- [ ] `shellcheck` en verde
+- [ ] `bash -n` en verde
 - [ ] Pruebas de integración del despliegue en CI en verde
 - [ ] Pruebas de router (no aplica)
 - [ ] Front (no aplica)

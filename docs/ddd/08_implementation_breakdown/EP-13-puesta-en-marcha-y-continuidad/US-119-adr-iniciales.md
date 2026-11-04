@@ -57,7 +57,7 @@ Cada ADR dice que cambiar la decisión exige detenerse y preguntar. Una prueba r
 ## Validación contra la arquitectura
 
 - `04_architecture_decision.md` sección 1 ya anuncia que ADR-001 sale de sus secciones 1 a 8 (en la tarea 12 del plan).
-- `CLAUDE.md` (bus, reglas 1 a 9) es la fuente de ADR-002. Las ampliaciones del bus propuestas en este lote (`digest_file` y `verify_age_archive` de US-115) se nombran en ADR-002 como "propuestas pendientes del gate" y no como decididas.
+- `CLAUDE.md` (bus, reglas 1 a 9) es la fuente de ADR-002. Las ampliaciones del bus propuestas en este lote (`digest_file` de US-115; `verify_age_archive` no existe, G-07 enmendada) se nombran en ADR-002 como "propuestas pendientes del gate" y no como decididas.
 - "Cómo se verifica" de cada ADR apunta a pruebas reales:
   - ADR-001: `tests/architecture/test_no_cross_models.py` y `test_every_route_has_role.py`;
   - ADR-002: `tests/architecture/test_banned_imports.py`, la prueba de que no hay datos en claro de US-031 y las pruebas del índice ciego de US-026;

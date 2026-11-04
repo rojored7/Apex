@@ -26,7 +26,7 @@ Se escribe `infra/deploy.sh` con `set -euo pipefail`. El script:
 1. Verifica que existan `.env` y el archivo de KEK (`CRYPTO_LOCAL_KEK_PATH`).
 2. Genera un dump previo cifrado con el mismo `run.sh` de US-114 (`--prefix pre-deploy`, que no toca `latest.json`). Comprueba que el archivo existe, que su encabezado es `age` y, si el operador montó la identidad de verificación, que se descifra.
 3. Guarda las etiquetas e ids de imagen actuales.
-4. Ejecuta `docker compose pull` y `docker compose up -d`.
+4. Construye las imágenes del `--ref` verificado con `--expect-sha` y ejecuta `docker compose up -d`.
 5. Espera hasta 120 s a que `/health` responda 200 con `db: "ok"`.
 
 Si `/health` no responde, imprime los últimos 100 renglones del log del api, escribe `rollback-<fecha>.txt` con las etiquetas anteriores y el comando para volver, conserva el dump y sale con código distinto de 0. Nunca borra volúmenes ni restaura la base sola. Se agrega `docs/operacion/actualizar.md`.
@@ -68,8 +68,8 @@ Ninguna.
 ### Service
 - [ ] T1 · `infra/deploy.sh`: verificación previa (`.env` existe; `CRYPTO_LOCAL_KEK_PATH` existe y es legible solo por el dueño; `docker compose config -q` válido) y salida con código 2 sin tocar contenedores si algo falta — 1 h
 - [ ] T2 · `infra/deploy.sh`: dump previo con `docker compose run --rm backup run.sh --prefix pre-deploy`; comprobación de encabezado `age` y tamaño, y descifrado de prueba si existe la identidad de verificación; aborta sin `pull` ni `up` si falla — 1,5 h
-- [ ] T3 · `infra/deploy.sh`: registro de `docker compose images --format json` (etiqueta e id de cada servicio) en una variable y en `deploy-<fecha>.state.json`; `docker compose pull`; `docker compose up -d`; espera con sondeo cada 3 s hasta 120 s (`DEPLOY_HEALTH_TIMEOUT`) de `curl -fsS http://localhost/api/v1/health` con `jq -e '.db == "ok"'` — 1,5 h
-- [ ] T4 · `infra/deploy.sh`: rama de fallo con `docker compose logs --tail 100 api`, `rollback-<fecha>.txt` (etiquetas anteriores y el comando `IMAGE_TAG=<anterior> docker compose up -d`, más la ruta del dump previo y el aviso de que restaurar la base es manual con `restore.sh` de US-116) y código 1; rama de éxito que imprime `version` y código 0; mensaje fijo "este script no restaura la base" en ambas — 1 h
+- [ ] T3 · `infra/deploy.sh`: registro de `docker compose images --format json` (etiqueta e id de cada servicio) en una variable y en `deploy-<fecha>.state.json`; `docker compose up -d`; espera con sondeo cada 3 s hasta 120 s (`DEPLOY_HEALTH_TIMEOUT`) de `curl -fsS http://localhost/api/v1/health` con `jq -e '.db == "ok"'` — 1,5 h
+- [ ] T4 · `infra/deploy.sh`: rama de fallo con `docker compose logs --tail 100 api`, `rollback-<fecha>.txt` (etiquetas anteriores y el etiquetado local `prev-<fecha>` para volver, más la ruta del dump previo y el aviso de que restaurar la base es manual con `restore.sh` de US-116) y código 1; rama de éxito que imprime `version` y código 0; mensaje fijo "este script no restaura la base" en ambas — 1 h
 
 ### Schemas
 - No aplica.
@@ -78,7 +78,7 @@ Ninguna.
 - No aplica.
 
 ### Tests unitarios puros
-- [ ] T5 · `infra/tests/deploy_unit.bats`: sin `.env` o sin KEK sale con 2 y no llama a `docker` (con `docker` simulado en `PATH`); el script no contiene `down -v`, `volume rm` ni `set -x` (búsqueda en el archivo) — 1 h
+- [ ] T5 · `scripts/ci/test_deploy_script.sh`: sin `.env` o sin KEK sale con 2 y no llama a `docker` (con `docker` simulado en `PATH`); el script no contiene `down -v`, `volume rm` ni `set -x` (búsqueda en el archivo) — 1 h
 
 ### Tests de service con PostgreSQL
 - No aplica (no hay código de service; la base se prueba en T6).
@@ -93,11 +93,11 @@ Ninguna.
 - No aplica.
 
 ### DevOps
-- [ ] T7 · Variables `IMAGE_TAG` y `DEPLOY_HEALTH_TIMEOUT` (por defecto 120) en `infra/compose.yml` y `.env.example`; las imágenes del api y de `web` usan `${IMAGE_TAG}` para que volver atrás sea cambiar una variable — 0,5 h
+- [ ] T7 · Variable `DEPLOY_HEALTH_TIMEOUT` (por defecto 120) en `.env.ops.example`; sin `IMAGE_TAG`: las imágenes se construyen localmente y volver atrás es reetiquetar `prev-<fecha>` — 0,5 h
 - [ ] T8 · `docs/operacion/actualizar.md`: pasos simples (antes de actualizar, ejecutar, qué significa cada salida, cómo volver con `rollback-*.txt`, cuándo hace falta restaurar la base y que eso es una decisión que se pregunta) — 1,5 h
 
 ### Seguridad
-- [ ] T9 · `shellcheck infra/deploy.sh` en CI; revisión de que ningún comando imprime el `.env` ni variables con `PASSWORD`, `SECRET` o `TOKEN`; el archivo `rollback-*.txt` no contiene secretos — 0,5 h
+- [ ] T9 · `bash -n infra/deploy.sh` en CI; revisión de que ningún comando imprime el `.env` ni variables con `PASSWORD`, `SECRET` o `TOKEN`; el archivo `rollback-*.txt` no contiene secretos — 0,5 h
 
 ## Orden de ejecución
 
@@ -136,8 +136,8 @@ Ninguna.
 
 ## Definición de hecho
 
-- [ ] `shellcheck infra/deploy.sh`
-- [ ] `bats infra/tests/deploy_unit.bats`
+- [ ] `bash -n infra/deploy.sh`
+- [ ] `bash scripts/ci/test_deploy_script.sh`
 - [ ] `bash infra/tests/deploy_e2e.sh` en CI (éxito, api roto y base caída)
 - [ ] En un servidor de prueba: `infra/deploy.sh; echo $?` imprime la versión y `0`, y `ls backups/pre-deploy-*.sql.age` muestra el dump nuevo
 - [ ] Con KEK ausente, `infra/deploy.sh; echo $?` imprime `2` y `docker compose ps` no cambia

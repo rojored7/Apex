@@ -99,7 +99,7 @@ Ninguna.
 ### Tests de service con PostgreSQL
 - [ ] T10 · `api/tests/cli/test_import_members.py`: archivo con 3 filas válidas crea 3 socios con todos los campos sensibles empezando por `apx1.` y `*_idx` calculados; reimportar deja 3 `skipped_existing`; socio existente `1020304` y fila `1.020.304` (y `1020-304`, por N-02) queda `skipped_existing`; dos filas con el mismo documento normalizado: la primera `created` y la segunda `rejected` ("documento repetido en el archivo"); fila sin apellidos `rejected` y el resto se crea — 3 h
 - [ ] T11 · `api/tests/cli/test_import_members.py`: auditoría con un `insert` por socio a nombre de `--as` (o `SYSTEM_USER_ID` sin `--as`) y una entrada `members_import` con los conteos; `--dry-run` deja cero filas nuevas en `members.members`, `audit.audit_log` y `crypto.crypto_ops`; las operaciones del bus de 1.000 filas quedan agrupadas por `batch_id` — 2 h
-- [ ] T12 · `api/tests/cli/test_import_members_perf.py` (marcado `slow`): 1.000 filas en menos de 2 minutos; el reporte y la salida capturada (`caplog`, `capsys`) no contienen ningún documento completo, teléfono ni correo de las filas — 1,5 h
+- [ ] T12 · `api/tests/cli/test_import_members_perf.py` (marcado `perf`): 1.000 filas en menos de 2 minutos; el reporte y la salida capturada (`caplog`, `capsys`) no contienen ningún documento completo, teléfono ni correo de las filas — 1,5 h
 
 ### Tests de router
 - No aplica (sin HTTP).

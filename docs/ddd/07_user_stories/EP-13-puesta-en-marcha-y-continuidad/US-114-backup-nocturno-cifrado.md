@@ -83,7 +83,7 @@ Característica: Backup nocturno cifrado
 
 - **Migración:** no.
 - **Trigger / restricciones:** no aplica.
-- **Funciones puras a probar:** nombre del archivo y selección de retención (pruebas con `bats` o script de prueba en CI).
+- **Funciones puras a probar:** nombre del archivo y selección de retención (pruebas en Bash puro, `infra/backup/tests/run.sh`).
 - **Pruebas:** prueba de integración en CI con Postgres y MinIO (Apache 2.0, solo en pruebas) como remoto rclone; prueba de falla de base.
 - **Archivos principales:** `infra/backup/Dockerfile`, `infra/backup/run.sh`, `infra/compose.yml`, `.env.example`, `NOTICE`.
 
@@ -116,7 +116,7 @@ Característica: Backup nocturno cifrado
 
 ## Definición de terminado
 
-- [ ] `ruff check`, `ruff format` y `mypy --strict` en verde (no aplica: shell; `shellcheck` en verde)
+- [ ] `ruff check`, `ruff format` y `mypy --strict` en verde (no aplica: shell; `bash -n` en verde)
 - [ ] Pruebas de integración del backup en CI en verde
 - [ ] Pruebas de router (no aplica)
 - [ ] Front (no aplica)

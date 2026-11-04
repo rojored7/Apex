@@ -93,7 +93,7 @@ Característica: Servicio OpenBao con Transit
 
 ## Definición de terminado
 
-- [ ] `shellcheck` en verde
+- [ ] `bash -n` en verde
 - [ ] Smoke de OpenBao en CI en verde
 - [ ] Licencia registrada en `NOTICE`
 - [ ] Revisión de PR aprobada

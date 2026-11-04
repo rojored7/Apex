@@ -101,7 +101,7 @@ Ninguna.
 - No aplica.
 
 ### DevOps
-- [ ] T11 · Documentar en el README (US-007) el paso "`docker compose run --rm api uv run python -m app.cli seed --demo`" para el ambiente de capacitación, y agregar el seed de demo al smoke de Compose de US-118 — 0,5 h
+- [ ] T11 · Documentar en el README (US-007) el paso "`docker compose run --rm tools seed --demo`" para el ambiente de capacitación, y agregar el seed de demo al smoke de Compose de US-118 — 0,5 h
 
 ### Seguridad
 - [ ] T12 · Revisión: los documentos ficticios no coinciden con cédulas asignables (prefijo `999`); la salida del comando no imprime datos de socios; el seed nunca corre automáticamente en producción (solo a mano) — 0,5 h

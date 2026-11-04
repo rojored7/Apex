@@ -477,3 +477,24 @@ Las 12, por escrito, en DECISIONES, bloque "S4B-B3b" (primer párrafo). Decision
 - M2 (`FOR UPDATE` de lote bloqueado): corregido con `skip_locked` y prueba nueva en `test_rotate_concurrency.py`. S4B-D150.
 - LOW docs (4): corregidos en `docs/operacion/rotar-llave.md`.
 - LOW aceptados con dueño: DEK como `bytes` (S4B-D151, v0.2), `sleep(1)` fijo (S4B-D152), `validate_reason` y nombres (S4B-D153).
+
+
+## S4B-B3b · Evidencia
+
+### run-gates
+
+- `run-gates.sh`: api 5956 ok / 52 skipped / 25 deselected / cobertura 95 % (1050 s); infra sin fallas; web lint 0, tsc 0, 3125 pruebas ok (172 archivos), cobertura 97,87 %, build ok. La parte web se repitió en primer plano por el orquestador tras el corte por memoria (el sistema detuvo las tareas en segundo plano; el log no mostraba ningún error de eslint).
+- Gates previos al sello: `architecture` 520 passed; `crypto` 643 passed, 2 skipped; `cli` (sello, huella 0329906f) 577 passed, 17 skipped. Checkpoint `f21faa1`.
+
+### Demo 5 sobre `apex_rehearsal` (en `db_test`; `apex-db-1` solo lectura)
+
+- Imagen `apex-api:local` reconstruida con buildx: `5289c8fce66d` -> `2eee79011eb6` (8 s, caché). `$DC up -d --no-build --force-recreate api worker`: ambos `healthy` en unos 10 s. `apex-backup:local` = `bf10096a5068` (sin reconstruir).
+- `createdb` + `pg_dump -Fc apex | pg_restore --no-owner --no-privileges` de `apex-db-1`: 0,6 s. La copia trae 265 socios, 5.612 filas de `audit_log` y la llave de `member.document` v1 `active`.
+- `rotate-key member.document --reason "ensayo S4B" --as admin@ejemplo.local --batch-size 5` (lotes de 5 para poder interrumpir): `SIGINT` por `docker kill -s INT` a los 190/265 (no tras el primer lote: la latencia de la señal dejó pasar 38 lotes); job `running`, total 265, done 190, ningún candado asesor huérfano (`pg_locks` advisory = 0), v1 `decrypt_only`, v2 `active`.
+- Repetido el mismo comando: reanudó el MISMO job (un solo registro en `crypto_jobs`), terminó `done` 265/265 en 3,7 s; salida final `rotate-key: llave anterior en decrypt_only; retirar con retire-key`. v1 `cfcd75b0-...` `decrypt_only`, v2 `94590a49-...` `active`.
+- `export-kek` + `verify-kek-backup` bajo pty sobre una COPIA de la KEK hecha DENTRO del contenedor (`/tmp/keys`, modo 600, tmpfs; mejor que el scratchpad del anfitrión) con una frase aleatoria solo en memoria: ambos rc 0; la copia, el `.age` y el script se borraron al terminar. `crypto_ops` de la copia: `export` ok y `verify` ok de una persona.
+- Manifiesto reciente: `run.sh` real del servicio `backup` en un contenedor desechable (el servicio del stack está inerte sin destinatario) con identidad `age` y llave `minisign` generadas en tmpfs (se perdieron al salir): 0,8 s, `apex-20261104-042133`, `verify: ok`, `latest.json` + `.minisig` en el volumen `apex_backups` (dev; los `.age` de ese juego ya no se pueden descifrar a propósito).
+- `retire-key cfcd75b0-... --confirm-audit-blobs 0` -> 2 e imprime `filas_negocio=0` y `audit_blobs=265`; con `265` -> 0, `llave retirada`; v1 `retired`, v2 `active`; auditoría `{"event": "retire", "audit_blobs": 265, "business_rows": 0}`.
+- `members.service.reveal` de `document` sobre los 265 socios con v1 retirada: 265 ok, 0 fallos, 0 vacíos.
+- `crypto_ops`: 106 filas agrupadas de `encrypt`/`decrypt` con `batch_id`, 2 lotes distintos (la corrida interrumpida y la reanudada); `rotate` = 2 filas (rotación y retiro).
+- `DROP DATABASE apex_rehearsal`: la base ya no existe. `apex-db-1`: las cinco llaves `encrypt` siguen en v1 `active`, `crypto_jobs` = 0 filas, `crypto_ops` con `rotate` = 0.

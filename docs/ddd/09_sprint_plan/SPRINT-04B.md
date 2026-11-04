@@ -136,7 +136,7 @@ Se sella con `scripts/workflow/wave0-gate.sh <slice> [archivos de prueba...]`: `
       - una transacción por socio (deuda de PL6 de la revisión de Fase 4 del Sprint 3, S3-D95): alta, venta y primer pago de un socio confirman juntos y el siguiente socio abre otra transacción, así ninguna pide `lock_member` después del primer flush auditado de otro socio (orden de candados de D3, docstring de `core/locks.py`).
   - Gate: `slice-gate.sh cli` con sus archivos (`slice-gate.sh members` no aplica).
   - Verde (forma final en `DECISIONES.md`, bloque «S4B-B1», S4B-D32 a D36, D105 a D108): `seed/` (dataset puro y `apply.py` en dos transacciones por socio), `imports/` (fachada `members_xlsx.py` y privados `limits`, `parse`, `persist`, `report`, `results`), `cli_ops/seed_demo.py` e `import_members.py`, `cli_keyring.py` y `cli_session.py` (corridas idempotentes sin filas nuevas en `crypto_ops`); guías `docs/operacion/importar-socios.md` y `demo.md`, plantilla `docs/plantillas/importar-socios.xlsx`.
-  - Pendiente de B4 (dueño B4): el servicio `tools` no monta `IMPORT_DIR` (`/data/imports`); hoy se monta con `-v` en cada `run`. B4 decide el bind fijo (S4B-D90; ver DECISIONES, «S4B-B1 · Revisión de seguridad»).
+  - Resuelto en V12 (S4B-D211): `tools` no monta `IMPORT_DIR`; la importación monta la carpeta en cada `run` con `-v` y la borra al terminar (S4B-D77, D90).
 - **Slice S4B-B2 · Backup y su verificación.** Historias: US-114 (backend) y US-115.
   - Rojo:
     - `tests/crypto/test_archive.py`;
@@ -277,7 +277,7 @@ Todos corren en cada gate de slice (A-5).
 
 > **S4B-B2 (Verde):** `backup_check`, `JobResult.status`, `core/backup_status.py`, caché y `backup` en `/health` implementados; forma final en `DECISIONES.md`, «S4B-B2» (S4B-D114 y D115 nuevas); RUNBOOK §12 «Verificación diaria del respaldo».
 
-## Estado parcial (B4 sellado, 2026-11-04)
+## Estado parcial (B4 sellado, 2026-11-04) y estado al cierre
 
 Slices sellados y confirmados en `feat/sprint-04b-continuidad-release`, con el commit del checkpoint y el de evidencia:
 
@@ -291,6 +291,16 @@ Slices sellados y confirmados en `feat/sprint-04b-continuidad-release`, con el c
 | B2 backup_check y `/health` | `2c6b194` | `701ba45` |
 | B3a respaldo de la KEK y `restore.sh` | `5e4ad47` | `82caed7` |
 | B3b rotación y `retire-key` | `f21faa1` | `e8e1a2c` |
-| B4 despliegue, `/health` con `migrations`, release y ADR | `daa6d56` | este commit |
+| B4 despliegue, `/health` con `migrations`, release y ADR | `daa6d56` | `45b4050` |
+| F1 deuda de front (worktree, fusionado con `--no-ff`) | `241c995` | merge `fae9fd0` |
 
 **B4 sellado (2026-11-04):** `core/migrations_status.py` y `migrations` crítico en `/health` (S4B-D170 a D179), `deploy.sh --ref --expect-sha --kek-file`, `prod-smoke.sh`, `check-release-version.sh`, `release.yml`, LICENSE, CHANGELOG, README, `docs/operacion/*` y RUNBOOK §12 (S4B-D154 a D168), revisión de seguridad con 0 CRITICAL / 0 HIGH / 2 MEDIUM / 8 LOW corregidos (S4B-D180 a D189), y siete defectos reales destapados por el smoke de producción en Linux y corregidos con prueba (S4B-D190 a D196). Gates: `run-gates.sh` en verde (api 6000 pruebas, cobertura 95 %; scripts de infraestructura; web 3125 pruebas, 97,87 %; build), sello `slice-gate.sh main` (616 pruebas). Evidencia B4.10 en el cuaderno: dos corridas del smoke en un contenedor auxiliar Linux (la segunda sin parches, 2 min 30 s, todo en verde), demo 1 sobre el ensayo, `/health` con `version` en desarrollo y ensayo. Pendiente humano: primera corrida del job `prod-smoke` y de `restore_e2e.sh` en la CI de GitHub Actions.
+
+## Estado al cierre del Sprint 4B (2026-11-04)
+
+- Slices: 12 de 12 (W0-1, W0-2, W0-3, B0, B1, B2, B3a, B3b, B4, F1) sellados y confirmados; validación V1 a V12 ejecutada con evidencia en `docs/scratch/sprint-04b.md` y matriz en `docs/scratch/sprint-04b-verify-delivery.md` (367/373 filas entregadas; 5 parciales declaradas con dueño: US-116 criterios 4 y 6 (CI y otra persona), T8 sin `member → /mi` (v1.0), C10 hasta el paso humano, planes E2E limpiados en V12; veredicto READY_WITH_WARNINGS).
+- Gates finales (V9 sobre `6cc9b8e`): api 6.002 pruebas, 52 saltadas justificadas (30 del `age` falso y 5 del `age` real corrieron en Linux: 62/62), cobertura 95,03 %; arquitectura 533 sin saltos; web 3.149 pruebas, 97,86 %, build; `pre-commit`, licencias, `npm audit`, `pip-audit`, gitleaks, imágenes sin secretos, versión 0.1.0 coherente.
+- Sistema real: ciclo de Alembic `0013 → 0014` en `apex-db-1` sin perder filas; ensayo de producción desde cero con roles, seed, respaldo firmado y verificado, `backup_check` `ok`, E2E críticos y T8 contra el ensayo con el api como `apex_api`; restauración de punta a punta con la KEK respaldada (23 comprobaciones); rotación interrumpida y reanudada y `retire-key` con conteos confirmados sobre datos de demo; `deploy.sh` ×2, con api roto (rollback) y con base detenida; smoke de producción en Linux sin parches (2 min 38 s) tras corregir 7 defectos reales que destapó; rendimiento V5 en dos corridas.
+- Pendiente humano: los siete jobs de CI en GitHub Actions sobre `main` (`api` con `age` real y sin saltos, `web`, `images` con `restore_e2e` y `test_backup_apk_pins`, `scripts`, `secrets-scan`, `e2e-stack`, `prod-smoke`); con todo verde, `git push origin v0.1.0` y publicar el Release en borrador; confirmar el titular de `LICENSE`; generar la clave de firma de etiquetas y `.github/allowed_signers` (v0.2); N-6 y N-7 en el servidor; importar `restricted-config.ts` desde `eslint.config.js` (S4B-D197); que otra persona siga la guía de restauración (S4B-D210).
+- Decisiones del sprint: S4B-D1 a S4B-D211 (D169 sin usar) en `DECISIONES.md`, con «Estado al cierre» y «Dueños asignados al cierre».
+

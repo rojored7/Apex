@@ -7,7 +7,7 @@ es el que se pasa a `infra/deploy.sh --expect-sha`.
 
 ## [0.1.0]
 
-SHA de cierre: `<se completa en V12, cuando el orquestador crea la etiqueta v0.1.0>`
+Fecha de cierre: 2026-11-04. SHA de cierre: el del commit etiquetado `v0.1.0` (`git rev-parse v0.1.0^{commit}`), publicado en el Release en borrador; es el valor que se pasa a `infra/deploy.sh --expect-sha` (ver `docs/operacion/actualizar.md`).
 
 Primera versión desplegable: administración de un gimnasio de CrossFit (socios, planes,
 membresías, pagos y vencimientos) con datos personales cifrados, auditoría verificable y

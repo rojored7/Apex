@@ -775,3 +775,19 @@ Preparación: ensayo parado con `stop` -> `$DCE up -d --no-build` (con `compose.
 - `rotate-key member.document` tras `done`: sin `--reason` sale 2 `--reason no es válido: el motivo es obligatorio`; con `--reason` inicia una NUEVA rotación (no hay "nada que rotar"): 37/37, sale 0, versión 2 -> `decrypt_only`, versión 3 `active`, dos filas `done` en `crypto_jobs`. El ensayo queda con `member.document` v1 retirada, v2 `decrypt_only`, v3 `active`.
 - `deploy.sh` ×2 seguidos: ver V7.6 (1b): dos `pre-deploy`, código 0 las dos, tres `prev-*` nuevas por corrida.
 - Estado final: ensayo arriba y `healthy` (db, api, worker, web, backup) con las imágenes de HEAD; `apex-db-1` (dev) sin tocar: 8 llaves, las 8 versión 1 `active` (SELECT al final); stack de desarrollo `healthy` (imágenes `fae9fd0` sin recrear); sin escrituras ni rotaciones en dev.
+
+### V8 · Revisión de base de datos
+
+- `database-reviewer`: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 5 LOW, 1 INFO. Decisiones S4B-D201 a D206 en `docs/ddd/DECISIONES.md`.
+- Corregido: D201 (conteo de `apply.sh` desde el ARRAY + prueba de las tres listas) y D205 (RUNBOOK §12: `revoke.sql` en cada base).
+- Aceptado con dueño: D202 (INSERT completo en pagos, el ORM nombra `voided`), D203 (UPDATE completo en users/members), D204 (SELECT del worker), D206 (propietario superusuario, Sprint 5 / v0.2).
+- Sin cambios en privilegios: no se reaplica `dbsetup` en ningún stack.
+
+### V10 · Revisión de seguridad posterior
+
+- Conteos: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW.
+- L-N1 (`restore-kek` sin rastro con la base arriba) -> slice B3a -> S4B-D207, sale 1 + aviso fijo; prueba en `tests/cli/test_export_kek.py` (age falso: solo CI/Linux).
+- L-N2 (`.github/allowed_signers` ausente) -> slice B4 (despliegue) -> S4B-D208 aceptado por S4B-D181 (falla cerrado), dueño v0.2 y el titular.
+- Nota: las 8 llaves de `crypto_keys` son 5 DEK más 3 llaves de índice ciego (`*.index`), todas versión 1 `active`.
+
+Nota del orquestador (V10, S4B-D207): la prueba nueva de `restore-kek` con la bitácora rota y las demás de la KEK corrieron en el contenedor Linux (`ghcr.io/astral-sh/uv:python3.12-bookworm-slim` + `age` de Debian): `test_export_kek.py`, `test_kek_real_age.py`, `test_archive_kek.py` y `test_archive_real_age.py` → 62 passed, 0 skipped. El agente había pegado las aserciones de D207 en la prueba del `OperationalError` (D124); se restauró su contrato (salida 0 y línea JSON) y el caso de D207 vive en `test_restore_kek_con_la_base_arriba_y_la_bitacora_rota_sale_1_y_deja_el_archivo`.

@@ -791,6 +791,39 @@ def test_grants_sql_es_sql_puro_con_fallo_cerrado_y_sin_default_privileges() -> 
     assert "\\getenv" not in texto, "las contraseñas son de roles.sql"
 
 
+def _tablas_del_array_final() -> set[str]:
+    texto = _leer("grants.sql")
+    patron = r"clasificadas\s+constant\s+text\[\]\s*:=\s*ARRAY\[(.*?)\];"
+    bloque = re.search(patron, texto, re.DOTALL)
+    assert bloque is not None, "grants.sql debe declarar el ARRAY `clasificadas` del bloque final"
+    return set(re.findall(r"'([a-z_]+\.[a-z_0-9]+)'", bloque.group(1)))
+
+
+def _tablas_con_grant() -> set[str]:
+    texto = _leer("grants.sql")
+    esquemas = "|".join(ESQUEMAS)
+    tablas: set[str] = set()
+    for grant in re.findall(r"^GRANT\s+(?!USAGE|CONNECT|pg_read_all_data)[^;]*?;", texto, re.M):
+        destino = re.split(r"\bON\b", grant, maxsplit=1)[1].split(" TO ")[0]
+        tablas |= set(re.findall(rf"\b((?:{esquemas})\.[a-z_0-9]+)\b", destino))
+    return tablas
+
+
+def test_las_tres_listas_de_tablas_de_grants_sql_coinciden() -> None:
+    """S4B-D201: matriz (`-- clasificada:`), ARRAY del DO final y GRANTs son el mismo conjunto."""
+    array = _tablas_del_array_final()
+    assert len(array) == len(PRIVILEGIOS)
+    assert array == _clasificadas_en_el_encabezado(), "ARRAY != líneas `-- clasificada:`"
+    assert array == _tablas_con_grant(), "ARRAY != tablas con GRANT"
+    assert array == set(PRIVILEGIOS), "grants.sql != la matriz ejecutable de esta prueba"
+
+
+def test_apply_sh_cuenta_las_tablas_del_array_que_valida_no_los_comentarios() -> None:
+    texto = _leer("apply.sh")
+    assert "-- clasificada" not in texto, "el conteo no puede salir de los comentarios"
+    assert "clasificadas constant" in texto, "el conteo debe leerse del ARRAY del DO final"
+
+
 def test_revoke_sql_es_idempotente_por_construccion() -> None:
     texto = _leer("revoke.sql")
     assert "DROP OWNED BY" in texto

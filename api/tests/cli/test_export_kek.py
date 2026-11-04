@@ -665,9 +665,15 @@ def test_restore_kek_con_operationalerror_degrada_a_sin_bitacora(
         admin.email,
     )
 
+    # S4B-D124 / S4B-D130: solo los errores de conexión degradan a "sin bitácora": código 0,
+    # archivo restaurado y una línea JSON sin material; el caso de la base arriba con la
+    # bitácora rota (S4B-D207) está en la prueba siguiente.
     assert resultado.exit_code == 0, resultado.output
-    assert "sin bitácora" in resultado.output and _linea_json(resultado.output)
     assert (salidas / "restaurada.bin").exists()
+    linea = _linea_json(resultado.output)
+    assert linea["event"] == "restore_sin_bitacora" and linea["actor"] == admin.email
+    assert "conexión rechazada" not in resultado.output
+    assert _kek_bytes(kek_de_prueba).decode("latin-1") not in resultado.output
 
 
 def test_restore_kek_deja_subir_un_error_que_no_es_de_conexion(
@@ -701,7 +707,7 @@ def test_restore_kek_deja_subir_un_error_que_no_es_de_conexion(
     assert not (salidas / "restaurada.bin").exists()
 
 
-def test_restore_kek_con_la_base_arriba_y_la_bitacora_rota_sale_0_sin_bitacora(
+def test_restore_kek_con_la_base_arriba_y_la_bitacora_rota_sale_1_y_deja_el_archivo(
     entorno_kek: Settings,
     kek_de_prueba: KeyPaths,
     admin: Any,
@@ -727,5 +733,12 @@ def test_restore_kek_con_la_base_arriba_y_la_bitacora_rota_sale_0_sin_bitacora(
         admin.email,
     )
 
-    assert resultado.exit_code == 0, resultado.output
-    assert "sin bitácora" in resultado.output and _linea_json(resultado.output)
+    # S4B-D207: la base responde pero no queda rastro -> código 1, archivo restaurado, aviso fijo.
+    assert resultado.exit_code == 1, resultado.output
+    assert (salidas / "restaurada.bin").exists()
+    assert (
+        "restore-kek: archivo restaurado pero SIN bitácora: registre a mano (RUNBOOK §12)"
+        in resultado.output
+    )
+    assert "fallo al escribir" not in resultado.output
+    assert _kek_bytes(kek_de_prueba).decode("latin-1") not in resultado.output

@@ -53,7 +53,8 @@ from app.core.crypto.kek_backup import load_wrapped
 
 DATA_CLASS = "kek.backup"
 AUDIT_TABLE = "crypto.crypto_keys"
-NOT_LOGGED = "sin bitácora (la base no está disponible o no se pudo escribir); anótelo a mano"
+NOT_LOGGED = "sin bitácora (la base no está disponible); anótelo a mano"
+LOG_FAILED = "archivo restaurado pero SIN bitácora: registre a mano (RUNBOOK §12)"
 OPEN_FAILED = "no se pudo abrir el respaldo"
 Verb = Literal["export", "verify"]
 CONNECTION_ERRORS = (OperationalError, OSError, TimeoutError)
@@ -197,15 +198,19 @@ async def _log_restore(settings: Settings, options: RuntimeOptions, actor_id: UU
     return True
 
 
+RestoreOutcome = Literal["logged", "db_down", "log_failed"]
+
+
 async def _restore(
     settings: Settings, options: RuntimeOptions, file: Path, out: Path, actor: str | None
-) -> bool:
-    """Restaura la KEK; `True` si quedó en la bitácora, `False` si fue sin bitácora."""
+) -> RestoreOutcome:
+    """Restaura la KEK: `logged`; `db_down` (base caída, D124, sale 0); `log_failed` (base arriba
+    pero sin rastro, S4B-D207, sale 1)."""
     actor_id = await _resolve_if_db_up(settings, options, actor)
     archive.restore_kek_file(file, out)
     if actor_id is None:
-        return False
-    return await _log_restore(settings, options, actor_id)
+        return "db_down"
+    return "logged" if await _log_restore(settings, options, actor_id) else "log_failed"
 
 
 def _prelude(
@@ -281,13 +286,16 @@ def _register_restore(app: typer.Typer) -> None:
         """Restaura la KEK desde el respaldo (corre aunque la KEK viva falte)."""
         settings, opciones = _prelude(ctx, "restore-kek", actor)
         try:
-            registrada = _run(_restore(settings, opciones, file, out, actor))
+            resultado = _run(_restore(settings, opciones, file, out, actor))
         except typer.Exit:
             raise
         except Exception as error:
             _fail(error, "restore-kek")
         typer.echo("restore-kek: KEK restaurada en el archivo indicado (modo 600)")
-        if not registrada:
+        if resultado == "log_failed":
+            typer.echo(f"restore-kek: {LOG_FAILED}", err=True)
+            raise typer.Exit(1)
+        if resultado == "db_down":
             typer.echo(f"restore-kek: {NOT_LOGGED}", err=True)
             aviso = {
                 "event": "restore_sin_bitacora",

@@ -50,5 +50,6 @@ distintas APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD
 psql -X -q -v ON_ERROR_STOP=1 -f /opt/db/roles.sql
 psql -X -q -v ON_ERROR_STOP=1 -f /opt/db/grants.sql
 
-tablas="$(grep -c '^-- clasificada:' /opt/db/grants.sql)"
+# El conteo sale del ARRAY `clasificadas` del DO final de grants.sql: la misma lista que valida (S4B-D201).
+tablas="$(sed -n '/clasificadas constant text/,/\];/p' /opt/db/grants.sql | grep -o "'[a-z_0-9]*\.[a-z_0-9]*'" | wc -l | tr -d ' ')"
 echo "roles aplicados; $tablas tablas clasificadas"

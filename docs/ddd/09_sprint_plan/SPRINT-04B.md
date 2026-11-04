@@ -277,7 +277,7 @@ Todos corren en cada gate de slice (A-5).
 
 > **S4B-B2 (Verde):** `backup_check`, `JobResult.status`, `core/backup_status.py`, caché y `backup` en `/health` implementados; forma final en `DECISIONES.md`, «S4B-B2» (S4B-D114 y D115 nuevas); RUNBOOK §12 «Verificación diaria del respaldo».
 
-## Estado parcial (Verde api de B4, 2026-11-03)
+## Estado parcial (B4 sellado, 2026-11-04)
 
 Slices sellados y confirmados en `feat/sprint-04b-continuidad-release`, con el commit del checkpoint y el de evidencia:
 
@@ -291,5 +291,6 @@ Slices sellados y confirmados en `feat/sprint-04b-continuidad-release`, con el c
 | B2 backup_check y `/health` | `2c6b194` | `701ba45` |
 | B3a respaldo de la KEK y `restore.sh` | `5e4ad47` | `82caed7` |
 | B3b rotación y `retire-key` | `f21faa1` | `e8e1a2c` |
+| B4 despliegue, `/health` con `migrations`, release y ADR | `daa6d56` | este commit |
 
-**B4 en curso (sin checkpoint):** hecho el Verde del api y de los documentos de ADR: `core/migrations_status.py` y `migrations` crítico en `/health`, `gc.freeze()` al final del arranque (peor pausa de generación 2 medida: 2,1 ms), ADR-001 a ADR-004 con `docs/adr/README.md`, el vector `chain-hash-vector`, el pase final de `CLAUDE.md` y el contrato (63 operaciones, sin cambio de número). Forma final en `DECISIONES.md`, «S4B-B4 · API y ADR» (S4B-D170 a D178). Faltan: scripts y release (otro Verde: `deploy.sh`, `prod-smoke.sh`, `check-release-version.sh`, `release.yml`, LICENSE, CHANGELOG, README, `docs/operacion/*`, RUNBOOK §12), revisión de `security-reviewer`, `slice-gate.sh main` que sella, `run-gates.sh`, Docker y evidencia (B4.10) y el checkpoint.
+**B4 sellado (2026-11-04):** `core/migrations_status.py` y `migrations` crítico en `/health` (S4B-D170 a D179), `deploy.sh --ref --expect-sha --kek-file`, `prod-smoke.sh`, `check-release-version.sh`, `release.yml`, LICENSE, CHANGELOG, README, `docs/operacion/*` y RUNBOOK §12 (S4B-D154 a D168), revisión de seguridad con 0 CRITICAL / 0 HIGH / 2 MEDIUM / 8 LOW corregidos (S4B-D180 a D189), y siete defectos reales destapados por el smoke de producción en Linux y corregidos con prueba (S4B-D190 a D196). Gates: `run-gates.sh` en verde (api 6000 pruebas, cobertura 95 %; scripts de infraestructura; web 3125 pruebas, 97,87 %; build), sello `slice-gate.sh main` (616 pruebas). Evidencia B4.10 en el cuaderno: dos corridas del smoke en un contenedor auxiliar Linux (la segunda sin parches, 2 min 30 s, todo en verde), demo 1 sobre el ensayo, `/health` con `version` en desarrollo y ensayo. Pendiente humano: primera corrida del job `prod-smoke` y de `restore_e2e.sh` en la CI de GitHub Actions.

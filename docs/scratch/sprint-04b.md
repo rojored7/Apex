@@ -302,3 +302,20 @@ security-reviewer: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 3 LOW; 5/5 corregidos (TDD, S4B
 3. LOW `digest_file` hasta EOF: `max_bytes` con el tamaño declarado. Corregido.
 4. LOW `BACKUP_DIR` sin validar: validador `_anidadas`. Corregido.
 5. LOW registradores de `/health` sin prueba de arquitectura: `test_health_check_registrars.py`. Corregido.
+
+### S4B-B2 · Evidencia
+
+Checkpoint `2c6b194`. Gates en verde tras las correcciones: `crypto` (503 passed, 2 skipped), `core/config` (621), `core/health` (506), `architecture` con las 6 pruebas (480) y el sellante `slice-gate.sh worker` con las 6 pruebas del plan (732 passed, 3 skipped: enlace simbólico y dos FIFO, que no existen en Windows). `ruff check`, `ruff format --check` y `mypy src` (143 archivos) limpios.
+
+Imágenes (buildx, S4B-D98): `apex-api:local` sha256:a6cd7f599d52b9f709d002e2eeefb24549c5aac8ecc35f9e347940de4bb896d1 (antes 84f04df04280); `apex-web:local` sin cambios (1f4f49377584); `apex-backup:local` sin cambios (c9510caf189d).
+
+Desarrollo (`apex-db-1`; `api` y `worker` recreados con `--no-build --force-recreate`, ambos healthy; `web` reiniciado porque Nginx conservaba la IP anterior del api): volumen `apex_backups` vacío -> `--run-once backup_check` sale 1 con `result: missing`, `details {"archivos": 0}`, log `WARNING backup_check finished` sin ruta y alerta `backup_unhealthy` (result missing); `--status backup_check` muestra `missing`; `/health` directo (8181) `{"status":"ok","db":"ok","version":"dev","backup":"attention"}` y por Nginx (8180) igual: 200 con `attention`.
+
+Ensayo `apex-ensayo` (WEB_PORT 8280; par age y llave minisign de prueba generados en el scratchpad con `apex-backup:local`, nunca en el repositorio; api, worker y backup recreados con la imagen nueva, todos healthy):
+- `run.sh` sin identidad: `verify: skipped`; `--run-once backup_check` sale 0 con `ok_unverified` (`archivos 1, edad_horas 0, tamano_bytes 79940, verificado 0`); `/health` 8280 pasó de `attention` (corrida de recuperación del arranque, con el volumen vacío, cacheada 30 s) a `"backup":"ok"` tras la caché.
+- Con `-f infra/compose.verify.yml` y la identidad de verificación: `run.sh` "verificación de descifrado: ok", `verify: ok`; `--run-once backup_check` sale 0 con `ok` (`archivos 2, verificado 1`), la fila del día se reutilizó (`attempts` 3: missing de la recuperación, ok_unverified, ok); `/health` `"backup":"ok"`.
+- `grep -c /data/backups` sobre la salida de las corridas y sobre `logs --tail 80 worker`: 0.
+- No se pudo hacer la última parte del plan (borrar los archivos de prueba del volumen y repetir con el volumen vacío): el sistema bloqueó el `rm` dentro del contenedor (comprobación de seguridad); el caso `missing` con volumen vacío queda demostrado en desarrollo arriba. Los archivos de prueba quedan en el volumen `apex-ensayo_backups` (se van con el volumen en V12).
+- Ensayo detenido con `stop` (sin `-v`).
+
+Linux: `digest_file` sobre un FIFO dentro de `apex-api:local` lanza `OSError` en 0,0 s ("no es un archivo regular"); las pruebas de FIFO de pytest se omiten en Windows y corren en CI.

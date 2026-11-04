@@ -48,3 +48,7 @@ Rama `feat/sprint-05-openbao-avisos-recibos` desde `main` `a1ad4cb` (cierre del 
 - MEDIUM (S5-D103, ADR-005 punto 3): el desello documentado ponía la llave en la línea de la shell. Ahora `set +o history; read -rs K && printf ... "$K" | ... wget ... --post-file=/dev/stdin ...; unset K; set -o history`; los scripts y `docs/operacion/openbao.md` de W0-2 deben leerla con `read -rs`, nunca por argumento ni por `printf` literal.
 - LOW (S5-D102): Mailpit en 8125 confirmado; sin "propuesta"; el plan (P-MAIL, W0-1.1, B4) y el cuaderno unificados en 8125.
 - LOW: la custodia ya no se cita como "D82" sino como S5-D106 (tres menciones del plan; las de exportación se quedan en D82).
+
+## W0-1 · Evidencia
+
+Checkpoint `52b1922` (`chore(checkpoint): S5-W0-1 ...`). Sello `slice-gate.sh architecture tests/architecture/test_adr_docs.py`: 533 passed. `ruff check` y `ruff format --check` de `test_adr_docs.py`, `test_licenses.sh` (0 fallas) y `check-licenses-api.sh` en verde; `NOTICE` regenerado dos veces sin diferencias.

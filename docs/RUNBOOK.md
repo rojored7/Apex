@@ -308,7 +308,7 @@ $DC run --rm tools unlock-user <correo de la cuenta> --as <correo de un admin ac
   - `SELECT action, table_name, subject_member_id, after->>'document' FROM audit.audit_log WHERE table_name = 'members.members' ORDER BY seq DESC LIMIT 5;`: la fila `insert` lleva el blob, nunca el claro.
 - Un documento repetido entre socios no dados de baja responde 409 `member_document_duplicated` con `existing_id`; el único parcial `uq_members_document_idx_alive` decide aunque dos altas lleguen a la vez. Un socio dado de baja (US-076, S3-B10) libera su documento: se puede dar de alta a otro con el mismo.
 - Límite: 60 altas por minuto por usuario autenticado (429 `rate_limited` con `Retry-After`); el contador vive en memoria y se limpia con `up -d api`.
-- Rotación: en v0.1 no hay rotación de llaves de `member.*`; llega en v0.2 con OpenBao (`cli rotate-key`, US-030), que recifra con la llave nueva sin cambiar el formato del blob.
+- Rotación: `rotate-key <data_class> --reason ... --as <correo>` existe desde el Sprint 4B (S4B-B3b, US-030): recifra con la llave nueva sin cambiar el formato del blob y deja la anterior en `decrypt_only`; `retire-key` es el comando aparte. OpenBao (v0.2, Sprint 5) cambia el custodio de la KEK, no el formato; `rotate-kek` rota la KEK (S5-D19).
 
 ### Búsqueda y listado (S2-B8)
 

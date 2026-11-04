@@ -38,16 +38,16 @@ Internet / LAN del gimnasio
    │   api    │  DEKs en memoria, /health
    └────┬─────┘
    ┌────▼─────┐  misma imagen, comando worker: APScheduler
-   │  worker  │  07:00 America/Bogota: expirations, notify, sign_audit, backup_check
+   │  worker  │  07:00 America/Bogota: expirations, notify (v0.2), backup_check; sign_audit (v0.3, EP-17)
    └────┬─────┘
    ┌────▼─────┐  PostgreSQL 16, volumen pgdata, 16 esquemas
    │    db    │
    └──────────┘
    ┌──────────┐  pg_dump nocturno, cifrado con age, subida con rclone,
-   │  backup  │  firma ML-DSA (v1.0)
+   │  backup  │  manifiesto firmado con minisign (Ed25519, 4B); ML-DSA (v1.0)
    └──────────┘
-   ┌──────────┐  OpenBao con motor Transit (v0.2): KEK y llaves de firma
-   │ openbao  │  nunca salen; desellado con llaves fuera del servidor
+   ┌──────────┐  OpenBao con motor Transit (v0.2): una llave apex-kek
+   │ openbao  │  que nunca sale; desellado 3 de 5 con llaves fuera del servidor
    └──────────┘
    Volúmenes: pgdata, uploads (/data/uploads), backups, keys (KEK local v0.1, 600)
 ```

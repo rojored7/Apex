@@ -25,8 +25,9 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; `seed --demo` (S4B-D32) y reexporta cli_base (S4B-D28); `import-members` vive en `cli_ops/` (B1); `rotate-key` y `retire-key` viven en `cli_ops/` (B3b); sign-audit llega en Sprint 5
+      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; `seed --demo` (S4B-D32) y reexporta cli_base (S4B-D28); `import-members` vive en `cli_ops/` (B1); `rotate-key` y `retire-key` viven en `cli_ops/` (B3b); `migrate-provider`, `rotate-kek`, `retire-local-kek`, `notify` y `seed-notifications` llegan en el Sprint 5 (S5-D97: un archivo cada uno en `cli_ops/`); sign-audit llega en v0.3 (EP-17)
       cli_base.py        # base común del CLI (S4B-B0): unit_of_work, resolve_actor, resolve_admin_actor, cli_runtime, crypto_runtime, production_guard_error, get_settings; único archivo de la capa que arranca el cifrado de columnas (install_crypto_type_listeners)
+      cli_manifest.py    # verificación del manifiesto firmado de respaldo (S5-D72, B13): recent_signed_manifest; lo usan retire-key, migrate-provider, rotate-kek y retire-local-kek; capa de aplicación como cli_keyring.py
       cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
       cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
       cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140); register_ops(app); nunca se importan entre sí ni importan cli
@@ -53,8 +54,17 @@ apex/
         backup_status.py # backup_health() (S4B-B2): última corrida de backup_check -> ok|attention|unknown para /health; solo lee (único importador de core.jobs fuera de worker/, y solo last_run)
         migrations_status.py # migrations_health() (S4B-B4, S4B-D170): compara la única fila de public.alembic_version con el head del código -> ok|mismatch|unknown para /health; check crítico (solo `ok` da 200); main.py le entrega head y revisiones conocidas con configure_migrations; no importa app.main ni módulos
         alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo (Sprint 4A: LogAlertSink)
+        alerts_telegram.py # TelegramAlertSink y register_from_settings (Sprint 5, S5-D29): el sink de Telegram con httpx directo; chat en TELEGRAM_CHAT_ID
+        mail.py          # send_mail(settings, message): SMTP con smtplib en asyncio.to_thread (Sprint 5, S5-D64); único sitio de smtplib
+        export.py        # escape_formula, csv_stream y single_flight de las exportaciones CSV (Sprint 5, S5-D41, S5-D82)
+        pdf.py           # render_text_pdf: escritor de PDF propio, una página A4 en Courier (Sprint 5, S5-D65)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
+          openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao
+          state.py       #   estado del proveedor y health_state puro (Sprint 5, S5-D13)
+          recovery.py    #   sondeo y try_load de las DEK tras el sellado (Sprint 5, S5-D16, D70)
+          migration.py   #   plan_provider_migration y ayudas puras de migrate-provider (Sprint 5, S5-D18, D97)
+          minisign.py    #   verify_minisign y parse_pubkey de la firma del manifiesto (Sprint 5, S5-D72)
           digest.py      #   SHA-256 sin dependencias (solo `hashlib`; lo usa core/audit)
           file_digest.py #   digest_file(path, chunk, max_bytes=): SHA-256 de un archivo en reposo sin seguir enlaces, el único lector de archivos de respaldo que usa el worker; solo biblioteca estándar (S4B-D134, S4B-D139)
           service.py     #   rotación reanudable (start_rotation, reencrypt_batch, finish_rotation, fail_job, rotate_index) y retiro (count_rows_by_key, count_audit_blobs, retire_key, recent_kek_verify, next_key_state, validate_reason); candado `apex:rotate:<clase>`, único sitio con FOR UPDATE de llaves y tablas cifradas; sin core/audit (S4B-D39, D142 a D146)
@@ -74,7 +84,7 @@ apex/
         payments/
         audit/       # router, schemas, service (se suscribe a los eventos de auth); privados verify.py (S4A-B3), queries.py y diff.py (S4A-B4); los models viven en core/audit.py y core/audit_verify.py
         dashboard/   # router, schemas, service; sin models (Sprint 4A)
-        notifications/ # v0.2
+        notifications/ # v0.2 (Sprint 5): router, schemas, models, service, exceptions; esquema `notifications` (plantillas, reglas, avisos); el job notify y el único llamador de contact_for_notification (S5-D23, D32)
         attachments/   # v0.3
         classes/       # v0.4
         wods/          # v0.5
@@ -88,7 +98,7 @@ apex/
         registry.py      # JobSpec y registro de jobs
         runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
         runtime.py       # worker_runtime, espera de la base y latido (/tmp/apex-worker-heartbeat)
-        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py, sign_audit.py (v0.2 en adelante)
+        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35); sign_audit.py (v0.3, EP-17)
     migrations/          # Alembic
     tests/
       architecture/      # pruebas de arquitectura; corren en todos los gates
@@ -101,11 +111,12 @@ apex/
     compose.dev.yml
     compose.e2e.yml      # solo E2E (V4): zona de limit_req alta para Nginx
     compose.verify.yml   # solo backup: monta la identidad age de verificación (S4B-D59)
+    compose.openbao.yml  # overlay con CRYPTO_PROVIDER=openbao: api y worker sin el volumen `keys` y con su token (Sprint 5, S5-D74)
     nginx/default.conf       # y snippets/ (zonas de limit_req: auth-zone.conf y health-zone.conf)
     db/                  # roles.sql, grants.sql, revoke.sql y apply.sh: roles de aplicación y permisos por tabla/columna; los aplica el servicio dbsetup (S4B-W0-3)
     backup/              # Dockerfile (postgres:16-alpine + age, minisign, rclone, supercronic), run.sh, lib.sh,
                          # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro), restore.sh (B3a, restauración con firma e inspección del tar)
-    openbao/             # config.hcl (desde v0.2)
+    openbao/             # config.hcl, bootstrap.sh (--first-install, S5-D76), dev-entrypoint.sh (solo APEX_ENV=dev) y policies/*.hcl: una llave Transit apex-kek, tokens por servicio, red `custody` (Sprint 5)
     deploy.sh            # despliegue en el servidor (B4): `--ref <etiqueta> --expect-sha <sha> --kek-file <copia age de la KEK>` más `--i-know-unsigned-ref` (obligatoria en v0.1: sin firma de etiqueta) y `--i-know-no-backup` (omite el respaldo pre-deploy); variables `DEPLOY_STATE_DIR`, `DEPLOY_HEALTH_TIMEOUT`, `DEPLOY_SKIP_BUILD`, `DEPLOY_COMPOSE_EXTRA`; preverificación, respaldo pre-deploy, build, up, sondeo de /health con migrations ok, rollback-<fecha>.txt si falla; nunca down -v, push, pull ni --force
     tests/               # deploy_e2e.sh: solo apex-smoke y CI
   docs/
@@ -171,7 +182,7 @@ apex/
 
 ## Licencias
 
-Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros. Binarios de contenedor (no son dependencias de Python; bloque fijo de `NOTICE`): `age` BSD-3, `rclone` MIT, `supercronic` MIT, `minisign` ISC y `pg_dump` (licencia PostgreSQL) en la imagen `apex-backup`; `age` también en la del api. Dependencias nuevas del api en 4B: `openpyxl` (MIT) y `defusedxml` (PSF-2.0), solo bajo `imports/`.
+Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros. Binarios de contenedor (no son dependencias de Python; bloque fijo de `NOTICE`): `age` BSD-3, `rclone` MIT, `supercronic` MIT, `minisign` ISC, `pg_dump` (licencia PostgreSQL) y `curl` (licencia curl, permisiva tipo MIT, desde B13; S5-D105) en la imagen `apex-backup`; `age` también en la del api. Imágenes de terceros del Sprint 5, también en el bloque fijo de `NOTICE`: OpenBao (MPL-2.0 sin modificar), Mailpit (MIT, solo desarrollo) y `python:3.12-alpine` (PSF-2.0, solo desarrollo, `telegram-fake`). Dependencias nuevas del api en 4B: `openpyxl` (MIT) y `defusedxml` (PSF-2.0), solo bajo `imports/`. Sprint 5: ninguna de ejecución; `pypdf` (BSD-3) solo en el grupo de desarrollo, para las pruebas del PDF; `fpdf2` y `python-telegram-bot` (LGPL) siguen prohibidos y la CI los rechaza.
 
 ## Calidad y Git
 

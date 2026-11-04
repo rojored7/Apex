@@ -1,5 +1,7 @@
 # US-139 · Como administrador quiero exportar los pagos filtrados a CSV para cuadrar la caja con contabilidad sin copiar a mano
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): las columnas son las de N-29: `fecha;socio;plan;monto;medio;referencia;registrado_por;anulado;motivo_anulacion`; todo texto libre pasa por `escape_formula`; auditoría `export` con filtros estructurados, apertura y cierre, tope de 20.000 filas y cubetas `export*` (S5-D41, S5-D60, S5-D81, S5-D82).
+
 - **Épica:** EP-16 · Recibos y exportaciones
 - **Bounded context:** Payments (esquema `payments`)
 - **Versión:** v0.2
@@ -25,7 +27,7 @@ para entregar a contabilidad los ingresos del periodo
 
 ## Alcance
 
-- **Backend:** `payments.service.export(filters, by)` con los mismos filtros de `GET /payments` (`from`, `to`, `method`, `registered_by`, `voided`, `member_id`, `membership_id`, `q`); CSV UTF-8 con BOM y separador `;`, columnas `fecha_pago;socio;plan;medio;referencia;monto_cop;anulado;motivo_anulacion;registrado_por`; `fecha_pago` en hora de Bogotá en formato `AAAA-MM-DD HH:MM`; `monto_cop` entero sin separador de miles. Sin campos cifrados (solo nombre y apellido del socio). Auditoría `export` con tabla `payments`, filtros y número de filas. Endpoint `GET /api/v1/payments/export`.
+- **Backend:** `payments.service.export(filters, by)` con los mismos filtros de `GET /payments` (`from`, `to`, `method`, `registered_by`, `voided`, `member_id`, `membership_id`, `q`); CSV UTF-8 con BOM y separador `;`, columnas `fecha;socio;plan;monto;medio;referencia;registrado_por;anulado;motivo_anulacion` (N-29); `fecha` en hora de Bogotá en formato `AAAA-MM-DD HH:MM`; `monto` entero sin separador de miles. Sin campos cifrados (solo nombre y apellido del socio). Auditoría `export` con tabla `payments`, filtros y número de filas. Endpoint `GET /api/v1/payments/export`.
 - **Front:** botón "Exportar" en `Pagos` visible solo para admin, con confirmación, usando los filtros activos.
 
 ## Criterios de aceptación

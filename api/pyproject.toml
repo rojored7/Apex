@@ -33,6 +33,7 @@ dev = [
     "pytest-cov>=5",
     "pre-commit>=3.8",
     "pip-licenses>=5",
+    "pypdf>=6.21.4",
 ]
 
 [build-system]

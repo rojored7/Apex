@@ -1,5 +1,7 @@
 # US-135 · Como administrador quiero migrar las llaves del proveedor local a OpenBao sin recifrar datos para pasar a la custodia segura en minutos y sin riesgo para la información
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): el comando corre con `docker compose run --rm tools migrate-provider`; sin `--dry-run` exige un manifiesto firmado de menos de 24 h con `openbao_snapshot.verified = true` (S5-D49, S5-D72). `retire-local-kek` es el paso siguiente (S5-D73). Sin migración `0030`: la guarda de `crypto_keys` se reemplaza en `0015` (S5-D4).
+
 - **Épica:** EP-15 · Custodia de llaves con OpenBao
 - **Bounded context:** Crypto (`core/crypto/service.py`, `cli.py`)
 - **Versión:** v0.2
@@ -62,7 +64,7 @@ Característica: Migrar proveedor de llaves
 
 ## Endpoints
 
-- Ninguno. Comando `uv run python -m app.cli migrate-provider --from local --to openbao [--as <email>] [--dry-run]`.
+- Ninguno. Comando `docker compose run --rm tools migrate-provider --from local --to openbao [--as <email>] [--dry-run]`.
 
 ## Pantalla
 

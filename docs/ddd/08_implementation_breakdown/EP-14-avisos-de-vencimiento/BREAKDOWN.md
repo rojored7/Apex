@@ -1,5 +1,17 @@
 # EP-14 · Avisos de vencimiento — desglose técnico de épica
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1, "Contradicciones de contrato cerradas en T-DOC", y decisiones S5-D64 a S5-D106; registro en `docs/ddd/DECISIONES.md`, "Sprint 5"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Migraciones `0016_member_channel_preferences` (B5), `0017_notification_templates` (con `CREATE SCHEMA notifications`), `0018_notification_rules` y `0019_notifications` (B6); no `0020` a `0029` ni `0022_notifications`/`0023_member_channel_preferences` (S5-D66).
+> - US-123 y US-126 pasan a READY: N-33 refinado (sin `data_consent_at` no se avisa por ningún canal; el correo exige opt-in explícito y consentimiento; sin filas solo `whatsapp_link`, S5-D31) y G-08 resuelta con `core/alerts_telegram.py` (S5-D29).
+> - ORM, no SQL: la generación inserta por ORM con `begin_nested()` y cuenta el `IntegrityError` como ya existente, no `INSERT ... ON CONFLICT DO NOTHING` (US-124, S5-D71).
+> - Correo con `smtplib` en `asyncio.to_thread` (`core/mail.py`), sin `aiosmtplib` ni Brevo (US-125, S5-D64); contacto por `contact_for_notification(session, member_id, purpose, *, fields=)` con `load_only` (S5-D32); `CONTACT_CALLERS` fija un único llamador, `notifications/service.py` (S5-D99).
+> - Telegram es un `TelegramAlertSink` en `core/alerts_telegram.py` (no `modules/notifications/channels/telegram.py`); el chat va en `TELEGRAM_CHAT_ID` de `.env.ops`, no en `settings.channels`; `alert(code, **context)` con claves cerradas, no `alert(kind, text)` (US-126, S5-D29, S5-D58).
+> - `wa-link` es `POST /notifications/{id}/wa-link` (US-127, S5-D59); `GET /notifications` y `/today` aceptan `q` por nombre (S5-D92).
+> - US-131 envía por `core.mail.send_mail` sin arista `auth → notifications`; `forgot` entrega en `BackgroundTasks` (S5-D37, S5-D38, S5-D47, S5-D91). `test_core_no_modules.py` no existe: la prueba es `test_core_import_direction::test_core_no_importa_modulos`.
+> - Job `notify`: `claim_run('notify')` compartido con el CLI y `details.sellado` en lugar de `result = skipped` (S5-D35, S5-D86). Cubetas `notifications-write` y `export*` desde W0-3 (S5-D81, S5-D98).
+> - Nombres reales: `members.service.ensure_exists`, `refs_for`, `status_for` (no `exists`, `labels_for`, `current_for`); los comandos de CLI corren con `docker compose run --rm tools`.
+> - `members_without_consent` se calcula con `members.service.count_without_consent` (S5-D80); `display_name` pasa a v0.3 (S5-D83).
+
 - **Épica:** `docs/ddd/06_epics/EP-14-avisos-de-vencimiento.md`
 - **Versión:** v0.2
 - **Historias:** US-120 a US-132 (13 historias, 44 puntos)
@@ -302,10 +314,10 @@ De otras épicas:
 - US-120 · Plantillas de aviso — **READY** — 22 h — Esquema `notifications`, CRUD de plantillas con `render` puro y vista previa; sin borrado.
 - US-121 · Reglas de aviso — **READY** — 21 h — CRUD con validación pura del signo y CHECK de canal `email` o `whatsapp_link` (corregido por N-34); el seed idempotente crea también las plantillas por defecto que exige la FK.
 - US-122 · Configurar canales de aviso — **READY** — 9 h — Esquema cerrado de `settings.channels` (Q12) con `credentials_present` calculado en `settings.service` desde `core.config` para no crear el ciclo Settings ↔ Notifications.
-- US-123 · Preferencias de canal del socio — **NEEDS_REFINEMENT** — 13 h — N-33 se contradice en el caso de un socio sin fila de preferencias y con `data_consent_at`. Pregunta: ¿recibe correo automático, o el correo exige además una fila `active = true` (opt-in explícito en la ficha)? Propuesta por defecto: el correo exige opt-in explícito y `data_consent_at`, y sin filas solo `whatsapp_link`. El contrato HTTP no cambia; solo cambia `effective_channels`.
+- US-123 · Preferencias de canal del socio — **READY** — 13 h — Resuelta en S5-W0-1 (S5-D31): el correo exige opt-in explícito y `data_consent_at`, sin filas solo `whatsapp_link` y sin `data_consent_at` ningún canal. Antes: N-33 se contradice en el caso de un socio sin fila de preferencias y con `data_consent_at`. Pregunta: ¿recibe correo automático, o el correo exige además una fila `active = true` (opt-in explícito en la ficha)? Propuesta por defecto: el correo exige opt-in explícito y `data_consent_at`, y sin filas solo `whatsapp_link`. El contrato HTTP no cambia; solo cambia `effective_channels`.
 - US-124 · Generar avisos del día — **READY** — 23 h — `generate_for` idempotente con `ON CONFLICT DO NOTHING` sobre RN-17. Recupera 15 días y no avisa a quien renovó (N-35). Necesita `memberships.service.notification_candidates` y `has_current_or_future`.
 - US-125 · Enviar avisos por correo — **READY** — 20 h — `EmailChannel` (SMTP o Brevo), una transacción por aviso, 3 intentos y contacto solo por `contact_for_notification` con `fields={"email"}` y `SYSTEM_USER_ID` (N-15).
-- US-126 · Enviar avisos por Telegram — **ARCHITECTURAL_GAP_DETECTED** — 12 h — Brecha: N-34 convierte Telegram en canal interno y manda las alertas por `core/alerts.py`, que no existe en la estructura de `CLAUDE.md` y que ninguna historia crea; si importa el canal de `modules/notifications`, `core` depende de un módulo. Propuesta:
+- US-126 · Enviar avisos por Telegram — **READY** — 12 h — Resuelta en S5-W0-1 (S5-D29): `TelegramAlertSink` en `core/alerts_telegram.py`. Antes: Brecha: N-34 convierte Telegram en canal interno y manda las alertas por `core/alerts.py`, que no existe en la estructura de `CLAUDE.md` y que ninguna historia crea; si importa el canal de `modules/notifications`, `core` depende de un módulo. Propuesta:
   - `core/alerts.py` define el `Protocol` `AlertSink` y las funciones `register_sink(sink)` y `alert(kind, text)`, con `LogAlertSink` por defecto;
   - `modules/notifications/channels/telegram.py` implementa `TelegramAlertSink` con `httpx` directo, el token de `.env` y el chat de `settings.channels`;
   - `main.py` y `worker/main.py`, que son la raíz de composición, lo registran al arrancar;

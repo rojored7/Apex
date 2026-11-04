@@ -1,7 +1,9 @@
 # US-131 · Como coach quiero recibir por correo el enlace para activar mi cuenta o recuperar mi contraseña para no depender de que el administrador me lo pase a mano
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): el correo sale por `core/mail.send_mail` directamente, sin arista `auth → notifications` (S5-D37, S5-D47); `forgot` entrega en `BackgroundTasks` tras responder 204 (S5-D38); `create_user` y `resend_link` devuelven `email_sent`.
+
 - **Épica:** EP-14 · Avisos de vencimiento
-- **Bounded context:** Auth (esquema `auth`) usando `EmailChannel` de Notifications
+- **Bounded context:** Auth (esquema `auth`) usando `core/mail.py` (sin arista `auth → notifications`, S5-D37)
 - **Versión:** v0.2
 - **Actor:** administrador, coach
 - **Tamaño:** 3
@@ -25,7 +27,7 @@ para entrar al sistema o reponer mi contraseña sin que el enlace pase por chats
 
 ## Alcance
 
-- **Backend:** `auth.service.forgot` y `create_user` / `resend_link` envían el enlace con `EmailChannel` (envío directo, no por la cola de avisos).
+- **Backend:** `auth.service.forgot` y `create_user` / `resend_link` envían el enlace con `core.mail.send_mail` (envío directo, no por la cola de avisos, S5-D37).
 - **Front:** tarjetas "Olvidé mi contraseña" y "Nueva contraseña / Activar cuenta" de `Login` con mensajes de envío real.
 
 ## Criterios de aceptación
@@ -70,7 +72,7 @@ Característica: Recuperar contraseña por correo
 - **Migración:** no.
 - **Pruebas:** service con servidor SMTP de prueba (envía y no envía); prueba de tiempo comparable (sin diferencia mayor a un umbral razonable); router 204/429.
 - **Archivos principales:** `api/src/app/modules/auth/service.py`, `web/src/features/auth/pages/`.
-- Auth usa `notifications.service.send_transactional_email(...)` (llamada de service), no importa el canal directamente.
+- Auth usa `core.mail.send_mail` directamente; no hay arista `auth → notifications` (S5-D37, S5-D47).
 
 ## Supuestos
 

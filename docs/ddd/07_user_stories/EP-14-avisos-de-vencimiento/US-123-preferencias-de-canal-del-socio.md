@@ -1,5 +1,7 @@
 # US-123 · Como coach quiero registrar por qué canales acepta avisos cada socio para no escribirle por donde no quiere
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): sin filas de preferencias no hay opt-in de correo: el socio con `data_consent_at` recibe solo `whatsapp_link`, y sin `data_consent_at` no se avisa por ningún canal (N-33 refinado, S5-D31). `GET` de un socio dado de baja responde 200 y `PATCH` 409 `member_deleted` (N-20). Migración `0016` (S5-D66).
+
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Members (esquema `members`), consumido por Notifications
 - **Versión:** v0.2
@@ -30,7 +32,7 @@ para que el sistema respete sus preferencias y no le envíe correos o mensajes q
 
 ## Criterios de aceptación
 
-1. `GET /api/v1/members/{id}/channels` devuelve `email` y `whatsapp_link` con `active` (bool); si el socio no tiene filas, todos vienen `active = true`.
+1. `GET /api/v1/members/{id}/channels` devuelve `email` y `whatsapp_link` con `active` (bool); si el socio no tiene filas, ningún canal de opt-in viene activo (N-33 refinado, S5-D31).
 2. `PATCH /api/v1/members/{id}/channels` con `{ channel, active }` (uno o varios) actualiza y responde 200; un canal desconocido o `push` responde 422 con `field = channel`.
 3. Un socio dado de baja (`deleted_at` no nulo) responde 404.
 4. `members.service.channels_for(member_id)` devuelve solo los canales activos; Notifications no lee la tabla directamente.

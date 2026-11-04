@@ -29,7 +29,7 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 ### D4. Orden de construcción
 - **Resuelto (gate del 21 de octubre de 2026):** el front sigue el orden de versiones del backend; `docs/ddd/09_sprint_plan/` fija qué pantallas entran en cada sprint.
 - El front propone: login, socios, planes, membresías y pagos, inicio, clases y check-in, movimientos, WODs y resultados, atleta, avisos, sistema, TV, portal.
-- El backend entrega: v0.1 socios, planes, membresías, pagos, auditoría, usuarios; v0.2 avisos; v0.3 llaves con OpenBao y adjuntos; v0.4 clases; v0.5 WODs, resultados, TV; v0.6 atleta; v1.0 portal.
+- El backend entrega: v0.1 socios, planes, membresías, pagos, auditoría, usuarios; v0.2 OpenBao, avisos, recibos y exportaciones (Sprint 5); v0.3 adjuntos y auditoría firmada; v0.4 clases; v0.5 WODs, resultados, TV; v0.6 atleta; v1.0 portal.
 - Diferencia: el front pone clases antes que avisos; el backend al revés. Recomendación: el front sigue el orden de versiones del backend (ver sección 6). La pantalla Inicio se construye en v0.1 con los KPIs que existan y se completa en cada versión.
 
 ### D5. Contrato de "vender membresía"
@@ -559,3 +559,22 @@ El Sprint 4B no agrega pantallas nuevas: continuidad operativa (respaldo, restau
 | 12.3 | `web/src/shared/lib/audit-labels.ts` | `table_name` sin etiqueta (`members.import_runs`, `crypto.crypto_keys`) se muestra crudo en Auditoría y en el historial; fijado con pruebas, sin etiqueta nueva. | S4B-F1 | cerrada (comportamiento ya existente) |
 | 12.4 | `web/tests/lint/restricted-config.ts` | `sessionStorage` solo en `src/pages/RouteError.tsx` (S4B-D51): regla `no-restricted-globals` y `no-restricted-properties` (`window`/`globalThis`/`self`) en toda `src/`, lista blanca de un archivo exacto y `*.test.*` fuera. Se aplica con `npm test` (`lintSourceTree`: gates `slice-gate` y `run-gates` y job `web` de CI), no con `npm run lint`: `eslint.config.js` no importa `restricted-config.ts` y el hook `config-protection` impide editarlo (riesgo HIGH-1 aceptado; dueño: el usuario, anotado en DECISIONES). Cubre también el acceso calculado `window[k]`; un alias (`const w = window`) es un límite aceptado. | S4B-F1 | cerrada
 | 12.5 | `web/tests/e2e/stack/home.spec.ts` | T8 de US-109 (KPI contra `GET /dashboard` y `psql`, Por vencer, grilla en menos de 10 s, `member` a `/mi`): escrita; las consultas de pendientes e ingresos se calibran contra el ensayo. | S4B-F1 / V4 | calibrada en V4 contra el ensayo (`cbbe6bc`: consulta de pendientes alineada con `GET /dashboard`, regex de `E2E_DB_CONTAINER` corregida); `member → /mi` omitido hasta el alta de usuarios `member` (S4B-D209, v1.0) |
+
+## 13. Sprint 5: brechas con el diseño
+
+El Sprint 5 (v0.2) construye en el front las pantallas de avisos, la pestaña Canales, el recibo, las exportaciones, las tarjetas de cuenta por correo y el aviso de custodio. Orden de los slices del front: F1, F2, F3, F5 y F4 (F4 tras el checkpoint de B12; S5-D84). Fuente de verdad: `docs/design/` y `ROUTES.md`.
+
+| # | Archivo | Brecha | Slice | Estado |
+|---|---------|--------|-------|--------|
+| 13.1 | `docs/design/ROUTES.md` | `wa-link` aparecía como `GET`; es `POST /notifications/:id/wa-link` (efecto: marca `sent`, y devuelve el teléfono descifrado). El front usa `useMutation` con `gcTime: 0` y abre con `noopener,noreferrer` (S5-D59, M-9). | S5-W0-1 | corregida en `ROUTES.md` |
+| 13.2 | Ficha del socio, pestaña "Avisos" | Hoy deshabilitada ("Disponible en v0.2"); se habilita con el bloque Canales (US-123) y el historial (US-130). | S5-F3 | pendiente |
+| 13.3 | Inicio, tarjeta "Por avisar" y `FutureKpis` (fila 25) | KPI real `notifications_today` y `members_without_consent` calculado (US-132, S5-D80). | S5-F3 | pendiente |
+| 13.4 | `Socios_Lista` y `Pagos`, botón "Exportar" (§10.1, §10.8) | CSV de socios y pagos con confirmación; descarga por `api.blob` y `downloadBlob` en `shared/lib`, sin `sessionStorage` ni `localStorage` (S5-D87, L-8). | S5-F4 | pendiente |
+| 13.5 | Detalle de pago, botón de recibo (§10.8) | `ReceiptButton` descarga el PDF (30 s de límite); el recibo no lleva documento. | S5-F4 | pendiente |
+| 13.6 | Recibo PDF, logo | El PDF propio de `core/pdf.py` sale sin logo (S5-D65); vector propio o una licencia aceptada para el logo. **Dueño: v0.3, titular.** | S5-B11 | aceptada con dueño |
+| 13.7 | `Config`, pestaña "Canales" (fila 20) | Interruptores de correo, WhatsApp y Telegram, con `credentials_present` calculado (US-122). | S5-F2 | pendiente |
+| 13.8 | `ForgotPage` y tarjetas de recuperar y activar cuenta (fila 230) | Mensajes reales de "enlace enviado" y `email_sent` (US-131). | S5-F5 | pendiente |
+| 13.9 | Aviso de custodio (OpenBao sellado) | El front muestra el estado `crypto: sealed` y el 503 `crypto_unavailable` con texto en español (US-136). | S5-F5 | pendiente |
+| 13.10 | `Auditoría`, "Exportar rango" (fila 17) | Sin endpoint en este sprint: queda el `// DESIGN-GAP:` existente. | v0.3 | aceptada |
+| 13.11 | `display_name` (filas 7, 11, 21, 29, EP-04) | No está en US-120 a US-139; la parte local del correo sigue como nombre. **Dueño: v0.3, titular** (S5-D83). | v0.3 | aceptada con dueño |
+| 13.12 | Licencias | Sin dependencias de ejecución nuevas; `pypdf` solo en desarrollo (BSD-3); la imagen de OpenBao (MPL-2.0 sin modificar), Mailpit (MIT, solo desarrollo), `python:3.12-alpine` (PSF-2.0, solo desarrollo) y `curl` (licencia curl, `apex-backup` desde B13) van en el bloque fijo de `NOTICE` (S5-D43, S5-D105). | S5-W0-1 | cerrada |

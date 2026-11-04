@@ -1,5 +1,14 @@
 # EP-16 · Recibos y exportaciones — desglose técnico de épica
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1, "Contradicciones de contrato cerradas en T-DOC", y decisiones S5-D64 a S5-D106; registro en `docs/ddd/DECISIONES.md`, "Sprint 5"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - El PDF lo escribe `core/pdf.py` (Courier, una página A4, WinAnsi, sin logo), no `reportlab`; sin `pillow`; `pypdf` solo en desarrollo para las pruebas. El recibo no lleva documento ni usa el bus (US-137, S5-D40, S5-D65, S5-D61).
+> - La descarga del recibo se audita como `download` (N-08), no como `export`.
+> - Columnas de N-29: socios `nombres;apellidos;documento;telefono;correo;estado_membresia;plan;vence;creado`; pagos `fecha;socio;plan;monto;medio;referencia;registrado_por;anulado;motivo_anulacion` (US-138, US-139).
+> - Auditoría de exportación: fila `export` con filtros estructurados y `has_q` (nunca el texto de `q`) antes del primer byte y fila de cierre (`completed`, `rows_sent`) en `finally`; tope de `EXPORT_MAX_ROWS = 20.000` con 422 `export_too_large` antes de las cabeceras; descifrado con `purpose=export` por lote; un flujo por usuario (409 `export_in_progress`) (S5-D41, S5-D60, S5-D82).
+> - Cubetas `export` 2/min, `export-hour` 6/h y `export-day` 20/día, desde W0-3 (S5-D81, S5-D98). Todo texto libre pasa por `escape_formula`; el teléfono `+57...` recibe apóstrofo (L-6).
+> - Sin contratos nuevos entre módulos: `PaymentDetail` ya viene enriquecido y `memberships.service.status_for` existe; no se crean `labels_for` ni `current_for` (S5-D46).
+> - El front descarga con `api.blob(path, {timeoutMs})` y `downloadBlob` en `web/src/shared/lib/download.ts`, sin `sessionStorage` ni `localStorage` (S5-D87).
+
 - **Épica:** `docs/ddd/06_epics/EP-16-recibos-y-exportaciones.md`
 - **Versión:** v0.2
 - **Historias:** US-137 a US-139 (3 historias, 13 puntos)

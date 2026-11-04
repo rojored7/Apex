@@ -1,7 +1,9 @@
 # US-126 · Como administrador quiero recibir en el chat del equipo, por Telegram, el resumen diario de avisos y las alertas del worker para enterarme sin entrar al sistema
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): G-08 resuelta: Telegram es un `TelegramAlertSink` en `core/alerts_telegram.py` registrado desde `main.py` y `worker/main.py`; el chat va en `TELEGRAM_CHAT_ID` (`.env.ops`), no en `settings.channels`; `alert(code, **context)` con claves cerradas (S5-D29, S5-D58, S5-D78). Estado: READY.
+
 - **Épica:** EP-14 · Avisos de vencimiento
-- **Bounded context:** Notifications (`channels/telegram.py`) y `core/alerts.py` (alerta interna, N-34)
+- **Bounded context:** `core/alerts.py` y `core/alerts_telegram.py` (alerta interna, N-34; S5-D29)
 - **Versión:** v0.2
 - **Actor:** administrador
 - **Tamaño:** 3
@@ -21,7 +23,7 @@ para enterarme sin revisar el sistema
 - **Reglas que aplica:** licencias (`httpx` directo; prohibido `python-telegram-bot` por LGPL); Q12 (token solo en `.env`); auditoría de envío.
 - **Eventos que emite:** ninguno (no crea filas de `Notification`, N-34)
 - **Eventos que consume:** ninguno
-- **Funciones puras:** `telegram.build_payload(chat_id, text) -> dict`
+- **Funciones puras:** `alerts_telegram.render_message(code, context, front_base_url) -> str`
 
 ## Alcance
 
@@ -30,7 +32,7 @@ para enterarme sin revisar el sistema
 
 ## Criterios de aceptación
 
-1. El resumen diario y cada alerta interna se envían con `chat_id` igual al chat del equipo configurado en `.env` (supuesto); respuesta `ok: true` deja el envío registrado en el log.
+1. El resumen diario y cada alerta interna se envían con `chat_id` igual a `TELEGRAM_CHAT_ID` (`.env.ops`); respuesta `ok: true` deja el envío registrado en el log.
 2. Una respuesta `ok: false`, un 4xx/5xx o un timeout deja el envío registrado como fallido en el log, sin el token del bot ni la URL completa.
 3. Los reintentos siguen la misma política de US-125.
 4. El token se lee de `TELEGRAM_BOT_TOKEN` en `.env`; nunca se guarda en base, auditoría ni logs.
@@ -70,11 +72,11 @@ Característica: Alertas internas por Telegram
 - **Trigger / restricciones:** ninguno.
 - **Funciones puras a probar:** `build_payload` con texto con caracteres especiales.
 - **Pruebas:** canal con `httpx.MockTransport`; prueba de que el token no aparece en logs.
-- **Archivos principales:** `api/src/app/modules/notifications/channels/telegram.py`.
+- **Archivos principales:** `api/src/app/core/alerts_telegram.py`.
 
 ## Supuestos
 
-- Supuesto: el chat del equipo y el token viven en `.env` (`TELEGRAM_BOT_TOKEN` y un identificador de chat de alertas, nombre a fijar en US-011), no en `settings.channels`, porque Telegram es canal interno y no de socio (N-34). Las alertas no crean filas de `Notification`.
+- Supuesto: el chat del equipo y el token viven en `.env` (`TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`, en `.env.ops`), no en `settings.channels`, porque Telegram es canal interno y no de socio (N-34). Las alertas no crean filas de `Notification`.
 
 ## Dependencias
 

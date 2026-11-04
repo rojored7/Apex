@@ -8,6 +8,7 @@ Registros de decisiones de arquitectura de APEX. Cada archivo nombra una decisi�
 | `ADR-002-criptografia.md` | Bus de criptografía: formatos irreversibles (blob, AAD, índice ciego, KEK, rotación) |
 | `ADR-003-pagos-inmutables.md` | Pagos inmutables: anulación en la fila, sin `DELETE`, trigger en la base |
 | `ADR-004-serializacion-canonica-de-auditoria.md` | Serialización canónica y cadena de hashes de la auditoría, con vector de prueba |
+| `ADR-005-custodia-openbao.md` | Custodia de la KEK con OpenBao Transit: una llave, tokens por servicio, desello 5/3, custodia 2/2/1 y snapshot firmado |
 
 ## Plantilla
 

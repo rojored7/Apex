@@ -1,12 +1,12 @@
-"""Los cuatro ADR existen con nombre fijo y formato fijo (S4B-B4; S4B-D47, US-119).
+"""Los cinco ADR existen con nombre fijo y formato fijo (S4B-B4; S4B-D47, US-119; S5-D48, ADR-005).
 
-- `docs/adr/` tiene exactamente los cuatro archivos de S4B-D47;
+- `docs/adr/` tiene exactamente los cinco archivos (los cuatro de S4B-D47 y ADR-005, S5-D48);
 - cada uno tiene, en orden, las seis secciones (`## Estado`, `## Contexto`, `## Decisión`,
   `## Alternativas descartadas`, `## Consecuencias`, `## Cómo se verifica`), todas con contenido, y
   la frase de detenerse y preguntar antes de cambiar la decisión;
 - toda ruta `tests/...py` citada en "Cómo se verifica" existe en `api/tests/` y cada ADR cita al
   menos una;
-- `docs/adr/README.md` nombra los cuatro archivos y la plantilla de seis secciones.
+- `docs/adr/README.md` nombra los cinco archivos y la plantilla de seis secciones.
 Controles con fuentes falsas al final.
 """
 
@@ -23,6 +23,7 @@ ARCHIVOS: Final = (
     "ADR-002-criptografia.md",
     "ADR-003-pagos-inmutables.md",
     "ADR-004-serializacion-canonica-de-auditoria.md",
+    "ADR-005-custodia-openbao.md",
 )
 SECCIONES: Final = (
     "Estado",
@@ -79,7 +80,7 @@ def rutas_inexistentes(texto: str, raiz: Path) -> list[str]:
     return [r for r in rutas_citadas(texto) if not (raiz / r).is_file()]
 
 
-def test_estan_los_cuatro_archivos_con_el_nombre_exacto() -> None:
+def test_estan_los_cinco_archivos_con_el_nombre_exacto() -> None:
     faltan = [n for n in ARCHIVOS if not (ADR_DIR / n).is_file()]
     assert faltan == []
     adr = sorted(p.name for p in ADR_DIR.glob("ADR-*.md"))
@@ -113,7 +114,7 @@ def test_cada_adr_cita_al_menos_una_prueba_y_todas_las_citadas_existen() -> None
     assert inexistentes == {}
 
 
-def test_el_readme_nombra_los_cuatro_adr_y_la_plantilla_de_seis_secciones() -> None:
+def test_el_readme_nombra_los_cinco_adr_y_la_plantilla_de_seis_secciones() -> None:
     texto = (ADR_DIR / "README.md").read_text(encoding="utf-8")
     assert [n for n in ARCHIVOS if n not in texto] == []
     assert [s for s in SECCIONES if s not in texto] == []

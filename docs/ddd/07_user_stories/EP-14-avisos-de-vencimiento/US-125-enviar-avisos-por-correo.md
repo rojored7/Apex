@@ -1,5 +1,7 @@
 # US-125 · Como administrador quiero que los avisos por correo se envíen solos y que los fallos queden registrados para que nadie tenga que mandarlos uno por uno
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): el correo sale por `core/mail.py` con `smtplib` en `asyncio.to_thread` (S5-D64), sin `aiosmtplib` ni Brevo; contacto solo por `contact_for_notification(..., fields={"email"})` (S5-D32).
+
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Notifications (esquema `notifications`, `channels/`)
 - **Versión:** v0.2
@@ -17,7 +19,7 @@ para que los socios reciban su recordatorio a tiempo y yo vea cuáles no saliero
 
 ## Contexto de dominio
 
-- **Aggregate / entidades:** `Notification`; puerto `NotificationChannel` con adaptador `EmailChannel` (SMTP con `aiosmtplib` o API de Brevo con `httpx`).
+- **Aggregate / entidades:** `Notification`; puerto `NotificationChannel` con adaptador `EmailChannel` (SMTP con `smtplib` de la biblioteca estándar en `asyncio.to_thread`, S5-D64).
 - **Reglas que aplica:** Q12 (secretos solo en `.env`); RN-13 (descifrado de contacto auditado con propósito `notify`, vía `members.service.contact_for_notification`); restricción no funcional: nada crítico depende de servicios externos.
 - **Eventos que emite:** `NotificationSent`, `NotificationFailed` (ambos auditados)
 - **Eventos que consume:** ninguno
@@ -77,7 +79,7 @@ Característica: Envío de avisos por correo
 - **Funciones puras a probar:** `next_attempt_allowed` en el límite.
 - **Pruebas:** `EmailChannel` contra un servidor SMTP de prueba en `compose.dev.yml` (por ejemplo Mailpit, MIT) y Brevo con `httpx.MockTransport`; job con `FrozenClock`; prueba de que logs y `last_error` no contienen el correo.
 - **Archivos principales:** `api/src/app/modules/notifications/channels/{base,email}.py`, `api/src/app/worker/jobs/notify.py`.
-- Licencias: `aiosmtplib` (MIT) o `httpx` (BSD).
+- Licencias: `smtplib` de la biblioteca estándar; sin dependencia nueva (S5-D64).
 
 ## Supuestos
 

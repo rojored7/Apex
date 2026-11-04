@@ -1,5 +1,7 @@
 # US-138 · Como administrador quiero exportar la lista de socios a CSV para usarla en contabilidad o como respaldo propio, dejando rastro de la salida de datos
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): las columnas son las de N-29: `nombres;apellidos;documento;telefono;correo;estado_membresia;plan;vence;creado`; el texto de `q` se audita solo como `has_q`, con filtros estructurados, fila de apertura y fila de cierre (`rows_sent`), tope de 20.000 filas, un flujo por usuario y cubetas `export`, `export-hour` y `export-day` (S5-D41, S5-D60, S5-D81, S5-D82).
+
 - **Épica:** EP-16 · Recibos y exportaciones
 - **Bounded context:** Members (esquema `members`)
 - **Versión:** v0.2
@@ -25,7 +27,7 @@ para sacar mi información del sistema sabiendo que la descarga queda auditada
 
 ## Alcance
 
-- **Backend:** `members.service.export(filters, by)` que aplica los mismos filtros que `GET /members` (`q`, `status`, `membership_status`, `plan_id`), descifra por lotes de 500 con un `batch_id` en `crypto_ops`, y genera CSV UTF-8 con BOM, separador `;` y columnas `documento;nombres;apellidos;telefono;correo;fecha_nacimiento;sexo;contacto_emergencia_nombre;contacto_emergencia_telefono;estado;estado_membresia;creado`. Respuesta en streaming. Auditoría `export` con tabla `members`, filtros usados y número de filas. Endpoint `GET /api/v1/members/export`.
+- **Backend:** `members.service.export(filters, by)` que aplica los mismos filtros que `GET /members` (`q`, `status`, `membership_status`, `plan_id`), descifra por lotes de 500 con un `batch_id` en `crypto_ops`, y genera CSV UTF-8 con BOM, separador `;` y columnas `nombres;apellidos;documento;telefono;correo;estado_membresia;plan;vence;creado` (N-29). Respuesta en streaming. Auditoría `export` con tabla `members`, filtros usados y número de filas. Endpoint `GET /api/v1/members/export`.
 - **Front:** botón "Exportar" en `Socios_Lista` visible solo para admin (`useCan`), con `ConfirmModal` que advierte "La descarga contiene datos personales y queda registrada en la auditoría"; usa los filtros activos.
 
 ## Criterios de aceptación

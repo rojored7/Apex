@@ -126,12 +126,12 @@ Antes de cada línea de gate con lista se corre `ls` de cada archivo. `PYTEST_AD
 - Reemitir tokens: `bootstrap.sh --reissue-tokens`, después de desellar.
 - Las llaves del ensayo se borran en V12.
 
-**Producción real.** La inicialización y la custodia son pasos humanos (S5-D82).
+**Producción real.** La inicialización y la custodia son pasos humanos (S5-D106).
 
 ### P-MAIL · Correo y Telegram en desarrollo (nuevo)
 
-- Mailpit solo existe en `compose.dev.yml` (perfil `avisos`, SMTP `mailpit:1025`, `SMTP_TLS_MODE=none`, aceptado solo con `ENV=dev`). Su interfaz está en `127.0.0.1:8025`.
-- Leer: `curl -s http://127.0.0.1:8025/api/v1/messages`. Vaciar: `curl -s -X DELETE http://127.0.0.1:8025/api/v1/messages`.
+- Mailpit solo existe en `compose.dev.yml` (perfil `avisos`, SMTP `mailpit:1025`, `SMTP_TLS_MODE=none`, aceptado solo con `ENV=dev`). Su interfaz está en `127.0.0.1:8125`.
+- Leer: `curl -s http://127.0.0.1:8125/api/v1/messages`. Vaciar: `curl -s -X DELETE http://127.0.0.1:8125/api/v1/messages`.
 - `telegram-fake` (perfil `avisos`) recibe en `http://telegram-fake:8081/bot<token>/sendMessage` y escribe el cuerpo JSON en su stdout. Se lee con `$DC logs telegram-fake`.
 - `TELEGRAM_API_BASE` solo admite una base distinta de `https://api.telegram.org` con `ENV=dev` (S5-D78).
 - El token de prueba es un valor fijo de prueba; no es un bot real.
@@ -374,7 +374,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
    - Ids de imagen con `docker image inspect --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}'`.
    - `docker stats --no-stream`.
 2. Red y puertos:
-   - `netstat -ano | findstr -E "8280|8380|8200|8025"` vacío.
+   - `netstat -ano | findstr -E "8280|8380|8200|8125"` vacío.
    - `docker network ls` y `inspect`: `172.30.1.0/24`, `172.31.2.0/24`, `172.31.3.0/24`, `172.31.12.0/24` y `172.31.13.0/24` libres.
    - `docker compose version` 2.24 o mayor (`!override`, `internal`).
 3. Digests con `docker buildx imagetools inspect`: `openbao/openbao:<2.x estable más reciente>`, `axllent/mailpit:<v1.x>`, `python:3.12-alpine`. Se anotan con fecha.
@@ -423,7 +423,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 1. `cd api && uv run ruff check tests/architecture/test_adr_docs.py && uv run ruff format --check tests/architecture/test_adr_docs.py`.
 2. `bash scripts/ci/test_licenses.sh`.
-3. `security-reviewer`: T-DOC y decisiones, que S5-D49 a D63 estén todas y que la custodia D82 esté escrita.
+3. `security-reviewer`: T-DOC y decisiones, que S5-D49 a D63 estén todas y que la custodia S5-D106 esté escrita.
 4. Sello: `bash scripts/workflow/slice-gate.sh architecture tests/architecture/test_adr_docs.py`.
 5. `checkpoint-commit.sh "S5-W0-1 decisiones del Sprint 5, T-DOC, pypdf de desarrollo, NOTICE y ADR-005"`.
 
@@ -491,7 +491,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 - `docs/operacion/openbao.md` (nuevo):
   - instalar: `--first-install`, salida por terminal, nunca a archivo;
-  - custodia 2/2/1 con la copia sellada en un tercero (caja de seguridad o notario), nunca en manos de una de las dos partes (D82, paso humano);
+  - custodia 2/2/1 con la copia sellada en un tercero (caja de seguridad o notario), nunca en manos de una de las dos partes (S5-D106, paso humano);
   - desellar tres veces tras cada reinicio;
   - `rekey` ante la pérdida de una llave; rotar los tokens cada 90 días y tras un incidente (M-2);
   - interruptor de emergencia: revocar tokens y reiniciar api y worker (L-1);
@@ -1004,7 +1004,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - `core/mail.py`, `core/alerts_telegram.py`, `core/alerts.py`.
 - `main.py` y `worker/main.py` (`register_from_settings`; `flush` en el apagado y en `--run-once`).
 - `settings` (`ENABLED_SECTIONS`, `SECTION_REGISTRY`, `SECTION_VIEWS`, `SECTION_DEFAULTS`).
-- `compose.dev.yml`: `mailpit` y `telegram-fake` (perfil `avisos`, por digest, sin puertos salvo `127.0.0.1:8025` de Mailpit); `test_images_pinned.sh` y `test_compose_config.sh` (servicios solo en desarrollo, nunca en `compose.yml`).
+- `compose.dev.yml`: `mailpit` y `telegram-fake` (perfil `avisos`, por digest, sin puertos salvo `127.0.0.1:8125` de Mailpit); `test_images_pinned.sh` y `test_compose_config.sh` (servicios solo en desarrollo, nunca en `compose.yml`).
 
 **Paso 65 · B4.5 · Contrato y documentación.** P-API (`ChannelsSettings`); `docs/operacion/avisos.md` (SMTP de solo envío con tope diario; Telegram con chat del equipo; nunca datos de socios); P-MAIL en RUNBOOK §13; cuaderno.
 

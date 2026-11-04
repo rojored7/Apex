@@ -1,5 +1,7 @@
 # US-136 · Como administrador quiero que el sistema me diga claramente cuando OpenBao está sellado para saber que debo desellarlo en lugar de ver errores confusos
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): el sondeo es cada 20 s con caché de 5 s, recuperación visible en 25 s o menos (S5-D70); `/health` nunca llama a `try_load`; el healthcheck del api acepta el 503 con `db` y `migrations` en `ok` (S5-D15); el worker no usa `skipped`: registra `details.sellado` (S5-D86).
+
 - **Épica:** EP-15 · Custodia de llaves con OpenBao
 - **Bounded context:** Crypto y `core` (`main.py`, `/health`)
 - **Versión:** v0.2
@@ -25,7 +27,7 @@ para no perder el sistema completo ni tener que reiniciarlo a mano
 
 ## Alcance
 
-- **Backend:** al arrancar, si OpenBao responde sellado o no responde, el api arranca sin DEK en memoria, `GET /health` responde 503 con `crypto: "sealed"` o `"unreachable"` y `db: "ok"`; toda operación que necesite el bus responde 503 con `error.code = "crypto_unavailable"` y mensaje en español; las rutas que no usan datos cifrados siguen funcionando (por ejemplo listas de planes). Un sondeo cada 30 s intenta desenvolver las DEK y, al lograrlo, el estado pasa a `ok` sin reiniciar. El worker omite los jobs que usan el bus mientras esté sellado y lo registra.
+- **Backend:** al arrancar, si OpenBao responde sellado o no responde, el api arranca sin DEK en memoria, `GET /health` responde 503 con `crypto: "sealed"` o `"unreachable"` y `db: "ok"`; toda operación que necesite el bus responde 503 con `error.code = "crypto_unavailable"` y mensaje en español; las rutas que no usan datos cifrados siguen funcionando (por ejemplo listas de planes). Un sondeo cada 20 s (caché de 5 s) intenta desenvolver las DEK y, al lograrlo, el estado pasa a `ok` sin reiniciar. El worker omite los jobs que usan el bus mientras esté sellado y lo registra.
 - **Front:** No aplica (el envelope `crypto_unavailable` lo muestra el cliente como error genérico existente).
 
 ## Criterios de aceptación
@@ -33,7 +35,7 @@ para no perder el sistema completo ni tener que reiniciarlo a mano
 1. Con OpenBao sellado, el api arranca y `GET /health` responde 503 con `crypto: "sealed"`.
 2. Con OpenBao sellado, `GET /api/v1/members/{id}` responde 503 con `error.code = "crypto_unavailable"` y nunca devuelve un blob como si fuera el valor.
 3. Con OpenBao sellado, `GET /api/v1/plans` (sin datos cifrados) responde 200.
-4. Al desellar OpenBao, en máximo 30 s el api desenvuelve las DEK y `GET /health` vuelve a 200 con `crypto: "ok"` sin reiniciar el contenedor.
+4. Al desellar OpenBao, en máximo 25 s el api desenvuelve las DEK y `GET /health` vuelve a 200 con `crypto: "ok"` sin reiniciar el contenedor.
 5. El worker no ejecuta jobs que usan el bus mientras está sellado y registra el motivo; los ejecuta en el siguiente ciclo.
 6. El log del api registra el cambio de estado (`sealed` → `ok`) una vez por transición, sin datos sensibles.
 
@@ -53,7 +55,7 @@ Característica: Estado degradado con OpenBao sellado
   Escenario: Recuperación al desellar
     Dado el api en estado "sealed"
     Cuando el administrador desella OpenBao
-    Entonces en máximo 30 segundos "/health" responde 200 con "crypto" igual a "ok"
+    Entonces en máximo 25 segundos "/health" responde 200 con "crypto" igual a "ok"
 ```
 
 ## Endpoints
@@ -76,7 +78,7 @@ Característica: Estado degradado con OpenBao sellado
 ## Supuestos
 
 - Supuesto: con el bus sellado `/health` responde 503 (el api no puede servir su función principal), aunque US-115 deja el campo `backup` como informativo con 200.
-- Supuesto: sondeo de recuperación cada 30 s.
+- Supuesto: sondeo de recuperación cada 20 s con caché de 5 s (S5-D70).
 
 ## Dependencias
 

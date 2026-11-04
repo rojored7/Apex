@@ -1,5 +1,7 @@
 # US-134 · Como administrador quiero que el bus de criptografía use OpenBao como proveedor de llaves para que envolver y desenvolver las DEK ocurra en el custodio y quede registrado
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): el puerto `KeyProvider` ya es `async` y conserva `wrap(dek)` y `unwrap(wrapped)`, sin `key_ref` (S5-D2, S5-D3); suma `name`, `status` y `rewrap`. `sign` y `verify` quedan solo en la suite de contrato con el token de pruebas: ninguna política de servicio los concede en v0.2 (S5-D9, S5-D52).
+
 - **Épica:** EP-15 · Custodia de llaves con OpenBao
 - **Bounded context:** Crypto (`core/crypto/openbao_provider.py`)
 - **Versión:** v0.2

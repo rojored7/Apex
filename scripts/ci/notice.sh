@@ -64,7 +64,18 @@ EOF
   echo "supercronic · MIT · planificador del servicio backup"
   echo "minisign · ISC · firma del manifiesto del respaldo"
   echo "pg_dump (cliente de PostgreSQL) · licencia PostgreSQL · imagen postgres:16-alpine"
+  echo "curl · licencia curl (permisiva, tipo MIT) · snapshot de OpenBao con curl -K; imagen apex-backup desde B13 (S5-D105)"
   echo "busybox y tar de Alpine son parte del sistema operativo de la imagen base y no se redistribuyen aparte"
+  echo
+  echo "== imágenes de terceros del Sprint 5 (compose, sin modificar) =="
+  echo
+  echo "openbao/openbao · MPL-2.0 sin modificar · servicio openbao con motor Transit (producción y desarrollo)"
+  echo "axllent/mailpit · MIT · buzón SMTP de prueba, solo desarrollo (compose.dev.yml, perfil avisos)"
+  echo "python:3.12-alpine · PSF-2.0 · telegram-fake, solo desarrollo (compose.dev.yml, perfil avisos)"
+  echo
+  echo "== dependencias de desarrollo del api (no se distribuyen) =="
+  echo
+  echo "pypdf · BSD-3-Clause · extrae texto del PDF del recibo en las pruebas (S5-D65)"
 } | tr -d '\r' > "$SALIDA"
 
 echo "notice.sh: NOTICE regenerado ($(wc -l < "$SALIDA") líneas)"

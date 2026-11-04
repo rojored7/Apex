@@ -107,4 +107,15 @@ rclone · MIT · subida de respaldos con copyto
 supercronic · MIT · planificador del servicio backup
 minisign · ISC · firma del manifiesto del respaldo
 pg_dump (cliente de PostgreSQL) · licencia PostgreSQL · imagen postgres:16-alpine
+curl · licencia curl (permisiva, tipo MIT) · snapshot de OpenBao con curl -K; imagen apex-backup desde B13 (S5-D105)
 busybox y tar de Alpine son parte del sistema operativo de la imagen base y no se redistribuyen aparte
+
+== imágenes de terceros del Sprint 5 (compose, sin modificar) ==
+
+openbao/openbao · MPL-2.0 sin modificar · servicio openbao con motor Transit (producción y desarrollo)
+axllent/mailpit · MIT · buzón SMTP de prueba, solo desarrollo (compose.dev.yml, perfil avisos)
+python:3.12-alpine · PSF-2.0 · telegram-fake, solo desarrollo (compose.dev.yml, perfil avisos)
+
+== dependencias de desarrollo del api (no se distribuyen) ==
+
+pypdf · BSD-3-Clause · extrae texto del PDF del recibo en las pruebas (S5-D65)

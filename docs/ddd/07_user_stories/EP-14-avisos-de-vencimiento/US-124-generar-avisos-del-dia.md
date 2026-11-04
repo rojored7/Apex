@@ -1,5 +1,7 @@
 # US-124 · Como administrador quiero que cada mañana se genere la lista de avisos del día sin duplicados para no olvidar a nadie ni repetir mensajes
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): la inserción es por ORM con `begin_nested()` y un `IntegrityError` cuenta como ya existente, para que cada fila deje su `insert` en `audit_log` (S5-D71). La migración es `0019_notifications`.
+
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Notifications (esquema `notifications`)
 - **Versión:** v0.2
@@ -35,7 +37,7 @@ para que cada socio que vence o venció reciba su recordatorio exactamente una v
 3. Una regla `membership_expiring` solo genera si la membresía está en `active` o `expiring` ese día; una `membership_expired` solo si está en `expired` y el socio no tiene una membresía vigente o futura (renovó).
 4. Si el canal de la regla no está activo en las preferencias del socio, el aviso se crea con `status = skipped` y `skip_reason = "canal desactivado por el socio"`.
 5. Si el canal está deshabilitado en `settings.channels`, el aviso se crea `skipped` con `skip_reason = "canal deshabilitado"`.
-6. Existe restricción única en base sobre (`rule_id`, `membership_id`, `target_date`); correr el job dos veces el mismo día no crea filas nuevas ni emite `NotificationQueued` dos veces (inserción con `ON CONFLICT DO NOTHING`).
+6. Existe restricción única en base sobre (`rule_id`, `membership_id`, `target_date`); correr el job dos veces el mismo día no crea filas nuevas ni emite `NotificationQueued` dos veces (inserción por ORM con `begin_nested()`; un `IntegrityError` cuenta como ya existente, S5-D71).
 7. Una membresía congelada (`frozen`) no genera avisos mientras lo esté; como congelar corre `end_date` (RN-07), las fechas objetivo se recalculan solas.
 8. El job no descifra contacto en esta fase; solo usa `first_name` en claro para `{nombre}`.
 9. `target_date` es una fecha civil (`DATE`); `created_at` en UTC.

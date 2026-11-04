@@ -1,5 +1,7 @@
 # US-133 · Como administrador quiero un OpenBao con motor Transit en el Compose del gimnasio para que la llave maestra deje de vivir en un archivo del servidor de aplicación
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): una sola llave de Transit, `apex-kek`, envuelve todas las DEK (S5-D2); un token por servicio con políticas mínimas (S5-D52); `bootstrap.sh` solo crea la llave con `--first-install` y la confirmación `INICIALIZAR` (S5-D76); custodia 2/2/1 (S5-D106); se desella por la API con stdin, no con `bao operator unseal` (S5-D103). Estado: READY.
+
 - **Épica:** EP-15 · Custodia de llaves con OpenBao
 - **Bounded context:** Crypto (soporte); servicio `openbao` en `infra/`
 - **Versión:** v0.2
@@ -12,12 +14,12 @@
 ## Historia
 
 Como administrador
-quiero un servicio `openbao` con Transit habilitado, una llave por `data_class` y un procedimiento de desellado documentado
+quiero un servicio `openbao` con Transit habilitado, una llave `apex-kek` (S5-D2) y un procedimiento de desellado documentado
 para custodiar la KEK y las llaves de firma fuera del proceso del api
 
 ## Contexto de dominio
 
-- **Aggregate / entidades:** CryptoKey (las llaves de Transit respaldan las KEK por `data_class`).
+- **Aggregate / entidades:** CryptoKey (la llave `apex-kek` de Transit envuelve todas las DEK).
 - **Reglas que aplica:** RN-13; `CLAUDE.md` (OpenBao MPL-2.0 aceptado solo sin modificar; secretos por `.env` o volumen, nunca en imagen); `04_architecture_decision.md` sección 4 (desellado con llaves fuera del servidor).
 - **Eventos que emite:** ninguno.
 - **Eventos que consume:** ninguno.

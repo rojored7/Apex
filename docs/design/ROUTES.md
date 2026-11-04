@@ -81,7 +81,7 @@ Atleta (módulo 9)
 - `/socios/:id/atleta` → `Atleta_Perfil.html` (pestaña Atleta de la ficha, con subpestañas Resumen · Medidas · RMs · Récords · Benchmarks). GET `/athletes/:id/metrics`, `/rms`, `/records`, `/benchmarks?wod`. POST `/athletes/:id/metrics`, POST `/athletes/:id/records` (manual).
 
 Avisos (módulo 10)
-- `/avisos/hoy` → `PorAvisarHoy.html`. GET `/notifications/today`. Abrir WhatsApp: GET `/notifications/:id/wa-link` (devuelve el `wa.me` y marca como enviado). Omitir: POST `/notifications/:id/skip` {reason}.
+- `/avisos/hoy` → `PorAvisarHoy.html`. GET `/notifications/today`. Abrir WhatsApp: POST `/notifications/:id/wa-link` (devuelve el `wa.me` y marca como enviado; es POST por el efecto y por el teléfono descifrado: `useMutation` con `gcTime: 0`, S5-D59). Omitir: POST `/notifications/:id/skip` {reason}.
 - `/avisos/reglas` → `Notif_Reglas.html`. GET/POST/PATCH `/notification-rules`. Pestaña Plantillas: `/notification-templates`. Solo admin edita.
 - `/avisos/historial` → `Notif_Historial.html`. GET `/notifications?member&from&to&rule&channel&status&limit&offset`.
 

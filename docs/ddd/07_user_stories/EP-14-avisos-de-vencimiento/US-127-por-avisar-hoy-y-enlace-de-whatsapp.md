@@ -1,5 +1,7 @@
 # US-127 · Como coach quiero ver a quién hay que avisar hoy y abrir el WhatsApp con el mensaje listo para avisar en segundos
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): `wa-link` es `POST` (S5-D59, M-9): efecto sobre el aviso (marca `sent`) y devuelve el teléfono, así que no puede ser un `GET` que el refetch repita. El front usa `useMutation` con `gcTime: 0` y abre con `noopener,noreferrer`. Cubetas `members-reveal*`.
+
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Notifications (esquema `notifications`)
 - **Versión:** v0.2
@@ -25,14 +27,14 @@ para avisar a cada socio sin buscar su número ni redactar el texto
 
 ## Alcance
 
-- **Backend:** `GET /notifications/today`, `GET /notifications/{id}/wa-link`.
+- **Backend:** `GET /notifications/today`, `POST /notifications/{id}/wa-link`.
 - **Front:** pantalla `PorAvisarHoy` con lista agrupada por regla, acciones Abrir WhatsApp, Omitir (US-128) y estado.
 
 ## Criterios de aceptación
 
 1. `GET /api/v1/notifications/today` devuelve los avisos con `target_date = today_bogota()` y estado `pending` o `failed`, más los `failed` de días anteriores sin resolver; pagina con `limit`/`offset` (máx. 200) y responde `{ items, total, limit, offset }`.
 2. Cada ítem trae `id`, nombre del socio en claro, plan, `end_date`, regla, canal, estado, `last_error` y `attempts`; nunca el teléfono ni el correo.
-3. `GET /api/v1/notifications/{id}/wa-link` descifra el teléfono vía `members.service.contact_for_notification(member_id, "notify")`, devuelve `{ url }` con el texto URL-encoded, y en la misma transacción marca el aviso `sent`, `sent_at` (UTC), `sent_by` = usuario y emite `NotificationSent` (auditado).
+3. `POST /api/v1/notifications/{id}/wa-link` descifra el teléfono vía `members.service.contact_for_notification(member_id, "notify")`, devuelve `{ url }` con el texto URL-encoded, y en la misma transacción marca el aviso `sent`, `sent_at` (UTC), `sent_by` = usuario y emite `NotificationSent` (auditado).
 4. Pedir el enlace de un aviso ya `sent` devuelve el enlace de nuevo sin cambiar `sent_at` ni `sent_by` (idempotente) y deja auditoría del descifrado.
 5. Un aviso `skipped` responde 409 en `wa-link`.
 6. Un socio sin teléfono registrado responde 422 con `code = "member_without_phone"`.
@@ -67,7 +69,7 @@ Característica: Por avisar hoy
 ## Endpoints
 
 - `GET /api/v1/notifications/today` — rol(es): admin, coach — entrada: `limit`, `offset`, `channel`, `status` — códigos: 200, 401, 403, 422
-- `GET /api/v1/notifications/{id}/wa-link` — rol(es): admin, coach — salida: `{ url }` — códigos: 200, 401, 403, 404, 409, 422
+- `POST /api/v1/notifications/{id}/wa-link` — rol(es): admin, coach — salida: `{ url }` — códigos: 200, 401, 403, 404, 409, 422
 
 ## Pantalla
 

@@ -1,5 +1,15 @@
 # EP-15 · Custodia de llaves con OpenBao — desglose técnico de épica
 
+> **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1, "Contradicciones de contrato cerradas en T-DOC", y decisiones S5-D64 a S5-D106; registro en `docs/ddd/DECISIONES.md`, "Sprint 5"). Donde el texto de abajo choque con estas notas, mandan las notas:
+> - Una sola llave de Transit, `apex-kek`, envuelve todas las DEK y las llaves de índice (US-133, S5-D2); el puerto conserva `wrap(dek)` y `unwrap(wrapped)`, sin `key_ref` ni `key_name(data_class)`.
+> - El `KeyProvider` ya es `async` y `OpenBaoProvider` usa `httpx.AsyncClient`, sin `anyio.to_thread` (US-134, S5-D3, S5-D17); suma `name`, `status` (`ok|sealed|unreachable`) y `rewrap`. `sign` y `verify` quedan solo en la suite de contrato (S5-D9); ninguna política de servicio los concede en v0.2.
+> - Migración única de la épica: `0015_crypto_provider_migration`, que reemplaza `crypto.guard_keys_update()` con `CREATE OR REPLACE`; sin `0030_crypto_jobs_single_running` (el índice `uq_crypto_jobs_in_progress` ya existe) ni `0031` (S5-D4, S5-D66).
+> - Tokens por servicio y políticas mínimas: api `encrypt` y `decrypt`; worker solo `decrypt`; `tools` suma `rewrap`, `rotate` y `config`, nunca `delete` ni `trim`; `bootstrap.sh` solo crea la llave con `--first-install` y `INICIALIZAR`; custodia 2/2/1 (S5-D49, S5-D52, S5-D76, S5-D106). El desello usa la API con stdin (S5-D103).
+> - US-135: el comando corre con `docker compose run --rm tools migrate-provider` (la imagen no trae `uv`); sin `--dry-run` exige un manifiesto firmado de menos de 24 h con `openbao_snapshot.verified = true` (B13 va antes de B2); suma `rotate-kek` y `retire-local-kek` (S5-D18, S5-D19, S5-D49, S5-D72, S5-D73). El proveedor manda por fila (`crypto_keys.provider`).
+> - US-136: `/health` incluye `migrations`; `register_health_check("crypto", fn, critical=..., allowed=..., healthy=...)`; sondeo de 20 s con caché de 5 s, sin `try_load` en `/health`; el healthcheck del api acepta el 503 con `db` y `migrations` en `ok`, no "Nginx no depende del api" (S5-D13, S5-D15, S5-D54, S5-D70).
+> - El worker carga solo `member.phone` y `member.email` y registra `details.sellado`, no `result = skipped`; la alerta `crypto_sealed` entra en B3 con `alert(code, **context)` (S5-D20, S5-D83, S5-D86).
+> - Respaldo de OpenBao y firma del manifiesto verificada en Python (`core/crypto/minisign.py`, `cli_manifest.py`) en B13 (S5-D8, S5-D72, S5-D95). Licencia: la imagen de OpenBao es MPL-2.0 sin modificar.
+
 - **Épica:** `docs/ddd/06_epics/EP-15-custodia-de-llaves-openbao.md`
 - **Versión:** v0.2
 - **Historias:** US-133 a US-136 (4 historias, 21 puntos)

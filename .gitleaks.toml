@@ -17,6 +17,9 @@ keywords = ["PRIVATE KEY"]
 
 [allowlist]
 description = "Documentación del plan y del diseño, y fixtures de CI que citan el formato sin material"
+# Las expresiones se comparan con el texto completo de la coincidencia (clave y valor), no solo
+# con el valor extraído, para poder permitir por su texto exacto salidas como "retire-key: ...".
+regexTarget = "match"
 paths = [
   '''docs/ddd/.*''',
   '''docs/design/.*''',
@@ -42,6 +45,15 @@ regexes = [
   # test_filters.py); la regla genérica los toma por una clave API. Por valor exacto.
   '''5f0c2a7e-1b3d-4c5e-8f9a-0b1c2d3e4f5a''',
   '''328c1948-e343-48a1-9ef4-1b9dab140c4f''',
+  # Sprint 4B (V9.8): contraseñas centinela de las pruebas de roles y de `test_compose_config.sh`
+  # (W0-3), el ejemplo manifiestamente inventado de `instalar-en-servidor.md` y el texto de salida
+  # de `retire-key` ("retire-key: filas_negocio=F", "retire-key: audit_blobs=A"), que la regla
+  # genérica toma por una clave. Por valor exacto.
+  '''api-prueba-0123456789''',
+  '''centinela-propietario-0123456789''',
+  '''centinela-api-0123456789abcd''',
+  '''clave-inventada-1234''',
+  '''retire-key: (filas_negocio|audit_blobs)=''',
 ]
 # Sprint 4A (V9.7): tres commits intermedios, nunca publicados con secretos reales, que citan la
 # cabecera PEM como texto: dbc352e (literal de prueba de init-keys, partido en 8339138) y las dos

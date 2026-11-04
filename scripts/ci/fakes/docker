@@ -14,6 +14,8 @@
 #   FAKE_DOCKER_BUILD_RC / FAKE_DOCKER_UP_RC   salidas de `compose ... build` y `up -d` (0)
 #   FAKE_DOCKER_APP_VERSION   APP_VERSION que imprime la lectura de /proc/1/environ (v0.1.0)
 #   FAKE_DOCKER_DATABASE_URL  DATABASE_URL de esa lectura (rol apex_api); vacío = no la imprime
+#   FAKE_DOCKER_ROLE_EXISTS   0 = `psql` (consulta del rol de MIGRATE_DB_USER, S5-D96) no devuelve fila; 1 por omisión
+#   FAKE_DOCKER_KEK_PRESENT   1 = `compose ... run|exec ... test -f .../keys/kek.bin` sale con 0 (kek.bin sigue en keys); 0 por omisión (sale con 1)
 # Todo lo demás sale con 0 sin imprimir nada.
 set -u
 log="${FAKE_DOCKER_LOG:-/dev/null}"
@@ -29,6 +31,12 @@ case "$all" in
   *" ps "*" db"*)
     [ "${FAKE_DOCKER_DB_RUNNING:-1}" = "0" ] || printf 'fakecid-db\n'
     exit 0 ;;
+  *"psql"*)
+    [ "${FAKE_DOCKER_ROLE_EXISTS:-1}" = "0" ] || printf '1\n'
+    exit 0 ;;
+  *"keys/kek.bin"*)
+    [ "${FAKE_DOCKER_KEK_PRESENT:-0}" = "1" ] && exit 0
+    exit 1 ;;
   *"run.sh"*)
     printf 'run.sh: db fake.dump.age 10 bytes; uploads fake.tar.age 10 bytes\n'
     if [ "${FAKE_DOCKER_BACKUP_RC:-0}" != "0" ]; then

@@ -51,13 +51,18 @@ E2E="$(docker compose "${ENVS[@]}" -f infra/compose.yml -f infra/compose.e2e.yml
 CRUDO="$(docker compose "${ENVS[@]}" --profile worker --profile tools -f infra/compose.yml config --no-env-resolution --format json)"
 # S4B-W0-1: compose.verify.yml (identidad de verificacion solo en backup) con un archivo temporal.
 VERIFY="$(BACKUP_VERIFY_IDENTITY_FILE="$ROOT/.env.example" docker compose "${ENVS[@]}" -f infra/compose.yml -f infra/compose.verify.yml config --format json 2>/dev/null || echo "{}")"
+# S5-W0-2 (S5-D10, D11, D12, D74, D77): perfil bootstrap, overlay de OpenBao y perfil openbao en desarrollo.
+BOOT="$(docker compose "${ENVS[@]}" --profile bootstrap -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
+OVL="$(docker compose "${ENVS[@]}" --profile worker --profile tools -f infra/compose.yml -f infra/compose.openbao.yml config --format json 2>/dev/null || echo "{}")"
+DEV_OB="$(docker compose "${ENVS[@]}" --profile openbao --profile worker --profile tools -f infra/compose.yml -f infra/compose.dev.yml config --format json 2>/dev/null || echo "{}")"
+OVL_YML="$(cat infra/compose.openbao.yml 2>/dev/null || true)"
 COMPOSE_VERSION="$(docker compose version --short 2>/dev/null | tr -d '\r' || true)"
 IGNORA_SEED="$(git check-ignore -q .env.seed && echo si || echo no)"
 IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo no)"
 IGNORA_OPS="$(git check-ignore -q .env.ops && echo si || echo no)"
 IGNORA_OPS_EJEMPLO="$(git check-ignore -q .env.ops.example && echo si || echo no)"
 
-DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
+BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
 import json
 import os
@@ -89,8 +94,10 @@ check(bool(tools) and not tools[0].get("read_only"), "tools monta keys con escri
 check(prod["api"]["image"] == prod["worker"]["image"] == prod["tools"]["image"], "api, worker y tools usan la misma imagen")
 check("profiles" not in prod["worker"], "worker sin perfil desde S4A-W0-2")
 check("db_test" not in prod, "db_test no existe en compose.yml")
-check({"pgdata", "uploads", "keys"} <= set(prod_doc.get("volumes", {})), "volumenes pgdata, uploads y keys en uso")
-check(all(f"\n  {v}:" in texto for v in ("pgdata", "uploads", "keys", "backups")), "volumenes pgdata, uploads, keys y backups declarados")
+# S5-W0-2: se suman el volumen raft de OpenBao y un volumen de token por servicio (S5-D11).
+VOLS_OB = ("openbao-data", "openbao-token-api", "openbao-token-worker", "openbao-token-tools")
+check({"pgdata", "uploads", "keys", *VOLS_OB} <= set(prod_doc.get("volumes", {})), "volumenes pgdata, uploads, keys, openbao-data y openbao-token-{api,worker,tools} en uso")
+check(all(f"\n  {v}:" in texto for v in ("pgdata", "uploads", "keys", "backups", *VOLS_OB)), "volumenes pgdata, uploads, keys, backups, openbao-data y openbao-token-* declarados")
 check("db_test" in dev, "db_test existe en desarrollo")
 check(not [v for v in dev["db_test"].get("volumes", []) if v.get("type") == "volume"], "db_test sin volumenes persistentes")
 check(any(str(p.get("target")) == "5432" for p in dev["db_test"].get("ports", [])), "db_test publica su puerto en desarrollo")
@@ -366,9 +373,11 @@ env_w = ent("worker")
 check(env_w.get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_worker:"), "worker.DATABASE_URL usa apex_worker")
 check(env_w.get("BACKUP_DIR") == "/data/backups", f"worker con BACKUP_DIR=/data/backups ({env_w.get('BACKUP_DIR')})")
 mont_w = montajes(prod["worker"])
+# S5-W0-2 (S5-D11): a backups:ro se suma SOLO su token de OpenBao, tambien :ro (la asercion original exigia un unico montaje).
 check(
-    len(mont_w) == 1 and mont_w[0].get("target") == "/data/backups" and mont_w[0].get("read_only") is True and mont_w[0].get("source") == "backups",
-    f"worker monta exactamente backups en /data/backups de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
+    sorted((m.get("source"), m.get("target"), m.get("read_only")) for m in mont_w)
+    == [("backups", "/data/backups", True), ("openbao-token-worker", "/run/apex/openbao", True)],
+    f"worker monta exactamente backups en /data/backups y su token en /run/apex/openbao, ambos de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
 )
 
 # web (S4B-D11, D75).
@@ -459,6 +468,121 @@ check(os.environ.get("DEV_QUIET") == "0", "E9: el render de desarrollo valida co
 
 # E2E (compose.yml + compose.e2e.yml) contiene la cadena completa.
 check({"migrate", "dbsetup", "api", "web", "db", "worker", "backup"} <= set(e2e), f"compose.e2e.yml contiene migrate, dbsetup, api, web, db, worker y backup ({sorted(e2e)})")
+
+# --- S5-W0-2 (US-133, US-136; S5-D10, D11, D12, D15, D74, D77, D104; M-1, M-2, M-3, L-3) -----------
+# OpenBao (custodia de llaves): servicio, red `custody`, tokens por servicio, bootstrap, overlay.
+def redes_de(doc, svc):
+    return set(((doc.get(svc) or {}).get("networks") or {"default": None}).keys())
+
+
+def hay(doc, svc):
+    return svc in doc
+
+
+ob = prod.get("openbao") or {}
+check(hay(prod, "openbao"), "S5: produccion define el servicio openbao (sin perfil)")
+check(re.fullmatch(r"openbao/openbao:2\.7\.2@sha256:[0-9a-f]{64}", str(ob.get("image", ""))) is not None, f"S5: openbao con imagen openbao/openbao:2.7.2 por digest ({ob.get('image')})")
+check(hay(prod, "openbao") and "ports" not in ob, "S5: openbao no publica puertos")
+check(ob.get("read_only") is True, "S5: openbao con read_only")
+check("/tmp" in (ob.get("tmpfs") or []), f"S5: openbao con tmpfs /tmp ({ob.get('tmpfs')})")
+check(ob.get("cap_drop") == ["ALL"], f"S5: openbao con cap_drop ALL ({ob.get('cap_drop')})")
+check("no-new-privileges:true" in (ob.get("security_opt") or []), f"S5: openbao con no-new-privileges ({ob.get('security_opt')})")
+usuario_ob = str(ob.get("user", "")).split(":")[0]
+check(usuario_ob not in ("", "0", "root"), f"S5: openbao corre con usuario no raiz fijo ({ob.get('user')})")
+check(hay(prod, "openbao") and redes_de(prod, "openbao") == {"custody"}, f"S5: openbao solo en la red custody ({sorted(redes_de(prod, 'openbao'))})")
+custody = prod_doc.get("networks", {}).get("custody", {})
+check(custody.get("internal") is True, f"S5: la red custody es internal: true ({custody.get('internal')})")
+sub_custody = (((custody.get("ipam") or {}).get("config") or [{}])[0]).get("subnet", "")
+try:
+    c_red = ipaddress.ip_network(sub_custody)
+    d_red = ipaddress.ip_network(subred_txt)
+    custody_bien = c_red.prefixlen == 24 and not c_red.overlaps(d_red)
+except ValueError:
+    custody_bien = False
+check(custody_bien, f"S5: custody con subred /24 fija que no solapa la red default ({sub_custody or 'sin subred'}; S5-D77)")
+mont_ob = {v.get("target"): v for v in montajes(ob)}
+check(
+    set(mont_ob) == {"/openbao/file", "/openbao/config/config.hcl"},
+    f"S5: openbao monta exactamente /openbao/file y /openbao/config/config.hcl ({sorted(mont_ob)})",
+)
+check((mont_ob.get("/openbao/file") or {}).get("source") == "openbao-data", "S5: el raft va en el volumen openbao-data (no bind mount)")
+cfg_ob = mont_ob.get("/openbao/config/config.hcl") or {}
+check(cfg_ob.get("read_only") is True and fuente(cfg_ob).endswith("infra/openbao/config.hcl"), "S5: openbao monta infra/openbao/config.hcl en solo lectura (el archivo, nunca la carpeta)")
+check(not [v for v in montajes(ob) if fuente(v).endswith("infra/openbao") or v.get("target") in ("/openbao/config", "/openbao")], "S5: openbao no monta la carpeta infra/openbao ni /openbao/config")
+check(any("-config=/openbao/config/config.hcl" in str(c) for c in (ob.get("command") or [])), f"S5: openbao arranca con server -config=/openbao/config/config.hcl ({ob.get('command')})")
+hc_ob = ob.get("healthcheck") or {}
+hc_txt = " ".join(str(x) for x in (hc_ob.get("test") or []))
+check("wget" in hc_txt and "/v1/sys/health?sealedcode=200&uninitcode=200" in hc_txt and "curl" not in hc_txt, f"S5: healthcheck de openbao con wget a sys/health?sealedcode=200&uninitcode=200 ({hc_txt[:90]})")
+check(all(hc_ob.get(k) for k in ("interval", "timeout", "retries", "start_period")), f"S5: healthcheck de openbao con interval, timeout, retries y start_period ({sorted(hc_ob)})")
+
+# openbao-bootstrap (perfil bootstrap): solo existe con el perfil; sin logs; CHOWN y nada mas.
+check("openbao-bootstrap" not in prod, "S5: openbao-bootstrap no existe sin el perfil bootstrap")
+boot_doc = json.loads(os.environ["BOOT"])
+boot_s = boot_doc.get("services", {})
+bs = boot_s.get("openbao-bootstrap") or {}
+check(bs.get("profiles") == ["bootstrap"], f"S5: openbao-bootstrap con profiles [bootstrap] ({bs.get('profiles')})")
+check((bs.get("logging") or {}).get("driver") == "none", f"S5: openbao-bootstrap con logging.driver none (M-1) ({bs.get('logging')})")
+check(bs.get("cap_drop") == ["ALL"] and bs.get("cap_add") == ["CHOWN"], f"S5: openbao-bootstrap con cap_drop ALL y cap_add solo CHOWN ({bs.get('cap_drop')} / {bs.get('cap_add')})")
+check(bs.get("restart") == "no", f"S5: openbao-bootstrap con restart no ({bs.get('restart')})")
+check(bool(bs) and "ports" not in bs and bs.get("network_mode") == "service:openbao" and not bs.get("networks"), f"S5 S5-D107: openbao-bootstrap sin puertos, con network_mode service:openbao y sin red propia ({bs.get('network_mode')} / {bs.get('networks')})")
+check(bool(bs) and (bs.get("environment") or {}).get("BAO_ADDR") == "http://127.0.0.1:8210", f"S5 S5-D107: openbao-bootstrap habla con el listener local 127.0.0.1:8210 ({(bs.get('environment') or {}).get('BAO_ADDR')})")
+check(bool(bs) and "env_file" not in bs, "S5: openbao-bootstrap sin env_file")
+fuentes_boot = {v.get("source") for v in montajes(bs) if v.get("type") == "volume"}
+check({"openbao-token-api", "openbao-token-worker", "openbao-token-tools"} <= fuentes_boot, f"S5: openbao-bootstrap escribe los tres volumenes de token ({sorted(fuentes_boot)})")
+check(bool(bs) and all(v.get("read_only") is True for v in montajes(bs) if v.get("type") == "bind"), "S5: los bind mounts de openbao-bootstrap van en solo lectura")
+check(bool(bs) and not [v for v in montajes(bs) if v.get("source") in ("keys", "pgdata", "uploads", "backups")], "S5: openbao-bootstrap no monta keys, pgdata, uploads ni backups")
+
+# Tokens (S5-D11): un volumen por servicio, :ro y solo en su servicio.
+for quien in ("api", "worker", "tools"):
+    vol = f"openbao-token-{quien}"
+    duenos = {s for s, d in prod.items() for v in montajes(d) if v.get("source") == vol}
+    check(duenos == {quien}, f"S5: {vol} montado solo en {quien} ({sorted(duenos) or 'ninguno'})")
+    check(bool(duenos) and all(v.get("read_only") is True for v in montajes(prod.get(quien, {})) if v.get("source") == vol), f"S5: {vol} en solo lectura en {quien}")
+
+# Redes (S5-D10): api, worker y tools en default y custody; web, db y backup fuera de custody.
+for svc in ("api", "worker", "tools"):
+    check(redes_de(prod, svc) == {"default", "custody"}, f"S5: {svc} en las redes default y custody ({sorted(redes_de(prod, svc))})")
+for svc in ("web", "db", "backup"):
+    check("custody" not in redes_de(prod, svc), f"S5: {svc} fuera de la red custody ({sorted(redes_de(prod, svc))})")
+for svc in ("api", "worker"):
+    check(depende(prod, svc).get("openbao") == "service_healthy", f"S5: {svc} depende de openbao healthy ({depende(prod, svc)})")
+check(prod["tools"].get("cap_drop") == ["ALL"], f"S5: tools con cap_drop ALL (L-3) ({prod['tools'].get('cap_drop')})")
+
+# Healthcheck del api tolerante al sellado (S5-D15): 200, o 503 con db == ok y migrations == ok.
+hc_api = (prod["api"].get("healthcheck") or {}).get("test") or []
+guion = str(hc_api[3]) if len(hc_api) >= 4 else ""
+check(hc_api[:3] == ["CMD", "python", "-c"], f"S5: healthcheck del api sigue siendo CMD python -c ({hc_api[:3]})")
+check(all(s in guion for s in ("503", "HTTPError", "db", "migrations", "ok", "127.0.0.1:8000/health")) and "curl" not in guion, "S5: el guion del api acepta 200, o 503 con db == ok y migrations == ok (lee el cuerpo del HTTPError; sin curl)")
+check(guion.count("ok") >= 2 and "sys.exit" in guion, "S5: el guion del api compara db y migrations contra ok y sale con sys.exit")
+
+# M-3: nada de desarrollo en el compose de produccion ni en el overlay.
+for nombre, contenido in (("compose.yml", texto), ("compose.openbao.yml", os.environ.get("OVL_YML", ""))):
+    for prohibida in ("dev-entrypoint", "BOOTSTRAP_NONINTERACTIVE", "openbao-seal"):
+        check(prohibida not in contenido, f"S5 M-3: {nombre} no contiene {prohibida}")
+check("openbao-dev-data" not in texto, "S5 M-3: compose.yml no declara el volumen openbao-dev-data")
+
+# compose.openbao.yml (S5-D74): api y worker sin keys; con su token; tools conserva keys.
+ovl_doc = json.loads(os.environ["OVL"])
+ovl = ovl_doc.get("services", {})
+check(bool(ovl.get("api")) and bool(ovl.get("worker")), "S5: el overlay renderiza con api y worker")
+for svc in ("api", "worker"):
+    check("/run/apex/keys" not in {v.get("target") for v in montajes(ovl.get(svc, {}))} and bool(ovl.get(svc)), f"S5: con compose.openbao.yml {svc} no monta keys")
+    check(any(v.get("source") == f"openbao-token-{svc}" and v.get("read_only") is True for v in montajes(ovl.get(svc, {}))), f"S5: con compose.openbao.yml {svc} monta su token en solo lectura")
+check(any(v.get("target") == "/run/apex/keys" for v in montajes(ovl.get("tools", {}))), "S5: con compose.openbao.yml tools conserva keys (migrate-provider)")
+check("ports" not in (ovl.get("openbao") or {}) and bool(ovl.get("openbao")), "S5: el overlay conserva openbao sin puertos")
+
+# Desarrollo (S5-D12): openbao con perfil y volumen propio; api, worker y tools no dependen de el.
+dob = json.loads(os.environ["DEV_OB"]).get("services", {})
+dev_ob = dob.get("openbao") or {}
+check("openbao" not in dev, "S5: en desarrollo sin perfil openbao no existe")
+check(dev_ob.get("profiles") == ["openbao"], f"S5: en desarrollo openbao con profiles [openbao] ({dev_ob.get('profiles')})")
+check(any(v.get("source") == "openbao-dev-data" for v in montajes(dev_ob)) and not any(v.get("source") == "openbao-data" for v in montajes(dev_ob)), "S5: en desarrollo openbao usa el volumen openbao-dev-data (no openbao-data)")
+check(any("dev-entrypoint" in str(c) for c in list(dev_ob.get("entrypoint") or []) + list(dev_ob.get("command") or [])), "S5: en desarrollo openbao arranca con dev-entrypoint.sh")
+check((dev_ob.get("environment") or {}).get("APEX_ENV") == "dev", f"S5 M-3: en desarrollo openbao lleva APEX_ENV=dev ({(dev_ob.get('environment') or {}).get('APEX_ENV')})")
+check("openbao-dev-data" in json.loads(os.environ["DEV_OB"]).get("volumes", {}), "S5: openbao-dev-data declarado en la vista de desarrollo")
+for svc in ("api", "worker"):
+    check(set(depende(dev, svc)) == {"db"} and set(depende(dob, svc)) == {"db"}, f"S5: desarrollo: {svc} depende solo de db, con y sin el perfil openbao ({depende(dob, svc)})")
+check("openbao" not in depende(dob, "tools"), f"S5: desarrollo: tools no depende de openbao ({depende(dob, 'tools')})")
 
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

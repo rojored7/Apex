@@ -23,6 +23,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 10. [Membresías y pagos](#10-membresías-y-pagos-sprint-3)
 11. [Worker, auditoría verificable y tablero](#11-worker-auditoría-verificable-y-tablero-sprint-4a)
 12. [Respaldo, restauración, KEK y rotación](#12-respaldo-restauración-kek-y-rotación-sprint-4b)
+13. [OpenBao, avisos y exportaciones](#13-openbao-avisos-y-exportaciones-sprint-5)
 
 ## 1. Sesión y límites (S2-B2)
 
@@ -418,6 +419,7 @@ Dónde están:
 - `infra/backup/Dockerfile` (S4B-W0-1): `postgres:16-alpine` (digest del índice; consulta: `docker buildx imagetools inspect postgres:16-alpine --format '{{json .Manifest.Digest}}'`). Además de la base, fija con `apk` las versiones de `age`, `minisign`, `rclone` y `supercronic`; se renuevan juntas (`docker run --rm postgres:16-alpine sh -c 'apk update >/dev/null && apk policy age minisign rclone supercronic'`).
 - `scripts/ci/test_nginx_conf.sh`: `nginx:stable-alpine` (contenedor desechable de la prueba funcional).
 - `.github/workflows/ci.yml`: el servicio `postgres:16` del job `api` (desde la revisión de Fase 4 del Sprint 2, L3).
+- `infra/compose.yml` (`openbao` y `openbao-bootstrap`, S5-W0-2) y `.github/workflows/ci.yml` (servicio `openbao` del job `api` y los `docker pull` de los jobs `images`, `e2e-stack` y `prod-smoke`): `openbao/openbao:2.7.2`, el mismo digest en todos. Consulta del digest vigente: `docker buildx imagetools inspect openbao/openbao:2.7.2 --format '{{json .Manifest.Digest}}'`. Mailpit (desarrollo) se añade a esta lista cuando exista su servicio. Todo `openbao/openbao:` sin `@sha256:` lo rechaza `test_images_pinned.sh`.
 
 Renovación: a mano al abrir cada sprint (sin Dependabot para Docker en este repositorio).
 1. Consultar el digest actual de cada imagen:
@@ -426,9 +428,10 @@ Renovación: a mano al abrir cada sprint (sin Dependabot para Docker en este rep
    docker buildx imagetools inspect node:22-alpine --format '{{json .Manifest.Digest}}'
    docker buildx imagetools inspect nginx:stable-alpine --format '{{json .Manifest.Digest}}'
    docker buildx imagetools inspect postgres:16 --format '{{json .Manifest.Digest}}'
+   docker buildx imagetools inspect openbao/openbao:2.7.2 --format '{{json .Manifest.Digest}}'
    ```
    El digest es el del índice multiplataforma, el mismo que resuelve `docker pull imagen:tag`.
-2. Reemplazar el digest y la fecha del comentario en cada sitio de la lista (`postgres:16` en los dos Compose y en `ci.yml` va con el mismo digest).
+2. Reemplazar el digest y la fecha del comentario en cada sitio de la lista (`postgres:16` en los dos Compose y en `ci.yml` va con el mismo digest; `openbao/openbao` en `compose.yml` —dos servicios— y en `ci.yml` —servicio y tres `docker pull`—). Tras cambiar el digest de OpenBao: `docker pull` de la imagen nueva, `$DC up -d openbao` y desellar (docs/operacion/openbao.md, sección 4): el volumen `openbao-data` no se toca.
 3. `bash scripts/ci/test_images_pinned.sh`, `bash scripts/ci/test_compose_config.sh` y `bash scripts/ci/test_nginx_conf.sh`.
 4. Reconstruir y levantar: `$DC build api web && $DC up -d` (en este equipo, ver la nota de `network: host` abajo); esperar los servicios `healthy` y correr `bash scripts/smoke/headers.sh` y `bash scripts/ci/web-smoke.sh`.
 5. Anotar los digests nuevos en el cuaderno del sprint.
@@ -896,3 +899,17 @@ Guía para la persona que opera: `docs/operacion/actualizar.md` (paso a paso) e 
 ### Pendiente de completar por slice
 
 - Ensayo en la misma máquina de `deploy.sh` y `prod-smoke.sh` (B4.10, evidencia en el cuaderno).
+
+## 13. OpenBao, avisos y exportaciones (Sprint 5)
+
+Esta sección crece con cada slice del Sprint 5. Hoy cubre solo el inicio de OpenBao (S5-W0-2); el procedimiento completo está en `docs/operacion/openbao.md`.
+
+### OpenBao: inicio (S5-W0-2)
+
+- **Qué es:** el servicio `openbao` (red interna `custody`) guarda la llave maestra de los datos cifrados. `api`, `worker` y `tools` lo alcanzan con un token propio por servicio; `web`, `db` y `backup` no están en esa red.
+- **Instalar (una vez):** `$DC up -d openbao` y `$DC --profile bootstrap run --rm openbao-bootstrap --first-install`. Muestra las 5 llaves de desello una sola vez; el reparto es 2 titular, 2 operador y 1 copia sellada con un tercero (`docs/operacion/openbao.md` §2 y §3).
+- **Cada reinicio del servidor:** OpenBao queda sellado y hay que desellarlo con tres llaves (`docs/operacion/openbao.md` §4). `deploy.sh` lo avisa ("api en estado sellado: desellar OpenBao"); no es un fallo del despliegue.
+- **Rotar los tokens:** cada 90 días y tras un incidente (§6 de ese documento).
+- **Despliegue:** con `CRYPTO_PROVIDER=openbao` en `.env`, `deploy.sh` apila `infra/compose.openbao.yml` (sale con 2 si falta), avisa si `kek.bin` sigue en el volumen `keys` y exige `MIGRATE_DB_USER` en `.env.ops` con un rol existente (S5-D96).
+- **Desarrollo:** `--profile openbao` en `compose.dev.yml` (1/1, desello automático). No forma parte del arranque normal.
+- **Humo:** `bash scripts/ci/prod-smoke.sh --provider openbao` ensaya init 5/3, bootstrap, tokens, reinicio sellado y desello en `apex-smoke`.

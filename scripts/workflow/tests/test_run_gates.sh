@@ -50,6 +50,14 @@ assert_exit 0 "test_deploy_script en verde" bash "$RUN"
 assert_log_has "script test_deploy_script"
 printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_deploy_script.sh
 assert_nonzero "test_deploy_script en rojo falla" bash "$RUN"
+# S5-W0-2: test_openbao_infra corre y un fallo detiene la suite.
+rm -f scripts/ci/test_deploy_script.sh
+printf '#!/usr/bin/env bash\necho "script test_openbao_infra" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/test_openbao_infra.sh
+clear_log
+assert_exit 0 "test_openbao_infra en verde" bash "$RUN"
+assert_log_has "script test_openbao_infra"
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_openbao_infra.sh
+assert_nonzero "test_openbao_infra en rojo falla" bash "$RUN"
 rm -rf scripts
 
 # Con uv que falla en la cobertura termina distinto de 0.

@@ -19,6 +19,12 @@
 # construcción (o DEPLOY_SKIP_BUILD) -> `up -d` -> sondeo de /api/v1/health -> entorno del api ->
 # versión.
 #
+# Sprint 5 (S5-D15, D74, D96): MIGRATE_DB_USER se exige en .env.ops y su rol debe existir en la base
+# (si no, sale 2 antes de construir o levantar); con CRYPTO_PROVIDER=openbao en .env se apila
+# infra/compose.openbao.yml (sale 2 si falta) y se avisa si kek.bin sigue en el volumen keys; el sondeo
+# acepta el 503 de un api SELLADO (db y migrations en ok) y lo explica, porque un OpenBao sellado tras
+# un reinicio es un estado esperado: se desella a mano (docs/operacion/openbao.md).
+#
 # Variables: DEPLOY_STATE_DIR (por omisión ${XDG_STATE_HOME:-$HOME/.local/state}/apex-deploy,
 # FUERA del repositorio para no ensuciar el árbol), DEPLOY_HEALTH_TIMEOUT (segundos; por omisión
 # el de .env.ops o 120), DEPLOY_SKIP_BUILD=1 (usa las imágenes ya construidas si su etiqueta
@@ -138,6 +144,14 @@ main() {
     done
   done
 
+  # --- S5-D96 y S5-D74: rol de las migraciones y proveedor de llaves ----------------------------
+  local MIGRATE_ROLE PROVIDER
+  MIGRATE_ROLE="$(valor "$OPS_FILE" MIGRATE_DB_USER)"
+  [ -n "$MIGRATE_ROLE" ] || die2 "falta MIGRATE_DB_USER en $OPS_FILE (sin valor por defecto: apex_owner en una pila nueva, el propietario actual en un servidor existente)"
+  [[ "$MIGRATE_ROLE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die2 "MIGRATE_DB_USER en $OPS_FILE solo admite [A-Za-z0-9_] y no puede empezar por un dígito"
+  PROVIDER="$(valor "$ENV_FILE" CRYPTO_PROVIDER)"; PROVIDER="${PROVIDER:-local}"
+  case "$PROVIDER" in local|openbao) ;; *) die2 "CRYPTO_PROVIDER en $ENV_FILE debe ser local u openbao" ;; esac
+
   local WEB_PORT TIMEOUT
   WEB_PORT="$(valor "$OPS_FILE" WEB_PORT)"; WEB_PORT="${WEB_PORT:-80}"
   [[ "$WEB_PORT" =~ ^[0-9]{1,5}$ ]] || die2 "WEB_PORT en $OPS_FILE no es un número"
@@ -175,9 +189,22 @@ main() {
   [ -z "$(git status --porcelain)" ] || die2 "el árbol quedó sucio tras el checkout de $REF"
   log "código en $REF ($REAL_SHA)"
 
+  # El overlay llega con el código de la etiqueta; con openbao es obligatorio (api y worker sin keys).
+  if [ "$PROVIDER" = "openbao" ]; then
+    [ -f infra/compose.openbao.yml ] || die2 "CRYPTO_PROVIDER=openbao pero $REF no trae infra/compose.openbao.yml"
+    DC+=(-f infra/compose.openbao.yml)
+    log "CRYPTO_PROVIDER=openbao: se apila infra/compose.openbao.yml"
+  fi
+
   "${DC[@]}" config -q || die2 "docker compose config -q rechaza la configuración"
 
   [ -n "$("${DC[@]}" ps --status running -q db 2> /dev/null | tr -d '\r')" ]     || die2 "el servicio db no está en marcha: este script actualiza un servidor ya instalado (instalar-en-servidor.md)"
+  # S5-D96: migrate corre con MIGRATE_DB_USER; si el rol no existe fallaría a mitad del despliegue.
+  # Se consulta con psql como propietario (exec db) antes de respaldar, construir, levantar o etiquetar.
+  # El nombre ya se validó contra [A-Za-z0-9_]: es seguro interpolarlo.
+  local fila
+  fila="$("${DC[@]}" exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d postgres -Atc \"SELECT 1 FROM pg_roles WHERE rolname = '$MIGRATE_ROLE'\"" 2> /dev/null | tr -d '\r' || true)"
+  [ "$fila" = "1" ] || die2 "el rol $MIGRATE_ROLE no existe: corra \`dbsetup\` o fije MIGRATE_DB_USER"
   RESTORE_TO=""
 
   # --- a partir de aquí un fallo es 1 y deja constancia -----------------------------------------
@@ -280,17 +307,28 @@ main() {
     exit 1
   }
 
-  log "arranque (migrate y dbsetup corren solos antes del api)"
+  log "arranque (openbao, migrate y dbsetup corren solos antes del api)"
   if ! GIT_SHA="$REF" "${DC[@]}" up -d; then
     fallo_despliegue "docker compose up -d terminó con error"
   fi
 
   # --- salud: db y migrations en ok ------------------------------------------------------------
-  local url="http://127.0.0.1:${WEB_PORT}/api/v1/health" body="" waited=0 healthy=0
+  # S5-D15: curl SIN -f y con el código HTTP aparte, para leer el cuerpo de un 503. Solo 200 y 503
+  # cuentan; un 503 es sano únicamente si trae db y migrations en ok (api sellado, no caído).
+  local url="http://127.0.0.1:${WEB_PORT}/api/v1/health" body="" waited=0 healthy=0 code=""
+  # L2: el archivo temporal del sondeo se borra aunque el script salga por cualquier camino (trap en EXIT).
+  PROBE_TMP="$(mktemp)"
+  trap 'rm -f "${PROBE_TMP:-}"' EXIT
+  local probe="$PROBE_TMP"
   log "sondeo de $url (hasta ${TIMEOUT} s)"
   while :; do
-    # Si curl falla (sin respuesta o HTTP de error) la vuelta cuenta como no sana, diga lo que diga el cuerpo.
-    if body="$(curl -fsS --max-time 5 "$url" 2> /dev/null)"; then body="${body//$'\r'/}"; else body=""; fi
+    # Si curl falla (sin respuesta) la vuelta cuenta como no sana, diga lo que diga el cuerpo.
+    if code="$(curl -sS -o "$probe" -w '%{http_code}' --max-time 5 "$url" 2> /dev/null)"; then
+      body="$(tr -d '\r' < "$probe")"
+    else
+      code=""; body=""
+    fi
+    case "$code" in 200|503) ;; *) body="" ;; esac
     if printf '%s' "$body" | grep -Eq '"db": ?"ok"' && printf '%s' "$body" | grep -Eq '"migrations": ?"ok"'; then
       healthy=1; break
     fi
@@ -298,7 +336,11 @@ main() {
     sleep 3
     waited=$((waited + 3))
   done
+  rm -f "$probe"
   [ "$healthy" -eq 1 ] || fallo_despliegue "/health no llegó a db ok y migrations ok en ${TIMEOUT} s"
+  if printf '%s' "$body" | grep -Eq '"crypto": ?"sealed"'; then
+    log "api en estado sellado: desellar OpenBao (docs/operacion/openbao.md)"
+  fi
 
   # --- entorno del api (S4B-D56): sin secretos de operación y con la versión pedida -------------
   local envapi
@@ -315,9 +357,17 @@ main() {
   appver="$(printf '%s\n' "$envapi" | sed -n 's/^APP_VERSION=//p' | tail -1)"
   [ "$appver" = "$REF" ] || fallo_despliegue "APP_VERSION del api es '${appver:-<vacía>}' y se esperaba $REF"
 
+  # S5-D74: con OpenBao la KEK ya no debe estar en un archivo a mano del api; tools conserva el
+  # volumen keys solo para migrate-provider. Un kek.bin que sigue ahí es un aviso, nunca un fallo.
+  if [ "$PROVIDER" = "openbao" ]; then
+    if "${DC[@]}" run --rm -T --no-deps --entrypoint test tools -f /run/apex/keys/kek.bin > /dev/null 2>&1; then
+      aviso "kek.bin sigue en el volumen keys: con OpenBao verificado, retírela (docs/operacion/openbao.md)"
+    fi
+  fi
+
   local version
   version="$(printf '%s' "$body" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
-  log "despliegue listo: versión ${version:-$REF} (etiqueta $REF, respaldo previo $MANIFEST_NAME)"
+  log "despliegue listo: versión ${version:-$REF} (etiqueta $REF, respaldo previo $MANIFEST_NAME, proveedor de llaves $PROVIDER)"
 }
 
 main "$@"

@@ -213,6 +213,8 @@ ACTIVAS_S4B_W0_1: dict[str, str] = {
     "APEX_SUBNET": "172.30.0.0/24",
     "APEX_IP_RANGE": "172.30.0.128/25",
     "APEX_WEB_IP": "172.30.0.10",
+    "APEX_CUSTODY_SUBNET": "172.30.1.0/24",
+    "MIGRATE_DB_USER": "apex_owner",
 }
 
 

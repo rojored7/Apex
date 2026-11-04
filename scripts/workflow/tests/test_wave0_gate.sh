@@ -17,11 +17,13 @@ preparar() {
   mkdir -p "$dir/scripts/ci" "$dir/scripts/workflow" "$dir/infra/backup" "$dir/api/tests/core"
   cp "$GATE" "$dir/scripts/workflow/wave0-gate.sh"
   local t
-  for t in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts test_api_image; do
+  for t in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts test_openbao_infra test_api_image; do
     printf '#!/usr/bin/env bash\necho "script %s $*" >> "%s"\nexit 0\n' "$t" "$STUB_LOG" > "$dir/scripts/ci/$t.sh"
   done
   printf '#!/usr/bin/env bash\necho "slice-gate $*" >> "%s"\n[ ! -f "%s/slice.fail" ] || exit 1\nexit 0\n' "$STUB_LOG" "$dir" > "$dir/scripts/workflow/slice-gate.sh"
   printf '#!/usr/bin/env bash\necho ok\n' > "$dir/infra/backup/run.sh"
+  # S5-W0-2: el gate renderiza las combinaciones de OpenBao solo si existe el overlay (como verify.yml).
+  printf 'services: {}\n' > "$dir/infra/compose.openbao.yml"
   printf 'def test_x() -> None:\n    assert True\n' > "$dir/api/tests/core/test_env_example.py"
   (cd "$dir" && "$REAL_GIT" add -A && "$REAL_GIT" commit -q -m "chore: scripts")
   echo "$dir"
@@ -40,9 +42,13 @@ assert_exit 2 "sin argumento sale con 2" bash scripts/workflow/wave0-gate.sh
 
 clear_log
 assert_exit 0 "gate en verde" bash scripts/workflow/wave0-gate.sh W0-1 tests/core/test_env_example.py
-for t in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts; do
+for t in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts test_openbao_infra; do
   assert_log_has "script $t"
 done
+# S5-W0-2: las combinaciones de OpenBao se renderizan con config --quiet (overlay, bootstrap, desarrollo con perfil).
+assert_log_has "-f infra/compose.yml -f infra/compose.openbao.yml config --quiet"
+assert_log_has "--profile bootstrap -f infra/compose.yml config --quiet"
+assert_log_has "--profile openbao -f infra/compose.yml -f infra/compose.dev.yml config --quiet"
 assert_log_lacks "script test_api_image"
 assert_log_has "docker compose"
 assert_log_has "config --quiet"
@@ -70,6 +76,14 @@ clear_log
 assert_nonzero "docker compose config en rojo falla" bash scripts/workflow/wave0-gate.sh W0-1
 assert_log_lacks "slice-gate"
 stub_tool docker 0
+
+# S5-W0-2: test_openbao_infra en rojo detiene el gate antes del sello.
+printf '#!/usr/bin/env bash\necho "script test_openbao_infra" >> "%s"\nexit 1\n' "$STUB_LOG" > scripts/ci/test_openbao_infra.sh
+clear_log
+assert_nonzero "test_openbao_infra en rojo falla" bash scripts/workflow/wave0-gate.sh W0-1
+assert_log_has "script test_openbao_infra"
+assert_log_lacks "slice-gate"
+printf '#!/usr/bin/env bash\necho "script test_openbao_infra" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/test_openbao_infra.sh
 
 # bash -n de un script roto detiene antes de todo.
 printf 'if then fi (\n' > scripts/ci/roto.sh

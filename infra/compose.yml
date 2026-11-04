@@ -105,6 +105,9 @@ services:
     volumes:
       - keys:/run/apex/keys:ro
       - uploads:/data/uploads
+      # Token propio de OpenBao (S5-D11): archivo 600 de uid 10001 que escribe openbao-bootstrap.
+      # Inerte con CRYPTO_PROVIDER=local; compose.openbao.yml quita keys y fija OPENBAO_TOKEN_FILE.
+      - openbao-token-api:/run/apex/openbao:ro
     # Solo escribe en uploads (S4B-D75).
     read_only: true
     tmpfs:
@@ -112,14 +115,36 @@ services:
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+    # default (db, web) y custody (openbao): la única red desde la que se alcanza OpenBao (S5-D10).
+    networks:
+      - default
+      - custody
     depends_on:
       db:
         condition: service_healthy
       dbsetup:
         condition: service_completed_successfully
+      openbao:
+        condition: service_healthy
     healthcheck:
-      # La imagen slim no trae curl; /health existe desde US-020.
-      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      # La imagen slim no trae curl. Tolerante al sellado (S5-D15): 200, o 503 cuyo cuerpo trae
+      # db == "ok" y migrations == "ok" (el api sellado sigue vivo y no debe reiniciarse en bucle).
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json, sys, urllib.error, urllib.request
+          try:
+              sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3).status == 200 else 1)
+          except urllib.error.HTTPError as e:
+              try:
+                  d = json.load(e)
+              except Exception:
+                  sys.exit(1)
+              sys.exit(0 if e.code == 503 and d.get("db") == "ok" and d.get("migrations") == "ok" else 1)
+          except Exception:
+              sys.exit(1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -139,17 +164,24 @@ services:
       BACKUP_DIR: /data/backups
     volumes:
       - backups:/data/backups:ro
+      # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
+      - openbao-token-worker:/run/apex/openbao:ro
     read_only: true
     tmpfs:
       - /tmp
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+    networks:
+      - default
+      - custody
     depends_on:
       db:
         condition: service_healthy
       api:
         # Producción: migrate y dbsetup ya corrieron cuando el api está healthy.
+        condition: service_healthy
+      openbao:
         condition: service_healthy
     healthcheck:
       # Latido (S4A-D8, S4A-D56): el worker toca /tmp/apex-worker-heartbeat cada 30 s solo si
@@ -183,6 +215,15 @@ services:
       - keys:/run/apex/keys
       - uploads:/data/uploads
       - backups:/data/backups:ro
+      # Token propio de OpenBao (S5-D11): además rota la llave y recifra (apex-tools).
+      - openbao-token-tools:/run/apex/openbao:ro
+    # L-3 (Sprint 5): la CLI no necesita ninguna capacidad ni escalada de privilegios.
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - default
+      - custody
     depends_on:
       db:
         condition: service_healthy
@@ -239,6 +280,81 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  openbao:
+    # OpenBao (motor Transit) como KMS del bus de criptografía (S5-D10, D11, D104; docs/operacion/openbao.md).
+    # OpenBao 2.7.2 por digest del índice multiarquitectura (2026-11-04). Verificar el digest fijado con
+    # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`; el digest vigente
+    # de un tag nuevo se obtiene como en docs/RUNBOOK.md §7 (misma consulta con el tag, sin digest).
+    image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+    # Sin el entrypoint de la imagen (escribiría en /openbao/config y sumaría un segundo -config): el
+    # servidor arranca con la configuración de UN archivo montado en solo lectura (S5-D104).
+    entrypoint: ["bao"]
+    command: ["server", "-config=/openbao/config/config.hcl"]
+    init: true
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    # uid 100 / gid 1000: el dueño de /openbao/file en la imagen; el volumen nombrado nuevo lo hereda.
+    user: "100:1000"
+    volumes:
+      - openbao-data:/openbao/file
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    # Solo la red interna custody: sin puertos y sin salida (S5-D10). Reinicia sellado: se desella
+    # a mano tres veces (docs/operacion/openbao.md); sellado cuenta como sano (sealedcode=200).
+    networks:
+      - custody
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  openbao-bootstrap:
+    # Instalación y operación de OpenBao (S5-D76, M-1): interactivo, sin log de contenedor (las 5
+    # llaves de desello solo salen por la terminal) y con una capacidad: escribir cada token con
+    # el dueño de su servicio (CHOWN). Corre como root porque los volúmenes openbao-token-* nacen
+    # root:root; umask 077 y chmod 600 antes del chown. Misma imagen que openbao.
+    #   docker compose --env-file .env --env-file .env.ops -f infra/compose.yml \
+    #     --profile bootstrap run --rm openbao-bootstrap --first-install
+    # Mismo digest que el servicio openbao (2026-11-04); se renueva junto con él (imagetools inspect, RUNBOOK §7).
+    image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+    entrypoint: ["/bin/sh", "/bootstrap.sh"]
+    environment:
+      # 8210: listener local con generate-root y rekey abiertos (S5-D107); el bootstrap comparte la red
+      # del contenedor openbao y no pisa la red custody.
+      BAO_ADDR: http://127.0.0.1:8210
+    user: "0:0"
+    volumes:
+      - ./openbao/bootstrap.sh:/bootstrap.sh:ro
+      - ./openbao/policies:/policies:ro
+      - openbao-token-api:/tokens/api
+      - openbao-token-worker:/tokens/worker
+      - openbao-token-tools:/tokens/tools
+    stdin_open: true
+    tty: true
+    logging:
+      driver: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt:
+      - no-new-privileges:true
+    network_mode: "service:openbao"
+    depends_on:
+      openbao:
+        condition: service_healthy
+    profiles: ["bootstrap"]
+    restart: "no"
+
   web:
     build:
       context: ..
@@ -283,9 +399,21 @@ networks:
         # APEX_WEB_IP=172.31.0.10 en .env.ops (y TRUSTED_PROXIES=172.31.0.10/32 en .env).
         - subnet: ${APEX_SUBNET:-172.30.0.0/24}
           ip_range: ${APEX_IP_RANGE:-172.30.0.128/25}
+  custody:
+    # Red de custodia (S5-D10, D77): solo openbao, openbao-bootstrap, api, worker y tools. internal:
+    # sin salida a internet ni al anfitrión. web, db y backup no están aquí. Para ensayar en la misma
+    # máquina: APEX_CUSTODY_SUBNET=172.31.12.0/24 (ensayo) o 172.31.13.0/24 (smoke) en .env.ops.
+    internal: true
+    ipam:
+      config:
+        - subnet: ${APEX_CUSTODY_SUBNET:-172.30.1.0/24}
 
 volumes:
   pgdata:
   uploads:
   keys:
   backups:
+  openbao-data:
+  openbao-token-api:
+  openbao-token-worker:
+  openbao-token-tools:

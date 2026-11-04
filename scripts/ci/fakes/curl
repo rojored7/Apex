@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
 # curl FALSO (sondeo de /health de deploy.sh). Imprime $FAKE_CURL_BODY y sale con $FAKE_CURL_RC (0).
+# S5-D15: con FAKE_CURL_HTTP=<código HTTP> simula la respuesta del servidor; si el código es >= 400 y
+# curl se invocó con -f / --fail (en cualquier forma agrupada, p. ej. -fsS) sale con 22 SIN cuerpo,
+# como el curl real; sin -f entrega el cuerpo (un 503 con JSON) y sale con FAKE_CURL_RC.
+# S5-W0-2 (decisión 8): entiende `-o <archivo>` (el cuerpo va al archivo en vez de a stdout) y
+# `-w <formato>` (si el formato trae %{http_code}, imprime el código HTTP tras el cuerpo, como el real).
 printf '%s\n' "$*" >> "${FAKE_CURL_LOG:-/dev/null}"
-printf '%s\n' "${FAKE_CURL_BODY:-{\"status\":\"ok\",\"db\":\"ok\",\"migrations\":\"ok\",\"version\":\"v0.1.0\"\}}"
+http="${FAKE_CURL_HTTP:-200}"
+out=""
+wfmt=""
+fail=0
+args=("$@")
+i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+  a="${args[$i]}"
+  case "$a" in
+    -o) i=$((i + 1)); out="${args[$i]:-}" ;;
+    -w) i=$((i + 1)); wfmt="${args[$i]:-}" ;;
+    --fail|--fail-with-body) fail=1 ;;
+    --*) ;;
+    -*f*) fail=1 ;;
+  esac
+  i=$((i + 1))
+done
+if [ "$fail" = 1 ] && [ "$http" -ge 400 ] 2> /dev/null; then exit 22; fi
+cuerpo="${FAKE_CURL_BODY:-{\"status\":\"ok\",\"db\":\"ok\",\"migrations\":\"ok\",\"version\":\"v0.1.0\"\}}"
+if [ -n "$out" ]; then printf '%s\n' "$cuerpo" > "$out"; else printf '%s\n' "$cuerpo"; fi
+case "$wfmt" in *'%{http_code}'*) printf '%s' "$http" ;; esac
 exit "${FAKE_CURL_RC:-0}"

@@ -45,6 +45,20 @@ jobs:
           --health-retries 10
         ports:
           - 5432:5432
+      openbao:
+        # OpenBao en modo -dev (CMD por omisión de la imagen) para el marcador `openbao` de las pruebas
+        # del api (S5-D85): inerte hasta B1, que añade OpenBaoProvider. Mismo digest que infra/compose.yml
+        # (2026-11-04); verificar con `docker buildx imagetools inspect` y renovar con docs/RUNBOOK.md §7. El token de la raíz de -dev es de CI, sin valor fuera.
+        image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+        env:
+          BAO_DEV_ROOT_TOKEN_ID: apex-ci
+          BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://127.0.0.1:8200/v1/sys/health"
+          --health-interval 5s
+          --health-retries 10
+        ports:
+          - 8200:8200
     env:
       # Contraseña de CI sin valor fuera de este workflow; nunca un secreto real.
       TEST_DATABASE_URL: postgresql+asyncpg://apex:apex-ci@localhost:5432/apex_test
@@ -242,6 +256,11 @@ jobs:
           [ -f scripts/ci/compose-smoke.sh ] && echo "smoke=true" >> "$GITHUB_OUTPUT" || echo "smoke=false" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         if: steps.img.outputs.api == 'true' || steps.img.outputs.web == 'true'
+      - name: imagen de OpenBao por digest (S5-D10)
+        # Mismo digest que infra/compose.yml (2026-11-04). Verificarlo con
+        # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`;
+        # para renovarlo, docs/RUNBOOK.md §7.
+        run: docker pull openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
       # test_compose_config.sh lee el JSON de `docker compose config` con el Python del api.
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
@@ -342,6 +361,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: imagen de OpenBao por digest (S5-D10)
+        # Mismo digest que infra/compose.yml (2026-11-04). Verificarlo con
+        # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`;
+        # para renovarlo, docs/RUNBOOK.md §7.
+        run: docker pull openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
       - name: entorno y .env.seed efímero
         run: |
           cp .env.example .env
@@ -468,10 +492,15 @@ jobs:
     needs: [images]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: humo de producción (apex-smoke)
+      - name: imagen de OpenBao por digest (S5-D10)
+        # Mismo digest que infra/compose.yml (2026-11-04). Verificarlo con
+        # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`;
+        # para renovarlo, docs/RUNBOOK.md §7.
+        run: docker pull openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+      - name: humo de producción (apex-smoke, con OpenBao)
         env:
           CI: "1"
-        run: bash scripts/ci/prod-smoke.sh
+        run: bash scripts/ci/prod-smoke.sh --provider openbao
       - name: logs del stack
         if: failure()
         run: docker compose -p apex-smoke logs --tail 200 || true
@@ -491,6 +520,8 @@ jobs:
         run: bash scripts/ci/test_images_pinned.sh
       - name: scripts de respaldo (S4B-W0-1)
         run: bash scripts/ci/test_infra_scripts.sh
+      - name: infraestructura de OpenBao (políticas, bootstrap y configuración, S5-W0-2)
+        run: bash scripts/ci/test_openbao_infra.sh
       - name: despliegue y versión del release (S4B-B4)
         run: |
           bash scripts/ci/test_deploy_script.sh

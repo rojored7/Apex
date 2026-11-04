@@ -123,6 +123,35 @@ if [ -f "$ROOT/$rel" ] && [ -f "$ROOT/infra/compose.yml" ]; then
   fi
 fi
 
+# S5-W0-2 (S5-D10): la imagen de OpenBao va por el digest del índice de openbao/openbao:2.7.2
+# (consulta del 2026-11-04, cuaderno de W0-1) en compose.yml y en ci.yml, con fecha y comando de
+# renovación encima de cada `image:`. Toda mención de openbao/openbao: lleva ese mismo digest.
+OPENBAO_REF='openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f'
+for rel in infra/compose.yml .github/workflows/ci.yml; do
+  existe "$rel" || continue
+  if grep -qF "$OPENBAO_REF" "$ROOT/$rel"; then
+    ok "$rel trae $OPENBAO_REF"
+  else
+    falla "$rel" "$rel sin la imagen $OPENBAO_REF"
+  fi
+  sueltas="$(grep -n 'openbao/openbao:' "$ROOT/$rel" | grep -vF "$OPENBAO_REF" || true)"
+  if [ -z "$sueltas" ]; then
+    ok "$rel: toda mención de openbao/openbao: lleva el digest fijado"
+  else
+    falla "$rel" "$rel con openbao/openbao: sin el digest fijado: $sueltas"
+  fi
+done
+if grep -qE 'docker pull[^#]*openbao/openbao:2\.7\.2@sha256:' "$ROOT/.github/workflows/ci.yml" 2> /dev/null; then
+  ok ".github/workflows/ci.yml descarga OpenBao por digest (docker pull)"
+else
+  falla .github/workflows/ci.yml ".github/workflows/ci.yml sin docker pull de OpenBao por digest"
+fi
+if grep -qE '^[[:space:]]*image:[[:space:]]*openbao/openbao:2\.7\.2@sha256:' "$ROOT/.github/workflows/ci.yml" 2> /dev/null; then
+  ok ".github/workflows/ci.yml con services.openbao.image por digest (S5-D85)"
+else
+  falla .github/workflows/ci.yml ".github/workflows/ci.yml sin services.openbao.image por digest"
+fi
+
 if [ "$fallas" -gt 0 ]; then
   echo "test_images_pinned: $fallas fallas en$archivos_con_falla"
 else

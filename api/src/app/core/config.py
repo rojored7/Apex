@@ -94,6 +94,9 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "APEX_SUBNET",
         "APEX_IP_RANGE",
         "APEX_WEB_IP",
+        # S5-W0-2: red de custodia de OpenBao (S5-D77) y rol de migraciones (S5-D96); solo Compose.
+        "APEX_CUSTODY_SUBNET",
+        "MIGRATE_DB_USER",
     }
 )
 

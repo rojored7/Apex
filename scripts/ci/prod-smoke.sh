@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# prod-smoke.sh [--no-build]
+# prod-smoke.sh [--no-build] [--provider local|openbao]
 #
 # Humo de producción sobre el proyecto Compose `apex-smoke` (S4B-B4, US-118; S4B-D46, D56, D65, D78,
 # D100). Levanta el stack como en producción (migrate y dbsetup, api como apex_api, worker, web y
@@ -16,16 +16,25 @@
 # Variables: SMOKE_WEB_PORT (8380), SMOKE_DIR (por omisión docs/scratch/ensayo/smoke, ignorada por
 # git; debe estar dentro del repositorio), GIT_SHA (versión de las imágenes; por omisión `smoke`),
 # SMOKE_DOWN=1, CI. --no-build usa las imágenes apex-api:local, apex-web:local y apex-backup:local.
+# S5-W0-2: el stack incluye openbao (red custody 172.31.13.0/24) y debe llegar a healthy sin inicializar.
+# --provider openbao suma scripts/ci/openbao-smoke.sh (init 5/3, bootstrap, tokens, reinicio sellado y
+# desello). La comprobación de kek.bin y del api con CRYPTO_PROVIDER=openbao queda para B2: hoy el
+# proveedor del api sigue siendo local en ambos modos.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 NO_BUILD=0
-for a in "$@"; do
-  case "$a" in
-    --no-build) NO_BUILD=1 ;;
-    *) echo "prod-smoke: argumento desconocido: $a" >&2; exit 2 ;;
+PROVIDER=local
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-build) NO_BUILD=1; shift ;;
+    --provider)
+      [ "$#" -ge 2 ] || { echo "prod-smoke: --provider necesita local u openbao" >&2; exit 2; }
+      case "$2" in local|openbao) PROVIDER="$2" ;; *) echo "prod-smoke: --provider debe ser local u openbao" >&2; exit 2 ;; esac
+      shift 2 ;;
+    *) echo "prod-smoke: argumento desconocido: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -33,6 +42,7 @@ PROJECT=apex-smoke
 SUBNET=172.31.1.0/24
 IP_RANGE=172.31.1.128/25
 WEB_IP=172.31.1.10
+CUSTODY_SUBNET=172.31.13.0/24
 WEB_PORT="${SMOKE_WEB_PORT:-8380}"
 SMOKE_DIR="${SMOKE_DIR:-$ROOT/docs/scratch/ensayo/smoke}"
 export GIT_SHA="${GIT_SHA:-smoke}"
@@ -107,10 +117,13 @@ for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_B
   fi
 done
 fijar .env.ops POSTGRES_DB apex_smoke
+# S5-D120: hasta que W0-4 cree apex_owner, migrate corre con el propietario de la base del humo.
+fijar .env.ops MIGRATE_DB_USER apex
 fijar .env.ops WEB_PORT "$WEB_PORT"
 fijar .env.ops APEX_SUBNET "$SUBNET"
 fijar .env.ops APEX_IP_RANGE "$IP_RANGE"
 fijar .env.ops APEX_WEB_IP "$WEB_IP"
+fijar .env.ops APEX_CUSTODY_SUBNET "$CUSTODY_SUBNET"
 fijar .env.ops DEPLOY_HEALTH_TIMEOUT 150
 fijar .env ENV production
 fijar .env TRUSTED_PROXIES "$WEB_IP/32"
@@ -196,7 +209,7 @@ paso "levantar el stack"
 for svc in migrate dbsetup; do
   if esperar_servicio "$svc" exited0 180; then ok "$svc completado"; else muere "$svc no terminó con 0"; fi
 done
-for svc in api worker web backup; do
+for svc in openbao api worker web backup; do
   if esperar_servicio "$svc" healthy 240; then ok "$svc healthy"; else muere "$svc no llegó a healthy"; fi
 done
 
@@ -250,6 +263,11 @@ if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" bash 
   ok "restore_e2e.sh (restore.sh en la base apex_restore)"
 else
   falla "restore_e2e.sh"
+fi
+
+# --- OpenBao (S5-D22, W0-2): init 5/3, bootstrap, tokens, reinicio sellado y desello ----------------------------
+if [ "$PROVIDER" = "openbao" ]; then
+  if DC="$DC_STR" OPENBAO_SMOKE_EVIDENCE="$SMOKE_DIR/openbao" bash scripts/ci/openbao-smoke.sh; then ok "openbao-smoke.sh"; else falla "openbao-smoke.sh"; fi
 fi
 
 if [ "$fallas" -ne 0 ]; then

@@ -67,6 +67,15 @@ for svc in migrate dbsetup; do
   fi
 done
 echo "compose-smoke: migrate y dbsetup solo existen con el perfil prod-init"
+# S5-W0-2 (S5-D12, M-3): en desarrollo openbao solo existe con el perfil openbao; sin él ni se lista ni
+# arranca, y api, worker y tools no dependen de él (CRYPTO_PROVIDER=local).
+if printf '%s\n' "$servicios" | grep -qx openbao; then
+  echo "compose-smoke: openbao aparece en desarrollo sin el perfil openbao" >&2; exit 1
+fi
+if ! "${DC[@]}" --profile openbao config --services | tr -d '' | grep -qx openbao; then
+  echo "compose-smoke: openbao no existe con el perfil openbao" >&2; exit 1
+fi
+echo "compose-smoke: openbao solo existe con el perfil openbao"
 "${DC[@]}" build api
 "${DC[@]}" up -d --build db db_test
 esperar_healthy db 120

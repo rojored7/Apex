@@ -92,6 +92,7 @@ APEX_BACKUP_DB_PASSWORD=prueba-rol-backup-33333333333333
 BACKUP_AGE_RECIPIENT=age1-destinatario-de-prueba
 BACKUP_SIGN_PUBKEY=RWQ-clave-publica-de-prueba
 WEB_PORT=8480
+MIGRATE_DB_USER=apex_owner
 OPS
   printf 'age-encryption.org/v1\nmaterial-de-prueba\n' > "$R/kek.bin"
   LOGD="$R/docker.log"; LOGG="$R/git.log"; : > "$LOGD"; : > "$LOGG"
@@ -357,6 +358,93 @@ mk_repo
 d FAKE_DOCKER_UP_RC=1 -- $(buenos)
 assert_nonzero "up -d falla: sale distinto de 0" "$RC"
 
+echo "-- S5-W0-2 · sellado de OpenBao (S5-D15): el 503 con db y migrations ok es un despliegue correcto"
+# Contrato que fija este bloque (lo implementa el Verde, W0-2.4): el sondeo usa curl -sS SIN -f (el
+# curl falso sale con 22 y sin cuerpo si recibe -f ante un HTTP >= 400, como el real), lee el cuerpo
+# del 503 y, si trae "crypto":"sealed" con db y migrations en ok, imprime el mensaje y sale con 0.
+SELLADO='{"status":"degraded","db":"ok","migrations":"ok","crypto":"sealed","version":"v0.1.0"}'
+MSG_SELLADO="api en estado sellado: desellar OpenBao (docs/operacion/openbao.md)"
+mk_repo; d FAKE_CURL_HTTP=503 FAKE_CURL_BODY="$SELLADO" -- $(buenos)
+assert_eq "503 con crypto sealed, db ok y migrations ok: sale con 0" 0 "$RC"
+assert_contains "503 sellado: imprime el aviso de desellado" "$OUT" "$MSG_SELLADO"
+if [ -f "$STATE/rollback-$NOW.txt" ]; then _fail "503 sellado: no escribe rollback"; else _ok "503 sellado: no escribe rollback"; fi
+mk_repo; d FAKE_CURL_BODY="$SELLADO" -- $(buenos)
+assert_eq "200 con crypto sealed: sale con 0" 0 "$RC"
+assert_contains "200 sellado: imprime el aviso de desellado" "$OUT" "$MSG_SELLADO"
+mk_repo; d FAKE_CURL_HTTP=503 FAKE_CURL_BODY='{"status":"degraded","db":"unknown","migrations":"ok","crypto":"sealed"}' -- $(buenos)
+assert_eq "503 sellado pero con db no ok: sale con 1" 1 "$RC"
+mk_repo; d FAKE_CURL_HTTP=503 FAKE_CURL_BODY='{"status":"degraded","db":"ok","migrations":"mismatch","crypto":"sealed"}' -- $(buenos)
+assert_eq "503 sellado pero con migrations en mismatch: sale con 1" 1 "$RC"
+mk_repo; d -- $(buenos)
+assert_lacks "crypto ok: sin aviso de sellado" "$OUT" "estado sellado"
+
+echo "-- S5-W0-2 · compose.openbao.yml y kek.bin (S5-D74)"
+mk_repo; set_var .env CRYPTO_PROVIDER openbao
+caso_2 "CRYPTO_PROVIDER=openbao sin infra/compose.openbao.yml" -- $(buenos)
+assert_contains "sin overlay: el mensaje nombra compose.openbao.yml" "$OUT" "compose.openbao.yml"
+mk_repo; set_var .env CRYPTO_PROVIDER openbao; : > "$R/infra/compose.openbao.yml"
+d -- $(buenos)
+assert_eq "CRYPTO_PROVIDER=openbao con el overlay presente: sale con 0" 0 "$RC"
+assert_contains "con openbao el up -d lleva -f infra/compose.openbao.yml" "$(grep ' up -d' "$LOGD" || true)" "-f infra/compose.openbao.yml"
+assert_contains "con openbao el config -q valida el overlay" "$(grep ' config -q' "$LOGD" || true)" "-f infra/compose.openbao.yml"
+assert_contains "con openbao el reporte final nombra openbao" "$OUT" "openbao"
+mk_repo; : > "$R/infra/compose.openbao.yml"
+d -- $(buenos)
+assert_eq "CRYPTO_PROVIDER ausente (local) con overlay presente: sale con 0" 0 "$RC"
+assert_lacks "con local no se aplica el overlay" "$(cat "$LOGD")" "compose.openbao.yml"
+mk_repo; set_var .env CRYPTO_PROVIDER openbao; : > "$R/infra/compose.openbao.yml"
+d FAKE_DOCKER_KEK_PRESENT=1 -- $(buenos)
+assert_eq "kek.bin presente en keys con openbao: el despliegue sigue (0)" 0 "$RC"
+assert_contains "kek.bin presente: avisa" "$OUT" "aviso: kek.bin sigue en el volumen keys"
+assert_contains "kek.bin: se consulta con docker compose run|exec sobre keys/kek.bin" "$(cat "$LOGD")" "keys/kek.bin"
+mk_repo; set_var .env CRYPTO_PROVIDER openbao; : > "$R/infra/compose.openbao.yml"
+d FAKE_DOCKER_KEK_PRESENT=0 -- $(buenos)
+assert_lacks "kek.bin ausente: sin aviso" "$OUT" "aviso: kek.bin sigue en el volumen keys"
+mk_repo; d FAKE_DOCKER_KEK_PRESENT=1 -- $(buenos)
+assert_lacks "con CRYPTO_PROVIDER=local no se avisa de kek.bin" "$OUT" "aviso: kek.bin sigue en el volumen keys"
+
+echo "-- S5-W0-2 · rol de MIGRATE_DB_USER antes de migrate (S5-D96)"
+mk_repo; d FAKE_DOCKER_ROLE_EXISTS=0 -- $(buenos)
+assert_eq "rol de MIGRATE_DB_USER inexistente: sale con 2" 2 "$RC"
+assert_contains "rol inexistente: dice cuál y cómo arreglarlo" "$OUT" 'el rol apex_owner no existe: corra `dbsetup` o fije MIGRATE_DB_USER'
+assert_lacks "rol inexistente: no construye" "$(cat "$LOGD")" " build"
+assert_lacks "rol inexistente: no levanta" "$(cat "$LOGD")" " up "
+assert_lacks "rol inexistente: no etiqueta imagenes prev-" "$(cat "$LOGD")" "prev-"
+mk_repo; d -- $(buenos)
+assert_eq "rol de MIGRATE_DB_USER existente: sale con 0" 0 "$RC"
+assert_contains "consulta el rol con psql en el contenedor db (como propietario)" "$(grep 'psql' "$LOGD" || true)" "apex_owner"
+assert_contains "la consulta del rol usa exec/run sobre db" "$(grep 'psql' "$LOGD" || true)" " db "
+mk_repo; drop_var .env.ops MIGRATE_DB_USER
+caso_2 "MIGRATE_DB_USER ausente en .env.ops (sin valor por defecto)" -- $(buenos)
+assert_contains "MIGRATE_DB_USER ausente: el mensaje la nombra" "$OUT" "MIGRATE_DB_USER"
+mk_repo; set_var .env.ops MIGRATE_DB_USER ""
+caso_2 "MIGRATE_DB_USER vacía en .env.ops" -- $(buenos)
+
+echo "-- S5-W0-2 · el curl falso entiende -o y -w (sondeo de deploy.sh, decisión 8)"
+CF="$FAKEBIN/curl"
+sal="$(FAKE_CURL_HTTP=503 FAKE_CURL_BODY='{"db":"ok"}' "$CF" -sS -o "$TMP_ROOT/cuerpo.txt" -w '%{http_code}' --max-time 5 http://x/y)"
+assert_eq "curl falso -o -w: stdout es solo el código HTTP" "503" "$sal"
+assert_eq "curl falso -o: el cuerpo va al archivo" '{"db":"ok"}' "$(cat "$TMP_ROOT/cuerpo.txt")"
+sal="$(FAKE_CURL_BODY='{"db":"ok"}' "$CF" -sS http://x/y)"
+assert_eq "curl falso sin -o ni -w: el cuerpo va a stdout" '{"db":"ok"}' "$sal"
+rc=0; "$CF" -fsS -o "$TMP_ROOT/c2.txt" -w '%{http_code}' http://x/y > /dev/null 2>&1 || rc=$?
+assert_eq "curl falso: con -f y HTTP 200 sale con 0" 0 "$rc"
+rc=0; FAKE_CURL_HTTP=503 "$CF" -fsS -o "$TMP_ROOT/c3.txt" http://x/y > /dev/null 2>&1 || rc=$?
+assert_eq "curl falso: con -f y HTTP 503 sale con 22" 22 "$rc"
+rc=0; FAKE_CURL_RC=7 "$CF" -sS -o "$TMP_ROOT/c4.txt" -w '%{http_code}' http://x/y > /dev/null 2>&1 || rc=$?
+assert_eq "curl falso: FAKE_CURL_RC=7 sale con 7" 7 "$rc"
+
+echo "-- S5-W0-2 · L2: el archivo temporal del sondeo no queda (trap en EXIT)"
+if grep -q "trap 'rm -f \"\${PROBE_TMP:-}\"' EXIT" "$SRC_DEPLOY"; then _ok "deploy.sh borra el temporal del sondeo con trap EXIT"; else _fail "deploy.sh sin trap EXIT para el temporal del sondeo"; fi
+mk_repo; mkdir -p "$R/tmpdir"
+d TMPDIR="$R/tmpdir" -- $(buenos)
+assert_eq "sondeo sano con TMPDIR propio: sale con 0" 0 "$RC"
+assert_eq "sondeo sano: no queda ningún temporal" 0 "$(find "$R/tmpdir" -type f | wc -l | tr -d ' ')"
+mk_repo; mkdir -p "$R/tmpdir"
+d TMPDIR="$R/tmpdir" FAKE_CURL_BODY='{"status":"degraded","db":"unknown","migrations":"ok"}' -- $(buenos)
+assert_eq "sondeo fallido con TMPDIR propio: sale con 1" 1 "$RC"
+assert_eq "sondeo fallido: no queda ningún temporal" 0 "$(find "$R/tmpdir" -type f | wc -l | tr -d ' ')"
+
 echo "-- DEPLOY_SKIP_BUILD"
 mk_repo; d DEPLOY_SKIP_BUILD=1 FAKE_DOCKER_REVISION=otra-etiqueta -- $(buenos)
 assert_eq "SKIP_BUILD con etiqueta OCI distinta: sale con 2" 2 "$RC"
@@ -387,6 +475,11 @@ for f in scripts/ci/prod-smoke.sh .github/workflows/release.yml; do
   malas="$(grep -n 'AGE-SECRET-KEY-' "$ROOT/$f" | grep -v '::add-mask::' || true)"
   if [ -z "$malas" ]; then _ok "$f sin AGE-SECRET-KEY- fuera de ::add-mask::"; else _fail "$f: $malas"; fi
 done
+
+
+echo "-- prod-smoke.sh: MIGRATE_DB_USER = propietario de su base hasta W0-4 (S5-D120)"
+smk_ps="$(cat "$ROOT/scripts/ci/prod-smoke.sh")"
+assert_contains "prod-smoke.sh fija MIGRATE_DB_USER con fijar" "$smk_ps" 'fijar .env.ops MIGRATE_DB_USER apex'
 
 echo "-- release.yml: permisos y forma (S4B-D44, D67, D81)"
 RY="$ROOT/.github/workflows/release.yml"

@@ -87,3 +87,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+
+  openbao:
+    # Solo desarrollo y solo con --profile openbao (S5-D12, M-3): no arranca con `up -d` y api, worker
+    # y tools NO dependen de él (CRYPTO_PROVIDER=local). Inicialización 1/1 y desello automático
+    # con dev-entrypoint.sh; la llave de desarrollo vive en el volumen openbao-dev-data, nunca en el log.
+    #   docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml --profile openbao up -d openbao
+    profiles: ["openbao"]
+    entrypoint: ["/bin/sh", "/dev-entrypoint.sh"]
+    command: !reset []
+    environment:
+      APEX_ENV: dev
+    volumes: !override
+      - openbao-dev-data:/openbao/file
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+      - ./openbao/dev-entrypoint.sh:/dev-entrypoint.sh:ro
+      - ./openbao/bootstrap.sh:/bootstrap.sh:ro
+      - ./openbao/policies:/policies:ro
+
+volumes:
+  openbao-dev-data:

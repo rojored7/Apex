@@ -1806,4 +1806,3 @@ El otro Verde del slice (scripts y release) usa S4B-D154 a D169; este bloque emp
 ### Validación del Sprint 4B · decisiones de V1 a V9
 
 - **S4B-D200 (V9: `slice-gate.sh web/*` incluye los archivos de soporte de las pruebas en el `tsconfig` temporal).** F1 descubrió que `tsconfig.slice.json` no incluía `src/test/setup.ts` ni `src/test/vitest-axe.d.ts`, así que `tsc` no veía los matchers de jest-dom y vitest-axe en ninguna prueba del front que no los tocara (había que pasarlos como extra en la lista). El gate suma ahora, si existen, `src/vite-env.d.ts`, `src/test/setup.ts` y `src/test/vitest-axe.d.ts` a `include` (lista `soporte` en `gate_web`). Prueba: `scripts/workflow/tests/test_slice_gate.sh` con los dos archivos confirmados antes de la base del slice (`SLICE_BASE` = HEAD) y un stub de `npx` que copia el `tsconfig` antes de que el gate lo borre; estaba en rojo (2 fallas) y pasó con el cambio (49 ok).
-

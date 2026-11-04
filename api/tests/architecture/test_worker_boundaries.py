@@ -297,3 +297,37 @@ def test_control_models_o_router_en_cli_ops_kek_se_detectan() -> None:
     assert reglas == ["foreign_models", "foreign_router"]
     sql = "async def f(s):\n    await s.execute(text('SELECT 1'))\n"
     assert llamadas_sql(sql, "cli_ops/kek.py") == ["cli_ops/kek.py:2 text("]
+
+
+# S4B-B3b: `rotate_key.py` y `retire_key.py` entran al barrido (S4B-D39, D86) ------------------
+
+
+def test_la_capa_de_aplicacion_barre_rotate_key_y_retire_key() -> None:
+    """Entran al barrido de imports, no escriben SQL y no importan `models`/`router`/privados."""
+    nombres = {p.relative_to(SRC).as_posix() for p in _archivos_de_aplicacion()}
+    assert {"cli_ops/rotate_key.py", "cli_ops/retire_key.py"} <= nombres
+    for nombre in ("rotate_key.py", "retire_key.py"):
+        path = CLI_OPS / nombre
+        fuente = path.read_text(encoding="utf-8")
+        assert llamadas_sql(fuente, f"cli_ops/{nombre}") == [], nombre
+        assert _violaciones_de_imports(path) == [], nombre
+
+
+def test_rotate_key_y_retire_key_no_importan_core_jobs() -> None:
+    """Solo el worker y `core/backup_status.py` importan `core.jobs`; `retire-key` lee el
+    manifiesto del volumen, no `job_runs`."""
+    for nombre in ("rotate_key.py", "retire_key.py"):
+        path = CLI_OPS / nombre
+        assert importa_core_jobs(path.read_text(encoding="utf-8"), path) == [], nombre
+
+
+def test_control_sql_o_models_en_rotate_key_se_detectan() -> None:
+    falsa = (
+        "from app.modules.members.models import Member\n"
+        "async def f(s):\n    await s.execute(text('SELECT 1'))\n"
+    )
+    ruta = CLI_OPS / "rotate_key.py"
+    assert llamadas_sql(falsa, "cli_ops/rotate_key.py") == ["cli_ops/rotate_key.py:3 text("]
+    assert [v.rsplit("(", 1)[1].rstrip(")") for v in _violaciones_de_imports(ruta, falsa)] == [
+        "foreign_models"
+    ]

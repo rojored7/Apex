@@ -32,7 +32,7 @@ from typing import Any, Final, Literal
 
 from app.core.alerts import alert
 from app.core.config import get_settings
-from app.core.crypto.digest import digest_file
+from app.core.crypto.file_digest import digest_file
 from app.core.jobs import last_results
 from app.worker.runner import JobContext, JobResult
 

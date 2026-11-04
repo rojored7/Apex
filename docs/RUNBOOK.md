@@ -514,8 +514,8 @@ Un `psql` de soporte no los hereda (su conexión no pasa por `create_engine_from
 
 ### CLI, worker y migraciones (E7)
 
-- `rotate-key`, `sign-audit`, `seed`, `issue-reset-link`, `unlock-user` y los jobs del worker (Sprint 4A) usan `create_engine_from` y heredan los tres tiempos. Un comando corto que choca con un candado falla con el `DBAPIError` del SQLSTATE (sin traducir: no es una petición HTTP) y se reintenta.
-- Los comandos largos (`rotate-key` sobre muchas filas, `sign-audit`, la importación de US-112) se corren con la opción global, antes del comando: `$DC run --rm tools --db-timeouts off rotate-key ...`. `--db-timeouts` solo acepta `on` (por defecto) u `off`; otro valor sale con código 2. `off` vale solo para esa invocación del CLI y se aplica sobre una copia del `Settings`; el api no tiene forma de activarlo.
+- `rotate-key`, `retire-key`, `sign-audit`, `seed`, `issue-reset-link`, `unlock-user` y los jobs del worker (Sprint 4A) usan `create_engine_from` y heredan los tres tiempos. Un comando corto que choca con un candado falla con el `DBAPIError` del SQLSTATE (sin traducir: no es una petición HTTP) y se reintenta.
+- `rotate-key` no necesita `--db-timeouts off` (S4B-B3b): cada lote es una transacción corta y un `lock_timeout` agotado se reintenta tres veces (1 s) antes de salir 1 con `la base está ocupada`. Los comandos largos (`sign-audit`, la importación de US-112) se corren con la opción global, antes del comando: `$DC run --rm tools --db-timeouts off sign-audit ...`. `--db-timeouts` solo acepta `on` (por defecto) u `off`; otro valor sale con código 2. `off` vale solo para esa invocación del CLI y se aplica sobre una copia del `Settings`; el api no tiene forma de activarlo.
 - Las migraciones de Alembic no reciben los tiempos: `migrations/env.py` arma su propio engine sin `server_settings` (no usa `create_engine_from`; lo vigila `tests/core/test_db_timeouts.py`). Una migración larga no se corta por `statement_timeout`.
 
 ## 10. Membresías y pagos (Sprint 3)
@@ -869,6 +869,15 @@ Guía para la persona que opera: `docs/operacion/respaldo-y-restauracion.md`. Aq
 - **Prueba de restauración de punta a punta:** `bash infra/tests/restore_e2e.sh` (contra un stack arriba: la CI lo corre tras el smoke; en el ensayo, con `E2E_DC` apuntando a `apex-ensayo`). Crea y borra la base `apex_restore` en el `db` de ese stack; nunca toca la base de desarrollo.
 - **Pruebas con `age` real:** `tests/crypto/test_archive_real_age.py` y `tests/cli/test_kek_real_age.py` necesitan Linux, `age` y `pty`; en el host Windows se saltan. La CI falla si alguna se salta (S4B-D103). Para correrlas en este equipo: contenedor `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` con `apt-get install age`, `UV_PROJECT_ENVIRONMENT=/tmp/venv` y `TEST_DATABASE_URL` hacia `host.docker.internal:5443`.
 
+### Rotación de llave y `retire-key` (S4B-B3b, US-030)
+
+Guía para la persona que opera: `docs/operacion/rotar-llave.md`.
+
+- **`rotate-key <clase> --reason TEXTO --as <correo> [--index] [--batch-size 500]`.** Requiere un admin activo. `--reason` (<= 200 caracteres, sin control, correo ni números de seis o más dígitos) queda en la auditoría (`update` sobre `crypto.crypto_keys`). Salida: `rotate-key: total=N`, `rotate-key: hecho=X/N` por lote y, al final, `rotate-key: llave anterior en decrypt_only; retirar con retire-key`. Es reanudable: repetir el comando reanuda el job `pending`, `running` o `failed` de la clase sin crear otra versión. Códigos: 2 uso inválido (motivo, `--as`, `attachment.sensitive`: `esa clase no admite rotación hasta EP-18 (G-09)`, `--db-timeouts off` con producción); 1 `rotación en curso` (candado `apex:rotate:<clase>` tomado), `la base está ocupada` (tras un intento y tres reintentos) o `un lote falló; repita el comando` (el job queda `failed`). La excepción del lote no se imprime.
+- **`retire-key <key_id> --as <correo> --confirm-audit-blobs N [--manifest RUTA]`.** Irreversible. Revisa antes de contar: `verify-kek-backup` `ok` de una persona en 24 h y `latest.json` bajo `BACKUP_DIR` (sin enlaces) con `.minisig` adjunto (solo existencia: `tools` no trae `minisign`, S4B-D149), `verify: ok` y menos de 24 h; texto fijo ante cualquier fallo: `no hay un latest.json reciente con firma adjunta en /data/backups (verify: ok)` (`tools` monta `backups` en solo lectura). Imprime `retire-key: filas_negocio=F` y `retire-key: audit_blobs=A`; se niega (2) si `F` > 0, si `N` != `A` o si la llave no está `decrypt_only`. Deja auditoría `update` con `after = {"event": "retire", "business_rows": 0, "audit_blobs": N}` y una fila `crypto_ops` `rotate`.
+- **Consecuencia sobre `audit_log`:** los blobs de la llave retirada que ya están en la bitácora (inmutable) no se recifran; tras el retiro esos valores históricos no se pueden leer (`key_retired`). El conteo confirmado es el aviso.
+- **Residual:** la rotación no revoca respaldos ni protege ante una KEK comprometida (S4B-D148, dueño v0.2).
+
 ### Pendiente de completar por slice
 
-- `rotate-key`/`retire-key` (B3b); `deploy.sh`, ensayo en la misma máquina y `prod-smoke.sh` (B4).
+- `deploy.sh`, ensayo en la misma máquina y `prod-smoke.sh` (B4).

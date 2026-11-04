@@ -171,3 +171,66 @@ def test_la_fuente_mala_da_un_hallazgo_por_cada_construccion_dinamica() -> None:
 
 def test_la_fuente_buena_pasa() -> None:
     assert hallazgos(BUENA, "buena.py") == []
+
+
+# S4B-B3b: SQL del candado de rotación y del conteo de blobs (S4B-D39, D86) -------------------
+
+
+def _usos_de_text_con_nombre(fuente: str) -> set[str]:
+    """Nombres que se pasan como primer argumento de `text(...)`."""
+    return {
+        n.args[0].id
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.Call)
+        and _llamada_sql(n) == "text"
+        and n.args
+        and isinstance(n.args[0], ast.Name)
+    }
+
+
+def test_las_sentencias_de_rotacion_son_constantes_con_parametro_ligado() -> None:
+    from app.core.crypto.service import AUDIT_BLOBS_BY_KEY_SQL, ROTATE_LOCK_KEY_SQL
+
+    assert "pg_try_advisory_lock(hashtext(:clave))" in ROTATE_LOCK_KEY_SQL
+    assert AUDIT_BLOBS_BY_KEY_SQL.count(":patron") == 2
+    assert "audit.audit_log" in AUDIT_BLOBS_BY_KEY_SQL
+    assert "before::text LIKE :patron" in AUDIT_BLOBS_BY_KEY_SQL
+    assert "after::text LIKE :patron" in AUDIT_BLOBS_BY_KEY_SQL
+    fuente = (SRC / "app" / "core" / "crypto" / "service.py").read_text(encoding="utf-8")
+    constantes = _constantes_de_modulo(ast.parse(fuente))
+    assert {"ROTATE_LOCK_KEY_SQL", "AUDIT_BLOBS_BY_KEY_SQL"} <= constantes
+    assert hallazgos(fuente, "app/core/crypto/service.py") == []
+
+
+def test_service_ejecuta_las_dos_sentencias_con_text_y_la_constante() -> None:
+    """Las constantes se usan: `text(ROTATE_LOCK_KEY_SQL)` y `text(AUDIT_BLOBS_BY_KEY_SQL)`."""
+    fuente = (SRC / "app" / "core" / "crypto" / "service.py").read_text(encoding="utf-8")
+    assert {"ROTATE_LOCK_KEY_SQL", "AUDIT_BLOBS_BY_KEY_SQL"} <= _usos_de_text_con_nombre(fuente)
+
+
+def test_la_clave_del_candado_y_el_patron_viajan_ligados_no_en_el_sql() -> None:
+    """Ninguna llamada de `service.py` arma el SQL con f-string sobre la auditoría."""
+    fuente = (SRC / "app" / "core" / "crypto" / "service.py").read_text(encoding="utf-8")
+    assert not any(
+        isinstance(n, ast.JoinedStr) and "audit" in ast.unparse(n)
+        for n in ast.walk(ast.parse(fuente))
+    )
+
+
+MALA_ROTACION = """
+ROTATE_LOCK_KEY_SQL = "SELECT pg_try_advisory_lock(hashtext(:clave))"
+async def f(session, data_class, key_id):
+    await session.execute(text(f"SELECT pg_try_advisory_lock(hashtext('{data_class}'))"))
+    await session.execute(text("SELECT 1 WHERE x LIKE '%" + key_id + "%'"))
+"""
+
+BUENA_ROTACION = """
+ROTATE_LOCK_KEY_SQL = "SELECT pg_try_advisory_lock(hashtext(:clave))"
+async def f(session, data_class):
+    await session.execute(text(ROTATE_LOCK_KEY_SQL), {"clave": "apex:rotate:" + data_class})
+"""
+
+
+def test_control_el_sql_de_rotacion_armado_en_ejecucion_se_detecta() -> None:
+    assert len(hallazgos(MALA_ROTACION, "mala.py")) == 2
+    assert hallazgos(BUENA_ROTACION, "buena.py") == []

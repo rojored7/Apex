@@ -1,8 +1,8 @@
 """Archivos de respaldo: digest en reposo y respaldo de la KEK con `age -p`.
 
-`digest_file` (SHA-256 de un archivo en reposo) vive en `digest.py` desde la revisión de seguridad
-de B3a (S4B-D134): el worker, que no ejecuta `age` ni abre ninguna identidad (S4B-D59), no debe
-cargar este módulo ni el proveedor local.
+`digest_file` (SHA-256 de un archivo en reposo) vive en `file_digest.py` (antes `digest.py`)
+desde la revisión de seguridad de B3a (S4B-D134, nota de B3b): el worker, que no ejecuta `age` ni
+abre ninguna identidad (S4B-D59), no debe cargar este módulo ni el proveedor local.
 
 S4B-B3a (S4B-D58, S4B-D62, S4B-D89): `export_kek_file`, `restore_kek_file` y `verify_kek_backup`
 son la única puerta de la KEK fuera del proveedor. Lanzan `age` con `Popen` por lista, sin shell y

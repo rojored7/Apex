@@ -99,3 +99,11 @@ def entorno_visto(llamada: dict[str, object]) -> dict[str, str]:
     if sys.platform == "win32":
         entorno = {k: v for k, v in entorno.items() if not k.startswith("=")}
     return entorno
+
+
+# Rotación de llave y retiro (S4B-B3b): las fixtures viven en `_rotacion.py` (también las usa cli)
+from tests.crypto._rotacion import (  # noqa: E402,F401
+    candado_rotacion_tomado,
+    manifiesto_reciente,
+    rotacion_lista,
+)

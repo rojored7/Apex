@@ -173,3 +173,11 @@ async def llaves_en_base(
     oplog.reset_buffer()
     configure_keyring(None)
     return limpiar_demo
+
+
+# Rotación de llave y retiro (S4B-B3b): fixtures compartidas con tests/crypto
+from tests.crypto._rotacion import (  # noqa: E402,F401
+    candado_rotacion_tomado,
+    manifiesto_reciente,
+    rotacion_lista,
+)

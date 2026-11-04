@@ -163,3 +163,34 @@ def test_el_job_y_el_estado_de_backup_no_lanzan_procesos(relativo: str) -> None:
     assert "create_subprocess" not in fuente
     assert "os.system" not in fuente
     assert "popen" not in fuente.lower()
+
+
+# S4B-B3b: ningún archivo nuevo importa `pyrage` ni lanza procesos (S4B-D37, D58) ----------------
+
+ARCHIVOS_DE_B3B: Final = (
+    "core/crypto/discovery.py",
+    "core/crypto/service.py",
+    "cli_ops/rotate_key.py",
+    "cli_ops/retire_key.py",
+)
+
+
+def test_los_archivos_de_b3b_no_importan_pyrage_subprocess_ni_openpyxl() -> None:
+    for relativo in ARCHIVOS_DE_B3B:
+        ruta = SRC / relativo
+        assert ruta.is_file(), relativo
+        importados = terceros_importados(ruta.read_text(encoding="utf-8"))
+        assert not importados & {"pyrage", "subprocess", "openpyxl", "defusedxml"}, relativo
+
+
+def test_pyrage_sigue_ausente_con_los_archivos_de_b3b_presentes() -> None:
+    """Control de la regla global: los cuatro archivos nuevos están en el barrido y `pyrage` no
+    aparece en ninguno."""
+    barridos = {r for r, _ in _archivos()}
+    assert set(ARCHIVOS_DE_B3B) <= barridos
+    assert importadores("pyrage") == set()
+
+
+def test_control_pyrage_en_un_archivo_de_b3b_se_detectaria() -> None:
+    assert terceros_importados("import pyrage\n") == {"pyrage"}
+    assert terceros_importados("def f():\n    import subprocess\n") == {"subprocess"}

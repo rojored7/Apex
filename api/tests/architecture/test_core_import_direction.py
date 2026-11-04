@@ -201,3 +201,30 @@ def test_control_un_import_de_audit_o_modules_en_kek_backup_se_detecta() -> None
         "app.modules.auth.service"
     ]
     assert _prohibidos_en("from app.core.crypto.digest import sha256_hex\n") == []
+
+
+# S4B-B3b: `service.py` y `discovery.py` no importan auditoría ni módulos (S4B-D39) ------------
+
+
+def test_service_y_discovery_no_importan_audit_ni_modules() -> None:
+    """La auditoría de `rotate-key` y `retire-key` la escribe el CLI, no `core/crypto`. Los dos
+    archivos existen: sin ellos la regla no vigila."""
+    for nombre in ("service.py", "discovery.py"):
+        path = CORE / "crypto" / nombre
+        assert path.is_file(), f"falta core/crypto/{nombre}"
+        assert _prohibidos_en(path.read_text(encoding="utf-8")) == [], nombre
+
+
+def test_control_service_con_audit_o_modules_se_detecta() -> None:
+    falsa = (
+        "from app.core.audit import record\n"
+        "async def retire_key():\n"
+        "    from app.modules.members.service import reveal\n"
+    )
+    assert _prohibidos_en(falsa) == ["app.core.audit", "app.modules.members.service"]
+    assert (
+        _prohibidos_en(
+            "from app.core.crypto import oplog\nfrom app.core.clock import current_clock\n"
+        )
+        == []
+    )

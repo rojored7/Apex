@@ -61,14 +61,16 @@ def importadores_fuera_de_core() -> set[str]:
 # Reglas sobre el árbol real -------------------------------------------------------------------
 
 
-def test_digest_file_vive_en_digest_y_no_en_archive() -> None:
-    """S4B-D134 (L6): el worker toma `digest_file` de `digest.py`, que no carga el proveedor ni
-    `subprocess`; `archive.py` ya no lo define."""
-    digest = (SRC / "core" / "crypto" / "digest.py").read_text(encoding="utf-8")
+def test_digest_file_vive_en_file_digest_y_no_en_archive() -> None:
+    """S4B-D134 (L6): el worker toma `digest_file` de `file_digest.py` (B3b, nota de D134), que no
+    carga el proveedor ni `subprocess`; ni `archive.py` ni `digest.py` lo definen."""
+    digest = (SRC / "core" / "crypto" / "file_digest.py").read_text(encoding="utf-8")
     archive = (SRC / "core" / "crypto" / "archive.py").read_text(encoding="utf-8")
     definidas = {n.name for n in ast.parse(digest).body if isinstance(n, ast.FunctionDef)}
     assert "digest_file" in definidas
     assert "def digest_file" not in archive
+    solo_hashlib = (SRC / "core" / "crypto" / "digest.py").read_text(encoding="utf-8")
+    assert "def digest_file" not in solo_hashlib
 
 
 def test_el_worker_no_importa_archive() -> None:

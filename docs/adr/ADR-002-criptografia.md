@@ -35,3 +35,7 @@ El índice ciego es `HMAC-SHA-256(llave_index_de_la_clase, normalizado)` en hexa
 ## 4. Pendiente para US-119
 
 Serialización canónica de la auditoría (`core/audit.canonical`, ya fijada en su docstring), formato de la firma (`apx1.<key_id>.<alg>.<sig_b64url>`, US-027), política de rotación y el plan post-cuántico (EP-26).
+
+### Nota de B3b (Sprint 4B): rotación y retiro
+
+La política de rotación quedó implementada (se completa en B4): `rotate-key` pasa la llave `active` a `decrypt_only`, crea la versión siguiente y recifra por lotes de 500 con SQL de Core (`updated_at` intacto), reanudable (S4B-D39, D142 a D144). `retire-key` es el único camino a `retired`: exige cero filas de negocio, el conteo confirmado de blobs de `audit.audit_log` (los blobs de auditoría no se recifran: inmutable) y un respaldo reciente de la KEK y del manifiesto (S4B-D63, D86, D146). La rotación acota el uso futuro; no revoca respaldos ni protege ante una KEK comprometida (S4B-D148, dueño v0.2). Guía: `docs/operacion/rotar-llave.md`.

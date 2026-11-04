@@ -393,3 +393,87 @@ Linux: `digest_file` sobre un FIFO dentro de `apex-api:local` lanza `OSError` en
 - `restore_e2e.sh` sobre el ensayo (`E2E_DC` del ensayo, base `apex_restore` creada y borrada dentro de su `db`): 23 comprobaciones, 0 fallas, 31 s en total. Socio con documento cifrado; `export-kek` y `verify-kek-backup` con `age` real bajo `pty` (frase aleatoria solo en memoria, no escrita en ningún archivo); `run.sh`; casos negativos que salen 2 sin tocar la base ni tomar `pre-restore` (manifiesto sin firma, firma inválida, sin `-P`, `--confirm-database` distinto, `tar` con enlace simbólico en un juego firmado de verdad); `restore.sh` sale 0 con `--single-transaction`; el ancla impresa (`through_seq` y `through_hash`) coincide con `audit.verifications` de origen y de la base restaurada; los 17 triggers de origen quedan igual (17 en `A`); `pre-restore` presente; `dbsetup` sobre la base restaurada y `apex_api` lee `members.members`; el adjunto restaurado es de 10001:10001 con modo 600 y la imagen del api lo lee; `restore-kek` a `/dev/shm`; con la KEK restaurada `reveal` devuelve el documento; con otra KEK el arranque falla con `unwrap_failed` y no aparece el documento ni material.
 - Para no perder los juegos anteriores del ensayo (el script limpia `apex-*` del volumen `backups` de ese proyecto), se copiaron a un volumen temporal y se devolvieron al terminar (8 archivos). `$DCE stop` al final (nunca `down -v`); quedan solo `apex_ensayo` y su volumen.
 - Pendiente: `pg_restore` en la CI (la primera corrida del job `images` con `restore_e2e.sh` sobre el stack del smoke) y el borrado de los artefactos del ensayo en V12.
+
+
+## S4B-B3b · Rojo
+
+### Línea base
+
+- Árbol limpio en `82caed7`. `tests/crypto tests/architecture tests/cli/test_cli_base.py tests/cli/test_export_kek.py` (`-m "not perf"`): 726 passed, 43 skipped, 1 failed. El fallo es previo al slice: `tests/crypto/test_digest.py::test_solo_importa_hashlib` (`digest.py` importa `os`, `pathlib`, `stat` y `typing` desde que B3a le añadió `digest_file`, S4B-D134; el test sigue exigiendo solo `hashlib`). No es de B3b; lo arregla quien toque `digest.py` o el test (propuesta: el test debe admitir esa lista cerrada de la biblioteca estándar).
+
+### Archivos del Rojo
+
+- Stubs (`NotImplementedError` o salida 2 `no implementado`): `core/crypto/discovery.py` (`ColumnRef` completo, `encrypted_columns` stub), `core/crypto/service.py` (constantes, excepciones, `next_key_state`, `validate_reason`, `start_rotation`, `reencrypt_batch`, `finish_rotation`, `fail_job`, `rotate_index`, `count_rows_by_key`, `count_audit_blobs`, `retire_key`, `recent_kek_verify`), `cli_ops/rotate_key.py`, `cli_ops/retire_key.py`, registrados en `cli_ops/__init__.py`.
+- Apoyo: `tests/crypto/_rotacion.py` (`rotacion_lista`, `filas_rotacion`, `candado_rotacion_tomado`, `manifiesto_reciente`, `escribir_manifiesto`, `verify_reciente`, ayudas de lectura) y `tests/crypto/_rotacion_flujo.py` (`rotar`, `iniciar`, `un_lote`, `cerrar`, `recargar`, `registrar_blob`); `tests/crypto/conftest.py` y `tests/cli/conftest.py` reexportan las fixtures.
+- Arquitectura (se añadieron al final de cada archivo): `test_guarded_calls.py`, `test_sql_literals_constant.py`, `test_no_direct_now.py`, `test_file_and_function_size.py`, `test_core_import_direction.py`, `test_worker_boundaries.py`, `test_third_party_confinement.py`.
+- Crypto: `test_next_key_state.py`, `test_discovery.py`, `test_rotate.py`, `test_rotate_concurrency.py`, `test_rotate_index.py`, `test_retire_key.py`. CLI: `test_rotate_key_cli.py`, `test_retire_key_cli.py`.
+
+### Conteo en rojo
+
+- Arquitectura (4 rojas, el resto son controles y reglas que ya se cumplen con los stubs): `test_service_toma_for_update_en_las_cuatro_funciones_de_rotacion` (el `service.py` stub no llama `with_for_update`), `test_service_ejecuta_las_dos_sentencias_con_text_y_la_constante`, `test_rotated_at_de_service_sale_de_current_clock`, `test_las_cuatro_funciones_de_rotacion_estan_implementadas_y_miden_menos_de_50` (detecta stubs). Verdes por diseño: tipado de las constantes, importaciones de `service`/`discovery`/CLI, `pyrage` ausente y los controles con fuentes falsas.
+- `tests/crypto`: `test_next_key_state` 8 rojas de 9 (la verde comprueba que `InvalidTransition` no es `ValueError`); `test_discovery` 9/9; `test_rotate` 32/32; `test_rotate_concurrency` 5/5; `test_rotate_index` 11 de 12 (la verde fija `MAX_INDEX_ROWS == 50_000`); `test_retire_key` 21/21. Total 86 rojas, 2 verdes. Causa: `NotImplementedError` del stub, salvo `test_una_escritura_con_for_share_hace_esperar_a_start_rotation`, que cae en una aserción real (el stub termina al instante).
+- `tests/cli`: `test_rotate_key_cli` 22/22 rojas (aserción sobre `no implementado`, salida 2 en lugar de 0/1, o `NotImplementedError`); `test_retire_key_cli` 1 roja y 22 en error de preparación, todas por `NotImplementedError: service.start_rotation` en la fixture `rotada` (necesita una rotación real para tener una `decrypt_only`). Al llegar el Verde de `core/crypto` esas 22 pasan a ejecutar su aserción.
+- Ninguna falla por `ImportError`, sintaxis o fixture rota. `ruff check .`, `ruff format --check .` (587 archivos) y `mypy src` (149 archivos) limpios.
+- Regresión: el resto de lo corrido en la línea base sigue igual (747 passed contando las verdes nuevas, 43 skipped; el único fallo previo es `test_digest`).
+
+### S4B-B3b · Dudas y desviaciones del Rojo (para el Verde)
+
+1. `next_key_state(current, event, purpose)` con `event: Literal["rotate", "retire"]`: el plan decía `job_status`, que no puede expresar "decrypt_only → retired solo por retiro". `InvalidTransition` no hereda de `ValueError`.
+2. Errores que fijan las pruebas: `ValueError` para `reason` inválido (también vacío o en blanco), para un conteo `confirmed_audit_blobs` distinto, para filas de negocio pendientes, para una llave inexistente y para `rotate_index` sobre `MAX_INDEX_ROWS`; `InvalidTransition` si la llave no está `decrypt_only`; `DatabaseBusy` (de `core.db`) si el `FOR UPDATE` vence por `lock_timeout`; `RotationInProgress` si otra conexión tiene `pg_try_advisory_lock(hashtext('apex:rotate:<clase>'))`; `ValueError` en `discovery` si falta tabla/columna o no es `Encrypted` de esa clase; `CryptoError(unknown_data_class)` para una clase fuera del registro.
+3. El "tope de 50.000 filas" se baja con `monkeypatch.setattr(service, "MAX_INDEX_ROWS", 10)`: el Verde debe leer la constante del módulo en cada llamada (no copiarla a un default).
+4. La falla inyectada de `test_rotate.py` parchea `bus.decrypt` (atributo de módulo): el servicio debe llamar `bus.decrypt` y `bus.encrypt` por `from app.core.crypto import bus`. `reencrypt_batch` devuelve las filas migradas en ese lote (0 cuando no queda ninguna); `fail_job(job_id, error_code)` corre en su propia transacción y deja `error == error_code`.
+5. `start_rotation` no recarga el keyring del proceso: lo hace quien rota (`Keyring.load_all`), como en `_rotacion_flujo.iniciar`. El candado de sesión: las pruebas solo fijan que, con otra conexión sosteniéndolo, `start_rotation` lanza `RotationInProgress` sin crear llave ni job. Quién retiene el candado entre lotes (conexión dedicada del comando) lo decide el Verde; atención a no dejarlo tomado en una conexión del pool (las fixtures no pueden soltarlo).
+6. `recent_kek_verify(session, within)` compara contra `current_clock()`, no contra `now()` del servidor (`T0` de `reloj` ≠ fecha real): `verify_reciente` inserta `crypto_ops.at = reloj - edad`. Cuenta solo `verb = 'verify'`, `data_class = 'kek.backup'`, `result = 'ok'` y `user_id != SYSTEM_USER_ID`.
+7. `retire_key` registra una fila `crypto_ops` `rotate` (+1 sobre las existentes; la prueba no fija con qué `key_id`). La auditoría `audit.record(... "retire" ...)` y la del motivo de `rotate-key` las escribe el CLI (el servicio no importa `core/audit`); por eso "auditoría con el motivo" se prueba en `tests/cli/test_rotate_key_cli.py` y no en `test_rotate.py`.
+8. Contrato de textos del CLI (todos en los dos archivos de `tests/cli`): `rotate-key: total=N`, `rotate-key: hecho=X/N` por lote, última línea `rotate-key: llave anterior en decrypt_only; retirar con retire-key`; `--reason` en el texto de cada rechazo de motivo (sin repetir el motivo recibido); `esa clase no admite rotación hasta EP-18 (G-09)`; `rotación en curso` (salida 1); `la base está ocupada` (salida 1) tras un intento y tres reintentos de 1 s con `asyncio.sleep(1)` y `service.start_rotation` llamado por módulo (4 llamadas); `repita el comando` tras una falla de lote (salida 1, sin el texto de la excepción). `retire-key`: `retire-key: filas_negocio=F`, `retire-key: audit_blobs=A`, `retire-key: llave retirada`, `--confirm-audit-blobs` en el rechazo, `key_id` en el rechazo de un UUID mal formado, y los dos textos fijos `no hay un verify-kek-backup ok de una persona en las últimas 24 h` y `no hay un latest.json firmado y verificado de las últimas 24 h` (mismo texto para ausente, viejo, sin `.minisig`, `verify != ok`, JSON roto). Todas las salidas de rechazo son 2. `latest.json.minisig` junto al manifiesto es la firma (como `restore.sh`).
+9. `retire-key` revisa verify y manifiesto ANTES de contar o cambiar nada (prueba `test_las_exigencias_se_revisan_antes...`). `rotate-key` lleva `reason` con valor por defecto `""` en el stub para que "sin `--reason`" salga 2 con texto propio y no el de click; el Verde puede hacerlo obligatorio en click siempre que el texto contenga `--reason`.
+10. Fixtures: `filas_rotacion` es una función auxiliar (no fixture) y `verify_reciente` también; `dos_sesiones` no se usó (las pruebas de concurrencia abren dos sesiones de `rotacion_lista`). `rotacion_lista` crea y borra el esquema `test_crypto` y apunta `member.document` a `test_crypto.crypto_test_person.document` con `override_registry`; borra `crypto_ops`, `crypto_jobs` y llaves al salir.
+11. Arquitectura: la excepción de `FOR UPDATE` sobre `CryptoKey`/tablas cifradas es `core/crypto/service.py` exacto (lista `FOR_UPDATE_DE_CRYPTO_PERMITIDO`); si D95 extrae `rotation.py`, el Verde amplía esa lista y `ARCHIVOS_DE_ROTACION` en el mismo cambio. `test_las_cuatro_funciones...` toma las funciones de `service.py` o `rotation.py`.
+12. Previo y ajeno: `tests/crypto/test_digest.py::test_solo_importa_hashlib` falla en `82caed7` (ver línea base).
+
+
+## S4B-B3b · Verde
+
+### Regresión de B3a corregida primero (paso 0)
+
+- `tests/crypto/test_digest.py::test_solo_importa_hashlib` estaba roja desde B3a (S4B-D134 movió `digest_file`, con `os`/`stat`/`pathlib`, a `digest.py`). Corrección: `digest_file` y `DIGEST_CHUNK` pasan a `core/crypto/file_digest.py` (nuevo); `digest.py` vuelve a importar solo `hashlib`; `worker/jobs/backup_check.py` importa de `file_digest` (worker parado antes de editar el archivo y levantado después, `worker started` en el log); `archive.py` solo cambia su docstring; `tests/crypto/test_archive.py` (donde están las pruebas de `digest_file`; no existe `test_digest_file.py`) e `tests/architecture/test_archive_importers.py` apuntan a `file_digest`; `CLAUDE.md` (línea de `digest.py`, nueva de `file_digest.py`) y DECISIONES (nota en S4B-D134, S4B-D139).
+- **Lección:** el gate `crypto` de B3a no listaba `tests/crypto/test_digest.py`. S4B-D139: todo gate `crypto` incluye `test_digest.py` y `test_archive.py` (que cubre `digest_file`); ya van en la lista del paso 73.2 de abajo.
+
+### Conteo en verde
+
+- `tests/crypto`: `test_next_key_state` 9, `test_discovery` 9, `test_rotate` 32, `test_rotate_concurrency` 5, `test_rotate_index` 12, `test_retire_key` 21 = 88 de 88 (antes 86 rojas + 2 verdes).
+- `tests/cli`: `test_rotate_key_cli` 22 de 22; `test_retire_key_cli` 23 de 23.
+- Gate 1 (`slice-gate.sh architecture` con los ocho archivos del paso 73.1 incl. `test_archive_importers.py`): 520 passed, verde.
+- Gate 2 (`slice-gate.sh crypto` con los seis del Rojo + `test_digest.py`, `test_archive.py`, `test_kek_backup.py`): 642 passed, 2 skipped (`test_archive.py:122` enlaces simbólicos sin privilegios y `:138` `mkfifo`, ambos corren en CI/Linux; no se marcan verdes).
+- Aparte: `tests/cli/test_rotate_key_cli.py test_retire_key_cli.py test_export_kek.py test_cli_base.py tests/worker/test_backup_check.py`: 126 passed, 19 skipped (enlaces simbólicos, `mkfifo`, `age`/`pty`, mismos motivos que B3a/B2). `ruff check .`, `ruff format --check .` (588 archivos) y `mypy src` (150 archivos) limpios.
+- Los dos `slice-gate.sh` escribieron un sello (`architecture`, luego `crypto`) que el sello final del slice (`cli`) sustituirá; no se sellaron a propósito.
+
+### Medidas
+
+- `service.py` 501 líneas (< 600) y cada función < 50: no hubo `rotation.py`; `FOR_UPDATE_DE_CRYPTO_PERMITIDO` no cambió (S4B-D141). `discovery.py` 63, `rotate_key.py` 244, `retire_key.py` 149.
+- Cobertura (`--cov=app` sobre los ocho archivos de prueba del slice, 133 passed): `service.py` 90 %, `discovery.py` 100 %, `rotate_key.py` 88 %, `retire_key.py` 98 %. Sin cubrir: ramas de defensa (llave inexistente en `finish_rotation`, `no_index`, clase sin índice en `_reindex`), la rama de `_release` cuando soltar el candado falla y `_in_job` con job inexistente. Con `--cov=app.<módulo>` (sin `app` entero) las pruebas del CLI fallan en la preparación con `TypeError: 'InternalTraversal' object is not callable` (interacción cobertura + SQLAlchemy ya presente, no del slice); con `--cov=app` pasan.
+
+### Desviaciones numeradas
+
+1. `rotacion_lista` (`tests/crypto/_rotacion.py`) no configuraba el engine global y `fail_job(job_id, error_code)` abre su transacción por `db.get_sessionmaker()`: se añadió `db.configure_engine(engine)` y `configure_engine(None)` al salir (S4B-D147). Sin eso la prueba habría escrito en la base de `.env`.
+2. `test_cli_base.py`: `TOPE_CLI_OPS` gana `"rotate_key.py": 260` (S4B-D140).
+3. Regresión de `digest` (S4B-D139) arreglada en este slice, no en B3a.
+4. El plan pedía `finish_rotation` "recuenta bajo `FOR UPDATE`": se bloquea la llave ACTIVA (no la anterior) y se cuentan las filas cuyo blob no es de ella; cubre también restos de versiones más viejas (S4B-D144).
+5. `rotate_index` calcula el HMAC con la DEK nueva en memoria en vez de recargar el keyring (S4B-D145).
+
+### Dudas del Rojo resueltas
+
+Las 12, por escrito, en DECISIONES, bloque "S4B-B3b" (primer párrafo). Decisiones nuevas: S4B-D139 a D148.
+
+### Pendiente (no es de este Verde)
+
+`security-reviewer` de B3b (recuento a cero bajo `FOR UPDATE`, candado, `reason` acotado, `retire-key`, nada de material en salidas); `slice-gate.sh cli ...` sellante; `run-gates.sh`; B3b.8 (Docker y evidencia sobre `apex_rehearsal`); checkpoint. Recuérdese que `apex-db-1` no recibió ninguna rotación y que `tools` toma el código nuevo en su siguiente `run` (el cambio de `app/worker/` ya está activo: worker reiniciado).
+
+
+## S4B-B3b · Revisiones
+
+- `security-reviewer`: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 5 LOW (+1 matiz). 7/7 y el matiz resueltos.
+- M1 (manifiesto por existencia y `--manifest` libre): corregido, ruta "existencia" (la imagen del api no trae `minisign`; salida 127); `--manifest` bajo `BACKUP_DIR` sin enlaces + texto fijo nuevo; dos pruebas (fuera de `BACKUP_DIR`; enlace simbólico, saltada en Windows). S4B-D149; residual con dueño B4/v0.2.
+- M2 (`FOR UPDATE` de lote bloqueado): corregido con `skip_locked` y prueba nueva en `test_rotate_concurrency.py`. S4B-D150.
+- LOW docs (4): corregidos en `docs/operacion/rotar-llave.md`.
+- LOW aceptados con dueño: DEK como `bytes` (S4B-D151, v0.2), `sleep(1)` fijo (S4B-D152), `validate_reason` y nombres (S4B-D153).

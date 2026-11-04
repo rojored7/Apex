@@ -412,3 +412,96 @@ def test_control_las_dos_rutas_exactas_si_quedan_exentas(archivo: str) -> None:
 
 def test_control_niveles_de_aislamiento_lee_el_literal_o_marca_lo_dinamico() -> None:
     assert niveles_de_aislamiento(CANDADO_FALSO) == ["AUTOCOMMIT", "AUTOCOMMIT", None]
+
+
+# S4B-B3b: rotación de llave (S4B-D39, D63, D86) ------------------------------------------------
+
+CRYPTO = APP / "core" / "crypto"
+FOR_UPDATE_DE_CRYPTO_PERMITIDO: Final = frozenset({"core/crypto/service.py"})
+"""S4B-D39/D95: el `FOR UPDATE` de `CryptoKey` y de las tablas de Core con columnas `Encrypted`
+solo vive en `core/crypto/service.py` (ruta relativa exacta). Si D95 extrae `rotation.py`, esta
+lista se amplía en el mismo cambio con la decisión anotada."""
+FUNCIONES_CON_FOR_UPDATE: Final = frozenset(
+    {"start_rotation", "reencrypt_batch", "finish_rotation", "count_rows_by_key"}
+)
+
+
+def nombra(fuente: str, nombre: str) -> bool:
+    """`True` si `fuente` usa `nombre` como identificador (nombre o atributo), no en cadenas."""
+    return any(
+        (isinstance(n, ast.Name) and n.id == nombre)
+        or (isinstance(n, ast.Attribute) and n.attr == nombre)
+        for n in ast.walk(ast.parse(fuente))
+    )
+
+
+def for_update_de_crypto_fuera_de_service(fuentes: dict[str, str]) -> dict[str, list[str]]:
+    """`{ruta: [funciones]}` con `with_for_update` en `core/crypto/**` o en un archivo que nombra
+    `CryptoKey`, salvo en las rutas de `FOR_UPDATE_DE_CRYPTO_PERMITIDO`."""
+    salida: dict[str, list[str]] = {}
+    for relativo, fuente in fuentes.items():
+        if relativo in FOR_UPDATE_DE_CRYPTO_PERMITIDO:
+            continue
+        if not (relativo.startswith("core/crypto/") or nombra(fuente, "CryptoKey")):
+            continue
+        if funciones := for_update_por_funcion(fuente):
+            salida[relativo] = sorted(funciones)
+    return salida
+
+
+def test_for_update_de_crypto_key_y_de_tablas_cifradas_solo_en_service() -> None:
+    fuentes = {_relativo(p): p.read_text(encoding="utf-8") for p in _archivos()}
+    assert for_update_de_crypto_fuera_de_service(fuentes) == {}
+
+
+def test_service_toma_for_update_en_las_cuatro_funciones_de_rotacion() -> None:
+    """La puerta existe y se usa: sin ella la regla de arriba no vigilaría nada."""
+    ruta = CRYPTO / "service.py"
+    assert ruta.is_file()
+    funciones = set(for_update_por_funcion(ruta.read_text(encoding="utf-8")))
+    assert FUNCIONES_CON_FOR_UPDATE <= funciones, sorted(FUNCIONES_CON_FOR_UPDATE - funciones)
+
+
+def test_discovery_no_nombra_membership_ni_importa_modulos() -> None:
+    ruta = CRYPTO / "discovery.py"
+    assert ruta.is_file()
+    fuente = ruta.read_text(encoding="utf-8")
+    assert not nombra(fuente, "Membership")
+    importados = [
+        n.module or "" for n in ast.walk(ast.parse(fuente)) if isinstance(n, ast.ImportFrom)
+    ]
+    assert [m for m in importados if m.startswith("app.modules")] == []
+
+
+def test_discovery_y_service_nunca_fijan_isolation_level() -> None:
+    for nombre in ("discovery.py", "service.py"):
+        ruta = CRYPTO / nombre
+        assert ruta.is_file(), nombre
+        assert con_isolation_level(ruta.read_text(encoding="utf-8")) == [], nombre
+
+
+def test_control_for_update_de_crypto_key_fuera_de_service_se_detecta() -> None:
+    ajena = "async def f(s):\n    await s.scalars(select(CryptoKey).with_for_update())\n"
+    propia = ajena.replace("def f", "def start_rotation")
+    assert for_update_de_crypto_fuera_de_service({"modules/x/service.py": ajena}) == {
+        "modules/x/service.py": ["f"]
+    }
+    assert for_update_de_crypto_fuera_de_service({"core/crypto/keyring.py": propia}) == {
+        "core/crypto/keyring.py": ["start_rotation"]
+    }
+    assert for_update_de_crypto_fuera_de_service({"core/crypto/service.py": propia}) == {}
+    # un FOR UPDATE de otra tabla en otro archivo no es asunto de esta regla
+    assert (
+        for_update_de_crypto_fuera_de_service(
+            {"modules/x/y.py": "def g(q):\n    q.with_for_update()\n"}
+        )
+        == {}
+    )
+
+
+def test_control_discovery_con_membership_o_isolation_level_se_detecta() -> None:
+    assert nombra(
+        "from app.modules.memberships.models import Membership\nx = Membership\n", "Membership"
+    )
+    assert not nombra("x = 'Membership'\n", "Membership")
+    assert con_isolation_level("create_async_engine(u, isolation_level='SERIALIZABLE')\n") == [1]

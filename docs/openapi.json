@@ -981,6 +981,16 @@
             "title": "Db",
             "type": "string"
           },
+          "migrations": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "mismatch",
+              "unknown"
+            ],
+            "title": "Migrations",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "ok",

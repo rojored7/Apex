@@ -1,0 +1,116 @@
+# Release de APEX (S4B-B4, US-119; S4B-D43, D44, D46, D67, D78, D81).
+#
+# Se dispara SOLO al subir una etiqueta vX.Y.Z. La etiqueta la crea una persona (S4B-D81): este
+# flujo no crea etiquetas, no sube imágenes a ningún registro y no publica el Release; deja un
+# borrador para que otra persona lo revise y lo publique. El despliegue se construye en el
+# servidor (infra/deploy.sh), así que aquí no hay registro de imágenes.
+#
+# Permisos mínimos (S4B-D67): lectura en todo el flujo; el único permiso de escritura va en el
+# job `draft`, que no ejecuta código del repositorio salvo `git archive` y el CHANGELOG.
+#
+# Máscaras (S4B-D78): scripts/ci/prod-smoke.sh genera sus contraseñas y llaves y las enmascara con
+# ::add-mask:: ANTES de escribirlas en cualquier archivo; este flujo no maneja secretos propios.
+#
+# Toda acción va fijada por el SHA de su commit (versión en el comentario; mismas que ci.yml).
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: la etiqueta tiene forma vX.Y.Z y su commit está en main
+        # El nombre de la etiqueta llega por entorno, nunca interpolado en el script. Los pasos
+        # siguientes solo corren si este pasó, y solo entonces usan la etiqueta ya validada.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::la etiqueta '$TAG' no tiene forma vX.Y.Z"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::el commit de $TAG no está en main: la CI de main debe precederla (S4B-D81)"; exit 1; }
+      - name: versión de la etiqueta contra pyproject.toml, package.json y CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash scripts/ci/check-release-version.sh --check "$TAG"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: contrato, tipos y NOTICE al día
+        run: |
+          (cd api && uv sync --frozen && uv run python -m app.cli export-openapi ../docs/openapi.json)
+          git diff --exit-code docs/openapi.json
+          (cd web && npm ci && npm run gen:api)
+          git diff --exit-code web/src/core/api/types.ts
+          bash scripts/ci/notice.sh
+          git diff --exit-code NOTICE
+      - name: construir las tres imágenes con la etiqueta como versión
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          cp .env.example .env
+          cp .env.ops.example .env.ops
+          GIT_SHA="$TAG" docker compose --env-file .env --env-file .env.ops -f infra/compose.yml build
+          rm -f .env .env.ops
+      - name: humo de producción (apex-smoke, deploy_e2e incluido)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: GIT_SHA="$TAG" CI=1 bash scripts/ci/prod-smoke.sh --no-build
+      - name: bajar el stack del humo
+        if: always()
+        run: |
+          docker compose -p apex-smoke ps -a || true
+          docker compose -p apex-smoke down -v --remove-orphans || true
+
+  draft:
+    name: draft
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: fuentes, notas y Release en borrador
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::etiqueta inválida"; exit 1; }
+          version="${TAG#v}"
+          git archive --format=tar.gz --prefix="apex-$TAG/" -o "apex-$TAG.tar.gz" "$GITHUB_SHA"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { dentro = 1; next }
+            dentro && /^## \[/ { exit }
+            dentro { print }
+          ' CHANGELOG.md > notas.md
+          [ -s notas.md ] || { echo "::error::CHANGELOG.md no tiene sección para $version"; exit 1; }
+          gh release create "$TAG" --draft --verify-tag --title "APEX $TAG" --notes-file notas.md \
+            "apex-$TAG.tar.gz" docs/openapi.json NOTICE

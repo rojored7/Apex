@@ -4,6 +4,15 @@
 # sigue en verde y no hay respaldos sin cifrar).
 set -euo pipefail
 
+# Con argumentos (docker compose run --rm backup /opt/backup/run.sh --prefix pre-deploy, S4B-B4) ejecuta
+# ese script en lugar del cron. Solo los dos scripts de la imagen; cualquier otra cosa se rechaza.
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    /opt/backup/run.sh | /opt/backup/restore.sh) exec "$@" ;;
+    *) echo "entrypoint: ERROR solo se admite /opt/backup/run.sh o /opt/backup/restore.sh" >&2; exit 2 ;;
+  esac
+fi
+
 CRON="${BACKUP_CRON:-0 2 * * *}"
 if ! [[ "$CRON" =~ ^[0-9*/,-]+\ [0-9*/,-]+\ [0-9*/,-]+\ [0-9*/,-]+\ [0-9*/,-]+$ ]]; then
   echo "entrypoint: ERROR BACKUP_CRON inválido (cinco campos cron)" >&2

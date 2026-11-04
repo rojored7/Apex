@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# curl FALSO (sondeo de /health de deploy.sh). Imprime $FAKE_CURL_BODY y sale con $FAKE_CURL_RC (0).
+printf '%s\n' "$*" >> "${FAKE_CURL_LOG:-/dev/null}"
+printf '%s\n' "${FAKE_CURL_BODY:-{\"status\":\"ok\",\"db\":\"ok\",\"migrations\":\"ok\",\"version\":\"v0.1.0\"\}}"
+exit "${FAKE_CURL_RC:-0}"

@@ -2,7 +2,7 @@
 
 Sistema web para administrar un gimnasio de CrossFit en Colombia: socios, planes, membresías, pagos, vencimientos, avisos, clases, WODs, resultados y perfil del atleta. Repositorio privado.
 
-Estado al 22 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado y los Sprints 0 (cimientos) y 1 (auditoría, bus de criptografía y seguridad de plataforma) están fusionados en `main`. El Sprint 2 (identidad, configuración, socios y planes; `docs/ddd/09_sprint_plan/SPRINT-02.md`) está en cierre en la rama `feat/sprint-02-identidad-config-socios-planes`: sus 18 slices (B1 a B9 y F1 a F8) tienen checkpoint y entregan login con refresh por cookie y límites de intentos, usuarios del equipo con activación y recuperación por enlace, configuración del gimnasio, alta y búsqueda de socios con los datos personales cifrados, y alta y lista de planes. La validación V2 a V9 está en verde y la revisión de Fase 4 corrige lo que encontró antes del push, el PR y el merge. La evidencia está en `docs/scratch/sprint-00.md`, `sprint-01.md`, `sprint-01-front.md`, `sprint-02.md` y `sprint-02-front.md`.
+Estado: versión 0.1.0, en cierre del Sprint 4B (continuidad operativa y release). Los Sprints 0 a 4A están en `main`; el 4B entrega respaldo cifrado y firmado, restauración, rotación de llave, roles de base separados, `/health` con `backup` y `migrations`, y el despliegue con `infra/deploy.sh`. Qué trae cada versión: `CHANGELOG.md`. Evidencia por sprint: `docs/scratch/`. El despliegue de v0.1 es de LAN sin TLS (riesgo aceptado P7); el TLS llega en v0.2. Licencia propietaria (`LICENSE`).
 
 ## Qué hay en el repositorio y en qué orden leerlo
 
@@ -20,6 +20,14 @@ Estado al 22 de octubre de 2026: el plan de trabajo (`docs/ddd/`) está aprobado
 5. `docs/BRECHAS.md`. Análisis cruzado entre el diseño y el plan del backend, con cada brecha marcada como resuelta y la decisión que la cierra.
 6. `docs/scratch/`. Cuadernos de trabajo por sprint (línea base del entorno, evidencia de gates manuales, desviaciones).
 7. `_entregas/`. El material original tal como llegó. Se conserva como respaldo; no se usa ni se edita.
+
+## Mapa de `docs/`
+
+- `docs/ddd/`: plan de trabajo aprobado, decisiones (`DECISIONES.md`) y sprints.
+- `docs/adr/`: decisiones de arquitectura (ADR-001 monolito modular, ADR-002 criptografía, ADR-003 pagos inmutables, ADR-004 serialización canónica de la auditoría).
+- `docs/operacion/`: guías para quien opera el servidor: `instalar-en-servidor.md`, `actualizar.md`, `respaldo-y-restauracion.md`, `rotar-llave.md`, `importar-socios.md`, `demo.md`.
+- `docs/RUNBOOK.md`: procedimientos y diagnóstico por tema (sesión y límites, worker, auditoría, respaldo, despliegue y rollback en la sección 12).
+- `docs/design/`: diseño aprobado del front. `docs/openapi.json`: contrato del API.
 
 ## Estructura
 

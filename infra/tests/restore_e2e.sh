@@ -79,7 +79,10 @@ en_backup() { MSYS_NO_PATHCONV=1 docker run --rm -v "$BACKUPS_VOL:/data/backups"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/restore-e2e.XXXXXX")"
 CLAVES="$WORK/claves"; SALIDA="$WORK/salida"; PY="$WORK/py"
 mkdir -p "$CLAVES" "$SALIDA" "$PY"
-chmod 777 "$SALIDA"
+# El contenedor corre como uid 10001 y el umask heredado (077) deja estas carpetas en 700: se abren a
+# 755 (traspasar y leer) y a 777 donde el contenedor escribe. Son efimeras y viven bajo $TMPDIR.
+chmod 755 "$WORK" "$PY"
+chmod 777 "$SALIDA" "$CLAVES"
 limpiar() {
   psqlx -d postgres -c "DROP DATABASE IF EXISTS $RESTORE_DB" > /dev/null 2>&1 || true
   en_backup 'rm -f /data/backups/e2e-* /data/backups/pre-restore-* /data/backups/latest.json /data/backups/latest.json.minisig /data/backups/apex-*' > /dev/null 2>&1 || true
@@ -257,7 +260,14 @@ ARGS=(/data/backups/latest.json -i /k/id.txt -P /k/sign.pub --confirm-database "
 en_backup 'cp /data/backups/latest.json /data/backups/e2e-sin-firma.json'
 restore_sh /data/backups/e2e-sin-firma.json -i /k/id.txt -P /k/sign.pub --confirm-database "$RESTORE_DB"
 [ "$RC" = 2 ] && ok "manifiesto sin firma: sale 2" || falla "manifiesto sin firma: salió $RC"
-en_backup 'sed "s/\"verify\": \"skipped\"/\"verify\": \"ok\"/" /data/backups/latest.json > /data/backups/e2e-alterado.json; cp /data/backups/latest.json.minisig /data/backups/e2e-alterado.json.minisig'
+# El manifiesto se altera SIEMPRE (un espacio al final de cada linea), sin depender de su contenido, y se
+# comprueba con minisign que la firma dejo de valer antes de seguir.
+en_backup 'sed "s/$/ /" /data/backups/latest.json > /data/backups/e2e-alterado.json; cp /data/backups/latest.json.minisig /data/backups/e2e-alterado.json.minisig'
+if en_backup 'minisign -V -p /k/sign.pub -m /data/backups/e2e-alterado.json -x /data/backups/e2e-alterado.json.minisig' > /dev/null 2>&1; then
+  falla "el manifiesto alterado conserva una firma valida (la prueba no prueba nada)"
+else
+  ok "el manifiesto alterado ya no verifica con minisign"
+fi
 restore_sh /data/backups/e2e-alterado.json -i /k/id.txt -P /k/sign.pub --confirm-database "$RESTORE_DB"
 [ "$RC" = 2 ] && ok "firma inválida: sale 2" || falla "firma inválida: salió $RC"
 restore_sh /data/backups/latest.json -i /k/id.txt --confirm-database "$RESTORE_DB"

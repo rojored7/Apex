@@ -276,3 +276,20 @@ Todos corren en cada gate de slice (A-5).
 | N-6 y N-7 | Operador | `instalar-en-servidor.md`; no bloquean la etiqueta | B4 |
 
 > **S4B-B2 (Verde):** `backup_check`, `JobResult.status`, `core/backup_status.py`, caché y `backup` en `/health` implementados; forma final en `DECISIONES.md`, «S4B-B2» (S4B-D114 y D115 nuevas); RUNBOOK §12 «Verificación diaria del respaldo».
+
+## Estado parcial (Verde api de B4, 2026-11-03)
+
+Slices sellados y confirmados en `feat/sprint-04b-continuidad-release`, con el commit del checkpoint y el de evidencia:
+
+| Slice | Checkpoint | Evidencia |
+|---|---|---|
+| W0-1 imagen y servicio `backup` | `f35ff39` | `b33e38b` |
+| W0-2 migración `0014` | `f508b73` | `79b31a8` |
+| W0-3 roles de base, entorno por servicio | `bcc1c65` | `d5f3890` |
+| B0 partir el CLI | `cf7a53f` | `1344ac1` |
+| B1 demo e importación | `b8f80dd` | `8023d56` |
+| B2 backup_check y `/health` | `2c6b194` | `701ba45` |
+| B3a respaldo de la KEK y `restore.sh` | `5e4ad47` | `82caed7` |
+| B3b rotación y `retire-key` | `f21faa1` | `e8e1a2c` |
+
+**B4 en curso (sin checkpoint):** hecho el Verde del api y de los documentos de ADR: `core/migrations_status.py` y `migrations` crítico en `/health`, `gc.freeze()` al final del arranque (peor pausa de generación 2 medida: 2,1 ms), ADR-001 a ADR-004 con `docs/adr/README.md`, el vector `chain-hash-vector`, el pase final de `CLAUDE.md` y el contrato (63 operaciones, sin cambio de número). Forma final en `DECISIONES.md`, «S4B-B4 · API y ADR» (S4B-D170 a D178). Faltan: scripts y release (otro Verde: `deploy.sh`, `prod-smoke.sh`, `check-release-version.sh`, `release.yml`, LICENSE, CHANGELOG, README, `docs/operacion/*`, RUNBOOK §12), revisión de `security-reviewer`, `slice-gate.sh main` que sella, `run-gates.sh`, Docker y evidencia (B4.10) y el checkpoint.

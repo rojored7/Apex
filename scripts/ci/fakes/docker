@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# docker FALSO para scripts/ci/test_deploy_script.sh (S4B-B4, S4B-D41). Nunca toca un daemon.
+# Registra cada llamada (argv unido por espacios) en $FAKE_DOCKER_LOG y responde según estas
+# variables de control (todas opcionales):
+#   FAKE_DOCKER_CONFIG_RC     salida de `compose ... config -q` (0)
+#   FAKE_DOCKER_DB_RUNNING    0 = `compose ... ps ... db` no imprime nada (db detenida); 1 por omisión
+#   FAKE_DOCKER_PREDEPLOY     nombre que imprime run.sh (pre-deploy-20261103-120000)
+#   FAKE_DOCKER_BACKUP_RC     salida de `compose ... run ... run.sh --prefix pre-deploy` (0)
+#   FAKE_DOCKER_BACKUP_CHECK_RC  salida de cualquier otro `compose ... run|exec` que NO nombre
+#                             run.sh ni /proc/1/environ: la comprobación de los dos archivos,
+#                             el .minisig y la cabecera age (0)
+#   FAKE_DOCKER_INSPECT_RC    salida de `docker image inspect` (0)
+#   FAKE_DOCKER_REVISION      lo que imprime `image inspect` (la etiqueta OCI revision) (v0.1.0)
+#   FAKE_DOCKER_BUILD_RC / FAKE_DOCKER_UP_RC   salidas de `compose ... build` y `up -d` (0)
+#   FAKE_DOCKER_APP_VERSION   APP_VERSION que imprime la lectura de /proc/1/environ (v0.1.0)
+#   FAKE_DOCKER_DATABASE_URL  DATABASE_URL de esa lectura (rol apex_api); vacío = no la imprime
+# Todo lo demás sale con 0 sin imprimir nada.
+set -u
+log="${FAKE_DOCKER_LOG:-/dev/null}"
+printf '%s\n' "$*" >> "$log"
+all=" $* "
+case "$all" in
+  *" image inspect "*)
+    [ "${FAKE_DOCKER_INSPECT_RC:-0}" = "0" ] || exit "${FAKE_DOCKER_INSPECT_RC}"
+    printf '%s\n' "${FAKE_DOCKER_REVISION:-v0.1.0}"
+    exit 0 ;;
+  *" tag "*) exit 0 ;;
+  *" config -q"*) exit "${FAKE_DOCKER_CONFIG_RC:-0}" ;;
+  *" ps "*" db"*)
+    [ "${FAKE_DOCKER_DB_RUNNING:-1}" = "0" ] || printf 'fakecid-db\n'
+    exit 0 ;;
+  *"run.sh"*)
+    printf 'run.sh: db fake.dump.age 10 bytes; uploads fake.tar.age 10 bytes\n'
+    if [ "${FAKE_DOCKER_BACKUP_RC:-0}" != "0" ]; then
+      printf 'run.sh: ERROR respaldo falso\n' >&2
+      exit "${FAKE_DOCKER_BACKUP_RC}"
+    fi
+    printf 'run.sh: listo %s\n' "${FAKE_DOCKER_PREDEPLOY:-pre-deploy-20261103-120000}"
+    exit 0 ;;
+  *"/proc/1/environ"*)
+    printf 'APP_VERSION=%s\n' "${FAKE_DOCKER_APP_VERSION:-v0.1.0}"
+    [ "${FAKE_DOCKER_DATABASE_URL-x}" = "" ] || printf 'DATABASE_URL=%s\n' "${FAKE_DOCKER_DATABASE_URL:-postgresql+asyncpg://apex_api:x@db:5432/apex}"
+    exit 0 ;;
+  *" run "*|*" exec "*) exit "${FAKE_DOCKER_BACKUP_CHECK_RC:-0}" ;;
+  *" build"*) exit "${FAKE_DOCKER_BUILD_RC:-0}" ;;
+  *" up "*) exit "${FAKE_DOCKER_UP_RC:-0}" ;;
+  *" logs "*) printf 'linea de log falsa 1\nlinea de log falsa 2\n'; [ -z "${FAKE_DOCKER_LOG_EXTRA:-}" ] || printf '%s\n' "$FAKE_DOCKER_LOG_EXTRA"; exit 0 ;;
+esac
+exit 0

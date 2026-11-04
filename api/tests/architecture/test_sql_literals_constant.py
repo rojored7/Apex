@@ -234,3 +234,27 @@ async def f(session, data_class):
 def test_control_el_sql_de_rotacion_armado_en_ejecucion_se_detecta() -> None:
     assert len(hallazgos(MALA_ROTACION, "mala.py")) == 2
     assert hallazgos(BUENA_ROTACION, "buena.py") == []
+
+
+# S4B-B4: SQL de `core/migrations_status.py` (S4B-D60) -----------------------------------------
+
+
+def test_alembic_version_sql_es_constante_de_modulo_y_se_usa_con_text() -> None:
+    from app.core.migrations_status import ALEMBIC_VERSION_SQL
+
+    assert "alembic_version" in ALEMBIC_VERSION_SQL
+    assert ALEMBIC_VERSION_SQL.lstrip().upper().startswith("SELECT")
+    fuente = (SRC / "app" / "core" / "migrations_status.py").read_text(encoding="utf-8")
+    assert "ALEMBIC_VERSION_SQL" in _constantes_de_modulo(ast.parse(fuente))
+    assert hallazgos(fuente, "app/core/migrations_status.py") == []
+    assert "ALEMBIC_VERSION_SQL" in _usos_de_text_con_nombre(fuente)
+
+
+MALA_MIGRACIONES = """
+async def f(conexion, tabla):
+    await conexion.execute(text(f"SELECT version_num FROM {tabla}"))
+"""
+
+
+def test_control_el_sql_de_migraciones_armado_en_ejecucion_se_detecta() -> None:
+    assert len(hallazgos(MALA_MIGRACIONES, "mala.py")) == 1

@@ -16,6 +16,29 @@ Además necesitas, para comprobar que un respaldo es auténtico, la **llave púb
 
 Cada noche el servicio `backup` deja en el volumen `backups` dos archivos cifrados (la base y los uploads) y un manifiesto firmado (`latest.json` y `latest.json.minisig`). Sin `BACKUP_RCLONE_REMOTE`, ese volumen está en el mismo disco que la base: no es un respaldo fuera de la máquina. Copia los archivos a otro sitio.
 
+## Destino remoto: un cubo donde APEX no puede borrar
+
+Si configuras `BACKUP_RCLONE_REMOTE=apex:<cubo>/<ruta>`, el servicio `backup` sube cada juego con
+`rclone copyto --immutable`: **copia un archivo con su nombre exacto y no borra ni reemplaza nada**.
+Ni la retención de APEX ni un servidor comprometido deben poder borrar tus copias, así que la
+credencial de `RCLONE_CONFIG_APEX_ACCESS_KEY_ID` / `RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY` debe tener
+solo permiso para **escribir y listar**, nunca para borrar. Política de ejemplo para un cubo S3 (el
+usuario de `apex` solo puede `PutObject` y `ListBucket`; sin `DeleteObject`, sin `DeleteObjectVersion`):
+
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["s3:PutObject"], "Resource": "arn:aws:s3:::<cubo>/<ruta>/*" },
+    { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": "arn:aws:s3:::<cubo>" }
+  ]
+}
+```
+
+Activa además el versionado del cubo y una regla de ciclo de vida del proveedor para expirar copias
+viejas: la limpieza la hace el proveedor, no APEX. Si tu proveedor no es S3, aplica lo mismo: solo
+escritura y listado. Una credencial con permiso de borrado anula la razón de tener la copia remota.
+
 ## Hacer el respaldo de la KEK (una vez, y tras cada cambio de KEK)
 
 Desde la raíz del repositorio, con una terminal interactiva (no sirve por tubería ni desde un script sin terminal):

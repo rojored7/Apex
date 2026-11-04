@@ -6,8 +6,8 @@
 # postgres:16-alpine por digest (2026-10-29, S3-D62); renovar (docs/RUNBOOK.md §7):
 # docker buildx imagetools inspect postgres:16-alpine --format '{{json .Manifest.Digest}}'
 FROM postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
-# Versiones verificadas en Alpine 3.24.3 el 2026-10-29: apk policy age minisign rclone supercronic
-RUN apk add --no-cache age=1.3.2-r1 rclone=1.74.1-r3 supercronic=0.2.49-r1 minisign=0.12-r2 tzdata \
+# Versiones verificadas en Alpine 3.24.3 el 2026-11-04 (rclone renovado; test_backup_apk_pins.sh lo vigila): apk policy age minisign rclone supercronic
+RUN apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 supercronic=0.2.49-r1 minisign=0.12-r2 tzdata \
     && addgroup -g 10001 apex \
     && adduser -D -u 10001 -G apex apex \
     && mkdir -p /data/backups /opt/backup /run/apex/backup \

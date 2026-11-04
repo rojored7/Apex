@@ -1216,6 +1216,12 @@ export interface components {
              */
             db: "ok" | "down" | "unknown";
             /**
+             * Migrations
+             * @default unknown
+             * @enum {string}
+             */
+            migrations: "ok" | "mismatch" | "unknown";
+            /**
              * Status
              * @enum {string}
              */

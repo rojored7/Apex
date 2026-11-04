@@ -280,6 +280,8 @@ jobs:
         run: |
           bash scripts/ci/check-image-secrets.sh apex-backup:ci
           bash scripts/ci/test_infra_scripts.sh
+          # S4B-D190: los pins de apk existen hoy en el indice de Alpine (el cache de buildx ocultaba un pin muerto).
+          bash scripts/ci/test_backup_apk_pins.sh
       - name: build web
         if: steps.img.outputs.web == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -455,6 +457,28 @@ jobs:
           $DC down -v --remove-orphans
           rm -f .env.seed
 
+  prod-smoke:
+    # S4B-B4 (S4B-D46, D100): el stack como en producción (apex-smoke): migrate y dbsetup, api como
+    # apex_api, init-keys, seed y seed --demo, respaldo manual, backup_check, /health con backup y
+    # migrations en ok, test_db_roles.sh, test_env_isolation.sh, deploy_e2e.sh y restore_e2e.sh.
+    # Construye las imágenes él mismo (las del job images no se comparten entre jobs).
+    name: prod-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: [images]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: humo de producción (apex-smoke)
+        env:
+          CI: "1"
+        run: bash scripts/ci/prod-smoke.sh
+      - name: logs del stack
+        if: failure()
+        run: docker compose -p apex-smoke logs --tail 200 || true
+      - name: bajar el stack
+        if: always()
+        run: docker compose -p apex-smoke down -v --remove-orphans || true
+
   scripts:
     name: scripts
     runs-on: ubuntu-24.04
@@ -467,6 +491,11 @@ jobs:
         run: bash scripts/ci/test_images_pinned.sh
       - name: scripts de respaldo (S4B-W0-1)
         run: bash scripts/ci/test_infra_scripts.sh
+      - name: despliegue y versión del release (S4B-B4)
+        run: |
+          bash scripts/ci/test_deploy_script.sh
+          bash scripts/ci/test_check_release_version.sh
+          bash scripts/ci/check-release-version.sh --check v0.1.0
 
   secrets-scan:
     # US-039: gitleaks (MIT) sobre todo el historial del PR con .gitleaks.toml.

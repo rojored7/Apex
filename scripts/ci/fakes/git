@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# git FALSO para scripts/ci/test_deploy_script.sh (S4B-B4, S4B-D67). Nunca toca un repositorio.
+# Registra argv en $FAKE_GIT_LOG. Variables de control (opcionales):
+#   FAKE_GIT_REV        lo que imprime `rev-parse <ref>^{commit}` y `rev-parse HEAD` (vacío = falla)
+#   FAKE_GIT_PORCELAIN  lo que imprime `status --porcelain` (vacío = árbol limpio)
+#   FAKE_GIT_FETCH_RC   salida de `fetch` (0)
+#   FAKE_GIT_VERIFY_RC  salida de `verify-tag` (0)
+#   FAKE_GIT_TRACKED    nombres separados por espacio que `ls-files --error-unmatch` considera rastreados
+# `push` sale con 97 (la prueba afirma que nunca se llama). Todo lo demás sale con 0.
+set -u
+printf '%s\n' "$*" >> "${FAKE_GIT_LOG:-/dev/null}"
+case "${1:-}" in
+  push) echo "git falso: push no permitido" >&2; exit 97 ;;
+  fetch) exit "${FAKE_GIT_FETCH_RC:-0}" ;;
+  rev-parse)
+    case "$*" in
+      *--show-toplevel*) pwd; exit 0 ;;
+    esac
+    [ -n "${FAKE_GIT_REV:-}" ] || exit 128
+    printf '%s\n' "$FAKE_GIT_REV"; exit 0 ;;
+  status) [ -z "${FAKE_GIT_PORCELAIN:-}" ] || printf '%s\n' "$FAKE_GIT_PORCELAIN"; exit 0 ;;
+  verify-tag) exit "${FAKE_GIT_VERIFY_RC:-0}" ;;
+  ls-files)
+    nombre="${*: -1}"
+    for t in ${FAKE_GIT_TRACKED:-}; do [ "$t" = "$nombre" ] && exit 0; done
+    exit 1 ;;
+esac
+exit 0

@@ -42,6 +42,14 @@ assert_exit 0 "test_infra_scripts en verde" bash "$RUN"
 assert_log_has "script test_infra_scripts"
 printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_infra_scripts.sh
 assert_nonzero "test_infra_scripts en rojo falla" bash "$RUN"
+# S4B-D94 (B4): test_deploy_script corre y un fallo detiene la suite.
+rm -f scripts/ci/test_infra_scripts.sh
+printf '#!/usr/bin/env bash\necho "script test_deploy_script" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/test_deploy_script.sh
+clear_log
+assert_exit 0 "test_deploy_script en verde" bash "$RUN"
+assert_log_has "script test_deploy_script"
+printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_deploy_script.sh
+assert_nonzero "test_deploy_script en rojo falla" bash "$RUN"
 rm -rf scripts
 
 # Con uv que falla en la cobertura termina distinto de 0.

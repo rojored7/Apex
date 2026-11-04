@@ -498,3 +498,145 @@ Las 12, por escrito, en DECISIONES, bloque "S4B-B3b" (primer párrafo). Decision
 - `members.service.reveal` de `document` sobre los 265 socios con v1 retirada: 265 ok, 0 fallos, 0 vacíos.
 - `crypto_ops`: 106 filas agrupadas de `encrypt`/`decrypt` con `batch_id`, 2 lotes distintos (la corrida interrumpida y la reanudada); `rotate` = 2 filas (rotación y retiro).
 - `DROP DATABASE apex_rehearsal`: la base ya no existe. `apex-db-1`: las cinco llaves `encrypt` siguen en v1 `active`, `crypto_jobs` = 0 filas, `crypto_ops` con `rotate` = 0.
+
+
+## S4B-B4 · Rojo scripts
+
+### Linea base
+
+`git status --short` vacio al empezar (HEAD e8e1a2c). `bash scripts/ci/test_infra_scripts.sh`: infra/backup/tests 4 de 4 archivos en verde (test_lib 13, test_manifest 73, test_restore_guard 42, test_scripts_static 64 ok), 0 fallas, 31 s.
+
+### Archivos creados o ampliados
+
+Stubs: `infra/deploy.sh` y `scripts/ci/prod-smoke.sh` y `scripts/ci/check-release-version.sh` (salida 99), `infra/tests/deploy_e2e.sh` (Rojo documental, salida 99), `.github/workflows/release.yml` (YAML valido, job verify con `exit 99`), `LICENSE`, `CHANGELOG.md` (`## [0.1.0]` vacio), `docs/operacion/{instalar-en-servidor,actualizar}.md` ("Pendiente B4.6"). `README.md` NO se toco (ya existe; lo reescribe el Verde en B4.6).
+Falsos: `scripts/ci/fakes/{docker,git,curl,sleep,stat}` (los tres ultimos son adicion del Rojo: el sondeo de /health usa curl, la espera usa sleep y el modo/propietario usan `stat -c`, que en Windows no es fiable).
+Pruebas: `scripts/ci/test_deploy_script.sh` (141 aserciones), `scripts/ci/test_check_release_version.sh` (18), `infra/backup/tests/test_scripts_static.sh` ampliado (70), `scripts/ci/test_infra_scripts.sh` registra los dos arneses nuevos y ahora FALLA si falta alguno.
+
+### Conteo en rojo
+
+- `test_deploy_script.sh`: 62 ok, 79 fallas. Las 79 son aserciones reales (`esperado 2, obtenido 99` y contenidos ausentes). Los 62 ok son negativas que el stub cumple por no hacer nada (sin push, sin down -v, sin docker, etc.).
+- `test_check_release_version.sh`: 2 ok, 16 fallas (obtenido 99; ademas "nombra el archivo" y el caso contra el repo real).
+- `test_scripts_static.sh`: 16 fallas (12 de contenido de deploy.sh, 4 de prod-smoke.sh), el resto ok. Las de contenido pasan a verde cuando el Verde escriba los scripts.
+- `test_infra_scripts.sh`: 3 fallas (los tres anteriores); test_lib, test_manifest y test_restore_guard siguen en verde.
+- `bash -n` limpio en los 14 scripts nuevos o tocados. `release.yml` valida como YAML (`uv run python` con yaml).
+
+### Contrato de deploy.sh (el detalle esta en el encabezado de test_deploy_script.sh)
+
+- Salidas: 0 ok; 2 uso o preverificacion (solo `compose ... config -q` permitido a docker); 1 fallo de salud; respaldo, build y up distinto de 0.
+- Falsos controlados por `FAKE_DOCKER_*` (LOG, CONFIG_RC, DB_RUNNING, BACKUP_RC, BACKUP_CHECK_RC, INSPECT_RC, REVISION, BUILD_RC, UP_RC, APP_VERSION, PREDEPLOY), `FAKE_GIT_*` (LOG, REV, PORCELAIN, FETCH_RC, VERIFY_RC, TRACKED), `FAKE_CURL_*` (LOG, BODY, RC), `FAKE_STAT_MODE`, `FAKE_STAT_UID`, `FAKE_SLEEP_LOG`.
+- Variables de deploy.sh: `DEPLOY_NOW` (AAAAMMDD-HHMMSS, solo pruebas), `DEPLOY_STATE_DIR`, `DEPLOY_HEALTH_TIMEOUT`, `DEPLOY_SKIP_BUILD`, `WEB_PORT` (de .env.ops).
+- `deploy-<fecha>.state.json` sin jq con claves `ref`, `sha`, `prev_tag`, `manifest`, `images`; `rollback-<fecha>.txt` con las tres etiquetas `apex-{api,web,backup}:prev-<fecha>`, `pre-deploy-<ts>.json` y "este script no restaura la base", sin PASSWORD/SECRET/AGE-SECRET.
+
+### Dudas y desviaciones (para el Verde)
+
+1. DEPLOY_STATE_DIR por omision debe quedar FUERA del repo (si no, el siguiente despliegue vera el arbol sucio). El plan no lo fija; propongo `${XDG_STATE_HOME:-$HOME/.local/state}/apex-deploy`. En el smoke se pasa `docs/scratch/ensayo/smoke/`.
+2. Añadidos al contrato que el plan no decia: `--ref` con forma `vX.Y.Z` (rechaza `main`), `--expect-sha` de 40 hex, `--i-know-unsigned-ref` salta una verificacion fallida de `verify-tag` (solo si existe allowed_signers), `--i-know-no-backup` tampoco exige BACKUP_AGE_RECIPIENT ni BACKUP_SIGN_PUBKEY, db detenida sale con 2, `stat -c %a` <= 600 y `stat -c %u` == `id -u`, `.env` y `.env.ops` no rastreados via `git ls-files --error-unmatch`.
+3. Las comprobaciones estaticas "deploy.sh sin push/pull/jq/..." miran TODO el archivo, comentarios incluidos: no escribir esas palabras ni en comentarios (usar "subir"/"bajar").
+4. La comprobacion de los dos archivos, el .minisig y la cabecera age debe ser un `compose ... run|exec` que NO nombre run.sh (el falso lo distingue asi). La lectura de /proc/1/environ debe llevar esa cadena literal en el comando.
+5. La lectura de la etiqueta OCI debe usar `docker image inspect` (no `docker inspect`).
+6. `check-release-version.sh`: 0/1/2 como en el encabezado de su arnes; el arnes incluye un caso contra el repo real (`--check v0.1.0`), que pasa en verde porque `pyproject.toml`, `package.json` y el stub de CHANGELOG ya dicen 0.1.0. No debe invocar git, curl ni wget.
+7. `test_scripts_static.sh` detecta si corre dentro de apex-backup:local (sin `infra/compose.yml`) y entonces omite deploy.sh, prod-smoke.sh e infra/tests. `infra/tests/restore_e2e.sh` pasa la revision de `set -x`; el patron de "echo de secretos" para esos archivos excluye redirecciones (`>`) porque restore_e2e escribe PGPASSWORD en un env-file.
+8. `run-gates.sh` no se toco (lo suma el Verde, S4B-D94). `ci.yml` tampoco (paso 82).
+9. Los falsos no llevan bit +x en Windows: el arnes los copia a un directorio temporal y les hace chmod +x. En el indice de git quedaran con modo 644; no importa porque nadie los invoca directamente.
+
+## S4B-B4 · Rojo api
+
+Linea base (HEAD e8e1a2c, arbol limpio): `pytest tests/core tests/architecture -m "not perf"` = 1194 passed, 1 skipped.
+
+Stubs: `core/migrations_status.py` (`ALEMBIC_VERSION_SQL` constante, `configure_migrations`, `migrations_health`: NotImplementedError), `HealthOut.migrations` (default unknown), `tests/core/_health_mig.py` (`apex_health_mig` real: crea y borra `apex_health_mig`, verificado que no queda ninguna base), ADR-001/003/004 con encabezado y seis secciones vacias (ADR-004 con bloque `chain-hash-vector` vacio). `main.py` NO se toco: registrar el check critico con el stub pondria 503 en todas las pruebas de `/health`. `docs/adr/README.md` tampoco (su prueba exige los cuatro nombres y la plantilla).
+
+Conteo en rojo (tras: 23 failed, 1208 passed, 1 skipped):
+- `test_health_migrations.py`: 13 rojas de 14 (aserciones: `unknown == ok`, `200 == 503`, "main.py no registra el check migrations", NotImplementedError directo). Verde al llegar: `test_el_lifespan_con_migracion_rota...` (ya cubierto desde W0-3, se repite por el ciclo).
+- `test_chain_hash_vector.py`: 4 rojas (bloque vacio); pasa el control negativo.
+- `test_adr_docs.py`: 4 rojas (secciones vacias o ausentes en ADR-002, frase, citas, README); pasan nombres exactos y los controles.
+- `test_sql_literals_constant.py`: 1 roja (`ALEMBIC_VERSION_SQL` no se usa con `text(...)`).
+- `test_core_import_direction.py`: 0 rojas (el stub ya cumple; vigila al Verde) + control negativo.
+- `test_health.py`: 4 pruebas nuevas, todas verdes al llegar (el campo `migrations` ya esta en `HealthOut`; caracterizan el comportamiento generico de `healthy`).
+- `test_gc_after_startup.py` (perf): colecciona 2; solo se corrio la de congelamiento: roja por `377 > 377`. La de 100.000 filas no se corrio.
+- `test_openapi_export.py` (existente): ROJA por consecuencia del stub (`docs/openapi.json` desactualizado por `HealthOut.migrations`). Se cierra en P-API (paso 83); no se regenero.
+- `test_no_create_all`, `test_error_codes_per_route`, `test_routes_under_api_v1`, `PUBLIC_ROUTES`: sin cambio y verdes.
+- ruff check/format y mypy src limpios.
+
+Dudas y desviaciones para el Verde:
+1. `gc.freeze()` va al final de `_startup`, que solo corre con el lifespan; la prueba (plan: "tras create_app") abre el lifespan. Si otro plugin deja objetos congelados, la base no es 0 (377 aqui): se compara contra el conteo previo.
+2. `create_app` (no el lifespan) debe llamar `configure_migrations` y registrar el check: las pruebas de `/health` usan `ASGITransport` sin lifespan. `head` y `known` salen de `ScriptDirectory.from_config(alembic_config(settings, migrations_script_location))`.
+3. Formato del bloque `chain-hash-vector` (JSON con `prev_hash`, `row`, `hash`) esta en el docstring de `test_chain_hash_vector.py`; `row` incluye todas las `HASHED_KEYS`.
+4. "Como se verifica" debe citar rutas `tests/...py` (con o sin prefijo `api/`) y cada seccion minimo 20 caracteres; encabezados `## Estado` ... (admite prefijo numerico); frase "detenerse y preguntar".
+5. La fixture migra con `alembic_config_for(url)` (sqlalchemy.url) y no con `-x url`; equivalente.
+6. `FrozenClock.advance` no admite segundos: la prueba de caja usa `reloj.set(T0 + timedelta(...))`.
+
+## S4B-B4 · Verde api
+
+Archivos: `core/migrations_status.py` (implementado), `main.py` (`_register_health_checks`, `gc.freeze()` al final de `_startup`), `docs/adr/ADR-001..004` y `README.md`, `tests/core/test_migrations_status_unit.py` (nuevo, 6 pruebas), `tests/core/test_gc_after_startup.py` (corregida), `docs/openapi.json`, `web/src/core/api/types.ts`, `CLAUDE.md`, `SPRINT-04B.md` (estado parcial), `DECISIONES.md` (S4B-D170 a D178).
+
+Conteo en verde: `test_health_migrations.py` 14/14, `test_migrations_status_unit.py` 7/7 (6 funciones, una parametrizada), `test_health.py` y `test_chain_hash_vector.py` y `test_env_example.py` y `test_startup_failure.py` y `test_openapi_export.py` 75/75 juntos, `test_adr_docs.py` + `test_chain_hash_vector.py` 15/15, `test_core_import_direction`, `test_sql_literals_constant`, `test_health_check_registrars` verdes (76 con los dos primeros). `tests/core tests/architecture tests/cli -m "not perf"`: 1567 passed, 22 skipped (age real y pty solo en Linux, enlaces simbólicos sin privilegios), 4 deselected. Perf: 2/2 verdes. Gates no sellantes: `slice-gate.sh core/migrations_status ...` 547 passed; `slice-gate.sh architecture ...` 533 passed (el sello de `.git/apex` lo reescribe el gate final de `main`). ruff check y format limpios (595 archivos), mypy strict 151 archivos limpio. Cobertura de `core/migrations_status.py`: 100 % (42 sentencias, 6 ramas).
+
+Medida de la perf (`pytest -m perf tests/core/test_gc_after_startup.py -s`, sola, sin cov): "20 verificaciones de 100000 filas: peor pausa gen 2 2.1 ms" (tope 100 ms; sin plan B). Congelamiento: `gc.get_freeze_count()` sube tras el lifespan.
+
+Contrato (P-API): `export-openapi` dos veces idéntico (`cmp`), +10 líneas en `openapi.json`, +6 en `types.ts`, 63 operaciones, `types.contract.test.ts` 5/5, `test_openapi_export.py` 6/6.
+
+Desviaciones del Verde (resueltas por escrito en DECISIONES):
+1. La `perf` de 100.000 filas del Rojo nunca había corrido y estaba mal armada: la primera petición daba 202 porque el usuario y cada verificación suman filas sobre el tope síncrono de 100.000 (`SYNC_VERIFY_MAX_ROWS`); se llena hasta 100.000 - 300 - `last_seq()` (S4B-D173).
+2. El reloj de esa prueba avanzaba 1 minuto por petición y la 16.ª daba 401 `token_expired` (token de 15 min): ahora 21 s (S4B-D173).
+3. El log de `migrations` distingue `behind` y `unknown_revision`, no `ahead`: con `known` no se puede (S4B-D170).
+4. `_register_health_checks` extraído de `create_app` por el tope de 50 líneas (S4B-D171).
+5. ADR-002 reestructurado: las secciones 1 a 3 pasan a subsecciones de "Decisión" (S4B-D175).
+6. Rojo 5 y 6 aceptadas (S4B-D176). Un `rm` de un temporal mío fue bloqueado por el guardián del arnés; no se ejecutó y no dejó nada.
+
+Pendiente: `security-reviewer`, sello `slice-gate.sh main ...`, `run-gates.sh`, B4.10 y checkpoint (los hace quien orquesta, tras el otro Verde).
+
+
+## S4B-B4 · Verde scripts
+
+Conteos (host Windows, falsos de `scripts/ci/fakes`): `test_deploy_script.sh` 141 ok, 0 fallas (Rojo: 62 ok, 79 fallas); `test_check_release_version.sh` 18 ok, 0 fallas; `test_infra_scripts.sh` 0 fallas (infra/backup/tests 4 de 4: test_lib 13, test_manifest 73, test_restore_guard 42, test_scripts_static 70); `scripts/workflow/tests/test_run_gates.sh` 25 ok, 0 fallas (caso nuevo de `test_deploy_script`); `bash -n` limpio en todos los `.sh` nuevos o tocados y en los falsos; `ci.yml` y `release.yml` validan como YAML; `check-release-version.sh --check v0.1.0` sale 0; `AGE-SECRET-KEY-` en `prod-smoke.sh` solo dentro de `::add-mask::`, en `release.yml` ninguna.
+
+Archivos: `infra/deploy.sh`, `infra/tests/deploy_e2e.sh`, `scripts/ci/{prod-smoke,check-release-version}.sh`, `.github/workflows/{release,ci}.yml`, `infra/backup/entrypoint.sh`, `scripts/workflow/run-gates.sh` y su prueba, `LICENSE`, `CHANGELOG.md`, `README.md`, `docs/operacion/{instalar-en-servidor,actualizar,respaldo-y-restauracion}.md`, `docs/RUNBOOK.md` (solo la sección 12), `docs/ddd/DECISIONES.md` (S4B-D154 a D168).
+
+Desviaciones del Rojo, resueltas (detalle en DECISIONES):
+1. `DEPLOY_STATE_DIR` por omisión fuera del repo (aceptada, D157). 2. Contrato ampliado (`vX.Y.Z`, 40 hex, `--kek-file` siempre obligatorio, db detenida 2, modo sin bits de grupo/otros/ejecución, propietario, no rastreados, `ENV=production`; D158). 3. Sin palabras prohibidas ni en comentarios (D159). 4 y 5. Comprobación del respaldo en otro `compose run` y `image inspect` para la etiqueta OCI (D160). 6. `check-release-version.sh` sin git/curl/wget (D162). 7 y 8: sin cambio.
+Desviaciones nuevas del Verde: (a) `infra/backup/entrypoint.sh` ignoraba los argumentos y arrancaba `supercronic`; ahora ejecuta `run.sh` o `restore.sh` si se los pasan (D161); una imagen `backup` previa a B4 hay que reconstruirla. (b) `DEPLOY_COMPOSE_EXTRA` para `compose.verify.yml` (D165). (c) El fake `curl` con `FAKE_CURL_BODY=""` imprime el cuerpo por omisión y sale 7: `deploy.sh` trata `curl` fallido como no sano. (d) `release.yml` no tiene secretos propios; `::add-mask::` solo aparece en un comentario que remite a `prod-smoke.sh`. (e) `deploy_e2e.sh` usa un repositorio temporal con la etiqueta `v99.0.0` (D166). (f) Límite: `stat -c %a` en NTFS (D168).
+
+Sin ejecutar (a propósito, B4.10): `prod-smoke.sh`, `deploy_e2e.sh` y `deploy.sh` reales; el orquestador de Compose (`COMPOSE_PROJECT_NAME` frente a `name: apex`, `compose run` del entrypoint nuevo, `minisign -V -P` dentro de la comprobación, quoting de `${sufijo//./\.}` en `deploy_e2e.sh`) solo tiene `bash -n`.
+- Corrección de la revisión de seguridad (LOW, S4B-D179): `gc.collect()` antes de `gc.freeze()` en `_startup`; la prueba de congelamiento espía el orden. Se repiten ambos `slice-gate.sh`, la prueba `perf -k congel`, ruff y mypy.
+
+
+## S4B-B4 · Revisiones (scripts)
+
+security-reviewer de B4 sobre los scripts: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 8 LOW (más 3 LOW extra). Todo corregido, con prueba en `test_deploy_script.sh` (141 -> 190 ok, 0 fallas) y `test_scripts_static.sh` (73 ok). Estado: M1 corregido (S4B-D180), M2 corregido (D181), L3 (D182), L4 (D183), L5 (D184), L6 (D185), L7 (D186), L8 (D187), L9 (D188), extras (D189). Los casos nuevos se escribieron junto con el cambio y pasaron a la primera: no se capturó el rojo previo por separado. Los arneses `test_check_release_version` (18), `test_infra_scripts` (0 fallas), `test_run_gates` (25) y el YAML de `ci.yml` y `release.yml` siguen en verde; `bash -n` limpio. Sin sello ni checkpoint (pendientes de B4.10).
+
+Pendientes del Verde, corregidos tras la revisión: (1) `prod-smoke.sh` fabrica la copia de la KEK con `age -p` real (32 bytes aleatorios, frase efímera enmascarada, pty en la imagen `apex-api` con `scripts/ci/prod-smoke-pty.py`, salida `kek-copy.age` en la carpeta de llaves del humo; comprueba la cabecera pero no la escribe). (2) `deploy_e2e.sh` pasa `--i-know-unsigned-ref` (v0.1 sin `allowed_signers`, S4B-D181) y lo documenta. `test_scripts_static.sh` 76 ok (casos nuevos: `age -p` presente, cabecera no fabricada a mano, bandera en `deploy_e2e.sh`); `test_deploy_script.sh` 190 ok; `test_infra_scripts.sh` 0 fallas; `bash -n` limpio. Sin ejecutar contra Docker: el pty con `age -p` dentro de `apex-api:local` queda para B4.10.
+
+## S4B-B4 · Evidencia (B4.10, corrida del 2026-11-04, ANTES del checkpoint: hay hallazgos que decide el orquestador)
+
+Imágenes (buildx, GIT_SHA=e8e1a2c): apex-api:local dc8b6687566f, apex-web:local d7d02e3be31b, apex-backup:local 4a269e121c10 (revision e8e1a2c en api y web). Dev recreado con `GIT_SHA=e8e1a2c $DC up -d --no-build --force-recreate api worker web backup`: /health por 8181 y 8180 da `version:"e8e1a2c"`, `migrations:"ok"`, `backup:"attention"` (dev: backup_check nunca corrió; no se escribe en apex-db-1). Ensayo (8280) recreado: `version:"e8e1a2c"`, `backup:"ok"`, `migrations:"ok"`; después `stop`. Detalle operativo: Compose fija `APP_VERSION: ${GIT_SHA:-dev}` en tiempo de ejecución, así que sin exportar GIT_SHA en el `up` la versión sale `dev` aunque la imagen lleve la etiqueta.
+
+Dónde corrió: contenedor auxiliar `docker:cli` con el socket del daemon y un volumen alineado con la ruta del VM (modos 600 reales en ext4; sin WSL ni reinicios). Árbol copiado con rsync desde el árbol de trabajo (con .git). Auxiliar y volumen borrados al terminar; `apex-smoke` inexistente.
+
+Hallazgos reales (el código del repo NO se tocó; la corrida pasó en verde solo con parches en la COPIA del auxiliar):
+1. `scripts/ci/prod-smoke.sh` línea ~119: la guarda `grep -c 'cambiar-esto'` cuenta también los comentarios de la cabecera de `.env.example` y `.env.ops.example` (2 coincidencias) y aborta siempre. Arreglo: ignorar líneas que empiezan por `#`.
+2. `infra/deploy.sh` línea ~110: misma guarda `grep -q 'cambiar-esto' "$f"`; un `.env` copiado de `.env.example` conserva el comentario de la línea 1 y el despliegue real siempre sale con 2. Arreglo: `grep -v '^#' "$f" | grep -q 'cambiar-esto'` (y un caso en `test_deploy_script.sh`: comentario con la frase no debe fallar).
+3. `scripts/ci/prod-smoke.sh` monta `prod-smoke-pty.py` como `/pty.py`; dentro de la imagen, `import pty` carga el propio script (`AttributeError: module 'pty' has no attribute 'fork'`). Arreglo: montarlo con otro nombre (hice `/t/ptyrun.py`, como ya hace `restore_e2e.sh` con `/py/ptyrun.py`).
+4. `infra/tests/restore_e2e.sh`: `mktemp -d` crea `$WORK` en 700 y `claves/` y `py/` salen 700 bajo `umask 077` (lo hereda de prod-smoke): el contenedor `apex` (uid 10001) no atraviesa `$WORK` ni escribe en `/k` (`cp: can't stat '/k/id.txt': Permission denied`). En NTFS no se nota. Arreglo: `chmod 755 "$WORK" "$PY"; chmod 777 "$CLAVES"` tras el `mkdir` (ya hay `chmod 777 "$SALIDA"`; mismo patrón).
+5. `infra/tests/restore_e2e.sh` caso "firma inválida": el `sed` cambia `"verify": "skipped"` por `"ok"`; en el humo el manifiesto ya trae `"verify": "ok"` (compose.verify.yml monta la identidad), el sed no cambia nada, la firma es válida y `restore.sh` restaura (sale 0) y deja la base de destino con datos, lo que rompe las pruebas siguientes. Arreglo: alterar el manifiesto de forma que siempre cambie (p. ej. añadir una línea al final).
+6. `infra/tests/deploy_e2e.sh`: `tar --null` es GNU; con busybox (auxiliar sin `apk add tar`) falla. Solo afecta entornos con busybox tar (anotado, no es de CI). Además `git clone` bajo `umask 077` deja el clon en 700 y `dbsetup` (contenedor no-root) no lee `./db`: salió 2 al aplicar. Arreglo: `umask 022` antes del `mktemp` más `chmod 755 "$WORK"` (los .env quedan 600 por su subshell).
+7. `infra/backup/Dockerfile` línea 10: `rclone=1.74.1-r3` ya no existe en el repo de Alpine (`rclone-1.75.2-r0`: "breaks: world[rclone=1.74.1-r3]"). El caché de buildx ocultaba el fallo; cualquier build limpio (CI `prod-smoke`, `docker compose build` en `deploy.sh`) falla. Arreglo: `rclone=1.75.2-r0` y revisar `age`, `supercronic`, `minisign` con `apk policy`; `test_images_pinned.sh` no lo detecta (solo verifica que haya pin).
+
+Resultado del humo con los parches de la copia (3 min 08 s en total, 05:55:10 a 05:58:18, `SMOKE_WEB_PORT=8380 SMOKE_DOWN=1 --no-build`, los binarios de la imagen `docker:cli` con bash, git, rsync, GNU tar): migrate y dbsetup exited 0, api/worker/web/backup healthy, init-keys, seed y seed --demo, run.sh, backup_check ok, /health con backup y migrations ok, test_db_roles (47 comprobaciones, 0 fallas), test_env_isolation, deploy_e2e (camino feliz con pre-deploy-*, latest.json intacto, state.json; api roto -> exit 1 con rollback-*.txt sin secretos y respaldo conservado; recuperación; db detenida -> exit 2 antes de construir), restore_e2e (restore.sh firmado en apex_restore, ancla, 17 triggers en A, adjunto 10001:10001 600, KEK correcta y errónea) y "todo en verde"; luego `down -v` de solo apex-smoke. El build del deploy retiquetó `apex-*:local` con revision v99.0.0; se reconstruyeron con buildx a e8e1a2c y se recrearon. Log sin PASSWORD, SECRET-KEY ni AGE-SECRET (0 coincidencias).
+
+Demo 1 (deploy_e2e.sh --solo-db-detenida sobre apex-ensayo, auxiliar): `.env`/`.env.ops` del ensayo copiados al volumen en 600; `.env.ops` del ensayo trae BACKUP_AGE_RECIPIENT y BACKUP_SIGN_PUBKEY vacíos y deploy.sh lo detecta antes que la db (exit 2, correcto); con valores efímeros en la copia: "db detenida -> exit 2, motivo db detenida, aborta antes de construir, sin estado nuevo, db arrancada de nuevo", todo en verde (9 s). Ensayo parado.
+
+Pendiente humano / decisión del orquestador: corregir los hallazgos 1 a 7 en el repo (código y pruebas), volver a pasar `run-gates.sh`, resellar y recién entonces checkpoint; después repetir B4.10 en el auxiliar sin parches. NO se selló ni se hizo checkpoint de B4 en esta sesión.
+
+## S4B-B4 · Correcciones tras el smoke
+
+Los 7 defectos del smoke real quedaron corregidos con prueba (S4B-D190 a D196): guardas de `cambiar-esto` sin comentarios (deploy.sh y prod-smoke.sh), ayudante pty montado como `/t/ptyrun.py`, permisos de `restore_e2e.sh` (755/777), firma alterada siempre y verificada con minisign, `deploy_e2e.sh` con umask 022 y copia portable (sin `--null`), pin de rclone a 1.75.2-r0 con la nueva `test_backup_apk_pins.sh` (rojo con el pin viejo, verde con el nuevo; en el job `images`). Imagen `apex-backup:local` reconstruida con `--no-cache`: limpia, id cae9eacdd1f3. Arneses: test_deploy_script 191 ok, test_scripts_static 86 ok, test_run_gates 25 ok, test_infra_scripts y bash -n en verde, YAML válido. Las pruebas estáticas se escribieron junto con el cambio; el rojo previo solo se capturó para el pin. Sin sello ni checkpoint.
+
+### Segunda corrida (sin parches, 2026-11-04, tras S4B-D190..D196)
+
+Imágenes: apex-api:local 8b8c4797987a y apex-web:local ac995f833160 (buildx, GIT_SHA=e8e1a2c), apex-backup:local cae9eacdd1f3 (reconstruida limpia por el orquestador). Dev y ensayo recreados con GIT_SHA exportado: /health `version:"e8e1a2c"`, `migrations:"ok"`, `backup:"attention"` en dev (8181 y 8180) y `backup:"ok"` en el ensayo (8280); ensayo parado.
+
+Humo (auxiliar `docker:cli`, volumen alineado al Mountpoint, rsync del árbol actual con .git, sin tocar ningún archivo de la copia): `SMOKE_WEB_PORT=8380 SMOKE_DOWN=1 bash scripts/ci/prod-smoke.sh --no-build`, 06:18:20 a 06:20:50 (2 min 30 s), EXIT=0, "todo en verde" sin intervención: migrate, dbsetup, api/worker/web/backup healthy, seed y seed --demo, run.sh, backup_check ok, /health con backup y migrations ok, test_db_roles, test_env_isolation, deploy_e2e (camino feliz, api roto con rollback sin secretos y respaldo conservado, recuperación, db detenida) y restore_e2e completo (incluida la comprobación nueva "el manifiesto alterado ya no verifica con minisign"). `grep -iE 'PASSWORD|SECRET-KEY|AGE-SECRET'` sobre el log: 0 coincidencias.
+
+Demo 1 (`deploy_e2e.sh --solo-db-detenida`, apex-ensayo): con el `.env.ops` del ensayo tal cual, `deploy.sh` sale con 2 por "falta BACKUP_AGE_RECIPIENT" antes de llegar a db (esperado). No existían llaves del ensayo en `docs/scratch/ensayo/`; se generó un par age y un par minisign nuevos solo para el ensayo en `docs/scratch/ensayo/keys-b4/` (carpeta ignorada) y se rellenaron BACKUP_AGE_RECIPIENT y BACKUP_SIGN_PUBKEY en `docs/scratch/ensayo/.env.ops` (sin valores aquí). Repetida: "db detenida -> exit 2, motivo db detenida, aborta antes de construir, sin estado nuevo, db arrancada de nuevo", todo en verde (17 s).
+
+Cierre: auxiliar y volumen borrados, `apex-smoke` inexistente, ensayo parado. El build del deploy retiquetó `apex-*:local` con revision v99.0.0; se reconstruyeron con buildx (api 3d1ebece924c, web bec04200113f, backup ebd9791bc906) y el dev se recreó healthy con `version:"e8e1a2c"`. Sin sello ni checkpoint.

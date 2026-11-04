@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# stat FALSO: en Windows (Git Bash) los modos de archivo no son fiables.
+# `-c %a` imprime $FAKE_STAT_MODE (600); `-c %u` imprime $FAKE_STAT_UID (el uid actual).
+case "$*" in
+  *"%a"*) printf '%s\n' "${FAKE_STAT_MODE:-600}" ;;
+  *"%u"*) printf '%s\n' "${FAKE_STAT_UID:-$(id -u)}" ;;
+  *) exit 0 ;;
+esac

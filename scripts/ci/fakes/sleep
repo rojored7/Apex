@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# sleep FALSO: no espera (las pruebas de deploy.sh no deben tardar).
+printf 'sleep %s\n' "$*" >> "${FAKE_SLEEP_LOG:-/dev/null}"
+exit 0

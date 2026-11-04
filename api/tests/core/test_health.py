@@ -337,3 +337,60 @@ async def test_una_comprobacion_que_lanza_es_unknown_y_el_cuerpo_no_filtra_nada(
     assert r.json()["backup"] == "unknown"
     assert "/data/backups" not in r.text
     assert "apex-2026" not in r.text
+
+
+# S4B-B4 (S4B-D27, S4B-D60): `migrations` en el cuerpo -------------------------------------
+
+
+async def test_health_out_migrations_por_defecto_es_unknown() -> None:
+    assert HealthOut.model_fields["migrations"].default == "unknown"
+    salida = HealthOut.model_validate({"status": "ok", "db": "ok", "version": "x"})
+    assert salida.model_dump()["migrations"] == "unknown"
+
+
+async def test_el_cuerpo_trae_migrations_unknown_sin_comprobacion_registrada(
+    settings_prueba: Settings,
+) -> None:
+    async with _cliente(settings_prueba) as c:
+        clear_health_checks()
+        r = await c.get("/health")
+    assert r.status_code == 200
+    assert r.json()["migrations"] == "unknown"
+
+
+async def test_backup_informativo_en_attention_no_cambia_el_200_con_migrations_ok(
+    settings_prueba: Settings,
+) -> None:
+    async with _cliente(settings_prueba) as c:
+        _registrar_backup(Contador("attention"))
+        register_health_check(
+            "migrations",
+            Contador("ok"),
+            critical=True,
+            allowed={"ok", "mismatch", "unknown"},
+            healthy={"ok"},
+        )
+        r = await c.get("/health")
+    assert r.status_code == 200
+    assert (r.json()["status"], r.json()["backup"], r.json()["migrations"]) == (
+        "ok",
+        "attention",
+        "ok",
+    )
+
+
+async def test_migrations_critico_en_mismatch_baja_a_503_aunque_backup_este_ok(
+    settings_prueba: Settings,
+) -> None:
+    async with _cliente(settings_prueba) as c:
+        _registrar_backup(Contador("ok"))
+        register_health_check(
+            "migrations",
+            Contador("mismatch"),
+            critical=True,
+            allowed={"ok", "mismatch", "unknown"},
+            healthy={"ok"},
+        )
+        r = await c.get("/health")
+    assert r.status_code == 503
+    assert (r.json()["backup"], r.json()["migrations"]) == ("ok", "mismatch")

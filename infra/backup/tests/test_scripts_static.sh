@@ -9,6 +9,19 @@ SCRIPTS=()
 for f in "$BACKUP_DIR_SRC"/*.sh "$TESTS_DIR"/*.sh; do
   [ -f "$f" ] && SCRIPTS+=("$f")
 done
+# S4B-B4 (paso 78): con el repo completo (no dentro de apex-backup:local, que solo monta
+# infra/backup) se revisan tambien deploy.sh, prod-smoke.sh y infra/tests/*.sh.
+REPO_ROOT="$(cd "$BACKUP_DIR_SRC/../.." && pwd)"
+REPO_MODE=0
+[ -f "$REPO_ROOT/infra/compose.yml" ] && REPO_MODE=1
+DEPLOY="$REPO_ROOT/infra/deploy.sh"
+SMOKE="$REPO_ROOT/scripts/ci/prod-smoke.sh"
+EXTRA=()
+if [ "$REPO_MODE" -eq 1 ]; then
+  for f in "$DEPLOY" "$SMOKE" "$REPO_ROOT"/infra/tests/*.sh; do
+    if [ -f "$f" ]; then SCRIPTS+=("$f"); EXTRA+=("$f"); else _fail "existe ${f#"$REPO_ROOT"/}"; fi
+  done
+fi
 RUN="$BACKUP_DIR_SRC/run.sh"
 ENTRY="$BACKUP_DIR_SRC/entrypoint.sh"
 for esperado in run.sh lib.sh entrypoint.sh healthcheck.sh; do
@@ -23,6 +36,7 @@ done
 # Patrones prohibidos en cualquier script de producción (no en las pruebas).
 PROD=()
 for f in "$BACKUP_DIR_SRC"/*.sh; do PROD+=("$f"); done
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$DEPLOY" ]; then PROD+=("$DEPLOY"); fi
 prohibido() { # <descripcion> <regex>
   local desc="$1" re="$2" hallado=""
   for f in "${PROD[@]}"; do
@@ -43,6 +57,76 @@ prohibido "-vv" '(^|[[:space:]])-vv([[:space:]]|$)'
 prohibido "--dump" '(^|[[:space:]])--dump([[:space:]=]|$)'
 prohibido "echo de PGPASSWORD" '(echo|printf)[^#|]*(PGPASSWORD|RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY|AGE-SECRET-KEY)'
 prohibido "rclone con -v" 'rclone[^#|]*[[:space:]]-v([[:space:]]|$)'
+
+# prod-smoke.sh e infra/tests/*.sh (humo y E2E): pueden usar down -v sobre apex-smoke, pero nunca
+# set -x ni imprimir secretos (deploy.sh ya pasó por la lista completa de PROD).
+for f in ${EXTRA[@]+"${EXTRA[@]}"}; do
+  [ "$f" = "$DEPLOY" ] && continue
+  n="${f#"$REPO_ROOT"/}"
+  if grep -nE -- '(^|[[:space:];])set -[a-z]*x' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' > /dev/null; then _fail "set -x en $n"; else _ok "sin set -x en $n"; fi
+  if grep -nE -- '(echo|printf)[^#|>]*(RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY|AGE-SECRET-KEY)' "$f" | grep -vE '^[0-9]+:[[:space:]]*#|::add-mask::' > /dev/null; then _fail "echo de secretos en $n"; else _ok "sin echo de secretos en $n"; fi
+done
+
+# deploy.sh (S4B-D41, D67): contenido minimo del contrato; en el Rojo el stub no lo cumple.
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$DEPLOY" ]; then
+  dep="$(cat "$DEPLOY")"
+  assert_contains "deploy.sh con set -euo pipefail" "$dep" "set -euo pipefail"
+  assert_contains "deploy.sh sale con 2 en la preverificacion" "$dep" "exit 2"
+  assert_contains "deploy.sh exige --expect-sha" "$dep" "--expect-sha"
+  assert_contains "deploy.sh hace git fetch --tags" "$dep" "git fetch --tags"
+  assert_contains "deploy.sh resuelve la etiqueta con ^{commit}" "$dep" "^{commit}"
+  assert_contains "deploy.sh valida compose con config -q" "$dep" "config -q"
+  assert_contains "deploy.sh respalda con --prefix pre-deploy" "$dep" "--prefix pre-deploy"
+  assert_contains "deploy.sh etiqueta prev-" "$dep" "prev-"
+  assert_contains "deploy.sh escribe rollback-" "$dep" "rollback-"
+  assert_contains "deploy.sh dice que no restaura la base" "$dep" "este script no restaura la base"
+  assert_contains "deploy.sh respeta DEPLOY_SKIP_BUILD" "$dep" "DEPLOY_SKIP_BUILD"
+  assert_contains "deploy.sh compara la etiqueta OCI revision" "$dep" "org.opencontainers.image.revision"
+  assert_contains "deploy.sh lee /proc/1/environ del api" "$dep" "/proc/1/environ"
+  assert_contains "deploy.sh pasa al SHA desprendido" "$dep" 'checkout -q --detach "$REAL_SHA"'
+  assert_contains "deploy.sh apaga los comodines para DEPLOY_COMPOSE_EXTRA" "$dep" "set -f"
+  assert_contains "deploy.sh filtra el log del api" "$dep" "input_value|PASSWORD|SECRET|KEY|TOKEN"
+fi
+# B4 (pendientes del Verde): la copia de la KEK del humo es un archivo de age REAL y deploy_e2e pasa la bandera.
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$SMOKE" ]; then
+  smk2="$(cat "$SMOKE")"
+  assert_contains "prod-smoke.sh fabrica la copia de la KEK con age -p" "$smk2" "age -p"
+  if grep -nE '(echo|printf)[^#]*age-encryption.org' "$SMOKE" > /dev/null; then _fail "prod-smoke.sh escribe la cabecera de age a mano"; else _ok "prod-smoke.sh no fabrica la cabecera de age a mano"; fi
+fi
+E2E_SH="$REPO_ROOT/infra/tests/deploy_e2e.sh"
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$E2E_SH" ]; then
+  assert_contains "deploy_e2e.sh pasa --i-know-unsigned-ref a deploy.sh" "$(cat "$E2E_SH")" "--i-know-unsigned-ref"
+fi
+# Defectos del humo real en Linux (S4B-D190 a D196).
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$SMOKE" ]; then
+  smk3="$(cat "$SMOKE")"
+  assert_lacks "prod-smoke.sh no monta el ayudante pty como pty.py (taparia el modulo pty)" "$smk3" ":/pty.py"
+  assert_contains "prod-smoke.sh monta el ayudante con otro nombre" "$smk3" "/t/ptyrun.py"
+  assert_contains "prod-smoke.sh ignora comentarios al buscar cambiar-esto" "$smk3" "grep -v '^[[:space:]]*#'"
+fi
+RESTORE_SH="$REPO_ROOT/infra/tests/restore_e2e.sh"
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$RESTORE_SH" ]; then
+  rst="$(cat "$RESTORE_SH")"
+  assert_contains "restore_e2e.sh abre el directorio de trabajo a 755" "$rst" 'chmod 755 "$WORK" "$PY"'
+  assert_contains "restore_e2e.sh deja las claves escribibles por el contenedor" "$rst" 'chmod 777 "$SALIDA" "$CLAVES"'
+  assert_contains "restore_e2e.sh comprueba con minisign que el manifiesto alterado no verifica" "$rst" "minisign -V -p /k/sign.pub -m /data/backups/e2e-alterado.json"
+  assert_lacks "restore_e2e.sh ya no altera solo skipped por ok" "$rst" 's/\"verify\": \"skipped\"/'
+fi
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$REPO_ROOT/infra/tests/deploy_e2e.sh" ]; then
+  de="$(cat "$REPO_ROOT/infra/tests/deploy_e2e.sh")"
+  assert_lacks "deploy_e2e.sh no usa tar --null (GNU)" "$de" "--null"
+  assert_contains "deploy_e2e.sh fija umask 022 para el clon" "$de" "umask 022"
+  assert_contains "deploy_e2e.sh abre el directorio de trabajo a 755" "$de" 'chmod 755 "$WORK"'
+fi
+# prod-smoke.sh (S4B-D46, D78): solo apex-smoke, mascaras y down -v acotado.
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$SMOKE" ]; then
+  smk="$(cat "$SMOKE")"
+  assert_contains "prod-smoke.sh usa el proyecto apex-smoke" "$smk" "apex-smoke"
+  assert_contains "prod-smoke.sh enmascara con ::add-mask::" "$smk" "::add-mask::"
+  assert_contains "prod-smoke.sh baja el stack solo con SMOKE_DOWN o CI" "$smk" "SMOKE_DOWN"
+  assert_contains "prod-smoke.sh usa la subred 172.31.1.0/24" "$smk" "172.31.1.0/24"
+  assert_contains "prod-smoke.sh usa el puerto 8380" "$smk" "8380"
+fi
 
 # run.sh: modo estricto, umask y copyto sin borrado.
 cuerpo="$(cat "$RUN")"

@@ -228,3 +228,39 @@ def test_control_service_con_audit_o_modules_se_detecta() -> None:
         )
         == []
     )
+
+
+# S4B-B4: `core/migrations_status.py` (S4B-D27, S4B-D60) ---------------------------------------
+
+PROHIBIDOS_DE_MIGRATIONS_STATUS = ("app.main", "app.modules", "app.core.audit", "app.core.jobs")
+
+
+def _prohibidos_de_migrations(fuente: str) -> list[str]:
+    arbol = ast.parse(fuente)
+    nombres: list[str] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            nombres.extend(a.name for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            nombres.append(nodo.module)
+            if nodo.module == "app":
+                nombres.extend(f"app.{a.name}" for a in nodo.names)
+    return [n for n in nombres if n.startswith(PROHIBIDOS_DE_MIGRATIONS_STATUS)]
+
+
+def test_migrations_status_no_importa_main_ni_modulos() -> None:
+    """`main.py` calcula `head` y `known` y los entrega con `configure_migrations`; el archivo
+    nunca importa `app.main` (ni perezoso), ni `app.modules`, ni auditoría ni jobs."""
+    path = CORE / "migrations_status.py"
+    assert path.is_file(), "falta core/migrations_status.py"
+    assert _prohibidos_de_migrations(path.read_text(encoding="utf-8")) == []
+
+
+def test_control_main_o_modulos_en_migrations_status_se_detectan() -> None:
+    assert _prohibidos_de_migrations("from app.main import alembic_config\n") == ["app.main"]
+    assert _prohibidos_de_migrations("def f():\n    import app.main\n") == ["app.main"]
+    assert _prohibidos_de_migrations("from app import main\n") == ["app.main"]
+    assert _prohibidos_de_migrations("from app.modules.auth import service\n") == [
+        "app.modules.auth"
+    ]
+    assert _prohibidos_de_migrations("from app.core.db import get_sessionmaker\n") == []

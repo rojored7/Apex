@@ -104,6 +104,8 @@ class HealthOut(BaseModel):
     version: str
     # S4B-B2 (S4B-D60): estado colapsado de los respaldos; el detalle de seis valores no sale.
     backup: Literal["ok", "attention", "unknown"] = "unknown"
+    # S4B-B4 (S4B-D27, S4B-D60): `ok` en head, `mismatch` detrás o delante, `unknown` sin lectura.
+    migrations: Literal["ok", "mismatch", "unknown"] = "unknown"
 
 
 async def check_db() -> CheckResult:

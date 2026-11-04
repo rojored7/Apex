@@ -51,6 +51,7 @@ apex/
         events.py        # bus de eventos interno (en memoria)
         jobs.py          # worker.job_runs: claim_run, finish_run, last_run (Sprint 4A); lo importan app/worker/ y, solo para leer `last_run`, core/backup_status.py (S4B-D26, S4B-D71); también `last_results`
         backup_status.py # backup_health() (S4B-B2): última corrida de backup_check -> ok|attention|unknown para /health; solo lee (único importador de core.jobs fuera de worker/, y solo last_run)
+        migrations_status.py # migrations_health() (S4B-B4, S4B-D170): compara la única fila de public.alembic_version con el head del código -> ok|mismatch|unknown para /health; check crítico (solo `ok` da 200); main.py le entrega head y revisiones conocidas con configure_migrations; no importa app.main ni módulos
         alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo (Sprint 4A: LogAlertSink)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
@@ -94,7 +95,7 @@ apex/
   web/                   # front React 19 + TypeScript + Vite; se construye aquí
   scripts/
     workflow/            # slice-gate.sh, checkpoint-commit.sh, run-gates.sh, validate-impact-analysis.sh
-    ci/                  # smoke de compose, prueba de imagen, licencias
+    ci/                  # smoke de compose, prueba de imagen, licencias, prod-smoke.sh (stack de producción en apex-smoke), check-release-version.sh (etiqueta = pyproject = package.json = CHANGELOG), test_deploy_script.sh con fakes/
   infra/
     compose.yml
     compose.dev.yml
@@ -103,19 +104,26 @@ apex/
     nginx/default.conf       # y snippets/ (zonas de limit_req: auth-zone.conf y health-zone.conf)
     db/                  # roles.sql, grants.sql, revoke.sql y apply.sh: roles de aplicación y permisos por tabla/columna; los aplica el servicio dbsetup (S4B-W0-3)
     backup/              # Dockerfile (postgres:16-alpine + age, minisign, rclone, supercronic), run.sh, lib.sh,
-                         # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro); restore.sh llega en 4B-B3a
+                         # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro), restore.sh (B3a, restauración con firma e inspección del tar)
     openbao/             # config.hcl (desde v0.2)
+    deploy.sh            # despliegue en el servidor (B4): `--ref <etiqueta> --expect-sha <sha> --kek-file <copia age de la KEK>` más `--i-know-unsigned-ref` (obligatoria en v0.1: sin firma de etiqueta) y `--i-know-no-backup` (omite el respaldo pre-deploy); variables `DEPLOY_STATE_DIR`, `DEPLOY_HEALTH_TIMEOUT`, `DEPLOY_SKIP_BUILD`, `DEPLOY_COMPOSE_EXTRA`; preverificación, respaldo pre-deploy, build, up, sondeo de /health con migrations ok, rollback-<fecha>.txt si falla; nunca down -v, push, pull ni --force
+    tests/               # deploy_e2e.sh: solo apex-smoke y CI
   docs/
     PLAN.md              # referencia original del backend
     ddd/                 # plan de trabajo aprobado: 00b a 09, DECISIONES.md, GATE.md
     design/              # diseño aprobado del front
     openapi.json         # contrato exportado del API
-    adr/                 # ADR-001-arquitectura.md, ADR-002-criptografia.md, ...
+    adr/                 # ADR-001-monolito-modular.md, ADR-002-criptografia.md, ADR-003-pagos-inmutables.md, ADR-004-serializacion-canonica-de-auditoria.md y README.md (plantilla de seis secciones); cambiarlos exige detenerse y preguntar (S4B-D47)
+    operacion/           # guías para quien opera: instalar-en-servidor, actualizar, respaldo-y-restauracion, rotar-llave, importar-socios, demo
+    plantillas/          # importar-socios.xlsx (plantilla del import-members)
+    RUNBOOK.md           # operación del día a día; §12 despliegue, rollback y `migrations: mismatch` (B4)
   .env.example
   .env.ops.example       # variables de operación (respaldo, firma, roles de base, red); la copia .env.ops no se versiona
   .env.seed.example      # ADMIN_* del primer seed; la copia .env.seed solo la lee tools
   .pre-commit-config.yaml
-  .github/workflows/ci.yml
+  .github/workflows/ci.yml        # lint, pruebas, imágenes, E2E y prod-smoke
+  .github/workflows/release.yml   # etiqueta vX.Y.Z: verify (versión, imágenes, prod-smoke, contrato) y Release en borrador; sin push de imágenes
+  LICENSE, CHANGELOG.md, README.md  # licencia propietaria, versiones y mapa de la documentación
 ```
 
 ## Reglas de módulos
@@ -172,7 +180,7 @@ Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, O
 - Cada slice se trabaja en TDD: primero pruebas en rojo sobre stubs, luego implementación hasta pasar `scripts/workflow/slice-gate.sh <modulo> [pruebas...]`, y se confirma con `scripts/workflow/checkpoint-commit.sh`. `tests/architecture` corre en todos los gates. Cada wave cierra con `scripts/workflow/run-gates.sh`.
 - Rama `main` protegida; ramas `feat/`, `fix/`, `chore/`; commits en Conventional Commits. Los scripts nunca hacen push: el push y el PR los hace una persona al cerrar cada sprint.
 - CI en cada PR: lint, mypy, pruebas, licencias, auditoría de dependencias de producción, build de imágenes y E2E contra el stack.
-- Logs en JSON a stdout. Healthcheck en `/health`; `/health` suma `backup` (`ok|attention|unknown`, informativo, S4B-B2) leído de `worker.job_runs` por `core/backup_status.py`, con caché en proceso (`db` 2 s, `backup` y `migrations` 30 s); el aviso del worker es además su healthcheck por latido (`unhealthy` en `docker compose ps`).
+- Logs en JSON a stdout. Healthcheck en `/health`; `/health` suma `backup` (`ok|attention|unknown`, informativo, S4B-B2) leído de `worker.job_runs` por `core/backup_status.py` y `migrations` (`ok|mismatch|unknown`, **crítico**: solo `ok` da 200; S4B-B4) leído de `public.alembic_version` por `core/migrations_status.py`, con caché en proceso (`db` 2 s, `backup` y `migrations` 30 s); el aviso del worker es además su healthcheck por latido (`unhealthy` en `docker compose ps`).
 
 ## Comandos
 
@@ -203,6 +211,15 @@ docker compose run --rm tools verify-audit --as <email>
 docker compose --profile tools run --rm -v "$PWD/salida:/salida" tools export-kek --out /salida/kek.age --as <email>   # B3a: age -p pide la frase por la terminal; verify-kek-backup <archivo> [--as] y restore-kek <archivo> --out <ruta> --as <email> (docs/operacion/respaldo-y-restauracion.md)
 docker compose --profile tools run --rm tools rotate-key member.document --reason "rotación trimestral" --as <email> [--index] [--batch-size 500]   # B3b: reanudable; deja la anterior en decrypt_only (docs/operacion/rotar-llave.md)
 docker compose --profile tools run --rm tools retire-key <key_id> --as <email> --confirm-audit-blobs N   # B3b: irreversible
+```
+
+Despliegue y release (B4; guías en `docs/operacion/actualizar.md` y `docs/RUNBOOK.md` §12):
+
+```
+bash infra/deploy.sh --ref v0.1.0 --expect-sha <sha> --kek-file /ruta/kek.age --i-know-unsigned-ref   # en el servidor; el SHA se lee del CHANGELOG.md o del Release
+SMOKE_WEB_PORT=8380 bash scripts/ci/prod-smoke.sh --no-build   # stack de producción desechable en el proyecto apex-smoke; necesita sistema de archivos Linux (modos 600 reales): CI o contenedor auxiliar, no NTFS
+bash scripts/ci/check-release-version.sh --check v0.1.0
+curl -s http://127.0.0.1:8181/api/v1/health   # status, db, version, backup y migrations
 ```
 
 `--date <fecha> --simulate` solo con `ENV=dev` y contra una base `*_sim` o `apex_test` (S4A-D48, S4A-D63); con `ENV=production`, `verify-audit` y `recompute-memberships` exigen `--as` (S4A-D53). El worker arranca con el stack (`up -d`, sin perfil desde S4A-W0-2), después de `db` y `api` `healthy`.

@@ -20,6 +20,7 @@ arranque corren bajo `actor_scope(SYSTEM_USER_ID)` porque pueden escribir tablas
 from __future__ import annotations
 
 import asyncio
+import gc
 import importlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -45,6 +46,7 @@ from app.core.crypto.provider import configure_provider, current_provider, get_k
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
+from app.core.migrations_status import configure_migrations, migrations_health
 from app.core.ratelimit import (
     KEY_KINDS,
     configure_store_limits,
@@ -174,6 +176,10 @@ async def _startup(
         for nombre, paso in list(_startup_steps):
             logger.info("arranque: %s", nombre)
             await paso(settings)
+    # S4B-D48: lo que vive todo el proceso (módulos, rutas, esquemas, llaves) pasa a la generación
+    # permanente; el GC de generación 2 deja de escanearlo y las pausas bajo carga se acortan.
+    gc.collect()  # S4B-D179: sin esto el freeze congelaría basura cíclica del arranque para siempre
+    gc.freeze()
 
 
 async def _cancel_background_verifications() -> None:
@@ -232,6 +238,28 @@ def _make_lifespan(
     return lifespan
 
 
+def _register_health_checks(settings: Settings, migrations_script_location: str | None) -> None:
+    """Comprobaciones extra de `/health`. `backup` es informativo (S4B-D26, S4B-D60): el 200 se
+    mantiene sea cual sea su valor. `migrations` es crítico (S4B-D27): solo `ok` mantiene el 200;
+    `head` y las revisiones conocidas se leen del código una vez, aquí (las pruebas de /health no
+    abren el lifespan)."""
+    health.register_health_check(
+        "backup", backup_health, critical=False, allowed=PUBLIC_BACKUP, healthy={"ok"}
+    )
+    script = ScriptDirectory.from_config(alembic_config(settings, migrations_script_location))
+    head = script.get_current_head()
+    if head is None:  # pragma: no cover - el repo siempre trae migraciones
+        raise RuntimeError("no hay migraciones de Alembic en el código")
+    configure_migrations(head, frozenset(r.revision for r in script.walk_revisions()))
+    health.register_health_check(
+        "migrations",
+        migrations_health,
+        critical=True,
+        allowed={"ok", "mismatch", "unknown"},
+        healthy={"ok"},
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -262,10 +290,7 @@ def create_app(
     app.state.settings = settings
     _install_middleware(app, settings)
     load_module_services()
-    # S4B-B2 (S4B-D26, S4B-D60): `backup` es informativo; el 200 se mantiene sea cual sea su valor.
-    health.register_health_check(
-        "backup", backup_health, critical=False, allowed=PUBLIC_BACKUP, healthy={"ok"}
-    )
+    _register_health_checks(settings, migrations_script_location)
 
     api = APIRouter(prefix=API_PREFIX)
     include_module_routers(api)

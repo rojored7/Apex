@@ -108,7 +108,7 @@ fijar() { # <archivo> <CLAVE> <valor>: reemplaza CLAVE=...
   grep -q "^$2=" "$f" || muere "$f no tiene $2"
   sed -i "s|^$2=.*|$2=$3|" "$f"
 }
-for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD; do
+for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD APEX_OWNER_DB_PASSWORD; do
   valor="$(aleatorio 24)"
   mascara "$valor"
   fijar .env.ops "$var" "$valor"
@@ -117,8 +117,8 @@ for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_B
   fi
 done
 fijar .env.ops POSTGRES_DB apex_smoke
-# S5-D120: hasta que W0-4 cree apex_owner, migrate corre con el propietario de la base del humo.
-fijar .env.ops MIGRATE_DB_USER apex
+# S5-D145: pila nueva; MIGRATE_DB_USER y TOOLS_DB_USER quedan en apex_owner (del ejemplo) y el script
+# de initdb lo crea; migrate y tools usan APEX_OWNER_DB_PASSWORD (MIGRATE/TOOLS_DB_PASSWORD sin definir).
 fijar .env.ops WEB_PORT "$WEB_PORT"
 fijar .env.ops APEX_SUBNET "$SUBNET"
 fijar .env.ops APEX_IP_RANGE "$IP_RANGE"

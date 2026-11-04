@@ -2,6 +2,8 @@
 -- como propietario, conectado a la base de la aplicacion:
 --   docker compose --env-file .env --env-file .env.ops -f infra/compose.yml exec -T db \
 --     psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f - < infra/db/revoke.sql
+-- NUNCA toca `apex_owner` (S5-D144): es el propietario de los esquemas y un DROP OWNED BY lo borraria
+-- todo. Solo se eliminan los tres roles de aplicacion.
 -- Idempotente: si un rol ya no existe no hace nada. DROP OWNED BY quita los privilegios que el rol
 -- tiene en ESTA base (y sobre las bases del cluster); ningun rol es dueno de objetos. Antes de
 -- ejecutarlo hay que parar api, worker y backup: DROP ROLE falla con sesiones abiertas de ese rol.

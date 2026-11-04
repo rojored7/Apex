@@ -64,7 +64,7 @@ def test_la_fixture_apex_roles_solo_borra_su_propia_base_y_limpia_con_revoke() -
 
 def test_los_sql_de_roles_solo_los_ejecutan_las_pruebas_de_migraciones() -> None:
     patron = re.compile(r"roles\.sql|grants\.sql|revoke\.sql|apply\.sh")
-    permitidos = {"conftest.py", "test_db_grants.py", "test_db_apply.py"}
+    permitidos = {"conftest.py", "test_db_grants.py", "test_db_apply.py", "test_db_reown.py"}
     culpables = [
         str(p.relative_to(API))
         for p in _fuentes(TESTS)

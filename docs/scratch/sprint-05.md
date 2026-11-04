@@ -204,3 +204,44 @@ database-reviewer: 1 HIGH, 2 MEDIUM, 2 LOW. security-reviewer: 0 HIGH, 3 MEDIUM,
 
 Nota del orquestador (W0-3): `apex-db-1` conserva el primer cuerpo de `crypto.guard_keys_update()` de `0015` (anterior a las revisiones: rechazaba las filas `sign` y con el mensaje viejo); el ciclo `downgrade -1` → `upgrade head` que lo actualizaría fue denegado por la política al agente y no se ejecuta en su lugar. Sin efecto práctico (no hay filas `sign` en desarrollo); el ciclo autorizado de Alembic de V2 lo deja con el texto final. `db_test` y el ensayo ya tienen el texto final.
 
+
+## W0-4 · Rojo (S5-W0-4, apex_owner NOSUPERUSER)
+
+Linea base (HEAD abd7ce8): `test_db_grants.py` + `test_env_example.py` 190 passed; `test_compose_config.sh` 0 fallas; `test_deploy_script.sh` 261 ok, 0 fallas; `test_db_roles.sh` no corre sin pila (solo `bash -n`).
+
+Rojo (todo por asercion real o stub 99):
+- `api/tests/migrations/test_db_grants.py`: 7 pruebas nuevas, 6 ERROR (la fixture `apex_owner` falla: `10-apex-owner.sh` sale 99) + 1 FAILED (texto del script sin `log_statement`). Cubren atributos, dueno de la base, `session_replication_role`, `COPY TO PROGRAM`, CREATE en public, `alembic upgrade head` sobre `apex_owner_mig` con dueños de esquemas = `apex_owner`.
+- `api/tests/core/test_env_example.py`: 3 FAILED (`APEX_OWNER_DB_PASSWORD=cambiar-esto` en `.env.ops.example`, y en `NON_API_ENV_VARS`; el dict ACTIVAS_S4B_W0_1 la incluye).
+- `scripts/ci/test_compose_config.sh`: 10 fallas (migrate/tools con `apex_owner`, `${MIGRATE_DB_USER:-apex_owner}`/`${TOOLS_DB_USER:-apex_owner}`, montaje de initdb en `db`, `APEX_OWNER_DB_PASSWORD` en `db`, `POSTGRES_USER` solo en db/dbsetup). Se cambiaron 3 aserciones viejas (migrate/tools = propietario, db solo POSTGRES_*). Centinela nueva `APEX_OWNER_DB_PASSWORD` y render `SU` con POSTGRES_USER distinto.
+- `scripts/ci/test_deploy_script.sh`: 9 fallas (pila nueva sin/vacia/corta/repetida APEX_OWNER_DB_PASSWORD -> 2). `mk_repo` ahora trae la variable valida; con `MIGRATE_DB_USER=apex` no se exige. `cambiar-esto` ya salia 2 por la regla generica.
+- `scripts/ci/test_db_roles.sh`: bloque `DB_OWNER_MODE=nueva|existente` (dueno de `pg_namespace`, atributos, `SET session_replication_role`/`COPY PROGRAM` como `apex_owner`); necesita pila, verificado solo con `bash -n`. El rol inexistente (exit 2, S5-D96) ya lo cubre `test_deploy_script.sh` (bloque S5-W0-2).
+- Stub `infra/db/initdb/10-apex-owner.sh` (exit 99). No se tocaron `roles.sql`/`revoke.sql`.
+
+Resultado a mano en db_test (PG16): `CREATE EXTENSION btree_gist` FUNCIONA para un dueno de la base NOSUPERUSER (extension trusted). `SET session_replication_role` y `COPY TO PROGRAM` fallan con 42501. `public` es de `pg_database_owner`: el dueno de la base SIGUE pudiendo crear en public tras `REVOKE CREATE ... FROM PUBLIC`.
+
+Dudas para el Verde:
+1. `btree_gist`: no hace falta bootstrap como superusuario (S5-D101 resuelto); anotarlo en DECISIONES.
+2. `CREATE` en `public` por `apex_owner` no falla (dueno implicito); la prueba exige solo que PUBLIC y los 3 roles de app no puedan. Confirmar con el plan.
+3. initdb corre el script como superusuario por socket local con POSTGRES_USER/POSTGRES_DB del entorno; contrato de la prueba: `bash -s` con `APEX_OWNER_DB_PASSWORD` y `POSTGRES_DB`; debe ser idempotente (db_test ya tiene `apex`) y silenciar sentencias como roles.sql.
+4. La URL de `migrate`/`tools` usa un solo password: en servidor existente (`MIGRATE_DB_USER=apex`) haria falta `POSTGRES_PASSWORD`, no `APEX_OWNER_DB_PASSWORD`. Falta variable (p. ej. `MIGRATE_DB_PASSWORD`) o decision; las pruebas solo fijan el usuario por defecto.
+5. `deploy.sh` debe exigir `APEX_OWNER_DB_PASSWORD` solo si `MIGRATE_DB_USER=apex_owner`; falta decidir si entra en la comprobacion de contrasenas distintas (el test lo exige).
+6. `dbsetup` en servidor existente: no crea `apex_owner` ni cambia duenos; `REASSIGN OWNED BY apex TO apex_owner` es paso humano (RUNBOOK 12). `compose.dev.yml` define su propio `db` con POSTGRES_USER=apex: decidir si monta initdb tambien.
+7. `revoke.sql` no conoce `apex_owner`; la fixture `apex_owner` hace su propio DROP OWNED/DROP ROLE. Si el Verde lo agrega a `revoke.sql`, simplificar.
+8. `prod-smoke.sh` fija `MIGRATE_DB_USER apex` (S5-D120): retirarlo en el Verde (y `TOOLS_DB_USER`).
+
+## W0-4 · Verde (S5-W0-4, apex_owner NOSUPERUSER)
+
+Hecho (sin commit ni sello; faltan database-reviewer + security-reviewer, `wave0-gate.sh W0-4` y W0-4.4):
+- `infra/db/initdb/10-apex-owner.sh` real (S5-D141). Probado como script de initdb en `postgres:16@sha256:9e2c...` desechable (`-e POSTGRES_USER=apex ... -v script:/docker-entrypoint-initdb.d/10-apex-owner.sh:ro`): `apex_owner|f|...` (sin super, createrole, createdb, replication, bypassrls; login), dueño de la base `apex_owner`, `SET session_replication_role` = 42501, `docker logs` sin la contraseña (0 coincidencias), segunda corrida idempotente (rc 0). También sobre `postgres:16-alpine` (el entrypoint lo ejecuta con `.` al no tener bit +x). Contenedores borrados.
+- `compose.yml` (db monta el script `:ro` y recibe `APEX_OWNER_DB_PASSWORD`; migrate/tools con `${MIGRATE_DB_USER:-apex_owner}` y `${TOOLS_DB_USER:-apex_owner}`), `compose.dev.yml` (migrate y tools de desarrollo sobrescriben `DATABASE_URL` con el propietario; db hereda montaje y variable), `.env.ops.example` (`APEX_OWNER_DB_PASSWORD`; `MIGRATE_DB_PASSWORD`/`TOOLS_DB_PASSWORD` comentadas), `config.py` `NON_API_ENV_VARS`, `deploy.sh` (S5-D142), `prod-smoke.sh` y `ci.yml` (S5-D145), `test_env_isolation.sh`, `roles.sql`/`revoke.sql` (comentarios), `instalar-en-servidor.md`, RUNBOOK §12, DECISIONES S5-D140..D145.
+- Prueba nueva (mia): `test_revoke_sql_no_toca_a_apex_owner`.
+- Desviación: `MIGRATE_DB_PASSWORD`/`TOOLS_DB_PASSWORD` NO van activas con `cambiar-esto` en el ejemplo (rompería `test_compose_config.sh`, que espera la contraseña de `apex_owner`); `deploy.sh` las valida solo si existen y avisa si falta con un usuario distinto de `apex_owner`.
+- Pendiente humano/orquestador: `test_db_roles.sh` (necesita pila) no se corrió; ensayo/humo con volumen nuevo (initdb real con compose) en V2.
+
+## W0-4 · Revisiones (S5-W0-4)
+
+database-reviewer 1 HIGH, 2 MEDIUM, 1 LOW; security-reviewer 1 MEDIUM, 3 LOW: 8/8 corregidos + 1 extra (CONNECTION LIMIT), con prueba primero donde aplica.
+- HIGH: `REASSIGN OWNED BY apex` no funciona (superusuario de arranque). `infra/db/reown.sql` (S5-D146) + `tests/migrations/test_db_reown.py` (4 pruebas: dueños, triggers `A`, `btree_gist` intacto, idempotencia con 0 objetos, `alembic upgrade head` como `apex_owner`, vuelta atrás y `roles.sql`+`grants.sql`). RUNBOOK §12 con pasos exactos.
+- MEDIUM `deploy.sh`: sale con 2 si `MIGRATE_DB_USER`/`TOOLS_DB_USER` != `apex_owner` y falta su `*_DB_PASSWORD` (pruebas nuevas: rc 2 sin contraseña y rc 0 con ella). MEDIUM initdb: falla cerrado con `cambiar-esto` (prueba nueva) y el síntoma `role apex_owner does not exist` documentado en RUNBOOK §12 y `compose.dev.yml`. LOW: D140 aclarada (DISABLE TRIGGER/DROP, `docker inspect`), `CONNECTION LIMIT 5` con prueba.
+- Hallazgo propio: `text=True` en `subprocess` convierte LF en CRLF en Windows y bash rechaza el script (S5-D147): las pruebas lo envían en bytes. `test_db_roles_confined.py` permite a `test_db_reown.py`.
+- Verificado: pytest `test_db_grants.py` + `test_db_reown.py` + `test_env_example.py` 207 passed; `slice-gate core/config` 581 passed; `test_compose_config.sh` 0 fallas; `test_deploy_script.sh` 0 fallas; `test_infra_scripts.sh` 0 fallas; `workflow/tests/run.sh` 6/6; renders OK; ruff, format y mypy limpios.

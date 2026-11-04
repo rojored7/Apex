@@ -59,7 +59,7 @@ for svc in $SERVICIOS; do
     ok "$svc: sin variables de operación ajenas (solo nombres comparados)"
   fi
   # Por valor: la contraseña del propietario no aparece en ningún servicio que no sea suyo.
-  for clave in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD; do
+  for clave in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD APEX_OWNER_DB_PASSWORD; do
     secreto="$(valor_de "$clave")"
     [ -n "$secreto" ] || continue
     propio=0

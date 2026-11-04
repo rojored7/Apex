@@ -1109,3 +1109,227 @@ def test_el_privilegio_de_tabla_completa_ya_no_existe_donde_se_paso_a_columnas(
         )[0]["v"]
     ]
     assert con_tabla == [], f"siguen con privilegio de tabla completa: {con_tabla}"
+
+
+# --- S5-W0-4: `apex_owner` NOSUPERUSER (S5-D6, D62, D89, D101; M-12; S4B-D206) -------------------
+# `infra/db/initdb/10-apex-owner.sh` es un script de `docker-entrypoint-initdb.d`: en el contenedor
+# `db` lee APEX_OWNER_DB_PASSWORD, POSTGRES_USER y POSTGRES_DB de su entorno y habla con el socket
+# local como el superusuario del arranque. Aqui se ejecuta con `docker exec -i ... bash -s` contra
+# `db_test`, apuntando POSTGRES_DB a `apex_roles`. El nombre del rol y la variable son contrato.
+
+OWNER = "apex_owner"
+CLAVE_OWNER = "owner-prueba-0123456789-abc"  # no es un secreto: solo vive en db_test
+BASE_MIG = "apex_owner_mig"
+SCRIPT_OWNER = INFRA_DB / "initdb" / "10-apex-owner.sh"
+ESQUEMAS_APP = tuple(e for e in ESQUEMAS if e != "public")
+
+
+class _Salida:
+    def __init__(self, returncode: int, stderr: str) -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def _correr_script_owner(base: str, clave: str = CLAVE_OWNER) -> Any:
+    """Ejecuta 10-apex-owner.sh dentro de db_test, como lo haria initdb en el contenedor `db`."""
+    import subprocess
+
+    from tests.migrations.conftest import CONTENEDOR
+
+    assert SCRIPT_OWNER.is_file(), f"no existe {SCRIPT_OWNER}"
+    orden = ["docker", "exec", "-i"]
+    orden += ["-e", f"APEX_OWNER_DB_PASSWORD={clave}", "-e", f"POSTGRES_DB={base}"]
+    orden += [CONTENEDOR, "bash", "-s"]
+    proceso = subprocess.run(  # noqa: S603
+        orden,
+        # En bytes: con text=True Windows convertiria los saltos a CRLF y bash rechazaria el script.
+        input=SCRIPT_OWNER.read_bytes().replace(bytes([13, 10]), bytes([10])),
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    return _Salida(proceso.returncode, proceso.stderr.decode("utf-8", "replace"))
+
+
+def _dsn_owner(apex: RolesDb, base: str) -> str:
+    return f"postgresql://{OWNER}:{CLAVE_OWNER}@{apex.host}:{apex.port}/{base}"
+
+
+@pytest.fixture(scope="module")
+def apex_owner(apex_roles: RolesDb) -> Iterator[RolesDb]:
+    """`apex_owner` creado por el script real de initdb sobre `apex_roles`."""
+    resultado = _correr_script_owner(apex_roles.nombre)
+    assert resultado.returncode == 0, (
+        f"10-apex-owner.sh salio con {resultado.returncode}: {resultado.stderr[:300]}"
+    )
+    yield apex_roles
+    psql_en_db_test(
+        apex_roles.nombre,
+        f"ALTER DATABASE {apex_roles.nombre} OWNER TO {apex_roles.propietario};"
+        f"DROP OWNED BY {OWNER};",
+    )
+    psql_en_db_test("postgres", f"DROP ROLE IF EXISTS {OWNER}")
+
+
+def _como_owner(apex: RolesDb, sql: str) -> Any:
+    """Ejecuta `sql` como apex_owner; devuelve el error de Postgres o 'ok'."""
+
+    async def correr() -> Any:
+        conexion = await asyncpg.connect(_dsn_owner(apex, apex.nombre))
+        try:
+            await conexion.execute(sql)
+            return "ok"
+        except asyncpg.exceptions.PostgresError as exc:
+            return exc
+        finally:
+            await conexion.close()
+
+    return asyncio.run(correr())
+
+
+def _consultar_como_admin(apex: RolesDb, sql: str, *args: Any) -> Any:
+    async def correr() -> Any:
+        conexion = await asyncpg.connect(apex.dsn())
+        try:
+            return await conexion.fetchrow(sql, *args)
+        finally:
+            await conexion.close()
+
+    return asyncio.run(correr())
+
+
+def test_apex_owner_no_es_superusuario_ni_crea_roles_ni_bases(apex_owner: RolesDb) -> None:
+    fila = _consultar_como_admin(
+        apex_owner,
+        "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, "
+        "rolbypassrls FROM pg_roles WHERE rolname = $1",
+        OWNER,
+    )
+    assert fila is not None, "apex_owner no existe"
+    assert fila["rolsuper"] is False
+    assert fila["rolcreaterole"] is False
+    assert fila["rolcreatedb"] is False
+    assert fila["rolcanlogin"] is True
+    assert fila["rolreplication"] is False
+    assert fila["rolbypassrls"] is False
+
+
+def test_apex_owner_es_el_propietario_de_la_base(apex_owner: RolesDb) -> None:
+    fila = _consultar_como_admin(
+        apex_owner,
+        "SELECT datdba::regrole::text AS duenio FROM pg_database WHERE datname = $1",
+        apex_owner.nombre,
+    )
+    assert fila is not None and fila["duenio"] == OWNER
+
+
+def test_apex_owner_no_puede_cambiar_session_replication_role(apex_owner: RolesDb) -> None:
+    error = _como_owner(apex_owner, "SET session_replication_role = replica")
+    assert not isinstance(error, str), "apex_owner pudo fijar session_replication_role"
+    assert error.sqlstate == PRIVACION
+
+
+def test_apex_owner_no_puede_hacer_copy_to_program(apex_owner: RolesDb) -> None:
+    error = _como_owner(apex_owner, "COPY (SELECT 1) TO PROGRAM 'true'")
+    assert not isinstance(error, str), "apex_owner pudo ejecutar COPY ... TO PROGRAM"
+    assert error.sqlstate == PRIVACION
+
+
+def test_public_no_da_create_a_public_ni_a_los_roles_de_aplicacion(apex_owner: RolesDb) -> None:
+    # `public` es de pg_database_owner (PG15+): el dueno de la base conserva CREATE por serlo
+    # (verificado en db_test); S5-D89 cierra el CREATE de PUBLIC y de los tres roles de aplicacion.
+    resultado = {
+        rol: _consultar_como_admin(
+            apex_owner, "SELECT has_schema_privilege($1, 'public', 'CREATE') AS v", rol
+        )["v"]
+        for rol in ROLES
+    }
+    resultado["PUBLIC"] = _consultar_como_admin(
+        apex_owner,
+        "SELECT EXISTS (SELECT 1 FROM pg_namespace n, aclexplode(n.nspacl) a "
+        "WHERE n.nspname = 'public' AND a.grantee = 0 AND a.privilege_type = 'CREATE') AS v",
+    )["v"]
+    assert resultado == {
+        "apex_api": False,
+        "apex_worker": False,
+        "apex_backup": False,
+        "PUBLIC": False,
+    }
+
+
+def test_el_script_de_initdb_no_registra_la_contrasena() -> None:
+    # Como roles.sql: ni log_statement ni la sentencia de error pueden registrar la contrasena.
+    texto = SCRIPT_OWNER.read_text(encoding="utf-8")
+    assert "log_statement" in texto and "log_min_error_statement" in texto
+    assert CLAVE_OWNER not in texto
+    assert "set -x" not in texto
+    assert "set -eu" in texto
+
+
+def test_alembic_upgrade_head_como_apex_owner_sobre_base_vacia(apex_owner: RolesDb) -> None:
+    """0001..0015 como propietario NO superusuario, incluido CREATE EXTENSION btree_gist.
+
+    En PG16 btree_gist es una extension "trusted": el dueno de la base la instala sin ser
+    superusuario (comprobado a mano en db_test, S5-D101). Si algun dia dejara de serlo, esta
+    prueba falla en 0001 y W0-4 debe instalarla en 10-apex-owner.sh/roles.sql como bootstrap.
+    """
+    from alembic import command
+
+    from tests.conftest import alembic_config_for
+
+    async def preparar(sentencia: str) -> None:
+        conexion = await asyncpg.connect(apex_owner.dsn().rsplit("/", 1)[0] + "/postgres")
+        try:
+            await conexion.execute(sentencia)
+        finally:
+            await conexion.close()
+
+    asyncio.run(preparar(f"DROP DATABASE IF EXISTS {BASE_MIG} WITH (FORCE)"))
+    asyncio.run(preparar(f"CREATE DATABASE {BASE_MIG} OWNER {OWNER}"))
+    try:
+        url = _dsn_owner(apex_owner, BASE_MIG).replace("postgresql://", "postgresql+asyncpg://", 1)
+        command.upgrade(alembic_config_for(url), "head")
+
+        async def duenios() -> Any:
+            conexion = await asyncpg.connect(_dsn_owner(apex_owner, BASE_MIG))
+            try:
+                filas = await conexion.fetch(
+                    "SELECT nspname, nspowner::regrole::text AS duenio FROM pg_namespace "
+                    "WHERE nspname = ANY($1::text[])",
+                    list(ESQUEMAS_APP),
+                )
+                version = await conexion.fetchval("SELECT version_num FROM public.alembic_version")
+                return {f["nspname"]: f["duenio"] for f in filas}, version
+            finally:
+                await conexion.close()
+
+        propietarios, version = asyncio.run(duenios())
+        assert propietarios == {esquema: OWNER for esquema in ESQUEMAS_APP}
+        assert version
+    finally:
+        asyncio.run(preparar(f"DROP DATABASE IF EXISTS {BASE_MIG} WITH (FORCE)"))
+
+
+def test_revoke_sql_no_toca_a_apex_owner() -> None:
+    # S5-D144: un DROP OWNED BY apex_owner borraria los esquemas de la aplicacion.
+    sql = "\n".join(
+        linea
+        for linea in (INFRA_DB / "revoke.sql").read_text(encoding="utf-8").splitlines()
+        if not linea.lstrip().startswith("--")
+    )
+    assert OWNER not in sql, "revoke.sql no puede nombrar a apex_owner fuera de comentarios"
+    assert OWNER in (INFRA_DB / "revoke.sql").read_text(encoding="utf-8"), "falta el comentario"
+
+
+def test_apex_owner_tiene_limite_de_conexiones_razonable(apex_owner: RolesDb) -> None:
+    fila = _consultar_como_admin(
+        apex_owner, "SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", OWNER
+    )
+    assert fila is not None and fila["rolconnlimit"] == 5
+
+
+def test_el_script_de_initdb_rechaza_el_valor_de_ejemplo(apex_roles: RolesDb) -> None:
+    # Falla cerrado (salida 1) antes de tocar la base; no necesita que el rol exista.
+    resultado = _correr_script_owner(apex_roles.nombre, "cambiar-esto")
+    assert resultado.returncode == 1
+    assert "cambiar-esto" in resultado.stderr

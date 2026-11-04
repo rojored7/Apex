@@ -72,7 +72,7 @@ no la cambies salvo que cambies `APEX_WEB_IP`) y `ALLOW_INSECURE_COOKIE=true` (a
 `CORS_ORIGINS` queda vacío (Nginx sirve front y api en el mismo origen); nunca pongas `*`. No pongas
 contraseñas ni `POSTGRES_*` en este archivo.
 
-**`.env.ops`** (todo lo demás): reemplaza **cada** `cambiar-esto`. Las cuatro contraseñas se generan
+**`.env.ops`** (todo lo demás): reemplaza **cada** `cambiar-esto`. Las cinco contraseñas se generan
 una por una, distintas entre sí, de 48 caracteres:
 
 ```
@@ -80,7 +80,7 @@ openssl rand -hex 24
 ```
 
 Úsalas en `POSTGRES_PASSWORD`, `APEX_API_DB_PASSWORD`, `APEX_WORKER_DB_PASSWORD` y
-`APEX_BACKUP_DB_PASSWORD`, y pon la de `POSTGRES_PASSWORD` también dentro de `DATABASE_URL`.
+`APEX_BACKUP_DB_PASSWORD` y `APEX_OWNER_DB_PASSWORD` (propietario NOSUPERUSER de la base en una pila nueva, S5-D89), y pon la de `POSTGRES_PASSWORD` también dentro de `DATABASE_URL`.
 `POSTGRES_DB` es el nombre de la base (`apex`). `WEB_PORT` es el puerto del servidor (80 por
 omisión). Comprueba que no quedó ningún valor de ejemplo:
 

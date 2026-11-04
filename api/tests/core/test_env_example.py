@@ -212,6 +212,7 @@ ACTIVAS_S4B_W0_1: dict[str, str] = {
     "APEX_API_DB_PASSWORD": "cambiar-esto",
     "APEX_WORKER_DB_PASSWORD": "cambiar-esto",
     "APEX_BACKUP_DB_PASSWORD": "cambiar-esto",
+    "APEX_OWNER_DB_PASSWORD": "cambiar-esto",
     "APEX_SUBNET": "172.30.0.0/24",
     "APEX_IP_RANGE": "172.30.0.128/25",
     "APEX_WEB_IP": "172.30.0.10",
@@ -473,3 +474,23 @@ def test_ci_sube_las_quince_variables_user_y_cuenta_quince() -> None:
     assert "se esperaban 15 cubetas USER_* subidas" in texto
     for nombre in CUATRO_USER_S5:
         assert texto.count(nombre) >= 2, f"{nombre} debe estar en el sed y en la regex del conteo"
+
+
+# --- S5-W0-4: apex_owner NOSUPERUSER (S5-D6, D89, D96; M-12) ------------------------------------
+
+
+def test_la_contrasena_de_apex_owner_va_en_env_ops_example_con_cambiar_esto() -> None:
+    ops = _claves(EJEMPLO_OPS)
+    assert ops.get("APEX_OWNER_DB_PASSWORD") == "cambiar-esto"
+    assert "APEX_OWNER_DB_PASSWORD" not in _claves(), "es de operacion, no de .env.example"
+
+
+def test_los_roles_de_migrate_y_tools_valen_apex_owner_en_el_ejemplo_de_operacion() -> None:
+    ops = _claves(EJEMPLO_OPS)
+    assert ops.get("MIGRATE_DB_USER") == "apex_owner"
+    assert ops.get("TOOLS_DB_USER") == "apex_owner"
+
+
+def test_apex_owner_db_password_es_ajena_al_api() -> None:
+    assert "APEX_OWNER_DB_PASSWORD" in NON_API_ENV_VARS
+    assert "APEX_OWNER_DB_PASSWORD" not in Settings.model_fields

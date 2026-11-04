@@ -396,7 +396,7 @@ jobs:
           # .env.ops (S4B-D56): contraseña del propietario y de cada rol, de 48 caracteres (hex 24), distintas y
           # enmascaradas antes de escribirlas. DATABASE_URL del propietario lleva la misma contraseña.
           cp .env.ops.example .env.ops
-          for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD; do
+          for var in POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD APEX_OWNER_DB_PASSWORD; do
             valor="$(openssl rand -hex 24)"
             echo "::add-mask::$valor"
             sed -i "s/^$var=.*/$var=$valor/" .env.ops

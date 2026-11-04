@@ -6,9 +6,17 @@
 # PROPIETARIO (${POSTGRES_USER}) y el api migra al arrancar (MIGRATE_ON_STARTUP=true); migrate y
 # dbsetup solo existen con `--profile prod-init` y ningún servicio depende de ellos
 # (`depends_on: !override`). Los roles se aplican a mano: docs/RUNBOOK.md §12.
+# S5-W0-4 (S5-D143): `db` hereda de compose.yml el montaje de initdb/10-apex-owner.sh y
+# APEX_OWNER_DB_PASSWORD; solo actúan con un volumen de datos vacío. Los servicios de desarrollo
+# siguen con el propietario (S4B-D11): migrate y tools sobreescriben su DATABASE_URL abajo.
+# Un volumen NUEVO exige APEX_OWNER_DB_PASSWORD en el entorno (el script de initdb falla cerrado si
+# falta o es cambiar-esto); en un volumen viejo el rol no existe y migrate (perfil prod-init) dice
+# "role apex_owner does not exist" (RUNBOOK 12: reown.sql o MIGRATE_DB_USER=<propietario>).
 services:
   migrate:
     profiles: ["prod-init"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
 
   dbsetup:
     profiles: ["prod-init"]
@@ -49,6 +57,9 @@ services:
 
   tools:
     # Solo desarrollo (S4A-D9): mismo código que el api, en solo lectura; la imagen no cambia.
+    # Con el propietario (S4B-D11, S5-D143): los volúmenes de desarrollo ya inicializados no tienen apex_owner.
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
       - ../api/src:/app/src:ro
       - ../api/migrations:/app/migrations:ro

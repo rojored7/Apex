@@ -97,6 +97,10 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "APEX_API_DB_PASSWORD",
         "APEX_WORKER_DB_PASSWORD",
         "APEX_BACKUP_DB_PASSWORD",
+        # S5-W0-4 (S5-D89, D141): contraseña de apex_owner y las de migrate/tools; solo Compose.
+        "APEX_OWNER_DB_PASSWORD",
+        "MIGRATE_DB_PASSWORD",
+        "TOOLS_DB_PASSWORD",
         "APEX_SUBNET",
         "APEX_IP_RANGE",
         "APEX_WEB_IP",

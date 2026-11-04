@@ -29,6 +29,7 @@ POSTGRES_PASSWORD=centinela-propietario-0123456789
 APEX_API_DB_PASSWORD=centinela-api-0123456789abcd
 APEX_WORKER_DB_PASSWORD=centinela-worker-0123456789ab
 APEX_BACKUP_DB_PASSWORD=centinela-backup-0123456789a
+APEX_OWNER_DB_PASSWORD=centinela-owner-0123456789abc
 RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY=centinela-rclone-secreto
 SENT
 ENVS=(--env-file .env.example --env-file .env.ops.example --env-file "$TMPD/centinelas.env")
@@ -45,6 +46,8 @@ RUNBOOK_NO_DEPS="$(grep -c 'run --rm --no-deps dbsetup' docs/RUNBOOK.md || true)
 # perfil. Desde S4A-W0-2 el worker no tiene perfil y `--profile worker` queda inofensivo.
 DEV_PERFILES="$(docker compose "${ENVS[@]}" --profile worker --profile tools -f infra/compose.yml -f infra/compose.dev.yml config --format json)"
 COMPOSE_YML="$(cat infra/compose.yml)"
+# S5-W0-4 (M-12): POSTGRES_USER con un valor propio para ver en que servicios se interpola.
+SU="$(POSTGRES_USER=centinela-super docker compose "${ENVS[@]}" --profile worker --profile tools -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
 # V4 del Sprint 2: perfil E2E del borde (infra/compose.e2e.yml); vacio si el archivo falta.
 E2E="$(docker compose "${ENVS[@]}" -f infra/compose.yml -f infra/compose.e2e.yml config --format json 2>/dev/null || echo "{}")"
 # Sin resolver los env_file: conserva la lista de archivos y su `required`.
@@ -62,7 +65,7 @@ IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo 
 IGNORA_OPS="$(git check-ignore -q .env.ops && echo si || echo no)"
 IGNORA_OPS_EJEMPLO="$(git check-ignore -q .env.ops.example && echo si || echo no)"
 
-BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
+SU="$SU" BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
 import json
 import os
@@ -283,6 +286,7 @@ CENT = {
     "worker": "centinela-worker-0123456789ab",
     "backup": "centinela-backup-0123456789a",
     "rclone": "centinela-rclone-secreto",
+    "ownerdb": "centinela-owner-0123456789abc",
 }
 
 
@@ -319,7 +323,7 @@ check(mig.get("image") == "apex-api:local", f"migrate usa apex-api:local ({mig.g
 check(mig.get("command") == ["alembic", "upgrade", "head"], f"migrate.command = alembic upgrade head ({mig.get('command')})")
 check(mig.get("restart") == "no", f"migrate con restart no ({mig.get('restart')})")
 check("env_file" not in cr.get("migrate", {}), "migrate sin env_file")
-check(ent("migrate").get("DATABASE_URL") == db_url_dueno, "migrate.DATABASE_URL es la del propietario")
+check(ent("migrate").get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_owner:"), f"migrate.DATABASE_URL usa apex_owner (S5-D89) ({ent('migrate').get('DATABASE_URL', '')[:40]})")
 check(depende(prod, "migrate") == {"db": "service_healthy"}, f"migrate depende solo de db healthy ({depende(prod, 'migrate')})")
 check("ports" not in mig and not mig.get("volumes"), "migrate sin ports ni volumenes")
 check(str(mig.get("user")) == "10001:10001", f"migrate con user 10001:10001 ({mig.get('user')})")
@@ -348,7 +352,7 @@ check("ports" not in dbs, "dbsetup sin ports")
 
 # db: solo POSTGRES_*, sin env_file (H-1).
 check("env_file" not in cr["db"], "db sin env_file")
-check(set(ent("db")) == {"POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"}, f"db: environment solo POSTGRES_* ({sorted(ent('db'))})")
+check(set(ent("db")) == {"POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "APEX_OWNER_DB_PASSWORD"}, f"db: environment POSTGRES_* y APEX_OWNER_DB_PASSWORD ({sorted(ent('db'))})")
 
 # api (S4B-D56, D75).
 check(archivos("api") == [(".env", True)], f"api: env_file exactamente [.env] ({archivos('api')})")
@@ -395,14 +399,34 @@ check(dep_b.get("dbsetup") == "service_completed_successfully" and dep_b.get("db
 
 # tools: propietario por environment, backups de solo lectura (S4B-D86).
 check(archivos("tools") == [(".env", True), (".env.seed", False)], f"tools: env_file [.env, .env.seed opcional] ({archivos('tools')})")
-check(ent("tools").get("DATABASE_URL") == db_url_dueno, "tools.DATABASE_URL es la del propietario por environment")
+check(ent("tools").get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_owner:"), f"tools.DATABASE_URL usa apex_owner por environment (S5-D89) ({ent('tools').get('DATABASE_URL', '')[:40]})")
 mont_t = {v.get("target"): v for v in montajes(prod["tools"])}
 check(mont_t.get("/data/backups", {}).get("read_only") is True, "tools monta backups en solo lectura")
 check(mont_t.get("/run/apex/keys") is not None and not mont_t["/run/apex/keys"].get("read_only"), "tools: keys con escritura")
 check("/data/uploads" in mont_t, "tools monta uploads")
 
+# S5-W0-4 (M-12, S5-D6, D62, D89): apex_owner NOSUPERUSER es el dueno de los esquemas en pilas nuevas.
+mont_db = {v.get("target"): v for v in montajes(prod["db"])}
+init_owner = mont_db.get("/docker-entrypoint-initdb.d/10-apex-owner.sh", {})
+check(bool(init_owner) and init_owner.get("read_only") is True and fuente(init_owner).endswith("infra/db/initdb/10-apex-owner.sh"), f"S5: db monta infra/db/initdb/10-apex-owner.sh en /docker-entrypoint-initdb.d de solo lectura ({sorted(mont_db)})")
+check(ent("db").get("APEX_OWNER_DB_PASSWORD") == CENT["ownerdb"], "S5: db recibe APEX_OWNER_DB_PASSWORD por environment")
+for svc in ("api", "worker", "web", "backup", "dbsetup"):
+    check("APEX_OWNER_DB_PASSWORD" not in ent(svc), f"S5: {svc} no recibe APEX_OWNER_DB_PASSWORD")
+check(ent("migrate").get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_owner:" + CENT["ownerdb"] + "@"), "S5: migrate entra con apex_owner y su contraseña")
+check(ent("tools").get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_owner:" + CENT["ownerdb"] + "@"), "S5: tools entra con apex_owner y su contraseña")
+raw_mig = (os.environ["COMPOSE_YML"])
+check("postgresql+asyncpg://${MIGRATE_DB_USER:-apex_owner}:" in raw_mig, "S5: compose.yml: migrate usa ${MIGRATE_DB_USER:-apex_owner} (S5-D89)")
+check("postgresql+asyncpg://${TOOLS_DB_USER:-apex_owner}:" in raw_mig, "S5: compose.yml: tools usa ${TOOLS_DB_USER:-apex_owner} (S5-D89)")
+su = json.loads(os.environ["SU"]).get("services", {})
+con_su = sorted(
+    svc for svc, doc in su.items()
+    if svc not in ("db", "dbsetup") and "centinela-super" in json.dumps({k: doc.get(k) for k in ("environment", "command", "entrypoint", "healthcheck")})
+)
+check(not con_su, f"S5: POSTGRES_USER solo llega a db y dbsetup ({con_su or 'ninguno'})")
+check("centinela-super" in json.dumps(su.get("db", {}).get("environment")) and "centinela-super" in json.dumps(su.get("dbsetup", {}).get("environment")), "S5: db y dbsetup siguen recibiendo POSTGRES_USER")
+
 # Secretos por servicio (H-1): por nombre y por valor.
-DUENOS = {"db", "migrate", "dbsetup", "tools"}
+DUENOS = {"db", "migrate", "dbsetup", "tools"}  # S5-W0-4: migrate y tools ya no llevan la del propietario
 for svc in sorted(set(prod) - DUENOS):
     env = ent(svc)
     check("POSTGRES_PASSWORD" not in env, f"{svc} no recibe POSTGRES_PASSWORD")

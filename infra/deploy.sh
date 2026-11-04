@@ -135,6 +135,11 @@ main() {
   }
   local k
   local -a pw_names=(POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD)
+  # S5-W0-4 (S5-D89, D142): con MIGRATE_DB_USER=apex_owner (pila nueva) su contraseña también se exige,
+  # de 24 o más y distinta de las demás; con otro usuario (servidor existente) no hace falta.
+  if [ "$(valor "$OPS_FILE" MIGRATE_DB_USER)" = "apex_owner" ]; then
+    pw_names+=(APEX_OWNER_DB_PASSWORD)
+  fi
   local -a pw_vals=()
   local v
   for k in "${pw_names[@]}"; do
@@ -144,8 +149,8 @@ main() {
     pw_vals+=("$v")
   done
   local i j
-  for i in 0 1 2 3; do
-    for j in 0 1 2 3; do
+  for i in "${!pw_vals[@]}"; do
+    for j in "${!pw_vals[@]}"; do
       if [ "$i" -lt "$j" ] && [ "${pw_vals[$i]}" = "${pw_vals[$j]}" ]; then
         die2 "${pw_names[$i]} y ${pw_names[$j]} son iguales: cada rol lleva su propia contraseña"
       fi
@@ -158,6 +163,22 @@ main() {
   [ -n "$MIGRATE_ROLE" ] || die2 "falta MIGRATE_DB_USER en $OPS_FILE (sin valor por defecto: apex_owner en una pila nueva, el propietario actual en un servidor existente)"
   [[ "$MIGRATE_ROLE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die2 "MIGRATE_DB_USER en $OPS_FILE solo admite [A-Za-z0-9_] y no puede empezar por un dígito"
   PROVIDER="$(valor "$ENV_FILE" CRYPTO_PROVIDER)"; PROVIDER="${PROVIDER:-local}"
+  # S5-W0-4 (S5-D141): contraseñas opcionales de migrate y tools. Sin ellas Compose usa
+  # APEX_OWNER_DB_PASSWORD (pila nueva). Si están, deben ser fuertes; con un usuario distinto de
+  # apex_owner (servidor existente) son OBLIGATORIAS: la contraseña de ese rol (falla cerrado).
+  local var_pw usr_pw
+  for var_pw in MIGRATE_DB_PASSWORD TOOLS_DB_PASSWORD; do
+    v="$(valor "$OPS_FILE" "$var_pw")"
+    if [ -n "$v" ]; then
+      [ "${#v}" -ge 24 ] || die2 "$var_pw en $OPS_FILE debe tener 24 caracteres o más (la contraseña del rol correspondiente)"
+      [[ "$v" =~ ^[A-Za-z0-9._~-]+$ ]] || die2 "$var_pw en $OPS_FILE solo admite [A-Za-z0-9._~-]"
+    else
+      usr_pw="$(valor "$OPS_FILE" "${var_pw%_PASSWORD}_USER")"
+      if [ -n "$usr_pw" ] && [ "$usr_pw" != "apex_owner" ]; then
+        die2 "${var_pw%_PASSWORD}_USER=$usr_pw en $OPS_FILE exige $var_pw (la contraseña de ese rol; Compose no usa APEX_OWNER_DB_PASSWORD con otro usuario, S5-D141)"
+      fi
+    fi
+  done
   case "$PROVIDER" in local|openbao) ;; *) die2 "CRYPTO_PROVIDER en $ENV_FILE debe ser local u openbao" ;; esac
 
   local WEB_PORT TIMEOUT

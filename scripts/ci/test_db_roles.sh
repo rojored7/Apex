@@ -12,6 +12,8 @@
 # Variables: DC (comando compose; por defecto el de producción con los dos --env-file) y
 # OPS_ENV_FILE (archivo con APEX_*_DB_PASSWORD y POSTGRES_DB). Hasta que existan los roles falla
 # por rol inexistente (Rojo).
+# S5-W0-4: DB_OWNER_MODE=nueva|existente (por omision nueva) comprueba el propietario de los esquemas;
+# ver el bloque "propietario de los esquemas". Lee APEX_OWNER_DB_PASSWORD, MIGRATE_DB_USER y TOOLS_DB_USER.
 set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -141,6 +143,84 @@ prohibida apex_backup "INSERT en audit.audit_log" "$AUDIT_INSERT"
 prohibida apex_backup "INSERT en worker.job_runs" "$JOB_INSERT"
 prohibida apex_backup "UPDATE members.members" "UPDATE members.members SET updated_at = now() WHERE false"
 prohibida apex_backup "DELETE en auth.refresh_tokens" "DELETE FROM auth.refresh_tokens WHERE false"
+
+# --- propietario de los esquemas (S5-W0-4; S5-D6, D62, D89, D96, D101; M-12) ---------------------
+# DB_OWNER_MODE=nueva (por omision): pila nueva, el dueno es `apex_owner` (NOSUPERUSER) y MIGRATE_DB_USER
+# y TOOLS_DB_USER valen `apex_owner`. DB_OWNER_MODE=existente: servidor ya instalado; el dueno sigue
+# siendo MIGRATE_DB_USER (el propietario actual, normalmente POSTGRES_USER) y el script solo exige que
+# ese rol exista y sea el dueno de los esquemas. Que `deploy.sh` rechace con 2 un MIGRATE_DB_USER
+# inexistente (S5-D96) lo cubre test_deploy_script.sh ("rol de MIGRATE_DB_USER inexistente").
+MODO="${DB_OWNER_MODE:-nueva}"
+DUENIO="$(valor MIGRATE_DB_USER)"
+TOOLS_ROL="$(valor TOOLS_DB_USER)"
+PW_OWNER="$(valor APEX_OWNER_DB_PASSWORD)"
+SUPER="$(valor POSTGRES_USER)"
+[ -n "$SUPER" ] || SUPER=apex
+ESQUEMAS_APP="audit auth crypto members memberships payments plans settings worker"
+
+SALIDA_SU=""
+# psql_super <sql>: como el propietario del clúster por el socket local de `db` (confianza local).
+psql_super() {
+  local rc
+  SALIDA_SU="$($DC exec -T db psql -X -At -v ON_ERROR_STOP=1 -U "$SUPER" -d "$BASE" -c "$1" 2>&1)"
+  rc=$?
+  SALIDA_SU="${SALIDA_SU//$'\r'/}"
+  return "$rc"
+}
+
+echo "test_db_roles: modo de propietario '$MODO'"
+case "$MODO" in
+  nueva)
+    [ "$DUENIO" = "apex_owner" ] || falla "modo nueva: MIGRATE_DB_USER debe ser apex_owner (vale '$DUENIO')"
+    [ "$TOOLS_ROL" = "apex_owner" ] || falla "modo nueva: TOOLS_DB_USER debe ser apex_owner (vale '$TOOLS_ROL')"
+    [ -n "$PW_OWNER" ] || falla "$OPS_ENV_FILE sin APEX_OWNER_DB_PASSWORD"
+    if psql_super "SELECT rolsuper, rolcreaterole, rolcreatedb, rolbypassrls, rolreplication FROM pg_roles WHERE rolname = 'apex_owner'" \
+      && [ "$SALIDA_SU" = "f|f|f|f|f" ]; then
+      ok "apex_owner sin superusuario, CREATEROLE, CREATEDB, BYPASSRLS ni REPLICATION"
+    else
+      falla "apex_owner inexistente o con atributos peligrosos (${SALIDA_SU:0:120})"
+    fi
+    prohibida_owner() { # descripción sql
+      if PGPASSWORD="$PW_OWNER" $DC exec -T -e PGPASSWORD db psql -X -At -h 127.0.0.1 -v ON_ERROR_STOP=1 \
+        -v VERBOSITY=verbose -U apex_owner -d "$BASE" -c "$2" >/tmp/owner.$$ 2>&1; then
+        falla "apex_owner NO debía poder: $1"
+      elif grep -q '42501' /tmp/owner.$$; then
+        ok "apex_owner no puede (42501): $1"
+      else
+        falla "apex_owner falló, pero no por privilegios (42501): $1"
+      fi
+      rm -f /tmp/owner.$$
+    }
+    prohibida_owner "SET session_replication_role = replica" "SET session_replication_role = replica"
+    prohibida_owner "COPY ... TO PROGRAM" "COPY (SELECT 1) TO PROGRAM 'true'"
+    ;;
+  existente)
+    [ -n "$DUENIO" ] || falla "modo existente: MIGRATE_DB_USER vacío en $OPS_ENV_FILE"
+    if psql_super "SELECT 1 FROM pg_roles WHERE rolname = '$DUENIO'" && [ "$SALIDA_SU" = "1" ]; then
+      ok "el rol de MIGRATE_DB_USER ($DUENIO) existe"
+    else
+      falla "el rol de MIGRATE_DB_USER ($DUENIO) no existe (deploy.sh sale con 2, S5-D96)"
+    fi
+    [ "$TOOLS_ROL" = "$DUENIO" ] || falla "modo existente: TOOLS_DB_USER ($TOOLS_ROL) debe ser el mismo propietario ($DUENIO)"
+    ;;
+  *) falla "DB_OWNER_MODE desconocido: $MODO (nueva|existente)" ;;
+esac
+
+# En ambos modos MIGRATE_DB_USER es el dueño de los esquemas de la aplicación (pg_namespace).
+for esquema in $ESQUEMAS_APP; do
+  if psql_super "SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = '$esquema'" \
+    && [ "$SALIDA_SU" = "$DUENIO" ]; then
+    ok "el esquema $esquema es de $DUENIO"
+  else
+    falla "el esquema $esquema no es de $DUENIO (${SALIDA_SU:0:80})"
+  fi
+done
+# PUBLIC no puede crear en public en ninguno de los dos modos (S4B-D9, S5-D89).
+if psql_super "SELECT has_schema_privilege('apex_api', 'public', 'CREATE')" && [ "$SALIDA_SU" = "f" ]; then
+  ok "los roles de aplicación no crean en public"
+else
+  falla "un rol de aplicación puede crear en public (${SALIDA_SU:0:80})"
+fi
 
 # --- el script nunca imprime una contraseña -----------------------------------------------------
 for pw in "$PW_API" "$PW_WORKER" "$PW_BACKUP"; do

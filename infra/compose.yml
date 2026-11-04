@@ -21,13 +21,18 @@ services:
     # postgres:16 por digest (2026-10-22, S3-D62; el mismo en compose.dev.yml y ci.yml);
     # renovar (docs/RUNBOOK.md §7): docker buildx imagetools inspect postgres:16 --format '{{json .Manifest.Digest}}'
     image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
-    # Sin env_file (S4B-D56): solo las tres POSTGRES_* del propietario.
+    # Sin env_file (S4B-D56): las tres POSTGRES_* del superusuario de arranque y, solo para el script
+    # de initdb, la contraseña de apex_owner (S5-D89). POSTGRES_USER solo llega a db y dbsetup.
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      APEX_OWNER_DB_PASSWORD: ${APEX_OWNER_DB_PASSWORD:-}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Crea apex_owner (NOSUPERUSER) y le da la base; solo corre con el volumen vacío (S5-D89). En un
+      # servidor existente no se ejecuta: ver docs/RUNBOOK.md §12 (REASSIGN OWNED, paso humano).
+      - ./db/initdb/10-apex-owner.sh:/docker-entrypoint-initdb.d/10-apex-owner.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -36,14 +41,15 @@ services:
     restart: unless-stopped
 
   migrate:
-    # Migraciones con el propietario como unidad aparte (S4B-D8, S4B-D56): el api de producción no
-    # migra (MIGRATE_ON_STARTUP=false) y nunca recibe la credencial del propietario. Sin env_file:
+    # Migraciones con `apex_owner` NOSUPERUSER (S5-D89; MIGRATE_DB_USER lo cambia en un servidor
+    # existente) como unidad aparte (S4B-D8, S4B-D56): el api de producción no migra
+    # (MIGRATE_ON_STARTUP=false) y nunca recibe la credencial del propietario. Sin env_file:
     # alembic lee DATABASE_URL del entorno (migrations/env.py). Sin bind de código: usa lo que la
     # imagen trae, por eso hay que reconstruirla tras cambiar src/ o migrations/ (S4B-D98).
     image: apex-api:local
     command: ["alembic", "upgrade", "head"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://${MIGRATE_DB_USER:-apex_owner}:${MIGRATE_DB_PASSWORD:-${APEX_OWNER_DB_PASSWORD}}@db:5432/${POSTGRES_DB}
     user: "10001:10001"
     read_only: true
     tmpfs:
@@ -207,7 +213,8 @@ services:
 
   tools:
     # Comandos del CLI: docker compose run --rm tools init-keys | seed | rotate-key ...
-    # Superficie de operador (S4B-D56, S4B-D86): usa la credencial del PROPIETARIO por environment,
+    # Superficie de operador (S4B-D56, S4B-D86): usa la credencial de `apex_owner` (S5-D89; TOOLS_DB_USER
+    # la cambia en un servidor existente) por environment,
     # única vía con escritura sobre el volumen keys, lee los respaldos en solo lectura y es el único
     # servicio que lee .env.seed (ADMIN_EMAIL y ADMIN_INITIAL_PASSWORD; se borra tras el primer
     # seed). Opcional: init-keys y los demás comandos no lo necesitan (Compose >= 2.24).
@@ -218,7 +225,7 @@ services:
       - path: ${APEX_ENV_DIR:-..}/.env.seed
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://${TOOLS_DB_USER:-apex_owner}:${TOOLS_DB_PASSWORD:-${APEX_OWNER_DB_PASSWORD}}@db:5432/${POSTGRES_DB}
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
       - keys:/run/apex/keys

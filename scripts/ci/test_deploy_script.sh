@@ -89,6 +89,7 @@ DATABASE_URL=postgresql+asyncpg://apex:prueba-propietario-0000000000000000@db:54
 APEX_API_DB_PASSWORD=prueba-rol-api-1111111111111111
 APEX_WORKER_DB_PASSWORD=prueba-rol-worker-22222222222222
 APEX_BACKUP_DB_PASSWORD=prueba-rol-backup-33333333333333
+APEX_OWNER_DB_PASSWORD=prueba-rol-owner-4444444444444444
 BACKUP_AGE_RECIPIENT=age1-destinatario-de-prueba
 BACKUP_SIGN_PUBKEY=RWQ-clave-publica-de-prueba
 WEB_PORT=8480
@@ -459,6 +460,31 @@ assert_contains "MIGRATE_DB_USER ausente: el mensaje la nombra" "$OUT" "MIGRATE_
 mk_repo; set_var .env.ops MIGRATE_DB_USER ""
 caso_2 "MIGRATE_DB_USER vacía en .env.ops" -- $(buenos)
 
+echo "-- S5-W0-4 · APEX_OWNER_DB_PASSWORD en pila nueva (MIGRATE_DB_USER=apex_owner; S5-D6, D89)"
+mk_repo; drop_var .env.ops APEX_OWNER_DB_PASSWORD
+caso_2 "pila nueva sin APEX_OWNER_DB_PASSWORD en .env.ops" -- $(buenos)
+assert_contains "sin APEX_OWNER_DB_PASSWORD: el mensaje la nombra" "$OUT" "APEX_OWNER_DB_PASSWORD"
+mk_repo; set_var .env.ops APEX_OWNER_DB_PASSWORD ""
+caso_2 "pila nueva con APEX_OWNER_DB_PASSWORD vacia" -- $(buenos)
+mk_repo; set_var .env.ops APEX_OWNER_DB_PASSWORD cambiar-esto
+caso_2 "pila nueva con APEX_OWNER_DB_PASSWORD = cambiar-esto" -- $(buenos)
+mk_repo; set_var .env.ops APEX_OWNER_DB_PASSWORD corta
+caso_2 "pila nueva con APEX_OWNER_DB_PASSWORD de menos de 24 caracteres" -- $(buenos)
+mk_repo; set_var .env.ops APEX_OWNER_DB_PASSWORD "$(grep '^APEX_API_DB_PASSWORD=' "$R/.env.ops" | cut -d= -f2-)"
+caso_2 "pila nueva con APEX_OWNER_DB_PASSWORD igual a la de apex_api" -- $(buenos)
+assert_lacks "contrasena del propietario repetida: no la imprime" "$OUT" "prueba-rol-api-1111111111111111"
+mk_repo; drop_var .env.ops APEX_OWNER_DB_PASSWORD; set_var .env.ops MIGRATE_DB_USER apex
+caso_2 "servidor existente (MIGRATE_DB_USER=apex) sin MIGRATE_DB_PASSWORD: falla cerrado" -- $(buenos)
+assert_contains "sin MIGRATE_DB_PASSWORD: el mensaje la nombra" "$OUT" "MIGRATE_DB_PASSWORD"
+mk_repo; drop_var .env.ops APEX_OWNER_DB_PASSWORD; set_var .env.ops MIGRATE_DB_USER apex; set_var .env.ops MIGRATE_DB_PASSWORD prueba-propietario-0000000000000000
+d -- $(buenos)
+assert_eq "servidor existente con MIGRATE_DB_PASSWORD: no exige APEX_OWNER_DB_PASSWORD" 0 "$RC"
+mk_repo; set_var .env.ops TOOLS_DB_USER apex
+caso_2 "TOOLS_DB_USER=apex sin TOOLS_DB_PASSWORD: falla cerrado" -- $(buenos)
+assert_contains "sin TOOLS_DB_PASSWORD: el mensaje la nombra" "$OUT" "TOOLS_DB_PASSWORD"
+mk_repo; d -- $(buenos)
+assert_eq "pila nueva con APEX_OWNER_DB_PASSWORD valida: sale con 0" 0 "$RC"
+
 echo "-- S5-W0-2 · el curl falso entiende -o y -w (sondeo de deploy.sh, decisión 8)"
 CF="$FAKEBIN/curl"
 sal="$(FAKE_CURL_HTTP=503 FAKE_CURL_BODY='{"db":"ok"}' "$CF" -sS -o "$TMP_ROOT/cuerpo.txt" -w '%{http_code}' --max-time 5 http://x/y)"
@@ -516,9 +542,10 @@ for f in scripts/ci/prod-smoke.sh .github/workflows/release.yml; do
 done
 
 
-echo "-- prod-smoke.sh: MIGRATE_DB_USER = propietario de su base hasta W0-4 (S5-D120)"
+echo "-- prod-smoke.sh: pila nueva con apex_owner (S5-D145, reemplaza S5-D120)"
 smk_ps="$(cat "$ROOT/scripts/ci/prod-smoke.sh")"
-assert_contains "prod-smoke.sh fija MIGRATE_DB_USER con fijar" "$smk_ps" 'fijar .env.ops MIGRATE_DB_USER apex'
+assert_lacks "prod-smoke.sh ya no fija MIGRATE_DB_USER al propietario" "$smk_ps" 'fijar .env.ops MIGRATE_DB_USER apex'
+assert_contains "prod-smoke.sh genera APEX_OWNER_DB_PASSWORD aleatoria" "$smk_ps" 'APEX_BACKUP_DB_PASSWORD APEX_OWNER_DB_PASSWORD; do'
 
 echo "-- release.yml: permisos y forma (S4B-D44, D67, D81)"
 RY="$ROOT/.github/workflows/release.yml"

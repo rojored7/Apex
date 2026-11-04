@@ -8,6 +8,9 @@ SET log_duration = off;
 -- comandos. Los dos SET de arriba evitan que el servidor registre la sentencia con la contrasena.
 -- Idempotente: crea el rol si no existe y SIEMPRE vuelve a fijar atributos, limites y contrasena.
 -- Los privilegios por tabla viven en grants.sql; deshacer todo es revoke.sql.
+-- `apex_owner` (S5-D89) NO se crea aqui: lo crea infra/db/initdb/10-apex-owner.sh al inicializar un
+-- volumen vacio. Este archivo lo conoce solo como propietario posible de los esquemas; si el rol
+-- no existe (servidor existente, MIGRATE_DB_USER=apex) no pasa nada.
 \set ON_ERROR_STOP on
 \getenv api_pw APEX_API_DB_PASSWORD
 \getenv worker_pw APEX_WORKER_DB_PASSWORD

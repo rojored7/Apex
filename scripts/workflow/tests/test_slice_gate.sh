@@ -89,6 +89,29 @@ assert_log_has "src/shared/shared.test.ts"
 assert_log_has "tsc --noEmit -p tsconfig.slice.json"
 assert_log_has "vitest run src/shared/shared.test.ts"
 assert_file_missing "$REPO/web/tsconfig.slice.json"
+# S4B-V9: el tsconfig temporal incluye los archivos de soporte de las pruebas (jest-dom, vitest-axe),
+# si existen, para que tsc vea los matchers; un stub de npx copia el tsconfig antes de que el gate lo borre.
+mkdir -p "$REPO/web/src/test"
+printf 'import "@testing-library/jest-dom/vitest";
+' > "$REPO/web/src/test/setup.ts"
+printf 'declare module "vitest-axe/matchers";
+' > "$REPO/web/src/test/vitest-axe.d.ts"
+# confirmados en el repo de prueba: no deben entrar por "archivos nuevos" sino por la regla del gate
+git -C "$REPO" add -A > /dev/null 2>&1 && git -C "$REPO" -c user.email=t@t -c user.name=t commit -q -m "soporte de pruebas" > /dev/null 2>&1
+{
+  echo '#!/usr/bin/env bash'
+  echo "echo \"npx \$*\" >> \"$STUB_LOG\""
+  echo "[ \"\$1\" = tsc ] && cp tsconfig.slice.json \"$REPO/tsconfig.slice.copia.json\""
+  echo 'exit 0'
+} > "$STUB_BIN/npx"
+chmod +x "$STUB_BIN/npx"
+clear_log
+SLICE_BASE="$(git -C "$REPO" rev-parse HEAD)" assert_exit 0 "web/shared con archivos de soporte de pruebas" bash "$GATE" web/shared src/shared/shared.test.ts
+assert_file_exists "$REPO/tsconfig.slice.copia.json"
+assert_true grep -q '"src/test/setup.ts"' "$REPO/tsconfig.slice.copia.json"
+assert_true grep -q '"src/test/vitest-axe.d.ts"' "$REPO/tsconfig.slice.copia.json"
+rm -f "$REPO/tsconfig.slice.copia.json"
+stub_tool npx 0
 clear_log
 assert_exit 0 "web/members mapea a src/features/members" bash "$GATE" web/members tests/unit/app.test.ts
 assert_log_has "src/features/members/index.ts"

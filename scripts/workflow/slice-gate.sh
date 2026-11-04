@@ -206,8 +206,11 @@ gate_web() {
     echo '  "extends": "./tsconfig.json",'
     echo '  "include": ['
     local primero=1 inc
-    for inc in "${dirs[@]/%//**/*}" "${ts[@]}" src/vite-env.d.ts; do
-      [ "$inc" = "src/vite-env.d.ts" ] && [ ! -f "$WEB/src/vite-env.d.ts" ] && continue
+    # Soporte que tsc necesita aunque el slice no lo toque: tipos de Vite y los archivos
+    # de preparación de las pruebas (matchers de jest-dom y vitest-axe; S4B-V9). Solo si existen.
+    local soporte=(src/vite-env.d.ts src/test/setup.ts src/test/vitest-axe.d.ts)
+    for inc in "${dirs[@]/%//**/*}" "${ts[@]}" "${soporte[@]}"; do
+      case " ${soporte[*]} " in *" $inc "*) [ -f "$WEB/$inc" ] || continue ;; esac
       [ "$primero" -eq 1 ] || echo ','
       primero=0
       printf '    "%s"' "${inc//\/\/\*\*/\/**}"

@@ -35,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core import db, health
 from app.core.audit import install_audit_listeners
+from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.bootstrap import ensure_keys
@@ -261,6 +262,10 @@ def create_app(
     app.state.settings = settings
     _install_middleware(app, settings)
     load_module_services()
+    # S4B-B2 (S4B-D26, S4B-D60): `backup` es informativo; el 200 se mantiene sea cual sea su valor.
+    health.register_health_check(
+        "backup", backup_health, critical=False, allowed=PUBLIC_BACKUP, healthy={"ok"}
+    )
 
     api = APIRouter(prefix=API_PREFIX)
     include_module_routers(api)

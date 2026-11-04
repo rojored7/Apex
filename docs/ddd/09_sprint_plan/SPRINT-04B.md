@@ -274,3 +274,5 @@ Todos corren en cada gate de slice (A-5).
 | `notifications.service` en `CONTACT_CALLERS` y regla de la Ley 1581 | Sprint 5 | Primer consumidor de `contact_for_notification` | S4A-D50 |
 | S4A-D60 (precio vigente al vender) y S4A-D61 (lectura de auditoría sin auditar) | Revisados en W0-1.8: se mantienen aceptados (D60 con condición de v0.2, D61 con dueño v0.3) | Constancia en `DECISIONES.md` | S4B-D50 |
 | N-6 y N-7 | Operador | `instalar-en-servidor.md`; no bloquean la etiqueta | B4 |
+
+> **S4B-B2 (Verde):** `backup_check`, `JobResult.status`, `core/backup_status.py`, caché y `backup` en `/health` implementados; forma final en `DECISIONES.md`, «S4B-B2» (S4B-D114 y D115 nuevas); RUNBOOK §12 «Verificación diaria del respaldo».

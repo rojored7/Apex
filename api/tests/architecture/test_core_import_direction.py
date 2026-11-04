@@ -144,3 +144,29 @@ def _desde_core_importa_jobs(path: Path) -> list[str]:
         and (nodo.module == "app.core" or (nodo.level == 1 and nodo.module is None))
         and any(a.name == "jobs" for a in nodo.names)
     ]
+
+
+def test_backup_status_solo_importa_jobs_db_y_clock_de_la_aplicacion() -> None:
+    """S4B-B2 (S4B-D26): `core/backup_status.py` solo importa `core.jobs`, `core.db` y
+    `core.clock`; no `app.modules`, ni `core.audit`, ni `core.health`, ni `core.crypto`."""
+    path = CORE / "backup_status.py"
+    assert path.is_file(), "falta core/backup_status.py"
+    propios = sorted({n for n in _imports(path) if n.startswith("app")})
+    assert set(propios) <= {"app.core.jobs", "app.core.db", "app.core.clock"}, propios
+    assert "app.core.jobs" in propios, "backup_status no lee core.jobs"
+
+
+def test_audit_health_y_main_no_importan_core_jobs() -> None:
+    """S4B-B2: la excepción de `core.jobs` es solo `core/backup_status.py`; `core/audit.py`,
+    `core/health.py` y `main.py` siguen sin importarlo (ni perezoso, ni como `from app.core import
+    jobs`). `main.py` registra el check `backup` importando `backup_status`, no `core.jobs`."""
+    violaciones: list[str] = []
+    for path in (CORE / "audit.py", CORE / "health.py", SRC / "main.py"):
+        violaciones += [
+            f"{path.name}: {n}"
+            for n in _imports(path)
+            if n == "app.core.jobs" or n.startswith("app.core.jobs.")
+        ]
+        violaciones += _desde_core_importa_jobs(path)
+    assert violaciones == []
+    assert "app.core.backup_status" in _imports(SRC / "main.py")

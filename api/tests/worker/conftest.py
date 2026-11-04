@@ -11,6 +11,8 @@
   lanza `RuntimeError("documento 1020304417 en el mensaje")` antes de confirmar (la escritura se
   revierte; el documento nunca debe llegar al log, a stdout ni a `job_runs`).
 - `limpiar_job_runs` (autouse): `LIMPIAR_JOB_RUNS` al terminar cada prueba.
+- `backup_dir` (S4B-B2): carpeta vacía de `tmp_path` como `BACKUP_DIR`; el job la lee por
+  `backup_check.get_settings`, que la fixture reemplaza por `settings_prueba.model_copy`.
 - `latido_tmp`: `HEARTBEAT_PATH` del runtime (y de `main`, si lo copia) apunta a `tmp_path`.
 """
 
@@ -33,11 +35,13 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.audit import AuditEntry
 from app.core.clock import FrozenClock, reset_clock, set_clock
+from app.core.config import Settings
 from app.core.context import current_actor, current_batch
 from app.modules.plans import service as plans_service
 from app.modules.plans.schemas import PlanCreate
 from app.worker import main as worker_main
 from app.worker import runtime
+from app.worker.jobs import backup_check
 from app.worker.registry import JobSpec
 from app.worker.runner import JobContext, JobResult
 from tests.conftest import LIMPIAR_JOB_RUNS, limpiar_tras_dos_sesiones
@@ -133,3 +137,12 @@ def latido_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     if hasattr(worker_main, "HEARTBEAT_PATH"):
         monkeypatch.setattr(worker_main, "HEARTBEAT_PATH", ruta)
     return ruta
+
+
+@pytest.fixture
+def backup_dir(tmp_path: Path, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch) -> Path:
+    carpeta = tmp_path / "backups"
+    carpeta.mkdir()
+    ajustes = settings_prueba.model_copy(update={"BACKUP_DIR": carpeta})
+    monkeypatch.setattr(backup_check, "get_settings", lambda: ajustes)
+    return carpeta

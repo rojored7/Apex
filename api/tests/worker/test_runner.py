@@ -545,3 +545,95 @@ async def test_run_job_manual_si_repite_un_dia_cerrado(
 
     assert resultado.result == "ok"
     assert len(spec_que_escribe.actores) == 1
+
+
+# JobResult.status (S4B-B2; S4B-D23) ------------------------------------------------------------
+
+
+def _spec_con_status(
+    nombre: str, status: str | None, *, ok: bool, details: dict[str, int] | None = None
+) -> JobSpec:
+    async def correr(ctx: JobContext) -> JobResult:
+        return JobResult(ok=ok, details=details or {}, status=status)
+
+    return JobSpec(name=nombre, run=correr, hour=7, minute=0, timeout_s=900)
+
+
+@pytest.mark.parametrize(
+    ("status", "ok"),
+    [
+        ("ok_unverified", True),
+        ("stale", False),
+        ("missing", False),
+        ("corrupt", False),
+        ("undecryptable", False),
+        ("ok", True),
+    ],
+)
+async def test_un_status_valido_se_escribe_tal_cual(
+    status: str,
+    ok: bool,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    sink_espia: SinkEspia,
+) -> None:
+    spec = _spec_con_status("prueba_status", status, ok=ok, details={"archivos": 1})
+
+    salida = await run_job(spec, clock=reloj_worker, session_factory=session_factory)
+
+    fila = (await _corridas(session_factory))["prueba_status"]
+    assert (salida.result, fila.result, fila.error) == (status, status, None)
+    assert salida.details == {"archivos": 1}
+    codigos = [c for c, _ in sink_espia.recibidas]
+    assert codigos == ([] if status in ("ok", "ok_unverified") else ["backup_unhealthy"])
+
+
+@pytest.mark.parametrize("status", ["running", "no_existe", ""])
+async def test_un_status_invalido_o_running_deja_error_con_invalid_job_status(
+    status: str,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    sink_espia: SinkEspia,
+) -> None:
+    spec = _spec_con_status("prueba_status", status, ok=True, details={"archivos": 1})
+
+    salida = await run_job(spec, clock=reloj_worker, session_factory=session_factory)
+
+    fila = (await _corridas(session_factory))["prueba_status"]
+    assert (salida.result, salida.error_type) == ("error", "InvalidJobStatus")
+    assert (fila.result, fila.error) == ("error", "InvalidJobStatus")
+    assert [c for c, _ in sink_espia.recibidas] == ["job_failed"]
+
+
+async def test_sin_status_el_result_sigue_siendo_ok_o_error(
+    session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    bueno = _spec_con_status("prueba_bueno", None, ok=True)
+    malo = _spec_con_status("prueba_malo", None, ok=False)
+
+    await run_job(bueno, clock=reloj_worker, session_factory=session_factory)
+    await run_job(malo, clock=reloj_worker, session_factory=session_factory)
+
+    filas = await _corridas(session_factory)
+    assert (filas["prueba_bueno"].result, filas["prueba_malo"].result) == ("ok", "error")
+
+
+async def test_details_con_un_booleano_en_una_clave_nueva_sigue_siendo_error(
+    session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    spec = JobSpec(
+        name="prueba_bool",
+        run=lambda ctx: _devolver(JobResult(ok=True, details={"verificado": True}, status="ok")),
+        hour=7,
+        minute=0,
+    )
+
+    salida = await run_job(spec, clock=reloj_worker, session_factory=session_factory)
+
+    fila = (await _corridas(session_factory))["prueba_bool"]
+    assert (salida.result, fila.result) == ("error", "error")
+    assert "verificado" not in fila.details
+
+
+async def _devolver(valor: JobResult) -> JobResult:
+    return valor

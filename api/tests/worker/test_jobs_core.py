@@ -16,7 +16,7 @@ función ya confirmó, el segundo commit no cambia nada).
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -32,8 +32,10 @@ from app.core.jobs import (
     MAX_ATTEMPTS,
     JobRun,
     JobRunView,
+    check_details,
     claim_run,
     finish_run,
+    last_results,
     last_run,
 )
 from tests.factories.job_runs import make_job_run
@@ -313,6 +315,11 @@ async def test_detail_keys_es_el_conjunto_cerrado_del_plan() -> None:
                 "busy_omitidos",
                 "errores",
                 "placeholder_ok",
+                # S4B-B2 (S4B-D23): `backup_check`
+                "archivos",
+                "edad_horas",
+                "tamano_bytes",
+                "verificado",
             }
         )
         == DETAIL_KEYS
@@ -460,3 +467,69 @@ async def test_sin_reclaim_finished_un_dia_cerrado_no_se_vuelve_a_reclamar(
 
 def test_attempts_path_recorta_a_max_attempts() -> None:
     assert ATTEMPTS_PATH == f"$[last - {MAX_ATTEMPTS - 1} to last]"
+
+
+# S4B-B2 (S4B-D23, S4B-D87): claves de backup y racha ---------------------------------------------
+
+
+@pytest.mark.parametrize("clave", ["archivos", "edad_horas", "tamano_bytes", "verificado"])
+async def test_las_claves_de_backup_aceptan_enteros_y_rechazan_booleanos(
+    clave: str, session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    check_details({clave: 0})
+    check_details({clave: 7})
+    with pytest.raises(ValueError):
+        check_details({clave: True})
+    with pytest.raises(ValueError):
+        check_details({clave: "1"})
+
+
+async def _sembrar(fabrica: Fabrica, job: str, resultados: list[str]) -> None:
+    """`resultados[0]` es la más vieja; cada una un día después."""
+    base = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    async with fabrica() as sesion:
+        for i, resultado in enumerate(resultados):
+            await make_job_run(
+                sesion,
+                job,
+                date(2026, 10, 1) + timedelta(days=i),
+                result=resultado,
+                started_at=base + timedelta(days=i),
+            )
+
+
+async def test_last_results_devuelve_los_mas_recientes_primero(
+    session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    await _sembrar(session_factory, "backup_check", ["ok", "stale", "missing", "ok_unverified"])
+
+    async with session_factory() as sesion:
+        resultados = await last_results(sesion, "backup_check", limit=3)
+
+    assert resultados == ["ok_unverified", "missing", "stale"]
+
+
+async def test_last_results_respeta_el_limite_y_devuelve_menos_si_hay_menos(
+    session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    await _sembrar(session_factory, "backup_check", ["ok"] * 9)
+    await _sembrar(session_factory, "otro_job", ["ok"])
+
+    async with session_factory() as sesion:
+        siete = await last_results(sesion, "backup_check", limit=7)
+        poco = await last_results(sesion, "otro_job", limit=7)
+        nada = await last_results(sesion, "sin_corridas", limit=7)
+
+    assert (len(siete), len(poco), nada) == (7, 1, [])
+
+
+async def test_last_results_usa_el_job_name_exacto(
+    session_factory: Fabrica, reloj_worker: FrozenClock
+) -> None:
+    await _sembrar(session_factory, "backup_check", ["corrupt"])
+    await _sembrar(session_factory, "backup_check_sim", ["ok", "ok"])
+
+    async with session_factory() as sesion:
+        resultados = await last_results(sesion, "backup_check", limit=7)
+
+    assert resultados == ["corrupt"]

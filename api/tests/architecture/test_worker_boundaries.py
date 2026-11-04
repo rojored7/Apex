@@ -7,9 +7,10 @@ El worker es capa de aplicación como `cli.py`: de los módulos solo importa `se
   `app.modules.<x>.models`, `app.modules.<x>.router` ni un helper privado de `PRIVATE_HELPERS`;
 - ningún archivo de `app/worker/**` escribe SQL: sin llamadas `text(...)` ni
   `.exec_driver_sql(...)` (todo el SQL del worker vive en `core/jobs.py` o llega por services);
-- los únicos importadores de `app.core.jobs` dentro de `src/app` son archivos de `app/worker/`
-  (ni `main.py`, ni `core/health.py`, ni `core/audit.py`); `migrations/env.py` y las pruebas
-  quedan fuera de `src/app`.
+- los únicos importadores de `app.core.jobs` dentro de `src/app` son archivos de `app/worker/` y,
+  desde S4B-B2 (S4B-D26), `core/backup_status.py` (lectura de `/health`; enmienda acotada a ese
+  archivo, ni `main.py`, ni `core/health.py`, ni `core/audit.py`); `migrations/env.py` y las
+  pruebas quedan fuera de `src/app`.
 Controles con fuentes falsas: cada regla debe fallar ante su violación.
 """
 
@@ -31,6 +32,8 @@ MODULO_AJENO = "__capa_de_aplicacion__"
 """Nombre de módulo que no existe: así todo `models`/`router`/privado de un módulo es ajeno."""
 
 SQL_LLAMADAS = frozenset({"text", "exec_driver_sql"})
+IMPORTADORES_EXTRA_DE_CORE_JOBS = frozenset({"core/backup_status.py"})
+"""Única excepción fuera de `app/worker/` (S4B-D26): una lista de un archivo, no un prefijo."""
 
 
 def _archivos_de_aplicacion() -> list[Path]:
@@ -107,6 +110,7 @@ def test_el_worker_existe_y_tiene_archivos_que_revisar() -> None:
         "main.py",
         "jobs/__init__.py",
         "jobs/expirations.py",
+        "jobs/backup_check.py",
     }
     assert esperados <= nombres, sorted(esperados - nombres)
 
@@ -157,15 +161,29 @@ def test_el_worker_no_escribe_sql() -> None:
     assert hallazgos == []
 
 
-def test_solo_el_worker_importa_core_jobs() -> None:
+def es_importador_permitido_de_core_jobs(relativo: str) -> bool:
+    return relativo.startswith("worker/") or relativo in IMPORTADORES_EXTRA_DE_CORE_JOBS
+
+
+def test_solo_el_worker_y_backup_status_importan_core_jobs() -> None:
     importadores = sorted(
         p.relative_to(SRC).as_posix()
         for p in SRC.rglob("*.py")
         if p != SRC / "core" / "jobs.py" and importa_core_jobs(p.read_text(encoding="utf-8"), p)
     )
-    fuera = [nombre for nombre in importadores if not nombre.startswith("worker/")]
+    fuera = [n for n in importadores if not es_importador_permitido_de_core_jobs(n)]
     assert fuera == []
-    assert importadores, "ningún archivo del worker importa app.core.jobs"
+    assert any(n.startswith("worker/") for n in importadores), (
+        "ningún archivo del worker lo importa"
+    )
+    assert "core/backup_status.py" in importadores, "backup_status no lee core.jobs"
+
+
+def test_backup_check_existe_y_no_escribe_sql() -> None:
+    path = WORKER / "jobs" / "backup_check.py"
+    assert path.is_file()
+    assert llamadas_sql(path.read_text(encoding="utf-8"), "worker/jobs/backup_check.py") == []
+    assert _violaciones_de_imports(path) == []
 
 
 # Controles con fuentes falsas ------------------------------------------------------------------
@@ -220,6 +238,24 @@ def test_control_importadores_de_core_jobs_se_detectan() -> None:
     perezoso = "def f():\n    from app.core.jobs import last_run\n"
     assert importa_core_jobs(perezoso, SRC / "core" / "health.py") == [2]
     assert importa_core_jobs("from app.core import clock\n", SRC / "main.py") == []
+
+
+def test_control_la_excepcion_de_core_jobs_es_solo_backup_status() -> None:
+    assert es_importador_permitido_de_core_jobs("worker/jobs/backup_check.py")
+    assert es_importador_permitido_de_core_jobs("core/backup_status.py")
+    for ajeno in (
+        "core/health.py",
+        "core/audit.py",
+        "core/backup_status_extra.py",
+        "main.py",
+        "cli.py",
+        "cli_ops/recompute.py",
+        "modules/dashboard/service.py",
+        "seed/apply.py",
+    ):
+        assert not es_importador_permitido_de_core_jobs(ajeno), ajeno
+    # y el analizador sigue viendo la violación en un archivo ajeno
+    assert importa_core_jobs("from app.core.jobs import last_run\n", SRC / "main.py") == [1]
 
 
 def test_control_una_fuente_falsa_en_cli_ops_se_detecta() -> None:

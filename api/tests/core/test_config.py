@@ -56,6 +56,7 @@ TODAS = (
     "ADMIN_INITIAL_PASSWORD",
     "MIGRATE_ON_STARTUP",
     "IMPORT_DIR",
+    "BACKUP_DIR",
 )
 
 
@@ -620,3 +621,64 @@ def test_import_dir_no_puede_ser_contener_ni_estar_dentro_de_datos_o_llaves(
 def test_import_dir_aparte_de_los_datos_y_las_llaves_se_acepta(tmp_path: Path) -> None:
     s = load_settings(env_file=escribir_env(tmp_path, IMPORT_DIR="/data/imports"))
     assert s.IMPORT_DIR == Path("/data/imports")
+
+
+# S4B-B2 (S4B-D25): volumen de respaldos que lee backup_check --------------------------------------
+
+
+def test_backup_dir_por_defecto_es_data_backups(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path))
+    assert s.BACKUP_DIR == Path("/data/backups")
+    assert isinstance(s.BACKUP_DIR, Path)
+
+
+def test_backup_dir_se_lee_del_entorno(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, BACKUP_DIR="/srv/apex/respaldos"))
+    assert s.BACKUP_DIR == Path("/srv/apex/respaldos")
+
+
+def test_backup_dir_es_campo_de_settings_y_no_una_variable_ajena() -> None:
+    assert "BACKUP_DIR" in Settings.model_fields
+    assert "BACKUP_DIR" not in NON_API_ENV_VARS
+
+
+# S4B-B2 (revisión de seguridad, LOW): BACKUP_DIR aparte de los datos, las llaves y la importación
+
+
+@pytest.mark.parametrize(
+    "ruta",
+    [
+        "/data/uploads",
+        "/data/uploads/respaldos",
+        "/data",
+        "/run/apex/keys",
+        "/run/apex/keys/respaldos",
+        "/run/apex",
+        "/data/imports",
+        "/data/imports/respaldos",
+        "/data/uploads/../uploads",
+    ],
+)
+def test_backup_dir_no_puede_ser_contener_ni_estar_dentro_de_datos_llaves_o_importacion(
+    tmp_path: Path, ruta: str
+) -> None:
+    with pytest.raises(ConfigError):
+        load_settings(env_file=escribir_env(tmp_path, BACKUP_DIR=ruta, IMPORT_DIR="/data/imports"))
+
+
+def test_backup_dir_no_puede_contener_a_import_dir_aunque_este_sea_el_defecto(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ConfigError):
+        load_settings(env_file=escribir_env(tmp_path, BACKUP_DIR="/data"))
+
+
+def test_backup_dir_aparte_se_acepta(tmp_path: Path) -> None:
+    s = load_settings(env_file=escribir_env(tmp_path, BACKUP_DIR="/srv/apex/respaldos"))
+    assert s.BACKUP_DIR == Path("/srv/apex/respaldos")
+
+
+def test_el_backup_dir_por_defecto_no_se_comprueba(tmp_path: Path) -> None:
+    """Como `IMPORT_DIR`: el valor por defecto vive aparte en la imagen."""
+    s = load_settings(env_file=escribir_env(tmp_path, UPLOADS_DIR="/data"))
+    assert s.BACKUP_DIR == Path("/data/backups")

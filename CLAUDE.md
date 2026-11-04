@@ -49,7 +49,8 @@ apex/
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
         audit_verify.py  # audit.verifications, candado y recorrido por lotes de la cadena (Sprint 4A, S4A-D12)
         events.py        # bus de eventos interno (en memoria)
-        jobs.py          # worker.job_runs: claim_run, finish_run, last_run (Sprint 4A); lo importa solo app/worker/ (/health lo leerá en v0.2)
+        jobs.py          # worker.job_runs: claim_run, finish_run, last_run (Sprint 4A); lo importan app/worker/ y, solo para leer `last_run`, core/backup_status.py (S4B-D26, S4B-D71); también `last_results`
+        backup_status.py # backup_health() (S4B-B2): última corrida de backup_check -> ok|attention|unknown para /health; solo lee (único importador de core.jobs fuera de worker/, y solo last_run)
         alerts.py        # AlertSink, register_sink(), alert(): alertas internas del equipo (Sprint 4A: LogAlertSink)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
@@ -82,7 +83,7 @@ apex/
         registry.py      # JobSpec y registro de jobs
         runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
         runtime.py       # worker_runtime, espera de la base y latido (/tmp/apex-worker-heartbeat)
-        jobs/            # expirations.py (Sprint 4A); notify.py, sign_audit.py, backup_check.py (v0.2 en adelante)
+        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py, sign_audit.py (v0.2 en adelante)
     migrations/          # Alembic
     tests/
       architecture/      # pruebas de arquitectura; corren en todos los gates
@@ -167,7 +168,7 @@ Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, O
 - Cada slice se trabaja en TDD: primero pruebas en rojo sobre stubs, luego implementación hasta pasar `scripts/workflow/slice-gate.sh <modulo> [pruebas...]`, y se confirma con `scripts/workflow/checkpoint-commit.sh`. `tests/architecture` corre en todos los gates. Cada wave cierra con `scripts/workflow/run-gates.sh`.
 - Rama `main` protegida; ramas `feat/`, `fix/`, `chore/`; commits en Conventional Commits. Los scripts nunca hacen push: el push y el PR los hace una persona al cerrar cada sprint.
 - CI en cada PR: lint, mypy, pruebas, licencias, auditoría de dependencias de producción, build de imágenes y E2E contra el stack.
-- Logs en JSON a stdout. Healthcheck en `/health`; en el Sprint 4A `/health` no lee `worker.job_runs` (pasa a v0.2): el aviso del worker es su healthcheck por latido (`unhealthy` en `docker compose ps`).
+- Logs en JSON a stdout. Healthcheck en `/health`; `/health` suma `backup` (`ok|attention|unknown`, informativo, S4B-B2) leído de `worker.job_runs` por `core/backup_status.py`, con caché en proceso (`db` 2 s, `backup` y `migrations` 30 s); el aviso del worker es además su healthcheck por latido (`unhealthy` en `docker compose ps`).
 
 ## Comandos
 

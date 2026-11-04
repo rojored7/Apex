@@ -65,6 +65,11 @@ DETAIL_KEYS: Final[frozenset[str]] = frozenset(
         "busy_omitidos",
         "errores",
         "placeholder_ok",
+        # S4B-B2 (S4B-D23): `backup_check`; `verificado` es 0 o 1 (nunca booleano).
+        "archivos",
+        "edad_horas",
+        "tamano_bytes",
+        "verificado",
     }
 )
 """Claves enteras admitidas en `details` (S4A-D55 d); `attempts` y `clock_override` aparte."""
@@ -305,3 +310,17 @@ async def last_run(session: AsyncSession, job_name: str) -> JobRunView | None:
         )
     ).one_or_none()
     return None if fila is None else _vista(fila)
+
+
+async def last_results(session: AsyncSession, job_name: str, *, limit: int) -> list[str]:
+    """Los `result` de las últimas `limit` corridas de `job_name` (por `started_at DESC`).
+
+    Solo lectura (S4B-D87): el job `backup_check` cuenta la racha de `ok_unverified`.
+    """
+    filas = await session.scalars(
+        select(JobRun.result)
+        .where(JobRun.job_name == job_name)
+        .order_by(JobRun.started_at.desc())
+        .limit(limit)
+    )
+    return list(filas)

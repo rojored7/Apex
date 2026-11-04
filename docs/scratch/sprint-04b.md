@@ -262,3 +262,43 @@ Checkpoint `cf7a53f` (trailer verificado con `git log -1 --format=%B`). Sellante
 Checkpoint `fa04fec` (trailer verificado con `git log -1 --format=%B`). Gates: `slice-gate.sh architecture` (5 pruebas del plan) 456 passed; `slice-gate.sh core/config` 581 passed; `run-gates.sh` en primer plano: api 5505 passed, 5 skipped, cobertura 96,68 % (`cli.py` 97 %, `cli_base.py` 100 %, `cli_keyring.py` 100 %, `cli_session.py` 100 %, `seed/` e `imports/` de 85 a 100 %), scripts de infraestructura y web (172 archivos, 3125 pruebas, lint, tsc, build) en verde; sellante `slice-gate.sh cli` con las 6 pruebas del plan 663 passed, 2 skipped (enlaces simbólicos en Windows), como último comando que tocó el árbol. `ruff check`, `ruff format --check` y `mypy src` limpios.
 
 B1.9 sobre `apex_demo` (`apex-db_test-1`; `apex-db-1` no se tocó; evidencia completa en el scratchpad `b1-evidencia.md`): `alembic upgrade head` 0; `seed --demo --as` 0 con `planes=3 socios=30 membresias=31 pagos=33` y la segunda vez 0 `ya aplicado`; `verify-audit --as` 0 «Cadena íntegra: 132 registros»; psql: los seis estados (12/5/6/2/4/2), 30 socios con `document`, `phone` y `email` en `apx1.`; `import-members` por bind temporal: `--dry-run` 0, real 0 (`created=3 rejected=1`), repetida 0 (`skipped_existing=3`), CSV del dry-run y de la real idénticos, 5.001 filas 2, reporte existente 2, fuera de `IMPORT_DIR` 2, reportes sin cifras de 7 o más dígitos y logs de `api` y `worker` sin datos de la demo. `apex_demo` se conserva hasta V12 (S4B-D92). La demostración de `GET /dashboard` (T8 de US-109) es de V4 (S4B-D88).
+
+## S4B-B2 · Backup: verificación del manifiesto en el worker y salud
+
+### Evidencia de S4B-B1 (nota de hashes)
+
+Los hashes `fa04fec`/`4e01e39` citados arriba se reescribieron al añadir el trailer: el checkpoint de B1 es `b8f80dd` y la evidencia `8023d56`.
+
+### S4B-B2 · Rojo
+
+- Línea base: HEAD `8023d56`, árbol limpio. Docker Desktop estaba apagado al empezar (el worker `apex-worker-1` se reinició solo al levantarlo y se volvió a detener; `db_test` arrancado con `docker start apex-db_test-1`). Worker parado al terminar.
+- B2.1 stubs: `core/crypto/archive.py` (constantes y `digest_file` con `NotImplementedError`), `core/backup_status.py` (`HEALTH_JOB`, `MAX_RUN_AGE` 36 h, `BACKUP_STATES`, `PUBLIC_BACKUP`, `backup_health`), `worker/jobs/backup_check.py` (`NAME`, `MAX_BACKUP_BYTES`, `BackupStatus` Literal, `Manifest`, `ManifestFile`, `parse_manifest`, `evaluate`, `run`, `get_settings` importado para la fixture), `core/jobs.py` (`DETAIL_KEYS` +4, `last_results`), `worker/runner.py` (`JobResult.status`, `InvalidJobStatus`), `worker/jobs/__init__.py` (`backup_check` a las 07:00 con `timeout_s` 600), `core/health.py` (`HEALTH_CACHE_TTL_S`, `clear_health_cache`, `register_health_check(..., allowed, healthy)` guardados pero no aplicados), `main.py` (registro del check `backup`), `core/config.py` (`BACKUP_DIR`), `.env.ops.example` (BACKUP_DIR; `BACKUP_*` es de operación, no de `.env.example`).
+- Fixtures: `tests/factories/backup.py`, `tests/worker/conftest.py::backup_dir`, `tests/core/conftest.py::health_cache_limpia` (autouse en todo `tests/core`).
+- Pruebas existentes reparadas (cambio de contrato, no debilitadas): `test_health.py::test_comprobacion_informativa...` (el check informativo ya no se llama `backup`, nombre reservado y registrado por `create_app`), `test_jobs_core.py::test_detail_keys_es_el_conjunto_cerrado_del_plan` (+4 claves), `test_schedule.py` (`JOBS` por tupla con `backup_check`).
+- Rojo (suite acotada: `tests/worker`, `tests/architecture`, `tests/core/{test_health,test_backup_status,test_config,test_env_example,test_openapi_export}`, `tests/crypto/test_archive`): 167 rojas, el resto verde:
+  - `test_backup_check_evaluate.py` 69 rojas (`NotImplementedError`), 0 verdes.
+  - `test_backup_check.py` 32 rojas, 1 saltada (enlace simbólico sin privilegios en Windows).
+  - `test_runner.py` +8 rojas (`status` ignorado), `test_jobs_core.py` +3 (`last_results`), `test_main.py` +9 (`EXIT_BY_RESULT`, estados y corridas reales).
+  - `test_health.py` 13 rojas (`allowed`, `healthy`, caché, `Lock`, `HealthOut.backup`), `test_backup_status.py` 15 rojas, `test_archive.py` 13 rojas (1 saltada).
+  - Arquitectura 5 rojas: `test_archive_importers` x1, `test_backup_status_imports` x2, `test_core_import_direction` x1, `test_worker_boundaries` x1; 471 verdes.
+  - Verdes desde el Rojo (datos ya presentes en los stubs, como `IMPORT_DIR` en B1): `test_config.py` +3 y `test_env_example.py` +1 (`BACKUP_DIR`).
+- `ruff check`, `ruff format --check` y `mypy src` (143 archivos) limpios. `/health` 200.
+- Sin Verde desechable en este slice: no se validó que cada prueba pueda pasar con una implementación de referencia.
+
+### S4B-B2 · Verde
+
+- Código: `core/crypto/archive.py` (`digest_file`), `core/jobs.py` (`last_results`), `core/backup_status.py`, `core/health.py` (caché con TTL y `Lock`, `allowed`/`healthy`, checks en paralelo, `HealthOut.backup`), `main.py` (ya registraba `backup`), `worker/jobs/backup_check.py`, `worker/runner.py` (`_resultado_de`, `BACKUP_BAD_STATES`, aviso `backup_unhealthy`), `worker/main.py` (`EXIT_BY_RESULT`).
+- Resolución de las 10 notas: (1) `HealthOut.backup` + contrato regenerado; (2) check `backup` en `create_app`, caché con `current_clock()` y `get_engine` resuelto en `health`; (3) `MAX_RUN_AGE` 36 h = S4B-D114; (4)-(5) semántica del Rojo; (6) `main.py` importa `backup_status`, `health.py` no importa `core.jobs`; (7) `getattr(os, "O_NOFOLLOW", 0)`; (8) sin `per-file-ignores` (ruff no los exige aún); (9) pruebas de caché y log validadas en verde; (10) ok.
+- P-API: `export-openapi` x2 idénticas (cmp), `docs/openapi.json` +10 líneas, `gen:api` -> `types.ts` +6, `tsc` limpio, `src/core/api` 173 pruebas verdes.
+- Desviación: `health_status` corre las comprobaciones en paralelo (S4B-D115).
+- Docs: RUNBOOK §12, CLAUDE.md, DECISIONES «S4B-B2», SPRINT-04B.
+- Pendiente: `security-reviewer`, gate sellante `slice-gate.sh worker ...`, B2.9 (Docker, demo), checkpoint.
+
+### S4B-B2 · Revisiones
+
+security-reviewer: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 3 LOW; 5/5 corregidos (TDD, S4B-D116 a D120 en DECISIONES):
+1. MEDIUM FIFO: `O_NONBLOCK` + `fstat` regular en `digest_file` y `_leer_manifiesto`. Corregido.
+2. MEDIUM `files` sin tope ni unicidad: `MAX_FILES = 8`, nombres únicos con prefijo del juego -> `corrupt`. Corregido.
+3. LOW `digest_file` hasta EOF: `max_bytes` con el tamaño declarado. Corregido.
+4. LOW `BACKUP_DIR` sin validar: validador `_anidadas`. Corregido.
+5. LOW registradores de `/health` sin prueba de arquitectura: `test_health_check_registrars.py`. Corregido.

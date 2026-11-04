@@ -184,4 +184,7 @@ def test_register_rechaza_un_nombre_repetido() -> None:
 
 def test_el_registro_del_proceso_es_jobs_con_expirations_a_las_siete() -> None:
     assert get_registry() is JOBS
-    assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [("expirations", 7, 0, 900)]
+    assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [
+        ("expirations", 7, 0, 900),
+        ("backup_check", 7, 0, 600),
+    ]

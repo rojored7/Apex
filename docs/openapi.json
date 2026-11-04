@@ -962,6 +962,16 @@
       "HealthOut": {
         "additionalProperties": true,
         "properties": {
+          "backup": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "attention",
+              "unknown"
+            ],
+            "title": "Backup",
+            "type": "string"
+          },
           "db": {
             "enum": [
               "ok",

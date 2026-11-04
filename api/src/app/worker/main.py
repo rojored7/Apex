@@ -54,7 +54,12 @@ EXIT_JOB_FAILED: Final = 1
 EXIT_USAGE: Final = 2
 EXIT_RUNNING: Final = 3
 SIMULATED_HOUR: Final = 12
-EXIT_BY_RESULT: Final = {"ok": EXIT_OK, "error": EXIT_JOB_FAILED, RESULT_RUNNING: EXIT_RUNNING}
+EXIT_BY_RESULT: Final = {
+    "ok": EXIT_OK,
+    "ok_unverified": EXIT_OK,
+    "error": EXIT_JOB_FAILED,
+    RESULT_RUNNING: EXIT_RUNNING,
+}
 
 
 def _fecha(valor: str) -> date:

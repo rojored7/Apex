@@ -183,6 +183,8 @@ class Settings(BaseSettings):
     UPLOADS_DIR: Path
     # S4B-D90: única carpeta de la que `import-members` lee y en la que escribe su reporte.
     IMPORT_DIR: Path = Path("/data/imports")
+    # S4B-B2 (S4B-D25): volumen `backups` (solo lectura en el worker); ahí está `latest.json`.
+    BACKUP_DIR: Path = Path("/data/backups")
     # Orígenes exactos separados por coma (o lista JSON); vacío = sin CORS; nunca `*` (US-037).
     CORS_ORIGINS: Annotated[list[str], NoDecode] = []
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -368,6 +370,23 @@ class Settings(BaseSettings):
         if invalidas:
             raise ValueError(
                 "IMPORT_DIR no puede ser, contener ni estar dentro de: " + ", ".join(invalidas)
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _backup_dir_aparte_de_los_datos_las_llaves_y_la_importacion(self) -> Settings:
+        """S4B-B2 (revisión de seguridad, LOW): el volumen de respaldos no puede ser, contener ni
+        estar dentro de `UPLOADS_DIR`, `IMPORT_DIR` ni la carpeta de la KEK. Solo se comprueba un
+        `BACKUP_DIR` configurado, como `IMPORT_DIR`."""
+        if "BACKUP_DIR" not in self.model_fields_set:
+            return self
+        ajenos = {"UPLOADS_DIR": self.UPLOADS_DIR, "IMPORT_DIR": self.IMPORT_DIR}
+        if self.CRYPTO_LOCAL_KEK_PATH is not None:
+            ajenos["CRYPTO_LOCAL_KEK_PATH"] = self.CRYPTO_LOCAL_KEK_PATH.parent
+        invalidas = [n for n, ruta in ajenos.items() if _anidadas(self.BACKUP_DIR, ruta)]
+        if invalidas:
+            raise ValueError(
+                "BACKUP_DIR no puede ser, contener ni estar dentro de: " + ", ".join(invalidas)
             )
         return self
 

@@ -313,3 +313,10 @@ def test_la_cabecera_de_env_example_remite_al_archivo_de_operacion() -> None:
 def test_import_dir_documentada_con_el_valor_de_la_imagen() -> None:
     """S4B-D90: `IMPORT_DIR` es campo de `Settings` y la carpeta de la imagen es `/data/imports`."""
     assert _claves()["IMPORT_DIR"] == "/data/imports"
+
+
+def test_backup_dir_vive_en_env_ops_example_y_no_en_env_example() -> None:
+    """S4B-B2 (S4B-D25): `BACKUP_*` es de operación; `Settings.BACKUP_DIR` se documenta allí."""
+    assert _claves(EJEMPLO_OPS)["BACKUP_DIR"] == "/data/backups"
+    assert "BACKUP_DIR" not in _claves()
+    assert "BACKUP_DIR" in Settings.model_fields

@@ -129,3 +129,13 @@ def test_control_bajo_imports_si_pueden_usarlos() -> None:
 def test_control_subprocess_fuera_de_archive_falla(relativo: str) -> None:
     assert subprocess_fuera_de_archive(relativo, "import subprocess\n")
     assert not subprocess_fuera_de_archive("core/crypto/archive.py", "import subprocess\n")
+
+
+@pytest.mark.parametrize("relativo", ["worker/jobs/backup_check.py", "core/backup_status.py"])
+def test_el_job_y_el_estado_de_backup_no_lanzan_procesos(relativo: str) -> None:
+    """S4B-B2 (S4B-D59): el worker no ejecuta `age`; ni `subprocess` ni `asyncio.subprocess`."""
+    fuente = (SRC / relativo).read_text(encoding="utf-8")
+    assert "subprocess" not in terceros_importados(fuente)
+    assert "create_subprocess" not in fuente
+    assert "os.system" not in fuente
+    assert "popen" not in fuente.lower()

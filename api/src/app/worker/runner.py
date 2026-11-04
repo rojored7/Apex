@@ -42,6 +42,7 @@ from app.core.context import SYSTEM_USER_ID, actor_scope, batch_scope
 from app.core.db import sqlstate_of, translate_busy
 from app.core.jobs import (
     CLOCK_OVERRIDE_KEY,
+    RESULTS,
     JobRunView,
     check_details,
     claim_run,
@@ -63,6 +64,10 @@ LOST_CLAIM_ERROR: Final = "LostClaim"
 """`error_type` del resultado cuando el cierre encontró la fila reclamada por otro (S4A-D77)."""
 
 
+BACKUP_BAD_STATES: Final = frozenset({"stale", "missing", "corrupt", "undecryptable"})
+"""`result` de `backup_check` que avisan `backup_unhealthy` (S4B-D23)."""
+
+
 @dataclass(frozen=True)
 class JobContext:
     """Lo que recibe un job: fábrica de sesiones, el "hoy" de Bogotá, el reloj y si simula."""
@@ -73,12 +78,20 @@ class JobContext:
     simulated: bool = False
 
 
+class InvalidJobStatus(Exception):
+    """`JobResult.status` fuera de `RESULTS` o igual a `running` (S4B-D23); el job queda en `error`
+    con este nombre de tipo."""
+
+
 @dataclass(frozen=True)
 class JobResult:
-    """Lo que devuelve un job: `ok` y conteos (`details`, claves de `DETAIL_KEYS`)."""
+    """Lo que devuelve un job: `ok`, conteos (`details`, claves de `DETAIL_KEYS`) y, opcional,
+    `status`: el `result` exacto de la fila (S4B-D23, `backup_check`); sin `status` el `result` es
+    `ok` o `error` según `ok`. Un `status` inválido deja la fila en `error` (`InvalidJobStatus`)."""
 
     ok: bool
     details: dict[str, Any] = field(default_factory=dict)
+    status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +159,15 @@ async def _cerrar(
     return vista
 
 
+def _resultado_de(respuesta: JobResult) -> str:
+    """`result` de la fila: `status` (válido, no `running`) o, sin él, `ok`/`error`."""
+    if respuesta.status is None:
+        return "ok" if respuesta.ok else "error"
+    if respuesta.status not in RESULTS or respuesta.status == RESULT_RUNNING:
+        raise InvalidJobStatus
+    return respuesta.status
+
+
 async def _ejecutar(spec: JobSpec, ctx: JobContext, reclamo: JobRunView) -> JobOutcome:
     """El job bajo `wait_for`; el cierre corre siempre y blindado (S4A-D55 c)."""
     result, error_type, details = "error", None, {}
@@ -153,7 +175,7 @@ async def _ejecutar(spec: JobSpec, ctx: JobContext, reclamo: JobRunView) -> JobO
     try:
         respuesta = await asyncio.wait_for(spec.run(ctx), spec.timeout_s)
         check_details(respuesta.details)  # `details` fuera del contrato: el job cuenta como error
-        result, details = ("ok" if respuesta.ok else "error"), dict(respuesta.details)
+        result, details = _resultado_de(respuesta), dict(respuesta.details)
     except Exception as exc:
         error_type = type(exc).__name__
     except BaseException as exc:  # cancelación: se cierra la fila y se propaga
@@ -197,9 +219,11 @@ def _informar(outcome: JobOutcome) -> None:
         "error_type": outcome.error_type,
     }
     logger.info("job finished", extra=datos | _tiempos(outcome))
+    contexto = {k: v for k, v in datos.items() if v is not None}
     if outcome.result == "error":
-        contexto = {k: v for k, v in datos.items() if v is not None}
         alert("job_failed", **contexto)
+    elif outcome.result in BACKUP_BAD_STATES:
+        alert("backup_unhealthy", job=outcome.job_name, result=outcome.result)
 
 
 async def run_job(

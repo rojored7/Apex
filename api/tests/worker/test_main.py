@@ -50,6 +50,7 @@ from app.worker import runner, runtime
 from app.worker.registry import JobSpec
 from app.worker.runner import JobContext, JobResult
 from app.worker.runtime import clock_override_error, touch_heartbeat_if_db_ok, wait_for_database
+from tests.factories.backup import make_backup_dir
 from tests.factories.job_runs import make_job_run
 from tests.worker.conftest import SpecObservado
 
@@ -600,3 +601,113 @@ async def test_run_once_con_la_base_caida_al_cerrar_sale_1_sin_traza(
     assert len(fallos) == 1 and fallos[0].__dict__["error_type"] == "ConnectionError"
     assert all(r.exc_info is None for r in caplog.records)
     assert all("1020304417" not in str(vars(r)) for r in caplog.records)
+
+
+# backup_check por la CLI del worker (S4B-B2; S4B-D23, S4B-D24) ----------------------------------
+
+
+def _ahora_del_worker() -> datetime:
+    return datetime(2026, 10, 21, 15, 0, tzinfo=UTC)  # `reloj_worker`
+
+
+def _registro_con_resultado(
+    monkeypatch: pytest.MonkeyPatch, status: str | None, *, ok: bool
+) -> None:
+    async def correr(ctx: JobContext) -> JobResult:
+        return JobResult(ok=ok, details={"archivos": 1}, status=status)
+
+    spec = JobSpec(name="backup_check", run=correr, hour=7, minute=0, timeout_s=600)
+    monkeypatch.setattr(worker_main, "get_registry", lambda: (spec,))
+
+
+@pytest.mark.parametrize(
+    ("status", "ok", "salida"),
+    [
+        ("ok", True, 0),
+        ("ok_unverified", True, 0),
+        ("stale", False, 1),
+        ("missing", False, 1),
+        ("corrupt", False, 1),
+        ("undecryptable", False, 1),
+    ],
+)
+async def test_run_once_traduce_cada_estado_de_backup_a_su_codigo_de_salida(
+    status: str,
+    ok: bool,
+    salida: int,
+    con_prueba: Settings,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _registro_con_resultado(monkeypatch, status, ok=ok)
+
+    assert worker_main.main(["--run-once", "backup_check"]) == salida
+
+    assert [(c.job_name, c.result) for c in await _corridas(session_factory)] == [
+        ("backup_check", status)
+    ]
+
+
+def test_exit_by_result_tiene_ok_unverified_en_cero_y_conserva_las_demas() -> None:
+    assert worker_main.EXIT_BY_RESULT["ok_unverified"] == worker_main.EXIT_OK
+    assert worker_main.EXIT_BY_RESULT["ok"] == worker_main.EXIT_OK
+    assert worker_main.EXIT_BY_RESULT["error"] == worker_main.EXIT_JOB_FAILED
+    assert worker_main.EXIT_BY_RESULT[runner.RESULT_RUNNING] == worker_main.EXIT_RUNNING
+
+
+async def test_un_result_desconocido_sigue_en_exit_job_failed(
+    con_prueba: Settings, reloj_worker: FrozenClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def inventado(*_a: Any, **_k: Any) -> runner.JobOutcome:
+        return runner.JobOutcome("backup_check", HOY, "no_existe", None)
+
+    monkeypatch.setattr(worker_main, "run_job", inventado)
+
+    assert worker_main.main(["--run-once", "backup_check"]) == worker_main.EXIT_JOB_FAILED
+
+
+async def test_run_once_backup_check_real_con_juego_verificado_da_0_y_status_lo_muestra(
+    con_prueba: Settings,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    backup_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    juego = make_backup_dir(backup_dir, _ahora_del_worker(), verify="skipped")
+
+    assert worker_main.main(["--run-once", "backup_check"]) == 0
+    capsys.readouterr()
+    assert worker_main.main(["--status", "backup_check"]) == 0
+
+    datos = _json_de_status(capsys.readouterr().out)
+    assert (datos["job_name"], datos["result"], datos["error"]) == (
+        "backup_check",
+        "ok_unverified",
+        None,
+    )
+    assert datos["details"] == {
+        "verificado": 0,
+        "edad_horas": 5,
+        "tamano_bytes": juego.total_bytes,
+        "archivos": 1,
+    }
+    assert juego.name not in json.dumps(datos)
+
+
+async def test_run_once_backup_check_real_sin_respaldos_da_1_y_deja_missing(
+    con_prueba: Settings, session_factory: Fabrica, reloj_worker: FrozenClock, backup_dir: Path
+) -> None:
+    assert worker_main.main(["--run-once", "backup_check"]) == 1
+
+    assert [(c.result, c.error) for c in await _corridas(session_factory)] == [("missing", None)]
+
+
+async def test_run_once_backup_check_real_con_sha256_alterado_da_1_y_deja_corrupt(
+    con_prueba: Settings, session_factory: Fabrica, reloj_worker: FrozenClock, backup_dir: Path
+) -> None:
+    make_backup_dir(backup_dir, _ahora_del_worker(), tamper="sha256")
+
+    assert worker_main.main(["--run-once", "backup_check"]) == 1
+
+    assert [(c.result, c.error) for c in await _corridas(session_factory)] == [("corrupt", None)]

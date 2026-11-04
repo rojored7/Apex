@@ -259,3 +259,19 @@ def test_control_una_fuente_falsa_en_imports_o_seed_que_importe_el_bus_falla() -
         con_types = importaciones("from app.core.crypto.types import reveal\n")
         assert not permitido(relativo, con_types), relativo
     assert not any(r.startswith(("imports/", "seed/")) for r in IMPORTADORES_REALES)
+
+
+def test_control_backup_check_importando_el_bus_falla_y_archive_no_es_el_bus() -> None:
+    """S4B-B2: el job de respaldos no entra a la lista blanca; `archive` no es el bus."""
+    con_bus = importaciones("from app.core.crypto import bus\n")
+    assert not permitido("worker/jobs/backup_check.py", con_bus)
+    con_types = importaciones("from app.core.crypto.types import reveal\n")
+    assert not permitido("worker/jobs/backup_check.py", con_types)
+    assert importaciones("from app.core.crypto.archive import digest_file\n") == {}
+
+
+def test_backup_check_y_backup_status_no_importan_el_bus() -> None:
+    for relativo in ("worker/jobs/backup_check.py", "core/backup_status.py"):
+        fuente = (APP / relativo).read_text(encoding="utf-8")
+        assert importaciones(fuente) == {}, relativo
+    assert "worker/jobs/backup_check.py" not in IMPORTADORES_REALES

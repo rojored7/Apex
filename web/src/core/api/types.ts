@@ -1205,6 +1205,12 @@ export interface components {
         /** HealthOut */
         HealthOut: {
             /**
+             * Backup
+             * @default unknown
+             * @enum {string}
+             */
+            backup: "ok" | "attention" | "unknown";
+            /**
              * Db
              * @enum {string}
              */

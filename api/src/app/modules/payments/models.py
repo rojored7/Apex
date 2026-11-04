@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import ClassVar, Final
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Index, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, FetchedValue, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, CommonColumnsMixin
@@ -70,6 +70,11 @@ class Payment(CommonColumnsMixin, Base):
     voided: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    voided_by: Mapped[UUID | None] = mapped_column(nullable=True)
-    voided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # S5-D202: el rol del api solo tiene `INSERT` por columna y no incluye estas tres (el alta nunca
+    # anula). Sin default, el ORM las nombra con NULL en el `INSERT`; `FetchedValue()` (marcador sin
+    # DDL) las omite y las lee de vuelta con `RETURNING`.
+    void_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True, server_default=FetchedValue()
+    )
+    voided_by: Mapped[UUID | None] = mapped_column(nullable=True, server_default=FetchedValue())
+    voided_at: Mapped[datetime | None] = mapped_column(nullable=True, server_default=FetchedValue())

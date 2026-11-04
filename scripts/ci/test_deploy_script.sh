@@ -244,6 +244,45 @@ assert_eq "DATABASE_URL ausente en el api: sale con 1" 1 "$RC"
 mk_repo; d FAKE_DOCKER_DATABASE_URL="postgresql+asyncpg://apex:x@db:5432/apex" -- $(buenos)
 assert_eq "DATABASE_URL con el propietario: sale con 1" 1 "$RC"
 
+echo "-- S5-W0-3 (L-9): las variables prohibidas del api suman POSTGRES_*; web no ve SMTP_* ni TELEGRAM_*"
+mk_repo; d FAKE_DOCKER_API_ENV_EXTRA="POSTGRES_USER=apex" -- $(buenos)
+assert_eq "api con POSTGRES_USER: sale con 1" 1 "$RC"
+assert_contains "nombra POSTGRES_USER" "$OUT" "POSTGRES_USER"
+assert_lacks "no imprime el valor" "$OUT" "POSTGRES_USER=apex"
+mk_repo; d FAKE_DOCKER_API_ENV_EXTRA="POSTGRES_DB=apex" -- $(buenos)
+assert_eq "api con POSTGRES_DB: sale con 1" 1 "$RC"
+mk_repo; d FAKE_DOCKER_API_ENV_EXTRA="SMTP_PASSWORD=x TELEGRAM_BOT_TOKEN=y OPENBAO_TOKEN_FILE=/run/apex/openbao/token" -- $(buenos)
+assert_eq "api con SMTP_PASSWORD, TELEGRAM_BOT_TOKEN y OPENBAO_TOKEN_FILE (le tocan): 0" 0 "$RC"
+mk_repo; d -- $(buenos)
+assert_eq "web limpio: 0" 0 "$RC"
+assert_contains "deploy.sh lee /proc/1/environ de web" "$(cat "$LOGD")" "exec -T web"
+mk_repo; d FAKE_DOCKER_WEB_ENV="SMTP_HOST=smtp.ejemplo.test" -- $(buenos)
+assert_eq "web con SMTP_HOST: sale con 1" 1 "$RC"
+assert_contains "nombra SMTP_HOST" "$OUT" "SMTP_HOST"
+mk_repo; d FAKE_DOCKER_WEB_ENV="TELEGRAM_CHAT_ID=-100123" -- $(buenos)
+assert_eq "web con TELEGRAM_CHAT_ID: sale con 1" 1 "$RC"
+mk_repo; d FAKE_DOCKER_WEB_ENV="SMTP_PASSWORD=secreto-web-123" -- $(buenos)
+assert_eq "web con SMTP_PASSWORD: sale con 1" 1 "$RC"
+assert_lacks "no imprime el valor del secreto" "$OUT" "secreto-web-123"
+
+echo "-- S5-W0-3 (revisión de seguridad, M1 y M2): secretos de canal fuera de .env; BACKUP_SIGN_PUBKEY fuera del api"
+mk_repo; printf 'SMTP_PASSWORD=secreto-en-env-123\n' >> "$R/.env"; d -- $(buenos)
+assert_eq ".env con SMTP_PASSWORD con valor: sale con 2" 2 "$RC"
+assert_contains "nombra SMTP_PASSWORD" "$OUT" "SMTP_PASSWORD"
+assert_lacks "no imprime el valor" "$OUT" "secreto-en-env-123"
+assert_eq "sin docker" "" "$(cat "$LOGD")"
+mk_repo; printf 'TELEGRAM_BOT_TOKEN=123456:token-en-env\n' >> "$R/.env"; d -- $(buenos)
+assert_eq ".env con TELEGRAM_BOT_TOKEN con valor: sale con 2" 2 "$RC"
+assert_lacks "no imprime el token" "$OUT" "token-en-env"
+mk_repo; printf 'SMTP_PASSWORD=\nTELEGRAM_BOT_TOKEN=\n' >> "$R/.env"; d -- $(buenos)
+assert_eq ".env con las dos claves en blanco: 0" 0 "$RC"
+mk_repo; printf 'SMTP_PASSWORD=desde-ops\nTELEGRAM_BOT_TOKEN=desde-ops\n' >> "$R/.env.ops"; d -- $(buenos)
+assert_eq "las dos con valor en .env.ops: 0" 0 "$RC"
+mk_repo; d FAKE_DOCKER_API_ENV_EXTRA="BACKUP_SIGN_PUBKEY=RWQ-x" -- $(buenos)
+assert_eq "api con BACKUP_SIGN_PUBKEY: sale con 1" 1 "$RC"
+assert_contains "nombra BACKUP_SIGN_PUBKEY" "$OUT" "BACKUP_SIGN_PUBKEY"
+assert_lacks "no imprime el valor" "$OUT" "RWQ-x"
+
 echo "-- .env y .env.ops"
 mk_repo; rm "$R/.env"
 caso_2 "sin .env" -- $(buenos)

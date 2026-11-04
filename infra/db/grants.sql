@@ -11,16 +11,22 @@
 --   audit.verifications             S I                               -
 --   auth.one_time_tokens            S I U                             -
 --   auth.refresh_tokens             S I U D                           -
---   auth.users                      S I U                             S
+--   auth.users                      S I U(email, password_hash, role, S
+--                                     deleted_at, locked_at, last_login_at,
+--                                     must_change_password, failed_login_count,
+--                                     tokens_valid_after, updated_at)
 --   crypto.crypto_jobs              S                                 S
---   crypto.crypto_keys              S I U(updated_at)                 -
+--   crypto.crypto_keys              S I U(updated_at)                 S
 --   crypto.crypto_ops               S I                               S I
---   members.members                 S I U                             S
+--   members.members                 S I U                             S(id, first_name, last_name, sex,
+--                                                                       phone, email, status, deleted_at,
+--                                                                       data_consent_at, created_at, updated_at)
 --   memberships.membership_freezes  S I                               S
 --   memberships.memberships         S I U(end_date, classes_remaining, S U(status, updated_at)
 --                                     status, cancel_reason, cancelled_by,
 --                                     cancelled_at, updated_at)
---   payments.payments               S I U(voided, void_reason,        -
+--   payments.payments               S I(sin void_reason, voided_by,   -
+--                                     voided_at) U(voided, void_reason,
 --                                     voided_by, voided_at, updated_at)
 --   plans.plans                     S I U                             S
 --   public.alembic_version          S                                 -
@@ -70,7 +76,11 @@ GRANT pg_read_all_data TO apex_backup WITH INHERIT TRUE;
 
 -- 5. apex_api.
 GRANT SELECT, INSERT ON audit.audit_log, audit.verifications TO apex_api;
-GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens, auth.users TO apex_api;
+GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
+GRANT SELECT, INSERT ON auth.users TO apex_api;
+-- S5-D203: UPDATE de auth.users solo en las columnas que asigna modules/auth (inventario de W0-3);
+-- is_active, member_id, id, created_at y created_by quedan fijos.
+GRANT UPDATE (email, password_hash, role, deleted_at, locked_at, last_login_at, must_change_password, failed_login_count, tokens_valid_after, updated_at) ON auth.users TO apex_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth.refresh_tokens TO apex_api;
 GRANT SELECT ON crypto.crypto_jobs TO apex_api;
 GRANT SELECT, INSERT ON crypto.crypto_keys TO apex_api;
@@ -80,7 +90,9 @@ GRANT SELECT, INSERT, UPDATE ON members.members TO apex_api;
 GRANT SELECT, INSERT ON memberships.membership_freezes TO apex_api;
 GRANT SELECT, INSERT ON memberships.memberships TO apex_api;
 GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
-GRANT SELECT, INSERT ON payments.payments TO apex_api;
+-- S5-D202: INSERT de pagos por columna; void_reason, voided_by y voided_at solo por la anulacion.
+GRANT SELECT ON payments.payments TO apex_api;
+GRANT INSERT (id, created_at, updated_at, created_by, membership_id, member_id, amount_cop, method, reference, paid_at, registered_by, voided) ON payments.payments TO apex_api;
 GRANT UPDATE (voided, void_reason, voided_by, voided_at, updated_at) ON payments.payments TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON plans.plans, settings.settings_sections TO apex_api;
 GRANT SELECT ON public.alembic_version TO apex_api;
@@ -88,8 +100,11 @@ GRANT SELECT ON worker.job_runs TO apex_api;
 
 -- 6. apex_worker (jobs diarios: vencimientos, avisos, comprobacion de respaldos).
 GRANT SELECT, INSERT ON audit.audit_log, crypto.crypto_ops TO apex_worker;
-GRANT SELECT ON auth.users, crypto.crypto_jobs, memberships.membership_freezes, plans.plans, settings.settings_sections TO apex_worker;
-GRANT SELECT ON members.members, memberships.memberships TO apex_worker;
+GRANT SELECT ON auth.users, crypto.crypto_jobs, crypto.crypto_keys, memberships.membership_freezes, plans.plans, settings.settings_sections TO apex_worker;
+-- S5-D34, D204: el worker descifra avisos (crypto_keys) y lee del socio solo lo minimo; sin document,
+-- document_idx, birth_date ni emergency_contact. sex entra por names_for (S5-D121).
+GRANT SELECT (id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at) ON members.members TO apex_worker;
+GRANT SELECT ON memberships.memberships TO apex_worker;
 GRANT UPDATE (status, updated_at) ON memberships.memberships TO apex_worker;
 GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -13,8 +14,35 @@ from app.core.config import (
     Settings,
     get_settings,
     load_settings,
+    missing_secrets,
     reset_settings_cache,
     validate_crypto_provider,
+)
+
+# S5-W0-3 (S5-D44): variables nuevas de OpenBao, SMTP, Telegram y exportación.
+NUEVAS_S5: tuple[str, ...] = (
+    "OPENBAO_ADDR",
+    "OPENBAO_TOKEN_FILE",
+    "OPENBAO_TIMEOUT_S",
+    "CRYPTO_RECOVERY_POLL_S",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SMTP_FROM",
+    "SMTP_TLS_MODE",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "TELEGRAM_API_BASE",
+    "NOTIFY_MAX_ATTEMPTS",
+    "NOTIFY_NET_TIMEOUT_S",
+    "EXPORT_MAX_ROWS",
+    "USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN",
+    "USER_EXPORT_LIMIT_PER_MIN",
+    "USER_EXPORT_LIMIT_PER_HOUR",
+    "USER_EXPORT_LIMIT_PER_DAY",
+    "BACKUP_SIGN_PUBKEY",
+    "TOOLS_DB_USER",
 )
 
 BASE: dict[str, str] = {
@@ -57,6 +85,7 @@ TODAS = (
     "MIGRATE_ON_STARTUP",
     "IMPORT_DIR",
     "BACKUP_DIR",
+    *NUEVAS_S5,
 )
 
 
@@ -682,3 +711,259 @@ def test_el_backup_dir_por_defecto_no_se_comprueba(tmp_path: Path) -> None:
     """Como `IMPORT_DIR`: el valor por defecto vive aparte en la imagen."""
     s = load_settings(env_file=escribir_env(tmp_path, UPLOADS_DIR="/data"))
     assert s.BACKUP_DIR == Path("/data/backups")
+
+
+# S5-W0-3 (S5-D17, S5-D44, S5-D81): OpenBao, SMTP, Telegram, exportación -----------------------
+
+OPENBAO_BASE: dict[str, str | None] = {
+    "CRYPTO_PROVIDER": "openbao",
+    "CRYPTO_LOCAL_KEK_PATH": None,
+    "OPENBAO_TOKEN_FILE": "/run/apex/openbao/token",
+}
+SMTP_COMPLETO: dict[str, str | None] = {
+    "SMTP_HOST": "smtp.ejemplo.test",
+    "SMTP_USER": "apex",
+    "SMTP_PASSWORD": "clave-smtp-no-real",
+    "SMTP_FROM": "apex@ejemplo.test",
+}
+TELEGRAM_OFICIAL = "https://api.telegram.org"
+TOKEN_TELEGRAM = "123456:AAH-token-no-real-1234567890"  # noqa: S105
+LLAVE_MINISIGN = base64.b64encode(b"Ed" + bytes(range(40))).decode()
+
+
+def _cargar(tmp_path: Path, **cambios: str | None) -> Settings:
+    return load_settings(env_file=escribir_env(tmp_path, **cambios))
+
+
+def _rechaza(tmp_path: Path, nombre: str, **cambios: str | None) -> ConfigError:
+    # Sin esto, `extra="forbid"` rechazaría una variable inexistente y la prueba pasaría en falso.
+    assert nombre in Settings.model_fields, f"{nombre} aún no es un campo de Settings"
+    with pytest.raises(ConfigError) as excinfo:
+        _cargar(tmp_path, **cambios)
+    assert nombre in excinfo.value.invalid or nombre in excinfo.value.missing, str(excinfo.value)
+    return excinfo.value
+
+
+def test_openbao_addr_por_defecto_es_http_openbao_8200(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    assert s.OPENBAO_ADDR == "http://openbao:8200"
+
+
+@pytest.mark.parametrize(
+    "direccion",
+    ["http://openbao:8200", "http://localhost:8200", "http://127.0.0.1:8200"],
+)
+def test_openbao_addr_http_se_acepta_en_los_tres_hosts_locales(
+    tmp_path: Path, direccion: str
+) -> None:
+    assert _cargar(tmp_path, OPENBAO_ADDR=direccion).OPENBAO_ADDR == direccion
+
+
+@pytest.mark.parametrize(
+    "direccion",
+    ["http://bao.ejemplo.test:8200", "http://10.0.0.5:8200", "http://openbao.evil.test:8200"],
+)
+def test_openbao_addr_http_hacia_otro_host_se_rechaza(tmp_path: Path, direccion: str) -> None:
+    error = _rechaza(tmp_path, "OPENBAO_ADDR", OPENBAO_ADDR=direccion)
+    assert direccion not in str(error)
+
+
+def test_openbao_addr_https_hacia_otro_host_se_acepta(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, OPENBAO_ADDR="https://bao.ejemplo.test:8200")
+    assert s.OPENBAO_ADDR.startswith("https://")
+
+
+@pytest.mark.parametrize("direccion", ["ftp://openbao:8200", "openbao:8200", "https://"])
+def test_openbao_addr_con_esquema_o_forma_invalida_se_rechaza(
+    tmp_path: Path, direccion: str
+) -> None:
+    _rechaza(tmp_path, "OPENBAO_ADDR", OPENBAO_ADDR=direccion)
+
+
+def test_proveedor_openbao_exige_la_ruta_del_token(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "OPENBAO_TOKEN_FILE", **{**OPENBAO_BASE, "OPENBAO_TOKEN_FILE": None})
+
+
+def test_proveedor_openbao_con_token_no_exige_kek_local(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, **OPENBAO_BASE)
+    assert s.CRYPTO_PROVIDER == "openbao"
+    assert s.OPENBAO_TOKEN_FILE == Path("/run/apex/openbao/token")
+    assert s.CRYPTO_LOCAL_KEK_PATH is None
+
+
+def test_proveedor_local_no_exige_el_token_de_openbao(tmp_path: Path) -> None:
+    assert _cargar(tmp_path).OPENBAO_TOKEN_FILE is None
+
+
+def test_missing_secrets_con_openbao_exige_el_token_y_no_la_kek(tmp_path: Path) -> None:
+    settings = _cargar(tmp_path, **OPENBAO_BASE)
+    sin_token = missing_secrets(settings, exists=lambda ruta: ruta.name != "token")
+    assert sin_token == ["OPENBAO_TOKEN_FILE"]
+    todo_ausente = missing_secrets(settings, exists=lambda _ruta: False)
+    assert "OPENBAO_TOKEN_FILE" in todo_ausente
+    assert "CRYPTO_LOCAL_KEK_PATH" not in todo_ausente
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" not in todo_ausente
+    assert missing_secrets(settings, exists=lambda _ruta: True) == []
+
+
+def test_missing_secrets_con_local_sigue_sin_pedir_el_token_de_openbao(tmp_path: Path) -> None:
+    settings = _cargar(tmp_path)
+    assert "OPENBAO_TOKEN_FILE" not in missing_secrets(settings, exists=lambda _ruta: False)
+
+
+def test_valores_por_defecto_de_s5(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    assert s.CRYPTO_RECOVERY_POLL_S == 20
+    assert s.OPENBAO_TIMEOUT_S == 5
+    assert s.NOTIFY_MAX_ATTEMPTS == 3
+    assert s.NOTIFY_NET_TIMEOUT_S == 10
+    assert s.EXPORT_MAX_ROWS == 20000
+    assert s.SMTP_PORT == 587
+    assert s.TELEGRAM_API_BASE == TELEGRAM_OFICIAL
+
+
+@pytest.mark.parametrize(
+    "nombre",
+    ["CRYPTO_RECOVERY_POLL_S", "OPENBAO_TIMEOUT_S", "NOTIFY_MAX_ATTEMPTS", "EXPORT_MAX_ROWS"],
+)
+def test_los_numeros_de_s5_exigen_mayor_que_cero(tmp_path: Path, nombre: str) -> None:
+    _rechaza(tmp_path, nombre, **{nombre: "0"})
+
+
+def test_smtp_sin_ningun_campo_es_valido_y_deja_el_correo_apagado(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    assert s.SMTP_HOST is None and s.SMTP_PASSWORD is None and s.SMTP_FROM is None
+
+
+def test_smtp_completo_se_acepta(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, **SMTP_COMPLETO)
+    assert s.SMTP_HOST == "smtp.ejemplo.test" and s.SMTP_TLS_MODE == "starttls"
+
+
+@pytest.mark.parametrize("falta", ["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"])
+def test_smtp_es_todo_o_nada_y_nombra_lo_que_falta(tmp_path: Path, falta: str) -> None:
+    error = _rechaza(tmp_path, falta, **{**SMTP_COMPLETO, falta: None})
+    assert "clave-smtp-no-real" not in str(error)
+
+
+def test_smtp_tls_none_solo_con_env_dev(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "SMTP_TLS_MODE", **SMTP_COMPLETO, SMTP_TLS_MODE="none", ENV="production")
+    s = _cargar(tmp_path, **SMTP_COMPLETO, SMTP_TLS_MODE="none", ENV="dev")
+    assert s.SMTP_TLS_MODE == "none"
+
+
+def test_smtp_tls_modo_desconocido_se_rechaza(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "SMTP_TLS_MODE", **SMTP_COMPLETO, SMTP_TLS_MODE="ssl2")
+
+
+def test_telegram_api_base_distinta_de_la_oficial_solo_con_env_dev(tmp_path: Path) -> None:
+    _rechaza(
+        tmp_path, "TELEGRAM_API_BASE", TELEGRAM_API_BASE="http://127.0.0.1:9", ENV="production"
+    )
+    s = _cargar(tmp_path, TELEGRAM_API_BASE="http://127.0.0.1:9", ENV="dev")
+    assert s.TELEGRAM_API_BASE == "http://127.0.0.1:9"
+    oficial = _cargar(tmp_path, TELEGRAM_API_BASE=TELEGRAM_OFICIAL, ENV="production")
+    assert oficial.TELEGRAM_API_BASE == TELEGRAM_OFICIAL
+
+
+def test_smtp_password_y_telegram_token_son_secretstr_con_repr_enmascarado(
+    tmp_path: Path,
+) -> None:
+    s = _cargar(tmp_path, **SMTP_COMPLETO, TELEGRAM_BOT_TOKEN=TOKEN_TELEGRAM)
+    assert isinstance(s.SMTP_PASSWORD, SecretStr)
+    assert isinstance(s.TELEGRAM_BOT_TOKEN, SecretStr)
+    texto = repr(s) + str(s) + repr(s.SMTP_PASSWORD) + repr(s.TELEGRAM_BOT_TOKEN)
+    assert "clave-smtp-no-real" not in texto
+    assert "AAH-token-no-real" not in texto
+    assert "**********" in repr(s.SMTP_PASSWORD)
+    assert s.SMTP_PASSWORD.get_secret_value() == "clave-smtp-no-real"
+
+
+def test_los_secretos_de_s5_son_opcionales_y_sin_valor_por_defecto_real() -> None:
+    for nombre in ("SMTP_PASSWORD", "TELEGRAM_BOT_TOKEN"):
+        assert nombre in Settings.model_fields, nombre
+        assert Settings.model_fields[nombre].default is None, nombre
+
+
+def test_las_cuatro_user_de_s5_d81_tienen_su_valor_por_defecto(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    assert s.USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN == 30
+    assert s.USER_EXPORT_LIMIT_PER_MIN == 2
+    assert s.USER_EXPORT_LIMIT_PER_HOUR == 6
+    assert s.USER_EXPORT_LIMIT_PER_DAY == 20
+
+
+@pytest.mark.parametrize(
+    "nombre",
+    [
+        "USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN",
+        "USER_EXPORT_LIMIT_PER_MIN",
+        "USER_EXPORT_LIMIT_PER_HOUR",
+        "USER_EXPORT_LIMIT_PER_DAY",
+    ],
+)
+def test_las_cuatro_user_de_s5_d81_exigen_mayor_que_cero(tmp_path: Path, nombre: str) -> None:
+    _rechaza(tmp_path, nombre, **{nombre: "0"})
+    assert getattr(_cargar(tmp_path, **{nombre: "7"}), nombre) == 7
+
+
+def test_backup_sign_pubkey_es_opcional(tmp_path: Path) -> None:
+    assert _cargar(tmp_path).BACKUP_SIGN_PUBKEY in (None, "")
+
+
+def test_backup_sign_pubkey_con_formato_minisign_se_acepta(tmp_path: Path) -> None:
+    assert LLAVE_MINISIGN.startswith("RW") and len(LLAVE_MINISIGN) == 56
+    assert _cargar(tmp_path, BACKUP_SIGN_PUBKEY=LLAVE_MINISIGN).BACKUP_SIGN_PUBKEY == LLAVE_MINISIGN
+
+
+@pytest.mark.parametrize(
+    "valor",
+    ["no-es-una-llave", "RW", "RWQ" + "A" * 10, "XX" + LLAVE_MINISIGN[2:], LLAVE_MINISIGN + "AA"],
+    ids=["texto", "solo-prefijo", "corta", "prefijo-ajeno", "larga"],
+)
+def test_backup_sign_pubkey_con_formato_invalido_se_rechaza(tmp_path: Path, valor: str) -> None:
+    _rechaza(tmp_path, "BACKUP_SIGN_PUBKEY", BACKUP_SIGN_PUBKEY=valor)
+
+
+def test_produccion_acepta_backup_sign_pubkey_en_el_entorno_pero_no_la_llave_privada(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`BACKUP_SIGN_PUBKEY` pasa a `Settings` (no es secreta): el prefijo `BACKUP_SIGN_` de M2
+    ya no la cuenta como secreto de operación, pero `BACKUP_SIGN_KEY_FILE` sí."""
+    from app.core.config import ops_secret_names
+
+    assert ops_secret_names({"BACKUP_SIGN_PUBKEY": LLAVE_MINISIGN}) == []
+    assert ops_secret_names({"BACKUP_SIGN_KEY_FILE": "/x"}) == ["BACKUP_SIGN_KEY_FILE"]
+    monkeypatch.setenv("BACKUP_SIGN_PUBKEY", LLAVE_MINISIGN)
+    s = _cargar(tmp_path, ENV="production")
+    assert s.BACKUP_SIGN_PUBKEY == LLAVE_MINISIGN
+
+
+def test_non_api_env_vars_de_s5_son_las_claves_de_operacion_que_no_son_de_settings() -> None:
+    ops = Path(__file__).resolve().parents[3] / ".env.ops.example"
+    claves = {
+        linea.split("=", 1)[0].strip()
+        for linea in ops.read_text(encoding="utf-8").splitlines()
+        if linea.strip() and not linea.strip().startswith("#") and "=" in linea
+    }
+    de_settings = {"SMTP_PASSWORD", "TELEGRAM_BOT_TOKEN", "BACKUP_SIGN_PUBKEY"}
+    assert de_settings <= claves, "deben vivir en .env.ops.example (S5-D44)"
+    assert de_settings <= set(Settings.model_fields), "son campos de Settings"
+    assert not de_settings & NON_API_ENV_VARS, "no son ajenas: Settings las lee"
+    ajenas_nuevas = {"TOOLS_DB_USER", "MIGRATE_DB_USER", "APEX_CUSTODY_SUBNET"}
+    assert ajenas_nuevas <= claves
+    assert ajenas_nuevas <= NON_API_ENV_VARS
+    assert NON_API_ENV_VARS >= claves - set(Settings.model_fields)
+
+
+def test_un_env_suma_de_los_dos_ejemplos_con_claves_s5_no_tumba_al_api(tmp_path: Path) -> None:
+    s = _cargar(
+        tmp_path,
+        **SMTP_COMPLETO,
+        TOOLS_DB_USER="apex",
+        MIGRATE_DB_USER="apex",
+        APEX_CUSTODY_SUBNET="172.31.0.0/24",
+        TELEGRAM_BOT_TOKEN=TOKEN_TELEGRAM,
+        TELEGRAM_CHAT_ID="-100123",
+    )
+    assert s.TELEGRAM_CHAT_ID == "-100123"

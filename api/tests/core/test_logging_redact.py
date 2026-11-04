@@ -347,3 +347,123 @@ def test_el_detail_en_el_mensaje_o_en_un_extra_tambien_se_recorta() -> None:
     registro.detalle = f"DETAIL: {MARCA}"  # type: ignore[attr-defined]
     linea = JsonFormatter().format(registro)
     assert MARCA not in linea
+
+
+# S5-W0-3 (S5-D58, M-8): token del bot de Telegram, claves de OpenBao, SMTP -------------------
+
+TOKEN_BOT = "bot123456:AAH" + "x" * 30  # `bot<id>:AAH<30 caracteres>` como en la URL de la API
+URL_BOT = f"https://api.telegram.org/{TOKEN_BOT}/sendMessage"
+
+
+def test_redact_text_recorta_el_token_del_bot_de_telegram() -> None:
+    salida = redact_text(f"fallo al llamar {URL_BOT}: timeout")
+    assert "AAH" not in salida
+    assert "123456" not in salida
+    assert "api.telegram.org" in salida, "solo se recorta el token, no toda la línea"
+
+
+def test_redact_text_recorta_el_token_del_bot_con_guion_y_guion_bajo() -> None:
+    token = "bot987654321:AAF-" + "a_B-" * 8
+    salida = redact_text(f"GET https://api.telegram.org/{token}/getMe")
+    assert "987654321" not in salida and "a_B-a_B-" not in salida
+
+
+def test_redact_text_no_toca_texto_parecido_pero_corto() -> None:
+    assert redact_text("el bot12:abc responde") == "el bot12:abc responde"
+    assert redact_text("robot123456:corto") == "robot123456:corto"
+
+
+def test_redact_recorta_el_token_dentro_de_un_valor_anidado() -> None:
+    salida = redact({"detalle": {"url": URL_BOT, "intentos": 2}, "items": [f"x {URL_BOT}"]})
+    assert "AAH" not in json.dumps(salida)
+    assert salida["detalle"]["intentos"] == 2
+
+
+def test_el_formatter_no_deja_pasar_el_token_del_bot_en_el_mensaje_ni_en_el_traceback() -> None:
+    try:
+        raise RuntimeError(f"ConnectError hacia {URL_BOT}")
+    except RuntimeError:
+        import sys
+
+        registro = logging.LogRecord(
+            "app.alerts", logging.ERROR, __file__, 1, "falló %s", (URL_BOT,), sys.exc_info()
+        )
+    linea = JsonFormatter().format(registro)
+    assert "AAH" not in linea and "123456" not in linea
+
+
+@pytest.mark.parametrize(
+    "clave", ["x-vault-token", "smtp_password", "telegram_bot_token", "bot_token"]
+)
+def test_sensitive_keys_suma_las_claves_de_s5(clave: str) -> None:
+    assert clave in app_logging.SENSITIVE_KEYS
+
+
+@pytest.mark.parametrize(
+    "clave", ["X-Vault-Token", "SMTP_PASSWORD", "Telegram_Bot_Token", "bot_token"]
+)
+def test_redact_oculta_por_clave_sin_distinguir_mayusculas(clave: str) -> None:
+    assert redact({clave: "valor-secreto-s5"}) == {clave: "[redacted]"}
+
+
+def test_redact_oculta_x_vault_token_dentro_de_cabeceras_anidadas() -> None:
+    cabeceras = {"headers": {"X-Vault-Token": "hvs.CAESIsecreto", "Accept": "application/json"}}
+    salida = redact(cabeceras)
+    assert salida["headers"]["X-Vault-Token"] == "[redacted]"
+    assert salida["headers"]["Accept"] == "application/json"
+
+
+@pytest.mark.parametrize("nombre", ["httpx", "httpcore"])
+def test_configure_logging_deja_httpx_y_httpcore_en_warning(
+    nombre: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import load_settings
+
+    logger = logging.getLogger(nombre)
+    anterior = logger.level
+    logger.setLevel(logging.DEBUG)
+    try:
+        env = {
+            "DATABASE_URL": "postgresql+asyncpg://apex:x@db:5432/apex",
+            "JWT_PRIVATE_KEY_PATH": "/k/jwt.pem",
+            "CRYPTO_PROVIDER": "local",
+            "CRYPTO_LOCAL_KEK_PATH": "/k/kek.bin",
+            "UPLOADS_DIR": "/data/uploads",
+            "ENV": "dev",
+            "LOG_LEVEL": "DEBUG",
+        }
+        for clave, valor in env.items():
+            monkeypatch.setenv(clave, valor)
+        app_logging.configure_logging(load_settings(env_file=None))
+        assert logger.level == logging.WARNING
+        assert not logger.isEnabledFor(logging.INFO)
+    finally:
+        logger.setLevel(anterior)
+
+
+# S5-W0-3 (revisión de seguridad, M3): X-Vault-Token en texto libre y token de bot sin `bot` ---
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "cabecera X-Vault-Token: hvs.CAESIsecreto123456",
+        "headers={'X-Vault-Token': 'hvs.CAESIsecreto123456'}",
+        "x-vault-token=hvs.CAESIsecreto123456",
+        'X-VAULT-TOKEN":"hvs.CAESIsecreto123456"',
+    ],
+)
+def test_redact_text_recorta_x_vault_token_en_texto_libre(texto: str) -> None:
+    salida = redact_text(texto)
+    assert "CAESIsecreto" not in salida, salida
+
+
+def test_redact_text_recorta_el_token_del_bot_sin_prefijo_bot() -> None:
+    salida = redact_text("getMe 123456789:AAH" + "z" * 32 + " respondió 401")
+    assert "AAH" not in salida and "123456789" not in salida
+    assert "respondió 401" in salida
+
+
+def test_redact_text_no_toca_horas_ni_ids_cortos_con_dos_puntos() -> None:
+    texto = "inicio 12:30:45 id 1234567:corto y 20261104:abc"
+    assert redact_text(texto) == texto

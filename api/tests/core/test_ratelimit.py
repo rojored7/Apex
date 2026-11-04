@@ -390,6 +390,11 @@ CATALOGO = {
     "staff-read": (120, 60),
     "audit-verify": (3, 60),
     "audit-verify-hour": (20, 3600),
+    # S5-D81 (S5-W0-3, desviación 1 del Verde: el Rojo no actualizó este catálogo).
+    "notifications-write": (30, 60),
+    "export": (2, 60),
+    "export-hour": (6, 3600),
+    "export-day": (20, 86400),
 }
 
 
@@ -444,6 +449,10 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_READ_LIMIT_PER_MIN": 19,
             "USER_AUDIT_VERIFY_LIMIT_PER_MIN": 20,
             "USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 21,
+            "USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN": 22,
+            "USER_EXPORT_LIMIT_PER_MIN": 23,
+            "USER_EXPORT_LIMIT_PER_HOUR": 24,
+            "USER_EXPORT_LIMIT_PER_DAY": 25,
         }
     )
     assert user_limits_from(ajustes) == {
@@ -459,11 +468,17 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         "memberships-write": (11, 60),
         "payments-write": (11, 60),
         "admin-write": (12, 60),
+        # S5-D81 (S5-W0-3): cuatro cubetas nuevas, 16 en total.
+        "notifications-write": (22, 60),
+        "export": (23, 60),
+        "export-hour": (24, 3600),
+        "export-day": (25, 86400),
     }
 
 
 def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventana() -> None:
-    """S4A-D65 (contradicción 1): el catálogo pasa de 9 a 12 cubetas; `audit-verify-hour` mide
+    """S4A-D65 (contradicción 1): el catálogo pasa de 9 a 12 cubetas (16 con S5-D81);
+    `audit-verify-hour` mide
     3.600 s aunque su tope venga de `Settings`."""
     from app.cli import export_settings
     from app.core.ratelimit import user_limits_from
@@ -471,7 +486,7 @@ def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventan
     topes = user_limits_from(
         export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
     )
-    assert len(topes) == 12
+    assert len(topes) == 16  # S5-D81: 12 de S4A más las 4 de S5
     assert topes["audit-verify-hour"] == (7, 3600)
     assert topes["audit-verify"][1] == 60
     assert topes["staff-read"][1] == 60

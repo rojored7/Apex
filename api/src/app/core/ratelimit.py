@@ -327,6 +327,11 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "staff-read": (120, 60),
     "audit-verify": (3, 60),
     "audit-verify-hour": (20, 3600),
+    # S5-D81: avisos y exportaciones (rutas en B5 y B12).
+    "notifications-write": (30, 60),
+    "export": (2, 60),
+    "export-hour": (6, 3600),
+    "export-day": (20, 86400),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -351,6 +356,10 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "staff-read": settings.USER_READ_LIMIT_PER_MIN,
         "audit-verify": settings.USER_AUDIT_VERIFY_LIMIT_PER_MIN,
         "audit-verify-hour": settings.USER_AUDIT_VERIFY_LIMIT_PER_HOUR,
+        "notifications-write": settings.USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN,
+        "export": settings.USER_EXPORT_LIMIT_PER_MIN,
+        "export-hour": settings.USER_EXPORT_LIMIT_PER_HOUR,
+        "export-day": settings.USER_EXPORT_LIMIT_PER_DAY,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

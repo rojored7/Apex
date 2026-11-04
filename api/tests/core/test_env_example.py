@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.core.config import NON_API_ENV_VARS, Settings
 
 RAIZ = Path(__file__).resolve().parents[3]
@@ -165,7 +167,7 @@ def test_las_tres_variables_de_s4a_b3_van_activas_con_sus_valores() -> None:
 
 def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
     """E9: el comentario del bloque dice de dónde vienen (S4A-B3, M-1 y M-3) y el conteo nuevo
-    del catálogo (12 cubetas y 11 variables `USER_*`)."""
+    del catálogo (16 cubetas y 15 variables `USER_*` desde S5-D81)."""
     lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
     indices = [i for i, linea in enumerate(lineas) if linea.startswith("USER_READ_LIMIT_PER_MIN=")]
     assert len(indices) == 1, "USER_READ_LIMIT_PER_MIN debe ir una vez como línea activa"
@@ -173,9 +175,9 @@ def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
         linea for linea in lineas[max(0, indices[0] - 4) : indices[0]] if linea.startswith("#")
     )
     assert "S4A-B3, M-1 y M-3" in comentario
-    assert "12 cubetas" in comentario and "11 variables" in comentario
+    assert "16 cubetas" in comentario and "15 variables" in comentario  # S5-D81
     activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 11, activas
+    assert len(activas) == 15, activas  # 11 de S4A y las 4 de S5-D81
 
 
 def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
@@ -322,3 +324,152 @@ def test_backup_dir_vive_en_env_ops_example_y_no_en_env_example() -> None:
     assert _claves(EJEMPLO_OPS)["BACKUP_DIR"] == "/data/backups"
     assert "BACKUP_DIR" not in _claves()
     assert "BACKUP_DIR" in Settings.model_fields
+
+
+# S5-W0-3 (S5-D44, S5-D81, S5-D98): reparto de las variables nuevas -------------------------
+
+NO_SECRETAS_S5: dict[str, str] = {
+    "OPENBAO_ADDR": "http://openbao:8200",
+    "OPENBAO_TIMEOUT_S": "5",
+    "CRYPTO_RECOVERY_POLL_S": "20",
+    "SMTP_PORT": "587",
+    "SMTP_TLS_MODE": "starttls",
+    "TELEGRAM_API_BASE": "https://api.telegram.org",
+    "NOTIFY_MAX_ATTEMPTS": "3",
+    "NOTIFY_NET_TIMEOUT_S": "10",
+    "EXPORT_MAX_ROWS": "20000",
+    "USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN": "30",
+    "USER_EXPORT_LIMIT_PER_MIN": "2",
+    "USER_EXPORT_LIMIT_PER_HOUR": "6",
+    "USER_EXPORT_LIMIT_PER_DAY": "20",
+}
+"""Líneas activas de `.env.example` con el valor por defecto de `Settings`."""
+
+NO_SECRETAS_S5_VACIAS: tuple[str, ...] = (
+    "OPENBAO_TOKEN_FILE",
+    "SMTP_HOST",
+    "SMTP_USER",
+    "SMTP_FROM",
+    "TELEGRAM_CHAT_ID",
+)
+"""También en `.env.example` (no son secretas), con el valor vacío o de ejemplo."""
+
+SOLO_EN_OPERACION_S5: tuple[str, ...] = (
+    "SMTP_PASSWORD",
+    "TELEGRAM_BOT_TOKEN",
+    "APEX_CUSTODY_SUBNET",
+    "MIGRATE_DB_USER",
+    "TOOLS_DB_USER",
+    "BACKUP_SIGN_PUBKEY",
+)
+
+CUATRO_USER_S5: tuple[str, ...] = (
+    "USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN",
+    "USER_EXPORT_LIMIT_PER_MIN",
+    "USER_EXPORT_LIMIT_PER_HOUR",
+    "USER_EXPORT_LIMIT_PER_DAY",
+)
+CUATRO_BUCKETS_S5: tuple[str, ...] = (
+    "notifications-write",
+    "export",
+    "export-hour",
+    "export-day",
+)
+CI_YML = RAIZ / ".github" / "workflows" / "ci.yml"
+
+
+def test_lo_no_secreto_de_s5_va_en_env_example_con_su_valor_por_defecto() -> None:
+    claves = _claves()
+    distintas = {n: claves.get(n) for n, v in NO_SECRETAS_S5.items() if claves.get(n) != v}
+    assert distintas == {}, f"valores distintos o ausentes en .env.example: {distintas}"
+    for nombre, valor in NO_SECRETAS_S5.items():
+        assert str(Settings.model_fields[nombre].default) == valor, nombre
+    ausentes = [n for n in NO_SECRETAS_S5_VACIAS if n not in claves]
+    assert ausentes == [], f"faltan en .env.example: {ausentes}"
+
+
+def test_el_token_de_openbao_del_ejemplo_apunta_a_una_ruta_no_a_un_valor() -> None:
+    valor = _claves()["OPENBAO_TOKEN_FILE"]
+    assert valor == "" or valor.startswith("/run/apex/"), valor
+
+
+def test_lo_secreto_y_de_operacion_de_s5_va_en_env_ops_example() -> None:
+    ops = _claves(EJEMPLO_OPS)
+    ausentes = [n for n in SOLO_EN_OPERACION_S5 if n not in ops]
+    assert ausentes == [], f"faltan en .env.ops.example: {ausentes}"
+    en_publico = [n for n in SOLO_EN_OPERACION_S5 if n in _claves()]
+    assert en_publico == [], f"no deben estar en .env.example: {en_publico}"
+
+
+@pytest.mark.parametrize("nombre", ["SMTP_PASSWORD", "TELEGRAM_BOT_TOKEN"])
+def test_los_secretos_de_s5_van_vacios_o_con_cambiar_esto_en_el_ejemplo_de_operacion(
+    nombre: str,
+) -> None:
+    valor = _claves(EJEMPLO_OPS)[nombre]
+    assert valor == "" or "cambiar-esto" in valor, f"{nombre} parece llevar un valor real"
+
+
+def test_sin_claves_repetidas_dentro_de_cada_ejemplo() -> None:
+    for ruta in (EJEMPLO, EJEMPLO_OPS):
+        nombres = [
+            linea.split("=", 1)[0].strip()
+            for linea in ruta.read_text(encoding="utf-8").splitlines()
+            if linea.strip() and not linea.lstrip().startswith("#") and "=" in linea
+        ]
+        repetidas = sorted({n for n in nombres if nombres.count(n) > 1})
+        assert repetidas == [], f"{ruta.name}: claves repetidas {repetidas}"
+
+
+def test_el_reparto_s5_no_repite_claves_entre_los_dos_ejemplos() -> None:
+    comunes = set(_claves()) & set(_claves(EJEMPLO_OPS))
+    assert comunes == set()
+    todas = set(NO_SECRETAS_S5) | set(NO_SECRETAS_S5_VACIAS) | set(SOLO_EN_OPERACION_S5)
+    assert todas <= set(_claves()) | set(_claves(EJEMPLO_OPS))
+
+
+def test_el_comentario_del_catalogo_dice_16_cubetas_y_15_variables() -> None:
+    """S5-D81: el catálogo pasa a 16 cubetas y 15 variables `USER_*`."""
+    texto = EJEMPLO.read_text(encoding="utf-8")
+    comentario = " ".join(linea for linea in texto.splitlines() if linea.startswith("#"))
+    assert "16 cubetas" in comentario and "15 variables" in comentario
+    assert "12 cubetas" not in comentario and "11 variables" not in comentario
+    activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
+    assert len(activas) == 15, activas
+    assert set(CUATRO_USER_S5) <= set(activas)
+
+
+def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> None:
+    from app.core.ratelimit import USER_LIMITS
+
+    assert [b for b in CUATRO_BUCKETS_S5 if b not in USER_LIMITS] == []
+    assert USER_LIMITS["notifications-write"] == (30, 60)
+    assert USER_LIMITS["export"] == (2, 60)
+    assert USER_LIMITS["export-hour"] == (6, 3600)
+    assert USER_LIMITS["export-day"] == (20, 86400)
+    assert len(USER_LIMITS) == 16
+
+
+def test_las_cuatro_cubetas_nuevas_estan_pendientes_de_ruta_en_el_catalogo_de_pruebas() -> None:
+    from tests.architecture.test_user_limits_catalog import CLAVES_SIN_RUTA_TODAVIA
+
+    assert set(CUATRO_BUCKETS_S5) <= CLAVES_SIN_RUTA_TODAVIA
+
+
+def test_user_limits_from_alimenta_las_cuatro_cubetas_desde_settings() -> None:
+    from app.cli import export_settings
+    from app.core.ratelimit import user_limits_from
+
+    topes = user_limits_from(export_settings())
+    assert topes["notifications-write"] == (30, 60)
+    assert topes["export"] == (2, 60)
+    assert topes["export-hour"] == (6, 3600)
+    assert topes["export-day"] == (20, 86400)
+
+
+def test_ci_sube_las_quince_variables_user_y_cuenta_quince() -> None:
+    """S5-D98: el `sed` del job e2e-stack sube también las cuatro nuevas y el conteo es 15."""
+    texto = CI_YML.read_text(encoding="utf-8")
+    assert '[ "$subidas" = "15" ]' in texto, "el conteo de subidas debe ser 15"
+    assert "se esperaban 15 cubetas USER_* subidas" in texto
+    for nombre in CUATRO_USER_S5:
+        assert texto.count(nombre) >= 2, f"{nombre} debe estar en el sed y en la regex del conteo"

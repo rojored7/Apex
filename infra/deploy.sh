@@ -120,6 +120,14 @@ main() {
   if grep -qE '^(POSTGRES_|DATABASE_URL=)' "$ENV_FILE"; then
     die2 "$ENV_FILE contiene POSTGRES_* o DATABASE_URL=: esas variables van solo en $OPS_FILE (S4B-D56)"
   fi
+  # S5-W0-3 (revisión de seguridad, M1): los dos secretos de canal solo van en .env.ops; `tools`
+  # lee .env por env_file y Compose no puede quitarle una clave. Solo se imprime el NOMBRE.
+  local secreto_de_canal
+  for secreto_de_canal in SMTP_PASSWORD TELEGRAM_BOT_TOKEN; do
+    if grep -qE "^${secreto_de_canal}=[^[:space:]]" "$ENV_FILE"; then
+      die2 "$ENV_FILE contiene $secreto_de_canal con valor: va solo en $OPS_FILE (S5-D44)"
+    fi
+  done
   grep -qE '^ENV=production[[:space:]]*$' "$ENV_FILE" || die2 "$ENV_FILE debe tener ENV=production"
 
   valor() { # <archivo> <clave>: último valor de la clave, sin CR
@@ -347,8 +355,14 @@ main() {
   envapi="$("${DC[@]}" exec -T api sh -c 'tr "\0" "\n" < /proc/1/environ' 2> /dev/null | tr -d '\r' || true)"
   [ -n "$envapi" ] || fallo_despliegue "no se pudo leer /proc/1/environ del api"
   local prohibidas
-  prohibidas="$(printf '%s\n' "$envapi" | cut -d= -f1 | grep -E '^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_[A-Z_]*|BACKUP_SIGN_[A-Z_]*|BACKUP_AGE_[A-Z_]*|BACKUP_VERIFY_[A-Z_]*)$' || true)"
+  prohibidas="$(printf '%s\n' "$envapi" | cut -d= -f1 | grep -E '^(POSTGRES_[A-Z_]*|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_[A-Z_]*|BACKUP_SIGN_[A-Z_]*|BACKUP_AGE_[A-Z_]*|BACKUP_VERIFY_[A-Z_]*)$' || true)"
   [ -z "$prohibidas" ] || fallo_despliegue "el api tiene variables de operación que no le tocan: $(printf '%s' "$prohibidas" | tr '\n' ' ')"
+  # S5-W0-3 (L-9): web no recibe ningún dato de correo ni de Telegram. Solo NOMBRES, nunca valores.
+  local envweb ajenas_web
+  envweb="$("${DC[@]}" exec -T web sh -c 'tr "\0" "\n" < /proc/1/environ' 2> /dev/null | tr -d '\r' || true)"
+  [ -n "$envweb" ] || fallo_despliegue "no se pudo leer /proc/1/environ de web"
+  ajenas_web="$(printf '%s\n' "$envweb" | cut -d= -f1 | grep -E '^(SMTP_[A-Z_]*|TELEGRAM_[A-Z_]*)$' || true)"
+  [ -z "$ajenas_web" ] || fallo_despliegue "web tiene variables de canales que no le tocan: $(printf '%s' "$ajenas_web" | tr '\n' ' ')"
   # DATABASE_URL debe existir en el api y usar su rol: su ausencia también es un fallo.
   if ! printf '%s\n' "$envapi" | grep -q '^DATABASE_URL=postgresql+asyncpg://apex_api:'; then
     fallo_despliegue "el api no usa su rol apex_api en DATABASE_URL"

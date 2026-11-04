@@ -1,6 +1,7 @@
 """`0014_audit_log_triggers_always` (S4B-W0-2; S4B-D4 corregida por E5, S4B-D5, S4B-D6).
 
-Padre `0013_audit_verifications`; es head. No crea tablas ni índices. Hace dos cosas:
+Padre `0013_audit_verifications`; desde S5-W0-3 el head es `0015` y esta queda en su cadena.
+No crea tablas ni índices. Hace dos cosas:
 - `CREATE OR REPLACE FUNCTION audit.forbid_mutation()` con `TG_TABLE_SCHEMA`/`TG_TABLE_NAME`. La
   usan **solo cuatro** triggers (`audit_log_forbid_*` de `0002` y `verifications_forbid_*` de
   `0013`); su único efecto real es que al mutar `audit.verifications` el mensaje deja de decir
@@ -247,7 +248,7 @@ TABLAS = (
         "crypto.crypto_keys",
         _insertar_crypto_key,
         "UPDATE crypto.crypto_keys SET data_class = 'otra.clase' WHERE id = '{id}'",
-        "crypto.crypto_keys: solo cambia state y rotated_*",
+        "crypto.crypto_keys: solo cambian state, rotated_*, provider y wrapped_material",
     ),
     Tabla(
         "crypto.crypto_jobs",
@@ -279,12 +280,16 @@ def fila(request: pytest.FixtureRequest, base: str) -> Iterator[tuple[str, Tabla
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0013_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0013_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    # S5-W0-3: 0015 es el head; 0014 queda en su cadena.
+    assert REVISION in {r.revision for r in scripts.walk_revisions(base="base", head="heads")}
+    assert scripts.get_heads() != [REVISION]
 
 
 # Estado de los triggers -------------------------------------------------------------------------

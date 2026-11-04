@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from app.modules.settings.schemas import (
     ENABLED_SECTIONS,
@@ -168,3 +168,58 @@ def test_el_detector_de_contiene_ve_nombres_que_los_sufijos_no_ven() -> None:
         "interno.password_hint",
     ]
     assert campos_sospechosos(Seccion) != campos_con_secreto(Seccion)
+
+
+# S5-W0-3 (S5-D44, M-7, M-8, L-9): los secretos de los canales viven en Settings ---------
+
+
+def _es_secretstr_opcional(anotacion: Any) -> bool:
+    return anotacion is SecretStr or SecretStr in get_args(anotacion)
+
+
+def test_settings_declara_smtp_password_y_telegram_bot_token_como_secretstr_opcionales() -> None:
+    from app.core.config import Settings
+
+    for nombre in ("SMTP_PASSWORD", "TELEGRAM_BOT_TOKEN"):
+        assert nombre in Settings.model_fields, f"{nombre} aún no es un campo de Settings"
+        campo = Settings.model_fields[nombre]
+        assert _es_secretstr_opcional(campo.annotation), f"{nombre} debe ser SecretStr | None"
+        assert campo.default is None, f"{nombre} no lleva valor por defecto real"
+
+
+def test_todo_campo_de_settings_con_nombre_de_secreto_es_secretstr_o_una_ruta() -> None:
+    """Un campo con `password`, `token`, `secret` o `api_key` en el nombre no puede ser `str`:
+    `repr` y los volcados del `Settings` mostrarían el valor. Las rutas a archivos de secretos
+    (`*_PATH`, `*_FILE`), los números y la llave PÚBLICA de firma son la excepción."""
+    from app.core.config import Settings
+
+    excepciones = {"BACKUP_SIGN_PUBKEY"}
+    sospechosos = re.compile(r"password|token|secret|api_key|private_key", re.IGNORECASE)
+    infractores = [
+        nombre
+        for nombre, campo in Settings.model_fields.items()
+        if sospechosos.search(nombre)
+        and nombre not in excepciones
+        and not nombre.endswith(("_PATH", "_FILE"))
+        and campo.annotation in (str, str | None)
+    ]
+    assert infractores == []
+
+
+def test_ninguna_seccion_de_la_base_guarda_campos_de_smtp_telegram_ni_openbao() -> None:
+    """M-7 y M-8: los canales se configuran por `.env`, nunca por `settings.settings_sections`."""
+    modelos = {**{f"w:{k}": m for k, m in SECTION_REGISTRY.items()}}
+    modelos.update({f"r:{k}": m for k, m in SECTION_VIEWS.items()})
+
+    def nombres(modelo: type[BaseModel]) -> list[str]:
+        salida: list[str] = []
+        for nombre, info in modelo.model_fields.items():
+            salida.append(nombre)
+            salida.extend(
+                n for anidado in _modelos_anidados(info.annotation) for n in nombres(anidado)
+            )
+        return salida
+
+    prohibidos = re.compile(r"^(smtp_|telegram_|openbao_|vault_|bot_)", re.IGNORECASE)
+    hallados = [f"{c}.{n}" for c, m in modelos.items() for n in nombres(m) if prohibidos.match(n)]
+    assert hallados == []

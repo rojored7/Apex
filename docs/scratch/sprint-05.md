@@ -131,3 +131,65 @@ Decisiones S5-D114 a S5-D119 (y S5-D107 reescrita) en `docs/ddd/DECISIONES.md`. 
 - **Pruebas tras la corrección:** `test_deploy_script` 238/0 (rojo previo 237/1), `test_infra_scripts` 0 fallas, `test_openbao_infra` 81/0, `test_compose_config` 0 fallas, `scripts/workflow/tests/run.sh` 6 de 6, `bash -n` de los tocados. `wave0-gate.sh W0-2`: 533 passed en `tests/architecture`, sello escrito.
 - **`docker stats --no-stream` (ensayo):** web 8,8 MiB, worker 77,5, backup 10,0, api 91,6, db 53,2, openbao 23,7; CPU ~0 %.
 - **Estado final:** dev (api, worker, web, backup, db, db_test) healthy; `apex-ensayo` arriba con openbao desellado (5/3).
+
+
+## W0-3 · Rojo (2026-11-04)
+
+**Línea base** (antes de tocar nada): `pytest tests/migrations + test_config + test_env_example + test_logging_redact + architecture/{test_user_limits_catalog,test_settings_no_secrets,test_no_sensitive_in_logs}` 616 passed. `test_deploy_script.sh` 238 ok / 0 fallas. `test_env_isolation.sh` 11 fallas ya existentes (el stack de desarrollo trae `.env` suma de los dos ejemplos; la prueba es para un stack de producción: no es del slice). Nota: `test_user_limits_catalog.py` vive en `tests/architecture/`, no en `tests/core/`.
+
+**Rojo por archivo (fallan / total del archivo tras el Rojo):**
+- `tests/migrations/test_0015_crypto_provider_migration.py`: 8 rojas / 31. Las aceptaciones (local->openbao, openbao->local, rewrap x2, decrypt_only, propietario sobre `apex_roles`) fallan con `CheckViolationError` de la guarda de `0003`; `la_guarda_en_head_ya_no_es_la_de_0003` y el ciclo `downgrade` fallan porque el cuerpo sigue siendo el de `0003`. Las 23 verdes son guardas de lo que debe seguir rechazado (provider sin material, state+material, columnas fijas, fila `sign`, `ALWAYS`, roles sin UPDATE).
+- `test_0014_*`: 44 verdes; "es head" pasó a "en la cadena de head" (verde con el stub).
+- `tests/core/test_config.py`: 46 rojas / 164 (`AttributeError`/`ValidationError` reales; `_rechaza` exige que el campo exista en `Settings` para que `extra="forbid"` no dé falsos verdes). Se añadieron `NUEVAS_S5` y `TOOLS_DB_USER` al borrado de entorno.
+- `tests/core/test_env_example.py`: 11 rojas / 36 (una es la reparada `test_el_comentario_de_s4a_b3...` que ahora pide 16 cubetas y 15 variables).
+- `tests/core/test_ratelimit.py`: 2 rojas (reparadas: dict completo de `user_limits_from` y `len == 16`).
+- `tests/architecture/test_user_limits_catalog.py`: 1 roja (`CLAVES_SIN_RUTA_TODAVIA` con las cuatro cubetas, que aún no están en `USER_LIMITS`).
+- `tests/core/test_logging_redact.py`: 13 rojas / 37 (patrón `bot\d+:`, cuatro `SENSITIVE_KEYS`); la de `httpx`/`httpcore` en WARNING ya era verde (guarda).
+- `tests/architecture/test_no_sensitive_in_logs.py`: 3 rojas; `test_settings_no_secrets.py`: 1 roja.
+- `tests/migrations/test_db_grants.py`: 27 rojas / 154 (matriz `PRIVILEGIOS` actualizada para 4 pares; `PROHIBIDAS_WORKER` pierde `crypto_keys` y gana `SELECT document`; `PROHIBIDAS_API` suma tres UPDATE de `auth.users`).
+- `tests/migrations/test_worker_role_paths.py` (nuevo): 2 rojas / 5; tres guardas verdes (recompute, `names_for`, carga con `load_only`) que protegen el paso a `SELECT` por columna.
+- `scripts/ci/test_env_isolation.sh`: 7 fallas nuevas (sección estática sobre `compose --profile '*' config`); `test_deploy_script.sh`: 8 fallas nuevas (242 ok). `scripts/ci/fakes/docker` suma `FAKE_DOCKER_API_ENV_EXTRA` y `FAKE_DOCKER_WEB_ENV`.
+- Total pytest: 114 rojas / 803; `ruff check`, `ruff format --check` y `mypy src` limpios; `bash -n` de los tres arneses limpio.
+
+**Dudas para el Verde**
+1. Nombre del token: las pruebas usan `OPENBAO_TOKEN_FILE` (el de `compose.openbao.yml`; el plan decía `OPENBAO_TOKEN_PATH`). `missing_secrets` debe nombrar `OPENBAO_TOKEN_FILE`. Anotarlo en DECISIONES.
+2. `auth.users` UPDATE de `apex_api`: inventario del Rojo = `email, password_hash, role, deleted_at, locked_at, last_login_at, must_change_password, failed_login_count, tokens_valid_after, updated_at` (asignaciones de `modules/auth` links/sessions/tokens/users). Confirmar con `cli seed`/`unlock` y cualquier otro escritor antes de cerrar `grants.sql`; `is_active` y `member_id` quedan fuera.
+3. `names_for` selecciona `Member.sex`, que NO está en la lista de columnas del worker del plan (D204). O se añade `sex` a la lista (y a la constante `COLUMNAS_WORKER_MEMBERS`) o `names_for` deja de pedirla. Lo detecta `test_names_for_corre_como_apex_worker` cuando cambie el grant.
+4. Cómo parchear `guard_keys_update` sin romper `0014`: `0014` solo re-arma los triggers por nombre; `0015` hace `CREATE OR REPLACE` (sin tocar triggers) y el `downgrade` debe reponer el cuerpo literal de `0003` (la prueba lo compara con el texto de `0003` con `{ERR}` resuelto, normalizando espacios). Mensajes de error: deben empezar por `crypto.crypto_keys` y usar `check_violation`.
+5. `BACKUP_SIGN_PUBKEY` pasa a `Settings` (opcional, formato minisign `RW` + 54 caracteres base64, 56 en total): `ops_secret_names` con el prefijo `BACKUP_SIGN_` hoy la marca como secreto de operación; hay que exceptuarla (la prueba exige que `BACKUP_SIGN_KEY_FILE` siga marcada).
+6. `SMTP_*` todo o nada = `SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM` (puerto y modo tienen defecto); `SMTP_TLS_MODE` admite `starttls` (defecto) y `none`. Si el diseño prevé `tls` implícito, ampliar la prueba.
+7. El comentario del catálogo en `.env.example` debe seguir dentro de las 4 líneas previas a `USER_READ_LIMIT_PER_MIN=` (lo exige la prueba S4A reparada) y decir "16 cubetas" y "15 variables" y citar "S4A-B3, M-1 y M-3".
+8. `ci.yml`: la prueba exige `[ "$subidas" = "15" ]`, el mensaje "se esperaban 15 cubetas USER_* subidas" y las cuatro `USER_*` al menos dos veces (sed y regex del conteo).
+9. `deploy.sh` debe leer `/proc/1/environ` de `web` (`exec -T web`) y prohibir `SMTP_*`/`TELEGRAM_*`; para el api suma `POSTGRES_*` a la regex (sin imprimir valores). `compose.yml` debe dar a `api`/`worker` `SMTP_PASSWORD` y `TELEGRAM_BOT_TOKEN` y a `api`/`worker`/`tools` `OPENBAO_TOKEN_FILE` (la sección estática de `test_env_isolation.sh` lo comprueba con `compose --profile '*' config`).
+10. `test_worker_role_paths` siembra socio/plan/membresía sin limpiar (una membresía no se borra: trigger); `apex_roles` se descarta al terminar la sesión.
+
+## W0-3 · Verde (2026-11-04)
+
+**P-MIG en `apex-db-1`:** volcado `docs/scratch/sprint-05-antes-0015.dump` (1.652.789 bytes, `.gitignore:47:*.dump`; se borra en V12). `$DC stop api worker` antes de escribir `0015`. `$DC start api` aplicó `0014 -> 0015`; `alembic current` = `0015_crypto_provider_migration (head)`; `crypto_keys` = 8 antes y después; `crypto_keys_guard` y `crypto_keys_forbid_truncate` en `A` (17 triggers no internos en `A`). `\df+` / `pg_get_functiondef`: antes el cuerpo de `0003` (32 líneas), después el nuevo (51). Ciclo `downgrade -1` (cuerpo = `0003`, md5 anotado) -> `upgrade head` -> `current` 0015. Api y worker `healthy` al terminar.
+
+**En verde por archivo:** `test_0015` 31/31; `test_worker_role_paths` 5/5; `test_db_grants` 154/154; `test_0014` 44/44; `test_config` 164/164; `test_env_example` 36/36; `test_logging_redact` 37/37; `test_ratelimit` 45/45; `test_user_limits_catalog` 9/9; `test_settings_no_secrets` 10/10; `test_no_sensitive_in_logs` 6/6. Cobertura (solo con esos dos archivos de prueba): `config.py` 93 %, `logging.py` 78 % (el resto de `logging.py` lo cubren las pruebas del middleware).
+
+**Gates (slice-gate):** `core/logging` 577 verde; `memberships` 545; `members` 569; `core/config` 969; `test_deploy_script.sh` 0 fallas; `test_env_isolation.sh`: 11 fallas, las mismas 11 de la línea base (parte dinámica sobre un `.env` de desarrollo, suma de los dos ejemplos); la parte estática nueva pasa. `ruff check`, `ruff format --check`, `mypy src` limpios.
+
+**Desviaciones:**
+1. `tests/core/test_ratelimit.py::CATALOGO` (el Rojo no lo actualizó) fijaba las 12 cubetas: se le añadieron las 4 de D81.
+2. `sex` en el `SELECT` por columna del worker (S5-D122): `COLUMNAS_WORKER_MEMBERS` del Rojo gana `sex`.
+3. `test_env_isolation.sh` (sección estática): a `tools` solo se le prohíben `SMTP_PASSWORD` y `TELEGRAM_BOT_TOKEN`; con un `.env` de producción (copia de `.env.example`) `tools` recibe `SMTP_HOST`, `TELEGRAM_CHAT_ID`... por `env_file` y el Rojo lo trataba como `web` (S5-D128). Comprobado con una pila de producción emulada (`APEX_ENV_DIR`), borrada después.
+4. `memberships/expirations.py` no selecciona `Member`: no necesitó `load_only` (el paso 18 lo preveía). Solo `members/contact.py`.
+5. `prod-smoke.sh` no se tocó: su reparto lo cubre `test_env_isolation.sh`, que ya invoca; `web` solo se comprueba en `deploy.sh`.
+6. El `.env` de desarrollo se amplió solo con las claves nuevas de `Settings` (+ `TOOLS_DB_USER`); `SMTP_PASSWORD` y `TELEGRAM_BOT_TOKEN` no se añadieron (con claves en blanco `tools` los vería).
+7. La `test_0015` y el nombre "S5-D120" que usé al principio en comentarios pasaron a "S5-D44, D72" (D120 ya existe).
+
+**Decisiones nuevas:** S5-D121 a S5-D129 (bloque "S5-W0-3" de DECISIONES).
+
+## W0-3 · Revisiones (2026-11-04)
+
+database-reviewer: 1 HIGH, 2 MEDIUM, 2 LOW. security-reviewer: 0 HIGH, 3 MEDIUM, 3 LOW. Estado 11/11 corregidos (decisiones S5-D130 a S5-D139).
+- HIGH: confirmado en rojo (`42501` al registrar un pago como `apex_api`); arreglado en el ORM con `FetchedValue()` (D130). `tests/migrations/test_api_role_paths.py`: 2 pruebas (registrar y anular con `payments.service` como `apex_api`).
+- MEDIUM filas `sign`, mensaje de `upgrade`, LOW material vacío: `0015` y `test_0015` (ahora 37 pruebas; `test_0014` ajustado al mensaje nuevo). `tests/crypto/test_crypto_tables.py` pinaba «`wrapped_material` solo se rechaza»: contradecía S5-D4, usa `version = 2` (desviación 8); `test_provider_startup::test_proveedor_desconocido` pasó a llevar `OPENBAO_TOKEN_FILE` porque `openbao` ya lo exige (desviación 9).
+- LOW `contact.py`: nota (D134).
+- Seguridad M1/M2: `deploy.sh` (casos nuevos en `test_deploy_script.sh`: 261 ok, 0 fallas), `.env.ops.example` y RUNBOOK §12. Compose no puede quitar una clave de un `env_file`: la garantía de que `tools` no ve los secretos es que `deploy.sh` rechaza `.env` con ellos con valor. `prod-smoke.sh` ya parte de `.env.example` (sin ellas). `BACKUP_SIGN_PUBKEY` en el api vivo sale con 1 (convención del resto de comprobaciones vivas), no con 2.
+- M3: `redact_text` (3 casos de `X-Vault-Token`, token suelto y control de horas/ids).
+- L4: comentario de orden en `Settings` y `tests/architecture/test_settings_single_door.py` (2 pruebas). `_a_config_error` usa solo `loc` y `type` (`include_input=False`).
+- L5/L6: notas.
+- Suite completa (`-m "not perf"`): 6156 pasaron antes de corregir un comentario de `payments/models.py` que mencionaba un nombre de rol (`test_db_roles_confined`); `tests/architecture` entero, 542, ya en verde. 52 omitidas, 27 deseleccionadas. `ruff`, `ruff format --check`, `mypy src`, `bash -n` limpios.

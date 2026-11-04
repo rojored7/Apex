@@ -72,7 +72,12 @@ def test_kek_de_tamano_incorrecto(tmp_path: Path, test_database_url: str) -> Non
 
 
 def test_proveedor_desconocido(tmp_path: Path, test_database_url: str) -> None:
-    settings = _settings(tmp_path, test_database_url, CRYPTO_PROVIDER="openbao")
+    settings = _settings(
+        tmp_path,
+        test_database_url,
+        CRYPTO_PROVIDER="openbao",
+        OPENBAO_TOKEN_FILE=str(tmp_path / "token"),
+    )
     with pytest.raises(CryptoError) as excinfo:
         get_key_provider(settings)
     assert excinfo.value.code == "unknown_provider"

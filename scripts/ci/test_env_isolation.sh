@@ -81,5 +81,70 @@ for svc in $SERVICIOS; do
   fi
 done
 
+
+# S5-W0-3 (L-9, S5-D44): reparto estático de los secretos de los canales y del token de OpenBao.
+# Se lee del `config` renderizado de Compose (todos los perfiles), así que cubre también los
+# servicios de un solo uso (`migrate`, `dbsetup`) y `tools`, que no se pueden inspeccionar en vivo.
+#   SMTP_*, TELEGRAM_*  : solo `api` y `worker` (con SMTP_PASSWORD y TELEGRAM_BOT_TOKEN presentes);
+#   OPENBAO_TOKEN_FILE  : solo `api`, `worker` y `tools`;
+#   web, db, backup, migrate, dbsetup: ninguna de ellas. Solo se imprimen NOMBRES.
+SERVICIOS_ESTATICOS="${SERVICIOS_ESTATICOS:-api worker tools web db backup migrate dbsetup}"
+
+nombres_de_config() { # servicio -> NOMBRES de su bloque `environment` en `compose config`
+  printf '%s\n' "$config_render" | awk -v svc="$1" '
+    /^  [A-Za-z0-9_-]+:$/ { actual = $1; sub(":", "", actual); en_env = 0; next }
+    actual == svc && /^    environment:/ { en_env = 1; next }
+    actual == svc && en_env && /^      [A-Za-z0-9_]+:/ { k = $1; sub(":", "", k); print k; next }
+    /^    [a-z_]+:/ { en_env = 0 }
+  '
+}
+
+if config_render="$($DC --profile '*' config 2> /dev/null)" && [ -n "$config_render" ]; then
+  for svc in $SERVICIOS_ESTATICOS; do
+    nombres="$(nombres_de_config "$svc")"
+    case "$svc" in
+      api | worker)
+        for requerida in SMTP_PASSWORD TELEGRAM_BOT_TOKEN; do
+          if printf '%s\n' "$nombres" | grep -qx "$requerida"; then
+            ok "$svc: recibe $requerida"
+          else
+            falla "$svc: no recibe $requerida (S5-D44)"
+          fi
+        done
+        ;;
+      *)
+        # `tools` lee `.env` por env_file (SMTP_HOST, TELEGRAM_CHAT_ID... no son secretos, S5-D44):
+        # solo se le prohíben los dos secretos, que viven en .env.ops (desviación 3 del Verde).
+        patron_ajeno='^(SMTP_.*|TELEGRAM_.*)$'
+        [ "$svc" = "tools" ] && patron_ajeno='^(SMTP_PASSWORD|TELEGRAM_BOT_TOKEN)$'
+        ajenas="$(printf '%s\n' "$nombres" | grep -E "$patron_ajeno" || true)"
+        if [ -n "$ajenas" ]; then
+          falla "$svc recibe secretos de canales que no le tocan: $(printf '%s' "$ajenas" | tr '\n' ' ')"
+        else
+          ok "$svc: sin SMTP_* ni TELEGRAM_*"
+        fi
+        ;;
+    esac
+    case "$svc" in
+      api | worker | tools)
+        if printf '%s\n' "$nombres" | grep -qx 'OPENBAO_TOKEN_FILE'; then
+          ok "$svc: recibe OPENBAO_TOKEN_FILE"
+        else
+          falla "$svc: no recibe OPENBAO_TOKEN_FILE (S5-D44)"
+        fi
+        ;;
+      *)
+        if printf '%s\n' "$nombres" | grep -qE '^OPENBAO_.*$'; then
+          falla "$svc recibe variables de OpenBao que no le tocan"
+        else
+          ok "$svc: sin variables de OpenBao"
+        fi
+        ;;
+    esac
+  done
+else
+  falla "no se pudo renderizar 'compose config' para el reparto estático (L-9)"
+fi
+
 echo "test_env_isolation: $fallas fallas"
 [ "$fallas" -eq 0 ]

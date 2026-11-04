@@ -102,6 +102,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://apex_api:${APEX_API_DB_PASSWORD}@db:5432/${POSTGRES_DB}
       MIGRATE_ON_STARTUP: "false"
       APP_VERSION: ${GIT_SHA:-dev}
+      # S5-D44: secretos de los canales (de .env.ops) solo en api y worker; en blanco = apagado.
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # S5-D107: ruta del token de OpenBao (volumen openbao-token-api); inerte con CRYPTO_PROVIDER=local.
+      OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
       - keys:/run/apex/keys:ro
       - uploads:/data/uploads
@@ -162,6 +167,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://apex_worker:${APEX_WORKER_DB_PASSWORD}@db:5432/${POSTGRES_DB}
       BACKUP_DIR: /data/backups
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
       - backups:/data/backups:ro
       # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
@@ -211,6 +219,7 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
       - keys:/run/apex/keys
       - uploads:/data/uploads

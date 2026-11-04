@@ -15,8 +15,12 @@ blob `apx1.`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -113,3 +117,84 @@ async def test_reveal_no_deja_el_valor_revelado_en_los_logs(
     )
     for valor in prohibidos:
         assert valor not in texto, valor[:12]
+
+
+# S5-W0-3 (S5-D58, M-8): ni el token del bot ni el de OpenBao salen en los logs ------------------
+
+TOKEN_BOT = "bot123456:AAH" + "z" * 30
+URL_BOT = f"https://api.telegram.org/{TOKEN_BOT}/sendMessage"
+TOKEN_BAO = "hvs.CAESI" + "q" * 24
+
+
+def _salida_de_un_registro(
+    capsys: pytest.CaptureFixture[str], emitir: Callable[[logging.Logger], None]
+) -> str:
+    """Instala el handler JSON de `configure_logging` dentro de la captura y emite un registro."""
+    configure_logging(SimpleNamespace(LOG_LEVEL="DEBUG"))  # type: ignore[arg-type]
+    emitir(logging.getLogger("app.alerts"))
+    salida = capsys.readouterr()
+    return salida.out + salida.err
+
+
+def test_un_error_de_httpx_con_la_url_del_bot_no_deja_el_token_en_el_log(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def emitir(logger: logging.Logger) -> None:
+        try:
+            raise httpx.ConnectError(f"All connection attempts failed: {URL_BOT}")
+        except httpx.ConnectError:
+            logger.exception("falló el envío a Telegram: %s", URL_BOT)
+
+    texto = _salida_de_un_registro(capsys, emitir)
+    assert "falló el envío" in texto, "no se capturó el registro"
+    assert "AAH" not in texto and "123456" not in texto
+
+
+def test_httpx_a_info_contra_un_transporte_falso_no_escribe_la_url_del_bot(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`configure_logging` fija `httpx` y `httpcore` en WARNING: la URL (con el token) no se
+    escribe aunque la raíz esté en DEBUG."""
+
+    async def llamar() -> None:
+        transporte = httpx.MockTransport(lambda _peticion: httpx.Response(200, json={"ok": True}))
+        async with httpx.AsyncClient(transport=transporte) as cliente:
+            await cliente.post(URL_BOT, json={"chat_id": "1", "text": "hola"})
+
+    def emitir(logger: logging.Logger) -> None:
+        asyncio.run(llamar())
+        logger.info("pasó por httpx")
+
+    texto = _salida_de_un_registro(capsys, emitir)
+    assert "pasó por httpx" in texto
+    assert "AAH" not in texto and "api.telegram.org/bot" not in texto
+
+
+def test_la_cabecera_x_vault_token_en_un_extra_no_llega_al_log(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def emitir(logger: logging.Logger) -> None:
+        logger.warning(
+            "peticion a openbao",
+            extra={"headers": {"X-Vault-Token": TOKEN_BAO}, "smtp_password": "clave-smtp-x"},
+        )
+
+    texto = _salida_de_un_registro(capsys, emitir)
+    assert "peticion a openbao" in texto
+    assert TOKEN_BAO not in texto and "clave-smtp-x" not in texto
+
+
+def test_el_token_de_openbao_en_el_texto_de_un_error_no_llega_al_log_por_clave_conocida(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """El proveedor nunca copia el cuerpo ni el token (S5-D17); y si un `extra` los trae con la
+    clave `telegram_bot_token` o `bot_token` tampoco se escriben."""
+
+    def emitir(logger: logging.Logger) -> None:
+        logger.error(
+            "alerta no enviada", extra={"telegram_bot_token": TOKEN_BOT, "bot_token": "x" * 30}
+        )
+
+    texto = _salida_de_un_registro(capsys, emitir)
+    assert "alerta no enviada" in texto
+    assert TOKEN_BOT not in texto and "x" * 30 not in texto

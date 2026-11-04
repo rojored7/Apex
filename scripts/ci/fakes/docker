@@ -13,6 +13,8 @@
 #   FAKE_DOCKER_REVISION      lo que imprime `image inspect` (la etiqueta OCI revision) (v0.1.0)
 #   FAKE_DOCKER_BUILD_RC / FAKE_DOCKER_UP_RC   salidas de `compose ... build` y `up -d` (0)
 #   FAKE_DOCKER_APP_VERSION   APP_VERSION que imprime la lectura de /proc/1/environ (v0.1.0)
+#   FAKE_DOCKER_API_ENV_EXTRA NOMBRE=valor separados por espacios que se suman a la lectura del api (S5-W0-3)
+#   FAKE_DOCKER_WEB_ENV       idem para `exec -T web ... /proc/1/environ` (S5-W0-3, L-9)
 #   FAKE_DOCKER_DATABASE_URL  DATABASE_URL de esa lectura (rol apex_api); vacío = no la imprime
 #   FAKE_DOCKER_ROLE_EXISTS   0 = `psql` (consulta del rol de MIGRATE_DB_USER, S5-D96) no devuelve fila; 1 por omisión
 #   FAKE_DOCKER_KEK_PRESENT   1 = `compose ... run|exec ... test -f .../keys/kek.bin` sale con 0 (kek.bin sigue en keys); 0 por omisión (sale con 1)
@@ -45,8 +47,13 @@ case "$all" in
     fi
     printf 'run.sh: listo %s\n' "${FAKE_DOCKER_PREDEPLOY:-pre-deploy-20261103-120000}"
     exit 0 ;;
+  *" exec -T web "*"/proc/1/environ"*)
+    printf 'PATH=/usr/local/bin\n'
+    for kv in ${FAKE_DOCKER_WEB_ENV:-}; do printf '%s\n' "$kv"; done
+    exit 0 ;;
   *"/proc/1/environ"*)
     printf 'APP_VERSION=%s\n' "${FAKE_DOCKER_APP_VERSION:-v0.1.0}"
+    for kv in ${FAKE_DOCKER_API_ENV_EXTRA:-}; do printf '%s\n' "$kv"; done
     [ "${FAKE_DOCKER_DATABASE_URL-x}" = "" ] || printf 'DATABASE_URL=%s\n' "${FAKE_DOCKER_DATABASE_URL:-postgresql+asyncpg://apex_api:x@db:5432/apex}"
     exit 0 ;;
   *" run "*|*" exec "*) exit "${FAKE_DOCKER_BACKUP_CHECK_RC:-0}" ;;

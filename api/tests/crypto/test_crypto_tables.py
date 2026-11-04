@@ -86,9 +86,10 @@ async def test_crypto_keys_no_se_borra_ni_cambia_material(db: AsyncSession) -> N
     await db.flush()
     assert "nunca se borran" in await _falla(db, sql="DELETE FROM crypto.crypto_keys")
     assert "nunca se borran" in await _falla(db, sql="TRUNCATE crypto.crypto_keys")
+    # S5-D4 (0015): `wrapped_material` solo ya es un rewrap válido; `version` sigue fija.
     mensaje = await _falla(
         db,
-        sql="UPDATE crypto.crypto_keys SET wrapped_material = '\\x00' WHERE id = :id",
+        sql="UPDATE crypto.crypto_keys SET version = 2 WHERE id = :id",
         id=llave.id,
     )
     assert "solo cambia" in mensaje

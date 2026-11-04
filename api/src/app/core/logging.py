@@ -63,12 +63,23 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "activation_url",
         "url",
         "set-cookie",
+        # S5-W0-3 (S5-D58, M-8): OpenBao, correo y bot de Telegram.
+        "x-vault-token",
+        "smtp_password",
+        "telegram_bot_token",
+        "bot_token",
     }
 )
 REDACTED = "[redacted]"
 _BLOB = re.compile(r"apx1\.[A-Za-z0-9._-]+")
 _JWT = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
 _DSN = re.compile(r"://[^@/\s]+@")  # credenciales dentro de una URL: usuario:clave@
+# Token del bot de Telegram en la URL de su API: `bot<id>:<token>` (S5-D58); `\b` evita `robot12:`.
+_TELEGRAM_BOT = re.compile(r"\bbot\d+:[A-Za-z0-9_-]{20,}")
+# El mismo token sin el prefijo `bot` (un cuerpo de error citado aparte): `<id>:<35 caracteres>`.
+_TELEGRAM_TOKEN_SUELTO = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{30,}")
+# Cabecera de OpenBao en texto libre (repr de un dict, JSON, `clave=valor`), S5-D58.
+_VAULT_HEADER = re.compile(r"(x-vault-token[\"']?\s*[:=]\s*[\"']?)[^\s\"',}]+", re.IGNORECASE)
 # Enlace de un solo uso: el segmento que sigue a `/restablecer/` es el token (blueprint 7.2).
 _RESET_LINK = re.compile(r"(/restablecer/|%2Frestablecer%2F)[^\s/?#\"'&<>%]+", re.IGNORECASE)
 # Valor de la cookie del refresh, hasta el primer separador de atributos.
@@ -91,6 +102,9 @@ def redact_text(text: str) -> str:
     """Reemplaza blobs `apx1.`, JWT, credenciales de URL, tokens de `/restablecer/`, el valor
     de `apex_refresh=` y los valores de fila de un error de PostgreSQL dentro de un texto libre."""
     limpio = _DSN.sub("://[redacted]@", _JWT.sub(REDACTED, _BLOB.sub(REDACTED, text)))
+    limpio = _TELEGRAM_BOT.sub(REDACTED, limpio)
+    limpio = _TELEGRAM_TOKEN_SUELTO.sub(REDACTED, limpio)
+    limpio = _VAULT_HEADER.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _RESET_LINK.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _REFRESH_COOKIE.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _PG_DETAIL.sub(f"DETAIL: {REDACTED}", limpio)

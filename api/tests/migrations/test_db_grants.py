@@ -54,6 +54,49 @@ ESQUEMAS = (
 
 TODAS = "*"  # UPDATE de todas las columnas (privilegio de tabla)
 
+# Listas por columna de S5-W0-3 (S5-D34, D202, D203, D204). Son el plan; `grants.sql` y la base
+# deben coincidir con ellas (`test_las_listas_de_columnas_coinciden_...`).
+COLUMNAS_WORKER_MEMBERS: tuple[str, ...] = (
+    "id",
+    "first_name",
+    "last_name",
+    "sex",  # S5-D121: names_for la selecciona (desviación 2 del Verde sobre D204)
+    "phone",
+    "email",
+    "status",
+    "deleted_at",
+    "data_consent_at",
+    "created_at",
+    "updated_at",
+)
+# Inventario de asignaciones de `modules/auth` (links, sessions, tokens, users) + `updated_at`.
+COLUMNAS_API_USERS_UPDATE: tuple[str, ...] = (
+    "email",
+    "password_hash",
+    "role",
+    "deleted_at",
+    "locked_at",
+    "last_login_at",
+    "must_change_password",
+    "failed_login_count",
+    "tokens_valid_after",
+    "updated_at",
+)
+COLUMNAS_API_PAYMENTS_INSERT: tuple[str, ...] = (
+    "id",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "membership_id",
+    "member_id",
+    "amount_cop",
+    "method",
+    "reference",
+    "paid_at",
+    "registered_by",
+    "voided",
+)
+
 # tabla -> rol -> (verbos de tabla, columnas con UPDATE ("*" = todas, () = ninguna))
 PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     "audit.audit_log": {
@@ -73,7 +116,7 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_worker": (frozenset(), frozenset()),
     },
     "auth.users": {
-        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_USERS_UPDATE)),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -82,7 +125,7 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "crypto.crypto_keys": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({"updated_at"})),
-        "apex_worker": (frozenset(), frozenset()),
+        "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_ops": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset()),
@@ -90,7 +133,8 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "members.members": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
-        "apex_worker": (frozenset({"SELECT"}), frozenset()),
+        # S5-D204: sin privilegio de tabla; el `SELECT` es por columna (COLUMNAS_WORKER_MEMBERS).
+        "apex_worker": (frozenset(), frozenset()),
     },
     "memberships.membership_freezes": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset()),
@@ -115,7 +159,8 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "payments.payments": {
         "apex_api": (
-            frozenset({"SELECT", "INSERT"}),
+            # S5-D202: el `INSERT` es por columna (COLUMNAS_API_PAYMENTS_INSERT).
+            frozenset({"SELECT"}),
             frozenset({"voided", "void_reason", "voided_by", "voided_at", "updated_at"}),
         ),
         "apex_worker": (frozenset(), frozenset()),
@@ -533,6 +578,9 @@ PROHIBIDAS_API = [
     "UPDATE crypto.crypto_ops SET result = 'error'",
     "UPDATE payments.payments SET amount_cop = 1",
     "UPDATE payments.payments SET registered_by = created_by",
+    "UPDATE auth.users SET member_id = member_id",
+    "UPDATE auth.users SET is_active = is_active",
+    "UPDATE auth.users SET created_by = created_by",
     "UPDATE memberships.memberships SET agreed_price_cop = 1",
     "UPDATE memberships.memberships SET member_id = member_id",
     "UPDATE public.alembic_version SET version_num = 'x'",
@@ -563,7 +611,7 @@ PROHIBIDAS_WORKER = [
     "UPDATE memberships.memberships SET end_date = end_date",
     "UPDATE memberships.memberships SET classes_remaining = 0",
     "SELECT count(*) FROM payments.payments",
-    "SELECT count(*) FROM crypto.crypto_keys",
+    "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",
     "INSERT INTO members.members (id) VALUES (gen_random_uuid())",
     "DELETE FROM worker.job_runs",
@@ -831,3 +879,233 @@ def test_revoke_sql_es_idempotente_por_construccion() -> None:
     assert "IF EXISTS" in texto
     for rol in ROLES:
         assert rol in texto
+
+
+# Grants por columna de S5-W0-3 (S5-D34, D202, D203, D204) --------------------------------------
+
+
+@pytest.fixture(scope="module")
+def membresia_base(apex_roles: RolesDb, filas_base: dict[str, str]) -> str:
+    """Una membresía real (como propietario) para ejercitar el `INSERT` de pagos."""
+    membresia = str(uuid4())
+    propietario(
+        apex_roles,
+        "INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, "  # noqa: S608
+        f"agreed_price_cop, start_date, end_date, status) VALUES ('{membresia}', '{SYSTEM}', "
+        f"'{filas_base['socio']}', '{filas_base['plan']}', 100000, current_date, "
+        "current_date + 30, 'active')",
+    )
+    return membresia
+
+
+def _pago_insert(
+    filas: dict[str, str], membresia: str, extra_cols: str = "", extra: str = ""
+) -> str:
+    return (
+        "INSERT INTO payments.payments (id, created_by, membership_id, member_id, amount_cop, "  # noqa: S608
+        f"method, paid_at, registered_by{extra_cols}) VALUES ('{uuid4()}', '{SYSTEM}', "
+        f"'{membresia}', '{filas['socio']}', 100000, 'cash', now(), '{SYSTEM}'{extra})"
+    )
+
+
+def _columnas(apex: RolesDb, tabla: str) -> list[str]:
+    return [
+        f["column_name"]
+        for f in consultar(
+            apex.dsn(),
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema || '.' || table_name = $1 ORDER BY ordinal_position",
+            tabla,
+        )
+    ]
+
+
+def _con_privilegio_de_columna(apex: RolesDb, rol: str, tabla: str, verbo: str) -> set[str]:
+    return {
+        c
+        for c in _columnas(apex, tabla)
+        if consultar(
+            apex.dsn(),
+            "SELECT has_column_privilege($1, $2, $3, $4) AS v",
+            rol,
+            tabla,
+            c,
+            verbo,
+        )[0]["v"]
+    }
+
+
+def test_apex_worker_lee_crypto_keys(apex_roles: RolesDb) -> None:
+    """S5-D34: el worker descifra los avisos (`notify`), así que lee `crypto.crypto_keys`."""
+    dsn = como(apex_roles, "apex_worker")
+    assert intentar(dsn, "SELECT count(*) FROM crypto.crypto_keys") is None
+    assert intentar(dsn, "SELECT id, state, wrapped_material FROM crypto.crypto_keys") is None
+    privilegios = {
+        verbo: consultar(
+            apex_roles.dsn(),
+            "SELECT has_table_privilege('apex_worker', 'crypto.crypto_keys', $1) AS v",
+            verbo,
+        )[0]["v"]
+        for verbo in ("SELECT", "INSERT", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES")
+    }
+    assert privilegios == {
+        "SELECT": True,
+        "INSERT": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+        "TRIGGER": False,
+        "REFERENCES": False,
+    }
+    assert (
+        _con_privilegio_de_columna(apex_roles, "apex_worker", "crypto.crypto_keys", "UPDATE")
+        == set()
+    )
+
+
+def test_apex_worker_lee_members_solo_por_columna(apex_roles: RolesDb) -> None:
+    """S5-D34 / D204: el worker ve `phone` y `email` (blobs cifrados) y lo mínimo de la ficha,
+    nunca `document`, `birth_date` ni `emergency_contact`."""
+    con_select = _con_privilegio_de_columna(apex_roles, "apex_worker", "members.members", "SELECT")
+    assert con_select == set(COLUMNAS_WORKER_MEMBERS)
+    dsn = como(apex_roles, "apex_worker")
+    assert intentar(dsn, "SELECT count(*) FROM members.members") is None
+    columnas = ", ".join(COLUMNAS_WORKER_MEMBERS)
+    assert intentar(dsn, f"SELECT {columnas} FROM members.members") is None  # noqa: S608
+
+
+@pytest.mark.parametrize("columna", ["document", "document_idx", "birth_date", "emergency_contact"])
+def test_apex_worker_no_puede_leer_las_columnas_sensibles_de_members(
+    apex_roles: RolesDb, columna: str
+) -> None:
+    if columna not in _columnas(apex_roles, "members.members"):
+        pytest.skip(f"members.members no tiene la columna {columna}")
+    error = intentar(como(apex_roles, "apex_worker"), f"SELECT {columna} FROM members.members")  # noqa: S608
+    assert error is not None and error.sqlstate == PRIVACION, columna
+
+
+def test_select_document_como_apex_worker_falla_y_select_estrella_tambien(
+    apex_roles: RolesDb,
+) -> None:
+    dsn = como(apex_roles, "apex_worker")
+    for sentencia in ("SELECT document FROM members.members", "SELECT * FROM members.members"):
+        error = intentar(dsn, sentencia)
+        assert error is not None and error.sqlstate == PRIVACION, sentencia
+
+
+def test_apex_api_hace_update_en_auth_users_solo_de_las_columnas_del_inventario(
+    apex_roles: RolesDb,
+) -> None:
+    """S5-D203: las columnas que `modules/auth` asigna (más `updated_at` por `onupdate`)."""
+    con_update = _con_privilegio_de_columna(apex_roles, "apex_api", "auth.users", "UPDATE")
+    assert con_update == set(COLUMNAS_API_USERS_UPDATE)
+    dsn = como(apex_roles, "apex_api")
+    asignaciones = ", ".join(f"{c} = {c}" for c in COLUMNAS_API_USERS_UPDATE)
+    assert intentar(dsn, f"UPDATE auth.users SET {asignaciones} WHERE false") is None  # noqa: S608
+
+
+@pytest.mark.parametrize("columna", ["id", "created_at", "created_by", "member_id", "is_active"])
+def test_apex_api_no_puede_actualizar_las_columnas_fijas_de_auth_users(
+    apex_roles: RolesDb, columna: str
+) -> None:
+    error = intentar(
+        como(apex_roles, "apex_api"),
+        f"UPDATE auth.users SET {columna} = {columna} WHERE false",  # noqa: S608
+    )
+    assert error is not None and error.sqlstate == PRIVACION, columna
+
+
+def test_apex_api_inserta_pagos_por_columna_sin_las_de_anulacion(
+    apex_roles: RolesDb, filas_base: dict[str, str], membresia_base: str
+) -> None:
+    """S5-D202: `INSERT` solo de las columnas del alta; `void_reason`, `voided_by` y
+    `voided_at` quedan fuera (el alta nunca anula)."""
+    con_insert = _con_privilegio_de_columna(apex_roles, "apex_api", "payments.payments", "INSERT")
+    assert con_insert == set(COLUMNAS_API_PAYMENTS_INSERT)
+    assert not con_insert & {"void_reason", "voided_by", "voided_at"}
+    dsn = como(apex_roles, "apex_api")
+    assert intentar(dsn, _pago_insert(filas_base, membresia_base)) is None
+    assert intentar(dsn, _pago_insert(filas_base, membresia_base, ", voided", ", false")) is None
+
+
+@pytest.mark.parametrize(
+    ("columnas", "valores"),
+    [
+        (", void_reason", ", 'x'"),
+        (", voided_by", f", '{SYSTEM}'"),
+        (", voided_at", ", now()"),
+    ],
+    ids=["void_reason", "voided_by", "voided_at"],
+)
+def test_un_insert_de_pago_con_columnas_de_anulacion_falla_por_privilegio(
+    apex_roles: RolesDb,
+    filas_base: dict[str, str],
+    membresia_base: str,
+    columnas: str,
+    valores: str,
+) -> None:
+    error = intentar(
+        como(apex_roles, "apex_api"), _pago_insert(filas_base, membresia_base, columnas, valores)
+    )
+    assert error is not None and error.sqlstate == PRIVACION, error
+
+
+def test_un_insert_de_pago_con_voided_true_falla(
+    apex_roles: RolesDb, filas_base: dict[str, str], membresia_base: str
+) -> None:
+    """Sin `void_reason`, `voided_by` ni `voided_at` el `CHECK void_coherent` lo rechaza."""
+    error = intentar(
+        como(apex_roles, "apex_api"),
+        _pago_insert(filas_base, membresia_base, ", voided", ", true"),
+    )
+    assert error is not None, "un pago nacido anulado no debe poder insertarse"
+    assert error.sqlstate in {"23514", PRIVACION}, error
+
+
+def test_apex_api_conserva_el_update_de_anulacion_de_pagos(apex_roles: RolesDb) -> None:
+    con_update = _con_privilegio_de_columna(apex_roles, "apex_api", "payments.payments", "UPDATE")
+    assert con_update == {"voided", "void_reason", "voided_by", "voided_at", "updated_at"}
+
+
+def _columnas_de_grants_sql() -> dict[tuple[str, str, str], set[str]]:
+    """`{(verbo, tabla, rol): columnas}` de cada `GRANT <verbo> (cols) ON <tabla> TO <rol>`."""
+    texto = _leer("grants.sql")
+    patron = r"GRANT\s+(SELECT|INSERT|UPDATE)\s*\(([^)]*)\)\s+ON\s+([a-z_]+\.[a-z_]+)\s+TO\s+(\w+)"
+    salida: dict[tuple[str, str, str], set[str]] = {}
+    for verbo, columnas, tabla, rol in re.findall(patron, texto, re.IGNORECASE):
+        salida[(verbo.upper(), tabla, rol)] = {c.strip() for c in columnas.split(",") if c.strip()}
+    return salida
+
+
+def test_las_listas_de_columnas_coinciden_en_el_plan_grants_sql_y_la_base(
+    apex_roles: RolesDb,
+) -> None:
+    """Las tres fuentes de verdad de cada lista por columna: la constante de esta prueba (el
+    plan S5-D202..D204), el `GRANT` de `grants.sql` y lo que la base reporta."""
+    esperadas = {
+        ("SELECT", "members.members", "apex_worker"): set(COLUMNAS_WORKER_MEMBERS),
+        ("UPDATE", "auth.users", "apex_api"): set(COLUMNAS_API_USERS_UPDATE),
+        ("INSERT", "payments.payments", "apex_api"): set(COLUMNAS_API_PAYMENTS_INSERT),
+    }
+    en_grants = _columnas_de_grants_sql()
+    for clave, columnas in esperadas.items():
+        assert en_grants.get(clave) == columnas, f"grants.sql != plan en {clave}"
+        verbo, tabla, rol = clave
+        assert _con_privilegio_de_columna(apex_roles, rol, tabla, verbo) == columnas, clave
+
+
+def test_el_privilegio_de_tabla_completa_ya_no_existe_donde_se_paso_a_columnas(
+    apex_roles: RolesDb,
+) -> None:
+    pendientes = {
+        ("apex_worker", "members.members", "SELECT"),
+        ("apex_api", "auth.users", "UPDATE"),
+        ("apex_api", "payments.payments", "INSERT"),
+    }
+    con_tabla = [
+        (rol, tabla, verbo)
+        for rol, tabla, verbo in sorted(pendientes)
+        if consultar(
+            apex_roles.dsn(), "SELECT has_table_privilege($1, $2, $3) AS v", rol, tabla, verbo
+        )[0]["v"]
+    ]
+    assert con_tabla == [], f"siguen con privilegio de tabla completa: {con_tabla}"

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable, Mapping
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
@@ -47,6 +48,9 @@ from pydantic_settings import (
 # secretos de operación (`.env.ops` mezclado en `.env`). Nombres exactos y prefijos; nunca valores.
 OPS_SECRET_NAMES: Final[frozenset[str]] = frozenset({"POSTGRES_PASSWORD"})
 OPS_SECRET_PREFIXES: Final[tuple[str, ...]] = ("RCLONE_", "BACKUP_SIGN_", "BACKUP_VERIFY_")
+# S5-W0-3: la llave PÚBLICA de minisign no es secreta y pasa a `Settings` (S5-D44, D72); la privada
+# (`BACKUP_SIGN_KEY_FILE`) sigue siendo secreto de operación.
+OPS_SECRET_EXEMPT: Final[frozenset[str]] = frozenset({"BACKUP_SIGN_PUBKEY"})
 
 
 def ops_secret_names(environ: Mapping[str, str]) -> list[str]:
@@ -54,9 +58,12 @@ def ops_secret_names(environ: Mapping[str, str]) -> list[str]:
     return sorted(
         nombre
         for nombre in environ
-        if nombre in OPS_SECRET_NAMES
-        or nombre.startswith(OPS_SECRET_PREFIXES)
-        or (nombre.startswith("APEX_") and nombre.endswith("_DB_PASSWORD"))
+        if nombre not in OPS_SECRET_EXEMPT
+        and (
+            nombre in OPS_SECRET_NAMES
+            or nombre.startswith(OPS_SECRET_PREFIXES)
+            or (nombre.startswith("APEX_") and nombre.endswith("_DB_PASSWORD"))
+        )
     )
 
 
@@ -84,7 +91,6 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "RCLONE_CONFIG_APEX_ENDPOINT",
         "RCLONE_CONFIG_APEX_ACCESS_KEY_ID",
         "RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY",
-        "BACKUP_SIGN_PUBKEY",
         "BACKUP_SIGN_KEY_FILE",
         "BACKUP_VERIFY_IDENTITY_FILE",
         "DEPLOY_HEALTH_TIMEOUT",
@@ -97,10 +103,16 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         # S5-W0-2: red de custodia de OpenBao (S5-D77) y rol de migraciones (S5-D96); solo Compose.
         "APEX_CUSTODY_SUBNET",
         "MIGRATE_DB_USER",
+        # S5-W0-3 (S5-D96): rol del servicio `tools`; solo Compose.
+        "TOOLS_DB_USER",
     }
 )
 
 _DSN = TypeAdapter(PostgresDsn)
+TELEGRAM_OFFICIAL_API: Final[str] = "https://api.telegram.org"
+# S5-D17: hosts a los que `OPENBAO_ADDR` puede apuntar con `http` (red interna `custody`).
+OPENBAO_HTTP_HOSTS: Final[frozenset[str]] = frozenset({"openbao", "localhost", "127.0.0.1"})
+_MINISIGN_PUBKEY = re.compile(r"RW[A-Za-z0-9+/]{54}")
 # Piso de la política N-10 en producción (M5 de la revisión general). `core/security.py` lo
 # expone como `PASSWORD_MIN_LENGTH` y los schemas de contraseña nueva lo usan como `min_length`.
 PASSWORD_MIN_LENGTH_FLOOR: Final[int] = 12
@@ -267,6 +279,103 @@ class Settings(BaseSettings):
     USER_AUDIT_VERIFY_LIMIT_PER_MIN: int = Field(default=3, gt=0)
     USER_AUDIT_VERIFY_LIMIT_PER_HOUR: int = Field(default=20, gt=0)
 
+    # S5-W0-3 (S5-D17, S5-D44, S5-D81): OpenBao, SMTP, Telegram, exportación. Los secretos
+    # (`SMTP_PASSWORD`, `TELEGRAM_BOT_TOKEN`) son `SecretStr` sin valor por defecto: el entorno
+    # del servicio (`api`, `worker`) los trae de `.env.ops`, nunca de `.env`. Una variable en
+    # blanco equivale a no definida (Compose interpola `${X:-}` como cadena vacía).
+    # ORDEN (revisión de seguridad, L4): los validadores de `OPENBAO_TOKEN_FILE`, `SMTP_TLS_MODE` y
+    # `TELEGRAM_API_BASE` leen `CRYPTO_PROVIDER` y `ENV` de `info.data`, así que esos dos campos
+    # deben declararse antes que ellos; la regla todo-o-nada de SMTP es un `model_validator`.
+    # Un error nunca lleva el valor: `load_settings` lo convierte con `_a_config_error` y
+    # `tests/architecture/test_settings_single_door.py` impide construir `Settings(` fuera.
+    OPENBAO_ADDR: str = "http://openbao:8200"
+    # Ruta del archivo con el token del servicio (S5-D107, `OPENBAO_TOKEN_FILE`); el token
+    # jamás viaja por el entorno. Obligatoria con `CRYPTO_PROVIDER=openbao`.
+    OPENBAO_TOKEN_FILE: Path | None = None
+    OPENBAO_TIMEOUT_S: int = Field(default=5, gt=0)
+    CRYPTO_RECOVERY_POLL_S: int = Field(default=20, gt=0)
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = Field(default=587, gt=0, le=65535)
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: SecretStr | None = None
+    SMTP_FROM: str | None = None
+    SMTP_TLS_MODE: Literal["starttls", "none"] = "starttls"
+    TELEGRAM_BOT_TOKEN: SecretStr | None = None
+    TELEGRAM_CHAT_ID: str | None = None
+    TELEGRAM_API_BASE: str = TELEGRAM_OFFICIAL_API
+    NOTIFY_MAX_ATTEMPTS: int = Field(default=3, gt=0)
+    NOTIFY_NET_TIMEOUT_S: int = Field(default=10, gt=0)
+    EXPORT_MAX_ROWS: int = Field(default=20000, gt=0)
+    # Llave pública minisign (formato `RW` + base64, 56 caracteres) con que `restore` verifica el
+    # manifiesto (S5-D44, D72). No es secreta: la privada (`BACKUP_SIGN_KEY_FILE`) nunca entra aquí.
+    BACKUP_SIGN_PUBKEY: str | None = None
+    # S5-D81 (cubetas nuevas de `USER_LIMITS`; rutas en B5 y B12).
+    USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_EXPORT_LIMIT_PER_MIN: int = Field(default=2, gt=0)
+    USER_EXPORT_LIMIT_PER_HOUR: int = Field(default=6, gt=0)
+    USER_EXPORT_LIMIT_PER_DAY: int = Field(default=20, gt=0)
+
+    @field_validator(
+        "OPENBAO_TOKEN_FILE",
+        "SMTP_HOST",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "SMTP_FROM",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "BACKUP_SIGN_PUBKEY",
+        mode="before",
+    )
+    @classmethod
+    def _en_blanco_es_ausente(cls, valor: object) -> object:
+        if isinstance(valor, str) and not valor.strip():
+            return None
+        return valor
+
+    @field_validator("OPENBAO_ADDR")
+    @classmethod
+    def _direccion_de_openbao(cls, valor: str) -> str:
+        """S5-D17: `https` hacia cualquier host; `http` solo hacia el servicio `openbao` o el
+        bucle local (la red `custody` es interna, S5-D77)."""
+        url = urlsplit(valor)
+        if url.scheme not in {"http", "https"} or not url.hostname:
+            raise ValueError("OPENBAO_ADDR debe ser una URL http(s) con host")
+        if url.scheme == "http" and url.hostname not in OPENBAO_HTTP_HOSTS:
+            raise ValueError("OPENBAO_ADDR con http solo hacia openbao, localhost o 127.0.0.1")
+        return valor.rstrip("/")
+
+    @field_validator("OPENBAO_TOKEN_FILE")
+    @classmethod
+    def _token_si_openbao(cls, valor: Path | None, info: ValidationInfo) -> Path | None:
+        if valor is None and info.data.get("CRYPTO_PROVIDER") == "openbao":
+            raise ValueError("OPENBAO_TOKEN_FILE es obligatoria cuando CRYPTO_PROVIDER=openbao")
+        return valor
+
+    @field_validator("SMTP_TLS_MODE")
+    @classmethod
+    def _smtp_sin_tls_solo_en_dev(cls, valor: str, info: ValidationInfo) -> str:
+        if valor == "none" and info.data.get("ENV") != "dev":
+            raise ValueError("SMTP_TLS_MODE=none solo se admite con ENV=dev")
+        return valor
+
+    @field_validator("TELEGRAM_API_BASE")
+    @classmethod
+    def _telegram_base_oficial_fuera_de_dev(cls, valor: str, info: ValidationInfo) -> str:
+        base = valor.rstrip("/")
+        url = urlsplit(base)
+        if url.scheme not in {"http", "https"} or not url.hostname:
+            raise ValueError("TELEGRAM_API_BASE debe ser una URL http(s) con host")
+        if base != TELEGRAM_OFFICIAL_API and info.data.get("ENV") != "dev":
+            raise ValueError("TELEGRAM_API_BASE distinta de la oficial solo se admite con ENV=dev")
+        return base
+
+    @field_validator("BACKUP_SIGN_PUBKEY")
+    @classmethod
+    def _formato_minisign(cls, valor: str | None) -> str | None:
+        if valor is not None and _MINISIGN_PUBKEY.fullmatch(valor) is None:
+            raise ValueError("BACKUP_SIGN_PUBKEY no tiene el formato de una llave pública minisign")
+        return valor
+
     @field_validator("DATABASE_URL")
     @classmethod
     def _dsn_asyncpg(cls, valor: SecretStr) -> SecretStr:
@@ -347,6 +456,21 @@ class Settings(BaseSettings):
         if not valor.startswith(("http://", "https://")):
             raise ValueError("FRONT_BASE_URL debe empezar por http:// o https://")
         return valor.rstrip("/")
+
+    @model_validator(mode="after")
+    def _smtp_todo_o_nada(self) -> Settings:
+        """S5-D44: o no hay ningún dato de correo, o están los cuatro (puerto y modo tienen
+        defecto). Nombra lo que falta; nunca valores."""
+        campos = {
+            "SMTP_HOST": self.SMTP_HOST,
+            "SMTP_USER": self.SMTP_USER,
+            "SMTP_PASSWORD": self.SMTP_PASSWORD,
+            "SMTP_FROM": self.SMTP_FROM,
+        }
+        faltan = [nombre for nombre, valor in campos.items() if valor is None]
+        if faltan and len(faltan) < len(campos):
+            raise ConfigError(missing=faltan, invalid=[])
+        return self
 
     @model_validator(mode="after")
     def _sin_secretos_de_operacion_en_produccion(self) -> Settings:
@@ -554,6 +678,10 @@ def missing_secrets(settings: Settings, exists: Callable[[Path], bool] = Path.is
             faltan.append("CRYPTO_LOCAL_KEK_PATH")
         if not exists(settings.CRYPTO_LOCAL_SIGNING_KEY_PATH):
             faltan.append("CRYPTO_LOCAL_SIGNING_KEY_PATH")
+    if settings.CRYPTO_PROVIDER == "openbao":
+        # S5-D17: con OpenBao no hay KEK ni llave de firma locales; el token es el secreto.
+        if settings.OPENBAO_TOKEN_FILE is None or not exists(settings.OPENBAO_TOKEN_FILE):
+            faltan.append("OPENBAO_TOKEN_FILE")
     return sorted(faltan)
 
 

@@ -20,6 +20,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.core import audit
 from app.modules.members.detail import MEMBERS_TABLE, _decrypt_fields
@@ -82,7 +83,13 @@ async def contact_for_notification(session: AsyncSession, member_id: UUID, purpo
     conexión), y un aviso enviado tras un rollback quedaría sin rastro en la auditoría.
     """
     proposito = validate_purpose(purpose)
-    socio = await session.scalar(select(Member).where(Member.id == member_id))
+    # S5-D32/D204: el rol del worker solo tiene `SELECT` por columna en `members.members`; la
+    # entidad completa trae `document` y fallaría con 42501. Solo lo que el aviso necesita.
+    socio = await session.scalar(
+        select(Member)
+        .options(load_only(Member.first_name, Member.phone, Member.email, Member.deleted_at))
+        .where(Member.id == member_id)
+    )
     if socio is None or socio.deleted_at is not None:
         raise MemberNotContactable()
     claros = _decrypt_fields(socio, CONTACT_FIELDS, proposito)

@@ -32,7 +32,10 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
 # S4A-B3 (S4A-D65): `staff-read` nació en el catálogo sin ruta; S4A-B4 la sacó con `GET /audit` y
 # `GET /audit/{seq}`. El catálogo entero vuelve a tener ruta.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
+# S5-D98: registradas desde W0-3; B5 (notifications-write) y B12 (export*) las quitan al dar ruta.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
+    {"notifications-write", "export", "export-hour", "export-day"}
+)
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:

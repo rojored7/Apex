@@ -1,6 +1,8 @@
 
 # Plan de implementación · Sprint 5 · v0.2: OpenBao, avisos de vencimiento, recibos y exportaciones
 
+> Enmiendas de la crítica 1 aplicadas en sitio: E1..E7 (S5-D95..D101) y cuatro observaciones; veredicto APROBADO CON OBSERVACIONES, sin segunda ronda (`docs/ddd/blueprints/sprint-05-critica-1.md`).
+
 - Rama: `feat/sprint-05-openbao-avisos-recibos`. HEAD de partida: `43641f3` (= `a1ad4cb` de `main` más los documentos de planificación). Última migración aplicada en `apex-db-1`: `0014_audit_log_triggers_always`. Este sprint añade `0015` a `0019` (S5-D66).
 - Veredicto de entrada: AMARILLO (`docs/ddd/impacto/sprint-05.md`, `--allow-amber`). Este plan absorbe C1 a C10 (sección 10).
 - Entradas leídas: `impacto/sprint-05.md`, `sprint-05-exploracion.md` (5 bloqueantes, 16 hallazgos, 18 preguntas), `sprint-05-blueprint.md` (S5-D1 a S5-D48, E1 a E16), `sprint-05-seguridad-diseno.md` (H-1, H-2, M-1 a M-12, L-1 a L-9; S5-D49 a S5-D63), `docs/scratch/sprint-05.md` (respuestas del orquestador a Q1 a Q10), `SPRINT-05.md`, `DECISIONES.md` (Sprint 4B: estado al cierre, dueños, D56, D77, D93, D98, D103, D190 a D196, D200 a D206), `CLAUDE.md`, `RUNBOOK.md` §7, `scripts/workflow/{slice-gate,checkpoint-commit,run-gates,wave0-gate}.sh`, `infra/compose*.yml`, `infra/db/grants.sql`, `api/pyproject.toml`, `.github/workflows/ci.yml`, `web/src/config/features.ts`, y como modelo `sprint-04b-plan.md`.
@@ -160,7 +162,7 @@ Formato del bloque 4B:
 - contradicciones resueltas;
 - S5-D1 a S5-D48 en forma final;
 - S5-D49 a S5-D63 con la opción final;
-- S5-D64 a S5-D94 de este plan;
+- S5-D64 a S5-D101 de este plan;
 - contradicciones de contrato cerradas en T-DOC;
 - un bloque por slice que añade cada checkpoint.
 
@@ -296,6 +298,13 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - **S5-D92 · Avisos sin `q` libre.** `GET /notifications` y `GET /notifications/today` aceptan `q` (nombre del socio, por `members.service.search_ids`), y `test_list_routes_use_page_params` las cubre. Las exportaciones quedan como excepción nombrada en esa prueba.
 - **S5-D93 · Etiqueta.** `v0.2.0` anotada en local, más `check-release-version.sh --check v0.2.0`. El push, el PR y el merge los hace una persona.
 - **S5-D94 · Comprobaciones del explorador.** E1 a E16 se responden en el Rojo del slice indicado (sección 10). Si una respuesta contradice este plan, nace una decisión numerada en ese slice; no se improvisa.
+- **S5-D95 · B13 verifica el snapshot sin `migrate-provider` (E1 de la crítica 1).** `migrate-provider` nace en B2 y B13 va antes (S5-D67). `openbao_restore_e2e.sh` envuelve una cadena de prueba con `bao write transit/encrypt/apex-kek plaintext=<base64>` con el token de `tools`, toma el snapshot, restaura en un OpenBao limpio, desella y descifra con `bao write transit/decrypt/apex-kek`; el resultado debe igualar al original. La variante con `migrate-provider --verify` pasa a B2.7 y se cita en V3.
+- **S5-D96 · `deploy.sh` comprueba el rol de `MIGRATE_DB_USER` (E2 de la crítica 1).** Antes de `migrate`, con `psql` como propietario (`exec db`), comprueba que el rol existe; si no, sale con 2 y "el rol <x> no existe: corra `dbsetup` o fije MIGRATE_DB_USER". En producción la variable se exige sin valor por defecto en `.env.ops`; `.env.ops.example` la trae con `apex_owner` y `test_env_example` lo cubre. Casos en `test_deploy_script.sh` (rol ausente: 2 sin tocar nada) y en `test_db_roles.sh` en modo `existente`.
+- **S5-D97 · Archivos de `cli_ops/` de menos de 150 líneas (E3 de la crítica 1).** Tope de `tests/cli/test_cli_base.py:268` (S4B-D95/D121): `rotate_kek.py` y `trim_kek.py` separados, `seed_notifications.py` y `notify.py` separados, ayudas puras en `core/crypto/migration.py`/`rotation.py` y `modules/notifications/service.py`; los comandos nuevos se registran en `register_ops`. Si algo no cabe, `TOPE_CLI_OPS` solo cambia con decisión.
+- **S5-D98 · Cubetas `USER_*` desde W0-3 (E4 de la crítica 1).** W0-3 registra las cuatro claves nuevas en `USER_LIMITS` (`core/ratelimit.py`) con `CLAVES_SIN_RUTA_TODAVIA` de `tests/core/test_user_limits_catalog.py` (:240-241), y actualiza la regex y el conteo de `ci.yml` (:365-366, hoy "11 subidas") en el mismo checkpoint que `.env.example`. B5 y B12 solo quitan las claves de `CLAVES_SIN_RUTA_TODAVIA` al darles ruta.
+- **S5-D99 · `test_contact_callers` fija el único llamador (E5 de la crítica 1).** B5.2 renombra `test_contact_callers_esta_vacio_en_el_sprint_4a` por una prueba que fija `CONTACT_CALLERS == frozenset({"app.modules.notifications.service"})` y mantiene la regla de :113.
+- **S5-D100 · Orden de `-f` en `compose run` (E6 de la crítica 1).** `-f` es opción de `docker compose`, no de `run`: `$DCE -f infra/compose.verify.yml run --rm backup /opt/backup/run.sh`.
+- **S5-D101 · `restore.sh` como `apex_owner` (E7 de la crítica 1).** W0-4.4 corre `restore.sh` en `apex-smoke` con la pila nueva (propietario no superusuario): `pg_restore --clean --single-transaction` y `CREATE EXTENSION btree_gist` de `0001` deben pasar. Si `btree_gist` exige superusuario, W0-4 lo instala en `roles.sql`/`dbsetup` como propietario bootstrap y lo anota.
 
 ### Contradicciones de contrato cerradas en T-DOC (W0-1.3)
 
@@ -473,7 +482,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 **Paso 10 · W0-2.4 · Verde de scripts y CI**
 
-- `infra/deploy.sh`: sondeo con `curl -sS` que lee el cuerpo de un 503; mensaje de sellado; exige el overlay; aviso de `kek.bin`; `openbao` en `up -d`.
+- `infra/deploy.sh` (S5-D96): antes de `migrate`, comprueba con `psql` como propietario (`exec db`) que el rol de `MIGRATE_DB_USER` existe y, si no, sale con 2 y "el rol <x> no existe: corra `dbsetup` o fije MIGRATE_DB_USER" sin tocar nada; en producción la variable se exige sin valor por defecto en `.env.ops` (`.env.ops.example` la trae con `apex_owner`, cubierto por `test_env_example`); casos en `test_deploy_script.sh` (rol ausente: 2). Además: sondeo con `curl -sS` que lee el cuerpo de un 503; mensaje de sellado; exige el overlay; aviso de `kek.bin`; `openbao` en `up -d`.
 - `scripts/ci/compose-smoke.sh` y `prod-smoke.sh`: `openbao` en la lista de servicios; `prod-smoke --provider openbao` deja la comprobación de `kek.bin` para B2.
 - `scripts/workflow/wave0-gate.sh` y `run-gates.sh`: `test_openbao_infra` y las combinaciones nuevas.
 - `.github/workflows/ci.yml`: job `scripts` con `test_openbao_infra.sh`; `services.openbao` en el job `api` (D85; inerte hasta B1); `docker pull` de OpenBao por digest en `images`, `e2e-stack` y `prod-smoke`.
@@ -495,7 +504,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 1. `bash scripts/ci/test_openbao_infra.sh && bash scripts/ci/test_compose_config.sh && bash scripts/ci/test_deploy_script.sh && bash scripts/workflow/tests/run.sh`.
 2. `security-reviewer` de W0-2: políticas, bootstrap, logs, red, montajes, overlay, `deploy.sh`.
-3. Sello: `bash scripts/workflow/wave0-gate.sh W0-2`.
+3. Sello: `bash scripts/workflow/wave0-gate.sh W0-2`. Nota: `wave0-gate.sh` corre `test_api_image apex-api:local` antes del `buildx` de W0-2.7, así que usa la imagen anterior; se anota en el cuaderno y W0-2.7 repite `test_api_image` sobre la nueva.
 
 **Paso 13 · W0-2.7 · Docker y evidencia**
 
@@ -551,6 +560,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
   - lo no secreto (`OPENBAO_*`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_FROM`, `SMTP_TLS_MODE`, `TELEGRAM_CHAT_ID`, `TELEGRAM_API_BASE`, `NOTIFY_*`, `EXPORT_MAX_ROWS`, `CRYPTO_RECOVERY_POLL_S`, `USER_*`) va en `.env.example`;
   - `SMTP_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `APEX_CUSTODY_SUBNET`, `MIGRATE_DB_USER`, `TOOLS_DB_USER` y `BACKUP_SIGN_PUBKEY` van en `.env.ops.example`;
   - el comentario del catálogo dice 16 cubetas y 15 variables;
+  - (S5-D98) las cuatro claves nuevas quedan registradas en `USER_LIMITS` de `core/ratelimit.py` con `CLAVES_SIN_RUTA_TODAVIA` de `tests/core/test_user_limits_catalog.py` (:240-241), y la regex y el conteo de `ci.yml` (:365-366, hoy "11 subidas") se actualizan en este mismo checkpoint; B5 y B12 solo quitan las claves de `CLAVES_SIN_RUTA_TODAVIA` al darles ruta;
   - sin claves repetidas entre los dos archivos.
 - `tests/core/test_logging_redact.py`:
   - `bot123456:AAH<30 caracteres>` queda redactado;
@@ -620,7 +630,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
   - `COPY ... TO PROGRAM` falla;
   - `CREATE` en `public` falla;
   - `alembic upgrade head` como `apex_owner` sobre una base vacía funciona.
-- `scripts/ci/test_db_roles.sh`: modo `nueva` (dueño `apex_owner`) y modo `existente` (`MIGRATE_DB_USER` igual al propietario).
+- `scripts/ci/test_db_roles.sh`: modo `nueva` (dueño `apex_owner`) y modo `existente` (`MIGRATE_DB_USER` igual al propietario; incluye el caso de rol inexistente que `deploy.sh` rechaza con 2, S5-D96).
 - `test_compose_config.sh`:
   - `db` monta `initdb/10-apex-owner.sh:ro`;
   - `migrate` y `tools` usan `${MIGRATE_DB_USER:-apex_owner}` y `${TOOLS_DB_USER:-apex_owner}`;
@@ -639,6 +649,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 4. `SELECT nspname, nspowner::regrole FROM pg_namespace` del ensayo (dueño `apex_owner`).
 5. Smoke de producción en Linux (pila nueva) en verde.
 6. `apex-db-1`: `pg_roles` sin `apex_owner`.
+7. (S5-D101) `restore.sh` en `apex-smoke` con la pila nueva (`apex_owner` como propietario no superusuario): `pg_restore --clean --single-transaction` y `CREATE EXTENSION btree_gist` de `0001` deben pasar; si `btree_gist` exige superusuario, el plan de W0-4 lo instala en `roles.sql`/`dbsetup` como propietario bootstrap y lo anota.
 
 **Paso 27 · W0-4.5 · Checkpoint.** `"S5-W0-4 apex_owner NOSUPERUSER dueño en pilas nuevas; migrate y tools sin superusuario (M-12, S4B-D206)"`.
 
@@ -754,7 +765,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - `scripts/ci/test_compose_config.sh`: `backup` en `custody`; `openbao-token-backup:ro` solo en `backup`.
 - `test_openbao_infra.sh`: la política `apex-backup-snapshot` y la excepción de D75.
 - `test_backup_apk_pins.sh`: incluye `curl`.
-- `infra/tests/openbao_restore_e2e.sh` (nuevo, Bash): pila de smoke, init, migración simulada de una fila, snapshot, `down -v` de `openbao-data`, restauración con `generate-root` efímero, desellar, `migrate-provider --verify` → 0.
+- `infra/tests/openbao_restore_e2e.sh` (nuevo, Bash): pila de smoke, init, migración simulada de una fila, snapshot, `down -v` de `openbao-data`, restauración con `generate-root` efímero, desellar. Sin `migrate-provider` (nace en B2, S5-D95): envuelve una cadena de prueba con `bao write transit/encrypt/apex-kek plaintext=<base64>` (token de `tools`) antes del snapshot y, tras restaurar y desellar, la descifra con `bao write transit/decrypt/apex-kek`; debe ser igual al original.
 
 **Paso 38 · B13.3 · Verde de Python.** `minisign.py` (con `cryptography` y `hashlib`, dentro de `core/crypto`); `bus.verify_signed_manifest` como única puerta pública; `cli_manifest.py`; `retire_key.py` sobre `cli_manifest`; `backup_check.py` (verificación por el bus y `openbao_snapshot`); `Settings.BACKUP_SIGN_PUBKEY` llega al `environment` de `worker` y `tools`.
 
@@ -774,7 +785,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 1. Buildx de api y backup; recrear el ensayo.
 2. `$DCE --profile bootstrap run --rm -T openbao-bootstrap --reissue-tokens` (token de backup).
-3. `$DCE run --rm -f infra/compose.verify.yml backup /opt/backup/run.sh` → manifiesto con `openbao_snapshot.verified=true` y `.minisig`.
+3. `$DCE -f infra/compose.verify.yml run --rm backup /opt/backup/run.sh` → manifiesto con `openbao_snapshot.verified=true` y `.minisig`.
 4. `$DCE run --rm worker python -m app.worker.main --run-once backup_check` → 0 `ok`.
 5. Smoke en Linux: `prod-smoke.sh` más `infra/tests/openbao_restore_e2e.sh` en `apex-smoke` → verde; `down -v`.
 
@@ -788,7 +799,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 **Paso 44 · B2.1 · Stubs**
 
 - `core/crypto/migration.py`: `KeyRowView`, `plan_provider_migration(rows, from_) -> tuple[UUID, ...]`, `MigrationResult(total, done, skipped, failed_key_id)`, `async migrate_provider(session_factory, *, from_, to, resolver, actor, dry_run)`, `async rewrap_all(session_factory, *, resolver, actor)`, `async verify_provider(session_factory, *, expected, resolver)`, `async trim_ready(session_factory, *, resolver) -> bool`.
-- `cli_ops/migrate_provider.py`, `cli_ops/rotate_kek.py` (`rotate-kek --as` y `rotate-kek --trim --as`), `cli_ops/retire_local_kek.py`, registrados en `register_ops`.
+- `cli_ops/migrate_provider.py`, `cli_ops/rotate_kek.py` (`rotate-kek --as`) y `cli_ops/trim_kek.py` (`rotate-kek --trim --as`, registrado desde `trim_kek.py`; ayudas puras en `core/crypto/migration.py` y `rotation.py`; S5-D97), `cli_ops/retire_local_kek.py`, registrados en `register_ops`.
 
 **Paso 45 · B2.2 · Rojo de `crypto`**
 
@@ -831,7 +842,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
   - con filas `local` → 2;
   - después, el api arranca con `openbao` sin el archivo.
 
-**Paso 47 · B2.4 · Verde.** `migration.py` (cada función de menos de 50 líneas; una transacción por llave; `SELECT ... FOR UPDATE`); los tres `cli_ops` (`cli_runtime`, sin keyring; `production_guard_error`; textos fijos); `prod-smoke.sh --provider openbao` comprueba que no hay `kek.bin` en api ni worker (H-2.3).
+**Paso 47 · B2.4 · Verde.** `migration.py` (cada función de menos de 50 líneas; una transacción por llave; `SELECT ... FOR UPDATE`); los cuatro `cli_ops` (`migrate_provider.py`, `rotate_kek.py`, `trim_kek.py`, `retire_local_kek.py`; `cli_runtime`, sin keyring; `production_guard_error`; textos fijos; cada archivo de `cli_ops/` < 150 líneas (S4B-D95/D121: si no cabe, `TOPE_CLI_OPS` solo con decisión; S5-D97); los comandos nuevos en `register_ops`); `prod-smoke.sh --provider openbao` comprueba que no hay `kek.bin` en api ni worker (H-2.3).
 
 **Paso 48 · B2.5 · Documentación.** RUNBOOK §13 (orden operativo de D18, ahora con snapshot y `retire-local-kek`); `docs/operacion/rotar-llave.md` (KEK de OpenBao, compromiso, `--trim`); `openbao.md`; bloque B2; cuaderno.
 
@@ -845,7 +856,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 1. Buildx del api; recrear el ensayo.
 2. `pg_dump` del ensayo; `export-kek` y `verify-kek-backup` del ensayo con el ayudante de pty de `prod-smoke.sh` (S4B-D192), desde el contenedor auxiliar Linux (la frase solo en memoria del ayudante); `run.sh` con snapshot.
-3. `$DCE run --rm tools migrate-provider --from local --to openbao --as <admin del ensayo> --dry-run`, luego sin `--dry-run` con `MIGRAR` por stdin; una segunda corrida dice "nada que migrar"; `--verify` → 0.
+3. `$DCE run --rm tools migrate-provider --from local --to openbao --as <admin del ensayo> --dry-run`, luego sin `--dry-run` con `MIGRAR` por stdin; una segunda corrida dice "nada que migrar"; `--verify` → 0. Variante de restauración (S5-D95, citada en V3): `openbao_restore_e2e.sh` repetido con una fila migrada, snapshot, `down -v` de `openbao-data`, restauración, desellado y `migrate-provider --verify` → 0.
 4. `CRYPTO_PROVIDER=openbao` en el `.env` del ensayo; `$DCEB up -d --no-build --force-recreate api worker`; `GET /api/v1/members/{id}` en 8280 descifra.
 5. `rotate-kek --as` → `rewrap` de las 8 filas; `run.sh`; `rotate-kek --trim --as` con `RECORTAR`.
 6. `retire-local-kek --as` con `RETIRAR`.
@@ -909,7 +920,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - `main.py`: `_startup` tolerante, `poll_forever` en `app.state`, registro de `crypto` (`critical=True`, `allowed`, `healthy={"ok"}`), cancelación.
 - `core/health.py` (TTL de 5 s), `core/errors.py` (handler y descripción del 503), `core/security.refresh_current`, `keyring.current_keyring()` → `CryptoUnavailable("not_loaded")`.
 - `worker/runtime.py` y `worker/main.py` (`try_load` al arrancar).
-- `compose.yml`: `worker` monta `keys:ro` (base) o su token (overlay); se ajusta `test_compose_config.sh:86` y la línea "hasta el Sprint 5".
+- `compose.yml`: `worker` monta `keys:ro` (base) o su token (overlay); el montaje `keys:ro` en `compose.yml` base es para `CRYPTO_PROVIDER=local`; `compose.openbao.yml` lo quita (H-2); se ajusta `test_compose_config.sh:86` y la línea "hasta el Sprint 5".
 - `grants.sql`, solo si E6 lo exige.
 - `scripts/ci/openbao-smoke.sh` (nuevo): D22 con D69; guarda la evidencia de `/health` en cada estado en `docs/scratch/ensayo/` o en el artefacto de CI.
 - `ci.yml`: `prod-smoke` ejecuta `openbao-smoke.sh`.
@@ -1036,7 +1047,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - `tests/members/test_channels_service.py`: lectura por lote; `set` con socio dado de baja → 409 `member_deleted`; emite `MemberUpdated` sin valores.
 - `tests/members/test_channels_router.py`: admin y coach; member → 403; cubeta `notifications-write`; `no-store`.
 - `tests/members/test_contact_fields.py`: `fields={"phone"}` descifra y audita solo el teléfono; campo desconocido → `InvalidField`; `notify` sin consentimiento → `MemberNotContactable`; `load_only`.
-- `tests/architecture/test_contact_callers.py`: `CONTACT_CALLERS == {"modules/notifications/service.py"}` (en verde cuando exista B7; hasta entonces el conjunto se declara y la prueba exige que nadie más la nombre).
+- `tests/architecture/test_contact_callers.py`: se reescribe renombrando `test_contact_callers_esta_vacio_en_el_sprint_4a` por una prueba que fija `CONTACT_CALLERS == frozenset({"app.modules.notifications.service"})` (el único archivo) y mantiene la regla de :113, que no exige que exista un llamador (S5-D99).
 - `test_audited_tables.py`, `test_audit_subject.py`, `test_writes_have_user_limit.py`, `test_user_limits_catalog.py` (cubeta `notifications-write` con ruta), `test_db_grants.py` (tabla nueva: api `S I U`, worker `S`).
 
 **Paso 71 · B5.3 · Verde de `0016`.** P-MIG pasos 3 a 8; `grants.sql`, `revoke.sql` y `test_db_grants.py` (P-ROL).
@@ -1092,7 +1103,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 
 **Paso 80 · B6.4 · Verde de migraciones.** P-MIG pasos 3 a 8 para `0017` y luego para `0018` (dos ciclos); `grants.sql` (las cuatro sentencias de esquemas más la matriz), `revoke.sql`, `test_db_grants.py`; limpieza en `tests/conftest.py`.
 
-**Paso 81 · B6.5 · Verde del módulo y del CLI.** Módulo (archivos de menos de 600 líneas); `cli_ops/notify.py` con `seed-notifications`; `cli.py` (`seed` llama `notifications.service.seed_defaults`).
+**Paso 81 · B6.5 · Verde del módulo y del CLI.** Módulo (archivos de menos de 600 líneas); `cli_ops/seed_notifications.py` con `seed-notifications` (archivo aparte de `notify.py`, que nace en B7; cada archivo de `cli_ops/` < 150 líneas (S4B-D95/D121: si no cabe, `TOPE_CLI_OPS` solo con decisión; S5-D97); registrado en `register_ops`); `cli.py` (`seed` llama `notifications.service.seed_defaults`).
 
 **Paso 82 · B6.6 · Contrato y documentación.** P-API; `avisos.md` (plantillas, reglas, variables); `CLAUDE.md`; cuaderno.
 
@@ -1174,7 +1185,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 - `skip` con motivo;
 - `audit_log` con `reveal` y `purpose=notify`.
 
-Antes, `notify` del CLI se comprueba con el job de B8 pendiente: en B7 la generación se expone por un comando provisional `notify --generate-only`, que nace aquí en `cli_ops/notify.py` y se completa en B8.
+Antes, `notify` del CLI se comprueba con el job de B8 pendiente: en B7 la generación se expone por un comando provisional `notify --generate-only`, que nace aquí en `cli_ops/notify.py` y se completa en B8, con prueba en `tests/cli/test_notify_cli.py` desde B7 porque `cli_ops/notify.py` es nuevo.
 
 **Paso 93 · B7.8 · Checkpoint.** `"S5-B7 avisos del día idempotentes y auditados, por avisar hoy, POST wa-link, omitir con motivo e historial"`.
 
@@ -1183,7 +1194,7 @@ Antes, `notify` del CLI se comprueba con el job de B8 pendiente: en B7 la genera
 - **Cierra:** parte de C4, C6, M-6 (`claim_run`), D35, D86, L-5.
 - **Depende de:** B7. **Migración:** ninguna.
 
-**Paso 94 · B8.1 · Stubs (con el worker detenido).** `worker/jobs/notify.py` (`NAME="notify"`, `async run(ctx) -> JobResult`); `sending.send_pending(session_factory, today, *, load_contact, channel, max_attempts) -> SendSummary`; `channels/email.EmailChannel`; `cli_ops/notify.py` completo; `core/jobs.DETAIL_KEYS` con `generados`, `ya_renovaron`, `sin_consentimiento`, `sin_reglas`, `enviados`, `fallidos`, `omitidos`, `pendientes`, `sellado`.
+**Paso 94 · B8.1 · Stubs (con el worker detenido).** `worker/jobs/notify.py` (`NAME="notify"`, `async run(ctx) -> JobResult`); `sending.send_pending(session_factory, today, *, load_contact, channel, max_attempts) -> SendSummary`; `channels/email.EmailChannel`; `cli_ops/notify.py` completo (`--generate-only`, `--send-only`, `--as`, `claim_run`; cada archivo de `cli_ops/` < 150 líneas (S4B-D95/D121: si no cabe, `TOPE_CLI_OPS` solo con decisión; S5-D97), con las ayudas en `modules/notifications/service.py`; comandos en `register_ops`); `core/jobs.DETAIL_KEYS` con `generados`, `ya_renovaron`, `sin_consentimiento`, `sin_reglas`, `enviados`, `fallidos`, `omitidos`, `pendientes`, `sellado`.
 
 **Paso 95 · B8.2 · Rojo**
 
@@ -1209,7 +1220,7 @@ Antes, `notify` del CLI se comprueba con el job de B8 pendiente: en B7 la genera
 - `tests/architecture/test_worker_boundaries.py`: `jobs/notify.py` solo importa `service` (`notifications`, `memberships`).
 - `test_notifications_details_clean.py` (nueva).
 
-**Paso 96 · B8.3 · Verde.** `notify.py`, `sending.py`, `email.py`, `cli_ops/notify.py`, `core/jobs.py`, `worker/jobs/__init__.py` y `worker/main.py` (`flush`).
+**Paso 96 · B8.3 · Verde.** `notify.py`, `sending.py`, `email.py`, `cli_ops/notify.py` (< 150 líneas, S5-D97), `core/jobs.py`, `worker/jobs/__init__.py` y `worker/main.py` (`flush`).
 
 **Paso 97 · B8.4 · Verde de infraestructura.** `compose.yml` (`environment` del worker con `SMTP_*` y `TELEGRAM_*`, ya preparado en W0-3; solo se verifica); `grants.sql` (sin cambio; se confirma `U` por columna).
 
@@ -1440,7 +1451,7 @@ Antes, `notify` del CLI se comprueba con el job de B8 pendiente: en B7 la genera
 
 **Paso 147 · F5.1 · Rojo.** `ForgotPage.test.tsx` ("Si el correo está registrado, te enviamos un enlace"; `DESIGN-GAP` de H-2 cerrado); `features/users` (`email_sent`: "Enviamos el enlace por correo" o el enlace copiable); `core/api/client.test.ts` (respuesta con `crypto_unavailable` → aviso global discreto); `shared/ui` aviso global (si no existe, se crea en `shared/ui` con el nombre de `DESIGN.md`).
 
-**Paso 148 · F5.2 · Verde.**
+**Paso 148 · F5.2 · Verde.** `ForgotPage` real (formulario con React Hook Form + Zod, respuesta constante "Si el correo está registrado, te enviamos un enlace", sin enumeración de cuentas); pantalla de usuarios/cuentas con el envío del correo de activación (`email_sent` o enlace copiable), estados de carga y de error, aviso global discreto de `crypto_unavailable`; pruebas de componentes de las tres piezas y `preview` de la pantalla.
 
 **Paso 149 · F5.3 · E2E y documentación.** `users-activation.spec.ts` (stack); BRECHAS fila 230.
 
@@ -1599,6 +1610,17 @@ Regla de RUNBOOK §6: `downgrade` primero, después `git revert`, después `rest
   - M-10: 121-124 y 153. M-11: 114-116. M-12: 23-27.
 - **LOW:** L-1 en 11, 59 y V3; L-2 en 37 y 39; L-3 en 7 y 9; L-4 aceptado (v0.3, titular; D83); L-5 en 98; L-6 en 121 y 125; L-7 en 54; L-8 en 153; L-9 en 16 y 18.
 
+### Enmiendas de la crítica 1 y su paso
+
+- E1 → B13 (e2e sin `migrate-provider`) y B2.7 (variante con `migrate-provider --verify`; V3). S5-D95.
+- E2 → W0-2.4 (`deploy.sh`) y W0-4 (`test_db_roles.sh`, modo existente). S5-D96.
+- E3 → B2.4, B6.5 y B8.1/B8.3. S5-D97.
+- E4 → W0-3. S5-D98.
+- E5 → B5.2. S5-D99.
+- E6 → B13.7. S5-D100.
+- E7 → W0-4.4. S5-D101.
+- Observaciones: F5.2 (paso 148), B3 (`keys:ro`), B7 (prueba de `notify --generate-only`) y W0-2.6 (nota de `wave0-gate.sh`).
+
 ### Preguntas de la exploración (P1 a P18) y del blueprint (Q1 a Q10, E1 a E16)
 
 - **P1** → D3. **P2** → D18. **P3** → D14 y D69. **P4** → D15. **P5** → D20 y D52. **P6** → D44 y D57.
@@ -1675,7 +1697,7 @@ Regla de RUNBOOK §6: `downgrade` primero, después `git revert`, después `rest
 - **Decisiones:**
   - S5-D1 a S5-D48 en forma final;
   - S5-D49 a S5-D63 de seguridad con su opción final;
-  - S5-D64 a S5-D94 de este plan (31);
+  - S5-D64 a S5-D101 de este plan (38; S5-D95 a S5-D101 son las enmiendas E1 a E7 de la crítica 1);
   - 18 contradicciones resueltas.
 - **`run-gates.sh`:** 4 corridas (B3, B8, B12, V9).
 - **Proyectos Compose aparte:** `apex-ensayo` (W0-2 a V12) y `apex-smoke` (W0-2, W0-4, B13, B3, V2, efímero).

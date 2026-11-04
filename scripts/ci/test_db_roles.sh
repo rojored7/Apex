@@ -110,6 +110,9 @@ prohibida apex_api "DELETE FROM payments.payments" "DELETE FROM payments.payment
 prohibida apex_api "UPDATE audit.audit_log" "UPDATE audit.audit_log SET action = 'x'"
 prohibida apex_api "UPDATE crypto.crypto_keys SET state" "UPDATE crypto.crypto_keys SET state = 'retired'"
 prohibida apex_api "UPDATE payments.payments SET amount_cop" "UPDATE payments.payments SET amount_cop = 1"
+prohibida apex_api "UPDATE auth.users SET is_active (S5-D203)" "UPDATE auth.users SET is_active = is_active WHERE false"
+permitida apex_api "UPDATE auth.users SET password_hash (S5-D203)" "UPDATE auth.users SET password_hash = password_hash WHERE false"
+prohibida apex_api "INSERT payments con void_reason (S5-D202)" "INSERT INTO payments.payments (void_reason) VALUES ('x')"
 prohibida apex_api "UPDATE public.alembic_version" "UPDATE public.alembic_version SET version_num = 'x'"
 prohibida apex_api "INSERT en worker.job_runs" "$JOB_INSERT"
 prohibida apex_api "CREATE TABLE public.x()" "CREATE TABLE public.x()"
@@ -123,7 +126,11 @@ permitida apex_worker "SELECT ... FOR UPDATE en memberships.memberships" "SELECT
 permitida apex_worker "INSERT en worker.job_runs" "$JOB_INSERT"
 permitida apex_worker "INSERT en audit.audit_log" "$AUDIT_INSERT"
 prohibida apex_worker "SELECT en payments.payments" "SELECT count(*) FROM payments.payments"
-prohibida apex_worker "SELECT en crypto.crypto_keys" "SELECT count(*) FROM crypto.crypto_keys"
+permitida apex_worker "SELECT en crypto.crypto_keys (S5-D34)" "SELECT count(*) FROM crypto.crypto_keys"
+prohibida apex_worker "UPDATE crypto.crypto_keys SET updated_at" "UPDATE crypto.crypto_keys SET updated_at = now() WHERE false"
+permitida apex_worker "SELECT por columna en members.members (S5-D204)" "SELECT id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at FROM members.members"
+prohibida apex_worker "SELECT document en members.members" "SELECT document FROM members.members"
+prohibida apex_worker "SELECT * en members.members" "SELECT * FROM members.members"
 prohibida apex_worker "DELETE en worker.job_runs" "DELETE FROM worker.job_runs"
 
 # --- apex_backup: lee todo, no escribe nada -----------------------------------------------------

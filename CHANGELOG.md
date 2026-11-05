@@ -5,6 +5,32 @@ compara la etiqueta con el encabezado de la primera sección, con `api/pyproject
 `web/package.json`. El SHA de cierre vive en el cuerpo de la sección (no lo exige ningún script) y
 es el que se pasa a `infra/deploy.sh --expect-sha`.
 
+## [0.2.0]
+
+Fecha de cierre: 2026-11-05. SHA de cierre: el del commit etiquetado `v0.2.0` (`git rev-parse v0.2.0^{commit}`), publicado en el Release en borrador; es el valor que se pasa a `infra/deploy.sh --expect-sha`.
+
+Segunda versión desplegable: custodia de llaves en OpenBao, avisos de vencimiento por correo y WhatsApp, cuentas por correo, recibo PDF y exportaciones CSV. El TLS sigue pendiente (riesgo aceptado P7).
+
+### Sprint 5 · Custodia de llaves con OpenBao (EP-15)
+- OpenBao (motor Transit, una llave `apex-kek`) como custodio de las DEK: `migrate-provider` reanudable, `rotate-kek` con `--trim` (unwrap + wrap, S5-D55a) y `retire-local-kek`, todos con pruebas de custodia (manifiesto firmado reciente con instantánea, S5-D72).
+- Estado sellado: arranque degradado, `/health.crypto` crítico, 503 `crypto_unavailable` con `Retry-After: 30`, sondeo de recuperación cada 20 s; el worker arranca con el keyring mínimo.
+- Instantánea raft de OpenBao en cada respaldo y `restore.sh --with-openbao`; `openbao-smoke.sh` y `openbao_restore_e2e.sh` en la CI y el smoke de producción.
+- Roles de base de datos: `apex_owner` como propietario, `MIGRATE_DB_USER`/`TOOLS_DB_USER`, permisos por columna para `apex_api` y `apex_worker` (S5-D202 a D204, D256).
+
+### Sprint 5 · Avisos de vencimiento (EP-14)
+- Plantillas y reglas de aviso (`notification_templates`, `notification_rules`, `seed-notifications` idempotente), avisos del día generados por el job `notify` con candado por lote, envío por correo (SMTP con STARTTLS, al menos una vez, tope de 3 intentos) solo con consentimiento y opt-in del socio, enlace de WhatsApp por `POST /notifications/{id}/wa-link` auditado, omisión con motivo e historial por socio.
+- Preferencias de canal por socio (`member_channel_preferences`) con consentimiento obligatorio; resumen diario del equipo por Telegram sin datos personales; KPI `notifications_today` y `members_without_consent` en el tablero.
+- Correos de cuenta: activación y recuperación por SMTP (`email_sent` en el alta y el reenvío), `forgot` sin canal de tiempos (trabajo en segundo plano acotado, S5-D38, D91).
+- Front: por avisar hoy, reglas y plantillas, historial, pestaña Canales de Config, pestaña Avisos de la ficha, KPI de Inicio, recuperar y activar cuenta por correo, aviso global de custodio no disponible.
+
+### Sprint 5 · Recibos y exportaciones (EP-16)
+- Recibo PDF propio (`core/pdf.py`, Courier sin incrustar, sin datos cifrados, auditado como `download`).
+- Exportaciones CSV de socios y pagos en streaming (BOM, `;`, escape de fórmulas), un flujo por usuario (409), tope configurable, auditoría de apertura y cierre, `crypto_ops` por lote con `purpose=export`, cubetas `export*`; front con confirmación y descarga por `api.blob`.
+- Migraciones 0015 a 0020 (proveedor de llaves, preferencias de canal, plantillas, reglas, avisos, índices).
+
+### Deuda aceptada con dueño (v0.3)
+- Índice `memberships(end_date)` y CHECK `sent ⇒ sent_at` en avisos; SMTP implícito (465); subruta del volumen `keys` para la llave JWT del worker; ADR-005 punto 2 (`rewrap`) por corregir.
+
 ## [0.1.0]
 
 Fecha de cierre: 2026-11-04. SHA de cierre: el del commit etiquetado `v0.1.0` (`git rev-parse v0.1.0^{commit}`), publicado en el Release en borrador; es el valor que se pasa a `infra/deploy.sh --expect-sha` (ver `docs/operacion/actualizar.md`).

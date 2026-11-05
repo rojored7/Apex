@@ -1,6 +1,6 @@
 [project]
 name = "apex-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "APEX: API de administración de un gimnasio de CrossFit (socios, planes, membresías, pagos)."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

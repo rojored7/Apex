@@ -1,9 +1,7 @@
-// S2-F4a · US-048 (criterio 10): /recuperar (Login.html, tarjeta "Olvidé mi contraseña").
-// Envía POST /auth/forgot y, pase lo que pase (204 exista o no el correo, 429, 5xx o red),
-// muestra el mismo mensaje: la pantalla nunca dice si la cuenta existe.
-// DESIGN-GAP: Login.html anuncia "Si el correo está registrado, recibirás un enlace", pero en
-// v0.1 forgot no envía correos (H-2, S2-D36; el emisor llega con US-131): el enlace lo da el
-// administrador (POST /users/{id}/resend-link), y el mensaje fijo lo dice así.
+// S2-F4a · US-048 y S5-F5 · US-131: /recuperar (Login.html, tarjeta "Olvidé mi contraseña").
+// Envía POST /auth/forgot y, pase lo que pase (204 exista o no el correo, 429 tardío, 5xx o red),
+// muestra el mismo mensaje: la pantalla nunca dice si la cuenta existe. H-2 cerrado: el api envía
+// el correo en segundo plano (S5-D38); el texto reproduce el de Login.html.
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
@@ -15,7 +13,8 @@ import { useForgotPassword } from "../api";
 import styles from "../components/AccessCard.module.css";
 import { forgotSchema, type ForgotForm } from "../schemas";
 
-export const FORGOT_DONE = "Pídele al administrador tu enlace de recuperación.";
+export const FORGOT_DONE =
+  "Si el correo está registrado, te enviamos un enlace. Revisa tu bandeja en unos minutos; si no llega, pídeselo al administrador del gimnasio.";
 
 
 export default function ForgotPage() {
@@ -56,7 +55,7 @@ export default function ForgotPage() {
       <h1 id="forgot-title" className={styles.title}>
         Olvidé mi contraseña
       </h1>
-      <p className={styles.lead}>En esta versión el enlace no llega por correo: te lo entrega el administrador del gimnasio.</p>
+      <p className={styles.lead}>Escribe el correo de tu cuenta y te enviamos un enlace para crear una contraseña nueva.</p>
       <Field label="Correo" type="email" autoComplete="username" inputMode="email" autoFocus error={errors.email?.message} {...register("email")} />
       <Button type="submit" className={styles.submit} loading={forgot.isPending}>
         {forgot.isPending ? "Enviando…" : "Enviar enlace"}

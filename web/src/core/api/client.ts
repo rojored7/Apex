@@ -10,10 +10,12 @@
 //   de `Retry-After` (1 s si no viene, 5 s como máximo); una escritura nunca se reintenta: podría
 //   registrar dos veces una venta o un pago. Si el que llama cancela durante la espera, no hay
 //   segundo intento.
+// - S5-F5 (S5-D14): un 503 `crypto_unavailable` activa el aviso global (core/custody) y no se reintenta.
 // - Nunca escribe en console ni registra cuerpos o tokens.
 import { API_ERROR_CODES } from "./errorCodes";
 import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { toQueryString, type QueryParams } from "./query";
+import { reportCustodyUnavailable } from "../custody/custodyNotice";
 import { HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
 
 export const API_BASE = "/api/v1";
@@ -170,6 +172,9 @@ async function request<T>(method: Method, path: string, options: RequestOptions,
     const outcome = await unauthorizedHandler(error, { accessToken: token });
     if (outcome === "retry") return request<T>(method, path, options, { ...retries, auth: true });
   }
+  // S5-F5 (US-136, S5-D14): custodio sellado o inalcanzable. Aviso global y nada de reintentos:
+  // la espera la respeta quien llama (Retry-After, 30 s por defecto).
+  if (error.status === HTTP_SERVICE_UNAVAILABLE && error.code === API_ERROR_CODES.cryptoUnavailable) reportCustodyUnavailable(error.retryAfterS);
   if (shouldRetryBusy(method, error, retries)) {
     // Revisión S3-F3 (LOW 11): entre 1 y 5 s; un Retry-After de 0 no reintenta al instante.
     await waitFor(Math.min(Math.max(error.retryAfterS ?? BUSY_RETRY_DEFAULT_S, BUSY_RETRY_DEFAULT_S), BUSY_RETRY_MAX_S), options.signal);

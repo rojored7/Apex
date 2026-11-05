@@ -37,6 +37,8 @@ export const API_ERROR_CODES = {
   planNotFound: "plan_not_found",
   // S3-F3: la base no dio el candado a tiempo (503, S3-D67; core/db.py).
   busy: "busy",
+  // S5-F5: el custodio de llaves está sellado o inalcanzable (503, S5-D14; core/errors.py).
+  cryptoUnavailable: "crypto_unavailable",
   // S3-F3: membresías (vender y renovar, US-084, US-088).
   memberInactive: "member_inactive",
   planInvalid: "plan_invalid",

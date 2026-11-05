@@ -2,6 +2,8 @@
 // admin crea un coach desde Usuarios, copia el enlace de activación, lo abre en otra ventana
 // (otro contexto, sin la sesión del admin), fija una contraseña de 12 o más caracteres y entra
 // como coach a `/`. El coach no ve Usuarios ni Configuración. axe en cada pantalla.
+// S5-F5 (US-131): /recuperar dice lo mismo con un correo que existe y con uno que no (sin
+// enumeración) y, si el correo del ensayo está configurado (email_sent), el alta no muestra el enlace.
 // Necesita B2/B3 (login, refresh, /auth/me) y B4 (POST /users, POST /auth/reset). Sin
 // E2E_BASE_URL se omite: la variante contra `vite preview` es ../users-access.spec.ts.
 // Idempotente: correo y contraseña únicos por corrida (V4 corre las specs dos veces).
@@ -46,8 +48,17 @@ test.describe("alta y activación de un coach contra el stack", () => {
       await panel.getByRole("button", { name: "Crear usuario" }).click();
       const respuesta = await creado;
       expect(respuesta.status()).toBe(201);
-      coachId = ((await respuesta.json()) as { user: { id: string } }).user.id;
+      const cuerpo = (await respuesta.json()) as { user: { id: string }; email_sent?: boolean };
+      coachId = cuerpo.user.id;
 
+      // S5-F5: con correo configurado el api responde email_sent y el enlace no se muestra.
+      if (cuerpo.email_sent === true) {
+        await expect(panel.getByText(`Enlace enviado por correo a ${COACH_EMAIL}.`)).toBeVisible();
+        await expect(panel.getByRole("textbox", { name: "Enlace de activación" })).toHaveCount(0);
+        // return (no test.skip) para que el finally limpie siempre al coach.
+        test.info().annotations.push({ type: "enlace-por-correo", description: "El enlace salió por correo: la activación con enlace se prueba con el correo sin configurar." });
+        return;
+      }
       const linkBox = panel.getByRole("textbox", { name: "Enlace de activación" });
       await expect(linkBox).toBeVisible();
       await expect(panel.getByText("Entrega este enlace por un medio seguro; vence en 72 horas.")).toBeVisible();
@@ -106,5 +117,23 @@ test.describe("alta y activación de un coach contra el stack", () => {
     } finally {
       if (coachId) await borrarUsuario(page, coachId);
     }
+  });
+});
+
+test.describe("recuperar contraseña contra el stack (US-131)", () => {
+  test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL)");
+
+  test("el mismo mensaje con un correo existente y con uno que no existe, y 429 tardío incluido", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const mensajes: string[] = [];
+    for (const correo of ["admin@apex.test", `nadie-${RUN}@apex.test`]) {
+      await page.goto("/recuperar");
+      await page.getByRole("textbox", { name: "Correo" }).fill(correo);
+      await page.getByRole("button", { name: "Enviar enlace" }).click();
+      mensajes.push((await page.getByRole("status").textContent()) ?? "");
+      expect(await axeViolations(page)).toEqual([]);
+    }
+    expect(mensajes[0]).toMatch(/^Si el correo está registrado, te enviamos un enlace/);
+    expect(mensajes[1]).toBe(mensajes[0]);
   });
 });

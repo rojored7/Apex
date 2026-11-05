@@ -9,6 +9,7 @@ import {
   setAccessTokenGetter,
   type UnauthorizedHandler,
 } from "./client";
+import { clearCustodyNotice, getCustodyNotice } from "../custody/custodyNotice";
 import { ApiError } from "./errors";
 import type { Page } from "./page";
 
@@ -459,5 +460,62 @@ describe("revisión S3-F3 (LOW 11): Retry-After 0 en un busy", () => {
     await vi.advanceTimersByTimeAsync(1);
     await pending;
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("503 crypto_unavailable (S5-F5, S5-D14, US-136)", () => {
+  function sealed(retryAfter: string | null = "30"): Response {
+    return new Response(JSON.stringify({ error: { code: "crypto_unavailable", message: "El servicio de llaves no está disponible" } }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", ...(retryAfter === null ? {} : { "Retry-After": retryAfter }) },
+    });
+  }
+
+  afterEach(() => {
+    clearCustodyNotice();
+  });
+
+  it("avisa de forma global con los segundos de Retry-After y propaga el error", async () => {
+    fetchMock.mockResolvedValueOnce(sealed("45"));
+
+    await expect(api.get("/members/1")).rejects.toMatchObject({ status: 503, code: "crypto_unavailable", retryAfterS: 45 });
+
+    expect(getCustodyNotice()).toMatchObject({ retryAfterS: 45 });
+  });
+
+  it("sin Retry-After usa 30 segundos", async () => {
+    fetchMock.mockResolvedValueOnce(sealed(null));
+
+    await expect(api.get("/members/1")).rejects.toMatchObject({ code: "crypto_unavailable" });
+
+    expect(getCustodyNotice()).toMatchObject({ retryAfterS: 30 });
+  });
+
+  it.each(["GET", "POST", "PATCH", "PUT", "DELETE"] as const)("un %s no se reintenta: una sola petición", async (method) => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(() => Promise.resolve(sealed("1")));
+    const call = { GET: api.get, POST: api.post, PATCH: api.patch, PUT: api.put, DELETE: api.delete }[method];
+
+    const pending = call("/members/1").catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await pending).toMatchObject({ code: "crypto_unavailable" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("otro 503 (busy u otro código) no dispara el aviso de custodio", async () => {
+    fetchMock.mockResolvedValueOnce(envelope(503, "internal_error", "x"));
+
+    await expect(api.post("/x")).rejects.toMatchObject({ status: 503 });
+
+    expect(getCustodyNotice()).toBeNull();
+  });
+
+  it("un 200 no avisa", async () => {
+    fetchMock.mockResolvedValueOnce(json(200, {}));
+
+    await api.get("/x");
+
+    expect(getCustodyNotice()).toBeNull();
   });
 });

@@ -220,7 +220,9 @@ export interface UsersParams {
 export interface CreatedUser {
   id: string;
   email: string;
-  activationUrl: string;
+  /** null cuando el api lo envió por correo (S5-D37): el token no se muestra. */
+  activationUrl: string | null;
+  emailSent: boolean;
   expiresAt: string;
 }
 
@@ -235,6 +237,8 @@ const createdUserSchema = z.object({
   // Solo http(s): el enlace se muestra y se copia, nunca se interpreta.
   activation_url: z.string().regex(/^https?:\/\/\S+$/),
   expires_at: z.iso.datetime({ offset: true }),
+  // S5-F5 (S5-D37): ausente en v0.1; falso deja al admin copiando el enlace.
+  email_sent: z.boolean().default(false),
 });
 
 export function useUsers(params: UsersParams): UseQueryResult<Page<UserRowView>> {
@@ -252,8 +256,8 @@ export function useCreateUser(): UseMutationResult<CreatedUser, Error, CreateUse
   const queryClient = useQueryClient();
   return useMutation<CreatedUser, Error, CreateUserForm>({
     mutationFn: async ({ email, role }) => {
-      const { user, activation_url, expires_at } = parseResponse(createdUserSchema, await api.post<unknown>("/users", { body: { email, role } }));
-      return { id: user.id, email: user.email, activationUrl: activation_url, expiresAt: expires_at };
+      const { user, activation_url, expires_at, email_sent } = parseResponse(createdUserSchema, await api.post<unknown>("/users", { body: { email, role } }));
+      return { id: user.id, email: user.email, activationUrl: email_sent ? null : activation_url, emailSent: email_sent, expiresAt: expires_at };
     },
     gcTime: 0,
     // M3 (revisión del Sprint 2): sin esperar la relectura; el enlace se muestra enseguida.
@@ -277,7 +281,9 @@ export interface UpdateUserChanges {
 }
 
 export interface IssuedLink {
-  url: string;
+  /** null cuando el api lo envió por correo (S5-D37): el token no se muestra. */
+  url: string | null;
+  emailSent: boolean;
   purpose: LinkPurpose;
   expiresAt: string;
 }
@@ -298,6 +304,7 @@ const issuedLinkSchema = z.object({
   url: z.string().regex(/^https?:\/\/\S+$/),
   purpose: z.enum(LINK_PURPOSES),
   expires_at: z.iso.datetime({ offset: true }),
+  email_sent: z.boolean().default(false),
 });
 
 /** Mutación de una cuenta que, al salir bien, invalida toda la familia ["users"]. */
@@ -362,8 +369,8 @@ export function useRevokeSessions(): UseMutationResult<number, Error, UserTarget
 export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget> {
   return useUserMutation(
     async ({ id }: UserTarget) => {
-      const { url, purpose, expires_at } = parseResponse(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
-      return { url, purpose, expiresAt: expires_at };
+      const { url, purpose, expires_at, email_sent } = parseResponse(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
+      return { url: email_sent ? null : url, emailSent: email_sent, purpose, expiresAt: expires_at };
     },
     { gcTime: 0 },
   );

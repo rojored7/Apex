@@ -35,3 +35,5 @@ export { ACCOUNT_LABELS, ACCOUNT_TONES, STATUS_LABELS, STATUS_TONES, accountLabe
 export type { AccountStatusView, MembershipStatusView, StatusTone } from "./statusLabel";
 export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
+export { CustodyNotice } from "./CustodyNotice";
+export type { CustodyNoticeProps } from "./CustodyNotice";

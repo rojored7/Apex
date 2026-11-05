@@ -61,3 +61,17 @@
 
 - MEDIUM (S5-D245): con `has_consent` falso el interruptor de correo no se puede activar desde la ficha (queda deshabilitado) y un texto fijo explica que primero hay que registrar el consentimiento en Datos; desactivarlo sí se puede si estaba activo. El 422 `consent_required` del api sigue como respaldo. Pruebas en `ChannelPreferences.test.tsx` (sin consentimiento no activa ni llama al PATCH; con consentimiento sí; desactivar con y sin consentimiento).
 - LOW: mientras guarda hay una región `aria-live="polite"` con «Guardando…». Prueba de presencia.
+
+## F5 · Cuentas por correo y aviso de custodio (US-131, US-136)
+
+- Base: rebase de F1 a F3 sobre `a098f67` (B11); un conflicto en `docs/BRECHAS.md` (filas 13.6 y 13.7) resuelto conservando ambas. `gen:api`: `types.ts` suma la ruta `/payments/{id}/receipt.pdf` (B11); `tsc` limpio.
+- La feature «users» del brief vive en `features/system` (el gate `web/users` no existe: se usa `web/system`).
+- Rojo/Verde: `ForgotPage` (texto de Login.html, siempre el mismo mensaje), `system/api.ts` (`email_sent` con default false; con true el token se descarta y `url`/`activationUrl` son null), `NewUserPanel` y `LinkModal` (rama «enviado» sin enlace; rama «no salió» con enlace), `core/custody/{custodyNotice.ts,CustodyNoticeHost.tsx}` (almacén externo, se retira solo tras Retry-After), `shared/ui/CustodyNotice`, `core/api/client.ts` (503 `crypto_unavailable`: aviso, sin reintento) y montaje en `PanelShell` (ranura banner) y `PortalShell`.
+- El host vive en `core/custody` porque `layouts.no-fetch.test` prohíbe importar `core/api` desde los layouts.
+- E2E: `stack/users-activation.spec.ts` (recuperar sin enumeración; rama email_sent), `users-access.spec.ts` (preview, texto nuevo). Filas 13.25 y 13.26 de BRECHAS.
+
+## F5 · Revisiones (seguridad: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW)
+
+- MEDIUM (S5-D251): el aviso de custodio solo vive en los shells (panel y portal); las rutas de acceso no descifran columnas y en `/recuperar` romper la respuesta constante filtraría información. Aceptado, sin cambio.
+- LOW 1: tiempo observable de `ForgotPage`; aceptado, la igualación la hace el api (`wait_floor`, S5-D38).
+- LOW 2 (corregido): `stack/users-activation.spec.ts` leía `respuesta.json()` dos veces y usaba `test.skip` dentro del `try`; ahora lee una vez y sale con `return` (anotación) para que el `finally` limpie siempre al coach.

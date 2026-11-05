@@ -152,7 +152,7 @@ describe("mutaciones de cuentas", () => {
       [`POST /users/${USERS.coach.id}/resend-link`]: { status: 200, body: { url: "https://apex.test/restablecer/abc", purpose: "reset", expires_at: "2026-10-21T20:30:00Z" } },
     });
 
-    expect(value).toEqual({ url: "https://apex.test/restablecer/abc", purpose: "reset", expiresAt: "2026-10-21T20:30:00Z" });
+    expect(value).toEqual({ url: "https://apex.test/restablecer/abc", emailSent: false, purpose: "reset", expiresAt: "2026-10-21T20:30:00Z" });
     expect(client.getMutationCache().getAll()[0]?.options.gcTime).toBe(0);
   });
 

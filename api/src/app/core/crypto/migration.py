@@ -30,7 +30,7 @@ from __future__ import annotations
 import hmac
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy import Select, and_, func, or_, select, update
@@ -259,7 +259,7 @@ async def _una_llave(
     return escribir
 
 
-def _consulta(key_id: UUID) -> Select[Any]:
+def _consulta(key_id: UUID) -> Select[CryptoKey]:
     return select(CryptoKey).where(CryptoKey.id == key_id).execution_options(populate_existing=True)
 
 

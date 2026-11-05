@@ -17,6 +17,11 @@ Sin dependencias de módulos de negocio (`app.modules`): solo la biblioteca est�
   con `acquire()`/`release()` (idempotente) cuando el cuerpo en streaming sobrevive al manejador;
   `guarded_body` lo suelta al terminar, abortar o cancelarse el cuerpo. Un candado que nadie soltó
   (cuerpo que no llegó a empezar) caduca a los `FLIGHT_STALE_S` segundos.
+- Flujo único por PROCESO del api (S5-D258): `single_flight` vive en la memoria del proceso. Vale
+  porque APEX corre un solo api con un solo worker de uvicorn (un servidor, D5, `compose.yml`);
+  con réplicas el candado pasaría a un advisory lock de Postgres (dueño: quien añada réplicas).
+- El cierre auditado y la paginación por llave viven en `core/export_db.py` (S5-D257): este
+  archivo no importa SQLAlchemy, `audit` ni `db` (lo fija `test_core_import_direction`).
 - `ExportStream`: lo que devuelve el service de cada módulo al router: filas contadas, nombre del
   archivo y el generador del cuerpo (que abre su PROPIA sesión, no la de la petición).
 """

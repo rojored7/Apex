@@ -20,28 +20,30 @@ textos libres pasan por `escape_formula` (L-6); las fechas salen en hora de Bogo
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Any, Final
 from uuid import UUID, uuid4
 
-import anyio
-from sqlalchemy import Select, func, literal, select, tuple_
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit, db
-from app.core.alerts import alert
 from app.core.clock import BOGOTA, current_clock
 from app.core.context import actor_scope
 from app.core.crypto import bus, types
 from app.core.crypto.keyring import current_keyring
-from app.core.export import ExportStream, ExportTooLarge, csv_header, csv_rows, escape_formula
+from app.core.export import (
+    ExportStream,
+    ExportTooLarge,
+    csv_header,
+    csv_rows,
+    escape_formula,
+)
+from app.core.export_db import keyset_after, record_close
 from app.modules.members.models import Member
 from app.modules.members.schemas import MemberExportQuery
 from app.modules.memberships.schemas import MemberMembership
-
-logger = logging.getLogger("app.members.export")
 
 BATCH_SIZE: Final = 500
 HEADER: Final[tuple[str, ...]] = (
@@ -107,12 +109,7 @@ def _fila(socio: Member, claros: dict[str, Any], membresia: MemberMembership | N
 
 def _siguiente(consulta: Select[Member], despues_de: Llave | None) -> Select[Member]:
     """El lote que sigue a `despues_de` por la llave `(created_at, id)`; sin OFFSET."""
-    if despues_de is not None:
-        actual = tuple_(Member.created_at, Member.id)
-        pasado = tuple_(
-            literal(despues_de[0], Member.created_at.type), literal(despues_de[1], Member.id.type)
-        )
-        consulta = consulta.where(actual > pasado)
+    consulta = keyset_after(consulta, (Member.created_at, Member.id), despues_de)
     return consulta.order_by(Member.created_at, Member.id).limit(BATCH_SIZE)
 
 
@@ -133,28 +130,6 @@ async def _leer_lote(
             await sesion.commit()
     filas = [_fila(s, claros[s.id], estados.get(s.id)) for s in socios]
     return filas, (socios[-1].created_at, socios[-1].id)
-
-
-async def _cerrar(export_id: UUID, by: UUID, *, completed: bool, rows_sent: int) -> None:
-    """La fila de cierre en sesión propia; blindada contra la cancelación del cliente (S5-D248).
-    Un fallo no tapa el motivo del corte: se registra y se avisa."""
-    with anyio.CancelScope(shield=True):
-        try:
-            async with db.get_sessionmaker()() as sesion:
-                await audit.record(
-                    sesion,
-                    action="export",
-                    table_name=TABLE,
-                    record_id=export_id,
-                    before=None,
-                    after={"completed": completed, "rows_sent": rows_sent},
-                    user_id=by,
-                )
-                await sesion.commit()
-        except Exception as error:
-            tipo = type(error).__name__
-            logger.error("members export: cierre sin registrar", extra={"error_type": tipo})
-            alert("export_close_lost", table=TABLE, error_type=tipo)
 
 
 async def _cuerpo(
@@ -187,7 +162,7 @@ async def _cuerpo(
                 completo = True
                 break
     finally:
-        await _cerrar(export_id, by, completed=completo, rows_sent=enviadas)
+        await record_close(TABLE, export_id, by, completed=completo, rows_sent=enviadas)
 
 
 async def prepare(

@@ -14,20 +14,24 @@ la suma de los no anulados del CSV es `total_cop` del resumen del mismo rango.
 from __future__ import annotations
 
 import builtins
-import logging
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 from typing import Final
 from uuid import UUID, uuid4
 
-import anyio
-from sqlalchemy import ColumnElement, Select, func, literal, select, tuple_
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit, db
-from app.core.alerts import alert
 from app.core.clock import BOGOTA, current_clock
-from app.core.export import ExportStream, ExportTooLarge, csv_header, csv_rows, escape_formula
+from app.core.export import (
+    ExportStream,
+    ExportTooLarge,
+    csv_header,
+    csv_rows,
+    escape_formula,
+)
+from app.core.export_db import keyset_after, record_close
 from app.modules.members import service as members_service
 from app.modules.payments import queries
 from app.modules.payments.exceptions import InvalidDateRange
@@ -35,8 +39,6 @@ from app.modules.payments.models import Payment
 from app.modules.payments.rules import PaymentFilters, build_filters, check_date_range
 from app.modules.payments.schemas import PaymentDetail, PaymentExportQuery
 from app.modules.settings import service as settings_service
-
-logger = logging.getLogger("app.payments.export")
 
 BATCH_SIZE: Final = 500
 HEADER: Final[tuple[str, ...]] = (
@@ -104,11 +106,7 @@ def _fila(detalle: PaymentDetail, etiquetas: dict[str, str]) -> Fila:
 def _siguiente(condiciones: Condiciones, despues_de: Llave | None) -> Select[Payment]:
     """El lote que sigue a `despues_de` por la llave `(paid_at, id)`; sin OFFSET."""
     consulta = select(Payment).where(*condiciones)
-    if despues_de is not None:
-        pasado = tuple_(
-            literal(despues_de[0], Payment.paid_at.type), literal(despues_de[1], Payment.id.type)
-        )
-        consulta = consulta.where(tuple_(Payment.paid_at, Payment.id) > pasado)
+    consulta = keyset_after(consulta, (Payment.paid_at, Payment.id), despues_de)
     return consulta.order_by(Payment.paid_at, Payment.id).limit(BATCH_SIZE)
 
 
@@ -123,27 +121,6 @@ async def _leer_lote(
         detalles = await queries.details_for(sesion, pagos)
         await sesion.commit()
     return [_fila(d, etiquetas) for d in detalles], (pagos[-1].paid_at, pagos[-1].id)
-
-
-async def _cerrar(export_id: UUID, by: UUID, *, completed: bool, rows_sent: int) -> None:
-    """La fila de cierre en sesión propia, blindada contra la cancelación (S5-D248)."""
-    with anyio.CancelScope(shield=True):
-        try:
-            async with db.get_sessionmaker()() as sesion:
-                await audit.record(
-                    sesion,
-                    action="export",
-                    table_name=TABLE,
-                    record_id=export_id,
-                    before=None,
-                    after={"completed": completed, "rows_sent": rows_sent},
-                    user_id=by,
-                )
-                await sesion.commit()
-        except Exception as error:
-            tipo = type(error).__name__
-            logger.error("payments export: cierre sin registrar", extra={"error_type": tipo})
-            alert("export_close_lost", table=TABLE, error_type=tipo)
 
 
 async def _cuerpo(
@@ -176,7 +153,7 @@ async def _cuerpo(
                 completo = True
                 break
     finally:
-        await _cerrar(export_id, by, completed=completo, rows_sent=enviadas)
+        await record_close(TABLE, export_id, by, completed=completo, rows_sent=enviadas)
 
 
 async def prepare(

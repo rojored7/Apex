@@ -165,14 +165,13 @@ async def reset(session: AsyncSession, token: str, new_password: str) -> None:
 
 
 async def forgot(email: str, *, policy: AuthPolicy) -> None:
-    """US-048 en v0.1 (S2-D36, H-2): no escribe nada. Normaliza, cuenta el intento en
-    `FORGOT_ACCOUNT_BUCKET`, espera el piso `policy.min_duration_ms` con el sleeper de
-    `configure_sleeper` (S2-D39) exista o no la cuenta y deja un log sin el correo.
+    """US-048 (S2-D36, H-2; S5-D38): solo valida y cuenta. Normaliza, cuenta el intento en
+    `FORGOT_ACCOUNT_BUCKET` y espera el piso `policy.min_duration_ms` con el sleeper de
+    `configure_sleeper` (S2-D39), exista o no la cuenta; devuelve siempre igual.
 
-    Ni siquiera consulta la base: sin emisor (US-131) no hay nada que hacer con la cuenta, y no
-    leerla quita de raíz cualquier diferencia de tiempo entre un correo existente y uno que no.
-    LOW L3 de la revisión Python: la firma ya no lleva `session` ni `ip` (eran parámetros
-    muertos); el emisor real los agregará cuando exista."""
+    No consulta la base ni envía nada: la búsqueda de la cuenta y el correo del enlace corren en
+    segundo plano con `forgot_deliver` (S5-B9), así que el tiempo de respuesta no depende de si el
+    correo existe. LOW L3: la firma no lleva `session` ni `ip` (eran parámetros muertos)."""
     inicio = time.monotonic()
     await ratelimit.enforce(
         FORGOT_ACCOUNT_BUCKET,
@@ -180,7 +179,7 @@ async def forgot(email: str, *, policy: AuthPolicy) -> None:
         limit=FORGOT_ACCOUNT_LIMIT,
         window_s=FORGOT_ACCOUNT_WINDOW_S,
     )
-    logger.info("forgot recibido; v0.1 no envía enlaces (US-131)")
+    logger.info("forgot recibido; la entrega sigue en segundo plano (forgot_deliver)")
     await wait_floor(inicio, policy)
 
 

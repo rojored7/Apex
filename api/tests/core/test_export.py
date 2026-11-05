@@ -12,12 +12,17 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import alerts, db
 from app.core import export as export_modulo
 from app.core.config import Settings
 from app.core.export import (
@@ -30,6 +35,10 @@ from app.core.export import (
     guarded_body,
     single_flight,
 )
+from app.core.export_db import keyset_after, record_close
+from app.modules.payments.models import Payment
+from tests.conftest import CrearUsuario
+from tests.core._export_apoyo import filas_export, sesion_propia
 
 BOM = b"\xef\xbb\xbf"
 
@@ -216,3 +225,79 @@ async def test_guarded_body_da_latido_en_cada_trozo_y_suelta_al_terminar(
         with pytest.raises(ExportInProgress):
             single_flight(usuario).acquire()
     single_flight(usuario).acquire()  # terminó: el flujo quedó libre
+
+
+# `keyset_after` y `record_close` (S5-D257) -----------------------------------------------------
+
+
+def test_keyset_after_sin_llave_devuelve_la_consulta_intacta() -> None:
+    # Arrange
+    base = select(Payment)
+
+    # Act
+    resultado = keyset_after(base, (Payment.paid_at, Payment.id), None)
+
+    # Assert
+    assert resultado is base
+
+
+def test_keyset_after_compara_la_tupla_con_literales_tipados() -> None:
+    # Arrange
+    instante = datetime(2026, 11, 1, 15, 0, tzinfo=UTC)
+    identificador = uuid4()
+
+    # Act
+    consulta = keyset_after(
+        select(Payment), (Payment.paid_at, Payment.id), (instante, identificador)
+    )
+    compilada = consulta.compile(dialect=postgresql.dialect())  # type: ignore[no-untyped-call]
+
+    # Assert
+    sql = str(compilada)
+    assert "(payments.payments.paid_at, payments.payments.id) >" in sql
+    assert sorted(compilada.params.values(), key=str) == sorted([instante, identificador], key=str)
+
+
+async def test_record_close_escribe_la_fila_de_cierre_con_el_resultado(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    # Arrange
+    admin = await usuario_real("admin")
+    export_id = uuid4()
+
+    # Act
+    with sesion_propia(session):
+        await record_close("pruebas.tabla", export_id, admin.id, completed=False, rows_sent=7)
+
+    # Assert
+    [cierre] = await filas_export(session, "pruebas.tabla")
+    assert cierre["record_id"] == export_id and cierre["user_id"] == admin.id
+    assert cierre["after"] == {"completed": False, "rows_sent": 7}
+
+
+async def test_record_close_con_la_base_caida_avisa_y_no_lanza(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    recibidas: list[tuple[str, dict[str, object]]] = []
+
+    class Sink:
+        def send(self, code: str, context: Mapping[str, object]) -> None:
+            recibidas.append((code, dict(context)))
+
+    def sin_base() -> None:
+        raise RuntimeError("base caída")
+
+    monkeypatch.setattr(alerts, "_sinks", [Sink()])
+    db.configure_sessionmaker(sin_base)  # type: ignore[arg-type]
+
+    # Act
+    try:
+        await record_close("pruebas.tabla", uuid4(), uuid4(), completed=True, rows_sent=1)
+    finally:
+        db.configure_sessionmaker(None)
+
+    # Assert
+    assert recibidas == [
+        ("export_close_lost", {"job": "pruebas.tabla", "error_type": "RuntimeError"})
+    ]

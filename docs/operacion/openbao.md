@@ -161,6 +161,8 @@ La instantánea raft es la única copia del estado de OpenBao (la llave `apex-ke
 
 ## 11. Migrar a OpenBao, rotar la KEK y retirar la local (S5-B2)
 
+**Orden del `.env` (lección de V2 del Sprint 5).** Mientras las llaves siguen en `kek.bin`, `.env` debe decir `CRYPTO_PROVIDER=local`: con `openbao` antes de migrar, api y worker no arrancan (no tienen token ni envolturas en Transit) y un `CRYPTO_PROVIDER=local` puesto como variable de la shell NO llega al `env_file` de Compose. Secuencia: instalar y desellar OpenBao con `.env` en `local` → `migrate-provider` y `--verify` → cambiar `.env` a `CRYPTO_PROVIDER=openbao` → `up -d` con `-f infra/compose.openbao.yml` → `restart web` (Nginx guarda la IP anterior del api) → `retire-local-kek`.
+
 Una vez que OpenBao está instalado y desellado: `migrate-provider --from local --to openbao` (reanudable, palabra `MIGRAR`), `migrate-provider --verify`, un respaldo nuevo y `retire-local-kek` (palabra `RETIRAR`). Después, `rotate-kek` rota la KEK y re-envuelve las llaves; `rotate-kek --trim` (palabra `RECORTAR`) sube `min_decryption_version`. La política `apex-tools` puede leer `transit/keys/apex-kek` y fijar `config`, rotar y re-cifrar; no puede `trim` ni `delete`. El procedimiento paso a paso y las exigencias de respaldo están en `docs/RUNBOOK.md` §13.
 
 La política `apex-tools` ya no incluye `transit/rewrap/apex-kek` y su ruta `config` solo admite `min_decryption_version` (S5-D191). `migrate-provider --verify` comprueba la ubicación de las envolturas (un conteo), no que abran.

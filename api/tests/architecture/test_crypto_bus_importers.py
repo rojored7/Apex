@@ -6,6 +6,8 @@ cadena literal). Los importadores reales, calculados con grep al abrir B6 y fija
 - `modules/members/service.py` y `changes.py` (`bus`: índices ciegos y cifrado del documento);
 - `modules/members/detail.py` (`types`: la única puerta `_decrypt_fields`) y `models.py`
   (`types`: los tipos de columna `Encrypted` y `BlindIndexed`);
+- `modules/members/exports.py` (S5-B12, S5-D60: `bus.batch` y la segunda puerta `_decrypt_batch`
+  de `types.reveal`, propósito `export`);
 - el arranque: `main.py`, `cli_base.py` (S4B-D30) y `worker/runtime.py`, que solo importan
   `install_crypto_type_listeners` de `types` (cablean los listeners al crear el proceso).
 
@@ -45,6 +47,7 @@ IMPORTADORES_REALES: Final = frozenset(
         "worker/runtime.py",
         "modules/members/changes.py",
         "modules/members/detail.py",
+        "modules/members/exports.py",
         "modules/members/models.py",
         "modules/members/service.py",
     }

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "app"
@@ -354,5 +355,23 @@ def test_core_pdf_solo_importa_la_biblioteca_estandar() -> None:
         n
         for n in _imports(ruta)
         if n.split(".")[0] not in sys.stdlib_module_names and n != "__future__"
+    ]
+    assert ajenos == []
+
+
+def test_core_export_no_importa_modulos_de_negocio_ni_terceros_de_cifrado() -> None:
+    """S5-B12 (S5-D41): `core/export.py` es biblioteca estándar más `core` (solo `errors`); no
+    importa `app.modules`, `app.core.audit`, `app.core.db` ni `app.core.crypto`. Rojo B12."""
+    ruta = CORE / "export.py"
+    assert ruta.is_file()
+    prohibidos = ("app.modules", "app.core.audit", "app.core.db", "app.core.crypto")
+    malos = [n for n in _imports(ruta) if n.startswith(prohibidos)]
+    assert malos == []
+    ajenos = [
+        n
+        for n in _imports(ruta)
+        if n.split(".")[0] not in sys.stdlib_module_names
+        and not n.startswith("app.core.")
+        and n != "__future__"
     ]
     assert ajenos == []

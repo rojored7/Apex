@@ -135,6 +135,22 @@ class PaymentListQuery(BaseModel):
     membership_id: UUID | None = None
 
 
+class PaymentExportQuery(BaseModel):
+    """Filtros de `GET /payments/export` (S5-B12, US-139, S5-D41): los de la lista, con `from` y
+    `to` obligatorios (rango `[from, to)`, a lo sumo 12 meses). Rojo B12."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
+    from_: AwareDatetime = Field(alias="from")
+    to: AwareDatetime
+    method: PaymentMethod | None = None
+    registered_by: UUID | None = None
+    voided: bool | None = None
+    member_id: UUID | None = None
+    membership_id: UUID | None = None
+
+
 class PaymentRow(BaseModel):
     """Una fila de `GET /payments` (S3-B8, D26, M-8, L-2)."""
 

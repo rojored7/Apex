@@ -32,9 +32,9 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
 # S4A-B3 (S4A-D65): `staff-read` nació en el catálogo sin ruta; S4A-B4 la sacó con `GET /audit` y
 # `GET /audit/{seq}`. El catálogo entero vuelve a tener ruta.
-# S5-D98: registradas desde W0-3; B12 (export*) las quita al dar ruta. S5-B5 sacó
+# S5-D98: registradas desde W0-3; B12 (export*) les dio ruta (Rojo B12: queda vacío). S5-B5 sacó
 # `notifications-write` con `PATCH /members/{member_id}/channels`.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"export", "export-hour", "export-day"})
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -380,3 +380,28 @@ def test_el_recibo_pdf_consume_staff_read() -> None:
             )
     ruta = f"{API_PREFIX}/payments/{{payment_id}}/receipt.pdf"
     assert por_ruta.get(("get", ruta)) == ["staff-read"]
+
+
+def test_las_exportaciones_consumen_las_tres_cubetas_export() -> None:
+    """S5-B12 (US-138, US-139, S5-D81): `GET /members/export` y `GET /payments/export` llaman
+    `enforce_user_limit` con `export`, `export-hour` y `export-day`, en ese orden (Rojo B12)."""
+    esperado = ["export", "export-hour", "export-day"]
+    for modulo, ruta in (
+        ("members", f"{API_PREFIX}/members/export"),
+        ("payments", f"{API_PREFIX}/payments/export"),
+    ):
+        fuente = (MODULES / modulo / "router.py").read_text(encoding="utf-8")
+        llamadas = [
+            nodo.args[1].value
+            for funcion in ast.walk(ast.parse(fuente))
+            if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef)
+            and _ruta_de(funcion) == ("get", ruta)
+            for nodo in ast.walk(funcion)
+            if isinstance(nodo, ast.Call)
+            and _nombre_llamado(nodo) == "enforce_user_limit"
+            and isinstance(nodo.args[1], ast.Constant)
+        ]
+        assert llamadas == esperado, ruta
+    assert USER_LIMITS["export"] == (2, 60)
+    assert USER_LIMITS["export-hour"] == (6, 3600)
+    assert USER_LIMITS["export-day"] == (20, 86400)

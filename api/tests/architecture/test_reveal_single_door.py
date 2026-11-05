@@ -1,9 +1,10 @@
 """`types.reveal` tiene una sola puerta fuera de `core/` (S3-B9b; D-4, S3-D59, N-01, N-21).
 
 Por AST sobre `src/app` (salvo `app/core`, dueño del bus):
-- la única llamada a `reveal(...)` (como `types.reveal(...)`, `crypto_types.reveal(...)` o el
+- la llamada a `reveal(...)` (como `types.reveal(...)`, `crypto_types.reveal(...)` o el
   nombre importado de `app.core.crypto.types`) está en `modules/members/detail.py`, dentro de la
-  función `_decrypt_fields`; así ninguna ruta nueva descifra un campo de socio sin pasar por la
+  función `_decrypt_fields` (más la segunda puerta de la exportación, S5-B12); así ninguna
+  ruta nueva descifra un campo de socio sin pasar por la
   función que recibe el propósito (`mask` en la ficha, `reveal` en B10);
 - ningún archivo fuera de `core/` llama a `bus.decrypt(...)` (descifrar a mano saltaría el
   propósito y el `record_id` que pone `types.reveal`).
@@ -19,6 +20,9 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parents[2] / "src" / "app"
 PUERTA = ("modules/members/detail.py", "_decrypt_fields")
+# S5-B12 (S5-D60, M-10): la exportación descifra por lote con propósito `export`; es la SEGUNDA
+# y última puerta permitida (Rojo B12).
+PUERTA_EXPORTACION = ("modules/members/exports.py", "_decrypt_batch")
 TYPES_MODULE = "app.core.crypto.types"
 BUS_MODULE = "app.core.crypto.bus"
 
@@ -88,7 +92,19 @@ def test_reveal_solo_se_llama_en_decrypt_fields_de_members_detail() -> None:
         de_reveal, _ = llamadas(archivo.read_text(encoding="utf-8"))
         relativo = archivo.relative_to(APP).as_posix()
         encontradas.extend((relativo, funcion) for funcion, _ in de_reveal)
-    assert encontradas == [PUERTA], encontradas
+    assert PUERTA in encontradas
+    assert set(encontradas) <= {PUERTA, PUERTA_EXPORTACION}, encontradas
+
+
+def test_la_exportacion_es_la_segunda_puerta_de_reveal_y_solo_una_vez() -> None:
+    """S5-B12 (S5-D60): `members/exports.py::_decrypt_batch` llama a `types.reveal` (un lote, una
+    fila de `crypto_ops` por clase) y es la única llamada fuera de `_decrypt_fields`."""
+    encontradas: list[tuple[str, str | None]] = []
+    for archivo in _fuera_de_core():
+        de_reveal, _ = llamadas(archivo.read_text(encoding="utf-8"))
+        relativo = archivo.relative_to(APP).as_posix()
+        encontradas.extend((relativo, funcion) for funcion, _ in de_reveal)
+    assert sorted(encontradas, key=str) == sorted([PUERTA, PUERTA_EXPORTACION], key=str)
 
 
 def test_nadie_fuera_de_core_llama_a_bus_decrypt() -> None:

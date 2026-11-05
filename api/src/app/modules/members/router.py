@@ -45,10 +45,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
 from app.core.errors import responses_for
-from app.core.http import no_store
+from app.core.export import ExportStream, begin_export
+from app.core.http import csv_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import (
     PII_SEARCH_BUCKET,
@@ -66,6 +68,7 @@ from app.modules.members.schemas import (
     ChannelsPatch,
     MemberCreate,
     MemberDetailOut,
+    MemberExportQuery,
     MemberListQuery,
     MemberPatch,
     MemberRowOut,
@@ -123,6 +126,45 @@ async def list_members(
         plan_id=plan_id,
     )
     return await service.list(session, filtros, page)
+
+
+@router.get(
+    "/members/export",
+    response_class=StreamingResponse,
+    responses={
+        200: {"content": {"text/csv": {"schema": {"type": "string"}}}},
+        **responses_for(409, 422, 429),
+    },
+)
+async def export_members(
+    request: Request,
+    principal: AdminDep,
+    session: Session,
+    q: SearchQuery = None,
+    member_status: Annotated[MemberStatusFilter | None, Query(alias="status")] = None,
+    membership_status: MembershipFilterStatus | None = None,
+    plan_id: UUID | None = None,
+) -> StreamingResponse:
+    """US-138 (S5-D41, S5-D60): CSV de socios en streaming, solo admin; va antes de `/{id}`."""
+
+    async def preparar() -> ExportStream:
+        # El flujo único va antes que las cubetas: un 409 no gasta cupo (S5-D82).
+        await enforce_user_limit(request, "export", principal.user_id)
+        await enforce_user_limit(request, "export-hour", principal.user_id)
+        await enforce_user_limit(request, "export-day", principal.user_id)
+        filtros = MemberExportQuery(
+            q=q, status=member_status, membership_status=membership_status, plan_id=plan_id
+        )
+        return await service.export_members(
+            session,
+            filtros,
+            by=principal.user_id,
+            ip=_ip(request),
+            max_rows=request.app.state.settings.EXPORT_MAX_ROWS,
+        )
+
+    flujo, cuerpo = await begin_export(principal.user_id, preparar)
+    return csv_download(cuerpo, flujo.filename)
 
 
 @router.get(

@@ -183,3 +183,21 @@ def test_los_medios_de_pago_son_un_objeto_con_items_que_no_pagina(
     operacion = app.openapi()["paths"]["/api/v1/payments/methods"]["get"]
     respuesta = _respuesta_200(operacion)
     assert respuesta == {"$ref": f"{SCHEMA_REF}PaymentMethodsOut"}
+
+
+def test_las_exportaciones_csv_son_la_excepcion_nombrada_a_la_paginacion(
+    settings_prueba: Settings,
+) -> None:
+    """S5-B12 (S5-D36, S5-D92; regla de datos 6): `GET /members/export` y `GET /payments/export`
+    devuelven `text/csv` en streaming, no una `Page_...`: no paginan ni aceptan `limit` y `offset`,
+    y el recorrido de listas no las toma por listas ni da problemas (Rojo B12)."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = problemas_de_listas(app)
+    assert problemas == []
+    esquema = app.openapi()
+    rutas = {r.path: r for r in effective_routes(app)[0] if "GET" in r.methods}
+    for ruta in ("/api/v1/members/export", "/api/v1/payments/export"):
+        assert f"GET {ruta}" not in listas
+        assert "text/csv" in esquema["paths"][ruta]["get"]["responses"]["200"]["content"]
+        assert not _usa_page_params(rutas[ruta].dependant)
+        assert not {"limit", "offset"} & _query_params(rutas[ruta].dependant)

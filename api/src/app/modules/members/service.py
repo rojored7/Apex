@@ -84,12 +84,14 @@ from app.core.crypto import bus
 from app.core.crypto.secret import PlainValue, Secret
 from app.core.db import violated_constraint
 from app.core.events import DomainEvent
+from app.core.export import ExportStream
 from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page, uuid_array
 from app.core.search import sql_fold
 
 # Arista `members -> audit` de nivel de módulo (S4A-D20): el historial del socio.
 from app.modules.audit import service as audit_service
 from app.modules.audit.schemas import MemberHistoryItem
+from app.modules.members import exports
 from app.modules.members.changes import (
     DOCUMENT_ALIVE_INDEX,
     DOCUMENT_DATA_CLASS,
@@ -133,6 +135,7 @@ from app.modules.members.rules import (
 from app.modules.members.schemas import (
     MemberCreate,
     MemberDetailOut,
+    MemberExportQuery,
     MemberListQuery,
     MemberName,
     MemberRef,
@@ -174,6 +177,7 @@ __all__ = [
     "diff_fields",
     "ensure_can_change",
     "ensure_exists",
+    "export_members",
     "get",
     "get_channels",
     "get_ref",
@@ -456,51 +460,65 @@ async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.li
 
 
 async def _por_membresia(
-    session: AsyncSession, filters: MemberListQuery
+    session: AsyncSession, membership_status: str | None, plan_id: UUID | None
 ) -> ColumnElement[bool] | None:
     """Condición de la consulta externa por `membership_status` y `plan_id` (D22): `None` sin
     esos filtros. El conjunto lo resuelve `memberships`; `none` es el complemento de los cinco
     estados y `plan_id` solo mira los cinco (el llamador corta `none` + `plan_id` antes)."""
-    if filters.membership_status is None and filters.plan_id is None:
+    if membership_status is None and plan_id is None:
         return None
     # lazy: G-03 (members -> memberships)
     from app.modules.memberships import service as memberships_service
 
-    if filters.membership_status == SIN_MEMBRESIA:
+    if membership_status == SIN_MEMBRESIA:
         con = await memberships_service.member_ids_by_status(session, _CON_MEMBRESIA)
         # Un solo parámetro `uuid[]` (D22, S3-D71): 5.000 ids no expanden un `IN`.
         return Member.id != all_(uuid_array(con))
-    estados = _CON_MEMBRESIA if filters.membership_status is None else (filters.membership_status,)
-    ids = await memberships_service.member_ids_by_status(session, estados, filters.plan_id)
+    estados = _CON_MEMBRESIA if membership_status is None else (membership_status,)
+    ids = await memberships_service.member_ids_by_status(session, estados, plan_id)
     return Member.id == any_uuids(ids)
+
+
+async def _consulta(
+    session: AsyncSession,
+    *,
+    status: str | None,
+    q: str | None,
+    membership_status: str | None,
+    plan_id: UUID | None,
+) -> Select[Member] | None:
+    """Los socios que cumplen los filtros (sin columnas, orden ni página); la comparten la lista y
+    la exportación CSV (S5-B12). `None` si el resultado es vacío por construcción: sin membresía
+    no hay plan (D22), así que ni se consulta."""
+    if membership_status == SIN_MEMBRESIA and plan_id is not None:
+        return None
+    estado = _filtro_de_estado(status)
+    consulta = select(Member).where(*estado)
+    plan = classify_query(q)
+    if plan.q is not None:
+        consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
+    por_membresia = await _por_membresia(session, membership_status, plan_id)
+    if por_membresia is not None:
+        consulta = consulta.where(por_membresia)
+    return consulta
 
 
 async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan builtins.list)
     session: AsyncSession, filters: MemberListQuery, page: PageParams
 ) -> Page[MemberRowOut]:
     """US-070 y US-071: la página de socios filtrada y decorada; nunca descifra (N-01)."""
-    if filters.membership_status == SIN_MEMBRESIA and filters.plan_id is not None:
-        return to_page([], 0, page)  # sin membresía no hay plan: ni se consulta (D22)
-    estado = _filtro_de_estado(filters.status)
-    consulta = (
-        select(Member)
-        .options(
-            load_only(
-                Member.first_name,
-                Member.last_name,
-                Member.sex,
-                Member.status,
-                Member.deleted_at,
-            )
-        )
-        .where(*estado)
+    consulta = await _consulta(
+        session,
+        status=filters.status,
+        q=filters.q,
+        membership_status=filters.membership_status,
+        plan_id=filters.plan_id,
     )
-    plan = classify_query(filters.q)
-    if plan.q is not None:
-        consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
-    por_membresia = await _por_membresia(session, filters)
-    if por_membresia is not None:
-        consulta = consulta.where(por_membresia)
+    if consulta is None:
+        return to_page([], 0, page)
+    consulta = consulta.options(
+        load_only(Member.first_name, Member.last_name, Member.sex, Member.status, Member.deleted_at)
+    )
     socios, total = await paginate(session, consulta.order_by(*_ORDEN[filters.sort]), page)
     return to_page(await _filas(session, socios), total, page)
 
@@ -540,3 +558,31 @@ async def history(
     `audit.service.member_history` (arista de nivel de módulo `members -> audit`, S4A-D20)."""
     await ensure_exists(session, member_id, include_deleted=True)
     return await audit_service.member_history(session, member_id, page, q)
+
+
+# Exportación (S5-B12, US-138) -----------------------------------------------------------
+
+
+async def export_members(
+    session: AsyncSession, filters: MemberExportQuery, *, by: UUID, ip: str, max_rows: int
+) -> ExportStream:
+    """US-138: prepara el CSV de socios (docstring de `exports.py`) con los filtros de la lista."""
+    consulta = await _consulta(
+        session,
+        status=filters.status,
+        q=filters.q,
+        membership_status=filters.membership_status,
+        plan_id=filters.plan_id,
+    )
+    # lazy: G-03 (members -> memberships); la exportación recibe `status_for` en vez de importarlo
+    from app.modules.memberships import service as memberships_service
+
+    return await exports.prepare(
+        session,
+        filters,
+        consulta,
+        by=by,
+        ip=ip,
+        max_rows=max_rows,
+        estado_de=memberships_service.status_for,
+    )

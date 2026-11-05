@@ -151,7 +151,7 @@ def test_los_privados_de_memberships_son_los_de_d7() -> None:
 
 def test_los_privados_de_payments_son_los_de_d7() -> None:
     """S3-B3 (D7): `payments` nace partido tras la fachada `service.py`."""
-    assert frozenset({"rules", "events", "queries"}) == PRIVATE_HELPERS["payments"]
+    assert frozenset({"rules", "events", "queries", "exports"}) == PRIVATE_HELPERS["payments"]
     for archivo in PRIVATE_HELPERS["payments"]:
         assert (MODULES_DIR / "payments" / f"{archivo}.py").is_file(), archivo
 
@@ -168,16 +168,17 @@ def test_los_privados_de_members_son_los_de_b9a() -> None:
     """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`;
     S4A-B6 (S4A-D21) suma `contact` (el contacto para avisos); S5-B5 (S4A-D72) suma
     `channels` (las preferencias de canal). Conjunto exacto."""
-    assert frozenset({"rules", "detail", "changes", "contact", "channels"}) == PRIVATE_HELPERS.get(
-        "members"
-    )
+    assert frozenset(
+        {"rules", "detail", "changes", "contact", "channels", "exports"}
+    ) == PRIVATE_HELPERS.get("members")
     for archivo in PRIVATE_HELPERS["members"]:
         assert (MODULES_DIR / "members" / f"{archivo}.py").is_file(), archivo
 
 
 def test_nadie_fuera_de_members_importa_rules_detail_ni_changes() -> None:
     privados = tuple(
-        f"app.modules.members.{a}" for a in ("rules", "detail", "changes", "contact", "channels")
+        f"app.modules.members.{a}"
+        for a in ("rules", "detail", "changes", "contact", "channels", "exports")
     )
     violaciones = [
         str(v)

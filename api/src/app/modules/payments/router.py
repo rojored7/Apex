@@ -47,18 +47,21 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import AwareDatetime
 
 from app.core.db import SessionDep
 from app.core.errors import responses_for
-from app.core.http import NO_STORE, no_store
+from app.core.export import ExportStream, begin_export
+from app.core.http import NO_STORE, csv_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
-from app.core.ratelimit import PII_SEARCH_BUCKET, enforce_user_limit
+from app.core.ratelimit import PII_SEARCH_BUCKET, client_ip, enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.payments import service
 from app.modules.payments.rules import MONTH_LENGTH
 from app.modules.payments.schemas import (
     PaymentDetail,
+    PaymentExportQuery,
     PaymentIn,
     PaymentListQuery,
     PaymentMethod,
@@ -118,6 +121,56 @@ async def list_payments(
         membership_id=membership_id,
     )
     return await service.list(session, filtros, page)
+
+
+@router.get(
+    "/payments/export",
+    response_class=StreamingResponse,
+    responses={
+        200: {"content": {"text/csv": {"schema": {"type": "string"}}}},
+        **responses_for(409, 422, 429),
+    },
+)
+async def export_payments(
+    request: Request,
+    principal: AdminDep,
+    session: SessionDep,
+    from_: Annotated[AwareDatetime, Query(alias="from")],
+    to: AwareDatetime,
+    q: SearchQuery = None,
+    method: PaymentMethod | None = None,
+    registered_by: UUID | None = None,
+    voided: bool | None = None,
+    member_id: UUID | None = None,
+    membership_id: UUID | None = None,
+) -> StreamingResponse:
+    """US-139 (S5-D41, S5-D42): CSV de pagos en streaming, solo admin; va antes de `/{id}`."""
+
+    async def preparar() -> ExportStream:
+        # El flujo único va antes que las cubetas: un 409 no gasta cupo (S5-D82).
+        await enforce_user_limit(request, "export", principal.user_id)
+        await enforce_user_limit(request, "export-hour", principal.user_id)
+        await enforce_user_limit(request, "export-day", principal.user_id)
+        filtros = PaymentExportQuery(
+            q=q,
+            from_=from_,
+            to=to,
+            method=method,
+            registered_by=registered_by,
+            voided=voided,
+            member_id=member_id,
+            membership_id=membership_id,
+        )
+        return await service.export_payments(
+            session,
+            filtros,
+            by=principal.user_id,
+            ip=client_ip(request, getattr(request.app.state, "trusted_proxies", ())),
+            max_rows=request.app.state.settings.EXPORT_MAX_ROWS,
+        )
+
+    flujo, cuerpo = await begin_export(principal.user_id, preparar)
+    return csv_download(cuerpo, flujo.filename)
 
 
 @router.get(

@@ -241,6 +241,13 @@ async def _enrich(session: AsyncSession, pagos: Sequence[Payment]) -> builtins.l
     return [_detail(pago, refs, correos) for pago in pagos]
 
 
+async def details_for(
+    session: AsyncSession, pagos: Sequence[Payment]
+) -> builtins.list[PaymentDetail]:
+    """Los pagos completados con sus servicios vecinos (S5-B12: la exportación CSV)."""
+    return await _enrich(session, pagos)
+
+
 def _partial_name(user_id: UUID | None, emails: dict[UUID, str]) -> str | None:
     if user_id is None or user_id not in emails:
         return None

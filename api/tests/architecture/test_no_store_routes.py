@@ -65,3 +65,14 @@ def test_el_recibo_pdf_lleva_no_store(settings_prueba: Settings) -> None:
     assert len(recibo) == 1
     assert route_has_role_dependency(recibo[0])
     assert any(n.call is no_store for n in _nodos(recibo[0].dependant))
+
+
+def test_las_dos_exportaciones_tienen_rol_y_no_store(settings_prueba: Settings) -> None:
+    """S5-B12 (US-138, US-139, S5-D41): `GET /members/export` y `GET /payments/export` existen,
+    exigen rol y llevan la dependencia `no_store` (Rojo B12)."""
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    for sufijo in ("/members/export", "/payments/export"):
+        halladas = [r for r in rutas if r.path.endswith(sufijo)]
+        assert len(halladas) == 1, sufijo
+        assert route_has_role_dependency(halladas[0]), sufijo
+        assert any(n.call is no_store for n in _nodos(halladas[0].dependant)), sufijo

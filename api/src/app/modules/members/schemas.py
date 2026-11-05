@@ -155,6 +155,18 @@ class MemberListQuery(BaseModel):
     plan_id: UUID | None = None
 
 
+class MemberExportQuery(BaseModel):
+    """Filtros de `GET /members/export` (S5-B12, US-138, S5-D41): los mismos de la lista, validados
+    igual (422 con `field`), sin paginar ni ordenar. Rojo B12."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    q: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
+    status: MemberStatusFilter | None = None
+    membership_status: MembershipFilterStatus | None = None
+    plan_id: UUID | None = None
+
+
 @dataclass(frozen=True)
 class MemberName:
     """Nombre de un socio para otros módulos (incluye dados de baja; nunca el ORM)."""

@@ -108,6 +108,10 @@ CON_LIMITE = {
     # `notifications-write` y las cuatro lecturas `staff-read`.
     # S5-B11 (US-137, S5-D40): el recibo PDF consume `staff-read` (Rojo B11).
     ("get", "/api/v1/payments/{payment_id}/receipt.pdf"),
+    # S5-B12 (US-138, US-139, S5-D81): las dos exportaciones consumen `export`, `export-hour` y
+    # `export-day` (Rojo B12).
+    ("get", "/api/v1/members/export"),
+    ("get", "/api/v1/payments/export"),
     ("get", "/api/v1/notifications/today"),
     ("get", "/api/v1/notifications"),
     ("get", "/api/v1/notifications/{notification_id}"),
@@ -245,3 +249,13 @@ def test_s5_b3_el_503_de_las_rutas_con_rol_nombra_busy_y_crypto_unavailable(
         ref = respuesta["content"]["application/json"]["schema"]["$ref"]
         assert ref == "#/components/schemas/HealthOut"
         assert "crypto_unavailable" not in respuesta["description"]
+
+
+@pytest.mark.parametrize("ruta", ["/api/v1/members/export", "/api/v1/payments/export"])
+def test_las_exportaciones_declaran_sus_codigos_exactos(esquema: dict[str, Any], ruta: str) -> None:
+    """S5-B12 (S5-D41, S5-D82): 200 CSV, 401, 403 (solo admin), 409 (`export_in_progress`), 422
+    (filtros y `export_too_large`) y 429 (tres cubetas); el 404 no existe. Rojo B12."""
+    operacion = esquema["paths"][ruta]["get"]
+    assert set(operacion["responses"]) == {"200", "401", "403", "409", "422", "429", "500", "503"}
+    assert "text/csv" in operacion["responses"]["200"]["content"]
+    assert ("get", ruta) in CON_LIMITE

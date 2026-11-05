@@ -79,8 +79,9 @@ from app.core.clock import current_clock
 from app.core.context import get_actor
 from app.core.db import violated_constraint
 from app.core.events import emit
+from app.core.export import ExportStream
 from app.core.security import Role
-from app.modules.payments import receipt, rules
+from app.modules.payments import exports, receipt, rules
 from app.modules.payments.events import PaymentRegistered, PaymentVoided
 from app.modules.payments.exceptions import (
     MembershipCancelled,
@@ -101,7 +102,12 @@ from app.modules.payments.queries import (
     summary,
     sums_not_voided,
 )
-from app.modules.payments.schemas import PaymentMethodOut, PaymentMethodsOut, PaymentOut
+from app.modules.payments.schemas import (
+    PaymentExportQuery,
+    PaymentMethodOut,
+    PaymentMethodsOut,
+    PaymentOut,
+)
 from app.modules.settings import service as settings_service
 from app.modules.settings.schemas import GymView
 
@@ -343,6 +349,13 @@ async def receipt_pdf(session: AsyncSession, payment_id: UUID, by: UUID) -> byte
     return pdf
 
 
+async def export_payments(
+    session: AsyncSession, filters: PaymentExportQuery, *, by: UUID, ip: str, max_rows: int
+) -> ExportStream:
+    """Prepara el CSV de pagos (docstring de `exports.py`). Rojo B12."""
+    return await exports.prepare(session, filters, by=by, ip=ip, max_rows=max_rows)
+
+
 __all__: builtins.list[str] = [
     "IMMUTABLE_CONSTRAINT",
     "MembershipGate",
@@ -350,6 +363,7 @@ __all__: builtins.list[str] = [
     "MembershipPayability",
     "PaymentRegistered",
     "PaymentVoided",
+    "export_payments",
     "get",
     "list",
     "list_for_member",

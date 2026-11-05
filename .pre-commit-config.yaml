@@ -2,7 +2,7 @@
 # detección de llaves privadas. Instalar con `cd api && uv sync && uv run python -m pre_commit install`.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    rev: v0.17.1
     hooks:
       - id: ruff
         args: [--fix]

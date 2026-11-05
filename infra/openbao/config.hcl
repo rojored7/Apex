@@ -39,4 +39,3 @@ listener "tcp" {
 
 api_addr     = "http://openbao:8200"
 cluster_addr = "http://127.0.0.1:8201"
-

@@ -1701,4 +1701,3 @@ Regla de RUNBOOK §6: `downgrade` primero, después `git revert`, después `rest
   - 18 contradicciones resueltas.
 - **`run-gates.sh`:** 4 corridas (B3, B8, B12, V9).
 - **Proyectos Compose aparte:** `apex-ensayo` (W0-2 a V12) y `apex-smoke` (W0-2, W0-4, B13, B3, V2, efímero).
-

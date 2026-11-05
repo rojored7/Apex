@@ -58,6 +58,7 @@ apex/
         alerts_telegram.py # TelegramAlertSink y register_from_settings (Sprint 5, S5-D29): el sink de Telegram con httpx directo; chat en TELEGRAM_CHAT_ID
         mail.py          # send_mail(settings, message): SMTP con smtplib en asyncio.to_thread (Sprint 5, S5-D64); único sitio de smtplib
         export.py        # escape_formula, csv_header/csv_rows/csv_stream, single_flight (flujo único por usuario, caduca a los 15 min), begin_export/guarded_body, ExportStream y EXPORT_MAX_ROWS de las exportaciones CSV (Sprint 5, S5-D41, S5-D82, S5-D247); `core/http.py` suma csv_download
+        export_db.py     # record_close (fila `export` de cierre bajo CancelScope con sesión propia) y keyset_after (paginación por llave con tuple_ y literal) para las exportaciones (Sprint 5, S5-D257, V10); único sitio de core/ que une export con audit y db
         pdf.py           # render_text_pdf: escritor de PDF propio, una página A4 en Courier (Sprint 5, S5-D65)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor

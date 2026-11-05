@@ -1,6 +1,6 @@
 """Rendimiento del historial de avisos de un socio (S5-V11c; US-129.6). # Rojo V11c
 
-Marcado `perf` (S2-D27): no es gate. Un socio con 1.000 avisos (siembra cruda con
+Marcado `perf` (S2-D27): no es gate. Un socio con 10.000 avisos (siembra cruda con
 `generate_series`, dentro de la transacción de la prueba); `service.list_for_member` y
 `service.list` filtrado por ese socio responden en menos de 500 ms en el p95 de 20 corridas.
 """
@@ -22,7 +22,7 @@ from tests.notifications._apoyo_avisos import HOY, socio
 
 pytestmark = [pytest.mark.perf, pytest.mark.usefixtures("listo")]
 
-AVISOS = 1_000
+AVISOS = 10_000
 CORRIDAS = 20
 TOPE_S = 0.5
 
@@ -32,7 +32,7 @@ def _p95(muestras: list[float]) -> float:
     return ordenadas[max(0, int(len(ordenadas) * 0.95) - 1)]
 
 
-async def test_el_historial_de_un_socio_con_mil_avisos_responde_en_menos_de_500_ms_p95(
+async def test_el_historial_de_un_socio_con_diez_mil_avisos_responde_en_menos_de_500_ms_p95(
     session: AsyncSession,
 ) -> None:
     regla = await make_rule(session)

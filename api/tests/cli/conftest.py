@@ -168,7 +168,7 @@ async def llaves_en_base(
     proveedor = LocalFileProvider(kek_de_prueba.kek, kek_de_prueba.signing_key)
     async with limpiar_demo() as sesion:
         with actor_scope(SYSTEM_USER_ID):
-            await ensure_keys(sesion, proveedor)
+            await ensure_keys(sesion, proveedor, lambda _n: proveedor)
             await sesion.commit()
     oplog.reset_buffer()
     configure_keyring(None)

@@ -31,7 +31,7 @@ from app.core.crypto.errors import CryptoError
 from app.core.crypto.keyring import LoadedKey, current_keyring
 from app.core.crypto.mac import hmac_sha256_hex
 from app.core.crypto.normalize import normalize_for_index
-from app.core.crypto.provider import KeyProvider, current_provider
+from app.core.crypto.provider import KeyProvider
 from app.core.crypto.registry import get_spec
 from app.core.crypto.signature import format_signature, parse_signature
 
@@ -128,9 +128,9 @@ def _key_ref(llave: LoadedKey) -> str:
     return bytes(llave.material).decode("ascii")
 
 
-def _provider() -> KeyProvider:
-    """El proveedor con el que se cargó el keyring (o el del proceso)."""
-    return current_keyring().provider or current_provider()
+def _provider(llave: LoadedKey) -> KeyProvider:
+    """El proveedor de la fila de la llave (S5-D3); `local` solo se construye si se pide."""
+    return current_keyring().provider_for(llave.provider)
 
 
 async def sign(data_class: str, data: bytes) -> str:
@@ -138,7 +138,7 @@ async def sign(data_class: str, data: bytes) -> str:
     if not spec.sign:
         raise CryptoError("unsupported", f"la clase {data_class} no se firma")
     llave = current_keyring().active_for("sign", data_class)
-    firma = await _provider().sign(_key_ref(llave), data)
+    firma = await _provider(llave).sign(_key_ref(llave), data)
     oplog.record("sign", data_class=data_class, key_id=llave.key_id, key_version=llave.version)
     return format_signature(llave.key_id, SIGN_ALG_V01, firma)
 
@@ -148,7 +148,7 @@ async def verify(data_class: str, data: bytes, signature: str) -> bool:
     llave = current_keyring().get(partes.key_id)
     if llave is None or llave.purpose != "sign" or llave.data_class != data_class:
         raise CryptoError("key_missing", "la firma no corresponde a una llave de esta clase")
-    valida = await _provider().verify(_key_ref(llave), data, partes.sig)
+    valida = await _provider(llave).verify(_key_ref(llave), data, partes.sig)
     oplog.record(
         "verify",
         data_class=data_class,

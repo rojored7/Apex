@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core.crypto.errors import CryptoError
-from app.core.crypto.provider import KeyInfo
+from app.core.crypto.provider import KeyInfo, ProviderStatus
 
 WRAP_PREFIX: Final = b"apxw1"
 NONCE_LEN: Final = 12
@@ -76,8 +76,16 @@ class LocalFileProvider:
         self._signing = Ed25519PrivateKey.from_private_bytes(signing_key_path.read_bytes())
         self._signing_created_at = datetime.fromtimestamp(signing_key_path.stat().st_mtime, UTC)
 
+    name = PROVIDER_NAME
+
     def __repr__(self) -> str:
         return "LocalFileProvider()"
+
+    async def status(self) -> ProviderStatus:
+        return "ok"
+
+    async def rewrap(self, wrapped: bytes) -> bytes:
+        raise CryptoError("unsupported", "el proveedor local no re-envuelve: no hay versiones")
 
     async def wrap(self, dek: bytes) -> bytes:
         nonce = os.urandom(NONCE_LEN)

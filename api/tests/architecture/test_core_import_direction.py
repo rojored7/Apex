@@ -264,3 +264,37 @@ def test_control_main_o_modulos_en_migrations_status_se_detectan() -> None:
         "app.modules.auth"
     ]
     assert _prohibidos_de_migrations("from app.core.db import get_sessionmaker\n") == []
+
+
+# S5-B1: el proveedor de OpenBao y el puerto no tocan audit, módulos ni la capa de aplicación ----
+
+ARCHIVOS_B1 = (
+    "openbao_provider.py",
+    "provider.py",
+    "local_provider.py",
+    "keyring.py",
+    "bootstrap.py",
+)
+
+
+def _prohibidos_b1(fuente: str) -> list[str]:
+    arbol = ast.parse(fuente)
+    nombres = [n.module for n in ast.walk(arbol) if isinstance(n, ast.ImportFrom) and n.module]
+    nombres += [a.name for n in ast.walk(arbol) if isinstance(n, ast.Import) for a in n.names]
+    return [
+        n for n in nombres if n.startswith(("app.core.audit", "app.modules", "app.cli", "app.main"))
+    ]
+
+
+def test_openbao_provider_existe_y_core_crypto_no_importa_audit() -> None:
+    assert (CORE / "crypto" / "openbao_provider.py").is_file()
+    for nombre in ARCHIVOS_B1:
+        ruta = CORE / "crypto" / nombre
+        assert _prohibidos_b1(ruta.read_text(encoding="utf-8")) == [], nombre
+
+
+def test_control_un_import_de_audit_en_el_proveedor_se_detecta() -> None:
+    assert _prohibidos_b1("from app.core.audit import write\n") == ["app.core.audit"]
+    assert _prohibidos_b1("import app.core.audit\n") == ["app.core.audit"]
+    assert _prohibidos_b1("def f():\n    from app.modules.members import service\n")
+    assert _prohibidos_b1("from app.core.crypto.errors import CryptoError\n") == []

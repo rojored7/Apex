@@ -384,7 +384,7 @@ async def bus_listo(
 ) -> AsyncIterator[Keyring]:
     """`ensure_keys` sobre base vacía: DEK y llaves de índice creadas y keyring cargado."""
     with actor_scope(SYSTEM_USER_ID):
-        keyring = await ensure_keys(sin_llaves, proveedor_local)
+        keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
     try:
         yield keyring
     finally:

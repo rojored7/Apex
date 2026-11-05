@@ -119,9 +119,9 @@ async def _rotate_data(
 ) -> None:
     job = await _retry(lambda: _start(session, data_class, reason, actor_id))
     keyring = current_keyring()
-    if keyring.provider is not None:
+    if keyring.resolver is not None:
         async with session.begin():
-            await keyring.load_all(session, keyring.provider)
+            await keyring.load_all(session, keyring.resolver)
     job_id, total, hecho = job.id, job.total, job.done  # tras un rollback el ORM expira
     _say(f"total={total}")
     if hecho:

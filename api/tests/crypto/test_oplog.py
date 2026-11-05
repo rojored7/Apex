@@ -46,7 +46,7 @@ async def uow(
     fabrica = async_sessionmaker(engine, expire_on_commit=False)
     async with fabrica() as session, session.begin():
         with actor_scope(SYSTEM_USER_ID):
-            await ensure_keys(session, proveedor_local)
+            await ensure_keys(session, proveedor_local, lambda _n: proveedor_local)
     await _limpiar_ops(engine)  # las filas wrap/unwrap del arranque no cuentan aquí
     try:
         yield fabrica

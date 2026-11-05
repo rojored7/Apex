@@ -43,7 +43,7 @@ async def recargar(sesion: AsyncSession) -> None:
     """Como `load_all` del proceso que rota: el keyring conoce la llave nueva y los estados."""
     keyring = current_keyring()
     assert keyring.provider is not None
-    await keyring.load_all(sesion, keyring.provider)
+    await keyring.load_all(sesion, lambda _n: keyring.provider)
 
 
 async def iniciar(fabrica: Fabrica, clase: str = CLASE_ROTADA, motivo: str = MOTIVO) -> UUID:

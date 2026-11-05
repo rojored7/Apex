@@ -272,3 +272,56 @@ def test_cada_archivo_de_cli_ops_tiene_menos_de_150_lineas() -> None:
         if (n := _lineas(p)) >= TOPE_CLI_OPS.get(p.name, 150)
     }
     assert largos == {}
+
+
+# L4 (S5-D166): `load_keyring` distingue un custodio no disponible de una DEK que no abre ----
+
+from app.cli_keyring import load_keyring  # noqa: E402
+from app.core.crypto.errors import CryptoUnavailable  # noqa: E402
+
+
+class _Caido:
+    name = "openbao"
+
+    def __init__(self, razon: str) -> None:
+        self.razon = razon
+
+    async def unwrap(self, wrapped: bytes) -> bytes:
+        raise CryptoUnavailable(self.razon)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("razon", "texto"),
+    [("sealed", "OpenBao sellado"), ("unreachable", "OpenBao inalcanzable")],
+)
+async def test_custodio_no_disponible_sale_2_con_la_razon(
+    base_de_llaves: AsyncEngine,
+    proveedor_local: LocalFileProvider,
+    capsys: pytest.CaptureFixture[str],
+    razon: str,
+    texto: str,
+) -> None:
+    async with async_sessionmaker(base_de_llaves, expire_on_commit=False)() as sesion:
+        with actor_scope(SYSTEM_USER_ID):
+            sesion.add(
+                CryptoKey(
+                    purpose="encrypt",
+                    data_class="member.document",
+                    algorithm="A256GCM",
+                    provider="openbao",
+                    version=1,
+                    state="active",
+                    wrapped_material=b"vault:v1:" + os.urandom(8).hex().encode(),
+                    created_by=SYSTEM_USER_ID,
+                )
+            )
+            await sesion.commit()
+    configure_provider(proveedor_local)
+    try:
+        async with async_sessionmaker(base_de_llaves, expire_on_commit=False)() as sesion:
+            with pytest.raises(typer.Exit) as salida:
+                await load_keyring(sesion, lambda _n: _Caido(razon))  # type: ignore[arg-type,return-value]
+    finally:
+        configure_provider(None)
+    assert salida.value.exit_code == 2
+    assert texto in capsys.readouterr().err

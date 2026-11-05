@@ -92,7 +92,7 @@ async def rotacion_lista(
         with override_registry(registro_de_rotacion()):
             async with fabrica() as sesion, sesion.begin():
                 with actor_scope(SYSTEM_USER_ID):
-                    await ensure_keys(sesion, proveedor_local)
+                    await ensure_keys(sesion, proveedor_local, lambda _n: proveedor_local)
             yield fabrica
     finally:
         db.configure_engine(None)

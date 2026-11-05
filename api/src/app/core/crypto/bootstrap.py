@@ -2,7 +2,7 @@
 
 Por cada clase con `encrypt=True` sin llave `active` genera 32 bytes de `os.urandom`, los
 envuelve con el proveedor y ejecuta `INSERT ... ON CONFLICT (purpose, data_class) WHERE
-state = 'active' DO NOTHING`, con `version = 1`, `provider = 'local'` y
+state = 'active' DO NOTHING`, con `version = 1`, `provider = <nombre del proveedor de creación>` y
 `created_by = SYSTEM_USER_ID` (N-15). Lo mismo con `purpose = index` (HMAC-SHA256) para las
 clases con `index_kind`. Luego vuelve a leer, así dos procesos arrancando a la vez (api y
 worker) terminan con una sola llave por clase. Lo llaman el lifespan de `main.py`, el
@@ -23,7 +23,7 @@ from app.core.crypto import oplog
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import SIGNING_KEY_REF
 from app.core.crypto.models import CryptoKey
-from app.core.crypto.provider import KeyProvider
+from app.core.crypto.provider import KeyProvider, ProviderResolver
 from app.core.crypto.registry import encrypting_specs, indexing_specs, signing_specs
 
 DEK_LEN = 32
@@ -60,7 +60,7 @@ async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
                 purpose=purpose,
                 data_class=data_class,
                 algorithm=_ALGORITHM[purpose],
-                provider="local",
+                provider=provider.name,
                 version=1,
                 state="active",
                 wrapped_material=envuelta,
@@ -78,10 +78,12 @@ async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
             oplog.record("wrap", data_class=data_class, key_id=key_id, key_version=1)
 
 
-async def ensure_keys(session: AsyncSession, provider: KeyProvider) -> Keyring:
+async def ensure_keys(
+    session: AsyncSession, provider: KeyProvider, resolver: ProviderResolver
+) -> Keyring:
     """Crea lo que falta, carga el keyring del proceso y lo devuelve."""
     await _create_missing(session, provider)
     keyring = Keyring()
-    await keyring.load_all(session, provider)
+    await keyring.load_all(session, resolver)
     configure_keyring(keyring)
     return keyring

@@ -10,9 +10,10 @@ El proveedor del proceso lo fija el `lifespan` de `create_app` (y el worker y el
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.core.config import Settings
 from app.core.crypto.errors import CryptoError
@@ -27,7 +28,12 @@ class KeyInfo:
     created_at: datetime
 
 
+ProviderStatus = Literal["ok", "sealed", "unreachable"]
+
+
 class KeyProvider(Protocol):
+    name: str
+
     async def wrap(self, dek: bytes) -> bytes: ...
 
     async def unwrap(self, wrapped: bytes) -> bytes: ...
@@ -39,6 +45,10 @@ class KeyProvider(Protocol):
     async def rotate(self, key_ref: str) -> KeyInfo: ...
 
     async def key_info(self, key_ref: str) -> KeyInfo: ...
+
+    async def status(self) -> ProviderStatus: ...
+
+    async def rewrap(self, wrapped: bytes) -> bytes: ...
 
 
 def get_key_provider(settings: Settings) -> KeyProvider:
@@ -70,3 +80,42 @@ def current_provider() -> KeyProvider:
     if _provider is None:
         raise CryptoError("kek_missing", "el proveedor de llaves no está configurado")
     return _provider
+
+
+ProviderResolver = Callable[[str], KeyProvider]
+"""Nombre de proveedor (`crypto_keys.provider`) -> proveedor que abre esa fila (S5-D3)."""
+
+
+def get_provider_named(settings: Settings, name: str) -> KeyProvider:
+    """Proveedor de una fila (`crypto_keys.provider`); se construye al pedirlo (S5-D3, D131).
+
+    `get_key_provider` sigue siendo la fábrica solo de `local`; `openbao` valida su token al primer
+    uso, así que construirlo no toca la red ni el archivo.
+    """
+    if name == "local":
+        return get_key_provider(settings)
+    if name == "openbao":
+        from app.core.crypto.openbao_provider import OpenBaoProvider  # confinado a core/crypto
+
+        if settings.OPENBAO_TOKEN_FILE is None:
+            raise CryptoError("kek_missing", "OPENBAO_TOKEN_FILE no está definida")
+        return OpenBaoProvider(
+            settings.OPENBAO_ADDR,
+            settings.OPENBAO_TOKEN_FILE,
+            timeout_s=float(settings.OPENBAO_TIMEOUT_S),
+        )
+    raise CryptoError("unknown_provider", f"proveedor de llaves desconocido: {name}")
+
+
+def make_resolver(settings: Settings, *, creation: KeyProvider | None = None) -> ProviderResolver:
+    """Resolver con caché por nombre: un solo proveedor por proceso y nombre."""
+    cache: dict[str, KeyProvider] = {}
+    if creation is not None:
+        cache[creation.name] = creation
+
+    def resolver(name: str) -> KeyProvider:
+        if name not in cache:
+            cache[name] = get_provider_named(settings, name)
+        return cache[name]
+
+    return resolver

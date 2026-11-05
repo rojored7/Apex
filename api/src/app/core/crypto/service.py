@@ -42,11 +42,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.core import db
 from app.core.clock import current_clock
+from app.core.config import get_settings
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto import bus, oplog
 from app.core.crypto.bootstrap import DEK_LEN
 from app.core.crypto.discovery import ColumnRef, encrypted_columns
-from app.core.crypto.errors import CryptoError
+from app.core.crypto.errors import CryptoError, CryptoUnavailable
 from app.core.crypto.keyring import current_keyring
 from app.core.crypto.mac import hmac_sha256_hex
 from app.core.crypto.models import CryptoJob, CryptoKey, CryptoOp, KeyState
@@ -148,7 +149,27 @@ def _class_of(job: CryptoJob) -> str:
 
 
 def _provider() -> KeyProvider:
-    return current_keyring().provider or current_provider()
+    """Proveedor de CREACIÓN de llaves nuevas (`CRYPTO_PROVIDER`, S5-D3); no el de la fila."""
+    try:
+        return current_provider()
+    except CryptoError:
+        # Sin proveedor fijado solo se tolera fuera de producción (pruebas, herramientas): el del
+        # keyring. En producción no hay fallback (S5-D165).
+        if _es_produccion():
+            raise CryptoUnavailable(
+                "not_loaded", "el proveedor de creación no está fijado"
+            ) from None
+        cargado = current_keyring().provider
+        if cargado is None:
+            raise
+        return cargado
+
+
+def _es_produccion() -> bool:
+    try:
+        return get_settings().ENV == "production"
+    except Exception:  # sin configuración (pruebas): no es producción
+        return False
 
 
 def _key_stmt(purpose: str, data_class: str) -> Select[Any]:
@@ -228,15 +249,16 @@ async def _swap_key(session: AsyncSession, old: CryptoKey, actor: UUID) -> tuple
     old.rotated_by = actor
     await session.flush()  # libera el índice único de la activa antes de insertar la nueva
     dek = os.urandom(DEK_LEN)
+    proveedor = _provider()
     nueva = CryptoKey(
         id=uuid4(),
         purpose=old.purpose,
         data_class=old.data_class,
         algorithm=old.algorithm,
-        provider=old.provider,
+        provider=proveedor.name,
         version=old.version + 1,
         state="active",
-        wrapped_material=await _provider().wrap(dek),
+        wrapped_material=await proveedor.wrap(dek),
         created_by=actor,
     )
     session.add(nueva)

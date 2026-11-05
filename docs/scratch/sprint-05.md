@@ -253,3 +253,66 @@ database-reviewer 1 HIGH, 2 MEDIUM, 1 LOW; security-reviewer 1 MEDIUM, 3 LOW: 8/
 - Humo de producción (auxiliar `docker:cli`, pila nueva, `SMOKE_WEB_PORT=8380 SMOKE_DOWN=1 prod-smoke.sh --no-build`): EXIT 0, 146 ok. Incluye `test_db_roles.sh` con `apex_owner`, `deploy_e2e.sh` (3 escenarios) y `restore_e2e.sh` (0 fallas): `restore.sh` con `pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error` restauró en `apex_restore` y la ancla de auditoría coincidió; `btree_gist` no dio problema (extensión trusted). Grep de las cinco contraseñas del humo en los tres logs: 0 coincidencias. Auxiliares y volúmenes `apex-smoke` borrados (0 restantes).
 - Notas del auxiliar (no son del producto): en Docker Desktop el `docker:cli` necesita `--network host` (el `/health` se prueba por `127.0.0.1`), y el clon de `deploy_e2e.sh` debe ir en un directorio que el demonio vea (`TMPDIR=/tmp/e2e` montado igual en el auxiliar); clonar sobre el montaje de Windows falla con `failed to copy file`. Los dos primeros intentos del humo fallaron por eso (no por el código).
 - Memoria: `apex stop api worker web backup` durante el humo y `up -d` después; el `up -d` recreó `apex-db-1` (cambió su definición: montaje de initdb y variable), volumen intacto; seis servicios healthy, ensayo arriba y desellado.
+
+## B1 · Rojo (S5-B1, OpenBaoProvider, puerto ampliado y proveedor por fila)
+
+**Línea base** (`tests/crypto tests/architecture tests/cli/test_rotate_key_cli.py tests/cli/test_retire_key_cli.py tests/core/test_startup_failure.py`, HEAD 6d83e11): 877 passed, 28 skipped (age falso/NT/symlinks), 0 failed.
+
+**Rojo** (misma selección): 913 passed, 52 skipped, 39 failed + 42 errors (81 rojas, todas en archivos nuevos o en las dos aserciones nuevas de arquitectura; ninguna prueba previa cambió de resultado). `ruff check`, `ruff format`, `mypy src` limpios; `pytest -m openbao --co` colecciona 17.
+
+E1/E2 (`grep` sobre `api/src`), puntos a cambiar en el Verde:
+- `keyring.provider`: `core/crypto/bus.py:133` (`_provider()`), `core/crypto/service.py:151` (`_provider()`), `core/crypto/keyring.py` (`refresh_current`, línea 166), `cli_ops/rotate_key.py` (`_rotate_data`, `keyring.provider` -> `load_all`).
+- `current_provider()`: `cli_keyring.py:30`, `main.py:174` (`_startup`), `bus.py`/`service.py` (fallback), `keyring.py`.
+- `provider="local"` literal: `core/crypto/bootstrap.py:63` (`_create_missing`); `service._swap_key` copia `old.provider` (línea 236).
+- `current_keyring()` / `refresh_current`: `bus.py` (62, 79, 114, 133, 140, 148), `service.py` (151, 327), `types.py:158`, `core/security.py:386/468` (`refresh_current` en `current_user`; M-4: debe capturar `CryptoUnavailable` y conservar el keyring). `current_keyring()` con `None` debe lanzar `CryptoUnavailable("not_loaded")` (hoy `CryptoError("crypto_unavailable")`).
+- `cli_ops/retire_key.py` y `cli_ops/keys.py` no usan `keyring.provider` ni `current_provider`.
+
+**Stubs** (firmas del plan): `core/crypto/openbao_provider.py` (todo `NotImplementedError`), `provider.py` (`ProviderStatus`, `name/status/rewrap` en el puerto, `ProviderResolver`, `get_provider_named`: `local` delega en `get_key_provider`, otro nombre `NotImplementedError`), `local_provider.py` (`name`, `status`, `rewrap` -> `unsupported`: ya funcionales), `errors.py` (`CryptoUnavailable`, funcional), `keyring.load_all(session, resolver, *, classes=None)` y `bootstrap.ensure_keys(session, provider, resolver)`. Puente provisional del Rojo (para no romper el api): `load_all` usa `resolver("local")` para todo y NO filtra por `classes`; `refresh_if_stale` y los llamadores (`main._startup`, `cli_keyring`, `rotate_key._fijo`) pasan un resolver constante `lambda _n: proveedor`. El Verde debe reemplazarlos por el resolver por fila.
+
+**Pruebas existentes adaptadas** (solo la firma): `ensure_keys(s, proveedor_local)` -> `ensure_keys(s, proveedor_local, lambda _n: proveedor_local)` en `tests/conftest.py`, `tests/cli/conftest.py`, `tests/members/conftest.py`, `tests/memberships/conftest.py`, `tests/crypto/{_rotacion,test_bootstrap,test_kek_backup,test_oplog,test_oplog_rollback_failure,test_sign}.py`; `tests/crypto/_rotacion_flujo.py` (`load_all` con resolver). Sin cambio de aserciones.
+
+**Archivos nuevos / ampliados**: `tests/factories/fake_transit.py` (+ `tests/crypto/test_fake_transit.py`, 4 verdes: AES-GCM con AAD, rotate/rewrap, sellado/403/lookup-self, Ed25519); marcador `openbao` en `pyproject.toml`; fixtures en `tests/crypto/conftest.py` (`token_file`, `fake_transit`, `openbao_fake`, `openbao_real`, `tipo`, `proveedor`); arquitectura: `test_third_party_confinement.py` (+httpx), `test_crypto_bus_importers.py` (+openbao_provider), `test_kek_path_single_door.py` (+token), `test_core_import_direction.py` (+B1).
+
+**Conteo por archivo** (passed / skipped / failed / errors):
+- `test_provider_contract.py`: 14 / 19 / 0 / 18. Las 14 verdes son `local` (el puerto actual cumple). Errors: `fake_transit` (la fixture `openbao_fake` lanza `NotImplementedError`). Saltadas: 18 `openbao_real` (sin `OPENBAO_TEST_ADDR`/`OPENBAO_TEST_TOKEN_FILE`; corren en B1.7/CI) + `test_real_rewrap_acepta_el_aad...` + las ramas "no aplica a local" (con motivo).
+- `test_openbao_provider.py`: 0 / 5 / 35 / 16. Motivo: `NotImplementedError` (`map_error`, `parse_version`, constructor). Saltadas: 5 de permisos POSIX (NTFS; corren en CI/Linux).
+- `test_provider_per_row.py`: 0 / 0 / 2 / 8. 2 failed por `NotImplementedError` de `get_provider_named` (+ `load_all(classes)`); 8 errors por `openbao_fake`.
+- `test_fake_transit.py`: 4 passed.
+- arquitectura: 3 reglas verdes que ya se cumplen (httpx confinado, token, dirección) y 2 rojas con aserción real: `test_openbao_provider_tiene_al_menos_un_importador_en_core_crypto` y `test_openbao_provider_lee_el_archivo_del_token`.
+
+**Validación del Rojo (throwaway verde)**: con una implementación desechable de `OpenBaoProvider` (~130 líneas), `load_all` por fila + `classes`, `provider=provider.name` y `_swap_key` con `current_provider()`, las pruebas de contrato y del proveedor pasaron 81/81 (26 saltadas) y per_row 9/10 (la décima es `get_provider_named`, no cableada). Sin defectos de prueba hallados; el desechable se restauró al stub (`git diff` de `service.py` vacío).
+
+**Dudas para el Verde**
+1. Códigos esperados por las pruebas: archivo de token con permisos de grupo/otros -> `kek_insecure_permissions`; > 256 bytes o vacío -> `kek_invalid`; inexistente -> `kek_missing`; `addr` no permitida -> cualquier `CryptoError` (el desechable usó `unknown_provider`); el proveedor valida permisos y tamaño al primer uso (las pruebas construyen y llaman `wrap` dentro del `raises`).
+2. `status()`: `seal-status` sin token (la prueba afirma que NO lleva `X-Vault-Token`); si está abierto, una lectura de Transit (`GET keys/apex-kek`) con token; 403, timeout, conexión o 5xx -> `unreachable`; sellado o sin inicializar -> `sealed`. Nunca lanza y nunca llama `lookup-self`.
+3. `maybe_renew(now)`: las pruebas aceptan que la primera llamada renueve o solo fije la base; exigen exactamente una renovación por cada 12 h cumplidas, por `POST /v1/auth/token/renew-self`.
+4. `map_error` es por `(status, errors)`; timeout y conexión no tienen status: se prueban a través del proveedor (`CryptoUnavailable("unreachable")`). 503 sin "sealed" no está especificado ni probado.
+5. El cliente propio debe crearse con `httpx.AsyncClient(..., timeout=httpx.Timeout(timeout_s), follow_redirects=False, trust_env=False)` por argumentos con nombre y llamando `httpx.AsyncClient` como atributo del módulo `httpx` (la prueba lo parchea). Con `client=` inyectado, el token va por cabecera de cada petición (no se asume cabecera por defecto del cliente).
+6. `wrap/unwrap/rewrap` envían `associated_data` = base64(`apx-dek-wrap`) (la prueba lo lee de `FakeTransit.calls`). `FakeTransit.rewrap_acepta_aad=False` modela el riesgo M-5a: `rewrap` debe fallar con `unwrap_failed`. El veredicto real lo da `test_real_rewrap_acepta_el_aad_de_la_envoltura` en B1.7.
+7. `_swap_key` debe usar `current_provider()` (el de creación, `CRYPTO_PROVIDER`); la prueba fija `configure_provider(openbao_fake)` sobre un keyring con filas `local` y espera `provider == "openbao"` y envoltura `vault:v1:`.
+8. Filas `sign`: la prueba exige que `load_all` no pida `resolver("local")` para una fila `sign` `local` (referencia). `_create_missing` para filas `sign` con `provider.name` no está especificado (no hay clases `sign` en v0.1); D131 las migra en B2.
+9. `get_provider_named(settings, nombre_desconocido)` debe lanzar `CryptoError("unknown_provider")`.
+10. `refresh_if_stale(session, provider)` y `ensure_loaded(session, provider, key_id)` conservan su firma en el Rojo (las pruebas existentes la usan); si el Verde las pasa a resolver, hay que adaptar `test_bootstrap.py`, `test_sign.py`, `test_bus_encrypt.py` y `test_require_role.py`.
+
+**Corrida ampliada** (`tests/cli tests/members tests/memberships tests/core -m "not perf"`): 2357 passed, 22 skipped, 1 failed. El fallo, `tests/core/test_config.py::test_non_api_env_vars_contiene_las_de_operacion_y_las_diez_de_antes` (extras `MIGRATE_DB_PASSWORD`, `TOOLS_DB_PASSWORD`), es PREVIO: falla igual en HEAD limpio (verificado con `git stash`); viene de W0-4, no de B1.
+
+## B1 · Verde (S5-B1)
+
+**Regresión heredada**: `test_non_api_env_vars_contiene_las_de_operacion_y_las_diez_de_antes` corregida (suma `MIGRATE_DB_PASSWORD` y `TOOLS_DB_PASSWORD`); lección S5-D150: todo gate que toque `NON_API_ENV_VARS`/`Settings` incluye `test_config.py` y `test_env_example.py`.
+
+**Conteos**: `test_provider_contract` 30 passed / 21 skipped; `test_openbao_provider` 51 / 5 (permisos POSIX, NTFS); `test_provider_per_row` 10 / 0; `test_fake_transit` 4 / 0. `tests/crypto` + `test_require_role`: 406 passed, 53 skipped (openbao_real y age/NT con motivo). Gates: cli 636 passed / 1 skipped; main 774 passed; architecture 562 passed. `ruff check`, `ruff format --check`, `mypy src` limpios. Cobertura: `openbao_provider.py` 84 %, `keyring.py` 85 %.
+
+**Desviaciones**:
+1. La huella del token es `mtime` al segundo más tamaño (no `mtime_ns`): `os.utime` con floats cambia los nanosegundos y la prueba "sin cambio de mtime no se relee" fallaba.
+2. `get_key_provider` queda solo `local` (una prueba previa pina `unknown_provider` para `openbao`); el arranque usa `get_provider_named`.
+3. `refresh_current` tolera `CryptoUnavailable` dentro de `keyring.py` (lo llama `core/security.current_user`; `security.py` no cambió).
+4. `service._provider()` usa `current_provider()` y cae al `Keyring.provider` si el proceso no fijó proveedor.
+5. `status()` usa `seal-status` + `renew-self` (política del api no lee `keys/apex-kek`): S5-D151.
+6. `cli_keyring.load_keyring` recibe el resolver y abre cada DEK con el proveedor de su fila.
+7. La rotación de la KEK queda para que la haga tools; el token del api no tiene `rewrap`/`rotate`/`config` (la política no cambió).
+
+Decisiones S5-D150 a S5-D161 en DECISIONES. Pendientes: security-reviewer, sello de `crypto`, B1.7 (OpenBao real, veredicto M-5a) y checkpoint.
+
+## B1 · Revisiones (S5-B1, revisión de seguridad)
+
+Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 refresh_current sin enfriamiento, M3 mapeo de errores), 4 LOW (L1 huella del token, L2 ventana stat/read, L3 fallback en producción, L4 mensaje del CLI): 7/7 atendidos (S5-D162 a S5-D168; L2 es nota S5-D167). Pruebas nuevas: 7 en `test_openbao_provider.py` (tabla de `map_error`, 100 `status`, `status` sin token tras un `unwrap`, 12 h, error reciente, inodo), 4 en `test_b1_revision.py` (enfriamiento x2, producción x2), 2 en `test_cli_base.py` (L4). `openbao_provider.py` 247 líneas; piezas puras en `openbao_wire.py` (97). Desviación 8: `test_real_rewrap_acepta...` pasa a `..._no_conserva_el_aad...` tras el veredicto S5-D55a.

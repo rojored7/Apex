@@ -55,6 +55,10 @@ La KEK se respalda cifrada con `age -p` (frase de paso; la pide `age` por la ter
 
 `rotate-key` pasa la llave `active` a `decrypt_only`, crea la versión siguiente y recifra por lotes de 500 con SQL de Core (`updated_at` intacto), reanudable. `retire-key` es el único camino a `retired`: exige cero filas de negocio con esa llave, el conteo confirmado de blobs de `audit.audit_log` (los blobs de auditoría no se recifran: es inmutable) y un respaldo reciente de la KEK y del manifiesto. La rotación acota el uso futuro; no revoca respaldos ni protege ante una KEK comprometida (eso es de v0.2 con OpenBao). Guía: `docs/operacion/rotar-llave.md`.
 
+### 1 bis. Proveedor por fila y envoltura `vault:v<n>:` (Sprint 5, S5-B1)
+
+Cada fila de `crypto_keys` se abre con el proveedor que nombra su columna `provider` (`local` u `openbao`); el keyring resuelve el proveedor al pedirlo (`Keyring.provider_for`), de modo que `local` solo se construye si hay filas `encrypt|index` `local`. Las llaves nuevas nacen en el proveedor de creaciÃ³n (`CRYPTO_PROVIDER`). Con OpenBao la envoltura es el texto cifrado de Transit, `vault:v<n>:<base64>` (la versiÃ³n `n` de la KEK va en el dato, como el prefijo `apxw1` en el proveedor local), con `associated_data` = base64(`apx-dek-wrap`). El prefijo y la columna deben coincidir: si no, `unwrap_failed`. `OpenBaoProvider` habla con httpx, no sigue redirecciones ni usa proxies del entorno, no reintenta, y lee el token solo de `OPENBAO_TOKEN_FILE` (permisos 600, hasta 256 bytes).
+
 ## Alternativas descartadas
 
 - **Cifrado de disco o de columna con `pgcrypto`:** la llave viviría en la base o en consultas SQL; un volcado la arrastra y los permisos de la base bastarían para leer.

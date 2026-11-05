@@ -40,3 +40,20 @@ class CryptoError(Exception):
 
     def __repr__(self) -> str:
         return f"CryptoError({self.code!r})"
+
+
+UnavailableReason = Literal["sealed", "unreachable", "forbidden", "not_loaded"]
+
+
+class CryptoUnavailable(CryptoError):
+    """El custodio de llaves no responde o está sellado (S5-D14, S5-D17); `code` fijo
+    `crypto_unavailable` y `reason` distingue la causa. Nunca lleva URL, token ni cuerpo."""
+
+    def __init__(self, reason: UnavailableReason, message: str | None = None) -> None:
+        super().__init__(
+            "crypto_unavailable", message or f"custodio de llaves no disponible: {reason}"
+        )
+        self.reason: UnavailableReason = reason
+
+    def __repr__(self) -> str:
+        return f"CryptoUnavailable({self.reason!r})"

@@ -105,7 +105,7 @@ async def test_load_wrapped_devuelve_las_llaves_envueltas_con_un_solo_select(
     contador_de_consultas: ContadorDeConsultas,
 ) -> None:
     with actor_scope(SYSTEM_USER_ID):
-        await ensure_keys(sin_llaves, proveedor_local)
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
 
     with contador_de_consultas.midiendo():
         filas = await load_wrapped(sin_llaves)
@@ -121,7 +121,7 @@ async def test_load_wrapped_no_escribe_nada(
     sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
 ) -> None:
     with actor_scope(SYSTEM_USER_ID):
-        await ensure_keys(sin_llaves, proveedor_local)
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
         await sin_llaves.flush()
 
     await load_wrapped(sin_llaves)

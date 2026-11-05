@@ -47,7 +47,7 @@ async def bus_confirmado(
             await sesion.execute(text(sql))
         configure_keyring(None)
         with actor_scope(SYSTEM_USER_ID):
-            keyring = await ensure_keys(sesion, proveedor_local)
+            keyring = await ensure_keys(sesion, proveedor_local, lambda _n: proveedor_local)
             await sesion.commit()
     try:
         yield keyring

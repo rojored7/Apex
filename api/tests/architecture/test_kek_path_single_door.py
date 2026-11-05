@@ -157,3 +157,67 @@ def test_control_los_alias_y_los_nombres_con_kek_se_detectan() -> None:
     assert aperturas_de_la_kek("Path(ruta_kek).read_bytes()\n") == [1]
     assert aperturas_de_la_kek("os.open(Kek_File, 0)\n") == [1]
     assert aperturas_de_la_kek("p = settings.OTRA\nopen(p)\n") == []
+
+
+# S5-B1: el token de OpenBao se lee en un solo sitio (S5-D17, S5-D123; M-4) ---------------------
+
+TOKEN_ABRE: Final = frozenset({"core/crypto/openbao_provider.py"})
+TOKEN_NOMBRA: Final = frozenset({"core/config.py", "core/crypto/openbao_provider.py"})
+NOMBRES_DEL_TOKEN: Final = frozenset({"OPENBAO_TOKEN_FILE", "token_path", "token_file"})
+
+
+def _nombra_el_token(nodo: ast.AST, alias: frozenset[str] = frozenset()) -> bool:
+    for sub in ast.walk(nodo):
+        if isinstance(sub, ast.Name) and (sub.id in NOMBRES_DEL_TOKEN or sub.id in alias):
+            return True
+        if isinstance(sub, ast.Attribute) and sub.attr in NOMBRES_DEL_TOKEN:
+            return True
+        if isinstance(sub, ast.Constant) and sub.value == "OPENBAO_TOKEN_FILE":
+            return True
+    return False
+
+
+def aperturas_del_token(fuente: str) -> list[int]:
+    arbol = ast.parse(fuente)
+    alias: set[str] = set()
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Assign) and _nombra_el_token(nodo.value, frozenset(alias)):
+            alias.update(t.id for t in nodo.targets if isinstance(t, ast.Name))
+    lineas: list[int] = []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        f = nodo.func
+        abre = (isinstance(f, ast.Name) and f.id == "open") or (
+            isinstance(f, ast.Attribute) and f.attr in METODOS_DE_APERTURA
+        )
+        if abre and _nombra_el_token(nodo, frozenset(alias)):
+            lineas.append(nodo.lineno)
+    return sorted(lineas)
+
+
+def test_solo_openbao_provider_lee_el_archivo_del_token() -> None:
+    abren = {r for r, f in _archivos() if aperturas_del_token(f)}
+    assert abren <= TOKEN_ABRE, sorted(abren - TOKEN_ABRE)
+
+
+def test_openbao_provider_lee_el_archivo_del_token() -> None:
+    """Sin esto la regla anterior no vigilaría nada (rojo hasta que el Verde lo lea)."""
+    abren = {r for r, f in _archivos() if aperturas_del_token(f)}
+    assert abren == TOKEN_ABRE, sorted(TOKEN_ABRE ^ abren)
+
+
+def test_ningun_otro_archivo_nombra_la_ruta_del_token() -> None:
+    """Ni el CLI ni un router: el token no viaja por el entorno (S5-D123). `core/crypto/` y los
+    `cli_*` de base pueden pasarla al proveedor."""
+    nombran = {r for r, f in _archivos() if _nombra_el_token(ast.parse(f))}
+    ajenos = sorted(r for r in nombran - TOKEN_NOMBRA if not r.startswith(("core/crypto/", "cli_")))
+    assert ajenos == [], ajenos
+
+
+def test_control_las_formas_de_leer_el_token_se_detectan() -> None:
+    assert aperturas_del_token("settings.OPENBAO_TOKEN_FILE.read_text()\n") == [1]
+    assert aperturas_del_token("open(token_path)\n") == [1]
+    assert aperturas_del_token("p = settings.OPENBAO_TOKEN_FILE\nopen(p).read()\n") == [2]
+    assert aperturas_del_token("open('otro.txt')\n") == []
+    assert aperturas_del_token("x = settings.OPENBAO_TOKEN_FILE\n") == []

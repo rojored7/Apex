@@ -42,7 +42,12 @@ from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
-from app.core.crypto.provider import configure_provider, current_provider, get_key_provider
+from app.core.crypto.provider import (
+    configure_provider,
+    current_provider,
+    get_provider_named,
+    make_resolver,
+)
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
@@ -157,7 +162,7 @@ async def _startup(
     try:
         check_secrets_or_exit(settings)  # US-039: nombres de variable, nunca valores
         configure_security(settings)
-        configure_provider(get_key_provider(settings))
+        configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER))
     except Exception:
         logger.exception("el proveedor de llaves no está disponible; el api no acepta tráfico")
         raise
@@ -171,7 +176,9 @@ async def _startup(
     with actor_scope(SYSTEM_USER_ID):
         # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.
         async with db.get_sessionmaker()() as session, session.begin():
-            keyring = await ensure_keys(session, current_provider())
+            proveedor = current_provider()
+            resolver = make_resolver(settings, creation=proveedor)
+            keyring = await ensure_keys(session, proveedor, resolver)
         logger.info("llaves del bus cargadas: %s", keyring)
         for nombre, paso in list(_startup_steps):
             logger.info("arranque: %s", nombre)

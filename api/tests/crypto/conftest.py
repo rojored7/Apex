@@ -102,8 +102,66 @@ def entorno_visto(llamada: dict[str, object]) -> dict[str, str]:
 
 
 # Rotación de llave y retiro (S4B-B3b): las fixtures viven en `_rotacion.py` (también las usa cli)
+# Proveedor de OpenBao (S5-B1; S5-D21) ------------------------------------------------------------
+from collections.abc import Iterator  # noqa: E402
+
+from app.core.crypto.openbao_provider import OpenBaoProvider  # noqa: E402
 from tests.crypto._rotacion import (  # noqa: E402,F401
     candado_rotacion_tomado,
     manifiesto_reciente,
     rotacion_lista,
 )
+from tests.factories.fake_transit import ADDR_FAKE, TOKEN_FAKE, FakeTransit  # noqa: E402
+
+
+@pytest.fixture
+def token_file(tmp_path: Path) -> Path:
+    """Archivo del token del servicio (0o600) con `TOKEN_FAKE` y salto de línea final."""
+    carpeta = tmp_path / "openbao"
+    carpeta.mkdir()
+    ruta = carpeta / "token"
+    ruta.write_text(TOKEN_FAKE + "\n", encoding="utf-8")
+    ruta.chmod(0o600)
+    return ruta
+
+
+@pytest.fixture
+def fake_transit() -> FakeTransit:
+    return FakeTransit()
+
+
+@pytest.fixture
+def openbao_fake(fake_transit: FakeTransit, token_file: Path) -> OpenBaoProvider:
+    """`OpenBaoProvider` sobre `FakeTransit` (cliente inyectado)."""
+    return OpenBaoProvider(ADDR_FAKE, token_file, timeout_s=2.0, client=fake_transit.cliente())
+
+
+@pytest.fixture
+def openbao_real() -> OpenBaoProvider:
+    """OpenBao real: se salta sin `OPENBAO_TEST_ADDR` y `OPENBAO_TEST_TOKEN_FILE` (B1.7)."""
+    addr = os.environ.get("OPENBAO_TEST_ADDR")
+    token = os.environ.get("OPENBAO_TEST_TOKEN_FILE")
+    if not addr or not token:
+        pytest.skip(
+            "sin OPENBAO_TEST_ADDR / OPENBAO_TEST_TOKEN_FILE: la prueba con OpenBao real corre en "
+            "el contenedor Linux de validacion (B1.7) y en la CI"
+        )
+    return OpenBaoProvider(addr, Path(token), timeout_s=5.0)
+
+
+@pytest.fixture(
+    params=["local", "fake_transit", pytest.param("openbao_real", marks=pytest.mark.openbao)]
+)
+def tipo(request: pytest.FixtureRequest) -> str:
+    return str(request.param)
+
+
+@pytest.fixture
+def proveedor(tipo: str, request: pytest.FixtureRequest) -> Iterator[object]:
+    """El proveedor bajo la suite de contrato: `local`, `fake_transit` u `openbao_real`."""
+    destino = {
+        "local": "proveedor_local",
+        "fake_transit": "openbao_fake",
+        "openbao_real": "openbao_real",
+    }[tipo]
+    yield request.getfixturevalue(destino)

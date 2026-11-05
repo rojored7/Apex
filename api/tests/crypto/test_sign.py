@@ -29,7 +29,7 @@ async def bus_firma(
 ) -> AsyncIterator[Keyring]:
     with override_registry({**REGISTRY, FIRMA.name: FIRMA, OTRA.name: OTRA}):
         with actor_scope(SYSTEM_USER_ID):
-            keyring = await ensure_keys(sin_llaves, proveedor_local)
+            keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
         try:
             yield keyring
         finally:

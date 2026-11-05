@@ -35,7 +35,7 @@ async def test_base_vacia_crea_una_llave_por_clase(
     sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
 ) -> None:
     with actor_scope(SYSTEM_USER_ID):
-        keyring = await ensure_keys(sin_llaves, proveedor_local)
+        keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
     llaves = await _llaves(sin_llaves)
     assert [(k.purpose, k.data_class) for k in llaves] == [
         *[("encrypt", c) for c in CIFRADO],
@@ -57,8 +57,8 @@ async def test_segundo_arranque_no_crea_mas(
     sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
 ) -> None:
     with actor_scope(SYSTEM_USER_ID):
-        primero = await ensure_keys(sin_llaves, proveedor_local)
-        segundo = await ensure_keys(sin_llaves, proveedor_local)
+        primero = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+        segundo = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
     total = await sin_llaves.scalar(select(func.count()).select_from(CryptoKey))
     assert total == len(CIFRADO) + len(INDICE)
     assert {k.key_id for k in primero.keys()} == {k.key_id for k in segundo.keys()}
@@ -68,7 +68,7 @@ async def test_una_llave_creada_por_otra_sesion_se_carga_con_refresh(
     sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
 ) -> None:
     with actor_scope(SYSTEM_USER_ID):
-        keyring = await ensure_keys(sin_llaves, proveedor_local)
+        keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
     nueva = CryptoKey(
         purpose="encrypt",
         data_class="member.document",
@@ -107,7 +107,7 @@ async def test_dos_arranques_concurrentes_dejan_una_sola_llave_por_clase(
     async def arrancar() -> Keyring:
         async with fabrica() as session, session.begin():
             with actor_scope(SYSTEM_USER_ID):
-                return await ensure_keys(session, proveedor_local)
+                return await ensure_keys(session, proveedor_local, lambda _n: proveedor_local)
 
     a, b = await asyncio.gather(arrancar(), arrancar())
     async with fabrica() as session:
@@ -122,7 +122,7 @@ async def test_kek_backup_no_crea_ninguna_llave(
 ) -> None:
     """S4B-D85: la clase `kek.backup` no tiene llave; `_create_missing` no la ve."""
     with actor_scope(SYSTEM_USER_ID):
-        await ensure_keys(sin_llaves, proveedor_local)
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
 
     llaves = await _llaves(sin_llaves)
 

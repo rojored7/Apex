@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
@@ -21,11 +23,15 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import oplog
-from app.core.crypto.errors import CryptoError
+from app.core.crypto.errors import CryptoError, CryptoUnavailable
 from app.core.crypto.models import CryptoKey
-from app.core.crypto.provider import KeyProvider, current_provider
+from app.core.crypto.provider import KeyProvider, ProviderResolver, current_provider
 
 LOADABLE_STATES: frozenset[str] = frozenset({"active", "decrypt_only"})
+logger = logging.getLogger(__name__)
+REFRESH_COOLDOWN_S = 30.0
+_monotonic = time.monotonic  # las pruebas lo parchean
+_proximo_intento = 0.0
 
 
 @dataclass(eq=False)
@@ -36,6 +42,7 @@ class LoadedKey:
     version: int
     state: str
     material: bytearray = field(repr=False)
+    provider: str = "local"
 
     def __repr__(self) -> str:
         return f"LoadedKey({self.purpose}:{self.data_class} v{self.version} {self.state})"
@@ -46,7 +53,10 @@ class Keyring:
         self._keys: dict[UUID, LoadedKey] = {}
         self._active: dict[tuple[str, str], LoadedKey] = {}
         self._marca_cargada: tuple[int, datetime | None, str | None] = (0, None, None)
-        self.provider: KeyProvider | None = None
+        self.provider: KeyProvider | None = None  # el último que abrió una fila (informativo)
+        self._resolver: ProviderResolver | None = None
+        self._providers: dict[str, KeyProvider] = {}
+        self._classes: frozenset[str] | None = None
 
     def __repr__(self) -> str:
         return f"Keyring(llaves={len(self._keys)}, activas={len(self._active)})"
@@ -65,10 +75,22 @@ class Keyring:
                 "key_missing", f"no hay llave {purpose} activa para {data_class}"
             ) from None
 
-    async def _load_rows(
-        self, session: AsyncSession, provider: KeyProvider, rows: list[CryptoKey]
-    ) -> None:
+    @property
+    def resolver(self) -> ProviderResolver | None:
+        return self._resolver
+
+    def provider_for(self, name: str) -> KeyProvider:
+        """Proveedor de una fila (S5-D3): se resuelve al pedirlo y se guarda."""
+        if name not in self._providers:
+            if self._resolver is None:
+                raise CryptoUnavailable("not_loaded")
+            self._providers[name] = self._resolver(name)
+        return self._providers[name]
+
+    async def _load_rows(self, session: AsyncSession, rows: list[CryptoKey]) -> None:
         for fila in rows:
+            if self._classes is not None and fila.data_class not in self._classes:
+                continue
             existente = self._keys.get(fila.id)
             if existente is not None:
                 existente.state = fila.state
@@ -78,7 +100,9 @@ class Keyring:
                     # conserva en todos los estados porque la pública sigue verificando (Q27).
                     material = bytearray(fila.wrapped_material)
                 elif fila.state in LOADABLE_STATES:
-                    material = bytearray(await provider.unwrap(fila.wrapped_material))
+                    proveedor = self.provider_for(fila.provider)
+                    self.provider = proveedor
+                    material = bytearray(await proveedor.unwrap(fila.wrapped_material))
                     oplog.record(
                         "unwrap",
                         data_class=fila.data_class,
@@ -94,6 +118,7 @@ class Keyring:
                     version=fila.version,
                     state=fila.state,
                     material=material,
+                    provider=fila.provider,
                 )
                 self._keys[fila.id] = existente
             par = (fila.purpose, fila.data_class)
@@ -114,17 +139,25 @@ class Keyring:
         ).one()
         return int(fila[0]), fila[1], fila[2]
 
-    async def load_all(self, session: AsyncSession, provider: KeyProvider) -> None:
-        self.provider = provider
+    async def load_all(
+        self,
+        session: AsyncSession,
+        resolver: ProviderResolver,
+        *,
+        classes: frozenset[str] | None = None,
+    ) -> None:
+        self._resolver = resolver
+        self._classes = classes
+        self._providers = {}
         filas = list((await session.scalars(select(CryptoKey).order_by(CryptoKey.version))).all())
-        await self._load_rows(session, provider, filas)
+        await self._load_rows(session, filas)
         self._marca_cargada = await self._marca(session)
 
     async def refresh_if_stale(self, session: AsyncSession, provider: KeyProvider) -> bool:
         """Recarga si cambió el conteo o el último `updated_at`. Devuelve si recargó."""
         if await self._marca(session) == self._marca_cargada:
             return False
-        await self.load_all(session, provider)
+        await self.load_all(session, self._resolver or (lambda _n: provider), classes=self._classes)
         return True
 
     async def ensure_loaded(
@@ -136,7 +169,9 @@ class Keyring:
         fila = await session.get(CryptoKey, key_id)
         if fila is None:
             return None
-        await self._load_rows(session, provider, [fila])
+        if self._resolver is None:
+            self._resolver = lambda _n: provider
+        await self._load_rows(session, [fila])
         return self._keys.get(key_id)
 
 
@@ -144,13 +179,14 @@ _current: Keyring | None = None
 
 
 def configure_keyring(keyring: Keyring | None) -> None:
-    global _current
+    global _current, _proximo_intento
     _current = keyring
+    _proximo_intento = 0.0
 
 
 def current_keyring() -> Keyring:
     if _current is None:
-        raise CryptoError("crypto_unavailable", "el keyring no está cargado (ensure_keys)")
+        raise CryptoUnavailable("not_loaded", "el keyring no está cargado (ensure_keys)")
     return _current
 
 
@@ -163,4 +199,13 @@ async def refresh_current(session: AsyncSession) -> None:
     keyring = _current
     if keyring is None:
         return
-    await keyring.refresh_if_stale(session, keyring.provider or current_provider())
+    global _proximo_intento
+    if _monotonic() < _proximo_intento:
+        return  # enfriamiento (S5-D162): ni consulta de la marca ni log en cada petición
+    try:
+        await keyring.refresh_if_stale(session, keyring.provider or current_provider())
+    except CryptoError as error:
+        # M-4: el custodio caído no tumba la petición; se conserva el keyring y se reintenta.
+        _proximo_intento = _monotonic() + REFRESH_COOLDOWN_S
+        razon = error.reason if isinstance(error, CryptoUnavailable) else error.code
+        logger.warning("keyring sin refrescar: %s", razon)

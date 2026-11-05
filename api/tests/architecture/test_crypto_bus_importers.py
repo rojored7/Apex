@@ -27,6 +27,8 @@ import ast
 from pathlib import Path
 from typing import Final
 
+import pytest
+
 APP: Final = Path(__file__).resolve().parents[2] / "src" / "app"
 PAQUETE: Final = "app.core.crypto"
 VIGILADOS: Final = frozenset({f"{PAQUETE}.bus", f"{PAQUETE}.types"})
@@ -275,3 +277,74 @@ def test_backup_check_y_backup_status_no_importan_el_bus() -> None:
         fuente = (APP / relativo).read_text(encoding="utf-8")
         assert importaciones(fuente) == {}, relativo
     assert "worker/jobs/backup_check.py" not in IMPORTADORES_REALES
+
+
+# S5-B1: `openbao_provider` solo lo importan los archivos de `core/crypto/` ----------------------
+
+PROVEEDOR: Final = f"{PAQUETE}.openbao_provider"
+
+
+def importa_el_proveedor(fuente: str, paquete: str = "app") -> bool:
+    """Import directo, relativo, `from app.core.crypto import openbao_provider`, acceso por
+    atributo sobre el paquete o `import_module` con cadena literal."""
+    arbol = ast.parse(fuente)
+    alias = _alias_del_paquete(arbol, paquete)
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.ImportFrom):
+            modulo = _absoluto(nodo, paquete)
+            if modulo == PROVEEDOR or (
+                modulo == PAQUETE and any(a.name == "openbao_provider" for a in nodo.names)
+            ):
+                return True
+        elif isinstance(nodo, ast.Import):
+            if any(a.name == PROVEEDOR for a in nodo.names):
+                return True
+        elif isinstance(nodo, ast.Call) and nodo.args and isinstance(nodo.args[0], ast.Constant):
+            if nodo.args[0].value == PROVEEDOR:
+                return True
+        elif isinstance(nodo, ast.Attribute) and nodo.attr == "openbao_provider":
+            if _dotted(nodo.value) in alias:
+                return True
+    return False
+
+
+def _importadores_del_proveedor() -> set[str]:
+    return {
+        archivo.relative_to(APP).as_posix()
+        for archivo in sorted(APP.rglob("*.py"))
+        if importa_el_proveedor(
+            archivo.read_text(encoding="utf-8"), _paquete_de(archivo.relative_to(APP).as_posix())
+        )
+    }
+
+
+def test_openbao_provider_solo_lo_importan_archivos_de_core_crypto() -> None:
+    fuera = sorted(r for r in _importadores_del_proveedor() if not r.startswith("core/crypto/"))
+    assert fuera == [], fuera
+
+
+def test_openbao_provider_tiene_al_menos_un_importador_en_core_crypto() -> None:
+    """Sin esto la regla anterior no vigilaría nada: `provider.get_provider_named` lo construye
+    (import perezoso) y el Verde lo cablea."""
+    assert _importadores_del_proveedor(), "nadie importa openbao_provider todavía"
+
+
+@pytest.mark.parametrize(
+    "fuente",
+    [
+        "from app.core.crypto.openbao_provider import OpenBaoProvider\n",
+        "from app.core.crypto import openbao_provider\n",
+        "import app.core.crypto.openbao_provider\n",
+        "import importlib\nimportlib.import_module('app.core.crypto.openbao_provider')\n",
+        "import app.core.crypto as c\nc.openbao_provider.OpenBaoProvider\n",
+    ],
+)
+def test_control_importar_el_proveedor_desde_un_modulo_se_detecta(fuente: str) -> None:
+    assert importa_el_proveedor(fuente)
+
+
+def test_control_importes_relativos_y_ajenos() -> None:
+    assert importa_el_proveedor("from ...core.crypto import openbao_provider\n", "app.modules.x")
+    assert importa_el_proveedor("from .openbao_provider import KEK_KEY\n", "app.core.crypto")
+    assert not importa_el_proveedor("from app.core.crypto.provider import KeyProvider\n")
+    assert not importa_el_proveedor("from app.core.crypto import digest\n")

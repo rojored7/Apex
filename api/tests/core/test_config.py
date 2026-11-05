@@ -515,7 +515,9 @@ def test_non_api_env_vars_contiene_las_de_operacion_y_las_diez_de_antes() -> Non
     # S4B-W0-3 (E7): `DATABASE_URL` pasa a `.env.ops.example` pero es un campo de `Settings`:
     # si estuviera en NON_API_ENV_VARS, el origen dotenv lo descartaria y el api no arrancaria.
     ajenas = claves - set(Settings.model_fields)
-    assert NON_API_ENV_VARS == antes | ajenas
+    # S5-W0-4 (S5-D150): estas dos van comentadas en `.env.ops.example`; las lee solo Compose.
+    de_roles = {"MIGRATE_DB_PASSWORD", "TOOLS_DB_PASSWORD"}
+    assert NON_API_ENV_VARS == antes | ajenas | de_roles
     assert "DATABASE_URL" not in NON_API_ENV_VARS
 
 

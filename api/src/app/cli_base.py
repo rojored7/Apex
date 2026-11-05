@@ -162,15 +162,17 @@ async def crypto_runtime(
     (no para los de KEK, S4B-D62). Sin KEK sale con 2 y un mensaje sin ruta. `persist_keys=False`
     no escribe llaves nuevas (`--dry-run`)."""
     from app.core.crypto.errors import CryptoError
-    from app.core.crypto.provider import configure_provider, get_key_provider
+    from app.core.crypto.provider import configure_provider, get_provider_named, make_resolver
 
     try:
-        configure_provider(get_key_provider(settings))
+        creacion = get_provider_named(settings, settings.CRYPTO_PROVIDER)
+        configure_provider(creacion)
+        resolver = make_resolver(settings, creation=creacion)
     except CryptoError:
         typer.echo("proveedor de llaves no disponible: revise CRYPTO_PROVIDER y la KEK", err=True)
         raise typer.Exit(code=2) from None
     from app.cli_keyring import load_keyring
 
     async with cli_runtime(settings, options) as session:
-        await load_keyring(session, persist=persist_keys)
+        await load_keyring(session, resolver, persist=persist_keys)
         yield session

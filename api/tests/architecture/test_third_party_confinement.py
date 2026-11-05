@@ -194,3 +194,31 @@ def test_pyrage_sigue_ausente_con_los_archivos_de_b3b_presentes() -> None:
 def test_control_pyrage_en_un_archivo_de_b3b_se_detectaria() -> None:
     assert terceros_importados("import pyrage\n") == {"pyrage"}
     assert terceros_importados("def f():\n    import subprocess\n") == {"subprocess"}
+
+
+# S5-B1: `httpx` confinado al proveedor de OpenBao (S5-D17, S5-D29) -------------------------------
+
+HTTPX_PERMITIDO: Final = frozenset({"core/crypto/openbao_provider.py"})  # B4 suma alerts_telegram
+
+
+def httpx_fuera_de_sitio(relativo: str, fuente: str) -> bool:
+    return relativo not in HTTPX_PERMITIDO and "httpx" in terceros_importados(fuente)
+
+
+def test_httpx_solo_en_el_proveedor_de_openbao() -> None:
+    fuera = sorted(importadores("httpx") - HTTPX_PERMITIDO)
+    assert fuera == [], fuera
+
+
+def test_httpx_tiene_exactamente_un_importador_real_el_proveedor() -> None:
+    assert importadores("httpx") == HTTPX_PERMITIDO
+
+
+@pytest.mark.parametrize(
+    "relativo", ["core/health.py", "core/alerts.py", "main.py", "modules/members/service.py"]
+)
+def test_control_httpx_fuera_del_proveedor_falla(relativo: str) -> None:
+    assert httpx_fuera_de_sitio(relativo, "import httpx\n")
+    assert httpx_fuera_de_sitio(relativo, "from httpx import AsyncClient\n")
+    assert httpx_fuera_de_sitio(relativo, "import importlib\nimportlib.import_module('httpx')\n")
+    assert not httpx_fuera_de_sitio("core/crypto/openbao_provider.py", "import httpx\n")

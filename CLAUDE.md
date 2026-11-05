@@ -60,6 +60,7 @@ apex/
         pdf.py           # render_text_pdf: escritor de PDF propio, una página A4 en Courier (Sprint 5, S5-D65)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
           registry.py    #   registro de data_class y puerto Reencryptor
+          provider.py    #   puerto KeyProvider (name, status, rewrap), get_provider_named y make_resolver: proveedor por fila de crypto_keys (Sprint 5, S5-D3)
           openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao
           state.py       #   estado del proveedor y health_state puro (Sprint 5, S5-D13)
           recovery.py    #   sondeo y try_load de las DEK tras el sellado (Sprint 5, S5-D16, D70)

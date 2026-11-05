@@ -226,3 +226,54 @@ def test_los_eventos_de_notifications_no_llevan_datos_personales_ni_texto_libre(
         e for e in eventos_de_la_app() if e.__module__.startswith("app.modules.notifications")
     ]
     assert [v for e in propios for v in violaciones(e)] == []
+
+
+# S5-B7 (S5-D24, S5-D26, S3-D70): los cuatro eventos de avisos ---------------------------------
+
+EVENTOS_DE_AVISOS: dict[str, set[str]] = {
+    "NotificationQueued": {
+        "occurred_at",
+        "notification_id",
+        "member_id",
+        "rule_id",
+        "channel",
+        "target_date",
+    },
+    "NotificationSent": {"occurred_at", "notification_id", "member_id", "channel"},
+    "NotificationFailed": {"occurred_at", "notification_id", "member_id", "channel"},
+    "NotificationSkipped": {"occurred_at", "notification_id", "member_id", "channel"},
+}
+
+
+@pytest.mark.parametrize("nombre", sorted(EVENTOS_DE_AVISOS))
+def test_los_eventos_de_avisos_solo_llevan_ids_canal_y_fecha(nombre: str) -> None:
+    """Se exportan desde `notifications.service` y no llevan nombres, teléfonos, correos, motivos
+    (`skip_reason`) ni errores (`last_error`): solo ids, el canal y, en `Queued`, la fecha."""
+    from app.modules.notifications import service as notifications_service
+
+    evento = getattr(notifications_service, nombre)
+    assert {campo.name for campo in dataclasses.fields(evento)} == EVENTOS_DE_AVISOS[nombre]
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+    assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]
+    assert "__slots__" in vars(evento)
+    tipos = typing.get_type_hints(evento)
+    assert _es_codigo_cerrado(tipos["channel"])
+    if nombre == "NotificationQueued":
+        assert tipos["target_date"] is date
+
+
+def test_notification_skipped_no_lleva_el_motivo_ni_nada_de_texto_libre() -> None:
+    from app.modules.notifications import service as notifications_service
+
+    campos = {c.name for c in dataclasses.fields(notifications_service.NotificationSkipped)}
+    assert not campos & {"reason", "skip_reason", "last_error", "error", "message", "body"}
+
+
+def test_notifications_emite_exactamente_los_cuatro_eventos() -> None:
+    propios = {
+        e.__name__
+        for e in eventos_de_la_app()
+        if e.__module__.startswith("app.modules.notifications")
+    }
+    assert propios == set(EVENTOS_DE_AVISOS)

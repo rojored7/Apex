@@ -1000,3 +1000,13 @@ Guía completa: `docs/operacion/avisos.md`.
 - **Telegram no avisa.** `credentials_present.telegram = true` exige token y chat. El log (`app.alerts.telegram`) registra solo `error_type` o el `http_status`; el token nunca aparece. Un `401` es token inválido; `400` es chat inexistente o el bot sin permiso en el grupo.
 - **Un comando termina antes de que salga la alerta.** `worker --run-once` y el apagado del api esperan las alertas pendientes (`flush`); un `kill -9` las pierde.
 - **Mailpit y `telegram-fake` no existen en producción.** Solo con `--profile avisos` sobre `compose.dev.yml`; `compose.yml` no los nombra.
+
+### Avisos del día: generar, WhatsApp, omitir (S5-B7; US-124, US-127 a US-130)
+
+Guía completa: `docs/operacion/avisos.md` §10.
+
+- **No aparecen avisos hoy.** `$DC --profile tools run --rm tools notify --generate-only --as <correo>`: si imprime `sin reglas sí`, no hay reglas activas (`seed-notifications`); `sin consentimiento N` grande, los socios no tienen autorización de datos. Repetirlo es seguro (idempotente).
+- **Un aviso quedó `skipped` con `plantilla_invalida`.** La plantilla o el nombre del socio dejó un salto de línea en el asunto; corrija la plantilla (`PATCH /notification-templates/{id}`). El aviso omitido no se regenera.
+- **`wa-link` da 422 `member_without_phone`.** El socio no tiene teléfono: edítelo en su ficha. El aviso sigue pendiente.
+- **Auditoría de un envío por WhatsApp.** Filas `reveal` con `after = {"field": "phone", "purpose": "notify"}` en `audit.audit_log` y `decrypt` con `purpose=notify` en `crypto.crypto_ops`, una por llamada.
+- **Permisos de base.** `notifications.notifications`: api `S I U`; worker `S I` y `U` solo en `status, attempts, last_error, sent_at, sent_by, updated_at`. Nadie borra.

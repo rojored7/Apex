@@ -5,6 +5,7 @@
   transacción que siempre se revierte; da `(sqlstate, constraint_name)` del primer error o
   `("", None)`.
 - `plantilla(**cambios)` y `regla(template_id, **cambios)`: filas válidas por defecto.
+- `aviso(rule_id, **cambios)` (S5-B7): fila válida de `notifications.notifications`.
 - `insert(tabla, fila)`: el paso `INSERT` de una fila de `notifications.<tabla>`.
 """
 
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -116,3 +118,21 @@ def resultados(url: str, escenarios: Sequence[Sequence[Paso]]) -> list[tuple[str
             await conexion.close()
 
     return asyncio.run(correr())
+
+
+def aviso(rule_id: object, **cambios: object) -> dict[str, object]:
+    """Fila válida de `notifications.notifications` (S5-B7); ids de socio y membresía sueltos."""
+    fila: dict[str, object] = {
+        "id": uuid4(),
+        "created_by": SYSTEM_USER_ID,
+        "rule_id": rule_id,
+        "member_id": uuid4(),
+        "membership_id": uuid4(),
+        "target_date": date(2026, 11, 5),
+        "channel": "whatsapp_link",
+        "status": "pending",
+        "rendered_subject": "Asunto",
+        "rendered_body": "Hola Ana",
+    }
+    fila.update(cambios)
+    return fila

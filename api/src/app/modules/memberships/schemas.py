@@ -195,3 +195,15 @@ class MemberMembership:
     plan_id: UUID
     plan_name: str
     end_date: date
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationCandidate:
+    """Una membresía candidata a aviso (S5-B7, S5-D26; contrato de `notification_candidates`):
+    solo ids, fechas y el nombre del plan. Ni el nombre del socio ni sus datos de contacto: los
+    trae `notifications` por lote de `members.service`."""
+
+    member_id: UUID
+    membership_id: UUID
+    end_date: date
+    plan_name: str

@@ -16,8 +16,8 @@ con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-
 `memberships.membership_freezes` (sin `__audit_subject__`: la tabla no tiene `member_id`; la fila
 `update` de la membresía lleva el socio; anotado para US-106) y S3-B3 mueve `payments.payments`
 (con `__audit_subject__ = "member_id"`, G-05).
-`PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`,
-`notifications.notifications`) para no dejar vacía la parametrización.
+`PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`) para no dejar vacía la
+parametrización; S5-B7 mueve `notifications.notifications` a las requeridas (con sujeto de socio).
 
 S4A-B8 (S4A-D61 b, L-10): todo modelo con `__audited__ = True` está en la constante única
 `audit/queries.py::AUDITABLE_TABLES`, y toda tabla de esa constante está en
@@ -61,6 +61,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "members.member_channel_preferences",
         "notifications.notification_templates",
         "notifications.notification_rules",
+        "notifications.notifications",
         "plans.plans",
         "memberships.memberships",
         "memberships.membership_freezes",
@@ -69,7 +70,6 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
 )
 PENDING_AUDITED: dict[str, str] = {
     "classes.class_sessions": "Sprint 7",
-    "notifications.notifications": "Sprint 5",
 }
 
 
@@ -302,6 +302,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "members.member_channel_preferences",  # S5-B5
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
+        "notifications.notifications",  # S5-B7
     }
     assert not any(t.startswith("crypto.") for t in RECENT_TABLES_ALLOWED)
 
@@ -327,11 +328,14 @@ def test_control_una_tabla_sin_destino_o_sin_motivo_falla() -> None:
 
 def test_notifications_declara_plantillas_y_reglas_auditadas_y_su_modulo_esta_en_modules() -> None:
     """S5-B6 (S5-D24): las dos tablas son requeridas, su módulo está en `MODULES` y no declaran
-    sujeto de socio (son configuración); `notifications.notifications` sigue pendiente (B7)."""
+    sujeto de socio (son configuración); `notifications.notifications` (B7) sí lo lleva."""
     tablas = _tablas_de_la_app()
     assert "notifications" in MODULES
     for tabla in ("notifications.notification_templates", "notifications.notification_rules"):
         assert tabla in REQUIRED_AUDITED_TABLES_V01 and tabla not in PENDING_AUDITED
         assert getattr(tablas[tabla], "__audited__", False) is True, tabla
         assert getattr(tablas[tabla], "__audit_subject__", None) is None, tabla
-    assert "notifications.notifications" in PENDING_AUDITED
+    assert "notifications.notifications" in REQUIRED_AUDITED_TABLES_V01
+    assert "notifications.notifications" not in PENDING_AUDITED
+    assert getattr(tablas["notifications.notifications"], "__audited__", False) is True
+    assert tablas["notifications.notifications"].__audit_subject__ == "member_id"  # type: ignore[attr-defined]

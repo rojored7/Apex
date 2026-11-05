@@ -282,10 +282,12 @@ def test_control_un_privado_ajeno_y_un_models_ajeno_se_detectan() -> None:
     )
 
 
-def test_los_privados_de_notifications_son_los_de_b6() -> None:
-    """S5-B6 (S5-D23): `rules`, `templates` y `rules_crud` son privados de `notifications` y solo
-    ese módulo los importa; el resto de sus archivos llega en B7 y B8."""
-    assert frozenset({"rules", "templates", "rules_crud"}) == PRIVATE_HELPERS["notifications"]
+def test_los_privados_de_notifications_son_los_de_b7() -> None:
+    """S5-B6 (S5-D23) y S5-B7: `rules`, `templates`, `rules_crud`, `generate`, `queries`,
+    `whatsapp`, `sending` y `events` son privados de `notifications` y solo ese módulo los
+    importa; `service.py` es la fachada."""
+    esperados = {"rules", "templates", "rules_crud", "generate", "queries", "whatsapp"}
+    assert frozenset(esperados | {"sending", "events"}) == PRIVATE_HELPERS["notifications"]
     for archivo in PRIVATE_HELPERS["notifications"]:
         assert (MODULES_DIR / "notifications" / f"{archivo}.py").is_file(), archivo
 

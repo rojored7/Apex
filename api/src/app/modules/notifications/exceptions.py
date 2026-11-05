@@ -73,3 +73,43 @@ class SeedInProgress(NotificationError):
     status = 409
     code = "seed_in_progress"
     default_message = "siembra en curso por otro proceso; reintente"
+
+
+class NotificationNotFound(NotificationError):
+    status = 404
+    code = "notification_not_found"
+    default_message = "No se encontró el aviso."
+
+
+class NotificationClosed(NotificationError):
+    """El aviso ya está `sent` o `skipped` y no se puede omitir, o está `skipped` y se pide su
+    enlace de WhatsApp (S5-B7, US-129)."""
+
+    status = 409
+    code = "notification_closed"
+    default_message = "El aviso ya está cerrado."
+
+
+class WrongChannel(NotificationError):
+    """Se pidió el enlace de WhatsApp de un aviso que no es de ese canal (S5-D27)."""
+
+    status = 409
+    code = "wrong_channel"
+    default_message = "El aviso no es de WhatsApp."
+
+
+class MemberWithoutPhone(NotificationError):
+    """El socio no tiene teléfono guardado: no hay enlace de WhatsApp posible (S5-D27)."""
+
+    status = 422
+    code = "member_without_phone"
+    default_message = "El socio no tiene teléfono."
+
+
+class InvalidPhone(NotificationError):
+    """El teléfono guardado no es un celular colombiano (S5-D224). Texto fijo: nunca repite el
+    número."""
+
+    status = 422
+    code = "invalid_phone"
+    default_message = "El teléfono del socio no es un celular válido."

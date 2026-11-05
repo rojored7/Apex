@@ -58,7 +58,7 @@ S3-B7 (US-091, US-092; D5, D18, M-4, M-10, S3-D53, S3-D60, E11, E13). `list` som
 from __future__ import annotations
 
 import builtins
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from datetime import date
 from typing import Any, Final
 from uuid import UUID
@@ -100,6 +100,7 @@ from app.modules.memberships.schemas import (
     MembershipOut,
     MembershipRef,
     MembershipRow,
+    NotificationCandidate,
 )
 from app.modules.payments import service as payments_service
 from app.modules.plans import service as plans_service
@@ -601,3 +602,64 @@ async def counts_active_by_plans(
         for plan_id, cantidad in await session.execute(consulta):
             salida[plan_id] = int(cantidad)
     return salida
+
+
+# Candidatos a aviso (S5-B7, US-124; S5-D26, N-35, E7) --------------------------------------------
+
+
+async def notification_candidates(
+    session: AsyncSession, on_dates: Collection[date]
+) -> builtins.list[NotificationCandidate]:
+    """Membresías no anuladas ni pendientes de pago cuya fecha de fin cae en `on_dates`, con el
+    socio (id, aunque esté dado de baja), el plan (su nombre, por `names_for` de plans) y el fin.
+    Una sola consulta a `memberships.memberships` para todas las fechas (no trocea: son a lo más
+    16 por regla), sin JOIN a otros esquemas; sin fechas no consulta nada. Orden `end_date, id`.
+    Sin índice por `end_date`: seq scan diario aceptado con dueño v0.3 (S5-D226)."""
+    fechas = sorted(set(on_dates))
+    if not fechas:
+        return []
+    consulta = (
+        select(Membership.id, Membership.member_id, Membership.plan_id, Membership.end_date)
+        .where(
+            Membership.end_date.in_(fechas),
+            Membership.status.notin_(
+                (MembershipStatus.cancelled.value, MembershipStatus.pending_payment.value)
+            ),
+        )
+        .order_by(Membership.end_date, Membership.id)
+    )
+    filas = (await session.execute(consulta)).all()
+    planes = await plans_service.names_for(session, (fila.plan_id for fila in filas))
+    return [
+        NotificationCandidate(
+            member_id=fila.member_id,
+            membership_id=fila.id,
+            end_date=fila.end_date,
+            plan_name=planes[fila.plan_id],
+        )
+        for fila in filas
+    ]
+
+
+async def has_current_or_future(
+    session: AsyncSession, member_ids: Collection[UUID], today: date
+) -> set[UUID]:
+    """Ids (de `member_ids`) con una membresía no anulada cuyo estado efectivo no es `expired`:
+    vigente (`active`, `expiring`, `frozen`), futura o `pending_payment` (S5-D217 punto 3: una
+    venta pendiente de pago ya cuenta como renovación, N-35: no se avisa como vencido a quien
+    volvió). Por lote, una consulta por trozo de `ID_BATCH`."""
+    buscados = builtins.list(dict.fromkeys(member_ids))
+    # `expiring_days = 0`: aquí `expiring` y `active` cuentan igual, no hace falta la política.
+    estado = status_expr(today, 0)
+    vigentes: set[UUID] = set()
+    for lote in chunked(buscados):
+        consulta = (
+            select(Membership.member_id)
+            .where(
+                Membership.member_id == any_uuids(lote),
+                estado.notin_((MembershipStatus.cancelled.value, MembershipStatus.expired.value)),
+            )
+            .distinct()
+        )
+        vigentes.update(await session.scalars(consulta))
+    return vigentes

@@ -104,6 +104,14 @@ CON_LIMITE = {
     ("post", "/api/v1/notification-rules"),
     ("get", "/api/v1/notification-rules/{rule_id}"),
     ("patch", "/api/v1/notification-rules/{rule_id}"),
+    # S5-B7 (US-124, US-127 a US-130, S5-D59, S5-D81): `wa-link` consume `members-reveal*`, `skip`
+    # `notifications-write` y las cuatro lecturas `staff-read`.
+    ("get", "/api/v1/notifications/today"),
+    ("get", "/api/v1/notifications"),
+    ("get", "/api/v1/notifications/{notification_id}"),
+    ("post", "/api/v1/notifications/{notification_id}/wa-link"),
+    ("post", "/api/v1/notifications/{notification_id}/skip"),
+    ("get", "/api/v1/members/{member_id}/notifications"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},
@@ -134,9 +142,15 @@ def _operaciones(esquema: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]
     ]
 
 
+# `wa-link` descifra el teléfono: declara también el 400 de `MemberNotContactable` (S5-D224) y por
+# eso, con 401/403 del rol y 404/409/422/429/500, publica los ocho. Es la única excepción.
+EXENTAS_DE_LOS_OCHO = frozenset({"post /api/v1/notifications/{notification_id}/wa-link"})
+
+
 def test_ninguna_operacion_declara_los_ocho_genericos(esquema: dict[str, Any]) -> None:
     todos = [f"{m} {r}" for m, r, op in _operaciones(esquema) if GENERICOS <= set(op["responses"])]
-    assert todos == []
+    assert set(todos) - EXENTAS_DE_LOS_OCHO == set()
+    assert len(todos) == len(set(todos))
 
 
 @pytest.mark.parametrize("ruta", ["/health", "/api/v1/health"])

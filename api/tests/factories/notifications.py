@@ -7,17 +7,24 @@
 - `DEFAULT_TEMPLATES` y `DEFAULT_RULES`: el ORÁCULO de la siembra (S5-D25): dos plantillas y cinco
   reglas, todas `whatsapp_link`. `seed_defaults_db(session)` las inserta directo con el ORM
   (sin pasar por `notifications.service`) para que otras pruebas partan de ellas.
+- `make_notification(session, rule=None, **cambios)` (S5-B7): inserta un aviso `pending` por ORM
+  bajo `actor_scope(SYSTEM_USER_ID)` (la auditoría lo ve), con `flush`, commit del savepoint y
+  `expunge`. Sin `rule` crea una regla; `member_id` y `membership_id` por defecto son ids sueltos
+  (la tabla no tiene FK hacia otros esquemas); `target_date` por defecto es el "hoy" de Bogotá del
+  reloj. Si el estado es `skipped` pone un motivo y si es `sent` pone `sent_at`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Final
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
-from app.modules.notifications.models import NotificationRule, NotificationTemplate
+from app.modules.notifications.models import Notification, NotificationRule, NotificationTemplate
 
 SOON: Final = "Vence pronto"
 EXPIRED: Final = "Venció"
@@ -111,3 +118,33 @@ async def seed_defaults_db(
         for d in DEFAULT_RULES
     ]
     return plantillas, reglas
+
+
+async def make_notification(
+    session: AsyncSession, rule: NotificationRule | None = None, **cambios: Any
+) -> Notification:
+    regla = rule or await make_rule(session)
+    valores: dict[str, Any] = {
+        "rule_id": regla.id,
+        "member_id": uuid4(),
+        "membership_id": uuid4(),
+        "target_date": current_clock().today_bogota(),
+        "channel": regla.channel,
+        "status": "pending",
+        "rendered_subject": "Tu membresía vence pronto",
+        "rendered_body": "Hola Lucía, tu plan Mensual vence el 24 oct 2026 (en 3 días).",
+        "attempts": 0,
+        "created_by": SYSTEM_USER_ID,
+    }
+    valores.update(cambios)
+    if valores["status"] == "skipped":
+        valores.setdefault("skip_reason", "Motivo de prueba")
+    if valores["status"] == "sent":
+        valores.setdefault("sent_at", current_clock().now_utc())
+    aviso = Notification(**valores)
+    with actor_scope(SYSTEM_USER_ID):
+        session.add(aviso)
+        await session.flush()
+        await session.commit()
+        session.expunge(aviso)
+    return aviso

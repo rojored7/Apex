@@ -28,6 +28,9 @@
 --                                     cancelled_at, updated_at)
 --   notifications.notification_rules     S I U                        S
 --   notifications.notification_templates S I U                        S
+--   notifications.notifications          S I U                        S I U(status, attempts, last_error,
+--                                                                       sent_at, sent_by, skip_reason,
+--                                                                       updated_at)
 --   payments.payments               S I(sin void_reason, voided_by,   -
 --                                     voided_at) U(voided, void_reason,
 --                                     voided_by, voided_at, updated_at)
@@ -49,6 +52,7 @@
 -- clasificada: memberships.memberships
 -- clasificada: notifications.notification_rules
 -- clasificada: notifications.notification_templates
+-- clasificada: notifications.notifications
 -- clasificada: payments.payments
 -- clasificada: plans.plans
 -- clasificada: public.alembic_version
@@ -99,6 +103,8 @@ GRANT SELECT, INSERT ON memberships.membership_freezes TO apex_api;
 GRANT SELECT, INSERT ON memberships.memberships TO apex_api;
 -- S5-B6 (US-120, US-121): plantillas y reglas de aviso; sin DELETE (las reglas se desactivan).
 GRANT SELECT, INSERT, UPDATE ON notifications.notification_rules, notifications.notification_templates TO apex_api;
+-- S5-B7 (US-124, US-127 a US-130): avisos del dia; genera, omite y marca enviado; sin DELETE.
+GRANT SELECT, INSERT, UPDATE ON notifications.notifications TO apex_api;
 GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
 -- S5-D202: INSERT de pagos por columna; void_reason, voided_by y voided_at solo por la anulacion.
 GRANT SELECT ON payments.payments TO apex_api;
@@ -119,6 +125,9 @@ GRANT SELECT ON memberships.memberships TO apex_worker;
 GRANT SELECT ON members.member_channel_preferences TO apex_worker;
 -- S5-B6 (S5-D34): el job notify lee plantillas y reglas; no siembra ni edita.
 GRANT SELECT ON notifications.notification_rules, notifications.notification_templates TO apex_worker;
+-- S5-B7 (S5-D34): el job notify genera avisos y solo actualiza el resultado del envio (S5-D222: skip_reason para canal_no_configurado).
+GRANT SELECT, INSERT ON notifications.notifications TO apex_worker;
+GRANT UPDATE (status, attempts, last_error, sent_at, sent_by, skip_reason, updated_at) ON notifications.notifications TO apex_worker;
 GRANT UPDATE (status, updated_at) ON memberships.memberships TO apex_worker;
 GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 
@@ -135,6 +144,7 @@ DECLARE
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',
         'notifications.notification_rules', 'notifications.notification_templates',
+        'notifications.notifications',
         'payments.payments', 'plans.plans', 'public.alembic_version',
         'settings.settings_sections', 'worker.job_runs'];
     sin_clasificar text;

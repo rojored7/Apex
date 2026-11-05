@@ -5,34 +5,44 @@ Admin escribe; admin y coach leen; `member` recibe 403. Las escrituras consumen
 `notifications-write`; las lecturas y la vista previa (un POST que no escribe, S5-D216),
 `staff-read`. `POST /notification-templates/preview` se registra antes de `/{template_id}`. Las
 rutas no hacen `select`: validan, llaman al service y devuelven.
+
+S5-B7: avisos (`/notifications/today`, `/notifications`, `/notifications/{id}`, `POST .../wa-link`,
+`POST .../skip` y `/members/{id}/notifications`), para admin y coach.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
+from app.core.clock import current_clock
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
-from app.core.ratelimit import enforce_user_limit
+from app.core.ratelimit import PII_SEARCH_BUCKET, enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.notifications import service
 from app.modules.notifications.schemas import (
     Channel,
+    NotificationFilters,
+    NotificationOut,
     PreviewIn,
     PreviewOut,
     RuleCreate,
     RuleFilters,
     RuleOut,
     RulePatch,
+    SkipIn,
+    Status,
     TemplateCreate,
     TemplateOut,
     TemplatePatch,
     Trigger,
+    WaLinkOut,
 )
 
 router = APIRouter(
@@ -152,3 +162,116 @@ async def update_rule(
 ) -> RuleOut:
     await enforce_user_limit(request, "notifications-write", principal.user_id)
     return await service.update_rule(session, rule_id, body)
+
+
+# Avisos (S5-B7, US-124, US-127 a US-130) ---------------------------------------------------------
+# `/notifications/today` se registra antes de `/notifications/{notification_id}`. Admin y coach;
+# `member` recibe 403. Lecturas: `staff-read` (y `members-search` si llega `q`, que busca por
+# nombre de socio); `skip`: `notifications-write`; `wa-link`: las tres ventanas de `members-reveal`
+# (descifra un teléfono).
+
+
+async def _limitar_busqueda(request: Request, user_id: UUID, q: str | None) -> None:
+    if q is not None:
+        await enforce_user_limit(request, PII_SEARCH_BUCKET, user_id)
+
+
+@router.get(
+    "/notifications/today", response_model=Page[NotificationOut], responses=responses_for(429)
+)
+async def list_today(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+) -> Page[NotificationOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    await _limitar_busqueda(request, principal.user_id, q)
+    return await service.today_list(session, current_clock().today_bogota(), page, q)
+
+
+@router.get("/notifications", response_model=Page[NotificationOut], responses=responses_for(429))
+async def list_notifications(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    status: Status | None = None,
+    channel: Channel | None = None,
+    rule_id: UUID | None = None,
+    from_date: Annotated[date | None, Query(alias="from")] = None,
+    to_date: Annotated[date | None, Query(alias="to")] = None,
+) -> Page[NotificationOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    await _limitar_busqueda(request, principal.user_id, q)
+    filters = NotificationFilters(
+        q=q,
+        status=status,
+        channel=channel,
+        rule_id=rule_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return await service.list(session, filters, page)
+
+
+@router.get(
+    "/notifications/{notification_id}",
+    response_model=NotificationOut,
+    responses=responses_for(404, 429),
+)
+async def get_notification(
+    request: Request, notification_id: UUID, principal: StaffDep, session: Session
+) -> NotificationOut:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.get(session, notification_id)
+
+
+@router.post(
+    "/notifications/{notification_id}/wa-link",
+    response_model=WaLinkOut,
+    responses=responses_for(400, 404, 409, 422, 429),
+)
+async def notification_wa_link(
+    request: Request, notification_id: UUID, principal: StaffDep, session: Session
+) -> WaLinkOut:
+    # Literales: `test_user_limits_catalog.py` exige el bucket como constante en la llamada.
+    await enforce_user_limit(request, "members-reveal", principal.user_id)
+    await enforce_user_limit(request, "members-reveal-hour", principal.user_id)
+    await enforce_user_limit(request, "members-reveal-day", principal.user_id)
+    return await service.wa_link(session, notification_id, principal.user_id)
+
+
+@router.post(
+    "/notifications/{notification_id}/skip",
+    response_model=NotificationOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def skip_notification(
+    request: Request,
+    notification_id: UUID,
+    body: SkipIn,
+    principal: StaffDep,
+    session: Session,
+) -> NotificationOut:
+    await enforce_user_limit(request, "notifications-write", principal.user_id)
+    return await service.skip(session, notification_id, body.reason, principal.user_id)
+
+
+@router.get(
+    "/members/{member_id}/notifications",
+    response_model=Page[NotificationOut],
+    responses=responses_for(404, 429),
+)
+async def list_member_notifications(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,  # regla de datos 6: toda lista acepta q; esta la ignora
+) -> Page[NotificationOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_for_member(session, member_id, page)

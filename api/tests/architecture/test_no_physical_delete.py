@@ -32,6 +32,9 @@ MODELOS = (
     "CryptoKey",
     "CryptoOp",
     "AuditVerification",  # S4A-B3 (S4A-D74): append-only (N-30)
+    "Notification",  # S5-B7 (RN-14): los avisos se envían u omiten, no se borran
+    "NotificationRule",  # S5-B7: las reglas se desactivan
+    "NotificationTemplate",  # S5-B7: las plantillas no se borran
 )
 TABLAS = (
     "members.members",
@@ -44,6 +47,9 @@ TABLAS = (
     "crypto.crypto_keys",
     "crypto.crypto_ops",
     "audit.verifications",  # S4A-B3 (S4A-D74)
+    "notifications.notifications",  # S5-B7
+    "notifications.notification_rules",  # S5-B7
+    "notifications.notification_templates",  # S5-B7
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -94,6 +100,20 @@ def test_el_patron_detecta_cada_forma_de_borrado() -> None:
         "SQL = 'TRUNCATE audit.verifications'\n"
     )
     assert len(violaciones_en(fuente)) == 13
+
+
+def test_el_patron_detecta_el_borrado_de_avisos_reglas_y_plantillas() -> None:
+    """S5-B7 (RN-14): las tres tablas de `notifications` no se borran físicamente."""
+    fuente = (
+        "stmt = delete(Notification)\n"
+        "stmt = delete(NotificationRule)\n"
+        "stmt = delete(NotificationTemplate)\n"
+        "SQL = 'DELETE FROM notifications.notifications'\n"
+        "SQL = 'delete from notifications.notification_rules'\n"
+        "SQL = 'TRUNCATE notifications.notification_templates'\n"
+        "await session.delete(aviso)\n"
+    )
+    assert len(violaciones_en(fuente)) == 7
 
 
 def test_el_patron_deja_pasar_lo_legitimo() -> None:

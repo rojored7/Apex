@@ -331,3 +331,34 @@ def test_notifications_consume_notifications_write_en_escrituras_y_staff_read_en
         ("patch", f"{reglas}/{{rule_id}}"): "notifications-write",
     }
     assert {r: por_ruta.get(r) for r in esperado} == {r: [b] for r, b in esperado.items()}
+
+
+def test_las_rutas_de_avisos_consumen_sus_cubetas() -> None:
+    """S5-B7 (S5-D59, S5-D81, S5-D92): `POST .../wa-link` consume las tres ventanas de
+    `members-reveal` (descifra un teléfono); `POST .../skip`, `notifications-write`; las cuatro
+    lecturas, `staff-read` (con `members-search` si llega `q`, que no es una constante)."""
+    fuente = (MODULES / "notifications" / "router.py").read_text(encoding="utf-8")
+    por_ruta: dict[tuple[str, str] | None, list[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), []).extend(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    base = f"{API_PREFIX}/notifications"
+    assert por_ruta.get(("post", f"{base}/{{notification_id}}/wa-link")) == [
+        "members-reveal",
+        "members-reveal-hour",
+        "members-reveal-day",
+    ]
+    assert por_ruta.get(("post", f"{base}/{{notification_id}}/skip")) == ["notifications-write"]
+    for metodo, ruta in (
+        ("get", f"{base}/today"),
+        ("get", base),
+        ("get", f"{base}/{{notification_id}}"),
+        ("get", f"{API_PREFIX}/members/{{member_id}}/notifications"),
+    ):
+        assert por_ruta.get((metodo, ruta)) == ["staff-read"], ruta

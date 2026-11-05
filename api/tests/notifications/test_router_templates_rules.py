@@ -1,6 +1,7 @@
 """Plantillas y reglas de aviso por HTTP (S5-B6, US-120 y US-121; S5-D24, S5-D25). # Rojo B6
 
-- Nueve rutas exactas; `POST /notification-templates/preview` va antes de `/{template_id}`.
+- Nueve rutas (desde B7 el router suma las de avisos); `POST /notification-templates/preview`
+  va antes de `/{template_id}`.
 - Roles: el admin escribe; el coach lee y recibe 403 al escribir (sin efectos); `member` 403 en
   todo; sin token 401.
 - Contrato: claves exactas de `TemplateOut` y `RuleOut`, `Cache-Control: no-store`, 201 en las
@@ -62,14 +63,15 @@ TOPE_LECTURAS = 120
 # Estructura -------------------------------------------------------------------------------------
 
 
-def test_el_router_publica_exactamente_las_nueve_rutas() -> None:
+def test_el_router_publica_las_nueve_rutas_de_plantillas_y_reglas() -> None:
     publicadas = {
         (metodo, ruta.path)
         for ruta in router.routes
         if isinstance(ruta, APIRoute)
         for metodo in ruta.methods
     }
-    assert publicadas == RUTAS
+    # S5-B7 suma las seis de avisos (`test_router_notifications.py`).
+    assert RUTAS <= publicadas
 
 
 def test_la_vista_previa_se_registra_antes_de_la_plantilla_por_id() -> None:

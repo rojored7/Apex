@@ -71,6 +71,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "members.member_channel_preferences",
         "notifications.notification_templates",
         "notifications.notification_rules",
+        "notifications.notifications",
         "memberships.memberships",
         "memberships.membership_freezes",
         "payments.payments",
@@ -88,6 +89,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "members.member_channel_preferences": "preferencia de aviso, no es negocio ni configuración",
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",
+    "notifications.notifications": "un aviso por socio y regla al día: ruido para el tablero",
 }
 """Tablas auditadas que `recent` nunca lee, con su motivo (S4A-D61 b)."""
 RECENT_TABLES_ALLOWED: Final[frozenset[str]] = AUDITABLE_TABLES - frozenset(

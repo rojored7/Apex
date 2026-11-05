@@ -67,6 +67,10 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("memberships", "payments"),
         ("memberships", "plans"),
         ("memberships", "settings"),
+        # S5-B7 (S5-D47): la generación lee `members` (canales, nombres) y `memberships`
+        # (candidatos, renovados) en un solo nivel; `settings` llega en B8.
+        ("notifications", "members"),
+        ("notifications", "memberships"),
         ("payments", "auth"),
         ("payments", "members"),
         ("payments", "settings"),
@@ -504,12 +508,23 @@ def test_find_cycle_detecta_un_ciclo_y_acepta_un_dag() -> None:
     assert find_cycle({"a": {"a"}}) == ["a", "a"]
 
 
-def test_notifications_no_importa_ningun_service_de_otro_modulo_en_b6() -> None:
-    """S5-B6 (S5-D212): la arista `notifications -> settings` (S5-D47) entra en `ALLOWED_EDGES` en
-    B8, cuando `sending` lee `settings.channels`; `members` y `memberships` llegan en B7 y
-    `dashboard -> notifications` en B9. En B6 no importa a ningún otro módulo, nadie lo importa y
-    no tiene perezosas."""
+def test_notifications_depende_de_members_y_memberships_a_nivel_de_modulo() -> None:
+    """S5-B7 (S5-D47, G-04): `generate.py` lee `members.service` (`channels_for`, `names_for`,
+    `search_ids`) y `memberships.service` (`notification_candidates`, `has_current_or_future`) en un
+    solo nivel y solo escribe en su esquema; nunca `plans` (el nombre del plan viaja en
+    `NotificationCandidate`) ni imports perezosos. Nadie importa `notifications` (ni siquiera
+    `dashboard`, que llega en un sprint posterior)."""
     arriba, perezosas = _grafo_real()
-    assert arriba["notifications"] == set()
+    assert arriba["notifications"] == {"members", "memberships"}
     assert perezosas["notifications"] == set()
     assert {a for a, destinos in arriba.items() if "notifications" in destinos} == set()
+
+
+def test_ningun_archivo_de_notifications_pasa_de_los_dos_vecinos_de_b7() -> None:
+    """Los vecinos se importan en `generate.py`/`queries.py`/`service.py`, no en `rules.py`,
+    `templates.py` ni `rules_crud.py` (puros o de solo su tabla)."""
+    puros = ("rules.py", "templates.py", "rules_crud.py", "whatsapp.py", "events.py", "models.py")
+    for nombre in puros:
+        fuente = (MODULES_DIR / "notifications" / nombre).read_text(encoding="utf-8")
+        arriba, perezosas = service_edges(fuente, "notifications")
+        assert arriba == set() and perezosas == set(), nombre

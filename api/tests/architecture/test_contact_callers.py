@@ -182,3 +182,36 @@ def test_control_el_analizador_detecta_import_estrella_getattr_y_concatenacion()
     `contact_` (también concatenado) y una concatenación literal que forma el nombre."""
     assert referencias(FUENTE_MALA_REVISION) == [2, 3, 6, 7, 8]
     assert referencias(FUENTE_LIMPIA_REVISION) == []
+
+
+# S5-B7 (S5-D32): el único llamador existe por fin --------------------------------------------
+
+
+def test_notifications_service_es_el_unico_llamador_real() -> None:
+    """`wa_link` (y la carga de contacto que se inyecta a `sending`) llaman a
+    `contact_for_notification` desde `modules/notifications/service.py`; ningún otro archivo de
+    `notifications` (`generate`, `sending`, `queries`, `router`...) la referencia."""
+    fuera_de_members = {r for r in _con_referencias() if not r.startswith(MEMBERS)}
+    assert fuera_de_members == CONTACT_CALLERS
+
+
+def test_la_llamada_de_wa_link_pide_solo_el_telefono_con_proposito_notify() -> None:
+    """Por AST: dentro de `service.py` toda llamada a `contact_for_notification` pasa el propósito
+    literal `"notify"` y `fields=` con el teléfono; nunca la llamada sin `fields` (que descifraría
+    también el correo)."""
+    fuente = (APP / "modules/notifications/service.py").read_text(encoding="utf-8")
+    llamadas = [
+        n
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.Call)
+        and (
+            (isinstance(n.func, ast.Attribute) and n.func.attr == NOMBRE)
+            or (isinstance(n.func, ast.Name) and n.func.id == NOMBRE)
+        )
+    ]
+    assert llamadas, "service.py debe llamar a contact_for_notification"
+    for llamada in llamadas:
+        assert any(isinstance(a, ast.Constant) and a.value == "notify" for a in llamada.args)
+        campos = [k for k in llamada.keywords if k.arg == "fields"]
+        assert len(campos) == 1, ast.unparse(llamada)
+        assert '"phone"' in ast.unparse(campos[0].value).replace("'", '"')

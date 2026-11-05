@@ -68,7 +68,8 @@ def test_constantes_del_contrato() -> None:
 
 
 def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
-    """S4A-D61 b; S5-B5 y S5-B6 suman tres tablas (doce): la constante única; cada nombre cumple
+    """S4A-D61 b; S5-B5, S5-B6 y S5-B7 suman cuatro tablas (trece): la constante única; cada
+    nombre cumple
     el patrón del filtro `table`."""
     assert (
         frozenset(
@@ -77,6 +78,7 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "members.member_channel_preferences",
                 "notifications.notification_templates",
                 "notifications.notification_rules",
+                "notifications.notifications",
                 "memberships.memberships",
                 "memberships.membership_freezes",
                 "payments.payments",

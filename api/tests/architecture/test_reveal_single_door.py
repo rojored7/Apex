@@ -140,3 +140,19 @@ def test_el_analizador_detecta_llamadas_fuera_de_la_puerta_alias_y_decrypt() -> 
         (None, 15),
     ]
     assert de_decrypt == [13]
+
+
+# S5-B7 (S5-D27, S5-D32, M-9): el teléfono de un aviso sale por `contact_for_notification` ----
+
+
+def test_notifications_no_descifra_a_mano_ni_importa_el_bus() -> None:
+    """Ningún archivo de `modules/notifications/` llama a `types.reveal` ni a `bus.decrypt`, ni
+    importa `app.core.crypto`: el teléfono del enlace de WhatsApp se obtiene solo con
+    `members.service.contact_for_notification` (que audita `reveal` y escribe `crypto_ops`)."""
+    archivos = sorted((APP / "modules" / "notifications").rglob("*.py"))
+    assert archivos, "el módulo notifications debe existir"
+    for archivo in archivos:
+        fuente = archivo.read_text(encoding="utf-8")
+        de_reveal, de_decrypt = llamadas(fuente)
+        assert de_reveal == [] and de_decrypt == [], archivo.name
+        assert "app.core.crypto" not in fuente, archivo.name

@@ -172,6 +172,25 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
+    # S5-B7 (US-124, US-127 a US-130, S5-D34, P-ROL): el api genera, omite y marca enviado
+    # (sin DELETE); el worker inserta y solo actualiza el resultado del envío. Rojo B7.
+    "notifications.notifications": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_worker": (
+            frozenset({"SELECT", "INSERT"}),
+            frozenset(
+                {
+                    "status",
+                    "attempts",
+                    "last_error",
+                    "sent_at",
+                    "sent_by",
+                    "skip_reason",
+                    "updated_at",
+                }
+            ),
+        ),
+    },
     "payments.payments": {
         "apex_api": (
             # S5-D202: el `INSERT` es por columna (COLUMNAS_API_PAYMENTS_INSERT).
@@ -588,6 +607,8 @@ PROHIBIDAS_API = [
     "DELETE FROM members.member_channel_preferences",  # S5-B5: sin DELETE para el api
     "DELETE FROM notifications.notification_rules",  # S5-B6: sin DELETE para el api
     "DELETE FROM notifications.notification_templates",  # S5-B6: sin DELETE para el api
+    "DELETE FROM notifications.notifications",  # S5-B7: sin DELETE para el api
+    "TRUNCATE notifications.notifications",  # S5-B7
     "DELETE FROM memberships.memberships",
     "DELETE FROM crypto.crypto_keys",
     "UPDATE audit.audit_log SET action = 'x'",
@@ -628,6 +649,10 @@ PROHIBIDAS_WORKER = [
     "INSERT INTO notifications.notification_rules (id) VALUES (gen_random_uuid())",  # S5-B6
     "UPDATE notifications.notification_templates SET name = 'x'",  # S5-B6: `notify` no siembra
     "UPDATE notifications.notification_rules SET is_active = false",  # S5-B6
+    "UPDATE notifications.notifications SET rendered_body = 'x'",  # S5-B7: sin reescribir
+    "UPDATE notifications.notifications SET channel = 'email'",  # S5-B7: el canal no cambia
+    "UPDATE notifications.notifications SET member_id = member_id",  # S5-B7
+    "DELETE FROM notifications.notifications",  # S5-B7
     "UPDATE members.members SET first_name = 'x'",
     "UPDATE members.members SET deleted_at = now()",
     "UPDATE memberships.memberships SET end_date = end_date",

@@ -105,12 +105,12 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of ["Membresías", "Pagos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
-    for (const name of [/^Asistencia/, /^Resultados/, /^Atleta/, /^Avisos/, /^Adjuntos/]) {
+    for (const name of ["Membresías", "Pagos", "Avisos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    for (const name of [/^Asistencia/, /^Resultados/, /^Atleta/, /^Adjuntos/]) {
       expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
     }
     expect(within(tablist).getByRole("tab", { name: /^Asistencia/ })).toHaveTextContent("Disponible en v0.4");
-    expect(within(tablist).getByRole("tab", { name: /^Avisos/ })).toHaveTextContent("Disponible en v0.2");
+    expect(within(tablist).getByRole("tab", { name: "Avisos" })).not.toHaveTextContent("Disponible en");
     expect(within(tablist).getByRole("tab", { name: "Historial" })).not.toHaveTextContent("Disponible en");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
   });

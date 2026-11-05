@@ -1,5 +1,6 @@
 // S4A-F3 · US-109 (paso 122): las tarjetas de Inicio que llegan en versiones futuras (Hoy en el box,
-// Asistencia de la semana, WOD de hoy, Por avisar hoy, Sin consentimiento). El api las manda en null y
+// Asistencia de la semana, WOD de hoy). S5-F3: Por avisar hoy y Sin consentimiento ya tienen dato y
+// viven en NotificationKpis. El api las manda en null y
 // la tarjeta dice "Disponible en v0.x", nunca 0 (EP-12, S4A-D33); con valor, lo muestra.
 import { screen, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
@@ -18,8 +19,6 @@ const CARDS = [
   ["Hoy en el box", "Disponible en v0.4"],
   ["Asistencia de la semana", "Disponible en v0.4"],
   ["WOD de hoy", "Disponible en v0.5"],
-  ["Por avisar hoy", "Disponible en v0.2"],
-  ["Sin consentimiento", "Disponible en v0.2"],
 ] as const;
 
 describe("FutureKpis", () => {
@@ -34,14 +33,12 @@ describe("FutureKpis", () => {
   });
 
   it("con valor, lo muestra", async () => {
-    mockDashboard(ok(dashboardBody({ sessions_today: 4, attendance_week: 1250, notifications_today: 0, members_without_consent: 7, wod_today: "Helen" })));
+    mockDashboard(ok(dashboardBody({ sessions_today: 4, attendance_week: 1250, wod_today: "Helen" })));
     renderDashboard(<FutureKpis />);
 
     await screen.findByText("Helen");
     expect(within(screen.getByRole("group", { name: "Hoy en el box" })).getByText("4")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Asistencia de la semana" })).getByText("1.250")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Por avisar hoy" })).getByText("0")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Sin consentimiento" })).getByText("7")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "WOD de hoy" })).getByText("Helen")).toBeInTheDocument();
     expect(screen.queryByText(/Disponible en/)).not.toBeInTheDocument();
   });
@@ -51,14 +48,23 @@ describe("FutureKpis", () => {
     renderDashboard(<FutureKpis />);
 
     const region = await screen.findByRole("region", { name: "Próximamente en Inicio" });
-    expect(within(region).getAllByRole("group")).toHaveLength(5);
+    expect(within(region).getAllByRole("group")).toHaveLength(3);
+  });
+
+  it("S5-F3: ya no trae Por avisar hoy ni Sin consentimiento (viven en Avisos)", async () => {
+    mockDashboard(ok());
+    renderDashboard(<FutureKpis />);
+
+    await screen.findByRole("group", { name: "Hoy en el box" });
+    expect(screen.queryByRole("group", { name: "Por avisar hoy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Sin consentimiento" })).not.toBeInTheDocument();
   });
 
   it("si el tablero falla no inventa valores (el error lo explica KpiGrid)", async () => {
     mockDashboard(serverError);
     renderDashboard(<FutureKpis />);
 
-    expect(await screen.findAllByText("No se pudo cargar")).toHaveLength(5);
+    expect(await screen.findAllByText("No se pudo cargar")).toHaveLength(3);
     expect(screen.queryByText(/Disponible en/)).not.toBeInTheDocument();
   });
 
@@ -69,7 +75,7 @@ describe("FutureKpis", () => {
       .filter((line) => line.includes("DESIGN-GAP:"))
       .join("\n");
 
-    for (const topic of ["Hoy en el box", "Por avisar hoy", "Asistencia", "WOD de hoy"]) {
+    for (const topic of ["Hoy en el box", "Asistencia", "WOD de hoy"]) {
       expect(gaps).toContain(topic);
     }
   });

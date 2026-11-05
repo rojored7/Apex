@@ -125,6 +125,13 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "members.history.view",
     load: () => import("../features/members/components/MemberHistoryTab"),
   }),
+  // S5-F3 (US-123, US-130, S3-D65): Avisos es hija de la ficha y de la feature notifications: canales del
+  // socio e historial de sus avisos. La ficha la ve deshabilitada si la feature o el rol no la abren.
+  childRoute(MEMBER_DETAIL, "/socios/:id/avisos", "Avisos del socio", {
+    feature: "notifications",
+    access: "notifications.view",
+    load: () => import("../features/notifications/tabs/NotificationsTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).

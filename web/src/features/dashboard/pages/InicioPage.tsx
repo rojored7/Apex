@@ -1,6 +1,6 @@
 // S4A-F3 · US-108 a US-110 (front; reemplaza la Inicio mínima de S2-D25): Inicio.html con GET
 // /dashboard. Saludo con el día de Bogotá, accesos del encabezado según el rol, los KPI de v0.1
-// (KpiGrid), las tarjetas futuras (FutureKpis) y los últimos movimientos (LastMovements). Las tres
+// (KpiGrid), las tarjetas futuras (FutureKpis), los avisos (NotificationKpis, S5-F3) y los últimos movimientos (LastMovements). Las tres
 // piezas comparten la consulta ["dashboard"]: una sola petición. El member nunca llega aquí: RequireRole
 // lo manda a /mi antes de pintar el panel.
 // DESIGN-GAP: "Hola, Ana": el saludo usa la parte local del correo; `display_name` llega en v0.2 con
@@ -15,6 +15,7 @@ import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { useDashboard } from "../api";
 import { FutureKpis } from "../components/FutureKpis";
 import { KpiGrid } from "../components/KpiGrid";
+import { NotificationKpis } from "../components/NotificationKpis";
 import { LastMovements } from "../components/LastMovements";
 import styles from "./InicioPage.module.css";
 
@@ -40,6 +41,7 @@ export default function InicioPage() {
       <PageHeader title={title} actions={actions} />
       <KpiGrid />
       <FutureKpis />
+      <NotificationKpis />
       <LastMovements />
     </div>
   );

@@ -38,3 +38,26 @@
 - E2E: `tests/e2e/avisos.spec.ts` (reglas, plantillas, historial; axe en claro y oscuro a 390 y 1440 px) y `settings-config.spec.ts` (pestaña Canales) en preview, verdes; `stack/avisos.spec.ts` suma el caso de solo lectura (se corre en V5).
 - DESIGN-GAP: filas 13.18 a 13.22 de `docs/BRECHAS.md`.
 - Sigue en F3: ficha del socio (pestaña Avisos), preferencias y la tarjeta "Por avisar" de Inicio.
+
+## F3 · Ficha del socio, preferencias e Inicio (US-123, US-130, US-132)
+
+- Base: `33dbc57` (checkpoint de F2); la rama del backend sigue en `8eff83e` y `gen:api` sin diff.
+- Rojo: `features/notifications/tabs/NotificationsTab.test.tsx`, `components/ChannelPreferences.test.tsx`, `features/dashboard/components/NotificationKpis.test.tsx`; `FutureKpis.test.tsx`, `InicioPage.test.tsx`, `MemberDetailPage.test.tsx` y `routes.test.ts` se ajustan.
+- Verde:
+  - Avisos: `memberSchemas.ts`, `memberApi.ts` (`useMemberChannels`, `useSetMemberChannel`, `useMemberNotifications`), `memberErrors.ts`, `components/ChannelPreferences.tsx`, `tabs/NotificationsTab.tsx`.
+  - Ficha: la pestaña Avisos es una hija de la feature `notifications` (`childRoute` en `routeTable.ts`, `routes.reference.ts`, `ROUTES.md`); `MemberDetailPage` la quita de las deshabilitadas y `memberTabs` la comprueba con `isPageAvailable`.
+  - Inicio: `NotificationKpis.tsx` (sección "Avisos") y `FutureKpis` sin esas dos tarjetas.
+- Decisiones:
+  - El interruptor sale de la preferencia explícita, no de `effective`: sin consentimiento `effective` es vacío pero la preferencia sigue siendo del socio. Correo: activo solo con fila explícita activa (opt-in); WhatsApp manual: activo salvo fila explícita inactiva (S5-D31).
+  - Cada interruptor guarda al momento con un PATCH de ese canal y no cambia hasta la respuesta (un 422 `consent_required` deja el interruptor como estaba y muestra el mensaje del api).
+  - Un socio dado de baja es de solo lectura: el PATCH responde 409 `member_deleted` (N-20).
+  - El coach puede cambiar las preferencias (`PATCH` es `StaffDep`, cubeta `notifications-write`).
+  - Las escrituras releen solo con 404 o 409 (`refreshIfStale`).
+- E2E preview: `member-tabs.spec.ts` (pestaña Avisos, PATCH del correo, axe en claro y oscuro a 390 y 1440 px) y `home.spec.ts` (tarjetas de avisos), verdes.
+- DESIGN-GAP: filas 13.23 y 13.24 de `docs/BRECHAS.md`; 13.2 y 13.3 cerradas.
+- Sigue en F5 y F4: exportaciones, recibo, tarjetas de cuenta por correo y aviso de custodio.
+
+## F3 · Revisiones (seguridad: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 1 LOW)
+
+- MEDIUM (S5-D245): con `has_consent` falso el interruptor de correo no se puede activar desde la ficha (queda deshabilitado) y un texto fijo explica que primero hay que registrar el consentimiento en Datos; desactivarlo sí se puede si estaba activo. El 422 `consent_required` del api sigue como respaldo. Pruebas en `ChannelPreferences.test.tsx` (sin consentimiento no activa ni llama al PATCH; con consentimiento sí; desactivar con y sin consentimiento).
+- LOW: mientras guarda hay una región `aria-live="polite"` con «Guardando…». Prueba de presencia.

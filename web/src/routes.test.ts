@@ -83,6 +83,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/socios/:id/membresias",
       "/socios/:id/pagos",
       "/socios/:id/historial",
+      "/socios/:id/avisos",
       "/socios/:id/editar",
       "/planes",
       "/membresias",
@@ -131,8 +132,10 @@ describe("árbol de routes.tsx", () => {
     expect(ficha?.lazy).toBeDefined();
     // S3-F7: Membresías y Pagos se suman como hijas con nombre después de la índice.
     // S4A-F2 (S4A-D30): Historial se suma como la última hija (feature members, members.history.view).
-    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias", "/socios/:id/pagos", "/socios/:id/historial"]);
-    expect(ficha?.children?.at(-1)?.handle).toEqual({ feature: "members", access: "members.history.view", layout: "panel", title: "Historial" });
+    expect(ficha?.children?.map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias", "/socios/:id/pagos", "/socios/:id/historial", "/socios/:id/avisos"]);
+    // S5-F3: Avisos se suma como hija de la feature notifications (notifications.view).
+    expect(ficha?.children?.at(-1)?.handle).toEqual({ feature: "notifications", access: "notifications.view", layout: "panel", title: "Avisos del socio" });
+    expect(ficha?.children?.at(-2)?.handle).toEqual({ feature: "members", access: "members.history.view", layout: "panel", title: "Historial" });
     expect(ficha?.children?.[0]?.handle).toEqual({ feature: "members", access: "members.view", layout: "panel", title: "Datos" });
     const editar = find(routes, (r) => r.path === "/socios/:id/editar");
     expect(editar?.handle).toEqual({ feature: "members", access: "members.update", layout: "panel", title: "Editar socio" });
@@ -256,6 +259,8 @@ describe("pestañas Membresías y Pagos de la ficha (S3-F7, S3-D65, E3)", () => 
       { path: "/socios/:id/pagos", feature: "payments", access: "payments.view", layout: "panel", parent: "/socios/:id" },
       // S4A-F2 (S4A-D30): Historial, hija de members con members.history.view.
       { path: "/socios/:id/historial", feature: "members", access: "members.history.view", layout: "panel", parent: "/socios/:id" },
+      // S5-F3 (US-123, US-130): Avisos, hija de notifications con notifications.view.
+      { path: "/socios/:id/avisos", feature: "notifications", access: "notifications.view", layout: "panel", parent: "/socios/:id" },
     ]);
     for (const child of children) expect(child.load).toBeDefined();
     const [membresias, pagos] = fichaChildren(ENABLED_FEATURES).slice(1);
@@ -268,8 +273,8 @@ describe("pestañas Membresías y Pagos de la ficha (S3-F7, S3-D65, E3)", () => 
     const withoutPayments = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "payments"));
     const withoutMemberships = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "memberships"));
 
-    expect(fichaChildren(withoutPayments).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias", "/socios/:id/historial"]);
-    expect(fichaChildren(withoutMemberships).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/pagos", "/socios/:id/historial"]);
+    expect(fichaChildren(withoutPayments).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/membresias", "/socios/:id/historial", "/socios/:id/avisos"]);
+    expect(fichaChildren(withoutMemberships).map((c) => (c.index ? "index" : c.path))).toEqual(["index", "/socios/:id/pagos", "/socios/:id/historial", "/socios/:id/avisos"]);
     expect(leaves(buildRoutes(ROUTE_TABLE, withoutPayments)).map((l) => l.path)).not.toContain("/socios/:id/pagos");
   });
 

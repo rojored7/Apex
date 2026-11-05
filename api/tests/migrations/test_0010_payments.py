@@ -231,7 +231,7 @@ def test_los_tres_indices_no_unicos(alembic_config: Config, migrated_database: s
     assert "(membership_id)" in indices["ix_payments_membership_id"]
     assert "(member_id, paid_at DESC)" in indices["ix_payments_member_paid"]
     assert not [n for n in INDICES if "UNIQUE" in indices[n]]
-    assert set(indices) == {*INDICES, "pk_payments"}
+    assert set(indices) == {*INDICES, "pk_payments", "ix_payments_paid_at_id"}  # + 0020
 
 
 def test_sin_fk_y_los_unicos_triggers_son_los_de_0011(
@@ -352,4 +352,4 @@ def test_ciclo_de_0010(alembic_config: Config, migrated_database: str) -> None:
     estado = _estado(migrated_database)
     assert estado["existe"] is True
     assert estado["columnas"] == COLUMNAS
-    assert set(estado["indices"]) == {*INDICES, "pk_payments"}
+    assert set(estado["indices"]) == {*INDICES, "pk_payments", "ix_payments_paid_at_id"}  # + 0020

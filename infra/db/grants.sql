@@ -18,7 +18,7 @@
 --   crypto.crypto_jobs              S                                 S
 --   crypto.crypto_keys              S I U(updated_at)                 S
 --   crypto.crypto_ops               S I                               S I
---   members.member_channel_preferences S I U                          S
+--   members.member_channel_preferences S I U(active, updated_at)      S
 --   members.members                 S I U                             S(id, first_name, last_name, sex,
 --                                                                       phone, email, status, deleted_at,
 --                                                                       data_consent_at, created_at, updated_at)
@@ -28,9 +28,9 @@
 --                                     cancelled_at, updated_at)
 --   notifications.notification_rules     S I U                        S
 --   notifications.notification_templates S I U                        S
---   notifications.notifications          S I U                        S I U(status, attempts, last_error,
---                                                                       sent_at, sent_by, skip_reason,
---                                                                       updated_at)
+--   notifications.notifications          S I U(status, skip_reason,   S I U(status, attempts, last_error,
+--                                          sent_at, sent_by,             sent_at, sent_by, skip_reason,
+--                                          updated_at)                   updated_at)
 --   payments.payments               S I(sin void_reason, voided_by,   -
 --                                     voided_at) U(voided, void_reason,
 --                                     voided_by, voided_at, updated_at)
@@ -98,13 +98,17 @@ GRANT UPDATE (updated_at) ON crypto.crypto_keys TO apex_api;
 GRANT SELECT, INSERT ON crypto.crypto_ops TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON members.members TO apex_api;
 -- S5-B5 (US-123): upsert de preferencias de canal; sin DELETE (el borrado de socios es logico).
-GRANT SELECT, INSERT, UPDATE ON members.member_channel_preferences TO apex_api;
+GRANT SELECT, INSERT ON members.member_channel_preferences TO apex_api;
+-- S5-D256: UPDATE por columna; el upsert de canales solo cambia active (y updated_at).
+GRANT UPDATE (active, updated_at) ON members.member_channel_preferences TO apex_api;
 GRANT SELECT, INSERT ON memberships.membership_freezes TO apex_api;
 GRANT SELECT, INSERT ON memberships.memberships TO apex_api;
 -- S5-B6 (US-120, US-121): plantillas y reglas de aviso; sin DELETE (las reglas se desactivan).
 GRANT SELECT, INSERT, UPDATE ON notifications.notification_rules, notifications.notification_templates TO apex_api;
 -- S5-B7 (US-124, US-127 a US-130): avisos del dia; genera, omite y marca enviado; sin DELETE.
-GRANT SELECT, INSERT, UPDATE ON notifications.notifications TO apex_api;
+GRANT SELECT, INSERT ON notifications.notifications TO apex_api;
+-- S5-D256: UPDATE por columna; skip y wa-link solo cambian estado, motivo de omision y marca de envio.
+GRANT UPDATE (status, skip_reason, sent_at, sent_by, updated_at) ON notifications.notifications TO apex_api;
 GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
 -- S5-D202: INSERT de pagos por columna; void_reason, voided_by y voided_at solo por la anulacion.
 GRANT SELECT ON payments.payments TO apex_api;

@@ -1,6 +1,7 @@
 """`0019_notifications` (S5-B7, US-124; S5-D24, RN-17, N-37). # Rojo B7
 
-Padre `0018_notification_rules`; es head. Tabla `notifications.notifications`:
+Padre `0018_notification_rules`; en la cadena (`0020` cuelga de ella). Tabla
+`notifications.notifications`:
 - comunes más `rule_id` (`uuid`, FK a reglas `ON DELETE RESTRICT`), `member_id` y `membership_id`
   (`uuid`, sin FK), `target_date` (`date`), `channel`, `status`, `rendered_subject`,
   `rendered_body` (`text`) y `attempts` (`integer`), todas obligatorias; `last_error`, `sent_at`,
@@ -85,12 +86,12 @@ def _con_regla(*avisos: dict[str, object]) -> list[Paso]:
     return pasos
 
 
-def test_la_revision_cuelga_de_0018_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_cuelga_de_0018_y_esta_en_la_cadena(alembic_config: Config) -> None:
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    assert REVISION in {r.revision for r in scripts.walk_revisions("base", "heads")}
 
 
 def test_columnas_exactas_con_tipo_y_nulabilidad(

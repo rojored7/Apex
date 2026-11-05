@@ -454,6 +454,8 @@ POSTERIORES_A_0014 = (
     "notifications.pk_notifications",
     "notifications.ix_notifications",
     "notifications.uq_notifications",
+    "members.ix_members_created_at_id",  # S5-V8 (0020)
+    "payments.ix_payments_paid_at_id",  # S5-V8 (0020)
 )
 
 

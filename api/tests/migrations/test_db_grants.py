@@ -83,6 +83,15 @@ COLUMNAS_API_USERS_UPDATE: tuple[str, ...] = (
     "tokens_valid_after",
     "updated_at",
 )
+# S5-D256: lo que el api escribe de verdad (service.skip, service.wa_link y el upsert de canales).
+COLUMNAS_API_NOTIFICATIONS_UPDATE: tuple[str, ...] = (
+    "status",
+    "skip_reason",
+    "sent_at",
+    "sent_by",
+    "updated_at",
+)
+COLUMNAS_API_CHANNEL_PREFS_UPDATE: tuple[str, ...] = ("active", "updated_at")
 COLUMNAS_API_PAYMENTS_INSERT: tuple[str, ...] = (
     "id",
     "created_at",
@@ -134,7 +143,10 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     # S5-B5 (US-123, P-ROL): upsert de preferencias por el api (sin DELETE); el worker solo lee.
     "members.member_channel_preferences": {
-        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_api": (
+            frozenset({"SELECT", "INSERT"}),
+            frozenset(COLUMNAS_API_CHANNEL_PREFS_UPDATE),
+        ),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "members.members": {
@@ -175,7 +187,10 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     # S5-B7 (US-124, US-127 a US-130, S5-D34, P-ROL): el api genera, omite y marca enviado
     # (sin DELETE); el worker inserta y solo actualiza el resultado del envío. Rojo B7.
     "notifications.notifications": {
-        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_api": (
+            frozenset({"SELECT", "INSERT"}),
+            frozenset(COLUMNAS_API_NOTIFICATIONS_UPDATE),
+        ),
         "apex_worker": (
             frozenset({"SELECT", "INSERT"}),
             frozenset(
@@ -542,6 +557,25 @@ def test_apex_api_hace_lo_que_necesita(apex_roles: RolesDb, filas_base: dict[str
         assert intentar(dsn, sentencia) is None, sentencia
 
 
+def test_apex_api_actualiza_las_columnas_permitidas_de_avisos_y_preferencias(
+    apex_roles: RolesDb,
+) -> None:
+    """S5-D256: las asignaciones reales del api (skip, wa-link, upsert de canales) y el
+    `FOR UPDATE` de `_locked` siguen funcionando con el `UPDATE` por columna."""
+    dsn = como(apex_roles, "apex_api")
+    permitidas = [
+        "UPDATE notifications.notifications SET status = 'skipped', skip_reason = 'x', "
+        "updated_at = now() WHERE false",
+        "UPDATE notifications.notifications SET status = 'sent', sent_at = now(), "
+        "sent_by = NULL, updated_at = now() WHERE false",
+        "SELECT id FROM notifications.notifications FOR UPDATE",
+        "UPDATE members.member_channel_preferences SET active = true, updated_at = now() "
+        "WHERE false",
+    ]
+    for sentencia in permitidas:
+        assert intentar(dsn, sentencia) is None, sentencia
+
+
 def test_for_share_sobre_crypto_keys_funciona_con_apex_api(apex_roles: RolesDb) -> None:
     """El listener de cifrado (`core/crypto/types.py`) hace `SELECT ... FOR SHARE`; exige
     `UPDATE` sobre al menos una columna (aquí `updated_at`). Si PostgreSQL no lo exigiera, el
@@ -611,6 +645,20 @@ PROHIBIDAS_API = [
     "TRUNCATE notifications.notifications",  # S5-B7
     "DELETE FROM memberships.memberships",
     "DELETE FROM crypto.crypto_keys",
+    # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
+    "UPDATE notifications.notifications SET rendered_body = 'x'",
+    "UPDATE notifications.notifications SET rendered_subject = 'x'",
+    "UPDATE notifications.notifications SET member_id = member_id",
+    "UPDATE notifications.notifications SET membership_id = membership_id",
+    "UPDATE notifications.notifications SET channel = 'email'",
+    "UPDATE notifications.notifications SET rule_id = rule_id",
+    "UPDATE notifications.notifications SET target_date = target_date",
+    "UPDATE notifications.notifications SET attempts = 0",
+    "UPDATE notifications.notifications SET last_error = NULL",
+    "UPDATE notifications.notifications SET created_by = created_by",
+    "UPDATE members.member_channel_preferences SET member_id = member_id",
+    "UPDATE members.member_channel_preferences SET channel = 'email'",
+    "UPDATE members.member_channel_preferences SET created_by = created_by",
     "UPDATE audit.audit_log SET action = 'x'",
     "UPDATE audit.verifications SET ok = false",
     "UPDATE crypto.crypto_keys SET state = 'retired'",
@@ -1132,6 +1180,12 @@ def test_las_listas_de_columnas_coinciden_en_el_plan_grants_sql_y_la_base(
         ("SELECT", "members.members", "apex_worker"): set(COLUMNAS_WORKER_MEMBERS),
         ("UPDATE", "auth.users", "apex_api"): set(COLUMNAS_API_USERS_UPDATE),
         ("INSERT", "payments.payments", "apex_api"): set(COLUMNAS_API_PAYMENTS_INSERT),
+        ("UPDATE", "notifications.notifications", "apex_api"): set(
+            COLUMNAS_API_NOTIFICATIONS_UPDATE
+        ),
+        ("UPDATE", "members.member_channel_preferences", "apex_api"): set(
+            COLUMNAS_API_CHANNEL_PREFS_UPDATE
+        ),
     }
     en_grants = _columnas_de_grants_sql()
     for clave, columnas in esperadas.items():
@@ -1147,6 +1201,8 @@ def test_el_privilegio_de_tabla_completa_ya_no_existe_donde_se_paso_a_columnas(
         ("apex_worker", "members.members", "SELECT"),
         ("apex_api", "auth.users", "UPDATE"),
         ("apex_api", "payments.payments", "INSERT"),
+        ("apex_api", "notifications.notifications", "UPDATE"),
+        ("apex_api", "members.member_channel_preferences", "UPDATE"),
     }
     con_tabla = [
         (rol, tabla, verbo)

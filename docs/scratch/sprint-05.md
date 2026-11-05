@@ -787,3 +787,11 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - LOW 1, candado con dueño y latido (S5-D254): `core/export.py` `Flight` (token `_dueno`, `_es_mio`, `touch`, `release` solo si es propio); `guarded_body` llama `touch()` por trozo. Pruebas en `tests/core/test_export.py` (reemplazo de caducado, `touch`, latido en `guarded_body`).
 - LOW 2: ya cubierto por `test_el_descifrado_deja_una_fila_por_lote_y_clase_con_proposito_export` (lote de 2 con 3 socios: filas `crypto_ops` de dos lotes) y `test_501_socios...`; sin cambios.
 - LOW 3: `members/router.py::_ip` ya es `client_ip(request, trusted_proxies)`, igual que payments; sin cambios.
+
+## B12 · Evidencia (paso 127, demo 4) — PENDIENTE, se repite en V6
+
+- Checkpoint `00b4289`. `apex-api:local` reconstruida (GIT_SHA `a098f67`), api del ensayo recreado y `web` reiniciado, ambos `healthy`, login 200.
+- OpenBao del ensayo quedó SELLADO desde el incidente de red de B11 (reinicio de `db` y `openbao`): `/health` da `crypto: sealed`, `status: degraded`; toda ruta que cifra responde 503 `crypto_unavailable`. El clasificador denegó al agente la lectura de `docs/scratch/ensayo/openbao/llaves-ensayo.txt` (3 de 5 llaves) y el orquestador no hace ese desello en su lugar: queda como paso de la persona (desellar por `wget` a `/v1/sys/unseal`, `docs/operacion/openbao.md`) antes de V3 y V6.
+- Con el ensayo desellado, V6 repite íntegro el paso 127: `GET /members/export` y `GET /payments/export` (BOM, `;`, fórmulas escapadas, cabeceras), cuadre con `summary` por `awk`, filas `export` de apertura y cierre con `record_id` común, `crypto_ops` `purpose=export` por lote, 409 con dos `curl` simultáneos.
+- `run-gates.sh` (tercera de cuatro, por partes): api lint, format y mypy en verde; pytest en tres partes con `--cov-append`: 3799 + 2067 + 2051 = 7917 verdes, 87 omitidas, cobertura global 95,22 %; 7 scripts de infraestructura con «0 fallas» (`test_deploy_script` 282 ok y `test_infra_scripts` superan 100 s: correrlos sin tope); web: lint, tsc, 3149 pruebas verdes, build ok. `web/src/core/api/types.ts` regenerado en el árbol principal con el contrato de B12 (F4 lo rebasa y regenera).
+

@@ -23,7 +23,9 @@ from app.core.ratelimit import USER_LIMITS
 from tests.audit._apoyo import AUDIT, Actividad, sembrar_actividad
 from tests.conftest import Cabeceras, CrearUsuario, UsuarioPrueba
 from tests.dashboard._apoyo import CAMPOS_DASHBOARD, CAMPOS_MOVEMENT, DASHBOARD, FUTUROS
+from tests.dashboard._apoyo_kpi import sembrar_kpi
 from tests.factories.audit_chain import make_audit_chain
+from tests.notifications._apoyo_avisos import HOY
 
 LIMITE_DE_LECTURAS: Final = USER_LIMITS["staff-read"][0]
 
@@ -71,7 +73,7 @@ async def test_admin_y_coach_reciben_200_con_el_mismo_cuerpo_salvo_las_finanzas(
     assert [f.replace("$ 120.000 de ", "") for f in frases_admin] == frases_coach
 
 
-async def test_el_cuerpo_tiene_las_claves_del_contrato_y_los_futuros_en_null(
+async def test_el_cuerpo_tiene_las_claves_del_contrato_y_los_tres_futuros_en_null(
     app_http: AsyncClient, actividad: Actividad, juan: UsuarioPrueba, cabeceras: Cabeceras
 ) -> None:
     r = await _get(app_http, cabeceras, juan)
@@ -162,3 +164,60 @@ async def test_openapi_declara_dashboard_out_sin_parametros(api_prueba: FastAPI)
     assert not operacion.get("parameters")
     esquema = operacion["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
     assert esquema.endswith("/DashboardOut")
+
+
+# KPI de avisos y consentimiento (S5-B10, US-132; S5-D39, S5-D80) # Rojo B10 -------------------
+
+
+async def test_get_dashboard_trae_los_dos_kpi_enteros_y_con_los_valores_sembrados(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj: FrozenClock,
+    ana: UsuarioPrueba,
+    cabeceras: Cabeceras,
+) -> None:
+    escenario = await sembrar_kpi(session, HOY)
+
+    r = await _get(app_http, cabeceras, ana)
+
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+    assert type(cuerpo["notifications_today"]) is int
+    assert type(cuerpo["members_without_consent"]) is int
+    assert cuerpo["notifications_today"] == escenario.avisos_de_hoy == 2
+    assert cuerpo["members_without_consent"] == escenario.sin_consentimiento == 2
+    assert {campo: cuerpo[campo] for campo in FUTUROS} == dict.fromkeys(FUTUROS)
+
+
+async def test_el_coach_recibe_los_dos_kpi_igual_que_el_admin(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj: FrozenClock,
+    ana: UsuarioPrueba,
+    juan: UsuarioPrueba,
+    cabeceras: Cabeceras,
+) -> None:
+    await sembrar_kpi(session, HOY)
+
+    admin = (await _get(app_http, cabeceras, ana)).json()
+    coach = (await _get(app_http, cabeceras, juan)).json()
+
+    for campo in ("notifications_today", "members_without_consent"):
+        assert admin[campo] == coach[campo] == 2, campo
+
+
+async def test_member_sigue_recibiendo_403_con_los_kpi_nuevos(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj: FrozenClock,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+) -> None:
+    await sembrar_kpi(session, HOY)
+    socio_usuario = await usuario_real("member")
+    r = await _get(app_http, cabeceras, socio_usuario)
+    assert r.status_code == 403, r.text
+    assert "notifications_today" not in r.text and "members_without_consent" not in r.text

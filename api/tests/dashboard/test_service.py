@@ -8,7 +8,8 @@ app en 2026-10-20 (Bogotá):
 - `today` es el día de Bogotá del reloj de la app, e `income_month` su mes;
 - borde de mes: con el reloj en 2026-11-01T01:00Z (20:00 del 31 de octubre en Bogotá) el mes es
   2026-10 y un pago con `paid_at` 2026-11-01T03:00Z (22:00 del 31 en Bogotá) cuenta en octubre;
-- los cinco campos futuros están presentes y en `null`.
+- los tres campos futuros están presentes y en `null`; `notifications_today` y
+  `members_without_consent` son enteros (S5-B10, al final del archivo).
 Valores a mano de `datos`: pagos vigentes de octubre 120.000 + 90.000 + 45.000 = 255.000 (el
 anulado de 70.000 y el de septiembre de 300.000 no cuentan).
 """
@@ -25,8 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import FrozenClock, reset_clock, set_clock
 from app.core.crypto.keyring import Keyring
 from app.modules.dashboard.schemas import DashboardOut
+from app.modules.members import service as members_service
+from app.modules.notifications import service as notifications_service
 from tests.conftest import ContadorDeConsultas
 from tests.dashboard._apoyo import CAMPOS_DASHBOARD, FUTUROS
+from tests.dashboard._apoyo_kpi import sembrar_kpi
 from tests.dashboard.conftest import dashboard_service, memberships_service, payments_service
 from tests.factories.members import make_member
 from tests.factories.memberships import make_membership
@@ -148,7 +152,7 @@ async def test_borde_de_mes_cuenta_el_pago_de_la_noche_del_31_en_octubre(
     assert noviembre.total_cop == 0
 
 
-async def test_los_cinco_futuros_estan_presentes_y_en_null(
+async def test_los_tres_futuros_estan_presentes_y_en_null(
     session: AsyncSession, datos: None
 ) -> None:
     tablero = await dashboard_service.summary(session, with_finances=True)
@@ -199,3 +203,74 @@ async def test_el_coach_recibe_los_mismos_conteos_sin_ingresos_y_sin_consultar_p
     cuerpo = coach.model_dump(mode="json")
     assert set(cuerpo) == CAMPOS_DASHBOARD
     assert cuerpo["income_month_cop"] is None
+
+
+# KPI de avisos y consentimiento (S5-B10, US-132; S5-D39, S5-D80) # Rojo B10 -------------------
+
+
+@pytest.fixture
+async def sin_datos(
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj_tablero: FrozenClock,
+    audit_chain_factory: object,
+) -> None:
+    """Base vacía de socios y avisos con el reloj en `HOY` (2026-10-20)."""
+
+
+async def test_notifications_today_es_el_today_count_de_notifications(
+    session: AsyncSession, sin_datos: None
+) -> None:
+    escenario = await sembrar_kpi(session, HOY)
+
+    tablero = await dashboard_service.summary(session, with_finances=True)
+
+    esperado = await notifications_service.today_count(session, HOY)
+    assert esperado == escenario.avisos_de_hoy == 2
+    assert tablero.notifications_today == esperado
+
+
+async def test_members_without_consent_cuenta_vivos_sin_data_consent_at(
+    session: AsyncSession, sin_datos: None
+) -> None:
+    escenario = await sembrar_kpi(session, HOY)
+
+    tablero = await dashboard_service.summary(session, with_finances=True)
+
+    # Caro y Dina cuentan; Eva (baja, sin consentimiento) no; Ana, Bea y Fran tienen consentimiento.
+    assert tablero.members_without_consent == escenario.sin_consentimiento == 2
+    assert tablero.members_without_consent == await members_service.count_without_consent(session)
+
+
+async def test_los_dos_kpi_son_enteros_y_valen_cero_sin_datos(
+    session: AsyncSession, sin_datos: None
+) -> None:
+    tablero = await dashboard_service.summary(session, with_finances=True)
+    cuerpo = tablero.model_dump(mode="json")
+    assert cuerpo["notifications_today"] == 0 and cuerpo["members_without_consent"] == 0
+    assert type(cuerpo["notifications_today"]) is int
+    assert type(cuerpo["members_without_consent"]) is int
+
+
+async def test_el_coach_ve_los_mismos_kpi_de_avisos_que_el_admin(
+    session: AsyncSession, sin_datos: None
+) -> None:
+    await sembrar_kpi(session, HOY)
+    admin = await dashboard_service.summary(session, with_finances=True)
+    coach = await dashboard_service.summary(session, with_finances=False)
+    assert (coach.notifications_today, coach.members_without_consent) == (2, 2)
+    assert (admin.notifications_today, admin.members_without_consent) == (2, 2)
+
+
+async def test_con_los_kpi_nuevos_las_finanzas_y_los_conteos_no_cambian(
+    session: AsyncSession, datos: None
+) -> None:
+    tablero = await dashboard_service.summary(session, with_finances=True)
+    resumen = await memberships_service.summary(session, today=HOY)
+    pagos = await payments_service.summary(session, "2026-10")
+    assert tablero.income_month_cop == pagos.total_cop == INGRESOS_DE_OCTUBRE
+    assert tablero.members_active == resumen.active
+    assert tablero.members_pending_payment == resumen.pending_payment == 2
+    # `datos` crea 6 socios vivos sin consentimiento y ningún aviso.
+    assert tablero.members_without_consent == 6
+    assert tablero.notifications_today == 0

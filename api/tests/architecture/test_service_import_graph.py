@@ -61,6 +61,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("dashboard", "auth"),
         ("dashboard", "members"),
         ("dashboard", "memberships"),
+        # S5-B10 (S5-D47): `notifications_today` sale de `notifications.service.today_count`.
+        ("dashboard", "notifications"),
         ("dashboard", "payments"),
         # S4A-B5 (S4A-D20, C6): `members.service.history` delega en `audit.service.member_history`.
         ("members", "audit"),
@@ -313,12 +315,20 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
     assert importadores == {"memberships"}
 
 
-def test_dashboard_importa_cinco_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
-    """S4A-B8 (S4A-D27, C9): `dashboard` importa arriba exactamente `audit`, `auth`, `members`,
-    `memberships` y `payments` (nunca `plans`, ni perezosas), y ningún módulo lo importa (va
+def test_dashboard_importa_seis_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
+    """S4A-B8 (S4A-D27, C9) y S5-B10 (S5-D47): `dashboard` importa arriba exactamente `audit`,
+    `auth`, `members`, `memberships`, `notifications` y `payments` (nunca `plans`, ni perezosas;
+    # Rojo B10), y ningún módulo lo importa (va
     al final de `MODULES`); `plans` sigue importado solo por `memberships`."""
     arriba, perezosas = _grafo_real()
-    assert arriba["dashboard"] == {"audit", "auth", "members", "memberships", "payments"}
+    assert arriba["dashboard"] == {
+        "audit",
+        "auth",
+        "members",
+        "memberships",
+        "notifications",
+        "payments",
+    }
     assert perezosas["dashboard"] == set()
     assert "plans" not in arriba["dashboard"]
     importadores = {a for a, destinos in arriba.items() if "dashboard" in destinos}
@@ -515,12 +525,12 @@ def test_notifications_depende_de_members_y_memberships_a_nivel_de_modulo() -> N
     (`channels_for`, `names_for`,
     `search_ids`) y `memberships.service` (`notification_candidates`, `has_current_or_future`) en un
     solo nivel y solo escribe en su esquema; nunca `plans` (el nombre del plan viaja en
-    `NotificationCandidate`) ni imports perezosos. Nadie importa `notifications` (ni siquiera
-    `dashboard`, que llega en un sprint posterior)."""
+    `NotificationCandidate`) ni imports perezosos. Desde S5-B10 (S5-D47) solo `dashboard` la
+    importa (`today_count`)."""
     arriba, perezosas = _grafo_real()
     assert arriba["notifications"] == {"members", "memberships", "settings"}
     assert perezosas["notifications"] == set()
-    assert {a for a, destinos in arriba.items() if "notifications" in destinos} == set()
+    assert {a for a, destinos in arriba.items() if "notifications" in destinos} == {"dashboard"}
 
 
 def test_ningun_archivo_de_notifications_pasa_de_los_dos_vecinos_de_b7() -> None:

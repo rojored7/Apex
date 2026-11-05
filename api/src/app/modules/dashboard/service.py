@@ -16,7 +16,10 @@ no ejecuta SQL (`tests/architecture/test_read_modules.py`).
 - `summary(session, *, with_finances) -> DashboardOut`: `today_bogota()`, conteos de
   `memberships.service.summary(session, today=today)`, ingresos de
   `payments.service.summary(session, month_of(today)).total_cop` (solo con `with_finances`;
-  si no, `None`) y `last_movements`. `can_see_finances(role)`: solo `FINANCE_ROLES` (S4A-D118:
+  si no, `None`) y `last_movements`.
+  `notifications_today` y `members_without_consent` salen de `notifications.service.today_count`
+  y `members.service.count_without_consent` (S5-B10).
+- `can_see_finances(role)`: solo `FINANCE_ROLES` (S4A-D118:
   el coach no ve ingresos ni montos).
 """
 
@@ -34,8 +37,9 @@ from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID
 from app.core.security import Role
 
-# Aristas de lectura del tablero (S4A-D27, C9): cinco services a nivel de módulo; nunca `plans`
-# (el nombre del plan llega por `memberships.service.refs_for`) y nadie importa `dashboard`.
+# Aristas de lectura del tablero (S4A-D27, C9; S5-D47): seis services a nivel de módulo, con
+# `notifications`; nunca `plans` (el nombre del plan llega por `memberships.service.refs_for`)
+# y nadie importa `dashboard`.
 from app.modules.audit import service as audit_service
 from app.modules.audit.schemas import AuditEntryView
 from app.modules.auth import service as auth_service
@@ -47,6 +51,7 @@ from app.modules.dashboard.schemas import (
 )
 from app.modules.members import service as members_service
 from app.modules.memberships import service as memberships_service
+from app.modules.notifications import service as notifications_service
 from app.modules.payments import service as payments_service
 
 MOVEMENT_TABLES: Final[tuple[str, ...]] = (
@@ -250,4 +255,6 @@ async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut
         income_month=mes,
         income_month_cop=ingresos,
         last_movements=await last_movements(session, with_finances=with_finances),
+        notifications_today=await notifications_service.today_count(session, hoy),
+        members_without_consent=await members_service.count_without_consent(session),
     )

@@ -4,10 +4,10 @@
   tres tablas reales de negocio, `record_id` y `member_id`); nunca `before`/`after` ni valores.
 - `DashboardOut`: `today` (Bogotá), los cinco conteos del resumen de membresías, `income_month`
   (`AAAA-MM`), `income_month_cop` (`null` para el coach, S4A-D118), `last_movements` (máximo
-  `LAST_MOVEMENTS_LIMIT`; sin montos para el coach) y los cinco campos futuros
-  `notifications_today`, `members_without_consent`, `attendance_week`,
-  `sessions_today` y `wod_today`, siempre presentes y `null` en v0.1 (el front los pinta
-  "Disponible en v0.x"; nunca `exclude_none`).
+  `LAST_MOVEMENTS_LIMIT`; sin montos para el coach), `notifications_today` y
+  `members_without_consent` (enteros desde S5-B10, US-132; S5-D39, S5-D80) y los tres campos
+  futuros `attendance_week`, `sessions_today` y `wod_today`, siempre presentes y `null` hasta
+  v0.4 y v0.5 (el front los pinta "Disponible en v0.x"; nunca `exclude_none`).
 """
 
 from __future__ import annotations
@@ -57,8 +57,8 @@ class DashboardOut(BaseModel):
     income_month: str = Field(pattern=MONTH_PATTERN)
     income_month_cop: int | None = Field(description=INCOME_MONTH_COP_DESCRIPTION)
     last_movements: list[MovementOut] = Field(max_length=LAST_MOVEMENTS_LIMIT)
-    notifications_today: int | None = None
-    members_without_consent: int | None = None
+    notifications_today: int
+    members_without_consent: int
     attendance_week: int | None = None
     sessions_today: int | None = None
     wod_today: str | None = None

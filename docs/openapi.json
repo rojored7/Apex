@@ -520,26 +520,12 @@
             "type": "integer"
           },
           "members_without_consent": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Members Without Consent"
+            "title": "Members Without Consent",
+            "type": "integer"
           },
           "notifications_today": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notifications Today"
+            "title": "Notifications Today",
+            "type": "integer"
           },
           "sessions_today": {
             "anyOf": [
@@ -578,7 +564,9 @@
           "members_pending_payment",
           "income_month",
           "income_month_cop",
-          "last_movements"
+          "last_movements",
+          "notifications_today",
+          "members_without_consent"
         ],
         "title": "DashboardOut",
         "type": "object"

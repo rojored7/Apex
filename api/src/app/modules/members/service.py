@@ -327,6 +327,17 @@ async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:
     return int(await session.scalar(consulta) or 0)
 
 
+async def count_without_consent(session: AsyncSession) -> int:
+    """Socios no dados de baja con `data_consent_at IS NULL` (S5-D80, S5-D240): una sola consulta
+    `count(*)`, sin descifrar nada y sin filtrar por estado de membresía."""
+    consulta = (
+        select(func.count())
+        .select_from(Member)
+        .where(Member.deleted_at.is_(None), Member.data_consent_at.is_(None))
+    )
+    return int(await session.scalar(consulta) or 0)
+
+
 async def active_ids(session: AsyncSession) -> frozenset[UUID]:
     """Ids de los socios no dados de baja (`deleted_at IS NULL`), activos o inactivos, en una
     consulta y sin descifrar (S3-B7, S3-D60; contrato de `memberships.summary`)."""

@@ -136,3 +136,12 @@ def test_el_detector_ve_models_nucleo_sql_y_suscripciones() -> None:
 
 def test_el_detector_acepta_services_y_schemas() -> None:
     assert violaciones(FUENTE_BUENA, "dashboard") == []
+
+
+def test_dashboard_lee_avisos_solo_por_el_service_de_notifications() -> None:
+    """S5-B10 (S5-D47) # Rojo B10: el tablero importa `notifications.service` (no sus models) y
+    sigue sin SQL propio."""
+    fuente = (MODULES_DIR / "dashboard" / "service.py").read_text(encoding="utf-8")
+    assert "from app.modules.notifications import service as" in fuente
+    assert "app.modules.notifications.models" not in fuente
+    assert violaciones(fuente, "dashboard") == []

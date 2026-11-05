@@ -709,3 +709,23 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - Logs del api-demo: 0 apariciones de cada uno de los dos tokens (43 caracteres), 0 de `restablecer` y 0 de los correos.
 - Limpieza: `apex-api-demo` y `apex-mailpit-1` eliminados, volumen de llaves borrado, `DROP DATABASE apex_avisos_demo`. Los stacks `apex` y `apex-ensayo` no se tocaron.
 - Gates de la revisión: `tests/auth` 631, `tests/architecture` 657, `tests/cli` + `test_openapi_export` 503 (28 omitidas); ruff, format y mypy en verde.
+
+## B10 · Rojo (S5-B10, KPI `notifications_today` y `members_without_consent`, US-132)
+
+- Stubs: `members.service.count_without_consent` (`NotImplementedError`); `DashboardOut.notifications_today` y `members_without_consent` pasan a `int` obligatorio y `summary` los rellena con `PROVISIONAL = -1`; arista `("dashboard","notifications")` en `ALLOWED_EDGES`.
+- Pruebas (todas `# Rojo B10`): `tests/dashboard/_apoyo_kpi.py` (escenario: 4 vivos —Ana y Bea con consentimiento, Caro y Dina sin él—, 2 de baja —Eva sin consentimiento, Fran con él—; avisos que cuentan = 2, sin consentimiento = 2), `tests/dashboard/test_service.py` (+5), `tests/dashboard/test_router.py` (+3), `tests/members/test_count_without_consent.py` (5), `tests/architecture/test_service_import_graph.py` (arista; `test_dashboard_importa_seis_services...`), `tests/architecture/test_read_modules.py` (+1). `_apoyo.py`: `FUTUROS` queda con 3 campos y `KPI_DE_AVISOS` con los 2 enteros; renombradas las pruebas de "cinco futuros" a "tres futuros".
+- Rojas: ver el reporte del agente (conteo por archivo). Sello del paso 111: `bash scripts/workflow/slice-gate.sh dashboard tests/dashboard/test_service.py tests/dashboard/test_router.py tests/members/test_count_without_consent.py`.
+- Dudas: (1) "activos" en D80: se toma `deleted_at IS NULL` (como `active_ids`), sin filtrar `status`; propuesta: mantener. (2) Los fallos del tablero son por aserción (-1), no por `NotImplementedError`, para no romper el resto de pruebas del tablero. (3) `test_read_modules.py` no cambia de fondo: se añade una prueba de que el import es del service. (4) `datos` crea 6 socios sin consentimiento: la prueba de finanzas fija `members_without_consent == 6`.
+
+## B10 · Verde (S5-B10, KPI `notifications_today` y `members_without_consent`, US-132)
+
+- `members/service.py` `count_without_consent`: UN `SELECT count(*)` (`deleted_at IS NULL AND data_consent_at IS NULL`, S5-D240), sin descifrar. `dashboard/service.py`: `notifications_service.today_count(session, hoy)` y `members_service.count_without_consent(session)`; import de módulo a nivel de archivo; `PROVISIONAL` eliminado. `dashboard/schemas.py` ya tenía los `int` del Rojo.
+- Enmienda de UN assert del Rojo (pin obsoleto): `test_notifications_depende_de_members_y_memberships_a_nivel_de_modulo` decía «nadie importa `notifications`, ni siquiera `dashboard` (llega después)»; ahora el único importador es `{"dashboard"}` (S5-D47).
+- `docs/openapi.json` regenerado (`export-openapi`): los dos campos dejan de ser `nullable` y pasan a `required`. `CLAUDE.md`: línea de `dashboard/` con la arista nueva. `BRECHAS.md` sin cambio (las filas 25 y 13.3 son del front, F3).
+- Verdes: `tests/dashboard` 93, `tests/members` 682, `tests/architecture` 660, `tests/notifications` + `test_openapi_export` + grafo 532; ruff, format y mypy en verde.
+
+## B10 · Evidencia
+
+- `apex-api:local` reconstruida (buildx `--network host`, GIT_SHA 8860b03); ensayo: `up -d --no-build --force-recreate api` + `restart web`, ambos healthy.
+- `GET /dashboard` (admin del ensayo): `notifications_today = 9`, `members_without_consent = 1`.
+- SQL: `SELECT count(*) FROM members.members WHERE deleted_at IS NULL AND data_consent_at IS NULL` = 1; avisos de hoy (pending dentro de 15 días hasta hoy o failed, socios vivos) = 9 (estado: 9 pending, 1 sent, 1 skipped). Coinciden.

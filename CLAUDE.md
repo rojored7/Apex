@@ -121,7 +121,7 @@ apex/
     compose.verify.yml   # solo backup: monta la identidad age de verificación (S4B-D59)
     compose.openbao.yml  # overlay con CRYPTO_PROVIDER=openbao: api y worker sin el volumen `keys` y con su token (Sprint 5, S5-D74)
     nginx/default.conf       # y snippets/ (zonas de limit_req: auth-zone.conf y health-zone.conf)
-    db/                  # roles.sql, grants.sql, revoke.sql y apply.sh: roles de aplicación y permisos por tabla/columna; los aplica el servicio dbsetup (S4B-W0-3)
+    db/                  # roles.sql, grants.sql, revoke.sql y apply.sh: roles de aplicación y permisos por tabla/columna; los aplica el servicio dbsetup (S4B-W0-3); desde S5-V8 (S5-D256) el api solo tiene UPDATE por columna en notifications.notifications (status, skip_reason, sent_at, sent_by, updated_at) y members.member_channel_preferences (active, updated_at); migración 0020 = índices de avisos y exportaciones (S5-D255)
     backup/              # Dockerfile (postgres:16-alpine + age, minisign, rclone, supercronic), run.sh, lib.sh,
                          # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro), restore.sh (B3a, restauración con firma e inspección del tar)
     openbao/             # config.hcl, bootstrap.sh (--first-install, S5-D76), dev-entrypoint.sh (solo APEX_ENV=dev) y policies/*.hcl: una llave Transit apex-kek, tokens por servicio, red `custody` (Sprint 5)

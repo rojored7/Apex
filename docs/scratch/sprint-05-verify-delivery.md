@@ -180,7 +180,7 @@
 | 4 | Desaparece de hoy, queda en historial | entregado | `::test_un_omitido_deja_de_aparecer_en_por_avisar_hoy`; V5 `avisos.spec.ts` |
 | 5 | Admin y coach; member 403 | entregado | `::test_admin_y_coach_pueden_las_seis_operaciones` |
 
-**US-129 · Historial de envíos (B7, F2)** — 5/6 entregado, 1 parcial
+**US-129 · Historial de envíos (B7, F2)** — 6/6 entregado
 
 | # | Criterio | Estado | Evidencia |
 |---|---|---|---|
@@ -189,7 +189,7 @@
 | 3 | Campos sin contacto | entregado | `::test_get_devuelve_el_aviso_con_el_nombre_y_sin_contacto` |
 | 4 | Detalle con `rendered_body` | entregado | `::test_el_detalle_devuelve_el_aviso_y_404_si_no_existe` |
 | 5 | Admin y coach; member 403 | entregado | `::test_member_recibe_403_en_todo_sin_efectos` |
-| 6 | 10.000 avisos por socio < 500 ms | **parcial** | `api/tests/notifications/test_history_perf.py::test_el_historial_de_un_socio_con_mil_avisos_responde_en_menos_de_500_ms_p95` (S5-V11c): p95 de 20 = 0,12 s, pero con `AVISOS = 1_000` (línea 24), una décima del volumen del criterio (US-129 línea 38). Índice `ix_notifications_member_target_date` (`0019`) y consulta paginada hacen muy probable el cumplimiento, pero no está medido a 10.000 ni hay decisión que rebaje el volumen. Ver MINOR-3 |
+| 6 | 10.000 avisos por socio < 500 ms | entregado | `api/tests/notifications/test_history_perf.py::test_el_historial_de_un_socio_con_diez_mil_avisos_responde_en_menos_de_500_ms_p95` (`7deb573`, 10.000 avisos, 1 passed; antes 1.000) (S5-V11c): p95 de 20 = 0,12 s, pero con `AVISOS = 1_000` (línea 24), una décima del volumen del criterio (US-129 línea 38). Índice `ix_notifications_member_target_date` (`0019`) y consulta paginada hacen muy probable el cumplimiento, pero no está medido a 10.000 ni hay decisión que rebaje el volumen. Ver MINOR-3 |
 
 **US-130 · Pestaña Avisos de la ficha (B7, F3)** — 5/5 entregado
 
@@ -263,8 +263,8 @@
 
 ### Resumen del Pilar 1
 
-- Criterios: **146/147 entregados**, 1 parcial (129.6: medido a 1.000 avisos, el criterio pide 10.000), 0 «no». Respecto del borrador: 121.7, 124.4, 124.5, 124.7 y 137.8 cerrados por S5-V11c (D265–D267, pruebas nuevas); 126.3 y 127.7 por enmienda decidida (D268, D217) con nota en la historia; 127.9, 132.3 y 138.8 por V5; 134.2 por V9 en Linux con OpenBao real (0 saltos) y `ci.yml` (S5-D264).
-- Historias: **19/20 COMPLETE**; **1 PARTIALLY_COMPLETE** (US-129, solo el volumen de la medición de rendimiento). Ninguna NOT_IMPLEMENTED ni IMPLEMENTED_INCORRECTLY.
+- Criterios: **147/147 entregados**, 0 parciales (129.6 cerrado en `7deb573`: la prueba `perf` mide con 10.000 avisos), 0 «no». Respecto del borrador: 121.7, 124.4, 124.5, 124.7 y 137.8 cerrados por S5-V11c (D265–D267, pruebas nuevas); 126.3 y 127.7 por enmienda decidida (D268, D217) con nota en la historia; 127.9, 132.3 y 138.8 por V5; 134.2 por V9 en Linux con OpenBao real (0 saltos) y `ci.yml` (S5-D264).
+- Historias: **20/20 COMPLETE** (US-129 cerrada con la medición a 10.000 avisos, `7deb573`). Ninguna NOT_IMPLEMENTED ni IMPLEMENTED_INCORRECTLY.
 - Épicas: **EP-15 COMPLETE** (4/4). **EP-16 COMPLETE** (3/3). **EP-14 PARTIAL** formalmente (12/13 historias completas); el valor de negocio está entregado entero (plantillas y reglas, canales que se respetan, avisos, WhatsApp, correo con opt-in, resumen de Telegram con interruptor, cuentas por correo, historial, KPI); el único hueco es una prueba `perf` con una décima del volumen pedido.
 - Contrato: las 15 rutas nuevas y los cambios (`email_sent`, `notifications_today`, `members_without_consent`, `crypto`, 409 `channel_disabled` ya declarado en `responses_for`) están en `docs/openapi.json`; `test_openapi_export` verde (V11c). Migraciones `0015`–`0020`; V11c no añadió migración.
 - Versión: `0.2.0` en `api/pyproject.toml`, `web/package.json` y `CHANGELOG.md` (`e411df0`); `check-release-version` ok según el orquestador (no hay línea de esa corrida en el cuaderno).
@@ -316,7 +316,7 @@
 - **MAJOR-2 · Worker vivo anterior a V11c (nuevo en el cierre).** `apex-worker-1` y `apex-ensayo-worker-1` corren `e2a6329`; V5 recreó solo api y web. Es exactamente el caso «reconstruir un servicio no prueba los demás». No es defecto del código (el despliegue real construye todo desde la etiqueta con `infra/deploy.sh`) ni afecta a la release, pero el pilar 2 del job `notify` programado con D265–D267 no está probado en vivo. Dueño: V12 (reconstruir las tres imágenes con el SHA de cierre, `--force-recreate` de api, worker y web en `apex`, comprobar `docker inspect` del worker y una corrida `--run-once notify`).
 - **MINOR-1 · Deriva documental — CERRADO**: US-122 («Corregido en S5»), US-124, US-126 y US-127 («Corregido en S5-V11c») llevan su nota (`15d4731`, `d6f14fc`).
 - **MINOR-2 · Evidencia no registrada en el cuaderno**: la corrida de pre-commit 7/7 tras `43113df` y la de `check-release-version` tras `e411df0` solo constan en el informe del orquestador. Dueño: orquestador, una línea en `docs/scratch/sprint-05.md` antes del PR.
-- **MINOR-3 · US-129.6 medida a 1.000 avisos**: `test_history_perf.py` (`AVISOS = 1_000`) frente a 10.000 del criterio. Opciones: subir la constante a 10.000 (prueba `perf`, no gate) o enmendar el criterio en DECISIONES. Dueño: orquestador (V12 o v0.3 EP-14).
+- **MINOR-3 · US-129.6 medida a 1.000 avisos (CERRADO en `7deb573`: `AVISOS = 10_000`, 1 passed)**: `test_history_perf.py` (`AVISOS = 1_000`) frente a 10.000 del criterio. Opciones: subir la constante a 10.000 (prueba `perf`, no gate) o enmendar el criterio en DECISIONES. Dueño: orquestador (V12 o v0.3 EP-14).
 - **MINOR-4 · Dos pruebas web flaky bajo carga** (`routes.render.test.tsx` H1 y `features/system/api.test.tsx` recarga): pasan solas y en la repetición completa (V9). Dueño: front, v0.3.
 - **OBS-1** `apex-backup:local` sin `org.opencontainers.image.revision` (V12 añade la etiqueta).
 - **OBS-2** Cobertura en Windows bajo 80 % en archivos no exigidos (`cli_ops/kek.py` 56 %, `core/crypto/archive.py` 51 %, `cli_ops/keys.py` 78 %) por ramas solo Linux; la corrida Linux de V9 las ejecutó sin saltos. Global 95 %.
@@ -345,7 +345,7 @@
 
 ## 6. Veredicto final
 
-- **Pilar 1:** 146/147 criterios (1 parcial: 129.6); 19/20 historias COMPLETE y 1 PARTIALLY_COMPLETE (US-129); épicas EP-15 y EP-16 COMPLETE, EP-14 PARTIAL solo por esa medición; DoD 6/6; demos 5/5.
+- **Pilar 1:** 147/147 criterios; 20/20 historias COMPLETE; épicas EP-14, EP-15 y EP-16 COMPLETE; DoD 6/6; demos 5/5.
 - **Pilar 2:** 10/13 (P2-1 parcial por el worker sin recrear, P2-9 PENDIENTE DE V12, P2-13 observación).
 - **Decisión: READY_WITH_WARNINGS.** Razones: 0 CRITICAL; MAJOR-1 corregido con pruebas, revisión y gates; gates completos V9 en verde (7987/0, 95 %; web 3542, 97,26 %; Linux 0 saltos de `age`/`pty`/`openbao`); E2E V5 48/48 ×2 sobre OpenBao y preview 189/189; P2-4 probado en vivo con su auditoría. No es READY porque: (a) MAJOR-2, el worker vivo no corre el código de cierre y el camino programado de `notify` con D265–D267 no está probado en vivo; (b) `rotate-kek --trim` no está repetido sobre el ensayo actual; (c) US-129.6 medido a una décima del volumen.
 - **Condiciones para la fusión** (antes del PR): V12 reconstruye api, web y backup con el SHA de cierre, recrea api, worker y web, y deja `docker inspect` del worker con esa revisión y una corrida `--run-once notify` ok; V12 registra `rotate-kek --trim` en el ensayo; el orquestador anota pre-commit 7/7 y `check-release-version` en el cuaderno y decide MINOR-3 (subir a 10.000 o enmendar). La CI remota con 0 saltos de `openbao`, el merge y la etiqueta firmada son pasos humanos (sección 4).

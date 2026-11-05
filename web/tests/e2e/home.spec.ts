@@ -1,7 +1,7 @@
 // S4A-F3 (US-108 a US-110; S4A-D33, S4A-D118) contra `vite preview`: Inicio (Inicio.html) en un
 // navegador real con el api simulado por page.route y el reloj fijo en el 20 de octubre de 2026, 2:32
 // p. m. de Bogotá. El coach ve los KPI de membresías, ingresos como "Solo administración" (el api le
-// manda null), las tarjetas futuras como "Disponible en v0.x" y los últimos movimientos con hora
+// manda null), las tarjetas futuras como "Disponible en v0.x" (los avisos con su dato desde S5-F3) y los últimos movimientos con hora
 // relativa; "Por vencer" lleva a /socios?membership_status=expiring; el member va a /mi. axe-core y
 // capturas a 320, 768, 1024 y 1440 px en claro y oscuro, sin desborde horizontal. La variante real
 // es stack/home.spec.ts.
@@ -37,8 +37,8 @@ const COACH_DASHBOARD = {
   income_month_cop: null,
   attendance_week: null,
   sessions_today: null,
-  notifications_today: null,
-  members_without_consent: null,
+  notifications_today: 9,
+  members_without_consent: 2,
   wod_today: null,
   last_movements: [
     move(510, "2026-10-20T19:31:30Z", "admin registró un pago de Laura G.", LAURA, "payments.payments"),
@@ -93,7 +93,10 @@ test.describe("Inicio (preview)", () => {
     await expect(income.getByText("Solo administración")).toBeVisible();
     await expect(page.getByText("$ 0")).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Hoy en el box" }).getByText("Disponible en v0.4")).toBeVisible();
-    await expect(page.getByRole("group", { name: "Por avisar hoy" }).getByText("Disponible en v0.2")).toBeVisible();
+    // S5-F3 (US-132): los avisos ya tienen dato: enlace a /avisos/hoy y el conteo sin consentimiento.
+    await expect(page.getByRole("link", { name: "Por avisar hoy: 9" })).toHaveAttribute("href", "/avisos/hoy");
+    await expect(page.getByRole("group", { name: "Sin consentimiento" }).getByText("2")).toBeVisible();
+    await expect(page.getByText("Disponible en v0.2")).toHaveCount(0);
 
     const movements = page.getByRole("list", { name: "Últimos movimientos" }).getByRole("listitem");
     await expect(movements).toHaveCount(5);

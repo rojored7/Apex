@@ -238,3 +238,36 @@ describe("PaymentDetailModal · estados", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+describe("PaymentDetailModal · recibo (S5-F4, US-137)", () => {
+  const RECEIPT_KEY = `GET /payments/${PAYMENT_ID}/receipt.pdf`;
+
+  it.each<Role>(["admin", "coach"])("el %s descarga el recibo del pago desde el detalle", async (role) => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/1"), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const { mock, user } = renderDetail(role, { [RECEIPT_KEY]: { status: 200, file: { content: "%PDF-1.4", contentType: "application/pdf", filename: "recibo-99999999.pdf" } } });
+
+    await within(await screen.findByRole("dialog", { name: "Detalle del pago" })).findByRole("link", { name: "Laura Gómez" });
+    await user.click(within(dialog()).getByRole("button", { name: "Descargar el recibo del pago" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo(RECEIPT_KEY)).toHaveLength(1);
+    });
+  });
+
+  it("si el pago no carga, no ofrece el recibo", async () => {
+    renderDetail("admin", { [paymentDetailKey()]: apiError(500, "internal_error") });
+
+    expect(await within(await screen.findByRole("dialog", { name: "Detalle del pago" })).findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Descargar el recibo del pago" })).not.toBeInTheDocument();
+  });
+
+  it("un 404 del recibo se explica dentro del detalle", async () => {
+    const { user } = renderDetail("admin", { [RECEIPT_KEY]: apiError(404, "not_found") });
+
+    await within(await screen.findByRole("dialog", { name: "Detalle del pago" })).findByRole("link", { name: "Laura Gómez" });
+    await user.click(within(dialog()).getByRole("button", { name: "Descargar el recibo del pago" }));
+
+    expect(await within(dialog()).findByText("No encontramos este pago. Actualiza la lista e intenta de nuevo.")).toBeInTheDocument();
+  });
+});

@@ -4,6 +4,8 @@
 // pagos sobre la pestaña (?pago=<membresía>); "Ocultar anulados" viaja como voided=false. axe-core en
 // claro y oscuro a 390 y 1440 px, sin desborde y con capturas. La variante contra el stack es
 // stack/member-tabs.spec.ts.
+// S5-F3 (US-123, US-130): la pestaña Avisos (hija de la feature notifications) con los canales del socio y el
+// historial de sus avisos; activar el correo hace PATCH con ese canal.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { mockSession } from "./helpers/session";
@@ -99,18 +101,43 @@ const DETAIL = {
   warnings: [],
 };
 
+const RULE_ID = "cccccccc-1111-4111-8111-cccccccccccc";
+const RULE = { id: RULE_ID, name: "Por vencer", trigger: "membership_expiring", offset_days: -3, channel: "email", template_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", is_active: true, created_at: "2026-10-01T15:00:00Z", updated_at: "2026-10-01T15:00:00Z" };
+const notification = (n: number, overrides: Record<string, unknown>) => ({
+  id: `0000000${String(n)}-1111-4111-8111-111111111111`,
+  rule_id: RULE_ID,
+  member_id: MEMBER_ID,
+  member_name: "Laura Gómez",
+  membership_id: CURRENT_ID,
+  target_date: "2026-10-20",
+  channel: "email",
+  status: "sent",
+  rendered_subject: "Tu plan vence pronto",
+  rendered_body: "Hola Laura, tu plan Mensual vence pronto.",
+  attempts: 1,
+  last_error: null,
+  sent_at: "2026-10-20T12:00:00Z",
+  sent_by: null,
+  skip_reason: null,
+  created_at: "2026-10-20T12:00:00Z",
+  updated_at: "2026-10-20T12:00:00Z",
+  ...overrides,
+});
+const NOTIFICATIONS = [notification(1, {}), notification(2, { channel: "whatsapp_link", status: "skipped", sent_at: null, skip_reason: "pidió no contactar" })];
+
 const json = (route: Route, status: number, body?: unknown) =>
   route.fulfill({ status, contentType: "application/json", body: body === undefined ? "" : JSON.stringify(body) });
 
 interface FakeApi {
   detailCalls: number;
   paymentQueries: URLSearchParams[];
+  channelPatches: unknown[];
 }
 
 const page25 = (items: unknown[]) => ({ items, total: items.length, limit: 25, offset: 0 });
 
 async function fakeApi(page: Page): Promise<FakeApi> {
-  const state: FakeApi = { detailCalls: 0, paymentQueries: [] };
+  const state: FakeApi = { detailCalls: 0, paymentQueries: [], channelPatches: [] };
   await mockSession(page, ADMIN);
   await page.route("**/api/v1/payments/methods", (route) =>
     json(route, 200, {
@@ -133,6 +160,22 @@ async function fakeApi(page: Page): Promise<FakeApi> {
     state.paymentQueries.push(query);
     return json(route, 200, page25(query.get("voided") === "false" ? PAYMENTS.filter((p) => !p.voided) : PAYMENTS));
   });
+  // S5-F3: canales del socio (opt-in del correo) y su historial de avisos.
+  let emailOn = false;
+  await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/channels$`), (route) => {
+    if (route.request().method() === "PATCH") {
+      state.channelPatches.push(route.request().postDataJSON());
+      emailOn = true;
+    }
+    return json(route, 200, {
+      member_id: MEMBER_ID,
+      channels: emailOn ? [{ channel: "email", active: true }] : [],
+      effective: emailOn ? ["email", "whatsapp_link"] : ["whatsapp_link"],
+      has_consent: true,
+    });
+  });
+  await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/notifications(\\?.*)?$`), (route) => json(route, 200, page25(NOTIFICATIONS)));
+  await page.route(/\/api\/v1\/notification-rules(\?.*)?$/, (route) => json(route, 200, page25([RULE])));
   // El panel de pagos (?pago=<membresía>) lee la membresía y las abiertas del socio.
   await page.route(`**/api/v1/memberships/${CURRENT_ID}`, (route) => json(route, 200, membership({})));
   await page.route(/\/api\/v1\/memberships(\?.*)?$/, (route) => json(route, 200, page25([])));
@@ -244,4 +287,42 @@ for (const theme of ["light", "dark"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `test-results/captures/ficha-tabs-historial-${theme}-1440.png`, fullPage: true });
   });
+}
+
+// S5-F3: la pestaña Avisos de la ficha.
+test("la pestaña Avisos muestra los canales y el historial del socio y activar el correo hace PATCH con ese canal", async ({ page }) => {
+  const api = await fakeApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/socios/${MEMBER_ID}`);
+
+  const tab = page.getByRole("tab", { name: "Avisos" });
+  await expect(tab).not.toHaveAttribute("aria-disabled", "true");
+  await tab.click();
+  await expect(page).toHaveURL(new RegExp(`/socios/${MEMBER_ID}/avisos$`));
+  await expect(page.getByRole("heading", { level: 2, name: "Canales de aviso" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Correo" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "WhatsApp manual" })).toBeChecked();
+  await expect(page.getByText("motivo: pidió no contactar")).toBeVisible();
+
+  await page.getByRole("checkbox", { name: "Correo" }).click();
+  await expect(page.getByText("Preferencia guardada.")).toBeVisible();
+  expect(api.channelPatches).toEqual([{ items: [{ channel: "email", active: true }] }]);
+  expect(api.detailCalls).toBe(1);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`la pestaña Avisos en ${theme} a ${String(width)} px pasa axe, no desborda y tiene captura`, async ({ page }) => {
+      await fakeApi(page);
+      await setTheme(page, theme);
+      await page.setViewportSize({ width, height: 900 });
+
+      await page.goto(`/socios/${MEMBER_ID}/avisos`);
+      await expect(page.getByText("motivo: pidió no contactar")).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      expect(await axeViolations(page)).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `test-results/captures/ficha-avisos-${theme}-${String(width)}.png`, fullPage: true });
+    });
+  }
 }

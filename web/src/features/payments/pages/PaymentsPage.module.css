@@ -102,3 +102,22 @@
     white-space: nowrap;
   }
 }
+
+/* S5-F4: "Ver" y "Recibo" de la fila, una junto a la otra. */
+.rowActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+/* S5-F4: la fila de herramientas bajo el resumen (Exportar, solo admin). */
+.tools {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tools:empty {
+  display: none;
+}

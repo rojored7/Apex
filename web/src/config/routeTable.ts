@@ -125,6 +125,13 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "members.history.view",
     load: () => import("../features/members/components/MemberHistoryTab"),
   }),
+  // S5-F3 (US-123, US-130, S3-D65): Avisos es hija de la ficha y de la feature notifications: canales del
+  // socio e historial de sus avisos. La ficha la ve deshabilitada si la feature o el rol no la abren.
+  childRoute(MEMBER_DETAIL, "/socios/:id/avisos", "Avisos del socio", {
+    feature: "notifications",
+    access: "notifications.view",
+    load: () => import("../features/notifications/tabs/NotificationsTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
@@ -144,9 +151,11 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel"),
   route("/wods/:id", "WOD", "wods", "wods.view", "panel"),
   route("/wods/:id/editar", "Editar WOD", "wods", "wods.view", "panel"),
-  route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel"),
-  route("/avisos/reglas", "Reglas y plantillas", "notifications", "notifications.view", "panel"),
-  route("/avisos/historial", "Historial de envíos", "notifications", "notifications.view", "panel"),
+  // S5-F1: por avisar hoy, abrir WhatsApp y omitir con motivo (US-127 a US-129).
+  route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/TodayPage") }),
+  // S5-F2: reglas y plantillas (US-120, US-121; el coach las lee) e historial de envíos (US-130).
+  route("/avisos/reglas", "Reglas y plantillas", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/RulesPage") }),
+  route("/avisos/historial", "Historial de envíos", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/HistoryPage") }),
   // S2-F4a: lista y alta; la gestión (editar, bloquear, sesiones, reenviar) llega en S2-F4b.
   route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", { load: () => import("../features/system/pages/UsersPage") }),
   // S4A-F1: consulta, detalle sin descifrar y verificación de la cadena (US-102 a US-104, S4A-D31).

@@ -19,7 +19,7 @@
 //   trae datos cifrados (N-01) y la asistencia llega con v0.4; sin el documento enmascarado bajo el
 //   nombre (N-01). "Vence" muestra la fecha de fin con año; no "Vencido · 5 días", "reanuda 1 nov"
 //   ni "12 clases · quedan 2" (la fila no trae días ni clases restantes).
-// - Sin filtro de última asistencia (v0.4) ni "Exportar" (EP-16, US-139, v0.2). El encabezado no
+// - Sin filtro de última asistencia (v0.4). S5-F4: "Exportar" (solo admin) con los filtros vigentes. El encabezado no
 //   dice "· 269 con membresía": el número está en los chips.
 // - Sin la nota de la búsqueda por valor exacto: va como ayuda corta bajo la lista.
 // - "Ordenar por" no ofrece "Vencimiento más próximo" (GET /members no ordena por fin de membresía).
@@ -37,6 +37,7 @@ import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { StatusTag } from "../../../shared/ui/StatusTag";
 import { useMembers, useMembersTotal, type MembersInfiniteParams } from "../api";
+import { ExportButton } from "../components/ExportButton";
 import { MemberCardList } from "../components/MemberCardList";
 import { MemberStatusChips } from "../components/MemberStatusChips";
 import { PLAN_FILTER_NAME, readPlanId, usePlanFilter } from "../components/PlanFilter";
@@ -219,6 +220,10 @@ export default function MembersListPage() {
     }),
     [limit, q, status, membership_status, planId, sort],
   );
+  const exportFilters = useMemo(
+    () => ({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(membership_status ? { membership_status } : {}), ...(planId ? { plan_id: planId } : {}) }),
+    [q, status, membership_status, planId],
+  );
   const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "", canCreate, onClear: list.clear };
 
   // En el celular "Nuevo socio" es el botón flotante de MemberCardList.
@@ -228,6 +233,9 @@ export default function MembersListPage() {
     <div className={styles.page}>
       <PageHeader title="Socios" {...(total === undefined ? {} : { total: `${formatCount(total)} en total` })} actions={actions} />
       <CreatedNotice notice={notice} onDismiss={dismissNotice} />
+      <div className={styles.tools}>
+        <ExportButton filters={exportFilters} />
+      </div>
       <MemberStatusChips
         value={chip}
         onChange={(next) => {

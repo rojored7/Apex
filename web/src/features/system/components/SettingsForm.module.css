@@ -151,3 +151,41 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* S5-F2: una fila por canal (Config.html, "4 · Canales de aviso") con su insignia de credenciales. */
+.channelHead {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  font: var(--text-body);
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+}
+
+/* El texto siempre dice el estado; el color solo lo refuerza. */
+.badge {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+.badgeWarn {
+  border-color: var(--warning);
+  color: var(--warning);
+}

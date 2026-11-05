@@ -1,7 +1,7 @@
-// S2-F4a · US-048 (front, criterio 10): /recuperar, la tarjeta "Olvidé mi contraseña" de
+// S2-F4a · US-048 y S5-F5 · US-131 (front): /recuperar, la tarjeta "Olvidé mi contraseña" de
 // Login.html. Envía POST /auth/forgot y muestra siempre el mismo mensaje, exista o no el
-// correo y pase lo que pase con la petición (H-2: en v0.1 forgot no envía correos; el enlace
-// lo entrega el administrador).
+// correo y pase lo que pase con la petición (204, 429 tardío, 5xx o red): la pantalla nunca
+// dice si la cuenta existe (H-2 cerrado: el api envía el correo en segundo plano, S5-D38).
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,7 +11,7 @@ import { AccessLayout } from "../../../layouts/AccessLayout";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import ForgotPage from "./ForgotPage";
 
-const DONE = "Pídele al administrador tu enlace de recuperación.";
+const DONE = "Si el correo está registrado, te enviamos un enlace. Revisa tu bandeja en unos minutos; si no llega, pídeselo al administrador del gimnasio.";
 
 function renderForgot(handlers: Record<string, MockHandler> = {}) {
   const mock = mockApi({ "POST /auth/forgot": { status: 204 }, ...handlers });
@@ -42,7 +42,8 @@ describe("ForgotPage · estructura", () => {
     expect(emailBox()).toHaveAttribute("type", "email");
     expect(emailBox()).toHaveAttribute("autocomplete", "username");
     expect(emailBox()).toHaveFocus();
-    expect(screen.getByText("En esta versión el enlace no llega por correo: te lo entrega el administrador del gimnasio.")).toBeInTheDocument();
+    expect(screen.getByText("Escribe el correo de tu cuenta y te enviamos un enlace para crear una contraseña nueva.")).toBeInTheDocument();
+    expect(screen.queryByText(/En esta versión el enlace no llega por correo/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Volver a iniciar sesión" })).toHaveAttribute("href", "/login");
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -93,5 +94,56 @@ describe("ForgotPage · siempre el mismo mensaje", () => {
     await user.click(sendButton());
 
     expect(await screen.findByRole("button", { name: "Enviando…" })).toBeDisabled();
+  });
+});
+
+describe("ForgotPage · sin enumeración (H-2 cerrado)", () => {
+  it("el mensaje no menciona el correo escrito ni el administrador como único medio", async () => {
+    const { user } = renderForgot();
+
+    await user.type(emailBox(), "ana@apex.test");
+    await user.click(sendButton());
+
+    const status = await screen.findByRole("status");
+    expect(status).not.toHaveTextContent("ana@apex.test");
+    expect(status).toHaveTextContent(/^Si el correo está registrado/);
+  });
+
+  it("un 429 tardío dice lo mismo que un 204 (misma frase, sin alerta ni espera visible)", async () => {
+    const { user } = renderForgot({
+      "POST /auth/forgot": { status: 429, body: { error: { code: "rate_limited", message: "x" } }, headers: { "Retry-After": "120" } },
+    });
+
+    await user.type(emailBox(), "ana@apex.test");
+    await user.click(sendButton());
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(DONE);
+    expect(status).not.toHaveTextContent(/120|intentos|espera/i);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("el correo escrito no queda en pantalla tras el envío", async () => {
+    const { user } = renderForgot();
+
+    await user.type(emailBox(), "ana@apex.test");
+    await user.click(sendButton());
+    await screen.findByRole("status");
+
+    expect(document.body).not.toHaveTextContent("ana@apex.test");
+  });
+
+  it.each([
+    ["claro", null],
+    ["oscuro", "dark"],
+  ])("el mensaje final no tiene violaciones de accesibilidad en tema %s", async (_name, theme) => {
+    if (theme) document.documentElement.dataset.theme = theme;
+    const { container, user } = renderForgot();
+    await user.type(emailBox(), "ana@apex.test");
+    await user.click(sendButton());
+    await screen.findByRole("status");
+
+    expect(await axe(container)).toHaveNoViolations();
+    delete document.documentElement.dataset.theme;
   });
 });

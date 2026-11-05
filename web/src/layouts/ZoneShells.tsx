@@ -1,6 +1,7 @@
 // S2-F2: contenedores de las zonas que no son el panel. Leen de la sesión o de la ruta lo que
 // su layout presentacional necesita.
 import { Outlet, useMatches } from "react-router";
+import { CustodyNoticeHost } from "../core/custody/CustodyNoticeHost";
 import { useSession } from "../core/auth";
 import { GymLayout } from "./GymLayout";
 import { PortalLayout } from "./PortalLayout";
@@ -8,7 +9,12 @@ import { TvLayout } from "./TvLayout";
 
 export function PortalShell() {
   const { user } = useSession();
-  return <PortalLayout gymName={user?.gymName} />;
+  return (
+    <PortalLayout gymName={user?.gymName}>
+      <CustodyNoticeHost />
+      <Outlet />
+    </PortalLayout>
+  );
 }
 
 function titleOf(handle: unknown): string | null {

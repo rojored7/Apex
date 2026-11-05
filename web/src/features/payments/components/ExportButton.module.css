@@ -1,0 +1,14 @@
+/* S5-F4: botón "Exportar" de Pagos (Pagos.html) y su nota. Solo variables de tokens.css. */
+.root {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}

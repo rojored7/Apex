@@ -17,6 +17,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { ENABLED_FEATURES, type Feature } from "../config/features";
 import { ROLE_LABELS, can, logout, useSession } from "../core/auth";
+import { CustodyNoticeHost } from "../core/custody/CustodyNoticeHost";
 import { usePanelTheme } from "../core/theme/theme";
 import { ThemeToggle } from "../core/theme/ThemeToggle";
 import { readPaymentPanel } from "../shared/lib/paymentPanel";
@@ -68,8 +69,9 @@ export function PanelShell({ enabledFeatures = ENABLED_FEATURES }: PanelShellPro
       logoutPending={loggingOut}
       themeToggle={<ThemeToggle />}
       banner={
-        user && (accountMounted || paymentPanelOpen) ? (
+        user ? (
           <>
+            <CustodyNoticeHost />
             {accountMounted ? (
               <Suspense fallback={null}>
                 <ChangePasswordPanel

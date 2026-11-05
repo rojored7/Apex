@@ -39,10 +39,22 @@ export const LINK_PURPOSE_TEXT: Readonly<Record<LinkPurpose, string>> = Object.f
   reset: "Recuperación, vence en 1 hora",
 });
 
-function IssuedLinkView({ link }: { link: IssuedLink }) {
+export const MAIL_NOT_SENT = "El correo no salió: entrega este enlace por un medio seguro.";
+
+function IssuedLinkView({ link, email }: { link: IssuedLink; email: string }) {
+  if (link.url === null) {
+    return (
+      <>
+        <p className={styles.purpose}>{`Enlace enviado por correo a ${email}.`}</p>
+        <p className={styles.text}>{LINK_PURPOSE_TEXT[link.purpose]}</p>
+        <p className={styles.note}>{`Vence el ${formatDateTime(link.expiresAt)}`}</p>
+      </>
+    );
+  }
   return (
     <>
       <p className={styles.purpose}>{LINK_PURPOSE_TEXT[link.purpose]}</p>
+      <p className={styles.note}>{MAIL_NOT_SENT}</p>
       <LinkField label="Enlace" name="issued_link" url={link.url} handoff={RESEND_HANDOFF} />
       {/* formatDateTime ya termina en "a. m." o "p. m.": no lleva otro punto. */}
       <p className={styles.note}>{`Vence el ${formatDateTime(link.expiresAt)} Al cerrar ya no se puede volver a ver.`}</p>
@@ -82,7 +94,7 @@ export function LinkModal({ user, onClose }: LinkModalProps) {
   return (
     <Modal open={user !== null} title={LINK_MODAL_TITLE} busy={busy} onClose={close} actions={actions}>
       {link ? (
-        <IssuedLinkView link={link} />
+        <IssuedLinkView link={link} email={user?.email ?? ""} />
       ) : (
         <>
           <p className={styles.text}>{`Se genera un enlace nuevo para ${user?.email ?? ""}.`}</p>

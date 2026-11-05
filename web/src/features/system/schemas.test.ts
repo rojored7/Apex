@@ -1,7 +1,7 @@
 // S2-F5: esquemas de los formularios de configuración con los rangos del api (N-18) y el
 // paso de un 422 con `field = "value.<campo>"` al campo del formulario.
 import { ApiError } from "../../core/api/errors";
-import { applyApiFieldError, gymSettingsSchema, membershipsSettingsSchema, paymentMethodsSettingsSchema, privacySettingsSchema } from "./schemas";
+import { applyApiFieldError, channelsSettingsSchema, gymSettingsSchema, membershipsSettingsSchema, paymentMethodsSettingsSchema, privacySettingsSchema } from "./schemas";
 
 const GYM = { name: "APEX", nit: "", address: "", city: "", phone: "", whatsapp: "", email: "" };
 const PRIVACY = { policy_version: "2026-10", policy_text: "Autorizo el tratamiento.", retention_years: "5", consent_required_from: "" };
@@ -193,5 +193,21 @@ describe("paymentMethodsSettingsSchema (S3-F4, D24, S3-D55)", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([[path, message]]);
+  });
+});
+
+describe("channelsSettingsSchema · objetos anidados estrictos (V10, LOW 5)", () => {
+  const valid = {
+    email: { enabled: true, sender_name: "APEX", reply_to: "" },
+    whatsapp: { enabled: true, country_code: "57" },
+    telegram: { enabled: false },
+  };
+
+  it("acepta la forma del contrato", () => {
+    expect(channelsSettingsSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it.each(["email", "whatsapp", "telegram"] as const)("rechaza una clave de más en %s", (channel) => {
+    expect(channelsSettingsSchema.safeParse({ ...valid, [channel]: { ...valid[channel], extra: 1 } }).success).toBe(false);
   });
 });

@@ -8,8 +8,9 @@
 //   anulado: el detalle se cambia por VoidPaymentModal (punto de montaje; dos diálogos a la vez se
 //   pelearían el foco). Al cerrarlo vuelve el detalle, ya releído (anular invalida ["payments"]).
 // - Estados: carga, 404 y otro error con Reintentar; Cerrar siempre disponible.
+// S5-F4 (US-137): "Recibo" descarga el PDF (admin y coach).
 // DESIGN-GAP: sin el número del pago en el título ("#4812": los pagos tienen UUID, no consecutivo) y
-// sin "Recibo · Reenviar · Imprimir" (el recibo es de la v0.2). "Registró" muestra el correo parcial y
+// sin "Reenviar" ni "Imprimir" (el recibo solo se descarga). "Registró" muestra el correo parcial y
 // no "Carlos R. (coach)" hasta US-110.
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -24,6 +25,7 @@ import { memberHref, memberName, membershipText } from "../lib/paymentText";
 import { paymentDetailMessage } from "../paymentErrors";
 import type { PaymentDetailView } from "../schemas";
 import styles from "./PaymentDetailModal.module.css";
+import { ReceiptButton } from "./ReceiptButton";
 import { VoidPaymentModal } from "./VoidPaymentModal";
 
 export const DETAIL_TITLE = "Detalle del pago";
@@ -114,6 +116,7 @@ export function PaymentDetailModal({ paymentId, onClose }: PaymentDetailModalPro
           <Button variant="secondary" onClick={onClose}>
             Cerrar
           </Button>
+          {payment ? <ReceiptButton paymentId={payment.id} /> : null}
           {canVoidThis ? (
             <Button
               variant="danger"

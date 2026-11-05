@@ -158,7 +158,7 @@ test("recuperar: siempre el mismo mensaje", async ({ page }) => {
   await page.getByRole("textbox", { name: "Correo" }).fill("quien@apex.test");
   await page.getByRole("button", { name: "Enviar enlace" }).click();
 
-  await expect(page.getByRole("status")).toHaveText("Pídele al administrador tu enlace de recuperación.");
+  await expect(page.getByRole("status")).toHaveText("Si el correo está registrado, te enviamos un enlace. Revisa tu bandeja en unos minutos; si no llega, pídeselo al administrador del gimnasio.");
   expect(await axeViolations(page)).toEqual([]);
   await expectNoOverflow(page);
 });

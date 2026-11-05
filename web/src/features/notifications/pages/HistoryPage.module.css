@@ -1,0 +1,33 @@
+/* S5-F2: Notif_Historial.html. Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.link {
+  color: var(--blue-deep);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+.ok {
+  border-color: var(--apex-blue);
+  background: var(--apex-blue);
+  color: var(--black);
+}

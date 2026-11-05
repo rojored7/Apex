@@ -35,6 +35,7 @@ export interface NewUserPanelProps {
 
 export const NEW_USER_TITLE = "Nuevo usuario del equipo";
 export const LINK_HANDOFF = "Entrega este enlace por un medio seguro; vence en 72 horas.";
+export const MAIL_NOT_SENT = "El correo no salió: entrega este enlace por un medio seguro.";
 
 const NEW_USER_MESSAGES = {
   emailTaken: "Ya existe una cuenta con este correo.",
@@ -62,9 +63,19 @@ function CreatedLink({ created }: { created: CreatedUser }) {
   return (
     <div className={styles.created}>
       <p className={styles.done}>{`Usuario creado: ${created.email}`}</p>
-      <LinkField label="Enlace de activación" name="activation_url" url={created.activationUrl} handoff={LINK_HANDOFF} />
-      {/* formatDateTime ya termina en "a. m." o "p. m.": no lleva otro punto. */}
-      <p className={styles.note}>{`Vence el ${formatDateTime(created.expiresAt)} Al cerrar este panel ya no se puede volver a ver.`}</p>
+      {created.activationUrl === null ? (
+        <>
+          <p className={styles.done}>{`Enlace enviado por correo a ${created.email}.`}</p>
+          {/* formatDateTime ya termina en "a. m." o "p. m.": no lleva otro punto. */}
+          <p className={styles.note}>{`El enlace vence el ${formatDateTime(created.expiresAt)}`}</p>
+        </>
+      ) : (
+        <>
+          <p className={styles.note}>{MAIL_NOT_SENT}</p>
+          <LinkField label="Enlace de activación" name="activation_url" url={created.activationUrl} handoff={LINK_HANDOFF} />
+          <p className={styles.note}>{`Vence el ${formatDateTime(created.expiresAt)} Al cerrar este panel ya no se puede volver a ver.`}</p>
+        </>
+      )}
     </div>
   );
 }

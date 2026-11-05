@@ -37,7 +37,8 @@ import {
 } from "./schemas";
 
 // S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
-export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods";
+// S5-F2 (US-122, S5-D30): `channels` suma los canales de aviso y trae `credentials_present` (S5-D204).
+export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
@@ -79,6 +80,15 @@ const paymentMethodsValueSchema = z.object({
   breb: methodLabelSchema,
 });
 
+// S5-F2 (US-122): sin secretos. `reply_to` llega null si no hay; `credentials_present` nunca trae valores.
+const channelsValueSchema = z.object({
+  email: z.object({ enabled: z.boolean(), sender_name: z.string(), reply_to: text }),
+  whatsapp: z.object({ enabled: z.boolean(), country_code: z.string() }),
+  telegram: z.object({ enabled: z.boolean() }),
+});
+
+const credentialsPresentSchema = z.object({ email: z.boolean(), telegram: z.boolean() });
+
 function sectionSchema<K extends SettingsKey, V extends z.ZodType>(key: K, value: V) {
   return z.object({
     key: z.literal(key),
@@ -94,6 +104,7 @@ const SECTION_SCHEMAS = {
   privacy: sectionSchema("privacy", privacyValueSchema),
   memberships: sectionSchema("memberships", membershipsValueSchema),
   payment_methods: sectionSchema("payment_methods", paymentMethodsValueSchema),
+  channels: sectionSchema("channels", channelsValueSchema).extend({ credentials_present: credentialsPresentSchema }),
 } as const;
 
 export type GymSettings = z.infer<typeof gymValueSchema>;
@@ -101,6 +112,8 @@ export type GymSettings = z.infer<typeof gymValueSchema>;
 export type PrivacyView = z.infer<typeof privacyValueSchema>;
 export type MembershipsSettings = z.infer<typeof membershipsValueSchema>;
 export type PaymentMethodsSettings = z.infer<typeof paymentMethodsValueSchema>;
+export type ChannelsSettings = z.infer<typeof channelsValueSchema>;
+export type CredentialsPresent = z.infer<typeof credentialsPresentSchema>;
 
 /** Lo que se escribe en `privacy`: publicar exige versión y texto. */
 export interface PrivacyInput {
@@ -115,6 +128,7 @@ interface SectionInputs {
   privacy: PrivacyInput;
   memberships: MembershipsSettings;
   payment_methods: PaymentMethodsSettings;
+  channels: ChannelsSettings;
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;
@@ -206,7 +220,9 @@ export interface UsersParams {
 export interface CreatedUser {
   id: string;
   email: string;
-  activationUrl: string;
+  /** null cuando el api lo envió por correo (S5-D37): el token no se muestra. */
+  activationUrl: string | null;
+  emailSent: boolean;
   expiresAt: string;
 }
 
@@ -221,6 +237,8 @@ const createdUserSchema = z.object({
   // Solo http(s): el enlace se muestra y se copia, nunca se interpreta.
   activation_url: z.string().regex(/^https?:\/\/\S+$/),
   expires_at: z.iso.datetime({ offset: true }),
+  // S5-F5 (S5-D37): ausente en v0.1; falso deja al admin copiando el enlace.
+  email_sent: z.boolean().default(false),
 });
 
 export function useUsers(params: UsersParams): UseQueryResult<Page<UserRowView>> {
@@ -238,8 +256,8 @@ export function useCreateUser(): UseMutationResult<CreatedUser, Error, CreateUse
   const queryClient = useQueryClient();
   return useMutation<CreatedUser, Error, CreateUserForm>({
     mutationFn: async ({ email, role }) => {
-      const { user, activation_url, expires_at } = parseResponse(createdUserSchema, await api.post<unknown>("/users", { body: { email, role } }));
-      return { id: user.id, email: user.email, activationUrl: activation_url, expiresAt: expires_at };
+      const { user, activation_url, expires_at, email_sent } = parseResponse(createdUserSchema, await api.post<unknown>("/users", { body: { email, role } }));
+      return { id: user.id, email: user.email, activationUrl: email_sent ? null : activation_url, emailSent: email_sent, expiresAt: expires_at };
     },
     gcTime: 0,
     // M3 (revisión del Sprint 2): sin esperar la relectura; el enlace se muestra enseguida.
@@ -263,7 +281,9 @@ export interface UpdateUserChanges {
 }
 
 export interface IssuedLink {
-  url: string;
+  /** null cuando el api lo envió por correo (S5-D37): el token no se muestra. */
+  url: string | null;
+  emailSent: boolean;
   purpose: LinkPurpose;
   expiresAt: string;
 }
@@ -284,6 +304,7 @@ const issuedLinkSchema = z.object({
   url: z.string().regex(/^https?:\/\/\S+$/),
   purpose: z.enum(LINK_PURPOSES),
   expires_at: z.iso.datetime({ offset: true }),
+  email_sent: z.boolean().default(false),
 });
 
 /** Mutación de una cuenta que, al salir bien, invalida toda la familia ["users"]. */
@@ -348,8 +369,8 @@ export function useRevokeSessions(): UseMutationResult<number, Error, UserTarget
 export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget> {
   return useUserMutation(
     async ({ id }: UserTarget) => {
-      const { url, purpose, expires_at } = parseResponse(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
-      return { url, purpose, expiresAt: expires_at };
+      const { url, purpose, expires_at, email_sent } = parseResponse(issuedLinkSchema, await api.post<unknown>(userPath(id, "resend-link")));
+      return { url: email_sent ? null : url, emailSent: email_sent, purpose, expiresAt: expires_at };
     },
     { gcTime: 0 },
   );

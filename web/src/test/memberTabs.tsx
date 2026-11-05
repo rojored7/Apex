@@ -153,7 +153,7 @@ export interface RenderTabOptions {
 }
 
 /** Monta una pestaña como hija de /socios/:id (`segment` es "membresias" o "pagos"). */
-export function renderMemberTab(Tab: ComponentType, segment: "membresias" | "pagos", entry = `/socios/${MEMBER_ID}/${segment}`, options: RenderTabOptions = {}) {
+export function renderMemberTab(Tab: ComponentType, segment: "membresias" | "pagos" | "avisos", entry = `/socios/${MEMBER_ID}/${segment}`, options: RenderTabOptions = {}) {
   const { handlers = {}, queryClient = testQueryClient(), member = TAB_MEMBER } = options;
   const mock = mockApi({
     [`GET ${MEMBER_MEMBERSHIPS_PATH}`]: (call) => pageOf(call, memberMemberships()),

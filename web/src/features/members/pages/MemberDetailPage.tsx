@@ -51,7 +51,8 @@ export const MEMBER_TABS: readonly TabItem[] = [
   { id: "asistencia", label: "Asistencia", disabledUntil: "v0.4" },
   { id: "resultados", label: "Resultados", disabledUntil: "v0.5" },
   { id: "atleta", label: "Atleta", disabledUntil: "v0.6" },
-  { id: "avisos", label: "Avisos", disabledUntil: "v0.2" },
+  // S5-F3 (US-123, US-130, S3-D65): hija /socios/:id/avisos de la feature notifications.
+  { id: "avisos", label: "Avisos" },
   { id: "adjuntos", label: "Adjuntos", disabledUntil: "v0.3" },
   // S4A-F2 (US-106, S4A-D30): hija /socios/:id/historial de la feature members (members.history.view).
   { id: "historial", label: "Historial" },
@@ -61,7 +62,7 @@ const INDEX_TAB = "datos";
 export const TAB_UNAVAILABLE = "No disponible";
 
 /** S3-F7: pestañas que son rutas hijas con su propio acceso (Membresías, Pagos; S4A-F2: Historial). */
-const CHILD_TABS: ReadonlySet<string> = new Set(["membresias", "pagos", "historial"]);
+const CHILD_TABS: ReadonlySet<string> = new Set(["membresias", "pagos", "historial", "avisos"]);
 
 /**
  * Las pestañas con su estado para este rol: una hija cuya ruta no abre una página (su feature

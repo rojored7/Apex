@@ -33,6 +33,8 @@ export interface ConfirmModalProps {
   reasonHint?: string;
   /** Texto que hay que teclear exacto para habilitar la acción. */
   confirmText?: string;
+  /** S5-F4: deshabilita la acción desde fuera (por ejemplo, la espera de un 503 busy). */
+  confirmDisabled?: boolean;
   /** Hace la mutación; si rechaza, el modal sigue abierto con el error. */
   onConfirm: (reason: string | undefined) => Promise<void> | void;
   onClose: () => void;
@@ -53,6 +55,7 @@ function ConfirmContent({
   maxReasonLength,
   reasonHint,
   confirmText,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: Omit<ConfirmModalProps, "open">) {
@@ -159,7 +162,7 @@ function ConfirmContent({
           <Button
             variant={tone === "danger" ? "danger" : "primary"}
             loading={submitting}
-            disabled={!reasonOk || !typedOk}
+            disabled={!reasonOk || !typedOk || confirmDisabled}
             onClick={() => {
               void confirm();
             }}

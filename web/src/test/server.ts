@@ -13,6 +13,8 @@ export interface MockReply {
   body?: unknown;
   /** Cabeceras extra de la respuesta (por ejemplo `Retry-After` de un 429, S2-F3). */
   headers?: Record<string, string>;
+  /** S5-F4: una descarga (PDF, CSV) en lugar de JSON; el nombre va en Content-Disposition. */
+  file?: { content: string; contentType: string; filename?: string };
 }
 
 export type MockHandler = MockReply | ((call: RecordedCall) => MockReply | Promise<MockReply>);
@@ -71,6 +73,11 @@ export function mockApi(handlers: Record<string, MockHandler>): ApiMock {
         : typeof handler === "function"
           ? await handler(call)
           : handler;
+    if (reply.file) {
+      const { content, contentType, filename } = reply.file;
+      const disposition = filename ? { "Content-Disposition": `attachment; filename=${filename}` } : {};
+      return new Response(content, { status: reply.status, headers: { "Content-Type": contentType, ...disposition, ...reply.headers } });
+    }
     const text = reply.body === undefined ? null : JSON.stringify(reply.body);
     return new Response(reply.status === 204 ? null : text, {
       status: reply.status,

@@ -1,0 +1,97 @@
+/* S5-F3: preferencias de canal en la pestaña Avisos de la ficha. Solo variables de tokens.css. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.title {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.note,
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.warning,
+.error,
+.problem {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.error,
+.problem {
+  border-color: var(--danger);
+}
+
+.problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.problem p {
+  margin: 0;
+}
+
+.state {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.switches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Cada interruptor mide al menos --control de alto y lleva su etiqueta de texto al lado. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  font: var(--text-body);
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+}
+
+.summary {
+  margin: 0;
+  font: var(--text-label);
+}
+
+.saved {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}

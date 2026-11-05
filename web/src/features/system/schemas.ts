@@ -109,6 +109,39 @@ export const paymentMethodsSettingsSchema = z
   });
 export type PaymentMethodsSettingsForm = z.infer<typeof paymentMethodsSettingsSchema>;
 
+// S5-F2 · US-122: formulario de la pestaña Canales (mismos topes que ChannelsSettings del api).
+export const SENDER_NAME_MAX = 80;
+export const REPLY_TO_MAX = 254;
+export const CHANNELS_MESSAGES = {
+  senderRequired: "Escribe el nombre del remitente.",
+  senderTooLong: `El remitente admite hasta ${String(SENDER_NAME_MAX)} caracteres.`,
+  replyToInvalid: "Escribe un correo válido, por ejemplo hola@mibox.co.",
+  countryInvalid: "El indicativo tiene de 1 a 3 dígitos, sin el signo +.",
+} as const;
+
+export const channelsSettingsSchema = z.object({
+  // Revisión V10 (LOW 5, S5-D260): los objetos anidados son estrictos, como el contrato.
+  email: z
+    .object({
+      enabled: z.boolean(),
+      sender_name: z.string().trim().min(1, CHANNELS_MESSAGES.senderRequired).max(SENDER_NAME_MAX, CHANNELS_MESSAGES.senderTooLong),
+      reply_to: z
+        .string()
+        .trim()
+        .max(REPLY_TO_MAX, CHANNELS_MESSAGES.replyToInvalid)
+        .refine((value) => value === "" || emailFormat.safeParse(value).success, CHANNELS_MESSAGES.replyToInvalid),
+    })
+    .strict(),
+  whatsapp: z
+    .object({
+      enabled: z.boolean(),
+      country_code: z.string().trim().regex(/^\d{1,3}$/, CHANNELS_MESSAGES.countryInvalid),
+    })
+    .strict(),
+  telegram: z.object({ enabled: z.boolean() }).strict(),
+});
+export type ChannelsSettingsForm = z.infer<typeof channelsSettingsSchema>;
+
 const VALUE_PREFIX = "value.";
 const UNPROCESSABLE = 422;
 

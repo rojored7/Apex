@@ -423,3 +423,34 @@ describe("MembersListPage · aviso del alta", () => {
     expect(screen.queryByText(/Socio registrado/)).not.toBeInTheDocument();
   });
 });
+
+describe("MembersListPage · exportar (S5-F4, US-138)", () => {
+  const CSV_FILE = { status: 200, file: { content: "nombre;documento\r\n", contentType: "text/csv", filename: "socios-20261105.csv" } };
+  const PLAN_ID = "11111111-1111-4111-8111-111111111111";
+
+  it("el admin exporta con los filtros de la URL, sin paginar ni ordenar", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/1"), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const { mock, user } = renderMembers(`/socios?membership_status=expiring&plan_id=${PLAN_ID}&sort=-created_at&limit=50`, { handlers: { "GET /members/export": CSV_FILE } });
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    const dialog = screen.getByRole("dialog", { name: "¿Exportar la lista de socios?" });
+    expect(dialog).toHaveTextContent("La descarga contiene datos personales y queda registrada en la auditoría");
+    await user.click(within(dialog).getByRole("button", { name: "Descargar CSV" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo("GET /members/export")).toHaveLength(1);
+    });
+    const params = new URL(mock.callsTo("GET /members/export")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(Object.fromEntries(params)).toEqual({ membership_status: "expiring", plan_id: PLAN_ID });
+  });
+
+  it("el coach no ve 'Exportar'", async () => {
+    signInAs("coach");
+    renderMembers();
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(screen.queryByRole("button", { name: "Exportar" })).not.toBeInTheDocument();
+  });
+});

@@ -37,6 +37,11 @@ export const API_ERROR_CODES = {
   planNotFound: "plan_not_found",
   // S3-F3: la base no dio el candado a tiempo (503, S3-D67; core/db.py).
   busy: "busy",
+  // S5-F5: el custodio de llaves está sellado o inalcanzable (503, S5-D14; core/errors.py).
+  cryptoUnavailable: "crypto_unavailable",
+  // S5-F4: exportaciones CSV (S5-D41, S5-D82; core/export.py).
+  exportInProgress: "export_in_progress",
+  exportTooLarge: "export_too_large",
   // S3-F3: membresías (vender y renovar, US-084, US-088).
   memberInactive: "member_inactive",
   planInvalid: "plan_invalid",
@@ -91,6 +96,8 @@ export const CLIENT_ERROR_CODES = {
   notLoaded: "not_loaded",
   /** Un error que no vino del cliente del api. */
   unknown: "unknown",
+  /** S5-F4: una descarga cuyo Content-Type no es PDF ni CSV. */
+  unexpectedContentType: "unexpected_content_type",
 } as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[keyof typeof API_ERROR_CODES];

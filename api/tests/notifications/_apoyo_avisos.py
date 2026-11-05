@@ -202,3 +202,31 @@ def eventos_de[E: DomainEvent](tipo: type[E]) -> Capturados[E]:
     captura = Capturados(tipo)
     events.subscribe(tipo, captura._recibir)
     return captura
+
+
+# Rojo V11c · ajustes de Canales (S5-D265) ---------------------------------------------------------
+
+
+async def ajustar_canales(
+    session: AsyncSession,
+    *,
+    email: bool = False,
+    whatsapp: bool = False,
+    telegram: bool = False,
+    country_code: str = "57",
+) -> None:
+    """Guarda `settings.channels` (con el control de versión) y confirma. Sin llamarla no hay fila:
+    sin fila el canal está apagado (S5-D231)."""
+    from app.modules.settings import service as settings_service
+
+    actual = await settings_service.get_section(session, "channels")
+    valor = {
+        "email": {"enabled": email, "sender_name": "APEX", "reply_to": None},
+        "whatsapp": {"enabled": whatsapp, "country_code": country_code},
+        "telegram": {"enabled": telegram},
+    }
+    with actor_scope(SYSTEM_USER_ID):
+        await settings_service.update_section(
+            session, "channels", valor, actual.version, SYSTEM_USER_ID
+        )
+        await session.commit()

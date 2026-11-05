@@ -27,6 +27,7 @@ error.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
@@ -42,6 +43,7 @@ from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import db
+from app.core.alerts_telegram import set_enabled_gate
 from app.core.clock import current_clock
 from app.core.config import Settings
 from app.core.crypto.keyring import configure_keyring
@@ -68,6 +70,15 @@ WORKER_CRYPTO_CLASSES: Final = frozenset({"member.phone", "member.email"})
 """Clases que abre el worker con `with_crypto` (S5-D20, S5-D56, M-6): las de los avisos."""
 
 Sleep = Callable[[float], Awaitable[None]]
+
+
+def _telegram_gate() -> Callable[[], Awaitable[bool]]:
+    """La puerta de Telegram (S5-D265d); import por nombre, como `main.py`."""
+    settings_service = importlib.import_module("app.modules.settings.service")
+    gate: Callable[[], Awaitable[bool]] = settings_service.telegram_enabled_gate(
+        db.get_sessionmaker()
+    )
+    return gate
 
 
 def _install_listeners() -> None:
@@ -112,6 +123,7 @@ async def worker_runtime(
     _install_listeners()
     configure_logging(settings)
     db.configure_engine(db.create_engine_from(settings))
+    set_enabled_gate(_telegram_gate())  # S5-D265d, haya o no sink
     sondeo: asyncio.Task[None] | None = None
     try:
         if with_crypto:
@@ -125,6 +137,7 @@ async def worker_runtime(
             configure_keyring(None)
             configure_provider(None)
             reset()  # S5-D198
+        set_enabled_gate(None)
         await db.dispose_engine()
 
 

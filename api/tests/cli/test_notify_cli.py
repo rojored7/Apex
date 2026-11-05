@@ -39,6 +39,7 @@ from tests.factories.users import make_user
 from tests.memberships.conftest import bus_confirmado  # noqa: F401
 from tests.notifications._apoyo_avisos import (
     HOY,
+    ajustar_canales,
     con_membresia,
     regla_aislada,
     reglas_por_defecto,
@@ -66,6 +67,7 @@ async def fabrica(engine: AsyncEngine) -> AsyncIterator[Fabrica]:
 async def _escenario(fabrica: Fabrica, fin: date = HOY + timedelta(days=3)) -> None:
     """Reglas por defecto y un socio consentido con una membresía que termina en `fin`."""
     async with fabrica() as sesion:
+        await ajustar_canales(sesion, email=True, whatsapp=True)  # V11c: sin fila = apagado
         await reglas_por_defecto(sesion)
         plan = await make_plan(sesion)
         await con_membresia(sesion, await socio(sesion), plan, fin)
@@ -237,6 +239,7 @@ async def test_usa_el_dia_de_bogota_y_no_el_utc(
     Bogotá (todavía no); a las 05:30Z ya es 22 y se genera."""
     fin = HOY + timedelta(days=1)
     async with fabrica() as sesion:
+        await ajustar_canales(sesion, whatsapp=True)  # V11c: sin fila = apagado
         await regla_aislada(sesion, "membership_expiring", 0)
         await con_membresia(sesion, await socio(sesion), await make_plan(sesion), fin)
     args = ["notify", "--generate-only"]

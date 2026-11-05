@@ -610,7 +610,8 @@ async def counts_active_by_plans(
 async def notification_candidates(
     session: AsyncSession, on_dates: Collection[date]
 ) -> builtins.list[NotificationCandidate]:
-    """Membresías no anuladas ni pendientes de pago cuya fecha de fin cae en `on_dates`, con el
+    """Membresías no anuladas, congeladas ni pendientes de pago (una `frozen` no genera avisos
+    mientras lo esté, S5-D267) cuya fecha de fin cae en `on_dates`, con el
     socio (id, aunque esté dado de baja), el plan (su nombre, por `names_for` de plans) y el fin.
     Una sola consulta a `memberships.memberships` para todas las fechas (no trocea: son a lo más
     16 por regla), sin JOIN a otros esquemas; sin fechas no consulta nada. Orden `end_date, id`.
@@ -623,7 +624,11 @@ async def notification_candidates(
         .where(
             Membership.end_date.in_(fechas),
             Membership.status.notin_(
-                (MembershipStatus.cancelled.value, MembershipStatus.pending_payment.value)
+                (
+                    MembershipStatus.cancelled.value,
+                    MembershipStatus.pending_payment.value,
+                    MembershipStatus.frozen.value,
+                )
             ),
         )
         .order_by(Membership.end_date, Membership.id)

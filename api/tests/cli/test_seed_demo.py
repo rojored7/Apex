@@ -222,6 +222,39 @@ async def test_segunda_corrida_no_cambia_nada(
     assert await demo.contar(limpiar_demo) == antes  # incluye audit_log y crypto_ops
 
 
+async def _canales(fabrica: Fabrica) -> tuple[dict[str, Any], int]:
+    from app.modules.settings import service as settings_service
+
+    async with fabrica() as sesion:
+        seccion = await settings_service.get_section(sesion, "channels")
+    return seccion.value, seccion.version
+
+
+async def test_deja_correo_y_whatsapp_habilitados_sin_tocar_telegram(
+    limpiar_demo: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """V11c (S5-D265, D269): sin fila los canales están apagados y los avisos de la demostración
+    nacerían omitidos."""
+    assert _sembrar(settings_prueba, monkeypatch).exit_code == 0
+
+    valor, _ = await _canales(limpiar_demo)
+
+    assert valor["email"]["enabled"] is True
+    assert valor["whatsapp"]["enabled"] is True
+    assert valor["telegram"]["enabled"] is False
+
+
+async def test_la_segunda_corrida_no_reescribe_los_canales(
+    limpiar_demo: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _sembrar(settings_prueba, monkeypatch).exit_code == 0
+    _, version = await _canales(limpiar_demo)
+
+    assert _sembrar(settings_prueba, monkeypatch).exit_code == 0
+
+    assert (await _canales(limpiar_demo))[1] == version
+
+
 @pytest.fixture
 async def socio_real(
     limpiar_demo: Fabrica,

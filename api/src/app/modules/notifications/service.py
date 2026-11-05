@@ -41,6 +41,7 @@ from app.modules.notifications.events import (
     NotificationSkipped,
 )
 from app.modules.notifications.exceptions import (
+    ChannelDisabled,
     InvalidPhone,
     MemberWithoutPhone,
     NotificationClosed,
@@ -78,6 +79,8 @@ from app.modules.notifications.templates import (
     update_template,
 )
 from app.modules.notifications.whatsapp import build_link
+from app.modules.settings import service as settings_service
+from app.modules.settings.schemas import ChannelsSettings, SectionKey, WhatsappChannel
 
 logger = logging.getLogger("app.notifications")
 
@@ -171,8 +174,10 @@ async def wa_link(session: AsyncSession, notification_id: UUID, by: UUID) -> WaL
     """El enlace de WhatsApp del aviso y su marca de `sent` (S5-D27, S5-D59, M-9).
 
     409 `notification_closed` si está `skipped`; 409 `wrong_channel` si el canal no es
-    `whatsapp_link`; 422 `member_without_phone` si el socio no tiene teléfono; 422 `invalid_phone`
-    si no es un celular colombiano (confirma el rastro antes de rechazar). Llama
+    `whatsapp_link`; 409 `channel_disabled` si `channels.whatsapp.enabled` es falso (S5-D265b,
+    antes de descifrar: sin `reveal`); 422 `member_without_phone` si el socio no tiene teléfono;
+    422 `invalid_phone` si el número no vale para `channels.whatsapp.country_code` (S5-D265c;
+    confirma el rastro antes de rechazar). Llama
     `members.service.contact_for_notification(session, member_id, "notify", fields={"phone"})` en
     CADA llamada (auditoría `reveal` y `crypto_ops`), marca `sent`, `sent_at` y `sent_by` solo la
     primera vez y confirma antes de responder."""
@@ -181,13 +186,16 @@ async def wa_link(session: AsyncSession, notification_id: UUID, by: UUID) -> WaL
         raise NotificationClosed()
     if aviso.channel != "whatsapp_link":
         raise WrongChannel()
+    whatsapp = await _whatsapp_config(session)
+    if not whatsapp.enabled:
+        raise ChannelDisabled()  # S5-D265b: antes de descifrar, sin `reveal`
     contacto = await members_service.contact_for_notification(
         session, aviso.member_id, "notify", fields={"phone"}
     )
     if not contacto.phone:
         raise MemberWithoutPhone()
     try:
-        url = build_link(contacto.phone, aviso.rendered_body)
+        url = build_link(contacto.phone, aviso.rendered_body, country_code=whatsapp.country_code)
     except ValueError:
         # Ya se descifró: se confirma el rastro (`reveal` y `decrypt`) antes de rechazar.
         await session.commit()
@@ -205,6 +213,13 @@ async def wa_link(session: AsyncSession, notification_id: UUID, by: UUID) -> WaL
         )
     await session.commit()
     return WaLinkOut(url=url)
+
+
+async def _whatsapp_config(session: AsyncSession) -> WhatsappChannel:
+    valor = await settings_service.get(session, SectionKey.channels)
+    if not isinstance(valor, ChannelsSettings):
+        raise TypeError("channels")
+    return valor.whatsapp
 
 
 async def _locked(session: AsyncSession, notification_id: UUID) -> Notification:

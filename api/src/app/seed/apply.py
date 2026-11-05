@@ -33,6 +33,7 @@ from app.seed.dataset import DemoMember, DemoPayment, DemoPlan, DemoSpec, demo_d
 
 VOID_REASON = "Pago registrado por error (datos de demostración)"
 CANCEL_REASON = "Membresía anulada (datos de demostración)"
+CHANNELS_ON = ("email", "whatsapp")  # canales que la demostración deja habilitados
 PAID_AT_HOUR = 9  # hora de Bogotá a la que se fecha cada pago de la demostración
 
 
@@ -77,6 +78,7 @@ async def apply_demo(
         spec = await _plan_the_run(session_factory, today, force_on_non_empty)
         antes = await _existing_plans(session_factory, spec)
         plan_ids = await _ensure_plans(session_factory, spec.plans)
+        await _ensure_channels(session_factory, actor_id)
         socios = membresias = pagos = 0
         for member in spec.members:
             member_id, nuevo = await _member_id(session_factory, member)
@@ -118,6 +120,21 @@ async def _existing_plans(session_factory: Any, spec: DemoSpec) -> int:
     async with read_only_session(session_factory) as session:
         hallados = [await _plan_id(session, plan.name) for plan in spec.plans]
     return sum(1 for hallado in hallados if hallado is not None)
+
+
+async def _ensure_channels(session_factory: Any, actor_id: UUID) -> None:
+    """Deja `channels.email.enabled` y `channels.whatsapp.enabled` en `true` (S5-D265, S5-D269):
+    sin fila los avisos de la demostración nacerían `skipped`. No toca credenciales ni nada más;
+    si ya están encendidos no escribe."""
+    async with session_factory() as session, session.begin():
+        actual = await settings_service.get_section(session, "channels")
+        valor = {**actual.value}
+        encendido = all(valor.get(canal, {}).get("enabled") is True for canal in CHANNELS_ON)
+        if encendido:
+            return
+        for canal in CHANNELS_ON:
+            valor[canal] = {**valor.get(canal, {}), "enabled": True}
+        await settings_service.update_section(session, "channels", valor, actual.version, actor_id)
 
 
 async def _plan_id(session: Any, name: str) -> UUID | None:

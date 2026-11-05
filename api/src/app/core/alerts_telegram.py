@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Final
 
@@ -43,6 +43,22 @@ _NOMBRE: Final = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 _FECHA: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 _CONTEOS: Final[tuple[str, ...]] = ("generados", "enviados", "fallidos", "omitidos", "pendientes")
 _MAX_TEXTO: Final = 4096
+EnabledGate = Callable[[], Awaitable[bool]]
+"""Puerta async que dice si Telegram está encendido por el admin (S5-D265d)."""
+_gate: EnabledGate | None = None
+
+
+def set_enabled_gate(gate: EnabledGate | None) -> None:
+    """Registra (o quita, con `None`) la puerta que consulta el sink antes de cada envío. La
+    registran `main.py` y `worker/runtime.py` (`core` no importa módulos)."""
+    global _gate
+    _gate = gate
+
+
+def get_enabled_gate() -> EnabledGate | None:
+    return _gate
+
+
 MAX_PENDING: Final = 20
 """Tareas vivas por sink (S5-D206): con la cola llena, la alerta se descarta."""
 DEDUP_WINDOW: Final = timedelta(seconds=60)
@@ -126,6 +142,7 @@ class TelegramAlertSink:
         self._tasks: set[asyncio.Task[None]] = set()
         self._recientes: dict[tuple[str, str], datetime] = {}
         self.dropped = 0
+        self.skipped = 0
 
     def __repr__(self) -> str:
         return "TelegramAlertSink()"
@@ -144,7 +161,7 @@ class TelegramAlertSink:
         except RuntimeError:
             logger.warning("alerta de telegram descartada: no hay bucle en marcha")
             return
-        tarea = bucle.create_task(self._publicar(texto))
+        tarea = bucle.create_task(self._publicar_si_esta_encendido(texto))
         self._tasks.add(tarea)
         tarea.add_done_callback(self._tasks.discard)
 
@@ -157,6 +174,22 @@ class TelegramAlertSink:
             return True
         self._recientes[clave] = ahora
         return False
+
+    async def _publicar_si_esta_encendido(self, texto: str) -> None:
+        """Consulta la puerta (S5-D265d): apagado por el admin, no envía y cuenta `skipped`. Si la
+        puerta falla se envía igual: una alerta del equipo vale más que un ajuste sin leer."""
+        if _gate is not None:
+            try:
+                encendido = await _gate()
+            except Exception as error:
+                logger.warning(
+                    "puerta de telegram no leída", extra={"error_type": type(error).__name__}
+                )
+                encendido = True
+            if not encendido:
+                self.skipped += 1
+                return
+        await self._publicar(texto)
 
     async def _publicar(self, texto: str) -> None:
         """Atrapa todo: solo el tipo de la excepción llega al log (la URL lleva el token)."""

@@ -113,3 +113,11 @@ class InvalidPhone(NotificationError):
     status = 422
     code = "invalid_phone"
     default_message = "El teléfono del socio no es un celular válido."
+
+
+class ChannelDisabled(NotificationError):
+    """El canal del aviso está deshabilitado en `settings.channels` (S5-D265b). Texto fijo."""
+
+    status = 409
+    code = "channel_disabled"
+    default_message = "El canal del aviso está deshabilitado."

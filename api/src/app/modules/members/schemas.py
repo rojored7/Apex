@@ -177,6 +177,16 @@ class MemberName:
     sex: str | None
 
 
+@dataclass(frozen=True)
+class MemberChannelState:
+    """Lo que `service.channels_for` da por socio (S5-D269): si tiene consentimiento de datos y
+    sus canales efectivos. Sin consentimiento `channels` es vacío; con consentimiento y canales
+    vacíos, el socio apagó todo (nunca el ORM)."""
+
+    has_consent: bool
+    channels: frozenset[str]
+
+
 # S3-B10 (US-074, US-075; D19, D21, M-3, S3-D46) ----------------------------------------
 
 RevealField = Literal["document", "phone", "email", "birth_date", "emergency_contact"]

@@ -29,7 +29,7 @@ from app.core.db import DatabaseBusy
 from app.core.locks import lock_member
 from app.modules.members import service
 from app.modules.members.exceptions import ConsentRequired, MemberDeleted, MemberNotFound
-from app.modules.members.schemas import ChannelItem, ChannelsPatch
+from app.modules.members.schemas import ChannelItem, ChannelsPatch, MemberChannelState
 from tests.conftest import T0, CapturarEventos, ContadorDeConsultas, CrearUsuario, UsuarioPrueba
 from tests.factories.members import make_member, unique_document
 from tests.members._apoyo import peticion
@@ -84,7 +84,10 @@ async def test_channels_for_da_los_valores_por_defecto_a_los_socios_sin_filas(
     con = await socio_con(session)
     sin = await socio_con(session, consentimiento=False)
     efectivos = await service.channels_for(session, [con, sin])
-    assert efectivos == {con: frozenset({WA}), sin: frozenset()}
+    assert efectivos == {
+        con: MemberChannelState(True, frozenset({WA})),
+        sin: MemberChannelState(False, frozenset()),
+    }
 
 
 async def test_channels_for_aplica_las_filas_explicitas_de_cada_socio(
@@ -104,9 +107,9 @@ async def test_channels_for_aplica_las_filas_explicitas_de_cada_socio(
     session.expunge_all()
     efectivos = await service.channels_for(session, [solo_correo, sin_whatsapp, mudo])
     assert efectivos == {
-        solo_correo: frozenset({WA, CORREO}),
-        sin_whatsapp: frozenset(),
-        mudo: frozenset(),
+        solo_correo: MemberChannelState(True, frozenset({WA, CORREO})),
+        sin_whatsapp: MemberChannelState(True, frozenset()),
+        mudo: MemberChannelState(True, frozenset()),
     }
 
 
@@ -364,4 +367,4 @@ async def test_channels_for_incluye_a_los_dados_de_baja_y_omite_a_los_inexistent
 ) -> None:
     baja = await socio_con(session, deleted_at=T0 - timedelta(days=1), status="inactive")
     efectivos = await service.channels_for(session, [baja, uuid4()])
-    assert efectivos == {baja: frozenset({WA})}
+    assert efectivos == {baja: MemberChannelState(True, frozenset({WA}))}

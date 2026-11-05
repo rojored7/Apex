@@ -28,15 +28,16 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, Final
 from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.clock import current_clock
 from app.core.config import Settings
 from app.core.db import violated_constraint
 from app.modules.settings.exceptions import (
@@ -51,6 +52,7 @@ from app.modules.settings.schemas import (
     SECTION_DEFAULTS,
     SECTION_REGISTRY,
     SECTION_VIEWS,
+    ChannelsSettings,
     GymView,
     MembershipsPolicy,
     MembershipsSettings,
@@ -262,3 +264,33 @@ async def payment_methods(session: AsyncSession) -> tuple[PaymentMethodInfo, ...
         valor = PaymentMethodsSettings.model_validate(defaults_for(clave))
     etiquetas = {codigo: getattr(valor, codigo) for codigo in PAYMENT_METHOD_CODES}
     return decorate_methods(PAYMENT_METHOD_CODES, etiquetas)
+
+
+TELEGRAM_GATE_TTL_S: Final = 30.0
+
+
+def telegram_enabled_gate(
+    session_factory: async_sessionmaker[AsyncSession], *, ttl_s: float = TELEGRAM_GATE_TTL_S
+) -> Callable[[], Awaitable[bool]]:
+    """Puerta de `TelegramAlertSink` (S5-D265d): lee `channels.telegram.enabled` en una sesión
+    propia (sin fila = apagado) y cachea el valor `ttl_s` segundos con `current_clock()`."""
+    cache: list[tuple[bool, float]] = []
+
+    async def puerta() -> bool:
+        ahora = current_clock().now_utc().timestamp()
+        if cache and ahora < cache[0][1]:
+            return cache[0][0]
+        try:
+            async with session_factory() as session:
+                valor = await get(session, SectionKey.channels)
+            encendido = isinstance(valor, ChannelsSettings) and valor.telegram.enabled
+        except Exception as error:
+            # Apertura ante fallo, cacheada el mismo TTL: una consulta y un aviso por ventana.
+            logger.warning(
+                "settings: puerta de telegram no leída", extra={"error_type": type(error).__name__}
+            )
+            encendido = True
+        cache[:] = [(encendido, ahora + ttl_s)]
+        return encendido
+
+    return puerta

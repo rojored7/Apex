@@ -38,3 +38,13 @@ async def fabrica(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[Async
         yield async_sessionmaker(engine, expire_on_commit=False)
     finally:
         await limpiar_tras_dos_sesiones(engine, ultima or 0)
+
+
+@pytest.fixture
+async def canales_habilitados(session: AsyncSession) -> None:
+    """S5-V11c (S5-D265, D231): sin fila de `settings.channels` los canales están apagados y los
+    avisos nacen `skipped`; las pruebas que esperan `pending` o un enlace encienden correo y
+    WhatsApp con esto."""
+    from tests.notifications._apoyo_avisos import ajustar_canales
+
+    await ajustar_canales(session, email=True, whatsapp=True)

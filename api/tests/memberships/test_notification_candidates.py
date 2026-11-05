@@ -2,10 +2,12 @@
 S5-D26, N-35, E7; G-04). # Rojo B7
 
 `notification_candidates(session, on_dates) -> list[NotificationCandidate]`:
-- cada membresía NO anulada ni pendiente de pago cuyo `end_date` está en `on_dates`, con
+- cada membresía NO anulada, congelada ni pendiente de pago (S5-D267) cuyo `end_date` está en
+  `on_dates`, con
   `member_id` (aunque el socio esté dado de baja: `generate` lo filtra), `membership_id`,
   `end_date` y `plan_name`; ni el nombre del socio ni sus datos de contacto;
-- las `active`, `expiring`, `frozen` y `expired` guardadas entran (la vencida es el caso de uso);
+- las `active`, `expiring` y `expired` guardadas entran (la vencida es el caso de uso); una
+  `frozen` no genera avisos mientras lo esté;
 - orden `end_date, id`; sin fechas devuelve `[]` sin enviar ninguna sentencia;
 - una sola sentencia sobre `memberships.memberships` para todas las fechas, sin JOIN a otro
   esquema (el nombre del plan sale de `plans.service.names_for`).
@@ -98,8 +100,8 @@ async def test_solo_trae_las_fechas_pedidas_y_ordena_por_fin_e_id(
     assert [c.membership_id for c in iguales] == sorted(c.membership_id for c in iguales)
 
 
-@pytest.mark.parametrize("estado", ["active", "expiring", "expired", "frozen"])
-async def test_entran_las_membresias_vigentes_vencidas_o_congeladas(
+@pytest.mark.parametrize("estado", ["active", "expiring", "expired"])
+async def test_entran_las_membresias_vigentes_o_vencidas(
     session: AsyncSession, reloj: FrozenClock, bus_listo: Keyring, estado: str
 ) -> None:
     plan = await make_plan(session)
@@ -112,8 +114,8 @@ async def test_entran_las_membresias_vigentes_vencidas_o_congeladas(
     assert [c.membership_id for c in candidatos] == [m.id]
 
 
-@pytest.mark.parametrize("estado", ["cancelled", "pending_payment"])
-async def test_no_entran_las_anuladas_ni_las_pendientes_de_pago(
+@pytest.mark.parametrize("estado", ["cancelled", "pending_payment", "frozen"])
+async def test_no_entran_las_anuladas_congeladas_ni_las_pendientes_de_pago(
     session: AsyncSession, reloj: FrozenClock, bus_listo: Keyring, estado: str
 ) -> None:
     plan = await make_plan(session)

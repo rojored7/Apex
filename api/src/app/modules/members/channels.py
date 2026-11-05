@@ -3,7 +3,8 @@
 Archivo privado de `members` (S4A-D72): solo lo importa `members`; los demás módulos llegan por
 la fachada `members/service.py`, que re-exporta estas tres funciones.
 
-- `channels_for(session, member_ids) -> dict[UUID, frozenset[str]]`: canales efectivos por lote,
+- `channels_for(session, member_ids) -> dict[UUID, MemberChannelState]`: consentimiento y canales
+  efectivos por lote (S5-D269),
   UNA consulta a `members.member_channel_preferences`; un socio sin filas recibe los valores por
   defecto de `rules.effective_channels`. Un id que no existe no aparece en el resultado y uno
   dado de baja SÍ aparece: el llamador (`notifications`, B7 `generate`) trata la ausencia como
@@ -35,7 +36,7 @@ from app.modules.members.changes import MemberUpdated
 from app.modules.members.exceptions import ConsentRequired, MemberDeleted, MemberNotFound
 from app.modules.members.models import Member, MemberChannelPreference
 from app.modules.members.rules import effective_channels
-from app.modules.members.schemas import ChannelItem, ChannelsOut
+from app.modules.members.schemas import ChannelItem, ChannelsOut, MemberChannelState
 
 CHANNELS_FIELD: Final = "channels"
 
@@ -71,8 +72,9 @@ async def _filas_de(session: AsyncSession, member_id: UUID) -> list[MemberChanne
 
 async def channels_for(
     session: AsyncSession, member_ids: Iterable[UUID]
-) -> dict[UUID, frozenset[str]]:
-    """Canales efectivos de varios socios; una consulta a las preferencias para todo el lote."""
+) -> dict[UUID, MemberChannelState]:
+    """Consentimiento y canales efectivos de varios socios (S5-D269); una consulta a las
+    preferencias para todo el lote."""
     ids = list(dict.fromkeys(member_ids))
     if not ids:
         return {}
@@ -93,7 +95,7 @@ async def channels_for(
     for fila in (await session.scalars(consulta)).all():
         por_socio[fila.member_id].append(fila)
     return {
-        socio: _efectivos(por_socio.get(socio, []), tiene)
+        socio: MemberChannelState(tiene, _efectivos(por_socio.get(socio, []), tiene))
         for socio, tiene in consentimiento.items()
     }
 

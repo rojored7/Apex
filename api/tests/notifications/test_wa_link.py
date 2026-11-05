@@ -46,6 +46,7 @@ from tests.notifications._apoyo_avisos import (
     ANTES,
     TELEFONO,
     TELEFONO_DIGITOS,
+    ajustar_canales,
     eventos_de,
     socio,
 )
@@ -115,8 +116,16 @@ pytestmark = pytest.mark.usefixtures("listo")
 
 
 async def _preparar(
-    session: AsyncSession, *, telefono: str | None = TELEFONO, **cambios: Any
+    session: AsyncSession,
+    *,
+    telefono: str | None = TELEFONO,
+    habilitar: bool = True,
+    **cambios: Any,
 ) -> tuple[Any, Any]:
+    """`habilitar`: S5-D265b. Sin fila de `settings.channels` el canal está apagado y `wa_link`
+    da 409; las pruebas del enlace lo encienden aquí (V11c Verde)."""
+    if habilitar:
+        await ajustar_canales(session, whatsapp=True)
     miembro = await socio(session, phone=telefono, email="lucia@correo.co")
     aviso = await make_notification(
         session,
@@ -304,6 +313,7 @@ async def test_un_socio_de_baja_o_sin_consentimiento_no_es_contactable(
 ) -> None:
     admin = await usuario_real("admin")
     cambios = {"deleted_at": ANTES} if motivo == "baja" else {"consentido": False}
+    await ajustar_canales(session, whatsapp=True)  # S5-D265b: el canal debe estar habilitado
     miembro = await socio(session, phone=TELEFONO, **cambios)
     aviso = await make_notification(session, await make_rule(session), member_id=miembro.id)
 
@@ -347,3 +357,63 @@ async def test_un_telefono_con_forma_invalida_da_422_y_conserva_el_rastro_del_de
     assert (fila["status"], fila["sent_at"], fila["sent_by"]) == ("pending", None, None)
     assert len(await auditoria_del_socio(session, miembro.id, "reveal")) == 1
     assert await contar_crypto_ops(session, miembro.id, "decrypt", "notify") == 1
+
+
+# Ajustes de Canales (S5-V11c; S5-D265b, S5-D265c) ----------------------------------------------
+# Rojo V11c. Con S5-D265b, las pruebas de arriba que esperan un enlace necesitan
+# `ajustar_canales(session, whatsapp=True)`: el Verde las habilita (sin fila = canal apagado).
+
+
+@pytest.mark.parametrize("ajustes", [None, {"whatsapp": False, "email": True}])
+async def test_con_whatsapp_deshabilitado_el_enlace_da_409_channel_disabled_sin_descifrar(
+    session: AsyncSession, usuario_real: CrearUsuario, ajustes: dict[str, bool] | None
+) -> None:
+    from app.modules.notifications.exceptions import ChannelDisabled
+
+    admin = await usuario_real("admin")
+    if ajustes is not None:
+        await ajustar_canales(session, **ajustes)
+    miembro, aviso = await _preparar(session, habilitar=False)
+    capturados = eventos_de(service.NotificationSent)
+
+    with pytest.raises(ChannelDisabled) as error:
+        await en_peticion(session, admin.id, lambda: service.wa_link(session, aviso.id, admin.id))
+    # Sin `rollback()` (V11c Verde): el 409 sale antes de descifrar y no confirma nada, así que
+    # revertir borraría también el socio y el aviso de la prueba; como en los demás 409.
+
+    assert (error.value.status, error.value.code) == (409, "channel_disabled")
+    assert TELEFONO_DIGITOS not in error.value.message
+    fila = await _fila(session, aviso.id)
+    assert (fila["status"], fila["sent_at"], fila["sent_by"]) == ("pending", None, None)
+    assert capturados.vistos == []
+    await _sin_rastro_de_contacto(session, miembro.id)
+
+
+async def test_el_enlace_usa_el_indicativo_de_settings_channels(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    admin = await usuario_real("admin")
+    await ajustar_canales(session, whatsapp=True, country_code="52")
+    _, aviso = await _preparar(session, telefono="55 1234 5678", habilitar=False)
+
+    salida = await en_peticion(
+        session, admin.id, lambda: service.wa_link(session, aviso.id, admin.id)
+    )
+
+    assert salida.url == f"https://wa.me/525512345678?text={quote(TEXTO_DIFICIL, safe='')}"
+
+
+async def test_con_indicativo_ajeno_un_telefono_fuera_de_8_a_15_digitos_da_422_invalid_phone(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    from app.modules.notifications.exceptions import InvalidPhone
+
+    admin = await usuario_real("admin")
+    await ajustar_canales(session, whatsapp=True, country_code="52")
+    _, aviso = await _preparar(session, telefono="1234567", habilitar=False)  # 7 dígitos
+
+    with pytest.raises(InvalidPhone) as error:
+        await en_peticion(session, admin.id, lambda: service.wa_link(session, aviso.id, admin.id))
+    await session.rollback()
+
+    assert (error.value.status, error.value.code) == (422, "invalid_phone")

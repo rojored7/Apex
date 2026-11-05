@@ -37,6 +37,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core import db, health
 from app.core.alerts_telegram import flush as flush_telegram
 from app.core.alerts_telegram import register_from_settings as register_telegram_sink
+from app.core.alerts_telegram import set_enabled_gate as set_telegram_gate
 from app.core.audit import install_audit_listeners
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
@@ -211,6 +212,16 @@ async def _cancel_crypto_poll(app: FastAPI) -> None:
     await asyncio.gather(tarea, return_exceptions=True)
 
 
+def _telegram_gate() -> Callable[[], Awaitable[bool]]:
+    """La puerta de Telegram (S5-D265d). Import por nombre: `main.py` es la raíz que conoce los
+    módulos y `core` no puede importarlos."""
+    settings_service = importlib.import_module("app.modules.settings.service")
+    gate: Callable[[], Awaitable[bool]] = settings_service.telegram_enabled_gate(
+        db.get_sessionmaker()
+    )
+    return gate
+
+
 async def _cancel_background_verifications() -> None:
     """S4A-D44 (H-2): el `shutdown` cancela las verificaciones 202 en curso y espera su `finally`
     (sueltan el candado `4_270_003`) antes de cerrar el engine. Import por nombre, como
@@ -258,6 +269,8 @@ def _make_lifespan(
                 run_migrations_on_startup=migrar,
                 migrations_script_location=migrations_script_location,
             )
+            # S5-D265d: el sink consulta `channels.telegram.enabled` (el engine ya existe aquí)
+            set_telegram_gate(_telegram_gate())
             if estado != "ok":
                 # S5-D16, S5-D195: arrancó sellado; el sondeo reintenta cada CRYPTO_RECOVERY_POLL_S.
                 app.state.crypto_poll = asyncio.create_task(
@@ -272,6 +285,7 @@ def _make_lifespan(
             yield
         finally:
             await flush_telegram()  # S5-D203: las alertas pendientes salen antes del apagado
+            set_telegram_gate(None)
             await _cancel_crypto_poll(app)
             await _cancel_background_verifications()
             configure_keyring(None)

@@ -42,6 +42,7 @@ from tests.notifications._apoyo_avisos import (
     HOY_RUTA,
     TELEFONO,
     TELEFONO_DIGITOS,
+    ajustar_canales,
     ruta_aviso,
     ruta_del_socio,
     ruta_omitir,
@@ -49,7 +50,7 @@ from tests.notifications._apoyo_avisos import (
     socio,
 )
 
-pytestmark = pytest.mark.usefixtures("listo")
+pytestmark = pytest.mark.usefixtures("listo", "canales_habilitados")  # V11c: sin fila = apagado
 
 RUTAS_NUEVAS = {
     ("GET", "/notifications/today"),
@@ -368,6 +369,27 @@ async def test_wa_link_traduce_los_rechazos_del_service(
         r = await app_http.post(ruta_wa(aviso_id), headers=cab)
         assert (r.status_code, r.json()["error"]["code"]) == (estado, codigo), r.text
         assert TELEFONO_DIGITOS not in r.text
+
+
+async def test_wa_link_con_whatsapp_deshabilitado_da_409_channel_disabled_con_mensaje_fijo(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras, session: AsyncSession
+) -> None:
+    """S5-V11c (S5-D265b): el canal se apaga en Ajustes; la respuesta no revela el teléfono, el
+    aviso sigue pendiente y no queda ninguna fila `reveal`."""
+    admin = await usuario_real("admin")
+    datos = await _datos(session)
+    await ajustar_canales(session, whatsapp=False, email=True)
+    aviso = datos["avisos"][0]
+
+    r = await app_http.post(ruta_wa(aviso.id), headers=cabeceras(admin))
+
+    assert r.status_code == 409, r.text
+    assert r.json()["error"] == {
+        "code": "channel_disabled",
+        "message": "El canal del aviso está deshabilitado.",
+    }
+    assert TELEFONO_DIGITOS not in r.text
+    assert await auditoria_del_socio(session, datos["socio_id"], "reveal") == []
 
 
 # skip -------------------------------------------------------------------------------------------

@@ -60,7 +60,7 @@ from tests.notifications._apoyo_avisos import (
     socio,
 )
 
-pytestmark = pytest.mark.usefixtures("listo")
+pytestmark = pytest.mark.usefixtures("listo", "canales_habilitados")  # V11c: sin fila = apagado
 
 
 async def generar(session: AsyncSession, hoy: date = HOY) -> GenerateResult:
@@ -394,9 +394,16 @@ async def test_el_canal_del_aviso_es_el_de_la_regla_y_exige_que_el_socio_lo_teng
 
     resultado = await generar(session)
 
+    # V11c (S5-D266): el canal apagado por el socio deja una fila `skipped`, no un aviso enviable.
     por_socio: dict[Any, set[str]] = {}
+    omitidos: set[tuple[Any, str]] = set()
     for f in await avisos(session):
-        por_socio.setdefault(f["member_id"], set()).add(f["channel"])
+        if f["status"] == "skipped":
+            assert f["skip_reason"] == "canal_desactivado_socio"
+            omitidos.add((f["member_id"], f["channel"]))
+        else:
+            por_socio.setdefault(f["member_id"], set()).add(f["channel"])
+    assert omitidos == {(solo_wa.id, "email"), (solo_correo.id, "whatsapp_link")}
     assert por_socio == {
         solo_wa.id: {"whatsapp_link"},
         ambos.id: {"whatsapp_link", "email"},
@@ -624,3 +631,41 @@ async def test_un_error_de_integridad_distinto_de_la_clave_unica_no_se_traga(
 
     with pytest.raises(IntegrityError):
         await generar(session)
+
+
+# S5-V11c (S5-D267, US-124.7) ----------------------------------------------------------------
+
+
+async def test_una_membresia_congelada_no_genera_avisos_mientras_lo_este(
+    session: AsyncSession,
+) -> None:
+    """Rojo V11c. Congelada, su fin se moverá al descongelar: avisar ahora sería un texto falso."""
+    from tests.factories.memberships import make_freeze
+    from tests.notifications._apoyo_avisos import ajustar_canales
+
+    await ajustar_canales(session, whatsapp=True)
+    await regla_aislada(session, "membership_expiring", -3)
+    plan = await make_plan(session)
+    ana = await socio(session, nombre="Ana")
+    congelada = await con_membresia(session, ana, plan, HOY + timedelta(days=3), status="frozen")
+    await make_freeze(session, congelada, HOY, HOY + timedelta(days=9))
+
+    resultado = await generar(session)
+
+    assert resultado == GenerateResult(
+        generados=0, ya_renovaron=0, sin_consentimiento=0, sin_reglas=False
+    )
+    assert await contar(session, T_AVISOS) == 0
+
+
+async def test_al_descongelar_la_membresia_vuelve_a_generar(session: AsyncSession) -> None:
+    """Rojo V11c: contraste de la prueba anterior, con la misma membresía en `active`."""
+    from tests.notifications._apoyo_avisos import ajustar_canales
+
+    await ajustar_canales(session, whatsapp=True)
+    await regla_aislada(session, "membership_expiring", -3)
+    plan = await make_plan(session)
+    ana = await socio(session, nombre="Ana")
+    await con_membresia(session, ana, plan, HOY + timedelta(days=3), status="active")
+
+    assert (await generar(session)).generados == 1

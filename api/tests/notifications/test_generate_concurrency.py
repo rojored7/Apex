@@ -22,7 +22,13 @@ from app.modules.notifications import service
 from tests.factories.members import make_members
 from tests.factories.memberships import make_memberships
 from tests.factories.plans import make_plan
-from tests.notifications._apoyo_avisos import ANTES, HOY, T_AVISOS, regla_aislada
+from tests.notifications._apoyo_avisos import (
+    ANTES,
+    HOY,
+    T_AVISOS,
+    ajustar_canales,
+    regla_aislada,
+)
 
 
 async def test_dos_corridas_concurrentes_no_duplican_ni_pierden_avisos(
@@ -31,6 +37,7 @@ async def test_dos_corridas_concurrentes_no_duplican_ni_pierden_avisos(
     reloj: FrozenClock,
 ) -> None:
     primera, segunda = dos_sesiones
+    await ajustar_canales(primera, whatsapp=True)  # V11c: sin fila el canal está apagado
     await regla_aislada(primera, "membership_expiring", -3)
     plan = await make_plan(primera)
     socios = await make_members(primera, 6, data_consent_at=ANTES)

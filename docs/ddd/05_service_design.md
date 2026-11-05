@@ -87,7 +87,7 @@ api/
         digest.py                digest(data) SHA-256 sin dependencias; lo usa core/audit (N-06)
         archive.py               digest_file(path) en core/crypto/file_digest.py; export_kek_file, restore_kek_file, verify_kek_backup (age -p, subprocess) en core/crypto/archive.py
                                  sobre el binario age (G-07)
-        provider.py              KeyProvider Protocol: wrap(key_ref, dek), unwrap(key_ref, wrapped), sign, verify, rotate
+        provider.py              KeyProvider Protocol: wrap(dek), unwrap(wrapped), sign, verify, rotate (corregido en S5, S5-D2: una sola llave Transit `apex-kek`, sin `key_ref`)
         local_provider.py        LocalFileProvider
         openbao_provider.py      OpenBaoProvider (v0.2)
         models.py                crypto_keys, crypto_ops, crypto_jobs

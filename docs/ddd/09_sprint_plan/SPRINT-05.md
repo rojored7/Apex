@@ -124,6 +124,10 @@ Detalle, pasos y gates en `docs/ddd/blueprints/sprint-05-plan.md`. Un slice no e
   - B11 · Recibo PDF propio (US-137).
   - B12 · Exportaciones CSV (US-138, US-139).
 - **Front (worktree, S5-D84):** F1 Por avisar hoy (US-127, US-128); F2 reglas, plantillas, historial y pestaña Canales; F3 ficha, preferencias e Inicio; F5 cuentas por correo y aviso de custodio; F4 recibo y exportaciones (tras el checkpoint de B12).
+- **Estado de los slices (V1, 2026-11-05; registro en `docs/scratch/sprint-05.md`):**
+  - Backend sellado, con checkpoint en la rama `feat/sprint-05-openbao-avisos-recibos`: W0-1, W0-2, W0-3, W0-4, B1, B13, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11 y B12 (HEAD `99c8246`). La evidencia de B12 espera el desello del ensayo.
+  - Front (worktree): F1, F2, F3 y F5 sellados; F4 en curso.
+  - Validación: V1 en curso (fusión y documentos); V2 a V12 pendientes.
 - **Validación:** V1 fusión y documentos; V2 stack de cero y Alembic; V3 OpenBao (demo 1); V4 avisos y cuentas (demos 2 y 3); V5 E2E; V6 recibo y CSV (demo 4); V7 rendimiento; V8 revisión de base de datos; V9 gates completos; V10 revisiones; V11 `verify-delivery`; V12 limpieza y release (etiqueta `v0.2.0` local, S5-D93).
 
 ## Migraciones que aplica

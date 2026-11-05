@@ -18,6 +18,7 @@ Darle al socio un comprobante del pago que hizo y al dueño una forma de sacar s
 
 ### Backend
 - `payments.service.receipt_pdf(id, by)` con `reportlab` (BSD; `fpdf2` es LGPL y está prohibida), con el logo `apex-logo-light-bg.png`; cada descarga se audita.
+  > Corregido en S5 (S5-D65): el PDF lo escribe `core/pdf.py` (propio, Courier, sin logo); sin `reportlab` ni `pillow`; `pypdf` solo en desarrollo. Aplica también a la línea de licencias de CI más abajo.
 - Endpoint `GET /payments/{id}/receipt.pdf`.
 - `members.service.export(filters, by)` en CSV, solo admin, auditado con acción `export`, porque descifra datos personales en masa.
 - Endpoint `GET /members/export`.

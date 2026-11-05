@@ -245,3 +245,4 @@ El valor impreso (segundos) debe ser mayor o igual que `LOGIN_MIN_DURATION_MS / 
 - Programa una revisión mensual de `verify-kek-backup` (ver `respaldo-y-restauracion.md`).
 - Para actualizar: `actualizar.md`.
 - Importar socios: `importar-socios.md`.
+- Desde la v0.2 (Sprint 5), la KEK puede pasar de archivo local a OpenBao (Transit, una sola llave `apex-kek`): instalar, custodiar las cinco llaves de desello, `migrate-provider` y `retire-local-kek` están en `openbao.md`. Tras cada reinicio del servidor hay que desellar OpenBao (`openbao.md` §4) o el api queda en estado sellado (`/health` muestra `crypto: sealed`). Los avisos y el correo se configuran según `avisos.md`.

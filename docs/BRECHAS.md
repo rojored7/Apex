@@ -69,10 +69,11 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 - Propuesta: endpoint `GET /dashboard` en un módulo liviano `dashboard` que solo llame a los services de los otros módulos (regla de módulos 2). Cada campo se agrega en la versión que lo hace posible: membresías y pagos en v0.1, por avisar en v0.2, asistencia y sesiones en v0.4, WOD de hoy en v0.5. Hasta entonces el campo viene `null` y el front muestra la tarjeta vacía.
 
 ### Recibo en PDF (pantallas `Pagos.html`, `Portal_Pagos.html`)
-- **Resuelto (gate del 21 de octubre de 2026):** v0.2 con `reportlab` (P4); cada descarga se audita como `download` (N-08).
+- **Resuelto (gate del 21 de octubre de 2026):** v0.2 con `reportlab` (P4; corregido en S5, S5-D65: escritor propio `core/pdf.py`, sin `reportlab` ni `pillow`); cada descarga se audita como `download` (N-08).
 - Front: `GET /payments/:id/receipt.pdf` y `GET /me/payments/:id/receipt.pdf`.
 - Plan: no existe.
 - Propuesta: v0.1 o v0.2. Necesita una librería de PDF con licencia permitida: `reportlab` (BSD) sirve; `fpdf2` es LGPL y está prohibida. Usa el logo `apex-logo-light-bg.png`. Cada descarga se audita.
+  > Corregido en S5 (S5-D65): el recibo lo escribe `core/pdf.py` (propio, Courier, sin logo); no se usa `reportlab`; `pypdf` solo en desarrollo para las pruebas.
 
 ### Exportar listas (pantallas `Socios_Lista.html`, `Pagos.html`)
 - **Resuelto (gate del 21 de octubre de 2026):** v0.2, CSV con `;` y BOM, solo admin, auditado con el filtro usado (Q15, N-29).

@@ -57,7 +57,8 @@ Internet / LAN del gimnasio
 - **Síncrono dentro del proceso:** `modules/<a>/service.py` llama a `modules/<b>/service.py`. Nunca a `models` ajenos. Lo verifica un test de arquitectura que importa cada módulo y falla si encuentra `from app.modules.<otro>.models`.
 - **Eventos en memoria:** `core/events.py` con `subscribe(EventType, handler)` y `emit(event)`. Los handlers corren en la misma sesión y transacción; un fallo revierte todo. Los eventos son dataclasses congeladas.
 - **Trabajos por tiempo:** el worker no recibe eventos; consulta tablas. `expirations` recalcula estados y emite eventos dentro de su propia transacción; `notify` lee `notifications` en `pending` y envía.
-- **HTTP hacia afuera:** `httpx` con timeout explícito para Telegram, SMTP (vía `aiosmtplib` o Brevo API), rclone en el contenedor de backup. Todo opcional y degradable: si el canal falla, el aviso queda `failed` con `last_error` y aparece en "por avisar hoy".
+- **HTTP hacia afuera:** `httpx` con timeout explícito para Telegram, SMTP (`smtplib` en `asyncio.to_thread`, `core/mail.py`; antes se pensó en `aiosmtplib` o Brevo API), rclone en el contenedor de backup. Todo opcional y degradable: si el canal falla, el aviso queda `failed` con `last_error` y aparece en "por avisar hoy".
+  > Corregido en S5 (S5-D64): el correo va por `smtplib` de la biblioteca estándar en `asyncio.to_thread` (`core/mail.py`); sin `aiosmtplib` ni Brevo.
 - **Front ↔ API:** REST JSON bajo `/api/v1`, OpenAPI exportado a `docs/openapi.json`; el front genera tipos desde ahí. Paginación `limit`/`offset` (S2). Errores con envelope `{ "error": { "code", "message", "field"? } }`.
 
 ## 6. Decisiones de seguridad que fija la arquitectura

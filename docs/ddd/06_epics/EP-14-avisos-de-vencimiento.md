@@ -26,7 +26,7 @@ Dejar de mandar los recordatorios de vencimiento uno por uno por WhatsApp cuando
 - Job `worker/jobs/notify.py`: crea los avisos del día, envía los `pending` de canales automáticos, registra cada intento; si un canal falla, el aviso queda `failed` con `last_error` y aparece en "por avisar hoy". Correrlo dos veces no duplica (RN-17).
 - Contacto vía `members.service.contact_for_notification(member_id, purpose)`, que audita el descifrado con propósito `notify`.
 - Entidades de Members de v0.2: `PushSubscription` y `MemberChannelPreference`.
-- Endpoints: CRUD de `/notification-rules` y `/notification-templates` (admin edita), `GET /notifications` (historial con filtros), `GET /notifications/today`, `GET /notifications/{id}/wa-link` (devuelve el enlace y marca `sent`), `POST /notifications/{id}/skip` con motivo obligatorio.
+- Endpoints: CRUD de `/notification-rules` y `/notification-templates` (admin edita), `GET /notifications` (historial con filtros), `GET /notifications/today`, `POST /notifications/{id}/wa-link` (devuelve el enlace y marca `sent`; corregido en S5, S5-D59: D27 enmendada por M-9, era `GET`), `POST /notifications/{id}/skip` con motivo obligatorio.
 - Envío por correo de los enlaces de activación y recuperación de EP-04 a través de `EmailChannel`.
 - Eventos `NotificationQueued`, `NotificationSent`, `NotificationFailed`, `NotificationSkipped`, todos auditados.
 - Campo "por avisar hoy" del tablero (EP-12) con `notifications.today_count()`.

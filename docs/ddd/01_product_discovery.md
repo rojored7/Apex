@@ -97,7 +97,7 @@ Numeración tomada del índice de pantallas del diseño.
 - **S6:** módulo `settings` entra en v0.1 (lo necesitan medios de pago, token de TV y canales).
 - **S7:** `members.sex`, `auth.users.member_id` y `members.data_consent_at` entran desde v0.1 para evitar migraciones con datos.
 - **S8:** medios de pago son un enum fijo en v0.1 (`cash`, `nequi`, `breb`).
-- **S9:** recibo PDF con `reportlab` (BSD) en v0.2; exportación CSV solo admin y auditada en v0.2.
+- **S9:** recibo PDF con escritor propio `core/pdf.py` en v0.2 (corregido en S5, S5-D65: no `reportlab`; `pypdf` solo en desarrollo); exportación CSV solo admin y auditada en v0.2.
 - **S10:** los seis módulos de entrenamiento (clases, movimientos, WODs, resultados, atleta) y el portal mantienen las versiones del plan (v0.4 a v1.0).
 
 ## 9. Preguntas abiertas para el gate

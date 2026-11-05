@@ -105,6 +105,7 @@ Criterio de salida: el equipo del front puede generar su cliente desde `openapi.
 1. `infra/openbao/config.hcl`, servicio `openbao` en Compose, desellado con llaves fuera del servidor, motor Transit habilitado con una llave por `data_class` y una de firma.
 2. `OpenBaoProvider` implementando `KeyProvider` con la API de Transit. `cli migrate-provider local→openbao`: re-envuelve las DEK, no recifra datos.
 3. Módulo `notifications`: tablas `rules`, `templates`, `notifications`; interfaz `NotificationChannel` con `EmailChannel` (SMTP/Brevo) y `WhatsAppLinkChannel` (genera `wa.me` con mensaje). Telegram no es canal al socio: es `TelegramAlertSink` (httpx directo) para alertas internas del equipo vía `core/alerts.py` (N-34). Endpoints de CRUD de reglas y plantillas, historial, `GET /api/v1/notifications/today` para la pantalla "por avisar hoy", `GET /notifications/{id}/wa-link` (marca enviado) y `POST /notifications/{id}/skip {reason}`.
+   > Corregido en S5 (S5-D59, M-9): `wa-link` es `POST /notifications/{id}/wa-link`; el correo va por `smtplib` y no por Brevo (S5-D64). Este documento es la referencia original.
 4. Job `notify.py`: 3 días antes, el día, 1, 7 y 15 días después; respeta canales activos del socio y la Ley 1581 (N-33); registra cada intento.
 5. Alertas internas por Telegram: resumen diario de "por avisar hoy", backup fallido, firma atrasada, OpenBao sellado. Web push y `members.push_subscriptions` pasan a v1.0 (Q14).
 

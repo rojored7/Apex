@@ -687,7 +687,7 @@ v0.2 en adelante:
 - **Canal Telegram (N-34):** US-123 y US-193 deben quitar `telegram` de los canales del socio. El CHECK de `notification_rules.channel` empieza en (`email`, `whatsapp_link`) y EP-25 le agrega `push`.
 - **`notifications.membership_id` (N-37):** nace `NOT NULL` en v0.2, y EP-25 lo vuelve nulo.
 - **Trigger de `crypto_keys`:** EP-15 y EP-26 necesitan una migración en su rango que reemplace la función de guarda de `0003`, para poder cambiar `wrapped_material` y `provider` al migrar de proveedor o re-envolver.
-- **`KeyProvider`:** `wrap(key_ref, dek)` y `unwrap(key_ref, wrapped)`. Cada DEK se abre con el proveedor de su fila, para que una migración pueda quedar a medias.
+- **`KeyProvider`:** `wrap(dek)` y `unwrap(wrapped)` (corregido en S5, S5-D2: una sola llave Transit `apex-kek`, sin `key_ref`). Cada DEK se abre con el proveedor de su fila, para que una migración pueda quedar a medias.
 - **Contratos entre EP-21 y EP-22:** EP-21 expone `classes.service.attendees`, que excluye las asistencias con `removed_at`, el filtro `wod_id` en la lista de sesiones y un único `PATCH /class-sessions/{id}` (N-41).
 - **Correo de activación de la cuenta del portal (US-185):** usa el propósito `auth_link` y se envía directo (N-21, N-36), no `portal_account` encolado.
 - **Firma de backups (US-196):** usa `digest_file` (G-07). La firma la pone un job del worker, no el contenedor de backup.

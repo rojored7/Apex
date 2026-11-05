@@ -1,5 +1,7 @@
 # US-122 · Como administrador quiero configurar los canales de aviso sin guardar secretos en la base para habilitar correo y WhatsApp de forma segura
 
+> **Corregido en S5** (`docs/ddd/DECISIONES.md`): las credenciales SMTP y el token de Telegram solo viven en `.env` y el api expone `credentials_present` sin valores (S5-D30, S5-D204); el canal de correo habilitado sin credenciales deja los avisos `pending` y alerta `mail_unconfigured` (S5-D231); `whatsapp.enabled`, `whatsapp.country_code` y `telegram.enabled` rigen la generación, el enlace de WhatsApp y el sink de Telegram desde V11c (S5-D265).
+
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Settings (esquema `settings`), consumido por Notifications
 - **Versión:** v0.2

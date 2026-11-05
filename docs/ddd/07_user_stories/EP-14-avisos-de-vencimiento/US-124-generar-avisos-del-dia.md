@@ -1,6 +1,8 @@
 # US-124 · Como administrador quiero que cada mañana se genere la lista de avisos del día sin duplicados para no olvidar a nadie ni repetir mensajes
 
 > **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): la inserción es por ORM con `begin_nested()` y un `IntegrityError` cuenta como ya existente, para que cada fila deje su `insert` en `audit_log` (S5-D71). La migración es `0019_notifications`.
+>
+> **Corregido en S5-V11c** (`docs/ddd/DECISIONES.md`, S5-D265, D266, D267): el criterio 4 crea el aviso `skipped` con `skip_reason = "canal_desactivado_socio"` y el 5 con `"canal_no_configurado"` (los textos de la historia son sus etiquetas); sin consentimiento no se crea fila (S5-D54) y los dados de baja se excluyen (S5-D225); el criterio 7 (congeladas) y US-121.7 (desactivar una regla no toca los avisos generados) quedan fijados por prueba.
 
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Notifications (esquema `notifications`)

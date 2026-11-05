@@ -58,6 +58,8 @@ VERIFY="$(BACKUP_VERIFY_IDENTITY_FILE="$ROOT/.env.example" docker compose "${ENV
 BOOT="$(docker compose "${ENVS[@]}" --profile bootstrap -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
 OVL="$(docker compose "${ENVS[@]}" --profile worker --profile tools -f infra/compose.yml -f infra/compose.openbao.yml config --format json 2>/dev/null || echo "{}")"
 DEV_OB="$(docker compose "${ENVS[@]}" --profile openbao --profile worker --profile tools -f infra/compose.yml -f infra/compose.dev.yml config --format json 2>/dev/null || echo "{}")"
+# S5-B4 (S5-D78): mailpit y telegram-fake solo en desarrollo y solo con el perfil avisos.
+DEV_AV="$(docker compose "${ENVS[@]}" --profile avisos -f infra/compose.yml -f infra/compose.dev.yml config --format json 2>/dev/null || echo "{}")"
 OVL_YML="$(cat infra/compose.openbao.yml 2>/dev/null || true)"
 COMPOSE_VERSION="$(docker compose version --short 2>/dev/null | tr -d '\r' || true)"
 IGNORA_SEED="$(git check-ignore -q .env.seed && echo si || echo no)"
@@ -65,7 +67,7 @@ IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo 
 IGNORA_OPS="$(git check-ignore -q .env.ops && echo si || echo no)"
 IGNORA_OPS_EJEMPLO="$(git check-ignore -q .env.ops.example && echo si || echo no)"
 
-SU="$SU" BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
+SU="$SU" BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" DEV_AV="$DEV_AV" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
 import json
 import os
@@ -630,6 +632,24 @@ check("openbao-dev-data" in json.loads(os.environ["DEV_OB"]).get("volumes", {}),
 for svc in ("api", "worker"):
     check(set(depende(dev, svc)) == {"db"} and set(depende(dob, svc)) == {"db"}, f"S5: desarrollo: {svc} depende solo de db, con y sin el perfil openbao ({depende(dob, svc)})")
 check("openbao" not in depende(dob, "tools"), f"S5: desarrollo: tools no depende de openbao ({depende(dob, 'tools')})")
+
+# S5-B4 (S5-D78): Mailpit y el Telegram falso, solo en desarrollo, con el perfil `avisos`, por digest.
+dav = json.loads(os.environ["DEV_AV"]).get("services", {})
+mailpit, tfake = dav.get("mailpit") or {}, dav.get("telegram-fake") or {}
+check("mailpit" not in dev and "telegram-fake" not in dev, "S5-B4: en desarrollo sin el perfil avisos no existen mailpit ni telegram-fake")
+check(mailpit.get("profiles") == ["avisos"], f"S5-B4: mailpit con profiles [avisos] ({mailpit.get('profiles')})")
+check(tfake.get("profiles") == ["avisos"], f"S5-B4: telegram-fake con profiles [avisos] ({tfake.get('profiles')})")
+check(re.fullmatch(r"axllent/mailpit:v?[0-9][^@]*@sha256:[0-9a-f]{64}", str(mailpit.get("image", ""))) is not None, f"S5-B4: mailpit por digest ({mailpit.get('image')})")
+check(re.fullmatch(r"python:3\.12-alpine@sha256:[0-9a-f]{64}", str(tfake.get("image", ""))) is not None, f"S5-B4: telegram-fake usa python:3.12-alpine por digest ({tfake.get('image')})")
+puertos_mp = [(p.get("host_ip"), str(p.get("published")), p.get("target")) for p in mailpit.get("ports", [])]
+check(puertos_mp == [("127.0.0.1", "8125", 8025)], f"S5-B4: mailpit solo publica 127.0.0.1:8125 (interfaz web); el SMTP 1025 no ({puertos_mp})")
+check(bool(tfake) and "ports" not in tfake, "S5-B4: telegram-fake no publica puertos")
+check(any(str(v.get("source", "")).replace("\\", "/").endswith("scripts/dev/telegram_fake.py") and v.get("read_only") is True for v in montajes(tfake)), "S5-B4: telegram-fake monta scripts/dev/telegram_fake.py en solo lectura")
+for svc in ("api", "worker", "tools"):
+    check(not ({"mailpit", "telegram-fake"} & set(depende(dav, svc))), f"S5-B4: {svc} no depende de mailpit ni de telegram-fake ({depende(dav, svc)})")
+check(not ({"mailpit", "telegram-fake"} & set(prod)) and "mailpit" not in texto and "telegram-fake" not in texto, "S5-B4: compose.yml (produccion) no nombra mailpit ni telegram-fake")
+for svc in ("mailpit", "telegram-fake"):
+    check(str((dav.get(svc) or {}).get("restart", "no")) in ("no", "", "None"), f"S5-B4: {svc} no se reinicia solo (herramienta de desarrollo)")
 
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

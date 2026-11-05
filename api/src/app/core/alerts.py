@@ -21,9 +21,27 @@ from typing import Final, Protocol
 logger = logging.getLogger("app.alerts")
 
 ALERT_CONTEXT_KEYS: Final[frozenset[str]] = frozenset(
-    {"job", "result", "error_type", "attempts", "run_date", "sqlstate"}
+    {
+        "job",
+        "result",
+        "error_type",
+        "attempts",
+        "run_date",
+        "sqlstate",
+        # S5-B4 (S5-D29): conteos del resumen de avisos, solo enteros.
+        "generados",
+        "enviados",
+        "fallidos",
+        "omitidos",
+        "pendientes",
+    }
 )
 """Únicas claves de contexto admitidas (S4A-D7, precisión de S4A-D56 a D7)."""
+
+COUNT_KEYS: Final[frozenset[str]] = frozenset(
+    {"generados", "enviados", "fallidos", "omitidos", "pendientes"}
+)
+"""Claves que solo admiten enteros (S5-B4)."""
 
 
 class AlertSink(Protocol):
@@ -47,6 +65,17 @@ def register_sink(sink: AlertSink) -> None:
     _sinks.append(sink)
 
 
+def unregister_sink(sink: AlertSink) -> None:
+    """Quita un sink del proceso; si ya no está, no hace nada."""
+    if sink in _sinks:
+        _sinks.remove(sink)
+
+
+def sinks_of_type[SinkT: AlertSink](tipo: type[SinkT]) -> list[SinkT]:
+    """Los sinks registrados de ese tipo (copia): para quien los reemplaza o los vacía."""
+    return [s for s in _sinks if isinstance(s, tipo)]
+
+
 def _check_context(context: Mapping[str, object]) -> None:
     """Claves de `ALERT_CONTEXT_KEYS`, valores `str` o `int` y `error_type` como nombre de tipo
     (S4A-D82): un mensaje de excepción o un objeto con datos nunca llega a un canal."""
@@ -54,6 +83,10 @@ def _check_context(context: Mapping[str, object]) -> None:
     if ajenas:
         raise ValueError(f"alert: claves de contexto no admitidas: {ajenas}")
     for clave, valor in context.items():
+        if clave in COUNT_KEYS:
+            if not isinstance(valor, int) or isinstance(valor, bool):
+                raise ValueError(f"alert: {clave} debe ser un entero")
+            continue
         if not isinstance(valor, str | int):
             raise ValueError(f"alert: el valor de {clave} debe ser texto o entero")
     tipo = context.get("error_type")

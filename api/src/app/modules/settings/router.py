@@ -24,6 +24,7 @@ from app.core.ratelimit import enforce_user_limit
 from app.core.security import Principal, require_role
 from app.modules.settings import service
 from app.modules.settings.schemas import (
+    CredentialsPresent,
     GymPatchIn,
     GymSectionOut,
     MembershipsPatchIn,
@@ -121,12 +122,23 @@ async def patch_payment_methods(
     )
 
 
+def _con_credenciales(request: Request, salida: SectionOut) -> SectionOut:
+    """S5-D204: `channels` suma `credentials_present`, calculado del entorno (nunca se guarda);
+    `GET` y `PATCH` responden con la misma forma."""
+    if salida.key is not SectionKey.channels:
+        return salida
+    presentes = service.channels_credentials_present(request.app.state.settings)
+    return salida.model_copy(update={"credentials_present": CredentialsPresent(**presentes)})
+
+
 # Genéricas: después de las tipadas (el orden de declaración importa).
 
 
 @router.get("/settings/{section}", response_model=SectionOut, responses=_GENERICA)
-async def get_section(section: str, principal: Admin, session: Session) -> SectionOut:
-    return await service.get_section(session, section)
+async def get_section(
+    request: Request, section: str, principal: Admin, session: Session
+) -> SectionOut:
+    return _con_credenciales(request, await service.get_section(session, section))
 
 
 @router.patch("/settings/{section}", response_model=SectionOut, responses={**_GENERICA, **_PATCH})
@@ -134,6 +146,7 @@ async def patch_section(
     request: Request, section: str, body: SectionPatchIn, principal: Admin, session: Session
 ) -> SectionOut:
     await enforce_user_limit(request, "admin-write", principal.user_id)
-    return await service.update_section(
+    salida = await service.update_section(
         session, section, body.value, body.version, principal.user_id
     )
+    return _con_credenciales(request, salida)

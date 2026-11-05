@@ -74,8 +74,8 @@ PAYMENT_METHODS_DEFAULTS: dict[str, Any] = {
 }
 
 # Secciones que existen en el CHECK pero no están habilitadas (S2-D15; S3-B3 habilita
-# `payment_methods`: quedan cuatro), más una clave inexistente y una con mayúsculas.
-NO_HABILITADAS = ("tv", "hours", "channels", "classes")
+# `payment_methods` y S5-B4 `channels`: quedan tres), más una clave inexistente y una en mayúscula.
+NO_HABILITADAS = ("tv", "hours", "classes")  # S5-B4 (US-122) habilita `channels`
 DESCONOCIDAS = ("inexistente", "GYM")
 
 # Las diez rutas del router (S2-D15; S3-B3 suma las dos tipadas de `payment_methods`): tipadas y
@@ -124,3 +124,11 @@ async def fila(session: AsyncSession, key: str) -> dict[str, Any] | None:
 async def contar_filas(session: AsyncSession) -> int:
     total = await session.scalar(text("SELECT count(*) FROM settings.settings_sections"))
     return int(total or 0)
+
+
+# S5-B4 (US-122, S5-D30): la sección `channels`, cerrada y sin secretos.
+CHANNELS_OK: dict[str, Any] = {
+    "email": {"enabled": True, "sender_name": "APEX CrossFit", "reply_to": "hola@gimnasio.test"},
+    "whatsapp": {"enabled": True, "country_code": "57"},
+    "telegram": {"enabled": False},
+}

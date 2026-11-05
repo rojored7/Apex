@@ -981,6 +981,16 @@ export interface components {
             user: components["schemas"]["UserOut"];
         };
         /**
+         * CredentialsPresent
+         * @description Si el entorno trae lo necesario para cada canal (S5-D30); jamás los valores.
+         */
+        CredentialsPresent: {
+            /** Email */
+            email: boolean;
+            /** Telegram */
+            telegram: boolean;
+        };
+        /**
          * DashboardOut
          * @description `GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.
          */
@@ -2264,8 +2274,11 @@ export interface components {
         /**
          * SectionOut
          * @description Sección genérica: fila guardada o defaults con `version = 0` y `updated_* = None`.
+         *
+         *     `credentials_present` (S5-D204) solo lo trae `channels`; en las demás es `null`.
          */
         SectionOut: {
+            credentials_present?: components["schemas"]["CredentialsPresent"] | null;
             key: components["schemas"]["SectionKey"];
             /** Updated At */
             updated_at: string | null;

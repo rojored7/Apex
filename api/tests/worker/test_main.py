@@ -712,3 +712,26 @@ async def test_run_once_backup_check_real_con_sha256_alterado_da_1_y_deja_corrup
     assert worker_main.main(["--run-once", "backup_check"]) == 1
 
     assert [(c.result, c.error) for c in await _corridas(session_factory)] == [("corrupt", None)]
+
+
+# S5-B4 (revisión de seguridad, LOW 5): las alertas de Telegram salen aunque `serve` falle --------
+
+
+async def test_serve_espera_las_alertas_de_telegram_aunque_el_arranque_falle(
+    settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    llamadas: list[str] = []
+
+    async def vaciar() -> None:
+        llamadas.append("flush")
+
+    async def base_caida(_settings: Settings) -> None:
+        raise RuntimeError("la base no responde")
+
+    monkeypatch.setattr(worker_main, "flush_telegram", vaciar)
+    monkeypatch.setattr(runtime, "wait_for_database", base_caida)
+
+    with pytest.raises(RuntimeError):
+        await worker_main.serve(settings_prueba, stop=asyncio.Event())
+
+    assert llamadas == ["flush"]

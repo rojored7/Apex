@@ -116,5 +116,29 @@ services:
       - ./openbao/bootstrap.sh:/bootstrap.sh:ro
       - ./openbao/policies:/policies:ro
 
+  mailpit:
+    # Solo desarrollo y solo con --profile avisos (S5-D78): buzón SMTP de prueba, sin reinicio
+    # automático. api, worker y tools NO dependen de él. SMTP 1025 solo dentro de la red; la
+    # interfaz web se publica solo en el bucle local (127.0.0.1:8125).
+    #   docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml --profile avisos up -d mailpit telegram-fake
+    # axllent/mailpit v1.27.10 por digest (2026-11-05, S5-B4);
+    # renovar (docs/RUNBOOK.md §7): docker buildx imagetools inspect axllent/mailpit:v1.27.10 --format '{{json .Manifest.Digest}}'
+    image: axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a
+    profiles: ["avisos"]
+    ports:
+      - "127.0.0.1:8125:8025"
+
+  telegram-fake:
+    # Solo desarrollo y solo con --profile avisos (S5-D78): imprime el JSON de cada sendMessage
+    # (nunca el token) en su log. Sin puertos en el host; el api lo alcanza por la red como
+    # TELEGRAM_API_BASE=http://telegram-fake:8081 (solo con ENV=dev).
+    # python:3.12-alpine por digest (2026-11-05, S5-B4);
+    # renovar (docs/RUNBOOK.md §7): docker buildx imagetools inspect python:3.12-alpine --format '{{json .Manifest.Digest}}'
+    image: python:3.12-alpine@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8
+    profiles: ["avisos"]
+    command: ["python", "-I", "/telegram_fake.py", "--port", "8081"]
+    volumes:
+      - ../scripts/dev/telegram_fake.py:/telegram_fake.py:ro
+
 volumes:
   openbao-dev-data:

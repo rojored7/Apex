@@ -314,3 +314,30 @@ def test_s5_b3_errors_solo_importa_crypto_errors_de_core_crypto() -> None:
 def test_s5_b3_crypto_errors_no_importa_nada_de_la_aplicacion() -> None:
     """Como `errors.py` lo importa y `security -> db -> errors`, `crypto/errors.py` queda hoja."""
     assert [n for n in _imports(CORE / "crypto" / "errors.py") if n.startswith("app")] == []
+
+
+def test_s5_b4_mail_y_alerts_telegram_no_importan_modulos_ni_audit() -> None:
+    """S5-B4: los dos archivos existen (si no, la regla no vigila) y solo toman de la aplicación
+    `core.config`, `core.alerts`, `core.validators` y `core.logging`; nunca `app.modules`,
+    `core.audit`, `core.db` ni `core.crypto` (el correo y las alertas no tocan datos)."""
+    violaciones: list[str] = []
+    for nombre in ("mail.py", "alerts_telegram.py"):
+        path = CORE / nombre
+        assert path.is_file(), f"falta core/{nombre}"
+        violaciones += [
+            f"{nombre}: {n}"
+            for n in _imports(path)
+            if n.startswith(("app.modules", "app.core.audit", "app.core.db", "app.core.crypto"))
+        ]
+    assert violaciones == []
+
+
+def test_s5_b4_ni_core_alerts_ni_el_resto_de_core_importa_alerts_telegram() -> None:
+    """El sink se registra desde `main.py` y `worker/main.py` (raíces de composición): ningún
+    otro archivo de `core` lo importa (`alerts.py` define el puerto, no depende del canal)."""
+    importadores = [
+        p.name
+        for p in sorted(CORE.rglob("*.py"))
+        if any(n == "app.core.alerts_telegram" for n in _imports(p))
+    ]
+    assert importadores == []

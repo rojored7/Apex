@@ -37,6 +37,8 @@ from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from app.core.alerts import alert
+from app.core.alerts_telegram import flush as flush_telegram
+from app.core.alerts_telegram import register_from_settings as register_telegram_sink
 from app.core.clock import Clock, FrozenClock, current_clock, reset_clock, set_clock
 from app.core.config import Settings, load_settings
 from app.core.jobs import ATTEMPTS_KEY, JobRunView, last_run
@@ -132,7 +134,9 @@ async def run_once(job: str, *, date: date | None, simulate: bool, settings: Set
 
 async def _correr(spec: JobSpec, reloj: Clock, simulada: date | None, settings: Settings) -> int:
     """La corrida dentro del runtime. Si la base falla al reclamar o al cerrar, sale con 1 y deja
-    solo el tipo del error en el log y en `job_failed` (S4A-D83), sin traza."""
+    solo el tipo del error en el log y en `job_failed` (S4A-D83), sin traza. Las alertas por
+    Telegram pendientes salen antes de volver (S5-D203)."""
+    register_telegram_sink(settings)
     try:
         async with runtime.worker_runtime(settings, with_crypto=True) as fabrica:
             if simulada is not None:
@@ -144,7 +148,9 @@ async def _correr(spec: JobSpec, reloj: Clock, simulada: date | None, settings: 
         tipo = type(error).__name__
         logger.error("job run failed", extra={"job": spec.name, "error_type": tipo})
         alert("job_failed", job=spec.name, result="error", error_type=tipo)
+        await flush_telegram()
         return EXIT_JOB_FAILED
+    await flush_telegram()
     return EXIT_BY_RESULT.get(outcome.result, EXIT_JOB_FAILED)
 
 
@@ -179,6 +185,14 @@ async def status(job: str, settings: Settings) -> int:
 async def serve(settings: Settings, *, stop: asyncio.Event) -> int:
     """Scheduler con latido hasta que `stop` se dispare; 0 al salir limpio."""
     # La base debe responder antes de abrir el runtime: `with_crypto` lee `crypto_keys` (S5-D20).
+    register_telegram_sink(settings)
+    try:
+        return await _serve(settings, stop=stop)
+    finally:
+        await flush_telegram()  # S5-D206: salen las alertas aunque el arranque o la parada fallen
+
+
+async def _serve(settings: Settings, *, stop: asyncio.Event) -> int:
     await runtime.wait_for_database(settings)
     async with runtime.worker_runtime(settings, with_crypto=True) as fabrica:
         ciclos = runtime.CycleTasks(fabrica, get_registry)

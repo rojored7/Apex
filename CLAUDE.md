@@ -111,9 +111,10 @@ apex/
   scripts/
     workflow/            # slice-gate.sh, checkpoint-commit.sh, run-gates.sh, validate-impact-analysis.sh
     ci/                  # smoke de compose, prueba de imagen, licencias, prod-smoke.sh (stack de producción en apex-smoke), check-release-version.sh (etiqueta = pyproject = package.json = CHANGELOG), test_deploy_script.sh con fakes/
+    dev/                 # telegram_fake.py (S5-B4, S5-D78): Telegram falso de la biblioteca estándar, solo lo monta el perfil `avisos` de compose.dev.yml
   infra/
     compose.yml
-    compose.dev.yml
+    compose.dev.yml      # desarrollo; perfiles opcionales `openbao` y `avisos` (mailpit y telegram-fake por digest, solo aquí, S5-D78)
     compose.e2e.yml      # solo E2E (V4): zona de limit_req alta para Nginx
     compose.verify.yml   # solo backup: monta la identidad age de verificación (S4B-D59)
     compose.openbao.yml  # overlay con CRYPTO_PROVIDER=openbao: api y worker sin el volumen `keys` y con su token (Sprint 5, S5-D74)

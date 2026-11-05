@@ -37,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.db import violated_constraint
 from app.modules.settings.exceptions import (
     SectionNotAvailable,
@@ -226,6 +227,15 @@ async def gym_name(session: AsyncSession) -> str:
         logger.warning("settings: la sección guardada no valida", extra={"settings_key": "gym"})
         return GYM_NAME_FALLBACK
     return valor.name or GYM_NAME_FALLBACK
+
+
+def channels_credentials_present(config: Settings) -> dict[str, bool]:
+    """Pura (S5-D30): `{"email": bool, "telegram": bool}` desde `core.config.Settings`, sin valores.
+    Correo: servidor y remitente; Telegram: token y chat."""
+    return {
+        "email": bool(config.SMTP_HOST) and bool(config.SMTP_FROM),
+        "telegram": config.TELEGRAM_BOT_TOKEN is not None and bool(config.TELEGRAM_CHAT_ID),
+    }
 
 
 def decorate_methods(

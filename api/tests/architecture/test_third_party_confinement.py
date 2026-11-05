@@ -198,7 +198,8 @@ def test_control_pyrage_en_un_archivo_de_b3b_se_detectaria() -> None:
 
 # S5-B1: `httpx` confinado al proveedor de OpenBao (S5-D17, S5-D29) -------------------------------
 
-HTTPX_PERMITIDO: Final = frozenset({"core/crypto/openbao_provider.py"})  # B4 suma alerts_telegram
+# S5-B4 (S5-D29): el sink de Telegram es el segundo (y último) sitio con `httpx`.
+HTTPX_PERMITIDO: Final = frozenset({"core/crypto/openbao_provider.py", "core/alerts_telegram.py"})
 
 
 def httpx_fuera_de_sitio(relativo: str, fuente: str) -> bool:
@@ -210,7 +211,7 @@ def test_httpx_solo_en_el_proveedor_de_openbao() -> None:
     assert fuera == [], fuera
 
 
-def test_httpx_tiene_exactamente_un_importador_real_el_proveedor() -> None:
+def test_httpx_tiene_exactamente_dos_importadores_reales_proveedor_y_sink() -> None:
     assert importadores("httpx") == HTTPX_PERMITIDO
 
 
@@ -222,3 +223,52 @@ def test_control_httpx_fuera_del_proveedor_falla(relativo: str) -> None:
     assert httpx_fuera_de_sitio(relativo, "from httpx import AsyncClient\n")
     assert httpx_fuera_de_sitio(relativo, "import importlib\nimportlib.import_module('httpx')\n")
     assert not httpx_fuera_de_sitio("core/crypto/openbao_provider.py", "import httpx\n")
+
+
+# S5-B4 (S5-D64, S5-D29): smtplib y httpx confinados ----------------------------------------------
+
+SMTPLIB_PERMITIDO: Final = frozenset({"core/mail.py"})
+
+
+def tercero_fuera_de(relativo: str, fuente: str, tercero: str, permitidos: frozenset[str]) -> bool:
+    return relativo not in permitidos and tercero in terceros_importados(fuente)
+
+
+def test_smtplib_solo_en_core_mail() -> None:
+    fuera = sorted(importadores("smtplib") - SMTPLIB_PERMITIDO)
+    assert fuera == [], fuera
+
+
+def test_smtplib_tiene_exactamente_un_importador_real_core_mail() -> None:
+    """S5-B4: `core/mail.py` es el único sitio que habla SMTP (M-7)."""
+    assert importadores("smtplib") == SMTPLIB_PERMITIDO
+
+
+def test_aiosmtplib_no_se_importa_en_ninguna_parte() -> None:
+    """S5-D64: SMTP con la biblioteca estándar en `asyncio.to_thread`, sin dependencia nueva."""
+    assert importadores("aiosmtplib") == set()
+
+
+@pytest.mark.parametrize(
+    ("tercero", "permitidos", "fuente"),
+    [
+        ("smtplib", SMTPLIB_PERMITIDO, "import smtplib\n"),
+        ("smtplib", SMTPLIB_PERMITIDO, "def f():\n    from smtplib import SMTP\n"),
+        ("httpx", HTTPX_PERMITIDO, "import httpx\n"),
+        ("httpx", HTTPX_PERMITIDO, "from httpx import AsyncClient\n"),
+    ],
+)
+@pytest.mark.parametrize(
+    "relativo", ["modules/notifications/service.py", "main.py", "core/alerts.py"]
+)
+def test_control_smtplib_o_httpx_fuera_de_su_sitio_falla(
+    relativo: str, tercero: str, permitidos: frozenset[str], fuente: str
+) -> None:
+    assert tercero_fuera_de(relativo, fuente, tercero, permitidos) is True
+
+
+def test_control_en_su_sitio_si_pueden_usarlos() -> None:
+    assert not tercero_fuera_de("core/mail.py", "import smtplib\n", "smtplib", SMTPLIB_PERMITIDO)
+    assert not tercero_fuera_de(
+        "core/alerts_telegram.py", "import httpx\n", "httpx", HTTPX_PERMITIDO
+    )

@@ -152,6 +152,29 @@ else
   falla .github/workflows/ci.yml ".github/workflows/ci.yml sin services.openbao.image por digest"
 fi
 
+# S5-B4 (S5-D78): Mailpit y el Telegram falso de desarrollo, por digest y solo en compose.dev.yml.
+# Su fecha y el comando de renovacion los revisa el bucle de `image:` de arriba.
+rel=infra/compose.dev.yml
+if [ -f "$ROOT/$rel" ]; then
+  if grep -qE '^[[:space:]]*image:[[:space:]]*axllent/mailpit:v?[0-9][^@[:space:]]*@sha256:[0-9a-f]{64}' "$ROOT/$rel"; then
+    ok "$rel trae axllent/mailpit por digest"
+  else
+    falla "$rel" "$rel sin image: axllent/mailpit:<version>@sha256:<digest>"
+  fi
+  if grep -qE '^[[:space:]]*image:[[:space:]]*python:3\.12-alpine@sha256:[0-9a-f]{64}' "$ROOT/$rel"; then
+    ok "$rel trae python:3.12-alpine por digest (telegram-fake)"
+  else
+    falla "$rel" "$rel sin image: python:3.12-alpine@sha256:<digest> (telegram-fake)"
+  fi
+fi
+for rel in infra/compose.yml infra/compose.openbao.yml; do
+  if [ -f "$ROOT/$rel" ] && grep -qE 'mailpit|telegram-fake' "$ROOT/$rel"; then
+    falla "$rel" "$rel nombra mailpit o telegram-fake (solo desarrollo)"
+  else
+    ok "$rel no nombra mailpit ni telegram-fake"
+  fi
+done
+
 if [ "$fallas" -gt 0 ]; then
   echo "test_images_pinned: $fallas fallas en$archivos_con_falla"
 else

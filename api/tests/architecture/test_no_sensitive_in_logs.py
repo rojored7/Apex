@@ -16,6 +16,7 @@ blob `apx1.`.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -198,3 +199,59 @@ def test_el_token_de_openbao_en_el_texto_de_un_error_no_llega_al_log_por_clave_c
     texto = _salida_de_un_registro(capsys, emitir)
     assert "alerta no enviada" in texto
     assert TOKEN_BOT not in texto and "x" * 30 not in texto
+
+
+# S5-B4 (S5-D58, M-8): el sink REAL de Telegram no deja el token en ningún registro ---
+
+
+async def _enviar_con_fallo(
+    monkeypatch: pytest.MonkeyPatch, *, esperar: bool, fallo: Exception
+) -> None:
+    from pydantic import SecretStr
+
+    from app.core.alerts_telegram import TelegramAlertSink
+    from tests.core._canales_apoyo import instalar_telegram
+
+    def roto(_peticion: httpx.Request) -> httpx.Response:
+        raise fallo
+
+    instalar_telegram(monkeypatch, roto)
+    sink = TelegramAlertSink(
+        SecretStr(TOKEN_BOT.removeprefix("bot")),
+        "-100123",
+        timeout_s=2.0,
+        front_base_url="https://gym.ejemplo.test",
+    )
+    sink.send("job_failed", {"job": "expirations"})
+    if esperar:
+        await sink.flush()
+    else:
+        await asyncio.sleep(0.05)
+        del sink
+        gc.collect()
+        await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize("esperar", [True, False], ids=["con_flush", "tarea_sin_esperar"])
+async def test_una_excepcion_de_httpx_con_la_url_del_bot_en_el_sink_no_deja_el_token(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    esperar: bool,
+) -> None:
+    configure_logging(SimpleNamespace(LOG_LEVEL="DEBUG"))  # type: ignore[arg-type]
+    caplog.set_level(logging.DEBUG)
+    cuerpo = TOKEN_BOT.removeprefix("bot")
+    fallo = httpx.ConnectError(
+        f"All connection attempts failed: https://api.telegram.org/bot{cuerpo}/sendMessage"
+    )
+
+    await _enviar_con_fallo(monkeypatch, esperar=esperar, fallo=fallo)
+    gc.collect()
+
+    salida = capsys.readouterr()
+    texto = (
+        salida.out + salida.err + caplog.text + " ".join(str(r.__dict__) for r in caplog.records)
+    )
+    assert "AAH" not in texto and cuerpo not in texto and "123456" not in texto
+    assert "Task exception was never retrieved" not in texto

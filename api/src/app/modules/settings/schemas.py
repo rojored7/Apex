@@ -39,6 +39,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictInt,
+    StringConstraints,
     ValidationError,
     field_validator,
     model_validator,
@@ -61,7 +62,13 @@ class SectionKey(StrEnum):
 
 # S2-D15: las demás responden 404 hasta su versión. S3-B3 (US-056, D24) habilita `payment_methods`.
 ENABLED_SECTIONS: frozenset[SectionKey] = frozenset(
-    {SectionKey.gym, SectionKey.privacy, SectionKey.memberships, SectionKey.payment_methods}
+    {
+        SectionKey.gym,
+        SectionKey.privacy,
+        SectionKey.memberships,
+        SectionKey.payment_methods,
+        SectionKey.channels,  # S5-B4 (US-122, S5-D30)
+    }
 )
 
 # D24: códigos fijos de los medios de pago, en el orden en que se muestran. Los mismos en
@@ -163,6 +170,40 @@ class MethodLabel(SectionValue):
         return check_visible_text(valor) if valor else valor
 
 
+CountryCode = Annotated[str, StringConstraints(strip_whitespace=False, pattern=r"^[0-9]{1,3}$")]
+SENDER_NAME_MAX_LENGTH: Final[int] = 80
+
+
+class EmailChannel(SectionValue):
+    """Correo: solo si está activo y el nombre que ve quien lo recibe (va a `From`, sin saltos)."""
+
+    enabled: bool = False
+    sender_name: SafeText = Field(default="APEX", min_length=1, max_length=SENDER_NAME_MAX_LENGTH)
+    reply_to: EmailAddress | None = None
+
+
+class WhatsappChannel(SectionValue):
+    """Enlace de WhatsApp: el indicativo del país (solo dígitos, 1 a 3)."""
+
+    enabled: bool = False
+    country_code: CountryCode = "57"
+
+
+class TelegramChannel(SectionValue):
+    """Telegram es del equipo (S5-D29); aquí solo se enciende. Token y chat viven en el entorno."""
+
+    enabled: bool = False
+
+
+class ChannelsSettings(SectionValue):
+    """Canales de aviso (US-122; S5-D30, S5-D204): sin secretos, todo cerrado (`extra="forbid"`)
+    y apagado por defecto. `credentials_present` se calcula al leer; no es un campo."""
+
+    email: EmailChannel = Field(default_factory=EmailChannel)
+    whatsapp: WhatsappChannel = Field(default_factory=WhatsappChannel)
+    telegram: TelegramChannel = Field(default_factory=TelegramChannel)
+
+
 class PaymentMethodsSettings(SectionValue):
     """Etiquetas de los tres medios de pago fijos (US-056; D24, S3-D55)."""
 
@@ -202,6 +243,7 @@ SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.privacy: PrivacySettings,
     SectionKey.memberships: MembershipsSettings,
     SectionKey.payment_methods: PaymentMethodsSettings,
+    SectionKey.channels: ChannelsSettings,
 }
 
 # Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`, y ninguna
@@ -240,6 +282,11 @@ SECTION_DEFAULTS: dict[SectionKey, dict[str, Any]] = {
         "nequi": {"label": "Nequi", "hint": ""},
         "breb": {"label": "Bre-B", "hint": ""},
     },
+    SectionKey.channels: {
+        "email": {"enabled": False, "sender_name": "APEX", "reply_to": None},
+        "whatsapp": {"enabled": False, "country_code": "57"},
+        "telegram": {"enabled": False},
+    },
 }
 
 
@@ -255,10 +302,22 @@ class _SectionMeta(BaseModel):
     updated_by: UUID | None
 
 
+class CredentialsPresent(BaseModel):
+    """Si el entorno trae lo necesario para cada canal (S5-D30); jamás los valores."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: bool
+    telegram: bool
+
+
 class SectionOut(_SectionMeta):
-    """Sección genérica: fila guardada o defaults con `version = 0` y `updated_* = None`."""
+    """Sección genérica: fila guardada o defaults con `version = 0` y `updated_* = None`.
+
+    `credentials_present` (S5-D204) solo lo trae `channels`; en las demás es `null`."""
 
     value: dict[str, Any]
+    credentials_present: CredentialsPresent | None = None
 
 
 class GymSectionOut(_SectionMeta):

@@ -223,3 +223,40 @@ def test_ninguna_seccion_de_la_base_guarda_campos_de_smtp_telegram_ni_openbao() 
     prohibidos = re.compile(r"^(smtp_|telegram_|openbao_|vault_|bot_)", re.IGNORECASE)
     hallados = [f"{c}.{n}" for c, m in modelos.items() for n in nombres(m) if prohibidos.match(n)]
     assert hallados == []
+
+
+# S5-B4 (S5-D30, US-122): la sección `channels` ------------------------------------------------
+
+
+def test_channels_esta_registrada_con_su_esquema_cerrado_y_sin_campos_de_secreto() -> None:
+    from app.modules.settings.schemas import ChannelsSettings
+
+    assert SectionKey.channels in ENABLED_SECTIONS
+    assert SECTION_REGISTRY[SectionKey.channels] is ChannelsSettings
+    assert SectionKey.channels in SECTION_VIEWS
+    assert ChannelsSettings.model_fields, "ChannelsSettings no declara campos"
+    assert campos_sospechosos(ChannelsSettings) == []
+    assert campos_con_secreto(ChannelsSettings) == []
+    assert sin_extra_forbid(ChannelsSettings) == []
+
+
+def test_channels_declara_exactamente_email_whatsapp_y_telegram_con_sus_campos() -> None:
+    from app.modules.settings.schemas import ChannelsSettings
+
+    assert set(ChannelsSettings.model_fields) == {"email", "whatsapp", "telegram"}
+    campos = {
+        nombre: {n for m in _modelos_anidados(info.annotation) for n in m.model_fields}
+        for nombre, info in ChannelsSettings.model_fields.items()
+    }
+    assert campos == {
+        "email": {"enabled", "sender_name", "reply_to"},
+        "whatsapp": {"enabled", "country_code"},
+        "telegram": {"enabled"},
+    }
+
+
+def test_credentials_present_no_es_un_campo_de_la_seccion() -> None:
+    """Se calcula al leer, desde `Settings`; no se guarda ni se acepta en el `PATCH`."""
+    from app.modules.settings.schemas import ChannelsSettings
+
+    assert "credentials_present" not in ChannelsSettings.model_fields

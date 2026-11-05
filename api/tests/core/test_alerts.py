@@ -55,10 +55,53 @@ def _texto(registro: logging.LogRecord) -> str:
 
 
 def test_las_claves_de_contexto_son_las_del_plan() -> None:
+    # S5-B4 (S5-D29): el resumen de avisos suma cinco conteos.
     assert (
-        frozenset({"job", "result", "error_type", "attempts", "run_date", "sqlstate"})
+        frozenset(
+            {
+                "job",
+                "result",
+                "error_type",
+                "attempts",
+                "run_date",
+                "sqlstate",
+                "generados",
+                "enviados",
+                "fallidos",
+                "omitidos",
+                "pendientes",
+            }
+        )
         == ALERT_CONTEXT_KEYS
     )
+
+
+def test_el_resumen_de_avisos_pasa_con_sus_cinco_conteos_enteros(sinks_aislados: None) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    alert("notify_summary", generados=12, enviados=9, fallidos=2, omitidos=1, pendientes=3)
+
+    assert bitacora == [
+        (
+            "a",
+            "notify_summary",
+            {"generados": 12, "enviados": 9, "fallidos": 2, "omitidos": 1, "pendientes": 3},
+        )
+    ]
+
+
+@pytest.mark.parametrize("clave", ["generados", "enviados", "fallidos", "omitidos", "pendientes"])
+def test_un_conteo_de_aviso_con_una_lista_o_un_nombre_se_rechaza(
+    sinks_aislados: None, clave: str
+) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    with pytest.raises(ValueError):
+        alert("notify_summary", **{clave: ["Laura Gómez"]})
+
+    assert bitacora == []
 
 
 def test_log_alert_sink_esta_registrado_por_defecto() -> None:
@@ -167,3 +210,15 @@ def test_valores_de_texto_y_enteros_pasan(sinks_aislados: None) -> None:
     alert("job_failed", job="expirations", attempts=3, run_date="2026-10-21", error_type="OSError")
 
     assert len(bitacora) == 1
+
+
+def test_unregister_sink_quita_el_sink_y_es_idempotente(sinks_aislados: None) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    sink = SinkEspia("a", bitacora)
+    alerts.register_sink(sink)
+
+    alerts.unregister_sink(sink)
+    alerts.unregister_sink(sink)  # ya no está: no falla
+    alert("job_failed", job="expirations")
+
+    assert bitacora == []

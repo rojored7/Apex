@@ -35,6 +35,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core import db, health
+from app.core.alerts_telegram import flush as flush_telegram
+from app.core.alerts_telegram import register_from_settings as register_telegram_sink
 from app.core.audit import install_audit_listeners
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
@@ -249,6 +251,7 @@ def _make_lifespan(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
+            register_telegram_sink(settings)  # S5-D203: raíz de composición del sink de Telegram
             estado = await _startup(
                 settings,
                 run_migrations_on_startup=migrar,
@@ -267,6 +270,7 @@ def _make_lifespan(
                 )
             yield
         finally:
+            await flush_telegram()  # S5-D203: las alertas pendientes salen antes del apagado
             await _cancel_crypto_poll(app)
             await _cancel_background_verifications()
             configure_keyring(None)

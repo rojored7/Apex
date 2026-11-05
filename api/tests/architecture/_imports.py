@@ -28,7 +28,10 @@ PREFIX: Final = "app.modules."
 FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "exceptions"})
 # Archivos privados por módulo: solo su propio módulo los importa (S2-D4).
 PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
-    "auth": frozenset({"rules", "tokens", "cookies", "events", "sessions", "users", "links"}),
+    # S5-B9 (D37): `mail_texts` (el texto fijo de los correos de cuenta) también es privado.
+    "auth": frozenset(
+        {"rules", "tokens", "cookies", "events", "sessions", "users", "links", "mail_texts"}
+    ),
     # S3-B1 (D7): `memberships` nace partido tras la fachada `service.py`.
     # Fase 4 del Sprint 3 (S3-D90): `summary` sale de `queries` (el resumen y su caché).
     # S4A-B2 (S4A-D2): `expirations` (el recálculo diario) también es privado.

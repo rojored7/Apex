@@ -229,15 +229,32 @@ $DC run --rm tools issue-reset-link <correo de la cuenta> --as <correo de un adm
   contador de fallos y, si es `reset`, cierra todas las sesiones de la cuenta. No inicia sesión.
   Una cuenta bloqueada no puede usarlo: primero `cli unlock-user`.
 
-#### `forgot` en v0.1
+#### Correos de cuenta y `forgot` (US-131)
 
-`POST /auth/forgot` responde siempre 204 sin cuerpo y en v0.1 **no envía ni crea nada** (H-2,
-S2-D36): no hay canal al socio hasta US-131. Quien olvida la contraseña pide al admin un enlace
-nuevo ("Reenviar enlace" en el panel; para admins, el CLI de arriba). Límites: 5 por minuto por
-IP (`FORGOT_IP_LIMIT`) y 5 por hora por correo desde cualquier IP (`forgot-account`, constante
-`FORGOT_ACCOUNT_LIMIT` / `FORGOT_ACCOUNT_WINDOW_S=3600` en `auth/service.py`), ambos en memoria
-(`$DC up -d api` los vacía). Toda respuesta dura al menos `LOGIN_MIN_DURATION_MS`, y el log
-(`forgot recibido`) no lleva el correo.
+`POST /auth/forgot` responde siempre 204 sin cuerpo y con el mismo tiempo exista o no la cuenta
+(H-2): la búsqueda, el token `reset` y el correo corren **después** de responder, en una sesión
+propia (`forgot_deliver`, a lo más 4 a la vez y 32 en espera; lo que no cabe se descarta con la
+línea `forgot_deliver: cola llena, descartado`). Solo una cuenta activa recibe el enlace; inexistente,
+inactiva, bloqueada o pendiente de activación no reciben nada ni dejan rastro distinto.
+
+El correo sale solo si hay SMTP configurado (`SMTP_HOST` y `SMTP_FROM`) **y** `channels.email.enabled`
+es verdadero. Sin eso, `forgot` no envía ni crea token (no deja filas huérfanas) y quien olvida la
+contraseña sigue pidiendo al admin un enlace nuevo ("Reenviar enlace" en el panel; para admins, el CLI
+de arriba). `POST /users` y `POST /users/{id}/resend-link` envían el correo de activación o de
+recuperación en la misma petición y devuelven `email_sent`: si es `false` (sin SMTP, canal apagado o
+fallo del envío), la cuenta o el enlace igual existen y el admin debe copiar `activation_url` / `url`
+y entregarlo por otra vía. El CLI (`seed`, `accounts`) nunca envía correo. El enlace y el correo no
+se registran en ningún log; un fallo del envío deja solo el tipo de la excepción.
+
+El envío de esas dos rutas es síncrono y va dentro de la transacción de la petición (`email_sent` =
+«entregado al SMTP»), con un tope de 15 s (`AUTH_MAIL_TIMEOUT_S`, S5-D238): vencido, `email_sent` es
+`false` y el log lleva solo `TimeoutError`. Riesgo aceptado: si el commit fallara después del envío,
+el destinatario tiene un enlace sin token (inútil); el admin ve el 5xx y reenvía.
+
+Límites: 5 por minuto por IP (`FORGOT_IP_LIMIT`) y 5 por hora por correo desde cualquier IP
+(`forgot-account`, constante `FORGOT_ACCOUNT_LIMIT` / `FORGOT_ACCOUNT_WINDOW_S=3600` en
+`auth/service.py`), ambos en memoria (`$DC up -d api` los vacía). Toda respuesta dura al menos
+`LOGIN_MIN_DURATION_MS`.
 
 ### Ciclo de vida de las cuentas (S2-B5)
 

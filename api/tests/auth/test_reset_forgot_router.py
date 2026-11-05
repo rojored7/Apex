@@ -63,9 +63,12 @@ async def test_forgot_existente_e_inexistente_son_indistinguibles(
     assert _sin_fecha(existe) == _sin_fecha(no_existe)
 
 
-async def test_forgot_no_crea_tokens(
+async def test_forgot_sin_correo_configurado_no_crea_tokens(
     app_http: AsyncClient, usuario_real: CrearUsuario, session: AsyncSession
 ) -> None:
+    """E14 (S2-D36 enmendada en B9): `forgot` ahora lee y escribe, pero en segundo plano y solo
+    con SMTP y canal de correo; sin ellos no deja token (la entrega con correo está en
+    `test_forgot_delivery.py`). # Rojo B9"""
     coach = await usuario_real("coach")
     r = await app_http.post(FORGOT, json={"email": coach.email})
     assert r.status_code == 204

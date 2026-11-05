@@ -47,7 +47,7 @@ async def test_el_admin_crea_y_recibe_el_enlace_una_vez(
     assert r.status_code == 201, r.text
     assert r.headers["cache-control"] == "no-store"
     datos = r.json()
-    assert set(datos) == {"user", "activation_url", "expires_at"}
+    assert set(datos) == {"user", "activation_url", "expires_at", "email_sent"}  # Rojo B9 (D37)
     assert set(datos["user"]) == CAMPOS_USER_OUT
     assert datos["user"]["email"] == cuerpo["email"]
     assert datos["user"]["status"] == "pending_activation"

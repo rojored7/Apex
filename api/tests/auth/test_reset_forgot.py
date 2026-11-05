@@ -14,6 +14,10 @@ y S2-B4; H-2 / S2-D36, H-3 / S2-D37, S2-D39, S2-D40, L-13).
 No inicia sesión. Auditoría: `update` de `auth.users` (`password_hash = "***"`) y de
 `auth.one_time_tokens` (`used_at`, `token_hash = "***"`), ambos del propio usuario.
 
+E14 (B9, S2-D36 enmendada): `service.forgot` conserva la semántica de v0.1 y solo valida y
+espera; la búsqueda, el token y el correo viven en `forgot_deliver`, en segundo plano
+(`test_forgot_delivery.py`).
+
 `forgot(email, *, policy)` en v0.1 (H-2; sin `session` ni `ip` desde la revisión Python, L3):
 no escribe nada (ni filas, ni cierre de
 tokens abiertos, ni auditoría), normaliza el correo, cuenta el intento en
@@ -420,7 +424,7 @@ async def test_el_log_del_reset_no_lleva_el_token_ni_la_contrasena(
     assert NUEVA not in texto
 
 
-# forgot (H-2: v0.1 no escribe nada) ---------------------------------------------------------
+# forgot (H-2: `service.forgot` no escribe nada; la entrega es de `forgot_deliver`, B9) ----
 
 
 async def _forgot(session: AsyncSession, email: str, **cambios: Any) -> None:

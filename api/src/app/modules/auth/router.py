@@ -37,10 +37,10 @@ from ipaddress import IPv4Network, IPv6Network
 from typing import Annotated, Final
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 
 from app.core.config import Settings
-from app.core.db import SessionDep
+from app.core.db import SessionDep, get_sessionmaker
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
@@ -232,6 +232,7 @@ async def create_user(
         role=body.role,
         by=principal.user_id,
         front_base_url=_settings(request).FRONT_BASE_URL,
+        settings=_settings(request),
     )
 
 
@@ -242,8 +243,15 @@ async def create_user(
     responses=responses_for(429),
     dependencies=[Depends(rate_limit("forgot"))],
 )
-async def forgot(body: ForgotIn, request: Request) -> Response:
+async def forgot(body: ForgotIn, request: Request, background: BackgroundTasks) -> Response:
     await service.forgot(body.email, policy=policy_from(_settings(request)))
+    # S5-B9 (D38): la búsqueda, el token y el correo corren DESPUÉS de la respuesta (H-2).
+    background.add_task(
+        service.forgot_deliver,
+        body.email,
+        session_factory=get_sessionmaker(),
+        settings=_settings(request),
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -274,6 +282,7 @@ async def resend_link(
         user_id,
         by=principal.user_id,
         front_base_url=_settings(request).FRONT_BASE_URL,
+        settings=_settings(request),
     )
 
 

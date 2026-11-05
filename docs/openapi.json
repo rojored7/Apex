@@ -417,6 +417,11 @@
             "title": "Activation Url",
             "type": "string"
           },
+          "email_sent": {
+            "default": false,
+            "title": "Email Sent",
+            "type": "boolean"
+          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
@@ -1125,6 +1130,11 @@
         "additionalProperties": false,
         "description": "`POST /users/{id}/resend-link` (y `cli issue-reset-link`): el enlace viaja una sola vez.",
         "properties": {
+          "email_sent": {
+            "default": false,
+            "title": "Email Sent",
+            "type": "boolean"
+          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",

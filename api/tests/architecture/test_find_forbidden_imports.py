@@ -123,7 +123,8 @@ def test_lee_el_archivo_cuando_no_hay_source(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "helper", ["rules", "tokens", "cookies", "events", "sessions", "users", "links"]
+    "helper",
+    ["rules", "tokens", "cookies", "events", "sessions", "users", "links", "mail_texts"],
 )
 def test_helper_privado_de_auth_desde_otro_modulo(helper: str) -> None:
     fuente = f"from app.modules.auth.{helper} import x\nimport app.modules.auth.{helper}\n"

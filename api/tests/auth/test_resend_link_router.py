@@ -42,7 +42,7 @@ async def test_el_admin_recibe_el_enlace_sin_cache(
     assert r.status_code == 200, r.text
     assert r.headers["cache-control"] == "no-store"
     datos = r.json()
-    assert set(datos) == {"url", "purpose", "expires_at"}
+    assert set(datos) == {"url", "purpose", "expires_at", "email_sent"}  # Rojo B9 (D37)
     assert datos["purpose"] == "activate"
     assert datetime.fromisoformat(datos["expires_at"]) == T0 + timedelta(hours=72)
     prefijo = "http://localhost:8180/restablecer/"

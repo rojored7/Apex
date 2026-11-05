@@ -77,7 +77,7 @@ async def test_un_pendiente_con_enlace_vencido_recibe_activate_a_72_horas(
     salida = await _reenviar(session, admin, pendiente.id)
 
     assert isinstance(salida, IssuedLinkOut)
-    assert set(salida.model_dump()) == {"url", "purpose", "expires_at"}
+    assert set(salida.model_dump()) == {"url", "purpose", "expires_at", "email_sent"}  # Rojo B9
     assert salida.purpose == "activate"
     assert salida.expires_at == T0 + timedelta(hours=72)
     claro = _token(salida)

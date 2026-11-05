@@ -25,6 +25,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import configure_logging
 from tests.auth._sesion import LOGIN, cookie_de, post_auth
@@ -255,3 +256,60 @@ async def test_una_excepcion_de_httpx_con_la_url_del_bot_en_el_sink_no_deja_el_t
     )
     assert "AAH" not in texto and cuerpo not in texto and "123456" not in texto
     assert "Task exception was never retrieved" not in texto
+
+
+# S5-B9 (US-131; D37, D38, M-7d): el enlace de cuenta y el correo no llegan a ningún log. # Rojo B9
+
+
+async def test_forgot_y_alta_con_correo_no_dejan_el_enlace_ni_el_correo_en_los_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    app_http: AsyncClient,
+    api_prueba: FastAPI,
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    sleeper_nulo: SleeperEspia,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from tests.auth._correos import (
+        entorno_correo,
+        habilitar_canal_correo,
+        hacer_que_send_mail_lance,
+        token_del_cuerpo,
+    )
+
+    configure_logging(api_prueba.state.settings)
+    caplog.set_level(logging.DEBUG)
+    admin = await usuario_real("admin")
+    coach = await usuario_real("coach")
+    entorno = entorno_correo(monkeypatch, api_prueba, session, con_smtp_=True)
+    await habilitar_canal_correo(session, admin.id)
+
+    alta = await app_http.post(
+        "/api/v1/users",
+        json={"email": "centinela-alta@test.apex", "role": "coach"},
+        headers=cabeceras(admin),
+    )
+    olvido = await app_http.post("/api/v1/auth/forgot", json={"email": coach.email})
+    cuerpos = hacer_que_send_mail_lance(monkeypatch)
+    olvido_con_fallo = await app_http.post(
+        "/api/v1/auth/forgot", json={"email": coach.email.upper()}
+    )
+
+    assert (alta.status_code, olvido.status_code, olvido_con_fallo.status_code) == (201, 204, 204)
+    assert alta.json()["email_sent"] is True
+    assert len(entorno.smtp.mensajes) == 2, "alta y forgot debían enviar un correo cada uno"
+    assert len(cuerpos) == 1
+    tokens = [token_del_cuerpo(m.get_content()) for m in entorno.smtp.mensajes]
+    tokens.append(token_del_cuerpo(cuerpos[0]))
+    salida = capsys.readouterr()
+    texto = (
+        salida.out + salida.err + caplog.text + " ".join(str(r.__dict__) for r in caplog.records)
+    ).lower()
+    assert "http_request" in texto, "no se capturó el log JSON de acceso"
+    for token in tokens:
+        assert token.lower() not in texto
+    for correo in (coach.email, "centinela-alta@test.apex"):
+        assert correo.lower() not in texto
+    assert "/restablecer/" not in texto

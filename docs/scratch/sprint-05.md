@@ -665,3 +665,47 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - Ensayo (`apex-ensayo`): worker recreado con la imagen nueva (`healthy`) y `--run-once notify` dos veces: `ok`, todo en cero (el ensayo no tiene avisos `email` ni SMTP), sin duplicados.
 - Limpieza: `apex-api-demo` borrado, `mailpit` y `telegram-fake` detenidos, `DROP DATABASE apex_avisos_demo`.
 - `run-gates.sh` (segunda de cuatro, con el ensayo detenido, por partes): api lint, format y mypy en verde; pytest en tres partes con `--cov-append`: 2191 + 3009 (82 omitidas) + 2461 = 7661 verdes, 0 fallidas, cobertura global 95,29 % (umbral 80 %); 7 scripts de infraestructura con «0 fallas»; web: lint, tsc, 3149 pruebas verdes y build ok. Ensayo levantado de nuevo (api, worker, backup y web arriba). Checkpoint `8f750b9`.
+
+## B9 · Rojo (S5-B9, correos de cuenta, US-131)
+
+- Stubs (paso 102): `auth/mail_texts.py` (`activation_mail`, `reset_mail`: `NotImplementedError`), `links.forgot_deliver(email, *, session_factory, settings)` (`NotImplementedError`, exportada también por `service.py`), `email_sent: bool = False` en `CreateUserOut` e `IssuedLinkOut`, `settings: Settings | None = None` (sin uso) en `users.create_user` y `links.resend_link`. El router no cambia.
+- Kit nuevo: `tests/auth/_correos.py` (fábrica de sesiones que presta la sesión de la prueba, SMTP + canal, `post_cronometrado` por ASGI crudo, `hacer_que_send_mail_lance`, `token_del_cuerpo`).
+- Rojas (37 en `tests/auth` + 3 en arquitectura = 40; `tests/auth` en total 587 verdes / 37 rojas):
+  - `test_mail_texts.py` 15 (NotImplementedError).
+  - `test_user_link_mail.py` 12 (aserción: `email_sent` falso, sin mensajes; 3 por `unpack` de `(mensaje,)` vacío).
+  - `test_forgot_delivery.py` 10 (9 por aserción de mensajes/conexiones en cero; la cola por NotImplementedError). Verdes de guardia: inexistente/no elegible/sin SMTP/canal apagado/`service.forgot`.
+  - `architecture/test_service_import_graph.py` 2 (links.py y users.py aún no importan `app.core.mail`); `test_no_sensitive_in_logs.py` 1 (aserción `email_sent`).
+- Enmiendas de prueba (verdes): las tres aserciones de claves exactas ahora incluyen `email_sent` (`test_create_user_router`, `test_resend_link`, `test_resend_link_router`); E14: `test_forgot_no_crea_tokens` pasa a `test_forgot_sin_correo_configurado_no_crea_tokens` y las cabeceras de `test_reset_forgot.py` aclaran que `service.forgot` conserva la semántica de v0.1; `mail_texts` entra en `PRIVATE_HELPERS` y en la prueba de `private_helper`.
+- Sello (paso 106.2): `bash scripts/workflow/slice-gate.sh auth tests/auth/test_forgot_delivery.py tests/auth/test_user_link_mail.py tests/auth/test_mail_texts.py tests/auth/test_reset_forgot.py tests/auth/test_reset_forgot_router.py` (más `tests/architecture/test_service_import_graph.py tests/architecture/test_no_sensitive_in_logs.py tests/architecture/test_find_forbidden_imports.py` en el 99.x).
+- Dudas (propuesta entre paréntesis):
+  1. Firma de `settings` en `create_user`/`resend_link`: kwarg `settings=` (el router pasa `request.app.state.settings`; hacerlo obligatorio y actualizar las pruebas viejas, o dejar `None` = no envía).
+  2. Contrato de `forgot_deliver`: abre `async with session_factory() as s, s.begin():` y el router toma `db.get_sessionmaker()`; la fábrica de prueba mapea `begin()` a savepoint.
+  3. Sin SMTP o con el canal apagado, `forgot_deliver` ni emite token (el test lo exige; evita tokens huérfanos).
+  4. Cuenta `pending_activation` en `forgot`: no probada (propuesta: no elegible, se resuelve con reenvío del admin). «Sin rol» no se puede construir en BD: no probada.
+  5. Cola: se exige 32 <= admitidas <= 36 y un log de descarte cuyo mensaje contenga «descart» o «cola» (sin correos). Semáforo/cola a nivel de módulo: ojo con el bucle de eventos por prueba (crear el `Semaphore` perezoso).
+  6. Tiempos: se miden hasta `http.response.start` (httpx espera las tareas de fondo); con `sleeper_nulo`. La prueba de tiempos ya pasa en el stub (es guardia de H-2, no puede ser roja).
+  7. Mensaje de fallo de `send_mail` simulado: se parchea `app.core.mail.send_mail` y `auth.links/users.send_mail` (raising=False); el código debe llamar `send_mail` (módulo o nombre).
+
+## B9 · Verde (S5-B9, correos de cuenta, US-131)
+
+- Implementado: `auth/mail_texts.py` (80 líneas: `activation_mail`, `reset_mail`, más `email_sender_name` —SMTP + `channels.email.enabled` por `settings_service.get`— y `account_message`), `links.py` (352: `forgot_deliver` con `Semaphore(4)` y cola de 32 perezosos por bucle en un `WeakKeyDictionary`, descarte `forgot_deliver: cola llena, descartado`; `resend_link(settings=)` envía y devuelve `email_sent`), `users.py` (711: `create_user(settings=)` + `_send_activation_mail`), `router.py` (364: `BackgroundTasks` en `/auth/forgot` con `get_sessionmaker()`; `settings=` en alta y reenvío). `service.py` ya reexportaba `forgot_deliver`.
+- Verdes: `tests/auth` 624 (15 mail_texts, 12 user_link_mail, 18 forgot_delivery incluida la de pendiente de activación nueva), `tests/architecture` 657; `tests/core/test_openapi_export.py` + `tests/cli` 503 verdes, 28 omitidas; `docs/openapi.json` con `email_sent` en `CreateUserOut` e `IssuedLinkOut`.
+- Añadido por D236: prueba `test_una_cuenta_pendiente_de_activacion_no_recibe_correo_ni_token`.
+- Desviaciones: ninguna respecto al Rojo. El envío del alta ocurre dentro de la transacción de la petición (el service no hace commit); si el commit fallara después, el correo llevaría un enlace sin token (riesgo aceptado, el fallo posterior es raro y el admin ve el error).
+- Docs: RUNBOOK §2 (correos de cuenta y `forgot`), CLAUDE.md (`mail_texts.py` privado de `auth`).
+
+## B9 · Revisiones (seguridad: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW)
+
+- **LOW 1 · S5-D238 · envío síncrono sin tope.** `AUTH_MAIL_TIMEOUT_S = 15` en `auth/links.py:78`; el `send_mail` va bajo `asyncio.timeout` en `links.py:352` (`_send_link_mail`) y `users.py:530` (`_send_activation_mail`, lee `links.AUTH_MAIL_TIMEOUT_S` en cada llamada). Vencido el plazo, `email_sent=false` y el log lleva solo `TimeoutError`. RUNBOOK §2 anota el tope y el riesgo aceptado (enlace sin token si el commit falla después del envío).
+- **LOW 2 · S5-D239 · lectura de `channels` dentro del `except`.** `mail_texts.email_sender_name` se llama ANTES de emitir el token y fuera del `except` en `links.py:336` (`resend_link`) y `users.py:506` (`create_user`); los helpers de envío reciben el `remitente` y su `except Exception` solo cubre `send_mail`. Un error de base al leer la configuración se propaga (5xx) y no queda token.
+- Pruebas nuevas (`tests/auth/test_user_link_mail.py`, 6 casos parametrizados alta/reenvío): SMTP colgado con `asyncio.Event` y plazo parcheado a 0,05 s (`email_sent=false`, `TimeoutError` en el log, sin token en el log, sesión usable); `OperationalError` al leer `channels` se propaga y no emite token; fallo del envío deja la sesión usable.
+
+## B9 · Evidencia (paso 106.3, demo)
+
+- Imagen: no se reconstruyó `apex-api:local`; el api efímero `apex-api-demo` (127.0.0.1:8191, `ENV=dev`, `docker run` en `apex_default`) montó `api/src`, `api/migrations` y `alembic.ini` del árbol actual como solo lectura sobre esa imagen, de modo que corrió el código de B9 sin tocar el api del stack `apex`. Mailpit del perfil `avisos` (`up -d --no-deps mailpit`).
+- Base desechable `apex_avisos_demo` en `db_test`: `alembic upgrade head` (hasta `0019`), `init-keys`, `seed` (admin `demo-admin@apex.test`, `must_change_password` limpiado por SQL), llaves en un volumen desechable. `/health` todo `ok`. Canal de correo activo con `PATCH /settings/channels` (versión 0 → 1, remitente «APEX Demo»).
+- `POST /auth/forgot` con un correo inexistente: 204 y Mailpit con 0 correos. Con el correo del admin del seed: 204 y UN correo («Restablece tu contraseña en APEX Demo», al admin, cuerpo igual a `reset_mail`).
+- `POST /users` (admin): 201 con `email_sent: true`; segundo correo en Mailpit («Activa tu cuenta en APEX Demo», a `coach-demo@apex.test`, texto de `activation_mail`). Total en Mailpit: 2.
+- Logs del api-demo: 0 apariciones de cada uno de los dos tokens (43 caracteres), 0 de `restablecer` y 0 de los correos.
+- Limpieza: `apex-api-demo` y `apex-mailpit-1` eliminados, volumen de llaves borrado, `DROP DATABASE apex_avisos_demo`. Los stacks `apex` y `apex-ensayo` no se tocaron.
+- Gates de la revisión: `tests/auth` 631, `tests/architecture` 657, `tests/cli` + `test_openapi_export` 503 (28 omitidas); ruff, format y mypy en verde.

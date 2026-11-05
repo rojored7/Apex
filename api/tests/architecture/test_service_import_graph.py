@@ -39,6 +39,7 @@ módulos 2 bis y 3; G-03 y G-04; reescrita en S3-B1 por D2 del blueprint del Spr
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -539,3 +540,31 @@ def test_la_arista_notifications_a_settings_tiene_uso_real_en_sending() -> None:
     arriba, perezosas = service_edges(fuente, "notifications")
     assert "settings" in arriba and "settings" not in perezosas
     assert ("notifications", "settings") in ALLOWED_EDGES
+
+
+# S5-B9 (D37): los correos de cuenta no pasan por la cola de `notifications`. # Rojo B9
+
+AUTH_DIR = MODULES_DIR / "auth"
+
+
+def test_auth_no_depende_de_notifications_y_mantiene_la_arista_a_settings() -> None:
+    arriba, perezosas = _grafo_real()
+    assert "notifications" not in arriba["auth"] | perezosas["auth"]
+    assert "settings" in arriba["auth"]
+
+
+@pytest.mark.parametrize("archivo", ["links.py", "users.py"])
+def test_auth_envia_los_correos_de_cuenta_con_core_mail_directamente(archivo: str) -> None:
+    fuente = (AUTH_DIR / archivo).read_text(encoding="utf-8")
+    patron = r"^from app.core(.mail| import .*mail)"
+    assert re.search(patron, fuente, re.MULTILINE), f"{archivo} debe llamar app.core.mail (S5-D37)"
+    assert "notifications" not in fuente
+
+
+def test_auth_no_usa_smtplib_ni_importa_el_texto_de_otro_modulo() -> None:
+    for archivo in AUTH_DIR.glob("*.py"):
+        assert "smtplib" not in archivo.read_text(encoding="utf-8"), archivo.name
+    assert (AUTH_DIR / "mail_texts.py").exists()
+    for otro in MODULES_DIR.glob("*/*.py"):
+        if otro.parent.name != "auth":
+            assert "auth.mail_texts" not in otro.read_text(encoding="utf-8"), otro

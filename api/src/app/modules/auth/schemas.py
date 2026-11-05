@@ -133,6 +133,8 @@ class CreateUserOut(BaseModel):
     user: UserOut
     activation_url: str
     expires_at: datetime
+    # S5-B9 (D37): stub fijo; el Verde lo llena con el resultado real del correo.
+    email_sent: bool = False
 
 
 # S2-B4 · activación, recuperación y reenvío (US-048, US-052) ------------------------------
@@ -167,6 +169,8 @@ class IssuedLinkOut(BaseModel):
     url: str
     purpose: OneTimePurposeOut
     expires_at: datetime
+    # S5-B9 (D37): stub fijo; el Verde lo llena con el resultado real del correo.
+    email_sent: bool = False
 
 
 # S2-B5 · ciclo de vida del usuario (US-049, US-050, US-051) -------------------------------

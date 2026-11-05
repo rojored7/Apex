@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -37,9 +38,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events, ratelimit
 from app.core.clock import current_clock
+from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID
 from app.core.db import violated_constraint
 from app.core.errors import UnauthorizedError
+from app.core.mail import send_mail
 from app.core.pagination import Page, PageParams, chunked, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold, strip_accents
 from app.core.security import (
@@ -50,7 +53,7 @@ from app.core.security import (
     hash_opaque_token,
     hash_password,
 )
-from app.modules.auth import rules, tokens
+from app.modules.auth import links, mail_texts, rules, tokens
 from app.modules.auth.events import (
     PasswordChanged,
     SessionsRevoked,
@@ -463,11 +466,20 @@ def _is_email_conflict(error: IntegrityError) -> bool:
 
 
 async def create_user(
-    session: AsyncSession, *, email: str, role: StaffRole, by: UUID, front_base_url: str
+    session: AsyncSession,
+    *,
+    email: str,
+    role: StaffRole,
+    by: UUID,
+    front_base_url: str,
+    settings: Settings | None = None,
 ) -> CreateUserOut:
     """US-047 (L-2): admin o coach sin hash (`pending_activation`), token `activate` de 72 h y
     `activation_url`, que viaja una sola vez y nunca se registra. El correo de una cuenta viva
-    da `EmailTaken`; la carrera la decide `uq_users_email_alive` dentro de un savepoint."""
+    da `EmailTaken`; la carrera la decide `uq_users_email_alive` dentro de un savepoint.
+
+    S5-B9 (US-131, S5-D37): con `settings` envía el correo de activación (SMTP y canal
+    habilitados) y devuelve `email_sent`; sin `settings` (CLI, pruebas de v0.1) nunca envía."""
     correo = normalize_login_email(email)
     existente = await _alive_user_id(session, correo)
     if existente is not None:
@@ -490,15 +502,38 @@ async def create_user(
             raise
         ganador = await _alive_user_id(session, correo)
         raise EmailTaken(field="email", existing_id=ganador) from None
+    # S5-D239: la configuración se lee ANTES del token y sin `except`: un error de base se propaga.
+    remitente = await mail_texts.email_sender_name(session, settings) if settings else None
     now = current_clock().now_utc()
     claro, fila = await tokens.issue_one_time_token(session, usuario.id, "activate", now=now)
     await events.emit(UserCreated(user_id=usuario.id, role=role, by=by), session)
     logger.info("cuenta creada", extra={"user_id": str(usuario.id), "role": role})
+    url = rules.activation_url(front_base_url, claro)
     return CreateUserOut(
         user=rules.user_out(usuario),
-        activation_url=rules.activation_url(front_base_url, claro),
+        activation_url=url,
         expires_at=fila.expires_at,
+        email_sent=await _send_activation_mail(settings, remitente, to=correo, url=url),
     )
+
+
+async def _send_activation_mail(
+    settings: Settings | None, remitente: str | None, *, to: str, url: str
+) -> bool:
+    """Envía el correo de activación; falso sin `settings`, SMTP o canal (`remitente` nulo) o si
+    el envío falla o pasa de `AUTH_MAIL_TIMEOUT_S` (S5-D238). Solo el envío va en el `except`
+    (S5-D239) y registra solo el tipo (M-7d): el enlace nunca llega a un log."""
+    if settings is None or remitente is None:
+        return False
+    mensaje = mail_texts.account_message("activate", to=to, url=url, sender=remitente)
+    try:
+        async with asyncio.timeout(links.AUTH_MAIL_TIMEOUT_S):
+            return (await send_mail(settings, mensaje)).ok
+    except Exception as error:
+        logger.warning(
+            "correo de activación no enviado", extra={"error_type": type(error).__name__}
+        )
+        return False
 
 
 # Ciclo de vida (S2-B5) -----------------------------------------------------------------------

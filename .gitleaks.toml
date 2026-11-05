@@ -54,6 +54,13 @@ regexes = [
   '''centinela-api-0123456789abcd''',
   '''clave-inventada-1234''',
   '''retire-key: (filas_negocio|audit_blobs)=''',
+  # Sprint 5 (V9): centinelas de las pruebas de OpenBao y de roles, por valor exacto: el token
+  # falso de `test_logging_redact.py` (demuestra la redacción), la cabecera de `test_snapshot.sh`
+  # (revocación de la raíz efímera, S5-D181) y la contraseña del propietario de
+  # `test_compose_config.sh` (W0-4). Los valores reales nunca van en el repo (S5-D107, D140).
+  '''hvs\.CAESIsecreto123456''',
+  '''hvs\.raiz-efimera-0123''',
+  '''centinela-owner-0123456789abc''',
 ]
 # Sprint 4A (V9.7): tres commits intermedios, nunca publicados con secretos reales, que citan la
 # cabecera PEM como texto: dbc352e (literal de prueba de init-keys, partido en 8339138) y las dos

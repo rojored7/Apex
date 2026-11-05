@@ -55,3 +55,13 @@ def test_el_router_de_notifications_lleva_no_store_en_el_router() -> None:
     from app.modules.notifications.router import router
 
     assert any(d.dependency is no_store for d in router.dependencies)
+
+
+def test_el_recibo_pdf_lleva_no_store(settings_prueba: Settings) -> None:
+    """S5-B11 (US-137, S5-D40): la ruta del recibo existe, tiene rol y lleva `no_store`
+    (Rojo B11)."""
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    recibo = [r for r in rutas if r.path.endswith("/payments/{payment_id}/receipt.pdf")]
+    assert len(recibo) == 1
+    assert route_has_role_dependency(recibo[0])
+    assert any(n.call is no_store for n in _nodos(recibo[0].dependant))

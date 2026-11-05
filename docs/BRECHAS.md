@@ -571,7 +571,7 @@ El Sprint 5 (v0.2) construye en el front las pantallas de avisos, la pestaña Ca
 | 13.3 | Inicio, tarjeta "Por avisar" y `FutureKpis` (fila 25) | KPI real `notifications_today` y `members_without_consent` calculado (US-132, S5-D80). | S5-F3 | pendiente |
 | 13.4 | `Socios_Lista` y `Pagos`, botón "Exportar" (§10.1, §10.8) | CSV de socios y pagos con confirmación; descarga por `api.blob` y `downloadBlob` en `shared/lib`, sin `sessionStorage` ni `localStorage` (S5-D87, L-8). | S5-F4 | pendiente |
 | 13.5 | Detalle de pago, botón de recibo (§10.8) | `ReceiptButton` descarga el PDF (30 s de límite); el recibo no lleva documento. | S5-F4 | pendiente |
-| 13.6 | Recibo PDF, logo | El PDF propio de `core/pdf.py` sale sin logo (S5-D65); vector propio o una licencia aceptada para el logo. **Dueño: v0.3, titular.** | S5-B11 | aceptada con dueño |
+| 13.6 | Recibo PDF, logo | El recibo PDF de `core/pdf.py` (S5-B11, escritor propio, Courier sin incrustar) sale sin logo (S5-D65): ni `reportlab` ni `pillow`; vector propio o una licencia aceptada para el logo. **Dueño: v0.3, titular.** | S5-B11 | aceptada con dueño; recibo sin logo entregado |
 | 13.7 | `Config`, pestaña "Canales" (fila 20) | Interruptores de correo, WhatsApp y Telegram, con `credentials_present` calculado (US-122). | S5-F2 | pendiente |
 | 13.8 | `ForgotPage` y tarjetas de recuperar y activar cuenta (fila 230) | Mensajes reales de "enlace enviado" y `email_sent` (US-131). | S5-F5 | pendiente |
 | 13.9 | Aviso de custodio (OpenBao sellado) | El front muestra el estado `crypto: sealed` y el 503 `crypto_unavailable` con texto en español (US-136). | S5-F5 | pendiente |

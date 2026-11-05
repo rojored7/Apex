@@ -362,3 +362,21 @@ def test_las_rutas_de_avisos_consumen_sus_cubetas() -> None:
         ("get", f"{API_PREFIX}/members/{{member_id}}/notifications"),
     ):
         assert por_ruta.get((metodo, ruta)) == ["staff-read"], ruta
+
+
+def test_el_recibo_pdf_consume_staff_read() -> None:
+    """S5-B11 (US-137, S5-D40, S5-D36): `GET /payments/{payment_id}/receipt.pdf` consume solo
+    `staff-read` (Rojo B11)."""
+    fuente = (MODULES / "payments" / "router.py").read_text(encoding="utf-8")
+    por_ruta: dict[tuple[str, str] | None, list[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), []).extend(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    ruta = f"{API_PREFIX}/payments/{{payment_id}}/receipt.pdf"
+    assert por_ruta.get(("get", ruta)) == ["staff-read"]

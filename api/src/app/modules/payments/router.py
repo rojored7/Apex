@@ -33,6 +33,9 @@
   de la pestaña de la ficha con `PageParams`, `voided` opcional y `q` (referencia exacta, sin
   distinguir mayúsculas). Sin límite por usuario: `q` no busca personas. Códigos 200, 401, 403,
   404 (`member_not_found`) y 422.
+- `GET /payments/{payment_id}/receipt.pdf` (S5-B11, US-137, S5-D40; admin y coach): 200
+  `application/pdf` como adjunto (`recibo-<8 hex>.pdf`, `nosniff`), cubeta `staff-read`; auditado
+  como `download`. Va antes de `/{payment_id}`. Códigos 200, 401, 403, 404, 422 y 429.
 Las rutas fijas (`/payments/summary`, `/payments/methods`) van antes que las de parámetro
 (D27): el orden de los `GET` es `summary`, `methods`, lista y `{payment_id}`.
 Las rutas no hacen `select`: validan, aplican el límite, llaman al service y devuelven.
@@ -43,12 +46,12 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import AwareDatetime
 
 from app.core.db import SessionDep
 from app.core.errors import responses_for
-from app.core.http import no_store
+from app.core.http import NO_STORE, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import PII_SEARCH_BUCKET, enforce_user_limit
 from app.core.security import AdminDep, StaffDep
@@ -115,6 +118,31 @@ async def list_payments(
         membership_id=membership_id,
     )
     return await service.list(session, filtros, page)
+
+
+@router.get(
+    "/payments/{payment_id}/receipt.pdf",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}},
+        **responses_for(404, 422, 429),
+    },
+)
+async def payment_receipt(
+    request: Request, payment_id: UUID, principal: StaffDep, session: SessionDep
+) -> Response:
+    """US-137 (S5-D40): recibo PDF del pago; auditado como `download`."""
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    pdf = await service.receipt_pdf(session, payment_id, principal.user_id)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=recibo-{payment_id.hex[:8]}.pdf",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": NO_STORE,
+        },
+    )
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentDetail, responses=responses_for(404))

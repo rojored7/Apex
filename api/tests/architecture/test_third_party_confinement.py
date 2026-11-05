@@ -14,6 +14,7 @@ Controles con fuentes falsas: cada regla debe fallar ante su violación.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Final
 
@@ -272,3 +273,37 @@ def test_control_en_su_sitio_si_pueden_usarlos() -> None:
     assert not tercero_fuera_de(
         "core/alerts_telegram.py", "import httpx\n", "httpx", HTTPX_PERMITIDO
     )
+
+
+# S5-B11: PDF propio; `pypdf` solo en pruebas (S5-D65, M-11) ------------------------------------
+
+PDF_PROHIBIDOS: Final = ("reportlab", "fpdf", "fpdf2", "PIL", "pypdf")
+
+
+@pytest.mark.parametrize("tercero", PDF_PROHIBIDOS)
+def test_ninguna_biblioteca_de_pdf_se_importa_en_src(tercero: str) -> None:
+    assert importadores(tercero) == set()
+
+
+def test_pypdf_vive_solo_en_el_grupo_dev_y_las_prohibidas_en_ninguno() -> None:
+    import tomllib
+
+    datos = tomllib.loads((SRC.parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+
+    def nombres(lista: list[str]) -> set[str]:
+        return {re.split(r"[<>=!~\[ ;]", d, maxsplit=1)[0].lower() for d in lista}
+
+    runtime = nombres(datos["project"]["dependencies"])
+    dev = nombres(datos["dependency-groups"]["dev"])
+    assert "pypdf" in dev
+    assert "pypdf" not in runtime
+    todos = (
+        runtime
+        | dev
+        | {
+            n
+            for g in datos["dependency-groups"].values()
+            for n in nombres([x for x in g if isinstance(x, str)])
+        }
+    )
+    assert not todos & {"reportlab", "fpdf2", "fpdf", "pillow"}

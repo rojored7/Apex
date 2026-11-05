@@ -163,5 +163,6 @@ def test_los_get_de_pagos_se_declaran_en_orden_fijo(settings_prueba: Settings) -
         f"{PAYMENTS}/summary",
         f"{PAYMENTS}/methods",
         PAYMENTS,
+        f"{PAYMENTS}/{{payment_id}}/receipt.pdf",  # Rojo B11 (S5-D40): antes del detalle
         f"{PAYMENTS}/{{payment_id}}",
     ]

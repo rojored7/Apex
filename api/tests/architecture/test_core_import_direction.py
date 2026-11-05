@@ -341,3 +341,18 @@ def test_s5_b4_ni_core_alerts_ni_el_resto_de_core_importa_alerts_telegram() -> N
         if any(n == "app.core.alerts_telegram" for n in _imports(p))
     ]
     assert importadores == []
+
+
+def test_core_pdf_solo_importa_la_biblioteca_estandar() -> None:
+    """S5-B11 (S5-D65, M-11): el escritor de PDF no importa `app.*` ni terceros (`pypdf` es solo
+    de pruebas; `reportlab`, `fpdf2` y `pillow` están prohibidos). Rojo B11."""
+    import sys
+
+    ruta = CORE / "pdf.py"
+    assert ruta.is_file()
+    ajenos = [
+        n
+        for n in _imports(ruta)
+        if n.split(".")[0] not in sys.stdlib_module_names and n != "__future__"
+    ]
+    assert ajenos == []

@@ -106,6 +106,8 @@ CON_LIMITE = {
     ("patch", "/api/v1/notification-rules/{rule_id}"),
     # S5-B7 (US-124, US-127 a US-130, S5-D59, S5-D81): `wa-link` consume `members-reveal*`, `skip`
     # `notifications-write` y las cuatro lecturas `staff-read`.
+    # S5-B11 (US-137, S5-D40): el recibo PDF consume `staff-read` (Rojo B11).
+    ("get", "/api/v1/payments/{payment_id}/receipt.pdf"),
     ("get", "/api/v1/notifications/today"),
     ("get", "/api/v1/notifications"),
     ("get", "/api/v1/notifications/{notification_id}"),

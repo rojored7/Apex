@@ -2459,3 +2459,29 @@ Decisiones del orquestador sobre las dudas del Rojo (cuaderno «B9 · Rojo»).
 
 - **S5-D240 · «Socios activos» de D80.** `members.service.count_without_consent` cuenta socios con `deleted_at IS NULL` y `data_consent_at IS NULL`, sin filtrar por estado de membresía: es el mismo universo que `active_ids` del tablero y el que la ley obliga a regularizar (un socio vigente sin consentimiento no puede recibir avisos, D54). Los dados de baja no cuentan.
 - **Confirmadas:** el Rojo deja el tablero en rojo por aserción contra el provisional `-1` (no por `NotImplementedError`) para no romper el resto de `tests/dashboard`; escenario de 4 socios vivos, 2 de baja y 6 avisos (cuentan 2 avisos y 2 sin consentimiento); el dataset `datos` de finanzas fija `members_without_consent == 6` sin cambiar sus cifras.
+
+### S5-B11 · Recibo PDF propio (US-137)
+
+Decisiones del orquestador sobre las dudas del Rojo (cuaderno «B11 · Rojo»).
+
+- **S5-D241 · `ReceiptContext` con textos ya formateados.** `payments/receipt.py` expone `format_cop` («$ 120.000»), `format_bogota` («21 oct 2026, 10:00 a. m.»: día, mes abreviado en minúscula, año, hora de 12 h en Bogotá) y `receipt_context(detail, gym, method_label) -> ReceiptContext`, un dataclass congelado de cadenas listas para pintar (nombre truncado a 60, referencia a 40, anulado con motivo); `render_receipt(ctx) -> bytes` solo dibuja. `gym` es la vista `GymView` de `settings.service.get_section("gym")`.
+- **S5-D242 · Auditoría `download` (precisa D40).** La fila de descarga lleva `table_name = "payments.payments"` (el nombre que escribe el hook de auditoría para esa tabla), `record_id = payment_id`, `subject_member_id` del pago y acción `download`, ya admitida por el CHECK de `0002`; UNA fila por descarga.
+- **Confirmadas:** `Content-Disposition: attachment; filename=recibo-<8 hex>.pdf` sin comillas (el nombre solo tiene hex y punto); el escritor no usa `/Filter` (flujo sin comprimir: 200 líneas caben de sobra en `MAX_PDF_BYTES`) y `/Length` es el largo real del flujo; las posiciones se expresan en puntos (`mm · 72 / 25.4`) con un operador `Tm` o `Td` que `pypdf` reporte en `visitor_text`; si el Verde elige otro operador ajusta el cálculo de la prueba, nunca el contrato; el rótulo «Referencia» solo aparece cuando hay referencia.
+
+### S5-F1 · Revisiones (seguridad: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW)
+
+- **S5-D243 · Mensajes del api en pantalla (MEDIUM).** El front muestra `error.message` del api para 400/404/409/422 de `wa-link` y `skip`. Verificado en `notifications/exceptions.py`: todos los mensajes son textos fijos (`notification_not_found`, `notification_closed`, `wrong_channel`, `member_without_phone`, `invalid_phone`), ninguno repite teléfono ni nombre (S5-D224). Sin cambio; la regla queda escrita: un mensaje de error del api nunca lleva datos del socio, y el front puede mostrarlo tal cual.
+- **S5-D244 · Ventana emergente bloqueada (LOW 1).** `WaButton` abre WhatsApp tras el `await` del POST, así que el navegador puede bloquear la ventana. Con `"noopener"` en `window.open` el valor devuelto es siempre `null` (HTML Standard), de modo que no sirve para detectar el bloqueo. Se conserva `noopener,noreferrer` (lo que importa para seguridad) y se añade un texto de ayuda fijo junto al botón: «Si no se abre WhatsApp, permite las ventanas emergentes de este sitio». El api ya auditó el enlace como revelado; el usuario puede volver a pulsar.
+- **LOW 2 corregido:** `onError` del enlace solo refresca la lista ante 404 o 409 (estado desactualizado), no ante 401/403/429, para no gastar la cubeta de lectura.
+
+### S5-B11 · Revisión M-11 (seguridad: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW)
+
+- Verificado sin hallazgos: cadenas solo en hexadecimal (contenido cp1252, título UTF-16BE con BOM), sin paréntesis ni barras; `/Length`, `xref` y `startxref` calculados sobre los bytes escritos; sin `/Filter` ni claves activas; tope de 100 kB y de líneas; `sanitize` convierte a `?` los puntos no asignados de cp1252 (0x81, 0x8D, 0x8F, 0x90, 0x9D), los controles, tab y NUL, y no hay carácter de cp1252 fuera de WinAnsi; ancho máximo 482 pt dentro de la página; el recibo no descifra y funciona con el custodio sellado; un 404 no audita y cada descarga deja UNA fila `download`.
+- **LOW 1 aceptado (sin dueño: cosmético).** `_fit` corta por carácter; U+00A0 y U+00AD se dibujan como espacio y guion en WinAnsi. Sin efecto de seguridad ni de contenido.
+- **LOW 2 corregido.** `PAYMENTS_TABLE` quedaba entre `PREVIOUS_MONTH_WARNING` y su docstring en `payments/service.py`; se mueve debajo del docstring.
+
+### S5-F2 · Revisiones (seguridad: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 1 LOW)
+
+- Verificado sin hallazgos: la pestaña Canales solo maneja `enabled`, `sender_name`, `reply_to` y `country_code` (sin secretos, `credentials_present` como insignia); la vista previa pinta texto (sin HTML); el historial no pone datos personales en la URL (el `q` por nombre queda en memoria); coach sin botones de escritura (no renderizados) y sin vista previa (solo admin, S5-D216); `?tab=` con lista cerrada.
+- **LOW aceptado (sin dueño).** `MessagePanel` muestra `rendered_subject`/`rendered_body` generados por el servidor con el nombre del socio, escapados por React; lo ven solo los roles que ya ven el historial (`staff-read`, `no-store` desde B7).
+- **Aclaración:** la «desviación» del front sobre la vista previa no es tal: S5-D216 fija `staff-read` como cubeta de límite; el rol sigue siendo admin.

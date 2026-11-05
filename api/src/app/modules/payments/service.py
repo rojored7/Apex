@@ -74,12 +74,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import audit
 from app.core.clock import current_clock
 from app.core.context import get_actor
 from app.core.db import violated_constraint
 from app.core.events import emit
 from app.core.security import Role
-from app.modules.payments import rules
+from app.modules.payments import receipt, rules
 from app.modules.payments.events import PaymentRegistered, PaymentVoided
 from app.modules.payments.exceptions import (
     MembershipCancelled,
@@ -102,11 +103,13 @@ from app.modules.payments.queries import (
 )
 from app.modules.payments.schemas import PaymentMethodOut, PaymentMethodsOut, PaymentOut
 from app.modules.settings import service as settings_service
+from app.modules.settings.schemas import GymView
 
 IMMUTABLE_CONSTRAINT: Final = "payments_immutable"
 """`CONSTRAINT` de los rechazos del trigger de `0011` (D13)."""
 PREVIOUS_MONTH_WARNING: Final = "void of previous month"
 """Mensaje del aviso al anular un pago de un mes anterior (M-8 punto 3, S3-D51); solo ids."""
+PAYMENTS_TABLE: Final = "payments.payments"
 
 logger = logging.getLogger("app.payments")
 
@@ -317,6 +320,29 @@ async def methods(session: AsyncSession) -> PaymentMethodsOut:
     )
 
 
+async def receipt_pdf(session: AsyncSession, payment_id: UUID, by: UUID) -> bytes:
+    """US-137 (S5-D40, S5-D241, S5-D242): el recibo PDF del pago, con una fila `download` por
+    descarga. No descifra nada (funciona con el custodio sellado); `PaymentNotFound` no audita."""
+    detalle = await get(session, payment_id)
+    gimnasio = GymView.model_validate((await settings_service.get_section(session, "gym")).value)
+    etiquetas = {m.code: m.label for m in (await methods(session)).items}
+    contexto = receipt.receipt_context(
+        detalle, gimnasio, etiquetas.get(detalle.method, detalle.method)
+    )
+    pdf = receipt.render_receipt(contexto)
+    await audit.record(
+        session,
+        action="download",
+        table_name=PAYMENTS_TABLE,
+        record_id=detalle.id,
+        before=None,
+        after={"document": "receipt"},
+        user_id=by,
+        subject_member_id=detalle.member_id,
+    )
+    return pdf
+
+
 __all__: builtins.list[str] = [
     "IMMUTABLE_CONSTRAINT",
     "MembershipGate",
@@ -329,6 +355,7 @@ __all__: builtins.list[str] = [
     "list_for_member",
     "membership_gate",
     "methods",
+    "receipt_pdf",
     "register",
     "set_membership_gate",
     "sum_not_voided",

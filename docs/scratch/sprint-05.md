@@ -950,3 +950,10 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - MINOR-4 de la matriz (dos pruebas web sensibles a tiempo bajo carga: `routes.render.test.tsx` H1 y `features/system/api.test.tsx`): dueño front, v0.3.
 - Commit de cierre = etiqueta local `v0.2.0`; las imágenes de cierre y su verificación (incluido el worker con `--run-once notify`) quedan en «V12 · Imágenes».
 
+
+## V12 · Imágenes (DevOps, 2026-11-05, SHA de cierre `3cd752a`, etiqueta local `v0.2.0`)
+
+- **Imágenes** (`buildx --load --network host --allow network.host`, `GIT_SHA=3cd752a`; web con contexto en la raíz del repo, como `compose.yml`): `apex-api:local` `b44a5dbd4692`, `apex-web:local` `bd9143cb2cf8`, `apex-backup:local` `d69bfd76b26c`.
+- **Desarrollo recreado** (`up -d --no-build --force-recreate`, también `worker`, y `restart web`): api, web, backup, worker, db y db_test `healthy`. Etiqueta `org.opencontainers.image.revision` = `3cd752a` en api, web, backup y worker (worker usa el ID de la imagen api).
+- **`/health`:** `status ok, db ok, version 3cd752a, backup attention, migrations ok, crypto ok` (`backup: attention` es informativo).
+- **`notify` en vivo (S5-D265..D267):** `PATCH /settings/channels` con `whatsapp.enabled=true` (version 0 -> 1). `--run-once notify` ×2 -> `ok` las dos (1.ª: generados 1; 2.ª: generados 0); `--status notify` `ok`, todo en 0. Base: avisos = 1 `pending` sin `skip_reason`; ningún par socio/canal/fecha duplicado; 0 `skipped`.

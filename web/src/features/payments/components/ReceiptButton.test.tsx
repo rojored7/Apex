@@ -2,9 +2,10 @@
 // api.blob). Admin y coach lo ven, el socio no; carga, 404, 503 con el mensaje del api; el PDF se
 // entrega al navegador y no se guarda.
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
+import { api } from "../../../core/api/client";
 import { RoleProvider, type Role } from "../../../core/auth";
 import { PAYMENT_ID } from "../../../test/payments";
 import { mockApi, testQueryClient, type MockHandler, type MockReply } from "../../../test/server";
@@ -44,6 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -178,6 +180,7 @@ describe("ReceiptButton · revisión de seguridad de F4", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    const blob = vi.spyOn(api, "blob");
     const { mock, user, unmount } = renderButton("admin", {}, {
       [RECEIPT_KEY]: async () => {
         await gate;
@@ -193,26 +196,31 @@ describe("ReceiptButton · revisión de seguridad de F4", () => {
     unmount();
     expect(mock.callsTo(RECEIPT_KEY)[0]?.signal?.aborted).toBe(true);
     release?.();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Se asienta la propia promesa de la descarga; su continuación en useBlobDownload corre antes que la nuestra.
+    await expect(blob.mock.results[0]?.value).resolves.toBeDefined();
+    await Promise.resolve();
 
     expect(saved.calls).toHaveLength(0);
   });
 
   it("LOW 2: un 503 busy dice cuánto esperar, bloquea el botón ese tiempo y no reintenta solo", async () => {
-    const { mock, user } = renderButton("admin", {}, { [RECEIPT_KEY]: apiError(503, "busy", "ocupado", { "Retry-After": "1" }) });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { mock } = renderButton("admin", {}, { [RECEIPT_KEY]: apiError(503, "busy", "ocupado", { "Retry-After": "1" }) });
 
-    await user.click(screen.getByRole("button", { name: "Descargar el recibo del pago" }));
+    fireEvent.click(screen.getByRole("button", { name: "Descargar el recibo del pago" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("El sistema está ocupado. Espera 1 segundo e intenta de nuevo.");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("El sistema está ocupado. Espera 1 segundo e intenta de nuevo.");
     expect(screen.getByRole("button", { name: "Descargar el recibo del pago" })).toBeDisabled();
     expect(mock.callsTo(RECEIPT_KEY)).toHaveLength(1);
-    await waitFor(
-      () => {
-        expect(screen.getByRole("button", { name: "Descargar el recibo del pago" })).toBeEnabled();
-      },
-      { timeout: 3000 },
-    );
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole("button", { name: "Descargar el recibo del pago" })).toBeEnabled();
     expect(mock.callsTo(RECEIPT_KEY)).toHaveLength(1);
+    vi.useRealTimers();
   });
 
   it("LOW 3: un archivo que no es PDF ni CSV no se entrega", async () => {

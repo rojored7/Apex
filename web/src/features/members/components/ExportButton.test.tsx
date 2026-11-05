@@ -3,9 +3,10 @@
 // errores 403, 409, 422, 429 y 503 se quedan dentro del modal con el mensaje del api; el CSV nunca se
 // guarda (ni en la caché de mutaciones ni en el almacenamiento del navegador).
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
+import { api } from "../../../core/api/client";
 import { RoleProvider, type Role } from "../../../core/auth";
 import { mockApi, testQueryClient, type MockHandler, type MockReply } from "../../../test/server";
 import { EXPORT_CONFIRM_LABEL, EXPORT_TITLE, ExportButton, type MembersExportFilters } from "./ExportButton";
@@ -52,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -222,21 +224,24 @@ describe("ExportButton de socios", () => {
 
 describe("ExportButton de socios · revisión de seguridad de F4", () => {
   it("LOW 2: un 503 busy muestra la espera y deshabilita Descargar ese tiempo, sin reintento automático", async () => {
-    const { mock, user } = renderButton("admin", {}, { [EXPORT_KEY]: failure(503, "busy", "x", { "Retry-After": "1" }) });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { mock } = renderButton("admin", {}, { [EXPORT_KEY]: failure(503, "busy", "x", { "Retry-After": "1" }) });
 
-    await user.click(screen.getByRole("button", { name: "Exportar" }));
-    await user.click(confirmButton());
+    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
+    fireEvent.click(confirmButton());
 
-    expect(await within(dialog()).findByRole("alert")).toHaveTextContent("Espera 1 segundo");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent("Espera 1 segundo");
     expect(confirmButton()).toBeDisabled();
     expect(mock.callsTo(EXPORT_KEY)).toHaveLength(1);
-    await waitFor(
-      () => {
-        expect(confirmButton()).toBeEnabled();
-      },
-      { timeout: 3000 },
-    );
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(confirmButton()).toBeEnabled();
     expect(mock.callsTo(EXPORT_KEY)).toHaveLength(1);
+    vi.useRealTimers();
   });
 
   it("LOW 1: al desmontar durante la descarga no se entrega nada", async () => {
@@ -244,6 +249,7 @@ describe("ExportButton de socios · revisión de seguridad de F4", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    const blob = vi.spyOn(api, "blob");
     const { mock, user, unmount } = renderButton("admin", {}, {
       [EXPORT_KEY]: async () => {
         await gate;
@@ -258,7 +264,8 @@ describe("ExportButton de socios · revisión de seguridad de F4", () => {
     });
     unmount();
     release?.();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(blob.mock.results[0]?.value).resolves.toBeDefined();
+    await Promise.resolve();
 
     expect(saved.calls).toHaveLength(0);
   });

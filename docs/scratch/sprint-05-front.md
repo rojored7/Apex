@@ -95,3 +95,12 @@
 - LOW 1 (corregido): `useBlobDownload` lleva un `AbortController` por descarga, abortado al desmontar el componente; `api.blob` recibe su `signal` y `saveDownload` no se ejecuta ni se muestra error. Pruebas en `ReceiptButton.test.tsx` y `ExportButton.test.tsx` de socios.
 - LOW 2 (corregido): un 503 `busy` en una descarga dice la espera de `Retry-After` (`toDownloadError`), conserva `retryAfterS` y bloquea la acción ese tiempo (`blocked`; `ConfirmModal.confirmDisabled` en las exportaciones, botón deshabilitado en el recibo), sin reintento automático. Pruebas en `downloadErrors`, `ReceiptButton` y `ExportButton` de socios.
 - LOW 3 (corregido): `requestBlob` rechaza un 200 cuyo `Content-Type` no empiece por `application/pdf` ni `text/csv` con `unexpected_content_type` y mensaje fijo; no se guarda nada. Pruebas en `client.test.ts` y `ReceiptButton.test.tsx`.
+
+## V10 · Revisión TypeScript (0 CRITICAL, 0 HIGH, 3 MEDIUM, 3 LOW; S5-D260)
+
+- MEDIUM 1 (corregido): `downloadBlob` revoca el ObjectURL en `setTimeout(..., 0)` tras el clic (Safari y Firefox truncan la descarga si se revoca en el mismo tick). `download.test.ts` usa `vi.useFakeTimers` y comprueba que no se revoca en el mismo tick y sí al avanzar el reloj.
+- MEDIUM 2 (corregido, causa probable del flake 1/3522): el caso «503 busy» de `ReceiptButton.test.tsx` y el de `ExportButton.test.tsx` de socios usan `vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })`, `fireEvent`, `vi.advanceTimersByTimeAsync(0)` para asentar y `vi.advanceTimersByTime(1000)` dentro de `act`; sin reloj real ni timeouts de 3000. (`findBy*` no sirve con `setTimeout` simulado: el `asyncWrapper` de RTL espera un `setTimeout(0)`.)
+- MEDIUM 3 (corregido): las pruebas «al desmontar» ya no duermen 50 ms: se asienta la promesa de `api.blob` (`vi.spyOn(api, "blob")` + `await expect(...results[0].value).resolves`).
+- LOW 4 (corregido): `types.contract.test.ts` cruza con `expectTypeOf` (mismas claves y asignabilidad) `notificationRowSchema`, `waLinkSchema` y `channelsOutSchema` con `NotificationOut`, `WaLinkOut` y `ChannelsOut` de `types.ts`.
+- LOW 5 (corregido): `channelsSettingsSchema` con `.strict()` en `email`, `whatsapp` y `telegram`; prueba en `features/system/schemas.test.ts`.
+- LOW 6 (documentado): comentario en `useBlobDownload` (una instancia por botón; para listas, encolar `mutateAsync`).

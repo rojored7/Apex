@@ -1,6 +1,6 @@
 // S5-F4 (L-8): entrega un archivo descargado al navegador sin guardarlo en ningún sitio.
 // - downloadBlob crea un ObjectURL, hace clic en un enlace temporal y, en `finally`, quita el
-//   enlace del DOM y revoca el ObjectURL: el contenido (un recibo, un CSV con datos personales) no
+//   enlace del DOM y revoca el ObjectURL en el tick siguiente: el contenido (un recibo, un CSV con datos personales) no
 //   queda en memoria, caché ni almacenamiento del navegador.
 // - safeFilename sanea el nombre que propone el api: sin rutas, sin caracteres de control ni
 //   separadores, con tope de largo; si no queda nada, usa el nombre de respaldo.
@@ -29,7 +29,10 @@ export function downloadBlob(blob: Blob, filename: string): void {
     link.click();
   } finally {
     link.remove();
-    URL.revokeObjectURL(url);
+    // Revisión V10 (S5-D260): Safari y Firefox truncan la descarga si se revoca en el mismo tick del clic.
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
   }
 }
 

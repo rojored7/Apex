@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import type { channelsOutSchema } from "../../features/notifications/memberSchemas";
+import type { notificationRowSchema, waLinkSchema } from "../../features/notifications/schemas";
 import { pageSchema, type Page } from "./page";
 import type { components } from "./types";
 
@@ -66,5 +68,19 @@ describe("tipos generados desde docs/openapi.json", () => {
     expect(schema.safeParse({ items: [{ id: 1 }], total: 1, limit: 25, offset: 0 }).success).toBe(false);
     expect(schema.safeParse({ items: [], total: 0, limit: 201, offset: 0 }).success).toBe(false);
     expect(schema.safeParse({ rows: [] }).success).toBe(false);
+  });
+
+  // Revisión V10 (LOW 4, S5-D260): los esquemas de avisos no se desvían del contrato generado.
+  it("los esquemas de avisos tienen las mismas claves que el contrato y son asignables a él", () => {
+    type NotificationOut = components["schemas"]["NotificationOut"];
+    type WaLinkOut = components["schemas"]["WaLinkOut"];
+    type ChannelsOut = components["schemas"]["ChannelsOut"];
+
+    expectTypeOf<keyof z.infer<typeof notificationRowSchema>>().toEqualTypeOf<keyof NotificationOut>();
+    expectTypeOf<keyof z.infer<typeof waLinkSchema>>().toEqualTypeOf<keyof WaLinkOut>();
+    expectTypeOf<keyof z.infer<typeof channelsOutSchema>>().toEqualTypeOf<keyof ChannelsOut>();
+    expectTypeOf<z.infer<typeof notificationRowSchema>>().toExtend<NotificationOut>();
+    expectTypeOf<z.infer<typeof waLinkSchema>>().toExtend<WaLinkOut>();
+    expectTypeOf<z.infer<typeof channelsOutSchema>>().toExtend<ChannelsOut>();
   });
 });

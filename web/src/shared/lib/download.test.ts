@@ -8,6 +8,7 @@ let revoked: string[];
 let clicked: { href: string; download: string; inDom: boolean }[];
 
 beforeEach(() => {
+  vi.useFakeTimers();
   created = [];
   revoked = [];
   clicked = [];
@@ -32,6 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -42,6 +44,15 @@ describe("downloadBlob", () => {
 
     expect(created).toEqual(["blob:apex/1"]);
     expect(clicked).toEqual([{ href: "blob:apex/1", download: "recibo-9a8b7c6d.pdf", inDom: true }]);
+    vi.advanceTimersByTime(0);
+    expect(revoked).toEqual(["blob:apex/1"]);
+  });
+
+  it("no revoca en el mismo tick del clic (Safari y Firefox truncarían la descarga)", () => {
+    downloadBlob(new Blob(["x"]), "a.csv");
+
+    expect(revoked).toEqual([]);
+    vi.advanceTimersByTime(0);
     expect(revoked).toEqual(["blob:apex/1"]);
   });
 
@@ -60,6 +71,7 @@ describe("downloadBlob", () => {
       downloadBlob(new Blob(["x"]), "a.csv");
     }).toThrow("bloqueado");
 
+    vi.advanceTimersByTime(0);
     expect(revoked).toEqual(["blob:apex/1"]);
     expect(document.body.querySelectorAll("a")).toHaveLength(0);
   });

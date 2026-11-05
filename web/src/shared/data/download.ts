@@ -35,6 +35,10 @@ export interface BlobDownload {
 
 const MS_PER_S = 1_000;
 
+/**
+ * Una instancia por botón: dos descargas a la vez con la misma instancia comparten el estado de
+ * espera. Para una lista de descargas, encolar las llamadas a `download` (mutateAsync), una a la vez.
+ */
 export function useBlobDownload(): BlobDownload {
   const controllers = useRef(new Set<AbortController>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

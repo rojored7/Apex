@@ -68,9 +68,10 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("memberships", "plans"),
         ("memberships", "settings"),
         # S5-B7 (S5-D47): la generación lee `members` (canales, nombres) y `memberships`
-        # (candidatos, renovados) en un solo nivel; `settings` llega en B8.
+        # (candidatos, renovados) en un solo nivel; S5-B8 (S5-D212): `settings` por `sending.py`.
         ("notifications", "members"),
         ("notifications", "memberships"),
+        ("notifications", "settings"),
         ("payments", "auth"),
         ("payments", "members"),
         ("payments", "settings"),
@@ -509,13 +510,14 @@ def test_find_cycle_detecta_un_ciclo_y_acepta_un_dag() -> None:
 
 
 def test_notifications_depende_de_members_y_memberships_a_nivel_de_modulo() -> None:
-    """S5-B7 (S5-D47, G-04): `generate.py` lee `members.service` (`channels_for`, `names_for`,
+    """S5-B7 (S5-D47, G-04) y S5-B8 (S5-D212, `settings`): `generate.py` lee `members.service`
+    (`channels_for`, `names_for`,
     `search_ids`) y `memberships.service` (`notification_candidates`, `has_current_or_future`) en un
     solo nivel y solo escribe en su esquema; nunca `plans` (el nombre del plan viaja en
     `NotificationCandidate`) ni imports perezosos. Nadie importa `notifications` (ni siquiera
     `dashboard`, que llega en un sprint posterior)."""
     arriba, perezosas = _grafo_real()
-    assert arriba["notifications"] == {"members", "memberships"}
+    assert arriba["notifications"] == {"members", "memberships", "settings"}
     assert perezosas["notifications"] == set()
     assert {a for a, destinos in arriba.items() if "notifications" in destinos} == set()
 
@@ -528,3 +530,12 @@ def test_ningun_archivo_de_notifications_pasa_de_los_dos_vecinos_de_b7() -> None
         fuente = (MODULES_DIR / "notifications" / nombre).read_text(encoding="utf-8")
         arriba, perezosas = service_edges(fuente, "notifications")
         assert arriba == set() and perezosas == set(), nombre
+
+
+def test_la_arista_notifications_a_settings_tiene_uso_real_en_sending() -> None:
+    """S5-B8 (S5-D212): la arista no es decorativa; `sending.py` importa `settings.service` para
+    leer `channels.email.enabled`, y ningún archivo puro del módulo la usa. # Rojo B8"""
+    fuente = (MODULES_DIR / "notifications" / "sending.py").read_text(encoding="utf-8")
+    arriba, perezosas = service_edges(fuente, "notifications")
+    assert "settings" in arriba and "settings" not in perezosas
+    assert ("notifications", "settings") in ALLOWED_EDGES

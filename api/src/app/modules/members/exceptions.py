@@ -143,3 +143,13 @@ class ConsentRequired(MemberError):
     status = 422
     code = "consent_required"
     default_message = "El socio no autorizó el uso de sus datos; no se puede activar el correo."
+
+
+class MemberContactUnreadable(MemberError):
+    """El dato cifrado de ESE socio no se puede abrir (blob corrupto, etiqueta inválida, llave de
+    la fila retirada o desconocida; S5-D230). No es un fallo del custodio: `CryptoUnavailable`
+    (sellado, inalcanzable, sin permiso) sigue subiendo tal cual. El mensaje no dice qué campo."""
+
+    status = 422
+    code = "member_contact_unreadable"
+    default_message = "El contacto del socio no se puede leer."

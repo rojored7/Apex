@@ -182,9 +182,10 @@ def test_register_rechaza_un_nombre_repetido() -> None:
         register(base, JobSpec(name=base[0].name, run=base[0].run, hour=8, minute=0))
 
 
-def test_el_registro_del_proceso_es_jobs_con_expirations_a_las_siete() -> None:
+def test_el_registro_del_proceso_es_jobs_con_expirations_notify_y_backup_check() -> None:
     assert get_registry() is JOBS
     assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [
         ("expirations", 7, 0, 900),
+        ("notify", 7, 0, 600),
         ("backup_check", 7, 0, 600),
     ]

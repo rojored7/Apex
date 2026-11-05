@@ -107,6 +107,7 @@ from app.modules.members.detail import SIN_MEMBRESIA, get, reveal
 from app.modules.members.exceptions import (
     InvalidField,
     InvalidPurpose,
+    MemberContactUnreadable,
     MemberDeleted,
     MemberDocumentDuplicated,
     MemberNotContactable,
@@ -153,6 +154,7 @@ __all__ = [
     "InvalidField",
     "InvalidPurpose",
     "MemberChipFilter",
+    "MemberContactUnreadable",
     "MemberCreated",
     "MemberDeactivated",
     "MemberDeleted",

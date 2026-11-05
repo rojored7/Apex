@@ -1010,3 +1010,15 @@ Guía completa: `docs/operacion/avisos.md` §10.
 - **`wa-link` da 422 `member_without_phone`.** El socio no tiene teléfono: edítelo en su ficha. El aviso sigue pendiente.
 - **Auditoría de un envío por WhatsApp.** Filas `reveal` con `after = {"field": "phone", "purpose": "notify"}` en `audit.audit_log` y `decrypt` con `purpose=notify` en `crypto.crypto_ops`, una por llamada.
 - **Permisos de base.** `notifications.notifications`: api `S I U`; worker `S I` y `U` solo en `status, attempts, last_error, sent_at, sent_by, updated_at`. Nadie borra.
+
+### Job `notify`: generar, enviar y resumir (S5-B8; S5-D226 a D228)
+
+Guía: `docs/operacion/avisos.md` §11.
+
+- **Estado:** `$DC run --rm worker python -m app.worker.main --status notify` (JSON con `generados`, `enviados`, `fallidos`, `omitidos`, `pendientes` y `sellado` si el custodio estaba caído). **Una corrida a mano:** `--run-once notify` (0, 1, 2, 3 como las demás) o `$DC --profile tools run --rm tools notify --as <correo>`; ambas comparten el reclamo, así que no pueden enviar el mismo aviso a la vez.
+- **`sellado 1`:** OpenBao sellado al correr; se generó pero no se envió. Desellar (`docs/operacion/openbao.md` §4) y repetir `notify --send-only`.
+- **Avisos `failed`:** `SELECT last_error, count(*) FROM notifications.notifications WHERE channel='email' AND status='failed' GROUP BY 1;` (`auth` = clave SMTP; `refused`/`invalid_recipient` = el servidor rechazó al destinatario; `timeout`). Tras 3 intentos no se reenvían solos.
+- **Omitidos:** `skip_reason` `canal_no_configurado` (falta `SMTP_*` o el canal de correo está apagado), `sin_consentimiento`, `sin_correo`.
+- **Tope por corrida y plazo blando (S5-D232).** Cada corrida toma como máximo 500 avisos y no empieza ninguno pasados 480 s; lo que queda sigue en la corrida siguiente (`pendientes` en `--status notify`). Con una acumulación grande basta repetir `notify --send-only --as <correo>`.
+- **`mail_unconfigured` (S5-D231).** El canal de correo está activo en Ajustes pero faltan `SMTP_HOST`/`SMTP_FROM`: los avisos NO se omiten, quedan `pending` y salen cuando se configure el SMTP (se avisa una vez por corrida por Telegram). Si el correo se apaga en Ajustes, en cambio, se omiten con `canal_no_configurado`.
+- **Fila ilegible (S5-D230).** Un aviso cuyo correo cifrado no se abre queda `failed`/`unknown` y acumula intentos hasta 3, sin bloquear a los demás; si pasa con varios socios, revise `crypto.crypto_ops` (`result = 'error'`, `verb = 'decrypt'`) y la llave de la clase `member.email`.

@@ -17,17 +17,23 @@ módulos, el worker y el CLI.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Final
 from uuid import UUID
 
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import events
 from app.core.clock import current_clock
+from app.core.config import Settings, get_settings
 from app.core.context import get_actor
 from app.modules.members import service as members_service
+from app.modules.members.service import Contact
+from app.modules.notifications import sending
+from app.modules.notifications.channels.base import NotificationChannel
+from app.modules.notifications.channels.email import EmailChannel
 from app.modules.notifications.events import (
     NotificationFailed,
     NotificationQueued,
@@ -62,7 +68,8 @@ from app.modules.notifications.rules_crud import (
     list_rules,
     update_rule,
 )
-from app.modules.notifications.schemas import NotificationOut, SeedResult, WaLinkOut
+from app.modules.notifications.schemas import NotificationOut, SeedResult, SendResult, WaLinkOut
+from app.modules.notifications.sending import NOTIFY_MAX_ATTEMPTS
 from app.modules.notifications.templates import (
     create_template,
     get_template,
@@ -95,6 +102,7 @@ __all__ = [
     "list_templates",
     "preview",
     "seed_defaults",
+    "send_pending",
     "skip",
     "today_count",
     "today_list",
@@ -232,3 +240,33 @@ async def skip(
     )
     logger.info("notifications: aviso omitido", extra={"notification_id": str(aviso.id)})
     return await get(session, aviso.id)
+
+
+async def send_pending(
+    session_factory: async_sessionmaker[AsyncSession],
+    today: date,
+    *,
+    settings: Settings | None = None,
+    channel: NotificationChannel | None = None,
+    max_attempts: int = NOTIFY_MAX_ATTEMPTS,
+) -> SendResult:
+    """Envía los avisos `email` pendientes (S5-B8, S5-D35).
+
+    Inyecta en `sending.send_pending` el cargador de contacto
+    (`contact_for_notification(session, member_id, "notify", fields={"email"})`) y el canal:
+    `channel` si se pasa (pruebas), si no `EmailChannel(settings or get_settings())`. Lee la
+    sección `channels` de `settings.service` (arista `notifications -> settings`, S5-D212)."""
+    canal = channel if channel is not None else EmailChannel(settings or get_settings())
+    return await sending.send_pending(
+        session_factory,
+        today,
+        load_contact=_load_email,
+        channel=canal,
+        max_attempts=max_attempts,
+    )
+
+
+async def _load_email(session: AsyncSession, member_id: UUID) -> Contact:
+    return await members_service.contact_for_notification(
+        session, member_id, "notify", fields={"email"}
+    )

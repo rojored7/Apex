@@ -265,3 +265,48 @@ async def test_el_aviso_a_un_dado_de_baja_con_autorizacion_sigue_siendo_no_conta
         await service.contact_for_notification(session, socio, "notify", fields={"phone"})
     await session.rollback()
     assert await operaciones(session, verb="decrypt", record_id=socio) == []
+
+
+# S5-B8 (revisión, S5-D230): el fallo de UNA fila no es el del custodio ----------------------------
+
+
+async def _corromper(session: AsyncSession, member_id: UUID, columna: str) -> None:
+    from sqlalchemy import text
+
+    await session.execute(
+        text(
+            f"UPDATE members.members SET {columna} = overlay({columna} placing "  # noqa: S608
+            f"CASE WHEN substr({columna}, length({columna}) - 8, 1) = 'A' THEN 'B' ELSE 'A' END "
+            f"from length({columna}) - 8 for 1) WHERE id = :i"
+        ),
+        {"i": member_id},
+    )
+    await session.flush()
+
+
+async def test_un_blob_corrupto_es_member_contact_unreadable(
+    session: AsyncSession, listo: Keyring
+) -> None:
+    from app.modules.members.exceptions import MemberContactUnreadable
+
+    socio = await socio_consentido(session)
+    await _corromper(session, socio, "email")
+
+    with pytest.raises(MemberContactUnreadable) as capturada:
+        await contactar(session, socio, fields={"email"})
+
+    assert capturada.value.status == 422
+    assert CORREO not in str(capturada.value.message)
+
+
+async def test_el_custodio_no_disponible_sigue_subiendo_como_crypto_unavailable(
+    session: AsyncSession, listo: Keyring
+) -> None:
+    from app.core.crypto.errors import CryptoUnavailable
+    from app.core.crypto.keyring import configure_keyring
+
+    socio = await socio_consentido(session)
+    configure_keyring(None)
+
+    with pytest.raises(CryptoUnavailable):
+        await contactar(session, socio, fields={"email"})

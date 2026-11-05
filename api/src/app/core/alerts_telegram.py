@@ -87,6 +87,9 @@ _FIJOS: Final[dict[str, str]] = {
     "crypto_recovered": "APEX · el custodio de llaves se recuperó: el api volvió a operar.",
     "crypto_forbidden": "APEX · el custodio de llaves rechazó el acceso del servicio.",
     "crypto_unwrap_failed": "APEX · el custodio de llaves no pudo abrir las llaves de datos.",
+    "mail_unconfigured": (
+        "APEX · el correo está activo pero faltan las credenciales SMTP: los avisos esperan."
+    ),
 }
 
 

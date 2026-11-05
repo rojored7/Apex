@@ -617,3 +617,50 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - `tools notify --generate-only --as ensayo-admin@apex.test` dos veces: «generados 11, ya renovaron 0, sin consentimiento 0, sin reglas no» y luego «generados 0 ...» (idempotente). Base: 11 `pending whatsapp_link`; `audit_log` `notifications.notifications insert` x11.
 - HTTP 8280: `GET /notifications/today` -> 11 avisos; `POST /notifications/{id}/wa-link` -> 200, `Cache-Control: no-store`, `{"url":"https://wa.me/57XXXXXXXXXX?text=Hola%20Esteban..."}` y el aviso `sent` (`sent_at` 11:17:21Z); segunda llamada: misma URL y mismo `sent_at`; `POST /notifications/{id}/skip` con motivo -> `skipped`; hoy baja a 9 (1 sent, 1 skipped, 9 pending).
 - `audit_log`: dos `reveal` recientes `{"field": "phone", "purpose": "notify"}`; `notifications.notifications`: `insert` 11, `update` 2; `crypto_ops` `decrypt member.phone` = 8 (creció en 2 por las dos llamadas a `wa-link`).
+
+## B8 · Rojo (S5-B8, job `notify`, envío de correo y resumen, US-124 a US-126)
+
+- Worker DETENIDO con `$DC stop worker` (el Verde lo arranca). Sin migración, sin commits.
+- Stubs: `core/jobs.DETAIL_KEYS` (+9 claves enteras), `schemas.SendResult` (+`pendientes`), `channels/base` (`ChannelPayload` +`reply_to`/`from_name`; el puerto +`configured`), `channels/email.EmailChannel(settings)`, `channels/whatsapp_link.configured=False`, `sending.send_pending(..., load_contact, channel, max_attempts)` + `NOTIFY_MAX_ATTEMPTS = 3`, `service.send_pending(session_factory, today, *, settings=None, channel=None, max_attempts)`, `worker/jobs/notify.py` (`NAME`, `get_settings`, `recovery`, `run`, `run_send_only`), `worker/jobs/__init__` (registro, 600 s), `cli_ops/notify.py` (`--send-only`; el camino completo lanza `NotImplementedError`).
+- Rojas (N/total del archivo): `test_sending` 28/29, `test_email_channel` 12/14, `test_notify_job` 10/13, `test_notify_sealed` 7/7, `test_notify_cli` 7/20, `test_notifications_details_clean` 4/10, `test_service_import_graph` 3 (nueva arista `notifications -> settings`), `test_worker_boundaries` 1 (`cli_ops/notify.py` llama `run_job`). Total 72 rojas. Verdes de guarda: registro de `JOBS`, claim `running`, `test_worker_notify_env` (compose: `SMTP_PASSWORD` y `TELEGRAM_BOT_TOKEN` en el worker, paso 97 verificado).
+- `--co` limpio (7729 recogidas); `ruff check`, `ruff format --check`, `mypy src` en verde. `tests/worker` 303 verdes + 17 rojas de B8; `tests/notifications` 400 verdes + 40 rojas; `tests/architecture` solo las rojas de B8.
+- Reparadas: `test_schedule` (registro con `notify`), `test_jobs_core` (conjunto cerrado de `DETAIL_KEYS`), `test_notify_cli` (sin flags ya no sale con 2: ahora ambos flags juntos), `test_crypto_bus_importers` (enmienda de UN archivo: `worker/jobs/notify.py` importa el módulo `recovery`), `test_service_import_graph` (arista `notifications -> settings`).
+- Dudas de contrato del Rojo (el Verde confirma o enmienda en `DECISIONES.md`):
+  1. El CLI reclama `notify` por `worker.runner.run_job` (JobSpec con `notify.run` o `notify.run_send_only`), NO por `core.jobs` (la regla de importadores sigue siendo del worker). `--generate-only` queda sin reclamo (B7). `run_job` fija actor SISTEMA: `--as` solo se valida (admin existente; obligatorio en producción). Salida del envío: `notify: [generados N, ...,] enviados N, fallidos N, omitidos N`; 0 ok, 1 falló, 3 `running`.
+  2. El canal expone `configured`; `send_pending` omite en bloque (`skipped`/`canal_no_configurado`, sin descifrar, `attempts` sin cambio) si `not channel.configured` o `channels.email.enabled` es falso (sin fila = apagado). `reply_to` y `from_name` viajan en el `ChannelPayload`, leídos de `settings.channels`.
+  3. Ventana: `pending` solo de `today`; `failed` de `today` y anteriores (coherente con «por avisar hoy»). `fallidos` = fallos de la pasada; `pendientes` = `email` aún elegibles al terminar. Éxito limpia `last_error`.
+  4. Sin correo o sin consentimiento: `failed`/`invalid_recipient` sin llamar al canal (cuenta intento); un canal que lanza = `unknown` y el lote sigue. `NotificationFailed` solo al agotar intentos.
+  5. `ok = fallidos == 0` (los omitidos no son error); el resumen lleva los cinco conteos (`generados` incluido). Sellado: `sellado = 1`, `ok`, `crypto_sealed`; `forbidden`/`unwrap_failed` hacen fallar el job (M-4).
+  6. Sin prueba: dos `send_pending` concurrentes a la vez (el candado de la fila solo cubre la fase (a); la exclusión entre procesos es el `claim_run`), `flush` de Telegram con `--run-once` (ya cubierto en B4) y el corte real entre (b) y (c) (solo se prueba el estado resultante).
+- Comandos del gate del paso 99:
+  1. `bash scripts/workflow/slice-gate.sh notifications tests/notifications/test_sending.py tests/notifications/test_email_channel.py`
+  2. `bash scripts/workflow/slice-gate.sh worker tests/worker/test_notify_job.py tests/worker/test_notify_sealed.py tests/worker/test_schedule.py tests/worker/test_jobs_core.py`
+  3. `bash scripts/workflow/slice-gate.sh cli tests/cli/test_notify_cli.py`
+  4. `bash scripts/workflow/slice-gate.sh architecture tests/architecture/test_worker_boundaries.py tests/architecture/test_notifications_details_clean.py tests/architecture/test_service_import_graph.py tests/architecture/test_contact_callers.py tests/architecture/test_crypto_bus_importers.py tests/architecture/test_worker_notify_env.py`
+  5. `bash scripts/workflow/slice-gate.sh core tests/core/test_alerts.py tests/core/test_alerts_telegram.py tests/core/test_mail.py`
+  6. database-reviewer y security-reviewer en paralelo sobre `sending.py`, `channels/email.py`, `worker/jobs/notify.py` y `cli_ops/notify.py`.
+
+## B8 · Verde (S5-B8, job `notify`, envío de correo y resumen)
+
+- Hecho: `sending.py` (3 fases por aviso, `SKIP LOCKED`, ORM), `channels/email.py` sobre `core.mail`, `service.send_pending`, `worker/jobs/notify.py`, `cli_ops/notify.py` (123 líneas, `run_job`), `DETAIL_KEYS` ya estaba. Decisiones S5-D226 a D228 (DECISIONES). Docs: avisos §11, RUNBOOK (job notify), CLAUDE.md.
+- Pruebas: 72 rojas verdes; gates 99.1 a 99.3 verdes. Enmiendas de prueba: ver «Desviaciones» de D228 (incl. `con_smtp`: `model_copy` sin `SecretStr`).
+- Pendiente: sello `worker`, `run-gates`, B8.7 (Docker y evidencia), security-reviewer/database-reviewer.
+
+## B8 · Revisiones (S5-B8; seguridad: 0 CRITICAL, 2 HIGH, 3 MEDIUM, 3 LOW)
+
+- Decisiones S5-D229 a D232 en DECISIONES («S5-B8 · Revisiones»). Rojo comprobado primero: 10 rojas en `test_sending` (cierre con reintento y `shield`, fila ilegible, error inesperado, canal sin credenciales, tope y plazo, 501 filas, asunto con salto), más `members` (`MemberContactUnreadable`), `test_alerts_telegram` (`mail_unconfigured`) y el job (`pending` + una alerta); luego Verde.
+- Cambios: `sending.py` (`_send_and_close` bajo `shield` con un reintento, `_handle`/`_mark_failed`, `NOTIFY_MAX_PER_RUN = 500`, `NOTIFY_SOFT_DEADLINE_S = 480`, `monotonic` inyectable, `sin_credenciales`), `members/contact.py` + `exceptions.py` (`MemberContactUnreadable`, 422), `schemas.SendResult.sin_credenciales`, `worker/jobs/notify.py` (`alert("mail_unconfigured")`), `core/alerts_telegram.py` (texto fijo). Funciones de más de 50 líneas partidas (`test_ninguna_funcion_supera_50_lineas`).
+- Pruebas actualizadas por D231 (`canal_sin_credenciales` y el job sin SMTP: ahora `pending`) y una nueva para el canal apagado por el admin (`omitido`, sin alerta).
+- LOW 8: ya cubierto por `test_runner.py::test_el_fallo_avisa_con_job_failed_y_contexto_cerrado` (el runner emite `job_failed` con `error_type`).
+- Gates: 99.1 708 verdes, 99.2 671, 99.3 687; `tests/notifications` 454, `tests/members` 681, `tests/worker` 323 (+4 omitidas por Windows), `tests/members` + `tests/core` 1650; ruff, format y mypy en verde.
+
+## B8 · Evidencia (paso 100, demo 2)
+
+- Imagen `apex-api:local` reconstruida (`buildx --network host`, `GIT_SHA` = HEAD) y `up -d --no-build --force-recreate api worker`: ambos `healthy`.
+- Base desechable `apex_avisos_demo` en `db_test`: `alembic upgrade head` (hasta `0019`), `init-keys`, `seed` (admin `demo-admin@apex.test`, con `must_change_password` limpiado por SQL), siembra de avisos ya hecha por `seed`. Api efímero `apex-api-demo` (127.0.0.1:8191, `ENV=dev`, SMTP a Mailpit, Telegram a `telegram-fake`).
+- Escenario por la API: `PATCH /settings/channels` (correo activo), regla `email` «Vence hoy por correo», plan, socio A (consentimiento y opt-in de correo) y socio B (consentimiento sin opt-in), membresías de ambos con `end_date` de hoy (activadas por SQL: la venta sin pago queda `pending_payment`).
+- `--run-once notify` dos veces con el worker contra esa base: la primera `generados 5, enviados 1`; la segunda `generados 0, enviados 0`. Mailpit: exactamente UN correo (a Alicia, `Reply-To hola@gimnasio.test`, remitente «APEX Demo»), ninguno a Bruno. BD: 1 aviso `email` `sent` (`attempts 1`, `sent_by` del sistema) y 4 `whatsapp_link` `pending` sin tocar; `audit_log`: `insert` x5, `update` x2 (por ORM).
+- `telegram-fake`: resumen solo con enteros y el enlace, sin nombres (`generados 5, enviados 1, fallidos 0, omitidos 0, pendientes 0`). `grep -c bot123` sobre los logs de api, worker y api-demo = 0.
+- `--status notify`: `ok`, `details` enteros.
+- Ensayo (`apex-ensayo`): worker recreado con la imagen nueva (`healthy`) y `--run-once notify` dos veces: `ok`, todo en cero (el ensayo no tiene avisos `email` ni SMTP), sin duplicados.
+- Limpieza: `apex-api-demo` borrado, `mailpit` y `telegram-fake` detenidos, `DROP DATABASE apex_avisos_demo`.

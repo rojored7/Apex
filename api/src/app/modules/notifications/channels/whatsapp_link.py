@@ -11,5 +11,9 @@ from app.modules.notifications.channels.base import ChannelPayload, ChannelResul
 class WhatsAppLinkChannel:
     name: Final = "whatsapp_link"
 
+    @property
+    def configured(self) -> bool:
+        return False  # no envía: el usuario abre el enlace
+
     async def send(self, payload: ChannelPayload) -> ChannelResult:
         raise NotImplementedError("S5-B7 Verde: WhatsAppLinkChannel.send")

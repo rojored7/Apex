@@ -1,7 +1,7 @@
 """`python -m app.cli notify --generate-only [--as <correo>]` (S5-B7, US-124; S5-D26, S5-D97).
 # Rojo B7
 
-Comando provisional de B7 (B8 le suma `--send-only` y el reclamo del job):
+Comando de B7 (B8 le suma `--send-only` y ambas fases; ver al final, «Rojo B8»):
 - `--generate-only` llama `notifications.service.generate_today` con el "hoy" de Bogotá del reloj
   (a las 23:30 locales todavía es el día anterior; pasada la medianoche local, el siguiente) y
   confirma por lote; sin `--generate-only` sale con 2 sin tocar nada;
@@ -140,11 +140,17 @@ async def test_la_segunda_corrida_no_cambia_nada(
     assert await _avisos(fabrica) == antes
 
 
-async def test_sin_generate_only_sale_con_2_y_no_escribe(
+async def test_generate_only_y_send_only_juntos_salen_con_2_y_no_escriben(
     fabrica: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await _escenario(fabrica)
-    resultado = correr(app, ["notify"], "dev", base=settings_prueba, monkeypatch=monkeypatch)
+    resultado = correr(
+        app,
+        ["notify", "--generate-only", "--send-only"],
+        "dev",
+        base=settings_prueba,
+        monkeypatch=monkeypatch,
+    )
     assert resultado.exit_code == 2, resultado.output
     assert await _avisos(fabrica) == []
 
@@ -299,3 +305,171 @@ def test_el_comando_esta_registrado_y_aparece_en_la_ayuda() -> None:
     propia = _runner.invoke(app, ["notify", "--help"])
     assert propia.exit_code == 0
     assert "--generate-only" in propia.output and "--as" in propia.output
+
+
+# Rojo B8: envío (`--send-only`) y ambas fases -----------------------------------------------------
+# Contrato: sin flags corre generar + enviar; `--send-only` solo envía; ambos flags juntos salen con
+# 2. Las dos formas reclaman `notify` por `worker.runner.run_job` (el CLI no importa `core.jobs`):
+# si hay una corrida `running` vigente salen con 3 sin enviar; si el job falla (SMTP) salen con 1.
+# La salida es `notify: ...` con conteos (`enviados N, fallidos N, omitidos N`), sin UUID, correos
+# ni nombres. `--as` es obligatorio en producción y debe existir. El CLI vive en < 150 líneas.
+
+from pathlib import Path  # noqa: E402
+
+from app.core.context import actor_scope  # noqa: E402
+from app.core.jobs import claim_run  # noqa: E402
+from app.worker.jobs import notify as notify_job  # noqa: E402
+from tests.core._canales_apoyo import SmtpFalso, con_smtp, instalar_smtp  # noqa: E402
+from tests.notifications._apoyo_envio import (  # noqa: E402
+    CORREO,
+    aviso_correo,
+    escenario_job,
+    habilitar_correo,
+    regla_correo,
+    socio_con_correo,
+    todos,
+)
+
+NOTIFY_CLI = Path(__file__).resolve().parents[2] / "src" / "app" / "cli_ops" / "notify.py"
+
+
+@pytest.fixture
+def envio(settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch) -> tuple[SmtpFalso, Settings]:
+    """SMTP falso y `Settings` con credenciales; el job las lee por `notify_job.get_settings`."""
+    ajustes = con_smtp(settings_prueba)
+    monkeypatch.setattr(notify_job, "get_settings", lambda: ajustes)
+    return instalar_smtp(monkeypatch), ajustes
+
+
+def _enviados(salida: str) -> list[int]:
+    return [int(n) for n in re.findall(r"(?:enviados|fallidos|omitidos) (\d+)", salida)]
+
+
+async def test_send_only_envia_lo_pendiente_y_no_genera(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    smtp, ajustes = envio
+    await habilitar_correo(fabrica)
+    miembro = await socio_con_correo(fabrica)
+    await aviso_correo(fabrica, await regla_correo(fabrica), miembro)
+    otra = await socio_con_correo(
+        fabrica, "ana@example.com", nombre="Ana"
+    )  # `generate` la avisaría
+    async with fabrica() as sesion:
+        plan = await make_plan(sesion, name="Plan Ana")
+        await con_membresia(sesion, otra, plan, HOY + timedelta(days=3))
+    antes = len(await todos(fabrica))
+
+    resultado = correr(app, ["notify", "--send-only"], "dev", base=ajustes, monkeypatch=monkeypatch)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert _enviados(resultado.output) == [1, 0, 0], resultado.output
+    assert len(await todos(fabrica)) == antes and len(smtp.mensajes) == 1
+
+
+async def test_sin_flags_genera_y_envia(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    smtp, ajustes = envio
+    await escenario_job(fabrica)
+
+    resultado = correr(app, ["notify"], "dev", base=ajustes, monkeypatch=monkeypatch)
+
+    (fila,) = await todos(fabrica)
+    assert resultado.exit_code == 0, resultado.output
+    assert "generados 1" in resultado.output and "enviados 1" in resultado.output
+    assert fila["status"] == "sent" and len(smtp.mensajes) == 1
+
+
+async def test_la_salida_del_envio_no_lleva_uuid_correo_ni_nombre(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, ajustes = envio
+    await escenario_job(fabrica)
+
+    resultado = correr(app, ["notify"], "dev", base=ajustes, monkeypatch=monkeypatch)
+
+    assert resultado.exit_code == 0, resultado.output
+    texto = resultado.output
+    assert not UUID_RE.search(texto)
+    assert CORREO not in texto and "Lucía" not in texto
+
+
+async def test_con_una_corrida_notify_vigente_sale_con_3_y_no_envia(
+    fabrica: Fabrica,
+    envio: tuple[SmtpFalso, Settings],
+    monkeypatch: pytest.MonkeyPatch,
+    reloj: FrozenClock,
+) -> None:
+    smtp, ajustes = envio
+    await escenario_job(fabrica)
+    async with fabrica() as sesion:
+        with actor_scope(SYSTEM_USER_ID):
+            await claim_run(
+                sesion,
+                "notify",
+                HOY,
+                now=reloj.now_utc(),
+                stale_after=timedelta(hours=1),
+                reclaim_finished=True,
+            )
+            await sesion.commit()
+
+    for args in (["notify"], ["notify", "--send-only"]):
+        resultado = correr(app, args, "dev", base=ajustes, monkeypatch=monkeypatch)
+        assert resultado.exit_code == 3, (args, resultado.output)
+
+    assert smtp.mensajes == [] and await todos(fabrica) == []
+
+
+async def test_si_el_smtp_falla_sale_con_1_y_cuenta_el_fallo(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    smtp, ajustes = envio
+    await escenario_job(fabrica)
+    smtp.fallo = TimeoutError()
+
+    resultado = correr(app, ["notify"], "dev", base=ajustes, monkeypatch=monkeypatch)
+
+    (fila,) = await todos(fabrica)
+    assert resultado.exit_code == 1, resultado.output
+    assert "fallidos 1" in resultado.output
+    assert (fila["status"], fila["last_error"]) == ("failed", "timeout")
+
+
+async def test_send_only_en_produccion_exige_as_y_no_envia(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    smtp, ajustes = envio
+    await escenario_job(fabrica)
+
+    sin = correr(
+        app, ["notify", "--send-only"], "production", base=ajustes, monkeypatch=monkeypatch
+    )
+
+    assert sin.exit_code == 2, sin.output
+    assert smtp.mensajes == []
+
+
+async def test_send_only_con_un_as_inexistente_sale_con_2_y_no_envia(
+    fabrica: Fabrica, envio: tuple[SmtpFalso, Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    smtp, ajustes = envio
+    await escenario_job(fabrica)
+
+    resultado = correr(
+        app,
+        ["notify", "--send-only", "--as", "nadie@apex.co"],
+        "dev",
+        base=ajustes,
+        monkeypatch=monkeypatch,
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert smtp.mensajes == []
+
+
+def test_la_ayuda_lista_send_only_y_el_archivo_tiene_menos_de_150_lineas() -> None:
+    propia = _runner.invoke(app, ["notify", "--help"])
+    assert "--send-only" in propia.output
+    assert len(NOTIFY_CLI.read_text(encoding="utf-8").splitlines()) < 150

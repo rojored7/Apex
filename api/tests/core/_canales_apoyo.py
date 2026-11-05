@@ -167,3 +167,12 @@ def instalar_telegram(
 
     monkeypatch.setattr(httpx, "AsyncClient", Cliente)
     return falso
+
+
+def con_smtp(base: Settings) -> Settings:
+    """`base` con el SMTP de prueba; `model_copy` no valida, así que la clave va como `SecretStr`
+    (S5-B8: el canal de correo llama `get_secret_value()`)."""
+    from pydantic import SecretStr
+
+    cambios = {**SMTP_COMPLETO, "SMTP_PASSWORD": SecretStr(SMTP_COMPLETO["SMTP_PASSWORD"])}
+    return base.model_copy(update=cambios)

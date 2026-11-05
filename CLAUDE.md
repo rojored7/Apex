@@ -30,7 +30,7 @@ apex/
       cli_manifest.py    # verificación del manifiesto firmado de respaldo (S5-D72, B13): recent_signed_manifest, custody_proofs, confirmation_error (S5-D186) y custody_errors/exit_after_failure (S5-D189); lo usan retire-key, migrate-provider, rotate-kek y retire-local-kek; capa de aplicación como cli_keyring.py
       cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
       cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
-      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140), migrate_provider, rotate_kek (con --trim) y retire_local_kek (S5-B2, S5-D184) y seed_notifications (S5-B6); register_ops(app); nunca se importan entre sí ni importan cli
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140), migrate_provider, rotate_kek (con --trim) y retire_local_kek (S5-B2, S5-D184), seed_notifications (S5-B6) y notify (S5-B7/B8: `--generate-only` sin reclamo; lo demás por `run_job`, S5-D226); register_ops(app); nunca se importan entre sí ni importan cli
       seed/              # `seed --demo` (S4B-D32): dataset.py puro (3 planes, 30 socios ficticios) y apply.py (dos transacciones por socio, lock_member primero; única llamada a enforce_retroactive_limit=False fuera de cli.py, S4B-D33); solo lo importa cli_ops/seed_demo.py
       imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
@@ -104,7 +104,7 @@ apex/
         registry.py      # JobSpec y registro de jobs
         runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
         runtime.py       # worker_runtime(with_crypto=True: keyring con phone y email, sin INSERT, sondeo si arranca sellado; S5-B3), espera de la base y latido (/tmp/apex-worker-heartbeat)
-        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35); sign_audit.py (v0.3, EP-17)
+        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35, B8: generar, enviar y resumir); sign_audit.py (v0.3, EP-17)
     migrations/          # Alembic
     tests/
       architecture/      # pruebas de arquitectura; corren en todos los gates

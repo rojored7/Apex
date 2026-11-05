@@ -111,6 +111,7 @@ def test_el_worker_existe_y_tiene_archivos_que_revisar() -> None:
         "jobs/__init__.py",
         "jobs/expirations.py",
         "jobs/backup_check.py",
+        "jobs/notify.py",
     }
     assert esperados <= nombres, sorted(esperados - nombres)
 
@@ -331,3 +332,70 @@ def test_control_sql_o_models_en_rotate_key_se_detectan() -> None:
     assert [v.rsplit("(", 1)[1].rstrip(")") for v in _violaciones_de_imports(ruta, falsa)] == [
         "foreign_models"
     ]
+
+
+# S5-B8: `jobs/notify.py` y `cli_ops/notify.py` (S5-D35, S5-D97). # Rojo B8 -----------------------
+
+NOTIFY_JOB = WORKER / "jobs" / "notify.py"
+NOTIFY_CLI = CLI_OPS / "notify.py"
+MODULOS_DEL_JOB_NOTIFY = frozenset({"notifications", "memberships"})
+PERMITIDOS_DEL_JOB_NOTIFY = frozenset({"service", "schemas", "exceptions"})
+
+
+def modulos_importados(fuente: str) -> set[tuple[str, str]]:
+    """`(modulo, archivo)` de cada `from app.modules.<m>.<archivo> import ...` o
+    `from app.modules.<m> import <archivo>` de `fuente` (a cualquier profundidad)."""
+    salida: set[tuple[str, str]] = set()
+    for nodo in ast.walk(ast.parse(fuente)):
+        if not isinstance(nodo, ast.ImportFrom) or not (nodo.module or "").startswith(
+            "app.modules."
+        ):
+            continue
+        partes = (nodo.module or "").split(".")[2:]
+        if len(partes) >= 2:
+            salida.add((partes[0], partes[1]))
+        elif len(partes) == 1:
+            salida.update((partes[0], a.name) for a in nodo.names)
+    return salida
+
+
+def test_el_job_notify_solo_importa_service_schemas_y_exceptions_de_sus_dos_modulos() -> None:
+    importados = modulos_importados(NOTIFY_JOB.read_text(encoding="utf-8"))
+    assert importados, "notify.py no importa nada de notifications"
+    assert {m for m, _ in importados} <= MODULOS_DEL_JOB_NOTIFY, sorted(importados)
+    assert {a for _, a in importados} <= PERMITIDOS_DEL_JOB_NOTIFY, sorted(importados)
+    assert ("notifications", "service") in importados
+
+
+def test_el_job_notify_no_escribe_sql_ni_importa_privados() -> None:
+    assert llamadas_sql(NOTIFY_JOB.read_text(encoding="utf-8"), "worker/jobs/notify.py") == []
+    assert _violaciones_de_imports(NOTIFY_JOB) == []
+
+
+def test_el_cli_notify_reclama_por_run_job_y_no_importa_core_jobs() -> None:
+    """El CLI comparte el reclamo `notify` con el worker por `runner.run_job`; `core.jobs` sigue
+    siendo del worker (no se amplía `IMPORTADORES_EXTRA_DE_CORE_JOBS`)."""
+    fuente = NOTIFY_CLI.read_text(encoding="utf-8")
+    assert importa_core_jobs(fuente, NOTIFY_CLI) == []
+    assert "run_job" in {
+        n.id if isinstance(n, ast.Name) else n.attr
+        for n in ast.walk(ast.parse(fuente))
+        if isinstance(n, ast.Name | ast.Attribute)
+    }, "cli_ops/notify.py no llama a run_job"
+    assert llamadas_sql(fuente, "cli_ops/notify.py") == []
+    assert _violaciones_de_imports(NOTIFY_CLI) == []
+
+
+def test_control_un_job_que_importa_plans_o_un_privado_de_notifications_se_detecta() -> None:
+    falsa = (
+        "from app.modules.notifications.sending import send_pending\n"
+        "from app.modules.plans import service\n"
+        "from app.modules.notifications import service as ok\n"
+    )
+    assert modulos_importados(falsa) == {
+        ("notifications", "sending"),
+        ("plans", "service"),
+        ("notifications", "service"),
+    }
+    reglas = [v.rsplit("(", 1)[1].rstrip(")") for v in _violaciones_de_imports(NOTIFY_JOB, falsa)]
+    assert reglas == ["private_helper"]

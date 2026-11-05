@@ -322,6 +322,16 @@ async def test_detail_keys_es_el_conjunto_cerrado_del_plan() -> None:
                 "verificado",
                 "firma_verificada",
                 "snapshot",
+                # S5-B8 (S5-D35): `notify`
+                "generados",
+                "ya_renovaron",
+                "sin_consentimiento",
+                "sin_reglas",
+                "enviados",
+                "fallidos",
+                "omitidos",
+                "pendientes",
+                "sellado",
             }
         )
         == DETAIL_KEYS

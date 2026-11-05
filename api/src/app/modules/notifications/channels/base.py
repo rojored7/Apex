@@ -12,6 +12,8 @@ class ChannelPayload:
     to: str = field(repr=False)
     subject: str
     body: str = field(repr=False)
+    reply_to: str | None = field(default=None, repr=False)
+    from_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,5 +27,10 @@ class ChannelResult:
 
 class NotificationChannel(Protocol):
     name: str
+
+    @property
+    def configured(self) -> bool:
+        """Hay con qué enviar (credenciales); `send_pending` omite el lote si no (S5-B8)."""
+        ...
 
     async def send(self, payload: ChannelPayload) -> ChannelResult: ...

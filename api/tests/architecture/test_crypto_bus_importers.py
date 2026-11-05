@@ -41,6 +41,7 @@ IMPORTADORES_REALES: Final = frozenset(
         "cli_manifest.py",
         "main.py",
         "worker/jobs/backup_check.py",
+        "worker/jobs/notify.py",
         "worker/runtime.py",
         "modules/members/changes.py",
         "modules/members/detail.py",
@@ -59,6 +60,9 @@ SOLO_FIRMA: Final = frozenset({"cli_manifest.py", "worker/jobs/backup_check.py"}
 """S5-B13 (S5-D72): verifican la firma del manifiesto por el bus y nada más; el único nombre
 que pueden importar de `bus` es `verified_manifest_bytes`."""
 PUERTA_DE_FIRMA: Final = "verified_manifest_bytes"
+SOLO_RECOVERY: Final = frozenset({"worker/jobs/notify.py"})
+"""S5-B8 (S5-D16): el job `notify` llama `recovery.try_load` al comienzo; importa el módulo
+`recovery` (las pruebas lo espían por ese nombre) y nada más del bus."""
 PREFIJOS_PERMITIDOS: Final = (
     "core/",
     "modules/members/",
@@ -146,6 +150,8 @@ def _paquete_de(relativo: str) -> str:
 def permitido(relativo: str, vistas: dict[str, set[str]]) -> bool:
     if relativo.startswith(PREFIJOS_PERMITIDOS):
         return True
+    if relativo in SOLO_RECOVERY:
+        return set(vistas) == {RECOVERY} and vistas[RECOVERY] <= NOMBRES_DE_RECOVERY | {"*"}
     if relativo in SOLO_FIRMA:
         return vistas == {f"{PAQUETE}.bus": {PUERTA_DE_FIRMA}}
     if relativo in ARRANQUE:
@@ -446,7 +452,7 @@ def test_s5_b3_nadie_mas_importa_recovery() -> None:
     otros = {
         r: v[RECOVERY]
         for r, v in _importadores().items()
-        if RECOVERY in v and r not in ARRANQUE_CON_RECOVERY
+        if RECOVERY in v and r not in ARRANQUE_CON_RECOVERY | SOLO_RECOVERY
     }
     assert otros == {}
 
@@ -459,3 +465,17 @@ def test_control_recovery_en_otro_archivo_o_con_otro_nombre_falla() -> None:
     assert not permitido("modules/notifications/service.py", con_recovery)
     otro_nombre = importaciones("from app.core.crypto.recovery import current_state\n")
     assert not permitido("worker/runtime.py", {**otro_nombre, **tipos})
+
+
+def test_s5_b8_el_job_notify_importa_recovery_y_nada_mas_del_bus() -> None:
+    """# Rojo B8: la enmienda es de UN archivo; el job no cifra ni descifra por su cuenta."""
+    importadores = _importadores()
+    assert set(importadores["worker/jobs/notify.py"]) == {RECOVERY}
+    assert permitido("worker/jobs/notify.py", importadores["worker/jobs/notify.py"])
+    con_bus = importaciones(
+        "from app.core.crypto import bus\nfrom app.core.crypto import recovery\n"
+    )
+    assert not permitido("worker/jobs/notify.py", con_bus)
+    assert not permitido(
+        "worker/jobs/expirations.py", importaciones("from app.core.crypto import recovery\n")
+    )

@@ -214,4 +214,6 @@ def test_la_llamada_de_wa_link_pide_solo_el_telefono_con_proposito_notify() -> N
         assert any(isinstance(a, ast.Constant) and a.value == "notify" for a in llamada.args)
         campos = [k for k in llamada.keywords if k.arg == "fields"]
         assert len(campos) == 1, ast.unparse(llamada)
-        assert '"phone"' in ast.unparse(campos[0].value).replace("'", '"')
+        # S5-B8: `wa_link` pide solo el teléfono y `_load_email` (envío) solo el correo.
+        pedido = ast.unparse(campos[0].value).replace("'", '"')
+        assert pedido in ('{"phone"}', '{"email"}'), pedido

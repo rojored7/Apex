@@ -99,3 +99,17 @@ Es **idempotente**: la segunda corrida imprime `plantillas creadas 0, reglas cre
 **Omitir** (`POST /notifications/{id}/skip` con `{"reason": "..."}` de 3 a 500 caracteres). Solo `pending` y `failed`; un aviso `sent` u `omitido` da 409 `notification_closed` y conserva el primer motivo. El cambio queda en `audit_log`.
 
 **Historial** (`GET /notifications` con `status`, `channel`, `rule_id`, `from`, `to`, `q`) y la **pestaña del socio** (`GET /members/{id}/notifications`, también para socios dados de baja). Ninguna respuesta lleva teléfono ni correo.
+
+## 11. Envío de correo y resumen diario (S5-B8; US-124 a US-126; S5-D226 a D228)
+
+**Qué hace el job `notify`** (07:00 de Bogotá, después de `expirations`): (1) genera los avisos del día, (2) envía los de canal `email` y (3) emite el resumen. Si OpenBao está sellado o inalcanzable genera igual, **no envía** (`sellado 1` en el resumen), queda `ok` y avisa `crypto_sealed`; al volver el custodio la corrida siguiente envía lo pendiente. Un token rechazado (`forbidden`) o una llave que no abre (`unwrap_failed`) sí hacen fallar el job.
+
+**Entrega "al menos una vez".** Cada aviso lleva el intento contado ANTES de enviar; si el proceso se corta justo entre el envío y la marca `sent`, la corrida siguiente lo repite una vez como máximo. Tope: 3 intentos por aviso; al tercer fallo queda `failed` para siempre (aparece en "por avisar hoy" hasta que el equipo lo omita). Los `pending` se reintentan durante 15 días.
+
+**Casos que no se reintentan** (`skipped` con motivo): `canal_no_configurado` (canal de correo apagado en Ajustes; con el canal activo pero sin `SMTP_*` los avisos esperan y se alerta `mail_unconfigured`), `sin_consentimiento` (el socio no autorizó el tratamiento) y `sin_correo`.
+
+**Proveedor SMTP = encargado del tratamiento (Ley 1581, L-5).** El correo del socio, su nombre y el texto del aviso viajan al proveedor SMTP que se configure; el gimnasio debe tener con él el contrato de encargado y elegir uno que cifre en tránsito (STARTTLS). El correo se descifra solo en el momento del envío, con rastro `reveal`/`decrypt` (`purpose=notify`).
+
+**Resumen diario por Telegram.** Una alerta `notify_summary` con solo conteos (generados, enviados, fallidos, omitidos, pendientes) y el enlace a `/avisos/hoy`; nunca nombres ni correos.
+
+**A mano.** `$DC --profile tools run --rm tools notify --as <correo>` (generar y enviar), `... notify --send-only --as <correo>` (solo enviar) o `... notify --generate-only` (solo generar). Imprime `notify: generados N, ya renovaron N, sin consentimiento N, sin reglas 0|1, enviados N, fallidos N, omitidos N, pendientes N`; salidas 0 ok, 1 hubo fallidos o el job falló, 3 ya hay una corrida en curso. En el worker: `--run-once notify` y `--status notify`.

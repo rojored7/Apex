@@ -18,4 +18,23 @@ def listo(bus_listo: Keyring, reloj: FrozenClock) -> Keyring:
     return bus_listo
 
 
+from collections.abc import AsyncIterator  # noqa: E402
+
+from sqlalchemy import func, select  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker  # noqa: E402
+
+from app.core.audit import AuditEntry  # noqa: E402
+from tests.conftest import limpiar_tras_dos_sesiones  # noqa: E402
 from tests.members.conftest import bus_confirmado  # noqa: E402,F401  (S5-D223: llaves con commit real)
+
+
+@pytest.fixture
+async def fabrica(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """S5-B8: fábrica con commit real (el envío abre sesiones cortas propias); al salir borra lo
+    que quedó, como `dos_sesiones`."""
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    try:
+        yield async_sessionmaker(engine, expire_on_commit=False)
+    finally:
+        await limpiar_tras_dos_sesiones(engine, ultima or 0)

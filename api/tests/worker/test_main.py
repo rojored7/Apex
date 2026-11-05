@@ -735,3 +735,32 @@ async def test_serve_espera_las_alertas_de_telegram_aunque_el_arranque_falle(
         await worker_main.serve(settings_prueba, stop=asyncio.Event())
 
     assert llamadas == ["flush"]
+
+
+# S5-B8 (S5-D228, gap 7): `--run-once notify` vacía la cola de Telegram antes de salir -----------
+
+
+async def test_run_once_notify_vacia_las_alertas_de_telegram_al_terminar(
+    con_prueba: Settings,
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.worker.jobs import notify as notify_job
+
+    eventos: list[str] = []
+
+    async def vaciar() -> None:
+        eventos.append("flush")
+
+    monkeypatch.setattr(worker_main, "flush_telegram", vaciar)
+    monkeypatch.setattr(notify_job, "get_settings", lambda: con_prueba)
+    monkeypatch.setattr(
+        notify_job, "alert", lambda codigo, **_ctx: eventos.append(f"alert:{codigo}")
+    )
+
+    codigo = worker_main.main(["--run-once", "notify"])
+
+    assert codigo == 0
+    assert eventos[-1] == "flush" and "alert:notify_summary" in eventos
+    assert eventos.index("alert:notify_summary") < eventos.index("flush")

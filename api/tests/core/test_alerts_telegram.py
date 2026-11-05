@@ -81,6 +81,7 @@ CASOS: list[tuple[str, dict[str, object], tuple[str, ...]]] = [
     ("crypto_sealed", {}, ("custodio", "sellad")),
     ("crypto_recovered", {}, ("recuper",)),
     ("notify_summary", RESUMEN, ("aviso",)),
+    ("mail_unconfigured", {}, ("correo", "smtp")),
 ]
 
 

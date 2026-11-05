@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass, field
-from typing import Final, Literal, NoReturn
+from typing import Any, Final, Literal, NoReturn
 from uuid import UUID
 
 from sqlalchemy import select
@@ -25,13 +25,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.core import audit
+from app.core.crypto.errors import CryptoError
 from app.modules.members.detail import MEMBERS_TABLE, _decrypt_fields
-from app.modules.members.exceptions import InvalidField, InvalidPurpose, MemberNotContactable
+from app.modules.members.exceptions import (
+    InvalidField,
+    InvalidPurpose,
+    MemberContactUnreadable,
+    MemberNotContactable,
+)
 from app.modules.members.models import Member
 
 ContactPurpose = Literal["notify", "auth_link"]
 CONTACT_PURPOSES: Final[frozenset[str]] = frozenset({"notify", "auth_link"})
 CONTACT_FIELDS: Final = ("phone", "email")
+ROW_DECRYPT_CODES: Final = frozenset(
+    {"blob_invalid", "decrypt_failed", "key_missing", "key_retired", "unknown_data_class"}
+)
+"""Códigos del bus que dicen que ESA fila no se abre (S5-D230); los demás son sistémicos."""
 CONTACT_NOT_SERIALIZABLE: Final = "Contact no se serializa: vive solo en memoria."
 
 
@@ -98,7 +108,7 @@ async def contact_for_notification(
         raise MemberNotContactable()
     if proposito == "notify" and socio.data_consent_at is None:
         raise MemberNotContactable()  # S5-D34/D209: un aviso exige la autorización de datos
-    claros = _decrypt_fields(socio, pedidos, proposito)
+    claros = _decrypt_or_unreadable(socio, pedidos, proposito)
     for campo in pedidos:
         if campo in claros:
             await audit.record(
@@ -115,6 +125,19 @@ async def contact_for_notification(
         phone=_texto(claros.get("phone")),
         email=_texto(claros.get("email")),
     )
+
+
+def _decrypt_or_unreadable(
+    socio: Member, pedidos: tuple[str, ...], proposito: str
+) -> dict[str, Any]:
+    """`_decrypt_fields`, con el fallo de ESA fila como `MemberContactUnreadable` (S5-D230); lo
+    sistémico (`crypto_unavailable`, `kek_*`...) sube tal cual."""
+    try:
+        return dict(_decrypt_fields(socio, pedidos, proposito))
+    except CryptoError as error:
+        if error.code in ROW_DECRYPT_CODES:
+            raise MemberContactUnreadable() from None
+        raise
 
 
 def _validate_fields(fields: Collection[str] | None) -> tuple[str, ...]:

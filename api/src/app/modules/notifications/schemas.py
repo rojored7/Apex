@@ -202,8 +202,12 @@ class GenerateResult:
 
 @dataclass(frozen=True)
 class SendResult:
-    """Resultado de una pasada de `sending.send_pending` (B8)."""
+    """Resultado de una pasada de `sending.send_pending` (B8). `fallidos`: los que fallaron en esta
+    pasada; `pendientes`: avisos `email` aún elegibles (`pending` o `failed` con intentos
+    disponibles) al terminar."""
 
     enviados: int
     fallidos: int
     omitidos: int
+    pendientes: int
+    sin_credenciales: bool = False

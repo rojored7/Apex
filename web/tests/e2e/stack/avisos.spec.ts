@@ -5,7 +5,7 @@
 // variante contra `vite preview` es ../avisos.spec.ts. window.open se observa: no sale nada del navegador.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { esperarTransiciones, exigirStackLocal, loginComo } from "../helpers/stack";
+import { esperarTransiciones, exigirStackLocal, habilitarWhatsapp, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -35,6 +35,7 @@ test.describe("por avisar hoy contra el stack", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await observarWindowOpen(page);
     await loginComo(page);
+    await habilitarWhatsapp(page); // S5-D265: sin el canal encendido no hay avisos ni enlace de WhatsApp
     await page.goto("/avisos/hoy");
     await expect(page.getByRole("heading", { level: 1, name: /^Por avisar hoy · / })).toBeVisible();
 
@@ -57,6 +58,8 @@ test.describe("por avisar hoy contra el stack", () => {
     expect(opened[0]?.[0]).toMatch(/^https:\/\/wa\.me\/57\d+/);
     expect(opened[0]?.slice(1)).toEqual(["_blank", "noopener,noreferrer"]);
 
+    // V5: la fila enviada sale de la lista al refrescar; sin esta espera `first()` podía tomar su botón y el diálogo abría otro aviso.
+    await expect(page.getByRole("button", { name: `Omitir aviso de ${nombre}` })).toHaveCount(0);
     const omitir = page.getByRole("button", { name: /^Omitir aviso de / }).first();
     const otro = ((await omitir.getAttribute("aria-label")) ?? "").replace("Omitir aviso de ", "");
     await omitir.click();

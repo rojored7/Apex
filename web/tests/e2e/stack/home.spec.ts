@@ -92,8 +92,9 @@ test.describe("Inicio contra el stack", () => {
     // Pendientes de pago: socios cuya membresía que decide (US-092: vigente > pendiente > vencida > futura)
     // es una pendiente, es decir con una pendiente y sin otra membresía vigente (ni cancelada, ni
     // pendiente, ni vencida por fecha o sin clases, y ya iniciada) en la fecha de hoy de Bogotá.
+    // V5: solo socios no dados de baja (el api no cuenta a los dados de baja; las specs de venta dejan socios de baja con pendientes).
     const pendientes = psqlEscalar(
-      "WITH h AS (SELECT (now() AT TIME ZONE 'America/Bogota')::date AS hoy) SELECT count(DISTINCT m.member_id) FROM memberships.memberships m, h WHERE m.status = 'pending_payment' AND NOT EXISTS (SELECT 1 FROM memberships.memberships c WHERE c.member_id = m.member_id AND c.status NOT IN ('cancelled', 'pending_payment') AND c.end_date >= h.hoy AND c.classes_remaining IS DISTINCT FROM 0 AND c.start_date <= h.hoy)",
+      "WITH h AS (SELECT (now() AT TIME ZONE 'America/Bogota')::date AS hoy) SELECT count(DISTINCT m.member_id) FROM memberships.memberships m JOIN members.members s ON s.id = m.member_id, h WHERE s.deleted_at IS NULL AND m.status = 'pending_payment' AND NOT EXISTS (SELECT 1 FROM memberships.memberships c WHERE c.member_id = m.member_id AND c.status NOT IN ('cancelled', 'pending_payment') AND c.end_date >= h.hoy AND c.classes_remaining IS DISTINCT FROM 0 AND c.start_date <= h.hoy)",
     );
     expect(api.members_pending_payment).toBe(pendientes);
     // Ingresos del mes de Bogotá: pagos no anulados.

@@ -294,3 +294,20 @@ export async function congelarPorApi(page: Page, membershipId: string, desde: st
   const response = await page.request.post(`${API}/memberships/${membershipId}/freeze`, { headers, data: { frozen_from: desde, frozen_to: hasta } });
   return response.status();
 }
+
+/**
+ * V5 del Sprint 5 (S5-D265): desde V11c los avisos de WhatsApp solo se generan, y su enlace solo se emite,
+ * con `channels.whatsapp.enabled = true`. Idempotente: lee la sección y la reemplaza (PATCH con la versión
+ * leída) solo si el canal está apagado. Devuelve true si lo encendió.
+ */
+export async function habilitarWhatsapp(page: Page, admin: Credentials = datosDeBase()): Promise<boolean> {
+  const headers = await accessDe(page, admin);
+  const leida = await page.request.get(`${API}/settings/channels`, { headers });
+  if (!leida.ok()) throw new Error(`GET /settings/channels respondió ${String(leida.status())}.`);
+  const seccion = (await leida.json()) as { value: { whatsapp: { enabled: boolean } } & Record<string, unknown>; version: number };
+  if (seccion.value.whatsapp.enabled) return false;
+  const value = { ...seccion.value, whatsapp: { ...seccion.value.whatsapp, enabled: true } };
+  const guardada = await page.request.patch(`${API}/settings/channels`, { headers, data: { value, version: seccion.version } });
+  if (!guardada.ok()) throw new Error(`PATCH /settings/channels respondió ${String(guardada.status())}.`);
+  return true;
+}

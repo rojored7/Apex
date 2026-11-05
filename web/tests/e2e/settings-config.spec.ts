@@ -9,7 +9,7 @@ import { mockSession } from "./helpers/session";
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const PATH = "/sistema/configuracion";
 
-type Key = "gym" | "privacy" | "memberships" | "payment_methods";
+type Key = "gym" | "privacy" | "memberships" | "payment_methods" | "channels";
 
 interface Section {
   key: Key;
@@ -17,6 +17,8 @@ interface Section {
   version: number;
   updated_at: string | null;
   updated_by: string | null;
+  /** Solo la sección channels (S5-D204). */
+  credentials_present?: { email: boolean; telegram: boolean };
 }
 
 interface FakeApi {
@@ -35,6 +37,12 @@ function initialSections(): Record<Key, Section> {
     payment_methods: {
       key: "payment_methods",
       value: { cash: { label: "Efectivo", hint: "" }, nequi: { label: "Nequi", hint: "" }, breb: { label: "Bre-B", hint: "" } },
+      ...base,
+    },
+    channels: {
+      key: "channels",
+      value: { email: { enabled: false, sender_name: "APEX", reply_to: null }, whatsapp: { enabled: false, country_code: "57" }, telegram: { enabled: false } },
+      credentials_present: { email: true, telegram: false },
       ...base,
     },
   };
@@ -57,7 +65,14 @@ async function fakeApi(page: Page): Promise<FakeApi> {
       return json(route, 409, { error: { code: "version_conflict", message: "Otra persona cambió esta sección. Recarga para ver los cambios." } });
     }
     const value = key === "gym" && typeof body.value.email === "string" ? { ...body.value, email: body.value.email.toLowerCase() } : body.value;
-    state.sections[key] = { key, value, version: current.version + 1, updated_at: "2026-10-21T15:00:00Z", updated_by: "11111111-1111-4111-8111-111111111111" };
+    state.sections[key] = {
+      key,
+      value,
+      version: current.version + 1,
+      updated_at: "2026-10-21T15:00:00Z",
+      updated_by: "11111111-1111-4111-8111-111111111111",
+      ...(current.credentials_present ? { credentials_present: current.credentials_present } : {}),
+    };
     return json(route, 200, state.sections[key]);
   });
   return state;
@@ -160,6 +175,35 @@ test("S3-F4: la pestaña Medios de pago guarda las tres etiquetas fijas, sin agr
   await expect(page.getByRole("group", { name: "Nequi" }).getByRole("textbox", { name: /Nombre que se muestra/ })).toHaveValue("Nequi del box");
 });
 
+test("S5-F2: la pestaña Canales muestra las credenciales, guarda sin pedir secretos y vuelve con lo guardado", async ({ page }) => {
+  const api = await fakeApi(page);
+  await page.goto(PATH);
+  await page.getByRole("tab", { name: "Canales" }).click();
+  await expect(page).toHaveURL(/\?tab=canales$/);
+
+  await expect(page.getByRole("group", { name: "Correo" }).getByText("Credenciales listas")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Telegram" }).getByText("Faltan credenciales en .env")).toBeVisible();
+  await expect(page.locator("input[type=password]")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Enviar avisos por correo" }).check();
+  await page.getByRole("textbox", { name: /^Nombre del remitente/ }).fill("Box Norte");
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await expect(page.getByText("Cambios guardados")).toBeVisible();
+  expect(api.patches).toEqual([
+    {
+      key: "channels",
+      body: {
+        version: 0,
+        value: { email: { enabled: true, sender_name: "Box Norte", reply_to: null }, whatsapp: { enabled: false, country_code: "57" }, telegram: { enabled: false } },
+      },
+    },
+  ]);
+
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: /^Nombre del remitente/ })).toHaveValue("Box Norte");
+  await expect(page.getByRole("checkbox", { name: "Enviar avisos por correo" })).toBeChecked();
+});
+
 test("con cambios sin guardar, cambiar de pestaña pide confirmación", async ({ page }) => {
   await fakeApi(page);
   await page.goto(PATH);
@@ -195,7 +239,7 @@ test("un 409 muestra el aviso y Recargar trae lo que guardó la otra persona", a
 
 for (const theme of ["light", "dark"] as const) {
   for (const width of [390, 1440]) {
-    test(`las cuatro pestañas pasan axe en ${theme} a ${String(width)} px sin desborde`, async ({ page }) => {
+    test(`las cinco pestañas pasan axe en ${theme} a ${String(width)} px sin desborde`, async ({ page }) => {
       await fakeApi(page);
       await page.emulateMedia({ colorScheme: theme });
       await page.setViewportSize({ width, height: 900 });
@@ -207,7 +251,7 @@ for (const theme of ["light", "dark"] as const) {
         }
       }, theme);
 
-      for (const id of ["gimnasio", "privacidad", "membresias", "medios"]) {
+      for (const id of ["gimnasio", "privacidad", "membresias", "medios", "canales"]) {
         await page.goto(`${PATH}?tab=${id}`);
         await expect(page.getByRole("button", { name: "Guardar" })).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

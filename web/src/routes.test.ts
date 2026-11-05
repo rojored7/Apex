@@ -69,7 +69,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
     }
   });
 
-  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), la ficha con sus pestañas Datos (S3-F1), Membresías y Pagos (S3-F7), Historial (S4A-F2) y la edición (S3-F1), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Por avisar hoy (S5-F1), Usuarios (S2-F4a), Auditoría (S4A-F1) y Configuración (S2-F5)", () => {
+  it("tienen página el acceso (S2-F3, S2-F4a), Inicio, Socios (S2-F6), la ficha con sus pestañas Datos (S3-F1), Membresías y Pagos (S3-F7), Historial (S4A-F2) y la edición (S3-F1), Planes (S2-F7), Membresías (S3-F5), Vender (S3-F3), Pagos (S3-F6), Por avisar hoy (S5-F1), Reglas e Historial (S5-F2), Usuarios (S2-F4a), Auditoría (S4A-F1) y Configuración (S2-F5)", () => {
     expect(ROUTE_TABLE.filter((r) => r.load).map(fullPathOf)).toEqual([
       "/login",
       "/recuperar",
@@ -89,6 +89,8 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/membresias/vender",
       "/pagos",
       "/avisos/hoy",
+      "/avisos/reglas",
+      "/avisos/historial",
       "/sistema/usuarios",
       "/sistema/auditoria",
       "/sistema/configuracion",

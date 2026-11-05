@@ -1,6 +1,6 @@
 // Datos de prueba de las secciones de configuración (S2-F5). Imitan las respuestas de
 // GET /settings/{gym|privacy|memberships}: defaults con version 0 y updated_* nulos.
-import type { GymSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
+import type { ChannelsSettings, GymSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
 import type { MockReply } from "./server";
 
 export const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -71,5 +71,26 @@ export function paymentMethodsSection(value: Partial<PaymentMethodsSettings> = {
     version,
     updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
     updated_by: version === 0 ? null : ADMIN_ID,
+  };
+}
+
+/** S5-F2 · US-122: GET /settings/channels con todo apagado (default del api) y credentials_present de S5-D204. */
+export function channelsSection(
+  value: Partial<ChannelsSettings> = {},
+  version = 0,
+  credentials: { email: boolean; telegram: boolean } = { email: true, telegram: false },
+): SettingsSection<"channels"> {
+  return {
+    key: "channels",
+    value: {
+      email: { enabled: false, sender_name: "APEX", reply_to: null },
+      whatsapp: { enabled: false, country_code: "57" },
+      telegram: { enabled: false },
+      ...value,
+    },
+    version,
+    updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
+    updated_by: version === 0 ? null : ADMIN_ID,
+    credentials_present: credentials,
   };
 }

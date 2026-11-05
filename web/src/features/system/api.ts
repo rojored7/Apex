@@ -37,7 +37,8 @@ import {
 } from "./schemas";
 
 // S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
-export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods";
+// S5-F2 (US-122, S5-D30): `channels` suma los canales de aviso y trae `credentials_present` (S5-D204).
+export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
@@ -79,6 +80,15 @@ const paymentMethodsValueSchema = z.object({
   breb: methodLabelSchema,
 });
 
+// S5-F2 (US-122): sin secretos. `reply_to` llega null si no hay; `credentials_present` nunca trae valores.
+const channelsValueSchema = z.object({
+  email: z.object({ enabled: z.boolean(), sender_name: z.string(), reply_to: text }),
+  whatsapp: z.object({ enabled: z.boolean(), country_code: z.string() }),
+  telegram: z.object({ enabled: z.boolean() }),
+});
+
+const credentialsPresentSchema = z.object({ email: z.boolean(), telegram: z.boolean() });
+
 function sectionSchema<K extends SettingsKey, V extends z.ZodType>(key: K, value: V) {
   return z.object({
     key: z.literal(key),
@@ -94,6 +104,7 @@ const SECTION_SCHEMAS = {
   privacy: sectionSchema("privacy", privacyValueSchema),
   memberships: sectionSchema("memberships", membershipsValueSchema),
   payment_methods: sectionSchema("payment_methods", paymentMethodsValueSchema),
+  channels: sectionSchema("channels", channelsValueSchema).extend({ credentials_present: credentialsPresentSchema }),
 } as const;
 
 export type GymSettings = z.infer<typeof gymValueSchema>;
@@ -101,6 +112,8 @@ export type GymSettings = z.infer<typeof gymValueSchema>;
 export type PrivacyView = z.infer<typeof privacyValueSchema>;
 export type MembershipsSettings = z.infer<typeof membershipsValueSchema>;
 export type PaymentMethodsSettings = z.infer<typeof paymentMethodsValueSchema>;
+export type ChannelsSettings = z.infer<typeof channelsValueSchema>;
+export type CredentialsPresent = z.infer<typeof credentialsPresentSchema>;
 
 /** Lo que se escribe en `privacy`: publicar exige versión y texto. */
 export interface PrivacyInput {
@@ -115,6 +128,7 @@ interface SectionInputs {
   privacy: PrivacyInput;
   memberships: MembershipsSettings;
   payment_methods: PaymentMethodsSettings;
+  channels: ChannelsSettings;
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;

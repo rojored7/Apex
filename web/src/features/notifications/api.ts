@@ -29,7 +29,7 @@ export function todayQueryKey(params: TodayParams): readonly ["notifications", "
 }
 
 /** S5-D244: solo un 404 o un 409 quiere decir que lo que se ve quedó viejo; 401, 403, 429 y 5xx no releen. */
-function refreshIfStale(refresh: () => void): (error: Error) => void {
+export function refreshIfStale(refresh: () => void): (error: Error) => void {
   return (error) => {
     if (isApiError(error) && (error.status === HTTP_NOT_FOUND || error.status === HTTP_CONFLICT)) refresh();
   };

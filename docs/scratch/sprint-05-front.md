@@ -21,3 +21,20 @@
 - MEDIUM (S5-D243): los mensajes del api que se muestran tal cual son fijos y sin datos personales; verificado, sin cambio.
 - LOW 2 (S5-D244): `useWaLink` y `useSkip` solo releen la lista ante 404 o 409; 401, 403, 429 y 5xx no. Pruebas en `api.test.ts`.
 - LOW 1 (S5-D244 enmendada): con `noopener`, `window.open` devuelve `null` siempre, así que no se comprueba el valor devuelto. Se conserva `window.open(url, "_blank", "noopener,noreferrer")` y `TodayPage` muestra la ayuda fija «Si no se abre WhatsApp, permite las ventanas emergentes de este sitio.» bajo el título. Sin lógica de detección; prueba en `TodayPage.test.tsx` (claro y oscuro).
+
+## F2 · Reglas, plantillas, historial y pestaña Canales (US-120 a US-122, US-130)
+
+- Base: `1cbd08c` (checkpoint de F1); la rama del backend sigue en `8eff83e` (sin rebase) y `gen:api` sin diff.
+- Rojo: `features/system/components/ChannelsSettingsForm.test.tsx`, `features/notifications/pages/RulesPage.test.tsx`, `pages/HistoryPage.test.tsx`; `ConfigPage.test.tsx` pasa a cinco pestañas y `?tab=canales` abre Canales (antes era una pestaña desconocida).
+- Verde:
+  - Sistema: `features/system/{api,schemas}.ts` (sección `channels` con `credentials_present`), `components/ChannelsSettingsForm.tsx`, quinta pestaña en `ConfigPage`.
+  - Avisos: `adminSchemas.ts`, `adminApi.ts`, `adminErrors.ts`, `historyFilters.ts`, `historyView.ts`, `components/{RulesTab,TemplatesTab,RuleForm,TemplateEditor,MessagePanel}.tsx`, `pages/{RulesPage,HistoryPage}.tsx`, rutas `/avisos/reglas` y `/avisos/historial` con `load`.
+- Decisiones:
+  - El desfase del api es negativo antes del fin (por vencer) y positivo después (vencida); el formulario lo escribe como "días antes" o "días después" y `toOffsetDays` evita el `-0`.
+  - Editar envía solo lo que cambió (`dirtyFields`); el evento y los días viajan juntos.
+  - El coach lee las reglas y las plantillas (GET con `staff-read`) pero no ve botones de escritura ni la vista previa: `POST /notification-templates/preview` es solo admin en el router (el brief decía `staff-read`; el código manda `AdminDep`).
+  - Las escrituras releen la lista solo con 404 o 409 (`refreshIfStale`, S5-D244).
+  - Historial: `from` y `to` son fechas del aviso (`target_date`, AAAA-MM-DD) y viajan tal cual; lo inválido no viaja.
+- E2E: `tests/e2e/avisos.spec.ts` (reglas, plantillas, historial; axe en claro y oscuro a 390 y 1440 px) y `settings-config.spec.ts` (pestaña Canales) en preview, verdes; `stack/avisos.spec.ts` suma el caso de solo lectura (se corre en V5).
+- DESIGN-GAP: filas 13.18 a 13.22 de `docs/BRECHAS.md`.
+- Sigue en F3: ficha del socio (pestaña Avisos), preferencias y la tarjeta "Por avisar" de Inicio.

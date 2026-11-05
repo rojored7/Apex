@@ -1,0 +1,110 @@
+/* S5-F2: paneles de regla y plantilla (Notif_Reglas.html) y mensaje del historial. Solo variables de tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  font: var(--text-body);
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+}
+
+/* Las variables de la plantilla, como en Notif_Reglas.html (.w-var). */
+.variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.variable {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-caption);
+  font-family: var(--font-mono);
+}
+
+.textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+}
+
+.previewTitle {
+  margin: 0;
+  font: var(--text-label);
+}
+
+.previewSubject {
+  margin: 0;
+  font: var(--text-body);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.previewBody {
+  margin: 0;
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* El texto de una plantilla o de un aviso, tal como está (solo lectura). */
+.readonly {
+  margin: 0;
+  padding: var(--space-3);
+  border-left: 3px solid var(--line);
+  color: var(--ink);
+  font: var(--text-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.label {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-label);
+}

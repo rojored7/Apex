@@ -1,0 +1,30 @@
+/* S5-F2: pestañas Reglas y Plantillas de Notif_Reglas.html. Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--apex-blue);
+  border-radius: var(--radius-pill);
+  background: var(--apex-blue);
+  color: var(--black);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+/* Pausada: borde y texto apagados; el texto de la etiqueta dice el estado. */
+.paused {
+  border-color: var(--muted);
+  background: transparent;
+  color: var(--ink);
+}

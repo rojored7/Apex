@@ -1,4 +1,4 @@
-// S5-F1 (US-127, US-128, US-129) contra el stack de Compose (ensayo, V5 del Sprint 5): el admin abre
+// S5-F1 (US-127, US-128, US-129) y S5-F2 contra el stack de Compose (ensayo, V5 del Sprint 5): el admin abre
 // /avisos/hoy, "Abrir WhatsApp" hace el POST real (200, aviso `sent`, wa.me con noopener,noreferrer) y
 // "Omitir" guarda el motivo. Necesita B7 y avisos generados (`tools notify --generate-only`); sin
 // avisos de WhatsApp pendientes la prueba se omite con una anotación. Sin E2E_BASE_URL se omite: la
@@ -66,5 +66,41 @@ test.describe("por avisar hoy contra el stack", () => {
     await dialog.getByRole("button", { name: "Omitir aviso" }).click();
     expect((await skip).status()).toBe(200);
     await expect(page.getByText(`Aviso de ${otro} omitido. Quedó en el historial con tu motivo.`)).toBeVisible();
+  });
+});
+
+// S5-F2 (US-120, US-121, US-122, US-130): las pantallas de solo lectura contra el ensayo, sin dejar datos:
+// reglas y plantillas sembradas (S5-B6), vista previa real, historial y la pestaña Canales de Configuración
+// (credentials_present real). Se corre en V5.
+test.describe("reglas, plantillas, historial y canales contra el stack", () => {
+  test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL) con B6 y B7; en preview corre avisos.spec.ts");
+
+  test("el admin ve las reglas sembradas, la vista previa de una plantilla, el historial y los canales", async ({ page }) => {
+    exigirStackLocal(process.env.E2E_BASE_URL);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginComo(page);
+
+    await page.goto("/avisos/reglas");
+    await expect(page.getByRole("heading", { level: 1, name: "Avisos" })).toBeVisible();
+    await expect(page.getByRole("table", { name: "Reglas" }).getByRole("row").nth(1)).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+
+    await page.getByRole("tab", { name: "Plantillas" }).click();
+    await page.getByRole("button", { name: /^Editar plantilla / }).first().click();
+    const preview = page.waitForResponse((r) => r.url().includes("/notification-templates/preview") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Ver vista previa" }).click();
+    expect((await preview).status()).toBe(200);
+    await expect(page.getByRole("region", { name: "Vista previa" })).toBeVisible();
+    await page.getByRole("button", { name: "Cerrar" }).click();
+
+    await page.goto("/avisos/historial");
+    await expect(page.getByRole("heading", { level: 1, name: "Historial de envíos" })).toBeVisible();
+    await expect(page.getByRole("table", { name: "Historial de envíos" }).or(page.getByText("Todavía no hay envíos."))).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+
+    await page.goto("/sistema/configuracion?tab=canales");
+    await expect(page.getByRole("group", { name: "Correo" }).getByText(/Credenciales listas|Faltan credenciales en \.env/)).toBeVisible();
+    await expect(page.locator("input[type=password]")).toHaveCount(0);
+    expect(await axeViolations(page)).toEqual([]);
   });
 });

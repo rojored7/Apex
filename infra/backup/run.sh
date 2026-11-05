@@ -4,7 +4,8 @@
 # Un respaldo completo (S4B-W0-1; S4B-D15, D57, D59, D68, D73, D97):
 #   - pg_dump en formato custom, en tubería hacia age (sin volcado en claro en disco);
 #   - tar de /data/uploads, en tubería hacia age;
-#   - dos archivos cifrados del mismo juego y un manifiesto firmado con minisign;
+#   - dos archivos cifrados del mismo juego (y, con token de OpenBao montado, la instantánea raft
+#     `<name>-openbao.snap.age`, S5-B13) y un manifiesto firmado con minisign;
 #   - verificación de descifrado si hay identidad de verificación montada (S4B-D59);
 #   - subida con `rclone copyto` si hay destino remoto (credencial sin borrado);
 #   - retención solo tras un éxito verificado y solo sobre juegos apex-*.
@@ -34,6 +35,10 @@ DATA_ROOT=/data
 OUT="$DATA_ROOT/backups"
 SIGN_KEY=/run/apex/backup/sign.key
 VERIFY_KEY=/run/apex/backup/verify.key
+# S5-B13 (S5-D8, L-2): token de la politica apex-backup-snapshot (volumen openbao-token-backup, :ro).
+SNAP_TOKEN=/run/apex/openbao-backup/token
+SNAP_URL=http://openbao:8200/v1/sys/storage/raft/snapshot
+SEAL_URL=http://openbao:8200/v1/sys/seal-status
 
 # --- validaciones de arranque ----------------------------------------------------------------
 RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"
@@ -118,11 +123,68 @@ cifrar() { # <tipo db|uploads> <archivo final>
 cifrar db "$DB_FILE"
 cifrar uploads "$UP_FILE"
 
+SNAP_FILE="$NAME-openbao.snap.age"
+SNAPSHOT=skipped
+SNAP_ENTRY=""
+SNAP_PLAIN=""
+snapshot_a_age() { # <fifo> <destino parcial>; el token va por el archivo de curl -K, nunca por el argv
+  curl -K "$TMPD/snapshot.curl" | tee "$1" | age "${RECIPIENTS[@]}" -o "$2"
+}
+
+# Instantánea raft de OpenBao (S5-B13, S5-D8): cifrada en tubería, la instantánea en claro nunca toca
+# el disco. Un fallo no borra el respaldo de la base, pero deja el código de salida en 1 (el juego
+# queda sin pareja y `backup_check` lo notaría por la falta de la entrada).
+cifrar_snapshot() {
+  local fifo="$TMPD/snapshot.fifo" hashf="$TMPD/snapshot.plain.sha" spid rc=0
+  mkfifo "$fifo"
+  sha256sum < "$fifo" | cut -d' ' -f1 > "$hashf" &
+  spid=$!
+  snapshot_a_age "$fifo" "$OUT/$SNAP_FILE.partial" || rc=$?
+  wait "$spid" || rc=$?
+  SNAP_PLAIN="$(cat "$hashf" 2> /dev/null || true)"
+  if [ "$rc" -ne 0 ] || [ "$SNAP_PLAIN" = "$EMPTY_SHA" ] || [ -z "$SNAP_PLAIN" ]; then
+    log "ERROR falló la instantánea de OpenBao (código $rc)"
+    rm -f "$OUT/$SNAP_FILE.partial"
+    SNAPSHOT=failed
+    return 0
+  fi
+  mv "$OUT/$SNAP_FILE.partial" "$OUT/$SNAP_FILE"
+  chmod 640 "$OUT/$SNAP_FILE"
+  SNAPSHOT=ok
+}
+
+# openbao_sellado: sondeo abierto (sin token) de seal-status. Un OpenBao reiniciado queda sellado hasta
+# que alguien lo desselle; sin este aviso el sintoma seria un error de curl poco claro cada noche.
+openbao_sellado() {
+  curl -s --max-time 10 --proto '=http' "$SEAL_URL" 2> /dev/null | tr -d ' \n' | grep -q '"sealed":true'
+}
+
+EMPTY_SHA=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+if [ -s "$SNAP_TOKEN" ] && [ -r "$SNAP_TOKEN" ]; then
+  if openbao_sellado; then
+    # S5-D180: con token montado y OpenBao sellado el juego sale con 1 y sin retencion hasta que se desselle.
+    log "ERROR OpenBao sellado: desellar para reanudar snapshots y retención"
+    SNAPSHOT=failed
+  elif snapshot_curl_config "$SNAP_TOKEN" "$SNAP_URL" > "$TMPD/snapshot.curl"; then
+    cifrar_snapshot
+  else
+    rm -f "$TMPD/snapshot.curl"
+    log "ERROR el token de OpenBao no tiene un formato válido"
+    SNAPSHOT=failed
+  fi
+else
+  log "info: instantánea de OpenBao omitida (sin token montado)"
+fi
 sha_de() { sha256sum "$1" | cut -d' ' -f1; }
 tam_de() { stat -c %s "$1"; }
 DB_SHA="$(sha_de "$OUT/$DB_FILE")"; DB_SIZE="$(tam_de "$OUT/$DB_FILE")"; DB_PLAIN="$(cat "$TMPD/db.plain.sha")"
 UP_SHA="$(sha_de "$OUT/$UP_FILE")"; UP_SIZE="$(tam_de "$OUT/$UP_FILE")"; UP_PLAIN="$(cat "$TMPD/uploads.plain.sha")"
 log "db $DB_FILE $DB_SIZE bytes; uploads $UP_FILE $UP_SIZE bytes"
+if [ "$SNAPSHOT" = ok ]; then
+  SNAP_SHA="$(sha_de "$OUT/$SNAP_FILE")"; SNAP_SIZE="$(tam_de "$OUT/$SNAP_FILE")"
+  log "openbao $SNAP_FILE $SNAP_SIZE bytes"
+fi
+SNAP_VERIFIED=false
 
 # --- verificación de descifrado (S4B-D59) -------------------------------------------------------
 VERIFY=skipped
@@ -134,6 +196,10 @@ if [ -f "$VERIFY_KEY" ] && [ -r "$VERIFY_KEY" ] && [ -s "$VERIFY_KEY" ]; then
     obtenido="$(age -d -i "$VERIFY_KEY" "$OUT/$arch" 2> /dev/null | sha256sum | cut -d' ' -f1 || true)"
     [ "$obtenido" = "$esperado" ] || VERIFY=failed
   done
+  if [ "$SNAPSHOT" = ok ]; then
+    obtenido="$(age -d -i "$VERIFY_KEY" "$OUT/$SNAP_FILE" 2> /dev/null | sha256sum | cut -d' ' -f1 || true)"
+    if [ "$obtenido" = "$SNAP_PLAIN" ]; then SNAP_VERIFIED=true; else VERIFY=failed; fi
+  fi
   VERIFIED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   log "verificación de descifrado: $VERIFY"
 fi
@@ -143,7 +209,7 @@ UPLOAD=skipped
 UPLOAD_ERROR=""
 if [ -n "$REMOTE" ]; then
   UPLOAD=ok
-  for arch in "$DB_FILE" "$UP_FILE"; do
+  for arch in "$DB_FILE" "$UP_FILE" $([ "$SNAPSHOT" != ok ] || printf "%s" "$SNAP_FILE"); do
     if ! errtxt="$(rclone_apex "$OUT/$arch" "$REMOTE/$arch" 2>&1)"; then
       UPLOAD=failed
       UPLOAD_ERROR="$(printf '%s' "$errtxt" | sanitize_error)"
@@ -163,9 +229,12 @@ else
   TMP_MANIFEST="$OUT/$NAME.json.tmp"
   TMP_SIG="$OUT/$NAME.json.minisig.tmp"
 fi
+# La entrada openbao_snapshot solo existe si la instantánea se hizo (S5-B13).
+SNAP_ENTRY=""
+[ "$SNAPSHOT" != ok ] || SNAP_ENTRY="$SNAP_FILE|$SNAP_SIZE|$SNAP_SHA|$SNAP_VERIFIED"
 printf 'db|%s|%s|%s|%s\nuploads|%s|%s|%s|%s\n' \
   "$DB_FILE" "$DB_SIZE" "$DB_SHA" "$DB_PLAIN" "$UP_FILE" "$UP_SIZE" "$UP_SHA" "$UP_PLAIN" \
-  | manifest_json "$NAME" "$CREATED_AT" "$PGDATABASE" "$VERIFY" "$VERIFIED_AT" "$UPLOAD" "$UPLOAD_ERROR" > "$TMP_MANIFEST"
+  | manifest_json "$NAME" "$CREATED_AT" "$PGDATABASE" "$VERIFY" "$VERIFIED_AT" "$UPLOAD" "$UPLOAD_ERROR" "$SNAP_ENTRY" > "$TMP_MANIFEST"
 minisign -S -s "$SIGN_KEY" -m "$TMP_MANIFEST" -x "$TMP_SIG" > /dev/null
 chmod 640 "$TMP_MANIFEST" "$TMP_SIG"
 mv "$TMP_MANIFEST" "$MANIFEST"
@@ -183,6 +252,7 @@ fi
 
 # --- retención: solo tras éxito verificado y solo juegos apex-* -------------------------------------
 if [ "$PREFIX" = apex ] && [ "$VERIFY" != failed ] && [ "$UPLOAD" != failed ] \
+  && [ "$SNAPSHOT" != failed ] \
   && [ -f "$OUT/$DB_FILE" ] && [ -f "$OUT/$UP_FILE" ] \
   && [ "$(sha_de "$OUT/$DB_FILE")" = "$DB_SHA" ] && [ "$(sha_de "$OUT/$UP_FILE")" = "$UP_SHA" ]; then
   lista=""
@@ -199,13 +269,13 @@ if [ "$PREFIX" = apex ] && [ "$VERIFY" != failed ] && [ "$UPLOAD" != failed ] \
   done
   while read -r viejo; do
     [ -n "$viejo" ] || continue
-    rm -f "$OUT/$viejo-db.dump.age" "$OUT/$viejo-uploads.tar.age"
+    rm -f "$OUT/$viejo-db.dump.age" "$OUT/$viejo-uploads.tar.age" "$OUT/$viejo-openbao.snap.age"
     log "retención: borrado el juego $viejo"
   done < <(printf '%s' "$lista" | retention_to_delete "$KEEP_DAYS" "$EPOCH" "$NAME")
 fi
 
-if [ "$VERIFY" = failed ] || [ "$UPLOAD" = failed ]; then
-  log "ERROR terminado con fallas (verify=$VERIFY upload=$UPLOAD)"
+if [ "$VERIFY" = failed ] || [ "$UPLOAD" = failed ] || [ "$SNAPSHOT" = failed ]; then
+  log "ERROR terminado con fallas (verify=$VERIFY upload=$UPLOAD snapshot=$SNAPSHOT)"
   exit 1
 fi
 log "listo $NAME"

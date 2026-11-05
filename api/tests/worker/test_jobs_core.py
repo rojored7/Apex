@@ -320,6 +320,8 @@ async def test_detail_keys_es_el_conjunto_cerrado_del_plan() -> None:
                 "edad_horas",
                 "tamano_bytes",
                 "verificado",
+                "firma_verificada",
+                "snapshot",
             }
         )
         == DETAIL_KEYS

@@ -106,10 +106,11 @@ gate_api() {
     worker)       codigo="src/app/worker";      pruebas_dir="tests/worker" ;;
     cli)
       # S4B-D28: la capa de aplicación del CLI. `cli.py` es obligatorio; el resto, si existe.
+      # S5-D72 (B13): `cli_manifest.py` (verificación de la firma del manifiesto) también.
       [ -e "$API/src/app/cli.py" ] || fallo "módulo inexistente: api/src/app/cli.py"
       codigo="src/app/cli.py"
       local extra
-      for extra in src/app/cli_base.py src/app/cli_ops src/app/seed src/app/imports; do
+      for extra in src/app/cli_base.py src/app/cli_ops src/app/seed src/app/imports src/app/cli_manifest.py; do
         [ -e "$API/$extra" ] && codigo="$codigo $extra"
       done
       pruebas_dir="tests/cli" ;;

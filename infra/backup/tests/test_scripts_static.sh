@@ -104,6 +104,28 @@ if [ "$REPO_MODE" -eq 1 ] && [ -f "$SMOKE" ]; then
   assert_contains "prod-smoke.sh monta el ayudante con otro nombre" "$smk3" "/t/ptyrun.py"
   assert_contains "prod-smoke.sh ignora comentarios al buscar cambiar-esto" "$smk3" "grep -v '^[[:space:]]*#'"
 fi
+# S5-B13 (S5-D95): el e2e de la restauración de OpenBao sigue el contrato y no es un stub.
+OB_E2E="$REPO_ROOT/infra/tests/openbao_restore_e2e.sh"
+if [ "$REPO_MODE" -eq 1 ]; then
+  if [ -f "$OB_E2E" ]; then
+    obe="$(cat "$OB_E2E")"
+    assert_lacks "openbao_restore_e2e.sh ya no es un stub (exit 99)" "$(grep -vE '^[[:space:]]*#' "$OB_E2E")" "exit 99"
+    assert_contains "openbao_restore_e2e.sh envuelve una cadena con transit/encrypt/apex-kek" "$obe" "transit/encrypt/apex-kek"
+    assert_contains "openbao_restore_e2e.sh descifra con transit/decrypt/apex-kek" "$obe" "transit/decrypt/apex-kek"
+    # S5-D172: el ensayo real mostro que la raiz sale del `init` del clúster nuevo y que restore.sh usa snapshot-force.
+    assert_contains "openbao_restore_e2e.sh inicializa un clúster nuevo para la restauración" "$obe" "operator init"
+    assert_contains "openbao_restore_e2e.sh restaura la instantánea raft con restore.sh --with-openbao" "$obe" "--with-openbao"
+    assert_contains "openbao_restore_e2e.sh desella con las llaves originales" "$obe" "llaves originales"
+    assert_contains "openbao_restore_e2e.sh solo toca recursos desechables apex-obe2e-" "$obe" "apex-obe2e-"
+    # S5-D182: el entrypoint de postgres levanta un servidor temporal SOLO por socket durante el initdb;
+    # pg_isready/psql por socket ya responden ahí y el CREATE DATABASE cae en "the database system is
+    # shutting down". Por TCP (127.0.0.1) solo responde el servidor definitivo.
+    assert_contains "openbao_restore_e2e.sh espera a postgres por TCP, no por el socket del initdb" "$obe" "pg_isready -h 127.0.0.1"
+    assert_lacks "openbao_restore_e2e.sh no usa psql por socket" "$(grep -vE '^[[:space:]]*#' "$OB_E2E")" "psql -U postgres -c"
+  else
+    _fail "existe infra/tests/openbao_restore_e2e.sh"
+  fi
+fi
 RESTORE_SH="$REPO_ROOT/infra/tests/restore_e2e.sh"
 if [ "$REPO_MODE" -eq 1 ] && [ -f "$RESTORE_SH" ]; then
   rst="$(cat "$RESTORE_SH")"

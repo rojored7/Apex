@@ -265,6 +265,13 @@ else
   falla "restore_e2e.sh"
 fi
 
+# --- instantánea de OpenBao en pareja con la base (S5-B13, S5-D95): recursos desechables apex-obe2e-* ----------
+if bash infra/tests/openbao_restore_e2e.sh; then
+  ok "openbao_restore_e2e.sh (instantánea raft cifrada, restauración en pareja y descifrado con las llaves originales)"
+else
+  falla "openbao_restore_e2e.sh"
+fi
+
 # --- OpenBao (S5-D22, W0-2): init 5/3, bootstrap, tokens, reinicio sellado y desello ----------------------------
 if [ "$PROVIDER" = "openbao" ]; then
   if DC="$DC_STR" OPENBAO_SMOKE_EVIDENCE="$SMOKE_DIR/openbao" bash scripts/ci/openbao-smoke.sh; then ok "openbao-smoke.sh"; else falla "openbao-smoke.sh"; fi

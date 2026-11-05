@@ -5,11 +5,16 @@ S4B-B2 (S4B-D23 a D25, S4B-D59, S4B-D69 a D71, S4B-D80, S4B-D87, S4B-D97). Lee `
 `parse_manifest` valida esquema, nombres y formas; `evaluate` (pura) decide uno de los seis
 estados de `BackupStatus` con la prioridad `missing > corrupt > undecryptable > stale >
 ok_unverified > ok`. El job no ejecuta `age`, no abre identidades y no verifica la firma del
-manifiesto (la verifica `restore.sh`, S4B-D80); comprueba existencia, tamaño y `sha256` en reposo
-de cada archivo (`digest_file` en `asyncio.to_thread`), la edad y el campo `verify`.
+manifiesto sin llave: solo la verifica si hay `Settings.BACKUP_SIGN_PUBKEY` (S5-D72, S5-D170);
+entonces la verifica por `bus.verified_manifest_bytes` y una firma ausente o mala es `corrupt`; sin
+la llave no verifica y lo deja dicho (`firma_verificada = 0` y un `warning` por corrida). Comprueba
+existencia, tamaño y `sha256` en reposo de cada archivo (`digest_file` en `asyncio.to_thread`), la
+edad y el campo `verify`. La entrada opcional `openbao_snapshot` (S5-D8) se comprueba como un
+archivo más del juego.
 
 `run(ctx)` devuelve `JobResult(ok=status in {"ok", "ok_unverified"}, status=status,
-details={archivos, edad_horas, tamano_bytes, verificado})`, todo entero (`DETAIL_KEYS`).
+details={archivos, edad_horas, tamano_bytes, verificado, firma_verificada[, snapshot]})`, todo
+entero (`DETAIL_KEYS`); `snapshot` (0/1) solo aparece si el manifiesto trae la entrada.
 El log `backup_check finished` lleva el nombre del juego (fecha y hora UTC, sin datos
 personales) y nunca la ruta, `upload_error` ni el `sha256` completo (S4B-D70). Si las últimas
 7 corridas (incluida la actual) son `ok_unverified`, avisa `backup_unhealthy` (S4B-D87). El aviso
@@ -32,6 +37,7 @@ from typing import Any, Final, Literal
 
 from app.core.alerts import alert
 from app.core.config import get_settings
+from app.core.crypto.bus import verified_manifest_bytes
 from app.core.crypto.file_digest import digest_file
 from app.core.jobs import last_results
 from app.worker.runner import JobContext, JobResult
@@ -64,6 +70,7 @@ __all__ = [
     "BackupStatus",
     "Manifest",
     "ManifestFile",
+    "OpenbaoSnapshot",
     "evaluate",
     "get_settings",
     "parse_manifest",
@@ -78,7 +85,8 @@ _APEX_SET_RE: Final = re.compile(r"apex-[0-9]{8}-[0-9]{6}-db\.dump\.age")
 _REQUIRED_KEYS: Final = frozenset(
     {"format_version", "name", "created_at", "database", "files", "verify", "upload"}
 )
-_ALLOWED_KEYS: Final = _REQUIRED_KEYS | {"verified_at", "upload_error"}
+_ALLOWED_KEYS: Final = _REQUIRED_KEYS | {"verified_at", "upload_error", "openbao_snapshot"}
+_SNAPSHOT_KEYS: Final = frozenset({"name", "size_bytes", "sha256", "verified"})
 _FILE_KEYS: Final = frozenset({"kind", "name", "size_bytes", "sha256", "plain_sha256"})
 
 
@@ -94,6 +102,16 @@ class ManifestFile:
 
 
 @dataclass(frozen=True)
+class OpenbaoSnapshot:
+    """`openbao_snapshot` (S5-D8): el `.snap.age`, su tamaño, `sha256` y si se verificó."""
+
+    name: str
+    size_bytes: int
+    sha256: str
+    verified: bool
+
+
+@dataclass(frozen=True)
 class Manifest:
     """Manifiesto validado de forma (`format_version` 1): lo que `parse_manifest` deja pasar."""
 
@@ -105,6 +123,7 @@ class Manifest:
     verified_at: datetime | None
     upload: str
     upload_error: str | None
+    openbao_snapshot: OpenbaoSnapshot | None = None
 
 
 def _instante(valor: object) -> datetime | None:
@@ -129,6 +148,19 @@ def _archivo(crudo: object) -> ManifestFile | None:
     if not all(isinstance(h, str) and _SHA_RE.fullmatch(h) for h in huellas):
         return None
     return ManifestFile(kind, name, size, huellas[0], huellas[1])
+
+
+def _snapshot(crudo: object) -> OpenbaoSnapshot | None:
+    if not isinstance(crudo, dict) or set(crudo) != _SNAPSHOT_KEYS:
+        return None
+    name, size, sha, verificado = (crudo[k] for k in ("name", "size_bytes", "sha256", "verified"))
+    if not isinstance(name, str) or ".." in name or not _FILE_RE.fullmatch(name):
+        return None
+    if type(size) is not int or size < 0 or type(verificado) is not bool:
+        return None
+    if not isinstance(sha, str) or not _SHA_RE.fullmatch(sha):
+        return None
+    return OpenbaoSnapshot(name, size, sha, verificado)
 
 
 def _archivos(crudo: object) -> tuple[ManifestFile, ...] | None:
@@ -174,6 +206,9 @@ def parse_manifest(raw: bytes) -> Manifest | None:
     creado = _instante(datos["created_at"])
     if archivos is None or creado is None or not _cabecera_valida(datos):
         return None
+    snapshot = _snapshot(datos["openbao_snapshot"]) if "openbao_snapshot" in datos else None
+    if "openbao_snapshot" in datos and snapshot is None:
+        return None
     return Manifest(
         name=datos["name"],
         created_at=creado,
@@ -183,6 +218,7 @@ def parse_manifest(raw: bytes) -> Manifest | None:
         verified_at=_instante(datos.get("verified_at")),
         upload=datos["upload"],
         upload_error=datos.get("upload_error"),
+        openbao_snapshot=snapshot,
     )
 
 
@@ -201,12 +237,14 @@ def evaluate(
     `ok_unverified`; si no, `ok`."""
     if files_ok is False:
         return "missing"
+    snap = manifest.openbao_snapshot
     creado = manifest.created_at.astimezone(UTC)
     incoherente = (
         sizes_ok is False
         or creado - now_utc > FUTURE_TOLERANCE
         or not manifest.name.endswith(creado.strftime("-%Y%m%d-%H%M%S"))
         or any(f.size_bytes > MAX_BACKUP_BYTES for f in manifest.files)
+        or (snap is not None and snap.size_bytes > MAX_BACKUP_BYTES)
     )
     if incoherente:
         return "corrupt"
@@ -259,9 +297,18 @@ def _comprobar_archivo(carpeta: Path, archivo: ManifestFile) -> tuple[bool, bool
         return True, False
 
 
+def _a_comprobar(manifest: Manifest) -> tuple[ManifestFile, ...]:
+    """Los archivos del juego y, si hay, la instantánea de OpenBao como un archivo más."""
+    snap = manifest.openbao_snapshot
+    if snap is None:
+        return manifest.files
+    extra = ManifestFile("snapshot", snap.name, snap.size_bytes, snap.sha256, snap.sha256)
+    return (*manifest.files, extra)
+
+
 def _juego_coherente(manifest: Manifest) -> bool:
     """Como mucho `MAX_FILES` archivos, nombres únicos y todos con el prefijo del juego."""
-    nombres = [f.name for f in manifest.files]
+    nombres = [f.name for f in _a_comprobar(manifest)]
     return (
         len(nombres) <= MAX_FILES
         and len(set(nombres)) == len(nombres)
@@ -272,7 +319,8 @@ def _juego_coherente(manifest: Manifest) -> bool:
 async def _comprobar_archivos(carpeta: Path, manifest: Manifest) -> tuple[bool, bool]:
     """`(files_ok, sizes_ok)` de todos los archivos del juego, uno por hilo."""
     resultados = [
-        await asyncio.to_thread(_comprobar_archivo, carpeta, archivo) for archivo in manifest.files
+        await asyncio.to_thread(_comprobar_archivo, carpeta, archivo)
+        for archivo in _a_comprobar(manifest)
     ]
     return all(e for e, _ in resultados), all(c for e, c in resultados if e)
 
@@ -301,16 +349,42 @@ def _informar(status: BackupStatus, nombre: str | None, detalles: dict[str, Any]
     )
 
 
+async def _manifiesto(
+    carpeta: Path, pubkey: str | None
+) -> tuple[Manifest | None, bool | None, bool]:
+    """`(manifiesto, firma, hay_manifiesto)`. Con llave, el manifiesto sale de los bytes que el bus
+    leyó UNA vez y verificó (S5-D178: sin segunda lectura); sin ella no se verifica y queda dicho en
+    el log. `firma` es `None` sin llave, `True` verificada y `False` ausente o mala: entonces solo
+    se distingue `missing` (ni siquiera hay un manifiesto legible) de `corrupt`, sin usar su
+    contenido para nada más."""
+    if pubkey is None:
+        logger.warning(
+            "backup_check sin BACKUP_SIGN_PUBKEY: la firma del manifiesto no se verifica",
+            extra={"job": NAME},
+        )
+        crudo = await asyncio.to_thread(_leer_manifiesto, carpeta)
+        return (None if crudo is None else parse_manifest(crudo)), None, True
+    firmado = await asyncio.to_thread(verified_manifest_bytes, carpeta / "latest.json", pubkey)
+    if firmado is not None:
+        return parse_manifest(firmado), True, True
+    crudo = await asyncio.to_thread(_leer_manifiesto, carpeta)  # solo para clasificar
+    return (None if crudo is None else parse_manifest(crudo)), False, crudo is not None
+
+
 async def run(ctx: JobContext) -> JobResult:
     """Lee `latest.json`, comprueba los archivos y devuelve el estado (ver docstring del módulo)."""
-    carpeta = Path(get_settings().BACKUP_DIR)
+    ajustes = get_settings()
+    carpeta = Path(ajustes.BACKUP_DIR)
     juegos = await asyncio.to_thread(_contar_juegos, carpeta)
-    crudo = await asyncio.to_thread(_leer_manifiesto, carpeta)
-    manifest = None if crudo is None else parse_manifest(crudo)
+    manifest, firma, _ = await _manifiesto(carpeta, ajustes.BACKUP_SIGN_PUBKEY)
     if manifest is None or not manifest.name.startswith("apex-"):
         detalles: dict[str, Any] = {"archivos": juegos}
         _informar("missing", None, detalles)
         return _resultado("missing", detalles)
+    if firma is False:  # un manifiesto sin firma válida no se interpreta (S5-D72)
+        detalles = {"archivos": juegos, "firma_verificada": 0}
+        _informar("corrupt", manifest.name, detalles)
+        return _resultado("corrupt", detalles)
     if _juego_coherente(manifest):
         files_ok, sizes_ok = await _comprobar_archivos(carpeta, manifest)
     else:  # no se toca el disco con nombres que el manifiesto no puede justificar
@@ -322,7 +396,10 @@ async def run(ctx: JobContext) -> JobResult:
         "edad_horas": max(0, math.floor((ahora - manifest.created_at).total_seconds() / 3600)),
         "tamano_bytes": sum(f.size_bytes for f in manifest.files),
         "verificado": 1 if manifest.verify == "ok" else 0,
+        "firma_verificada": 1 if firma else 0,
     }
+    if manifest.openbao_snapshot is not None:
+        detalles["snapshot"] = 1 if manifest.openbao_snapshot.verified else 0
     _informar(status, manifest.name, detalles)
     if status == "ok_unverified" and await _racha_sin_verificar(ctx):
         alert("backup_unhealthy", job=NAME, result=status)

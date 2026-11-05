@@ -16,7 +16,7 @@
 #   tokens y revoca la raíz.
 # --reissue-tokens: reemite los tokens (rotación cada 90 días o tras un incidente). Pide tres
 #   llaves de desello para generar una raíz temporal, que se revoca al terminar; los tokens
-#   anteriores de apex-api, apex-worker y apex-tools se revocan después de emitir los nuevos.
+#   anteriores de apex-api, apex-worker, apex-tools y apex-backup se revocan después de emitir los nuevos.
 #
 # Las llaves de desello se leen con `read -rs` y viajan por stdin hasta la API (sys/unseal con
 # wget --post-file=/dev/stdin): nunca por argumento, ni en una variable exportada, ni en un
@@ -229,17 +229,17 @@ VIEJOS=""
 if [ "$MODE" = reissue ]; then
   for ACC in $(bao list -format=json auth/token/accessors | tr -d '[]", ' | tr -s '\n' ' '); do
     NOMBRE="$(bao token lookup -accessor -field=display_name "$ACC" 2> /dev/null || true)"
-    case "$NOMBRE" in token-apex-api|token-apex-worker|token-apex-tools) VIEJOS="$VIEJOS $ACC" ;; esac
+    case "$NOMBRE" in token-apex-api|token-apex-worker|token-apex-tools|token-apex-backup) VIEJOS="$VIEJOS $ACC" ;; esac
   done
 fi
 
-emitir_token() { # <api|worker|tools>
-  DIR="$TOKENS_DIR/$1"
+emitir_token() { # <api|worker|tools|backup> [política] (backup usa apex-backup-snapshot, S5-B13)
+  DIR="$TOKENS_DIR/$1"; POLITICA="${2:-apex-$1}"
   if [ ! -d "$DIR" ]; then
     [ "$NONINTERACTIVE" = 1 ] && { info "sin volumen de tokens en $DIR (desarrollo): se omite apex-$1"; return 0; }
     die "falta el volumen de tokens $DIR"
   fi
-  bao token create -policy="apex-$1" -period=768h -orphan -renewable=true -no-default-policy -display-name="apex-$1" -field=token > "$DIR/token.new"
+  bao token create -policy="$POLITICA" -period=768h -orphan -renewable=true -no-default-policy -display-name="apex-$1" -field=token > "$DIR/token.new"
   chmod 600 "$DIR/token.new"
   chown 10001:10001 "$DIR/token.new"
   mv -f "$DIR/token.new" "$DIR/token"
@@ -248,7 +248,8 @@ emitir_token() { # <api|worker|tools>
 emitir_token api
 emitir_token worker
 emitir_token tools
-# El token de apex-backup-snapshot (política ya escrita) se emite en B13, cuando exista su volumen.
+# S5-B13: el token del respaldo solo lee la instantánea raft (apex-backup-snapshot); también con --reissue-tokens.
+emitir_token backup apex-backup-snapshot
 
 for ACC in $VIEJOS; do
   bao token revoke -accessor "$ACC" > /dev/null || info "aviso: no se pudo revocar el accesor $ACC"

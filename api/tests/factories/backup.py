@@ -13,6 +13,14 @@ con el `sha256` y el tamaño reales de esos archivos. `tamper` rompe una sola co
 - `absolute`: el nombre del archivo `db` es una ruta absoluta;
 - `dotdot`: el nombre del archivo `db` es `../...`;
 - `missing_file`: borra el archivo `uploads` después de escribir el manifiesto.
+- `signature` (S5-B13, exige `sign`): deja en `latest.json.minisig` una firma con un bit cambiado;
+- `snapshot_sha256` / `snapshot_size` / `snapshot_missing` (exigen `snapshot=True`): el
+  `sha256` o el tamaño de `openbao_snapshot` no son los del archivo, o se borra el archivo.
+
+`sign` (un `SigningKey` de `tests/factories/minisign_signer.py`) escribe `latest.json.minisig` con
+la firma del manifiesto final (tras el `tamper`). `snapshot=True` agrega el archivo
+`<name>-openbao.snap.age` y la entrada opcional `openbao_snapshot {name, size_bytes, sha256,
+verified}` (`snapshot_verified` fija `verified`); sin él el manifiesto no la lleva.
 
 `extra_sets` agrega juegos `apex-*` más viejos (sin tocar `latest.json`) y `pre_sets` juegos
 `pre-deploy-*`, para los conteos de `archivos`. Los `sha256` se calculan con `sha256_hex` del bus
@@ -29,8 +37,21 @@ from pathlib import Path
 from typing import Any, Final
 
 from app.core.crypto.digest import sha256_hex
+from tests.factories.minisign_signer import SigningKey, write_signature
 
-TAMPERS: Final = ("sha256", "size", "name", "future", "absolute", "dotdot", "missing_file")
+TAMPERS: Final = (
+    "sha256",
+    "size",
+    "name",
+    "future",
+    "absolute",
+    "dotdot",
+    "missing_file",
+    "signature",
+    "snapshot_sha256",
+    "snapshot_size",
+    "snapshot_missing",
+)
 BASE_BYTES: Final = 96
 
 
@@ -120,6 +141,18 @@ def manifest_bytes(datos: dict[str, Any]) -> bytes:
     return json.dumps(datos, indent=2, sort_keys=True).encode("utf-8")
 
 
+def _entrada_snapshot(carpeta: Path, nombre: str, verificado: bool) -> dict[str, Any]:
+    """Escribe `<nombre>-openbao.snap.age` y devuelve la entrada `openbao_snapshot`."""
+    archivo = f"{nombre}-openbao.snap.age"
+    entrada = _escribir_archivo(carpeta, archivo, f"{nombre}-snap", BASE_BYTES + 7)
+    return {
+        "name": entrada["name"],
+        "size_bytes": entrada["size_bytes"],
+        "sha256": entrada["sha256"],
+        "verified": verificado,
+    }
+
+
 def _aplicar_tamper(datos: dict[str, Any], tamper: str) -> None:
     db = datos["files"][0]
     if tamper == "sha256":
@@ -132,6 +165,11 @@ def _aplicar_tamper(datos: dict[str, Any], tamper: str) -> None:
         db["name"] = "/etc/passwd"
     elif tamper == "dotdot":
         db["name"] = "../fuera-db.dump.age"
+    elif tamper == "snapshot_sha256":
+        snap = datos["openbao_snapshot"]
+        snap["sha256"] = ("0" if snap["sha256"][0] != "0" else "1") + snap["sha256"][1:]
+    elif tamper == "snapshot_size":
+        datos["openbao_snapshot"]["size_bytes"] += 1
 
 
 def make_backup_dir(
@@ -146,10 +184,17 @@ def make_backup_dir(
     pre_sets: int = 0,
     upload: str = "ok",
     upload_error: str | None = None,
+    sign: SigningKey | None = None,
+    snapshot: bool = False,
+    snapshot_verified: bool = True,
 ) -> BackupSet:
     """Escribe el juego, `latest.json` y los juegos extra; `created_at` por defecto `now - 5 h`."""
     if tamper is not None and tamper not in TAMPERS:
         raise ValueError(f"tamper desconocido: {tamper}")
+    if tamper == "signature" and sign is None:
+        raise ValueError("tamper=signature exige sign")
+    if (tamper or "").startswith("snapshot_") and not snapshot:
+        raise ValueError(f"tamper={tamper} exige snapshot=True")
     carpeta.mkdir(parents=True, exist_ok=True)
     creado = created_at or now - timedelta(hours=5)
     if tamper == "future":
@@ -159,9 +204,15 @@ def make_backup_dir(
     datos = manifest_dict(
         nombre, creado, db, up, verify=verify, upload=upload, upload_error=upload_error
     )
+    if snapshot:
+        datos["openbao_snapshot"] = _entrada_snapshot(carpeta, nombre, snapshot_verified)
     if tamper is not None:
         _aplicar_tamper(datos, tamper)
     (carpeta / "latest.json").write_bytes(manifest_bytes(datos))
+    if sign is not None:
+        write_signature(sign, carpeta / "latest.json", corrupt=tamper == "signature")
+    if tamper == "snapshot_missing":
+        (carpeta / datos["openbao_snapshot"]["name"]).unlink()
     if tamper == "missing_file":
         (carpeta / up["name"]).unlink()
     for i in range(extra_sets):

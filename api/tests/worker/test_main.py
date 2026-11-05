@@ -691,6 +691,7 @@ async def test_run_once_backup_check_real_con_juego_verificado_da_0_y_status_lo_
         "edad_horas": 5,
         "tamano_bytes": juego.total_bytes,
         "archivos": 1,
+        "firma_verificada": 0,
     }
     assert juego.name not in json.dumps(datos)
 

@@ -2,6 +2,7 @@
 # restore.sh <manifiesto.json> -i <identidad age> -P <llave pública minisign> --confirm-database <nombre>
 #            [--i-know-this-overwrites]
 #            [--i-know-unsigned --sha256-db <hex> --sha256-uploads <hex>]
+#            [--with-openbao --openbao-token-file <archivo>]
 #
 # Restaura un juego de respaldo (S4B-B3a, US-116; S4B-D42, D57, D97, D130 a D133). Orden fijo:
 #   argumentos y confirmaciones -> firma (minisign) -> copia privada de los dos .age y sha256 de la
@@ -17,6 +18,15 @@
 # APEX_RESTORE_DATA_ROOT (por defecto /data) recibe uploads/; APEX_RESTORE_TMP (por defecto /tmp,
 # un tmpfs en el contenedor) es el directorio de trabajo. Imprime el ancla de auditoría
 # (through_seq y through_hash) de la base restaurada.
+#
+# --with-openbao (S5-B13, S5-D8): restaura ADEMAS la instantanea raft de OpenBao del mismo juego
+# (`openbao_snapshot` del manifiesto) como ultimo paso, por `curl -K` (el token entra por un archivo
+# de configuracion 600 en el directorio de trabajo, nunca por el argv). Exige un token de un
+# `generate-root` efimero en --openbao-token-file (la politica del respaldo solo lee) y NO opera por
+# defecto. La instantanea trae el estado con el que se tomo: OpenBao queda sellado y hay que
+# desellarlo con las llaves originales (las cinco de ese cluster); sin ellas la KEK de Transit es
+# irrecuperable. La base y la instantanea son una pareja: restaurar solo una deja llaves y datos
+# que no se corresponden.
 set -euo pipefail
 umask 077
 
@@ -43,6 +53,10 @@ OVERWRITE=0
 UNSIGNED=0
 SHA_DB_ARG=""
 SHA_UP_ARG=""
+WITH_OPENBAO=0
+OB_TOKEN_FILE=""
+# snapshot-force: el clúster nuevo tiene otras llaves de desello y el endpoint sin -force rechaza la instantánea (S5-D172).
+OB_URL="${APEX_RESTORE_OPENBAO_URL:-http://openbao:8200/v1/sys/storage/raft/snapshot-force}"
 if [ "$#" -gt 0 ]; then MANIFEST="$1"; shift; fi
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -51,6 +65,8 @@ while [ "$#" -gt 0 ]; do
     --confirm-database) CONFIRM="${2:-}"; shift 2 || rechazo "--confirm-database necesita un valor" ;;
     --sha256-db) SHA_DB_ARG="${2:-}"; shift 2 || rechazo "--sha256-db necesita un valor" ;;
     --sha256-uploads) SHA_UP_ARG="${2:-}"; shift 2 || rechazo "--sha256-uploads necesita un valor" ;;
+    --with-openbao) WITH_OPENBAO=1; shift ;;
+    --openbao-token-file) OB_TOKEN_FILE="${2:-}"; shift 2 || rechazo "--openbao-token-file necesita un valor" ;;
     --i-know-this-overwrites) OVERWRITE=1; shift ;;
     --i-know-unsigned) UNSIGNED=1; shift ;;
     *) rechazo "argumento desconocido" ;;
@@ -69,10 +85,41 @@ else
   [ -n "$PUBKEY" ] && [ -r "$PUBKEY" ] || rechazo "falta la llave pública de firma (-P); sin ella solo --i-know-unsigned"
 fi
 
+if [ "$WITH_OPENBAO" -eq 1 ]; then
+  # S5-D179: la instantanea se confia por el sha256 del manifiesto; sin firma ese sha256 lo pone el operador.
+  [ "$UNSIGNED" -eq 0 ] || rechazo "--with-openbao no es compatible con --i-know-unsigned: la instantanea de OpenBao exige un manifiesto firmado"
+  [ -n "$OB_TOKEN_FILE" ] || rechazo "--with-openbao exige --openbao-token-file con la raiz efimera del init del cluster nuevo"
+  # S5-D181: archivo regular, sin enlaces y, en Linux, modo 600 (es una raiz de OpenBao).
+  { [ -f "$OB_TOKEN_FILE" ] && [ ! -L "$OB_TOKEN_FILE" ] && [ -r "$OB_TOKEN_FILE" ]; } \
+    || rechazo "--openbao-token-file debe ser un archivo regular, sin enlaces simbolicos, y legible"
+  if [ "$(uname -s)" = "Linux" ] && [ "$(stat -c %a "$OB_TOKEN_FILE")" != "600" ]; then
+    rechazo "--openbao-token-file debe tener modo 600 (es una raiz de OpenBao)"
+  fi
+elif [ -n "$OB_TOKEN_FILE" ]; then
+  rechazo "--openbao-token-file solo se usa con --with-openbao"
+fi
+
 # Directorio de trabajo privado (0700): copias de los .age y extracción de uploads. Se borra al salir.
 WORK="$(mktemp -d "$TMP_BASE/restore.XXXXXX")"
 chmod 700 "$WORK"
-trap 'rm -rf "$WORK"' EXIT
+# S5-D181: la raiz efimera del init del cluster nuevo no debe sobrevivir a una restauracion que
+# falla despues de empezar a tocar cosas. OB_ROOT_LIVE=1 desde justo antes del respaldo previo; el
+# trap la revoca en cualquier salida con error (curl -K, el token nunca va por el argv).
+OB_ROOT_LIVE=0
+revocar_raiz() { # <silencioso 0|1>: intenta revocar; un fallo se ignora con una nota
+  [ "$WITH_OPENBAO" -eq 1 ] && [ -f "$WORK/revoke.curl" ] || return 0
+  if curl -K "$WORK/revoke.curl" > /dev/null 2>&1; then
+    log "raiz efimera del init nuevo revocada"
+  else
+    log "nota: no se pudo revocar la raíz efimera (tras restaurar el almacen cambia y ya no vale; si fallo antes, revoquela o genere otra con generate-root)"
+  fi
+}
+salir() {
+  local rc=$?
+  if [ "$OB_ROOT_LIVE" -eq 1 ] && [ "$rc" -ne 0 ]; then revocar_raiz; fi
+  rm -rf "$WORK"
+}
+trap salir EXIT
 
 # --- firma del manifiesto ---------------------------------------------------------------------
 if [ "$UNSIGNED" -eq 1 ]; then
@@ -106,6 +153,25 @@ cp "$SET_DIR/$DB_NAME" "$DB_FILE" && cp "$SET_DIR/$UP_NAME" "$UP_FILE" || fallo 
 [ "$(sha256sum < "$UP_FILE" | cut -d' ' -f1)" = "$UP_SHA" ] || rechazo "el sha256 del archivo de uploads no coincide"
 log "sha256 de los dos archivos verificado (sobre una copia privada)"
 
+# --- instantanea de OpenBao (solo con --with-openbao): se valida y se copia ANTES de tocar la base ---
+OB_FILE=""
+if [ "$WITH_OPENBAO" -eq 1 ]; then
+  OB_LINE="$(grep -F '"openbao_snapshot"' "$MANIFEST" | head -1 || true)"
+  OB_NAME="$(printf '%s' "$OB_LINE" | sed -nE 's/.*"name": "([^"]*)".*/\1/p')"
+  OB_SHA="$(printf '%s' "$OB_LINE" | sed -nE 's/.*"sha256": "([^"]*)".*/\1/p')"
+  [[ "$OB_NAME" =~ ^[A-Za-z0-9-]+-openbao\.snap\.age$ ]] || rechazo "el manifiesto no trae la instantanea de OpenBao (openbao_snapshot); no hay pareja que restaurar"
+  [[ "$OB_SHA" =~ ^[0-9a-f]{64}$ ]] || rechazo "sha256 de la instantanea de OpenBao invalido en el manifiesto"
+  [ -f "$SET_DIR/$OB_NAME" ] || rechazo "falta la instantanea de OpenBao junto al manifiesto"
+  OB_FILE="$WORK/openbao.snap.age"
+  cp "$SET_DIR/$OB_NAME" "$OB_FILE" || fallo "no se pudo copiar la instantanea de OpenBao"
+  [ "$(sha256sum < "$OB_FILE" | cut -d' ' -f1)" = "$OB_SHA" ] || rechazo "el sha256 de la instantanea de OpenBao no coincide"
+  { snapshot_curl_config "$OB_TOKEN_FILE" "$OB_URL" && printf 'request = "POST"\ndata-binary = "@-"\n'; } \
+    > "$WORK/openbao.curl" || rechazo "el token o la URL de OpenBao no son validos"
+  revoke_curl_config "$OB_TOKEN_FILE" "${OB_URL%%/v1/*}/v1/auth/token/revoke-self" > "$WORK/revoke.curl" \
+    || rechazo "el token o la URL de revocacion de OpenBao no son validos"
+  log "instantanea de OpenBao verificada (sobre una copia privada)"
+fi
+
 # --- inspección del tar antes de tocar nada -------------------------------------------------------
 if ! sin_credencial age -d -i "$IDENTITY" "$UP_FILE" | tar -tvf - | valid_tar_listing; then
   rechazo "el tar de uploads trae entradas no permitidas (enlaces, rutas absolutas, '..', fuera de uploads/, demasiadas o demasiado grandes) o no se pudo leer"
@@ -131,6 +197,7 @@ sin_credencial age -d -i "$IDENTITY" "$UP_FILE" \
 [ -d "$WORK/extraido/uploads" ] || rechazo "el tar no trajo la carpeta uploads/; la base no se tocó"
 
 # --- respaldo previo obligatorio (S4B-D97) -------------------------------------------------------------
+[ "$WITH_OPENBAO" -ne 1 ] || OB_ROOT_LIVE=1
 log "tomando el respaldo previo (pre-restore)"
 "$HERE/run.sh" --prefix pre-restore || fallo "no se pudo tomar el respaldo previo; la base no se tocó"
 
@@ -148,6 +215,16 @@ if [ "$(id -u)" = 0 ] || [ "$(id -u)" = "$API_UID" ]; then
   chown -R "$API_UID:$API_UID" "$DATA_ROOT/uploads" || fallo "no se pudo fijar el dueño de los uploads"
 fi
 log "uploads restaurados (los archivos que ya estaban en $DATA_ROOT/uploads y no vienen en el respaldo no se retiran)"
+
+# --- instantanea de OpenBao: ultimo paso de la pareja --------------------------------------------------
+if [ "$WITH_OPENBAO" -eq 1 ]; then
+  log "restaurando la instantanea de OpenBao"
+  sin_credencial age -d -i "$IDENTITY" "$OB_FILE" | curl -K "$WORK/openbao.curl" \
+    || fallo "la restauracion de la instantanea de OpenBao fallo; la base ya esta restaurada"
+  OB_ROOT_LIVE=0 # restaurada: tras el POST la raiz del init ya no existe en el almacen; se intenta revocar y se ignora el fallo
+  revocar_raiz
+  log "AVISO: reinicie OpenBao (o selle y vuelva a desellar): el estado restaurado manda desde ahi y se desella SOLO con las llaves originales (3 de las 5 del cluster que tomo la instantanea; las del cluster nuevo ya no sirven). Compruebe transit/decrypt"
+fi
 
 # --- ancla de auditoría para comparar con la cadena restaurada ----------------------------------------------------
 ANCLA="$(psql -X -At -F ' ' -c "SELECT through_seq, through_hash FROM audit.verifications ORDER BY created_at DESC LIMIT 1" 2> /dev/null || true)"

@@ -14,7 +14,16 @@ Además necesitas, para comprobar que un respaldo es auténtico, la **llave púb
 
 ## Qué hace el respaldo automático
 
-Cada noche el servicio `backup` deja en el volumen `backups` dos archivos cifrados (la base y los uploads) y un manifiesto firmado (`latest.json` y `latest.json.minisig`). Sin `BACKUP_RCLONE_REMOTE`, ese volumen está en el mismo disco que la base: no es un respaldo fuera de la máquina. Copia los archivos a otro sitio.
+Cada noche el servicio `backup` deja en el volumen `backups` dos archivos cifrados (la base y los uploads), una tercera pieza con `CRYPTO_PROVIDER=openbao` (la instantánea de OpenBao, abajo) y un manifiesto firmado (`latest.json` y `latest.json.minisig`). Sin `BACKUP_RCLONE_REMOTE`, ese volumen está en el mismo disco que la base: no es un respaldo fuera de la máquina. Copia los archivos a otro sitio.
+
+## La base y la instantánea de OpenBao van siempre en pareja (S5-B13)
+
+Con OpenBao, las llaves que abren los datos cifrados ya no están en un archivo sino dentro de OpenBao, y su estado vive en el volumen `openbao-data`. Por eso el respaldo guarda **dos cosas que se corresponden**: la base y la instantánea raft de OpenBao tomada en el mismo momento (`<juego>-openbao.snap.age`, cifrada con la misma llave `age` que los demás archivos; la instantánea en claro nunca toca el disco). El manifiesto la declara en `openbao_snapshot` (nombre, tamaño, `sha256` y `verified`, que es `true` cuando se descifró con la identidad de verificación y dio el mismo contenido).
+
+- **Siempre en pareja:** restaurar una sin la otra deja datos cifrados que ninguna llave abre, o llaves sin datos. Un respaldo sin la entrada `openbao_snapshot` con `verified: true` no sirve para retirar la KEK local (`retire-local-kek`) ni para migrar de proveedor; `backup_check` informa `snapshot` en el detalle de la corrida.
+- **Cómo se toma:** el servicio `backup` entra a la red `custody` y lee el token de la política `apex-backup-snapshot` de su propio volumen `openbao-token-backup` (solo lectura). Ese token solo puede leer `sys/storage/raft/snapshot`; no descifra nada. El token entra a `curl` por un archivo de configuración efímero en `/tmp` (`curl -K`), nunca por argumentos. Si el volumen no tiene token (instalación sin OpenBao), el paso se omite con una línea `info` y el respaldo sigue.
+- **Si la instantánea falla** el juego de la base queda guardado, pero la corrida sale con error, no se aplica retención y el manifiesto no trae `openbao_snapshot`: corrija el acceso a OpenBao y repita.
+- **Firma verificada también en Python:** el worker (`backup_check`) y `retire-key` verifican la firma `minisign` del manifiesto con `BACKUP_SIGN_PUBKEY` (la llave pública, que no es secreta). Sin esa variable el worker no verifica la firma y lo deja dicho (`firma_verificada = 0`, aviso en el log); con ella, una firma ausente o mala es `corrupt`.
 
 ## Destino remoto: un cubo donde APEX no puede borrar
 
@@ -86,7 +95,12 @@ Necesitas: las tres piezas, la llave pública de firma y los archivos del juego 
    ```
    Escribe la frase cuando `age` la pida. `restore-kek` corre aunque la KEK viva no exista y aunque la base no responda (sin base responde `sin bitácora`, imprime una línea JSON `restore_sin_bitacora` con el correo declarado y la hora, y sale 0; solo los errores de conexión cuentan como "base caída": cualquier otro error se muestra y el comando falla). Si la KEK fuera la equivocada, el api no arranca y el log dice `unwrap_failed` (sin material): no se ha dañado nada.
 6. **Comprueba**: abre la ficha de un socio y revela su documento; corre `verify-audit`; mira `/health`.
-7. **Si usas `restore.sh` sobre una base con datos** (para volver atrás un error), añade `--i-know-this-overwrites`. El respaldo previo `pre-restore-*` es tu red de seguridad; no lo borres hasta confirmar que todo está bien.
+7. **Restaurar también OpenBao (`--with-openbao`).** Con OpenBao instalado, la restauración incluye su instantánea; **no la hagas a medias**. Orden:
+   1. Con el volumen `openbao-data` vacío, `$DC up -d openbao` e inicialízalo **de nuevo** (`bao operator init`, 5 llaves, umbral 3): el clúster nuevo tiene su raíz inicial y sus llaves propias, que quedan sin valor. Desellalo con ellas y guarda la raíz en un archivo 600 efímero (por ejemplo en un `tmpfs`).
+   2. Agrega a la orden del paso 2 `--with-openbao --openbao-token-file <archivo con la raíz>` (el contenedor debe estar en la red `custody` y ver `openbao:8200`). `restore.sh` valida la entrada `openbao_snapshot` del manifiesto firmado, copia la instantánea, comprueba su `sha256` **antes** de tocar la base y la restaura en último lugar con `sys/storage/raft/snapshot-force` (el clúster nuevo tiene otras llaves de desello; sin `-force` OpenBao rechaza la instantánea). Es un camino que no corre por defecto.
+   3. **Reinicia OpenBao y desellalo con las llaves ORIGINALES** (3 de las 5 del clúster que tomó la instantánea, `docs/operacion/openbao.md` §10). Hasta el reinicio sigue desellado con la llave en memoria del clúster nuevo; las llaves nuevas ya no sirven y la raíz nueva desaparece con la restauración. **Sin las llaves originales la KEK de Transit es irrecuperable.**
+   4. Comprueba con un descifrado real (`/health.crypto` en `ok` y la ficha de un socio) antes de dar por terminado.
+8. **Si usas `restore.sh` sobre una base con datos** (para volver atrás un error), añade `--i-know-this-overwrites`. El respaldo previo `pre-restore-*` es tu red de seguridad; no lo borres hasta confirmar que todo está bien.
 
 ## Recuperar la KEK sin APEX
 
@@ -105,6 +119,7 @@ Escribe la frase. `kek.bin` debe pesar exactamente 32 bytes. Con `umask 077` que
 - **Perdiste la frase de la KEK pero tienes el servidor vivo:** exporta de nuevo con `export-kek` (frase nueva) y guarda las dos copias; el `kek.age` viejo ya no sirve para nada.
 - **Perdiste el servidor y la frase:** los datos cifrados de los socios no se pueden recuperar (nombre, apellido, pagos y fechas sí, porque están en claro). No hay puerta trasera.
 - **Perdiste la identidad `age` de restauración:** los respaldos existentes no se pueden abrir. Genera una nueva (RUNBOOK §12), cambia `BACKUP_AGE_RECIPIENT` y haz un respaldo nuevo ya.
+- **Perdiste las llaves de desello originales de OpenBao (menos de 3 de 5) y no hay otra copia:** la instantánea de OpenBao no se puede abrir y la KEK de Transit es irrecuperable; los datos cifrados solo se recuperan con el `kek.age` exportado (paso "Recuperar la KEK sin APEX"). Repártelas como indica `docs/operacion/openbao.md` §3.
 - **Perdiste la llave pública de firma:** puedes restaurar con `--i-know-unsigned --sha256-db <hex> --sha256-uploads <hex>` si conoces los `sha256` por otro canal; sin firma, el manifiesto no prueba nada.
 
 ## Lista de comprobación de cada simulacro

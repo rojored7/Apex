@@ -98,7 +98,7 @@ check(prod["api"]["image"] == prod["worker"]["image"] == prod["tools"]["image"],
 check("profiles" not in prod["worker"], "worker sin perfil desde S4A-W0-2")
 check("db_test" not in prod, "db_test no existe en compose.yml")
 # S5-W0-2: se suman el volumen raft de OpenBao y un volumen de token por servicio (S5-D11).
-VOLS_OB = ("openbao-data", "openbao-token-api", "openbao-token-worker", "openbao-token-tools")
+VOLS_OB = ("openbao-data", "openbao-token-api", "openbao-token-worker", "openbao-token-tools", "openbao-token-backup")
 check({"pgdata", "uploads", "keys", *VOLS_OB} <= set(prod_doc.get("volumes", {})), "volumenes pgdata, uploads, keys, openbao-data y openbao-token-{api,worker,tools} en uso")
 check(all(f"\n  {v}:" in texto for v in ("pgdata", "uploads", "keys", "backups", *VOLS_OB)), "volumenes pgdata, uploads, keys, backups, openbao-data y openbao-token-* declarados")
 check("db_test" in dev, "db_test existe en desarrollo")
@@ -237,8 +237,8 @@ check(entorno.get("PGHOST") == "db", f"backup con PGHOST=db ({entorno.get('PGHOS
 check("DATABASE_URL" not in entorno, "backup sin DATABASE_URL")
 mont = {v.get("target"): v for v in montajes(backup)}
 check(
-    set(mont) == {"/data/backups", "/data/uploads", "/run/apex/backup/sign.key"},
-    f"backup monta exactamente backups, uploads y la llave de firma ({sorted(mont)})",
+    set(mont) == {"/data/backups", "/data/uploads", "/run/apex/backup/sign.key", "/run/apex/openbao-backup"},
+    f"backup monta backups, uploads, la llave de firma y el token de OpenBao (S5-B13) ({sorted(mont)})",
 )
 check(not (mont.get("/data/backups") or {}).get("read_only"), "backup escribe en backups")
 check((mont.get("/data/uploads") or {}).get("read_only") is True, "backup monta uploads en solo lectura")
@@ -433,8 +433,9 @@ for svc in sorted(set(prod) - DUENOS):
     check(CENT["owner"] not in env.values(), f"{svc} no recibe la contraseña del propietario por valor")
 for svc in ("api", "worker", "web"):
     env = ent(svc)
-    prohibidas = [k for k in env if k.endswith("_DB_PASSWORD") or k.startswith(("RCLONE_", "BACKUP_AGE_", "BACKUP_SIGN_"))]
-    check(not prohibidas, f"{svc} sin *_DB_PASSWORD, RCLONE_*, BACKUP_AGE_* ni BACKUP_SIGN_* ({prohibidas or 'ninguna'})")
+    # S5-B13 (S5-D170): worker y tools reciben BACKUP_SIGN_PUBKEY (publica); las demas BACKUP_SIGN_* siguen prohibidas.
+    prohibidas = [k for k in env if k.endswith("_DB_PASSWORD") or k.startswith(("RCLONE_", "BACKUP_AGE_", "BACKUP_SIGN_")) and not (k == "BACKUP_SIGN_PUBKEY" and svc == "worker")]
+    check(not prohibidas, f"{svc} sin *_DB_PASSWORD, RCLONE_*, BACKUP_AGE_* ni BACKUP_SIGN_* salvo la publica ({prohibidas or 'ninguna'})")
     propios = {"api": ("api",), "worker": ("worker",), "web": ()}[svc]
     ajenos = [n for n, c in CENT.items() if n not in propios and any(c in v for v in env.values())]
     check(not ajenos, f"{svc} no contiene contraseñas de otros roles por valor")
@@ -552,7 +553,7 @@ check(bool(bs) and "ports" not in bs and bs.get("network_mode") == "service:open
 check(bool(bs) and (bs.get("environment") or {}).get("BAO_ADDR") == "http://127.0.0.1:8210", f"S5 S5-D107: openbao-bootstrap habla con el listener local 127.0.0.1:8210 ({(bs.get('environment') or {}).get('BAO_ADDR')})")
 check(bool(bs) and "env_file" not in bs, "S5: openbao-bootstrap sin env_file")
 fuentes_boot = {v.get("source") for v in montajes(bs) if v.get("type") == "volume"}
-check({"openbao-token-api", "openbao-token-worker", "openbao-token-tools"} <= fuentes_boot, f"S5: openbao-bootstrap escribe los tres volumenes de token ({sorted(fuentes_boot)})")
+check({"openbao-token-api", "openbao-token-worker", "openbao-token-tools", "openbao-token-backup"} <= fuentes_boot, f"S5: openbao-bootstrap escribe los cuatro volumenes de token, backup incluido (S5-B13) ({sorted(fuentes_boot)})")
 check(bool(bs) and all(v.get("read_only") is True for v in montajes(bs) if v.get("type") == "bind"), "S5: los bind mounts de openbao-bootstrap van en solo lectura")
 check(bool(bs) and not [v for v in montajes(bs) if v.get("source") in ("keys", "pgdata", "uploads", "backups")], "S5: openbao-bootstrap no monta keys, pgdata, uploads ni backups")
 
@@ -566,8 +567,24 @@ for quien in ("api", "worker", "tools"):
 # Redes (S5-D10): api, worker y tools en default y custody; web, db y backup fuera de custody.
 for svc in ("api", "worker", "tools"):
     check(redes_de(prod, svc) == {"default", "custody"}, f"S5: {svc} en las redes default y custody ({sorted(redes_de(prod, svc))})")
-for svc in ("web", "db", "backup"):
+for svc in ("web", "db"):
     check("custody" not in redes_de(prod, svc), f"S5: {svc} fuera de la red custody ({sorted(redes_de(prod, svc))})")
+
+# S5-B13 (S5-D8, S5-D11, L-2): backup se une a custody para pedir la instantanea raft; su token
+# (apex-backup-snapshot) vive en un volumen propio, montado :ro SOLO en backup.
+check(redes_de(prod, "backup") == {"default", "custody"}, f"S5-B13: backup en las redes default y custody ({sorted(redes_de(prod, 'backup'))})")
+duenos_bk = {s for s, d in prod.items() for v in montajes(d) if v.get("source") == "openbao-token-backup"}
+check(duenos_bk == {"backup"}, f"S5-B13: openbao-token-backup montado solo en backup ({sorted(duenos_bk) or 'ninguno'})")
+mont_bk = [v for v in montajes(prod.get("backup", {})) if v.get("source") == "openbao-token-backup"]
+check(len(mont_bk) == 1 and mont_bk[0].get("read_only") is True and mont_bk[0].get("target") == "/run/apex/openbao-backup", f"S5-B13: backup monta openbao-token-backup en /run/apex/openbao-backup:ro ({[(v.get('target'), v.get('read_only')) for v in mont_bk]})")
+check(not [s for s in ("api", "worker", "tools", "web", "db") if any("openbao-backup" in str(v.get("target")) for v in montajes(prod.get(s, {})))], "S5-B13: nadie mas monta /run/apex/openbao-backup")
+check(prod["backup"].get("cap_drop") == ["ALL"] and prod["backup"].get("read_only") is True, "S5-B13: backup conserva cap_drop ALL y read_only")
+# H-1: worker y tools reciben la llave publica para verificar la firma del manifiesto (S5-D72, no es secreta).
+for svc in ("worker", "tools"):
+    check("BACKUP_SIGN_PUBKEY" in ent(svc), f"S5-B13: {svc} recibe BACKUP_SIGN_PUBKEY por environment (S5-D72)")
+for svc in ("api", "web", "db"):
+    check("BACKUP_SIGN_PUBKEY" not in ent(svc), f"S5-B13: {svc} no recibe BACKUP_SIGN_PUBKEY")
+check("BACKUP_SIGN_KEY_FILE" not in "".join(ent("worker")) + "".join(ent("tools")), "S5-B13: la llave privada de firma nunca llega a worker ni tools")
 for svc in ("api", "worker"):
     check(depende(prod, svc).get("openbao") == "service_healthy", f"S5: {svc} depende de openbao healthy ({depende(prod, svc)})")
 check(prod["tools"].get("cap_drop") == ["ALL"], f"S5: tools con cap_drop ALL (L-3) ({prod['tools'].get('cap_drop')})")

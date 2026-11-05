@@ -28,6 +28,17 @@
     "verify": {"type": "string", "enum": ["ok", "failed", "skipped"]},
     "verified_at": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
     "upload": {"type": "string", "enum": ["ok", "skipped", "failed"]},
-    "upload_error": {"type": "string", "maxLength": 200}
+    "upload_error": {"type": "string", "maxLength": 200},
+    "openbao_snapshot": {
+      "type": "object",
+      "required": ["name", "size_bytes", "sha256", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "verified": {"type": "boolean"}
+      }
+    }
   }
 }

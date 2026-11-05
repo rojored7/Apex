@@ -37,7 +37,9 @@ INSTALADOR: Final = "install_crypto_type_listeners"
 IMPORTADORES_REALES: Final = frozenset(
     {
         "cli_base.py",
+        "cli_manifest.py",
         "main.py",
+        "worker/jobs/backup_check.py",
         "worker/runtime.py",
         "modules/members/changes.py",
         "modules/members/detail.py",
@@ -46,6 +48,10 @@ IMPORTADORES_REALES: Final = frozenset(
     }
 )
 ARRANQUE: Final = frozenset({"cli_base.py", "main.py", "worker/runtime.py"})
+SOLO_FIRMA: Final = frozenset({"cli_manifest.py", "worker/jobs/backup_check.py"})
+"""S5-B13 (S5-D72): verifican la firma del manifiesto por el bus y nada más; el único nombre
+que pueden importar de `bus` es `verified_manifest_bytes`."""
+PUERTA_DE_FIRMA: Final = "verified_manifest_bytes"
 PREFIJOS_PERMITIDOS: Final = (
     "core/",
     "modules/members/",
@@ -133,6 +139,8 @@ def _paquete_de(relativo: str) -> str:
 def permitido(relativo: str, vistas: dict[str, set[str]]) -> bool:
     if relativo.startswith(PREFIJOS_PERMITIDOS):
         return True
+    if relativo in SOLO_FIRMA:
+        return vistas == {f"{PAQUETE}.bus": {PUERTA_DE_FIRMA}}
     if relativo in ARRANQUE:
         return set(vistas) == {f"{PAQUETE}.types"} and vistas[f"{PAQUETE}.types"] == {INSTALADOR}
     return False
@@ -272,11 +280,69 @@ def test_control_backup_check_importando_el_bus_falla_y_archive_no_es_el_bus() -
     assert importaciones("from app.core.crypto.archive import digest_file\n") == {}
 
 
-def test_backup_check_y_backup_status_no_importan_el_bus() -> None:
-    for relativo in ("worker/jobs/backup_check.py", "core/backup_status.py"):
+def test_backup_status_no_importa_el_bus() -> None:
+    fuente = (APP / "core/backup_status.py").read_text(encoding="utf-8")
+    assert importaciones(fuente) == {}
+
+
+def test_backup_check_y_cli_manifest_importan_del_bus_solo_verified_manifest_bytes() -> None:
+    """S5-B13 (S5-D72): la firma se verifica por el bus, la única puerta; ni `types` ni otro
+    nombre del bus. Cambia el Sprint 4B: `backup_check` ya no queda fuera del todo."""
+    for relativo in sorted(SOLO_FIRMA):
         fuente = (APP / relativo).read_text(encoding="utf-8")
-        assert importaciones(fuente) == {}, relativo
-    assert "worker/jobs/backup_check.py" not in IMPORTADORES_REALES
+        assert importaciones(fuente, _paquete_de(relativo)) == {
+            f"{PAQUETE}.bus": {PUERTA_DE_FIRMA}
+        }, relativo
+
+
+def test_control_la_firma_solo_admite_verified_manifest_bytes() -> None:
+    bien = importaciones("from app.core.crypto.bus import verified_manifest_bytes\n")
+    assert permitido("cli_manifest.py", bien)
+    assert permitido("worker/jobs/backup_check.py", bien)
+    for fuente in (
+        "from app.core.crypto import bus\n",
+        "from app.core.crypto.bus import digest\n",
+        "from app.core.crypto.bus import verified_manifest_bytes, decrypt\n",
+        "from app.core.crypto.types import reveal\n",
+    ):
+        assert not permitido("cli_manifest.py", importaciones(fuente)), fuente
+        assert not permitido("worker/jobs/backup_check.py", importaciones(fuente)), fuente
+    assert not permitido("cli_ops/retire_key.py", bien)
+
+
+def _importa_minisign(fuente: str, paquete: str) -> bool:
+    for nodo in ast.walk(ast.parse(fuente)):
+        if isinstance(nodo, ast.ImportFrom):
+            modulo = _absoluto(nodo, paquete)
+            if modulo == f"{PAQUETE}.minisign" or (
+                modulo == PAQUETE and any(a.name == "minisign" for a in nodo.names)
+            ):
+                return True
+        elif isinstance(nodo, ast.Import) and any(
+            a.name == f"{PAQUETE}.minisign" for a in nodo.names
+        ):
+            return True
+    return False
+
+
+def test_minisign_solo_lo_importa_el_bus() -> None:
+    """`core/crypto/minisign.py` es detalle del bus (S5-D72): ningún otro archivo del api lo
+    importa, ni siquiera dentro de `core/`."""
+    importadores = {
+        archivo.relative_to(APP).as_posix()
+        for archivo in sorted(APP.rglob("*.py"))
+        if _importa_minisign(
+            archivo.read_text(encoding="utf-8"), _paquete_de(archivo.relative_to(APP).as_posix())
+        )
+    }
+    assert importadores == {"core/crypto/bus.py"}
+
+
+def test_control_importar_minisign_se_detecta() -> None:
+    assert _importa_minisign("from app.core.crypto.minisign import verify_minisign\n", "app")
+    assert _importa_minisign("from app.core.crypto import minisign\n", "app")
+    assert _importa_minisign("from .minisign import x\n", "app.core.crypto")
+    assert not _importa_minisign("from app.core.crypto import bus\n", "app")
 
 
 # S5-B1: `openbao_provider` solo lo importan los archivos de `core/crypto/` ----------------------

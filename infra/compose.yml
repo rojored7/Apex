@@ -176,6 +176,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
+      # S5-B13 (S5-D72, S5-D170): llave pública de minisign (no es secreta) para verificar la firma del manifiesto.
+      BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
     volumes:
       - backups:/data/backups:ro
       # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
@@ -227,6 +229,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${TOOLS_DB_USER:-apex_owner}:${TOOLS_DB_PASSWORD:-${APEX_OWNER_DB_PASSWORD}}@db:5432/${POSTGRES_DB}
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
+      BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
     volumes:
       - keys:/run/apex/keys
       - uploads:/data/uploads
@@ -277,12 +280,19 @@ services:
       - backups:/data/backups
       - uploads:/data/uploads:ro
       - ${BACKUP_SIGN_KEY_FILE:-/dev/null}:/run/apex/backup/sign.key:ro
+      # S5-B13 (S5-D8, S5-D11): token de la politica apex-backup-snapshot (solo lee la instantanea raft);
+      # volumen propio montado SOLO aqui. Sin token (volumen vacio) la instantanea se omite.
+      - openbao-token-backup:/run/apex/openbao-backup:ro
     read_only: true
     tmpfs:
       - /tmp
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+    # default (db) y custody (openbao): backup pide la instantanea raft (S5-B13).
+    networks:
+      - default
+      - custody
     depends_on:
       db:
         condition: service_healthy
@@ -353,6 +363,7 @@ services:
       - openbao-token-api:/tokens/api
       - openbao-token-worker:/tokens/worker
       - openbao-token-tools:/tokens/tools
+      - openbao-token-backup:/tokens/backup
     stdin_open: true
     tty: true
     logging:
@@ -433,3 +444,4 @@ volumes:
   openbao-token-api:
   openbao-token-worker:
   openbao-token-tools:
+  openbao-token-backup:

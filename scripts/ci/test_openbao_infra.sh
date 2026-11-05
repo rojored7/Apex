@@ -148,6 +148,13 @@ if [ -f "$B" ]; then
   if tiene "$B" 'aes256-gcm96' && tiene "$B" 'exportable=false' && tiene "$B" 'allow_plaintext_backup=false'; then ok "bootstrap.sh crea apex-kek aes256-gcm96, no exportable y sin respaldo en claro"; else falla "bootstrap.sh: apex-kek sin aes256-gcm96, exportable=false y allow_plaintext_backup=false"; fi
   if tiene "$B" 'apex-sign-audit' && tiene "$B" 'ed25519'; then ok "bootstrap.sh crea apex-sign-audit ed25519"; else falla "bootstrap.sh sin apex-sign-audit ed25519"; fi
   if tiene "$B" 'period=768h'; then ok "bootstrap.sh crea tokens periódicos de 768h (M-2)"; else falla "bootstrap.sh sin period=768h"; fi
+  # S5-B13 (S5-D8, S5-D76): el token del respaldo (apex-backup-snapshot) se emite siempre, también con
+  # --reissue-tokens, en el volumen propio, y el token viejo se revoca como los demás.
+  if tiene "$B" 'emitir_token[[:space:]]+backup'; then ok "bootstrap.sh emite el token de backup (S5-B13)"; else falla "bootstrap.sh no emite el token de backup (emitir_token backup)"; fi
+  if tiene "$B" 'token-apex-backup'; then ok "bootstrap.sh revoca los tokens viejos de backup al reemitir (token-apex-backup)"; else falla "bootstrap.sh no revoca el token viejo de apex-backup al reemitir"; fi
+  n_pol_bk="$(codigo "$B" | grep -E 'apex-backup-snapshot' | grep -vE 'for POL|info ' | wc -l | tr -d ' ' || true)"
+  if [ "$n_pol_bk" -ge 1 ]; then ok "bootstrap.sh crea el token de backup con la política apex-backup-snapshot, no con apex-backup"; else falla "bootstrap.sh: el token de backup debe usar -policy=apex-backup-snapshot (no existe una política apex-backup)"; fi
+  if tiene "$B" 'TOKENS_DIR/\$1|TOKENS_DIR/backup|openbao-token-backup'; then ok "bootstrap.sh escribe el token de backup bajo TOKENS_DIR"; else falla "bootstrap.sh no escribe el token de backup bajo TOKENS_DIR"; fi
   if codigo "$B" | awk '/^limpiar\(\)/ { d = 1 } d && /token revoke -self/ { f = 1 } d && /^}/ { exit } END { exit !f }'; then ok "bootstrap.sh: limpiar revoca la raíz temporal si el script muere (M2)"; else falla "bootstrap.sh: limpiar no hace token revoke -self (M2)"; fi
   if tiene "$B" "printf '.033c'"; then ok "bootstrap.sh limpia la terminal tras GUARDADAS (L1)"; else falla "bootstrap.sh no limpia la terminal tras GUARDADAS (L1)"; fi
   if tiene "$B" 'exec .*openbao bao delete sys/generate-root/attempt'; then ok "bootstrap.sh sugiere el comando real para cancelar un intento (exec openbao ... 8210)"; else falla "bootstrap.sh no sugiere 'exec openbao bao delete sys/generate-root/attempt'"; fi

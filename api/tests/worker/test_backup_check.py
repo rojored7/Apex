@@ -16,6 +16,9 @@ Bogotá, `today_bogota` = 2026-10-21); el juego de la fábrica nace a las 07:00Z
 - El log `backup_check finished` lleva el nombre del juego y nunca la ruta, `upload_error` ni el
   `sha256` completo (S4B-D70); `job_runs.details` jamás lleva nombres.
 - El job no abre `age`.
+- S5-B13 (S5-D72, S5-D8): con `BACKUP_SIGN_PUBKEY` verifica `latest.json.minisig` por el bus
+  (ausente o inválida -> `corrupt`); `openbao_snapshot` es opcional y, si está, se comprueba
+  como cualquier archivo del juego (ver el bloque final).
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core import alerts
 from app.core.alerts import ALERT_CONTEXT_KEYS
 from app.core.clock import FrozenClock, reset_clock, set_clock
+from app.core.config import Settings
 from app.core.crypto import archive
 from app.core.jobs import DETAIL_KEYS, JobRun
 from app.worker.jobs import JOBS, backup_check
@@ -45,6 +49,7 @@ from app.worker.jobs.backup_check import MAX_FILES
 from app.worker.runner import JobOutcome, run_job
 from tests.factories.backup import BackupSet, make_backup_dir, manifest_bytes
 from tests.factories.job_runs import make_job_run
+from tests.factories.minisign_signer import SigningKey, make_signing_key
 
 Fabrica = async_sessionmaker[AsyncSession]
 NOW = datetime(2026, 10, 21, 12, 0, 0, tzinfo=UTC)
@@ -113,6 +118,7 @@ async def test_el_juego_de_las_siete_verificado_es_ok_con_details_enteros(
         "edad_horas": 5,
         "tamano_bytes": juego.total_bytes,
         "archivos": 2,
+        "firma_verificada": 0,
     }
     assert set(fila.details) - {"attempts"} <= DETAIL_KEYS
     assert all(type(v) is int for k, v in fila.details.items() if k != "attempts")
@@ -597,3 +603,250 @@ async def test_un_archivo_que_crecio_tras_el_manifiesto_es_corrupt(
     monkeypatch.setattr(backup_check, "digest_file", crecido)
 
     assert (await _correr(session_factory, reloj)).result == "corrupt"
+
+
+# S5-B13 (S5-D72, S5-D8): firma `minisign` verificada por el bus e instantánea de OpenBao
+#
+# Con `Settings.BACKUP_SIGN_PUBKEY` el job verifica `latest.json.minisig` por
+# `bus.verify_signed_manifest`: firma ausente o inválida -> `corrupt`. Sin esa llave no hay con qué
+# verificar y el job se comporta como antes (no degrada). `openbao_snapshot` es opcional: ausente
+# no cambia nada; presente se comprueba como cualquier archivo del juego (`sha256` o tamaño
+# malos -> `corrupt`, archivo ausente -> `missing`, nombre con `..` -> `missing` como el resto).
+
+LLAVE_JOB = make_signing_key(31)
+
+
+@pytest.fixture
+def con_pubkey(
+    backup_dir: Path, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> SigningKey:
+    ajustes = settings_prueba.model_copy(
+        update={"BACKUP_DIR": backup_dir, "BACKUP_SIGN_PUBKEY": LLAVE_JOB.pubkey}
+    )
+    monkeypatch.setattr(backup_check, "get_settings", lambda: ajustes)
+    return LLAVE_JOB
+
+
+async def test_con_pubkey_y_firma_valida_el_juego_es_ok(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey)
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "ok"
+
+
+async def test_con_pubkey_una_firma_con_un_bit_cambiado_es_corrupt(
+    session_factory: Fabrica,
+    reloj: FrozenClock,
+    backup_dir: Path,
+    con_pubkey: SigningKey,
+    sink_espia: SinkEspia,
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey, tamper="signature")
+
+    salida = await _correr(session_factory, reloj)
+
+    fila = await _fila(session_factory)
+    assert (salida.result, fila.result) == ("corrupt", "corrupt")
+    assert [c for c, _ in sink_espia.recibidas] == ["backup_unhealthy"]
+
+
+async def test_con_pubkey_un_manifiesto_alterado_despues_de_firmar_es_corrupt(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    juego = make_backup_dir(backup_dir, NOW, sign=con_pubkey)
+    juego.latest.write_bytes(juego.latest.read_bytes() + b"\n")
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "corrupt"
+
+
+async def test_con_pubkey_la_firma_de_otra_llave_es_corrupt(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=make_signing_key(32))
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "corrupt"
+
+
+async def test_con_pubkey_sin_minisig_es_corrupt(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    make_backup_dir(backup_dir, NOW)  # sin firma
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "corrupt"
+
+
+async def test_con_pubkey_un_minisig_que_es_un_enlace_no_se_sigue(
+    session_factory: Fabrica,
+    reloj: FrozenClock,
+    backup_dir: Path,
+    con_pubkey: SigningKey,
+    tmp_path: Path,
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey)
+    real = tmp_path / "firma-real"
+    real.write_bytes((backup_dir / "latest.json.minisig").read_bytes())
+    (backup_dir / "latest.json.minisig").unlink()
+    try:
+        (backup_dir / "latest.json.minisig").symlink_to(real)
+    except OSError:
+        pytest.skip("enlaces simbólicos sin privilegios en este equipo; corren en CI/Linux")
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "corrupt"
+
+
+async def test_sin_pubkey_configurada_el_job_no_verifica_la_firma_como_antes(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=make_signing_key(33), tamper="signature")
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "ok"
+
+
+async def test_sin_openbao_snapshot_no_se_degrada(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey, snapshot=False)
+
+    assert (await _correr(session_factory, reloj)).result == "ok"
+
+
+async def test_con_openbao_snapshot_correcto_es_ok(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    juego = make_backup_dir(backup_dir, NOW, sign=con_pubkey, snapshot=True)
+
+    salida = await _correr(session_factory, reloj)
+
+    fila = await _fila(session_factory)
+    assert (salida.result, fila.result, fila.error) == ("ok", "ok", None)
+    assert set(fila.details) - {"attempts"} <= DETAIL_KEYS
+    assert juego.manifest["openbao_snapshot"]["verified"] is True
+
+
+async def test_openbao_snapshot_sin_firma_ni_pubkey_tambien_se_comprueba(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path
+) -> None:
+    make_backup_dir(backup_dir, NOW, snapshot=True, tamper="snapshot_sha256")
+
+    assert (await _correr(session_factory, reloj)).result == "corrupt"
+
+
+@pytest.mark.parametrize(
+    ("tamper", "esperado"),
+    [
+        ("snapshot_sha256", "corrupt"),
+        ("snapshot_size", "corrupt"),
+        ("snapshot_missing", "missing"),
+    ],
+)
+async def test_openbao_snapshot_con_defecto_degrada(
+    session_factory: Fabrica,
+    reloj: FrozenClock,
+    backup_dir: Path,
+    con_pubkey: SigningKey,
+    sink_espia: SinkEspia,
+    tamper: str,
+    esperado: str,
+) -> None:
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey, snapshot=True, tamper=tamper)
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == esperado
+    assert [c for c, _ in sink_espia.recibidas] == ["backup_unhealthy"]
+
+
+async def test_openbao_snapshot_con_nombre_con_traversal_no_se_lee(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path
+) -> None:
+    juego = make_backup_dir(backup_dir, NOW, snapshot=True)
+    datos = dict(juego.manifest)
+    datos["openbao_snapshot"] = dict(datos["openbao_snapshot"], name="../fuera-openbao.snap.age")
+    juego.latest.write_bytes(manifest_bytes(datos))
+
+    assert (await _correr(session_factory, reloj)).result == "missing"
+
+
+async def test_openbao_snapshot_con_forma_invalida_es_missing(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path
+) -> None:
+    juego = make_backup_dir(backup_dir, NOW, snapshot=True)
+    datos = dict(juego.manifest)
+    datos["openbao_snapshot"] = dict(datos["openbao_snapshot"], sha256="corto", extra=1)
+    juego.latest.write_bytes(manifest_bytes(datos))
+
+    assert (await _correr(session_factory, reloj)).result == "missing"
+
+
+def test_parse_manifest_acepta_openbao_snapshot_opcional_y_lo_expone(tmp_path: Path) -> None:
+    juego = make_backup_dir(tmp_path, NOW, snapshot=True)
+
+    manifiesto = backup_check.parse_manifest(juego.latest.read_bytes())
+
+    assert manifiesto is not None
+    assert manifiesto.openbao_snapshot is not None
+    assert manifiesto.openbao_snapshot.name == juego.manifest["openbao_snapshot"]["name"]
+    sin = make_backup_dir(tmp_path / "sin", NOW)
+    sin_manifiesto = backup_check.parse_manifest(sin.latest.read_bytes())
+    assert sin_manifiesto is not None
+    assert sin_manifiesto.openbao_snapshot is None
+
+
+async def test_con_pubkey_el_manifiesto_se_abre_una_sola_vez_y_se_parsean_los_bytes_firmados(
+    session_factory: Fabrica,
+    reloj: FrozenClock,
+    backup_dir: Path,
+    con_pubkey: SigningKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S5-D178: no hay segunda lectura entre la firma y el uso (TOCTOU)."""
+    from app.core.crypto import minisign
+
+    make_backup_dir(backup_dir, NOW, sign=con_pubkey)
+    latest = backup_dir / "latest.json"
+    abiertos: list[Path] = []
+    original = minisign._read_regular
+
+    def espia(path: Path, limit: int) -> bytes | None:
+        abiertos.append(path)
+        return original(path, limit)
+
+    monkeypatch.setattr(minisign, "_read_regular", espia)
+    lecturas_directas: list[Path] = []
+    leer = backup_check._leer_manifiesto
+    monkeypatch.setattr(
+        backup_check, "_leer_manifiesto", lambda c: lecturas_directas.append(c) or leer(c)
+    )
+
+    salida = await _correr(session_factory, reloj)
+
+    assert salida.result == "ok"
+    assert abiertos.count(latest) == 1
+    assert lecturas_directas == []
+
+
+async def test_con_pubkey_y_sin_latest_json_sigue_siendo_missing(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    assert (await _correr(session_factory, reloj)).result == "missing"
+
+
+async def test_con_pubkey_y_latest_json_ilegible_firmado_o_no_es_missing(
+    session_factory: Fabrica, reloj: FrozenClock, backup_dir: Path, con_pubkey: SigningKey
+) -> None:
+    (backup_dir / "latest.json").write_bytes(b"{no es json")
+
+    assert (await _correr(session_factory, reloj)).result == "missing"

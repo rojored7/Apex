@@ -80,12 +80,13 @@ json_escape() {
   printf '%s' "$s"
 }
 
-# manifest_json <name> <created_at> <database> <verify> <verified_at> <upload> <upload_error>
+# manifest_json <name> <created_at> <database> <verify> <verified_at> <upload> <upload_error> [snap]
 # Los archivos llegan por stdin, uno por línea: kind|name|size_bytes|sha256|plain_sha256.
-# Imprime el manifiesto (format_version 1, S4B-D80). Sin jq.
+# `snap` (opcional, S5-B13, S5-D8) es `name|size_bytes|sha256|verified` (`true` o `false`) y agrega
+# la entrada `openbao_snapshot`. Imprime el manifiesto (format_version 1, S4B-D80). Sin jq.
 manifest_json() {
   local name="$1" created="$2" db="$3" verify="$4" verified_at="$5" upload="$6" upload_error="$7"
-  local kind fname size sha plain primero=1
+  local snap="${8:-}" kind fname size sha plain primero=1 sname ssize ssha sver
   printf '{\n'
   printf '  "format_version": 1,\n'
   printf '  "name": "%s",\n' "$(json_escape "$name")"
@@ -110,7 +111,46 @@ manifest_json() {
   if [ -n "$upload_error" ]; then
     printf ',\n  "upload_error": "%s"' "$(json_escape "$upload_error")"
   fi
+  if [ -n "$snap" ]; then
+    IFS='|' read -r sname ssize ssha sver <<< "$snap"
+    [ "$sver" = true ] || sver=false
+    printf ',\n  "openbao_snapshot": {"name": "%s", "size_bytes": %s, "sha256": "%s", "verified": %s}' \
+      "$(json_escape "$sname")" "$ssize" "$(json_escape "$ssha")" "$sver"
+  fi
   printf '\n}\n'
+}
+
+# snapshot_curl_config <archivo-token> <url>: imprime el archivo de configuración de `curl -K` que
+# pide la instantánea raft de OpenBao (S5-B13, L-2). El token entra por ese archivo (en /tmp, modo
+# 600) y NUNCA por el argv, donde `ps` lo vería. Rechaza (código 1, sin salida) un token vacío o con
+# caracteres fuera de [A-Za-z0-9._~+/=-] (comillas, barras invertidas y saltos de línea cerrarían el
+# valor y permitirían inyectar directivas) y toda URL que no sea
+# http://<host>[:<puerto>]/v1/sys/storage/raft/snapshot[-force] (la restauración en un clúster NUEVO exige -force: S5-D172). El salto de línea final se recorta.
+snapshot_curl_config() {
+  local tokfile="${1:-}" url="${2:-}" token
+  [ -f "$tokfile" ] && [ -r "$tokfile" ] || return 1
+  [[ "$url" =~ ^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?/v1/sys/storage/raft/snapshot(-force)?$ ]] || return 1
+  token="$(cat "$tokfile")" || return 1
+  [ "${#token}" -ge 1 ] && [ "${#token}" -le 512 ] || return 1
+  [[ "$token" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || return 1
+  printf 'url = "%s"\n' "$url"
+  printf 'header = "X-Vault-Token: %s"\n' "$token"
+  printf 'proto = "=http"\nfail\nsilent\nshow-error\nmax-time = 900\nconnect-timeout = 15\n'
+}
+
+# revoke_curl_config <archivo-token> <url>: como snapshot_curl_config, pero para revocar el token
+# con `POST /v1/auth/token/revoke-self` (S5-D181: la raiz efimera del `init` de un cluster nuevo no
+# debe sobrevivir a `restore.sh --with-openbao`). Solo acepta esa ruta y las mismas fichas de token.
+revoke_curl_config() {
+  local tokfile="${1:-}" url="${2:-}" token
+  [ -f "$tokfile" ] && [ -r "$tokfile" ] || return 1
+  [[ "$url" =~ ^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?/v1/auth/token/revoke-self$ ]] || return 1
+  token="$(cat "$tokfile")" || return 1
+  [ "${#token}" -ge 1 ] && [ "${#token}" -le 512 ] || return 1
+  [[ "$token" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || return 1
+  printf 'url = "%s"\n' "$url"
+  printf 'header = "X-Vault-Token: %s"\n' "$token"
+  printf 'request = "POST"\nproto = "=http"\nfail\nsilent\nshow-error\nmax-time = 30\nconnect-timeout = 15\n'
 }
 
 # valid_tar_listing: lee por stdin el listado de `tar -tv` (GNU o BusyBox) y acepta solo si hay al

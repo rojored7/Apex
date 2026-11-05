@@ -18,6 +18,11 @@ if [ ! -f infra/backup/tests/test_restore_guard.sh ]; then
   echo "test_infra_scripts: falta infra/backup/tests/test_restore_guard.sh" >&2
   fallas=$((fallas + 1))
 fi
+# S5-B13: test_snapshot.sh (instantánea raft de OpenBao en el respaldo) también debe seguir aquí.
+if [ ! -f infra/backup/tests/test_snapshot.sh ]; then
+  echo "test_infra_scripts: falta infra/backup/tests/test_snapshot.sh" >&2
+  fallas=$((fallas + 1))
+fi
 bash infra/backup/tests/run.sh || fallas=$((fallas + 1))
 for prueba in test_deploy_script test_check_release_version; do
   if [ -f "scripts/ci/$prueba.sh" ]; then

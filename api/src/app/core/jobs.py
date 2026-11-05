@@ -70,6 +70,9 @@ DETAIL_KEYS: Final[frozenset[str]] = frozenset(
         "edad_horas",
         "tamano_bytes",
         "verificado",
+        # S5-B13 (S5-D170): firma del manifiesto verificada (0/1) e instantánea de OpenBao (0/1).
+        "firma_verificada",
+        "snapshot",
     }
 )
 """Claves enteras admitidas en `details` (S4A-D55 d); `attempts` y `clock_override` aparte."""

@@ -18,11 +18,19 @@ PINS="$(grep -E 'apk add' "$DOCKERFILE" | tr ' ' '\n' | grep -E '^[a-z0-9][a-z0-
 [ -n "$PINS" ] || { echo "test_backup_apk_pins: no hay pins paquete=version en $DOCKERFILE" >&2; exit 2; }
 
 echo "test_backup_apk_pins (base $BASE)"
+# S5-B13 (S5-D8, L-2): `curl` pide la instantanea raft de OpenBao con `-K` (token fuera del argv) y debe
+# ir fijado como los demas paquetes; sin pin, la imagen cambiaria con el indice de Alpine.
+if printf '%s\n' "$PINS" | grep -q '^curl='; then
+  echo "  ok   curl esta fijado en el Dockerfile"
+else
+  echo "  FALLA curl no esta fijado (apk add ... curl=<version>) en $DOCKERFILE"
+  sin_curl=1
+fi
 paquetes="$(printf '%s\n' "$PINS" | cut -d= -f1 | tr '\n' ' ')"
 politica="$(docker run --rm "$BASE" sh -c "apk update > /dev/null && for p in $paquetes; do apk policy \"\$p\"; done" 2>&1 | tr -d '\r')" \
   || { echo "  FALLA no se pudo consultar apk policy"; exit 1; }
 
-fallas=0
+fallas=${sin_curl:-0}
 while IFS= read -r pin; do
   pkg="${pin%%=*}"; ver="${pin#*=}"
   # La salida de `apk policy` es "<pkg> policy:" seguido de "  <version>:" y los repositorios.

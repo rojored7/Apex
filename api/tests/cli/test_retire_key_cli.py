@@ -5,7 +5,8 @@ S4B-D38, D63, D86).
 ser 0, bajo `FOR UPDATE`) y los blobs en `audit.audit_log` (que el operador confirma tecleando
 `N`), e imprime ambos. Exige, antes de cambiar nada:
 - un `verify-kek-backup` `ok` de una persona de menos de 24 h (`crypto_ops`);
-- un `latest.json` con `.minisig`, `verify == "ok"` y menos de 24 h.
+- un `latest.json` con `.minisig` cuya firma `minisign` VERIFICA con `BACKUP_SIGN_PUBKEY`
+  (S5-B13, S5-D72: ya no basta con que el archivo exista), `verify == "ok"` y menos de 24 h.
 Contrato de salida (stdout/stderr juntos en `resultado.output`):
 - `retire-key: filas_negocio=F` y `retire-key: audit_blobs=A` antes de decidir;
 - sin `--as`: `--as es obligatorio`; sin `--confirm-audit-blobs`: 2 con esa opción en el texto;
@@ -39,6 +40,7 @@ from app.core.crypto.models import CryptoKey
 from tests.cli._apoyo import correr
 from tests.conftest import CLAVE_PRUEBA
 from tests.crypto._rotacion import (
+    LLAVE_RETIRO,
     Fabrica,
     blobs_de_rotacion,
     cuenta_de_ops,
@@ -59,7 +61,9 @@ pytestmark = pytest.mark.usefixtures("reloj", "limpiar_demo")
 @pytest.fixture
 def settings_prueba(settings_prueba: Settings, tmp_path: Path) -> Settings:
     """`BACKUP_DIR` es la carpeta de la prueba: `--manifest` solo vale bajo ella (S4B-D149)."""
-    return settings_prueba.model_copy(update={"BACKUP_DIR": tmp_path})
+    return settings_prueba.model_copy(
+        update={"BACKUP_DIR": tmp_path, "BACKUP_SIGN_PUBKEY": LLAVE_RETIRO.pubkey}
+    )
 
 
 @pytest.fixture
@@ -380,6 +384,11 @@ MANIFIESTOS_MALOS = {
     "con verify distinto de ok": {"verify": "failed"},
     "con verify omitido": {"verify": "skipped"},
     "de hace 25 horas": {"antiguedad": timedelta(hours=25)},
+    # S5-B13 (S5-D72): la firma debe verificar, no solo existir.
+    "con firma que no es una firma": {"firma": "basura"},
+    "con firma de otra llave": {"firma": "otra_llave"},
+    "con un bit de la firma cambiado": {"firma": "bit"},
+    "alterado despues de firmar": {"firma": "manifiesto_alterado"},
 }
 
 
@@ -398,6 +407,27 @@ async def test_un_latest_json_que_no_sirve_sale_2_con_el_mensaje_fijo(
 
     resultado = _retirar(
         settings_prueba, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto)
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert SIN_MANIFIESTO in resultado.output
+    await _sin_retirar(rotacion_lista)
+
+
+async def test_sin_backup_sign_pubkey_configurada_no_se_confia_en_ningun_manifiesto(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    rotada: dict[str, Any],
+    admin: Any,
+    manifiesto_reciente: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cierra en falso: sin llave pública no hay con qué verificar (S5-D72)."""
+    await _con_verify(rotacion_lista, admin)
+    sin_llave = settings_prueba.model_copy(update={"BACKUP_SIGN_PUBKEY": None})
+
+    resultado = _retirar(
+        sin_llave, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto_reciente)
     )
 
     assert resultado.exit_code == 2, resultado.output

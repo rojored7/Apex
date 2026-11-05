@@ -14,7 +14,7 @@ Cuando `.env` dice `CRYPTO_PROVIDER=openbao`, añada `-f infra/compose.openbao.y
 
 - Servicio `openbao`: imagen por digest, solo en la red interna `custody` (sin salida y sin puertos al anfitrión), raíz de solo lectura, sin capacidades, usuario 100:1000. Guarda su estado (raft) en el volumen `openbao-data`.
 - Servicio `openbao-bootstrap` (perfil `bootstrap`): se corre a mano, interactivo y sin log de contenedor. Instala, desella y reemite tokens.
-- Un token por servicio en su propio volumen (`openbao-token-api`, `-worker`, `-tools`), de solo lectura en el servicio y con dueño uid 10001, modo 600. El api puede cifrar y descifrar con `apex-kek`; el worker, solo descifrar; `tools`, además, recifrar y rotar. Ninguno puede borrar ni leer la llave. La política de respaldo (`apex-backup-snapshot`) existe pero su token llega con el respaldo del snapshot (B13).
+- Un token por servicio en su propio volumen (`openbao-token-api`, `-worker`, `-tools`, `-backup`), de solo lectura en el servicio y con dueño uid 10001, modo 600. El api puede cifrar y descifrar con `apex-kek`; el worker, solo descifrar; `tools`, además, recifrar y rotar. Ninguno puede borrar ni leer la llave. La política de respaldo (`apex-backup-snapshot`, solo lectura de `sys/storage/raft/snapshot`) tiene su propio token en el volumen `openbao-token-backup`, montado solo de lectura en el servicio `backup` (S5-B13): con él el respaldo guarda la instantánea raft cifrada junto a la base (`docs/operacion/respaldo-y-restauracion.md`). No descifra nada.
 - Un OpenBao **reiniciado queda sellado**. Hasta que se desselle con tres llaves, el api no puede abrir llaves nuevas (sección 4).
 - El HTTP entre servicios y OpenBao no lleva TLS: la red `custody` es interna. El TLS llega con Caddy (EP-20).
 
@@ -139,3 +139,22 @@ bash scripts/dev/openbao-seal.sh unseal      # pide la llave con read -rs
 ```
 
 `dev-entrypoint.sh` inicializa con una sola llave (1/1) y guarda esa llave de desarrollo en el volumen `openbao-dev-data` (modo 600, nunca en el log) para desellar solo en cada arranque. Se niega a correr si `APEX_ENV` no es `dev` y `compose.yml` no lo menciona: no existe en producción. Para empezar de cero: `$DCD down` y `docker volume rm apex_openbao-dev-data`.
+
+## 10. Restaurar la instantánea (raft) y `generate-root` (S5-B13)
+
+La instantánea raft es la única copia del estado de OpenBao (la llave `apex-kek`, las políticas y los tokens). La toma el servicio `backup` cada noche, cifrada con `age` y firmada en el manifiesto; se restaura **siempre junto con la base del mismo juego** (`docs/operacion/respaldo-y-restauracion.md`, paso 7 de "Restaurar paso a paso"). Este apartado explica lo que hay que saber de OpenBao en ese momento.
+
+**Qué se necesita.** (1) El juego de respaldo con `openbao_snapshot` en el manifiesto firmado; (2) la identidad `age` de restauración; (3) **tres de las cinco llaves de desello ORIGINALES** (las del clúster que tomó la instantánea; la instantánea trae ese estado y no las guarda). Sin las llaves originales no hay forma de abrirla.
+
+**Procedimiento.**
+
+1. Con `openbao-data` vacío (`docker volume rm`, solo si el servidor se perdió; nunca sobre un OpenBao sano), `$DC up -d openbao`. Arranca vacío y sin inicializar.
+2. **Inicialícelo de nuevo**: `$DC exec -T -e BAO_ADDR=http://127.0.0.1:8200 openbao bao operator init -key-shares=5 -key-threshold=3` (la terminal muestra las llaves y la raíz **de este clúster nuevo**: no las guarde; quedan sin valor). Desselle con esas llaves (sección 4) y use la raíz inicial como token efímero.
+3. Corra `restore.sh --with-openbao --openbao-token-file <archivo 600 con esa raíz>` (el contenedor del respaldo debe estar en `custody`). Restaura por `POST sys/storage/raft/snapshot-force`; con `-force` porque el clúster nuevo tiene otras llaves y OpenBao rechaza la instantánea sin él ("could not verify hash file"). Borre el archivo de la raíz al terminar. El archivo debe ser regular, sin enlaces simbólicos y, en Linux, de **modo 600** (`restore.sh` se niega si no); `--with-openbao` tampoco se admite con `--i-know-unsigned` (la instantánea se confía por el `sha256` de un manifiesto firmado). Si la restauración **falla después de empezar a tocar cosas** (respaldo previo, base o instantánea), `restore.sh` **revoca la raíz del `init` nuevo** (`curl -K`, el token nunca va por argumentos); tras un éxito también intenta revocarla y, si el almacén ya cambió y falla, lo ignora con una nota. Si revocó por un fallo y hay que reintentar, genere otra raíz con `generate-root` y las llaves del clúster nuevo (el listener `127.0.0.1:8210`, secciones 6 y 8). Una negativa previa (guardas, firma, `sha256`, base con datos) no revoca nada.
+4. **Reinicie `openbao`** (`$DC restart openbao`) y desselle con las llaves **originales** (sección 4). Hasta el reinicio sigue desellado con la llave en memoria del clúster nuevo. El estado restaurado manda desde ahí: los tokens de api, worker, tools y backup vuelven a ser los del momento de la instantánea (si caducaron o se reemitieron después, reemítalos con `--reissue-tokens`, sección 6).
+5. Compruebe `/health.crypto` (`ok`) y un descifrado real (la ficha de un socio).
+
+**`generate-root`.** Es para otro caso: OpenBao **sano** pero sin raíz (el bootstrap la revoca al terminar). `--reissue-tokens` y `rekey` abren una raíz efímera por el listener local `127.0.0.1:8210` con tres llaves vigentes (secciones 6 y 8) y la revocan al terminar. En un volumen vacío no hace falta: el `init` del paso 2 entrega la raíz inicial.
+
+**Ensayo.** `bash infra/tests/openbao_restore_e2e.sh` (Docker, recursos `apex-obe2e-*` desechables) hace todo el ciclo con OpenBao real: init, `apex-kek`, cadena envuelta, respaldo con instantánea, borrado del volumen, clúster nuevo, `restore.sh --with-openbao`, reinicio, desello con las llaves originales (las nuevas no sirven) y descifrado de la cadena original; también `prod-smoke.sh` lo corre.
+

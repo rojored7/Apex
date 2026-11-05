@@ -38,6 +38,7 @@ from app.core.crypto.types import install_crypto_type_listeners
 from tests.conftest import LIMPIAR_LLAVES
 from tests.crypto.models_fixture import SCHEMA, CryptoTestPerson
 from tests.factories.backup import make_backup_dir
+from tests.factories.minisign_signer import make_signing_key, write_signature
 from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 CLASE_ROTADA = "member.document"
@@ -172,19 +173,33 @@ async def candado_rotacion_tomado(engine: AsyncEngine) -> AsyncIterator[None]:
             )
 
 
+LLAVE_RETIRO = make_signing_key(21)
+"""Llave de PRUEBA con la que se firman los manifiestos de `retire-key` (`BACKUP_SIGN_PUBKEY`)."""
+LLAVE_AJENA = make_signing_key(22)
+
+
 def escribir_manifiesto(
     carpeta: Path,
     *,
     verify: str = "ok",
     con_firma: bool = True,
     antiguedad: timedelta = timedelta(hours=5),
+    firma: str = "valida",
 ) -> Path:
     """`latest.json` (y `latest.json.minisig` si `con_firma`) con `created_at = ahora - antiguedad`
-    según `current_clock()`; devuelve la ruta de `latest.json`."""
+    según `current_clock()`; devuelve la ruta de `latest.json`. La firma es de verdad
+    (`LLAVE_RETIRO`, S5-B13); `firma` elige el defecto: `basura`, `otra_llave`, `bit` (un bit de la
+    firma cambiado) o `manifiesto_alterado` (firmado y luego modificado)."""
     ahora = current_clock().now_utc()
     juego = make_backup_dir(carpeta, ahora, verify=verify, created_at=ahora - antiguedad)
-    if con_firma:
+    if not con_firma:
+        return juego.latest
+    llave = LLAVE_AJENA if firma == "otra_llave" else LLAVE_RETIRO
+    write_signature(llave, juego.latest, corrupt=firma == "bit")
+    if firma == "basura":
         (carpeta / "latest.json.minisig").write_text("firma de prueba\n", encoding="utf-8")
+    elif firma == "manifiesto_alterado":
+        juego.latest.write_bytes(juego.latest.read_bytes() + b"\n")
     return juego.latest
 
 

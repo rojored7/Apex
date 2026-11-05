@@ -1,13 +1,14 @@
 # Imagen del servicio backup de APEX (S4B-W0-1, S4B-D14, D57, D73, D75). pg_dump 16, age,
 # minisign, rclone y supercronic sobre Alpine; usuario apex (UID 10001); inerte sin
-# destinatario age. Nunca contiene identidades, llaves de firma ni rclone.conf: llegan por
+# destinatario age. curl (S5-B13) pide la instantanea raft de OpenBao con `-K` (token fuera del
+# argv). Nunca contiene identidades, llaves de firma ni rclone.conf: llegan por
 # archivos montados (compose.yml, compose.verify.yml) y por variables de entorno.
 
 # postgres:16-alpine por digest (2026-10-29, S3-D62); renovar (docs/RUNBOOK.md §7):
 # docker buildx imagetools inspect postgres:16-alpine --format '{{json .Manifest.Digest}}'
 FROM postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
-# Versiones verificadas en Alpine 3.24.3 el 2026-11-04 (rclone renovado; test_backup_apk_pins.sh lo vigila): apk policy age minisign rclone supercronic
-RUN apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 supercronic=0.2.49-r1 minisign=0.12-r2 tzdata \
+# Versiones verificadas en Alpine 3.24.3 el 2026-11-04 (rclone renovado; test_backup_apk_pins.sh lo vigila): apk policy age minisign rclone supercronic curl
+RUN apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 supercronic=0.2.49-r1 minisign=0.12-r2 curl=8.23.0-r0 tzdata \
     && addgroup -g 10001 apex \
     && adduser -D -u 10001 -G apex apex \
     && mkdir -p /data/backups /opt/backup /run/apex/backup \

@@ -21,9 +21,10 @@ Sin keyring cargado (`ensure_keys`), toda operación lanza `crypto_unavailable`.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from uuid import UUID
 
-from app.core.crypto import oplog
+from app.core.crypto import minisign, oplog
 from app.core.crypto.aead import open_, seal
 from app.core.crypto.blob import NONCE_LEN, format_blob, parse_blob
 from app.core.crypto.digest import sha256_hex
@@ -157,3 +158,21 @@ async def verify(data_class: str, data: bytes, signature: str) -> bool:
         result="ok" if valida else "error",
     )
     return valida
+
+
+def verify_signed_manifest(path: Path, pubkey: str) -> bool:
+    """`True` si `<path>.minisig` es una firma minisign válida de `path` con `pubkey` (S5-D72).
+
+    Única puerta pública de la verificación `minisign`; sin llave del keyring ni `crypto_ops`.
+    Nunca lanza: archivo ausente, enlace simbólico, mayor de 1 MiB o firma mala dan `False`.
+    """
+    return minisign.verify_signed_file(path, pubkey)
+
+
+def verified_manifest_bytes(path: Path, pubkey: str) -> bytes | None:
+    """Los bytes de `path` si su firma `minisign` es válida con `pubkey`; `None` si no (S5-D178).
+
+    El archivo se abre UNA vez: quien parsea esos bytes no vuelve a leerlo, así no hay ventana entre
+    la firma y el uso. Mismas negativas que `verify_signed_manifest`; nunca lanza.
+    """
+    return minisign.verified_file_bytes(path, pubkey)

@@ -17,6 +17,9 @@ funciones, relativos resueltos y `from app import cli_ops`):
 - `cli_ops/kek.py` (B3a) no usa `crypto_runtime` ni `ensure_keys` (S4B-D62: restaurar es la
   operación para cuando la KEK no está; `ensure_keys` crearía llaves con una KEK equivocada).
   La regla tolera la ausencia del archivo.
+- S5-B13 (S5-D72): `app/cli_manifest.py` (firma del manifiesto) solo lo importan archivos de
+  `cli_ops/`, nunca `cli.py`, `worker/`, `core/` ni un módulo; y él mismo no importa la capa
+  (`app.cli`, `app.cli_base`, `app.cli_ops`).
 Controles con fuentes falsas: cada regla debe fallar ante su violación.
 """
 
@@ -112,6 +115,13 @@ def usos_prohibidos_en_kek(fuente: str) -> list[str]:
     return sorted(n for n in USOS_PROHIBIDOS_EN_KEK if n in nombres)
 
 
+def violaciones_de_cli_manifest(fuente: str, relativo: str) -> list[str]:
+    """Quien no es de `cli_ops/` e importa `app.cli_manifest` (S5-D72)."""
+    if relativo.startswith("cli_ops/") or relativo == "cli_manifest.py":
+        return []
+    return sorted(importadores_de(fuente, relativo, ("app.cli_manifest",)))
+
+
 def _archivos() -> list[tuple[str, str]]:
     return [
         (p.relative_to(SRC).as_posix(), p.read_text(encoding="utf-8"))
@@ -196,6 +206,24 @@ def test_los_comandos_de_kek_no_usan_crypto_runtime_ni_ensure_keys() -> None:
         assert usos_prohibidos_en_kek(kek.read_text(encoding="utf-8")) == []
 
 
+def test_cli_manifest_existe_y_solo_lo_importan_archivos_de_cli_ops() -> None:
+    archivos = _archivos()
+    assert "cli_manifest.py" in {r for r, _ in archivos}
+    malos = {r: v for r, f in archivos if (v := violaciones_de_cli_manifest(f, r))}
+    assert malos == {}, malos
+    importadores = {
+        r
+        for r, f in archivos
+        if importadores_de(f, r, ("app.cli_manifest",)) and r != "cli_manifest.py"
+    }
+    assert importadores == {"cli_ops/retire_key.py"}, importadores
+
+
+def test_cli_manifest_no_importa_la_capa_de_aplicacion() -> None:
+    fuente = (SRC / "cli_manifest.py").read_text(encoding="utf-8")
+    assert importadores_de(fuente, "cli_manifest.py", RAIZ_DE_LA_CAPA) == set()
+
+
 # Controles con fuentes falsas ------------------------------------------------------------------
 
 
@@ -259,3 +287,23 @@ def test_control_kek_con_crypto_runtime_o_ensure_keys_falla() -> None:
     ]
     fuente = "async def f(s):\n    async with cli_runtime(s) as sesion:\n        pass\n"
     assert usos_prohibidos_en_kek(fuente) == []
+
+
+def test_control_cli_manifest_fuera_de_cli_ops_falla() -> None:
+    for relativo in ("cli.py", "main.py", "worker/jobs/backup_check.py", "core/jobs.py"):
+        for fuente in (
+            "from app.cli_manifest import recent_signed_manifest\n",
+            "import app.cli_manifest\n",
+            "from app import cli_manifest\n",
+        ):
+            assert violaciones_de_cli_manifest(fuente, relativo) == ["app.cli_manifest"], (
+                relativo,
+                fuente,
+            )
+    assert violaciones_de_cli_manifest("from ..cli_manifest import x\n", "worker/main.py")
+
+
+def test_control_cli_manifest_importado_desde_cli_ops_pasa() -> None:
+    fuente = "from app.cli_manifest import recent_signed_manifest\n"
+    assert violaciones_de_cli_manifest(fuente, "cli_ops/retire_key.py") == []
+    assert violaciones_de_alcance(fuente, "cli_ops/retire_key.py") == []

@@ -147,6 +147,21 @@ EOF
 echo "tar \$*" >> "\$FAKE/calls.log"
 exec "$REAL_TAR" "\$@"
 EOF
+  # curl falso (S5-B13): registra la llamada y copia el archivo de configuracion de `-K` (restore.sh lo borra al salir).
+  cat > "$CASO/bin/curl" << 'EOF'
+#!/bin/bash
+echo "curl $*" >> "$FAKE/calls.log"
+cfg=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in -K) cfg="$2"; shift 2 ;; *) shift ;; esac
+done
+n="$(grep -c '^curl' "$FAKE/calls.log")"
+[ -z "$cfg" ] || cp "$cfg" "$FAKE/curl-$n.cfg"
+[ -t 0 ] || cat > /dev/null
+if [ -n "$cfg" ] && grep -q 'raft/snapshot' "$cfg" && [ -f "$FAKE/curl_fail_snapshot" ]; then echo "curl: (22) simulado" >&2; exit 22; fi
+if [ -n "$cfg" ] && grep -q 'revoke-self' "$cfg" && [ -f "$FAKE/curl_fail_revoke" ]; then echo "curl: (22) simulado" >&2; exit 22; fi
+exit 0
+EOF
   chmod +x "$CASO/opt/run.sh" "$CASO/bin/"*
 
   # Juego de respaldo: dos archivos "cifrados" (el age falso es transparente) y manifiesto firmado.
@@ -314,6 +329,103 @@ for modo in dotdot symlink absoluta fuera; do
   assert_ok "tar '$modo': no toca la base" no_toco_la_base
   assert_fails "tar '$modo': no extrae nada a DATA_ROOT" test -e "$CASO/data/uploads/ok.txt"
 done
+
+
+# --- 10. --with-openbao (S5-B13; S5-D175, D179, D181) --------------------------------------------------
+# caso_openbao: el juego trae openbao_snapshot y un archivo de token (modo 600).
+caso_openbao() {
+  nuevo_caso "$1"
+  local snap="$NOMBRE-openbao.snap.age"
+  printf 'instantanea-falsa' > "$B/$snap"
+  printf 'db|%s-db.dump.age|%s|%s|%s\nuploads|%s-uploads.tar.age|%s|%s|%s\n' \
+    "$NOMBRE" "$(wc -c < "$B/$NOMBRE-db.dump.age" | tr -d ' ')" "$(sha "$B/$NOMBRE-db.dump.age")" "$(sha "$B/$NOMBRE-db.dump.age")" \
+    "$NOMBRE" "$(wc -c < "$B/$NOMBRE-uploads.tar.age" | tr -d ' ')" "$(sha "$B/$NOMBRE-uploads.tar.age")" "$(sha "$B/$NOMBRE-uploads.tar.age")" \
+    | manifest_json "$NOMBRE" "2026-10-21T07:00:05Z" "apex_test" ok "2026-10-21T07:00:09Z" skipped "" \
+      "$snap|$(wc -c < "$B/$snap" | tr -d ' ')|$(sha "$B/$snap")|true" > "$B/latest.json"
+  printf 'hvs.raiz-efimera-0123' > "$CASO/token"
+  chmod 600 "$CASO/token"
+}
+args_ob() { echo "$B/latest.json -i $CASO/identidad.txt -P $CASO/pub.pub --confirm-database apex_test --with-openbao --openbao-token-file $CASO/token"; }
+curl_cfg_con() { grep -l "$1" "$FAKE"/curl-*.cfg 2> /dev/null | head -1; }
+
+caso_openbao ob_feliz
+# shellcheck disable=SC2046
+correr_restore $(args_ob)
+assert_eq "--with-openbao: sale 0" "0" "$RC"
+assert_ok "--with-openbao: restaura la instantanea (snapshot-force) por curl -K" test -n "$(curl_cfg_con snapshot-force)"
+assert_ok "--with-openbao: revoca la raiz efimera tras restaurar (revoke-self)" test -n "$(curl_cfg_con revoke-self)"
+assert_contains "--with-openbao: avisa de las llaves originales" "$SALIDA" "llaves originales"
+assert_fails "--with-openbao: el token no sale en la salida" grep -q "hvs.raiz" <<< "$SALIDA"
+assert_fails "--with-openbao: el token no va en el argv de curl" grep -q "hvs.raiz" "$FAKE/calls.log"
+assert_ok "--with-openbao: la instantanea se restaura DESPUES de pg_restore" test "$(linea pg_restore)" -lt "$(linea curl)"
+
+caso_openbao ob_revoke_ignorado
+touch "$FAKE/curl_fail_revoke"
+# shellcheck disable=SC2046
+correr_restore $(args_ob)
+assert_eq "--with-openbao: si la revocacion final falla se ignora con nota (sale 0)" "0" "$RC"
+assert_contains "--with-openbao: la nota de revocacion ignorada" "$SALIDA" "revocar la raíz"
+
+caso_openbao ob_sin_firma
+# shellcheck disable=SC2046
+correr_restore $B/latest.json -i "$CASO/identidad.txt" --confirm-database apex_test --i-know-unsigned \
+  --sha256-db "$(sha "$B/$NOMBRE-db.dump.age")" --sha256-uploads "$(sha "$B/$NOMBRE-uploads.tar.age")" \
+  --with-openbao --openbao-token-file "$CASO/token"
+assert_eq "--with-openbao con --i-know-unsigned: sale 2" "2" "$RC"
+assert_contains "--with-openbao con --i-know-unsigned: mensaje fijo" "$SALIDA" "--with-openbao no es compatible con --i-know-unsigned"
+assert_ok "--with-openbao con --i-know-unsigned: no toca la base" no_toco_la_base
+assert_fails "--with-openbao con --i-know-unsigned: no llama a curl" llamo curl
+
+caso_openbao ob_token_directorio
+mkdir -p "$CASO/dirtoken"
+# shellcheck disable=SC2046
+correr_restore $B/latest.json -i "$CASO/identidad.txt" -P "$CASO/pub.pub" --confirm-database apex_test --with-openbao --openbao-token-file "$CASO/dirtoken"
+assert_eq "--openbao-token-file que no es un archivo regular: sale 2" "2" "$RC"
+assert_ok "token no regular: no toca la base" no_toco_la_base
+
+caso_openbao ob_token_enlace
+if ln -s "$CASO/token" "$CASO/token-enlace" 2> /dev/null && [ -L "$CASO/token-enlace" ]; then
+  # shellcheck disable=SC2046
+  correr_restore $B/latest.json -i "$CASO/identidad.txt" -P "$CASO/pub.pub" --confirm-database apex_test --with-openbao --openbao-token-file "$CASO/token-enlace"
+  assert_eq "--openbao-token-file como enlace simbolico: sale 2" "2" "$RC"
+  assert_ok "token como enlace: no toca la base" no_toco_la_base
+else
+  echo "  (sin enlaces simbolicos en este equipo: caso omitido)"
+fi
+
+if [ "$(uname -s)" = "Linux" ]; then
+  caso_openbao ob_token_modo
+  chmod 644 "$CASO/token"
+  # shellcheck disable=SC2046
+  correr_restore $(args_ob)
+  assert_eq "--openbao-token-file con modo 644: sale 2" "2" "$RC"
+  assert_contains "token con modo distinto de 600: mensaje fijo" "$SALIDA" "modo 600"
+  assert_ok "token con modo 644: no toca la base" no_toco_la_base
+else
+  echo "  (la comprobacion de modo 600 solo corre en Linux: caso omitido)"
+fi
+
+caso_openbao ob_fallo_previo
+touch "$FAKE/run_fail"
+# shellcheck disable=SC2046
+correr_restore $(args_ob)
+assert_eq "--with-openbao: si el respaldo previo falla sale 1" "1" "$RC"
+assert_ok "--with-openbao: el camino de fallo revoca la raiz del init nuevo" test -n "$(curl_cfg_con revoke-self)"
+assert_fails "--with-openbao: el camino de fallo no restaura la instantanea" test -n "$(curl_cfg_con snapshot-force)"
+
+caso_openbao ob_fallo_snapshot
+touch "$FAKE/curl_fail_snapshot"
+# shellcheck disable=SC2046
+correr_restore $(args_ob)
+assert_eq "--with-openbao: si la restauracion de la instantanea falla sale 1" "1" "$RC"
+assert_ok "--with-openbao: tras el fallo de la instantanea tambien se revoca la raiz" test -n "$(curl_cfg_con revoke-self)"
+
+caso_openbao ob_guarda_filas
+echo 5 > "$FAKE/rows"
+# shellcheck disable=SC2046
+correr_restore $(args_ob)
+assert_eq "--with-openbao: la guarda de filas (antes de tocar nada) sigue saliendo 2" "2" "$RC"
+assert_fails "--with-openbao: una negativa previa no revoca la raiz (se puede reintentar)" test -n "$(curl_cfg_con revoke-self)"
 
 # --- 9. estática: nunca set -x, sin credencial en la línea de comandos -------------------------
 cuerpo="$(cat "$RESTORE_SRC")"

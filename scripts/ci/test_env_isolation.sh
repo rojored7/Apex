@@ -8,8 +8,10 @@
 # donde `.env` es la suma de los dos ejemplos.
 #
 # Reglas por servicio (api, worker y web nunca ven nada de operación; backup solo lo suyo):
-#   api, worker : ni POSTGRES_PASSWORD, ni *_DB_PASSWORD, ni RCLONE_*, BACKUP_SIGN_*, BACKUP_AGE_*,
+#   api         : ni POSTGRES_PASSWORD, ni *_DB_PASSWORD, ni RCLONE_*, BACKUP_SIGN_*, BACKUP_AGE_*,
 #                 BACKUP_VERIFY_*; su DATABASE_URL no usa al propietario.
+#   worker      : lo mismo salvo BACKUP_SIGN_PUBKEY (S5-B13, S5-D170: llave pública para verificar
+#                 la firma del manifiesto; nunca la privada).
 #   backup      : puede tener PGPASSWORD (de apex_backup), RCLONE_*, BACKUP_SIGN_PUBKEY y
 #                 BACKUP_AGE_*; no POSTGRES_PASSWORD ni *_DB_PASSWORD ni DATABASE_URL.
 # Además, ninguna contraseña de .env.ops (por valor) aparece donde no corresponde.
@@ -47,6 +49,9 @@ for svc in $SERVICIOS; do
   case "$svc" in
     backup)
       prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|DATABASE_URL)$'
+      ;;
+    worker)
+      prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_.*|BACKUP_SIGN_KEY[A-Z_]*|BACKUP_AGE_.*|BACKUP_VERIFY_.*)$'  # S5-B13: la PUBKEY es de worker
       ;;
     *)
       prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_.*|BACKUP_SIGN_.*|BACKUP_AGE_.*|BACKUP_VERIFY_.*)$'

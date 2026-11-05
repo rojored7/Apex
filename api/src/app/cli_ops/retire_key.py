@@ -2,10 +2,10 @@
 
 `retired` es irreversible (S4B-D38, D63, D86). Antes de cambiar nada exige, en este orden:
 - un `verify-kek-backup` `ok` de una persona de menos de 24 h (`crypto_ops`);
-- un `latest.json` con su `.minisig` al lado (solo existencia; la firma no se verifica desde
-  `tools`: la imagen del api no trae `minisign`, S4B-D149), bajo `BACKUP_DIR` (sin enlaces),
-  `verify == "ok"` y menos de 24 h:
-  ausente, viejo, ilegible, sin firma o con `verify != ok` dan el mismo texto fijo.
+- un `latest.json` bajo `BACKUP_DIR` (sin enlaces) cuya firma `minisign` VERIFICA con
+  `BACKUP_SIGN_PUBKEY` (por el bus, S5-D72; sin esa llave no se confía en ningún manifiesto),
+  `verify == "ok"` y menos de 24 h: ausente, viejo, ilegible, sin firma, con firma mala o con
+  `verify != ok` dan el mismo texto fijo.
 Luego cuenta las filas de negocio con ese `key_id` (deben ser 0) y los blobs de `audit.audit_log`
 (que el operador confirma con `N`) e imprime `retire-key: filas_negocio=F` y `retire-key:
 audit_blobs=A`; `N` distinto de `A` sale 2. En orden: `retire-key: llave retirada`, auditoría
@@ -16,8 +16,6 @@ Todo rechazo sale con 2 (textos fijos NO_VERIFY y NO_MANIFEST); sin material ni 
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -36,6 +34,7 @@ from app.cli_base import (
     runtime_options,
     unit_of_work,
 )
+from app.cli_manifest import recent_signed_manifest
 from app.core import audit
 from app.core.clock import current_clock
 from app.core.config import Settings
@@ -44,46 +43,22 @@ from app.core.crypto import service
 COMMAND = "retire-key"
 AUDIT_TABLE = "crypto.crypto_keys"
 DEFAULT_MANIFEST = Path("/data/backups/latest.json")
-MAX_MANIFEST_BYTES = 1 << 20
-MANIFEST_AGE = timedelta(hours=24)
-CLOCK_SKEW = timedelta(minutes=5)
 NO_VERIFY = "no hay un verify-kek-backup ok de una persona en las últimas 24 h"
 NO_MANIFEST = "no hay un latest.json reciente con firma adjunta en /data/backups (verify: ok)"
 
 
-def _inside(path: Path, base: Path) -> bool:
-    """`path` (sin enlaces) resuelto queda bajo `base` resuelto (S4B-D149)."""
-    try:
-        firma = path.with_name(path.name + ".minisig")
-        if path.is_symlink() or firma.is_symlink():
-            return False
-        return path.resolve().is_relative_to(base.resolve())
-    except OSError:
-        return False
-
-
-def manifest_is_fresh(path: Path, now: datetime, base: Path) -> bool:
-    """`latest.json` bajo `base`, con `.minisig`, `verify == "ok"` y creado hace menos de 24 h."""
-    try:
-        firma = path.with_name(path.name + ".minisig")
-        if not _inside(path, base) or not (path.is_file() and firma.is_file()):
-            return False
-        if path.stat().st_size > MAX_MANIFEST_BYTES:
-            return False
-        datos = json.loads(path.read_text(encoding="utf-8"))
-        creado = datetime.strptime(datos["created_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-        verificado = datos["verify"] == "ok"
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    return verificado and -CLOCK_SKEW <= now - creado < MANIFEST_AGE
-
-
-async def _require_recent(session: AsyncSession, manifest: Path, base: Path) -> None:
+async def _require_recent(session: AsyncSession, manifest: Path, settings: Settings) -> None:
     async with session.begin():
         verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
     if not verificado:
         reject(NO_VERIFY, COMMAND)
-    if not manifest_is_fresh(manifest, current_clock().now_utc(), base):
+    pubkey = settings.BACKUP_SIGN_PUBKEY
+    if pubkey is None:
+        reject(NO_MANIFEST, COMMAND)
+    revision = recent_signed_manifest(
+        manifest, pubkey, now=current_clock().now_utc(), base=settings.BACKUP_DIR
+    )
+    if not revision.ok:
         reject(NO_MANIFEST, COMMAND)
 
 
@@ -129,7 +104,7 @@ async def _retire_flow(
     async with crypto_runtime(settings, options) as session:
         async with session.begin():
             actor_id = await resolve_admin_actor(session, actor, required=True)
-        await _require_recent(session, manifest, settings.BACKUP_DIR)
+        await _require_recent(session, manifest, settings)
         filas, blobs = await _count(session, key_id)
         if filas:
             reject("quedan filas de negocio con esa llave; termine la rotación antes", COMMAND)

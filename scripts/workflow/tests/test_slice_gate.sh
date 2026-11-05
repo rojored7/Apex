@@ -71,6 +71,15 @@ assert_log_has "ruff format --check src/app/cli.py src/app/cli_base.py src/app/c
 assert_log_has "mypy src/app/cli.py src/app/cli_base.py src/app/cli_ops"
 assert_log_lacks "src/app/seed"
 
+# S5-D72 (B13): cli_manifest.py entra al caso cli cuando existe y no antes.
+assert_log_lacks "cli_manifest.py"
+printf 'W = 1
+' > "$REPO/api/src/app/cli_manifest.py"
+clear_log
+assert_exit 0 "cli con cli_manifest.py" bash "$GATE" cli tests/core/test_config.py
+assert_log_has "ruff check src/app/cli.py src/app/cli_base.py src/app/cli_ops src/app/cli_manifest.py"
+assert_log_has "mypy src/app/cli.py src/app/cli_base.py src/app/cli_ops src/app/cli_manifest.py"
+
 # Con mypy en rojo: falla y no escribe sello.
 rm -f "$REPO/.git/apex/slice-gate.ok"
 stub_tool_fail_on uv "mypy" 1

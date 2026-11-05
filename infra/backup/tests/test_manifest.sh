@@ -58,4 +58,30 @@ assert_fails "sha256 corto" valida "$TMP_ROOT/hash.json"
 printf '{%s, "files": [{"kind": "otro", "name": "x", "size_bytes": 1, "sha256": "%s", "plain_sha256": "%s"}]}' "$base" "$H64" "$P64" > "$TMP_ROOT/kind.json"
 assert_fails "kind fuera de la lista" valida "$TMP_ROOT/kind.json"
 
+# S5-B13 (S5-D8): `openbao_snapshot` {name, size_bytes, sha256, verified} es opcional y estricto.
+S64="$(printf 'c%.0s' $(seq 1 64))"
+snap='"openbao_snapshot": {"name": "apex-20261021-070005-openbao.snap.age", "size_bytes": 777, "sha256": "'"$S64"'", "verified": true}'
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "$snap" > "$TMP_ROOT/snap-ok.json"
+assert_ok "openbao_snapshot completo es válido" valida "$TMP_ROOT/snap-ok.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/true/false}" > "$TMP_ROOT/snap-false.json"
+assert_ok "openbao_snapshot con verified=false es válido" valida "$TMP_ROOT/snap-false.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/\"verified\": true/\"verified\": \"true\"}" > "$TMP_ROOT/snap-str.json"
+assert_fails "verified debe ser booleano" valida "$TMP_ROOT/snap-str.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/\"verified\": true/\"verified\": true, \"extra\": 1}" > "$TMP_ROOT/snap-extra.json"
+assert_fails "openbao_snapshot con propiedad no prevista" valida "$TMP_ROOT/snap-extra.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/, \"verified\": true/}" > "$TMP_ROOT/snap-sinverif.json"
+assert_fails "openbao_snapshot sin verified" valida "$TMP_ROOT/snap-sinverif.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/\"$S64\"/\"abc\"}" > "$TMP_ROOT/snap-sha.json"
+assert_fails "openbao_snapshot con sha256 corto" valida "$TMP_ROOT/snap-sha.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/777/-1}" > "$TMP_ROOT/snap-neg.json"
+assert_fails "openbao_snapshot con size_bytes negativo" valida "$TMP_ROOT/snap-neg.json"
+printf '{%s, "files": [%s], %s}' "$base" "$archivo" "${snap/apex-20261021-070005-openbao.snap.age/}" > "$TMP_ROOT/snap-nombre.json"
+assert_fails "openbao_snapshot con name vacío" valida "$TMP_ROOT/snap-nombre.json"
+# manifest_json con la entrada: el esquema la acepta y el JSON la lleva.
+nm=apex-20261021-070005
+printf 'db|%s-db.dump.age|1234|%s|%s\n' "$nm" "$H64" "$P64" \
+  | manifest_json "$nm" 2026-10-21T07:00:05Z apex ok 2026-10-21T07:02:05Z skipped "" "$nm-openbao.snap.age|777|$S64|true" > "$TMP_ROOT/con-snap.json" 2> /dev/null || true
+assert_contains "manifest_json escribe openbao_snapshot" "$(cat "$TMP_ROOT/con-snap.json")" '"openbao_snapshot"'
+assert_ok "manifest_json con openbao_snapshot cumple el esquema" valida "$TMP_ROOT/con-snap.json"
+
 finish

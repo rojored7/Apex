@@ -929,3 +929,24 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - **Preview (`--project=preview --workers=1`):** 189 passed (3,1 min), 0 fallos; 167 PNG en `web/test-results/` (79 en oscuro), 320/768/1024/1440 claro y oscuro (ignorados por git).
 - **P2-4 en vivo (ensayo, admin):** `POST /notifications/{id}/wa-link` 200 (aviso `sent`); `POST .../skip` con `reason` 200 (`skipped`); `PATCH /members/{id}/channels` 200. `audit.audit_log` (solo lectura): `reveal` de `members.members` `{"field":"phone","purpose":"notify"}` (sin el número), `update` de `notifications.notifications` pending->sent con `sent_by`, `update` pending->skipped con `skip_reason`, `insert` de `members.member_channel_preferences` (primera vez; las siguientes serían `update`).
 - **Restauración:** `.env` del ensayo y `.env` de desarrollo con `cmp` idéntico a sus copias del scratchpad; api y web del ensayo recreados sin `compose.e2e.yml`; Nginx `rate=60r/m`, `LOGIN_IP_LIMIT=5`; 6 logins fallidos -> `401 401 401 401 401 429`. `/health` 8181 y 8280 `ok`, `version e411df0`, `crypto ok`; 12 contenedores de apex/apex-ensayo `healthy`. Nunca `down -v`; `dian-*` intactos. Sin commit.
+
+## V12 · rotate-kek (DevOps, 2026-11-05, HEAD `b3a71c9`, ensayo `apex-ensayo` con overlay OpenBao)
+
+- **Antes:** `crypto_keys`: 8 filas `openbao`, `state=active`, envolturas `vault:v1:`; `crypto_ops` 1796 filas.
+- **Custodia H-1:** la KEK local ya estaba retirada en V3 (no hay `kek.bin`), así que no hay `export-kek` que repetir; el respaldo firmado reciente con instantánea lo hizo el servicio `backup` (`run.sh` con `compose.verify.yml`): `apex-20261105-220837` (instantánea 31 043 B, descifrado ok, manifiesto firmado) antes de rotar.
+- **`rotate-kek --as`:** `version=2`, `total=8`, `hecho=8/8`, "llaves re-envueltas". Después: las 8 filas con `vault:v2:`; `crypto_jobs` `rewrap|done|8|8`.
+- **Respaldo posterior al re-envuelto:** `apex-20261105-220907` (instantánea 32 067 B, descifrado ok, manifiesto firmado).
+- **`rotate-kek --trim` (palabra `RECORTAR`):** `min_decryption_version=2`.
+- **Filas:** `crypto_ops` 1796 -> 1812 (+16); `audit_log`: `update` `{"event":"rotate_kek","version":2,"total":8,"done":8}` (22:09:00) y `update` `{"event":"trim_kek","min_decryption_version":2}` (22:09:10).
+- **Sistema:** `/health` del ensayo (8280) 200 tras recortar.
+- **Limpieza (V12):** `docker compose -p apex-ensayo ... down -v` (volúmenes y redes del ensayo, más `apex-ensayo_openbao-token-tools` huérfano); `docs/scratch/ensayo/` y `*.dump` borrados (`_v7_run1.txt` ya no existía); perfiles `openbao` y `avisos` de desarrollo detenidos (`stop` sin filtrar paró también el stack base; se arrancó con `start`, 6/6 `healthy`, datos intactos); sin `apex-smoke-helper` ni `apex-obe2e-*`. `check-release-version.sh --check v0.2.0`: api, web y CHANGELOG en 0.2.0.
+
+## V12 · Cierre del orquestador
+
+- `pre-commit run --all-files` 7/7 Passed tras alinear el hook de ruff con el proyecto (`43113df`, ruff 0.17.1; `end-of-file-fixer` corrigió tres archivos).
+- Versión 0.2.0 en `api/pyproject.toml` (+ `uv.lock`), `web/package.json` (+ lock) y `CHANGELOG.md` `## [0.2.0]` (`e411df0`); `bash scripts/ci/check-release-version.sh --check v0.2.0` ok (repetido en V12).
+- US-129.6: `test_history_perf.py` mide con 10.000 avisos (`7deb573`, 1 passed); matriz V11 cerrada en 147/147 criterios y 20/20 historias (`419ad41`).
+- `infra/backup/Dockerfile` con `ARG GIT_SHA` y `LABEL org.opencontainers.image.revision` (OBS-1 de la matriz), prueba estática `test_scripts_static.sh` ampliada; bloque duplicado por el agente de V12 corregido por el orquestador antes del commit de cierre.
+- MINOR-4 de la matriz (dos pruebas web sensibles a tiempo bajo carga: `routes.render.test.tsx` H1 y `features/system/api.test.tsx`): dueño front, v0.3.
+- Commit de cierre = etiqueta local `v0.2.0`; las imágenes de cierre y su verificación (incluido el worker con `--run-once notify`) quedan en «V12 · Imágenes».
+

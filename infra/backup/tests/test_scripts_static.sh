@@ -171,4 +171,11 @@ if [ -f "$ENTRY" ]; then
   assert_contains "entrypoint arranca supercronic" "$(cat "$ENTRY")" "supercronic"
 fi
 
+# Dockerfile (V12): etiqueta OCI revision desde GIT_SHA, como api y web (solo con el repo completo).
+if [ "$REPO_MODE" -eq 1 ] && [ -f "$BACKUP_DIR_SRC/Dockerfile" ]; then
+  df="$(cat "$BACKUP_DIR_SRC/Dockerfile")"
+  assert_contains "Dockerfile declara ARG GIT_SHA" "$df" "ARG GIT_SHA"
+  assert_contains "Dockerfile etiqueta org.opencontainers.image.revision" "$df" "org.opencontainers.image.revision="
+fi
+
 finish

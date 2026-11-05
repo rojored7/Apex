@@ -17,6 +17,9 @@ RUN apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 supercronic=0.2.49-r1 minis
 COPY --chown=apex:apex --chmod=0555 run.sh restore.sh lib.sh entrypoint.sh healthcheck.sh /opt/backup/
 COPY --chown=apex:apex --chmod=0444 manifest.schema.json /opt/backup/
 ENV TZ=America/Bogota
+# Revision OCI de la imagen (V12): GIT_SHA lo pasa el build, igual que api y web.
+ARG GIT_SHA=dev
+LABEL org.opencontainers.image.revision=$GIT_SHA
 USER apex
 WORKDIR /opt/backup
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s CMD ["/opt/backup/healthcheck.sh"]

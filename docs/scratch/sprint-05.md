@@ -828,3 +828,8 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - LOW 1: `core/crypto/migration._consulta` devuelve `Select[CryptoKey]` (convención de tipos del repo; `Select[tuple[...]]` no pasa mypy aquí); se quita `Any` sin uso. LOW 2: docstring y log de `auth/links.forgot` (S5-D38).
 - Pruebas nuevas en `tests/core/test_export.py` (+4, 37 en el archivo): `keyset_after` sin llave, con llave (SQL y parámetros), `record_close` fila de cierre y base caída con alerta. `tests/core/test_health_perf.py` (`perf`, 1 prueba): 200 secuenciales y 20 concurrentes con caché caliente, p95 < 50 ms, `check_db` llamado una vez; 1 passed en 0,71 s (0,48 s de la prueba).
 - Verde: tests/core (1026 + 1 fallo de tiempo `test_audit_hook_perf` en la corrida con carga; aislado pasa), members 714, payments 584, auth 631, architecture 677 (tras mover a `export_db.py`: 770 con los tres test_export).
+
+## V10 · Revisión general de código (árbol fusionado `e2a6329`)
+
+- 0 CRITICAL, 0 HIGH, 2 MEDIUM, 1 LOW (S5-D263, D264 y el CHANGELOG para V12). Corregido por el orquestador: borrado `channels/whatsapp_link.py` (stub sin importadores), `CLAUDE.md` ajustado, `ci.yml` exige 0 saltos también en `test_provider_contract` y `test_rotate_kek`. Verificación sin base (V2 ocupa `db_test`): ruff, format, mypy y `pytest --co`; la suite completa va en `run-gates` 4/4 (V9).
+

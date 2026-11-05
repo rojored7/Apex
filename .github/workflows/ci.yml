@@ -106,12 +106,25 @@ jobs:
             echo "::error::docs/openapi.json está desactualizado. Corra: cd api && uv run python -m app.cli export-openapi ../docs/openapi.json"
             exit 1
           fi
+      - name: OpenBao real para el marcador openbao (S5-D264)
+        # El servicio `openbao` corre en modo -dev con la raíz `apex-ci` (token de CI, sin valor fuera de
+        # este workflow). Se monta `transit`, se crean `apex-kek` (aes256-gcm96) y `apex-sign-audit`
+        # (ed25519) y el token va a un archivo 600, como pide la fixture `openbao_real` (B1.7).
+        run: |
+          BAO=http://127.0.0.1:8200
+          curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"transit"}' "$BAO/v1/sys/mounts/transit"
+          curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"aes256-gcm96"}' "$BAO/v1/transit/keys/apex-kek"
+          curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"ed25519"}' "$BAO/v1/transit/keys/apex-sign-audit"
+          umask 077
+          printf 'apex-ci' > "$RUNNER_TEMP/bao-token"
+          echo "OPENBAO_TEST_ADDR=$BAO" >> "$GITHUB_ENV"
+          echo "OPENBAO_TEST_TOKEN_FILE=$RUNNER_TEMP/bao-token" >> "$GITHUB_ENV"
       - name: pruebas con PostgreSQL 16 y cobertura
         working-directory: api
         # Política `perf` (M4, S2-D27): las pruebas con reloj quedan fuera del gate y corren
         # en el paso siguiente, que informa sin bloquear.
         run: uv run pytest -m "not perf" -rs --junitxml="$RUNNER_TEMP/junit.xml" --cov=app --cov-report=xml --cov-report=term --cov-fail-under=80
-      - name: las pruebas de age real no se saltan (S4B-D103)
+      - name: las pruebas de age real y de OpenBao real no se saltan (S4B-D103, S5-D264)
         # test_archive_real_age.py y test_kek_real_age.py llevan skipif (sin age o sin pty). En la CI
         # age está instalado y hay pty: si alguna se salta, la prueba de la KEK no se ejecutó y el
         # paso falla. Exige además que cada archivo haya aportado al menos una prueba.
@@ -119,14 +132,23 @@ jobs:
           uv run --directory api python - "$RUNNER_TEMP/junit.xml" << 'PYEOF'
           import sys
           import xml.etree.ElementTree as ET
+          # S5-D264: en los archivos con el marcador `openbao` (test_provider_contract, test_rotate_kek)
+          # ningún salto puede deberse a la falta de OPENBAO_TEST_*: el job levanta un OpenBao real. Los
+          # saltos "no aplica" del contrato (ramas solo-local, con motivo) siguen permitidos.
           ARCHIVOS = ("test_archive_real_age", "test_kek_real_age")
+          OPENBAO = ("test_provider_contract", "test_rotate_kek")
           casos = ET.parse(sys.argv[1]).getroot().iter("testcase")
-          cuentas = {a: [0, 0] for a in ARCHIVOS}
+          cuentas = {a: [0, 0] for a in ARCHIVOS + OPENBAO}
           for caso in casos:
-              for archivo in ARCHIVOS:
+              salto = caso.find("skipped")
+              motivo = (salto.get("message") or "") if salto is not None else ""
+              for archivo in ARCHIVOS + OPENBAO:
                   if archivo in caso.get("classname", ""):
                       cuentas[archivo][0] += 1
-                      cuentas[archivo][1] += caso.find("skipped") is not None
+                      if archivo in ARCHIVOS:
+                          cuentas[archivo][1] += salto is not None
+                      else:
+                          cuentas[archivo][1] += "OPENBAO_TEST" in motivo
           for archivo, (total, saltadas) in cuentas.items():
               print(f"{archivo}: {total} pruebas, {saltadas} saltadas")
               if total == 0 or saltadas:

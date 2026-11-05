@@ -2557,3 +2557,11 @@ Decisiones del orquestador sobre las 10 dudas del Rojo (cuaderno «B12 · Rojo»
 - **S5-D257 precisada:** `record_close` y `keyset_after` viven en `core/export_db.py` (68 líneas), no en `core/export.py`: `test_core_import_direction` fija `core/export.py` a biblioteca estándar más `core.errors`, y los helpers necesitan SQLAlchemy, `anyio`, `core.audit` y `core.db`. `members/exports.py` y `payments/exports.py` importan de `export_db`.
 - **S5-D262 · Alerta de cierre perdido válida (bug latente).** `alert("export_close_lost", table=...)` lanzaba `ValueError` porque `table` no está en `ALERT_CONTEXT_KEYS` (S5-D203): un cierre perdido no alertaba y ocultaba el motivo. Ahora usa `job=<tabla>`; prueba nueva.
 - LOW 1 de Python: `_consulta` devuelve `Select[CryptoKey]` (la forma con `tuple[...]` no pasa `mypy` con las convenciones del repo).
+
+**Revisión general de código sobre el árbol fusionado (0 CRITICAL, 0 HIGH, 2 MEDIUM, 1 LOW; muestreo).**
+- **S5-D263 · Sin clase para el canal `whatsapp_link` (MEDIUM 1).** `channels/whatsapp_link.py` era un stub del Rojo de B7 (`send` lanzaba `NotImplementedError`) que ningún archivo importaba: se borra. La regla del canal vive en `service.wa_link` (S5-D28) y `send_pending` solo toca filas `email` (S5-D228); `CLAUDE.md` lo dice.
+- **MEDIUM 2 (V12).** `CHANGELOG.md` no tiene sección «Sin publicar»: V12 añade `## [0.2.0]` encima de `## [0.1.0]` (`check-release-version.sh` compara la etiqueta con la primera sección).
+- **LOW aceptado.** `scripts/ci/test_db_roles.sh` y `test_env_isolation.sh` usan `set -uo pipefail` sin `-e` a propósito: comprueban fallos esperados y cuentan.
+- **S5-D264 · La CI exige 0 saltos de OpenBao real.** El paso «las pruebas de age real no se saltan» de `ci.yml` suma los archivos con el marcador `openbao` (`test_provider_contract`, `test_rotate_kek`): si alguna prueba se salta o el archivo no aporta ninguna, el job `api` falla (el job levanta OpenBao 2.7.2 por digest y exporta `OPENBAO_TEST_ADDR` y `OPENBAO_TEST_TOKEN_FILE`).
+- Verificado por el orquestador: `USER_EXPORT_LIMIT_PER_DAY = 20` existe en `config.py`, `ratelimit.py` y `.env.example`; los siete jobs de la CI existen.
+

@@ -1,6 +1,8 @@
 # US-127 · Como coach quiero ver a quién hay que avisar hoy y abrir el WhatsApp con el mensaje listo para avisar en segundos
 
 > **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): `wa-link` es `POST` (S5-D59, M-9): efecto sobre el aviso (marca `sent`) y devuelve el teléfono, así que no puede ser un `GET` que el refetch repita. El front usa `useMutation` con `gcTime: 0` y abre con `noopener,noreferrer`. Cubetas `members-reveal*`.
+>
+> **Corregido en S5-V11c** (`docs/ddd/DECISIONES.md`, S5-D217, D224, D265): el criterio 7 cambia: un aviso de correo no se reenvía por WhatsApp (409 `wrong_channel`); con el canal de WhatsApp deshabilitado en Configuración la ruta responde 409 `channel_disabled`; el código de país sale de `whatsapp.country_code`.
 
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** Notifications (esquema `notifications`)

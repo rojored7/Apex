@@ -1,6 +1,8 @@
 # US-126 · Como administrador quiero recibir en el chat del equipo, por Telegram, el resumen diario de avisos y las alertas del worker para enterarme sin entrar al sistema
 
 > **Corregido en S5-W0-1** (`docs/ddd/blueprints/sprint-05-plan.md`, sección 1; `docs/ddd/DECISIONES.md`, "Sprint 5"): G-08 resuelta: Telegram es un `TelegramAlertSink` en `core/alerts_telegram.py` registrado desde `main.py` y `worker/main.py`; el chat va en `TELEGRAM_CHAT_ID` (`.env.ops`), no en `settings.channels`; `alert(code, **context)` con claves cerradas (S5-D29, S5-D58, S5-D78). Estado: READY.
+>
+> **Corregido en S5-V11c** (`docs/ddd/DECISIONES.md`, S5-D206, S5-D268): el criterio 3 cambia; Telegram es un canal interno de mejor esfuerzo con cola acotada y deduplicación, sin la política de reintentos del correo al socio; el resumen se regenera al día siguiente. `telegram.enabled` de Configuración apaga el envío (S5-D265).
 
 - **Épica:** EP-14 · Avisos de vencimiento
 - **Bounded context:** `core/alerts.py` y `core/alerts_telegram.py` (alerta interna, N-34; S5-D29)

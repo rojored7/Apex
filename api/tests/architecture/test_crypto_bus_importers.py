@@ -31,7 +31,8 @@ import pytest
 
 APP: Final = Path(__file__).resolve().parents[2] / "src" / "app"
 PAQUETE: Final = "app.core.crypto"
-VIGILADOS: Final = frozenset({f"{PAQUETE}.bus", f"{PAQUETE}.types"})
+RECOVERY: Final = f"{PAQUETE}.recovery"
+VIGILADOS: Final = frozenset({f"{PAQUETE}.bus", f"{PAQUETE}.types", RECOVERY})
 INSTALADOR: Final = "install_crypto_type_listeners"
 
 IMPORTADORES_REALES: Final = frozenset(
@@ -48,6 +49,12 @@ IMPORTADORES_REALES: Final = frozenset(
     }
 )
 ARRANQUE: Final = frozenset({"cli_base.py", "main.py", "worker/runtime.py"})
+ARRANQUE_CON_RECOVERY: Final = frozenset({"main.py", "worker/runtime.py"})
+"""S5-B3 (S5-D16, S5-D20): el arranque del api (sondeo) y el del worker (`with_crypto`) importan
+`recovery` y solo los nombres de `NOMBRES_DE_RECOVERY`; `cli_base.py` no."""
+NOMBRES_DE_RECOVERY: Final = frozenset(
+    {"try_load", "poll_forever", "is_loaded", "observe", "reset"}
+)  # S5-D198, S5-D202
 SOLO_FIRMA: Final = frozenset({"cli_manifest.py", "worker/jobs/backup_check.py"})
 """S5-B13 (S5-D72): verifican la firma del manifiesto por el bus y nada más; el único nombre
 que pueden importar de `bus` es `verified_manifest_bytes`."""
@@ -142,7 +149,13 @@ def permitido(relativo: str, vistas: dict[str, set[str]]) -> bool:
     if relativo in SOLO_FIRMA:
         return vistas == {f"{PAQUETE}.bus": {PUERTA_DE_FIRMA}}
     if relativo in ARRANQUE:
-        return set(vistas) == {f"{PAQUETE}.types"} and vistas[f"{PAQUETE}.types"] == {INSTALADOR}
+        propias = dict(vistas)
+        recuperacion = propias.pop(RECOVERY, None)
+        if recuperacion is not None and not (
+            relativo in ARRANQUE_CON_RECOVERY and recuperacion <= NOMBRES_DE_RECOVERY
+        ):
+            return False
+        return set(propias) == {f"{PAQUETE}.types"} and propias[f"{PAQUETE}.types"] == {INSTALADOR}
     return False
 
 
@@ -170,7 +183,8 @@ def test_todo_importador_esta_en_la_lista_blanca() -> None:
 def test_el_arranque_solo_importa_el_instalador_de_types() -> None:
     importadores = _importadores()
     for relativo in ARRANQUE:
-        assert importadores[relativo] == {f"{PAQUETE}.types": {INSTALADOR}}, relativo
+        propias = {m: n for m, n in importadores[relativo].items() if m != RECOVERY}
+        assert propias == {f"{PAQUETE}.types": {INSTALADOR}}, relativo
 
 
 def test_members_contact_no_importa_el_bus_ni_types() -> None:
@@ -414,3 +428,34 @@ def test_control_importes_relativos_y_ajenos() -> None:
     assert importa_el_proveedor("from .openbao_provider import KEK_KEY\n", "app.core.crypto")
     assert not importa_el_proveedor("from app.core.crypto.provider import KeyProvider\n")
     assert not importa_el_proveedor("from app.core.crypto import digest\n")
+
+
+# S5-B3: el arranque suma `core.crypto.recovery` (S5-D16, S5-D20) -------------------------------
+
+
+def test_s5_b3_el_arranque_del_api_y_del_worker_importan_recovery() -> None:
+    """`main.py` lanza el sondeo (`poll_forever`) y `worker/runtime.py` carga con `try_load`
+    (`with_crypto`); `cli_base.py` no importa `recovery`."""
+    importadores = _importadores()
+    assert RECOVERY in importadores["main.py"], "main.py no importa core.crypto.recovery"
+    assert RECOVERY in importadores["worker/runtime.py"], "runtime.py no importa recovery"
+    assert RECOVERY not in importadores["cli_base.py"]
+
+
+def test_s5_b3_nadie_mas_importa_recovery() -> None:
+    otros = {
+        r: v[RECOVERY]
+        for r, v in _importadores().items()
+        if RECOVERY in v and r not in ARRANQUE_CON_RECOVERY
+    }
+    assert otros == {}
+
+
+def test_control_recovery_en_otro_archivo_o_con_otro_nombre_falla() -> None:
+    con_recovery = importaciones("from app.core.crypto.recovery import try_load, poll_forever\n")
+    tipos = {f"{PAQUETE}.types": {INSTALADOR}}
+    assert permitido("main.py", {**con_recovery, **tipos})
+    assert not permitido("cli_base.py", {**con_recovery, **tipos})
+    assert not permitido("modules/notifications/service.py", con_recovery)
+    otro_nombre = importaciones("from app.core.crypto.recovery import current_state\n")
+    assert not permitido("worker/runtime.py", {**otro_nombre, **tipos})

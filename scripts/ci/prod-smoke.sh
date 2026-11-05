@@ -274,7 +274,7 @@ fi
 
 # --- OpenBao (S5-D22, W0-2): init 5/3, bootstrap, tokens, reinicio sellado y desello ----------------------------
 if [ "$PROVIDER" = "openbao" ]; then
-  if DC="$DC_STR" OPENBAO_SMOKE_EVIDENCE="$SMOKE_DIR/openbao" bash scripts/ci/openbao-smoke.sh; then ok "openbao-smoke.sh"; else falla "openbao-smoke.sh"; fi
+  if DC="$DC_STR" OPENBAO_SMOKE_EVIDENCE="$SMOKE_DIR/openbao" OPENBAO_SMOKE_ADMIN_EMAIL="$ADMIN_EMAIL" OPENBAO_SMOKE_ADMIN_PASSWORD="$clave" bash scripts/ci/openbao-smoke.sh; then ok "openbao-smoke.sh"; else falla "openbao-smoke.sh"; fi
   # S5-B2 (H-2.3): con el api en CRYPTO_PROVIDER=openbao (compose.openbao.yml) no debe existir kek.bin.
   if [ "$("${DC[@]}" exec -T api printenv CRYPTO_PROVIDER 2>/dev/null | tr -d '\r')" = "openbao" ]; then
     for SVC in api worker; do

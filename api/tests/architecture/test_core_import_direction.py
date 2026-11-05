@@ -298,3 +298,19 @@ def test_control_un_import_de_audit_en_el_proveedor_se_detecta() -> None:
     assert _prohibidos_b1("import app.core.audit\n") == ["app.core.audit"]
     assert _prohibidos_b1("def f():\n    from app.modules.members import service\n")
     assert _prohibidos_b1("from app.core.crypto.errors import CryptoError\n") == []
+
+
+# S5-B3: `core/errors.py` mapea `CryptoUnavailable` y solo importa `core/crypto/errors` ----------
+
+
+def test_s5_b3_errors_solo_importa_crypto_errors_de_core_crypto() -> None:
+    """El handler de `CryptoUnavailable` (S5-D14) necesita el tipo, nada más del bus: ni el
+    keyring, ni el proveedor, ni `recovery`. Importa `app.core.crypto.errors` (en el módulo o
+    perezoso) y ningún otro `app.core.crypto.*`."""
+    propios = {n for n in _imports(CORE / "errors.py") if n.startswith("app.core.crypto")}
+    assert propios == {"app.core.crypto.errors"}, propios
+
+
+def test_s5_b3_crypto_errors_no_importa_nada_de_la_aplicacion() -> None:
+    """Como `errors.py` lo importa y `security -> db -> errors`, `crypto/errors.py` queda hoja."""
+    assert [n for n in _imports(CORE / "crypto" / "errors.py") if n.startswith("app")] == []

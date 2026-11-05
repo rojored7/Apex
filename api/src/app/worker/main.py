@@ -134,7 +134,7 @@ async def _correr(spec: JobSpec, reloj: Clock, simulada: date | None, settings: 
     """La corrida dentro del runtime. Si la base falla al reclamar o al cerrar, sale con 1 y deja
     solo el tipo del error en el log y en `job_failed` (S4A-D83), sin traza."""
     try:
-        async with runtime.worker_runtime(settings) as fabrica:
+        async with runtime.worker_runtime(settings, with_crypto=True) as fabrica:
             if simulada is not None:
                 logger.warning("clock override", extra={"simulated_date": simulada.isoformat()})
             outcome = await run_job(
@@ -178,8 +178,9 @@ async def status(job: str, settings: Settings) -> int:
 
 async def serve(settings: Settings, *, stop: asyncio.Event) -> int:
     """Scheduler con latido hasta que `stop` se dispare; 0 al salir limpio."""
-    async with runtime.worker_runtime(settings) as fabrica:
-        await runtime.wait_for_database(settings)
+    # La base debe responder antes de abrir el runtime: `with_crypto` lee `crypto_keys` (S5-D20).
+    await runtime.wait_for_database(settings)
+    async with runtime.worker_runtime(settings, with_crypto=True) as fabrica:
         ciclos = runtime.CycleTasks(fabrica, get_registry)
         await ciclos.heartbeat()
         scheduler = runtime.build_scheduler(ciclos)

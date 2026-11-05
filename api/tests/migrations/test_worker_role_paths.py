@@ -30,10 +30,17 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import load_only
 
+from app.cli import key_paths_in
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto import bus, oplog
+from app.core.crypto.bootstrap import ensure_keys
+from app.core.crypto.keyring import Keyring, configure_keyring
+from app.core.crypto.local_provider import LocalFileProvider
+from app.core.crypto.oplog import install_oplog_listeners
 from app.modules.members import service as members_service
 from app.modules.members.models import Member
 from app.modules.memberships import expirations
+from tests.conftest import LIMPIAR_LLAVES
 from tests.migrations.conftest import RolesDb, url_por_rol
 from tests.migrations.test_db_grants import propietario
 
@@ -168,3 +175,60 @@ def test_los_caminos_del_worker_que_cargan_member_usan_load_only() -> None:
     servicio = (SRC / "modules" / "members" / "service.py").read_text(encoding="utf-8")
     cuerpo = servicio.split("async def names_for", 1)[1].split("\nasync def ", 1)[0]
     assert "select(Member)" not in cuerpo and "Member.id" in cuerpo
+
+
+# S5-B3 · E6 (S5-D20): ¿descifrar como `apex_worker` necesita `FOR SHARE` o `UPDATE`? -----
+
+
+def test_worker_descifra_sin_update(apex_roles: RolesDb, claves_prueba: Path) -> None:
+    """Rojo B3 (E6): sobre `apex_roles`, con las llaves sembradas por el propietario, el worker
+    (solo `SELECT` en `crypto_keys`, `INSERT` en `crypto_ops`) carga `phone` y `email` con
+    `Keyring.load_all(classes=...)`, cifra y descifra, refresca por la marca y confirma sin que
+    PostgreSQL le niegue ningún permiso. Si fallara con `42501`, el rol debe recibir el
+    residual de `apex_api` (`UPDATE (updated_at)`) también al worker (S5-D20)."""
+    rutas = key_paths_in(claves_prueba)
+    proveedor = LocalFileProvider(rutas.kek, rutas.signing_key)
+    install_oplog_listeners()
+
+    async def sembrar() -> None:
+        motor = create_async_engine(
+            apex_roles.dsn().replace("postgresql://", "postgresql+asyncpg://")
+        )
+        try:
+            async with async_sessionmaker(motor, expire_on_commit=False)() as sesion:
+                with actor_scope(SYSTEM_USER_ID):
+                    await ensure_keys(sesion, proveedor, lambda _n: proveedor)
+                    await sesion.commit()
+        finally:
+            await motor.dispose()
+
+    asyncio.run(sembrar())
+    oplog.reset_buffer()
+    configure_keyring(None)
+    registro = uuid4()
+
+    async def trabajo(fabrica: async_sessionmaker[AsyncSession]) -> tuple[bytes, set[str]]:
+        async with fabrica() as sesion:
+            keyring = Keyring()
+            await keyring.load_all(
+                sesion, lambda _n: proveedor, classes=frozenset({"member.phone", "member.email"})
+            )
+            configure_keyring(keyring)
+            aad = bus.aad_for(registro)
+            blob = bus.encrypt("member.email", b"socio@example.com", aad, record_id=registro)
+            claro = bus.decrypt(blob, aad, purpose="notify", record_id=registro)
+            await keyring.refresh_if_stale(sesion, proveedor)
+            await sesion.commit()
+            return claro, {k.data_class for k in keyring.keys()}
+
+    try:
+        claro, clases = _como_worker(apex_roles, trabajo)
+    finally:
+        configure_keyring(None)
+        oplog.reset_buffer()
+    assert claro == b"socio@example.com"
+    assert clases == {"member.phone", "member.email"}
+    propietario(
+        apex_roles,
+        *(sql for sql in LIMPIAR_LLAVES),
+    )

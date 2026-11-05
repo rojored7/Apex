@@ -232,5 +232,19 @@ fi
 PSMOKE=scripts/ci/prod-smoke.sh
 if tiene "$PSMOKE" "test ! -e /run/apex/keys/kek.bin" && tiene "$PSMOKE" "for SVC in api worker"; then ok "prod-smoke.sh comprueba que api y worker no tienen kek.bin (openbao)"; else falla "prod-smoke.sh sin la comprobación de kek.bin ausente en api y worker"; fi
 
+# S5-B3 (S5-D22, S5-D69, S5-D70): el humo comprueba el estado sellado del api y la recuperación.
+echo "-- openbao-smoke.sh · S5-B3"
+if tiene "$SMOKE" '"crypto"[^|]*sealed|crypto.{0,12}sealed'; then ok "openbao-smoke.sh comprueba /health con crypto sealed"; else falla "openbao-smoke.sh no comprueba crypto sealed en /health"; fi
+if tiene "$SMOKE" '503'; then ok "openbao-smoke.sh espera HTTP 503 con el custodio sellado"; else falla "openbao-smoke.sh no espera el 503 de /health"; fi
+if tiene "$SMOKE" 'restart[[:space:]]+openbao' && tiene "$SMOKE" 'restart[[:space:]]+api[[:space:]]+worker'; then ok "openbao-smoke.sh reinicia openbao y después api y worker (D69)"; else falla "openbao-smoke.sh sin restart openbao y restart api worker"; fi
+if tiene "$SMOKE" 'crypto_unavailable' && tiene "$SMOKE" '/members/'; then ok "openbao-smoke.sh pide GET /members/{id} y espera 503 crypto_unavailable"; else falla "openbao-smoke.sh sin la prueba de GET /members/{id} con crypto_unavailable"; fi
+if tiene "$SMOKE" 'salud[[:space:]]+web' && tiene "$SMOKE" 'salud[[:space:]]+worker'; then ok "openbao-smoke.sh comprueba que web y worker siguen healthy"; else falla "openbao-smoke.sh no comprueba web y worker healthy con el custodio sellado"; fi
+if tiene "$SMOKE" 'espera_(healthy|crypto|ok)[^#]*[[:space:]]40|(-le|<=|-lt)[[:space:]]*(40|41)|RECUPERACION_MAX_S=40|40[[:space:]]*(s|seg)'; then ok "openbao-smoke.sh fija la recuperación en 40 s o menos"; else falla "openbao-smoke.sh sin el límite de 40 s de recuperación"; fi
+if tiene "$SMOKE" 'OPENBAO_SMOKE_EVIDENCE|EVIDENCE' && tiene "$SMOKE" 'health.*(EVIDENCE|evidencia)|evidencia.*health'; then ok "openbao-smoke.sh guarda la evidencia de /health en cada estado"; else falla "openbao-smoke.sh no guarda la evidencia de /health por estado"; fi
+if tiene "$SMOKE" 'desell|unseal'; then ok "openbao-smoke.sh desella y espera el crypto ok"; else falla "openbao-smoke.sh sin el desellado final"; fi
+if tiene "$SMOKE" 'run --rm -T worker python -m app.worker.main --run-once expirations'; then ok "openbao-smoke.sh corre el worker --run-once expirations tras el desello (L7)"; else falla "openbao-smoke.sh no corre el worker tras el desello"; fi
+if tiene "$SMOKE" 'CI:-' && tiene "$SMOKE" 'CI definida'; then ok "openbao-smoke.sh: con CI, faltar el admin del humo es FALLA (L7)"; else falla "openbao-smoke.sh no falla con CI y sin admin del humo"; fi
+if tr -d '\015' < "$SMOKE" | grep -Eq 'llega con B1 y B2'; then falla "openbao-smoke.sh aún dice que el estado sellado llega con B1 y B2 (actualizar el comentario)"; else ok "openbao-smoke.sh ya no pospone el estado sellado"; fi
+
 resumen
 [ "$fallas" -eq 0 ]

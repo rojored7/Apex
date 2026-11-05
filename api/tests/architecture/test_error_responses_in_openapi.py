@@ -118,3 +118,23 @@ def test_las_operaciones_sin_rol_no_declaran_503_como_error_response(
             assert respuesta is not None and _ref(respuesta) == "#/components/schemas/HealthOut"
         else:
             assert respuesta is None, f"{metodo.upper()} {ruta} no debe declarar 503"
+
+
+def test_s5_b3_el_503_comun_describe_busy_o_crypto_unavailable(settings_prueba: Settings) -> None:
+    """S5-D14: la descripción del 503 de las operaciones con rol nombra las dos causas; el 503 de
+    `/health` sigue siendo `HealthOut` con su propia descripción."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    esquema = app.openapi()
+    con_rol = _ops_con_rol(app)
+    malas: list[str] = []
+    for ruta, operaciones in esquema["paths"].items():
+        for metodo, operacion in operaciones.items():
+            if (metodo, ruta) not in con_rol:
+                continue
+            descripcion = operacion["responses"]["503"]["description"]
+            if "busy" not in descripcion or "crypto_unavailable" not in descripcion:
+                malas.append(f"{metodo.upper()} {ruta}: {descripcion!r}")
+    assert malas == [], "\n".join(malas)
+    salud = esquema["paths"]["/health"]["get"]["responses"]["503"]
+    assert _ref(salud) == "#/components/schemas/HealthOut"
+    assert "crypto_unavailable" not in salud["description"]

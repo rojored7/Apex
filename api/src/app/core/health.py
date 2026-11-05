@@ -34,7 +34,12 @@ from app.core.db import get_engine
 CheckResult = Literal["ok", "down", "unknown"]
 CheckFn = Callable[[], Awaitable[str]]
 DB_TIMEOUT_S = 2.0
-HEALTH_CACHE_TTL_S: Final[dict[str, float]] = {"db": 2.0, "backup": 30.0, "migrations": 30.0}
+HEALTH_CACHE_TTL_S: Final[dict[str, float]] = {
+    "db": 2.0,
+    "backup": 30.0,
+    "migrations": 30.0,
+    "crypto": 5.0,
+}
 """Segundos que vive el resultado de cada comprobación en la caché (S4B-D60); una comprobación
 sin entrada aquí no se cachea."""
 DEFAULT_ALLOWED: Final[frozenset[str]] = frozenset({"ok", "down", "unknown"})
@@ -106,6 +111,8 @@ class HealthOut(BaseModel):
     backup: Literal["ok", "attention", "unknown"] = "unknown"
     # S4B-B4 (S4B-D27, S4B-D60): `ok` en head, `mismatch` detrás o delante, `unknown` sin lectura.
     migrations: Literal["ok", "mismatch", "unknown"] = "unknown"
+    # S5-B3 (S5-D13, S5-D70): custodio de llaves; sin versión ni clúster de OpenBao (L-7).
+    crypto: Literal["ok", "sealed", "unreachable", "unknown"] = "unknown"
 
 
 async def check_db() -> CheckResult:

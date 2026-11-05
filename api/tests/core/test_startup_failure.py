@@ -1,7 +1,14 @@
-"""Si una migración falla al arrancar, el api no acepta tráfico (US-020, T4 y T8)."""
+"""Si una migración falla al arrancar, el api no acepta tráfico (US-020, T4 y T8).
+
+S5-B3 (S5-D14, M-4; Rojo): una prueba por rama del arranque ante el custodio de llaves.
+`sealed` o `unreachable` degradan (sin keyring, con `gc.freeze()` y seguridad configurada);
+`unwrap_failed`, `key_missing` y `forbidden` abortan sin envolver DEK nuevas; sin KEK local aborta.
+"""
 
 from __future__ import annotations
 
+import gc
+import logging
 import os
 import shutil
 import subprocess
@@ -11,9 +18,22 @@ from pathlib import Path
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app import main as main_module
 from app.core.config import Settings
+from app.core.crypto.errors import CryptoError, CryptoUnavailable
+from app.core.crypto.keyring import current_keyring
+from app.core.security import StartupError
 from app.main import create_app
+from tests.core._cripto_apoyo import base_con_llaves, contar_llaves, proveedor_ctl
+from tests.factories.fake_provider import ProveedorControlable, inyectar_proveedor
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
+
+__all__ = ["base_con_llaves", "proveedor_ctl"]
+
+Fabrica = async_sessionmaker[AsyncSession]
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
@@ -220,3 +240,128 @@ async def test_una_migracion_rota_con_true_relanza_y_el_log_nombra_la_revision_s
     secreto = configuracion.DATABASE_URL.get_secret_value()
     assert secreto not in texto
     assert "apex-test" not in texto and "postgresql+asyncpg://" not in texto
+
+
+# S5-B3 (S5-D14, M-4): una prueba por rama del arranque ante el custod ---
+# Rojo B3. Cada rama abre el `lifespan` real sobre `db_test` con llaves confirmadas.
+
+SELLADO_AL_ARRANCAR = "crypto sealed at startup"
+
+
+async def _abrir_lifespan(settings: Settings) -> None:
+    app = create_app(settings, run_migrations_on_startup=False)
+    async with app.router.lifespan_context(app):
+        pass
+
+
+@pytest.mark.parametrize("razon", ["sealed", "unreachable"])
+async def test_sellado_o_inalcanzable_arranca_degradado_sin_keyring(
+    base_con_llaves: Fabrica,
+    proveedor_ctl: ProveedorControlable,
+    settings_prueba: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    razon: str,
+) -> None:
+    proveedor_ctl.estado = razon  # type: ignore[assignment]
+    inyectar_proveedor(monkeypatch, proveedor_ctl)
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    caplog.set_level(logging.INFO)
+    async with app.router.lifespan_context(app):
+        with pytest.raises(CryptoUnavailable):
+            current_keyring()
+    avisos = [r for r in caplog.records if SELLADO_AL_ARRANCAR in r.getMessage()]
+    assert len(avisos) == 1, [r.getMessage() for r in caplog.records]
+    assert settings_prueba.DATABASE_URL.get_secret_value() not in caplog.text
+    assert "http://" not in avisos[0].getMessage()
+
+
+async def test_el_arranque_degradado_tambien_congela_con_gc_freeze(
+    base_con_llaves: Fabrica,
+    proveedor_ctl: ProveedorControlable,
+    settings_prueba: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proveedor_ctl.estado = "sealed"
+    inyectar_proveedor(monkeypatch, proveedor_ctl)
+    congelaciones: list[str] = []
+    monkeypatch.setattr(gc, "freeze", lambda: congelaciones.append("freeze"))
+    await _abrir_lifespan(settings_prueba)
+    assert congelaciones == ["freeze"]
+
+
+async def test_el_arranque_degradado_sigue_con_seguridad_y_cargador_de_principal(
+    base_con_llaves: Fabrica,
+    proveedor_ctl: ProveedorControlable,
+    settings_prueba: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sellado no es fatal: el JWT queda configurado y el cargador de principal existe (login)."""
+    from app.core.security import get_principal_loader
+
+    proveedor_ctl.estado = "sealed"
+    inyectar_proveedor(monkeypatch, proveedor_ctl)
+    llamadas: list[str] = []
+    real = main_module.configure_security
+    monkeypatch.setattr(
+        main_module, "configure_security", lambda s: (llamadas.append("jwt"), real(s))[1]
+    )
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    async with app.router.lifespan_context(app):
+        assert llamadas == ["jwt"]
+        assert get_principal_loader() is not None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        CryptoError("unwrap_failed", "la envoltura no abre"),
+        CryptoError("key_missing", "la llave del proveedor no existe"),
+        CryptoUnavailable("forbidden"),
+    ],
+    ids=["unwrap_failed", "key_missing", "forbidden"],
+)
+async def test_unwrap_failed_key_missing_o_forbidden_abortan_y_no_crean_llaves(
+    base_con_llaves: Fabrica,
+    proveedor_ctl: ProveedorControlable,
+    settings_prueba: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: CryptoError,
+) -> None:
+    """M-4: falta una llave (la de índice del teléfono) y el proveedor no abre las demás; el
+    arranque aborta y `ensure_keys` no envuelve ninguna DEK nueva con una KEK ajena."""
+    async with base_con_llaves() as sesion, sesion.begin():
+        await sesion.execute(text(disable_user_sql("crypto.crypto_keys")))
+        await sesion.execute(
+            text("DELETE FROM crypto.crypto_keys WHERE purpose = 'index' AND data_class = :c"),
+            {"c": "member.phone"},
+        )
+        await sesion.execute(text(rearm_always_sql("crypto.crypto_keys")))
+    antes = await contar_llaves(base_con_llaves)
+    proveedor_ctl.error = error
+    inyectar_proveedor(monkeypatch, proveedor_ctl)
+    caplog.set_level(logging.INFO)
+    with pytest.raises(CryptoError) as aborto:
+        await _abrir_lifespan(settings_prueba)
+    assert aborto.value.code == error.code
+    assert proveedor_ctl.wrap_calls == 0, "ensure_keys creó llaves con un proveedor que no abre"
+    assert await contar_llaves(base_con_llaves) == antes
+    assert SELLADO_AL_ARRANCAR not in caplog.text
+
+
+async def test_sin_kek_local_el_arranque_aborta(
+    base_con_llaves: Fabrica,
+    settings_prueba: Settings,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ajustes = settings_prueba.model_copy(update={"CRYPTO_LOCAL_KEK_PATH": tmp_path / "no_hay.bin"})
+    caplog.set_level(logging.INFO)
+    with pytest.raises((CryptoError, StartupError)) as aborto:
+        await _abrir_lifespan(ajustes)
+    if isinstance(aborto.value, CryptoError):
+        assert aborto.value.code == "kek_missing"
+    else:
+        assert "CRYPTO_LOCAL_KEK_PATH" in str(aborto.value)
+    assert SELLADO_AL_ARRANCAR not in caplog.text

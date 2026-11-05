@@ -14,12 +14,13 @@ from __future__ import annotations
 import os
 from uuid import uuid4
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto import oplog
+from app.core.crypto.errors import CryptoError
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import SIGNING_KEY_REF
 from app.core.crypto.models import CryptoKey
@@ -37,13 +38,16 @@ async def _active_pairs(session: AsyncSession) -> set[tuple[str, str]]:
     return {(p, d) for p, d in filas.all()}
 
 
-async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
+async def _create_missing(session: AsyncSession, provider: KeyProvider) -> int:
+    """Intenta crear las llaves que faltan y devuelve cuántas faltaban (otro proceso puede haberse
+    adelantado: el `ON CONFLICT` ya las dejó, y quien llama debe recargar de todos modos)."""
     deseadas = (
         [("encrypt", s.name) for s in encrypting_specs()]
         + [("index", s.name) for s in indexing_specs()]
         + [("sign", s.name) for s in signing_specs()]
     )
     activas = await _active_pairs(session)
+    faltaban = 0
     for purpose, data_class in deseadas:
         if (purpose, data_class) in activas:
             continue
@@ -74,16 +78,28 @@ async def _create_missing(session: AsyncSession, provider: KeyProvider) -> None:
             )
         )
         resultado = await session.execute(stmt)
+        faltaban += 1
         if getattr(resultado, "rowcount", 0) == 1 and purpose != "sign":
             oplog.record("wrap", data_class=data_class, key_id=key_id, key_version=1)
+    return faltaban
 
 
 async def ensure_keys(
     session: AsyncSession, provider: KeyProvider, resolver: ProviderResolver
 ) -> Keyring:
-    """Crea lo que falta, carga el keyring del proceso y lo devuelve."""
-    await _create_missing(session, provider)
+    """Abre lo que ya existe, crea lo que falta, carga el keyring del proceso y lo devuelve.
+
+    S5-D14 (M-4): se abre primero lo existente. Si el proveedor no puede abrir las DEK que ya hay
+    (`unwrap_failed`, `forbidden`, custodio caído), el error sube ANTES de envolver una DEK nueva:
+    una KEK ajena nunca llega a guardar llaves que nadie más podría abrir."""
     keyring = Keyring()
     await keyring.load_all(session, resolver)
+    hay_filas = await session.scalar(select(func.count()).select_from(CryptoKey))
+    if hay_filas and not any(k.purpose == "encrypt" for k in keyring.keys()):
+        # L5 (S5-D200): hay llaves guardadas y ninguna DEK de cifrado abrió; crear otras sería
+        # envolver con una KEK que no es la de los datos.
+        raise CryptoError("unwrap_failed", "ninguna DEK de cifrado existente se pudo abrir")
+    if await _create_missing(session, provider):
+        await keyring.load_all(session, resolver)
     configure_keyring(keyring)
     return keyring

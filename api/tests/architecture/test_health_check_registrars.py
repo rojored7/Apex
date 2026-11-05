@@ -67,3 +67,36 @@ def test_control_el_permiso_es_solo_main_y_core() -> None:
     assert not permitido(SRC / "worker" / "jobs" / "backup_check.py")
     assert not permitido(SRC / "modules" / "dashboard" / "service.py")
     assert not permitido(SRC / "cli.py")
+
+
+def nombres_registrados(fuente: str) -> set[str]:
+    """Primer argumento literal de cada `register_health_check(...)` de `fuente`."""
+    nombres: set[str] = set()
+    for nodo in ast.walk(ast.parse(fuente)):
+        if isinstance(nodo, ast.Call) and nodo.args and isinstance(nodo.args[0], ast.Constant):
+            f = nodo.func
+            nombre = (
+                f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
+            )
+            if nombre == NOMBRE:
+                nombres.add(str(nodo.args[0].value))
+    return nombres
+
+
+def test_s5_b3_crypto_se_registra_solo_desde_main() -> None:
+    """S5-B3 (S5-D13): el check `crypto` (crítico) lo registra `main.py` y nadie más; ni `core/`
+    ni `worker/` ni los módulos."""
+    assert "crypto" in nombres_registrados((SRC / "main.py").read_text(encoding="utf-8"))
+    fuera = [
+        p.relative_to(SRC).as_posix()
+        for p in sorted(SRC.rglob("*.py"))
+        if p != SRC / "main.py" and "crypto" in nombres_registrados(p.read_text(encoding="utf-8"))
+    ]
+    assert fuera == []
+
+
+def test_control_nombres_registrados_ve_el_literal() -> None:
+    fuente = (
+        "health.register_health_check('crypto', f, critical=True)\nregister_health_check(x, f)\n"
+    )
+    assert nombres_registrados(fuente) == {"crypto"}

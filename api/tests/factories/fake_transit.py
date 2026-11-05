@@ -74,6 +74,8 @@ class FakeTransit:
     sellado: bool = False
     inicializado: bool = True
     min_decryption_version: dict[str, int] = field(default_factory=dict)
+    umbral: int = 3
+    """`t` de `sys/seal-status` (umbral de desello); S5-B3, M-3 lo vigila en producción."""
     calls: list[Call] = field(default_factory=list)
     _material: dict[str, list[Any]] = field(default_factory=dict)
     _token_valido: bool = True
@@ -166,7 +168,17 @@ class FakeTransit:
                 return self._error(forzada.status, forzada.errors)
         if ruta == "/v1/sys/seal-status":
             return httpx.Response(
-                200, json={"initialized": self.inicializado, "sealed": self.sellado}
+                200,
+                json={
+                    "initialized": self.inicializado,
+                    "sealed": self.sellado,
+                    "t": self.umbral,
+                    "n": 5,
+                    # Datos que `/health` de APEX nunca debe repetir (L-7).
+                    "version": "2.4.1-fake",
+                    "cluster_name": "apex-cluster-fake",
+                    "cluster_id": "11111111-2222-3333-4444-555555555555",
+                },
             )
         if ruta == "/v1/sys/health":
             codigo = 200 if self.inicializado and not self.sellado else 503

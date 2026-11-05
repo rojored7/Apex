@@ -44,6 +44,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core import db
 from app.core.clock import current_clock
 from app.core.config import Settings
+from app.core.crypto.keyring import configure_keyring
+from app.core.crypto.provider import configure_provider, get_provider_named
+from app.core.crypto.recovery import poll_forever, reset, try_load
 from app.core.jobs import JobRun
 from app.core.logging import configure_logging
 from app.worker.runner import JobOutcome, run_cycle
@@ -61,6 +64,8 @@ SIMULATION_DATABASE_SUFFIX: Final = "_sim"
 SIMULATION_TEST_DATABASE: Final = "apex_test"
 FIRST_WAIT_S: Final = 1.0
 SHUTDOWN_GRACE_S: Final = 30
+WORKER_CRYPTO_CLASSES: Final = frozenset({"member.phone", "member.email"})
+"""Clases que abre el worker con `with_crypto` (S5-D20, S5-D56, M-6): las de los avisos."""
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -79,17 +84,47 @@ def _install_listeners() -> None:
     app_main.load_module_services()
 
 
+async def _open_crypto(settings: Settings) -> asyncio.Task[None] | None:
+    """Proveedor del proceso y primer intento de cargar `phone` y `email` (S5-D20). Sin `INSERT`
+    en `crypto_keys` (`create_missing=False`). Un custodio sellado no aborta: el estado queda
+    `sealed` y una tarea de sondeo lo recupera; `unwrap_failed` y `forbidden` sí suben."""
+    configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER))
+    session_factory = db.get_sessionmaker()
+    estado = await try_load(
+        session_factory, settings, create_missing=False, classes=WORKER_CRYPTO_CLASSES
+    )
+    if estado == "ok":
+        return None
+    return asyncio.create_task(
+        poll_forever(
+            session_factory, settings, create_missing=False, classes=WORKER_CRYPTO_CLASSES
+        ),
+        name="poll_forever",
+    )
+
+
 @asynccontextmanager
 async def worker_runtime(
-    settings: Settings,
+    settings: Settings, *, with_crypto: bool = False
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """Preámbulo del worker; cede la fábrica de sesiones y libera el engine al salir."""
+    """Preámbulo del worker; cede la fábrica de sesiones y libera el engine al salir.
+    `with_crypto` (S5-D20): carga el keyring con `phone` y `email`, sin `ensure_keys`."""
     _install_listeners()
     configure_logging(settings)
     db.configure_engine(db.create_engine_from(settings))
+    sondeo: asyncio.Task[None] | None = None
     try:
+        if with_crypto:
+            sondeo = await _open_crypto(settings)
         yield db.get_sessionmaker()
     finally:
+        if sondeo is not None:
+            sondeo.cancel()
+            await asyncio.gather(sondeo, return_exceptions=True)
+        if with_crypto:
+            configure_keyring(None)
+            configure_provider(None)
+            reset()  # S5-D198
         await db.dispose_engine()
 
 

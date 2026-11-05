@@ -65,13 +65,13 @@ unset K
 set -o history
 ```
 
-La respuesta trae `"progress"` y `"sealed"`; al tercer acierto dice `"sealed":false`. Compruebe con `$DC exec -T openbao bao status`. Con las tres llaves puestas, el api se recupera sin reiniciar (el sondeo de recuperación tarda hasta 40 segundos); `bash scripts/ci/openbao-smoke.sh` ensaya el ciclo completo en un entorno desechable.
+La respuesta trae `"progress"` y `"sealed"`; al tercer acierto dice `"sealed":false`. Compruebe con `$DC exec -T openbao bao status`. Con las tres llaves puestas, el api se recupera sin reiniciar (el sondeo de recuperación, cada 20 segundos, tarda 40 segundos o menos; `crypto` vuelve a `ok` en `/health`); `bash scripts/ci/openbao-smoke.sh` ensaya el ciclo completo en un entorno desechable.
 
 Si una llave no funciona, no la repita más de dos veces: una llave equivocada no daña nada, pero repetirla no ayuda. Pruebe con otra.
 
 ## 5. Valores de `/health.crypto`
 
-El campo `crypto` de `GET /health` (S5-D15, llega con B1 y B2) significa:
+El campo `crypto` de `GET /health` (S5-D13, S5-D15, S5-B3) significa:
 
 | Valor | Qué significa | Qué hacer |
 |---|---|---|
@@ -79,7 +79,7 @@ El campo `crypto` de `GET /health` (S5-D15, llega con B1 y B2) significa:
 | `sealed` | OpenBao responde pero está sellado. El api devuelve 503 `crypto_unavailable` en las rutas con datos sensibles. `db` y `migrations` siguen en `ok`: el api no está caído y por eso su healthcheck no lo reinicia. | Desellar (sección 4). |
 | `unreachable` | El api no alcanza OpenBao (servicio detenido, red `custody` caída, token expirado o revocado). | `$DC ps openbao`, `$DC logs --tail 50 openbao`; si el token expiró o se revocó, reemitir (sección 6). |
 
-Un 503 con `crypto: sealed` y `db` y `migrations` en `ok` es un estado esperado tras un reinicio, no un fallo del despliegue.
+Un 503 con `crypto: sealed` y `db` y `migrations` en `ok` es un estado esperado tras un reinicio, no un fallo del despliegue. `crypto` es una comprobación crítica: un monitor que mida solo el código HTTP verá 503 mientras esté sellado; léale el cuerpo. Con `ENV=production` y un umbral de desello menor que 2 el valor es `unreachable` y el log trae una línea `CRITICAL` (reparta las llaves con un umbral de 2 o más). El detalle del estado sellado y de lo que ve el usuario está en `docs/RUNBOOK.md` §13.
 
 ## 6. Rotar los tokens
 

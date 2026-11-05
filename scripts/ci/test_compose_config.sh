@@ -89,9 +89,12 @@ def check(cond, msg):
 check("ports" not in prod["db"], "db no publica puertos en produccion")
 keys_api = [v for v in prod["api"].get("volumes", []) if v.get("target") == "/run/apex/keys"]
 check(bool(keys_api) and keys_api[0].get("read_only") is True, "api monta keys en solo lectura")
-# S4A-W0-1 (S4A-D49, M-5): en 4A el worker no cifra ni descifra; el Sprint 5 vuelve a montar keys:ro.
+# S5-B3 (S5-D20, H-2): el worker descifra avisos; con CRYPTO_PROVIDER=local monta keys en solo lectura
+# (compose.openbao.yml lo quita). Uploads sigue sin montarse.
 destinos_worker = {v.get("target") for v in prod["worker"].get("volumes", []) or []}
-check(not ({"/run/apex/keys", "/data/uploads"} & destinos_worker), "worker no monta keys ni uploads hasta el Sprint 5")
+keys_worker = [v for v in prod["worker"].get("volumes", []) or [] if v.get("target") == "/run/apex/keys"]
+check(bool(keys_worker) and keys_worker[0].get("read_only") is True, "S5-B3: worker monta keys en solo lectura (proveedor local)")
+check("/data/uploads" not in destinos_worker, "worker no monta uploads")
 tools = [v for v in prod["tools"].get("volumes", []) if v.get("target") == "/run/apex/keys"]
 check(bool(tools) and not tools[0].get("read_only"), "tools monta keys con escritura")
 check(prod["api"]["image"] == prod["worker"]["image"] == prod["tools"]["image"], "api, worker y tools usan la misma imagen")
@@ -377,11 +380,12 @@ env_w = ent("worker")
 check(env_w.get("DATABASE_URL", "").startswith("postgresql+asyncpg://apex_worker:"), "worker.DATABASE_URL usa apex_worker")
 check(env_w.get("BACKUP_DIR") == "/data/backups", f"worker con BACKUP_DIR=/data/backups ({env_w.get('BACKUP_DIR')})")
 mont_w = montajes(prod["worker"])
-# S5-W0-2 (S5-D11): a backups:ro se suma SOLO su token de OpenBao, tambien :ro (la asercion original exigia un unico montaje).
+# S5-W0-2 (S5-D11): a backups:ro se suma su token de OpenBao, tambien :ro. S5-B3 (S5-D197): con el
+# proveedor local suma keys:ro (descifra avisos); compose.openbao.yml lo quita (S5-D193).
 check(
     sorted((m.get("source"), m.get("target"), m.get("read_only")) for m in mont_w)
-    == [("backups", "/data/backups", True), ("openbao-token-worker", "/run/apex/openbao", True)],
-    f"worker monta exactamente backups en /data/backups y su token en /run/apex/openbao, ambos de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
+    == [("backups", "/data/backups", True), ("keys", "/run/apex/keys", True), ("openbao-token-worker", "/run/apex/openbao", True)],
+    f"worker monta exactamente backups en /data/backups, keys y su token en /run/apex/openbao, todos de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
 )
 
 # web (S4B-D11, D75).

@@ -437,3 +437,40 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - **`-m openbao` reales**: OpenBao `2.7.2` `-dev` desechable en `apex_custody` con alias `openbao` (política efímera `transit/*` + `renew-self`, token en volumen 600): 14 passed, 4 skipped (13 + la prueba nueva de `set_min_decryption_version`). Contenedor y volúmenes borrados.
 - **`prod-smoke.sh`**: no se repitió entero (B2 no cambia el compose base; el overlay sí, ver D193): `bash -n` y los estáticos (`test_openbao_infra.sh` 90/0, `test_compose_config.sh` 0 fallas) en verde.
 - **Estado final**: dev (api, worker, web, backup, db) healthy sobre la imagen nueva; `apex-ensayo` con `CRYPTO_PROVIDER=openbao` en su `.env` y overlay aplicado, OpenBao desellado.
+
+## B3 · Rojo (S5-B3, estado sellado, /health.crypto, 503 crypto_unavailable, sondeo y keyring del worker)
+
+- **Stubs**: `core/crypto/state.py`, `core/crypto/recovery.py` (NotImplementedError), `HealthOut.crypto` y TTL 5 s en `core/health.py`, `worker_runtime(..., with_crypto)` (NotImplementedError). Reparadas por contrato: `test_health.py` (TTL dict) y `test_health_migrations.py` (CLAVES_DEL_CUERPO suma `crypto`).
+- **Pruebas rojas**: health_crypto 25, crypto_recovery 12, startup_failure 7, errors_crypto_unavailable 7, worker_crypto_runtime 4, members/router_crypto_unavailable 1, arquitectura 5, infra 8 (`test_openbao_infra.sh`) + 1 (`test_compose_config.sh`). Regresión por el stub: `test_openapi_export::test_docs_openapi_json_esta_al_dia` (el Verde regenera `docs/openapi.json`, paso 57).
+- **Ya en verde (guardas)**: `test_refresh_current_sealed` (2, B1 ya lo cumple), E6 `test_worker_descifra_sin_update` (el worker descifra con solo SELECT: `grants.sql` no cambia), sin KEK local aborta, otros CryptoError siguen 500, lista y login sin keyring 200.
+- **Kit**: `tests/factories/fake_provider.py`, `tests/core/_cripto_apoyo.py`; `FakeTransit.umbral` y datos de versión/clúster en seal-status.
+- **Dudas de contrato asumidas**: `health_state(ok, sin keyring) -> sealed`; `poll_forever(..., sleep=)` y su coro se llama `poll_forever`; `try_load` toma el proveedor de `current_provider()`; `recovery` solo lo importan `main.py` y `worker/runtime.py`; el umbral M-3 llega a `/health` desde el proveedor (el check lee `ENV` de los settings con que se creó la app).
+- **Gates (paso 58)**: `uv run ruff check . && uv run ruff format --check . && uv run mypy src`; `uv run pytest tests/core tests/worker tests/members/test_router_crypto_unavailable.py tests/architecture tests/migrations/test_worker_role_paths.py`; `bash scripts/ci/test_openbao_infra.sh`; `bash scripts/ci/test_compose_config.sh`; `bash scripts/ci/test_deploy_script.sh`.
+
+## B3 · Verde (S5-B3, estado sellado, /health.crypto, 503 crypto_unavailable, sondeo y keyring del worker)
+
+- **Código**: `core/crypto/state.py` (`health_state`), `core/crypto/recovery.py` (`try_load`, `poll_forever(..., classes=None, sleep=)`, `current_state`, `is_loaded`, `reset`), `core/errors.py` (handler `CryptoUnavailable` -> 503 `crypto_unavailable` + `Retry-After: 30`; `MENSAJE_503` nombra `busy` y `crypto_unavailable`), `main.py` (`_startup` tolerante y devuelve el estado, tarea `poll_forever` en `app.state.crypto_poll`, check `crypto` crítico con guarda M-3), `OpenBaoProvider.unseal_threshold`, `ensure_keys` abre lo existente antes de crear (M-4), `worker/runtime.py` (`with_crypto`, sondeo propio si arranca sellado), `worker/main.py` (`--run-once` y `serve` con `with_crypto=True`; `serve` espera la base antes del runtime), `compose.yml` (worker monta `keys:ro`, S5-D197).
+- **Decisiones**: S5-D194 a S5-D197 y complementos en `docs/ddd/DECISIONES.md` (bloque "S5-B3").
+- **Pruebas corregidas (no cambian la intención)**: `test_crypto_recovery._Reloj` (`FrozenClock.advance` no admite `timedelta`), fixtures autouse de `test_health.py` y `test_health_migrations.py` (custodio sano), `test_compose_config.sh` (el worker suma `keys:ro`, D197).
+- **Contrato**: `docs/openapi.json` regenerado (`HealthOut.crypto`, descripción del 503) y `web/src/core/api/types.ts` por `npm run gen:api`; `tsc --noEmit` en verde.
+- **Humo**: `openbao-smoke.sh` ensaya sellado/recuperación solo si el api corre con `CRYPTO_PROVIDER=openbao` y recibe `OPENBAO_SMOKE_ADMIN_EMAIL`/`_PASSWORD` (los pasa `prod-smoke.sh`); la prueba viva queda para el ensayo con el overlay.
+
+## B3 · Revisiones (S5-B3)
+
+- Seguridad 0 CRITICAL / 0 HIGH / 3 MEDIUM / 4 LOW; Python y asyncio 2 HIGH / 5 MEDIUM / 3 LOW. Todo atendido con prueba primero (15 rojas comprobadas en `tests/core/test_crypto_recovery_reviews.py`, 17 casos): D198 (reset de estado en los `finally`, sondeo solo se salta con ok y keyring), D199 (pasos de arranque solo con ok, `on_loaded` una vez), D200 (`forbidden` aborta el arranque, alertas por racha, jitter 0 a 2 s, `RuntimeError` no mata el sondeo, `ensure_keys` L5), D201 (aceptado con dueño v0.3), D202 (`observe` desde `/health`), más tipado por `Protocol`, L6, L7 (`openbao-smoke.sh` corre el worker tras el desello y con `CI` el admin faltante es FALLA).
+- Pruebas añadidas: cancelación dentro de `session.begin()` sin keyring parcial, `sealed -> unreachable -> ok` con una alerta de cada tipo, worker sellado con salida limpia.
+
+## B3 · Evidencia (B3.8 en el ensayo, `apex-ensayo` con overlay OpenBao; imagen `apex-api:local` reconstruida)
+
+- Dev (`apex`, 8181): `{"status":"ok","db":"ok","version":"dev","backup":"ok","migrations":"ok","crypto":"ok"}`.
+- Ensayo, ok (200): `{"status":"ok","db":"ok","version":"dev","backup":"ok","migrations":"ok","crypto":"ok"}`; `GET /members/{id}` 200.
+- `restart openbao` con el api arriba (503): `{"status":"degraded","db":"ok","version":"dev","backup":"ok","migrations":"ok","crypto":"sealed"}`; `GET /members/{id}` sigue en 200 (L-1).
+- `restart api worker` con openbao sellado (503): mismo cuerpo `crypto: sealed`; `GET /members/{id}` 503 `{"error":{"code":"crypto_unavailable","message":"El custodio de llaves no está disponible. Avise al administrador para desellarlo."}}` con `retry-after: 30`; lista 200; login 200; `web`, `worker` y `api` healthy.
+- Desello con 3 llaves por `sys/unseal`: `crypto: ok` (200) a los 9 s; `GET /members/{id}` 200.
+- Logs: cada proceso emite `crypto_sealed` una vez al sellarse (el api una vez con las llaves en memoria por `observe`, otra al reiniciar, porque es un proceso nuevo) y `crypto_recovered` una vez al recuperarse (api y worker, sin reinicio).
+- Notas de entorno: tras recrear el api hay que reiniciar `web` (nginx conserva la IP vieja del api: 502); el login del ensayo exige `Origin: http://localhost:8280`; se restableció la clave del admin del ensayo (la de `.env.seed` ya no valía).
+
+### B3 · run-gates (ensayo detenido con `stop api worker web backup`; api en tres partes con `--cov-append`)
+
+- api: ruff, format y mypy limpios; `tests/{architecture,core,crypto,cli,worker,migrations,integration,settings}` 3.476 passed / 87 skipped; `tests/{audit,auth,dashboard}` 1.046 passed; `tests/{members,memberships,payments,plans}` + `tests/*.py` 2.136 passed; TOTAL 6.658 passed, cobertura 94,99 % (umbral 80 %). Scripts de infraestructura (`test_check_key_files`, `test_images_pinned`, `test_nginx_conf`, `test_compose_config`, `test_openbao_infra` 101/0, `test_deploy_script`, `test_infra_scripts`) en verde. Web: lint 0, tsc 0, 173 archivos / 3.149 pruebas, cobertura 97,86 % líneas, build ok.
+- Orden: `run-gates` se corrió antes del sello final (anotar sus totales cambia el cuaderno, que está versionado y entra en la huella del sello). Los 6 gates del paso 58 se repitieron en verde tras las revisiones.

@@ -972,6 +972,17 @@
             "title": "Backup",
             "type": "string"
           },
+          "crypto": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "sealed",
+              "unreachable",
+              "unknown"
+            ],
+            "title": "Crypto",
+            "type": "string"
+          },
           "db": {
             "enum": [
               "ok",
@@ -4530,7 +4541,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Audit",
@@ -4621,7 +4632,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Verify Chain",
@@ -4690,7 +4701,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Last Verification",
@@ -4794,7 +4805,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Audit Entry",
@@ -5024,7 +5035,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Me",
@@ -5105,7 +5116,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Change Password",
@@ -5301,7 +5312,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Dashboard",
@@ -5549,7 +5560,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Members",
@@ -5648,7 +5659,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Create Member",
@@ -5754,7 +5765,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Deactivate Member",
@@ -5855,7 +5866,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Member",
@@ -5976,7 +5987,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Update Member",
@@ -6123,7 +6134,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Member History",
@@ -6260,7 +6271,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Member Memberships",
@@ -6381,7 +6392,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Sell Membership",
@@ -6494,7 +6505,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Renewal Preview",
@@ -6647,7 +6658,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Member Payments",
@@ -6760,7 +6771,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Reactivate Member",
@@ -6873,7 +6884,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Reveal Member Field",
@@ -7085,7 +7096,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Memberships",
@@ -7146,7 +7157,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Membership Summary",
@@ -7239,7 +7250,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Membership Detail",
@@ -7362,7 +7373,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Cancel Membership",
@@ -7485,7 +7496,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Freeze Membership",
@@ -7608,7 +7619,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Register Payment",
@@ -7873,7 +7884,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Payments",
@@ -7934,7 +7945,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Payment Methods",
@@ -8024,7 +8035,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Payments Summary",
@@ -8117,7 +8128,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Payment Detail",
@@ -8240,7 +8251,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Void Payment",
@@ -8373,7 +8384,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Plans",
@@ -8472,7 +8483,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Create Plan",
@@ -8578,7 +8589,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Delete Plan",
@@ -8669,7 +8680,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Plan",
@@ -8790,7 +8801,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Update Plan",
@@ -8893,7 +8904,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Activate Plan",
@@ -8996,7 +9007,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Deactivate Plan",
@@ -9057,7 +9068,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Gym",
@@ -9156,7 +9167,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Patch Gym",
@@ -9217,7 +9228,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Memberships",
@@ -9316,7 +9327,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Patch Memberships",
@@ -9377,7 +9388,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Payment Methods",
@@ -9476,7 +9487,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Patch Payment Methods",
@@ -9537,7 +9548,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Privacy",
@@ -9636,7 +9647,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Patch Privacy",
@@ -9728,7 +9739,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get Section",
@@ -9848,7 +9859,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Patch Section",
@@ -10009,7 +10020,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "List Users",
@@ -10108,7 +10119,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Create User",
@@ -10214,7 +10225,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Delete User",
@@ -10305,7 +10316,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Get User",
@@ -10426,7 +10437,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Update User",
@@ -10529,7 +10540,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Lock User",
@@ -10642,7 +10653,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Resend Link",
@@ -10735,7 +10746,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Revoke Sessions",
@@ -10838,7 +10849,7 @@
                 }
               }
             },
-            "description": "Base de datos ocupada"
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
           }
         },
         "summary": "Unlock User",

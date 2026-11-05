@@ -60,6 +60,9 @@ pasa a la etiqueta al final de la preverificación y, si luego algo la rechaza, 
    `dbsetup` corren solos antes del api.
 9. Pregunta cada 3 segundos a `http://127.0.0.1:<WEB_PORT>/api/v1/health` hasta
    `DEPLOY_HEALTH_TIMEOUT` (120 s por omisión) y exige `"db":"ok"` y `"migrations":"ok"`.
+   Con OpenBao sellado (`"crypto":"sealed"`, HTTP 503 con `db` y `migrations` en `ok`) el despliegue
+   **sale con 0** y avisa "api en estado sellado: desellar OpenBao": no es un fallo; desselle según
+   `docs/operacion/openbao.md` §4 y el api se recupera solo en 40 segundos o menos (S5-B3).
 10. Lee el entorno del api (`/proc/1/environ`): no debe traer contraseñas de operación, debe usar el rol
     `apex_api` y su `APP_VERSION` debe ser la etiqueta.
 11. Imprime `despliegue listo: versión ...`.

@@ -39,15 +39,11 @@ from app.core.audit import install_audit_listeners
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
-from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
-from app.core.crypto.provider import (
-    configure_provider,
-    current_provider,
-    get_provider_named,
-    make_resolver,
-)
+from app.core.crypto.provider import configure_provider, current_provider, get_provider_named
+from app.core.crypto.recovery import is_loaded, observe, poll_forever, reset, try_load
+from app.core.crypto.state import CryptoState, ThresholdAware, health_state
 from app.core.crypto.types import install_crypto_type_listeners
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestLogMiddleware, configure_logging
@@ -83,7 +79,10 @@ _app: FastAPI | None = None
 
 
 def register_startup_step(name: str, fn: StartupStep) -> None:
-    """Paso que corre al arrancar, después de las migraciones, en orden de registro."""
+    """Paso que corre al arrancar, después de las migraciones, en orden de registro.
+
+    S5-D199: solo corre con el custodio de llaves en estado `ok`. Si el api arranca sellado los
+    pasos quedan pendientes y el sondeo los ejecuta UNA vez, en la primera recuperación."""
     _startup_steps.append((name, fn))
 
 
@@ -140,9 +139,17 @@ def run_migrations(settings: Settings, script_location: str | None = None) -> No
         raise
 
 
+async def _run_startup_steps(settings: Settings) -> None:
+    """Los pasos registrados, en orden, como el sistema (S5-D199)."""
+    with actor_scope(SYSTEM_USER_ID):
+        for nombre, paso in list(_startup_steps):
+            logger.info("arranque: %s", nombre)
+            await paso(settings)
+
+
 async def _startup(
     settings: Settings, *, run_migrations_on_startup: bool, migrations_script_location: str | None
-) -> None:
+) -> CryptoState:
     """Arranque del lifespan (revisión Python M7: sale de `create_app`). Migraciones, secretos,
     seguridad y proveedor de llaves, el cargador del principal, el keyring y los pasos
     registrados. Cualquier fallo se registra (sin material) y se relanza: el api no acepta
@@ -174,19 +181,31 @@ async def _startup(
         logger.error("no hay PrincipalLoader registrado (módulo auth); el api no arranca")
         raise
     with actor_scope(SYSTEM_USER_ID):
-        # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring.
-        async with db.get_sessionmaker()() as session, session.begin():
-            proveedor = current_provider()
-            resolver = make_resolver(settings, creation=proveedor)
-            keyring = await ensure_keys(session, proveedor, resolver)
-        logger.info("llaves del bus cargadas: %s", keyring)
-        for nombre, paso in list(_startup_steps):
-            logger.info("arranque: %s", nombre)
-            await paso(settings)
+        # US-025/US-026: crea las DEK y llaves de índice que falten y carga el keyring. S5-D14
+        # (M-4): solo un custodio `sealed` o `unreachable` degrada el arranque (sin keyring, el
+        # sondeo del lifespan lo recupera); `unwrap_failed`, `key_missing` y `forbidden` abortan.
+        estado = await try_load(db.get_sessionmaker(), settings, create_missing=True)
+        if estado == "ok":
+            logger.info("llaves del bus cargadas")
+        else:
+            logger.warning("crypto sealed at startup: el api arranca sin keyring (%s)", estado)
+        if estado == "ok":
+            await _run_startup_steps(settings)
     # S4B-D48: lo que vive todo el proceso (módulos, rutas, esquemas, llaves) pasa a la generación
     # permanente; el GC de generación 2 deja de escanearlo y las pausas bajo carga se acortan.
     gc.collect()  # S4B-D179: sin esto el freeze congelaría basura cíclica del arranque para siempre
     gc.freeze()
+    return estado
+
+
+async def _cancel_crypto_poll(app: FastAPI) -> None:
+    """Cancela el sondeo de recuperación del lifespan y espera su fin (S5-D195)."""
+    tarea: asyncio.Task[None] | None = getattr(app.state, "crypto_poll", None)
+    app.state.crypto_poll = None
+    if tarea is None:
+        return
+    tarea.cancel()
+    await asyncio.gather(tarea, return_exceptions=True)
 
 
 async def _cancel_background_verifications() -> None:
@@ -230,19 +249,56 @@ def _make_lifespan(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
-            await _startup(
+            estado = await _startup(
                 settings,
                 run_migrations_on_startup=migrar,
                 migrations_script_location=migrations_script_location,
             )
+            if estado != "ok":
+                # S5-D16, S5-D195: arrancó sellado; el sondeo reintenta cada CRYPTO_RECOVERY_POLL_S.
+                app.state.crypto_poll = asyncio.create_task(
+                    poll_forever(
+                        db.get_sessionmaker(),
+                        settings,
+                        create_missing=True,
+                        on_loaded=lambda: _run_startup_steps(settings),
+                    ),
+                    name="poll_forever",
+                )
             yield
         finally:
+            await _cancel_crypto_poll(app)
             await _cancel_background_verifications()
             configure_keyring(None)
             configure_provider(None)
+            reset()  # S5-D198: la app siguiente del proceso parte sin estado ni aviso previos
             await db.dispose_engine()
 
     return lifespan
+
+
+def _crypto_health_check(settings: Settings) -> Callable[[], Awaitable[str]]:
+    """Check `crypto` de `/health` (S5-D13, S5-D194, S5-D196). Solo pregunta `status()` al
+    proveedor y mira si el proceso tiene keyring: nunca abre llaves (S5-D70). Con `ENV=production`
+    y un umbral de desello menor que 2 (un solo custodio puede desellar) responde `unreachable` y
+    deja UNA línea CRITICAL por transición, sin URL ni versión (M-3, L-7)."""
+    umbral_malo = False
+
+    async def crypto() -> str:
+        nonlocal umbral_malo
+        proveedor = current_provider()
+        estado = await proveedor.status()
+        # Sin umbral conocido (proveedor local, o aún sin leer) no se avisa (S5-D196, L6).
+        umbral = proveedor.unseal_threshold if isinstance(proveedor, ThresholdAware) else None
+        umbral_ok = not (settings.is_production and umbral is not None and umbral < 2)
+        if not umbral_ok and not umbral_malo:
+            logger.critical("crypto threshold below 2 in production; unseal needs more key holders")
+        umbral_malo = not umbral_ok
+        publico = health_state(estado, is_loaded(), threshold_ok=umbral_ok)
+        observe(publico)  # S5-D202: un re-sellado con las llaves en memoria también avisa
+        return publico
+
+    return crypto
 
 
 def _register_health_checks(settings: Settings, migrations_script_location: str | None) -> None:
@@ -250,6 +306,13 @@ def _register_health_checks(settings: Settings, migrations_script_location: str 
     mantiene sea cual sea su valor. `migrations` es crítico (S4B-D27): solo `ok` mantiene el 200;
     `head` y las revisiones conocidas se leen del código una vez, aquí (las pruebas de /health no
     abren el lifespan)."""
+    health.register_health_check(
+        "crypto",
+        _crypto_health_check(settings),
+        critical=True,
+        allowed={"ok", "sealed", "unreachable", "unknown"},
+        healthy={"ok"},
+    )
     health.register_health_check(
         "backup", backup_health, critical=False, allowed=PUBLIC_BACKUP, healthy={"ok"}
     )

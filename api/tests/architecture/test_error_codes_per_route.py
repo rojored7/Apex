@@ -199,3 +199,18 @@ def test_el_tablero_declara_200_401_403_y_429_sin_422(esquema: dict[str, Any]) -
     assert set(operacion["responses"]) == {"200", "401", "403", "429", "500", "503"}
     assert not operacion.get("parameters")
     assert "requestBody" not in operacion
+
+
+def test_s5_b3_el_503_de_las_rutas_con_rol_nombra_busy_y_crypto_unavailable(
+    esquema: dict[str, Any],
+) -> None:
+    """S5-D14: una ruta con rol (la ficha del socio) y el tablero describen el 503 con las dos
+    causas; `/health` conserva `HealthOut` y no describe `crypto_unavailable`."""
+    for ruta in ("/api/v1/members/{member_id}", "/api/v1/dashboard"):
+        descripcion = esquema["paths"][ruta]["get"]["responses"]["503"]["description"]
+        assert "busy" in descripcion and "crypto_unavailable" in descripcion, (ruta, descripcion)
+    for ruta in ("/health", "/api/v1/health"):
+        respuesta = esquema["paths"][ruta]["get"]["responses"]["503"]
+        ref = respuesta["content"]["application/json"]["schema"]["$ref"]
+        assert ref == "#/components/schemas/HealthOut"
+        assert "crypto_unavailable" not in respuesta["description"]

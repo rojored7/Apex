@@ -24,6 +24,9 @@ from httpx import ASGITransport, AsyncClient
 from app.core import health
 from app.core.clock import FrozenClock
 from app.core.config import load_settings
+from app.core.crypto.keyring import Keyring, configure_keyring
+from app.core.crypto.local_provider import LocalFileProvider
+from app.core.crypto.provider import configure_provider
 from app.core.db import dispose_engine
 from app.core.health import clear_health_cache, clear_health_checks
 from app.core.migrations_status import migrations_health
@@ -33,14 +36,20 @@ from tests.core._health_mig import HealthMig, apex_health_mig
 
 __all__ = ["apex_health_mig"]
 
-CLAVES_DEL_CUERPO = {"status", "db", "version", "backup", "migrations"}
+CLAVES_DEL_CUERPO = {"status", "db", "version", "backup", "migrations", "crypto"}
 
 
 @pytest.fixture(autouse=True)
-async def _limpio() -> AsyncIterator[None]:
+async def _limpio(proveedor_local: LocalFileProvider) -> AsyncIterator[None]:
+    # S5-B3: `crypto` es una comprobación crítica de `create_app`; estas pruebas miden
+    # `migrations`, así que el proceso tiene un custodio sano (proveedor y keyring vacío).
     clear_health_checks()
+    configure_provider(proveedor_local)
+    configure_keyring(Keyring())
     yield
     clear_health_checks()
+    configure_keyring(None)
+    configure_provider(None)
     await dispose_engine()
 
 

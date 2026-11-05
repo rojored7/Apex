@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core import health
 from app.core.clock import FrozenClock, reset_clock, set_clock
 from app.core.config import Settings, load_settings
+from app.core.crypto.keyring import Keyring, configure_keyring
+from app.core.crypto.local_provider import LocalFileProvider
+from app.core.crypto.provider import configure_provider
 from app.core.db import dispose_engine, get_engine
 from app.core.health import (
     HEALTH_CACHE_TTL_S,
@@ -27,10 +30,16 @@ from app.main import create_app
 
 
 @pytest.fixture(autouse=True)
-async def _limpio() -> AsyncIterator[None]:
+async def _limpio(proveedor_local: LocalFileProvider) -> AsyncIterator[None]:
+    # S5-B3: `crypto` es una comprobación crítica de `create_app`; estas pruebas miden otras cosas,
+    # así que el proceso tiene un custodio sano (proveedor y keyring vacío cargado).
     clear_health_checks()
+    configure_provider(proveedor_local)
+    configure_keyring(Keyring())
     yield
     clear_health_checks()
+    configure_keyring(None)
+    configure_provider(None)
     await dispose_engine()
 
 
@@ -160,7 +169,7 @@ def _registrar_backup(fn: Contador) -> None:
 
 
 async def test_las_constantes_de_la_cache_son_las_del_plan() -> None:
-    assert HEALTH_CACHE_TTL_S == {"db": 2.0, "backup": 30.0, "migrations": 30.0}
+    assert HEALTH_CACHE_TTL_S == {"db": 2.0, "backup": 30.0, "migrations": 30.0, "crypto": 5.0}
 
 
 async def test_health_out_backup_por_defecto_es_unknown() -> None:

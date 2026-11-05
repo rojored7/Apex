@@ -163,10 +163,11 @@ services:
     restart: unless-stopped
 
   worker:
-    # Jobs diarios (US-113), a las 07:00 de Bogotá. Endurecido (S4A-D49, M-5): en 4A no cifra ni
-    # descifra, así que no monta keys ni uploads (el Sprint 5 vuelve a montar keys:ro), raíz de solo
-    # lectura con /tmp en memoria, sin capacidades y sin escalada de privilegios. Su propio rol de
-    # base (apex_worker) y, de solo lectura, el volumen de respaldos (S4B-D10, S4B-D11).
+    # Jobs diarios (US-113), a las 07:00 de Bogotá. Endurecido (S4A-D49, M-5): sin uploads, raíz de
+    # solo lectura con /tmp en memoria, sin capacidades y sin escalada de privilegios. Su propio rol
+    # de base (apex_worker) y, de solo lectura, el volumen de respaldos (S4B-D10, S4B-D11). Desde
+    # S5-B3 (S5-D20, S5-D197) descifra los avisos: con CRYPTO_PROVIDER=local monta keys:ro;
+    # compose.openbao.yml lo quita y le da su token de OpenBao (S5-D193).
     image: apex-api:local
     command: ["python", "-m", "app.worker.main"]
     env_file: ${APEX_ENV_DIR:-..}/.env
@@ -180,6 +181,7 @@ services:
       BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
     volumes:
       - backups:/data/backups:ro
+      - keys:/run/apex/keys:ro
       # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
       - openbao-token-worker:/run/apex/openbao:ro
     read_only: true

@@ -93,6 +93,12 @@ class OpenBaoProvider:
         self._ultimo_ok: datetime | None = None
         self._ultimo_error: datetime | None = None
         self._ultima_renovacion: datetime | None = None
+        # Umbral de desello (`t` de `sys/seal-status`, S5-D196); `None` hasta la primera lectura.
+        # `/health` lo usa para la guarda M-3; no es parte del puerto `KeyProvider`.
+        self.unseal_threshold: int | None = None
+        # Causa de la última consulta de `status()`: sealed | unreachable | forbidden | None si ok
+        # (S5-D200). El Literal público de `status()` no cambia.
+        self.last_reason: str | None = None
 
     def __repr__(self) -> str:
         return "OpenBaoProvider()"
@@ -210,17 +216,23 @@ class OpenBaoProvider:
     # --- estado y renovación ---------------------------------------------------------------
 
     async def status(self) -> ProviderStatus:
+        self.last_reason = None
         try:
             sello = await self._enviar("GET", "/v1/sys/seal-status", None, con_token=False)
             if sello.status_code != 200:
                 return "unreachable"
             estado = sello.json()
+            umbral = estado.get("t")
+            if isinstance(umbral, int) and not isinstance(umbral, bool):
+                self.unseal_threshold = umbral
             if estado.get("sealed") is not False or estado.get("initialized") is not True:
                 return "sealed"
             await self._confirmar_token()
         except CryptoUnavailable as error:
+            self.last_reason = error.reason
             return "sealed" if error.reason == "sealed" else "unreachable"
         except (CryptoError, ValueError, AttributeError):
+            self.last_reason = "unreachable"
             return "unreachable"
         return "ok"
 

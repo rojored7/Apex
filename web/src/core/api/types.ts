@@ -1211,6 +1211,12 @@ export interface components {
              */
             backup: "ok" | "attention" | "unknown";
             /**
+             * Crypto
+             * @default unknown
+             * @enum {string}
+             */
+            crypto: "ok" | "sealed" | "unreachable" | "unknown";
+            /**
              * Db
              * @enum {string}
              */
@@ -2573,7 +2579,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2656,7 +2662,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2712,7 +2718,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2797,7 +2803,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3007,7 +3013,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3076,7 +3082,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3255,7 +3261,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3376,7 +3382,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3463,7 +3469,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3548,7 +3554,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3640,7 +3646,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3738,7 +3744,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3828,7 +3834,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3909,7 +3915,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4007,7 +4013,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4094,7 +4100,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4176,7 +4182,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4270,7 +4276,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4359,7 +4365,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4443,7 +4449,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4499,7 +4505,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4575,7 +4581,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4673,7 +4679,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4771,7 +4777,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4869,7 +4875,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4956,7 +4962,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5012,7 +5018,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5079,7 +5085,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5155,7 +5161,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5253,7 +5259,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5324,7 +5330,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5411,7 +5417,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5487,7 +5493,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5579,7 +5585,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5677,7 +5683,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5762,7 +5768,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5847,7 +5853,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5903,7 +5909,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -5990,7 +5996,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6046,7 +6052,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6133,7 +6139,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6189,7 +6195,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6276,7 +6282,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6332,7 +6338,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6419,7 +6425,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6495,7 +6501,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6593,7 +6599,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6665,7 +6671,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6752,7 +6758,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6828,7 +6834,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6920,7 +6926,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7018,7 +7024,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7103,7 +7109,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7197,7 +7203,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7273,7 +7279,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7358,7 +7364,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Base de datos ocupada */
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
                 headers: {
                     [name: string]: unknown;

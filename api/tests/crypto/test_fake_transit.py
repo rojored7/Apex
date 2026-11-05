@@ -59,7 +59,9 @@ async def test_estados_sellado_sin_token_y_lookup_self() -> None:
     assert sellado.status_code == 503 and "sealed" in sellado.json()["errors"][0]
     async with fake.cliente() as cliente:
         estado = await cliente.get("/v1/sys/seal-status")
-    assert estado.json() == {"initialized": True, "sealed": True}
+    # S5-B3: seal-status trae además `t`, `n`, versión y clúster (para probar L-7 y M-3).
+    assert estado.json()["initialized"] is True and estado.json()["sealed"] is True
+    assert estado.json()["t"] == fake.umbral
     assert isinstance(estado, httpx.Response)
     fake.unseal()
     assert (await _post(fake, "/v1/auth/token/lookup-self", {})).status_code == 403

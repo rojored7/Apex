@@ -46,6 +46,7 @@ apex/
         http.py          # ayudas HTTP comunes a los routers (por ejemplo Cache-Control: no-store)
         ratelimit.py     # límite de intentos en memoria: por IP (rate_limit) y por clave (enforce)
         locks.py         # candados de fila y de aviso (lock_member); única puerta del orden de candados (Sprint 3)
+        health.py        # /health: HealthOut (db, version, backup, migrations, crypto), checks registrados solo desde main.py con caché TTL (crypto 5 s; S5-B3)
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
         audit_verify.py  # audit.verifications, candado y recorrido por lotes de la cadena (Sprint 4A, S4A-D12)
@@ -73,6 +74,8 @@ apex/
           discovery.py   #   encrypted_columns(metadata, data_class): columnas Encrypted de una clase por el registro, sin importar módulos (S4B-D39)
           archive.py     #   digest_file() y, desde B3a, export_kek_file/restore_kek_file/verify_kek_backup: `age -p`/`age -d` por Popen (lista, env={}, sin shell), la KEK por descriptor, salida O_EXCL 0o600, errores tipados sin texto del hijo (S4B-D20, D58, D121 a D126); única puerta de la KEK junto con local_provider
           kek_backup.py  #   WrappedDek, verify_wrapped (AESGCM + parse_wrapped; deja el bytearray en ceros) y load_wrapped (un SELECT de solo lectura); la clase de dato `kek.backup` (registry.py, sin llave) da nombre a las filas de crypto_ops de export-kek, verify-kek-backup y restore-kek (S4B-D85)
+          state.py       #   CryptoState (ok|sealed|unreachable|unknown) y health_state puro: proveedor + keyring + umbral de desello (Sprint 5, S5-B3, S5-D13, D194)
+          recovery.py    #   try_load (api: ensure_keys; worker: solo load_all con classes), poll_forever (cada CRYPTO_RECOVERY_POLL_S), current_state, is_loaded; una línea de log y una alerta por transición; solo lo importan main.py y worker/runtime.py (S5-B3, S5-D16, D195)
       modules/
         auth/        router.py schemas.py models.py service.py exceptions.py
                      rules.py tokens.py cookies.py   # ayudas privadas del módulo (S2-D4)
@@ -99,7 +102,7 @@ apex/
         schedule.py      # WORKER_TIMEZONE, DAILY_HOUR, DAILY_MINUTE, next_run, should_run, *_sim (S4A-D5, S4A-D48)
         registry.py      # JobSpec y registro de jobs
         runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
-        runtime.py       # worker_runtime, espera de la base y latido (/tmp/apex-worker-heartbeat)
+        runtime.py       # worker_runtime(with_crypto=True: keyring con phone y email, sin INSERT, sondeo si arranca sellado; S5-B3), espera de la base y latido (/tmp/apex-worker-heartbeat)
         jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35); sign_audit.py (v0.3, EP-17)
     migrations/          # Alembic
     tests/
@@ -179,7 +182,7 @@ apex/
 - Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`. **Dos archivos de ejemplo (S4B-D79):** `.env.example` (lo que lee `Settings`) y `.env.ops.example` (respaldo `BACKUP_*`, `RCLONE_CONFIG_APEX_*`, firma `BACKUP_SIGN_*`, `BACKUP_VERIFY_IDENTITY_FILE`, contraseñas de rol, red, `DEPLOY_HEALTH_TIMEOUT`; `.env.ops` no se versiona y desde 4B-W0-3 ningún servicio web lo lee entero). `POSTGRES_*`, `DATABASE_URL`, `TEST_DATABASE_URL` y los puertos viven en `.env.ops.example` (S4B-W0-3); `.env.example` no lleva ninguna contraseña. En desarrollo `.env` es la suma de los dos; en producción Compose se invoca con `--env-file .env --env-file .env.ops` y cada servicio recibe solo su bloque `environment`. **Base de datos (S4B-W0-3):** el propietario (`POSTGRES_USER`) solo lo usan `db`, `migrate`, `dbsetup` y `tools`; `api` corre como `apex_api`, `worker` como `apex_worker` y `backup` como `apex_backup` (`infra/db/`). `MIGRATE_ON_STARTUP` (`Settings`, `false` por defecto; `compose.dev.yml` la pone en `true`) la fija Compose en `false` en producción: migra el servicio `migrate` (`alembic upgrade head`), después `dbsetup`, y recién entonces arrancan api, worker y web; en desarrollo `migrate` y `dbsetup` solo existen con `--profile prod-init` y el api migra al arrancar. Una tabla nueva debe clasificarse en `infra/db/grants.sql` y en `tests/migrations/test_db_grants.py` o `dbsetup` falla cerrado. `TRUSTED_PROXIES` sigue a `APEX_WEB_IP`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
-- 503 `busy` con `Retry-After: 1` cuando la base agota `lock_timeout`, `statement_timeout` o detecta un interbloqueo (Sprint 3, S3-D67); nunca un 500.
+- 503 `busy` con `Retry-After: 1` cuando la base agota `lock_timeout`, `statement_timeout` o detecta un interbloqueo (Sprint 3, S3-D67); nunca un 500. 503 `crypto_unavailable` con `Retry-After: 30` cuando el custodio de llaves está sellado o inalcanzable y la ruta necesita descifrar (Sprint 5, S5-D14); `/health` lo refleja en `crypto` (crítico).
 - Archivos subidos: volumen `/data/uploads`, nombre aleatorio, validación por bytes mágicos, tamaño máximo 5 MB, servidos solo por el api con rol y auditoría. Los sensibles pasan por el bus (`attachment.sensitive`).
 
 ## Licencias

@@ -35,13 +35,19 @@ from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.context import request_id_var
+from app.core.crypto.errors import CryptoUnavailable
 
 logger = logging.getLogger("app.errors")
 
 PREFIJOS_LOC = frozenset({"body", "query", "path", "header", "cookie"})
 MENSAJE_500 = "Ocurrió un error inesperado. Intente de nuevo."
-MENSAJE_503 = "Base de datos ocupada"
-"""Descripción OpenAPI del `503` `busy` de las operaciones con rol (fuera de `_DESCRIPCIONES`)."""
+MENSAJE_503 = "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+"""Descripción OpenAPI del `503` de las operaciones con rol (fuera de `_DESCRIPCIONES`): `busy`
+(S3-D67) o `crypto_unavailable` (S5-D14)."""
+MENSAJE_CRYPTO_UNAVAILABLE = (
+    "El custodio de llaves no está disponible. Avise al administrador para desellarlo."
+)
+CRYPTO_RETRY_AFTER_S = 30
 
 
 class ErrorBody(BaseModel):
@@ -205,6 +211,15 @@ async def _handler_dominio(request: Request, exc: DomainError) -> JSONResponse:
     return respuesta
 
 
+async def _handler_crypto_unavailable(request: Request, exc: CryptoUnavailable) -> JSONResponse:
+    """503 `crypto_unavailable` (S5-D14): texto fijo, sin la razón, la URL ni el mensaje interno."""
+    respuesta = _responder(
+        503, ErrorBody(code="crypto_unavailable", message=MENSAJE_CRYPTO_UNAVAILABLE)
+    )
+    respuesta.headers["Retry-After"] = str(CRYPTO_RETRY_AFTER_S)
+    return respuesta
+
+
 async def _handler_validacion(request: Request, exc: RequestValidationError) -> JSONResponse:
     campo = validation_field(exc.errors())
     mensaje = f"El campo {campo} no es válido." if campo else "La petición no es válida."
@@ -227,8 +242,9 @@ async def _handler_inesperado(request: Request, exc: Exception) -> JSONResponse:
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    """Registra los cuatro handlers y publica `ErrorResponse` en el OpenAPI."""
+    """Registra los cinco handlers y publica `ErrorResponse` en el OpenAPI."""
     app.add_exception_handler(DomainError, _handler_dominio)  # type: ignore[arg-type]
+    app.add_exception_handler(CryptoUnavailable, _handler_crypto_unavailable)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _handler_validacion)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, _handler_http)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _handler_inesperado)

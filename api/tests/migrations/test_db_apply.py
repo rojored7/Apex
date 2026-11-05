@@ -85,7 +85,8 @@ def test_apply_sh_aplica_roles_y_grants_y_cuenta_las_tablas(
         "exec", CONTENEDOR, "psql", "-X", "-At", "-U", apex_roles.propietario, "-d",
         apex_roles.nombre, "-c",
         "SELECT count(*) FROM information_schema.tables WHERE table_type = 'BASE TABLE' "
-        "AND table_schema IN ('audit','auth','crypto','members','memberships','payments',"
+        "AND table_schema IN ('audit','auth','crypto','members','memberships',"
+        "'notifications','payments',"
         "'plans','settings','worker','public')",
     )  # fmt: skip
     assert int(coincide.group(1)) == int(consulta.stdout.strip())

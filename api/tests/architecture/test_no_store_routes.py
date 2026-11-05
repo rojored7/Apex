@@ -47,3 +47,11 @@ async def test_members_y_plans_responden_no_store(
         r = await app_http.get(ruta, headers=cabeceras(admin))
         assert r.status_code == 200, (ruta, r.text)
         assert r.headers["cache-control"] == "no-store", ruta
+
+
+def test_el_router_de_notifications_lleva_no_store_en_el_router() -> None:
+    """S5-B6: las respuestas de plantillas y reglas llevan `Cache-Control: no-store` por la
+    dependencia del `APIRouter` (como `audit`), no ruta por ruta."""
+    from app.modules.notifications.router import router
+
+    assert any(d.dependency is no_store for d in router.dependencies)

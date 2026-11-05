@@ -450,10 +450,15 @@ def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> No
     assert len(USER_LIMITS) == 16
 
 
-def test_las_cuatro_cubetas_nuevas_estan_pendientes_de_ruta_en_el_catalogo_de_pruebas() -> None:
+def test_las_cubetas_nuevas_sin_ruta_son_solo_las_de_exportacion_en_el_catalogo_de_pruebas() -> (
+    None
+):
+    """S5-B5 dio ruta a `notifications-write` (`PATCH /members/{id}/channels`; B6 suma las de
+    plantillas y reglas); solo las tres `export*` esperan a B12 (S5-D98, S5-D150)."""
     from tests.architecture.test_user_limits_catalog import CLAVES_SIN_RUTA_TODAVIA
 
-    assert set(CUATRO_BUCKETS_S5) <= CLAVES_SIN_RUTA_TODAVIA
+    assert set(CUATRO_BUCKETS_S5) - {"notifications-write"} <= CLAVES_SIN_RUTA_TODAVIA
+    assert "notifications-write" not in CLAVES_SIN_RUTA_TODAVIA
 
 
 def test_user_limits_from_alimenta_las_cuatro_cubetas_desde_settings() -> None:

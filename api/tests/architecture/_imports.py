@@ -43,6 +43,9 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "members": frozenset({"rules", "detail", "changes", "contact", "channels"}),
     # S4A-B3 (S4A-D18): `audit` nace partido; B3 suma `verify` y B4 `queries` y `diff`.
     "audit": frozenset({"verify", "queries", "diff"}),
+    # S5-B6 (S5-D23): `rules`, `templates` y `rules_crud` son privados; `generate`, `sending`,
+    # `queries`, `whatsapp` y `channels/` llegan en B7 y B8.
+    "notifications": frozenset({"rules", "templates", "rules_crud"}),
 }
 
 Rule = Literal[

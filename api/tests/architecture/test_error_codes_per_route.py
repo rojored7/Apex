@@ -93,6 +93,17 @@ CON_LIMITE = {
     # `GET` consume `staff-read` como las demás lecturas del staff (revisión de seguridad, LOW).
     ("patch", "/api/v1/members/{member_id}/channels"),
     ("get", "/api/v1/members/{member_id}/channels"),
+    # S5-B6 (US-120, US-121, S5-D81): las escrituras de plantillas y reglas (y la vista previa)
+    # consumen `notifications-write`; las lecturas, `staff-read`.
+    ("get", "/api/v1/notification-templates"),
+    ("post", "/api/v1/notification-templates"),
+    ("post", "/api/v1/notification-templates/preview"),
+    ("get", "/api/v1/notification-templates/{template_id}"),
+    ("patch", "/api/v1/notification-templates/{template_id}"),
+    ("get", "/api/v1/notification-rules"),
+    ("post", "/api/v1/notification-rules"),
+    ("get", "/api/v1/notification-rules/{rule_id}"),
+    ("patch", "/api/v1/notification-rules/{rule_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

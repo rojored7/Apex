@@ -49,7 +49,8 @@ HANDLERS = (
 def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
     """S2-B7 suma `members`, S2-B9 `plans`, S3-B1 `memberships` y S3-B3 `payments` al final (D1 del
     Sprint 3: `memberships` antes que `payments`); S4A-B8 (S4A-D27) suma `dashboard` al final:
-    tupla de ocho, la final de v0.1."""
+    tupla de ocho, la final de v0.1. S5-B6 (S5-D23) suma `notifications` después de `payments` y
+    antes de `dashboard` (nueve)."""
     assert MODULES == (
         "auth",
         "settings",
@@ -58,6 +59,7 @@ def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
         "plans",
         "memberships",
         "payments",
+        "notifications",
         "dashboard",
     )
 

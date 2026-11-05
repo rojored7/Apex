@@ -502,3 +502,14 @@ def test_find_cycle_detecta_un_ciclo_y_acepta_un_dag() -> None:
     ciclo = find_cycle({"a": {"b"}, "b": {"c"}, "c": {"a"}})
     assert ciclo is not None and ciclo[0] == ciclo[-1] and set(ciclo) == {"a", "b", "c"}
     assert find_cycle({"a": {"a"}}) == ["a", "a"]
+
+
+def test_notifications_no_importa_ningun_service_de_otro_modulo_en_b6() -> None:
+    """S5-B6 (S5-D212): la arista `notifications -> settings` (S5-D47) entra en `ALLOWED_EDGES` en
+    B8, cuando `sending` lee `settings.channels`; `members` y `memberships` llegan en B7 y
+    `dashboard -> notifications` en B9. En B6 no importa a ningún otro módulo, nadie lo importa y
+    no tiene perezosas."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["notifications"] == set()
+    assert perezosas["notifications"] == set()
+    assert {a for a, destinos in arriba.items() if "notifications" in destinos} == set()

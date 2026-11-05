@@ -67,14 +67,16 @@ def test_constantes_del_contrato() -> None:
     assert TABLE_MAX_LENGTH == 127
 
 
-def test_auditable_tables_es_la_lista_unica_de_las_diez_tablas() -> None:
-    """S4A-D61 b, S5-B5 (diez con `member_channel_preferences`): la constante única; cada nombre
-    cumple el patrón del filtro `table`."""
+def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
+    """S4A-D61 b; S5-B5 y S5-B6 suman tres tablas (doce): la constante única; cada nombre cumple
+    el patrón del filtro `table`."""
     assert (
         frozenset(
             {
                 "members.members",
                 "members.member_channel_preferences",
+                "notifications.notification_templates",
+                "notifications.notification_rules",
                 "memberships.memberships",
                 "memberships.membership_freezes",
                 "payments.payments",

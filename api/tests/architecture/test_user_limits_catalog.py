@@ -300,3 +300,34 @@ def test_el_analizador_acepta_literales_del_catalogo_y_pii_search_bucket() -> No
     assert hallazgos.enforce_de_usuario == [] and hallazgos.buckets_invalidos == []
     assert hallazgos.rutas == {("get", f"{API_PREFIX}/cosas"), ("post", f"{API_PREFIX}/cosas")}
     assert hallazgos.buckets == {"members-search", "members-write"}
+
+
+def test_notifications_consume_notifications_write_en_escrituras_y_staff_read_en_lecturas() -> None:
+    """S5-B6 (US-120, US-121; S5-D216): las cuatro escrituras llaman
+    `enforce_user_limit(request, "notifications-write", ...)`; las cuatro lecturas y la vista
+    previa (un POST que no escribe nada) consumen `staff-read`."""
+    fuente = (MODULES / "notifications" / "router.py").read_text(encoding="utf-8")
+    por_ruta: dict[tuple[str, str] | None, list[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), []).extend(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    plantillas = f"{API_PREFIX}/notification-templates"
+    reglas = f"{API_PREFIX}/notification-rules"
+    esperado = {
+        ("get", plantillas): "staff-read",
+        ("post", plantillas): "notifications-write",
+        ("post", f"{plantillas}/preview"): "staff-read",
+        ("get", f"{plantillas}/{{template_id}}"): "staff-read",
+        ("patch", f"{plantillas}/{{template_id}}"): "notifications-write",
+        ("get", reglas): "staff-read",
+        ("post", reglas): "notifications-write",
+        ("get", f"{reglas}/{{rule_id}}"): "staff-read",
+        ("patch", f"{reglas}/{{rule_id}}"): "notifications-write",
+    }
+    assert {r: por_ruta.get(r) for r in esperado} == {r: [b] for r, b in esperado.items()}

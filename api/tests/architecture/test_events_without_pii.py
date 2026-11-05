@@ -215,3 +215,14 @@ def test_el_analizador_detecta_texto_libre_y_acepta_largos_y_codigos() -> None:
     assert violaciones(_ConLargo) == []
     assert violaciones(_ConCodigo) == ["_ConCodigo.reference"]
     assert _ConMotivo not in eventos_de_la_app()  # solo cuenta lo definido en `app`
+
+
+def test_los_eventos_de_notifications_no_llevan_datos_personales_ni_texto_libre() -> None:
+    """S5-B6 (preparado para B7): `notifications` aún no emite eventos; cuando B7 declare
+    `NotificationQueued`, `NotificationSent`, `NotificationFailed` y `NotificationSkipped` en su
+    `service.py`, esta prueba los recoge y exige que `skip_reason`, `last_error`, nombres y
+    contactos no viajen como texto libre. No exige que existan."""
+    propios = [
+        e for e in eventos_de_la_app() if e.__module__.startswith("app.modules.notifications")
+    ]
+    assert [v for e in propios for v in violaciones(e)] == []

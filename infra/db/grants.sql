@@ -26,6 +26,8 @@
 --   memberships.memberships         S I U(end_date, classes_remaining, S U(status, updated_at)
 --                                     status, cancel_reason, cancelled_by,
 --                                     cancelled_at, updated_at)
+--   notifications.notification_rules     S I U                        S
+--   notifications.notification_templates S I U                        S
 --   payments.payments               S I(sin void_reason, voided_by,   -
 --                                     voided_at) U(voided, void_reason,
 --                                     voided_by, voided_at, updated_at)
@@ -45,6 +47,8 @@
 -- clasificada: members.members
 -- clasificada: memberships.membership_freezes
 -- clasificada: memberships.memberships
+-- clasificada: notifications.notification_rules
+-- clasificada: notifications.notification_templates
 -- clasificada: payments.payments
 -- clasificada: plans.plans
 -- clasificada: public.alembic_version
@@ -60,17 +64,17 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
-GRANT USAGE ON SCHEMA audit, auth, crypto, members, memberships, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
+GRANT USAGE ON SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
@@ -93,6 +97,8 @@ GRANT SELECT, INSERT, UPDATE ON members.members TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON members.member_channel_preferences TO apex_api;
 GRANT SELECT, INSERT ON memberships.membership_freezes TO apex_api;
 GRANT SELECT, INSERT ON memberships.memberships TO apex_api;
+-- S5-B6 (US-120, US-121): plantillas y reglas de aviso; sin DELETE (las reglas se desactivan).
+GRANT SELECT, INSERT, UPDATE ON notifications.notification_rules, notifications.notification_templates TO apex_api;
 GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
 -- S5-D202: INSERT de pagos por columna; void_reason, voided_by y voided_at solo por la anulacion.
 GRANT SELECT ON payments.payments TO apex_api;
@@ -111,6 +117,8 @@ GRANT SELECT (id, first_name, last_name, sex, phone, email, status, deleted_at, 
 GRANT SELECT ON memberships.memberships TO apex_worker;
 -- S5-B5: el job notify lee los canales efectivos (members.service.channels_for).
 GRANT SELECT ON members.member_channel_preferences TO apex_worker;
+-- S5-B6 (S5-D34): el job notify lee plantillas y reglas; no siembra ni edita.
+GRANT SELECT ON notifications.notification_rules, notifications.notification_templates TO apex_worker;
 GRANT UPDATE (status, updated_at) ON memberships.memberships TO apex_worker;
 GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 
@@ -126,6 +134,7 @@ DECLARE
         'auth.users', 'crypto.crypto_jobs', 'crypto.crypto_keys', 'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',
+        'notifications.notification_rules', 'notifications.notification_templates',
         'payments.payments', 'plans.plans', 'public.alembic_version',
         'settings.settings_sections', 'worker.job_runs'];
     sin_clasificar text;

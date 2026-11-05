@@ -446,7 +446,7 @@ def test_truncate_se_rechaza_bajo_replica(fila: tuple[str, Tabla, UUID]) -> None
 # Forma ------------------------------------------------------------------------------------------
 
 
-POSTERIORES_A_0014 = ("member_channel_preferences",)
+POSTERIORES_A_0014 = ("member_channel_preferences", "notification_templates", "notification_rules")
 
 
 def _inventario(url: str) -> list[tuple[str, str]]:

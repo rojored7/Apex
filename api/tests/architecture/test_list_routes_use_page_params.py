@@ -94,6 +94,9 @@ def test_las_listas_efectivas_de_la_app_paginan_y_aceptan_q(settings_prueba: Set
         "GET /api/v1/payments",
         "GET /api/v1/members/{member_id}/memberships",
         "GET /api/v1/members/{member_id}/payments",
+        # S5-B6 (US-120, US-121): las listas de plantillas y de reglas de aviso.
+        "GET /api/v1/notification-templates",
+        "GET /api/v1/notification-rules",
     } <= set(listas)
 
 

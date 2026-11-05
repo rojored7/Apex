@@ -20,6 +20,14 @@ from app.cli_base import (
 from app.core.config import Settings
 
 
+class SeedNotificationsFailed(Exception):
+    """El admin quedó confirmado pero la siembra de avisos falló (S5-D215). Sin texto del hijo."""
+
+    def __init__(self, outcome: str) -> None:
+        super().__init__("la siembra de avisos falló")
+        self.outcome = outcome
+
+
 async def _seed(
     settings: Settings,
     admin_email: str,
@@ -31,6 +39,7 @@ async def _seed(
 ) -> str:
     from app.core.security import configure_password_hasher, configure_password_policy
     from app.modules.auth.service import seed_admin
+    from app.modules.notifications.service import seed_defaults
 
     configure_password_hasher(
         settings.ARGON2_TIME_COST, settings.ARGON2_MEMORY_COST_KIB, settings.ARGON2_PARALLELISM
@@ -45,6 +54,14 @@ async def _seed(
                 resultado = await seed_admin(
                     session, admin_email, admin_password, by=actor, force_change=force_change
                 )
+        # S5-D25, S5-D215: plantillas y reglas por defecto en una SEGUNDA transacción, ya
+        # confirmado el admin: si la siembra falla, el admin no se revierte.
+        try:
+            with unit_of_work(actor):
+                async with session.begin():
+                    await seed_defaults(session)
+        except Exception as error:
+            raise SeedNotificationsFailed(resultado.outcome) from error
     return resultado.outcome
 
 

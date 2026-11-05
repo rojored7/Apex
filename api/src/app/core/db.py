@@ -56,6 +56,7 @@ APP_SCHEMAS: tuple[str, ...] = (
     "plans",
     "memberships",
     "payments",
+    "notifications",
     "worker",
 )
 

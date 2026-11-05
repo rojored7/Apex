@@ -1,6 +1,7 @@
 """`0016_member_channel_preferences` (S5-B5, US-123; S5-D31, S5-D34). # Rojo B5
 
-Padre `0015_crypto_provider_migration`; es head. Tabla `members.member_channel_preferences`:
+Padre `0015_crypto_provider_migration`; desde S5-B6 está en la cadena de head. Tabla
+`members.member_channel_preferences`:
 - comunes (`id`, `created_at`, `updated_at`, `created_by`), `member_id uuid NOT NULL` con FK a
   `members.members(id)` `ON DELETE RESTRICT` (el borrado de socios es lógico), `channel text` y
   `active boolean`, todas obligatorias;
@@ -158,12 +159,17 @@ def _resultados(url: str, escenarios: Sequence[Sequence[Paso]]) -> list[tuple[st
 # Revisión y forma ------------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0015_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0015_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert (
+        REVISION in cadena
+    )  # desde S5-B6 (P-MIG 9) ya no es head: la cabeza única la exige test_migrations
 
 
 def test_columnas_exactas_con_tipo_y_nulabilidad(

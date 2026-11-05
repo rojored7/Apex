@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 MODULES = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
-ESQUEMAS = ("members", "plans", "memberships", "payments", "auth", "settings")
+ESQUEMAS = ("members", "plans", "memberships", "payments", "auth", "settings", "notifications")
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b")

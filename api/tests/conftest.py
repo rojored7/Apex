@@ -205,6 +205,23 @@ LIMPIAR_AUTH = (
     "'00000000-0000-0000-0000-000000000001'",
 )
 
+# S5-B6 (D24): avisos, reglas y plantillas que una prueba con commit real o una corrida cortada
+# hayan dejado, EN ESE ORDEN (los avisos apuntan a reglas y a membresías por FK; las reglas, a
+# plantillas) y antes de pagos y membresías. `notifications.notifications` nace en B7: la
+# limpieza tolera que no exista (`to_regclass`) y no hace falta tocarla de nuevo entonces.
+
+
+def _borrar_si_existe(tabla: str) -> str:
+    return (
+        f"DO $$ BEGIN IF to_regclass('notifications.{tabla}') IS NOT NULL THEN "  # noqa: S608
+        f"DELETE FROM notifications.{tabla}; END IF; END $$"
+    )
+
+
+LIMPIAR_NOTIFICATIONS = tuple(
+    _borrar_si_existe(t) for t in ("notifications", "notification_rules", "notification_templates")
+)
+
 # S5-B5 (D31): las preferencias de canal que una prueba con commit real o una corrida cortada hayan
 # dejado; se borran ANTES que los socios (FK `ON DELETE RESTRICT`). `members.member_channel_
 # preferences` nace en `0016`; sin triggers: un `DELETE` directo basta.
@@ -322,6 +339,7 @@ LIMPIEZA_DE_SESION = (
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
     *LIMPIAR_AUTH,
+    *LIMPIAR_NOTIFICATIONS,  # S5-B6: antes que pagos y membresías (FK de B7)
     LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
     LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
     LIMPIAR_CHANNEL_PREFS,  # S5-B5: antes que los socios (FK RESTRICT)
@@ -715,6 +733,8 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
     """
     async with engine.begin() as conexion:
         await conexion.execute(text(LIMPIAR_SETTINGS))
+        for sql in LIMPIAR_NOTIFICATIONS:  # S5-B6
+            await conexion.execute(text(sql))
         await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
         await conexion.execute(text(LIMPIAR_CHANNEL_PREFS))

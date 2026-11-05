@@ -55,3 +55,31 @@ $DC --profile avisos stop mailpit telegram-fake
 - **Solo STARTTLS en el 587.** El TLS implícito (puerto 465) no está soportado: con `SMTP_PORT=465` el envío falla cerrado por timeout. Si su proveedor solo ofrece el 465, pídalo para v0.3 (S5-D207).
 - **Alertas de Telegram.** Cada proceso guarda como mucho 20 alertas pendientes (la 21.ª se descarta con una línea de log) y una misma alerta (mismo código y mismo job) no se repite dentro de 60 segundos.
 - **Remitente y respuesta.** El nombre del remitente y el `Reply-To` los fija el administrador en Ajustes; se validan y no admiten saltos de línea (S5-D208).
+
+## 8. Plantillas y reglas de aviso (S5-B6; S5-D24, S5-D25, S5-D212 a D214)
+
+Los avisos de vencimiento salen de **plantillas** (el texto) y **reglas** (cuándo y por qué canal). Las edita el administrador; el entrenador solo las lee; el socio no las ve. Rutas: `/api/v1/notification-templates` y `/api/v1/notification-rules` (listas con `q`, `limit` y `offset`).
+
+**Variables.** Cuatro, escritas entre llaves: `{nombre}` (nombre del socio), `{plan}`, `{vence}` (fecha de fin de la membresía) y `{dias}` (días de diferencia, **siempre sin signo**: "vence en {dias} días" y "venció hace {dias} días"). `{{` y `}}` escriben una llave literal. Cualquier otra cosa entre llaves (`{apellido}`, `{nombre!r}`, `{0}`, `{}`) o una llave sin cerrar da 422 con el campo (`subject` o `body`); el mensaje no repite el texto. Asunto de hasta 150 caracteres, cuerpo de hasta 2.000, nombre de hasta 80.
+
+**Vista previa.** `POST /notification-templates/preview` con `{subject, body}` devuelve ambos renderizados con un socio de ejemplo (Ana, plan Mensual, vence el 20 oct 2026, 3 días). No escribe nada y consume la cubeta de lectura (`staff-read`, 120 por minuto), no la de escritura; asunto y cuerpo siguen las mismas reglas de texto que una plantilla (sin saltos de línea en el asunto, sin caracteres de control). Si al sustituir un valor del socio el asunto quedara con un salto de línea, se rechaza.
+
+**Reglas.** Cada una tiene disparador, desfase en días, canal y plantilla:
+
+| Disparador | Desfase | Significado |
+|---|---|---|
+| `membership_expiring` | 0 o negativo | Antes del fin (`-3` = tres días antes; `0` = el mismo día). |
+| `membership_expired` | 1 o más | Después del fin (`7` = siete días después). |
+
+Canales: `email` y `whatsapp_link`. Solo puede haber **una regla activa** por (disparador, desfase, canal): la segunda da 409 `duplicate_active_rule` con el id de la existente. Las reglas no se borran, se desactivan; las plantillas tampoco se borran. Se valida la regla resultante al editar (cambiar solo el disparador deja el desfase anterior y puede dar 422 `offset_days`). Una plantilla inexistente da 422 con `field=template_id`.
+
+**Auditoría.** Toda alta o cambio queda en `audit.audit_log` a nombre de quien lo hizo.
+
+## 9. Siembra de plantillas y reglas por defecto
+
+Dos plantillas ("Vence pronto" y "Venció") y cinco reglas, todas por `whatsapp_link` y activas: `-3` y `0` (`membership_expiring`) y `1`, `7` y `15` (`membership_expired`).
+
+- **Instalación nueva:** `seed` (primer administrador) las siembra también.
+- **Instalación existente** (ya tenía un admin antes de v0.2): `$DC --profile tools run --rm tools seed-notifications --as <correo del admin>`.
+
+Es **idempotente**: la segunda corrida imprime `plantillas creadas 0, reglas creadas 0` y no escribe ni audita. No pisa lo que el administrador ya cambió: una plantilla con el mismo nombre se conserva tal cual, y una regla con la misma clave (disparador, desfase y canal), sea cual sea su nombre y esté activa o no, cuenta como existente (no se reactiva ni se duplica). Con `ENV=production` `--as` es obligatorio. El job `notify` no siembra: el worker solo puede leer estas tablas. Dos siembras a la vez se serializan con un candado de la base: la segunda no crea nada (si algo chocara, 409 `seed_in_progress`: reintente). `seed` siembra los avisos en una segunda transacción tras crear al administrador; si esa siembra falla, el administrador queda creado, `seed` sale con 1 y se corre `seed-notifications`.

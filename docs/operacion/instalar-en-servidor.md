@@ -176,6 +176,14 @@ rm -f .env.seed
 El administrador debe cambiar la contraseña al entrar. Borra `.env.seed` de inmediato: no hace
 falta para arrancar.
 
+`seed` siembra también las plantillas y reglas de aviso por defecto (idempotente, ver
+`avisos.md` sección 9). En una instalación que ya tenía administrador antes de v0.2 se siembran
+aparte:
+
+```
+$DC --profile tools run --rm tools seed-notifications --as <correo del admin>
+```
+
 ## 8. Respaldo de la KEK: dos copias fuera del servidor
 
 Si pierdes la KEK pierdes para siempre los datos cifrados de los socios. **Antes de cargar datos

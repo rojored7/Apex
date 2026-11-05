@@ -59,6 +59,8 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "settings.settings_sections",
         "members.members",
         "members.member_channel_preferences",
+        "notifications.notification_templates",
+        "notifications.notification_rules",
         "plans.plans",
         "memberships.memberships",
         "memberships.membership_freezes",
@@ -298,6 +300,8 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "auth.one_time_tokens",
         "audit.verifications",
         "members.member_channel_preferences",  # S5-B5
+        "notifications.notification_templates",  # S5-B6
+        "notifications.notification_rules",  # S5-B6
     }
     assert not any(t.startswith("crypto.") for t in RECENT_TABLES_ALLOWED)
 
@@ -319,3 +323,15 @@ def test_control_una_tabla_sin_destino_o_sin_motivo_falla() -> None:
         "d.d: sin motivo",
         "z.z: no es auditable",
     ]
+
+
+def test_notifications_declara_plantillas_y_reglas_auditadas_y_su_modulo_esta_en_modules() -> None:
+    """S5-B6 (S5-D24): las dos tablas son requeridas, su módulo está en `MODULES` y no declaran
+    sujeto de socio (son configuración); `notifications.notifications` sigue pendiente (B7)."""
+    tablas = _tablas_de_la_app()
+    assert "notifications" in MODULES
+    for tabla in ("notifications.notification_templates", "notifications.notification_rules"):
+        assert tabla in REQUIRED_AUDITED_TABLES_V01 and tabla not in PENDING_AUDITED
+        assert getattr(tablas[tabla], "__audited__", False) is True, tabla
+        assert getattr(tablas[tabla], "__audit_subject__", None) is None, tabla
+    assert "notifications.notifications" in PENDING_AUDITED

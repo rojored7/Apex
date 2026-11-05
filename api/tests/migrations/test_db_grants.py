@@ -45,6 +45,7 @@ ESQUEMAS = (
     "crypto",
     "members",
     "memberships",
+    "notifications",
     "payments",
     "plans",
     "settings",
@@ -161,6 +162,15 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
             ),
         ),
         "apex_worker": (frozenset({"SELECT"}), frozenset({"status", "updated_at"})),
+    },
+    # S5-B6 (US-120, US-121, S5-D34, P-ROL): las edita el api (sin DELETE); el worker solo lee.
+    "notifications.notification_rules": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_worker": (frozenset({"SELECT"}), frozenset()),
+    },
+    "notifications.notification_templates": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "payments.payments": {
         "apex_api": (
@@ -576,6 +586,8 @@ PROHIBIDAS_API = [
     "DELETE FROM audit.audit_log",
     "DELETE FROM members.members",
     "DELETE FROM members.member_channel_preferences",  # S5-B5: sin DELETE para el api
+    "DELETE FROM notifications.notification_rules",  # S5-B6: sin DELETE para el api
+    "DELETE FROM notifications.notification_templates",  # S5-B6: sin DELETE para el api
     "DELETE FROM memberships.memberships",
     "DELETE FROM crypto.crypto_keys",
     "UPDATE audit.audit_log SET action = 'x'",
@@ -612,6 +624,10 @@ def test_apex_api_no_puede(apex_roles: RolesDb, sentencia: str) -> None:
 
 PROHIBIDAS_WORKER = [
     "UPDATE members.members SET updated_at = now()",
+    "INSERT INTO notifications.notification_templates (id) VALUES (gen_random_uuid())",  # S5-B6
+    "INSERT INTO notifications.notification_rules (id) VALUES (gen_random_uuid())",  # S5-B6
+    "UPDATE notifications.notification_templates SET name = 'x'",  # S5-B6: `notify` no siembra
+    "UPDATE notifications.notification_rules SET is_active = false",  # S5-B6
     "UPDATE members.members SET first_name = 'x'",
     "UPDATE members.members SET deleted_at = now()",
     "UPDATE memberships.memberships SET end_date = end_date",

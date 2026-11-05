@@ -26,7 +26,7 @@ async def _crear_tabla(session: AsyncSession) -> None:
     )
 
 
-def test_los_nueve_esquemas_de_v01() -> None:
+def test_los_diez_esquemas_de_v02() -> None:
     assert APP_SCHEMAS == (
         "audit",
         "crypto",
@@ -36,6 +36,7 @@ def test_los_nueve_esquemas_de_v01() -> None:
         "plans",
         "memberships",
         "payments",
+        "notifications",
         "worker",
     )
 

@@ -41,6 +41,7 @@ from app.cli_ops import register_ops
 from app.cli_ops.accounts import (
     _LINK_REJECTED,
     _UNLOCK_REJECTED,
+    SeedNotificationsFailed,
     _issue_reset_link,
     _seed,
     _unlock_user,
@@ -92,6 +93,11 @@ __all__ = [
 ]
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+_SEED_OUTCOMES = {
+    "created": "seed: admin inicial creado",
+    "skipped": "seed: omitido: ya existe un admin activo",
+}
 
 
 @app.callback()
@@ -206,6 +212,14 @@ def _seed_admin(ctx: typer.Context, actor: str | None, *, no_force_change: bool)
     except AuthError as error:
         typer.echo(f"seed: {error.code}", err=True)
         raise typer.Exit(code=2) from None
+    except SeedNotificationsFailed as error:
+        typer.echo(_SEED_OUTCOMES.get(error.outcome, "seed: administrador listo"))
+        typer.echo(
+            "seed: la siembra de avisos falló; ejecute seed-notifications (el administrador no "
+            "se revirtió)",
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
     if resultado == "created":
         typer.echo("seed: admin inicial creado")
     else:

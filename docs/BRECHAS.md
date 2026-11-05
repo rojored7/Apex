@@ -271,7 +271,7 @@ Pantallas `Socios_Lista.html` y `Socios_Movil.html`. Ruta `/socios`.
 - Documento enmascarado bajo el nombre: la lista no lo trae (N-01); se ve en la ficha. Aceptada para v0.1.
 - Columna "Vence": fecha con año. No lleva "Vencido · 5 días" ni "reanuda 1 nov", porque la fila no trae días restantes ni fecha de reanudación. Aceptada para v0.1.
 - Filtro por última asistencia: v0.4 (EP-21). Depende de versión futura.
-- "Exportar": v0.2 (Q15, N-29, EP-16, US-139). Depende de versión futura (v0.2). El comentario de `MembersListPage.tsx` ya lo atribuye a EP-16 (Fase 4 del front).
+- "Exportar": cerrada en S5-F4 (US-138, fila 13.4). Solo admin; confirma con el texto de datos personales y auditoría, envía los filtros vigentes (búsqueda, estado, estado de la membresía y plan; no el orden) a `GET /members/export` y descarga el CSV por `api.blob`. Queda debajo del encabezado, a la derecha, y no dentro de él: un botón con su propio modal no cabe en `PageHeader.actions`.
 - Encabezado sin "· 269 con membresía": el número ya está en los chips. Aceptada.
 - Nota de búsqueda por valor exacto: el diseño no la pone; va como ayuda corta bajo la lista. Aceptada.
 - "Ordenar por: Vencimiento más próximo": `GET /members` solo ordena por apellido, nombre y fecha de alta (`members/service.py`, `_ORDEN`). Ordenar por fin de membresía cruza `members` con `memberships` dentro de la consulta de socios, algo que la regla 2 de `CLAUDE.md` no permite sin un puerto. Decisión S3-D98: no entra en v0.1.
@@ -376,8 +376,8 @@ Pantalla `Pagos.html`.
 - "Registró": muestra el correo parcial (S3-D57), no el nombre hasta US-110. Las opciones son "Yo" y las personas que aparecen en la página, porque el coach no tiene lista de usuarios. Depende de versión futura (US-110, Sprint 4A).
 - Fecha con año y hora en 12 h ("20 oct 2026, 2:10 p. m."; el diseño escribe "20 oct 14:10"). Aceptada (DESIGN.md regla 7).
 - Valor sin nota de "abono": la fila no trae el saldo de la membresía. Aceptada para v0.1.
-- "Exportar": v0.2 (EP-16, US-139). El comentario de `PaymentsPage.tsx` ya lo atribuye a EP-16 (Fase 4 del front). Depende de versión futura.
-- Detalle del pago: sin "#4812" (los pagos tienen UUID, no consecutivo) y sin "Recibo · Reenviar · Imprimir" (recibo PDF: v0.2, P4). "Registró" muestra el correo parcial. Aceptada; el recibo depende de v0.2.
+- "Exportar": cerrada en S5-F4 (US-139, fila 13.4). Solo admin; el rango de "Fecha del pago" es obligatorio y de 12 meses como máximo (Zod antes de llamar; el modal lo explica). Envía búsqueda, medio, quién registró y estado. El filtro "Retroactivos" no existe en la exportación: con él activo el botón queda deshabilitado y lo explica. Queda debajo del resumen, a la derecha.
+- Detalle del pago: sin "#4812" (los pagos tienen UUID, no consecutivo) y sin "Reenviar" ni "Imprimir". "Recibo" (S5-F4, US-137, fila 13.5) descarga el PDF desde el detalle y desde cada fila, para admin y coach. "Registró" muestra el correo parcial. Aceptada.
 - Resumen del mes (`MonthSummary`): el diseño no dibuja el selector de mes ni la tarjeta "Anulados". El mes va en `?mes=AAAA-MM` (por defecto, el mes de Bogotá). El título lleva el año ("Octubre 2026 · total"). Con cinco tarjetas, "Anulados" baja a una segunda fila a 1440 px. Pendiente de diseño.
 
 ### 10.9 Resúmenes y KPIs del Sprint 3
@@ -569,8 +569,8 @@ El Sprint 5 (v0.2) construye en el front las pantallas de avisos, la pestaña Ca
 | 13.1 | `docs/design/ROUTES.md` | `wa-link` aparecía como `GET`; es `POST /notifications/:id/wa-link` (efecto: marca `sent`, y devuelve el teléfono descifrado). El front usa `useMutation` con `gcTime: 0` y abre con `noopener,noreferrer` (S5-D59, M-9). | S5-W0-1 | corregida en `ROUTES.md` |
 | 13.2 | Ficha del socio, pestaña "Avisos" | Hoy deshabilitada ("Disponible en v0.2"); se habilita con el bloque Canales (US-123) y el historial (US-130). | S5-F3 | cerrada |
 | 13.3 | Inicio, tarjeta "Por avisar" y `FutureKpis` (fila 25) | KPI real `notifications_today` y `members_without_consent` calculado (US-132, S5-D80). | S5-F3 | cerrada |
-| 13.4 | `Socios_Lista` y `Pagos`, botón "Exportar" (§10.1, §10.8) | CSV de socios y pagos con confirmación; descarga por `api.blob` y `downloadBlob` en `shared/lib`, sin `sessionStorage` ni `localStorage` (S5-D87, L-8). | S5-F4 | pendiente |
-| 13.5 | Detalle de pago, botón de recibo (§10.8) | `ReceiptButton` descarga el PDF (30 s de límite); el recibo no lleva documento. | S5-F4 | pendiente |
+| 13.4 | `Socios_Lista` y `Pagos`, botón "Exportar" (§10.1, §10.8) | CSV de socios y pagos con confirmación; descarga por `api.blob` y `downloadBlob` en `shared/lib`, sin `sessionStorage` ni `localStorage` (S5-D87, L-8). El botón de pagos se deshabilita con el filtro "Retroactivos" (la exportación no lo acepta). | S5-F4 | cerrada |
+| 13.5 | Detalle de pago, botón de recibo (§10.8) | `ReceiptButton` descarga el PDF por `api.blob` (120 s de límite, el mismo que las exportaciones) desde el detalle y desde cada fila; admin y coach (`payments.receipt`). El recibo no lleva documento. | S5-F4 | cerrada |
 | 13.6 | Recibo PDF, logo | El recibo PDF de `core/pdf.py` (S5-B11, escritor propio, Courier sin incrustar) sale sin logo (S5-D65): ni `reportlab` ni `pillow`; vector propio o una licencia aceptada para el logo. **Dueño: v0.3, titular.** | S5-B11 | aceptada con dueño; recibo sin logo entregado |
 | 13.7 | `Config`, pestaña "Canales" (fila 20) | Interruptores de correo, WhatsApp y Telegram, con `credentials_present` calculado (US-122). | S5-F2 | cerrada en F2 (ver 13.22) |
 | 13.8 | `ForgotPage` y tarjetas de recuperar y activar cuenta (fila 230) | Mensajes reales de "enlace enviado" y `email_sent` (US-131). | S5-F5 | cerrada en F5 (ver 13.25) |

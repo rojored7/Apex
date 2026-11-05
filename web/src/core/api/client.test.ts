@@ -3,6 +3,8 @@
 // falta otra dependencia para responder 200, 204, 401, 409, 422 y 502).
 import {
   API_BASE,
+  BLOB_TIMEOUT_MS,
+  UNEXPECTED_CONTENT_MESSAGE,
   REQUEST_TIMEOUT_MS,
   api,
   registerOnUnauthorized,
@@ -517,5 +519,172 @@ describe("503 crypto_unavailable (S5-F5, S5-D14, US-136)", () => {
     await api.get("/x");
 
     expect(getCustodyNotice()).toBeNull();
+  });
+});
+
+describe("api.blob: descargas de archivos (S5-F4, L-8)", () => {
+  const PDF = "%PDF-1.4 recibo";
+
+  function file(headers: Record<string, string> = {}, body: string = PDF, status = 200): Response {
+    return new Response(body, { status, headers: { "Content-Type": "application/pdf", ...headers } });
+  }
+
+  function hang(): void {
+    fetchMock.mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+  }
+
+  it("devuelve el Blob, el nombre del Content-Disposition y el tipo; pide solo GET con credenciales de mismo origen", async () => {
+    fetchMock.mockResolvedValueOnce(file({ "Content-Disposition": "attachment; filename=recibo-9a8b7c6d.pdf" }));
+
+    const result = await api.blob("/payments/9a8b7c6d/receipt.pdf");
+
+    expect(await result.blob.text()).toBe(PDF);
+    expect(result.filename).toBe("recibo-9a8b7c6d.pdf");
+    expect(result.contentType).toBe("application/pdf");
+    const { url, init } = lastCall();
+    expect(url).toBe("/api/v1/payments/9a8b7c6d/receipt.pdf");
+    expect(init.method).toBe("GET");
+    expect(init.credentials).toBe("same-origin");
+    expect(headersOf(init).get("Accept")).toContain("application/pdf");
+  });
+
+  it("sin Content-Disposition el nombre es null; con query string y el access token en memoria", async () => {
+    setAccessTokenGetter(() => "tok");
+    fetchMock.mockResolvedValueOnce(file());
+
+    const result = await api.blob("/members/export", { query: { q: "ana", status: "active" } });
+
+    expect(result.filename).toBeNull();
+    expect(lastCall().url).toBe("/api/v1/members/export?q=ana&status=active");
+    expect(headersOf(lastCall().init).get("Authorization")).toBe("Bearer tok");
+  });
+
+  it("tiene un tiempo propio, mayor que el del JSON, y lo vence con timeout", async () => {
+    expect(BLOB_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
+    vi.useFakeTimers();
+    hang();
+
+    const pending = api.blob("/lento").catch((e: unknown) => e);
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(BLOB_TIMEOUT_MS);
+
+    expect(await pending).toMatchObject({ status: 0, code: "timeout" });
+  });
+
+  it("acepta un timeoutMs propio por llamada", async () => {
+    vi.useFakeTimers();
+    hang();
+
+    const pending = api.blob("/lento", { timeoutMs: 500 }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(await pending).toMatchObject({ code: "timeout" });
+  });
+
+  it("no guarda nada: ni caché de HTTP ni almacenamiento del navegador", async () => {
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", { setItem, getItem: vi.fn(), removeItem: vi.fn() });
+    vi.stubGlobal("sessionStorage", { setItem, getItem: vi.fn(), removeItem: vi.fn() });
+    fetchMock.mockResolvedValueOnce(file());
+
+    await api.blob("/payments/1/receipt.pdf");
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(lastCall().init.cache).toBeUndefined();
+  });
+
+  it.each([
+    [401, "unauthorized", "Inicia sesión"],
+    [403, "forbidden", "Sin permiso"],
+    [404, "not_found", "No existe"],
+    [409, "export_in_progress", "Ya tienes una exportación en curso. Espera a que termine."],
+    [422, "export_too_large", "La exportación supera el máximo de filas. Acota los filtros."],
+    [503, "crypto_unavailable", "El custodio de llaves no está disponible. Avise al administrador para desellarlo."],
+  ])("propaga el %i %s con el code y el message del api", async (status, code, message) => {
+    fetchMock.mockResolvedValueOnce(envelope(status, code, message));
+
+    await expect(api.blob("/members/export")).rejects.toMatchObject({ status, code, message });
+  });
+
+  it("un 422 conserva el field del api", async () => {
+    fetchMock.mockResolvedValueOnce(envelope(422, "invalid_date_range", "El rango de fechas no es válido.", { field: "to" }));
+
+    await expect(api.blob("/payments/export")).rejects.toMatchObject({ status: 422, field: "to" });
+  });
+
+  it("un 503 respeta Retry-After y no se reintenta (aunque sea busy)", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "busy", message: "ocupado" } }), { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "7" } }),
+    );
+
+    await expect(api.blob("/members/export")).rejects.toMatchObject({ status: 503, code: "busy", retryAfterS: 7 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("un 503 crypto_unavailable activa el aviso global con los segundos de Retry-After", async () => {
+    clearCustodyNotice();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: "crypto_unavailable", message: "x" } }), { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "45" } }),
+    );
+
+    await expect(api.blob("/members/export")).rejects.toMatchObject({ retryAfterS: 45 });
+
+    expect(getCustodyNotice()).not.toBeNull();
+    clearCustodyNotice();
+  });
+
+  it("un 401 invoca el gancho y, si pide reintentar, repite la descarga una sola vez", async () => {
+    const handler = vi.fn<UnauthorizedHandler>(() => Promise.resolve("retry"));
+    registerOnUnauthorized(handler);
+    fetchMock.mockResolvedValueOnce(envelope(401, "token_expired", "Sesión vencida"));
+    fetchMock.mockResolvedValueOnce(file());
+
+    const result = await api.blob("/payments/1/receipt.pdf");
+
+    expect(await result.blob.text()).toBe(PDF);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("respeta la cancelación del que llama", async () => {
+    const controller = new AbortController();
+    hang();
+
+    const pending = api.blob("/lento", { signal: controller.signal }).catch((e: unknown) => e);
+    controller.abort();
+
+    expect(await pending).toBeInstanceOf(DOMException);
+  });
+
+  it("un fallo de red es network_error", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await expect(api.blob("/x")).rejects.toMatchObject({ status: 0, code: "network_error" });
+  });
+});
+
+describe("api.blob: tipo de contenido (revisión F4, LOW 3)", () => {
+  it.each(["application/pdf", "text/csv", "text/csv; charset=utf-8", "Application/PDF"])("acepta %s", async (type) => {
+    fetchMock.mockResolvedValueOnce(new Response("x", { status: 200, headers: { "Content-Type": type } }));
+
+    await expect(api.blob("/x")).resolves.toMatchObject({ contentType: type });
+  });
+
+  it.each(["text/html", "application/json", "application/octet-stream", ""])("rechaza un 200 de tipo '%s' con unexpected_content_type", async (type) => {
+    fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200, headers: type ? { "Content-Type": type } : {} }));
+
+    await expect(api.blob("/x")).rejects.toMatchObject({ code: "unexpected_content_type", message: UNEXPECTED_CONTENT_MESSAGE });
   });
 });

@@ -47,6 +47,8 @@ const TABLE = {
   "memberships.freeze": STAFF,
   "payments.view": STAFF,
   "payments.register": STAFF,
+  // S5-F4 (US-137, S5-D40): recibo PDF del pago; el api lo abre a admin y coach.
+  "payments.receipt": STAFF,
   "classes.view": STAFF,
   "attendance.delete": STAFF,
   "wods.view": STAFF,

@@ -99,3 +99,13 @@
 .nowrap {
   white-space: nowrap;
 }
+
+/* S5-F4: la fila de herramientas bajo el encabezado (Exportar, solo admin). */
+.tools {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tools:empty {
+  display: none;
+}

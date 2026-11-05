@@ -89,7 +89,7 @@ describe("PaymentsPage · estructura (Pagos.html)", () => {
       "M12345678",
       "c•••@apex.test",
       "Válido",
-      "Ver",
+      "VerRecibo",
     ]);
   });
 
@@ -544,5 +544,76 @@ describe("revisión S3-F6", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Pagos" })).toBeInTheDocument();
     release();
     expect(await screen.findByRole("heading", { level: 1, name: "Pagos60 en total" })).toBeInTheDocument();
+  });
+});
+
+describe("PaymentsPage · recibo y exportación (S5-F4, US-137, US-139)", () => {
+  const RECEIPT_FILE = { status: 200, file: { content: "%PDF-1.4", contentType: "application/pdf", filename: "recibo-99999999.pdf" } };
+  const CSV_FILE = { status: 200, file: { content: "fecha;socio\r\n", contentType: "text/csv", filename: "pagos-20261021.csv" } };
+
+  function stubDownloads(): void {
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/1"), revokeObjectURL: vi.fn() }),
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  }
+
+  it("cada fila ofrece 'Recibo' al coach, que descarga el PDF de ese pago", async () => {
+    stubDownloads();
+    const { mock, user } = renderPayments("/pagos", { handlers: { [`GET /payments/${PAYMENT_ID}/receipt.pdf`]: RECEIPT_FILE } });
+
+    await findPaymentRow("Laura Gómez");
+    await user.click(screen.getByRole("button", { name: "Descargar el recibo del pago de Laura Gómez" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo(`GET /payments/${PAYMENT_ID}/receipt.pdf`)).toHaveLength(1);
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("el coach no ve 'Exportar'", async () => {
+    renderPayments();
+    await findPaymentRow("Laura Gómez");
+
+    expect(screen.queryByRole("button", { name: "Exportar" })).not.toBeInTheDocument();
+  });
+
+  it("el admin exporta con el rango y los filtros de la URL", async () => {
+    signInAs("admin");
+    stubDownloads();
+    const { mock, user } = renderPayments("/pagos?from=2026-10-01&to=2026-10-31&method=nequi", { handlers: { "GET /payments/export": CSV_FILE } });
+    await findPaymentRow("Laura Gómez");
+
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    await user.click(within(screen.getByRole("dialog", { name: "¿Exportar los pagos?" })).getByRole("button", { name: "Descargar CSV" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo("GET /payments/export")).toHaveLength(1);
+    });
+    const params = new URL(mock.callsTo("GET /payments/export")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(Object.fromEntries(params)).toEqual({ from: "2026-10-01T05:00:00.000Z", to: "2026-11-01T05:00:00.000Z", method: "nequi" });
+  });
+
+  it("el admin sin rango recibe la explicación dentro del modal y no sale ninguna petición", async () => {
+    signInAs("admin");
+    const { mock, user } = renderPayments("/pagos", { handlers: { "GET /payments/export": CSV_FILE } });
+    await findPaymentRow("Laura Gómez");
+
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    await user.click(within(screen.getByRole("dialog", { name: "¿Exportar los pagos?" })).getByRole("button", { name: "Descargar CSV" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Elige la fecha 'Desde'");
+    expect(mock.callsTo("GET /payments/export")).toHaveLength(0);
+  });
+
+  it("con el filtro Retroactivos el botón queda deshabilitado y lo explica", async () => {
+    signInAs("admin");
+    renderPayments("/pagos?from=2026-10-01&to=2026-10-31&backdated=true");
+    await findPaymentRow("Laura Gómez");
+
+    const button = screen.getByRole("button", { name: "Exportar" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("La exportación no admite el filtro 'Retroactivos'. Quítalo para exportar.");
   });
 });

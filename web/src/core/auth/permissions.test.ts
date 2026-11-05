@@ -35,6 +35,7 @@ const STAFF = [
   "memberships.freeze",
   "payments.view",
   "payments.register",
+  "payments.receipt",
   "classes.view",
   "attendance.delete",
   "wods.view",

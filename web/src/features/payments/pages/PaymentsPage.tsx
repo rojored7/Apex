@@ -14,7 +14,7 @@
 // DESIGN-GAP:
 // - La primera columna es el socio (DESIGN.md: la primera columna es el enlace a la ficha); Pagos.html
 //   pone primero la fecha.
-// - Sin "Exportar": la exportación es EP-16 (US-139, v0.2).
+// - S5-F4: "Exportar" (solo admin) y "Recibo" en cada fila (admin y coach); ver ExportButton y ReceiptButton.
 // - "Registró" muestra el correo parcial ("c•••@apex.test", S3-D57) y no el nombre ("Carlos") hasta
 //   US-110; sus opciones son "Yo" y quienes aparecen en la página (no hay lista de usuarios para el
 //   coach).
@@ -36,8 +36,10 @@ import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { StatusTag } from "../../../shared/ui/StatusTag";
 import { usePayments } from "../api";
+import { ExportButton } from "../components/ExportButton";
 import { MonthSummary } from "../components/MonthSummary";
 import { PaymentDetailModal } from "../components/PaymentDetailModal";
+import { ReceiptButton } from "../components/ReceiptButton";
 import { memberHref, memberName, membershipText } from "../lib/paymentText";
 import { paymentListError } from "../paymentErrors";
 import type { PaymentRowView } from "../schemas";
@@ -121,16 +123,19 @@ function columnsFor(methodLabel: (code: PaymentRowView["method"]) => string, onV
       header: "Acción",
       align: "end",
       render: (row) => (
-        <button
-          type="button"
-          className={styles.view}
-          aria-label={`Ver el pago de ${memberName(row)}`}
-          onClick={() => {
-            onView(row);
-          }}
-        >
-          Ver
-        </button>
+        <span className={styles.rowActions}>
+          <button
+            type="button"
+            className={styles.view}
+            aria-label={`Ver el pago de ${memberName(row)}`}
+            onClick={() => {
+              onView(row);
+            }}
+          >
+            Ver
+          </button>
+          <ReceiptButton paymentId={row.id} memberName={memberName(row)} appearance="inline" />
+        </span>
       ),
     },
   ];
@@ -231,6 +236,15 @@ export default function PaymentsPage() {
     );
   }, [methods, setDetailId]);
 
+  const exportFilters = useMemo(
+    () => ({
+      ...(params.q ? { q: params.q } : {}),
+      ...(params.method ? { method: params.method } : {}),
+      ...(params.registered_by ? { registered_by: params.registered_by } : {}),
+      ...(params.voided === undefined ? {} : { voided: params.voided }),
+    }),
+    [params.q, params.method, params.registered_by, params.voided],
+  );
   const registerHref = paymentPanelHref(location, { memberId: null });
   const actions: PageAction[] = canRegister ? [{ id: "register", label: "Registrar pago", href: registerHref, variant: "primary" }] : [];
 
@@ -239,6 +253,9 @@ export default function PaymentsPage() {
       {/* Revisión S3-F6 (L6): mientras llega la página nueva no se muestra el total de la anterior. */}
       <PageHeader title="Pagos" {...(page && !payments.isPlaceholderData ? { total: `${formatCount(page.total)} en total` } : {})} actions={actions} />
       <MonthSummary />
+      <div className={styles.tools}>
+        <ExportButton range={filters.range} filters={exportFilters} blocked={filters.backdated !== ""} />
+      </div>
       <PaymentFilters filters={filters} methodOptions={methods.map((method) => ({ value: method.code, label: method.label }))} registeredByOptions={registeredByOptions} />
       <DataTable
         caption="Pagos"

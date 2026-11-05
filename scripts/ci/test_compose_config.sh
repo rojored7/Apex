@@ -602,12 +602,14 @@ for nombre, contenido in (("compose.yml", texto), ("compose.openbao.yml", os.env
         check(prohibida not in contenido, f"S5 M-3: {nombre} no contiene {prohibida}")
 check("openbao-dev-data" not in texto, "S5 M-3: compose.yml no declara el volumen openbao-dev-data")
 
-# compose.openbao.yml (S5-D74): api y worker sin keys; con su token; tools conserva keys.
+# compose.openbao.yml (S5-D74, S5-D193): worker sin keys; api con keys SOLO LECTURA (la llave JWT vive ahí;
+# kek.bin lo borra retire-local-kek); ambos con su token; tools conserva keys.
 ovl_doc = json.loads(os.environ["OVL"])
 ovl = ovl_doc.get("services", {})
 check(bool(ovl.get("api")) and bool(ovl.get("worker")), "S5: el overlay renderiza con api y worker")
+check("/run/apex/keys" not in {v.get("target") for v in montajes(ovl.get("worker", {}))} and bool(ovl.get("worker")), "S5: con compose.openbao.yml worker no monta keys")
+check(any(v.get("target") == "/run/apex/keys" and v.get("read_only") is True for v in montajes(ovl.get("api", {}))), "S5-D193: con compose.openbao.yml api monta keys en solo lectura (llave JWT)")
 for svc in ("api", "worker"):
-    check("/run/apex/keys" not in {v.get("target") for v in montajes(ovl.get(svc, {}))} and bool(ovl.get(svc)), f"S5: con compose.openbao.yml {svc} no monta keys")
     check(any(v.get("source") == f"openbao-token-{svc}" and v.get("read_only") is True for v in montajes(ovl.get(svc, {}))), f"S5: con compose.openbao.yml {svc} monta su token en solo lectura")
 check(any(v.get("target") == "/run/apex/keys" for v in montajes(ovl.get("tools", {}))), "S5: con compose.openbao.yml tools conserva keys (migrate-provider)")
 check("ports" not in (ovl.get("openbao") or {}) and bool(ovl.get("openbao")), "S5: el overlay conserva openbao sin puertos")

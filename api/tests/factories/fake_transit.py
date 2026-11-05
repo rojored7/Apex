@@ -196,6 +196,8 @@ class FakeTransit:
             return self._error(404, [])
         accion, nombre = partes[2], partes[3]
         if accion == "keys":
+            if partes[4:] == ["config"] and metodo == "POST" and nombre in self._material:
+                self.min_decryption_version[nombre] = int(cuerpo["min_decryption_version"])
             return self._clave(metodo, nombre, partes[4:] == ["rotate"])
         if nombre not in self._material:
             return self._error(404, ["no existe la llave"])

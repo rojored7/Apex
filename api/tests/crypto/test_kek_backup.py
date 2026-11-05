@@ -21,6 +21,7 @@ from app.core.crypto.kek_backup import WrappedDek, load_wrapped, verify_wrapped
 from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.models import OP_PURPOSES
 from tests.conftest import ContadorDeConsultas
+from tests.crypto._migracion import Entorno, migrar_a_mano
 
 
 def test_verify_wrapped_con_la_misma_kek_es_ok_y_cuenta_active_y_decrypt_only(
@@ -133,3 +134,50 @@ def test_el_proposito_restore_existe_en_la_bitacora() -> None:
     """S4B-D74: `restore-kek` registra `export` con `purpose="restore"`; `oplog.record` rechaza
     los propósitos que no están en `OP_PURPOSES` (hoy no incluye `restore`)."""
     assert "restore" in OP_PURPOSES
+
+
+# S5-D187: la KEK del respaldo se compara con el archivo que se borrará ---------------------------
+
+
+def test_verify_wrapped_con_la_kek_viva_igual_la_confirma_y_deja_ambas_en_ceros(
+    kek_tmp: Path, wrapped_de_prueba: list[WrappedDek]
+) -> None:
+    actual = bytearray(kek_tmp.read_bytes())
+    kek = bytearray(kek_tmp.read_bytes())
+
+    resultado = verify_wrapped(kek, wrapped_de_prueba, current=actual)
+
+    assert resultado.ok and resultado.file_checked and resultado.file_matches
+    assert kek == bytearray(32) and actual == bytearray(32)
+
+
+def test_verify_wrapped_con_la_kek_viva_distinta_no_es_ok(
+    kek_tmp: Path, wrapped_de_prueba: list[WrappedDek]
+) -> None:
+    actual = bytearray(os.urandom(32))
+
+    resultado = verify_wrapped(bytearray(kek_tmp.read_bytes()), wrapped_de_prueba, current=actual)
+
+    assert resultado.file_checked and resultado.file_matches is False
+    assert resultado.ok is False
+    assert actual == bytearray(32)
+
+
+def test_verify_wrapped_sin_filas_y_con_archivo_igual_es_ok(kek_tmp: Path) -> None:
+    resultado = verify_wrapped(
+        bytearray(kek_tmp.read_bytes()), [], current=bytearray(kek_tmp.read_bytes())
+    )
+
+    assert resultado.total == 0 and resultado.ok and resultado.file_checked
+
+
+async def test_load_wrapped_solo_trae_las_filas_local(migracion_lista: Entorno) -> None:
+    e = migracion_lista
+    async with e.fabrica() as sesion:
+        antes = await load_wrapped(sesion)
+    assert len(antes) == 8
+
+    await migrar_a_mano(e)
+
+    async with e.fabrica() as sesion:
+        assert await load_wrapped(sesion) == []

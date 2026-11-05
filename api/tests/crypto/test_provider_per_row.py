@@ -264,3 +264,35 @@ def test_get_provider_named_desconocido_es_unknown_provider() -> None:
     with pytest.raises(CryptoError) as error:
         provider_mod.get_provider_named(Settings.model_construct(), "nube")
     assert error.value.code == "unknown_provider"
+
+
+# S5-D192: `keyring.provider` solo cambia tras un unwrap exitoso ----------------------------------
+
+
+async def test_el_proveedor_del_keyring_no_cambia_si_el_unwrap_falla(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider, openbao_fake: OpenBaoProvider
+) -> None:
+    envuelta_local = await proveedor_local.wrap(os.urandom(32))
+    await _fila(sin_llaves, None, "openbao", DOC, envuelta=envuelta_local)  # no abre con openbao
+    resolver, _ = _resolver(local=proveedor_local, openbao=openbao_fake)
+    llavero = Keyring()
+    llavero.provider = proveedor_local
+
+    with pytest.raises(CryptoError), actor_scope(SYSTEM_USER_ID):
+        await llavero.load_all(sin_llaves, resolver)
+
+    assert llavero.provider is proveedor_local
+
+
+async def test_el_proveedor_del_keyring_es_el_ultimo_que_abrio_una_fila(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider, openbao_fake: OpenBaoProvider
+) -> None:
+    await _fila(sin_llaves, openbao_fake, "openbao", DOC)
+    resolver, _ = _resolver(local=proveedor_local, openbao=openbao_fake)
+    llavero = Keyring()
+    llavero.provider = proveedor_local
+
+    with actor_scope(SYSTEM_USER_ID):
+        await llavero.load_all(sin_llaves, resolver)
+
+    assert llavero.provider is openbao_fake

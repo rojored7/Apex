@@ -216,7 +216,12 @@ def test_cli_manifest_existe_y_solo_lo_importan_archivos_de_cli_ops() -> None:
         for r, f in archivos
         if importadores_de(f, r, ("app.cli_manifest",)) and r != "cli_manifest.py"
     }
-    assert importadores == {"cli_ops/retire_key.py"}, importadores
+    assert importadores == {
+        "cli_ops/retire_key.py",
+        "cli_ops/migrate_provider.py",
+        "cli_ops/rotate_kek.py",
+        "cli_ops/retire_local_kek.py",
+    }, importadores
 
 
 def test_cli_manifest_no_importa_la_capa_de_aplicacion() -> None:

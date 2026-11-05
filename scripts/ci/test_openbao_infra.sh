@@ -10,7 +10,7 @@
 #   path "transit/encrypt/apex-kek" { capabilities = ["update"] }
 #   api     = encrypt/apex-kek y decrypt/apex-kek (update) + auth/token/renew-self (update)
 #   worker  = decrypt/apex-kek + renew-self
-#   tools   = api + transit/rewrap/apex-kek + transit/keys/apex-kek/rotate + transit/keys/apex-kek/config
+#   tools   = api + leer transit/keys/apex-kek + rotate + config (solo min_decryption_version; S5-D191)
 #   backup-snapshot = sys/storage/raft/snapshot (read), la única ruta sys/ (S5-D75)
 # Fallo esperado en el Rojo: los scripts son stubs con exit 99 y las políticas están vacías.
 set -euo pipefail
@@ -77,13 +77,13 @@ pares() {
         ruta="$(printf '%s' "$b" | sed -E 's/^path[[:space:]]*"([^"]*)".*/\1/')"
         caps="$(printf '%s' "$b" | grep -oE 'capabilities[[:space:]]*=[[:space:]]*\[[^]]*\]' | grep -oE '"[^"]*"' | tr -d '"' | sort | paste -sd, - || true)"
         printf '%s\t%s\n' "$ruta" "$caps"
-      done | sort || true
+      done | LC_ALL=C sort || true
 }
 
 NL=$'\n'
 esperado_api="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update"
 esperado_worker="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update"
-esperado_tools="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update${NL}transit/keys/apex-kek/config	update${NL}transit/keys/apex-kek/rotate	update${NL}transit/rewrap/apex-kek	update"
+esperado_tools="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update${NL}transit/keys/apex-kek	read${NL}transit/keys/apex-kek/config	update${NL}transit/keys/apex-kek/rotate	update"
 esperado_snapshot="sys/storage/raft/snapshot	read"
 
 for par in "apex-api:$esperado_api" "apex-worker:$esperado_worker" "apex-tools:$esperado_tools" "apex-backup-snapshot:$esperado_snapshot"; do
@@ -98,6 +98,18 @@ for par in "apex-api:$esperado_api" "apex-worker:$esperado_worker" "apex-tools:$
     falla "$nombre: rutas distintas de las del plan (obtenidas: $(printf '%s' "$obtenido" | tr '\t\n' ': ' | sed 's/ $//' | sed 's/^$/ninguna/'))"
   fi
 done
+
+# S5-B2 (S5-D19, S5-D55a): `rotate()` y `key_info()` leen transit/keys/apex-kek, así que apex-tools
+# necesita `read` exactamente en esa ruta; nunca `trim` ni `delete` (el recorte es `config`).
+f="$POL/apex-tools.hcl"
+if [ -f "$f" ]; then
+  caps_kek="$(pares "$f" | awk -F'	' '$1 == "transit/keys/apex-kek" { print $2 }')"
+  if [ "$caps_kek" = "read" ]; then ok "apex-tools: read en transit/keys/apex-kek (rotate y key_info, B2)"; else falla "apex-tools: transit/keys/apex-kek debe tener solo read (tiene: ${caps_kek:-nada})"; fi
+  if pares "$f" | cut -f1 | grep -Eq '/(trim|delete)'; then falla "apex-tools con una ruta trim o delete"; else ok "apex-tools sin rutas trim ni delete"; fi
+  if pares "$f" | cut -f1 | grep -q 'rewrap'; then falla "apex-tools conserva transit/rewrap (S5-D191)"; else ok "apex-tools sin transit/rewrap"; fi
+  cfg="$(tr -d '\015' < "$f" | sed -E 's/#.*$//' | tr '\n' ' ' | grep -oE 'path[[:space:]]*"transit/keys/apex-kek/config"[^}]*\{[^}]*\}' || true)"
+  if printf '%s' "$cfg" | grep -Eq 'allowed_parameters[[:space:]]*=[[:space:]]*\{[[:space:]]*"min_decryption_version"[[:space:]]*=[[:space:]]*\[\]'; then ok "apex-tools: config solo admite min_decryption_version"; else falla "apex-tools: config sin allowed_parameters = min_decryption_version (S5-D191)"; fi
+fi
 
 # Reglas generales sobre las cuatro políticas (aunque estén vacías no hay nada que reprochar:
 # lo que obliga a que no estén vacías son las aserciones exactas de arriba).
@@ -215,6 +227,10 @@ if [ -f "$SEAL" ]; then
 else
   falla "no existe $SEAL"
 fi
+
+# S5-B2 (H-2.3): con --provider openbao el smoke comprueba que api y worker no tienen kek.bin.
+PSMOKE=scripts/ci/prod-smoke.sh
+if tiene "$PSMOKE" "test ! -e /run/apex/keys/kek.bin" && tiene "$PSMOKE" "for SVC in api worker"; then ok "prod-smoke.sh comprueba que api y worker no tienen kek.bin (openbao)"; else falla "prod-smoke.sh sin la comprobación de kek.bin ausente en api y worker"; fi
 
 resumen
 [ "$fallas" -eq 0 ]

@@ -101,8 +101,8 @@ class Keyring:
                     material = bytearray(fila.wrapped_material)
                 elif fila.state in LOADABLE_STATES:
                     proveedor = self.provider_for(fila.provider)
-                    self.provider = proveedor
                     material = bytearray(await proveedor.unwrap(fila.wrapped_material))
+                    self.provider = proveedor  # solo tras un unwrap exitoso (S5-D192)
                     oplog.record(
                         "unwrap",
                         data_class=fila.data_class,

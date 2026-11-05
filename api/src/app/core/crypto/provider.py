@@ -34,7 +34,11 @@ ProviderStatus = Literal["ok", "sealed", "unreachable"]
 class KeyProvider(Protocol):
     name: str
 
-    async def wrap(self, dek: bytes) -> bytes: ...
+    async def wrap(self, dek: bytes | bytearray) -> bytes:
+        """Envuelve la DEK. Aceptar un `bytearray` REDUCE, no elimina, la exposición del material:
+        quien llama lo pone en ceros, pero `b64` y el JSON del cuerpo HTTP crean copias que Python
+        no puede borrar (S5-D137, riesgo residual)."""
+        ...
 
     async def unwrap(self, wrapped: bytes) -> bytes: ...
 

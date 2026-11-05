@@ -10,7 +10,15 @@ from __future__ import annotations
 
 import typer
 
-from app.cli_ops import import_members, kek, retire_key, rotate_key
+from app.cli_ops import (
+    import_members,
+    kek,
+    migrate_provider,
+    retire_key,
+    retire_local_kek,
+    rotate_kek,
+    rotate_key,
+)
 
 
 def register_ops(app: typer.Typer) -> None:
@@ -19,3 +27,6 @@ def register_ops(app: typer.Typer) -> None:
     kek.register(app)
     rotate_key.register(app)
     retire_key.register(app)
+    migrate_provider.register(app)  # S5-B2
+    rotate_kek.register(app)  # S5-B2 (con --trim)
+    retire_local_kek.register(app)  # S5-B2

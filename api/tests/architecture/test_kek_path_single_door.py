@@ -8,7 +8,9 @@ proveedor, que la carga) y `core/crypto/archive.py` (el respaldo con `age`) pued
 
 Desviación del plan, declarada: la ruta se *nombra* (sin abrirla) en `core/config.py` (el ajuste),
 `core/crypto/provider.py` (se la pasa al proveedor), `cli_ops/keys.py` (`init-keys` la crea),
-`cli_ops/openapi.py` (valor ficticio) y `cli_ops/kek.py` (se la pasa a `archive`); ese listado es
+`cli_ops/openapi.py` (valor ficticio) y `cli_ops/kek.py` (se la pasa a `archive`)
+y, desde S5-B2 (S5-D186), `cli_ops/retire_local_kek.py`
+(comprueba que exista y la borra con `unlink`; no la abre); ese listado es
 `NOMBRAN_LA_RUTA` y cualquier otro archivo que la nombre falla.
 """
 
@@ -29,6 +31,7 @@ NOMBRAN_LA_RUTA: Final = frozenset(
         "cli_ops/keys.py",
         "cli_ops/openapi.py",
         "cli_ops/kek.py",
+        "cli_ops/retire_local_kek.py",
     }
 )
 NOMBRES_DE_LA_KEK: Final = frozenset({"CRYPTO_LOCAL_KEK_PATH", "kek_path"})

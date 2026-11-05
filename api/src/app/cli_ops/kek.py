@@ -4,10 +4,11 @@ S4B-D58, D62, D74, D85).
 - `export-kek --out <archivo> --as <correo>`: cifra la KEK con `age -p` (la frase la pide `age` por
   la terminal; APEX no la ve). Solo con `CRYPTO_PROVIDER=local`. Escribe una fila de `crypto_ops`
   (`export`, `kek.backup`) y una entrada de auditoría `export` sobre `crypto.crypto_keys`.
-- `verify-kek-backup <archivo> [--as <correo>]`: abre el respaldo en memoria y prueba `unwrap` de
-  cada DEK `active`/`decrypt_only` de la base; no escribe la KEK. Salida
-  `verify-kek-backup: total=N failed=M`; 0 todo ok, 1 alguna DEK sin abrir (o ninguna que
-  comprobar), 2 archivo inválido o uso.
+- `verify-kek-backup <archivo> [--as <correo>]` (S5-D187): abre el respaldo en memoria, prueba
+  `unwrap` de cada DEK `local` `active`/`decrypt_only` (las de OpenBao no) y, si el archivo de la
+  KEK existe, compara en tiempo constante con él (con cero filas `local` esa comparación es
+  obligatoria); no escribe la KEK. Salida `verify-kek-backup: total=N failed=M`; 0 todo ok, 1 alguna
+  DEK sin abrir, KEK distinta o nada que comprobar, 2 archivo inválido o uso.
 - `restore-kek <archivo> --out <ruta> --as <correo>`: descifra el respaldo hacia un archivo nuevo
   (0o600). Corre aunque la KEK viva falte y tolera la base caída: avisa "sin bitácora" y sale 0.
   Deja `export` con `purpose = restore` y `after = {"op": "restore"}`.
@@ -141,7 +142,9 @@ async def _verify(
             actor_id = await resolve_admin_actor(session, actor, required=False)
             wrapped = await load_wrapped(session)
         try:
-            resultado = archive.verify_kek_backup(file, wrapped)
+            resultado = archive.verify_kek_backup(
+                file, wrapped, current_kek_path=settings.CRYPTO_LOCAL_KEK_PATH
+            )
         except AgeError:
             await _record(
                 session,
@@ -156,13 +159,16 @@ async def _verify(
             "op": "verify",
             "total": resultado.total,
             "failed": len(resultado.failed_key_ids),
+            "file_matches": resultado.file_matches if resultado.file_checked else None,
         }
         await _record(
             session,
             actor_id,
             verb="verify",
             purpose=None,
-            result="ok" if resultado.ok and resultado.total else "error",
+            result="ok"
+            if resultado.ok and (resultado.total or resultado.file_checked)
+            else "error",
             after=detalle,
         )
         return resultado
@@ -267,11 +273,18 @@ def _register_verify(app: typer.Typer) -> None:
             _fail(error, "verify-kek-backup")
         fallidas = len(resultado.failed_key_ids)
         typer.echo(f"verify-kek-backup: total={resultado.total} failed={fallidas}")
-        if resultado.total == 0:
-            typer.echo("verify-kek-backup: no hay llaves que comprobar; no se probó nada", err=True)
+        sin_nada = resultado.total == 0 and not resultado.file_checked
+        if sin_nada:
+            typer.echo("verify-kek-backup: no hay KEK en el archivo con qué comparar", err=True)
         for key_id in resultado.failed_key_ids:
             typer.echo(f"verify-kek-backup: no abre la llave {key_id}", err=True)
-        if fallidas or resultado.total == 0:
+        if resultado.file_checked:
+            veredicto = "coincide" if resultado.file_matches else "no coincide"
+            typer.echo(
+                f"verify-kek-backup: {veredicto} con la KEK del archivo",
+                err=not resultado.file_matches,
+            )
+        if fallidas or sin_nada or not resultado.file_matches:
             raise typer.Exit(code=1)
 
 

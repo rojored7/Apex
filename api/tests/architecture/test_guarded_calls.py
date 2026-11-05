@@ -417,10 +417,14 @@ def test_control_niveles_de_aislamiento_lee_el_literal_o_marca_lo_dinamico() -> 
 # S4B-B3b: rotación de llave (S4B-D39, D63, D86) ------------------------------------------------
 
 CRYPTO = APP / "core" / "crypto"
-FOR_UPDATE_DE_CRYPTO_PERMITIDO: Final = frozenset({"core/crypto/service.py"})
+FOR_UPDATE_DE_CRYPTO_PERMITIDO: Final = frozenset(
+    {"core/crypto/service.py", "core/crypto/migration.py"}
+)
 """S4B-D39/D95: el `FOR UPDATE` de `CryptoKey` y de las tablas de Core con columnas `Encrypted`
-solo vive en `core/crypto/service.py` (ruta relativa exacta). Si D95 extrae `rotation.py`, esta
-lista se amplía en el mismo cambio con la decisión anotada."""
+solo vive en `core/crypto/service.py` (ruta relativa exacta). S5-D186 amplía la lista con
+`core/crypto/migration.py`: su motor de re-envoltura (migrate-provider y rewrap de la KEK) bloquea
+la fila de la llave que va a cambiar, una transacción por llave; `rotation.py` no bloquea nada
+y reutiliza ese motor."""
 FUNCIONES_CON_FOR_UPDATE: Final = frozenset(
     {"start_rotation", "reencrypt_batch", "finish_rotation", "count_rows_by_key"}
 )

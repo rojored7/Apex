@@ -1,7 +1,10 @@
 """Manifiesto de respaldo firmado y reciente para los comandos de custodia (S5-D72; stub del Rojo).
 
-Capa de aplicación (como `cli_keyring.py`): la usan `retire-key` y, después, `migrate-provider`,
-`rotate-kek` y `retire-local-kek`. Verifica la firma `minisign` por `bus.verified_manifest_bytes`,
+Capa de aplicación (como `cli_keyring.py`): la usan `retire-key`, `migrate-provider`, `rotate-kek` y
+`retire-local-kek`; desde S5-B2 también reúne las pruebas de custodia de esos tres (S5-D186):
+`custody_proofs` (verify-kek-backup reciente + manifiesto firmado con instantánea de OpenBao) y
+`confirmation_error` (palabra escrita). Verifica la firma `minisign` por
+`bus.verified_manifest_bytes`,
 nunca con un binario. Solo la importan los archivos de `cli_ops/`.
 """
 
@@ -9,13 +12,24 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, NoReturn
 
+import typer
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings
+from app.core.crypto import service
 from app.core.crypto.bus import verified_manifest_bytes
 from app.core.crypto.file_digest import digest_file
+from app.core.crypto.migration import MigrationInProgress, MigrationResult
+from app.core.crypto.service import RotationInProgress
+from app.core.db import DatabaseBusy, translate_busy
 
 MANIFEST_MAX_AGE: Final = timedelta(hours=24)
 MAX_MANIFEST_BYTES: Final = 1 << 20
@@ -135,3 +149,84 @@ def recent_signed_manifest(
     ):
         return ManifestCheck(False, "no_snapshot", creado, False)
     return ManifestCheck(True, "ok", creado, con_snapshot)
+
+
+# Pruebas de custodia de B2 (S5-D186) -----------------------------------------------------------
+
+NO_VERIFY: Final = "no hay un verify-kek-backup ok de una persona en las últimas 24 h"
+NO_SNAPSHOT_MANIFEST: Final = (
+    "no hay un latest.json reciente con firma e instantánea de OpenBao verificada en "
+    "/data/backups (verify: ok)"
+)
+
+
+class CustodyRejected(Exception):
+    """Falta una prueba de custodia; el mensaje es fijo y nunca trae texto del proveedor."""
+
+
+async def custody_proofs(
+    session: AsyncSession, settings: Settings, manifest: Path, *, now: datetime
+) -> ManifestCheck:
+    """H-1: un `verify-kek-backup` `ok` de una persona de menos de 24 h y, en este orden, un
+    manifiesto firmado, reciente, con la instantánea de OpenBao verificada y presente en disco.
+    Devuelve la revisión del manifiesto (el `--trim` usa su `created_at`)."""
+    async with session.begin():
+        verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
+    if not verificado:
+        raise CustodyRejected(NO_VERIFY)
+    pubkey = settings.BACKUP_SIGN_PUBKEY
+    if pubkey is None:
+        raise CustodyRejected(NO_SNAPSHOT_MANIFEST)
+    revision = recent_signed_manifest(
+        manifest, pubkey, now=now, base=settings.BACKUP_DIR, require_openbao_snapshot=True
+    )
+    if not revision.ok:
+        raise CustodyRejected(NO_SNAPSHOT_MANIFEST)
+    return revision
+
+
+def confirmation_error(word: str, *, yes: bool) -> str | None:
+    """Pide `word` por stdin salvo `--yes`; devuelve el rechazo o `None` (EOF cuenta como vacío)."""
+    if yes:
+        return None
+    try:
+        escrito = typer.prompt(f"Escriba {word} para continuar", default="", show_default=False)
+    except typer.Abort:
+        escrito = ""
+    if escrito.strip() == word:
+        return None
+    return f"la confirmación debe ser exactamente {word}"
+
+
+# Errores comunes de los comandos de custodia (S5-D189, D190) -----------------------------------
+
+BASE_OCUPADA: Final = "la base está ocupada; repita el comando"
+OTRA_OPERACION: Final = "hay otra operación de llaves en curso; repita el comando más tarde"
+FALLO_REPETIR: Final = "falló una llave; repita el comando para reanudar"
+
+
+@contextmanager
+def custody_errors(command: str) -> Iterator[None]:
+    """Traduce a salida con mensaje fijo, sin traza: otra operación de llaves en curso (candado
+    de la KEK o job abierto) sale 2; una base ocupada (`lock_timeout`, `statement_timeout`,
+    interbloqueo) sale 1 como `rotate-key`."""
+    try:
+        yield
+    except (RotationInProgress, MigrationInProgress):
+        typer.echo(f"{command}: {OTRA_OPERACION}", err=True)
+        raise typer.Exit(code=2) from None
+    except DatabaseBusy:
+        typer.echo(f"{command}: {BASE_OCUPADA}", err=True)
+        raise typer.Exit(code=1) from None
+    except DBAPIError as error:
+        if translate_busy(error) is None:
+            raise
+        typer.echo(f"{command}: {BASE_OCUPADA}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+def exit_after_failure(command: str, result: MigrationResult) -> NoReturn:
+    """Un job que quedó `failed` (se reanuda repitiendo el comando): mensaje fijo y salida 1."""
+    mensaje = BASE_OCUPADA if result.error == "busy" else FALLO_REPETIR
+    typer.echo(f"{command}: {mensaje}", err=True)
+    raise typer.Exit(code=1)

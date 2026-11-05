@@ -9,6 +9,7 @@ módulo no expone un lector de ella.
 
 from __future__ import annotations
 
+import hmac
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
@@ -49,22 +50,36 @@ def _opens(aead: AESGCM, wrapped: bytes) -> bool:
     return True
 
 
-def verify_wrapped(kek: bytearray, wrapped: Sequence[WrappedDek]) -> VerifyKekResult:
-    """Prueba `unwrap` de cada DEK `active`/`decrypt_only` con `kek`; deja `kek` en ceros."""
+def verify_wrapped(
+    kek: bytearray, wrapped: Sequence[WrappedDek], *, current: bytearray | None = None
+) -> VerifyKekResult:
+    """Prueba `unwrap` de cada DEK `active`/`decrypt_only` con `kek`; deja `kek` en ceros.
+
+    Con `current` (la KEK del archivo vivo) compara en tiempo constante y también lo deja en
+    ceros (S5-D187).
+    """
     try:
         aead = AESGCM(bytes(kek))
         contadas = [d for d in wrapped if d.state in VERIFIED_STATES]
         fallidas = tuple(d.key_id for d in contadas if not _opens(aead, d.wrapped_material))
-        return VerifyKekResult(total=len(contadas), failed_key_ids=fallidas)
+        if current is None:
+            return VerifyKekResult(total=len(contadas), failed_key_ids=fallidas)
+        igual = hmac.compare_digest(kek, current)
+        return VerifyKekResult(len(contadas), fallidas, file_checked=True, file_matches=igual)
     finally:
         kek[:] = bytes(len(kek))
+        if current is not None:
+            current[:] = bytes(len(current))
 
 
 async def load_wrapped(session: AsyncSession) -> list[WrappedDek]:
-    """Lee `crypto_keys` (solo lectura, una consulta `SELECT`)."""
+    """Lee las filas `local` de `crypto_keys` (solo lectura, una consulta `SELECT`).
+
+    Solo las `local`: las de OpenBao no se abren con la KEK local (S5-D187).
+    """
     filas = await session.execute(
-        select(
-            CryptoKey.id, CryptoKey.version, CryptoKey.state, CryptoKey.wrapped_material
-        ).order_by(CryptoKey.purpose, CryptoKey.data_class, CryptoKey.version)
+        select(CryptoKey.id, CryptoKey.version, CryptoKey.state, CryptoKey.wrapped_material)
+        .where(CryptoKey.provider == "local")
+        .order_by(CryptoKey.purpose, CryptoKey.data_class, CryptoKey.version)
     )
     return [WrappedDek(str(i), int(v), str(s), bytes(m)) for i, v, s, m in filas.all()]

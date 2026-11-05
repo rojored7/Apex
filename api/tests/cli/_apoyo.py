@@ -36,6 +36,7 @@ def correr(
     *,
     base: Settings | None = None,
     monkeypatch: pytest.MonkeyPatch | None = None,
+    entrada: str | None = None,
 ) -> Result:
     """Corre el comando; con `env`, `get_settings()` del CLI devuelve `base` con ese `ENV`."""
     if env is not None:
@@ -46,7 +47,7 @@ def correr(
         monkeypatch.setattr(
             cli_base, "get_settings", lambda: efectivo
         )  # no-op prudente hoy (S4B-D29): ningún comando lee cli_base.get_settings aún
-    return _runner.invoke(app, list(args))
+    return _runner.invoke(app, list(args), input=entrada)
 
 
 async def conteos_de_tablas(session: AsyncSession) -> dict[str, int]:

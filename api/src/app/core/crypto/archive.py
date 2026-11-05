@@ -56,10 +56,14 @@ class VerifyKekResult:
 
     total: int
     failed_key_ids: tuple[str, ...]
+    file_checked: bool = False
+    """Se comparó con la KEK del archivo vivo (S5-D187)."""
+    file_matches: bool = True
+    """La KEK del respaldo es la del archivo vivo; solo significa algo si `file_checked`."""
 
     @property
     def ok(self) -> bool:
-        return not self.failed_key_ids
+        return not self.failed_key_ids and self.file_matches
 
 
 class NoTty(Exception):
@@ -333,12 +337,18 @@ def verify_kek_backup(
     age_path: Path,
     wrapped: Sequence[WrappedDek],
     *,
+    current_kek_path: Path | None = None,
     age_binary: str = AGE_BINARY,
     timeout_s: int = AGE_TIMEOUT_S,
 ) -> VerifyKekResult:
-    """`age -d` a `PIPE`, 32 bytes exactos en un `bytearray` y `unwrap` de cada DEK."""
+    """`age -d` a `PIPE`, 32 bytes exactos en un `bytearray` y `unwrap` de cada DEK.
+
+    Con `current_kek_path` y el archivo presente, compara además la KEK del respaldo con la del
+    archivo (S5-D187): es la KEK que `retire-local-kek` borrará.
+    """
     from app.core.crypto.kek_backup import verify_wrapped
 
+    vivo = _read_kek(current_kek_path) if current_kek_path and current_kek_path.exists() else None
     entrada = _open_backup(age_path)
     try:
         proc = _spawn(["-d"], stdin=entrada, stdout=subprocess.PIPE, age_binary=age_binary)
@@ -346,6 +356,8 @@ def verify_kek_backup(
         os.close(entrada)
     kek = _read_kek_from_child(proc, timeout_s)
     try:
-        return verify_wrapped(kek, wrapped)
+        return verify_wrapped(kek, wrapped, current=vivo)
     finally:
         _zero(kek)
+        if vivo is not None:
+            _zero(vivo)

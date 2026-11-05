@@ -742,3 +742,101 @@ def test_restore_kek_con_la_base_arriba_y_la_bitacora_rota_sale_1_y_deja_el_arch
     )
     assert "fallo al escribir" not in resultado.output
     assert _kek_bytes(kek_de_prueba).decode("latin-1") not in resultado.output
+
+
+# S5-D187: tras migrate-provider no quedan filas `local`; la prueba se ata al archivo vivo -------
+
+
+async def _todas_a_openbao(fabrica: Fabrica) -> None:
+    from sqlalchemy import text
+
+    async with fabrica() as sesion, sesion.begin():
+        await sesion.execute(
+            text(
+                "UPDATE crypto.crypto_keys SET provider = 'openbao', "
+                "wrapped_material = convert_to('vault:v1:x', 'UTF8')"
+            )
+        )
+
+
+async def test_verify_sin_filas_local_y_con_el_archivo_igual_sale_0(
+    entorno_kek: Settings,
+    kek_de_prueba: KeyPaths,
+    llaves_en_base: Fabrica,
+    admin: Any,
+    salidas: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _todas_a_openbao(llaves_en_base)
+    respaldo = _respaldo(salidas, _kek_bytes(kek_de_prueba))
+
+    resultado = _kek(
+        entorno_kek, monkeypatch, "verify-kek-backup", str(respaldo), "--as", admin.email
+    )
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "verify-kek-backup: total=0 failed=0" in resultado.output
+    assert "verify-kek-backup: coincide con la KEK del archivo" in resultado.output
+    (op,) = await _ops(llaves_en_base, "verify")
+    assert op.result == "ok"
+
+
+async def test_verify_sin_filas_local_y_con_un_archivo_distinto_sale_1(
+    entorno_kek: Settings,
+    llaves_en_base: Fabrica,
+    admin: Any,
+    salidas: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _todas_a_openbao(llaves_en_base)
+    respaldo = _respaldo(salidas, os.urandom(32))
+
+    resultado = _kek(
+        entorno_kek, monkeypatch, "verify-kek-backup", str(respaldo), "--as", admin.email
+    )
+
+    assert resultado.exit_code == 1, resultado.output
+    assert "no coincide con la KEK del archivo" in resultado.output
+    (op,) = await _ops(llaves_en_base, "verify")
+    assert op.result == "error"
+
+
+async def test_verify_sin_filas_local_y_sin_archivo_sale_1(
+    entorno_kek: Settings,
+    kek_de_prueba: KeyPaths,
+    llaves_en_base: Fabrica,
+    admin: Any,
+    salidas: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _todas_a_openbao(llaves_en_base)
+    respaldo = _respaldo(salidas, _kek_bytes(kek_de_prueba))
+    kek_de_prueba.kek.unlink()
+
+    resultado = _kek(
+        entorno_kek, monkeypatch, "verify-kek-backup", str(respaldo), "--as", admin.email
+    )
+
+    assert resultado.exit_code == 1, resultado.output
+    assert "no hay KEK en el archivo con qué comparar" in resultado.output
+
+
+async def test_verify_con_filas_local_y_un_archivo_distinto_sale_1(
+    entorno_kek: Settings,
+    kek_de_prueba: KeyPaths,
+    llaves_en_base: Fabrica,
+    admin: Any,
+    salidas: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Las DEK abren con el respaldo, pero el archivo que se borrará es otro."""
+    respaldo = _respaldo(salidas, _kek_bytes(kek_de_prueba))
+    kek_de_prueba.kek.write_bytes(os.urandom(32))
+    kek_de_prueba.kek.chmod(0o600)
+
+    resultado = _kek(
+        entorno_kek, monkeypatch, "verify-kek-backup", str(respaldo), "--as", admin.email
+    )
+
+    assert resultado.exit_code == 1, resultado.output
+    assert "no coincide con la KEK del archivo" in resultado.output

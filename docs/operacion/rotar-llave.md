@@ -69,3 +69,16 @@ Al terminar imprime `retire-key: llave retirada` y deja una entrada de auditorí
 - No revoca respaldos anteriores: un respaldo de la base hecho antes de rotar sigue abriéndose con la KEK de entonces.
 - No protege si la KEK está comprometida: quien tenga la KEK también desenvuelve la llave nueva. Ese caso (cambiar la KEK y re-envolver todo) corresponde a la versión con OpenBao (v0.2).
 - No cambia la contraseña de nadie ni las llaves JWT o de firma.
+
+## Rotar la KEK de OpenBao (S5-B2)
+
+Con `CRYPTO_PROVIDER=openbao` la KEK vive en OpenBao (Transit, llave `apex-kek`) y se rota aparte de las llaves de datos:
+
+1. Verifique la copia `age` de la KEK (`verify-kek-backup`) y tenga un respaldo de menos de 24 h con instantánea de OpenBao.
+2. `docker compose --profile tools run --rm tools rotate-kek --as <correo>`. Rota la KEK y re-envuelve cada llave de datos con la versión nueva. Si se interrumpe, repita el mismo comando: reanuda sin rotar de nuevo.
+3. Haga un respaldo nuevo.
+4. Opcional, ante un compromiso de la KEK: `rotate-kek --trim --as <correo>` (escriba `RECORTAR`). Sube `min_decryption_version` para que las versiones viejas dejen de abrir. Es irreversible y exige que todo esté en la última versión y que el respaldo sea posterior al re-envuelto.
+
+Para pasar de la KEK local a OpenBao (y retirar el archivo `kek.bin`) vea `docs/RUNBOOK.md` §13, "Pasar la KEK a OpenBao".
+
+**Orden seguro (revisiones de B2).** `verify-kek-backup` se corre DESPUÉS de `migrate-provider` y antes de `retire-local-kek`: compara el respaldo con el archivo `kek.bin` que se va a borrar. No ejecute `rotate-key` mientras corre `migrate-provider` o `rotate-kek`; se rechazan entre sí.

@@ -78,6 +78,8 @@ MAX_INDEX_ROWS: Final = 50_000
 MAX_ERROR_LENGTH: Final = 100
 KEK_VERIFY_WINDOW: Final = timedelta(hours=24)
 OPEN_JOB_STATES: Final = ("pending", "running", "failed")
+CUSTODY_JOB_KINDS: Final = ("migrate_provider", "rewrap")
+"""Jobs de custodia de la KEK: no conviven con una rotación de llaves de datos (S5-D190)."""
 
 KeyEvent = Literal["rotate", "retire"]
 
@@ -241,14 +243,29 @@ async def _release(conexion: AsyncConnection, clave: dict[str, str]) -> None:
             raise
 
 
-async def _swap_key(session: AsyncSession, old: CryptoKey, actor: UUID) -> tuple[CryptoKey, bytes]:
-    """`old` pasa a `decrypt_only` y nace la versión siguiente `active`; devuelve (nueva, DEK)."""
+async def _no_custody_job(session: AsyncSession) -> None:
+    """Rechaza si hay una migración de proveedor o un rewrap de la KEK abierto (S5-D190)."""
+    abierto = await session.scalar(
+        select(CryptoJob.id)
+        .where(CryptoJob.kind.in_(CUSTODY_JOB_KINDS), CryptoJob.status.in_(OPEN_JOB_STATES))
+        .limit(1)
+    )
+    if abierto is not None:
+        raise RotationInProgress("hay una migración o un rewrap de la KEK en curso")
+
+
+async def _swap_key(
+    session: AsyncSession, old: CryptoKey, actor: UUID
+) -> tuple[CryptoKey, bytearray]:
+    """`old` pasa a `decrypt_only` y nace la versión siguiente `active`; devuelve (nueva, DEK).
+
+    Quien llama deja la DEK en ceros al terminar (S5-D151)."""
     next_key_state(old.state, "rotate", old.purpose)  # type: ignore[arg-type]
     old.state = "decrypt_only"
     old.rotated_at = current_clock().now_utc()
     old.rotated_by = actor
     await session.flush()  # libera el índice único de la activa antes de insertar la nueva
-    dek = os.urandom(DEK_LEN)
+    dek = bytearray(os.urandom(DEK_LEN))
     proveedor = _provider()
     nueva = CryptoKey(
         id=uuid4(),
@@ -267,6 +284,9 @@ async def _swap_key(session: AsyncSession, old: CryptoKey, actor: UUID) -> tuple
     oplog.record("wrap", data_class=nueva.data_class, key_id=nueva.id, key_version=nueva.version)
     return nueva, dek
 
+
+rotation_lock = _rotation_lock
+"""Candado de sesión por clase; `rotation.py` lo usa con la clase `kek` (S5-D188)."""
 
 # Rotación de la llave de cifrado -----------------------------------------------------------
 
@@ -292,6 +312,7 @@ async def start_rotation(
     validate_reason(reason)
     if not get_spec(data_class).encrypt:
         raise CryptoError("unsupported", f"la clase {data_class} no se cifra")
+    await _no_custody_job(session)
     async with _rotation_lock(session, data_class):
         llaves = (await _run(session, _key_stmt("encrypt", data_class).with_for_update())).scalars()
         activa = _single_active(list(llaves), "encrypt")
@@ -299,7 +320,8 @@ async def start_rotation(
         if abierto is not None:
             abierto.status, abierto.error = "running", None
             return abierto  # type: ignore[no-any-return]
-        nueva, _ = await _swap_key(session, activa, actor)
+        nueva, dek = await _swap_key(session, activa, actor)
+        dek[:] = bytes(len(dek))
         total = await _pending_total(
             session, encrypted_columns(Base.metadata, data_class), nueva.id
         )
@@ -411,7 +433,12 @@ def _index_column(ref: ColumnRef, data_class: str) -> Any | None:
 
 
 async def _reindex(
-    session: AsyncSession, ref: ColumnRef, idx: Any, dek: bytes, data_class: str, key: CryptoKey
+    session: AsyncSession,
+    ref: ColumnRef,
+    idx: Any,
+    dek: bytes | bytearray,
+    data_class: str,
+    key: CryptoKey,
 ) -> int:
     """Recalcula `idx` de cada fila con `dek`; el valor se descifra con la llave de cifrado."""
     kind = get_spec(data_class).index_kind
@@ -440,6 +467,7 @@ async def rotate_index(session: AsyncSession, data_class: str, reason: str, acto
     validate_reason(reason)
     if get_spec(data_class).index_kind is None:
         raise CryptoError("no_index", f"la clase {data_class} no tiene índice ciego")
+    await _no_custody_job(session)
     llaves = (await _run(session, _key_stmt("index", data_class).with_for_update())).scalars()
     activa = _single_active(list(llaves), "index")
     pares = [
@@ -450,10 +478,13 @@ async def rotate_index(session: AsyncSession, data_class: str, reason: str, acto
         raise ValueError(f"la clase tiene más de {MAX_INDEX_ROWS} filas; --index se niega")
     nueva, dek = await _swap_key(session, activa, actor)
     filas = 0
-    with oplog.batch("index", data_class):
-        for ref, idx in pares:
-            if idx is not None:
-                filas += await _reindex(session, ref, idx, dek, data_class, nueva)
+    try:
+        with oplog.batch("index", data_class):
+            for ref, idx in pares:
+                if idx is not None:
+                    filas += await _reindex(session, ref, idx, dek, data_class, nueva)
+    finally:
+        dek[:] = bytes(len(dek))
     return filas
 
 

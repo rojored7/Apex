@@ -87,7 +87,8 @@ class LocalFileProvider:
     async def rewrap(self, wrapped: bytes) -> bytes:
         raise CryptoError("unsupported", "el proveedor local no re-envuelve: no hay versiones")
 
-    async def wrap(self, dek: bytes) -> bytes:
+    async def wrap(self, dek: bytes | bytearray) -> bytes:
+        """Un `bytearray` reduce, no elimina, la exposición: AESGCM y los cuerpos crean copias."""
         nonce = os.urandom(NONCE_LEN)
         return WRAP_PREFIX + nonce + self._aead.encrypt(nonce, dek, WRAP_AAD)
 

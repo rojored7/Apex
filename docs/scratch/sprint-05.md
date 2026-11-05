@@ -367,3 +367,73 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - **Lecciones de entorno (memoria del proyecto):** el auxiliar del smoke exige `--network host` y `TMPDIR` dentro del volumen `apex-b4-work` (los `mktemp` que se montan por bind deben existir en la VM); el recolector de memoria del cliente mata los Bash en segundo plano: lanzar el auxiliar con `docker run -d` y vigilarlo con Monitor.
 - **Decisiones del slice:** S5-D169 a S5-D176 (Verde), S5-D177 a S5-D181 (revisión de seguridad, 8/8 + complemento de D172), S5-D182 (espera por TCP en el e2e).
 - **Pendiente humano:** ninguno nuevo. B2 arranca con `migrate-provider`, `rotate-kek` (unwrap + wrap, S5-D55a), `--trim` y `retire-local-kek`; la política `apex-tools` necesita `read` en `transit/keys/apex-kek` (B2).
+
+## B2 · Rojo (S5-B2, migrate-provider, rotate-kek con --trim y retire-local-kek)
+
+**Línea base** (HEAD 52e7024): `tests/architecture tests/cli/test_cli_base.py test_retire_key_cli.py test_rotate_key_cli.py tests/crypto/test_fake_transit.py test_rotate_index.py test_retire_key.py` 688 passed / 1 skipped; `test_openbao_infra.sh` 83 ok / 0 fallas (antes de añadir mis 2 casos y cambiar el esperado).
+
+**Rojo**: 116 pruebas, todas en rojo (0 errores de fixture ni de import; por `NotImplementedError` de los stubs o por aserción del exit code / texto). Por archivo: `tests/crypto/test_migrate_provider.py` 22; `tests/crypto/test_rotate_kek.py` 17; `tests/cli/test_migrate_provider_cli.py` 31; `tests/cli/test_rotate_kek_cli.py` 24; `tests/cli/test_retire_local_kek_cli.py` 22. Bash: `test_openbao_infra.sh` 2 fallas nuevas (apex-tools exacto con `read` en `transit/keys/apex-kek`; esa ruta solo `read`). `ruff check`, `ruff format --check`, `mypy src` y `tests/architecture` (570) verdes. Sin validación con Verde desechable (no se hizo); el montaje (`sembrada`, `migrar_a_mano`, `rewrapear_a_mano`, `custodia`) sí corre hasta el stub en todas.
+
+**Gates**: `cd api && TEST_DATABASE_URL=... uv run pytest tests/crypto/test_migrate_provider.py tests/crypto/test_rotate_kek.py -q -p no:cacheprovider`; `... tests/cli/test_migrate_provider_cli.py tests/cli/test_rotate_kek_cli.py tests/cli/test_retire_local_kek_cli.py`; `bash scripts/ci/test_openbao_infra.sh`.
+
+**Archivos**: stubs `core/crypto/migration.py` (KeyRowView, MigrationResult, MigrationInProgress, plan/migrate/verify) y `core/crypto/rotation.py` (rotate_kek, rewrap_all, trim_ready, trim_kek), `cli_ops/{migrate_provider,rotate_kek,trim_kek,retire_local_kek}.py` y su registro; apoyo `tests/crypto/_migracion.py`, `tests/cli/_apoyo_custodia.py` (reexportados en ambos `conftest.py`); `tests/cli/_apoyo.correr` gana `entrada=` (stdin); `FakeTransit` gana `POST keys/<k>/config` (fija `min_decryption_version`); `test_openbao_infra.sh` ordena con `LC_ALL=C`.
+
+**Dudas y decisiones de contrato para el Verde**
+1. Plan vs D131: el paso 45 dice "excluye sign"; manda D131 (el plan las incluye, prueba pura). Pero D73 dice que las `sign` siguen `local` y `verify_provider` solo cuenta `encrypt|index` (prueba con una fila `sign` local: cuenta 0). Una fila `sign` guarda una referencia, no una DEK envuelta: `migrate_provider` no se prueba contra una fila `sign` real (no existe en v0.1); el Verde debe decidir cómo re-envolverla o saltarla.
+2. `migrate_provider` y `rewrap_all` NO propagan errores del proveedor: devuelven `MigrationResult(failed_key_id=...)`, el job queda `failed` con un código `^[a-z_]+$` y reanudar usa el mismo job (total fijo, done acumulado). Otro job abierto (cualquier clase) lanza `MigrationInProgress`.
+3. `batch_id` de los `crypto_ops` `unwrap`/`wrap` = `job.id`; la DEK se pasa a `wrap` como el mismo `bytearray` y queda en ceros (también si `wrap` falla).
+4. `skipped` ("ya está en destino bajo FOR UPDATE") no tiene prueba: requiere una carrera.
+5. `--trim`: Typer no admite dos comandos `rotate-kek`; `trim_kek.py` no puede ser importado por `rotate_kek.py` (cli_ops no se importan entre sí). Hay que decidir el reparto (p. ej. `trim_kek.register` agrega la opción o la lógica va en `core/crypto/rotation.py`). `KeyProvider` no tiene método para `keys/apex-kek/config`: `rotation.trim_kek(provider) -> int` fija el contrato; el Verde añade el método a `OpenBaoProvider` (y quizá al puerto).
+6. Textos fijos nuevos (constantes en `_apoyo_custodia.py`): SIN_MANIFIESTO con instantánea, SIN_SNAPSHOT_POSTERIOR (respaldo anterior a `finished_at` del job `rewrap`), TRIM_NO_LISTO, QUEDAN_LOCAL, y las tres confirmaciones. Auditoría de rotate-kek: `after={"event":"rotate_kek","version":V,"total":N,"done":N}`, `record_id`=job (no estaba en el plan).
+7. Los comandos reciben `--manifest RUTA` (como `retire-key`); los proveedores solo por `provider.get_provider_named`/`make_resolver` por atributo de módulo (la fixture `custodia` lo parchea).
+8. `tests/architecture/test_app_layer_importers.py:219` exige `importadores == {"cli_ops/retire_key.py"}`: el Verde debe ampliarlo al importar `cli_manifest` desde los comandos nuevos.
+9. `retire-local-kek` borra la copia de la KEK bajo `tmp_path/keys` (settings_custodia); no se prueba un `kek.bin` ya ausente.
+
+## B2 · Verde (S5-B2)
+
+**Resultado**: las 116 pruebas del Rojo en verde (migrate_provider 22, rotate_kek 17, migrate_provider_cli 31, rotate_kek_cli 24, retire_local_kek_cli 22; 77 CLI + 39 crypto), `tests/architecture` 570, `tests/crypto` 469 pasan, `tests/cli` completo verde, `ruff check/format` y `mypy src` limpios, `test_openbao_infra.sh` 88 ok / 0 (87 + el caso estático nuevo de `kek.bin`), `slice-gate.sh crypto ...` verde (sello escrito; `cli` NO sellado). Decisiones: S5-D183 a S5-D186 en DECISIONES.
+
+**Líneas**: `cli_ops/migrate_provider.py` 145, `rotate_kek.py` 148, `retire_local_kek.py` 98 (todas < 150; `TOPE_CLI_OPS` intacto); `core/crypto/migration.py` 292, `rotation.py` 120, `cli_manifest.py` 192.
+
+**Desviaciones del Rojo / del brief**
+1. Prueba corregida: `test_el_plan_incluye_las_filas_sign_por_s5_d131` pasó a `test_el_plan_excluye_las_filas_sign_por_s5_d183` (y su docstring), por S5-D183.
+2. `cli_ops/trim_kek.py` eliminado (S5-D184); `--trim` en `rotate_kek.py`.
+3. Las pruebas de custodia (H-1) y la palabra escrita se centralizaron en `cli_manifest.py` (`custody_proofs`, `confirmation_error`, `CustodyRejected`) en vez de repetirlas en los tres comandos; `test_app_layer_importers` ahora espera los cuatro importadores.
+4. Dos listas blancas de arquitectura ampliadas con decisión (S5-D186): `FOR_UPDATE_DE_CRYPTO_PERMITIDO` += `core/crypto/migration.py` y `NOMBRAN_LA_RUTA` += `cli_ops/retire_local_kek.py`.
+5. `KeyProvider.wrap` (y las dos implementaciones) acepta `bytes | bytearray` (mypy strict-bytes) para poder poner la DEK en ceros; `rotate_index`/`start_rotation` dejan la DEK en `bytearray` a ceros (D151).
+6. `MigrationResult.job_id` (fuera de la igualdad) para el `record_id` de la auditoría.
+7. `prod-smoke.sh --provider openbao`: comprueba `test ! -e /run/apex/keys/kek.bin` en api y worker SOLO si el api corre con `CRYPTO_PROVIDER=openbao` (overlay); sin overlay lo omite y lo dice, porque el smoke aún no apila `compose.openbao.yml`. Caso estático en `test_openbao_infra.sh`. No ejecutado (prohibido `up`); solo `bash -n`.
+8. Los bytes que devuelve un proveedor (`unwrap`) son inmutables: solo se pone en ceros la copia `bytearray`; límite de la interfaz.
+9. La rama `skipped` (fila ya en destino bajo FOR UPDATE) sigue sin prueba de carrera (aceptado).
+
+**Pendiente**: B2.7 (tras revisiones), sellar `cli`, `-m openbao` reales (no se corrió OpenBao `-dev`), docs de operación revisadas por humano. `test_infra_scripts.sh` y `test_compose_config.sh` se lanzaron en segundo plano por el tope de 120 s; ver resultado abajo.
+
+## B2 · Revisiones (S5-B2)
+
+**Atendido** (seguridad 0 CRITICAL / 1 HIGH / 3 MEDIUM / 4 LOW; base de datos 1 HIGH / 5 MEDIUM): S5-D187 a S5-D192 en DECISIONES, más los LOW y el hallazgo propio S5-D193. Siempre prueba primero y en rojo comprobado:
+- **D187** (`verify-kek-backup` atado al archivo): rojo en `tests/crypto/test_kek_backup.py` (4 pruebas: comparación con el archivo vivo igual, distinto, cero filas, `load_wrapped` solo `local`); 4 pruebas CLI en `tests/cli/test_export_kek.py` (cero filas + igual, distinto, sin archivo; filas + archivo distinto). Las CLI se saltan en Windows (age falso, `cmd.exe`): se corrieron en Linux (`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`, DB por `host.docker.internal:5443`): 76 passed (test_export_kek, test_kek_backup, test_archive_kek). Su rojo no se vio en Linux antes de implementar (limitación: solo el rojo de las pruebas de `crypto`).
+- **D188**: `trim_ready_version`, `trim_kek_checked`, `TrimNotReady`, `kek_lock`; pruebas de núcleo (otra rotación entre la comprobación y el recorte, fila que vuelve a una versión vieja, candado tomado) y CLI (`RECORTAR` con rotación ajena → 2, `config` nunca llamado). Nota: `trim_ready` sigue devolviendo bool (las pruebas del Rojo afirman `is True`); la versión validada sale de `trim_ready_version`.
+- **D189**: job `running` reanudado; `BaseException`; fila cambiada entre lectura y UPDATE → `skipped` (en rojo colgaba: la prueba tomaba el candado de la fila desde `wrap`); sondeo `FOR UPDATE NOWAIT` durante `wrap` verde; `DBAPIError` ocupada → job `failed` con `busy` y salida 1 (CLI migrate y rotate).
+- **D190**: exclusión simétrica (`rotate|reencrypt` ↔ `migrate_provider|rewrap`), `retire-local-kek` con candado, repetición dentro de la transacción, `unlink` tras el commit, "ya estaba retirada".
+- **D191**: `apex-tools.hcl` con `allowed_parameters` y sin `rewrap`; `test_openbao_infra.sh` 90 ok / 0.
+- **D192**: `keyring.provider` tras el `unwrap` (rojo: asignación previa).
+- **LOW**: auditoría del fallo parcial (`failed: true`); `rewrap_all` crea el job con 0 filas; `verify_provider` sin `resolver`; docstrings "reduce, no elimina" y riesgo residual de D137 ampliado.
+- **Conteos**: nuevas ~45 pruebas (crypto: 4 kek_backup + 7 migrate + 8 rotate_kek + 2 keyring; cli: 4 kek + 2 migrate + 2 rotate + 4 retire; real: 1 `-m openbao`). `tests/crypto tests/architecture` 1062 passed / 53 skipped; `tests/cli` 466 passed / 28 skipped.
+- **Desviaciones**: `rotate_kek.py` 159 líneas, `TOPE_CLI_OPS["rotate_kek.py"] = 200` (D184/D188); `cli_manifest.py` (232 líneas) concentra además `custody_errors` y `exit_after_failure`; la prueba antigua `test_rewrap_all_sin_filas_viejas_no_hace_nada` pasó a `..._no_cifra_nada` por el L4; el test de reanudación de `migrate-provider` espera ahora dos auditorías (una `failed`).
+
+## B2 · Evidencia (B2.7, ensayo `apex-ensayo`, 2026-11-05)
+
+- **Imagen**: `apex-api:local` reconstruida con `buildx --network host` (`sha256:14d2c482b14d…`, GIT_SHA del HEAD); dev (`api`, `worker`) y ensayo (`api`, `worker`) recreados sobre ella: healthy. `tools` no es permanente (se usa `run --rm`).
+- **Datos del ensayo**: `seed` (admin `ensayo-admin@apex.test`, contraseña inicial cambiada por `POST /auth/me/password`) y `seed --demo --allow-production`: 30 socios, 3 planes. Llaves de partida: 5 `encrypt` + 3 `index`, todas `local`. `.env.seed` quedó en `docs/scratch/ensayo/` (ignorado por git; el borrado fue denegado por la guarda de permisos).
+- **2) Respaldos**: `pg_dump -Fc` a `docs/scratch/ensayo/pre-b2.dump` (134 842 bytes, no versionado). `export-kek` + `verify-kek-backup` por el ayudante pty (`prod-smoke-pty.py`, frase solo en el entorno del ayudante, `export` y `verify` `ok` en `crypto_ops` `kek.backup`). `run.sh` con `compose.verify.yml`: `apex-20261105-040243` (db 135 564 B, uploads 1 834 B, `openbao.snap.age` 31 043 B), verificación de descifrado ok, manifiesto firmado.
+- **Hallazgo previo**: la política `apex-tools` del ensayo era la vieja; `openbao-bootstrap --reissue-tokens` por pty en el auxiliar Linux la reescribió (EXIT 0, 3 llaves de desello, políticas y 4 tokens reemitidos, raíz revocada).
+- **3) `migrate-provider`**: `--dry-run` → `total=8`, sin escribir; con `MIGRAR` por stdin → `hecho=8/8`, `migración completa`; segunda corrida → `nada que migrar`; `--verify` → `fuera_de_destino=0`. Jobs: `migrate_provider|done|8|8`.
+- **4) `CRYPTO_PROVIDER=openbao`**: primer intento FALLÓ (S5-D193: `Faltan secretos: JWT_PRIVATE_KEY_PATH`; el overlay quitaba `keys` al api). Con el overlay corregido, `api` y `worker` healthy; `GET /api/v1/members/2e4e3913-…` (puerto 8280) → 200 con los campos descifrados y enmascarados.
+- **5) `rotate-kek --as`**: `version=2`, `total=8`, `hecho=8/8`; el api sigue descifrando (200). Respaldo nuevo `apex-20261105-040646` (instantánea de 32 067 B). `rotate-kek --trim` con `RECORTAR`: `min_decryption_version=2`. Jobs: `rewrap|done|8|8`.
+- **6) `verify-kek-backup` (D187)** tras migrar: `total=0 failed=0`, `coincide con la KEK del archivo`, EXIT 0. **`retire-local-kek`** con `RETIRAR`: `KEK local retirada`; segunda corrida: `la KEK local ya estaba retirada` (sin segunda auditoría).
+- **7)** `docker exec` api y worker del ensayo: `test ! -e /run/apex/keys/kek.bin` → verdadero en ambos (el api conserva `jwt_ed25519.*` y `sign-ed25519.key` en solo lectura).
+- **8)** `SELECT provider, count(*) FROM crypto.crypto_keys GROUP BY 1` → `openbao | 8`. Auditoría: `export`, `verify` (8/0, `file_matches: true`), `update` migrate (`local→openbao 8/8`), `update` rotate_kek (`version 2, 8/8`), `update` trim_kek (`min 2`), `verify` (0/0 `file_matches`), `update` `kek_local: retirada`. `/health`: `status ok, db ok, backup ok, migrations ok`.
+- **Restauración (S5-D95)**: `infra/tests/openbao_restore_e2e.sh` otra vez desde el auxiliar Linux: 0 fallas, `transit/decrypt` devuelve la cadena original con las llaves originales. Variante "`--verify` → 0 tras restaurar el snapshot del ensayo": NO se hizo sobre el ensayo (el e2e usa recursos desechables `apex-obe2e-*`; restaurar el snapshot del ensayo exigiría `snapshot-force` sobre su propio OpenBao); `verify_provider` es un `COUNT` sobre la base y la columna `provider` viaja con la base restaurada. **V3**.
+- **`-m openbao` reales**: OpenBao `2.7.2` `-dev` desechable en `apex_custody` con alias `openbao` (política efímera `transit/*` + `renew-self`, token en volumen 600): 14 passed, 4 skipped (13 + la prueba nueva de `set_min_decryption_version`). Contenedor y volúmenes borrados.
+- **`prod-smoke.sh`**: no se repitió entero (B2 no cambia el compose base; el overlay sí, ver D193): `bash -n` y los estáticos (`test_openbao_infra.sh` 90/0, `test_compose_config.sh` 0 fallas) en verde.
+- **Estado final**: dev (api, worker, web, backup, db) healthy sobre la imagen nueva; `apex-ensayo` con `CRYPTO_PROVIDER=openbao` en su `.env` y overlay aplicado, OpenBao desellado.

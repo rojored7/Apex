@@ -25,12 +25,12 @@ apex/
     pyproject.toml
     src/app/
       main.py            # crea la app, registra routers, corre migraciones al arrancar
-      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; `seed --demo` (S4B-D32) y reexporta cli_base (S4B-D28); `import-members` vive en `cli_ops/` (B1); `rotate-key` y `retire-key` viven en `cli_ops/` (B3b); `migrate-provider`, `rotate-kek`, `retire-local-kek`, `notify` y `seed-notifications` llegan en el Sprint 5 (S5-D97: un archivo cada uno en `cli_ops/`); sign-audit llega en v0.3 (EP-17)
+      cli.py             # app Typer, callback y registro: seed, init-keys, export-openapi, issue-reset-link, unlock-user, verify-audit y recompute-memberships; `seed --demo` (S4B-D32) y reexporta cli_base (S4B-D28); `import-members` vive en `cli_ops/` (B1); `rotate-key` y `retire-key` viven en `cli_ops/` (B3b); `migrate-provider`, `rotate-kek` (con `--trim`, S5-D184) y `retire-local-kek` viven en `cli_ops/` (S5-B2); `notify` y `seed-notifications` llegan en el Sprint 5 (S5-D97: un archivo cada uno en `cli_ops/`); sign-audit llega en v0.3 (EP-17)
       cli_base.py        # base común del CLI (S4B-B0): unit_of_work, resolve_actor, resolve_admin_actor, cli_runtime, crypto_runtime, production_guard_error, get_settings; único archivo de la capa que arranca el cifrado de columnas (install_crypto_type_listeners)
-      cli_manifest.py    # verificación del manifiesto firmado de respaldo (S5-D72, B13): recent_signed_manifest; lo usan retire-key, migrate-provider, rotate-kek y retire-local-kek; capa de aplicación como cli_keyring.py
+      cli_manifest.py    # verificación del manifiesto firmado de respaldo (S5-D72, B13): recent_signed_manifest, custody_proofs, confirmation_error (S5-D186) y custody_errors/exit_after_failure (S5-D189); lo usan retire-key, migrate-provider, rotate-kek y retire-local-kek; capa de aplicación como cli_keyring.py
       cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
       cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
-      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140); register_ops(app); nunca se importan entre sí ni importan cli
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140), migrate_provider, rotate_kek (con --trim) y retire_local_kek (S5-B2, S5-D184); register_ops(app); nunca se importan entre sí ni importan cli
       seed/              # `seed --demo` (S4B-D32): dataset.py puro (3 planes, 30 socios ficticios) y apply.py (dos transacciones por socio, lock_member primero; única llamada a enforce_retroactive_limit=False fuera de cli.py, S4B-D33); solo lo importa cli_ops/seed_demo.py
       imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
@@ -64,7 +64,8 @@ apex/
           openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao
           state.py       #   estado del proveedor y health_state puro (Sprint 5, S5-D13)
           recovery.py    #   sondeo y try_load de las DEK tras el sellado (Sprint 5, S5-D16, D70)
-          migration.py   #   plan_provider_migration y ayudas puras de migrate-provider (Sprint 5, S5-D18, D97)
+          migration.py   #   plan_provider_migration, migrate_provider, verify_provider y el motor de re-envoltura por llave (unwrap + wrap, FOR UPDATE, DEK en ceros); solo encrypt|index (Sprint 5, S5-D18, D183)
+          rotation.py    #   rotate_kek, rotate_or_resume, rewrap_all, trim_ready(_version), trim_kek y trim_kek_checked bajo el candado apex:rotate:kek (config, nunca trim; S5-D188) sobre el motor de migration (Sprint 5, S5-D19, D55a, D185)
           minisign.py    #   verify_minisign y parse_pubkey de la firma del manifiesto (Sprint 5, S5-D72)
           digest.py      #   SHA-256 sin dependencias (solo `hashlib`; lo usa core/audit)
           file_digest.py #   digest_file(path, chunk, max_bytes=): SHA-256 de un archivo en reposo sin seguir enlaces, el único lector de archivos de respaldo que usa el worker; solo biblioteca estándar (S4B-D134, S4B-D139)

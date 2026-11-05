@@ -18,8 +18,8 @@
 # SMOKE_DOWN=1, CI. --no-build usa las imágenes apex-api:local, apex-web:local y apex-backup:local.
 # S5-W0-2: el stack incluye openbao (red custody 172.31.13.0/24) y debe llegar a healthy sin inicializar.
 # --provider openbao suma scripts/ci/openbao-smoke.sh (init 5/3, bootstrap, tokens, reinicio sellado y
-# desello). La comprobación de kek.bin y del api con CRYPTO_PROVIDER=openbao queda para B2: hoy el
-# proveedor del api sigue siendo local en ambos modos.
+# desello). Con el api en CRYPTO_PROVIDER=openbao (overlay compose.openbao.yml) comprueba además que
+# api y worker no tienen /run/apex/keys/kek.bin (S5-B2, H-2.3); sin overlay lo omite y lo dice.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -275,6 +275,14 @@ fi
 # --- OpenBao (S5-D22, W0-2): init 5/3, bootstrap, tokens, reinicio sellado y desello ----------------------------
 if [ "$PROVIDER" = "openbao" ]; then
   if DC="$DC_STR" OPENBAO_SMOKE_EVIDENCE="$SMOKE_DIR/openbao" bash scripts/ci/openbao-smoke.sh; then ok "openbao-smoke.sh"; else falla "openbao-smoke.sh"; fi
+  # S5-B2 (H-2.3): con el api en CRYPTO_PROVIDER=openbao (compose.openbao.yml) no debe existir kek.bin.
+  if [ "$("${DC[@]}" exec -T api printenv CRYPTO_PROVIDER 2>/dev/null | tr -d '\r')" = "openbao" ]; then
+    for SVC in api worker; do
+      if "${DC[@]}" exec -T "$SVC" test ! -e /run/apex/keys/kek.bin; then ok "$SVC sin kek.bin (openbao)"; else falla "$SVC conserva kek.bin con CRYPTO_PROVIDER=openbao"; fi
+    done
+  else
+    echo "  omitida: el api sigue en CRYPTO_PROVIDER=local (sin overlay de openbao); kek.bin se comprueba con él"
+  fi
 fi
 
 if [ "$fallas" -ne 0 ]; then

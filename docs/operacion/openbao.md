@@ -158,3 +158,9 @@ La instantánea raft es la única copia del estado de OpenBao (la llave `apex-ke
 
 **Ensayo.** `bash infra/tests/openbao_restore_e2e.sh` (Docker, recursos `apex-obe2e-*` desechables) hace todo el ciclo con OpenBao real: init, `apex-kek`, cadena envuelta, respaldo con instantánea, borrado del volumen, clúster nuevo, `restore.sh --with-openbao`, reinicio, desello con las llaves originales (las nuevas no sirven) y descifrado de la cadena original; también `prod-smoke.sh` lo corre.
 
+
+## 11. Migrar a OpenBao, rotar la KEK y retirar la local (S5-B2)
+
+Una vez que OpenBao está instalado y desellado: `migrate-provider --from local --to openbao` (reanudable, palabra `MIGRAR`), `migrate-provider --verify`, un respaldo nuevo y `retire-local-kek` (palabra `RETIRAR`). Después, `rotate-kek` rota la KEK y re-envuelve las llaves; `rotate-kek --trim` (palabra `RECORTAR`) sube `min_decryption_version`. La política `apex-tools` puede leer `transit/keys/apex-kek` y fijar `config`, rotar y re-cifrar; no puede `trim` ni `delete`. El procedimiento paso a paso y las exigencias de respaldo están en `docs/RUNBOOK.md` §13.
+
+La política `apex-tools` ya no incluye `transit/rewrap/apex-kek` y su ruta `config` solo admite `min_decryption_version` (S5-D191). `migrate-provider --verify` comprueba la ubicación de las envolturas (un conteo), no que abran.

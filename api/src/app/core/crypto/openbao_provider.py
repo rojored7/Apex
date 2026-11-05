@@ -152,7 +152,8 @@ class OpenBaoProvider:
 
     # --- envoltura de DEK ------------------------------------------------------------------
 
-    async def wrap(self, dek: bytes) -> bytes:
+    async def wrap(self, dek: bytes | bytearray) -> bytes:
+        """Un `bytearray` reduce, no elimina, la exposición: `b64` y el cuerpo JSON crean copias."""
         cuerpo = {"plaintext": b64(dek), "associated_data": _WRAP_AAD_B64}
         datos = await self._llamar("POST", ruta("encrypt", KEK_KEY), cuerpo)
         return texto_cifrado(datos)
@@ -199,6 +200,12 @@ class OpenBaoProvider:
 
     async def key_info(self, key_ref: str) -> KeyInfo:
         return info(key_ref, await self._llamar("GET", ruta("keys", key_ref)))
+
+    async def set_min_decryption_version(self, key_ref: str, version: int) -> None:
+        """Sube `min_decryption_version` (`keys/<k>/config`); fuera del puerto (S5-D185).
+        Nunca `keys/<k>/trim`: es irreversible."""
+        cuerpo = {"min_decryption_version": version}
+        await self._llamar("POST", ruta("keys", key_ref) + "/config", cuerpo)
 
     # --- estado y renovación ---------------------------------------------------------------
 

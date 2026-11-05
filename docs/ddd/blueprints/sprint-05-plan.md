@@ -799,7 +799,7 @@ Todas aceptadas tal como las propone `sprint-05-seguridad-diseno.md`, con estas 
 **Paso 44 · B2.1 · Stubs**
 
 - `core/crypto/migration.py`: `KeyRowView`, `plan_provider_migration(rows, from_) -> tuple[UUID, ...]`, `MigrationResult(total, done, skipped, failed_key_id)`, `async migrate_provider(session_factory, *, from_, to, resolver, actor, dry_run)`, `async rewrap_all(session_factory, *, resolver, actor)`, `async verify_provider(session_factory, *, expected, resolver)`, `async trim_ready(session_factory, *, resolver) -> bool`.
-- `cli_ops/migrate_provider.py`, `cli_ops/rotate_kek.py` (`rotate-kek --as`) y `cli_ops/trim_kek.py` (`rotate-kek --trim --as`, registrado desde `trim_kek.py`; ayudas puras en `core/crypto/migration.py` y `rotation.py`; S5-D97), `cli_ops/retire_local_kek.py`, registrados en `register_ops`.
+- `cli_ops/migrate_provider.py`, `cli_ops/rotate_kek.py` (`rotate-kek --as`) y `cli_ops/trim_kek.py` (`rotate-kek --trim --as`, registrado desde `trim_kek.py`; ayudas puras en `core/crypto/migration.py` y `rotation.py`; S5-D97), `cli_ops/retire_local_kek.py`, registrados en `register_ops`. **S5-D183 y S5-D184 lo precisan:** el plan excluye las filas `sign` (D131 queda cumplida porque no hay filas `sign` envueltas con la KEK) y `trim_kek.py` no existe: `--trim` vive en `rotate_kek.py`.
 
 **Paso 45 · B2.2 · Rojo de `crypto`**
 

@@ -1,13 +1,16 @@
 # Overlay de OpenBao (S5-D74): se apila sobre compose.yml cuando .env dice CRYPTO_PROVIDER=openbao
 # (deploy.sh lo exige y falla con 2 si falta este archivo):
 #   docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.openbao.yml up -d
-# api y worker dejan de montar el volumen keys (la KEK ya no vive en un archivo a su alcance) y leen
+# worker deja de montar el volumen keys y api lo monta SOLO LECTURA porque ahí vive la llave JWT
+# (S5-D193: sin ella el api no arranca); la KEK deja de estar a su alcance cuando
+# `retire-local-kek` borra kek.bin, y `prod-smoke.sh --provider openbao` lo comprueba. Ambos leen
 # su token de OpenBao de /run/apex/openbao/token, un archivo 600 de uid 10001 que escribe
 # openbao-bootstrap. tools CONSERVA keys: `migrate-provider` lee la KEK local una sola vez para
 # envolverla en OpenBao (S5-D74) y después se borra a mano (docs/operacion/openbao.md).
 services:
   api:
     volumes: !override
+      - keys:/run/apex/keys:ro
       - uploads:/data/uploads
       - openbao-token-api:/run/apex/openbao:ro
     environment:

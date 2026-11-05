@@ -176,6 +176,14 @@ async def llaves_en_base(
 
 
 # Rotación de llave y retiro (S4B-B3b): fixtures compartidas con tests/crypto
+# Custodia de llaves (S5-B2): migrate-provider, rotate-kek, retire-local-kek
+from tests.cli._apoyo_custodia import (  # noqa: E402,F401
+    admin_custodia,
+    candado_kek_tomado,
+    custodia,
+    settings_custodia,
+)
+from tests.crypto._migracion import migracion_lista  # noqa: E402,F401
 from tests.crypto._rotacion import (  # noqa: E402,F401
     candado_rotacion_tomado,
     manifiesto_reciente,

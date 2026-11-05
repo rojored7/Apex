@@ -52,7 +52,7 @@ def comprobar_direccion(addr: str) -> str:
     return addr.rstrip("/")
 
 
-def b64(datos: bytes) -> str:
+def b64(datos: bytes | bytearray) -> str:
     return base64.b64encode(datos).decode("ascii")
 
 

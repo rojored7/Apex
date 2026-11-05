@@ -165,3 +165,7 @@ def proveedor(tipo: str, request: pytest.FixtureRequest) -> Iterator[object]:
         "openbao_real": "openbao_real",
     }[tipo]
     yield request.getfixturevalue(destino)
+
+
+# Migración de proveedor y rotación de la KEK (S5-B2)
+from tests.crypto._migracion import migracion_lista, sembrada  # noqa: E402,F401

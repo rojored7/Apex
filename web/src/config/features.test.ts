@@ -7,9 +7,9 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("habilita nueve: las seis del Sprint 2, memberships (S3-F3), payments (S3-F4, D36) y audit (S4A-F1, S4A-D30)", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "dashboard", "members", "memberships", "payments", "plans", "settings", "users"]);
-    expect(ENABLED_FEATURES.size).toBe(9);
+  it("habilita diez: las nueve anteriores y notifications (S5-F1)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "dashboard", "members", "memberships", "notifications", "payments", "plans", "settings", "users"]);
+    expect(ENABLED_FEATURES.size).toBe(10);
     expect(ENABLED_FEATURES.has("classes")).toBe(false);
   });
 

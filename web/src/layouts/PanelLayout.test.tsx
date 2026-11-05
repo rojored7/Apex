@@ -92,8 +92,8 @@ describe("PanelLayout", () => {
     );
 
     const order: string[] = [];
-    // S3-F3: el coach tiene un enlace más (Membresías); se recorren 8 paradas para llegar a la página.
-    for (let i = 0; i < 8; i += 1) {
+    // S3-F3: el coach tiene un enlace más (Membresías); S5-F1: con las dos entradas de Avisos se recorren 10 paradas para llegar a la página.
+    for (let i = 0; i < 10; i += 1) {
       await user.tab();
       order.push(document.activeElement?.textContent ?? "");
     }

@@ -1,0 +1,46 @@
+/* S5-F1: "Abrir WhatsApp" (PorAvisarHoy.html, .w-wa). Solo variables de tokens.css. */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Objetivo táctil de 48 px: --control (44 px) más un paso de espacio. Oscuro con texto claro; al
+   cambiar de tema --ink y --card se invierten y el contraste se conserva. */
+.wa {
+  min-height: calc(var(--control) + var(--space-1));
+  padding: 0 var(--space-5);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: var(--card);
+}
+
+.wa:hover:not(:disabled) {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--card);
+}
+
+.error {
+  margin: 0;
+  max-width: 28ch;
+  color: var(--danger);
+  font: var(--text-caption);
+}
+
+/* Celular: el botón ocupa todo el ancho de la tarjeta. */
+@media (width < 640px) {
+  .wrap {
+    width: 100%;
+  }
+
+  .wa {
+    width: 100%;
+  }
+
+  .error {
+    max-width: none;
+  }
+}

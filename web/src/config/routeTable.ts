@@ -144,7 +144,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel"),
   route("/wods/:id", "WOD", "wods", "wods.view", "panel"),
   route("/wods/:id/editar", "Editar WOD", "wods", "wods.view", "panel"),
-  route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel"),
+  // S5-F1: por avisar hoy, abrir WhatsApp y omitir con motivo (US-127 a US-129).
+  route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/TodayPage") }),
   route("/avisos/reglas", "Reglas y plantillas", "notifications", "notifications.view", "panel"),
   route("/avisos/historial", "Historial de envíos", "notifications", "notifications.view", "panel"),
   // S2-F4a: lista y alta; la gestión (editar, bloquear, sesiones, reenviar) llega en S2-F4b.

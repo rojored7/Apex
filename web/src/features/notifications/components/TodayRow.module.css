@@ -1,0 +1,96 @@
+/* S5-F1: fila de PorAvisarHoy.html. Solo variables de tokens.css. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.who {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.name {
+  color: var(--blue-deep);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.subject::before {
+  content: "·";
+  margin-right: var(--space-2);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* El mensaje ya escrito, con la barra lateral del diseño (.w-msg). */
+.msg {
+  flex: 2 1 320px;
+  min-width: 0;
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--line);
+  color: var(--ink);
+  font: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.skip {
+  min-height: calc(var(--control) + var(--space-1));
+}
+
+/* Celular: cada fila es una tarjeta y el botón de WhatsApp ocupa todo el ancho. */
+@media (width < 640px) {
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* En columna el flex-basis es un alto: se anula para que la tarjeta mida lo que contiene. */
+  .who,
+  .msg {
+    flex: 0 0 auto;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

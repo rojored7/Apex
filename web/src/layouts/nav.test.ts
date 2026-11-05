@@ -8,11 +8,11 @@ const labels = (groups: NavGroup[]): string[] => groups.flatMap((g) => g.items.m
 const ALL: ReadonlySet<Feature> = new Set(FEATURES);
 
 describe("buildNavItems", () => {
-  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Usuarios, Auditoría (S4A-F1) y Configuración", () => {
+  it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Avisos (S5-F1), Usuarios, Auditoría (S4A-F1) y Configuración", () => {
     const groups = buildNavItems("admin", ENABLED_FEATURES);
 
-    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Usuarios y roles", "Auditoría", "Configuración"]);
-    expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "sistema"]);
+    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Reglas y plantillas", "Historial de envíos", "Usuarios y roles", "Auditoría", "Configuración"]);
+    expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "avisos", "sistema"]);
     expect(groups.find((g) => g.id === "sistema")?.title).toBe("Sistema");
     expect(groups.find((g) => g.id === "inicio")?.title).toBeNull();
   });
@@ -102,7 +102,7 @@ describe("buildNavItems", () => {
 
 describe("menú y rutas hijas (S3-F3, E14)", () => {
   it("el coach también ve Membresías y Pagos con las features habilitadas (memberships.view y payments.view son de admin y coach)", () => {
-    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías", "Pagos"]);
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Reglas y plantillas", "Historial de envíos"]);
   });
 
   it("S3-F4: Pagos lleva a /pagos con la feature payments", () => {

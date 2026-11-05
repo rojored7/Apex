@@ -664,3 +664,4 @@ Hallazgos 0 CRITICAL, 0 HIGH, 3 MEDIUM (M1 status renueva en cada sondeo, M2 ref
 - `--status notify`: `ok`, `details` enteros.
 - Ensayo (`apex-ensayo`): worker recreado con la imagen nueva (`healthy`) y `--run-once notify` dos veces: `ok`, todo en cero (el ensayo no tiene avisos `email` ni SMTP), sin duplicados.
 - Limpieza: `apex-api-demo` borrado, `mailpit` y `telegram-fake` detenidos, `DROP DATABASE apex_avisos_demo`.
+- `run-gates.sh` (segunda de cuatro, con el ensayo detenido, por partes): api lint, format y mypy en verde; pytest en tres partes con `--cov-append`: 2191 + 3009 (82 omitidas) + 2461 = 7661 verdes, 0 fallidas, cobertura global 95,29 % (umbral 80 %); 7 scripts de infraestructura con «0 fallas»; web: lint, tsc, 3149 pruebas verdes y build ok. Ensayo levantado de nuevo (api, worker, backup y web arriba). Checkpoint `8f750b9`.

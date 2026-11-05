@@ -446,6 +446,9 @@ def test_truncate_se_rechaza_bajo_replica(fila: tuple[str, Tabla, UUID]) -> None
 # Forma ------------------------------------------------------------------------------------------
 
 
+POSTERIORES_A_0014 = ("member_channel_preferences",)
+
+
 def _inventario(url: str) -> list[tuple[str, str]]:
     tablas = _consultar(
         url,
@@ -457,7 +460,11 @@ def _inventario(url: str) -> list[tuple[str, str]]:
         "SELECT schemaname || '.' || indexname AS nombre FROM pg_indexes "
         "WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY 1",
     )
-    return [("tabla", f["nombre"]) for f in tablas] + [("indice", f["nombre"]) for f in indices]
+    inventario = [("tabla", f["nombre"]) for f in tablas]
+    inventario += [("indice", f["nombre"]) for f in indices]
+    # Tablas de migraciones POSTERIORES a 0014 (el downgrade a su padre pasa por ellas y las borra):
+    # fuera del inventario, que compara solo lo que 0014 deja intacto (S5-B5, P-MIG 9).
+    return [(t, n) for t, n in inventario if not any(x in n for x in POSTERIORES_A_0014)]
 
 
 # Ciclo ------------------------------------------------------------------------------------------

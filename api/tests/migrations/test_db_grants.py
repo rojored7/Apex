@@ -131,6 +131,11 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset()),
         "apex_worker": (frozenset({"SELECT", "INSERT"}), frozenset()),
     },
+    # S5-B5 (US-123, P-ROL): upsert de preferencias por el api (sin DELETE); el worker solo lee.
+    "members.member_channel_preferences": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
+        "apex_worker": (frozenset({"SELECT"}), frozenset()),
+    },
     "members.members": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
         # S5-D204: sin privilegio de tabla; el `SELECT` es por columna (COLUMNAS_WORKER_MEMBERS).
@@ -570,6 +575,7 @@ PROHIBIDAS_API = [
     "DELETE FROM payments.payments",
     "DELETE FROM audit.audit_log",
     "DELETE FROM members.members",
+    "DELETE FROM members.member_channel_preferences",  # S5-B5: sin DELETE para el api
     "DELETE FROM memberships.memberships",
     "DELETE FROM crypto.crypto_keys",
     "UPDATE audit.audit_log SET action = 'x'",

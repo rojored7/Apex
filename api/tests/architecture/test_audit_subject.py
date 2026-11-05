@@ -25,7 +25,7 @@ from sqlalchemy.orm import class_mapper
 
 import app
 from app.core import audit as core_audit
-from app.modules.members.models import Member
+from app.modules.members.models import Member, MemberChannelPreference
 from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.payments.models import Payment
 
@@ -35,8 +35,13 @@ PROHIBIDOS_ARRIBA: Final = frozenset({"memberships", "payments"})
 
 @pytest.mark.parametrize(
     ("modelo", "atributo"),
-    [(Member, "id"), (Membership, "member_id"), (Payment, "member_id")],
-    ids=["Member", "Membership", "Payment"],
+    [
+        (Member, "id"),
+        (Membership, "member_id"),
+        (Payment, "member_id"),
+        (MemberChannelPreference, "member_id"),  # S5-B5
+    ],
+    ids=["Member", "Membership", "Payment", "MemberChannelPreference"],
 )
 def test_los_modelos_con_socio_declaran_su_sujeto(modelo: type, atributo: str) -> None:
     assert getattr(modelo, "__audited__", False) is True

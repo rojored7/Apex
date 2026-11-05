@@ -166,14 +166,19 @@ def test_los_privados_de_audit_son_los_de_b4() -> None:
 
 def test_los_privados_de_members_son_los_de_b9a() -> None:
     """S3-B9a (D7, S3-D73): `rules`, `detail` y `changes` existen y son privados de `members`;
-    S4A-B6 (S4A-D21) suma `contact` (el contacto para avisos). Conjunto exacto."""
-    assert frozenset({"rules", "detail", "changes", "contact"}) == PRIVATE_HELPERS.get("members")
+    S4A-B6 (S4A-D21) suma `contact` (el contacto para avisos); S5-B5 (S4A-D72) suma
+    `channels` (las preferencias de canal). Conjunto exacto."""
+    assert frozenset({"rules", "detail", "changes", "contact", "channels"}) == PRIVATE_HELPERS.get(
+        "members"
+    )
     for archivo in PRIVATE_HELPERS["members"]:
         assert (MODULES_DIR / "members" / f"{archivo}.py").is_file(), archivo
 
 
 def test_nadie_fuera_de_members_importa_rules_detail_ni_changes() -> None:
-    privados = tuple(f"app.modules.members.{a}" for a in ("rules", "detail", "changes", "contact"))
+    privados = tuple(
+        f"app.modules.members.{a}" for a in ("rules", "detail", "changes", "contact", "channels")
+    )
     violaciones = [
         str(v)
         for carpeta in sorted(p for p in MODULES_DIR.iterdir() if p.is_dir())

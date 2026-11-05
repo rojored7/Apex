@@ -44,6 +44,9 @@ from tests.conftest import T0, CrearUsuario
 from tests.factories.members import KNOWN, KNOWN_NORMALIZED, NOMBRE, make_member
 from tests.members._apoyo import auditoria_del_socio, contar_crypto_ops, operaciones
 
+# S5-D209: un aviso (`notify`) exige `data_consent_at`; los socios de estas pruebas la tienen.
+CONSENTIDO: dict[str, Any] = {"data_consent_at": T0 - timedelta(days=1)}
+
 TELEFONO = KNOWN["phone"]
 CORREO = KNOWN["email"]
 INEXISTENTE = UUID("00000000-0000-4000-8000-0000000b6c01")
@@ -99,7 +102,7 @@ def _por_campo(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def test_devuelve_el_telefono_y_el_correo_sembrados(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     contacto = await contactar(session, socio.id)
     assert isinstance(contacto, service.Contact)
     assert contacto.first_name == NOMBRE
@@ -110,7 +113,7 @@ async def test_devuelve_el_telefono_y_el_correo_sembrados(
 async def test_auth_link_tambien_es_un_proposito_valido(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     contacto = await contactar(session, socio.id, "auth_link")
     assert (contacto.phone, contacto.email) == (TELEFONO, CORREO)
     filas = await auditoria_del_socio(session, socio.id, "reveal")
@@ -124,7 +127,7 @@ async def test_auth_link_tambien_es_un_proposito_valido(
 async def test_deja_dos_filas_reveal_con_el_proposito_y_sin_valores(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     await contactar(session, socio.id)
     filas = _por_campo(await auditoria_del_socio(session, socio.id, "reveal"))
     assert [f["after"] for f in filas] == [
@@ -148,7 +151,7 @@ async def test_con_otro_actor_las_filas_llevan_su_user_id(
     session: AsyncSession, listo: Keyring, usuario_real: CrearUsuario
 ) -> None:
     admin = await usuario_real("admin")
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     await contactar(session, socio.id, actor=admin.id)
     reveals = await auditoria_del_socio(session, socio.id, "reveal")
     assert [f["user_id"] for f in reveals] == [admin.id, admin.id]
@@ -162,7 +165,7 @@ async def test_con_otro_actor_las_filas_llevan_su_user_id(
 async def test_deja_dos_decrypt_con_el_record_id_del_socio_y_el_mismo_lote(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     lote = uuid4()
     await contactar(session, socio.id, lote=lote)
     filas = _por_campo(await operaciones(session, verb="decrypt", record_id=socio.id))
@@ -189,7 +192,7 @@ async def test_un_proposito_invalido_no_lee_la_base_ni_deja_filas(
     monkeypatch: pytest.MonkeyPatch,
     proposito: Any,
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     session.expunge_all()
 
     async def _no_leer(*_a: object, **_k: object) -> object:
@@ -224,7 +227,9 @@ async def test_un_socio_inexistente_da_member_not_contactable_sin_descifrar(
 async def test_un_socio_dado_de_baja_da_member_not_contactable_sin_descifrar(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session, deleted_at=T0 - timedelta(days=3), status="inactive")
+    socio = await make_member(
+        session, **CONSENTIDO, deleted_at=T0 - timedelta(days=3), status="inactive"
+    )
     socio_id = socio.id
     with pytest.raises(MemberNotContactable):
         await contactar(session, socio_id)
@@ -240,7 +245,7 @@ async def test_un_socio_dado_de_baja_da_member_not_contactable_sin_descifrar(
 async def test_un_campo_vacio_da_none_y_una_sola_fila_de_cada_tipo(
     session: AsyncSession, listo: Keyring, vacio: str, lleno: str
 ) -> None:
-    socio = await make_member(session, **{vacio: None})
+    socio = await make_member(session, **CONSENTIDO, **{vacio: None})
     contacto = await contactar(session, socio.id)
     assert getattr(contacto, vacio) is None
     assert getattr(contacto, lleno) == KNOWN[lleno]
@@ -251,7 +256,7 @@ async def test_un_campo_vacio_da_none_y_una_sola_fila_de_cada_tipo(
 
 
 async def test_sin_telefono_ni_correo_no_deja_filas(session: AsyncSession, listo: Keyring) -> None:
-    socio = await make_member(session, phone=None, email=None)
+    socio = await make_member(session, **CONSENTIDO, phone=None, email=None)
     contacto = await contactar(session, socio.id)
     assert (contacto.first_name, contacto.phone, contacto.email) == (NOMBRE, None, None)
     assert await auditoria_del_socio(session, socio.id, "reveal") == []
@@ -296,7 +301,7 @@ def test_contact_no_se_serializa() -> None:
 async def test_el_contact_devuelto_tampoco_los_muestra(
     session: AsyncSession, listo: Keyring
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     contacto = await contactar(session, socio.id)
     for texto in (repr(contacto), str(contacto), f"{contacto}"):
         _sin_contacto_en(texto)
@@ -317,7 +322,7 @@ async def test_no_pide_lock_member_ni_candados_de_fila(
     engine: AsyncEngine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    socio = await make_member(session)
+    socio = await make_member(session, **CONSENTIDO)
     llamadas: list[UUID] = []
 
     async def _espia(_s: AsyncSession, member_id: UUID) -> None:
@@ -338,7 +343,7 @@ async def test_despues_de_lock_member_del_mismo_socio_termina_sin_55p03(
     dos_sesiones: tuple[AsyncSession, AsyncSession], bus_confirmado: Keyring, reloj: FrozenClock
 ) -> None:
     primera, segunda = dos_sesiones
-    socio = await make_member(primera)
+    socio = await make_member(primera, **CONSENTIDO)
     with actor_scope(SYSTEM_USER_ID), batch_scope(uuid4()):
         await segunda.execute(text("SET LOCAL lock_timeout = '1s'"))
         await locks.lock_member(segunda, socio.id)
@@ -358,7 +363,7 @@ async def test_otra_transaccion_con_el_candado_del_socio_no_la_bloquea(
     """Sin `lock_member`: con el candado del socio tomado por otra transacción, la llamada
     termina antes de `lock_timeout` (si lo pidiera, saldría `DatabaseBusy`)."""
     primera, segunda = dos_sesiones
-    socio = await make_member(primera)
+    socio = await make_member(primera, **CONSENTIDO)
     await locks.lock_member(primera, socio.id)
     try:
         with actor_scope(SYSTEM_USER_ID), batch_scope(uuid4()):
@@ -377,7 +382,7 @@ async def test_el_rollback_borra_las_reveal_pero_no_las_decrypt(
     `decrypt` en otra conexión al revertir (el dato estuvo en claro en memoria), pero las filas
     `reveal` de la auditoría se pierden. Un aviso enviado antes del commit quedaría sin rastro."""
     primera, segunda = dos_sesiones
-    socio = await make_member(primera)
+    socio = await make_member(primera, **CONSENTIDO)
     lote = uuid4()
     with actor_scope(SYSTEM_USER_ID), batch_scope(lote):
         contacto = await service.contact_for_notification(segunda, socio.id, "notify")

@@ -68,6 +68,7 @@ from app.modules.auth.schemas import UserRef
 AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
     {
         "members.members",
+        "members.member_channel_preferences",
         "memberships.memberships",
         "memberships.membership_freezes",
         "payments.payments",
@@ -82,6 +83,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "memberships.membership_freezes": "aparece por el update de la membresía",
     "auth.one_time_tokens": "técnica",
     "audit.verifications": "es la verificación misma",
+    "members.member_channel_preferences": "preferencia de aviso, no es negocio ni configuración",
 }
 """Tablas auditadas que `recent` nunca lee, con su motivo (S4A-D61 b)."""
 RECENT_TABLES_ALLOWED: Final[frozenset[str]] = AUDITABLE_TABLES - frozenset(

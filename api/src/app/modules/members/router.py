@@ -62,6 +62,8 @@ from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import service
 from app.modules.members.schemas import (
     DEFAULT_MEMBER_SORT,
+    ChannelsOut,
+    ChannelsPatch,
     MemberCreate,
     MemberDetailOut,
     MemberListQuery,
@@ -221,3 +223,28 @@ async def reactivate_member(
 ) -> MemberDetailOut:
     await enforce_user_limit(request, "admin-write", principal.user_id)
     return await service.reactivate(session, member_id)
+
+
+@router.get(
+    "/members/{member_id}/channels",
+    response_model=ChannelsOut,
+    responses=responses_for(404, 422, 429),
+)
+async def get_member_channels(
+    request: Request, member_id: UUID, principal: StaffDep, session: Session
+) -> ChannelsOut:
+    """S5-B5 (US-123): también sobre un dado de baja (N-20); consume `staff-read`."""
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.get_channels(session, member_id)
+
+
+@router.patch(
+    "/members/{member_id}/channels",
+    response_model=ChannelsOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def set_member_channels(
+    request: Request, member_id: UUID, body: ChannelsPatch, principal: StaffDep, session: Session
+) -> ChannelsOut:
+    await enforce_user_limit(request, "notifications-write", principal.user_id)
+    return await service.set_channels(session, member_id, body.items, principal.user_id)

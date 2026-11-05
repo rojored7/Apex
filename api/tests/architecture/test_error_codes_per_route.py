@@ -89,6 +89,10 @@ CON_LIMITE = {
     ("delete", "/api/v1/plans/{plan_id}"),
     # S4A-B8 (S4A-D27 con S4A-D45, M-1): el tablero consume `staff-read`; sin parámetros, sin 422.
     ("get", "/api/v1/dashboard"),
+    # S5-B5 (US-123, S5-D81): fijar los canales de un socio consume `notifications-write`; el
+    # `GET` consume `staff-read` como las demás lecturas del staff (revisión de seguridad, LOW).
+    ("patch", "/api/v1/members/{member_id}/channels"),
+    ("get", "/api/v1/members/{member_id}/channels"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

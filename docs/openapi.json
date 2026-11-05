@@ -308,6 +308,84 @@
         "title": "ChangePasswordIn",
         "type": "object"
       },
+      "ChannelItem": {
+        "additionalProperties": false,
+        "description": "Una preferencia explícita: el canal y si está activo.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "channel": {
+            "enum": [
+              "email",
+              "whatsapp_link"
+            ],
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "active"
+        ],
+        "title": "ChannelItem",
+        "type": "object"
+      },
+      "ChannelsOut": {
+        "description": "Preferencias explícitas, canales efectivos y si el socio tiene consentimiento.",
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelItem"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "effective": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "has_consent": {
+            "title": "Has Consent",
+            "type": "boolean"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "channels",
+          "effective",
+          "has_consent"
+        ],
+        "title": "ChannelsOut",
+        "type": "object"
+      },
+      "ChannelsPatch": {
+        "additionalProperties": false,
+        "description": "`PATCH /members/{member_id}/channels`: canales a fijar (cerrado; canal desconocido 422).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ChannelsPatch",
+        "type": "object"
+      },
       "CreateUserIn": {
         "additionalProperties": false,
         "properties": {
@@ -6168,6 +6246,231 @@
           }
         },
         "summary": "Member History",
+        "tags": [
+          "members"
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/channels": {
+      "get": {
+        "description": "S5-B5 (US-123): también sobre un dado de baja (N-20); consume `staff-read`.",
+        "operationId": "get_member_channels_api_v1_members__member_id__channels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Member Channels",
+        "tags": [
+          "members"
+        ]
+      },
+      "patch": {
+        "operationId": "set_member_channels_api_v1_members__member_id__channels_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Set Member Channels",
         "tags": [
           "members"
         ]

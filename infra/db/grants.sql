@@ -18,6 +18,7 @@
 --   crypto.crypto_jobs              S                                 S
 --   crypto.crypto_keys              S I U(updated_at)                 S
 --   crypto.crypto_ops               S I                               S I
+--   members.member_channel_preferences S I U                          S
 --   members.members                 S I U                             S(id, first_name, last_name, sex,
 --                                                                       phone, email, status, deleted_at,
 --                                                                       data_consent_at, created_at, updated_at)
@@ -40,6 +41,7 @@
 -- clasificada: crypto.crypto_jobs
 -- clasificada: crypto.crypto_keys
 -- clasificada: crypto.crypto_ops
+-- clasificada: members.member_channel_preferences
 -- clasificada: members.members
 -- clasificada: memberships.membership_freezes
 -- clasificada: memberships.memberships
@@ -87,6 +89,8 @@ GRANT SELECT, INSERT ON crypto.crypto_keys TO apex_api;
 GRANT UPDATE (updated_at) ON crypto.crypto_keys TO apex_api;
 GRANT SELECT, INSERT ON crypto.crypto_ops TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON members.members TO apex_api;
+-- S5-B5 (US-123): upsert de preferencias de canal; sin DELETE (el borrado de socios es logico).
+GRANT SELECT, INSERT, UPDATE ON members.member_channel_preferences TO apex_api;
 GRANT SELECT, INSERT ON memberships.membership_freezes TO apex_api;
 GRANT SELECT, INSERT ON memberships.memberships TO apex_api;
 GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
@@ -105,6 +109,8 @@ GRANT SELECT ON auth.users, crypto.crypto_jobs, crypto.crypto_keys, memberships.
 -- document_idx, birth_date ni emergency_contact. sex entra por names_for (S5-D121).
 GRANT SELECT (id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at) ON members.members TO apex_worker;
 GRANT SELECT ON memberships.memberships TO apex_worker;
+-- S5-B5: el job notify lee los canales efectivos (members.service.channels_for).
+GRANT SELECT ON members.member_channel_preferences TO apex_worker;
 GRANT UPDATE (status, updated_at) ON memberships.memberships TO apex_worker;
 GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 
@@ -118,7 +124,8 @@ DECLARE
     clasificadas constant text[] := ARRAY[
         'audit.audit_log', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
         'auth.users', 'crypto.crypto_jobs', 'crypto.crypto_keys', 'crypto.crypto_ops',
-        'members.members', 'memberships.membership_freezes', 'memberships.memberships',
+        'members.member_channel_preferences', 'members.members',
+        'memberships.membership_freezes', 'memberships.memberships',
         'payments.payments', 'plans.plans', 'public.alembic_version',
         'settings.settings_sections', 'worker.job_runs'];
     sin_clasificar text;

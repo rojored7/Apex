@@ -7,6 +7,8 @@ Otros módulos (`memberships`, `payments`), el router y las pruebas solo importa
   `classify_query`, `QueryPlan`, `LIKE_ESCAPE`, `PHONE_DATA_CLASS`, `EMAIL_DATA_CLASS`) y,
   desde S3-B9b, `chip_to_filter`, `MemberChipFilter` y `MEMBER_CHIPS`; desde S3-B10,
   `diff_fields`, `ensure_can_change` y `ADMIN_ONLY_FIELDS`;
+- `channels.py` (S5-B5, US-123): `channels_for`, `get_channels` y `set_channels`, las preferencias
+  de canal de aviso (S5-D31);
 - `detail.py` (S3-B9b): `get(session, member_id)`, la ficha enmascarada (US-073); desde S3-B10
   `reveal(session, member_id, field, *, ip)` (US-074);
 - `changes.py` (S3-B10): `update`, `deactivate`, `reactivate` y los eventos `MemberUpdated`,
@@ -99,10 +101,13 @@ from app.modules.members.changes import (
     reactivate,
     update,
 )
+from app.modules.members.channels import channels_for, get_channels, set_channels
 from app.modules.members.contact import Contact, contact_for_notification, validate_purpose
 from app.modules.members.detail import SIN_MEMBRESIA, get, reveal
 from app.modules.members.exceptions import (
+    InvalidField,
     InvalidPurpose,
+    MemberDeleted,
     MemberDocumentDuplicated,
     MemberNotContactable,
     MemberNotFound,
@@ -145,15 +150,18 @@ __all__ = [
     "MEMBER_CHIPS",
     "PHONE_DATA_CLASS",
     "Contact",
+    "InvalidField",
     "InvalidPurpose",
     "MemberChipFilter",
     "MemberCreated",
     "MemberDeactivated",
+    "MemberDeleted",
     "MemberNotContactable",
     "MemberReactivated",
     "MemberUpdated",
     "QueryPlan",
     "active_ids",
+    "channels_for",
     "chip_to_filter",
     "classify_query",
     "compute_warnings",
@@ -165,6 +173,7 @@ __all__ = [
     "ensure_can_change",
     "ensure_exists",
     "get",
+    "get_channels",
     "get_ref",
     "history",
     "id_by_document",
@@ -174,6 +183,7 @@ __all__ = [
     "reactivate",
     "reveal",
     "search_ids",
+    "set_channels",
     "update",
     "validate_member_input",
     "validate_purpose",

@@ -1,6 +1,7 @@
 """`0015_crypto_provider_migration` (S5-W0-3; S5-D4, S5-D18).
 
-Padre `0014_audit_log_triggers_always`; es head. No crea tablas ni columnas: reemplaza con
+Padre `0014_audit_log_triggers_always`; desde S5-B5 está en la cadena de head. No crea tablas
+ni columnas: reemplaza con
 `CREATE OR REPLACE FUNCTION` la guarda `crypto.guard_keys_update()` de `0003` para que el
 propietario (`tools`) pueda:
 - migrar una llave de proveedor: `local <-> openbao` con `wrapped_material` nuevo;
@@ -220,14 +221,20 @@ def _nueva(base: str, llaves: list[Llave], **campos: str) -> Llave:
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_existe_cuelga_de_0014_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_existe_cuelga_de_0014_y_esta_en_la_cadena_de_head(
+    alembic_config: Config,
+) -> None:
+    """Desde S5-B5 `0016_member_channel_preferences` cuelga de esta revisión (P-MIG 9): ya no es
+    head, pero sigue en la cadena que llega a head (la cabeza única la exige
+    `test_migrations.py::test_single_head`)."""
     scripts = ScriptDirectory.from_config(alembic_config)
     try:
         revision = scripts.get_revision(REVISION)
     except Exception as error:
         pytest.fail(f"no existe la revisión {REVISION}: {type(error).__name__}")
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    cadena = {r.revision for r in scripts.walk_revisions("base", "heads")}
+    assert REVISION in cadena
 
 
 # Lo permitido -----------------------------------------------------------------------------------

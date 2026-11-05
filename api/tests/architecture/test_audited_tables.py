@@ -58,6 +58,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "auth.one_time_tokens",
         "settings.settings_sections",
         "members.members",
+        "members.member_channel_preferences",
         "plans.plans",
         "memberships.memberships",
         "memberships.membership_freezes",
@@ -199,6 +200,17 @@ def test_membership_y_payment_declaran_sujeto() -> None:
         assert getattr(clase, "__audit_subject__", None) == "member_id", tabla
 
 
+def test_member_channel_preferences_es_requerida_y_declara_sujeto() -> None:
+    """S5-B5 (US-123): `members.member_channel_preferences` es requerida, auditada y declara
+    `__audit_subject__ = "member_id"` (la fila de auditoría lleva el socio)."""
+    tabla = "members.member_channel_preferences"
+    assert tabla in REQUIRED_AUDITED_TABLES_V01
+    assert tabla not in PENDING_AUDITED
+    clase = _tablas_de_la_app()[tabla]
+    assert getattr(clase, "__audited__", False) is True
+    assert getattr(clase, "__audit_subject__", None) == "member_id"
+
+
 def test_membership_freezes_es_requerida_y_no_declara_sujeto_por_decision_s4a_d20() -> None:
     """S3-B2 (D14): `memberships.membership_freezes` es requerida y auditada. S4A-D20 (US-106):
     no declara `__audit_subject__` y no se le agrega, porque necesitaría `member_id`, una columna
@@ -285,6 +297,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "memberships.membership_freezes",
         "auth.one_time_tokens",
         "audit.verifications",
+        "members.member_channel_preferences",  # S5-B5
     }
     assert not any(t.startswith("crypto.") for t in RECENT_TABLES_ALLOWED)
 

@@ -205,6 +205,14 @@ LIMPIAR_AUTH = (
     "'00000000-0000-0000-0000-000000000001'",
 )
 
+# S5-B5 (D31): las preferencias de canal que una prueba con commit real o una corrida cortada hayan
+# dejado; se borran ANTES que los socios (FK `ON DELETE RESTRICT`). `members.member_channel_
+# preferences` nace en `0016`; sin triggers: un `DELETE` directo basta.
+LIMPIAR_CHANNEL_PREFS = (
+    "DO $$ BEGIN IF to_regclass('members.member_channel_preferences') IS NOT NULL THEN "
+    "DELETE FROM members.member_channel_preferences; END IF; END $$"
+)
+
 # S2-B7: los socios que una prueba con commit real (`dos_sesiones`) o una corrida cortada hayan
 # dejado. `members.members` nace en `0006_members`: mientras no exista (Rojo de B7) no se toca.
 LIMPIAR_MEMBERS = (
@@ -316,6 +324,7 @@ LIMPIEZA_DE_SESION = (
     *LIMPIAR_AUTH,
     LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
     LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
+    LIMPIAR_CHANNEL_PREFS,  # S5-B5: antes que los socios (FK RESTRICT)
     LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
     LIMPIAR_PLANS,  # E6 y plan, sección 2 (B9)
     LIMPIAR_JOB_RUNS,  # S4A-D70 (plan del Sprint 4A, sección 2, B1)
@@ -708,6 +717,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_SETTINGS))
         await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
+        await conexion.execute(text(LIMPIAR_CHANNEL_PREFS))
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70

@@ -82,7 +82,8 @@ apex/
                      sessions.py users.py links.py events.py   # privados tras la fachada service.py (Fase 4 del Sprint 2)
         settings/    router.py schemas.py models.py service.py
         members/     router.py schemas.py models.py service.py
-                     contact.py   # contact_for_notification(session, member_id, purpose), privado (Sprint 4A, S4A-D21)
+                     channels.py  # preferencias de canal de aviso, privado (Sprint 5, S5-B5, S4A-D72); contact.py acepta `fields` (S5-D32)
+                     contact.py   # contact_for_notification(session, member_id, purpose, *, fields=None), privado (Sprint 4A, S4A-D21; `fields` y consentimiento en S5-B5)
         plans/       ...           # changes.py si service.py pasa de 600 líneas (S4A-D72; en 4A service.py mide 506 y no se extrajo)
         memberships/
                      expirations.py   # recompute_statuses del job diario, privado (Sprint 4A, S4A-D2)

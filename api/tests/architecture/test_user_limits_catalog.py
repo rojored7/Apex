@@ -32,10 +32,9 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `POST /members/{member_id}/reveal`). Desde B10 el catálogo entero tiene ruta.
 # S4A-B3 (S4A-D65): `staff-read` nació en el catálogo sin ruta; S4A-B4 la sacó con `GET /audit` y
 # `GET /audit/{seq}`. El catálogo entero vuelve a tener ruta.
-# S5-D98: registradas desde W0-3; B5 (notifications-write) y B12 (export*) las quitan al dar ruta.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
-    {"notifications-write", "export", "export-hour", "export-day"}
-)
+# S5-D98: registradas desde W0-3; B12 (export*) las quita al dar ruta. S5-B5 sacó
+# `notifications-write` con `PATCH /members/{member_id}/channels`.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"export", "export-hour", "export-day"})
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -116,6 +115,27 @@ def test_las_cuatro_escrituras_de_planes_consumen_solo_admin_write() -> None:
     assert por_ruta.get(("get", f"{API_PREFIX}/plans")) == []
     assert por_ruta.get(("get", plan)) == []
     assert USER_LIMITS["admin-write"] == (30, 60)
+
+
+def test_el_patch_de_canales_consume_notifications_write_y_el_get_staff_read() -> None:
+    """S5-B5 (US-123, S5-D81): `PATCH /members/{member_id}/channels` llama
+    `enforce_user_limit(request, "notifications-write", ...)`; el `GET` consume `staff-read`
+    (revisión de seguridad de B5, LOW)."""
+    fuente = (MODULES / "members" / "router.py").read_text(encoding="utf-8")
+    ruta = f"{API_PREFIX}/members/{{member_id}}/channels"
+    por_ruta: dict[tuple[str, str] | None, list[str]] = {}
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            por_ruta.setdefault(_ruta_de(funcion), []).extend(
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            )
+    assert por_ruta.get(("patch", ruta)) == ["notifications-write"]
+    assert por_ruta.get(("get", ruta)) == ["staff-read"]
+    assert USER_LIMITS["notifications-write"] == (30, 60)
 
 
 def test_las_tres_ventanas_de_reveal_viven_en_la_misma_ruta() -> None:

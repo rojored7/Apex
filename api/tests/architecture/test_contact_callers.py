@@ -24,8 +24,9 @@ APP: Final = Path(__file__).resolve().parents[2] / "src" / "app"
 NOMBRE: Final = "contact_for_notification"
 MEMBERS: Final = "modules/members/"
 
-CONTACT_CALLERS: Final[frozenset[str]] = frozenset()
-"""Archivos fuera de `modules/members/` autorizados (ruta relativa a `app/`). Vacío en 4A."""
+CONTACT_CALLERS: Final[frozenset[str]] = frozenset({"modules/notifications/service.py"})
+"""Archivos fuera de `modules/members/` autorizados (relativos a `app/`). Vacío en 4A; desde
+S5-D99 solo `modules/notifications/service.py` (B6)."""
 
 EN_MEMBERS: Final = frozenset({"modules/members/contact.py", "modules/members/service.py"})
 
@@ -102,8 +103,10 @@ def _con_referencias() -> dict[str, list[int]]:
     return salida
 
 
-def test_contact_callers_esta_vacio_en_el_sprint_4a() -> None:
-    assert frozenset() == CONTACT_CALLERS
+def test_contact_callers_es_solo_notifications_service_desde_el_sprint_5() -> None:
+    """S5-D99 (E5): el único archivo fuera de `members` que puede llamar al contacto. El módulo
+    `notifications` nace en B6; la regla de abajo no exige que el llamador exista."""
+    assert frozenset({"modules/notifications/service.py"}) == CONTACT_CALLERS
 
 
 def test_nadie_fuera_de_members_la_referencia() -> None:

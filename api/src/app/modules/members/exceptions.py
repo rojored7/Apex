@@ -114,3 +114,32 @@ class ConsentCannotBeWithdrawn(MemberError):
 
     def __init__(self) -> None:
         super().__init__(field="data_consent")
+
+
+# S5-B5 (US-123; S5-D31, S5-D32, N-20) ------------------------------------------------------
+
+
+class MemberDeleted(MemberError):
+    """Cambiar las preferencias de canal de un socio dado de baja (N-20): su ficha es de solo
+    lectura. `GET` sí responde (200); `PATCH` da 409 `member_deleted`."""
+
+    status = 409
+    code = "member_deleted"
+    default_message = "El socio está dado de baja; reactívalo para cambiar sus canales."
+
+
+class InvalidField(MemberError):
+    """`contact_for_notification` con un campo que no es `phone` ni `email` en `fields`. Se lanza
+    antes de leer la base; no sale por HTTP (ninguna ruta llama al contacto)."""
+
+    code = "invalid_field"
+    default_message = "El campo de contacto pedido no es válido."
+
+
+class ConsentRequired(MemberError):
+    """Activar el correo de un socio sin `data_consent_at` (S5-D211, Ley 1581): el opt-in no se
+    guarda sin base legal. 422; `whatsapp_link` sí se puede desactivar sin autorización."""
+
+    status = 422
+    code = "consent_required"
+    default_message = "El socio no autorizó el uso de sus datos; no se puede activar el correo."

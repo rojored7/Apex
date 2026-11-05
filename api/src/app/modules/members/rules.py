@@ -76,6 +76,7 @@ __all__ = [
     "classify_query",
     "compute_warnings",
     "diff_fields",
+    "effective_channels",
     "ensure_can_change",
     "mask",
     "validate_member_input",
@@ -343,3 +344,22 @@ def validate_member_patch(patch: MemberPatch, today: date) -> None:
         raise _invalido("phone")
     if patch.email is not None and not _normalizado(patch.email, "email"):
         raise _invalido("email")
+
+
+def effective_channels(
+    active: frozenset[str], inactive: frozenset[str], has_consent: bool
+) -> frozenset[str]:
+    """Canales por los que se avisa al socio (S5-D31, N-33, S4B-D77).
+
+    Sin autorización de datos (`has_consent` falso) no se avisa por ningún canal. Con ella,
+    `whatsapp_link` rige salvo una fila explícita inactiva; `email` exige una fila activa
+    (opt-in). `active` e `inactive` son los canales con fila explícita.
+    """
+    if not has_consent:
+        return frozenset()
+    canales: set[str] = set()
+    if "whatsapp_link" not in inactive:
+        canales.add("whatsapp_link")
+    if "email" in active:
+        canales.add("email")
+    return frozenset(canales)

@@ -37,7 +37,7 @@ from datetime import date, datetime
 from typing import Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from app.core.pagination import MAX_SEARCH_LENGTH
 from app.core.validators import EmailAddress, SafeText
@@ -231,3 +231,41 @@ class MemberPatch(BaseModel):
         if valor is None:
             raise ValueError("Este campo no admite null.")
         return valor
+
+
+# S5-B5 (US-123; S5-D31) ------------------------------------------------------------------------
+
+ChannelName = Literal["email", "whatsapp_link"]
+
+
+class ChannelItem(BaseModel):
+    """Una preferencia explícita: el canal y si está activo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    channel: ChannelName
+    active: StrictBool
+
+
+class ChannelsPatch(BaseModel):
+    """`PATCH /members/{member_id}/channels`: canales a fijar (cerrado; canal desconocido 422)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ChannelItem]
+
+    @model_validator(mode="after")
+    def _sin_canales_repetidos(self) -> ChannelsPatch:
+        canales = [i.channel for i in self.items]
+        if len(set(canales)) != len(canales):
+            raise ValueError("Hay canales repetidos en items.")
+        return self
+
+
+class ChannelsOut(BaseModel):
+    """Preferencias explícitas, canales efectivos y si el socio tiene consentimiento."""
+
+    member_id: UUID
+    channels: list[ChannelItem]
+    effective: list[str]
+    has_consent: bool

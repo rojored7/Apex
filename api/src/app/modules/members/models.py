@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import ClassVar
+from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Index, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.crypto.secret import Secret
@@ -101,3 +102,31 @@ class Member(CommonColumnsMixin, SoftDeleteMixin, Base):
     emergency_contact: Mapped[Secret | None] = mapped_column(
         Encrypted("member.emergency_contact"), nullable=True
     )
+
+
+CHANNELS: tuple[str, ...] = ("email", "whatsapp_link")
+
+
+class MemberChannelPreference(CommonColumnsMixin, Base):
+    """Preferencia explícita de un canal de aviso de un socio (S5-B5, D31; migración `0016`).
+
+    Sin fila rige el valor por defecto de `rules.effective_channels`. `__audited__` con
+    `__audit_subject__ = "member_id"`: la fila de auditoría lleva el socio como sujeto.
+    """
+
+    __tablename__ = "member_channel_preferences"
+    __table_args__ = (
+        CheckConstraint("channel IN ('email', 'whatsapp_link')", name="channel"),
+        UniqueConstraint(
+            "member_id", "channel", name="uq_member_channel_preferences_member_id_channel"
+        ),
+        {"schema": "members"},
+    )
+    __audited__: ClassVar[bool] = True
+    __audit_subject__: ClassVar[str] = "member_id"
+
+    member_id: Mapped[UUID] = mapped_column(
+        ForeignKey("members.members.id", ondelete="RESTRICT"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False)

@@ -9,11 +9,13 @@ nadie fuera de `members` lo llama (`tests/architecture/test_contact_callers.py`,
   serializa (`pickle`, `copy` y `json.dumps` fallan; `asdict`/`astuple` no se usan).
 - `validate_purpose(purpose)`: solo `notify` y `auth_link`; cualquier otro valor (también
   `mask`, `reveal`, `export`, vacío o `None`) lanza `InvalidPurpose`.
-- `contact_for_notification(session, member_id, purpose)`: ver su docstring.
+- `contact_for_notification(session, member_id, purpose, *, fields=None)`: ver su docstring.
+  Desde el Sprint 5 acepta `fields` (S5-D32) y `notify` exige `data_consent_at` (S5-D34, D209).
 """
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Final, Literal, NoReturn
 from uuid import UUID
@@ -24,7 +26,7 @@ from sqlalchemy.orm import load_only
 
 from app.core import audit
 from app.modules.members.detail import MEMBERS_TABLE, _decrypt_fields
-from app.modules.members.exceptions import InvalidPurpose, MemberNotContactable
+from app.modules.members.exceptions import InvalidField, InvalidPurpose, MemberNotContactable
 from app.modules.members.models import Member
 
 ContactPurpose = Literal["notify", "auth_link"]
@@ -63,11 +65,18 @@ def validate_purpose(purpose: object) -> ContactPurpose:
     raise InvalidPurpose()
 
 
-async def contact_for_notification(session: AsyncSession, member_id: UUID, purpose: str) -> Contact:
+async def contact_for_notification(
+    session: AsyncSession, member_id: UUID, purpose: str, *, fields: Collection[str] | None = None
+) -> Contact:
     """Teléfono y correo en claro del socio para un aviso, con rastro (S4A-D21).
 
-    Orden: (1) `validate_purpose(purpose)` antes de leer la base; (2) el socio, o
-    `MemberNotContactable` si no existe o tiene `deleted_at`, sin descifrar; (3) teléfono y
+    `fields` (S5-D32): `None` = `("phone", "email")`; solo se descifra y audita lo pedido; un campo
+    que no sea `phone` ni `email` lanza `InvalidField` antes de leer la base. Con `notify`, un
+    socio sin `data_consent_at` es `MemberNotContactable` (S5-D34, D209).
+
+    Orden: (1) `validate_purpose(purpose)` y `fields` antes de leer la base; (2) el socio, o
+    `MemberNotContactable` si no existe, tiene `deleted_at` o (solo `notify`) no autorizó, sin
+    descifrar; (3) teléfono y
     correo por `detail._decrypt_fields` con el propósito (una fila `decrypt` por campo no nulo en
     `crypto_ops`, con el `record_id` del socio y el `batch_id` del `batch_scope` del llamador; sin
     `bus.batch`, que perdería el `record_id`); (4) por cada campo no nulo, una fila `reveal` en la
@@ -83,17 +92,14 @@ async def contact_for_notification(session: AsyncSession, member_id: UUID, purpo
     conexión), y un aviso enviado tras un rollback quedaría sin rastro en la auditoría.
     """
     proposito = validate_purpose(purpose)
-    # S5-D32/D204: el rol del worker solo tiene `SELECT` por columna en `members.members`; la
-    # entidad completa trae `document` y fallaría con 42501. Solo lo que el aviso necesita.
-    socio = await session.scalar(
-        select(Member)
-        .options(load_only(Member.first_name, Member.phone, Member.email, Member.deleted_at))
-        .where(Member.id == member_id)
-    )
+    pedidos = _validate_fields(fields)
+    socio = await _load_member_for_contact(session, member_id)
     if socio is None or socio.deleted_at is not None:
         raise MemberNotContactable()
-    claros = _decrypt_fields(socio, CONTACT_FIELDS, proposito)
-    for campo in CONTACT_FIELDS:
+    if proposito == "notify" and socio.data_consent_at is None:
+        raise MemberNotContactable()  # S5-D34/D209: un aviso exige la autorización de datos
+    claros = _decrypt_fields(socio, pedidos, proposito)
+    for campo in pedidos:
         if campo in claros:
             await audit.record(
                 session,
@@ -108,6 +114,35 @@ async def contact_for_notification(session: AsyncSession, member_id: UUID, purpo
         first_name=socio.first_name,
         phone=_texto(claros.get("phone")),
         email=_texto(claros.get("email")),
+    )
+
+
+def _validate_fields(fields: Collection[str] | None) -> tuple[str, ...]:
+    """Los campos pedidos en el orden de `CONTACT_FIELDS` (`None` = ambos); uno desconocido da
+    `InvalidField` antes de leer la base (S5-D32). El mensaje no repite el valor."""
+    if fields is None:
+        return CONTACT_FIELDS
+    pedidos = frozenset(fields)
+    if not pedidos <= frozenset(CONTACT_FIELDS):
+        raise InvalidField()
+    return tuple(c for c in CONTACT_FIELDS if c in pedidos)
+
+
+async def _load_member_for_contact(session: AsyncSession, member_id: UUID) -> Member | None:
+    """El socio con solo las columnas del aviso (S5-D32/D204): el rol del worker tiene `SELECT`
+    por columna en `members.members`; la entidad completa trae `document` y fallaría con 42501."""
+    return await session.scalar(
+        select(Member)
+        .options(
+            load_only(
+                Member.first_name,
+                Member.phone,
+                Member.email,
+                Member.deleted_at,
+                Member.data_consent_at,
+            )
+        )
+        .where(Member.id == member_id)
     )
 
 

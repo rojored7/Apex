@@ -687,6 +687,25 @@ def get_settings() -> Settings:
     return load_settings(".env")
 
 
+class _JwtPathOnly(BaseSettings):
+    """Solo `JWT_PRIVATE_KEY_PATH`; ignora todo lo demás del entorno y de `.env`."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False
+    )
+    JWT_PRIVATE_KEY_PATH: Path | None = None
+
+
+def read_jwt_private_key_path(env_file: Path | str | None = ".env") -> Path | None:
+    """`JWT_PRIVATE_KEY_PATH` sin validar el resto de la configuración (S6-D92).
+
+    `deploy.sh` corre `init-keys --migrate-layout` antes de `up -d`; si `Settings` completo falla
+    (por ejemplo una KEK mal apuntada), el despliegue debe caer en el sondeo de `/health` con
+    rollback y no aquí: la migración del layout solo necesita esta ruta, que no es secreta.
+    """
+    return _JwtPathOnly(_env_file=env_file).JWT_PRIVATE_KEY_PATH
+
+
 def reset_settings_cache() -> None:
     """Solo para pruebas."""
     get_settings.cache_clear()

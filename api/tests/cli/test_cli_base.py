@@ -55,6 +55,8 @@ REEXPORTADOS: Final = (
     "reject",
     "production_guard_error",
     "get_settings",
+    "ConfigError",
+    "read_jwt_private_key_path",
 )
 SIN_ADMIN: Final = "--as: no existe un admin activo con ese correo"
 

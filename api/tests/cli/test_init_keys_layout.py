@@ -15,9 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from app import cli
 from app.cli import app, key_paths_in
 from app.cli_ops.keys_layout import LayoutReport, migrate_layout
-from app.core.config import Settings, load_settings
+from app.core.config import ConfigError, Settings, load_settings, read_jwt_private_key_path
 from tests.cli._apoyo import correr
 
 SOLO_POSIX = pytest.mark.skipif(os.name == "nt", reason="NTFS no conserva el modo POSIX")
@@ -327,3 +328,51 @@ def test_migrate_layout_cli_sin_dir_con_el_env_plano_toma_el_padre_y_avisa(
     assert _arbol(raiz) == ARBOL_NUEVO
     assert "AVISO" in resultado.output and "JWT_PRIVATE_KEY_PATH" in resultado.output
     assert not (tmp_path / "custody").exists(), "no crea carpetas fuera del volumen"
+
+
+def _settings_rotos() -> Settings:
+    raise ConfigError(missing=["CRYPTO_LOCAL_KEK_PATH"], invalid=[])
+
+
+def test_migrate_layout_cli_sin_dir_con_settings_rotos_usa_solo_la_ruta_jwt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S6-D92: `deploy.sh` corre `--migrate-layout` antes de `up -d`; una KEK mal apuntada en
+    `.env` (caso «api roto» de `deploy_e2e.sh`) debe caer en el sondeo de `/health` con rollback,
+    no abortar aquí. Solo hace falta `JWT_PRIVATE_KEY_PATH`."""
+    raiz = _plano(tmp_path / "keys")
+    monkeypatch.setattr(cli, "get_settings", _settings_rotos)
+    monkeypatch.setattr(cli, "read_jwt_private_key_path", lambda: raiz / "jwt_ed25519.pem")
+
+    resultado = correr(app, ["init-keys", "--migrate-layout"])
+
+    assert resultado.exit_code == 0, resultado.output
+    assert _arbol(raiz) == ARBOL_NUEVO
+
+
+def test_migrate_layout_cli_sin_dir_sin_ruta_jwt_sale_con_2_y_la_nombra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raiz = _plano(tmp_path / "keys")
+    antes = _arbol(raiz)
+    monkeypatch.setattr(cli, "get_settings", _settings_rotos)
+    monkeypatch.setattr(cli, "read_jwt_private_key_path", lambda: None)
+
+    resultado = correr(app, ["init-keys", "--migrate-layout"])
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "JWT_PRIVATE_KEY_PATH" in resultado.output
+    assert _arbol(raiz) == antes
+
+
+def test_read_jwt_private_key_path_ignora_el_resto_del_entorno(tmp_path: Path) -> None:
+    env = tmp_path / ".env"
+    env.write_text(
+        "JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem\n"
+        "CRYPTO_LOCAL_KEK_PATH=/nonexistent\n"
+        "VARIABLE_QUE_NO_EXISTE=1\n",
+        encoding="utf-8",
+    )
+
+    assert read_jwt_private_key_path(env) == Path("/run/apex/keys/jwt_ed25519.pem")
+    assert read_jwt_private_key_path(tmp_path / "no-existe.env") is None

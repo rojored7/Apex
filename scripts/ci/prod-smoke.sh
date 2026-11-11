@@ -231,6 +231,9 @@ if [ "$PROVIDER" = "local" ]; then
 fi
 # Migración desde un volumen plano (un volumen de prueba aparte; nunca el real): coloca los cuatro
 # archivos en la raíz, corre `init-keys --migrate-layout` dos veces y comprueba el resultado.
+# El volumen nuevo nace root:root y tools escribe como 10001: se cede el dueño primero (hallazgo del
+# smoke de S6-W0-2).
+"${DC[@]}" --profile tools run --rm -T --no-deps --user root -v "$PROJECT-flat-keys:/flat" --entrypoint sh tools -c 'chown 10001:10001 /flat' > /dev/null 2>&1 || true
 if "${DC[@]}" --profile tools run --rm -T --no-deps -v "$PROJECT-flat-keys:/flat" --entrypoint sh tools -c '
   set -e
   for f in kek.bin sign-ed25519.key jwt_ed25519.pem jwt_ed25519.pub; do printf x > /flat/$f; chmod 600 /flat/$f; done

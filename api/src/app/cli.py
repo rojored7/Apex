@@ -25,6 +25,7 @@ import typer
 
 from app.cli_base import (
     DB_TIMEOUTS_CHOICES,
+    ConfigError,
     RuntimeOptions,
     _load_module_services,
     _run,
@@ -32,6 +33,7 @@ from app.cli_base import (
     cli_runtime,
     get_settings,
     production_guard_error,
+    read_jwt_private_key_path,
     reject,
     resolve_actor,
     runtime_options,
@@ -158,6 +160,24 @@ def init_keys(
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
 
 
+def _jwt_path_para_migrar() -> Path:
+    """`JWT_PRIVATE_KEY_PATH` aunque el resto de `Settings` no valide (S6-D92).
+
+    `deploy.sh` corre `--migrate-layout` antes de `up -d`: un `.env` roto debe fallar en el sondeo
+    de `/health` (con rollback), no aquí. Si ni siquiera hay ruta del JWT, se sale con 2.
+    """
+    try:
+        return get_settings().JWT_PRIVATE_KEY_PATH
+    except ConfigError:
+        ruta = read_jwt_private_key_path()
+        if ruta is None:
+            typer.echo(
+                "init-keys --migrate-layout: falta JWT_PRIVATE_KEY_PATH (o pasa --dir)", err=True
+            )
+            raise typer.Exit(code=2) from None
+        return ruta
+
+
 def _migrate_layout_command(directory: Path | None) -> None:
     """Cuerpo de `init-keys --migrate-layout` (S6-D58): delega en `cli_ops/keys_layout.py`.
 
@@ -167,7 +187,7 @@ def _migrate_layout_command(directory: Path | None) -> None:
     """
     env_plano = False
     if directory is None:  # con --dir no se leen los Settings (el volumen puede ser cualquiera)
-        jwt_path = get_settings().JWT_PRIVATE_KEY_PATH
+        jwt_path = _jwt_path_para_migrar()
         env_plano = jwt_path.parent.name != "jwt"
         directory = jwt_path.parent if env_plano else jwt_path.parent.parent
     informe = migrate_layout(directory)

@@ -15,8 +15,10 @@ from uuid import UUID, uuid4
 
 import typer
 
+from app.core.config import ConfigError as ConfigError
 from app.core.config import Settings
 from app.core.config import get_settings as get_settings
+from app.core.config import read_jwt_private_key_path as read_jwt_private_key_path
 from app.core.context import SYSTEM_USER_ID, actor_scope, batch_scope
 
 DB_TIMEOUTS_CHOICES: Final = ("on", "off")

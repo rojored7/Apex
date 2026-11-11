@@ -50,6 +50,14 @@ adicional para que el servicio `backup` no la pierda al recrearse:
 DEPLOY_COMPOSE_EXTRA=infra/compose.verify.yml bash infra/deploy.sh --ref v0.1.0 --expect-sha <SHA> --kek-file /ruta/a/kek.age --i-know-unsigned-ref
 ```
 
+Con el perfil `tls` (Caddy, `tls.md`) la variable lleva también el overlay y el perfil:
+
+```
+DEPLOY_COMPOSE_EXTRA="infra/compose.verify.yml -f infra/compose.tls.yml --profile tls" bash infra/deploy.sh --ref v0.3.0 --expect-sha <SHA> --kek-file /ruta/a/kek.age --i-know-unsigned-ref
+```
+
+Solo se admiten `infra/compose.verify.yml`, `infra/compose.tls.yml` (con o sin `-f`) y `--profile tls`; cualquier otra palabra hace salir con 2. Con el perfil, `web` ya no publica `WEB_PORT`: la sonda de salud entra al contenedor (`exec -T web wget`), `caddy` debe quedar `healthy` (si no, el despliegue falla como un api sin salud y deja el `rollback-<fecha>.txt`) y el entorno de `caddy` solo puede traer sus cinco variables (se revisan los nombres). Si `APEX_CADDY_IP` de `.env.ops` no es `172.30.0.11`, `deploy.sh` renderiza el snippet `real-ip.conf` en `DEPLOY_STATE_DIR` y lo monta con `APEX_REAL_IP_CONF` (`tls.md`, «IP de Caddy distinta»). Limitación: durante el sondeo con el perfil, un api sellado (503 sin cuerpo para `wget`) se ve como no sano.
+
 Lo que hace, en orden (si algo de los pasos 1 a 5 falla, no se tocó nada del servidor: el código solo
 pasa a la etiqueta al final de la preverificación y, si luego algo la rechaza, vuelve a donde estaba):
 

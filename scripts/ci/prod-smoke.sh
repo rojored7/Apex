@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# prod-smoke.sh [--no-build] [--provider local|openbao]
+# prod-smoke.sh [--no-build] [--provider local|openbao] [--tls]
 #
 # Humo de producción sobre el proyecto Compose `apex-smoke` (S4B-B4, US-118; S4B-D46, D56, D65, D78,
 # D100). Levanta el stack como en producción (migrate y dbsetup, api como apex_api, worker, web y
@@ -20,16 +20,23 @@
 # --provider openbao suma scripts/ci/openbao-smoke.sh (init 5/3, bootstrap, tokens, reinicio sellado y
 # desello). Con el api en CRYPTO_PROVIDER=openbao (overlay compose.openbao.yml) comprueba además que
 # api y worker no tienen /run/apex/keys/kek.bin (S5-B2, H-2.3); sin overlay lo omite y lo dice.
+# --tls (S6-W0-4, S6-D63, D64): apila infra/compose.tls.yml con --profile tls. Caddy publica SMOKE_WEB_PORT:80, web
+# no publica nada y todo se sondea por dentro (`exec -T web wget`); APEX_CADDY_IP=172.31.1.11 (en la subred del
+# humo, fuera de su ip_range) y el snippet real-ip.conf se renderiza desde real-ip.conf.in en SMOKE_DIR (nunca
+# en el árbol). Al final corre scripts/ci/tls-smoke.sh con el mismo stack. deploy_e2e.sh no corre con --tls
+# (su despliegue publica WEB_PORT en web y chocaría con Caddy): lo cubren test_deploy_script.sh y el ensayo.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 NO_BUILD=0
+TLS=0
 PROVIDER=local
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --no-build) NO_BUILD=1; shift ;;
+    --tls) TLS=1; shift ;;
     --provider)
       [ "$#" -ge 2 ] || { echo "prod-smoke: --provider necesita local u openbao" >&2; exit 2; }
       case "$2" in local|openbao) PROVIDER="$2" ;; *) echo "prod-smoke: --provider debe ser local u openbao" >&2; exit 2 ;; esac
@@ -42,6 +49,7 @@ PROJECT=apex-smoke
 SUBNET=172.31.1.0/24
 IP_RANGE=172.31.1.128/25
 WEB_IP=172.31.1.10
+CADDY_IP=172.31.1.11
 CUSTODY_SUBNET=172.31.13.0/24
 WEB_PORT="${SMOKE_WEB_PORT:-8380}"
 SMOKE_DIR="${SMOKE_DIR:-$ROOT/docs/scratch/ensayo/smoke}"
@@ -69,6 +77,15 @@ aleatorio() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
 # --- bajar solo apex-smoke, solo con CI o SMOKE_DOWN=1 ----------------------------------------------
 DC=(docker compose -p "$PROJECT" --env-file "$SMOKE_DIR/.env" --env-file "$SMOKE_DIR/.env.ops" -f infra/compose.yml -f infra/compose.verify.yml)
+if [ "$TLS" -eq 1 ]; then DC+=(-f infra/compose.tls.yml --profile tls); fi
+# Salud del api: por el puerto publicado, o por dentro de web con el perfil tls (web no publica nada).
+cuerpo_salud() {
+  if [ "$TLS" -eq 1 ]; then
+    "${DC[@]}" exec -T web wget -qO- http://127.0.0.1/api/v1/health 2> /dev/null | tr -d '\r' || true
+  else
+    curl -fsS --max-time 5 "http://127.0.0.1:$WEB_PORT/api/v1/health" 2> /dev/null | tr -d '\r' || true
+  fi
+}
 bajar() {
   [ "${PROJECT}" = "apex-smoke" ] || muere "el proyecto a bajar no es apex-smoke"
   if [ -n "${CI:-}" ] || [ "${SMOKE_DOWN:-0}" = "1" ]; then
@@ -129,6 +146,20 @@ fijar .env ENV production
 fijar .env TRUSTED_PROXIES "$WEB_IP/32"
 fijar .env ALLOW_INSECURE_COOKIE true
 fijar .env FRONT_BASE_URL "http://localhost:$WEB_PORT"
+if [ "$TLS" -eq 1 ]; then
+  # Modo dominio (host *.localhost sin puerto: Caddy escucha el 443 interno) con la CA interna.
+  fijar .env APEX_DOMAIN apex.localhost
+  fijar .env FRONT_BASE_URL https://apex.localhost
+  fijar .env COOKIE_SECURE true
+  fijar .env ALLOW_INSECURE_COOKIE false
+  fijar .env.ops APEX_TLS_ISSUER internal
+  fijar .env.ops APEX_CADDY_IP "$CADDY_IP"
+  # real-ip.conf renderizado en un temporal propio (S6-D82): la IP del humo no es la de fábrica.
+  mkdir -p "$SMOKE_DIR/nginx"
+  sed "s/__APEX_CADDY_IP__/$CADDY_IP/g" infra/nginx/snippets/real-ip.conf.in > "$SMOKE_DIR/nginx/real-ip.conf"
+  chmod 644 "$SMOKE_DIR/nginx/real-ip.conf"
+  fijar .env.ops APEX_REAL_IP_CONF "$(nativa "$SMOKE_DIR/nginx/real-ip.conf")"
+fi
 # Los comentarios de cabecera de los ejemplos nombran 'cambiar-esto': solo cuentan las lineas que no son comentario.
 [ "$(cat "$SMOKE_DIR/.env.ops" "$SMOKE_DIR/.env" | grep -v '^[[:space:]]*#' | grep -c 'cambiar-esto' || true)" = "0" ] || muere "quedó cambiar-esto en el entorno del humo"
 
@@ -209,7 +240,9 @@ paso "levantar el stack"
 for svc in migrate dbsetup; do
   if esperar_servicio "$svc" exited0 180; then ok "$svc completado"; else muere "$svc no terminó con 0"; fi
 done
-for svc in openbao api worker web backup; do
+SERVICIOS_SANOS="openbao api worker web backup"
+if [ "$TLS" -eq 1 ]; then SERVICIOS_SANOS="$SERVICIOS_SANOS caddy"; fi
+for svc in $SERVICIOS_SANOS; do
   if esperar_servicio "$svc" healthy 240; then ok "$svc healthy"; else muere "$svc no llegó a healthy"; fi
 done
 
@@ -275,7 +308,7 @@ case "$estado_bc" in *'"result": "ok"'*) ok "backup_check result ok" ;; *) falla
 # --- /health: backup y migrations en ok (el caché de backup dura 30 s) ---------------------------------------
 cuerpo=""
 for _ in $(seq 1 20); do
-  cuerpo="$(curl -fsS --max-time 5 "http://127.0.0.1:$WEB_PORT/api/v1/health" 2> /dev/null | tr -d '\r' || true)"
+  cuerpo="$(cuerpo_salud)"
   if printf '%s' "$cuerpo" | grep -Eq '"backup": ?"ok"' && printf '%s' "$cuerpo" | grep -Eq '"migrations": ?"ok"'; then break; fi
   sleep 3
 done
@@ -287,11 +320,14 @@ fi
 
 # --- roles de base y entorno por servicio (S4B-D56, D100) -------------------------------------------------------
 DC_STR="docker compose -p $PROJECT --env-file $SMOKE_DIR/.env --env-file $SMOKE_DIR/.env.ops -f infra/compose.yml -f infra/compose.verify.yml"
+if [ "$TLS" -eq 1 ]; then DC_STR="$DC_STR -f infra/compose.tls.yml --profile tls"; fi
 if DC="$DC_STR" OPS_ENV_FILE="$SMOKE_DIR/.env.ops" bash scripts/ci/test_db_roles.sh; then ok "test_db_roles.sh"; else falla "test_db_roles.sh"; fi
 if DC="$DC_STR" OPS_ENV_FILE="$SMOKE_DIR/.env.ops" bash scripts/ci/test_env_isolation.sh; then ok "test_env_isolation.sh (/proc/1/environ de api, worker y backup)"; else falla "test_env_isolation.sh"; fi
 
 # --- despliegue de punta a punta (conserva su propio respaldo; antes de la restauración, que limpia el volumen) ----
-if E2E_PROJECT="$PROJECT" E2E_ENV_DIR="$SMOKE_DIR" E2E_KEK_FILE="$KEYS/kek-copy.age" bash infra/tests/deploy_e2e.sh; then
+if [ "$TLS" -eq 1 ]; then
+  echo "  omitida: deploy_e2e.sh con --tls (su despliegue publica WEB_PORT en web y chocaría con Caddy); lo cubren test_deploy_script.sh y el ensayo"
+elif E2E_PROJECT="$PROJECT" E2E_ENV_DIR="$SMOKE_DIR" E2E_KEK_FILE="$KEYS/kek-copy.age" bash infra/tests/deploy_e2e.sh; then
   ok "deploy_e2e.sh"
 else
   falla "deploy_e2e.sh"
@@ -322,6 +358,11 @@ if [ "$PROVIDER" = "openbao" ]; then
   else
     echo "  omitida: el api sigue en CRYPTO_PROVIDER=local (sin overlay de openbao); kek.bin se comprueba con él"
   fi
+fi
+
+# --- TLS híbrido con la CA interna de Caddy (S6-D63, P-TLS) ------------------------------------------------------
+if [ "$TLS" -eq 1 ]; then
+  if bash scripts/ci/tls-smoke.sh --dc "${DC[*]}"; then ok "tls-smoke.sh (X25519MLKEM768, HSTS, 308, salud de Caddy)"; else falla "tls-smoke.sh"; fi
 fi
 
 if [ "$fallas" -ne 0 ]; then

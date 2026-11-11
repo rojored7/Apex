@@ -23,6 +23,10 @@
 #   FAKE_DOCKER_LAYOUT        plano | nuevo | mixto: lo que informa `... tools init-keys --migrate-layout`
 #                             (plano: mueve 4 archivos; nuevo: «nada que migrar»; mixto: conflicto, sale 2); nuevo por omisión
 #   FAKE_DOCKER_LAYOUT_RC     fuerza la salida de `init-keys --migrate-layout` (anula la de FAKE_DOCKER_LAYOUT)
+#   FAKE_DOCKER_CADDY_HEALTH  healthy | unhealthy: lo que imprime `compose ... ps ... caddy` (healthy)   [S6-W0-4]
+#   FAKE_DOCKER_CADDY_ENV     NOMBRE=valor separados por espacios de `exec -T caddy ... /proc/1/environ` (las cinco de caddy)
+#   FAKE_WGET_RC              salida de `compose ... exec ... web wget ...` (0); imprime FAKE_CURL_BODY (o el cuerpo sano)
+#   FAKE_DOCKER_UPENV_LOG     si se define, cada `up` anota ahí APEX_REAL_IP_CONF=<valor|<sin definir>>
 # Todo lo demás sale con 0 sin imprimir nada.
 set -u
 log="${FAKE_DOCKER_LOG:-/dev/null}"
@@ -52,6 +56,16 @@ init-keys: movido jwt_ed25519.pub
     exit 0 ;;
   *" tag "*) exit 0 ;;
   *" config -q"*) exit "${FAKE_DOCKER_CONFIG_RC:-0}" ;;
+  *" ps "*"caddy"*)
+    printf '%s\n' "${FAKE_DOCKER_CADDY_HEALTH:-healthy}"
+    exit 0 ;;
+  *" exec -T caddy "*"/proc/1/environ"*)
+    printf 'PATH=/usr/local/bin\n'
+    for kv in ${FAKE_DOCKER_CADDY_ENV-APEX_DOMAIN=apex.ejemplo.test APEX_TLS_ISSUER=internal APEX_ACME_EMAIL= APEX_ACME_CA= APEX_HSTS_MAX_AGE=300}; do printf '%s\n' "$kv"; done
+    exit 0 ;;
+  *" exec "*" web wget "*)
+    printf '%s\n' "${FAKE_CURL_BODY:-{\"status\":\"ok\",\"db\":\"ok\",\"migrations\":\"ok\",\"version\":\"v0.1.0\"\}}"
+    exit "${FAKE_WGET_RC:-0}" ;;
   *" ps "*" db"*)
     [ "${FAKE_DOCKER_DB_RUNNING:-1}" = "0" ] || printf 'fakecid-db\n'
     exit 0 ;;
@@ -80,7 +94,9 @@ init-keys: movido jwt_ed25519.pub
     exit 0 ;;
   *" run "*|*" exec "*) exit "${FAKE_DOCKER_BACKUP_CHECK_RC:-0}" ;;
   *" build"*) exit "${FAKE_DOCKER_BUILD_RC:-0}" ;;
-  *" up "*) exit "${FAKE_DOCKER_UP_RC:-0}" ;;
+  *" up "*)
+    [ -z "${FAKE_DOCKER_UPENV_LOG:-}" ] || printf 'APEX_REAL_IP_CONF=%s\n' "${APEX_REAL_IP_CONF-<sin definir>}" >> "$FAKE_DOCKER_UPENV_LOG"
+    exit "${FAKE_DOCKER_UP_RC:-0}" ;;
   *" logs "*) printf 'linea de log falsa 1\nlinea de log falsa 2\n'; [ -z "${FAKE_DOCKER_LOG_EXTRA:-}" ] || printf '%s\n' "$FAKE_DOCKER_LOG_EXTRA"; exit 0 ;;
 esac
 exit 0

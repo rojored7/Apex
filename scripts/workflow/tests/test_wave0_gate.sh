@@ -24,6 +24,10 @@ preparar() {
   printf '#!/usr/bin/env bash\necho ok\n' > "$dir/infra/backup/run.sh"
   # S5-W0-2: el gate renderiza las combinaciones de OpenBao solo si existe el overlay (como verify.yml).
   printf 'services: {}\n' > "$dir/infra/compose.openbao.yml"
+  # Rojo S6-W0-4 (paso 27): el overlay tls y la prueba del Caddyfile (infra/caddy/tests) también cuentan.
+  printf 'services: {}\n' > "$dir/infra/compose.tls.yml"
+  mkdir -p "$dir/infra/caddy/tests"
+  printf '#!/usr/bin/env bash\necho "script test_caddyfile" >> "%s"\nexit 0\n' "$STUB_LOG" > "$dir/infra/caddy/tests/test_caddyfile.sh"
   printf 'def test_x() -> None:\n    assert True\n' > "$dir/api/tests/core/test_env_example.py"
   (cd "$dir" && "$REAL_GIT" add -A && "$REAL_GIT" commit -q -m "chore: scripts")
   echo "$dir"
@@ -49,6 +53,10 @@ done
 assert_log_has "-f infra/compose.yml -f infra/compose.openbao.yml config --quiet"
 assert_log_has "--profile bootstrap -f infra/compose.yml config --quiet"
 assert_log_has "--profile openbao -f infra/compose.yml -f infra/compose.dev.yml config --quiet"
+# Rojo S6-W0-4: las dos combinaciones del perfil tls (overlay de producción y desarrollo) y la prueba del Caddyfile.
+assert_log_has "--profile tls -f infra/compose.yml -f infra/compose.tls.yml config --quiet"
+assert_log_has "--profile tls -f infra/compose.yml -f infra/compose.dev.yml config --quiet"
+assert_log_has "script test_caddyfile"
 assert_log_lacks "script test_api_image"
 assert_log_has "docker compose"
 assert_log_has "config --quiet"
@@ -84,6 +92,14 @@ assert_nonzero "test_openbao_infra en rojo falla" bash scripts/workflow/wave0-ga
 assert_log_has "script test_openbao_infra"
 assert_log_lacks "slice-gate"
 printf '#!/usr/bin/env bash\necho "script test_openbao_infra" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/test_openbao_infra.sh
+
+# Rojo S6-W0-4: test_caddyfile.sh en rojo detiene el gate antes del sello.
+printf '#!/usr/bin/env bash\necho "script test_caddyfile" >> "%s"\nexit 1\n' "$STUB_LOG" > infra/caddy/tests/test_caddyfile.sh
+clear_log
+assert_nonzero "test_caddyfile en rojo falla" bash scripts/workflow/wave0-gate.sh W0-1
+assert_log_has "script test_caddyfile"
+assert_log_lacks "slice-gate"
+printf '#!/usr/bin/env bash\necho "script test_caddyfile" >> "%s"\nexit 0\n' "$STUB_LOG" > infra/caddy/tests/test_caddyfile.sh
 
 # bash -n de un script roto detiene antes de todo.
 printf 'if then fi (\n' > scripts/ci/roto.sh

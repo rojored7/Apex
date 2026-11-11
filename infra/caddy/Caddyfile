@@ -1,0 +1,47 @@
+# Caddy de APEX (S6-D64, EP-20): TLS 1.3 con intercambio híbrido poscuántico x25519mlkem768 y caída a
+# x25519. Solo existe con el perfil `tls` de Compose. Recibe cinco variables (infra/compose.yml):
+#   APEX_DOMAIN        dominio público (en desarrollo y ensayo, apex.localhost:8443)
+#   APEX_TLS_ISSUER    `internal` (CA interna, solo smoke y desarrollo) o el correo del emisor ACME
+#   APEX_ACME_EMAIL    correo ACME (documental; el emisor lo lleva APEX_TLS_ISSUER)
+#   APEX_ACME_CA       directorio ACME (Compose le da el de Let's Encrypt por omisión; staging para ensayar)
+#   APEX_HSTS_MAX_AGE  segundos de HSTS, escalonado (300, 604800, 31536000; docs/operacion/tls.md)
+# El correo no se declara como `email` global: una variable vacía rompe `caddy validate` y la
+# dirección del emisor ya viaja en `tls {$APEX_TLS_ISSUER}`. Los valores por omisión de las variables
+# los fija Compose, no este archivo.
+{
+	# Sin API de administración: ni puerto 2019 ni socket.
+	admin off
+	# La redirección HTTP -> HTTPS es explícita (más abajo), para que la ruta de salud nunca redirija.
+	auto_https disable_redirects
+	# Con la raíz de solo lectura Caddy no puede instalar su CA en el almacén del sistema; la raíz
+	# de la CA interna se lee del volumen caddy_data (pki/authorities/local/root.crt).
+	skip_install_trust
+	acme_ca {$APEX_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+}
+
+# Puerto 80, cualquier host. Sin esquema+host explícito para no depender del puerto de APEX_DOMAIN.
+http:// {
+	# Salud del contenedor (E8): responde 200 por HTTP, antes de cualquier redirección.
+	handle /_caddy_health {
+		respond "ok" 200
+	}
+	# Desafío HTTP-01 de ACME (M1): nunca se redirige; el solucionador de Caddy atiende antes
+	# que esta ruta y, si no hay desafío pendiente, no responde nada útil.
+	handle /.well-known/acme-challenge/* {
+		respond 404
+	}
+	handle {
+		redir https://{$APEX_DOMAIN}{uri} 308
+	}
+}
+
+https://{$APEX_DOMAIN} {
+	tls {$APEX_TLS_ISSUER} {
+		curves x25519mlkem768 x25519
+		protocols tls1.2 tls1.3
+	}
+	# HSTS escalonado (M-8): solo este host, sin subdominios ni lista de precarga.
+	header Strict-Transport-Security "max-age={$APEX_HSTS_MAX_AGE:300}"
+	# Caddy escribe su propio X-Forwarded-For y X-Forwarded-Proto: https; Nginx confía solo en esta IP.
+	reverse_proxy web:80
+}

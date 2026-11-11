@@ -23,7 +23,8 @@ api (desde api/):  uv run ruff check . ; uv run ruff format --check . ; uv run m
                    uv run pytest --cov=app --cov-fail-under=80 -q -m "not perf"
 scripts (raíz, los que existan; necesitan Docker):
                    scripts/ci/test_check_key_files.sh ; scripts/ci/test_images_pinned.sh ;
-                   scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh ; scripts/ci/test_openbao_infra.sh ; scripts/ci/test_deploy_script.sh ; scripts/ci/test_infra_scripts.sh
+                   scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh ; scripts/ci/test_openbao_infra.sh ; scripts/ci/test_deploy_script.sh ; scripts/ci/test_infra_scripts.sh ;
+                   infra/caddy/tests/test_caddyfile.sh
 front (si existe web/package.json, desde web/):
                    npm run lint ; npx tsc --noEmit ; npm test -- --run --coverage ; npm run build
 EOF
@@ -63,6 +64,13 @@ for prueba in test_check_key_files test_images_pinned test_nginx_conf test_compo
     echo "run-gates: sin scripts/ci/$prueba.sh; se omite"
   fi
 done
+
+# S6-W0-4: el Caddyfile (caddy validate en un contenedor desechable). tls-smoke.sh no es gate: necesita el stack.
+if [ -f "$ROOT/infra/caddy/tests/test_caddyfile.sh" ]; then
+  gate "caddy test_caddyfile" bash "$ROOT/infra/caddy/tests/test_caddyfile.sh"
+else
+  echo "run-gates: sin infra/caddy/tests/test_caddyfile.sh; se omite"
+fi
 
 if [ -f "$ROOT/web/package.json" ]; then
   cd "$ROOT/web"

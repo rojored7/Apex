@@ -119,6 +119,8 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "APEX_ACME_CA",
         "APEX_HSTS_MAX_AGE",
         "TLS_PORT",
+        # S6-W0-4 (S6-D82): snippet real-ip.conf que monta web; solo Compose y deploy.sh.
+        "APEX_REAL_IP_CONF",
     }
 )
 

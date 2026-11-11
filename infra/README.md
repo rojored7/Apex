@@ -21,6 +21,12 @@ Hay dos redes de Compose:
 
 `api` y `worker` esperan a que `openbao` esté `healthy` (sellado cuenta como sano). El perfil `bootstrap` (`openbao-bootstrap`) y los archivos `infra/openbao/` instalan y operan OpenBao; `compose.openbao.yml` se apila cuando `CRYPTO_PROVIDER=openbao` y quita `keys` de `api` y `worker`. Operación: `docs/operacion/openbao.md`.
 
+## Caddy y el perfil `tls` (S6-D64, D82)
+
+`caddy` (Caddy 2.11.3 por digest) solo existe con `--profile tls` y vive en la red `default` con IP fija `${APEX_CADDY_IP:-172.30.0.11}` (fuera del `ip_range`, como `web`). `compose.yml` lo declara sin puertos; `compose.tls.yml` publica `${WEB_PORT:-80}:80` y `${TLS_PORT:-443}:443` y deja a `web` sin puertos (`ports: !override []`); `compose.dev.yml` lo publica en `127.0.0.1:8443` con `APEX_DOMAIN=apex.localhost:8443` y la CA interna. Corre `read_only`, con `cap_drop: [ALL]` y solo `NET_BIND_SERVICE`, sin puerto 2019, y recibe cinco variables (`APEX_DOMAIN`, `APEX_TLS_ISSUER`, `APEX_ACME_EMAIL`, `APEX_ACME_CA`, `APEX_HSTS_MAX_AGE`). `caddy_data` (certificados y cuenta ACME) y `caddy_config` son volúmenes con nombre. El `Caddyfile` y su prueba (`infra/caddy/tests/test_caddyfile.sh`) están en `infra/caddy/`.
+
+`web` monta `${APEX_REAL_IP_CONF:-./nginx/snippets/real-ip.conf}` sobre `/etc/nginx/snippets/real-ip.conf` (solo lectura): por omisión el snippet versionado, que es `real-ip.conf.in` con la IP de fábrica; `deploy.sh` apunta la variable a un render fuera del árbol si `APEX_CADDY_IP` cambia. `cap_drop: [ALL]` rige para los once servicios (`db` con cinco capacidades de Postgres). Guía: `docs/operacion/tls.md`.
+
 ## Volumen `keys`: `custody/` y `jwt/` (S6-D58)
 
 El volumen `keys` tiene dos subcarpetas: `custody/` (`kek.bin`, `sign-ed25519.key`) y `jwt/` (el par JWT). `api` y `tools` montan el volumen entero; `worker` monta solo `custody/` (`volume.subpath: custody`, en `/run/apex/keys/custody`) y con `compose.openbao.yml` no monta nada. Esto exige Docker Engine 26 (API 1.45) y Compose 2.26 (S6-D78). Un volumen plano se migra con `tools init-keys --migrate-layout` (lo hace `deploy.sh` antes de `up -d`; `docs/RUNBOOK.md` §12). `web` limita su tmpfs `/var/cache/nginx` a 64 MB (Nginx guarda ahí los cuerpos de hasta 6 MB de la subida de adjuntos) y la subida tiene su propia zona `apex_upload` (30 por minuto por IP, `snippets/upload-zone.conf`).

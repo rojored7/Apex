@@ -18,6 +18,8 @@
 # política de privacidad y 140 KB dan 413.
 # S6-W0-2 (S6-D59, D73, D84, E13, E14): location de subida de adjuntos con 6m, @too_large (413 JSON),
 # server en 64k y CSP con blob: (bloque «Rojo S6-W0-2» al final).
+# Rojo S6-W0-4 (S6-D48, D64, D82, O5, E11): real_ip desde Caddy, map del protocolo, real-ip.conf.in y real-ip.conf,
+# sin HSTS en Nginx y funcional con la IP de Caddy y con otra IP (bloque «Rojo S6-W0-4» al final).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -332,6 +334,93 @@ if grep -Fq 'B413 {"error":{"code":"file_too_large",' <<< "$salida_adj" && grep 
 if grep -qi '^H413 Content-Type: application/json' <<< "$salida_adj"; then ok "funcional: el 413 de la subida es application/json"; else falla "funcional: el 413 de la subida no es application/json"; fi
 if grep -qi '^H413 Cache-Control: no-store' <<< "$salida_adj"; then ok "funcional: el 413 de la subida lleva Cache-Control no-store"; else falla "funcional: el 413 de la subida sin Cache-Control no-store"; fi
 if grep -q 'BUSQ' <<< "$salida_adj"; then falla "funcional: el 413 hace eco de la query"; else ok "funcional: el 413 no hace eco de la query"; fi
+
+
+# --- Rojo S6-W0-4 (S6-D48, D64, D82, O5, E11, M-7a, M-7b; riesgo 4 del impacto) -------------------------
+# Nginx detrás de Caddy: `real_ip` solo desde la IP de Caddy (/32), `map` del protocolo sobre el par TCP
+# real ($realip_remote_addr), proxy-api.conf con X-Forwarded-Proto $apex_proto, HSTS solo en Caddy y el
+# snippet real-ip.conf versionado igual a su plantilla renderizada con la IP por defecto (S6-D82, O5).
+RIP_IN="$SNIP/real-ip.conf.in"
+RIP="$SNIP/real-ip.conf"
+CADDY_IP_DEFECTO="172.30.0.11"
+if [ -f "$RIP_IN" ] && grep -q '__APEX_CADDY_IP__' "$RIP_IN"; then ok "real-ip.conf.in existe y trae el marcador __APEX_CADDY_IP__"; else falla "falta snippets/real-ip.conf.in con el marcador __APEX_CADDY_IP__"; fi
+if [ -f "$RIP" ]; then ok "real-ip.conf (renderizado por defecto) existe y se hornea con la imagen"; else falla "falta snippets/real-ip.conf"; fi
+if [ -f "$RIP_IN" ] && [ -f "$RIP" ] && [ "$(sed "s/__APEX_CADDY_IP__/$CADDY_IP_DEFECTO/g" "$RIP_IN")" = "$(cat "$RIP")" ]; then ok "real-ip.conf es real-ip.conf.in renderizado con $CADDY_IP_DEFECTO (O5)"; else falla "real-ip.conf no es real-ip.conf.in con __APEX_CADDY_IP__ sustituido por $CADDY_IP_DEFECTO"; fi
+if [ -f "$RIP" ] && grep -Eq "^\s*set_real_ip_from\s+${CADDY_IP_DEFECTO//./\\.}/32;" "$RIP" && [ "$(grep -Ec '^\s*set_real_ip_from\s' "$RIP")" = "1" ]; then ok "real-ip.conf: un solo set_real_ip_from con la IP de Caddy y /32"; else falla "real-ip.conf sin un único set_real_ip_from ${CADDY_IP_DEFECTO}/32"; fi
+if [ -f "$RIP" ] && grep -Eq '^\s*real_ip_header\s+X-Forwarded-For;' "$RIP"; then ok "real-ip.conf: real_ip_header X-Forwarded-For"; else falla "real-ip.conf sin real_ip_header X-Forwarded-For"; fi
+if [ -f "$RIP" ] && grep -Eq '^\s*real_ip_recursive\s+off;' "$RIP"; then ok "real-ip.conf: real_ip_recursive off"; else falla "real-ip.conf sin real_ip_recursive off"; fi
+if [ "$(grep -Ec '^\s*include\s+snippets/real-ip\.conf;' "$CONF")" = "1" ]; then ok "default.conf incluye snippets/real-ip.conf una vez"; else falla "default.conf no incluye snippets/real-ip.conf exactamente una vez"; fi
+linea_server="$(grep -nE '^server \{' "$CONF" | head -1 | cut -d: -f1 || true)"
+linea_ri="$(grep -nE '^\s*include\s+snippets/real-ip\.conf;' "$CONF" | head -1 | cut -d: -f1 || true)"
+linea_lim="$(grep -nE '^\s*limit_req\s' "$CONF" | head -1 | cut -d: -f1 || true)"
+if [ -n "$linea_server" ] && [ -n "$linea_ri" ] && [ -n "$linea_lim" ] && [ "$linea_ri" -lt "$linea_server" ] && [ "$linea_server" -lt "$linea_lim" ]; then ok "real-ip.conf va en el contexto http, antes del server y de todo limit_req (M-7a, S6-D97)"; else falla "real_ip debe incluirse dentro de server y antes del primer limit_req (líneas server=${linea_server:-?} real-ip=${linea_ri:-?} limit_req=${linea_lim:-?})"; fi
+mapa="$(awk '/^map[[:space:]]+\$realip_remote_addr[[:space:]]+\$apex_proto[[:space:]]*\{/ { d=1; next } d && /^\}/ { d=0 } d' "$RIP")"
+if grep -Eq '^map\s+\$realip_remote_addr\s+\$apex_proto\s*\{' "$RIP"; then ok "real-ip.conf: map \$realip_remote_addr \$apex_proto (el par TCP real, no el X-Forwarded-For)"; else falla "default.conf sin map \$realip_remote_addr \$apex_proto"; fi
+if grep -Eq "^map[[:space:]]" "$CONF"; then falla "default.conf conserva un map (viven en real-ip.conf, S6-D97)"; else ok "default.conf sin map del protocolo (S6-D97)"; fi
+if grep -Eq "^[[:space:]]*172[.]30[.]0[.]11[[:space:]]+[$]apex_xfp;" "$RIP"; then ok "map apex_proto: la IP de Caddy lleva a apex_xfp"; else falla "map apex_proto sin <ip de Caddy> apex_xfp"; fi
+if grep -Eq '^\s*default\s+http;' <<< "$mapa"; then ok "map \$apex_proto: http por omisión"; else falla "map \$apex_proto sin default http"; fi
+if grep -Eq 'https' <<< "$mapa" || grep -Eq '^map\s+\$http_x_forwarded_proto\s+\$[a-z_]+\s*\{' "$RIP"; then ok "el valor https del map se condiciona a la cabecera exacta X-Forwarded-Proto"; else falla "el map no entrega https"; fi
+if grep -Evh '^\s*#' "$CONF" "$SNIP"/*.conf | grep -q 'http_x_forwarded_proto'; then ok "se lee \$http_x_forwarded_proto (solo se confía si el par es Caddy)"; else falla "nadie lee \$http_x_forwarded_proto"; fi
+if grep -Eq '^\s*proxy_set_header\s+X-Forwarded-Proto\s+\$apex_proto;' "$SNIP/proxy-api.conf"; then ok "proxy-api.conf: X-Forwarded-Proto \$apex_proto"; else falla "proxy-api.conf sin proxy_set_header X-Forwarded-Proto \$apex_proto"; fi
+if grep -Eq '^\s*proxy_set_header\s+X-Forwarded-Proto\s+\$scheme;' "$SNIP/proxy-api.conf"; then falla "proxy-api.conf conserva X-Forwarded-Proto \$scheme (siempre http detrás de Caddy)"; else ok "proxy-api.conf sin X-Forwarded-Proto \$scheme"; fi
+if grep -Eq '^\s*proxy_set_header\s+X-Forwarded-For\s+\$remote_addr;' "$SNIP/proxy-api.conf"; then ok "proxy-api.conf: X-Forwarded-For \$remote_addr (ya es la IP real tras real_ip)"; else falla "proxy-api.conf sin X-Forwarded-For \$remote_addr"; fi
+if grep -rEiq 'strict-transport-security' "$DIR"; then falla "HSTS en infra/nginx/ (solo lo pone Caddy, M-8)"; else ok "sin HSTS en infra/nginx/ (M-8)"; fi
+NGINX_T_RIP="$PREPARA && nginx -t"
+if tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$NGINX_T_RIP" > /dev/null 2>&1 && [ -f "$RIP" ]; then ok "nginx -t acepta la configuración con real-ip.conf"; else falla "nginx -t rechaza la configuración con real-ip.conf (o falta el archivo)"; fi
+
+# Funcional con Nginx real y un upstream falso que devuelve lo que recibió. Caso A: el par TCP (127.0.0.1)
+# ES Caddy (el contenedor sustituye la IP por defecto por 127.0.0.1 en la configuración). Caso B: la
+# configuración tal cual (el par NO es Caddy).
+FALSO_RIP="$(mktemp -d)"
+cat > "$FALSO_RIP/upstream-falso.conf" <<'CONF'
+server {
+    listen 127.0.0.1:8000;
+    location / {
+        default_type text/plain;
+        return 200 "XFF=$http_x_forwarded_for PROTO=$http_x_forwarded_proto";
+    }
+}
+CONF
+cat > "$FALSO_RIP/realip.sh" <<'RIPSH'
+q() { # etiqueta -- argumentos de curl
+  etiqueta="$1"; shift
+  r="$(curl -s "$@" http://127.0.0.1/api/v1/members)"; printf '%s %s\n' "$etiqueta" "$r"
+}
+q T1 -H 'X-Forwarded-For: 203.0.113.9' -H 'X-Forwarded-Proto: https'
+q T2 -H 'X-Forwarded-For: 6.6.6.6, 203.0.113.9' -H 'X-Forwarded-Proto: https'
+q T3 -H 'X-Forwarded-For: 203.0.113.9' -H 'X-Forwarded-Proto: http'
+q T4 -H 'X-Forwarded-For: 203.0.113.9'
+q T5 -H 'X-Forwarded-For: 203.0.113.9' -H 'X-Forwarded-Proto: javascript:alert(1)'
+q T6
+for i in $(seq 1 45); do
+  curl -s -o /dev/null -w 'RL9 %{http_code}\n' -X POST -H 'X-Forwarded-For: 203.0.113.9' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1/api/v1/auth/login
+done
+curl -s -o /dev/null -w 'RL10 %{http_code}\n' -X POST -H 'X-Forwarded-For: 203.0.113.10' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1/api/v1/auth/login
+RIPSH
+base_rip="$PREPARA && cp /tmp/n/upstream-falso.conf /etc/nginx/conf.d/upstream-falso.conf"
+caso_a="$base_rip && sed -i 's/172[.]30[.]0[.]11/127.0.0.1/g' /etc/nginx/conf.d/default.conf /etc/nginx/snippets/*.conf && nginx && sleep 0.3 && sh /tmp/n/realip.sh; nginx -s quit; sleep 0.3"
+caso_b="$base_rip && nginx && sleep 0.3 && sh /tmp/n/realip.sh; nginx -s quit; sleep 0.3"
+sal_a="$(tar -c -C "$DIR" default.conf snippets -C "$FALSO_RIP" upstream-falso.conf realip.sh | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$caso_a" 2>&1 | tr -d '\r' || true)"
+sal_b="$(tar -c -C "$DIR" default.conf snippets -C "$FALSO_RIP" upstream-falso.conf realip.sh | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$caso_b" 2>&1 | tr -d '\r' || true)"
+rm -rf "$FALSO_RIP"
+linea_de() { grep "^$2 " <<< "$1" | head -1 || true; }
+esperar() { # salida etiqueta esperado descripcion
+  local got
+  got="$(linea_de "$1" "$2")"
+  if [ "$got" = "$2 $3" ]; then ok "funcional: $4"; else falla "funcional: $4 (obtenido '${got:-<nada>}', esperado '$2 $3')"; fi
+}
+esperar "$sal_a" T1 "XFF=203.0.113.9 PROTO=https" "desde la IP de Caddy, X-Forwarded-For 203.0.113.9 llega al upstream como 203.0.113.9 y el protocolo https"
+esperar "$sal_a" T2 "XFF=203.0.113.9 PROTO=https" "desde Caddy con un X-Forwarded-For de varios saltos solo cuenta el último (real_ip_recursive off)"
+esperar "$sal_a" T3 "XFF=203.0.113.9 PROTO=http" "desde Caddy con X-Forwarded-Proto http el protocolo es http"
+esperar "$sal_a" T4 "XFF=203.0.113.9 PROTO=http" "desde Caddy sin X-Forwarded-Proto el protocolo es http"
+esperar "$sal_a" T5 "XFF=203.0.113.9 PROTO=http" "desde Caddy un X-Forwarded-Proto distinto de https se descarta (http)"
+esperar "$sal_a" T6 "XFF=127.0.0.1 PROTO=http" "desde Caddy sin X-Forwarded-For la IP es la del par"
+esperar "$sal_b" T1 "XFF=127.0.0.1 PROTO=http" "desde otra IP, X-Forwarded-For y X-Forwarded-Proto del cliente se ignoran (IP del par, http)"
+esperar "$sal_b" T2 "XFF=127.0.0.1 PROTO=http" "desde otra IP un X-Forwarded-For de varios saltos tampoco cuenta"
+esperar "$sal_b" T4 "XFF=127.0.0.1 PROTO=http" "desde otra IP sin X-Forwarded-Proto el protocolo es http"
+n429_a="$(grep -c '^RL9 429$' <<< "$sal_a" || true)"
+if [ "$n429_a" -ge 1 ] && grep -q '^RL10 \(200\|502\)$' <<< "$sal_a"; then ok "funcional: el limitador cuenta al cliente real (203.0.113.9 recibe $n429_a 429 y 203.0.113.10 sigue pasando)"; else falla "funcional: el limitador no separa a los clientes reales detrás de Caddy (429 del primero: $n429_a; segundo: '$(grep '^RL10' <<< "$sal_a" || true)')"; fi
+if grep -q '^RL10 429$' <<< "$sal_b"; then ok "funcional: sin Caddy de confianza el X-Forwarded-For no separa clientes (el par es el mismo)"; else falla "funcional: desde otra IP el segundo cliente no debía librarse del limitador (X-Forwarded-For ignorado)"; fi
 
 echo "test_nginx_conf: $fallas fallas"
 [ "$fallas" -eq 0 ]

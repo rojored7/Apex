@@ -53,6 +53,14 @@ for svc in $SERVICIOS; do
     worker)
       prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_.*|BACKUP_SIGN_KEY[A-Z_]*|BACKUP_AGE_.*|BACKUP_VERIFY_.*)$'  # S5-B13: la PUBKEY es de worker
       ;;
+    web)
+      # Rojo S6-W0-4 (S6-D65): web nunca ve las variables del emisor ni del dominio de Caddy.
+      prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_.*|BACKUP_.*|APEX_TLS_.*|APEX_ACME_.*|APEX_HSTS_.*)$'
+      ;;
+    caddy)
+      # Rojo S6-W0-4: todo salvo sus cinco variables (APEX_DOMAIN, APEX_TLS_ISSUER, APEX_ACME_EMAIL, APEX_ACME_CA, APEX_HSTS_MAX_AGE).
+      prohibidos='^(POSTGRES_.*|APEX_[A-Z_]*_DB_PASSWORD|DATABASE_URL|RCLONE_.*|BACKUP_.*|SMTP_.*|TELEGRAM_.*|OPENBAO_.*|S3_.*|JWT_.*|CRYPTO_.*)$'
+      ;;
     *)
       prohibidos='^(POSTGRES_PASSWORD|APEX_[A-Z_]*_DB_PASSWORD|RCLONE_.*|BACKUP_SIGN_.*|BACKUP_AGE_.*|BACKUP_VERIFY_.*)$'
       ;;
@@ -93,7 +101,7 @@ done
 #   SMTP_*, TELEGRAM_*  : solo `api` y `worker` (con SMTP_PASSWORD y TELEGRAM_BOT_TOKEN presentes);
 #   OPENBAO_TOKEN_FILE  : solo `api`, `worker` y `tools`;
 #   web, db, backup, migrate, dbsetup: ninguna de ellas. Solo se imprimen NOMBRES.
-SERVICIOS_ESTATICOS="${SERVICIOS_ESTATICOS:-api worker tools web db backup migrate dbsetup}"
+SERVICIOS_ESTATICOS="${SERVICIOS_ESTATICOS:-api worker tools web db backup migrate dbsetup caddy}"  # S6-W0-4: caddy
 
 nombres_de_config() { # servicio -> NOMBRES de su bloque `environment` en `compose config`
   printf '%s\n' "$config_render" | awk -v svc="$1" '
@@ -168,11 +176,25 @@ if [ -n "${config_render:-}" ]; then
     else
       ok "$svc: sin S3_SECRET_ACCESS_KEY"
     fi
-    if printf '%s\n' "$nombres" | grep -qE '^(APEX_CADDY_IP|APEX_TLS_ISSUER|APEX_ACME_EMAIL|APEX_ACME_CA|APEX_HSTS_MAX_AGE|TLS_PORT)$'; then
+    # Rojo S6-W0-4 (S6-D65): las de Caddy solo en `caddy` (APEX_DOMAIN, APEX_TLS_ISSUER, APEX_ACME_EMAIL,
+    # APEX_ACME_CA, APEX_HSTS_MAX_AGE); APEX_CADDY_IP solo en `web` y `caddy`; TLS_PORT en ninguno
+    # (solo la interpola Compose).
+    if [ "$svc" = "caddy" ]; then
+      for v in APEX_DOMAIN APEX_TLS_ISSUER APEX_ACME_EMAIL APEX_ACME_CA APEX_HSTS_MAX_AGE; do
+        if printf '%s\n' "$nombres" | grep -qx "$v"; then ok "caddy: recibe $v"; else falla "caddy: no recibe $v (S6-D64)"; fi
+      done
+    elif printf '%s\n' "$nombres" | grep -qE '^(APEX_TLS_ISSUER|APEX_ACME_EMAIL|APEX_ACME_CA|APEX_HSTS_MAX_AGE|TLS_PORT)$'; then
       falla "$svc recibe variables de Caddy que no le tocan"
     else
       ok "$svc: sin variables de Caddy"
     fi
+    if [ "$svc" != "web" ] && [ "$svc" != "caddy" ] && printf '%s\n' "$nombres" | grep -qx 'APEX_CADDY_IP'; then
+      falla "$svc recibe APEX_CADDY_IP (solo web y caddy)"
+    else
+      ok "$svc: APEX_CADDY_IP solo donde toca"
+    fi
+    if [ "$svc" = "web" ] && ! printf '%s\n' "$nombres" | grep -qx 'APEX_CADDY_IP'; then falla "web no recibe APEX_CADDY_IP (paso 28)"; fi
+    if [ "$svc" = "web" ] && printf '%s\n' "$nombres" | grep -qE '^APEX_TLS_'; then falla "web recibe APEX_TLS_* (S6-D65)"; fi
   done
 fi
 

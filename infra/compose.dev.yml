@@ -68,6 +68,17 @@ services:
     build:
       network: host
 
+  caddy:
+    # Solo desarrollo y solo con --profile tls (S6-D48, D77): CA interna de Caddy para el host
+    # apex.localhost (el emisor `internal` nunca se usa con un dominio real). HTTPS en el bucle local,
+    # 127.0.0.1:8443; web conserva su puerto 8180. La raíz de la CA sale del volumen caddy_data.
+    #   docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml --profile tls up -d caddy
+    environment:
+      APEX_DOMAIN: apex.localhost:8443
+      APEX_TLS_ISSUER: internal
+    ports:
+      - "127.0.0.1:8443:8443"
+
   backup:
     # E9 (S4B-W0-3): sin dbsetup en desarrollo no existe apex_backup; usa al propietario.
     environment:

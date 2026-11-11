@@ -58,6 +58,22 @@ assert_exit 0 "test_openbao_infra en verde" bash "$RUN"
 assert_log_has "script test_openbao_infra"
 printf '#!/usr/bin/env bash\nexit 1\n' > scripts/ci/test_openbao_infra.sh
 assert_nonzero "test_openbao_infra en rojo falla" bash "$RUN"
+# Rojo S6-W0-4 (paso 31): infra/caddy/tests/test_caddyfile.sh corre y un fallo detiene la suite.
+rm -f scripts/ci/test_openbao_infra.sh
+mkdir -p infra/caddy/tests scripts/ci
+printf '#!/usr/bin/env bash\necho "script test_caddyfile" >> "%s"\nexit 0\n' "$STUB_LOG" > infra/caddy/tests/test_caddyfile.sh
+clear_log
+assert_exit 0 "test_caddyfile en verde" bash "$RUN"
+assert_log_has "script test_caddyfile"
+printf '#!/usr/bin/env bash\nexit 1\n' > infra/caddy/tests/test_caddyfile.sh
+assert_nonzero "test_caddyfile en rojo falla" bash "$RUN"
+# tls-smoke.sh no es un gate de run-gates (necesita Docker y el stack): no se invoca.
+printf '#!/usr/bin/env bash\nexit 0\n' > infra/caddy/tests/test_caddyfile.sh
+printf '#!/usr/bin/env bash\necho "script tls-smoke" >> "%s"\nexit 0\n' "$STUB_LOG" > scripts/ci/tls-smoke.sh
+clear_log
+assert_exit 0 "run-gates con tls-smoke.sh presente" bash "$RUN"
+assert_log_lacks "script tls-smoke"
+rm -rf infra
 rm -rf scripts
 
 # Con uv que falla en la cobertura termina distinto de 0.

@@ -11,6 +11,8 @@
 # toca) y comprueba que web tiene la IP fija de TRUSTED_PROXIES.
 # S4B-W0-1: tras el seed levanta backup y hace una corrida real con claves de prueba.
 # S4B-W0-3: sin perfil no se listan migrate ni dbsetup; los dos --env-file (.env y .env.ops).
+# S6-W0-4 (S6-D63, D64): sin el perfil tls no existe caddy; con SMOKE_TLS=1 se levanta con --profile tls (CA
+# interna, apex.localhost:8443), se sondea por dentro (`exec -T web wget`) y corre scripts/ci/tls-smoke.sh.
 # S4A-W0-2: con api healthy levanta worker (sin perfil), exige healthy y 0 reinicios tras
 # 30 s, corre `--run-once expirations` dos veces y compara el id de las dos `--status`.
 set -euo pipefail
@@ -76,6 +78,14 @@ if ! "${DC[@]}" --profile openbao config --services | tr -d '' | grep -qx openb
   echo "compose-smoke: openbao no existe con el perfil openbao" >&2; exit 1
 fi
 echo "compose-smoke: openbao solo existe con el perfil openbao"
+# S6-W0-4: caddy solo existe con el perfil tls (y existe con él).
+if printf '%s\n' "$servicios" | grep -qx caddy; then
+  echo "compose-smoke: caddy aparece sin el perfil tls" >&2; exit 1
+fi
+if ! "${DC[@]}" --profile tls config --services | tr -d '\r' | grep -qx caddy; then
+  echo "compose-smoke: caddy no existe con el perfil tls" >&2; exit 1
+fi
+echo "compose-smoke: caddy solo existe con el perfil tls"
 "${DC[@]}" build api
 "${DC[@]}" up -d --build db db_test
 esperar_healthy db 120
@@ -219,5 +229,16 @@ if [ -f web/Dockerfile ] && [ -f scripts/ci/web-smoke.sh ]; then
   bash scripts/ci/web-smoke.sh
   # US-038: cabeceras de seguridad y CSP con nonce contra el stack construido.
   [ -f scripts/smoke/headers.sh ] && bash scripts/smoke/headers.sh
+fi
+# S6-W0-4: perfil tls de desarrollo (SMOKE_TLS=1). web conserva su puerto; Caddy escucha el 8443 de
+# APEX_DOMAIN=apex.localhost:8443 y se publica en 127.0.0.1:8443. La sonda del api va por dentro de web.
+if [ "${SMOKE_TLS:-0}" = "1" ]; then
+  DC+=(--profile tls)
+  "${DC[@]}" up -d caddy
+  esperar_healthy caddy 90
+  salud="$("${DC[@]}" exec -T web wget -qO- http://127.0.0.1/api/v1/health 2> /dev/null | tr -d '\r' || true)"
+  case "$salud" in *'"db": "ok"'*|*'"db":"ok"'*) echo "compose-smoke: /api/v1/health por dentro de web (wget) con db ok" ;; *) echo "compose-smoke: /api/v1/health por dentro de web sin db ok: $salud" >&2; exit 1 ;; esac
+  bash scripts/ci/tls-smoke.sh --dc "${DC[*]}"
+  "${DC[@]}" stop caddy > /dev/null 2>&1 || true
 fi
 echo "compose-smoke: verde en $(( $(date +%s) - inicio ))s"

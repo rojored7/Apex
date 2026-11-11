@@ -18,11 +18,12 @@ Uso: wave0-gate.sh <slice> [archivos de prueba de Python...]
 
   1. bash -n de cada .sh bajo infra/, scripts/ci/, scripts/workflow/ y scripts/dev/
   2. scripts/ci: test_check_key_files, test_images_pinned, test_nginx_conf,
-     test_compose_config, test_infra_scripts, test_openbao_infra y test_api_image.sh apex-api:local
+     test_compose_config, test_infra_scripts, test_openbao_infra, infra/caddy/tests/test_caddyfile.sh
+     (S6-W0-4; caddy validate en un contenedor desechable) y test_api_image.sh apex-api:local
   3. docker compose config --quiet (con .env y .env.ops, o los dos ejemplos): compose.yml, con
      --profile tools, con compose.verify.yml, con compose.dev.yml, con compose.dev.yml + prod-init y,
      si existe compose.openbao.yml, con el overlay, con --profile bootstrap y con compose.dev.yml +
-     --profile openbao
+     --profile openbao; si existe compose.tls.yml, --profile tls con el overlay y con compose.dev.yml
   4. exec scripts/workflow/slice-gate.sh architecture [archivos...]  (escribe el sello)
 
 Ejemplo: wave0-gate.sh W0-1 tests/core/test_env_example.py tests/core/test_config.py
@@ -53,6 +54,11 @@ for prueba in test_check_key_files test_images_pinned test_nginx_conf test_compo
     bash "scripts/ci/$prueba.sh" || fallo "$prueba"
   fi
 done
+# S6-W0-4 (S6-D64): el Caddyfile se valida con la imagen fijada, sin tocar ningún proyecto de Compose.
+if [ -f infra/caddy/tests/test_caddyfile.sh ]; then
+  echo "wave0-gate: [$SLICE] test_caddyfile"
+  bash infra/caddy/tests/test_caddyfile.sh || fallo "test_caddyfile"
+fi
 if [ "${WAVE0_SKIP_IMAGE:-0}" != "1" ] && [ -f scripts/ci/test_api_image.sh ]; then
   echo "wave0-gate: [$SLICE] test_api_image apex-api:local"
   bash scripts/ci/test_api_image.sh apex-api:local || fallo "test_api_image"
@@ -74,10 +80,13 @@ combos=(
   "-f infra/compose.yml -f infra/compose.openbao.yml"
   "--profile bootstrap -f infra/compose.yml"
   "--profile openbao -f infra/compose.yml -f infra/compose.dev.yml"
+  "--profile tls -f infra/compose.yml -f infra/compose.tls.yml"
+  "--profile tls -f infra/compose.yml -f infra/compose.dev.yml"
 )
 for c in "${combos[@]}"; do
   case "$c" in *compose.verify.yml*) [ -f infra/compose.verify.yml ] || continue ;; esac
   case "$c" in *compose.openbao.yml*|*"--profile bootstrap"*|*"--profile openbao"*) [ -f infra/compose.openbao.yml ] || continue ;; esac
+  case "$c" in *compose.tls.yml*) [ -f infra/compose.tls.yml ] || continue ;; esac
   echo "wave0-gate: [$SLICE] docker compose $c config --quiet"
   # shellcheck disable=SC2086
   BACKUP_VERIFY_IDENTITY_FILE="$TMP_ID" docker compose "${ENVF[@]}" $c config --quiet || fallo "docker compose $c config --quiet"

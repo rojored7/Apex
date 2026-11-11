@@ -1,0 +1,14 @@
+# Overlay del perfil `tls` (S6-D64, EP-20): Caddy publica 80 y 443 y `web` deja de publicar puertos,
+# de modo que Nginx solo se alcanza desde Caddy por la red del stack. Se apila sobre compose.yml:
+#   docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.tls.yml --profile tls up -d
+# En deploy.sh: DEPLOY_COMPOSE_EXTRA="-f infra/compose.tls.yml --profile tls" (docs/operacion/tls.md).
+# Puertos: HTTP por WEB_PORT (80 por omisión) y HTTPS por TLS_PORT (443 por omisión); ensayar en la misma
+# máquina con WEB_PORT=8280 y TLS_PORT=8443 en .env.ops. El emisor `internal` no se fija aquí (S6-D77).
+services:
+  caddy:
+    ports:
+      - "${WEB_PORT:-80}:80"
+      - "${TLS_PORT:-443}:${TLS_PORT:-443}"
+
+  web:
+    ports: !override []

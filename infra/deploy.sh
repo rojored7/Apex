@@ -25,6 +25,14 @@
 # acepta el 503 de un api SELLADO (db y migrations en ok) y lo explica, porque un OpenBao sellado tras
 # un reinicio es un estado esperado: se desella a mano (docs/operacion/openbao.md).
 #
+# Sprint 6 (S6-D63, D64, D82): DEPLOY_COMPOSE_EXTRA admite también `-f infra/compose.tls.yml` y
+# `--profile tls` (perfil de Caddy, docs/operacion/tls.md). Con el perfil, web ya no publica WEB_PORT:
+# la sonda de salud va por dentro (`exec -T web wget`), caddy debe quedar healthy (si no, es un fallo
+# como un api sin salud) y su entorno se revisa solo por nombres. Si APEX_CADDY_IP (en .env.ops) difiere
+# de 172.30.0.11, se renderiza infra/nginx/snippets/real-ip.conf.in a <DEPLOY_STATE_DIR>/real-ip.conf
+# (modo 644, fuera del árbol) y se exporta APEX_REAL_IP_CONF a todos los comandos compose; nunca se
+# escribe dentro de infra/.
+#
 # Variables: DEPLOY_STATE_DIR (por omisión ${XDG_STATE_HOME:-$HOME/.local/state}/apex-deploy,
 # FUERA del repositorio para no ensuciar el árbol), DEPLOY_HEALTH_TIMEOUT (segundos; por omisión
 # el de .env.ops o 120), DEPLOY_SKIP_BUILD=1 (usa las imágenes ya construidas si su etiqueta
@@ -43,15 +51,34 @@ main() {
   local REF="" EXPECT_SHA="" KEK_FILE="" NO_BACKUP=0 UNSIGNED_OK=0
   local ENV_FILE=.env OPS_FILE=.env.ops
   local DC=(docker compose --env-file "$ENV_FILE" --env-file "$OPS_FILE" -f infra/compose.yml)
-  # DEPLOY_COMPOSE_EXTRA: archivos compose adicionales, p. ej. infra/compose.verify.yml (identidad de verificacion).
-  local extra
-  # Sin expansión de comodines y con lista blanca: hoy solo infra/compose.verify.yml.
+  # DEPLOY_COMPOSE_EXTRA: archivos compose adicionales y el perfil tls (identidad de verificación; Caddy).
+  local extra want="" TLS_PROFILE=0 TLS_OVERLAY=0
+  local EXTRA_MSG="DEPLOY_COMPOSE_EXTRA solo admite infra/compose.verify.yml, infra/compose.tls.yml (con o sin -f) y --profile tls"
+  # Sin expansión de comodines y con lista blanca de palabras exactas (nada se interpreta con shell).
   set -f
   for extra in ${DEPLOY_COMPOSE_EXTRA:-}; do
-    [ "$extra" = "infra/compose.verify.yml" ] || { printf 'deploy: ERROR DEPLOY_COMPOSE_EXTRA solo admite infra/compose.verify.yml\n' >&2; exit 2; }
-    DC+=(-f "$extra")
+    case "$want" in
+      f)
+        case "$extra" in
+          infra/compose.verify.yml) DC+=(-f "$extra") ;;
+          infra/compose.tls.yml) DC+=(-f "$extra"); TLS_OVERLAY=1 ;;
+          *) printf 'deploy: ERROR %s\n' "$EXTRA_MSG" >&2; exit 2 ;;
+        esac
+        want=""; continue ;;
+      profile)
+        [ "$extra" = "tls" ] || { printf 'deploy: ERROR %s\n' "$EXTRA_MSG" >&2; exit 2; }
+        DC+=(--profile tls); TLS_PROFILE=1; want=""; continue ;;
+    esac
+    case "$extra" in
+      -f) want=f ;;
+      --profile) want=profile ;;
+      infra/compose.verify.yml) DC+=(-f "$extra") ;;
+      infra/compose.tls.yml) DC+=(-f "$extra"); TLS_OVERLAY=1 ;;
+      *) printf 'deploy: ERROR %s\n' "$EXTRA_MSG" >&2; exit 2 ;;
+    esac
   done
   set +f
+  [ -z "$want" ] || { printf 'deploy: ERROR %s\n' "$EXTRA_MSG" >&2; exit 2; }
 
   local RESTORE_TO=""
   log() { printf 'deploy: %s\n' "$*"; }
@@ -213,6 +240,32 @@ main() {
   local WEB_PORT TIMEOUT
   WEB_PORT="$(valor "$OPS_FILE" WEB_PORT)"; WEB_PORT="${WEB_PORT:-80}"
   [[ "$WEB_PORT" =~ ^[0-9]{1,5}$ ]] || die2 "WEB_PORT en $OPS_FILE no es un número"
+  # S6-D82: IP de Caddy (solo IPv4 limpia: se interpola en real-ip.conf; vacía = la de fábrica).
+  local DEFAULT_CADDY_IP="172.30.0.11" CADDY_IP octeto
+  CADDY_IP="$(valor "$OPS_FILE" APEX_CADDY_IP)"; CADDY_IP="${CADDY_IP:-$DEFAULT_CADDY_IP}"
+  # Octetos sin ceros a la izquierda: sed los interpolaría tal cual y Nginx no confiaría en Caddy (revisión W0-4).
+  [[ "$CADDY_IP" =~ ^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}$ ]] || die2 "APEX_CADDY_IP en $OPS_FILE debe ser una dirección IPv4 sin máscara ni ceros a la izquierda (valor: $CADDY_IP)"
+  # S6-D96: Caddy escucha el puerto que trae APEX_DOMAIN y compose.tls.yml publica TLS_PORT en ese mismo puerto.
+  local APEX_DOMAIN_VAL TLS_PORT_VAL
+  APEX_DOMAIN_VAL="$(valor "$ENV_FILE" APEX_DOMAIN)"
+  TLS_PORT_VAL="$(valor "$OPS_FILE" TLS_PORT)"; TLS_PORT_VAL="${TLS_PORT_VAL:-443}"
+  if [ "$TLS_OVERLAY" -eq 1 ] && [[ "$APEX_DOMAIN_VAL" == *:* ]] && [ "${APEX_DOMAIN_VAL##*:}" != "$TLS_PORT_VAL" ]; then
+    die2 "APEX_DOMAIN trae el puerto ${APEX_DOMAIN_VAL##*:} y TLS_PORT en $OPS_FILE es $TLS_PORT_VAL: deben coincidir (S6-D96)"
+  fi
+  # Sin puerto en APEX_DOMAIN, Caddy escucha el 443 dentro del contenedor: TLS_PORT debe ser 443 (revisión W0-4).
+  if [ "$TLS_OVERLAY" -eq 1 ] && [ -n "$APEX_DOMAIN_VAL" ] && [[ "$APEX_DOMAIN_VAL" != *:* ]] && [ "$TLS_PORT_VAL" != "443" ]; then
+    die2 "APEX_DOMAIN no lleva puerto, así que Caddy escucha el 443: TLS_PORT en $OPS_FILE debe ser 443 (es $TLS_PORT_VAL; S6-D96)"
+  fi
+  # La CA interna solo sirve para *.localhost: con un dominio real, APEX_TLS_ISSUER=internal dejaría un
+  # panel que ningún navegador acepta (revisión W0-4). Solo se revisa el nombre del valor, nunca correos.
+  local TLS_ISSUER_VAL
+  TLS_ISSUER_VAL="$(valor "$OPS_FILE" APEX_TLS_ISSUER)"
+  if [ "$TLS_OVERLAY" -eq 1 ] && [ -n "$APEX_DOMAIN_VAL" ] && [ "${TLS_ISSUER_VAL:-internal}" = "internal" ] && [[ "${APEX_DOMAIN_VAL%%:*}" != *.localhost ]]; then
+    die2 "APEX_TLS_ISSUER=internal solo vale para hosts *.localhost; con APEX_DOMAIN=${APEX_DOMAIN_VAL%%:*} ponga el correo ACME en $OPS_FILE (docs/operacion/tls.md)"
+  fi
+  for octeto in ${CADDY_IP//./ }; do
+    [ "$((10#$octeto))" -le 255 ] || die2 "APEX_CADDY_IP en $OPS_FILE no es una dirección IPv4 válida (valor: $CADDY_IP)"
+  done
   TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-$(valor "$OPS_FILE" DEPLOY_HEALTH_TIMEOUT)}"; TIMEOUT="${TIMEOUT:-120}"
   [[ "$TIMEOUT" =~ ^[0-9]{1,4}$ ]] || die2 "DEPLOY_HEALTH_TIMEOUT debe ser un número de segundos"
   [[ -z "${DEPLOY_NOW:-}" || "${DEPLOY_NOW:-}" =~ ^[0-9]{8}-[0-9]{6}$ ]] || die2 "DEPLOY_NOW debe tener la forma AAAAMMDD-HHMMSS"
@@ -254,6 +307,14 @@ main() {
     log "CRYPTO_PROVIDER=openbao: se apila infra/compose.openbao.yml"
   fi
 
+  if [ "$TLS_OVERLAY" -eq 1 ]; then
+    [ -f infra/compose.tls.yml ] || die2 "DEPLOY_COMPOSE_EXTRA pide infra/compose.tls.yml pero $REF no lo trae"
+  fi
+  local RIP_TEMPLATE=infra/nginx/snippets/real-ip.conf.in
+  if [ "$CADDY_IP" != "$DEFAULT_CADDY_IP" ]; then
+    [ -f "$RIP_TEMPLATE" ] || die2 "APEX_CADDY_IP difiere de $DEFAULT_CADDY_IP pero $REF no trae $RIP_TEMPLATE"
+  fi
+
   "${DC[@]}" config -q || die2 "docker compose config -q rechaza la configuración"
 
   [ -n "$("${DC[@]}" ps --status running -q db 2> /dev/null | tr -d '\r')" ]     || die2 "el servicio db no está en marcha: este script actualiza un servidor ya instalado (instalar-en-servidor.md)"
@@ -270,6 +331,17 @@ main() {
   NOW="${DEPLOY_NOW:-$(date +%Y%m%d-%H%M%S)}"
   STATE_DIR="${DEPLOY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/apex-deploy}"
   ( umask 077; mkdir -p "$STATE_DIR" )
+
+  # S6-D82: con otra IP de Caddy se renderiza la plantilla FUERA del árbol (el árbol queda limpio y el
+  # snippet horneado en la imagen no se toca); Compose lo monta encima con APEX_REAL_IP_CONF.
+  if [ "$CADDY_IP" != "$DEFAULT_CADDY_IP" ]; then
+    local RIP_OUT="$STATE_DIR/real-ip.conf"
+    sed "s/__APEX_CADDY_IP__/$CADDY_IP/g" "$RIP_TEMPLATE" > "$RIP_OUT.tmp" || { printf 'deploy: ERROR no se pudo renderizar %s\n' "$RIP_OUT" >&2; exit 1; }
+    chmod 644 "$RIP_OUT.tmp"
+    mv -f "$RIP_OUT.tmp" "$RIP_OUT"
+    export APEX_REAL_IP_CONF="$RIP_OUT"
+    log "real-ip.conf renderizado para APEX_CADDY_IP=$CADDY_IP en $RIP_OUT"
+  fi
 
   local MANIFEST_NAME="(ninguno: se usó --i-know-no-backup)"
   if [ "$NO_BACKUP" -eq 0 ]; then
@@ -383,6 +455,9 @@ main() {
   # S5-D15: curl SIN -f y con el código HTTP aparte, para leer el cuerpo de un 503. Solo 200 y 503
   # cuentan; un 503 es sano únicamente si trae db y migrations en ok (api sellado, no caído).
   local url="http://127.0.0.1:${WEB_PORT}/api/v1/health" body="" waited=0 healthy=0 code=""
+  # Con el perfil tls web no publica puerto: la sonda entra al contenedor (wget de BusyBox; un 503 no
+  # trae cuerpo, así que un api sellado se ve como no sano en este modo, S6-D64).
+  [ "$TLS_PROFILE" -eq 0 ] || url="http://127.0.0.1/api/v1/health (por exec en web)"
   # L2: el archivo temporal del sondeo se borra aunque el script salga por cualquier camino (trap en EXIT).
   PROBE_TMP="$(mktemp)"
   trap 'rm -f "${PROBE_TMP:-}"' EXIT
@@ -390,7 +465,13 @@ main() {
   log "sondeo de $url (hasta ${TIMEOUT} s)"
   while :; do
     # Si curl falla (sin respuesta) la vuelta cuenta como no sana, diga lo que diga el cuerpo.
-    if code="$(curl -sS -o "$probe" -w '%{http_code}' --max-time 5 "$url" 2> /dev/null)"; then
+    if [ "$TLS_PROFILE" -eq 1 ]; then
+      if body="$("${DC[@]}" exec -T web wget -qO- http://127.0.0.1/api/v1/health 2> /dev/null | tr -d '\r')"; then
+        code=200
+      else
+        code=""; body=""
+      fi
+    elif code="$(curl -sS -o "$probe" -w '%{http_code}' --max-time 5 "$url" 2> /dev/null)"; then
       body="$(tr -d '\r' < "$probe")"
     else
       code=""; body=""
@@ -420,8 +501,29 @@ main() {
   local envweb ajenas_web
   envweb="$("${DC[@]}" exec -T web sh -c 'tr "\0" "\n" < /proc/1/environ' 2> /dev/null | tr -d '\r' || true)"
   [ -n "$envweb" ] || fallo_despliegue "no se pudo leer /proc/1/environ de web"
-  ajenas_web="$(printf '%s\n' "$envweb" | cut -d= -f1 | grep -E '^(SMTP_[A-Z_]*|TELEGRAM_[A-Z_]*)$' || true)"
-  [ -z "$ajenas_web" ] || fallo_despliegue "web tiene variables de canales que no le tocan: $(printf '%s' "$ajenas_web" | tr '\n' ' ')"
+  # S6-D65: tampoco las del emisor, la CA ni el HSTS de Caddy.
+  ajenas_web="$(printf '%s\n' "$envweb" | cut -d= -f1 | grep -E '^(SMTP_[A-Z_]*|TELEGRAM_[A-Z_]*|APEX_TLS_[A-Z_]*|APEX_ACME_[A-Z_]*|APEX_HSTS_[A-Z_]*)$' || true)"
+  [ -z "$ajenas_web" ] || fallo_despliegue "web tiene variables que no le tocan (canales o Caddy): $(printf '%s' "$ajenas_web" | tr '\n' ' ')"
+  # S6-D64: con el perfil tls caddy debe quedar healthy (decisión del slice: igual que un api sin salud) y
+  # su entorno solo trae sus cinco variables (APEX_DOMAIN, APEX_TLS_ISSUER, APEX_ACME_EMAIL, APEX_ACME_CA,
+  # APEX_HSTS_MAX_AGE). Solo NOMBRES, nunca valores.
+  local CADDY_NOTE=""
+  if [ "$TLS_PROFILE" -eq 1 ]; then
+    local chealth="" cwait=0 envcaddy ajenas_caddy
+    while :; do
+      chealth="$("${DC[@]}" ps --format '{{.Health}}' caddy 2> /dev/null | tr -d '\r' | head -1 || true)"
+      [ "$chealth" != "healthy" ] || break
+      [ "$cwait" -lt "$TIMEOUT" ] || break
+      sleep 3
+      cwait=$((cwait + 3))
+    done
+    [ "$chealth" = "healthy" ] || fallo_despliegue "caddy no quedó healthy en ${TIMEOUT} s (estado: ${chealth:-desconocido}); web sigue sin puerto publicado: revise docker compose logs caddy"
+    envcaddy="$("${DC[@]}" exec -T caddy sh -c 'tr "\0" "\n" < /proc/1/environ' 2> /dev/null | tr -d '\r' || true)"
+    [ -n "$envcaddy" ] || fallo_despliegue "no se pudo leer /proc/1/environ de caddy"
+    ajenas_caddy="$(printf '%s\n' "$envcaddy" | cut -d= -f1 | grep -E '^(POSTGRES_[A-Z_]*|APEX_[A-Z_]*_DB_PASSWORD|DATABASE_URL|RCLONE_[A-Z_]*|BACKUP_[A-Z_]*|SMTP_[A-Z_]*|TELEGRAM_[A-Z_]*|OPENBAO_[A-Z_]*|S3_[A-Z_]*|JWT_[A-Z_]*|CRYPTO_[A-Z_]*)$' || true)"
+    [ -z "$ajenas_caddy" ] || fallo_despliegue "caddy tiene variables que no le tocan: $(printf '%s' "$ajenas_caddy" | tr '\n' ' ')"
+    CADDY_NOTE="; caddy healthy (perfil tls)"
+  fi
   # DATABASE_URL debe existir en el api y usar su rol: su ausencia también es un fallo.
   if ! printf '%s\n' "$envapi" | grep -q '^DATABASE_URL=postgresql+asyncpg://apex_api:'; then
     fallo_despliegue "el api no usa su rol apex_api en DATABASE_URL"
@@ -441,7 +543,7 @@ main() {
 
   local version
   version="$(printf '%s' "$body" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
-  log "despliegue listo: versión ${version:-$REF} (etiqueta $REF, respaldo previo $MANIFEST_NAME, proveedor de llaves $PROVIDER)"
+  log "despliegue listo: versión ${version:-$REF} (etiqueta $REF, respaldo previo $MANIFEST_NAME, proveedor de llaves $PROVIDER)${CADDY_NOTE}"
 }
 
 main "$@"

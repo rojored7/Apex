@@ -35,6 +35,8 @@
 #     "images"; rollback-<fecha>.txt nombra las etiquetas prev-*, la ruta del manifiesto y la
 #     frase "este script no restaura la base", y no contiene PASSWORD, SECRET ni AGE-SECRET.
 # Fallo esperado en el Rojo: el stub sale con 99.
+# Rojo S6-W0-4 (S6-D63, D64, D82; E11): perfil tls en DEPLOY_COMPOSE_EXTRA, real-ip.conf fuera del árbol y
+# prod-smoke/compose-smoke con el perfil tls (bloques «Rojo S6-W0-4» al final).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -80,6 +82,10 @@ mk_repo() {
   mkdir -p "$R/infra" "$R/state"
   cp "$SRC_DEPLOY" "$R/infra/deploy.sh"
   : > "$R/infra/compose.yml"
+  # Rojo S6-W0-4: el overlay tls y la plantilla de real-ip.conf viajan con la etiqueta (la plantilla es la real).
+  : > "$R/infra/compose.tls.yml"
+  mkdir -p "$R/infra/nginx/snippets"
+  [ ! -f "$ROOT/infra/nginx/snippets/real-ip.conf.in" ] || cp "$ROOT/infra/nginx/snippets/real-ip.conf.in" "$R/infra/nginx/snippets/real-ip.conf.in"
   printf 'ENV=production\nCORS_ORIGINS=https://apex.ejemplo.local\nLOG_LEVEL=INFO\n' > "$R/.env"
   cat > "$R/.env.ops" << 'OPS'
 POSTGRES_USER=apex
@@ -117,7 +123,7 @@ d() {
   RC=0
   OUT="$(cd "$R" && env \
       PATH="$FAKEBIN:$PATH" HOME="$R" \
-      FAKE_DOCKER_LOG="$LOGD" FAKE_GIT_LOG="$LOGG" FAKE_CURL_LOG="$R/curl.log" FAKE_SLEEP_LOG="$R/sleep.log" \
+      FAKE_DOCKER_LOG="$LOGD" FAKE_GIT_LOG="$LOGG" FAKE_CURL_LOG="$R/curl.log" FAKE_DOCKER_UPENV_LOG="$R/upenv.log" FAKE_SLEEP_LOG="$R/sleep.log" \
       FAKE_GIT_REV="$SHA" DEPLOY_NOW="$NOW" DEPLOY_STATE_DIR="$STATE" DEPLOY_HEALTH_TIMEOUT=3 \
       ${extra[@]+"${extra[@]}"} \
       bash infra/deploy.sh "$@" 2>&1)" || RC=$?
@@ -668,6 +674,153 @@ done
 echo "-- L9: deploy.sh escribe el estado y el rollback con umask 077"
 n_umask="$(grep -c 'umask 077' "$SRC_DEPLOY" || true)"
 if [ "$n_umask" -ge 3 ]; then _ok "deploy.sh usa umask 077 al crear carpeta, estado y rollback ($n_umask)"; else _fail "deploy.sh: umask 077 aparece $n_umask veces (se esperaban >= 3)"; fi
+
+
+echo "-- Rojo S6-W0-4 (S6-D63, D64, D82; E11): perfil tls en DEPLOY_COMPOSE_EXTRA"
+# Contrato (lo implementa el Verde, paso 29): DEPLOY_COMPOSE_EXTRA admite, además de infra/compose.verify.yml,
+# `-f infra/compose.tls.yml` y `--profile tls` (la forma de tls.md). Con el perfil tls `web` ya no publica
+# WEB_PORT: la sonda de /health es `docker compose ... exec -T web wget -qO- http://127.0.0.1/api/v1/health`
+# (no curl al puerto del anfitrión), se consulta el estado de `caddy` con `compose ... ps` y el aviso final
+# dice si `caddy` quedó healthy ("caddy no quedó healthy" si no). Las variables prohibidas de web suman
+# APEX_TLS_*; las de caddy son todo salvo sus cinco (APEX_DOMAIN, APEX_TLS_ISSUER, APEX_ACME_EMAIL,
+# APEX_ACME_CA, APEX_HSTS_MAX_AGE); solo NOMBRES, nunca valores.
+TLS_EXTRA="-f infra/compose.tls.yml --profile tls"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "perfil tls: sale con 0" 0 "$RC"
+assert_contains "perfil tls: config -q apila compose.tls.yml" "$(grep ' config -q' "$LOGD" || true)" "-f infra/compose.tls.yml"
+assert_contains "perfil tls: config -q lleva --profile tls" "$(grep ' config -q' "$LOGD" || true)" "--profile tls"
+assert_contains "perfil tls: up -d apila compose.tls.yml" "$(grep ' up -d' "$LOGD" || true)" "-f infra/compose.tls.yml"
+assert_contains "perfil tls: up -d lleva --profile tls" "$(grep ' up -d' "$LOGD" || true)" "--profile tls"
+assert_contains "perfil tls: la sonda es exec web wget a /api/v1/health" "$(cat "$LOGD")" "web wget -qO- http://127.0.0.1/api/v1/health"
+assert_lacks "perfil tls: la sonda no usa curl al puerto del anfitrión" "$(cat "$R/curl.log" 2> /dev/null || true)" "127.0.0.1:8480"
+assert_contains "perfil tls: consulta el estado de caddy con ps" "$(grep -E ' ps .*caddy' "$LOGD" || true)" "caddy"
+if grep -Eiq 'caddy.*healthy' <<< "$OUT" && ! grep -Fq "caddy no quedó healthy" <<< "$OUT"; then _ok "perfil tls: el aviso final dice que caddy quedó healthy"; else _fail "perfil tls: el aviso final no dice que caddy quedó healthy"; fi
+mk_repo; d -- $(buenos)
+assert_lacks "sin perfil tls: la sonda sigue siendo curl al puerto publicado" "$(cat "$LOGD")" "web wget"
+assert_contains "sin perfil tls: curl al puerto de .env.ops" "$(cat "$R/curl.log" 2> /dev/null || true)" "127.0.0.1:8480/api/v1/health"
+assert_eq "sin perfil tls: no consulta a caddy" "" "$(grep -E ' ps .*caddy' "$LOGD" || true)"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" FAKE_DOCKER_CADDY_HEALTH=unhealthy -- $(buenos)
+assert_contains "perfil tls con caddy unhealthy: lo dice (caddy no quedó healthy)" "$OUT" "caddy no quedó healthy"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" FAKE_CURL_BODY='{"status":"degraded","db":"ok","migrations":"mismatch"}' -- $(buenos)
+assert_eq "perfil tls con salud en mismatch (por wget): sale con 1" 1 "$RC"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=--profile otro" -- $(buenos)
+assert_eq "DEPLOY_COMPOSE_EXTRA con otro perfil: 2" 2 "$RC"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=-f infra/compose.otro.yml --profile tls" -- $(buenos)
+assert_eq "DEPLOY_COMPOSE_EXTRA con otro overlay junto al perfil tls: 2" 2 "$RC"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=-f infra/compose.tls.yml --profile tls;touch x" -- $(buenos)
+assert_eq "DEPLOY_COMPOSE_EXTRA con inyección: 2" 2 "$RC"
+assert_eq "DEPLOY_COMPOSE_EXTRA con inyección: no se ejecutó nada" "" "$(docker_sin_version)"
+mk_repo; d FAKE_DOCKER_WEB_ENV="APEX_TLS_ISSUER=emisor-secreto-web-123" -- $(buenos)
+assert_eq "web con APEX_TLS_ISSUER: sale con 1" 1 "$RC"
+assert_contains "nombra APEX_TLS_ISSUER" "$OUT" "APEX_TLS_ISSUER"
+assert_lacks "no imprime el valor" "$OUT" "emisor-secreto-web-123"
+mk_repo; d FAKE_DOCKER_WEB_ENV="APEX_TLS_FUTURA=x" -- $(buenos)
+assert_eq "web con cualquier APEX_TLS_*: sale con 1" 1 "$RC"
+mk_repo; d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" FAKE_DOCKER_CADDY_ENV="APEX_DOMAIN=apex.ejemplo.test APEX_TLS_ISSUER=internal APEX_ACME_EMAIL= APEX_ACME_CA= APEX_HSTS_MAX_AGE=300" -- $(buenos)
+assert_eq "caddy con solo sus cinco variables: sale con 0" 0 "$RC"
+assert_contains "deploy.sh lee /proc/1/environ de caddy" "$(cat "$LOGD")" "exec -T caddy"
+for v in POSTGRES_PASSWORD APEX_API_DB_PASSWORD DATABASE_URL S3_SECRET_ACCESS_KEY OPENBAO_TOKEN_FILE SMTP_PASSWORD TELEGRAM_BOT_TOKEN BACKUP_SIGN_PUBKEY RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY JWT_PRIVATE_KEY_PATH CRYPTO_PROVIDER; do
+  mk_repo; d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" FAKE_DOCKER_CADDY_ENV="APEX_DOMAIN=apex.ejemplo.test $v=valor-secreto-caddy-123" -- $(buenos)
+  assert_eq "caddy con $v: sale con 1" 1 "$RC"
+  assert_contains "caddy con $v: nombra la variable" "$OUT" "$v"
+  assert_lacks "caddy con $v: no imprime el valor" "$OUT" "valor-secreto-caddy-123"
+done
+mk_repo; d FAKE_DOCKER_CADDY_ENV="POSTGRES_PASSWORD=valor-secreto-caddy-123" -- $(buenos)
+assert_eq "sin perfil tls no se inspecciona a caddy (no existe): 0" 0 "$RC"
+
+echo "-- S6-D96: APEX_DOMAIN con puerto y TLS_PORT deben coincidir"
+mk_repo; set_var .env APEX_DOMAIN apex.localhost:8443; set_var .env.ops TLS_PORT 8443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_DOMAIN con puerto 8443 y TLS_PORT=8443: sale con 0" 0 "$RC"
+mk_repo; set_var .env APEX_DOMAIN apex.localhost:8443; set_var .env.ops TLS_PORT 443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_DOMAIN con puerto 8443 y TLS_PORT=443: sale con 2" 2 "$RC"
+assert_contains "el mensaje nombra TLS_PORT" "$OUT" "TLS_PORT"
+mk_repo; set_var .env APEX_DOMAIN apex.ejemplo.test; set_var .env.ops APEX_TLS_ISSUER admin@ejemplo.test; set_var .env.ops TLS_PORT 443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_DOMAIN sin puerto con correo ACME y TLS_PORT=443: sale con 0" 0 "$RC"
+# Revisión de seguridad de W0-4: sin puerto en APEX_DOMAIN, TLS_PORT debe ser 443 (Caddy escucha el 443 dentro).
+mk_repo; set_var .env APEX_DOMAIN apex.ejemplo.test; set_var .env.ops APEX_TLS_ISSUER admin@ejemplo.test; set_var .env.ops TLS_PORT 8443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_DOMAIN sin puerto y TLS_PORT=8443: sale con 2" 2 "$RC"
+assert_contains "el mensaje nombra TLS_PORT y 443" "$OUT" "443"
+# Revisión de seguridad de W0-4: internal solo con *.localhost.
+mk_repo; set_var .env APEX_DOMAIN apex.ejemplo.test; set_var .env.ops APEX_TLS_ISSUER internal; set_var .env.ops TLS_PORT 443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_TLS_ISSUER=internal con dominio real: sale con 2" 2 "$RC"
+assert_contains "el mensaje nombra APEX_TLS_ISSUER" "$OUT" "APEX_TLS_ISSUER"
+assert_lacks "el mensaje no imprime el correo" "$OUT" "admin@ejemplo.test"
+mk_repo; set_var .env APEX_DOMAIN apex.localhost:8443; set_var .env.ops APEX_TLS_ISSUER internal; set_var .env.ops TLS_PORT 8443
+d "DEPLOY_COMPOSE_EXTRA=$TLS_EXTRA" -- $(buenos)
+assert_eq "APEX_TLS_ISSUER=internal con apex.localhost: sale con 0" 0 "$RC"
+mk_repo; set_var .env APEX_DOMAIN apex.ejemplo.test; set_var .env.ops APEX_TLS_ISSUER internal
+d -- $(buenos)
+assert_eq "sin el overlay tls, internal con dominio real no se revisa: sale con 0" 0 "$RC"
+
+echo "-- Rojo S6-W0-4 (S6-D82, E11, O5): real-ip.conf renderizado fuera del árbol"
+# Con APEX_CADDY_IP distinta de 172.30.0.11 (en .env.ops), deploy.sh renderiza
+# infra/nginx/snippets/real-ip.conf.in con sed a ${DEPLOY_STATE_DIR}/real-ip.conf (modo 644, idempotente) y
+# pasa APEX_REAL_IP_CONF a `compose ... up`. Con la IP por defecto no escribe nada ni exporta la variable.
+# Nunca toca infra/ (los chequeos de árbol limpio de deploy.sh siguen pasando): el árbol de la copia de
+# prueba no cambia. El modo 644 no se prueba aquí (el `stat` es falso y el sistema de archivos del equipo no
+# guarda modos): lo comprueba el ensayo y deploy_e2e.sh en Linux.
+arbol_infra() { (cd "$R" && find infra -type f -print0 | sort -z | xargs -0 cksum); }
+# Revisión de seguridad de W0-4: octetos con ceros a la izquierda no son una IP limpia para el sed.
+mk_repo; set_var .env.ops APEX_CADDY_IP 172.030.0.11
+caso_2 "APEX_CADDY_IP con ceros a la izquierda (172.030.0.11)" -- $(buenos)
+mk_repo; set_var .env.ops APEX_CADDY_IP 172.31.2.11
+antes="$(arbol_infra)"; d -- $(buenos)
+assert_eq "APEX_CADDY_IP=172.31.2.11: sale con 0" 0 "$RC"
+RIP_OUT="$STATE/real-ip.conf"
+if [ -f "$RIP_OUT" ]; then _ok "escribe \${DEPLOY_STATE_DIR}/real-ip.conf"; else _fail "no escribe \${DEPLOY_STATE_DIR}/real-ip.conf"; fi
+rip_txt="$(cat "$RIP_OUT" 2> /dev/null || true)"
+assert_contains "real-ip.conf: set_real_ip_from con la IP de Caddy y /32" "$rip_txt" "set_real_ip_from 172.31.2.11/32;"
+assert_lacks "real-ip.conf: sin el marcador sin sustituir" "$rip_txt" "__APEX_CADDY_IP__"
+assert_lacks "real-ip.conf: sin la IP por defecto" "$rip_txt" "172.30.0.11"
+if [ -f "$R/infra/nginx/snippets/real-ip.conf.in" ] && [ "$(sed 's/__APEX_CADDY_IP__/172.31.2.11/g' "$R/infra/nginx/snippets/real-ip.conf.in")" = "$rip_txt" ]; then _ok "real-ip.conf es la plantilla .in con la IP sustituida"; else _fail "real-ip.conf no es infra/nginx/snippets/real-ip.conf.in con la IP sustituida (¿falta la plantilla?)"; fi
+assert_contains "up -d recibe APEX_REAL_IP_CONF apuntando al archivo renderizado" "$(cat "$R/upenv.log" 2> /dev/null || true)" "APEX_REAL_IP_CONF=$RIP_OUT"
+assert_eq "el árbol infra/ de la copia de prueba no cambia (git status --porcelain vacío)" "$antes" "$(arbol_infra)"
+cksum_1="$(cksum "$RIP_OUT" 2> /dev/null || true)"
+d -- $(buenos)
+assert_eq "segunda corrida (idempotente): sale con 0" 0 "$RC"
+assert_eq "segunda corrida: el archivo renderizado es el mismo" "$cksum_1" "$(cksum "$RIP_OUT" 2> /dev/null || true)"
+mk_repo
+d -- $(buenos)
+if [ ! -e "$STATE/real-ip.conf" ]; then _ok "con la IP por defecto (sin APEX_CADDY_IP) no escribe real-ip.conf"; else _fail "con la IP por defecto escribe real-ip.conf"; fi
+assert_lacks "con la IP por defecto up -d no recibe APEX_REAL_IP_CONF" "$(grep -v 'sin definir' "$R/upenv.log" 2> /dev/null || true)" "APEX_REAL_IP_CONF="
+mk_repo; set_var .env.ops APEX_CADDY_IP 172.30.0.11
+d -- $(buenos)
+if [ ! -e "$STATE/real-ip.conf" ]; then _ok "APEX_CADDY_IP=172.30.0.11 (el valor por defecto) tampoco escribe nada"; else _fail "APEX_CADDY_IP=172.30.0.11 escribe real-ip.conf"; fi
+for malo in "172.31.2.11;rm" "no-es-una-ip" "172.31.2.300" "172.31.2.11/32" ""; do
+  mk_repo; set_var .env.ops APEX_CADDY_IP "$malo"
+  if [ -z "$malo" ]; then
+    d -- $(buenos)
+    assert_eq "APEX_CADDY_IP vacía = valor por defecto: sale con 0" 0 "$RC"
+  else
+    caso_2 "APEX_CADDY_IP=$malo (no es una IPv4)" -- $(buenos)
+    assert_contains "APEX_CADDY_IP=$malo: el mensaje nombra la variable" "$OUT" "APEX_CADDY_IP"
+  fi
+done
+assert_contains "deploy.sh usa la plantilla real-ip.conf.in" "$(cat "$SRC_DEPLOY")" "real-ip.conf.in"
+assert_contains "deploy.sh exporta APEX_REAL_IP_CONF" "$(cat "$SRC_DEPLOY")" "APEX_REAL_IP_CONF"
+if grep -nE '(>|tee)[[:space:]]+"?[^ ]*infra/nginx' "$SRC_DEPLOY" > /dev/null; then _fail "deploy.sh escribe dentro de infra/nginx"; else _ok "deploy.sh no escribe dentro de infra/nginx"; fi
+
+echo "-- Rojo S6-W0-4: prod-smoke.sh y compose-smoke.sh aceptan el perfil tls (sonda interna)"
+smk_tls="$(cat "$ROOT/scripts/ci/prod-smoke.sh")"
+assert_contains "prod-smoke.sh acepta --tls" "$smk_tls" "--tls)"
+assert_contains "prod-smoke.sh apila infra/compose.tls.yml" "$smk_tls" "compose.tls.yml"
+assert_contains "prod-smoke.sh levanta con --profile tls" "$smk_tls" "--profile tls"
+assert_contains "prod-smoke.sh sondea por dentro (exec web wget)" "$smk_tls" "web wget"
+assert_contains "prod-smoke.sh fija APEX_CADDY_IP dentro de su subred" "$smk_tls" "APEX_CADDY_IP"
+assert_contains "prod-smoke.sh renderiza real-ip.conf en un temporal propio" "$smk_tls" "real-ip.conf.in"
+assert_contains "prod-smoke.sh corre tls-smoke.sh con --tls" "$smk_tls" "tls-smoke.sh"
+rc=0; salida="$(SMOKE_DIR="$ROOT/docs" bash "$ROOT/scripts/ci/prod-smoke.sh" --tls 2>&1)" || rc=$?
+assert_eq "prod-smoke --tls con SMOKE_DIR inválido: sale con 2 (la opción se acepta)" 2 "$rc"
+assert_contains "prod-smoke --tls: el 2 es por SMOKE_DIR" "$salida" "SMOKE_DIR"
+assert_lacks "prod-smoke --tls: no es una opción desconocida" "$salida" "argumento desconocido"
+csmk="$(cat "$ROOT/scripts/ci/compose-smoke.sh")"
+assert_contains "compose-smoke.sh acepta el perfil tls" "$csmk" "--profile tls"
+assert_contains "compose-smoke.sh sondea por dentro (exec web wget)" "$csmk" "web wget"
 
 echo "  resumen: $PASSES ok, $FAILS fallas"
 echo "test_deploy_script: $FAILS fallas"

@@ -12,12 +12,13 @@
 #   - la imagen de Nginx de scripts/ci/test_nginx_conf.sh (toda mención `nginx:<tag>`);
 #   - cada `image:` de .github/workflows/ci.yml (L2 de la revisión de Fase 4 del Sprint 3),
 #     y el digest de `postgres:16` de ese archivo debe ser el de infra/compose.yml.
+# Rojo S6-W0-4: caddy (compose.yml y CI) y alpine (tls-smoke.sh y CI) por digest con fecha (bloque al final).
 # Renovación: docs/RUNBOOK.md, sección 7. Con un argumento, revisa esa raíz en lugar del
 # repositorio (para probar el script sobre una copia).
 set -euo pipefail
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
 }
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
@@ -174,6 +175,54 @@ for rel in infra/compose.yml infra/compose.openbao.yml; do
     ok "$rel no nombra mailpit ni telegram-fake"
   fi
 done
+
+
+# Rojo S6-W0-4 (S6-D63, D64, D83; paso 27): Caddy y alpine por digest con fecha (consulta del 2026-11-11,
+# cuaderno de W0-1). `caddy` va en infra/compose.yml (el bucle de `image:` de arriba ya le exige fecha y
+# comando de renovación) y en la CI por `docker pull`; `alpine:3.22` solo en scripts/ci/tls-smoke.sh y en la CI.
+CADDY_REF='caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9'
+ALPINE_REF='alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f'
+rel=infra/compose.yml
+if [ -f "$ROOT/$rel" ] && grep -qE "^[[:space:]]*image:[[:space:]]*$CADDY_REF" "$ROOT/$rel"; then
+  ok "$rel trae $CADDY_REF"
+else
+  falla "$rel" "$rel sin image: $CADDY_REF"
+fi
+for rel in infra/compose.yml infra/compose.dev.yml infra/compose.tls.yml .github/workflows/ci.yml scripts/ci/tls-smoke.sh; do
+  [ -f "$ROOT/$rel" ] || continue
+  sueltas="$(grep -nE '(^|[^A-Za-z0-9/_-])caddy:[0-9A-Za-z._-]+' "$ROOT/$rel" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF "$CADDY_REF" | grep -vE 'caddy:[a-z_]+$' || true)"
+  if [ -z "$sueltas" ]; then ok "$rel: toda mención de caddy:<tag> lleva el digest fijado"; else falla "$rel" "$rel con caddy:<tag> sin el digest fijado: $sueltas"; fi
+done
+rel=scripts/ci/tls-smoke.sh
+if existe "$rel"; then
+  menciones=0
+  while IFS=: read -r n resto; do
+    sin_sangria="${resto#"${resto%%[![:space:]]*}"}"
+    case "$sin_sangria" in
+      '#'*) continue ;;
+    esac
+    while read -r ref; do
+      [ -n "$ref" ] || continue
+      menciones=$((menciones + 1))
+      if [ "$ref" = "$ALPINE_REF" ]; then revisa "$rel" "$n" "$ref"; else falla "$rel" "$rel:$n $ref no es $ALPINE_REF"; fi
+    done < <(printf '%s\n' "$resto" | grep -oE 'alpine:[A-Za-z0-9._-]+(@sha256:[0-9a-f]+)?' || true)
+  done < <(grep -nE 'alpine:[A-Za-z0-9._-]+' "$ROOT/$rel" || true)
+  [ "$menciones" -gt 0 ] || falla "$rel" "$rel sin imagen alpine:3.22 por digest (S6-D63)"
+  if grep -Eq 'openssl=3\.5\.9-r0' "$ROOT/$rel"; then ok "$rel fija openssl=3.5.9-r0 (S6-D83)"; else falla "$rel" "$rel sin apk add openssl=3.5.9-r0 (S6-D83)"; fi
+fi
+rel=.github/workflows/ci.yml
+for par in "caddy:$CADDY_REF" "alpine:$ALPINE_REF"; do
+  nombre="${par%%:*}"; ref="${par#*:}"
+  if grep -qE "docker pull[^#]*$ref" "$ROOT/$rel" 2> /dev/null; then
+    ok "$rel descarga $nombre por digest (docker pull)"
+  else
+    falla "$rel" "$rel sin docker pull de $ref"
+  fi
+done
+# El job `images` corre tls-smoke.sh con el stack de la CI y con el modo LAN (S6-D63, paso 29).
+if grep -qE 'bash scripts/ci/tls-smoke\.sh' "$ROOT/$rel" 2> /dev/null; then ok "$rel corre scripts/ci/tls-smoke.sh"; else falla "$rel" "$rel no corre scripts/ci/tls-smoke.sh"; fi
+if grep -qE 'bash scripts/ci/tls-smoke\.sh[^#]*--lan' "$ROOT/$rel" 2> /dev/null; then ok "$rel corre tls-smoke.sh --lan"; else falla "$rel" "$rel no corre tls-smoke.sh --lan"; fi
+if grep -qE 'bash infra/caddy/tests/test_caddyfile\.sh' "$ROOT/$rel" 2> /dev/null; then ok "$rel corre infra/caddy/tests/test_caddyfile.sh"; else falla "$rel" "$rel no corre infra/caddy/tests/test_caddyfile.sh"; fi
 
 if [ "$fallas" -gt 0 ]; then
   echo "test_images_pinned: $fallas fallas en$archivos_con_falla"

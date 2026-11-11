@@ -293,6 +293,11 @@ jobs:
         # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`;
         # para renovarlo, docs/RUNBOOK.md §7.
         run: docker pull openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+      - name: imágenes de Caddy y alpine por digest (S6-D63, D83)
+        # Los mismos digests que infra/compose.yml y scripts/ci/tls-smoke.sh (2026-11-11); renovar según docs/RUNBOOK.md §7.
+        run: |
+          docker pull caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9
+          docker pull alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
       # test_compose_config.sh lee el JSON de `docker compose config` con el Python del api.
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
@@ -351,6 +356,8 @@ jobs:
         run: |
           bash scripts/ci/test_nginx_conf.sh
           bash scripts/ci/test_compose_config.sh
+          # S6-W0-4: caddy validate del Caddyfile con la imagen fijada (contenedor desechable).
+          bash infra/caddy/tests/test_caddyfile.sh
       - name: smoke de Compose
         if: steps.img.outputs.smoke == 'true'
         run: |
@@ -367,9 +374,20 @@ jobs:
           dbcid="$(docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml ps -q db)"
           proyecto="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$dbcid")"
           E2E_ALLOW_PROJECT="$proyecto" bash infra/tests/restore_e2e.sh
+      - name: TLS híbrido con la CA interna de Caddy y modo LAN (S6-D63, P-TLS)
+        # Con el stack del smoke arriba (web en 8180): Caddy de desarrollo (apex.localhost:8443, emisor internal)
+        # y las comprobaciones de tls-smoke.sh desde contenedores alpine desechables; luego el modo LAN
+        # (sin Caddy: sin HSTS y por HTTP). Sin credenciales.
+        if: steps.img.outputs.smoke == 'true'
+        run: |
+          DC="docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml"
+          $DC --profile tls up -d --no-build caddy
+          bash scripts/ci/tls-smoke.sh --dc "$DC --profile tls"
+          $DC --profile tls stop caddy
+          bash scripts/ci/tls-smoke.sh --dc "$DC" --lan
       - name: bajar el stack del smoke
         if: always() && steps.img.outputs.smoke == 'true'
-        run: docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml down -v --remove-orphans
+        run: docker compose --env-file .env --env-file .env.ops -f infra/compose.yml -f infra/compose.dev.yml --profile tls down -v --remove-orphans
 
   e2e-stack:
     # S2-W0-1 (US-068 DevOps, S2-D52): Playwright (proyecto stack) contra el stack de
@@ -540,10 +558,14 @@ jobs:
         # `docker buildx imagetools inspect openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f`;
         # para renovarlo, docs/RUNBOOK.md §7.
         run: docker pull openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
-      - name: humo de producción (apex-smoke, con OpenBao)
+      - name: imágenes de Caddy y alpine por digest (S6-D63, D83)
+        run: |
+          docker pull caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9
+          docker pull alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
+      - name: humo de producción (apex-smoke, con OpenBao y el perfil tls)
         env:
           CI: "1"
-        run: bash scripts/ci/prod-smoke.sh --provider openbao
+        run: bash scripts/ci/prod-smoke.sh --provider openbao --tls
       - name: logs del stack
         if: failure()
         run: docker compose -p apex-smoke logs --tail 200 || true

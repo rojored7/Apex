@@ -15,6 +15,8 @@
 # volúmenes, read_only, tmpfs /tmp, cap_drop ALL, no-new-privileges, healthcheck por latido y
 # depends_on de db y api healthy; ningún servicio de producción monta código vivo; en desarrollo
 # worker y tools montan api/src y api/migrations en solo lectura.
+# Rojo S6-W0-4 (S6-D64, D82; M-7, L-6): servicio caddy con perfil tls, compose.tls.yml, perfil tls en desarrollo,
+# cap_drop ALL en los once servicios y el bind de real-ip.conf (bloque al final).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -66,6 +68,19 @@ IGNORA_SEED="$(git check-ignore -q .env.seed && echo si || echo no)"
 IGNORA_SEED_EJEMPLO="$(git check-ignore -q .env.seed.example && echo si || echo no)"
 IGNORA_OPS="$(git check-ignore -q .env.ops && echo si || echo no)"
 IGNORA_OPS_EJEMPLO="$(git check-ignore -q .env.ops.example && echo si || echo no)"
+
+# Rojo S6-W0-4 (S6-D64, D82, M-7, L-6; paso 27): caddy con perfil tls, compose.tls.yml, perfil tls en
+# desarrollo, cap_drop en los once servicios y el bind de real-ip.conf. Los renders que dependen de
+# archivos que aun no existen (compose.tls.yml) caen a "{}" y las aserciones fallan una por una.
+TLS_PROF="$(docker compose "${ENVS[@]}" --profile tls -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
+TLS_OVL="$(docker compose "${ENVS[@]}" --profile tls -f infra/compose.yml -f infra/compose.tls.yml config --format json 2>/dev/null || echo "{}")"
+TLS_OVL_PUERTOS="$(WEB_PORT=8280 TLS_PORT=8443 docker compose "${ENVS[@]}" --profile tls -f infra/compose.yml -f infra/compose.tls.yml config --format json 2>/dev/null || echo "{}")"
+TLS_DEV="$(WEB_PORT=8180 docker compose "${ENVS[@]}" --profile tls -f infra/compose.yml -f infra/compose.dev.yml config --format json 2>/dev/null || echo "{}")"
+TODOS_PERFILES="$(docker compose "${ENVS[@]}" --profile '*' -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
+REAL_IP_FUERA="$(APEX_REAL_IP_CONF=/tmp/apex-real-ip/real-ip.conf docker compose "${ENVS[@]}" -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
+CADDY_IP_ENSAYO="$(APEX_SUBNET=172.31.2.0/24 APEX_IP_RANGE=172.31.2.128/25 APEX_WEB_IP=172.31.2.10 APEX_CADDY_IP=172.31.2.11 docker compose "${ENVS[@]}" --profile tls -f infra/compose.yml config --format json 2>/dev/null || echo "{}")"
+OPS_EJEMPLO_TEXTO="$(cat .env.ops.example 2>/dev/null || true)"
+export TLS_PROF TLS_OVL TLS_OVL_PUERTOS TLS_DEV TODOS_PERFILES REAL_IP_FUERA CADDY_IP_ENSAYO OPS_EJEMPLO_TEXTO
 
 SU="$SU" BOOT="$BOOT" OVL="$OVL" DEV_OB="$DEV_OB" DEV_AV="$DEV_AV" OVL_YML="$OVL_YML" DEV_INIT="$DEV_INIT" DEV_QUIET="$DEV_QUIET" PROD_SIN_OPS="$PROD_SIN_OPS" PROD_RED="$PROD_RED" RUNBOOK_NO_DEPS="$RUNBOOK_NO_DEPS" VERIFY="$VERIFY" PROD="$PROD" DEV="$DEV" DEV_PERFILES="$DEV_PERFILES" E2E="$E2E" COMPOSE_YML="$COMPOSE_YML" CRUDO="$CRUDO" COMPOSE_VERSION="$COMPOSE_VERSION" IGNORA_SEED="$IGNORA_SEED" IGNORA_SEED_EJEMPLO="$IGNORA_SEED_EJEMPLO" IGNORA_OPS="$IGNORA_OPS" IGNORA_OPS_EJEMPLO="$IGNORA_OPS_EJEMPLO" RAIZ="$ROOT" uv run --directory api --quiet python - <<'EOF'
 import ipaddress
@@ -697,6 +712,104 @@ check(len(cache_web) == 1 and "size=64m" in str(cache_web[0]).split(":", 1)[-1].
 check(list(prod["api"].get("tmpfs") or []) == ["/tmp"], f"S6-D59: tmpfs del api sin cambios, solo /tmp y sin spool de subida ({prod['api'].get('tmpfs')})")
 check(not [v for v in montajes(prod["worker"]) if v.get("source") == "keys" and (v.get("volume") or {}).get("subpath") != "custody"], "S6-D58: ningun montaje de keys del worker sin la subruta custody (nada del JWT visible al worker)")
 check("custody" in texto and "subpath: custody" in texto, "S6-D58: compose.yml declara volume.subpath: custody")
+
+
+# --- Rojo S6-W0-4 (S6-D63, D64, D77, D82; M-7 a..e, L-6, E9, E13, M2) -------------------------------
+tls_prof_doc = json.loads(os.environ["TLS_PROF"])
+tls_prof = tls_prof_doc.get("services", {})
+tls_ovl = json.loads(os.environ["TLS_OVL"]).get("services", {})
+tls_ovl_puertos = json.loads(os.environ["TLS_OVL_PUERTOS"]).get("services", {})
+tls_dev = json.loads(os.environ["TLS_DEV"]).get("services", {})
+todos = json.loads(os.environ["TODOS_PERFILES"]).get("services", {})
+real_ip_fuera = json.loads(os.environ["REAL_IP_FUERA"]).get("services", {})
+caddy_ip_ensayo = json.loads(os.environ["CADDY_IP_ENSAYO"]).get("services", {})
+CADDY_REF = "caddy:2.11.3@sha256:ec18ee54aab3315c22e25f3b2babda73ff8007d39b13b3bd1bfffa2f0444c7d9"
+CINCO_CADDY = {"APEX_DOMAIN", "APEX_TLS_ISSUER", "APEX_ACME_EMAIL", "APEX_ACME_CA", "APEX_HSTS_MAX_AGE"}
+
+
+def publicados(svc):
+    return sorted((str(p.get("host_ip") or ""), str(p.get("published")), str(p.get("target"))) for p in (svc.get("ports") or []))
+
+
+# Sin el perfil tls, caddy no existe en ninguna vista (produccion ni desarrollo).
+check("caddy" not in prod and "caddy" not in dev, "S6-D64: sin el perfil tls no existe el servicio caddy (produccion ni desarrollo)")
+caddy = tls_prof.get("caddy", {})
+check(bool(caddy), "S6-D64: con --profile tls compose.yml define el servicio caddy")
+check(caddy.get("profiles") == ["tls"], f"S6-D64: caddy con profiles [tls] ({caddy.get('profiles')})")
+check(caddy.get("image") == CADDY_REF, f"S6-D64: caddy por digest {CADDY_REF} ({caddy.get('image')})")
+check(caddy.get("read_only") is True, "S6-D64: caddy con read_only")
+check(caddy.get("cap_drop") == ["ALL"], f"S6-D64: caddy con cap_drop ALL ({caddy.get('cap_drop')})")
+check(caddy.get("cap_add") == ["NET_BIND_SERVICE"], f"S6-D64: caddy con cap_add solo NET_BIND_SERVICE ({caddy.get('cap_add')})")
+check("no-new-privileges:true" in (caddy.get("security_opt") or []), f"S6-D64: caddy con no-new-privileges ({caddy.get('security_opt')})")
+caddy_ip_txt = (((caddy.get("networks") or {}).get("default") or {}).get("ipv4_address")) or ""
+check(caddy_ip_txt == "172.30.0.11", f"S6-D64: caddy con ipv4_address 172.30.0.11 por omision ({caddy_ip_txt or 'sin IP'})")
+if caddy_ip_txt and subred_txt and rango_txt:
+    cip = ipaddress.ip_address(caddy_ip_txt)
+    check(cip in ipaddress.ip_network(subred_txt) and cip not in ipaddress.ip_network(rango_txt) and caddy_ip_txt != web_ip_txt, "S6-D64: la IP de caddy cae en la subred, fuera del ip_range dinamico y distinta de web")
+else:
+    check(False, "S6-D64: IP de caddy, subred y ip_range definidos")
+ip_ensayo = (((caddy_ip_ensayo.get("caddy") or {}).get("networks") or {}).get("default") or {}).get("ipv4_address")
+check(ip_ensayo == "172.31.2.11", f"S6-D64: APEX_CADDY_IP=172.31.2.11 la sigue caddy ({ip_ensayo})")
+cmont = {v.get("target"): v for v in montajes(caddy)}
+check((cmont.get("/data") or {}).get("source") == "caddy_data" and (cmont.get("/config") or {}).get("source") == "caddy_config", f"S6-D64: caddy monta caddy_data en /data y caddy_config en /config ({sorted(cmont)})")
+cf_mont = cmont.get("/etc/caddy/Caddyfile") or {}
+check(cf_mont.get("read_only") is True and fuente(cf_mont).endswith("infra/caddy/Caddyfile"), f"S6-D64: caddy monta infra/caddy/Caddyfile en solo lectura ({fuente(cf_mont)})")
+check({"caddy_data", "caddy_config"} <= set(tls_prof_doc.get("volumes", {})), "S6-D64: volumenes caddy_data y caddy_config en uso con el perfil tls")
+check(all(f"\n  {v}:" in texto for v in ("caddy_data", "caddy_config")), "S6-D64: compose.yml declara los volumenes caddy_data y caddy_config (lista literal)")
+check((depende(tls_prof, "caddy").get("web")) == "service_healthy", f"S6-D64: caddy depende de web healthy ({depende(tls_prof, 'caddy')})")
+env_caddy = entorno_de(tls_prof, "caddy")
+check(set(env_caddy) == CINCO_CADDY, f"S6-D64: environment de caddy = exactamente las cinco variables ({sorted(env_caddy)})")
+check("env_file" not in tls_prof.get("caddy", {}), "S6-D64: caddy sin env_file")
+check(not (caddy.get("ports") or []), f"S6-D64: sin el overlay compose.tls.yml caddy no publica puertos ({publicados(caddy)})")
+hc_caddy = " ".join(str(x) for x in ((caddy.get("healthcheck") or {}).get("test") or []))
+check("wget" in hc_caddy and "http://127.0.0.1/_caddy_health" in hc_caddy, f"S6-D64/E8: healthcheck de caddy con wget a http://127.0.0.1/_caddy_health ({hc_caddy})")
+check("2019" not in json.dumps(tls_prof.get("caddy", {})), "S6-D64: caddy sin puerto 2019 (admin off)")
+check(not any(k in env_otro for svc, doc in tls_prof.items() if svc not in ("caddy",) for env_otro in [entorno_de(tls_prof, svc)] for k in ("APEX_TLS_ISSUER", "APEX_ACME_EMAIL", "APEX_ACME_CA", "APEX_HSTS_MAX_AGE", "TLS_PORT")), "S6-D65: las variables de Caddy solo en caddy (ningun otro servicio)")
+check("APEX_CADDY_IP" in ent("web") or "APEX_CADDY_IP" in entorno_de(tls_prof, "web"), "S6-D64: web recibe APEX_CADDY_IP en su environment (paso 28)")
+check(not any("APEX_CADDY_IP" in entorno_de(tls_prof, s) for s in tls_prof if s not in ("web", "caddy")), "S6-D65: APEX_CADDY_IP solo en web (y caddy)")
+
+# compose.tls.yml: caddy publica 80 y 443; web ya no publica nada. Sin el overlay, web publica ${WEB_PORT:-80}:80.
+check(publicados(prod["web"]) == [("", "80", "80")], f"S6-D64: sin overlay web publica WEB_PORT:80 ({publicados(prod['web'])})")
+check(bool(tls_ovl.get("caddy")), "S6-D64: compose.tls.yml existe y apila el servicio caddy")
+check(publicados(tls_ovl.get("caddy", {})) == [("", "443", "443"), ("", "80", "80")], f"S6-D64: con compose.tls.yml caddy publica 80 y 443 y nada mas ({publicados(tls_ovl.get('caddy', {}))})")
+check("ports" not in tls_ovl.get("web", {"ports": 1}), "S6-D64: con compose.tls.yml web queda sin puertos (ports: !override [])")
+check(publicados(tls_ovl_puertos.get("caddy", {})) == [("", "8280", "80"), ("", "8443", "8443")], f"S6-D64: WEB_PORT y TLS_PORT mueven los puertos de caddy ({publicados(tls_ovl_puertos.get('caddy', {}))})")
+check(bool(tls_ovl_puertos) and "ports" not in tls_ovl_puertos.get("web", {"ports": 1}), "S6-D64: con otros puertos web sigue sin publicar")
+
+# compose.dev.yml: perfil tls con el dominio y el emisor de desarrollo; web conserva su puerto.
+dcaddy = tls_dev.get("caddy", {})
+check(bool(dcaddy) and dcaddy.get("profiles") == ["tls"], f"S6-D48: compose.dev.yml deja caddy bajo el perfil tls ({dcaddy.get('profiles')})")
+env_dcaddy = entorno_de(tls_dev, "caddy")
+check(env_dcaddy.get("APEX_DOMAIN") == "apex.localhost:8443" and env_dcaddy.get("APEX_TLS_ISSUER") == "internal", f"S6-D48/D77: desarrollo con APEX_DOMAIN=apex.localhost:8443 y APEX_TLS_ISSUER=internal ({env_dcaddy.get('APEX_DOMAIN')} / {env_dcaddy.get('APEX_TLS_ISSUER')})")
+check(publicados(dcaddy) == [("127.0.0.1", "8443", "8443")], f"S6-D48: desarrollo publica solo 127.0.0.1:8443:8443 ({publicados(dcaddy)})")
+check(publicados(tls_dev.get("web", {})) == [("", "8180", "80")], f"S6-D48: en desarrollo web conserva su puerto ({publicados(tls_dev.get('web', {}))})")
+
+# cap_drop: [ALL] en los once servicios (E9, M2, L-6), db con las cinco capacidades de Postgres, nunca NET_RAW.
+ONCE = {"db", "migrate", "dbsetup", "api", "worker", "tools", "backup", "openbao", "openbao-bootstrap", "web", "caddy"}
+check(set(todos) == ONCE, f"M-7c: compose.yml (todos los perfiles) define exactamente los once servicios ({sorted(todos)})")
+sin_drop = sorted(s for s in ONCE if (todos.get(s) or {}).get("cap_drop") != ["ALL"])
+check(not sin_drop, f"M-7c/L-6: cap_drop [ALL] en los once servicios (sin el: {sin_drop or 'ninguno'})")
+check(sorted((todos.get("db") or {}).get("cap_add") or []) == ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"], f"E9: db con cap_drop ALL y cap_add CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID ({(todos.get('db') or {}).get('cap_add')})")
+check(not [s for s, d in todos.items() if "NET_RAW" in (d.get("cap_add") or [])], "M-7c: ningun servicio con NET_RAW")
+check((todos.get("web") or {}).get("cap_add") is not None and sorted((todos.get("web") or {}).get("cap_add") or []) == ["CHOWN", "NET_BIND_SERVICE", "SETGID", "SETUID"], "M-7c: web conserva sus cuatro capacidades")
+
+# real-ip.conf: bind de un solo archivo que gana al horneado (D82); la variable lo saca del arbol.
+def real_ip(svcs):
+    return [v for v in montajes(svcs.get("web", {})) if v.get("target") == "/etc/nginx/snippets/real-ip.conf"]
+
+
+m_ri = real_ip(prod)
+check(len(m_ri) == 1 and m_ri[0].get("read_only") is True and m_ri[0].get("type") == "bind" and fuente(m_ri[0]).endswith("infra/nginx/snippets/real-ip.conf"), f"S6-D82: web monta infra/nginx/snippets/real-ip.conf en /etc/nginx/snippets/real-ip.conf:ro ({[(fuente(v), v.get('read_only')) for v in m_ri]})")
+m_ri2 = real_ip(real_ip_fuera)
+check(len(m_ri2) == 1 and fuente(m_ri2[0]).endswith("apex-real-ip/real-ip.conf") and m_ri2[0].get("read_only") is True, f"S6-D82: APEX_REAL_IP_CONF mueve el origen del bind fuera del arbol ({[fuente(v) for v in m_ri2]})")
+check("${APEX_REAL_IP_CONF:-./nginx/snippets/real-ip.conf}:/etc/nginx/snippets/real-ip.conf:ro" in texto, "S6-D82: compose.yml monta ${APEX_REAL_IP_CONF:-./nginx/snippets/real-ip.conf}:/etc/nginx/snippets/real-ip.conf:ro")
+check(re.search(r"(?m)^#?\s*APEX_REAL_IP_CONF=\s*$", os.environ["OPS_EJEMPLO_TEXTO"]) is not None, ".env.ops.example documenta APEX_REAL_IP_CONF vacia por omision (S6-D82)")
+check("APEX_REAL_IP_CONF" not in ejemplo, "S6-D82: APEX_REAL_IP_CONF no esta en .env.example (la lee solo Compose)")
+
+# D79 (ya desde W0-5): el api no lleva --workers ni UVICORN_WORKERS.
+cmd_api = " ".join(str(x) for x in (prod["api"].get("command") or []))
+check("--workers" not in cmd_api and "UVICORN_WORKERS" not in texto and "UVICORN_WORKERS" not in json.dumps(prod["api"]), f"S6-D79: api sin command con --workers y sin UVICORN_WORKERS ({cmd_api or 'sin command'})")
+check(not any(t == "2019" for _, _, t in publicados(tls_ovl.get("caddy", {}))), "S6-D64: nunca se publica el 2019 de caddy")
 
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

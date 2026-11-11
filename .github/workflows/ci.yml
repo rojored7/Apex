@@ -108,16 +108,25 @@ jobs:
             exit 1
           fi
       - name: OpenBao real para el marcador openbao (S5-D264)
-        # El servicio `openbao` corre en modo -dev con la raíz `apex-ci` (token de CI, sin valor fuera de
-        # este workflow). Se monta `transit`, se crean `apex-kek` (aes256-gcm96) y `apex-sign-audit`
-        # (ed25519) y el token va a un archivo 600, como pide la fixture `openbao_real` (B1.7).
+        # El servicio `openbao` corre en modo -dev con la raíz `apex-ci`, que aquí solo monta `transit`,
+        # crea `apex-kek` (aes256-gcm96) y `apex-sign-audit` (ed25519) y escribe la política `apex-ci`.
+        # Las pruebas usan un token de esa política (no la raíz): cifrado/descifrado/re-envoltura de
+        # apex-kek, lectura de ambas llaves y transit/sign/* y transit/verify/* (S6-D41), solo en este
+        # OpenBao efímero de CI. El token va a un archivo 600, como pide la fixture `openbao_real` (B1.7).
+        # La raíz dev `apex-ci` sigue válida en este mismo servicio (modo -dev, loopback, efímero): el
+        # token de política acota lo que ejercitan las pruebas, no es una frontera de seguridad.
         run: |
           BAO=http://127.0.0.1:8200
           curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"transit"}' "$BAO/v1/sys/mounts/transit"
           curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"aes256-gcm96"}' "$BAO/v1/transit/keys/apex-kek"
           curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X POST -d '{"type":"ed25519"}' "$BAO/v1/transit/keys/apex-sign-audit"
+          cat > "$RUNNER_TEMP/apex-ci-policy.json" << 'JSON'
+          {"policy": "path \"transit/encrypt/apex-kek\" {capabilities = [\"update\"]}\npath \"transit/decrypt/apex-kek\" {capabilities = [\"update\"]}\npath \"transit/rewrap/apex-kek\" {capabilities = [\"update\"]}\npath \"transit/keys/apex-kek\" {capabilities = [\"read\"]}\npath \"transit/keys/apex-sign-audit\" {capabilities = [\"read\"]}\npath \"transit/sign/*\" {capabilities = [\"update\"]}\npath \"transit/verify/*\" {capabilities = [\"update\"]}\n"}
+          JSON
+          curl -fsS -o /dev/null -H "X-Vault-Token: apex-ci" -X PUT --data @"$RUNNER_TEMP/apex-ci-policy.json" "$BAO/v1/sys/policies/acl/apex-ci"
+          TEST_TOKEN="$(curl -fsS -H "X-Vault-Token: apex-ci" -X POST -d '{"policies": ["apex-ci"], "no_default_policy": true, "ttl": "2h"}' "$BAO/v1/auth/token/create" | python3 -c 'import json,sys; print(json.load(sys.stdin)["auth"]["client_token"])')"
           umask 077
-          printf 'apex-ci' > "$RUNNER_TEMP/bao-token"
+          printf '%s' "$TEST_TOKEN" > "$RUNNER_TEMP/bao-token"
           echo "OPENBAO_TEST_ADDR=$BAO" >> "$GITHUB_ENV"
           echo "OPENBAO_TEST_TOKEN_FILE=$RUNNER_TEMP/bao-token" >> "$GITHUB_ENV"
       - name: pruebas con PostgreSQL 16 y cobertura

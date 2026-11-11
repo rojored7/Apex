@@ -1067,6 +1067,13 @@ Guía: `docs/operacion/avisos.md` §11.
 - **`mail_unconfigured` (S5-D231).** El canal de correo está activo en Ajustes pero faltan `SMTP_HOST`/`SMTP_FROM`: los avisos NO se omiten, quedan `pending` y salen cuando se configure el SMTP (se avisa una vez por corrida por Telegram). Si el correo se apaga en Ajustes, en cambio, se omiten con `canal_no_configurado`.
 - **Fila ilegible (S5-D230).** Un aviso cuyo correo cifrado no se abre queda `failed`/`unknown` y acumula intentos hasta 3, sin bloquear a los demás; si pasa con varios socios, revise `crypto.crypto_ops` (`result = 'error'`, `verb = 'decrypt'`) y la llave de la clase `member.email`.
 
+
+### Políticas y tokens de OpenBao en v0.3 (S6-W0-3)
+
+- `apex-worker` firma y verifica con `apex-sign-audit` (`transit/sign/` y `transit/verify/`, `update`); `apex-api` solo verifica; `apex-tools` firma, verifica y lee la llave. Nadie rota, configura, borra, recorta ni exporta `apex-sign-audit`.
+- Instalación existente: `--reissue-tokens` reaplica las cuatro políticas antes de reemitir los tokens y revoca los anteriores; luego `restart api worker` (guía: `docs/operacion/openbao.md`, secciones 6 y 9).
+- Comprobación en vivo: `bash scripts/ci/openbao-smoke.sh` (firma 200, verificación `valid: true`, api no firma 403, tools no rota 403).
+
 ## 14. Firma, llaves por pantalla, adjuntos y TLS (Sprint 6)
 
 Guías para quien opera: `docs/operacion/llaves.md`, `adjuntos.md` y `tls.md` (cada una nace con su slice; las variables nuevas llegan en S6-W0-5). Decisiones: `docs/ddd/DECISIONES.md`, «Sprint 6 · decisiones de implementación»; ADR-006 (firma) y ADR-007 (adjuntos).

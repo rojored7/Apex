@@ -15,8 +15,11 @@
 #   con tres, habilita transit, crea apex-kek y apex-sign-audit, escribe las políticas, emite los
 #   tokens y revoca la raíz.
 # --reissue-tokens: reemite los tokens (rotación cada 90 días o tras un incidente). Pide tres
-#   llaves de desello para generar una raíz temporal, que se revoca al terminar; los tokens
-#   anteriores de apex-api, apex-worker, apex-tools y apex-backup se revocan después de emitir los nuevos.
+#   llaves de desello para generar una raíz temporal, que se revoca al terminar. Primero
+#   REAPLICA las cuatro políticas (apex-api, apex-worker, apex-tools y apex-backup-snapshot) desde /policies:
+#   una instalación existente recibe así las de v0.3 (firma y verificación de apex-sign-audit).
+#   Después emite los tokens nuevos y revoca los anteriores de apex-api, apex-worker, apex-tools y
+#   apex-backup.
 #
 # Las llaves de desello se leen con `read -rs` y viajan por stdin hasta la API (sys/unseal con
 # wget --post-file=/dev/stdin): nunca por argumento, ni en una variable exportada, ni en un
@@ -34,7 +37,7 @@ case "${1:-}" in
   "") ;;
   --first-install) MODE=first ;;
   --reissue-tokens) MODE=reissue ;;
-  -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) echo "bootstrap: opción desconocida (use --first-install o --reissue-tokens)" >&2; exit 2 ;;
 esac
 

@@ -91,9 +91,18 @@ Los tokens son periódicos (768 horas) y cada servicio los renueva solo mientras
    $DC --profile bootstrap run --rm openbao-bootstrap --reissue-tokens
    ```
 
-   Corre en el listener local 8210 (S5-D107). Pide tres llaves con `read -rs`, genera una raíz temporal con ellas, reescribe las políticas, emite los tres tokens y revoca la raíz.
+   Corre en el listener local 8210 (S5-D107). Pide tres llaves con `read -rs`, genera una raíz temporal con ellas, reaplica las cuatro políticas, emite los tokens y revoca la raíz.
 2. Reinicie los servicios que los leen: `$DC restart api worker`. `tools` los toma en su siguiente `run`.
 3. Compruebe `/health` y `$DC logs --tail 30 api`.
+
+
+### Reaplicar políticas en una instalación existente (v0.3)
+
+Al pasar a v0.3 las políticas cambian (firma y verificación de `apex-sign-audit`), pero un OpenBao ya instalado conserva las de v0.2. `--reissue-tokens` las **reaplica antes de reemitir** los tokens y revoca los anteriores, así que es el único paso necesario (la llave `apex-sign-audit` la crea `init-keys --data-class audit.signature`, no el bootstrap):
+
+1. Desselle OpenBao si está sellado (sección 4).
+2. `$DC --profile bootstrap run --rm openbao-bootstrap --reissue-tokens` (reescribe `apex-api`, `apex-worker`, `apex-tools` y `apex-backup-snapshot`, emite los tokens nuevos y revoca los viejos).
+3. `$DC restart api worker`: sin el reinicio siguen con el token revocado.
 
 ## 7. Interruptor de emergencia
 
@@ -139,6 +148,20 @@ bash scripts/dev/openbao-seal.sh unseal      # pide la llave con read -rs
 ```
 
 `dev-entrypoint.sh` inicializa con una sola llave (1/1) y guarda esa llave de desarrollo en el volumen `openbao-dev-data` (modo 600, nunca en el log) para desellar solo en cada arranque. Se niega a correr si `APEX_ENV` no es `dev` y `compose.yml` no lo menciona: no existe en producción. Para empezar de cero: `$DCD down` y `docker volume rm apex_openbao-dev-data`.
+
+
+### Qué puede cada token en v0.3
+
+Mínimo privilegio literal (S6-D6, D41; M-2c): ninguna política concede `rotate`, `config`, `delete`, `trim` ni `export` de `apex-sign-audit`, ni comodines.
+
+| Token | `apex-kek` | `apex-sign-audit` |
+|---|---|---|
+| `apex-api` | cifrar, descifrar | solo verificar (no firma) |
+| `apex-worker` | descifrar | firmar y verificar |
+| `apex-tools` | cifrar, descifrar, leer, rotar, `min_decryption_version` | firmar, verificar y leer la llave (no la rota) |
+| `apex-backup` | nada | nada (solo la instantánea raft) |
+
+`bash scripts/ci/openbao-smoke.sh` lo prueba en vivo: el worker firma (200), el api verifica (`valid: true`), el api no firma (403) y `tools` no rota `apex-sign-audit` (403).
 
 ## 10. Restaurar la instantánea (raft) y `generate-root` (S5-B13)
 

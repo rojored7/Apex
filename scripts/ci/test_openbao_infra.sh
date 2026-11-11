@@ -14,6 +14,8 @@
 #   backup-snapshot = sys/storage/raft/snapshot (read), la única ruta sys/ (S5-D75)
 # Fallo esperado en el Rojo: los scripts son stubs con exit 99 y las políticas están vacías.
 set -euo pipefail
+# Las aserciones con tildes (pol[ií]ticas) necesitan un locale UTF-8; Git Bash en Windows arranca sin él.
+export LC_ALL=C.UTF-8
 
 usage() {
   sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
@@ -81,9 +83,9 @@ pares() {
 }
 
 NL=$'\n'
-esperado_api="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update"
-esperado_worker="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update"
-esperado_tools="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update${NL}transit/keys/apex-kek	read${NL}transit/keys/apex-kek/config	update${NL}transit/keys/apex-kek/rotate	update"
+esperado_api="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update${NL}transit/verify/apex-sign-audit	update"  # Rojo S6-W0-3 (S6-D6, D41): el api solo verifica
+esperado_worker="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/sign/apex-sign-audit	update${NL}transit/verify/apex-sign-audit	update"  # Rojo S6-W0-3: el worker firma y verifica
+esperado_tools="auth/token/renew-self	update${NL}transit/decrypt/apex-kek	update${NL}transit/encrypt/apex-kek	update${NL}transit/keys/apex-kek	read${NL}transit/keys/apex-kek/config	update${NL}transit/keys/apex-kek/rotate	update${NL}transit/keys/apex-sign-audit	read${NL}transit/sign/apex-sign-audit	update${NL}transit/verify/apex-sign-audit	update"  # Rojo S6-W0-3: tools firma, verifica y lee la llave de firma
 esperado_snapshot="sys/storage/raft/snapshot	read"
 
 for par in "apex-api:$esperado_api" "apex-worker:$esperado_worker" "apex-tools:$esperado_tools" "apex-backup-snapshot:$esperado_snapshot"; do
@@ -133,6 +135,31 @@ for nombre in apex-api apex-worker apex-tools apex-backup-snapshot; do
   fi
 done
 
+# Rojo S6-W0-3 (S6-D6, S6-D41, M-2c): aserciones nominales sobre la llave de firma `apex-sign-audit`.
+echo "-- políticas · apex-sign-audit (Rojo S6-W0-3)"
+SIGN=transit/sign/apex-sign-audit
+VERIFY=transit/verify/apex-sign-audit
+caps_de() { pares "$1" | awk -F'	' -v r="$2" '$1 == r { print $2 }'; }
+fw="$POL/apex-worker.hcl"; fa="$POL/apex-api.hcl"; ft="$POL/apex-tools.hcl"
+if [ -f "$fw" ] && [ "$(caps_de "$fw" "$SIGN")" = update ] && [ "$(caps_de "$fw" "$VERIFY")" = update ]; then ok "apex-worker: update en $SIGN y $VERIFY"; else falla "apex-worker sin update en $SIGN y $VERIFY (Rojo S6-W0-3)"; fi
+if [ -f "$fa" ] && [ "$(caps_de "$fa" "$VERIFY")" = update ]; then ok "apex-api: update en $VERIFY"; else falla "apex-api sin update en $VERIFY (Rojo S6-W0-3)"; fi
+if [ -f "$fa" ] && pares "$fa" | cut -f1 | grep -q 'transit/sign/'; then falla "apex-api con una ruta transit/sign/: el api no firma (S6-D6)"; else ok "apex-api no firma (ninguna ruta transit/sign/)"; fi
+if [ -f "$ft" ] && [ "$(caps_de "$ft" "$SIGN")" = update ] && [ "$(caps_de "$ft" "$VERIFY")" = update ] && [ "$(caps_de "$ft" transit/keys/apex-sign-audit)" = read ]; then ok "apex-tools: sign y verify (update) y read en transit/keys/apex-sign-audit"; else falla "apex-tools sin sign, verify y read de la llave de firma (Rojo S6-W0-3)"; fi
+for nombre in apex-api apex-worker apex-tools apex-backup-snapshot; do
+  f="$POL/$nombre.hcl"
+  [ -f "$f" ] || continue
+  # M-2c: ninguna política toca rotate, config, trim, export, backup ni delete de apex-sign-audit.
+  if pares "$f" | cut -f1 | grep -Eq 'apex-sign-audit/'; then falla "$nombre con subruta de apex-sign-audit (rotate, config, trim, export...): M-2c"; else ok "$nombre sin subrutas de apex-sign-audit (rotate, config, trim, export; M-2c)"; fi
+  if pares "$f" | cut -f1 | grep -Eq '^transit/(sign|verify)/[*+]'; then falla "$nombre con comodín en transit/sign o transit/verify"; else ok "$nombre sin comodín en transit/sign ni transit/verify"; fi
+done
+if [ -f "$POL/apex-backup-snapshot.hcl" ] && pares "$POL/apex-backup-snapshot.hcl" | cut -f1 | grep -Eq '^transit/'; then falla "apex-backup-snapshot con rutas transit/"; else ok "apex-backup-snapshot sin rutas transit/"; fi
+for nombre in apex-api apex-worker apex-tools; do
+  f="$POL/$nombre.hcl"
+  [ -f "$f" ] || continue
+  otras="$(pares "$f" | cut -f1 | grep -E '^transit/(sign|verify|keys)/' | grep -vE 'apex-(kek|sign-audit)(/|$)' || true)"
+  if [ -z "$otras" ]; then ok "$nombre: sign/verify/keys solo sobre apex-kek y apex-sign-audit"; else falla "$nombre con sign/verify/keys sobre otra llave: $otras"; fi
+done
+
 # --- bootstrap.sh -----------------------------------------------------------------------------
 echo "-- bootstrap.sh"
 B=$OB/bootstrap.sh
@@ -171,6 +198,21 @@ if [ -f "$B" ]; then
   if tiene "$B" "printf '.033c'"; then ok "bootstrap.sh limpia la terminal tras GUARDADAS (L1)"; else falla "bootstrap.sh no limpia la terminal tras GUARDADAS (L1)"; fi
   if tiene "$B" 'exec .*openbao bao delete sys/generate-root/attempt'; then ok "bootstrap.sh sugiere el comando real para cancelar un intento (exec openbao ... 8210)"; else falla "bootstrap.sh no sugiere 'exec openbao bao delete sys/generate-root/attempt'"; fi
   if tiene "$B" 'volumen de OpenBao vacío: restaurar snapshot'; then ok "bootstrap.sh aborta sin --first-install con 'volumen de OpenBao vacío: restaurar snapshot'"; else falla "bootstrap.sh sin el mensaje 'volumen de OpenBao vacío: restaurar snapshot'"; fi
+  # Rojo S6-W0-3 (S6-D51, S6-D41): apex-sign-audit solo Ed25519, no exportable; --reissue-tokens reaplica las cuatro políticas.
+  if grep -qiE 'ml-?dsa' "$B"; then falla "bootstrap.sh menciona ml-dsa (v0.3 firma con Ed25519; D51)"; else ok "bootstrap.sh sin ml-dsa (D51)"; fi
+  linea_firma="$(codigo "$B" | grep -E 'transit/keys/apex-sign-audit' || true)"
+  if printf '%s' "$linea_firma" | grep -q 'type=ed25519' && printf '%s' "$linea_firma" | grep -q 'exportable=false' && printf '%s' "$linea_firma" | grep -q 'allow_plaintext_backup=false'; then ok "bootstrap.sh: apex-sign-audit ed25519, exportable=false y allow_plaintext_backup=false"; else falla "bootstrap.sh: apex-sign-audit sin type=ed25519, exportable=false y allow_plaintext_backup=false"; fi
+  # La cabecera documenta que --reissue-tokens reaplica las políticas (Verde: comentario de --reissue-tokens).
+  cab_reissue="$(tr -d '\015' < "$B" | sed -n '2,27p' | sed 's/^# \{0,1\}//' | awk '/^--reissue-tokens:/ { d = 1; print; next } d && /^--/ { exit } d && /^[A-Za-z]/ { exit } d { print }')"
+  if printf '%s' "$cab_reissue" | grep -Eiq 'pol[ií]ticas.*(reaplic|reescrib|escrib|aplic)|(reaplic|reescrib|escrib|aplic).*pol[ií]ticas'; then ok "bootstrap.sh: la cabecera de --reissue-tokens dice que reaplica las políticas"; else falla "bootstrap.sh: la cabecera de --reissue-tokens no dice que reaplica las políticas (Rojo S6-W0-3)"; fi
+  for pol in apex-api apex-worker apex-tools apex-backup-snapshot; do
+    if codigo "$B" | grep -E '^for POL in' | grep -q "$pol"; then ok "bootstrap.sh recorre $pol al escribir políticas"; else falla "bootstrap.sh no incluye $pol en el bucle de políticas"; fi
+  done
+  l_bucle="$(linea_de "$B" '^for POL in ')"
+  l_emitir="$(linea_de "$B" '^emitir_token api')"
+  if [ "$l_bucle" -gt 0 ] && [ "$l_emitir" -gt 0 ] && [ "$l_bucle" -lt "$l_emitir" ]; then ok "bootstrap.sh escribe las políticas (línea $l_bucle) antes de emitir tokens (línea $l_emitir), también con --reissue-tokens"; else falla "bootstrap.sh: las políticas (línea $l_bucle) deben escribirse antes de emitir tokens (línea $l_emitir)"; fi
+  # «sin sonda»: el bootstrap no firma ni verifica nada para probar la política.
+  if codigo "$B" | grep -Eq 'transit/(sign|verify)/'; then falla "bootstrap.sh sondea transit/sign o transit/verify (la sonda va en openbao-smoke.sh)"; else ok "bootstrap.sh sin sonda de firma (la prueba es del humo)"; fi
 else
   falla "no existe $B"
 fi
@@ -245,6 +287,73 @@ if tiene "$SMOKE" 'desell|unseal'; then ok "openbao-smoke.sh desella y espera el
 if tiene "$SMOKE" 'run --rm -T worker python -m app.worker.main --run-once expirations'; then ok "openbao-smoke.sh corre el worker --run-once expirations tras el desello (L7)"; else falla "openbao-smoke.sh no corre el worker tras el desello"; fi
 if tiene "$SMOKE" 'CI:-' && tiene "$SMOKE" 'CI definida'; then ok "openbao-smoke.sh: con CI, faltar el admin del humo es FALLA (L7)"; else falla "openbao-smoke.sh no falla con CI y sin admin del humo"; fi
 if tr -d '\015' < "$SMOKE" | grep -Eq 'llega con B1 y B2'; then falla "openbao-smoke.sh aún dice que el estado sellado llega con B1 y B2 (actualizar el comentario)"; else ok "openbao-smoke.sh ya no pospone el estado sellado"; fi
+
+# --- Rojo S6-W0-3 · L-6: cap_drop [ALL] en todos los servicios de la red custody ------------------
+echo "-- compose.yml · custody cap_drop (Rojo S6-W0-3, L-6)"
+COMPOSE_YML=infra/compose.yml
+if [ -f "$COMPOSE_YML" ]; then
+  # Una línea "servicio cap_drop(0|1)" por servicio en custody; openbao-bootstrap comparte la red de openbao (network_mode).
+  resultado="$(tr -d '\015' < "$COMPOSE_YML" | awk '
+    /^services:/ { s = 1; next }
+    /^[a-z]/ { s = 0 }
+    s && /^  [a-z][a-z0-9_-]*:[[:space:]]*$/ { n = $1; sub(/:$/, "", n); orden[++k] = n; next }
+    s && n != "" { blk[n] = blk[n] $0 "\n" }
+    END { for (i = 1; i <= k; i++) { n = orden[i]; b = blk[n]
+      custodia = (b ~ /(^|\n)      - custody[[:space:]]*\n/ || b ~ /network_mode:[[:space:]]*"?service:openbao"?/) ? 1 : 0
+      cd = (b ~ /cap_drop:[[:space:]]*\[[[:space:]]*"?ALL"?[[:space:]]*\]/) ? 1 : 0
+      if (custodia) print n, cd } }')"
+  n_cust="$(printf '%s\n' "$resultado" | grep -c . || true)"
+  if [ "$n_cust" -ge 6 ]; then ok "compose.yml: $n_cust servicios en custody"; else falla "compose.yml: se esperaban al menos 6 servicios en custody y se leyeron $n_cust"; fi
+  while read -r srv cd; do
+    [ -n "$srv" ] || continue
+    if [ "$cd" = 1 ]; then ok "compose.yml: $srv (custody) con cap_drop: [ALL]"; else falla "compose.yml: $srv (custody) sin cap_drop: [ALL] (L-6)"; fi
+  done <<< "$resultado"
+else
+  falla "no existe $COMPOSE_YML"
+fi
+
+# --- Rojo S6-W0-3 · openbao-smoke.sh: cuatro pasos de firma, verificación y 403 ---------------------
+echo "-- openbao-smoke.sh · S6-W0-3 (Rojo)"
+if [ -f "$SMOKE" ]; then
+  for fn in firma_worker_200 verifica_api_valid firma_api_403 rota_tools_403; do
+    if tiene "$SMOKE" "^${fn}\\(\\)"; then ok "openbao-smoke.sh define la función $fn"; else falla "openbao-smoke.sh sin la función $fn (Rojo S6-W0-3)"; fi
+    llamadas="$(codigo "$SMOKE" | grep -Ec "^[[:space:]]*${fn}([[:space:]]|$)" || true)"
+    if [ "$llamadas" -ge 1 ]; then ok "openbao-smoke.sh llama a $fn"; else falla "openbao-smoke.sh no llama a $fn"; fi
+  done
+  # Orden: tras comprobar los tokens (paso 5) y antes del reinicio de openbao (paso 6).
+  l_cuatro="$(linea_de "$SMOKE" '^firma_worker_200[[:space:]]*$')"
+  l_reinicio="$(linea_de "$SMOKE" 'paso "reinicio de openbao"')"
+  if [ "$l_cuatro" -gt 0 ] && [ "$l_reinicio" -gt 0 ] && [ "$l_cuatro" -lt "$l_reinicio" ]; then ok "openbao-smoke.sh corre los pasos de firma antes de reiniciar openbao"; else falla "openbao-smoke.sh: los pasos de firma (línea $l_cuatro) deben ir antes del reinicio (línea $l_reinicio)"; fi
+  if tiene "$SMOKE" 'bao write[^#]*transit/sign/apex-sign-audit[^#]*input='; then ok "openbao-smoke.sh firma con bao write transit/sign/apex-sign-audit input=<b64>"; else falla "openbao-smoke.sh sin 'bao write transit/sign/apex-sign-audit input='"; fi
+  if tiene "$SMOKE" 'bao write[^#]*transit/verify/apex-sign-audit[^#]*signature=' && tiene "$SMOKE" 'valid[^#]*true'; then ok "openbao-smoke.sh verifica con transit/verify y espera valid: true"; else falla "openbao-smoke.sh sin verificación (signature=) con valid: true"; fi
+  if tiene "$SMOKE" 'transit/keys/apex-sign-audit/rotate'; then ok "openbao-smoke.sh intenta rotar apex-sign-audit con el token de tools"; else falla "openbao-smoke.sh no intenta transit/keys/apex-sign-audit/rotate"; fi
+  # cuerpo_de <función>: el cuerpo de una función del humo (de «nombre() {» al «}» de columna 0).
+  cuerpo_de() { tr -d '\015' < "$SMOKE" | awk -v n="$1" 'index($0, n "() {") == 1 { d = 1; next } d && /^}/ { exit } d { print }'; }
+  for fn in firma_api_403 rota_tools_403; do
+    if cuerpo_de "$fn" | grep -q '403' && ! cuerpo_de "$fn" | grep -q 'pendiente del Verde'; then ok "openbao-smoke.sh: $fn comprueba el 403"; else falla "openbao-smoke.sh: $fn no comprueba el 403 (sigue en rojo)"; fi
+  done
+  if cuerpo_de firma_worker_200 | grep -q '200' && ! cuerpo_de firma_worker_200 | grep -q 'pendiente del Verde'; then ok "openbao-smoke.sh: firma_worker_200 comprueba el 200"; else falla "openbao-smoke.sh: firma_worker_200 no comprueba el 200 (sigue en rojo)"; fi
+  if ! cuerpo_de verifica_api_valid | grep -q 'pendiente del Verde' && cuerpo_de verifica_api_valid | grep -q 'valid'; then ok "openbao-smoke.sh: verifica_api_valid comprueba valid"; else falla "openbao-smoke.sh: verifica_api_valid no comprueba valid (sigue en rojo)"; fi
+  if tr -d '\015' < "$SMOKE" | grep -q 'pendiente del Verde'; then falla "openbao-smoke.sh conserva marcas «pendiente del Verde» (Rojo S6-W0-3)"; else ok "openbao-smoke.sh sin marcas de Rojo"; fi
+  # Los tokens se leen del volumen de cada servicio y viajan por el entorno (-e BAO_TOKEN), nunca por argv ni impresos.
+  if tiene "$SMOKE" '/run/apex/openbao/token' && tiene "$SMOKE" 'exec[^#]*-e BAO_TOKEN[^#]*openbao'; then ok "openbao-smoke.sh lee el token del volumen y lo pasa con exec -e BAO_TOKEN"; else falla "openbao-smoke.sh sin lectura del token del volumen ni exec -e BAO_TOKEN"; fi
+  if codigo "$SMOKE" | grep -E '(echo|printf)[^|#]*\$\{?[A-Za-z_]*TOK' | grep -Eq .; then falla "openbao-smoke.sh imprime una variable de token"; else ok "openbao-smoke.sh no imprime variables de token"; fi
+  if codigo "$SMOKE" | grep -Eq 'BAO_TOKEN=[A-Za-z0-9]|X-Vault-Token: *[A-Za-z0-9]|-token[= ]'; then falla "openbao-smoke.sh con un token en argv"; else ok "openbao-smoke.sh sin tokens literales ni -token en argv"; fi
+  if tr -d '\015' < "$SMOKE" | sed -n '2,45p' | grep -q 'apex-sign-audit'; then ok "openbao-smoke.sh documenta los pasos de firma en la cabecera"; else falla "openbao-smoke.sh no documenta los pasos de firma en la cabecera"; fi
+else
+  falla "no existe $SMOKE"
+fi
+
+# --- Rojo S6-W0-3 · ci.yml: la política del token de CI cubre firma y verificación (S5-D264) --------
+echo "-- ci.yml · S6-W0-3 (Rojo)"
+CIYML=.github/workflows/ci.yml
+if [ -f "$CIYML" ]; then
+  if tiene "$CIYML" 'transit/sign/\*'; then ok "ci.yml: la política de apex-ci concede transit/sign/*"; else falla "ci.yml sin transit/sign/* en la política de apex-ci (Rojo S6-W0-3)"; fi
+  if tiene "$CIYML" 'transit/verify/\*'; then ok "ci.yml: la política de apex-ci concede transit/verify/*"; else falla "ci.yml sin transit/verify/* en la política de apex-ci (Rojo S6-W0-3)"; fi
+  if tiene "$CIYML" 'apex-sign-audit'; then ok "ci.yml crea apex-sign-audit"; else falla "ci.yml no crea apex-sign-audit"; fi
+else
+  falla "no existe $CIYML"
+fi
 
 resumen
 [ "$fallas" -eq 0 ]

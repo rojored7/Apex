@@ -148,3 +148,19 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - Rojas: worker sign+verify `update`; api verify; tools sign, verify y `read` de `transit/keys/apex-sign-audit`; cabecera de `--reissue-tokens` sin mención de políticas; cuatro pasos del humo (firma con `bao write ... input=`, verificación con `signature=` y `valid`, intento de `rotate`, lectura de token del volumen con `exec -e BAO_TOKEN`, cuerpos de las cuatro funciones, marcas de Rojo); `ci.yml` sin `transit/sign/*` ni `transit/verify/*`.
 - Verdes de guarda (ya cumplidos, protegen el Verde): sin subrutas ni comodines sobre `apex-sign-audit` (M-2c), api sin `transit/sign/`, `bootstrap.sh` sin `ml-dsa` y con ed25519/exportable=false, bucle de políticas con las cuatro y antes de `emitir_token`, sin sonda en bootstrap, `cap_drop: [ALL]` en los 6 servicios de `custody`.
 - `openbao-smoke.sh`: funciones `firma_worker_200`, `verifica_api_valid`, `firma_api_403`, `rota_tools_403` (stubs que llaman a `falla`) y cabecera 5a-5d, entre los pasos 5 y 6. Ejecución en vivo pendiente del orquestador/Verde (sin Docker aquí).
+
+## W0-3 · Verde
+
+- Políticas: `apex-worker` sign+verify, `apex-api` solo verify, `apex-tools` sign, verify y `read` de la llave de firma, todo `update` salvo el `read`; sin rotate/config/delete/trim/export ni comodines.
+- `bootstrap.sh`: cabecera de `--reissue-tokens` dice que reaplica las cuatro políticas; `--help` pasa a `sed -n '2,27p'`. Sin sonda `ml-dsa` (ya).
+- `openbao-smoke.sh`: cuatro funciones implementadas (token leído del volumen con `run --rm -T --no-deps --entrypoint cat`, pasado por `exec -T -e BAO_TOKEN openbao bao write ...`, sin imprimirlo); `--help` a `2,37p`. Ejecución en vivo pendiente (orquestador, paso 24.3).
+- `ci.yml`: política real `apex-ci` (kek encrypt/decrypt/rewrap/read, `apex-sign-audit` read+create+update, `transit/sign/*`, `transit/verify/*`) y token de prueba con `no_default_policy`.
+- Docs: `docs/operacion/openbao.md` (reaplicar políticas en la sección 6, matriz de tokens antes de la 10) y RUNBOOK §13.
+- Desviación: `cuerpo_de` del test usaba `"\(\)"` en regex dinámica (gawk 5 lo trata como grupo vacío y nunca encontraba el cuerpo); cambiado a `index($0, n "() {") == 1`. El test de la cabecera de `--reissue-tokens` usa `pol[ií]ticas`: pasa solo en locale UTF-8 (`LC_ALL=C.UTF-8`; la CI de ubuntu lo es).
+
+## W0-3 · Revisiones y sello
+
+- Seguridad 0C/0H/1M/2L, todo corregido por el orquestador (S6-D93, D94 y bloque de revisiones en DECISIONES): `token_de` en el smoke, 403 con `permission denied`, prueba positiva del token de tools, `apex-ci` sin `create/update` sobre la llave de firma, nota de la raíz dev en `ci.yml`.
+- Gate 23.1: `test_openbao_infra.sh` 157 ok (con `LC_ALL=C.UTF-8` exportado por el propio test), `test_infra_scripts.sh` y `test_compose_config.sh` 0 fallas.
+- Sello: `bash scripts/workflow/wave0-gate.sh W0-3`.
+

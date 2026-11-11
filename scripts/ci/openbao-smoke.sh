@@ -18,6 +18,13 @@
 #   5. el token del api cifra y descifra con apex-kek y NO puede rotarla;
 #   6. un reinicio de openbao lo deja sellado y el api sigue healthy (healthcheck tolerante, S5-D15);
 #   7. tres llaves lo desellan de nuevo.
+# Firma de auditoría (S6-W0-3; S6-D6, S6-D41, M-2c; los pasos viven entre 5 y 6). Cada token se lee
+# del volumen de su servicio (/run/apex/openbao/token) dentro del propio script, viaja por el entorno
+# (exec -e BAO_TOKEN) y no se imprime:
+#   5a. firmar apex-sign-audit con el token del worker: 200 (bao write transit/sign/apex-sign-audit input=<b64>);
+#   5b. verificar esa firma con el token del api: valid: true;
+#   5c. firmar con el token del api: 403 (el api solo verifica);
+#   5d. rotar apex-sign-audit con el token de tools: 403 (la rotación de esa llave no es de nadie en v0.3).
 # Estado sellado del api (S5-B3, US-136; S5-D22, S5-D69, S5-D70). Solo si el api corre con
 # CRYPTO_PROVIDER=openbao (overlay compose.openbao.yml; si no, lo dice y lo omite). Exige además
 # OPENBAO_SMOKE_ADMIN_EMAIL y OPENBAO_SMOKE_ADMIN_PASSWORD (un admin real, para GET /members/{id}):
@@ -34,7 +41,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   "") ;;
   *) echo "openbao-smoke: argumento desconocido: $1" >&2; exit 2 ;;
 esac
@@ -179,6 +186,71 @@ print("rotar", llamar("transit/keys/apex-kek/rotate").get("http"))'
 RES="$("${COMPOSE[@]}" run --rm -T --no-deps --entrypoint python api -c "$PRUEBA" 2> /dev/null | tr -d '\r' || true)"
 case "$RES" in *"cifra-descifra ok"*) ok "el token del api cifra y descifra con apex-kek" ;; *) falla "el token del api no cifra/descifra: $RES" ;; esac
 case "$RES" in *"rotar 403"*) ok "el token del api NO puede rotar apex-kek (403)" ;; *) falla "el token del api pudo rotar o falló distinto: $RES" ;; esac
+
+# --- 5 bis. firma de auditoría: worker firma, api verifica, api no firma, tools no rota (S6-W0-3) ------------
+# Cada token se lee del volumen de su servicio y viaja por el entorno del exec (-e BAO_TOKEN): nunca por
+# argv, ni impreso, ni en la evidencia. Las llamadas van por la CLI de openbao (las imágenes de api y worker no la traen).
+SMOKE_B64="$(printf 'apex-smoke-firma' | base64 | tr -d '\n')"
+SMOKE_FIRMA=""
+leer_token() { # <servicio>: el token del volumen de ese servicio (no se imprime; lo captura quien llama)
+  "${COMPOSE[@]}" run --rm -T --no-deps --entrypoint cat "$1" /run/apex/openbao/token 2> /dev/null | tr -d '\r\n'
+}
+# Revisión de seguridad de S6-W0-3: un token vacío (volumen ausente, servicio parado) haría que un
+# 403 «pasara» sin que ninguna política hubiera negado nada. Cada paso exige el token antes de
+# usarlo y los 403 exigen además el texto «permission denied» de la política.
+token_de() { # <servicio> -> imprime el token o falla y devuelve 1
+  local tok
+  tok="$(leer_token "$1")"
+  [ -n "$tok" ] || { falla "no se pudo leer el token de $1 del volumen (vacío)"; return 1; }
+  printf '%s' "$tok"
+}
+firma_worker_200() {
+  local tok salida
+  tok="$(token_de worker)" || return 0
+  salida="$(BAO_TOKEN="$tok" "${COMPOSE[@]}" exec -T -e BAO_TOKEN openbao bao write -field=signature transit/sign/apex-sign-audit "input=$SMOKE_B64" 2>&1 | tr -d '\r' || true)"
+  case "$salida" in
+    vault:v*:*) SMOKE_FIRMA="$salida"; ok "el token del worker firma con apex-sign-audit (200)" ;;
+    *) falla "el token del worker no firmó (se esperaba 200): $(printf '%s' "$salida" | head -c 200)" ;;
+  esac
+}
+verifica_api_valid() {
+  local tok salida
+  [ -n "$SMOKE_FIRMA" ] || { falla "sin firma del worker que verificar"; return 0; }
+  tok="$(token_de api)" || return 0
+  salida="$(BAO_TOKEN="$tok" "${COMPOSE[@]}" exec -T -e BAO_TOKEN openbao bao write -field=valid transit/verify/apex-sign-audit "input=$SMOKE_B64" "signature=$SMOKE_FIRMA" 2>&1 | tr -d '\r' || true)"
+  case "$salida" in
+    true) ok "el token del api verifica la firma del worker (valid: true)" ;;
+    *) falla "el token del api no verificó la firma (se esperaba valid: true): $(printf '%s' "$salida" | head -c 200)" ;;
+  esac
+}
+firma_api_403() {
+  local tok salida
+  tok="$(token_de api)" || return 0
+  salida="$(BAO_TOKEN="$tok" "${COMPOSE[@]}" exec -T -e BAO_TOKEN openbao bao write -field=signature transit/sign/apex-sign-audit "input=$SMOKE_B64" 2>&1 | tr -d '\r' || true)"
+  case "$salida" in
+    *"Code: 403"*"permission denied"*) ok "el token del api NO puede firmar con apex-sign-audit (403 permission denied)" ;;
+    *) falla "el token del api no recibió 403 permission denied al firmar: $(printf '%s' "$salida" | head -c 200)" ;;
+  esac
+}
+rota_tools_403() {
+  local tok salida
+  tok="$(token_de tools)" || return 0
+  salida="$(BAO_TOKEN="$tok" "${COMPOSE[@]}" exec -T -e BAO_TOKEN openbao bao read -field=type transit/keys/apex-sign-audit 2>&1 | tr -d '\r' || true)"
+  case "$salida" in
+    ed25519) ok "el token de tools lee apex-sign-audit (prueba positiva del token)" ;;
+    *) falla "el token de tools no pudo leer apex-sign-audit (¿token válido?): $(printf '%s' "$salida" | head -c 200)" ;;
+  esac
+  salida="$(BAO_TOKEN="$tok" "${COMPOSE[@]}" exec -T -e BAO_TOKEN openbao bao write -f transit/keys/apex-sign-audit/rotate 2>&1 | tr -d '\r' || true)"
+  case "$salida" in
+    *"Code: 403"*"permission denied"*) ok "el token de tools NO puede rotar apex-sign-audit (403 permission denied)" ;;
+    *) falla "el token de tools no recibió 403 permission denied al rotar apex-sign-audit: $(printf '%s' "$salida" | head -c 200)" ;;
+  esac
+}
+paso "firma de auditoría por servicio"
+firma_worker_200
+verifica_api_valid
+firma_api_403
+rota_tools_403
 
 # --- 6. reinicio de openbao: sellado --------------------------------------------------------------------
 # El estado sellado del api solo se prueba si el api corre con CRYPTO_PROVIDER=openbao.

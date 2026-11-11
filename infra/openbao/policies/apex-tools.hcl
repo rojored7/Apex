@@ -2,6 +2,7 @@
 # S5-D185) y fijar la versión mínima de descifrado. `rewrap` no está (S5-D55a: la re-envoltura es
 # unwrap + wrap; S5-D191). La ruta `config` solo admite `min_decryption_version`. Sin delete, sin
 # trim, sin sys/.
+# v0.3 (S6-D6, D41, M-2c): firma, verifica y lee apex-sign-audit; no la rota ni la configura.
 path "transit/encrypt/apex-kek" {
   capabilities = ["update"]
 }
@@ -23,6 +24,18 @@ path "transit/keys/apex-kek/config" {
   allowed_parameters = {
     "min_decryption_version" = []
   }
+}
+
+path "transit/keys/apex-sign-audit" {
+  capabilities = ["read"]
+}
+
+path "transit/sign/apex-sign-audit" {
+  capabilities = ["update"]
+}
+
+path "transit/verify/apex-sign-audit" {
+  capabilities = ["update"]
 }
 
 path "auth/token/renew-self" {

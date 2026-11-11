@@ -24,7 +24,8 @@
 #   1. camino feliz: deploy.sh termina con 0; quedan `pre-deploy-<ts>-db.dump.age`,
 #      `-uploads.tar.age`, `pre-deploy-<ts>.json` y su `.minisig`; `latest.json` no cambió; /health
 #      responde 200 con "migrations":"ok"; existe deploy-<fecha>.state.json.
-#   2. api roto (CRYPTO_LOCAL_KEK_PATH=/nonexistent en el .env del clon): deploy.sh termina distinto
+#   2. api roto (CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/custody/nonexistent en el .env del clon, una
+#      ruta del layout nuevo que no existe: deploy.sh la deja pasar, S6-D91): deploy.sh termina distinto
 #      de 0, escribe rollback-<fecha>.txt y el respaldo pre-deploy sigue ahí. Después se repone el
 #      .env y se vuelve a desplegar (el stack queda sano; segunda corrida del script).
 #   3. db detenida: deploy.sh termina con 2 en la preverificación, ANTES de construir, sin respaldo
@@ -140,7 +141,7 @@ if [ "$SOLO_DB" -eq 0 ]; then
   rb_antes="$(contar_estados 'rollback-*.txt')"
 
   echo "-- 2. api roto"
-  sed -i 's|^CRYPTO_LOCAL_KEK_PATH=.*|CRYPTO_LOCAL_KEK_PATH=/nonexistent|' "$WORK/despliegue/.env"
+  sed -i 's|^CRYPTO_LOCAL_KEK_PATH=.*|CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/custody/nonexistent|' "$WORK/despliegue/.env"
   deploy DEPLOY_SKIP_BUILD=1 DEPLOY_HEALTH_TIMEOUT=30
   if [ "$RC" -ne 0 ]; then ok "deploy.sh con el api roto sale distinto de 0 ($RC)"; else falla "deploy.sh con el api roto salió con 0"; fi
   [ "$(contar_estados 'rollback-*.txt')" -gt "$rb_antes" ] && ok "escribe rollback-<fecha>.txt" || falla "no escribió rollback-<fecha>.txt"

@@ -159,7 +159,10 @@ chmod 644 "$TMP/root.crt"
 
 # Overlay de producción: web no publica puertos (solo se exige si el overlay está en el comando).
 if [[ " ${DC[*]} " == *compose.tls.yml* ]]; then
-  if [ -z "$("${DC[@]}" port web 80 2> /dev/null | tr -d '\r')" ]; then ok "web no publica puertos con compose.tls.yml"; else falla "web publica el 80 con compose.tls.yml"; fi
+  WEB_CID="$("${DC[@]}" ps -q web 2> /dev/null | head -1 | tr -d '\r' || true)"
+  PUB="$(docker port "$WEB_CID" 80 2> /dev/null | tr -d '\r' || true)"
+  # Compose 5.6: un puerto sin publicar puede salir como ':0' o vacío.
+  if [ -z "$PUB" ] || [[ "$PUB" == *:0 ]]; then ok "web no publica puertos con compose.tls.yml"; else falla "web publica el 80 con compose.tls.yml"; fi
 fi
 
 # Comprobaciones dentro de un cliente alpine desechable (sin credenciales, solo la raíz de la CA interna).
@@ -174,7 +177,7 @@ h="$(s_client -tls1_3 -groups X25519MLKEM768)"
 if grep -q 'Negotiated TLS1.3 group: X25519MLKEM768' <<< "$h"; then ok "intercambio híbrido: Negotiated TLS1.3 group: X25519MLKEM768"; else falla "no se negoció X25519MLKEM768"; fi
 if grep -q 'Verify return code: 0' <<< "$h"; then ok "certificado verificado con la CA interna (Verify return code: 0)"; else falla "el certificado no verifica con la CA interna"; fi
 x="$(s_client -tls1_3 -groups X25519)"
-if grep -qE 'Negotiated TLS1.3 group: X25519$' <<< "$x"; then ok "caída a Negotiated TLS1.3 group: X25519"; else falla "sin caída a X25519"; fi
+if grep -qE 'Negotiated TLS1.3 group: X25519$|Peer Temp Key: X25519,' <<< "$x"; then ok "caída a Negotiated TLS1.3 group: X25519"; else falla "sin caída a X25519"; fi
 t11="$(s_client -tls1_1)"
 if grep -qE 'Protocol *: TLSv1(\.1)?$' <<< "$t11"; then falla "TLS 1.1 aceptado"; else ok "TLS 1.1 rechazado"; fi
 t12="$(s_client -tls1_2)"
@@ -189,19 +192,21 @@ ac="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$HOST:80:$
 if [ "$ac" != "308" ] && [ -n "$ac" ] && [ "$ac" != "000" ]; then ok "acme-challenge no responde 308 (responde $ac)"; else falla "acme-challenge responde '$ac' (no debe redirigir)"; fi
 hc="$(curl -s -D /tmp/hc.hdr -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$HOST:80:$CIP" "http://$HOST/_caddy_health")"
 if [ "$hc" = "200" ]; then ok "http /_caddy_health responde 200"; else falla "http /_caddy_health responde '$hc'"; fi
-if grep -qi '^strict-transport-security:' /tmp/hc.hdr; then falla "HSTS en /_caddy_health por HTTP"; else ok "sin HSTS por HTTP"; fi
+tr -d '\r' < /tmp/hc.hdr > /tmp/hc.h2
+if grep -qi '^strict-transport-security:' /tmp/hc.h2; then falla "HSTS en /_caddy_health por HTTP"; else ok "sin HSTS por HTTP"; fi
 
 CURL_TLS=(--cacert /ca/root.crt --resolve "$HOST:$PORT:$CIP" --tlsv1.3 --max-time 15)
 sc="$(curl -s -D /tmp/h.hdr -o /tmp/h.body -w '%{http_code}' "${CURL_TLS[@]}" "https://$HOST$SUF/api/v1/health")"
+tr -d '\r' < /tmp/h.hdr > /tmp/h.h2
 if [ "$sc" = "200" ]; then ok "https /api/v1/health por Caddy responde 200"; else falla "https /api/v1/health responde '$sc'"; fi
-if grep -qi "^strict-transport-security: max-age=$HSTS_AGE\$" /tmp/h.hdr; then ok "Strict-Transport-Security: max-age=$HSTS_AGE por HTTPS"; else falla "HSTS distinto de max-age=$HSTS_AGE: $(grep -i '^strict-transport-security:' /tmp/h.hdr)"; fi
-if grep -qiE '^strict-transport-security:.*(includeSubDomains|preload)' /tmp/h.hdr; then falla "HSTS con includeSubDomains o preload"; else ok "HSTS sin includeSubDomains ni preload"; fi
+if grep -qi "^strict-transport-security: max-age=$HSTS_AGE\$" /tmp/h.h2; then ok "Strict-Transport-Security: max-age=$HSTS_AGE por HTTPS"; else falla "HSTS distinto de max-age=$HSTS_AGE: $(grep -i '^strict-transport-security:' /tmp/h.h2)"; fi
+if grep -qiE '^strict-transport-security:.*(includeSubDomains|preload)' /tmp/h.h2; then falla "HSTS con includeSubDomains o preload"; else ok "HSTS sin includeSubDomains ni preload"; fi
 CLIENTE
 
 # Un cliente desechable con openssl y curl; dos de ellos (IP distinta) para el limitador.
 cliente_nuevo() { # nombre
   docker run -d --name "$1" --network "$NET" -v "$(nativa "$TMP"):/ca:ro" "$ALPINE_IMAGE" \
-    sh -c "apk add --no-cache $OPENSSL_PKG curl > /tmp/apk.log 2>&1 && touch /tmp/listo; sleep 900" > /dev/null \
+    sh -c "apk add --no-cache $OPENSSL_PKG curl bash > /tmp/apk.log 2>&1 && touch /tmp/listo; sleep 900" > /dev/null \
     || muere "no se pudo crear el cliente $1"
   CLIENTES+=("$1")
   local t=0
@@ -215,7 +220,7 @@ cliente_nuevo "tls-smoke-b-$$"
 A="tls-smoke-a-$$"
 B="tls-smoke-b-$$"
 
-salida="$(docker exec -e CIP="$CIP" -e HOST="$HOST" -e PORT="$PORT" -e SUF="$SUF" -e HSTS_AGE="$HSTS_AGE" "$A" sh -c 'sh /ca/cliente.sh' 2>&1 | tr -d '\r' || true)"
+salida="$(docker exec -e CIP="$CIP" -e HOST="$HOST" -e PORT="$PORT" -e SUF="$SUF" -e HSTS_AGE="$HSTS_AGE" "$A" bash /ca/cliente.sh 2>&1 | tr -d '\r' || true)"
 printf '%s\n' "$salida"
 n_mal="$(grep -c '^  FALLA ' <<< "$salida" || true)"
 fallas=$((fallas + n_mal))
@@ -224,8 +229,10 @@ fallas=$((fallas + n_mal))
 # Limitador por IP real (S6-D29, M-7a): el cliente A agota su cupo de intentos; el B, desde otra IP del
 # mismo Caddy, sigue pasando. Si Nginx contara a Caddy, B recibiría el 429 de A. Credenciales inventadas
 # (un correo inexistente): ningún dato real.
+ORIGIN="$("${DC[@]}" exec -T api printenv FRONT_BASE_URL 2> /dev/null | tr -d '\r' || true)"
+ORIGIN="${ORIGIN:-https://$HOST$SUF}"
 intento() { # contenedor
-  docker exec "$1" sh -c "curl -s -o /dev/null -w '%{http_code}' --cacert /ca/root.crt --resolve $HOST:$PORT:$CIP --tlsv1.3 --max-time 15 -X POST -H 'Content-Type: application/json' -d '{\"email\":\"tls-smoke@invalid.test\",\"password\":\"incorrecta-tls-smoke\"}' https://$HOST$SUF/api/v1/auth/login" 2> /dev/null | tr -d '\r'
+  docker exec "$1" sh -c "curl -s -o /dev/null -w '%{http_code}' --cacert /ca/root.crt --resolve $HOST:$PORT:$CIP --tlsv1.3 --max-time 15 -X POST -H 'Origin: $ORIGIN' -H 'Content-Type: application/json' -d '{\"email\":\"tls-smoke@invalid.test\",\"password\":\"incorrecta-tls-smoke\"}' https://$HOST$SUF/api/v1/auth/login" 2> /dev/null | tr -d '\r'
 }
 primero="$(intento "$A")"
 n429=0

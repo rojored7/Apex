@@ -6,9 +6,11 @@
   `aad` es `aad_for(record_id)`: el UUID en texto canónico (ADR-002).
 - `blind_index(data_class, value, *, record_id=None) -> str` (US-026): HMAC-SHA-256 del
   valor normalizado con la llave `index` activa de la clase.
-- `sign(data_class, data) -> str` y `verify(data_class, data, signature) -> bool`
-  (US-027): `async`, delegan en el `KeyProvider`; la privada nunca sale del proveedor.
-  `verify` acepta llaves `active`, `decrypt_only` y `retired` (Q27).
+- `sign(data_class, data) -> str` (US-027): `async`, delega en el `KeyProvider`; la privada nunca
+  sale del proveedor. La firma lleva el algoritmo de la FILA de la llave (S6-D40).
+- `verify(data_class, data, signature) -> bool` (S6-D62, D81): verifica en proceso con
+  `crypto_keys.public_key` de la fila del `key_id`, sin llamar al proveedor; acepta llaves
+  `active`, `decrypt_only` y `retired` (Q27). `ML-DSA-65` da `unsupported` hasta EP-26.
 - `digest(data) -> str` (N-06): SHA-256 sin llave; no deja fila en `crypto_ops`.
 - `batch(verb, data_class)` (US-029): agrupa las operaciones de un lote en una fila.
 
@@ -21,6 +23,7 @@ Sin keyring cargado (`ensure_keys`), toda operación lanza `crypto_unavailable`.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -34,12 +37,14 @@ from app.core.crypto.mac import hmac_sha256_hex
 from app.core.crypto.normalize import normalize_for_index
 from app.core.crypto.provider import KeyProvider
 from app.core.crypto.registry import get_spec
-from app.core.crypto.signature import format_signature, parse_signature
+from app.core.crypto.signature import format_signature, parse_signature, verify_ed25519
 
 digest = sha256_hex
 batch = oplog.batch
 ALG_V01 = "A256GCM"
-SIGN_ALG_V01 = "Ed25519"
+SIGN_ALG_ED25519 = "Ed25519"
+_REF_LOCAL = "local:sign-ed25519"
+_REF_OPENBAO = re.compile(r"^apex-sign-audit[a-z0-9-]*$")
 
 
 def aad_for(record_id: UUID) -> bytes:
@@ -125,8 +130,23 @@ def blind_index(data_class: str, value: str, *, record_id: UUID | None = None) -
 
 
 def _key_ref(llave: LoadedKey) -> str:
-    """Las llaves `sign` guardan la referencia del proveedor, no material (US-027)."""
-    return bytes(llave.material).decode("ascii")
+    """Las llaves `sign` guardan la referencia del proveedor, no material (US-027). Se valida
+    antes de usarla (M-2b): `local:sign-ed25519` con `local`, `^apex-sign-audit[a-z0-9-]*$` con
+    OpenBao; nada más (ni la KEK ni una ruta)."""
+    try:
+        referencia = bytes(llave.material).decode("ascii")
+    except UnicodeDecodeError:
+        raise CryptoError(
+            "bad_key_ref", "la referencia de la llave de firma no es válida"
+        ) from None
+    valida = (
+        referencia == _REF_LOCAL
+        if llave.provider == "local"
+        else _REF_OPENBAO.fullmatch(referencia) is not None
+    )
+    if not valida:
+        raise CryptoError("bad_key_ref", "la referencia de la llave de firma no es válida")
+    return referencia
 
 
 def _provider(llave: LoadedKey) -> KeyProvider:
@@ -139,9 +159,25 @@ async def sign(data_class: str, data: bytes) -> str:
     if not spec.sign:
         raise CryptoError("unsupported", f"la clase {data_class} no se firma")
     llave = current_keyring().active_for("sign", data_class)
+    if llave.algorithm != SIGN_ALG_ED25519:
+        raise CryptoError("unsupported", f"algoritmo de firma no soportado: {llave.algorithm}")
     firma = await _provider(llave).sign(_key_ref(llave), data)
+    # Autoverificación (S6, H1): la firma debe verificar con la clave pública de la FILA. Si el
+    # proveedor rotó fuera del flujo (otra llave Transit, otra semilla local) no se entrega.
+    if llave.public_key is None or not verify_ed25519(llave.public_key, data, firma):
+        oplog.record(
+            "sign",
+            data_class=data_class,
+            key_id=llave.key_id,
+            key_version=llave.version,
+            result="error",
+        )
+        raise CryptoError(
+            "signature_unverifiable",
+            "la firma no verifica con la clave pública guardada de la llave",
+        )
     oplog.record("sign", data_class=data_class, key_id=llave.key_id, key_version=llave.version)
-    return format_signature(llave.key_id, SIGN_ALG_V01, firma)
+    return format_signature(llave.key_id, llave.algorithm, firma)
 
 
 async def verify(data_class: str, data: bytes, signature: str) -> bool:
@@ -149,7 +185,11 @@ async def verify(data_class: str, data: bytes, signature: str) -> bool:
     llave = current_keyring().get(partes.key_id)
     if llave is None or llave.purpose != "sign" or llave.data_class != data_class:
         raise CryptoError("key_missing", "la firma no corresponde a una llave de esta clase")
-    valida = await _provider(llave).verify(_key_ref(llave), data, partes.sig)
+    if SIGN_ALG_ED25519 != partes.alg or llave.algorithm != SIGN_ALG_ED25519:
+        raise CryptoError("unsupported", f"algoritmo de firma no soportado: {partes.alg}")
+    if llave.public_key is None:
+        raise CryptoError("key_missing", "la llave de firma no tiene clave pública")
+    valida = verify_ed25519(llave.public_key, data, partes.sig)
     oplog.record(
         "verify",
         data_class=data_class,

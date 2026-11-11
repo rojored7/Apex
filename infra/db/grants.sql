@@ -8,6 +8,7 @@
 -- apex_backup lee todo por pg_read_all_data y no escribe nada.
 --   tabla                           apex_api                          apex_worker
 --   audit.audit_log                 S I                               S I
+--   audit.signatures                S                                 S I
 --   audit.verifications             S I                               -
 --   auth.one_time_tokens            S I U                             -
 --   auth.refresh_tokens             S I U D                           -
@@ -17,6 +18,7 @@
 --                                     tokens_valid_after, updated_at)
 --   crypto.crypto_jobs              S                                 S
 --   crypto.crypto_keys              S I U(updated_at)                 S
+--                                   (public_key: INSERT sí, UPDATE nunca; S6-D81)
 --   crypto.crypto_ops               S I                               S I
 --   members.member_channel_preferences S I U(active, updated_at)      S
 --   members.members                 S I U                             S(id, first_name, last_name, sex,
@@ -39,6 +41,7 @@
 --   settings.settings_sections      S I U                             S
 --   worker.job_runs                 S                                 S I U
 -- clasificada: audit.audit_log
+-- clasificada: audit.signatures
 -- clasificada: audit.verifications
 -- clasificada: auth.one_time_tokens
 -- clasificada: auth.refresh_tokens
@@ -86,6 +89,8 @@ GRANT pg_read_all_data TO apex_backup WITH INHERIT TRUE;
 
 -- 5. apex_api.
 GRANT SELECT, INSERT ON audit.audit_log, audit.verifications TO apex_api;
+-- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
+GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
 GRANT SELECT, INSERT ON auth.users TO apex_api;
 -- S5-D203: UPDATE de auth.users solo en las columnas que asigna modules/auth (inventario de W0-3);
@@ -120,6 +125,8 @@ GRANT SELECT ON worker.job_runs TO apex_api;
 
 -- 6. apex_worker (jobs diarios: vencimientos, avisos, comprobacion de respaldos).
 GRANT SELECT, INSERT ON audit.audit_log, crypto.crypto_ops TO apex_worker;
+-- S6-A1 (S6-D3): el worker firma la cadena (sign_audit); append-only, sin UPDATE ni DELETE.
+GRANT SELECT, INSERT ON audit.signatures TO apex_worker;
 GRANT SELECT ON auth.users, crypto.crypto_jobs, crypto.crypto_keys, memberships.membership_freezes, plans.plans, settings.settings_sections TO apex_worker;
 -- S5-D34, D204: el worker descifra avisos (crypto_keys) y lee del socio solo lo minimo; sin document,
 -- document_idx, birth_date ni emergency_contact. sex entra por names_for (S5-D121).
@@ -143,7 +150,7 @@ GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
-        'audit.audit_log', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
+        'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
         'auth.users', 'crypto.crypto_jobs', 'crypto.crypto_keys', 'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',

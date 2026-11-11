@@ -67,8 +67,11 @@ Vector de referencia (la fila es la de ADR-004; la prueba reconstruye el payload
 - La clave pública se guarda en `crypto_keys.public_key` y es inmutable; se conserva mientras existan firmas que la referencien.
 - Quien implemente un verificador externo puede hacerlo con el vector de arriba y las claves públicas del inventario.
 
+- **La llave de firma solo se rota con `rotate-key audit.signature --provider` (A2).** Antes de entregar una firma, el bus la verifica con la clave pública de la fila `sign`; si no verifica (una versión nueva de `apex-sign-audit` en Transit o otra semilla en `custody/sign-ed25519.key`) no se guarda nada, `crypto_ops(sign)` queda con `result = error` y el job termina con `signature_unverifiable` hasta crear la fila nueva con su clave pública. Las políticas de OpenBao niegan `rotate` a api, worker y tools: rotar a mano exige la raíz y es un incidente.
+
 ## Cómo se verifica
 
 - `api/tests/core/test_chain_hash_vector.py` fija el hash de la fila de ejemplo que este ADR reutiliza (la serialización es la de ADR-004).
-- `api/tests/architecture/test_adr_docs.py` comprueba el formato de este documento. Las pruebas del payload (vector y construcción byte a byte), de `audit.signatures` y de la verificación llegan con los slices S6-A1, S6-A2 y S6-A3 y se citan aquí cuando existan.
+- `api/tests/core/test_signature_payload_vector.py` reconstruye el payload del bloque `signature-payload-vector` y lo compara byte a byte con `signature_payload`; `api/tests/core/test_audit_sign_pure.py` fija la construcción del payload, `needs_signature` e `is_signature_late`; `api/tests/audit/test_sign_latest.py` prueba `sign_latest` y la verificación incremental del tramo sin firmar (H-1) con la base real.
+- `api/tests/architecture/test_adr_docs.py` comprueba el formato de este documento. Las pruebas de la verificación de firmas y del job llegan con los slices S6-A2 y S6-A3 y se citan aquí cuando existan.
 - Cambiar cualquier decisión de este documento exige detenerse y preguntar.

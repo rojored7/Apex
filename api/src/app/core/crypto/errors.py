@@ -24,6 +24,8 @@ CryptoCode = Literal[
     "id_immutable",
     "index_manual",
     "crypto_key_changed",
+    "bad_key_ref",
+    "signature_unverifiable",
 ]
 
 

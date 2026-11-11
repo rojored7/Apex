@@ -42,6 +42,7 @@ from app.core.crypto.provider import KeyInfo, ProviderStatus
 KEK_KEY: Final = "apex-kek"
 SIGN_KEY: Final = "apex-sign-audit"
 TOKEN_MAX_BYTES: Final = 256
+ED25519_SIGNATURE_LEN: Final = 64
 RENEW_EVERY: Final = timedelta(hours=12)
 _WRAP_AAD_B64: Final = base64.b64encode(WRAP_AAD).decode("ascii")
 __all__ = ["KEK_KEY", "SIGN_KEY", "WRAP_AAD", "OpenBaoProvider", "map_error", "parse_version"]
@@ -67,6 +68,15 @@ def _cargar_token(token_path: Path) -> tuple[str, tuple[int, int, int]]:
     if not token:
         raise CryptoError("kek_invalid", "el archivo del token está vacío")
     return token, _huella(st)
+
+
+def _firma_cruda(firma: str) -> bytes:
+    """Los bytes de una firma de Transit `vault:v<n>:<base64>`: el bus guarda la firma cruda para
+    verificarla en proceso con la clave pública (S6-D62)."""
+    try:
+        return base64.b64decode(firma.split(":", 2)[2], validate=True)
+    except (IndexError, binascii.Error):
+        raise CryptoError("unwrap_failed", "respuesta inválida del custodio") from None
 
 
 def _huella(st: os.stat_result) -> tuple[int, int, int]:
@@ -186,10 +196,22 @@ class OpenBaoProvider:
         firma = datos.get("signature")
         if not isinstance(firma, str):
             raise CryptoError("unwrap_failed", "respuesta inválida del custodio")
-        return firma.encode("ascii")
+        return _firma_cruda(firma)
 
     async def verify(self, key_ref: str, data: bytes, signature: bytes) -> bool:
-        cuerpo = {"input": b64(data), "signature": a_texto(signature)}
+        """Solo para la suite de contrato: el bus verifica con la clave pública (S6-D62, D81)."""
+        if signature.startswith(b"vault:"):
+            return await self._verificar(key_ref, data, a_texto(signature))
+        if len(signature) != ED25519_SIGNATURE_LEN:
+            return False
+        version = (await self.key_info(key_ref)).version
+        for n in range(version, 0, -1):
+            if await self._verificar(key_ref, data, f"vault:v{n}:{b64(signature)}"):
+                return True
+        return False
+
+    async def _verificar(self, key_ref: str, data: bytes, firma: str) -> bool:
+        cuerpo = {"input": b64(data), "signature": firma}
         try:
             datos = await self._llamar("POST", ruta("verify", key_ref), cuerpo)
         except CryptoError as error:
@@ -206,6 +228,16 @@ class OpenBaoProvider:
 
     async def key_info(self, key_ref: str) -> KeyInfo:
         return info(key_ref, await self._llamar("GET", ruta("keys", key_ref)))
+
+    def sign_key_ref(self) -> str:
+        return SIGN_KEY
+
+    async def sign_public_key(self) -> str:
+        """Base64 de la pública Ed25519 de la última versión de `apex-sign-audit` (S6-D81)."""
+        publica = (await self.key_info(SIGN_KEY)).public_key
+        if publica is None:
+            raise CryptoError("unwrap_failed", "el custodio no devolvió la clave pública")
+        return publica
 
     async def set_min_decryption_version(self, key_ref: str, version: int) -> None:
         """Sube `min_decryption_version` (`keys/<k>/config`); fuera del puerto (S5-D185).

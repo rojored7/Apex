@@ -12,8 +12,12 @@ from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from app.core.crypto.errors import CryptoError
 
+ED25519_PUBLIC_LEN: Final = 32
 SIGNATURE_PREFIX: Final = "apx1"
 SIGNATURE_ALGS: Final[frozenset[str]] = frozenset({"Ed25519", "ML-DSA-65"})
 _PARTS: Final = 4
@@ -54,3 +58,19 @@ def parse_signature(signature: str) -> SignatureParts:
     except (binascii.Error, ValueError):
         raise CryptoError("signature_invalid", "la firma no es base64url válido") from None
     return SignatureParts(key_id, alg, sig)
+
+
+def verify_ed25519(public_key: str, data: bytes, signature: bytes) -> bool:
+    """Verifica Ed25519 en proceso con la clave pública (base64 estándar de 32 bytes; S6-D62).
+
+    `False` ante una firma que no corresponde, de largo incorrecto o una clave malformada; nunca
+    devuelve `True` por una excepción tragada. No llama a ningún proveedor.
+    """
+    try:
+        crudo = base64.b64decode(public_key, validate=True)
+        if len(crudo) != ED25519_PUBLIC_LEN:
+            return False
+        Ed25519PublicKey.from_public_bytes(crudo).verify(signature, data)
+    except (InvalidSignature, binascii.Error, ValueError, TypeError):
+        return False
+    return True

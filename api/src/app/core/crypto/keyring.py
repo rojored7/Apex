@@ -43,6 +43,8 @@ class LoadedKey:
     state: str
     material: bytearray = field(repr=False)
     provider: str = "local"
+    algorithm: str = ""  # el de la fila `crypto_keys.algorithm` (S6-D40)
+    public_key: str | None = None  # base64 de la pública Ed25519 de las filas `sign` (S6-D81)
 
     def __repr__(self) -> str:
         return f"LoadedKey({self.purpose}:{self.data_class} v{self.version} {self.state})"
@@ -119,6 +121,8 @@ class Keyring:
                     state=fila.state,
                     material=material,
                     provider=fila.provider,
+                    algorithm=fila.algorithm,
+                    public_key=fila.public_key,
                 )
                 self._keys[fila.id] = existente
             par = (fila.purpose, fila.data_class)

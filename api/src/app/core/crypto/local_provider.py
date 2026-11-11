@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import stat
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Final
 
 from cryptography.exceptions import InvalidSignature, InvalidTag
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -126,4 +128,18 @@ class LocalFileProvider:
             provider=PROVIDER_NAME,
             version=1,
             created_at=self._signing_created_at,
+            public_key=self._public_key_b64(),
         )
+
+    def _public_key_b64(self) -> str:
+        """Base64 estándar de los 32 bytes crudos de la pública, derivada de la semilla cargada."""
+        cruda = self._signing.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+        return base64.b64encode(cruda).decode("ascii")
+
+    def sign_key_ref(self) -> str:
+        return SIGNING_KEY_REF
+
+    async def sign_public_key(self) -> str:
+        return self._public_key_b64()

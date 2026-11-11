@@ -22,7 +22,7 @@ from app.core.crypto import recovery
 from app.core.crypto.errors import CryptoError, CryptoUnavailable
 from app.core.crypto.keyring import configure_keyring, current_keyring
 from app.core.crypto.provider import configure_provider
-from app.core.crypto.registry import encrypting_specs, indexing_specs, signing_specs
+from app.core.crypto.registry import encrypting_specs, indexing_specs
 from app.main import create_app
 from tests.core._cripto_apoyo import (
     GrabadoraDeAlertas,
@@ -45,7 +45,7 @@ __all__ = [
 
 Fabrica = async_sessionmaker[AsyncSession]
 POLL_S = 20
-LLAVES_DEL_BUS = len(encrypting_specs()) + len(indexing_specs()) + len(signing_specs())
+LLAVES_DEL_BUS = len(encrypting_specs()) + len(indexing_specs())  # S6-D72: sin filas `sign`
 PHONE_Y_EMAIL = frozenset({"member.phone", "member.email"})
 
 

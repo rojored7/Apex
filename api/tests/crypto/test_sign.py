@@ -18,6 +18,7 @@ from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.models import CryptoKey
 from app.core.crypto.oplog import reset_buffer
 from app.core.crypto.registry import REGISTRY, DataClassSpec, override_registry
+from tests.crypto.conftest import fila_sign
 
 FIRMA = DataClassSpec("test.signature", False, None, True, "str", ("worker.t.sig",))
 OTRA = DataClassSpec("test.other", False, None, True, "str", ("worker.t.other",))
@@ -30,6 +31,10 @@ async def bus_firma(
     with override_registry({**REGISTRY, FIRMA.name: FIRMA, OTRA.name: OTRA}):
         with actor_scope(SYSTEM_USER_ID):
             keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+            # S6-D72: `ensure_keys` ya no crea filas `sign`; `init-keys` sí (aquí, `fila_sign`).
+            for clase in (FIRMA.name, OTRA.name):
+                await fila_sign(sin_llaves, proveedor_local, clase)
+            await keyring.load_all(sin_llaves, lambda _n: proveedor_local)
         try:
             yield keyring
         finally:
@@ -40,6 +45,11 @@ async def bus_firma(
 async def test_firmar_y_verificar(bus_firma: Keyring) -> None:
     firma = await bus.sign("test.signature", b"hash-de-la-cadena")
     assert firma.startswith("apx1.") and len(firma.split(".")) == 4
+    llave = bus_firma.active_for("sign", "test.signature")
+    assert (
+        firma.split(".")[2] == llave.algorithm == "Ed25519"
+    )  # S6-A1: el algoritmo sale de la fila
+    assert llave.public_key is not None
     assert await bus.verify("test.signature", b"hash-de-la-cadena", firma) is True
     assert await bus.verify("test.signature", b"hash-de-la-cadenA", firma) is False
 

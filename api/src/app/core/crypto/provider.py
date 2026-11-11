@@ -26,6 +26,7 @@ class KeyInfo:
     provider: str
     version: int
     created_at: datetime
+    public_key: str | None = None  # STUB S6-A1 (D81): base64 de los 32 bytes Ed25519
 
 
 ProviderStatus = Literal["ok", "sealed", "unreachable"]
@@ -53,6 +54,10 @@ class KeyProvider(Protocol):
     async def status(self) -> ProviderStatus: ...
 
     async def rewrap(self, wrapped: bytes) -> bytes: ...
+
+    def sign_key_ref(self) -> str: ...
+
+    async def sign_public_key(self) -> str: ...
 
 
 def get_key_provider(settings: Settings) -> KeyProvider:

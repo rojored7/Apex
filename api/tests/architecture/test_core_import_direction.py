@@ -375,3 +375,51 @@ def test_core_export_no_importa_modulos_de_negocio_ni_terceros_de_cifrado() -> N
         and n != "__future__"
     ]
     assert ajenos == []
+
+
+# S6-A1 (S6-D3, ADR-006): `core/audit_sign.py` es hermano de `audit.py` y `audit_verify.py` --------
+
+PERMITIDOS_DE_AUDIT_SIGN = frozenset(
+    {
+        "app.core.audit",
+        "app.core.crypto.bus",
+        "app.core.context",
+        "app.core.db",
+    }
+)
+
+
+def test_audit_sign_existe_e_importa_solo_audit_bus_context_y_db() -> None:
+    """Importa `core.audit`, `core.crypto.bus` y nada de `app.modules` ni `core.jobs`; el resto de
+    la aplicación que toma es `core.context` y `core.db` (S6-D3). Debe importar el bus (firma)."""
+    path = CORE / "audit_sign.py"
+    assert path.is_file(), "falta core/audit_sign.py"
+    propios = {n for n in _imports(path) if n.startswith("app")}
+    assert propios <= PERMITIDOS_DE_AUDIT_SIGN, sorted(propios - PERMITIDOS_DE_AUDIT_SIGN)
+    assert {"app.core.audit", "app.core.crypto.bus"} <= propios, sorted(propios)
+    assert not [n for n in propios if n.startswith(("app.modules", "app.core.jobs"))]
+
+
+def test_audit_sign_no_toca_core_audit_ni_su_import_de_crypto() -> None:
+    """`core/audit.py` sigue importando de `core/crypto` solo `digest` (ADR-004) y no conoce la
+    firma: ni `audit_sign` ni `bus` (ni perezoso)."""
+    propios = [n for n in _imports(CORE / "audit.py") if n.startswith("app.core.crypto")]
+    assert set(propios) <= {"app.core.crypto.digest"}, propios
+    assert not [n for n in _imports(CORE / "audit.py") if n.startswith("app.core.audit_sign")]
+
+
+def test_ningun_archivo_de_core_crypto_importa_audit_ni_audit_sign() -> None:
+    violaciones = [
+        f"{p.name}: {n}"
+        for p in sorted((CORE / "crypto").rglob("*.py"))
+        for n in _imports(p)
+        if n.startswith(("app.core.audit", "app.core.audit_sign", "app.core.audit_verify"))
+    ]
+    assert violaciones == []
+
+
+def test_audit_sign_no_crea_ciclos_con_el_bus() -> None:
+    """`audit_sign -> crypto.bus` es la arista permitida; la inversa no existe."""
+    path = CORE / "audit_sign.py"
+    assert path.is_file()
+    assert "app.core.crypto.bus" in _imports_de_modulo(path)

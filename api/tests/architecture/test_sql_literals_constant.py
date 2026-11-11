@@ -258,3 +258,23 @@ async def f(conexion, tabla):
 
 def test_control_el_sql_de_migraciones_armado_en_ejecucion_se_detecta() -> None:
     assert len(hallazgos(MALA_MIGRACIONES, "mala.py")) == 1
+
+
+# S6-A1 (S6-D3): la cuarta llave, la de la firma ---------------------------------------------------
+
+
+def test_la_llave_del_candado_de_firma_es_la_cuarta_y_distinta() -> None:
+    from app.core.audit_sign import AUDIT_SIGN_LOCK_KEY
+
+    assert AUDIT_SIGN_LOCK_KEY == 4_270_004
+    assert len({AUDIT_SIGN_LOCK_KEY, AUDIT_VERIFY_LOCK_KEY, AUDIT_CHAIN_LOCK_KEY}) == 3
+    assert AUDIT_SIGN_LOCK_KEY not in {MIGRATION_LOCK_KEY, MAIN_LOCK_KEY}
+
+
+def test_audit_sign_toma_su_candado_con_sql_constante_y_llave_ligada() -> None:
+    """`pg_advisory_xact_lock(:key)` como constante de módulo (la llave viaja ligada); el archivo
+    no construye SQL en tiempo de ejecución."""
+    fuente = (SRC / "app" / "core" / "audit_sign.py").read_text(encoding="utf-8")
+    assert "pg_advisory_xact_lock(:key)" in fuente
+    assert "AUDIT_SIGN_LOCK_KEY" in fuente
+    assert hallazgos(fuente, "app/core/audit_sign.py") == []

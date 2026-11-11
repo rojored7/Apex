@@ -28,12 +28,14 @@ import base64
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from cryptography.exceptions import InvalidSignature, InvalidTag  # noqa: TID251
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: TID251
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: TID251
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat  # noqa: TID251
 
 _CLIENTE_REAL = httpx.AsyncClient  # la clase original, aunque una prueba parchee httpx.AsyncClient
 ADDR_FAKE = "http://openbao:8200"
@@ -236,9 +238,22 @@ class FakeTransit:
             "type": self.llaves[nombre],
             "latest_version": n,
             "min_decryption_version": self.min_decryption_version.get(nombre, 1),
-            "keys": {str(v): 1_760_000_000 + v for v in range(1, n + 1)},
+            "keys": {str(v): self._version_de_clave(nombre, v) for v in range(1, n + 1)},
         }
         return httpx.Response(200, json={"data": datos})
+
+    def _version_de_clave(self, nombre: str, version: int) -> Any:
+        """Simétricas: marca de tiempo; ed25519: `{creation_time, name, public_key}` (S6-D81)."""
+        creada = 1_760_000_000 + version
+        privada = self._material[nombre][version - 1]
+        if not isinstance(privada, Ed25519PrivateKey):
+            return creada
+        cruda = privada.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        return {
+            "creation_time": datetime.fromtimestamp(creada, UTC).isoformat(),
+            "name": "ed25519",
+            "public_key": _b64(cruda),
+        }
 
     def _cifrar(self, nombre: str, cuerpo: Any) -> httpx.Response:
         n = self.latest_version(nombre)

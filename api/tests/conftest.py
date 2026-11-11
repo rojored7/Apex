@@ -326,6 +326,27 @@ LIMPIAR_VERIFICATIONS = (
     "END IF; END $$"
 )
 
+# S6-A1 (S6-D7): las firmas que una prueba con commit real, `sign_audit` o una corrida cortada hayan
+# dejado en `audit.signatures`; se borran ANTES que `audit.audit_log` y que `crypto.crypto_keys`.
+# La tabla nace en `0021_audit_signatures`: mientras no exista (Rojo de A1) no se toca. Sus triggers
+# rechazan `DELETE`: se apagan, se borra y se vuelven a encender UNO POR UNO con `ENABLE ALWAYS`.
+TRIGGERS_DE_SIGNATURES = ("signatures_forbid_mutation", "signatures_forbid_truncate")
+LIMPIAR_SIGNATURES = (
+    "DO $$ BEGIN IF to_regclass('audit.signatures') IS NOT NULL THEN "
+    "ALTER TABLE audit.signatures DISABLE TRIGGER USER; "
+    "DELETE FROM audit.signatures; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'signatures_forbid_mutation') THEN "
+    "ALTER TABLE audit.signatures ENABLE ALWAYS TRIGGER signatures_forbid_mutation; "
+    "END IF; "
+    "IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'signatures_forbid_truncate') THEN "
+    "ALTER TABLE audit.signatures ENABLE ALWAYS TRIGGER signatures_forbid_truncate; "
+    "END IF; "
+    "END IF; END $$"
+)
+
+# `audit.signatures.key_id` es FK a `crypto_keys` (S6-A1): las firmas van antes que las llaves.
+LIMPIAR_LLAVES = (LIMPIAR_SIGNATURES, *LIMPIAR_LLAVES)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -333,6 +354,7 @@ LIMPIEZA_DE_SESION = (
     disable_user_sql("crypto.crypto_ops"),
     "DELETE FROM crypto.crypto_ops",
     rearm_always_sql("crypto.crypto_ops"),
+    LIMPIAR_SIGNATURES,  # S6-A1: antes que audit_log
     LIMPIAR_VERIFICATIONS,  # S4A-D70 (plan del Sprint 4A, sección 2, B3): antes que audit_log
     disable_user_sql("audit.audit_log"),
     "DELETE FROM audit.audit_log",
@@ -743,6 +765,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))
+        await conexion.execute(text(LIMPIAR_SIGNATURES))  # S6-A1: antes que audit_log
         await conexion.execute(text(LIMPIAR_VERIFICATIONS))  # S4A-D70: antes que audit_log
         await conexion.execute(text(disable_user_sql("audit.audit_log")))
         await conexion.execute(

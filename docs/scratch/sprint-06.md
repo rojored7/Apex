@@ -210,3 +210,29 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - `test_env_isolation.sh` vivo contra el ensayo (`$DCEB`): 0 fallas, Caddy con exactamente sus cinco variables.
 - Sello: `bash scripts/workflow/wave0-gate.sh W0-4 tests/core/test_env_example.py` con `LC_ALL=C.UTF-8`.
 
+
+## A1 · Verde
+
+- `0021_audit_signatures` (tabla, 4 CHECK, 2 índices, función y 2 triggers `ENABLE ALWAYS`, `crypto_keys.public_key` y su CHECK), `core/audit_sign.py` (191 líneas), bus con algoritmo y clave pública por fila (`bad_key_ref` nuevo en `CryptoError`), `verify_ed25519`, `sign_key_ref`/`sign_public_key` en los dos proveedores, `FakeTransit` con `public_key` ed25519, `grants.sql` (`audit.signatures`: api `S`, worker `S I`; sin `UPDATE` de `public_key`; `revoke.sql` es genérico y no cambia).
+- Decisión de diseño: `OpenBaoProvider.sign` devuelve la firma CRUDA (decodifica `vault:v<n>:<b64>`), para que `verify_ed25519` con la clave pública funcione; `verify` del proveedor la reenvuelve (solo suite de contrato).
+- `audit_sign` importa el bus como `from app.core.crypto.bus import sign as bus_sign` (la prueba de arquitectura lee `node.module`).
+- Correcciones objetivas a pruebas: `pg_get_triggerdef` normaliza a `BEFORE DELETE OR UPDATE`; filas `sign` sin `public_key` (test_provider_per_row, test_0015, test_crypto_tables) violan el CHECK de D81; test_0014 excluye `audit.signatures` (nace en 0021).
+- S6-D99: el CHECK `ck_crypto_keys_sign_public_key` se crea `NOT VALID` en `0021` (rechaza filas nuevas o actualizadas sin clave pública; tolera la fila `sign` huérfana de desarrollo, `audit.signature`, `local:sign-ed25519`, sin `public_key`). Causa de esa fila: el api de desarrollo corre con recarga automática y bind de `src/`, tomó el registro con la clase `audit.signature` del Rojo y `ensure_keys` creó la fila antes de que el Rojo aplicara D72 en `bootstrap`. `init-keys --data-class audit.signature` (A2) la completa; `0022` (A3) hará `VALIDATE CONSTRAINT`. La fila NO se borró: es el caso que A2 debe probar.
+- P-MIG 3 a 8 sobre la base `apex` (`run --rm --no-deps --entrypoint alembic tools upgrade head`; api y worker parados), salidas:
+
+```
+Running upgrade 0020_notifications_indexes -> 0021_audit_signatures
+audit.signatures: 11 columnas; pk_signatures, ix_signatures_signed_at (signed_at DESC), uq_signatures_through_seq (unique);
+  CHECK ck_signatures_algorithm / _hash_shape / _payload_version_positive / _through_seq_positive
+tgname                     | tgenabled
+signatures_forbid_mutation | A
+signatures_forbid_truncate | A
+ck_crypto_keys_sign_public_key | convalidated = f
+alembic_version = 0021_audit_signatures
+```
+
+### A1 · Verde, rondas 3 y 4 (revisiones de BD y seguridad)
+
+- `0021` reaplicada en la base `apex` (`downgrade 0020` y `upgrade head`; la fila `sign` huérfana sigue ahí): `fk_signatures_key_id_crypto_keys` (FK a `crypto.crypto_keys(id)`, `ON DELETE RESTRICT`), triggers `signatures_forbid_mutation` y `signatures_forbid_truncate` en `tgenabled = A`, función `prosecdef = f` con `proconfig = {search_path=pg_catalog}`, `ck_crypto_keys_sign_public_key` con `convalidated = f`, `alembic_version = 0021_audit_signatures`.
+- `bus.sign` se autoverifica con la clave pública de la fila (`signature_unverifiable`, `crypto_ops(sign)` con `error`); `sign_latest` comprueba el ancla (recalcula la fila firmada), usa `clock_timestamp()` para `signed_at` y trata un hueco de `seq` como ruptura (mismo criterio que `audit_verify`).
+- Con la FK, `TRUNCATE crypto.crypto_keys` lo rechaza PostgreSQL antes del trigger; `LIMPIAR_LLAVES` borra las firmas primero.

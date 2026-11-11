@@ -168,4 +168,42 @@ def proveedor(tipo: str, request: pytest.FixtureRequest) -> Iterator[object]:
 
 
 # Migración de proveedor y rotación de la KEK (S5-B2)
+# Filas `sign` (S6-A1; S6-D40, D72, D81)
+from typing import Any  # noqa: E402
+
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.core.context import SYSTEM_USER_ID  # noqa: E402
+from app.core.crypto.models import CryptoKey  # noqa: E402
 from tests.crypto._migracion import migracion_lista, sembrada  # noqa: E402,F401
+
+CLASE_FIRMA = "audit.signature"
+
+
+async def fila_sign(
+    session: AsyncSession,
+    proveedor: Any,
+    data_class: str = CLASE_FIRMA,
+    *,
+    version: int = 1,
+    state: str = "active",
+    algorithm: str = "Ed25519",
+    public_key: str | None = None,
+) -> CryptoKey:
+    """Inserta la fila `sign` que crea `init-keys --data-class` (D72): `wrapped_material`
+    es la referencia (`sign_key_ref()`), no material, y `public_key` la del proveedor (D81).
+    `ensure_keys` ya no crea filas `sign`."""
+    fila = CryptoKey(
+        purpose="sign",
+        data_class=data_class,
+        algorithm=algorithm,
+        provider=proveedor.name,
+        version=version,
+        state=state,
+        wrapped_material=proveedor.sign_key_ref().encode("ascii"),
+        public_key=public_key if public_key is not None else await proveedor.sign_public_key(),
+        created_by=SYSTEM_USER_ID,
+    )
+    session.add(fila)
+    await session.flush()
+    return fila

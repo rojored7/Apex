@@ -19,6 +19,7 @@ from app.core.crypto.provider import KeyInfo
 
 _VERSION: Final = re.compile(rb"^vault:v(\d+):")
 _KEY_REF: Final = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+SIMETRICOS: Final = frozenset({"aes256-gcm96", "chacha20-poly1305", "aes128-gcm96"})
 
 
 def map_error(status: int, errors: Sequence[str]) -> CryptoError:
@@ -82,16 +83,32 @@ def info(key_ref: str, datos: dict[str, Any]) -> KeyInfo:
     try:
         version = int(datos["latest_version"])
         creada = datos["keys"][str(version)]
-        if isinstance(creada, dict):  # llaves asimétricas: {"creation_time": "..."}
+        if isinstance(
+            creada, dict
+        ):  # llaves asimétricas: {"creation_time": "...", "public_key": ...}
             instante = datetime.fromisoformat(str(creada["creation_time"]))
+            publica = creada.get("public_key")
         else:
             instante = datetime.fromtimestamp(int(creada), UTC)
+            publica = None
+        algoritmo = _algoritmo(str(datos["type"]))
         return KeyInfo(
             key_ref=key_ref,
-            algorithm=str(datos["type"]),
+            algorithm=algoritmo,
             provider="openbao",
             version=version,
             created_at=instante,
+            public_key=publica if isinstance(publica, str) else None,
         )
     except (KeyError, TypeError, ValueError):
         raise CryptoError("unwrap_failed", "respuesta inválida del custodio") from None
+
+
+def _algoritmo(tipo: str) -> str:
+    """`ed25519` -> `Ed25519`; los tipos simétricos de la KEK pasan tal cual; todo otro tipo
+    asimétrico es `unsupported` (S6-D81: el puerto solo firma Ed25519 en v0.3)."""
+    if tipo == "ed25519":
+        return "Ed25519"
+    if tipo in SIMETRICOS:
+        return tipo
+    raise CryptoError("unsupported", f"tipo de llave no soportado: {tipo}")

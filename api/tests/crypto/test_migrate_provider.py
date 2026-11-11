@@ -378,6 +378,7 @@ async def test_verify_ignora_las_filas_sign_que_guardan_una_referencia(sembrada:
                     version=1,
                     state="active",
                     wrapped_material=b"ed25519-ref",
+                    public_key="A" * 43 + "=",  # 0021, S6-D81
                     created_by=ACTOR,
                 )
             )

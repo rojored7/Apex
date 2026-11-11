@@ -67,6 +67,8 @@ async def _fila(
         version=1,
         state="active",
         wrapped_material=envuelta,
+        # `0021` (S6-D81): toda fila `sign` lleva su clave pública (base64 de 32 bytes).
+        public_key="A" * 43 + "=" if purpose == "sign" else None,
         created_by=SYSTEM_USER_ID,
     )
     with actor_scope(SYSTEM_USER_ID):

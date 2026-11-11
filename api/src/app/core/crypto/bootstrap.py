@@ -7,6 +7,9 @@ state = 'active' DO NOTHING`, con `version = 1`, `provider = <nombre del proveed
 clases con `index_kind`. Luego vuelve a leer, así dos procesos arrancando a la vez (api y
 worker) terminan con una sola llave por clase. Lo llaman el lifespan de `main.py`, el
 worker y los comandos del CLI que usan el bus; deja el keyring del proceso cargado.
+
+Nunca crea filas `purpose = 'sign'` (S6-D72): la fila de la firma, con su referencia y su clave
+pública, la crea `init-keys --data-class audit.signature`.
 """
 
 from __future__ import annotations
@@ -22,13 +25,12 @@ from app.core.context import SYSTEM_USER_ID
 from app.core.crypto import oplog
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.keyring import Keyring, configure_keyring
-from app.core.crypto.local_provider import SIGNING_KEY_REF
 from app.core.crypto.models import CryptoKey
 from app.core.crypto.provider import KeyProvider, ProviderResolver
-from app.core.crypto.registry import encrypting_specs, indexing_specs, signing_specs
+from app.core.crypto.registry import encrypting_specs, indexing_specs
 
 DEK_LEN = 32
-_ALGORITHM = {"encrypt": "A256GCM", "index": "HMAC-SHA256", "sign": "Ed25519"}
+_ALGORITHM = {"encrypt": "A256GCM", "index": "HMAC-SHA256"}
 
 
 async def _active_pairs(session: AsyncSession) -> set[tuple[str, str]]:
@@ -41,21 +43,15 @@ async def _active_pairs(session: AsyncSession) -> set[tuple[str, str]]:
 async def _create_missing(session: AsyncSession, provider: KeyProvider) -> int:
     """Intenta crear las llaves que faltan y devuelve cuántas faltaban (otro proceso puede haberse
     adelantado: el `ON CONFLICT` ya las dejó, y quien llama debe recargar de todos modos)."""
-    deseadas = (
-        [("encrypt", s.name) for s in encrypting_specs()]
-        + [("index", s.name) for s in indexing_specs()]
-        + [("sign", s.name) for s in signing_specs()]
-    )
+    deseadas = [("encrypt", s.name) for s in encrypting_specs()] + [
+        ("index", s.name) for s in indexing_specs()
+    ]
     activas = await _active_pairs(session)
     faltaban = 0
     for purpose, data_class in deseadas:
         if (purpose, data_class) in activas:
             continue
-        if purpose == "sign":
-            # La privada de firma vive en el proveedor: se guarda la referencia (US-027).
-            envuelta = SIGNING_KEY_REF.encode("ascii")
-        else:
-            envuelta = await provider.wrap(os.urandom(DEK_LEN))
+        envuelta = await provider.wrap(os.urandom(DEK_LEN))
         key_id = uuid4()
         stmt = (
             insert(CryptoKey)
@@ -79,7 +75,7 @@ async def _create_missing(session: AsyncSession, provider: KeyProvider) -> int:
         )
         resultado = await session.execute(stmt)
         faltaban += 1
-        if getattr(resultado, "rowcount", 0) == 1 and purpose != "sign":
+        if getattr(resultado, "rowcount", 0) == 1:
             oplog.record("wrap", data_class=data_class, key_id=key_id, key_version=1)
     return faltaban
 

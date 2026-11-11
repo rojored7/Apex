@@ -19,9 +19,11 @@ from typing import Final
 
 AUDIT_LOG_TABLE: Final = "audit.audit_log"
 VERIFICATIONS_TABLE: Final = "audit.verifications"
+SIGNATURES_TABLE: Final = "audit.signatures"
 
 AUDIT_LOG_TRIGGERS: Final = ("audit_log_forbid_mutation", "audit_log_forbid_truncate")
 VERIFICATIONS_TRIGGERS: Final = ("verifications_forbid_mutation", "verifications_forbid_truncate")
+SIGNATURES_TRIGGERS: Final = ("signatures_forbid_mutation", "signatures_forbid_truncate")
 CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     "crypto.crypto_ops": ("crypto_ops_forbid_mutation", "crypto_ops_forbid_truncate"),
     "crypto.crypto_keys": ("crypto_keys_guard", "crypto_keys_forbid_truncate"),
@@ -30,9 +32,10 @@ CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
 ALWAYS_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     AUDIT_LOG_TABLE: AUDIT_LOG_TRIGGERS,
     VERIFICATIONS_TABLE: VERIFICATIONS_TRIGGERS,
+    SIGNATURES_TABLE: SIGNATURES_TRIGGERS,  # S6-A1 (0021)
     **CRYPTO_TRIGGERS,
 }
-"""Los diez triggers inmutables por tabla (`tgenabled = 'A'` tras `0014`)."""
+"""Los doce triggers inmutables por tabla (`tgenabled = 'A'`; S6-A1 suma `audit.signatures`)."""
 
 
 def disable_user_sql(tabla: str) -> str:

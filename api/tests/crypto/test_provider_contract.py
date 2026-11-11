@@ -157,3 +157,23 @@ async def test_real_rewrap_no_conserva_el_aad_de_la_envoltura(
     nueva = await openbao_real.wrap(await openbao_real.unwrap(antigua))
     assert parse_version(nueva) > parse_version(antigua)
     assert await openbao_real.unwrap(nueva) == DEK
+
+
+# Referencia y clave pública de la llave de firma (S6-A1; S6-D40, D81) -------------------------
+
+
+async def test_sign_key_ref_es_la_referencia_del_proveedor(proveedor: Any, tipo: str) -> None:
+    """`local:sign-ed25519` en local; `apex-sign-audit` en Transit. Es una referencia, no material,
+    y es la que acepta `sign`/`verify` del propio proveedor."""
+    assert proveedor.sign_key_ref() == (SIGNING_KEY_REF if tipo == "local" else SIGN_KEY)
+    firma = await proveedor.sign(proveedor.sign_key_ref(), b"datos")
+    assert await proveedor.verify(proveedor.sign_key_ref(), b"datos", firma) is True
+
+
+async def test_sign_public_key_son_32_bytes_en_base64_estandar(proveedor: Any) -> None:
+    import base64
+
+    publica = await proveedor.sign_public_key()
+    assert isinstance(publica, str)
+    assert len(base64.b64decode(publica, validate=True)) == 32
+    assert await proveedor.sign_public_key() == publica  # estable entre llamadas

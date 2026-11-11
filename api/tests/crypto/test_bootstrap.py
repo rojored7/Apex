@@ -128,3 +128,21 @@ async def test_kek_backup_no_crea_ninguna_llave(
 
     assert "kek.backup" not in {k.data_class for k in llaves}
     assert len(llaves) == len(CIFRADO) + len(INDICE)
+
+
+async def test_ensure_keys_nunca_crea_filas_sign(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    """S6-D72: `audit.signature` está en el registro (`sign=True`) y aun así el arranque del api
+    no crea su fila: solo `init-keys --data-class audit.signature` (y `rotate-key --provider`)."""
+    from app.core.crypto.registry import signing_specs
+
+    assert "audit.signature" in {s.name for s in signing_specs()}
+    with actor_scope(SYSTEM_USER_ID):
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+
+    llaves = await _llaves(sin_llaves)
+
+    assert [k for k in llaves if k.purpose == "sign"] == []
+    assert len(llaves) == len(CIFRADO) + len(INDICE)

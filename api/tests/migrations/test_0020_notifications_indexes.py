@@ -1,6 +1,7 @@
 """`0020_notifications_indexes` (S5-V8, S5-D255). # Rojo V8
 
-Padre `0019_notifications`; es head. Tres índices, reversibles:
+Padre `0019_notifications`; en la cadena hasta head (S6-A1: la `0021` cuelga de ella). Tres índices,
+reversibles:
 - `ix_notifications_membership_id` en `notifications.notifications (membership_id)`;
 - `ix_members_created_at_id` en `members.members (created_at, id)`;
 - `ix_payments_paid_at_id` en `payments.payments (paid_at, id)`.
@@ -45,12 +46,17 @@ def _indices(url: str) -> dict[str, str]:
     return {f["indexname"]: f"{f['schemaname']}.{f['tablename']} {f['indexdef']}" for f in filas}
 
 
-def test_la_revision_cuelga_de_0019_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_cuelga_de_0019_y_esta_en_la_cadena_hasta_head(
+    alembic_config: Config,
+) -> None:
+    """S6-A1: ya no es head (la `0021` cuelga de ella); sigue en la cadena."""
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    (head,) = scripts.get_heads()
+    cadena = {r.revision for r in scripts.iterate_revisions(head, "base")}
+    assert REVISION in cadena
 
 
 def test_tras_upgrade_head_existen_los_tres_indices(

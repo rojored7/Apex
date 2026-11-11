@@ -84,3 +84,11 @@ def test_una_fuente_limpia_pasa() -> None:
         'SQL = "SELECT pg_advisory_xact_lock(hashtextextended(:m, 0))"\n'
     )
     assert hallazgos(limpia, "limpia.py") == []
+
+
+def test_audit_sign_esta_barrido_y_no_apaga_triggers() -> None:
+    """S6-A1: `core/audit_sign.py` (tabla append-only con `signatures_forbid_*`) existe y está
+    dentro del barrido de `app/`; ninguna de sus cadenas apaga o salta triggers."""
+    path = APP / "core" / "audit_sign.py"
+    assert path.is_file()
+    assert hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix()) == []

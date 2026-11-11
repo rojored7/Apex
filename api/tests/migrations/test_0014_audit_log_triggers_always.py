@@ -52,7 +52,9 @@ TRIGGERS_QUE_CAMBIAN = (
     *AUDIT_LOG_TRIGGERS,
     *(nombre for nombres in CRYPTO_TRIGGERS.values() for nombre in nombres),
 )
-TODOS = tuple(nombre for nombres in ALWAYS_TRIGGERS.values() for nombre in nombres)
+# `audit.signatures` nace en `0021` (S6-A1): sus triggers no existen en `0013` ni en `0014`.
+ALWAYS_DE_0014 = {t: n for t, n in ALWAYS_TRIGGERS.items() if t != "audit.signatures"}
+TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)
 
 
 # Ayudas -----------------------------------------------------------------------------------------
@@ -300,7 +302,7 @@ def test_los_diez_triggers_inmutables_estan_en_always(base: str) -> None:
     assert _estados(base, TODOS) == dict.fromkeys(TODOS, "A")
 
 
-@pytest.mark.parametrize("tabla", list(ALWAYS_TRIGGERS), ids=list(ALWAYS_TRIGGERS))
+@pytest.mark.parametrize("tabla", list(ALWAYS_DE_0014), ids=list(ALWAYS_DE_0014))
 def test_cada_tabla_tiene_exactamente_sus_triggers_y_todos_en_always(base: str, tabla: str) -> None:
     filas = _consultar(
         base,
@@ -308,7 +310,7 @@ def test_cada_tabla_tiene_exactamente_sus_triggers_y_todos_en_always(base: str, 
         "WHERE tgrelid = $1::regclass AND NOT tgisinternal",
         tabla,
     )
-    assert {f["tgname"]: f["estado"] for f in filas} == dict.fromkeys(ALWAYS_TRIGGERS[tabla], "A")
+    assert {f["tgname"]: f["estado"] for f in filas} == dict.fromkeys(ALWAYS_DE_0014[tabla], "A")
 
 
 # Funciones --------------------------------------------------------------------------------------
@@ -420,7 +422,11 @@ def test_delete_se_rechaza(fila: tuple[str, Tabla, UUID]) -> None:
 def test_truncate_se_rechaza(fila: tuple[str, Tabla, UUID]) -> None:
     url, tabla, _ = fila
     error = _error(url, f"TRUNCATE {tabla.nombre}")
-    assert error is not None and error.sqlstate == tabla.sqlstate
+    # Con la FK de `audit.signatures.key_id` (0021) PostgreSQL rechaza antes que el trigger.
+    esperados = (
+        {tabla.sqlstate, "0A000"} if tabla.nombre == "crypto.crypto_keys" else {tabla.sqlstate}
+    )
+    assert error is not None and error.sqlstate in esperados
 
 
 def test_update_se_rechaza_bajo_replica(fila: tuple[str, Tabla, UUID]) -> None:
@@ -440,7 +446,11 @@ def test_delete_se_rechaza_bajo_replica(fila: tuple[str, Tabla, UUID]) -> None:
 def test_truncate_se_rechaza_bajo_replica(fila: tuple[str, Tabla, UUID]) -> None:
     url, tabla, _ = fila
     error = _error(url, REPLICA, f"TRUNCATE {tabla.nombre}")
-    assert error is not None and error.sqlstate == tabla.sqlstate
+    # Con la FK de `audit.signatures.key_id` (0021) PostgreSQL rechaza antes que el trigger.
+    esperados = (
+        {tabla.sqlstate, "0A000"} if tabla.nombre == "crypto.crypto_keys" else {tabla.sqlstate}
+    )
+    assert error is not None and error.sqlstate in esperados
 
 
 # Forma ------------------------------------------------------------------------------------------
@@ -456,6 +466,7 @@ POSTERIORES_A_0014 = (
     "notifications.uq_notifications",
     "members.ix_members_created_at_id",  # S5-V8 (0020)
     "payments.ix_payments_paid_at_id",  # S5-V8 (0020)
+    "signatures",  # S6-A1 (0021): audit.signatures y sus índices
 )
 
 

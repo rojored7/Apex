@@ -50,6 +50,7 @@ EXCLUIDAS: dict[str, str] = {
     "auth.refresh_tokens": "rota cada 15 minutos; su ciclo lo registran los timestamps (US-041)",
     "worker.job_runs": "bitácora operativa del worker; no se audita (US-113, S4A-D3)",
     "audit.verifications": "su resultado entra a la cadena como fila verify (N-30, S4A-D12)",
+    "audit.signatures": "auditaría la auditoría; la firma queda en crypto_ops(sign) (S6-D7)",
 }
 
 REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
@@ -78,6 +79,7 @@ def _cargar_modelos(modulos: Iterable[str] = MODULES) -> None:
     importlib.import_module("app.core.crypto.models")
     importlib.import_module("app.core.jobs")  # S4A-B1: `worker.job_runs` (S4A-D3)
     importlib.import_module("app.core.audit_verify")  # S4A-B3: `audit.verifications` (S4A-D12)
+    importlib.import_module("app.core.audit_sign")  # S6-A1: `audit.signatures` (S6-D7)
     for nombre in modulos:
         ruta = f"app.modules.{nombre}.models"
         if find_spec(ruta) is not None:
@@ -339,3 +341,14 @@ def test_notifications_declara_plantillas_y_reglas_auditadas_y_su_modulo_esta_en
     assert "notifications.notifications" not in PENDING_AUDITED
     assert getattr(tablas["notifications.notifications"], "__audited__", False) is True
     assert tablas["notifications.notifications"].__audit_subject__ == "member_id"  # type: ignore[attr-defined]
+
+
+def test_audit_signatures_esta_excluida_con_motivo_y_no_es_auditable() -> None:
+    """S6-D7: `audit.signatures` no es `__audited__` (auditaría la auditoría) y `GET /audit?table=`
+    no la lista; el motivo nombra la razón."""
+    tablas = _tablas_de_la_app()
+    assert "audit.signatures" in tablas
+    assert "audit.signatures" in EXCLUIDAS
+    assert "auditaría la auditoría" in EXCLUIDAS["audit.signatures"]
+    assert not getattr(tablas["audit.signatures"], "__audited__", False)
+    assert "audit.signatures" not in AUDITABLE_TABLES

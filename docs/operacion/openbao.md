@@ -152,6 +152,8 @@ bash scripts/dev/openbao-seal.sh unseal      # pide la llave con read -rs
 
 ### Qué puede cada token en v0.3
 
+La fila `sign` de `crypto_keys` (clase `audit.signature`) guarda la **referencia** `apex-sign-audit` (con el proveedor local, `local:sign-ed25519`) y la **clave pública** Ed25519 en base64 (`keys.<versión>.public_key` de Transit); no guarda material. La referencia debe cumplir `^apex-sign-audit[a-z0-9-]*$` o el bus la rechaza con `bad_key_ref`. Verificar una firma usa esa clave pública en el api, sin llamar a OpenBao.
+
 Mínimo privilegio literal (S6-D6, D41; M-2c): ninguna política concede `rotate`, `config`, `delete`, `trim` ni `export` de `apex-sign-audit`, ni comodines.
 
 | Token | `apex-kek` | `apex-sign-audit` |

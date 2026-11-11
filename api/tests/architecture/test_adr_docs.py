@@ -166,3 +166,16 @@ def test_control_una_ruta_inexistente_se_detecta() -> None:
 def test_control_las_rutas_fuera_de_como_se_verifica_no_cuentan() -> None:
     texto = BUENO.replace("Microservicios y BaaS", "tests/core/test_no_existe_jamas.py")
     assert rutas_inexistentes(texto, API_ROOT) == []
+
+
+def test_adr_006_cita_las_pruebas_del_payload_y_de_la_firma() -> None:
+    """S6-A1 (paso 39): ADR-006 cita las tres pruebas de la firma en 'Cómo se verifica'; las rutas
+    deben existir (`test_cada_adr_cita...` ya comprueba la existencia)."""
+    texto = (ADR_DIR / "ADR-006-firma-de-la-cadena-de-auditoria.md").read_text(encoding="utf-8")
+    citadas = set(rutas_citadas(texto))
+    esperadas = {
+        "tests/core/test_signature_payload_vector.py",
+        "tests/core/test_audit_sign_pure.py",
+        "tests/audit/test_sign_latest.py",
+    }
+    assert esperadas <= citadas, sorted(esperadas - citadas)

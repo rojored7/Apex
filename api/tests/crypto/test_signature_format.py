@@ -49,3 +49,11 @@ def test_parse_rechaza(firma: str) -> None:
 def test_format_rechaza_algoritmo_desconocido() -> None:
     with pytest.raises(CryptoError):
         format_signature(uuid4(), "RSA", SIG)
+
+
+def test_el_algoritmo_va_en_el_dato_y_ml_dsa_65_sigue_siendo_valido() -> None:
+    """S6-A1: el bus etiqueta con el algoritmo de la fila; el formato admite `ML-DSA-65` (EP-26)."""
+    key_id = uuid4()
+    firma = format_signature(key_id, "ML-DSA-65", SIG)
+    assert firma.split(".")[2] == "ML-DSA-65"
+    assert parse_signature(firma) == SignatureParts(key_id, "ML-DSA-65", SIG)

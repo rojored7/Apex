@@ -40,11 +40,13 @@ from tests.conftest import (
     LIMPIAR_MEMBERS,
     LIMPIAR_MEMBERSHIPS,
     LIMPIAR_PAYMENTS,
+    LIMPIAR_SIGNATURES,
     LIMPIAR_VERIFICATIONS,
     LIMPIEZA_DE_SESION,
     TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
     TRIGGERS_DE_PAGOS,
+    TRIGGERS_DE_SIGNATURES,
     TRIGGERS_DE_VERIFICATIONS,
     limpiar_tras_dos_sesiones,
 )
@@ -221,7 +223,9 @@ async def test_bajo_replica_el_truncate_sigue_rechazado(engine: AsyncEngine, tab
     async with engine.connect() as conexion:
         try:
             await conexion.execute(text("SET LOCAL session_replication_role = replica"))
-            with pytest.raises(DBAPIError, match=r"append-only|nunca se borran"):
+            with pytest.raises(
+                DBAPIError, match=r"append-only|nunca se borran|cannot truncate a table referenced"
+            ):
                 await conexion.execute(text(f"TRUNCATE {tabla}"))
         finally:
             await conexion.rollback()  # nunca confirma un TRUNCATE, aunque el trigger falte
@@ -246,3 +250,49 @@ async def test_tras_la_limpieza_de_sesion_los_diez_triggers_siguen_en_always(
         ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
     await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
     assert await _estados(engine, LOS_DIEZ) == dict.fromkeys(LOS_DIEZ, "A")
+
+
+# S6-A1 (S6-D7) · `audit.signatures` -------------------------------------------------------------
+
+TRIGGERS_FIRMAS = ("signatures_forbid_mutation", "signatures_forbid_truncate")
+
+
+def test_la_limpieza_de_firmas_enciende_sus_triggers_con_enable_always() -> None:
+    assert tuple(TRIGGERS_DE_SIGNATURES) == TRIGGERS_FIRMAS
+    assert "to_regclass('audit.signatures')" in LIMPIAR_SIGNATURES
+    assert "ALTER TABLE audit.signatures DISABLE TRIGGER USER;" in LIMPIAR_SIGNATURES
+    assert "DELETE FROM audit.signatures;" in LIMPIAR_SIGNATURES
+    for nombre in TRIGGERS_FIRMAS:
+        assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_SIGNATURES, nombre
+        assert f"tgname = '{nombre}'" in LIMPIAR_SIGNATURES, nombre
+    assert "ENABLE TRIGGER USER" not in LIMPIAR_SIGNATURES
+
+
+def test_las_firmas_se_borran_antes_que_la_auditoria_en_las_dos_limpiezas() -> None:
+    orden = list(LIMPIEZA_DE_SESION)
+    assert orden.index(LIMPIAR_SIGNATURES) < orden.index(
+        "ALTER TABLE audit.audit_log DISABLE TRIGGER USER"
+    )
+    fuente = inspect.getsource(limpiar_tras_dos_sesiones)
+    assert "text(LIMPIAR_SIGNATURES)" in fuente
+    assert fuente.index("text(LIMPIAR_SIGNATURES)") < fuente.index("DELETE FROM audit.audit_log")
+
+
+async def test_con_0021_los_dos_triggers_de_firmas_existen_y_siguen_en_always(
+    engine: AsyncEngine,
+) -> None:
+    """Obligatorios (no se saltan como la guarda de la limpieza): existen en `'A'` antes y después
+    de `LIMPIAR_SIGNATURES` y de la limpieza de `dos_sesiones`."""
+    esperados = dict.fromkeys(TRIGGERS_FIRMAS, "A")
+    assert await _estados(engine, TRIGGERS_FIRMAS) == esperados
+    async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_SIGNATURES))
+    assert await _estados(engine, TRIGGERS_FIRMAS) == esperados
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
+    assert await _estados(engine, TRIGGERS_FIRMAS) == esperados
+
+
+def test_always_triggers_incluye_los_dos_de_firmas() -> None:
+    assert ALWAYS_TRIGGERS["audit.signatures"] == TRIGGERS_FIRMAS

@@ -26,6 +26,7 @@ from sqlalchemy import Connection, pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core import (
+    audit_sign,  # noqa: F401  (US-140, 0021_audit_signatures; S6-D3)
     audit_verify,  # noqa: F401  (US-104, 0013_audit_verifications; S4A-D12)
     jobs,  # noqa: F401  (US-113, 0012_worker_job_runs; S4A-D3)
 )

@@ -62,7 +62,11 @@ async def test_algoritmo_y_coherencia_proposito(db: AsyncSession) -> None:
     assert "algorithm" in await _falla(db, _llave(algorithm="DES"))
     assert "purpose_algorithm" in await _falla(db, _llave(algorithm="Ed25519"))
     assert "data_class" in await _falla(db, _llave(data_class="Member Document"))
-    db.add(_llave(purpose="sign", data_class="audit.chain", algorithm="Ed25519"))
+    db.add(
+        _llave(
+            purpose="sign", data_class="audit.chain", algorithm="Ed25519", public_key="A" * 43 + "="
+        )
+    )
     await db.flush()
 
 
@@ -85,7 +89,9 @@ async def test_crypto_keys_no_se_borra_ni_cambia_material(db: AsyncSession) -> N
     db.add(llave)
     await db.flush()
     assert "nunca se borran" in await _falla(db, sql="DELETE FROM crypto.crypto_keys")
-    assert "nunca se borran" in await _falla(db, sql="TRUNCATE crypto.crypto_keys")
+    # Con la FK de `audit.signatures.key_id` (0021) PostgreSQL rechaza antes el TRUNCATE.
+    truncar = await _falla(db, sql="TRUNCATE crypto.crypto_keys")
+    assert "nunca se borran" in truncar or "cannot truncate a table referenced" in truncar
     # S5-D4 (0015): `wrapped_material` solo ya es un rewrap válido; `version` sigue fija.
     mensaje = await _falla(
         db,

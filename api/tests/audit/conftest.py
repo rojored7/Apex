@@ -43,6 +43,9 @@ import app.modules.payments.service as payments_service
 from app.core import audit_verify, db
 from app.core.audit import AuditEntry
 from app.core.config import Settings
+from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto.keyring import Keyring
+from app.core.crypto.local_provider import LocalFileProvider
 from app.modules.audit import verify as verify_mod
 from tests.audit._apoyo import ANA_EMAIL, JUAN_EMAIL, EspiaDeConexiones
 from tests.conftest import (
@@ -160,3 +163,23 @@ async def ana(audit_chain_factory: CadenaDePrueba, usuario_real: CrearUsuario) -
 @pytest.fixture
 async def juan(ana: UsuarioPrueba, usuario_real: CrearUsuario) -> UsuarioPrueba:
     return await usuario_real("coach", email=JUAN_EMAIL)
+
+
+# Firma de la cadena (S6-A1; S6-D34) -------------------------------------------------------------
+
+
+@pytest.fixture
+async def firmador(
+    audit_chain_factory: CadenaDePrueba,
+    bus_listo: Keyring,
+    proveedor_local: LocalFileProvider,
+    session: AsyncSession,
+) -> AsyncIterator[Keyring]:
+    """Cadena vacía, bus listo y la fila `sign` de `audit.signature` (`local`) en el keyring,
+    todo dentro del savepoint de la prueba, con el actor del sistema (el bus exige actor)."""
+    from tests.crypto.conftest import fila_sign
+
+    await fila_sign(session, proveedor_local)
+    await bus_listo.load_all(session, lambda _n: proveedor_local)
+    with actor_scope(SYSTEM_USER_ID):
+        yield bus_listo

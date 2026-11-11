@@ -85,6 +85,7 @@ class CryptoKey(CommonColumnsMixin, Base):
             name="purpose_algorithm",
         ),
         CheckConstraint(f"provider IN ({_in(PROVIDERS)})", name="provider"),
+        CheckConstraint("(purpose <> 'sign') OR (public_key IS NOT NULL)", name="sign_public_key"),
         CheckConstraint("version > 0", name="version"),
         CheckConstraint(f"state IN ({_in(KEY_STATES)})", name="state"),
         UniqueConstraint("purpose", "data_class", "version", name="uq_crypto_keys_version"),
@@ -107,6 +108,9 @@ class CryptoKey(CommonColumnsMixin, Base):
     wrapped_material: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     rotated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     rotated_by: Mapped[UUID | None] = mapped_column(nullable=True)
+    public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Base64 de los 32 bytes de la clave pública Ed25519; obligatoria si `purpose = 'sign'`
+    (`0021`, S6-D81). No es secreta; inmutable por grants."""
 
     def __repr__(self) -> str:  # sin wrapped_material
         return (

@@ -117,6 +117,11 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset()),
         "apex_worker": (frozenset(), frozenset()),
     },
+    # S6-A1 (S6-D7, P-ROL): el worker firma (INSERT) y el api solo lee; apex_backup lee todo.
+    "audit.signatures": {
+        "apex_api": (frozenset({"SELECT"}), frozenset()),
+        "apex_worker": (frozenset({"SELECT", "INSERT"}), frozenset()),
+    },
     "auth.one_time_tokens": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({TODAS})),
         "apex_worker": (frozenset(), frozenset()),
@@ -613,6 +618,33 @@ def test_apex_worker_hace_lo_que_necesita(apex_roles: RolesDb) -> None:
         assert intentar(dsn, sentencia) is None, sentencia
 
 
+def _signature_insert(through_seq: int, key_id: str) -> str:
+    return (
+        "INSERT INTO audit.signatures (id, created_by, through_seq, hash, signature, key_id, "  # noqa: S608
+        "algorithm, payload_version, signed_at) "
+        f"VALUES ('{uuid4()}', '{SYSTEM}', {through_seq}, '{'ab' * 32}', 'apx1.x', "
+        f"'{key_id}', 'Ed25519', 1, now())"
+    )
+
+
+def test_apex_worker_inserta_firmas_y_el_api_las_lee_sin_poder_insertarlas(
+    apex_roles: RolesDb,
+) -> None:
+    """S6-A1: el worker firma (`INSERT`), el api lee; el api no inserta ni el worker modifica."""
+    seq = uuid4().int % 1_000_000_000 + 1
+    llave = str(uuid4())  # la FK de `key_id` exige una llave real (S6-A1)
+    propietario(
+        apex_roles,
+        "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "  # noqa: S608
+        f"provider, version, state, wrapped_material) VALUES ('{llave}', '{SYSTEM}', "
+        "'encrypt', 'prueba.cero_firma', 'A256GCM', 'local', 1, 'decrypt_only', '\\x00')",
+    )
+    assert intentar(como(apex_roles, "apex_worker"), _signature_insert(seq, llave)) is None
+    assert intentar(como(apex_roles, "apex_api"), "SELECT count(*) FROM audit.signatures") is None
+    error = intentar(como(apex_roles, "apex_api"), _signature_insert(seq + 1, llave))
+    assert error is not None and error.sqlstate == PRIVACION
+
+
 def test_apex_backup_lee_y_no_escribe(apex_roles: RolesDb) -> None:
     dsn = como(apex_roles, "apex_backup")
     for tabla in PRIVILEGIOS:
@@ -661,6 +693,11 @@ PROHIBIDAS_API = [
     "UPDATE members.member_channel_preferences SET created_by = created_by",
     "UPDATE audit.audit_log SET action = 'x'",
     "UPDATE audit.verifications SET ok = false",
+    "INSERT INTO audit.signatures (id) VALUES (gen_random_uuid())",  # S6-A1: el api solo verifica
+    "UPDATE audit.signatures SET algorithm = 'Ed25519'",  # S6-A1
+    "DELETE FROM audit.signatures",  # S6-A1
+    "TRUNCATE audit.signatures",  # S6-A1
+    "UPDATE crypto.crypto_keys SET public_key = 'x'",  # S6-D81: inmutable
     "UPDATE crypto.crypto_keys SET state = 'retired'",
     "UPDATE crypto.crypto_ops SET result = 'error'",
     "UPDATE payments.payments SET amount_cop = 1",
@@ -713,6 +750,10 @@ PROHIBIDAS_WORKER = [
     "TRUNCATE worker.job_runs",
     "ALTER TABLE audit.audit_log DISABLE TRIGGER ALL",
     "SET session_replication_role = replica",
+    "UPDATE audit.signatures SET algorithm = 'Ed25519'",  # S6-A1: append-only
+    "DELETE FROM audit.signatures",  # S6-A1
+    "TRUNCATE audit.signatures",  # S6-A1
+    "UPDATE crypto.crypto_keys SET public_key = 'x'",  # S6-D81: inmutable
     "UPDATE audit.audit_log SET action = 'x'",
     "CREATE TABLE public.x()",
 ]

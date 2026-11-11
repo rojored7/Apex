@@ -482,3 +482,32 @@ def test_s5_b8_el_job_notify_importa_recovery_y_nada_mas_del_bus() -> None:
     assert not permitido(
         "worker/jobs/expirations.py", importaciones("from app.core.crypto import recovery\n")
     )
+
+
+# S6-A1 (S6-D3, S6-D40): la firma de la cadena es un importador real del bus dentro de `core/` -----
+
+IMPORTADORES_DE_CORE: Final = frozenset({"core/audit_sign.py"})
+"""Archivos de `core/` (fuera de `core/crypto/`) que importan el bus, por igualdad: solo
+`audit_sign` (firma con `bus.sign`); `core/audit.py` y `core/audit_verify.py` jamás lo importan."""
+
+
+def _importadores_de_core() -> dict[str, dict[str, set[str]]]:
+    salida: dict[str, dict[str, set[str]]] = {}
+    for archivo in sorted((APP / "core").rglob("*.py")):
+        relativo = archivo.relative_to(APP).as_posix()
+        if relativo.startswith("core/crypto/"):
+            continue
+        vistas = importaciones(archivo.read_text(encoding="utf-8"), _paquete_de(relativo))
+        if vistas:
+            salida[relativo] = vistas
+    return salida
+
+
+def test_los_importadores_del_bus_dentro_de_core_son_exactamente_audit_sign() -> None:
+    assert set(_importadores_de_core()) == IMPORTADORES_DE_CORE
+
+
+def test_audit_sign_importa_del_bus_solo_el_bus() -> None:
+    """Ni `types` (cifrado de columnas) ni `recovery`: la firma no descifra nada."""
+    vistas = _importadores_de_core().get("core/audit_sign.py", {})
+    assert set(vistas) == {f"{PAQUETE}.bus"}, vistas

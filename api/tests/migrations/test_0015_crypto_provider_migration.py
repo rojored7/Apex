@@ -100,8 +100,8 @@ def _insertar(
     _correr(
         url,
         "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "
-        "provider, version, state, wrapped_material) "
-        "VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8)",
+        "provider, version, state, wrapped_material, public_key) "
+        "VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9)",
         llave.id,
         SYSTEM_USER_ID,
         purpose,
@@ -110,6 +110,8 @@ def _insertar(
         provider,
         state,
         MATERIAL_VIEJO,
+        # `0021` (S6-D81): las filas `sign` llevan su clave pública (base64 de 32 bytes).
+        "A" * 43 + "=" if purpose == "sign" else None,
     )
     return llave
 
@@ -461,7 +463,8 @@ def test_borrar_y_vaciar_siguen_prohibidos(base: str, llaves: list[Llave]) -> No
     assert borrado is not None and borrado.sqlstate == CHECK_VIOLATION
     assert "nunca se borran" in borrado.message
     vaciado = _error(base, "TRUNCATE crypto.crypto_keys")
-    assert vaciado is not None and vaciado.sqlstate == CHECK_VIOLATION
+    # 0A000: con la FK de `audit.signatures.key_id` (0021) PostgreSQL rechaza antes que el trigger.
+    assert vaciado is not None and vaciado.sqlstate in (CHECK_VIOLATION, "0A000")
 
 
 # Triggers y función -----------------------------------------------------------------------------

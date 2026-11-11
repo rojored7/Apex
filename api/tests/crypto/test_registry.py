@@ -26,10 +26,12 @@ ESPERADAS = {
 
 SIN_LLAVE = {"kek.backup"}
 """Clases sin llave (S4B-D85): nombran las filas de `crypto_ops` del respaldo de la KEK."""
+DE_FIRMA = {"audit.signature"}
+"""S6-D40: clase de firma de la cadena; su fila `sign` la crea `init-keys` (D72)."""
 
 
 def test_las_cinco_clases_de_v01() -> None:
-    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE
+    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE | DE_FIRMA
     for nombre, (tipo, indice) in ESPERADAS.items():
         spec = get_spec(nombre)
         assert spec.name == nombre and spec.encrypt is True and spec.sign is False
@@ -64,3 +66,13 @@ def test_kek_backup_no_entra_en_las_listas_que_crean_llaves() -> None:
     for lista in (encrypting_specs(), indexing_specs(), signing_specs()):
         assert "kek.backup" not in {s.name for s in lista}
     assert {s.name for s in encrypting_specs()} == set(ESPERADAS)
+
+
+def test_audit_signature_es_una_clase_de_firma_sin_columnas_ni_cifrado() -> None:
+    """S6-D40: sin cifrado, índice ni columnas; `sign=True`; solo entra a `signing_specs`."""
+    spec = get_spec("audit.signature")
+    assert (spec.encrypt, spec.index_kind, spec.sign) == (False, None, True)
+    assert spec.columns == ()
+    assert "audit.signature" in {s.name for s in signing_specs()}
+    assert "audit.signature" not in {s.name for s in encrypting_specs()}
+    assert "audit.signature" not in {s.name for s in indexing_specs()}

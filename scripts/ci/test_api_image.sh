@@ -42,6 +42,20 @@ fi
 
 docker run --rm "$IMG" python -c "import app.main; assert callable(app.main.create_app)" && ok "app.main importa" || falla "app.main no importa"
 
+# S6-W0-1 (S6-D21): boto3 y botocore son del grupo opcional `s3`; la imagen no lo instala. Aserción
+# estática sobre el Dockerfile (sin --extra ni --all-extras) y comprobación dentro de la imagen.
+if grep -Eq -e '--(all-)?extras?([[:space:]=]|$)' "$ROOT/api/Dockerfile" \
+  && grep -E -e '--(all-)?extras?([[:space:]=]|$)' "$ROOT/api/Dockerfile" | grep -vq '^[[:space:]]*#'; then
+  falla "api/Dockerfile instala extras opcionales (--extra o --all-extras)"
+else
+  ok "api/Dockerfile sin --extra (el grupo s3 no se instala)"
+fi
+if docker run --rm "$IMG" python -c "import importlib.util, sys; sys.exit(1 if any(importlib.util.find_spec(m) for m in ['boto3', 'botocore']) else 0)"; then
+  ok "boto3 y botocore no están en la imagen"
+else
+  falla "boto3 o botocore están en la imagen (el extra s3 no debe instalarse)"
+fi
+
 # S4B-W0-1 (US-115 T11; S4B-D67): age para verify-kek-backup, carpetas de respaldo e importación
 # con dueño apex y la revisión de git como etiqueta OCI.
 if docker run --rm "$IMG" age --version > /dev/null 2>&1; then ok "age presente"; else falla "falta age en la imagen"; fi

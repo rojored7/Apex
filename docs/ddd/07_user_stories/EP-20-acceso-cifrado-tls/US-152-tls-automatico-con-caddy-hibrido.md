@@ -99,3 +99,7 @@ Característica: TLS automático con intercambio híbrido
 - [ ] Chequeo de licencias en verde y `NOTICE` actualizado
 - [ ] Runbook de TLS escrito
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D64, S6-D63):** Caddy es 2.11.3 por digest (no 2.10); los criterios 5 (renovación contra staging sin intervención) y 8 (SSL Labs) son pasos humanos con dominio público, documentados en `docs/operacion/tls.md`; la evidencia del flujo es `scripts/ci/tls-smoke.sh` con la CA interna de Caddy.

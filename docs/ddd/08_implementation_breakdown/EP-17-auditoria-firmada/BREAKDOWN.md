@@ -106,3 +106,12 @@ Ningún código fuera de `core/crypto` toca primitivas: la firma y la verificaci
 ## Total de la épica
 
 - **Total: 54 h**
+
+## Correcciones del Sprint 6 (S6-W0-1; plan aprobado y S6-D1 a S6-D82)
+
+- Migraciones `0021` (firmas, `crypto_keys.public_key`) y `0022` (verificaciones con firmas); las `0040`, `0041` y `0042` de este desglose sobran (S6-D39).
+- Algoritmo: Ed25519 único en v0.3 (S6-D51); sin sonda de ML-DSA, sin `rotate_sign.py`; `ML-DSA-65` queda en EP-26.
+- `signature_payload` y `sign_latest` viven en `core/audit_sign.py`, no en `core/audit.py` (que no cambia); el payload es `apex-audit-sig-v1` (ADR-006, vector `signature-payload-vector`).
+- US-140: `payload_version`, Ed25519 y verificación incremental antes de firmar (H-1, S6-D34).
+- US-141: reintentos dentro de la corrida; alerta `audit_chain_broken`; keyring por job (S6-D42); `migrate-provider` no migra la fila `sign`, el cambio de proveedor es `rotate-key audit.signature --provider` (S6-D81).
+- US-142: la verificación usa la clave pública de `crypto_keys.public_key` en el api, sin custodio; sin estado `unavailable` ni muestreo (S6-D62, S6-D81).

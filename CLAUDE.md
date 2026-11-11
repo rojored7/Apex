@@ -10,9 +10,9 @@ APEX es un sistema web para administrar un gimnasio de CrossFit en Colombia: soc
 
 ## Stack fijo
 
-- Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, pydantic-settings, Uvicorn, APScheduler, httpx, argon2-cffi, PyJWT, `cryptography`, liboqs-python.
+- Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, pydantic-settings, Uvicorn, APScheduler, httpx, argon2-cffi, PyJWT, `cryptography`. `liboqs-python` (ML-DSA y ML-KEM propios) llega con EP-26: en v0.3 la firma de la auditoría es Ed25519 (S6-D51) y no se instala.
 - PostgreSQL 16. Un solo servidor, un esquema por módulo.
-- Docker Engine en Linux, Docker Compose. Nginx para servir el front y hacer proxy. Caddy opcional para TLS automático.
+- Docker Engine en Linux, Docker Compose. Nginx para servir el front y hacer proxy. Caddy 2.11.3 por digest, solo con el perfil `tls` (TLS 1.3 con `x25519mlkem768`; Sprint 6, S6-D64).
 - OpenBao (motor Transit) como KMS desde la v0.2. En v0.1 el proveedor de llaves es local.
 - Front: React 19 + TypeScript + Vite, React Router, TanStack Query, React Hook Form + Zod, Vitest y Playwright; build estático servido por Nginx.
 - Herramientas: `uv`, `ruff`, `mypy`, `pytest`, `pre-commit`, GitHub Actions.
@@ -30,7 +30,7 @@ apex/
       cli_manifest.py    # verificación del manifiesto firmado de respaldo (S5-D72, B13): recent_signed_manifest, custody_proofs, confirmation_error (S5-D186) y custody_errors/exit_after_failure (S5-D189); lo usan retire-key, migrate-provider, rotate-kek y retire-local-kek; capa de aplicación como cli_keyring.py
       cli_keyring.py     # carga del keyring de crypto_runtime (confirma solo si creó llaves; `persist=False` para --dry-run); la usa solo cli_base
       cli_session.py     # read_only_session: sesión de solo lectura con rollback explícito (la usan seed/ e imports/)
-      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140), migrate_provider, rotate_kek (con --trim) y retire_local_kek (S5-B2, S5-D184), seed_notifications (S5-B6) y notify (S5-B7/B8: `--generate-only` sin reclamo; lo demás por `run_job`, S5-D226); register_ops(app); nunca se importan entre sí ni importan cli
+      cli_ops/           # un archivo por familia de comandos, solo los importa cli.py (S4B-D76): accounts, keys, kek (export-kek, verify-kek-backup y restore-kek, B3a), openapi, recompute, seed_demo, import_members, verify_audit, rotate_key y retire_key (B3b, S4B-D140), migrate_provider, rotate_kek (con --trim) y retire_local_kek (S5-B2, S5-D184), seed_notifications (S5-B6) y notify (S5-B7/B8: `--generate-only` sin reclamo; lo demás por `run_job`, S5-D226); `sign_audit` y `attachments_check` (Sprint 6: `sign-audit` y `attachments-check`), `keys_layout` y `keys_data_class` (`init-keys --migrate-layout` e `init-keys --data-class`; `init-keys` sigue definido en `cli.py`; S6-D80) y `rotate_key` suma `rotate-key audit.signature --provider` (S6-D81); register_ops(app); nunca se importan entre sí ni importan cli
       seed/              # `seed --demo` (S4B-D32): dataset.py puro (3 planes, 30 socios ficticios) y apply.py (dos transacciones por socio, lock_member primero; única llamada a enforce_retroactive_limit=False fuera de cli.py, S4B-D33); solo lo importa cli_ops/seed_demo.py
       imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
@@ -50,6 +50,7 @@ apex/
         logging.py       # JSON a stdout con redacción
         audit.py         # escritura en AuditLog + cadena de hashes (usa core/crypto/digest.py)
         audit_verify.py  # audit.verifications, candado y recorrido por lotes de la cadena (Sprint 4A, S4A-D12)
+        audit_sign.py    # audit.signatures (append-only), signature_payload `apex-audit-sig-v1`, needs_signature, is_signature_late, check_unsigned_segment (H-1) y sign_latest; firma Ed25519 solo en el worker (Sprint 6, S6-D3, S6-D34, S6-D81; ADR-006)
         events.py        # bus de eventos interno (en memoria)
         jobs.py          # worker.job_runs: claim_run, finish_run, last_run (Sprint 4A); lo importan app/worker/ y, solo para leer `last_run`, core/backup_status.py (S4B-D26, S4B-D71); también `last_results`
         backup_status.py # backup_health() (S4B-B2): última corrida de backup_check -> ok|attention|unknown para /health; solo lee (único importador de core.jobs fuera de worker/, y solo last_run)
@@ -61,7 +62,14 @@ apex/
         export_db.py     # record_close (fila `export` de cierre bajo CancelScope con sesión propia) y keyset_after (paginación por llave con tuple_ y literal) para las exportaciones (Sprint 5, S5-D257, V10); único sitio de core/ que une export con audit y db
         pdf.py           # render_text_pdf: escritor de PDF propio, una página A4 en Courier (Sprint 5, S5-D65)
         crypto/          # EL BUS DE CRIPTOGRAFÍA (ver abajo)
-          registry.py    #   registro de data_class y puerto Reencryptor
+          registry.py    #   registro de data_class (desde S6 suma las clases `attachment.sensitive` y `audit.signature`)
+          router.py      #   admin: inventario, bitácora, trabajos, rotación y CBOM (`/crypto/*`, Sprint 6, S6-D44); solo lo importa main.py, no importa `app.modules`, y audita por el puerto `set_audit_writer` (S6-D52); `core/crypto/__init__.py` queda vacío
+          inventory.py   #   inventario de llaves con columnas explícitas y `records_count` por el registro, sin material de llave (Sprint 6)
+          schemas.py     #   DTO del router de llaves (Sprint 6)
+          reencryptor.py #   puerto `Reencryptor` (count_total, count_pending, reencrypt_batch) que cada módulo con datos cifrados registra al arrancar (Sprint 6, G-09)
+          cbom.py        #   exportación del CBOM sin material ni referencias de llaves `sign` (Sprint 6, S6-D57)
+          rotate_job.py  #   run_rotation y rotation_engine: rotación reanudable fuera del request, un solo rotador en vuelo (Sprint 6, S6-D61)
+          signature.py   #   verify_ed25519(public_key, data, signature): verificación con la clave pública de `crypto_keys.public_key`, sin proveedor (Sprint 6, S6-D62, S6-D81)
           provider.py    #   puerto KeyProvider (name, status, rewrap), get_provider_named y make_resolver: proveedor por fila de crypto_keys (Sprint 5, S5-D3)
           openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao
           state.py       #   estado del proveedor y health_state puro (Sprint 5, S5-D13)
@@ -93,7 +101,7 @@ apex/
         audit/       # router, schemas, service (se suscribe a los eventos de auth); privados verify.py (S4A-B3), queries.py y diff.py (S4A-B4); los models viven en core/audit.py y core/audit_verify.py
         dashboard/   # router, schemas, service; sin models (Sprint 4A); en B10 (S5-D47) suma la arista `dashboard -> notifications` (`today_count`) y `members.service.count_without_consent`
         notifications/ # v0.2 (Sprint 5): router, schemas, models, service, exceptions; esquema `notifications` (plantillas, reglas, avisos); el job notify y el único llamador de contact_for_notification (S5-D23, D32). En B6 (US-120, US-121): `models.py` (`NotificationTemplate`, `NotificationRule`; migraciones 0017 y 0018), `router.py` (9 rutas `/notification-templates` y `/notification-rules`; `notifications-write` y `staff-read`) y `service.py` (fachada y `seed_defaults`); privados tras la fachada: `rules.py` (puro: `render`, `validate_rule`, `target_dates`, `days_value` y la siembra por defecto), `templates.py` y `rules_crud.py`. En B7 (US-124, US-127 a US-130; migración 0019): `models.Notification` (`__audit_subject__ = "member_id"`), `events.py` (cuatro eventos sin datos personales), privados `generate.py` (importa `members.service` y `memberships.service`, S5-D26), `queries.py`, `whatsapp.py` (`build_link`, pura) y `sending.py` (el envío, B8, US-125: respeta opt-in y consentimiento, S5-D31) con `channels/` (`base.py` y `email.py` sobre `core/mail.py`; el canal `whatsapp_link` no envía: el enlace se abre por `POST /notifications/{id}/wa-link`, S5-D28, y no tiene clase propia desde V10, S5-D263; puerto `NotificationChannel`) que usa el job `worker/jobs/notify.py`; `service.py` suma `generate_today`, `today_list`, `today_count`, `list`, `get`, `list_for_member`, `wa_link` (único llamador de `contact_for_notification`) y `skip`; 6 rutas más (`/notifications/today` antes de `/{id}`)
-        attachments/   # v0.3
+        attachments/   # v0.3 (Sprint 6, EP-19): router (solo `GET /attachments/{id}`), schemas, models, service, exceptions; privados `files` (tercera puerta de descifrado), `rules`, `queries`, `reencrypt` y `storage/` (local y s3 apagado); esquema `attachments`; `main.MODULES` lo registra antes de `members`
         classes/       # v0.4
         wods/          # v0.5
         results/       # v0.5
@@ -106,14 +114,14 @@ apex/
         registry.py      # JobSpec y registro de jobs
         runner.py        # run_job y run_cycle: actor del sistema, reclamo, tiempo máximo, finish_run, alert
         runtime.py       # worker_runtime(with_crypto=True: keyring con phone y email, sin INSERT, sondeo si arranca sellado; S5-B3), espera de la base y latido (/tmp/apex-worker-heartbeat)
-        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35, B8: generar, enviar y resumir); sign_audit.py (v0.3, EP-17)
+        jobs/            # expirations.py (Sprint 4A); backup_check.py (S4B-B2: manifiesto, sin age); notify.py (v0.2, Sprint 5, S5-D35, B8: generar, enviar y resumir); sign_audit.py (v0.3, Sprint 6, S6-D8: firma la cadena a las 07:00 tras verificar el tramo sin firmar; clases de cifrado por job)
     migrations/          # Alembic
     tests/
       architecture/      # pruebas de arquitectura; corren en todos los gates
   web/                   # front React 19 + TypeScript + Vite; se construye aquí
   scripts/
     workflow/            # slice-gate.sh, checkpoint-commit.sh, run-gates.sh, validate-impact-analysis.sh
-    ci/                  # smoke de compose, prueba de imagen, licencias, prod-smoke.sh (stack de producción en apex-smoke), check-release-version.sh (etiqueta = pyproject = package.json = CHANGELOG), test_deploy_script.sh con fakes/
+    ci/                  # smoke de compose, prueba de imagen, licencias, prod-smoke.sh (stack de producción en apex-smoke), tls-smoke.sh (TLS híbrido con la CA interna de Caddy y `apex.localhost`, Sprint 6, S6-D63), check-release-version.sh (etiqueta = pyproject = package.json = CHANGELOG), test_deploy_script.sh con fakes/
     dev/                 # telegram_fake.py (S5-B4, S5-D78): Telegram falso de la biblioteca estándar, solo lo monta el perfil `avisos` de compose.dev.yml
   infra/
     compose.yml
@@ -121,7 +129,9 @@ apex/
     compose.e2e.yml      # solo E2E (V4): zona de limit_req alta para Nginx
     compose.verify.yml   # solo backup: monta la identidad age de verificación (S4B-D59)
     compose.openbao.yml  # overlay con CRYPTO_PROVIDER=openbao: api y worker sin el volumen `keys` y con su token (Sprint 5, S5-D74)
-    nginx/default.conf       # y snippets/ (zonas de limit_req: auth-zone.conf y health-zone.conf)
+    compose.tls.yml      # overlay del perfil `tls`: Caddy publica 80 y 443 y `web` deja de publicar puertos (Sprint 6, S6-D64)
+    caddy/               # Caddyfile: sitio HTTP con /_caddy_health y redirección 308, sitio HTTPS con `curves x25519mlkem768 x25519`, HSTS escalonado y reverse_proxy a web; `admin off` (Sprint 6)
+    nginx/default.conf       # y snippets/ (zonas de limit_req: auth-zone.conf y health-zone.conf; desde S6 `real-ip.conf.in` y su renderizado `real-ip.conf`, que se monta desde `APEX_REAL_IP_CONF` fuera del árbol, S6-D82)
     db/                  # roles.sql, grants.sql, revoke.sql y apply.sh: roles de aplicación y permisos por tabla/columna; los aplica el servicio dbsetup (S4B-W0-3); desde S5-V8 (S5-D256) el api solo tiene UPDATE por columna en notifications.notifications (status, skip_reason, sent_at, sent_by, updated_at) y members.member_channel_preferences (active, updated_at); migración 0020 = índices de avisos y exportaciones (S5-D255)
     backup/              # Dockerfile (postgres:16-alpine + age, minisign, rclone, supercronic), run.sh, lib.sh,
                          # entrypoint.sh, healthcheck.sh, manifest.schema.json y tests/ (Bash puro), restore.sh (B3a, restauración con firma e inspección del tar)
@@ -134,7 +144,7 @@ apex/
     design/              # diseño aprobado del front
     openapi.json         # contrato exportado del API
     adr/                 # ADR-001-monolito-modular.md, ADR-002-criptografia.md, ADR-003-pagos-inmutables.md, ADR-004-serializacion-canonica-de-auditoria.md y README.md (plantilla de seis secciones); cambiarlos exige detenerse y preguntar (S4B-D47)
-    operacion/           # guías para quien opera: instalar-en-servidor, actualizar, respaldo-y-restauracion, rotar-llave, importar-socios, demo
+    operacion/           # guías para quien opera: instalar-en-servidor, actualizar, respaldo-y-restauracion, rotar-llave, importar-socios, demo; desde S6 `llaves.md`, `adjuntos.md` y `tls.md`
     plantillas/          # importar-socios.xlsx (plantilla del import-members)
     RUNBOOK.md           # operación del día a día; §12 despliegue, rollback y `migrations: mismatch` (B4)
   .env.example
@@ -176,13 +186,13 @@ apex/
 6. `KeyProvider` es una interfaz con `wrap`, `unwrap`, `sign`, `verify`, `rotate`. Implementaciones: `LocalFileProvider` (v0.1, KEK en archivo 600 fuera del repo) y `OpenBaoProvider` (v0.2, Transit).
 7. Tablas `crypto_keys` (metadatos, nunca material de llave en claro) y `crypto_ops` (bitácora inmutable: quién, verbo, data_class, key_id, versión, record_id, resultado).
 8. Regla de lint obligatoria en `pyproject.toml` (ruff `flake8-tidy-imports` banned-api): fuera de `core/crypto` y `core/security` está prohibido importar `cryptography`, `oqs`, `hashlib`, `hmac`, `jwt`, `argon2`. Si el lint lo permite, alguien lo hará.
-9. Campos cifrados en v0.1: `members.document`, `members.phone`, `members.email`, `members.emergency_contact`, `members.birth_date`. Nombre y apellido en claro (van en el leaderboard). La clase `kek.backup` (registry, sin llave ni columnas) solo nombra las filas de `crypto_ops` del respaldo de la KEK (S4B-D85).
+9. Campos cifrados en v0.1: `members.document`, `members.phone`, `members.email`, `members.emergency_contact`, `members.birth_date`. Nombre y apellido en claro (van en el leaderboard). La clase `kek.backup` (registry, sin llave ni columnas) solo nombra las filas de `crypto_ops` del respaldo de la KEK (S4B-D85). Sprint 6 suma dos clases: `attachment.sensitive` (cifrado de los adjuntos sensibles: autorización y otros; sin índice; el descifrado pasa por la tercera puerta, `modules/attachments/files.py`) y `audit.signature` (propósito `sign`, Ed25519; la fila guarda una referencia y la clave pública, no material; solo el worker firma, S6-D40, S6-D81). El puerto `Reencryptor` vive en `core/crypto/reencryptor.py`.
 
 ## Seguridad
 
 - Contraseñas con argon2id. JWT firmado con Ed25519, vida 15 minutos, más refresh token de 7 días en tabla con revocación.
 - Roles: `admin`, `coach`, `member`. Cada endpoint declara su rol con una dependencia de FastAPI; no hay endpoints sin rol salvo las ocho entradas de `PUBLIC_ROUTES` (`core/security.py`): health (dos), login, refresh, logout (por cookie), forgot, reset y la TV con token de dispositivo.
-- Rate limit en login. Límite por usuario en las escrituras y lecturas caras (`USER_LIMITS` de `core/ratelimit.py`); desde S4A-B3 suma `USER_READ_LIMIT_PER_MIN` (cubeta `staff-read`), `USER_AUDIT_VERIFY_LIMIT_PER_MIN` y `USER_AUDIT_VERIFY_LIMIT_PER_HOUR` (cubetas de `POST /audit/verify`). Sprint 5 suma `notifications-write` (30/min) y las cubetas `export` (2/min), `export-hour` (6/h) y `export-day` (20/día) (S5-D81). Las exportaciones CSV (`GET /members/export`, `GET /payments/export`, solo admin) neutralizan fórmulas (`escape_formula`), admiten un solo flujo por usuario (409 `export_in_progress`, S5-D82), topan en `EXPORT_MAX_ROWS` y dejan fila de auditoría `export` de apertura y de cierre (`completed`, `rows_sent`; S5-D41, D252 a D254). El recibo PDF audita `download` (S5-D242). CORS solo para el dominio del front.
+- Rate limit en login. Límite por usuario en las escrituras y lecturas caras (`USER_LIMITS` de `core/ratelimit.py`); desde S4A-B3 suma `USER_READ_LIMIT_PER_MIN` (cubeta `staff-read`), `USER_AUDIT_VERIFY_LIMIT_PER_MIN` y `USER_AUDIT_VERIFY_LIMIT_PER_HOUR` (cubetas de `POST /audit/verify`). Sprint 5 suma `notifications-write` (30/min) y las cubetas `export` (2/min), `export-hour` (6/h) y `export-day` (20/día) (S5-D81). Las exportaciones CSV (`GET /members/export`, `GET /payments/export`, solo admin) neutralizan fórmulas (`escape_formula`), admiten un solo flujo por usuario (409 `export_in_progress`, S5-D82), topan en `EXPORT_MAX_ROWS` y dejan fila de auditoría `export` de apertura y de cierre (`completed`, `rows_sent`; S5-D41, D252 a D254). El recibo PDF audita `download` (S5-D242). CORS solo para el dominio del front. Sprint 6 suma las cubetas `attachments-upload` (10/min), `attachments-photo` (600/min), `attachments-download` (30/min y 200/h), `keys-rotate` (3/min y 10/h) y `cbom-export` (2/min): 23 cubetas y 22 variables `USER_*` (S6-D57). Los adjuntos se suben como cuerpo crudo con `?kind=` y tope exacto de 5 MiB, se sirven solo por el api con rol, `no-store` y `nosniff`, y la foto no deja fila de auditoría por vista (ADR-007). Con el perfil `tls`, Caddy termina TLS 1.3 con `x25519mlkem768`, `admin off` y HSTS escalonado solo con dominio; Nginx restaura la IP real del cliente con `real_ip` (`set_real_ip_from <ip de Caddy>/32`, `real_ip_recursive off`) para que el limitador no cuente a Caddy (S6-D64).
 - Nada de secretos en el código ni en imágenes. Todo por `.env`; se versiona `.env.example`. `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` van en `.env.seed` (se versiona `.env.seed.example`), que solo lee el servicio `tools` (con `SeedSettings`) y se borra tras el primer seed; `.env.example` ya no las lleva y `Settings` las ignora (`NON_API_ENV_VARS`). `TRUSTED_PROXIES` es solo la IP fija de Nginx (`172.30.0.10/32`, red de `infra/compose.yml`). `Settings` usa `extra="forbid"`; las variables que no son del api (`WEB_PORT`, las de Postgres y backup) van en `NON_API_ENV_VARS`. **Dos archivos de ejemplo (S4B-D79):** `.env.example` (lo que lee `Settings`) y `.env.ops.example` (respaldo `BACKUP_*`, `RCLONE_CONFIG_APEX_*`, firma `BACKUP_SIGN_*`, `BACKUP_VERIFY_IDENTITY_FILE`, contraseñas de rol, red, `DEPLOY_HEALTH_TIMEOUT`; `.env.ops` no se versiona y desde 4B-W0-3 ningún servicio web lo lee entero). `POSTGRES_*`, `DATABASE_URL`, `TEST_DATABASE_URL` y los puertos viven en `.env.ops.example` (S4B-W0-3); `.env.example` no lleva ninguna contraseña. En desarrollo `.env` es la suma de los dos; en producción Compose se invoca con `--env-file .env --env-file .env.ops` y cada servicio recibe solo su bloque `environment`. **Base de datos (S4B-W0-3):** el propietario (`POSTGRES_USER`) solo lo usan `db`, `migrate`, `dbsetup` y `tools`; `api` corre como `apex_api`, `worker` como `apex_worker` y `backup` como `apex_backup` (`infra/db/`). `MIGRATE_ON_STARTUP` (`Settings`, `false` por defecto; `compose.dev.yml` la pone en `true`) la fija Compose en `false` en producción: migra el servicio `migrate` (`alembic upgrade head`), después `dbsetup`, y recién entonces arrancan api, worker y web; en desarrollo `migrate` y `dbsetup` solo existen con `--profile prod-init` y el api migra al arrancar. Una tabla nueva debe clasificarse en `infra/db/grants.sql` y en `tests/migrations/test_db_grants.py` o `dbsetup` falla cerrado. `TRUSTED_PROXIES` sigue a `APEX_WEB_IP`.
 - Telegram es solo un canal interno del equipo (resumen diario de "por avisar hoy" y alertas del worker, vía `core/alerts.py`); nunca un canal al socio. Canales al socio: correo, enlace de WhatsApp y, en v1.0, push.
 - Códigos 401: `token_expired` solo para un access token vencido con firma válida; `unauthorized` para todo lo demás.
@@ -191,7 +201,7 @@ apex/
 
 ## Licencias
 
-Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros. Binarios de contenedor (no son dependencias de Python; bloque fijo de `NOTICE`): `age` BSD-3, `rclone` MIT, `supercronic` MIT, `minisign` ISC, `pg_dump` (licencia PostgreSQL) y `curl` (licencia curl, permisiva tipo MIT, desde B13; S5-D105) en la imagen `apex-backup`; `age` también en la del api. Imágenes de terceros del Sprint 5, también en el bloque fijo de `NOTICE`: OpenBao (MPL-2.0 sin modificar), Mailpit (MIT, solo desarrollo) y `python:3.12-alpine` (PSF-2.0, solo desarrollo, `telegram-fake`). Dependencias nuevas del api en 4B: `openpyxl` (MIT) y `defusedxml` (PSF-2.0), solo bajo `imports/`. Sprint 5: ninguna de ejecución; `pypdf` (BSD-3) solo en el grupo de desarrollo, para las pruebas del PDF; `fpdf2` y `python-telegram-bot` (LGPL) siguen prohibidos y la CI los rechaza.
+Solo dependencias MIT, BSD (2 y 3 cláusulas), 0BSD, ISC, Apache 2.0, PSF-2.0, OFL-1.1 (solo fuentes) o licencia PostgreSQL. MPL-2.0 aceptada solo sin modificar (OpenBao, pywebpush, certifi, axe-core). Prohibidas GPL, LGPL, AGPL, BSL y SSPL. Telegram se llama con httpx directo (python-telegram-bot es LGPL). ShellCheck es GPL: los scripts se revisan con `bash -n`. La pipeline corre `pip-licenses --allow-only` en `api/` y `license-checker` en `web/`, y falla si entra algo fuera de la lista. Mantener `NOTICE` con las licencias de terceros. Binarios de contenedor (no son dependencias de Python; bloque fijo de `NOTICE`): `age` BSD-3, `rclone` MIT, `supercronic` MIT, `minisign` ISC, `pg_dump` (licencia PostgreSQL) y `curl` (licencia curl, permisiva tipo MIT, desde B13; S5-D105) en la imagen `apex-backup`; `age` también en la del api. Imágenes de terceros del Sprint 5, también en el bloque fijo de `NOTICE`: OpenBao (MPL-2.0 sin modificar), Mailpit (MIT, solo desarrollo) y `python:3.12-alpine` (PSF-2.0, solo desarrollo, `telegram-fake`). Dependencias nuevas del api en 4B: `openpyxl` (MIT) y `defusedxml` (PSF-2.0), solo bajo `imports/`. Sprint 5: ninguna de ejecución; `pypdf` (BSD-3) solo en el grupo de desarrollo, para las pruebas del PDF; `fpdf2` y `python-telegram-bot` (LGPL) siguen prohibidos y la CI los rechaza. Sprint 6: ninguna dependencia de ejecución nueva (la subida es cuerpo crudo: `python-multipart` no entra y `test_third_party_confinement.py` lo prohíbe por nombre); `boto3` y `botocore` (Apache-2.0, con `s3transfer` Apache-2.0, `jmespath` MIT, `python-dateutil` y `urllib3`) solo en el grupo opcional `s3` de `pyproject`, que la imagen del api no instala; `oqs`, `liboqs-python` y `python-telegram-bot` se rechazan por nombre en la CI. Imágenes de terceros del Sprint 6 en el bloque fijo de `NOTICE`: Caddy 2.11.3 (Apache-2.0, imagen oficial sin módulos) y `alpine:3.22` (MIT, solo `tls-smoke`).
 
 ## Calidad y Git
 
@@ -242,6 +252,18 @@ docker compose --profile tools run --rm tools retire-local-kek --as <email>   # 
 docker compose --profile tools run --rm tools seed-notifications --as <email>   # plantillas y reglas por defecto, idempotente (S5-B6)
 docker compose run --rm tools notify [--generate-only | --send-only] [--as <email>]   # mismo reclamo que el worker (S5-D226)
 docker compose run --rm worker python -m app.worker.main --run-once notify
+```
+
+Firma, llaves, adjuntos y TLS (Sprint 6; guías en `docs/operacion/llaves.md`, `adjuntos.md` y `tls.md`, detalle en `docs/RUNBOOK.md` §14):
+
+```
+docker compose --profile tools run --rm tools init-keys --data-class audit.signature --as <email>   # crea la fila `sign` (Ed25519) con su clave pública; también `attachment.sensitive` (S6-D72)
+docker compose --profile tools run --rm tools init-keys --migrate-layout   # idempotente: mueve el volumen `keys` plano a custody/ y jwt/ (S6-D58)
+docker compose --profile tools run --rm tools sign-audit --as <email>   # firma a mano la cadena; 0 firmó o sin novedades, 1 falló, 2 sellado
+docker compose run --rm worker python -m app.worker.main --run-once sign_audit
+docker compose --profile tools run --rm tools rotate-key audit.signature --provider <local|openbao> --reason "..." --as <email>   # cambia de proveedor: llave nueva, la anterior queda decrypt_only (S6-D81)
+docker compose --profile tools run --rm tools attachments-check --as <email>   # solo lectura: filas sin objeto y objetos sin fila
+bash scripts/ci/tls-smoke.sh [--dc "<alias>"] [--lan]   # TLS híbrido con CA interna y apex.localhost (S6-D63)
 ```
 
 Despliegue y release (B4; guías en `docs/operacion/actualizar.md` y `docs/RUNBOOK.md` §12):

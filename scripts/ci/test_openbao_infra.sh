@@ -210,7 +210,7 @@ if [ -f "$C" ]; then
   loc="$(bloque_de '127.0.0.1:8210')"
   if printf '%s' "$pub" | grep -Eq 'disable_unauthed_(generate_root|rekey)_endpoints[[:space:]]*=[[:space:]]*false'; then falla "config.hcl: el listener 0.0.0.0:8200 abre generate-root o rekey sin token"; else ok "config.hcl: 0.0.0.0:8200 con generate-root y rekey sin token cerrados (S5-D107)"; fi
   if printf '%s' "$loc" | grep -Eq 'disable_unauthed_generate_root_endpoints[[:space:]]*=[[:space:]]*false' && printf '%s' "$loc" | grep -Eq 'disable_unauthed_rekey_endpoints[[:space:]]*=[[:space:]]*false'; then ok "config.hcl: 127.0.0.1:8210 abre generate-root y rekey (solo ahí)"; else falla "config.hcl: 127.0.0.1:8210 sin los dos disable_unauthed_*=false"; fi
-  if cfg | grep -Eq '^[[:space:]]*tls_disable[[:space:]]*=[[:space:]]*(true|1)'; then ok "config.hcl: tls_disable activo (TLS llega con Caddy/EP-20)"; else falla "config.hcl sin tls_disable = true"; fi
+  if cfg | grep -Eq '^[[:space:]]*tls_disable[[:space:]]*=[[:space:]]*(true|1)'; then ok "config.hcl: tls_disable activo (Caddy no cifra custody; residual v0.4)"; else falla "config.hcl sin tls_disable = true"; fi
   motivo="$(tr -d '\015' < "$C" | grep -E '^[[:space:]]*#.*tls_disable' || true)"
   if [ "${#motivo}" -ge 30 ]; then ok "config.hcl: tls_disable comentado con el motivo"; else falla "config.hcl: sin comentario que explique tls_disable"; fi
 else

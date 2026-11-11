@@ -111,3 +111,7 @@ Característica: Almacenamiento seguro de adjuntos
 - [ ] Chequeo de licencias en verde
 - [ ] Auditoría verificada para `attachments`
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D45, S6-D59, S6-D60):** `sensitive` lo decide el servidor (el cliente no lo envía); la acción `download` ya existe desde `0002`. La subida es el cuerpo crudo con `?kind=` (la decisión S6-D45 original hablaba de multipart con `python-multipart >= 0.0.20`; la crítica 1 lo reemplazó por cuerpo crudo acotado, por lo que no entra ninguna dependencia de ejecución nueva). El adaptador S3 existe pero está apagado (`STORAGE_PROVIDER=s3` en producción exige `S3_ENABLE_PRODUCTION=true`); `boto3` solo en el grupo opcional `s3`.

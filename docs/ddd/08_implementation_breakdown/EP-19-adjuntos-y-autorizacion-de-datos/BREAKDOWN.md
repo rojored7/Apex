@@ -158,3 +158,13 @@ Notas de contrato:
 ## Total de la épica
 
 - **Total: 75 h**
+
+## Correcciones del Sprint 6 (S6-W0-1; plan aprobado y S6-D1 a S6-D82)
+
+- Migración `0023` (esquema `attachments`); la `0050` y la `0051` de este desglose no existen (S6-D39). Sin migración en US-151.
+- US-147: `sensitive` lo decide el servidor; la subida es cuerpo crudo con `?kind=photo|consent|other` y tope exacto de 5 MiB, sin multipart ni `python-multipart` (S6-D59, D73); S3 apagado (`boto3` solo en el grupo opcional `s3`); tercera puerta de descifrado en `modules/attachments/files.py` (S6-D60).
+- US-148: la foto no se audita por vista; cubeta `attachments-photo`; `DESIGN-GAP` del campo en `Socio_Form.html` (ADR-007, S6-D37).
+- US-149: el contrato de `POST /members` no cambia; una `consent_required_from` nula no exige nada; subir la autorización fija `data_consent_at` si estaba nulo y copia la versión vigente (S6-D46).
+- US-150: sin `SensitiveFieldRevealed` (S6-D53); el coach solo ve y sube fotos; orden descifrar, fila `download`, transmitir (S6-D45).
+- US-151: sin `0051`; el KPI `members_without_consent` existe (S5-D240); queda el filtro y el enlace.
+- Rutas: `POST /members/{id}/attachments?kind=...` con el archivo como cuerpo crudo; `docs/design/ROUTES.md` se corrigió.

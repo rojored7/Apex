@@ -104,3 +104,7 @@ Característica: Llave y registro de firmas de auditoría
 - [ ] Migración aplicada con `alembic upgrade head` y reversible
 - [ ] ADR de auditoría actualizado con `signature_payload`
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; plan aprobado y decisiones S6-D4, S6-D34, S6-D51, S6-D81):** la tabla `audit.signatures` (migración `0021`) lleva `payload_version` (el verificador elige el constructor del payload por esa columna) y la lógica vive en `core/audit_sign.py`, no en `core/audit.py`. El algoritmo es Ed25519 único en v0.3 (no hay ML-DSA en Transit de OpenBao 2.7.2; `ML-DSA-65` queda en EP-26 y no hay sonda). Antes de firmar se verifica de forma incremental el tramo sin firmar (H-1). La clave pública se guarda en `crypto_keys.public_key`. El criterio 3 se lee con Ed25519 y sin sonda; ADR-006 fija el payload `apex-audit-sig-v1`.

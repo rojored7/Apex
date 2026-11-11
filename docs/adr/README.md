@@ -9,6 +9,8 @@ Registros de decisiones de arquitectura de APEX. Cada archivo nombra una decisi�
 | `ADR-003-pagos-inmutables.md` | Pagos inmutables: anulación en la fila, sin `DELETE`, trigger en la base |
 | `ADR-004-serializacion-canonica-de-auditoria.md` | Serialización canónica y cadena de hashes de la auditoría, con vector de prueba |
 | `ADR-005-custodia-openbao.md` | Custodia de la KEK con OpenBao Transit: una llave, tokens por servicio, desello 5/3, custodia 2/2/1 y snapshot firmado |
+| `ADR-006-firma-de-la-cadena-de-auditoria.md` | Firma Ed25519 de la cadena de auditoría: payload `apex-audit-sig-v1`, verificación con la clave pública y verificación incremental antes de firmar |
+| `ADR-007-adjuntos-y-foto-sin-auditoria-por-vista.md` | Adjuntos: cifrado por el bus, descarga auditada, foto sin fila por vista, S3 apagado y supresión manual con dueño |
 
 ## Plantilla
 

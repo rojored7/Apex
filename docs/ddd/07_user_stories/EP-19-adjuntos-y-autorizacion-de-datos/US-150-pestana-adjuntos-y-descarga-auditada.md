@@ -100,3 +100,7 @@ Característica: Adjuntos de la ficha del socio
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D53, S6-D45):** no se emite ni se crea `SensitiveFieldRevealed` (la fila `download` es la única señal); el coach solo sube y ve fotos (`consent` y `other` son del admin); el orden es descifrar, escribir la fila `download` y transmitir.

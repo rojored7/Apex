@@ -15,6 +15,11 @@ SALIDA="$ROOT/NOTICE"
 (cd "$API" && UV_PROJECT_ENVIRONMENT=.venv-runtime uv sync --frozen --no-dev --quiet)
 if [ -x "$API/.venv-runtime/bin/python" ]; then PY="$API/.venv-runtime/bin/python"; else PY="$API/.venv-runtime/Scripts/python.exe"; fi
 
+# Grupo opcional `s3` (boto3, S6-D21): entorno aparte para listar sus licencias sin mezclarlas con
+# las del runtime que va en la imagen (la imagen no instala el extra).
+(cd "$API" && UV_PROJECT_ENVIRONMENT=.venv-runtime-s3 uv sync --frozen --no-dev --quiet --extra s3)
+if [ -x "$API/.venv-runtime-s3/bin/python" ]; then PY_S3="$API/.venv-runtime-s3/bin/python"; else PY_S3="$API/.venv-runtime-s3/Scripts/python.exe"; fi
+
 # Nombres de las dependencias directas de [project.dependencies], sin extras ni versiones.
 mapfile -t DIRECTAS < <(cd "$API" && uv run --quiet python - <<'EOF'
 import re
@@ -36,6 +41,10 @@ EOF
   echo "== api (Python, dependencias directas de runtime) =="
   echo
   (cd "$API" && uv run --quiet pip-licenses --python "$PY" --from=mixed --format=plain-vertical --order=name --packages "${DIRECTAS[@]}")
+  echo
+  echo "== api (opcional, grupo s3: adaptador S3 apagado; la imagen del api no lo instala) =="
+  echo
+  (cd "$API" && uv run --quiet pip-licenses --python "$PY_S3" --from=mixed --format=plain-vertical --order=name --packages boto3 botocore s3transfer jmespath python-dateutil six urllib3)
   echo
   echo "== web (dependencias directas de producción) =="
   echo
@@ -72,6 +81,11 @@ EOF
   echo "openbao/openbao · MPL-2.0 sin modificar · servicio openbao con motor Transit (producción y desarrollo)"
   echo "axllent/mailpit · MIT · buzón SMTP de prueba, solo desarrollo (compose.dev.yml, perfil avisos)"
   echo "python:3.12-alpine · PSF-2.0 · telegram-fake, solo desarrollo (compose.dev.yml, perfil avisos)"
+  echo
+  echo "== imágenes de terceros del Sprint 6 (compose, sin modificar) =="
+  echo
+  echo "caddy · Apache-2.0 · imagen oficial 2.11.3 sin módulos, servicio caddy del perfil tls (TLS 1.3 con x25519mlkem768)"
+  echo "alpine:3.22 · MIT · contenedor cliente de scripts/ci/tls-smoke.sh (openssl s_client), solo prueba"
   echo
   echo "== dependencias de desarrollo del api (no se distribuyen) =="
   echo

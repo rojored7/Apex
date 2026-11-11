@@ -593,3 +593,20 @@ El Sprint 5 (v0.2) construye en el front las pantallas de avisos, la pestaña Ca
 | 13.25 | `ForgotPage`, `NewUserPanel` y `LinkModal` (fila 230) | Cierra 13.8 y H-2: `/recuperar` dice siempre lo mismo (204, 429 tardío, 5xx, red) con el texto de Login.html; con `email_sent: true` Usuarios muestra «Enlace enviado por correo» y NO el token; con `false` o ausente, el enlace copiable de v0.1. | S5-F5 | cerrada |
 | 13.26 | Aviso de custodio no disponible | Cierra 13.9: el 503 `crypto_unavailable` activa un aviso global discreto (`shared/ui/CustodyNotice`, `core/custody`) en el panel y el portal, con Retry-After (30 s por defecto), sin reintentos. `docs/design/` no lo dibuja: `// DESIGN-GAP:` en `CustodyNotice.tsx`. El estado `crypto` de `/health` no se consulta desde el front. | S5-F5 | cerrada con DESIGN-GAP |
 | 13.12 | Licencias | Sin dependencias de ejecución nuevas; `pypdf` solo en desarrollo (BSD-3); la imagen de OpenBao (MPL-2.0 sin modificar), Mailpit (MIT, solo desarrollo), `python:3.12-alpine` (PSF-2.0, solo desarrollo) y `curl` (licencia curl, `apex-backup` desde B13) van en el bloque fijo de `NOTICE` (S5-D43, S5-D105). | S5-W0-1 | cerrada |
+
+## 14. Sprint 6: brechas con el diseño
+
+El Sprint 6 (v0.3) construye en el front el estado de la firma en Auditoría, la pantalla Llaves, la foto y la autorización de datos en `Socio_Form`, la pestaña Adjuntos y la tarjeta de socios sin autorización. Orden de los slices del front: F1, F3, F4, F5 y F2 (F2 tras el checkpoint de R1; S6-D70). Fuente de verdad: `docs/design/` y `docs/design/ROUTES.md`. Las diferencias de contrato se cerraron en T-DOC (S6-W0-1, `docs/ddd/DECISIONES.md`, «Contradicciones de contrato cerradas en T-DOC»).
+
+Arrastradas del §13: la 13.26 se cierra con el Sprint 6 (el aviso de custodio ya existe; el sprint no lo cambia); la 13.6 (logo del recibo), la 13.10 («Exportar rango» de Auditoría) y la 13.11 (`display_name`) siguen abiertas con su dueño.
+
+| # | Archivo | Brecha | Slice | Estado |
+|---|---------|--------|-------|--------|
+| 14.1 | `docs/design/ROUTES.md`, filas de `/socios/nuevo` y `/socios/:id` | La subida no era multipart: `POST /members/:id/attachments?kind=photo\|consent\|other` con el archivo como cuerpo crudo (S6-D59, E1). Corregida en T-DOC. | S6-W0-1 | corregida en `ROUTES.md` |
+| 14.2 | `Socio_Form.html`, foto del socio | La pantalla no dibuja un campo de foto. El front lo agrega con los componentes compartidos y un `// DESIGN-GAP:` (US-148). | S6-F3 | abierta hasta F3 |
+| 14.3 | `Socio_Form.html`, autorización de datos | La casilla `data_consent` existe; la versión vigente de la política (solo lectura) y el archivo opcional de la autorización no están dibujados (US-149). La obligación solo nace con `consent_required_from` (S6-D46). | S6-F3 | abierta hasta F3 |
+| 14.4 | `Socio_Ficha.html`, pestaña Adjuntos | El diseño enlaza la pestaña pero no dibuja la tabla de adjuntos ni la descarga; la foto se muestra como `blob:` en memoria, sin fila de auditoría por vista (ADR-007, S6-D37). El coach solo ve fotos. | S6-F4 | abierta hasta F4 |
+| 14.5 | `Inicio.html`, tarjeta de socios sin autorización | Pasa de `FutureKpis` a `KpiCard` con enlace a `/socios?consent=missing` (US-151); el KPI ya existe (S5-D240). | S6-F5 | abierta hasta F5 |
+| 14.6 | `Auditoria.html`, estado de la firma y «Verificar» | Muestra el estado de la última firma («Firma atrasada» pasada 48 h) y la verificación suma las firmas; sin estado parcial por custodio sellado (S6-D62). «Exportar rango» sigue en 13.10. | S6-F1 | abierta hasta F1 |
+| 14.7 | `Llaves.html`, inventario, bitácora, trabajos, rotación y CBOM | «Proveedor activo» sale de `crypto_keys`; «Rotar» deja la llave anterior en `decrypt_only`; la llave de firma (`sign`) no se rota (409 `purpose_not_rotatable`); el CBOM no trae referencias de `sign` (US-143 a US-146). | S6-F2 | abierta hasta F2 |
+| 14.8 | Licencias | Ninguna dependencia de ejecución nueva (`python-multipart` no entra); `boto3` y `botocore` solo en el grupo opcional `s3`; Caddy 2.11.3 (Apache-2.0) y `alpine:3.22` (MIT, solo `tls-smoke`) van en el bloque fijo de `NOTICE`. | S6-W0-1 | cerrada |

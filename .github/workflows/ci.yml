@@ -70,7 +70,8 @@ jobs:
           cache-dependency-glob: api/uv.lock
       - name: dependencias
         working-directory: api
-        run: uv sync --frozen
+        # --extra s3: las pruebas del adaptador S3 usan botocore.stub.Stubber (S6-D21); la imagen no lo instala.
+        run: uv sync --frozen --extra s3
       - name: age (S4B-D103)
         # Versión de ubuntu-24.04 (noble-updates) consultada el 2026-10-29 en Launchpad. Las pruebas de
         # age real (S4B-D89) corren aquí; B3a.4 agrega el paso que falla si alguna se salta.

@@ -104,3 +104,12 @@ Hay una brecha en US-145: el recifrado de US-030 recorre columnas de tablas, per
 ## Total de la épica
 
 - **Total: 59 h**
+
+## Correcciones del Sprint 6 (S6-W0-1; plan aprobado y S6-D1 a S6-D82)
+
+- Migración `0024` (guarda de `crypto_keys` por rol y guardas de `crypto_jobs`); las `0045` y `0046` de este desglose no existen (S6-D39, S6-D61).
+- US-143: sin `0045`; `records_count` por el registro de clases; «Proveedor activo» de `crypto_keys` y estado de `recovery.current_state()` (S6-D54). El router vive en `core/crypto/router.py`; `core/crypto/__init__.py` queda vacío; la auditoría entra por `set_audit_writer` (S6-D52). `test_core_independent.py` se consolidó en `test_core_import_direction.py`.
+- US-144: `JOB_KINDS` ya trae `rewrap`; `q` sobre `data_class` en las tres listas y cubeta `staff-read` (S6-D57).
+- US-145: grants acotados y `0024`; al terminar la llave anterior queda `decrypt_only` (`retired` solo por `retire-key`); sin `--resume`; sobre `purpose=sign` responde 409 `purpose_not_rotatable`; la historia pasa de `ARCHITECTURAL_GAP_DETECTED` a READY (S6-D43, S6-D61, S6-D69). El puerto `Reencryptor` vive en `core/crypto/reencryptor.py`.
+- US-146: comando `cbom-export`, cubeta `cbom-export`; el CBOM no incluye referencias de las llaves `sign`.
+- `test_audited_tables.py`: `crypto.crypto_keys` entra en `AUDITABLE_TABLES`; no es `__audited__`, así que una rotación deja una sola fila `update` explícita y sin material.

@@ -105,3 +105,7 @@ Característica: Firma nocturna de la auditoría
 - [ ] `ruff check`, `ruff format` y `mypy --strict` en verde
 - [ ] Pruebas del job con PostgreSQL real y OpenBao de prueba en verde; cobertura de 80 % o más en lo tocado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D34, S6-D42, S6-D60):** los 3 reintentos ocurren dentro de la misma corrida (no hay `skipped`: el fallo definitivo queda como `error` con alerta); si la cadena del tramo sin firmar no cuadra no se firma, el job termina con `ok=False` y emite la alerta `audit_chain_broken`; las clases de cifrado que abre el worker son por job (`sign_audit` abre solo `audit.signature`; `notify` conserva `member.phone` y `member.email`). `migrate-provider` no migra la fila `sign`: el cambio de proveedor es `rotate-key audit.signature --provider` (S6-D81).

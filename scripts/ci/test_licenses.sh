@@ -2,10 +2,11 @@
 # Prueba de control del chequeo de licencias (US-004, T1).
 #
 # 1. Un entorno con fpdf2 (LGPL) debe fallar y la salida debe nombrar fpdf2 y LGPL.
+# 1c. oqs y liboqs-python (permisivos) deben fallar por nombre (S6-D51, llegan con EP-26).
 # 1b. Un entorno con python-telegram-bot (LGPL) debe fallar igual (S5-W0-1, CLAUDE.md:
 #     Telegram se llama con httpx directo).
 # 2. Un entorno con un paquete sin metadatos de licencia debe fallar (criterio 6).
-# 3. El entorno de runtime real del api debe pasar.
+# 3. El entorno de runtime real del api debe pasar, con y sin el grupo opcional s3.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -33,11 +34,32 @@ caso_lgpl() {
   fi
 }
 
+# caso_lista <paquete> <licencia> <patrón>: lista ficticia (sin red ni instalación) que el chequeo
+# debe rechazar nombrando el paquete y el patrón (nombre prohibido por decisión, S6-D51, o LGPL).
+caso_lista() {
+  local paquete="$1" licencia="$2" patron="$3" lista="$TMP/lista-$1.txt"
+  printf 'Name Version License
+requests 2.0 MIT
+%s 1.0 %s
+' "$paquete" "$licencia" > "$lista"
+  local codigo=0 salida
+  salida="$(bash "$CHECK" --from-list "$lista" 2>&1)" || codigo=$?
+  if [ "$codigo" -ne 0 ] && grep -qi "$paquete" <<< "$salida" && grep -qi "$patron" <<< "$salida"; then
+    echo "  ok   $paquete rechazado (código $codigo)"
+  else
+    echo "  FALLA $paquete no fue rechazado como se esperaba (código $codigo)"; echo "$salida" | tail -5; fallas=$((fallas + 1))
+  fi
+}
+
 echo "test_licenses: 1. fpdf2 (LGPL) debe fallar"
 caso_lgpl 1 fpdf2
 
 echo "test_licenses: 1b. python-telegram-bot (LGPL) debe fallar"
-caso_lgpl 1b python-telegram-bot
+caso_lista python-telegram-bot "GNU Lesser General Public License v3 (LGPLv3)" LGPL
+
+echo "test_licenses: 1c. oqs y liboqs-python deben fallar por nombre (S6-D51)"
+caso_lista oqs MIT "prohibido por nombre"
+caso_lista liboqs-python MIT "prohibido por nombre"
 
 echo "test_licenses: 2. paquete sin licencia debe fallar"
 uv venv --quiet --python 3.12 "$TMP/venv-sin"
@@ -55,6 +77,13 @@ if bash "$CHECK" > "$TMP/runtime.log" 2>&1; then
   echo "  ok   runtime en verde"
 else
   echo "  FALLA runtime rechazado"; tail -8 "$TMP/runtime.log"; fallas=$((fallas + 1))
+fi
+
+echo "test_licenses: 3b. runtime real del api con el grupo opcional s3 debe pasar"
+if bash "$CHECK" --extra s3 > "$TMP/runtime-s3.log" 2>&1; then
+  echo "  ok   runtime con s3 en verde"
+else
+  echo "  FALLA runtime con s3 rechazado"; tail -8 "$TMP/runtime-s3.log"; fallas=$((fallas + 1))
 fi
 
 echo "test_licenses: $fallas fallas"

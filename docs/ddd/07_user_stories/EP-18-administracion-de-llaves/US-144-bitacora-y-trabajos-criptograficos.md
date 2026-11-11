@@ -98,3 +98,7 @@ Característica: Bitácora y trabajos criptográficos
 - [ ] Front: pruebas de componente y página; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D57):** `JOB_KINDS` ya admite `rewrap` (no se cambia); `q` filtra por `data_class` en las tres listas y las lecturas usan la cubeta `staff-read`.

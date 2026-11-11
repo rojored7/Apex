@@ -20,7 +20,9 @@ storage "raft" {
 listener "tcp" {
   address = "0.0.0.0:8200"
   # tls_disable: el servicio solo vive en la red `custody` (internal: true, sin puertos al anfitrión)
-  # y solo lo alcanzan api, worker y tools. El TLS interno llega con Caddy en EP-20 (S5-D10).
+  # y solo lo alcanzan api, worker y tools. Caddy (EP-20) termina TLS solo para el tráfico del navegador
+  # hacia web: NO cifra la red `custody`. El TLS interno de OpenBao queda como residual de v0.4 (a cargo
+  # del operador; S6-D64, S5-D10): mientras tanto la red custody sigue siendo internal: true.
   tls_disable = true
 }
 

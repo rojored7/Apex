@@ -97,3 +97,7 @@ Característica: Socios sin autorización registrada
 - [ ] Front: pruebas de componente; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D39, S6-D20 del blueprint):** sin migración `0051` y sin KPI nuevo (`members_without_consent` existe desde S5-D240); queda el filtro `GET /members?consent=missing` y el enlace de la tarjeta de Inicio.

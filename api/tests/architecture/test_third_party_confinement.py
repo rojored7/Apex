@@ -7,6 +7,7 @@ tercero es relativo, y `importlib.import_module("x")` / `__import__("x")` con ca
 - `subprocess` solo en `core/crypto/archive.py` (el binario `age`) y, desde B3a, ese archivo SÍ
   lo importa (S4B-D21): lista de un solo archivo con un importador real;
 - `pyrage` no se importa en ninguna parte (S4B-D37: se descartó por licencia);
+- `python-multipart` y `multipart` no se declaran ni se importan (S6-D59: cuerpo crudo);
 - `imports/members_xlsx.py` sí usa `openpyxl` (es quien lee el libro).
 Controles con fuentes falsas: cada regla debe fallar ante su violación.
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import re
+import tomllib
 from pathlib import Path
 from typing import Final
 
@@ -307,3 +309,61 @@ def test_pypdf_vive_solo_en_el_grupo_dev_y_las_prohibidas_en_ninguno() -> None:
         }
     )
     assert not todos & {"reportlab", "fpdf2", "fpdf", "pillow"}
+
+
+# S6-W0-1: `python-multipart` / `multipart` prohibidos por nombre (S6-D59, E1) ---------------------
+# La subida de adjuntos es un cuerpo crudo acotado (`request.stream()`); el multipart de Starlette
+# manda el archivo a un `SpooledTemporaryFile` sin tope y parsea antes de poder validar `kind`.
+
+PROHIBIDOS_POR_NOMBRE: Final = ("python-multipart", "multipart")
+MODULOS_PROHIBIDOS: Final = ("python_multipart", "multipart")
+PYPROJECT: Final = Path(__file__).resolve().parents[2] / "pyproject.toml"
+UV_LOCK: Final = Path(__file__).resolve().parents[2] / "uv.lock"
+
+
+def dependencias_declaradas(pyproject: str) -> list[str]:
+    """Nombres normalizados (minúsculas, `_` a `-`, sin extras ni versión) de todas las
+    dependencias de `pyproject.toml`: runtime, grupos opcionales y grupos de desarrollo."""
+    datos = tomllib.loads(pyproject)
+    crudas: list[str] = list(datos.get("project", {}).get("dependencies", []))
+    for grupo in datos.get("project", {}).get("optional-dependencies", {}).values():
+        crudas.extend(grupo)
+    for grupo in datos.get("dependency-groups", {}).values():
+        crudas.extend(d for d in grupo if isinstance(d, str))
+    return [re.split(r"[\[<>=!~; ]", d, maxsplit=1)[0].lower().replace("_", "-") for d in crudas]
+
+
+def test_multipart_no_se_declara_como_dependencia() -> None:
+    declaradas = dependencias_declaradas(PYPROJECT.read_text(encoding="utf-8"))
+    assert sorted(set(declaradas) & set(PROHIBIDOS_POR_NOMBRE)) == []
+
+
+def test_multipart_no_esta_en_el_lock() -> None:
+    nombres = re.findall(r'^name = "([^"]+)"$', UV_LOCK.read_text(encoding="utf-8"), re.MULTILINE)
+    assert sorted(set(nombres) & set(PROHIBIDOS_POR_NOMBRE)) == []
+
+
+@pytest.mark.parametrize("modulo", MODULOS_PROHIBIDOS)
+def test_multipart_no_se_importa_en_ninguna_parte(modulo: str) -> None:
+    assert importadores(modulo) == set()
+
+
+def test_control_dependencias_declaradas_ve_runtime_extras_y_grupos() -> None:
+    texto = (
+        '[project]\ndependencies = ["fastapi>=0.1", "Python_Multipart>=0.0.20"]\n'
+        '[project.optional-dependencies]\ns3 = ["boto3>=1", "multipart"]\n'
+        '[dependency-groups]\ndev = ["pytest>=8", "python-multipart[extra]"]\n'
+    )
+    assert dependencias_declaradas(texto) == [
+        "fastapi",
+        "python-multipart",
+        "boto3",
+        "multipart",
+        "pytest",
+        "python-multipart",
+    ]
+
+
+def test_control_un_import_de_multipart_se_detecta() -> None:
+    assert terceros_importados("import python_multipart\n") == {"python_multipart"}
+    assert terceros_importados("from multipart import parse\n") == {"multipart"}

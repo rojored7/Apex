@@ -103,3 +103,9 @@ No hay módulos de negocio ni tablas. El único código Python es la derivación
 ## Total de la épica
 
 - **Total: 29 h**
+
+## Correcciones del Sprint 6 (S6-W0-1; plan aprobado y S6-D1 a S6-D82)
+
+- US-152: Caddy 2.11.3 por digest (no 2.10); perfil `tls` con IP fija y `admin off`; los criterios 5 (renovación contra staging) y 8 (SSL Labs) son pasos humanos con dominio público, documentados en `docs/operacion/tls.md`; la evidencia del flujo es `scripts/ci/tls-smoke.sh` con la CA interna (no `scripts/workflow/`; no `docs/runbooks/`).
+- US-153: HSTS escalonado (`max-age=300` inicial, sin `includeSubDomains`); `FRONT_BASE_URL` es el origen LAN (no existe `LAN_ORIGIN`); `COOKIE_SECURE` explícito; `validate_origins` falla el arranque con dominio si hay incoherencia (S6-D64, S6-D65, S6-D77).
+- Nginx restaura la IP real con `set_real_ip_from <ip de Caddy>/32` y `real_ip_recursive off`; el snippet `real-ip.conf` se renderiza fuera del árbol (S6-D82).

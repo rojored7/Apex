@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir uv==0.13.4
 WORKDIR /app
 # Capa de dependencias, cacheable mientras no cambien pyproject.toml ni uv.lock.
 COPY pyproject.toml uv.lock README.md ./
+# Sin `--extra s3` (S6-D21): boto3 y botocore son un grupo opcional que esta imagen no instala; test_api_image.sh lo comprueba.
 RUN uv sync --frozen --no-dev --no-install-project
 # Código, migraciones y configuración de Alembic (B-3: la imagen migra al arrancar).
 COPY src ./src

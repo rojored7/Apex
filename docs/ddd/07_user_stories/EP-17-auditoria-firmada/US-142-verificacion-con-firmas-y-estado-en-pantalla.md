@@ -102,3 +102,7 @@ Característica: Verificación con firmas
 - [ ] Front: prueba del bloque; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D62, S6-D81):** la verificación usa la clave pública de `crypto_keys.public_key` de cada `key_id`, en el api y sin llamar al custodio; funciona con OpenBao sellado, verifica todas las firmas del tramo y no existen el estado parcial `unavailable` ni el muestreo. La migración es la `0022`.

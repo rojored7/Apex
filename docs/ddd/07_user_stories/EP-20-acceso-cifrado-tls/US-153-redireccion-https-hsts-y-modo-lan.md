@@ -97,3 +97,7 @@ Característica: Redirección a HTTPS y modo LAN
 - [ ] Smoke de ambos modos en verde
 - [ ] Runbook actualizado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D64, S6-D65):** HSTS escalonado (`max-age=300` inicial, sin `includeSubDomains`; la variable es `APEX_HSTS_MAX_AGE`), contra el criterio 2 original; el origen LAN es `FRONT_BASE_URL` (no existe `LAN_ORIGIN`) y `COOKIE_SECURE` es una variable explícita (los criterios 4 y 7).

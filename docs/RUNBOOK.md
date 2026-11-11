@@ -24,6 +24,7 @@ En producción se omite `-f infra/compose.dev.yml`.
 11. [Worker, auditoría verificable y tablero](#11-worker-auditoría-verificable-y-tablero-sprint-4a)
 12. [Respaldo, restauración, KEK y rotación](#12-respaldo-restauración-kek-y-rotación-sprint-4b)
 13. [OpenBao, avisos y exportaciones](#13-openbao-avisos-y-exportaciones-sprint-5)
+14. [Firma, llaves por pantalla, adjuntos y TLS](#14-firma-llaves-por-pantalla-adjuntos-y-tls-sprint-6)
 
 ## 1. Sesión y límites (S2-B2)
 
@@ -1055,3 +1056,24 @@ Guía: `docs/operacion/avisos.md` §11.
 - **Tope por corrida y plazo blando (S5-D232).** Cada corrida toma como máximo 500 avisos y no empieza ninguno pasados 480 s; lo que queda sigue en la corrida siguiente (`pendientes` en `--status notify`). Con una acumulación grande basta repetir `notify --send-only --as <correo>`.
 - **`mail_unconfigured` (S5-D231).** El canal de correo está activo en Ajustes pero faltan `SMTP_HOST`/`SMTP_FROM`: los avisos NO se omiten, quedan `pending` y salen cuando se configure el SMTP (se avisa una vez por corrida por Telegram). Si el correo se apaga en Ajustes, en cambio, se omiten con `canal_no_configurado`.
 - **Fila ilegible (S5-D230).** Un aviso cuyo correo cifrado no se abre queda `failed`/`unknown` y acumula intentos hasta 3, sin bloquear a los demás; si pasa con varios socios, revise `crypto.crypto_ops` (`result = 'error'`, `verb = 'decrypt'`) y la llave de la clase `member.email`.
+
+## 14. Firma, llaves por pantalla, adjuntos y TLS (Sprint 6)
+
+Guías para quien opera: `docs/operacion/llaves.md`, `adjuntos.md` y `tls.md` (cada una nace con su slice; las variables nuevas llegan en S6-W0-5). Decisiones: `docs/ddd/DECISIONES.md`, «Sprint 6 · decisiones de implementación»; ADR-006 (firma) y ADR-007 (adjuntos).
+
+### Qué cambia para el operador
+
+- **Firma de la auditoría.** El worker firma la cadena a las 07:00 (`sign_audit`) con Ed25519; el api solo verifica, con la clave pública guardada en `crypto_keys.public_key`, así que verificar funciona con OpenBao sellado. Firmar exige Transit. Si la firma lleva más de 48 h atrasada llega la alerta `audit_sign_late`; si la cadena del tramo sin firmar no cuadra el job no firma y llega `audit_chain_broken` (se investiga antes de nada). Comando manual: `tools sign-audit --as <correo>` o `worker --run-once sign_audit`.
+- **Cambiar la firma de proveedor** es una llave nueva: `tools rotate-key audit.signature --provider <local|openbao> --reason ... --as <correo>`. `migrate-provider` no toca la fila `sign` (sale 2 `signatures_reference_key`). La llave de firma no se rota en sitio ni se recifra en v0.3 (409 `purpose_not_rotatable`).
+- **Rotación desde la pantalla Llaves.** La ejecuta el api en una tarea propia, una a la vez (409 `rotation_running`), con tope de una hora. La llave anterior queda `decrypt_only`; `retired` es solo de `retire-key`, que sigue siendo del CLI y exige un manifiesto de respaldo posterior a la rotación (S6-D74).
+- **Volumen `keys` con subcarpetas.** `custody/` (`kek.bin`, `sign-ed25519.key`) y `jwt/`. Un volumen plano se migra con `tools init-keys --migrate-layout` (idempotente; `deploy.sh` lo ejecuta antes de `up`). El worker monta solo `custody/` con el proveedor local y nada con OpenBao.
+- **Adjuntos.** Se suben como cuerpo crudo con `?kind=` (tope 5.242.880 bytes; 413 `file_too_large`), viven en el volumen `uploads` (incluido en el respaldo) y se sirven solo por el api con rol. La autorización y los otros documentos se cifran con el bus; la foto no. `tools attachments-check --as <correo>` detecta filas sin objeto y objetos sin fila (solo lectura).
+- **TLS.** Perfil `tls` de Compose con Caddy 2.11.3; ver `docs/operacion/tls.md` e `instalar-en-servidor.md`. La IP real del cliente llega a Nginx con `real_ip` desde Caddy; el archivo `real-ip.conf` se renderiza fuera del árbol (S6-D82).
+
+### Residuales declarados, con dueño
+
+- `apex_api` conserva `INSERT` en `crypto_keys` (S4B-D61) y gana `INSERT` en `crypto_jobs`: un api comprometido podría insertar un job `running` falso o una fila `active` de versión mayor. El daño está acotado: ninguna llave pasa de `decrypt_only` por el api, `finish_rotation` recuenta por `count_pending` y cerrar en `done` exige `done = total`; se detecta en `GET /crypto/jobs` y en la bitácora (S6-D61). Dueño: operador.
+- **Un solo proceso del api (S6-D79).** El semáforo de descifrado de adjuntos, el rotador único y `single_flight` de las exportaciones suponen un solo worker de uvicorn; la CI falla si se declara `--workers`, `UVICORN_WORKERS` o `WEB_CONCURRENCY`. Escalar a varios procesos exige mover esos tres candados a la base. Dueño: titular, antes de escalar.
+- **Supresión a petición de un adjunto (Ley 1581; S6-D76).** En v0.3 no hay comando. Procedimiento manual del operador: guardar la evidencia de la solicitud; `attachments-check --as` antes y después; borrar el objeto del volumen `uploads` desde `tools` (la fila no se toca: el trigger prohíbe `DELETE` y el `UPDATE` solo admite `key_id`); dejar la constancia con una fila de auditoría `delete` sobre `attachments.attachments` desde `tools` con `--as`. El respaldo conserva el archivo hasta su rotación. El comando `attachments purge` con `purged_at` es del titular, v0.4.
+- **TLS interno de OpenBao.** Caddy no cifra la red `custody` (`internal: true`); queda como residual de v0.4 a cargo del operador.
+- **Versiones mínimas de Docker (S6-D78).** `volume.subpath` exige Docker Engine 26 (API 1.45) y Compose 2.26; `deploy.sh` lo comprueba antes de tocar nada.

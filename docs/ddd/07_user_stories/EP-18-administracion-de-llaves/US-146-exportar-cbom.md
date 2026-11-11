@@ -98,3 +98,7 @@ Característica: Exportar el inventario criptográfico
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría de la exportación verificada
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D57, L-5):** el comando es `cbom-export` (cubeta `cbom-export`, auditado como `export`) y el CBOM no incluye referencias de las llaves `sign` ni material.

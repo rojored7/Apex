@@ -110,3 +110,7 @@ Característica: Rotar una llave desde la pantalla
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada para la rotación
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D43, S6-D61, S6-D69):** la rotación desde pantalla la ejecuta el api con grants acotados y la migración `0024` (solo `active → decrypt_only`, en `encrypt`, con otra fila `active` de versión mayor y un job `running`); al terminar la llave anterior queda `decrypt_only` (`retired` es solo de `retire-key`, contra el criterio 7 original); no existe `--resume` (`start_rotation` reanuda por clase); `POST /crypto/keys/{id}/rotate` sobre `purpose=sign` responde 409 `purpose_not_rotatable`. La historia pasa de `ARCHITECTURAL_GAP_DETECTED` a READY.

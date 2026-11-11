@@ -24,6 +24,12 @@ dependencies = [
     "defusedxml>=0.7.1",
 ]
 
+[project.optional-dependencies]
+s3 = [
+    "boto3>=1.44.0",
+    "botocore>=1.44.0",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.6",

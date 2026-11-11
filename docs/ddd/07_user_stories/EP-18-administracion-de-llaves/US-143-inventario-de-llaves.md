@@ -106,3 +106,7 @@ Característica: Inventario de llaves de cifrado
 - [ ] Front: pruebas de componente y página; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D39, S6-D54, S6-D44):** sin migración `0045` (el índice de `crypto_ops` existe); `records_count` sale del registro de clases, sin importar `models` ajenos; «Proveedor activo» se lee de `crypto_keys` (proveedores de las filas `active`) y el estado de `recovery.current_state()`, no de la configuración. El router vive en `core/crypto/router.py` con `core/crypto/__init__.py` vacío y el escritor de auditoría entra por `set_audit_writer` (S6-D52).

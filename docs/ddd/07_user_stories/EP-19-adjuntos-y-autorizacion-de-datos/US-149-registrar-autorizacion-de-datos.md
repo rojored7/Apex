@@ -107,3 +107,7 @@ Característica: Autorización de tratamiento de datos
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada para `members`
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D46):** el contrato de `POST /members` no cambia (`data_consent: bool`); una `consent_required_from` nula no exige nada; subir la autorización (`kind=consent`) fija `data_consent_at` si estaba nulo y copia `current_privacy_version`. El criterio 4 (`sensitive=false` del cliente) deja de existir: el campo no existe y un extra responde 422.

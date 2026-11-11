@@ -5,9 +5,16 @@ nueva de la versión 0.1.0. Para actualizar un servidor ya instalado, usa `actua
 respaldo y la restauración, `respaldo-y-restauracion.md`. Todos los comandos se corren desde la
 raíz del repositorio, en el servidor, salvo donde se diga lo contrario.
 
-**TLS: todavía no; v0.1 es de LAN (P7); Caddy en v0.2.** APEX se sirve por HTTP dentro de la red
-local del box. La contraseña y la cookie de sesión viajan en claro por esa red. No lo publiques en
-Internet. Esa decisión queda escrita en el `.env` con `ALLOW_INSECURE_COOKIE=true` (paso 4).
+**TLS: por perfil, desde la v0.3; sin el perfil, LAN.** El despliegue base sirve APEX por HTTP dentro
+de la red local del box: la contraseña y la cookie de sesión viajan en claro por esa red y no debes
+publicarlo en Internet. Con un dominio público (o `apex.localhost` para ensayar) se activa el perfil
+`tls` de Compose (`-f infra/compose.tls.yml --profile tls`): Caddy 2.11.3 termina TLS 1.3 con el grupo
+híbrido `x25519mlkem768`, redirige el puerto 80 con un 308 y envía HSTS (escalonado, empezando en
+`max-age=300`). Con el perfil se fijan `APEX_DOMAIN`, `COOKIE_SECURE=true`, `ALLOW_INSECURE_COOKIE=false`
+y `FRONT_BASE_URL=https://<dominio>`. Los pasos, el modo LAN, el escalonamiento de HSTS y las
+comprobaciones humanas (renovación ACME real, SSL Labs) están en `tls.md`. Sin el perfil la decisión
+de LAN queda escrita en el `.env` con `ALLOW_INSECURE_COOKIE=true` (paso 4). Caddy no cifra la red
+interna `custody` de OpenBao: eso queda como residual de v0.4 a cargo del operador.
 
 ## 1. Qué necesitas
 

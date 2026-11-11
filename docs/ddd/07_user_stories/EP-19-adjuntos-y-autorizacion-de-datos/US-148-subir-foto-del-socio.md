@@ -99,3 +99,7 @@ Característica: Foto del socio
 - [ ] Front: pruebas de componente y página; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Corregido en S6
+
+- **Corregido en S6 (S6-W0-1; S6-D37, ADR-007):** la foto no genera fila de auditoría por vista; usa la cubeta `attachments-photo` y `no-store`; `Socio_Form.html` no tiene campo de foto (`DESIGN-GAP` en el front). La subida de la foto sí se audita. El cuerpo es crudo con `?kind=photo`.

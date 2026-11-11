@@ -34,7 +34,20 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # `GET /audit/{seq}`. El catálogo entero vuelve a tener ruta.
 # S5-D98: registradas desde W0-3; B12 (export*) les dio ruta (Rojo B12: queda vacío). S5-B5 sacó
 # `notifications-write` con `PATCH /members/{member_id}/channels`.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
+# Rojo S6-W0-5 (S6-D57, patrón S5-D98): las siete cubetas de adjuntos, llaves y CBOM nacen en el
+# catálogo sin ruta; cada slice las saca de aquí al darles ruta (B3 `keys-rotate*`, C2
+# `attachments-upload`/`attachments-photo`, C4 `attachments-download*`, R1 `cbom-export`).
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
+    {
+        "attachments-upload",
+        "attachments-photo",
+        "attachments-download",
+        "attachments-download-hour",
+        "keys-rotate",
+        "keys-rotate-hour",
+        "cbom-export",
+    }
+)
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -405,3 +418,19 @@ def test_las_exportaciones_consumen_las_tres_cubetas_export() -> None:
     assert USER_LIMITS["export"] == (2, 60)
     assert USER_LIMITS["export-hour"] == (6, 3600)
     assert USER_LIMITS["export-day"] == (20, 86400)
+
+
+def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None:
+    """S6-D57: registradas en W0-5 aunque todavía sin ruta; 23 cubetas en total."""
+    esperadas = {
+        "attachments-upload": (10, 60),
+        "attachments-photo": (600, 60),
+        "attachments-download": (30, 60),
+        "attachments-download-hour": (200, 3600),
+        "keys-rotate": (3, 60),
+        "keys-rotate-hour": (10, 3600),
+        "cbom-export": (2, 60),
+    }
+    assert {clave: USER_LIMITS.get(clave) for clave in esperadas} == esperadas
+    assert set(esperadas) == CLAVES_SIN_RUTA_TODAVIA
+    assert len(USER_LIMITS) == 23

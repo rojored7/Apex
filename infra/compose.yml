@@ -111,6 +111,24 @@ services:
       # S5-D44: secretos de los canales (de .env.ops) solo en api y worker; en blanco = apagado.
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # S6-W0-5 (S6-D21, D65, D77): almacén de adjuntos y dominio público solo para el api; el
+      # secreto de S3 viene de .env.ops y no llega a worker ni a tools. En blanco = apagado.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_ENABLE_PRODUCTION: ${S3_ENABLE_PRODUCTION:-false}
+      APEX_DOMAIN: ${APEX_DOMAIN:-}
+      ALLOW_DOMAIN_PORT: ${ALLOW_DOMAIN_PORT:-false}
+      USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN: ${USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN:-10}
+      USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN: ${USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN:-600}
+      USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN: ${USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN:-30}
+      USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR: ${USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR:-200}
+      USER_KEYS_ROTATE_LIMIT_PER_MIN: ${USER_KEYS_ROTATE_LIMIT_PER_MIN:-3}
+      USER_KEYS_ROTATE_LIMIT_PER_HOUR: ${USER_KEYS_ROTATE_LIMIT_PER_HOUR:-10}
+      USER_CBOM_EXPORT_LIMIT_PER_MIN: ${USER_CBOM_EXPORT_LIMIT_PER_MIN:-2}
       # S5-D107: ruta del token de OpenBao (volumen openbao-token-api); inerte con CRYPTO_PROVIDER=local.
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
@@ -173,6 +191,8 @@ services:
     env_file: ${APEX_ENV_DIR:-..}/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://apex_worker:${APEX_WORKER_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      # S6-W0-5: sin el secreto de S3, el worker no valida el almacén de adjuntos.
+      STORAGE_PROVIDER: local
       BACKUP_DIR: /data/backups
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -229,6 +249,8 @@ services:
       - path: ${APEX_ENV_DIR:-..}/.env.seed
         required: false
     environment:
+      # S6-W0-5: sin el secreto de S3, tools no valida el almacén de adjuntos.
+      STORAGE_PROVIDER: local
       DATABASE_URL: postgresql+asyncpg://${TOOLS_DB_USER:-apex_owner}:${TOOLS_DB_PASSWORD:-${APEX_OWNER_DB_PASSWORD}}@db:5432/${POSTGRES_DB}
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
       BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}

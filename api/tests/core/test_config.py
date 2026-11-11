@@ -45,6 +45,26 @@ NUEVAS_S5: tuple[str, ...] = (
     "TOOLS_DB_USER",
 )
 
+# Rojo S6-W0-5 (S6-D57, D65, D77): adjuntos con S3 apagado, dominio público y las siete USER_*.
+NUEVAS_S6: tuple[str, ...] = (
+    "STORAGE_PROVIDER",
+    "S3_ENDPOINT_URL",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "S3_ENABLE_PRODUCTION",
+    "APEX_DOMAIN",
+    "ALLOW_DOMAIN_PORT",
+    "USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR",
+    "USER_KEYS_ROTATE_LIMIT_PER_MIN",
+    "USER_KEYS_ROTATE_LIMIT_PER_HOUR",
+    "USER_CBOM_EXPORT_LIMIT_PER_MIN",
+)
+
 BASE: dict[str, str] = {
     "DATABASE_URL": "postgresql+asyncpg://apex:clave-secreta@db:5432/apex",
     "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt_ed25519.pem",
@@ -86,6 +106,7 @@ TODAS = (
     "IMPORT_DIR",
     "BACKUP_DIR",
     *NUEVAS_S5,
+    *NUEVAS_S6,
 )
 
 
@@ -969,3 +990,280 @@ def test_un_env_suma_de_los_dos_ejemplos_con_claves_s5_no_tumba_al_api(tmp_path:
         TELEGRAM_CHAT_ID="-100123",
     )
     assert s.TELEGRAM_CHAT_ID == "-100123"
+
+
+# --- Rojo S6-W0-5 (S6-D47, D57, D65, D77 final, D79) ----------------------------------------
+
+S3_COMPLETO: dict[str, str | None] = {
+    "STORAGE_PROVIDER": "s3",
+    "S3_ENDPOINT_URL": "https://s3.ejemplo.test",
+    "S3_BUCKET": "apex-adjuntos",
+    "S3_REGION": "us-east-1",
+    "S3_ACCESS_KEY_ID": "AKIAEJEMPLONOREAL",
+    "S3_SECRET_ACCESS_KEY": "secreto-s3-no-real-0123456789",
+}
+CINCO_S3: tuple[str, ...] = (
+    "S3_ENDPOINT_URL",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+)
+SIETE_USER_S6: dict[str, int] = {
+    "USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN": 10,
+    "USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN": 600,
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN": 30,
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR": 200,
+    "USER_KEYS_ROTATE_LIMIT_PER_MIN": 3,
+    "USER_KEYS_ROTATE_LIMIT_PER_HOUR": 10,
+    "USER_CBOM_EXPORT_LIMIT_PER_MIN": 2,
+}
+SEIS_CADDY: tuple[str, ...] = (
+    "APEX_CADDY_IP",
+    "APEX_TLS_ISSUER",
+    "APEX_ACME_EMAIL",
+    "APEX_ACME_CA",
+    "APEX_HSTS_MAX_AGE",
+    "TLS_PORT",
+)
+
+
+def _rechaza_alguna(tmp_path: Path, nombres: tuple[str, ...], **cambios: str | None) -> ConfigError:
+    """La carga falla y el error nombra al menos una de `nombres` (y jamás el valor)."""
+    # Sin esto, `extra="forbid"` rechazaría una variable inexistente y la prueba pasaría en falso.
+    ausentes = [n for n in nombres if n not in Settings.model_fields]
+    assert ausentes == [], f"{ausentes} aún no son campos de Settings"
+    with pytest.raises(ConfigError) as excinfo:
+        _cargar(tmp_path, **cambios)
+    nombradas = set(excinfo.value.invalid) | set(excinfo.value.missing)
+    assert nombradas & set(nombres), str(excinfo.value)
+    return excinfo.value
+
+
+def test_storage_provider_por_defecto_es_local_y_s3_queda_apagado(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    assert s.STORAGE_PROVIDER == "local"
+    assert s.S3_ENABLE_PRODUCTION is False
+    assert s.S3_SECRET_ACCESS_KEY is None
+    assert s.APEX_DOMAIN is None
+    assert s.ALLOW_DOMAIN_PORT is False
+
+
+@pytest.mark.parametrize("valor", ["gcs", "S3 ", "azure", "LOCAL"])
+def test_storage_provider_solo_admite_local_o_s3(tmp_path: Path, valor: str) -> None:
+    _rechaza(tmp_path, "STORAGE_PROVIDER", STORAGE_PROVIDER=valor)
+
+
+def test_s3_completo_se_acepta_en_dev_sin_la_bandera_de_produccion(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, ENV="dev", **S3_COMPLETO)
+    assert s.STORAGE_PROVIDER == "s3"
+    assert s.S3_BUCKET == "apex-adjuntos"
+    assert s.S3_REGION == "us-east-1"
+    assert s.S3_ENDPOINT_URL == "https://s3.ejemplo.test"
+
+
+@pytest.mark.parametrize("faltante", CINCO_S3)
+def test_con_s3_las_cinco_variables_son_todo_o_nada(tmp_path: Path, faltante: str) -> None:
+    cambios = {**S3_COMPLETO, faltante: None}
+    error = _rechaza_alguna(tmp_path, (faltante,), ENV="dev", **cambios)
+    assert "secreto-s3-no-real" not in str(error)
+
+
+def test_s3_secret_access_key_es_secretstr_y_no_se_muestra_en_repr(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, ENV="dev", **S3_COMPLETO)
+    assert isinstance(s.S3_SECRET_ACCESS_KEY, SecretStr)
+    assert s.S3_SECRET_ACCESS_KEY.get_secret_value() == "secreto-s3-no-real-0123456789"
+    assert "secreto-s3-no-real" not in repr(s) and "secreto-s3-no-real" not in str(s)
+    assert "**********" in repr(s.S3_SECRET_ACCESS_KEY)
+
+
+def test_s3_endpoint_http_se_rechaza_fuera_de_dev_y_no_muestra_el_valor(tmp_path: Path) -> None:
+    error = _rechaza(
+        tmp_path,
+        "S3_ENDPOINT_URL",
+        ENV="production",
+        **{**S3_COMPLETO, "S3_ENDPOINT_URL": "http://s3.ejemplo.test"},
+        S3_ENABLE_PRODUCTION="true",
+    )
+    assert "http://s3.ejemplo.test" not in str(error)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://clave:secreto-en-url@s3.ejemplo.test",
+        "https://clave@s3.ejemplo.test",
+        "https://s3.ejemplo.test/?X-Amz-Credential=clave",
+        "https://s3.ejemplo.test/#secreto",
+    ],
+)
+def test_s3_endpoint_con_credenciales_consulta_o_fragmento_se_rechaza_sin_mostrarlo(
+    tmp_path: Path, endpoint: str
+) -> None:
+    # Revisión de seguridad de S6-W0-5: unas credenciales en la URL saltarían la redacción.
+    error = _rechaza(
+        tmp_path, "S3_ENDPOINT_URL", ENV="dev", **{**S3_COMPLETO, "S3_ENDPOINT_URL": endpoint}
+    )
+    assert "secreto" not in str(error) and "clave" not in str(error)
+
+
+def test_s3_endpoint_http_se_acepta_en_dev(tmp_path: Path) -> None:
+    cambios = {**S3_COMPLETO, "S3_ENDPOINT_URL": "http://minio:9000"}
+    assert _cargar(tmp_path, ENV="dev", **cambios).S3_ENDPOINT_URL == "http://minio:9000"
+
+
+def test_s3_en_produccion_sin_la_bandera_falla_nombrando_la_variable(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "S3_ENABLE_PRODUCTION", ENV="production", **S3_COMPLETO)
+
+
+def test_s3_en_produccion_con_la_bandera_arranca(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, ENV="production", S3_ENABLE_PRODUCTION="true", **S3_COMPLETO)
+    assert s.STORAGE_PROVIDER == "s3" and s.S3_ENABLE_PRODUCTION is True
+
+
+def test_la_bandera_s3_en_produccion_con_almacen_local_no_hace_nada(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, ENV="production", S3_ENABLE_PRODUCTION="true")
+    assert s.STORAGE_PROVIDER == "local"
+
+
+@pytest.mark.parametrize("dominio", ["apex.example.com", "gym.apex.example.com", "localhost"])
+def test_apex_domain_acepta_un_host_sin_puerto(tmp_path: Path, dominio: str) -> None:
+    assert _cargar(tmp_path, APEX_DOMAIN=dominio).APEX_DOMAIN == dominio
+
+
+@pytest.mark.parametrize(
+    "dominio",
+    [
+        "http://apex.example.com",
+        "https://apex.example.com",
+        "apex example.com",
+        "apex_gym.example.com",
+        "apex.example.com/ruta",
+        "apex.example.com:",
+        "apex.example.com:abc",
+        ":8443",
+    ],
+    ids=[
+        "http",
+        "https",
+        "espacio",
+        "guion-bajo",
+        "ruta",
+        "puerto-vacio",
+        "puerto-texto",
+        "sin-host",
+    ],
+)
+def test_apex_domain_con_forma_invalida_falla_nombrando_la_variable(
+    tmp_path: Path, dominio: str
+) -> None:
+    error = _rechaza(tmp_path, "APEX_DOMAIN", APEX_DOMAIN=dominio)
+    assert dominio not in str(error) or dominio == ":8443"
+
+
+@pytest.mark.parametrize("entorno", ["dev", "production"])
+def test_puerto_en_apex_domain_pasa_con_la_bandera_y_host_localhost(
+    tmp_path: Path, entorno: str
+) -> None:
+    s = _cargar(tmp_path, ENV=entorno, APEX_DOMAIN="apex.localhost:8443", ALLOW_DOMAIN_PORT="true")
+    assert s.APEX_DOMAIN == "apex.localhost:8443"
+    assert s.ALLOW_DOMAIN_PORT is True
+
+
+@pytest.mark.parametrize("entorno", ["dev", "production"])
+def test_puerto_en_apex_domain_sin_la_bandera_falla_nombrando_la_variable(
+    tmp_path: Path, entorno: str
+) -> None:
+    _rechaza_alguna(
+        tmp_path,
+        ("APEX_DOMAIN", "ALLOW_DOMAIN_PORT"),
+        ENV=entorno,
+        APEX_DOMAIN="apex.localhost:8443",
+    )
+
+
+@pytest.mark.parametrize("entorno", ["dev", "production"])
+def test_puerto_con_la_bandera_y_un_host_que_no_es_localhost_falla(
+    tmp_path: Path, entorno: str
+) -> None:
+    _rechaza_alguna(
+        tmp_path,
+        ("APEX_DOMAIN", "ALLOW_DOMAIN_PORT"),
+        ENV=entorno,
+        APEX_DOMAIN="apex.example.com:8443",
+        ALLOW_DOMAIN_PORT="true",
+    )
+
+
+def test_la_bandera_de_puerto_en_produccion_con_otro_host_falla_nombrandola(
+    tmp_path: Path,
+) -> None:
+    _rechaza(
+        tmp_path,
+        "ALLOW_DOMAIN_PORT",
+        ENV="production",
+        APEX_DOMAIN="apex.example.com",
+        ALLOW_DOMAIN_PORT="true",
+    )
+
+
+def test_puerto_sin_la_bandera_y_host_de_produccion_falla(tmp_path: Path) -> None:
+    _rechaza_alguna(
+        tmp_path,
+        ("APEX_DOMAIN", "ALLOW_DOMAIN_PORT"),
+        ENV="production",
+        APEX_DOMAIN="apex.example.com:8443",
+    )
+
+
+def test_env_sigue_admitiendo_solo_dev_y_production(tmp_path: Path) -> None:
+    for entorno in ("staging", "test", "prod"):
+        with pytest.raises(ConfigError) as excinfo:
+            _cargar(tmp_path, ENV=entorno)
+        assert "ENV" in excinfo.value.invalid
+
+
+def test_el_api_no_lee_apex_tls_issuer_y_la_variable_es_ajena(tmp_path: Path) -> None:
+    """S6-D77 final: el emisor ACME es solo de `caddy`; ni es campo de Settings ni rompe el .env."""
+    assert "APEX_TLS_ISSUER" not in Settings.model_fields
+    assert "APEX_TLS_ISSUER" in NON_API_ENV_VARS
+    assert _cargar(tmp_path, APEX_TLS_ISSUER="internal", ENV="dev").ENV == "dev"
+
+
+def test_las_siete_user_de_s6_d57_tienen_su_valor_por_defecto(tmp_path: Path) -> None:
+    s = _cargar(tmp_path)
+    obtenidos = {nombre: getattr(s, nombre, None) for nombre in SIETE_USER_S6}
+    assert obtenidos == SIETE_USER_S6
+
+
+@pytest.mark.parametrize("nombre", sorted(SIETE_USER_S6))
+def test_las_siete_user_de_s6_exigen_mayor_que_cero(tmp_path: Path, nombre: str) -> None:
+    _rechaza(tmp_path, nombre, **{nombre: "0"})
+    assert getattr(_cargar(tmp_path, **{nombre: "7"}), nombre) == 7
+
+
+def test_non_api_env_vars_suma_las_seis_de_caddy_que_viven_en_env_ops_example() -> None:
+    ops = Path(__file__).resolve().parents[3] / ".env.ops.example"
+    claves = {
+        linea.split("=", 1)[0].strip()
+        for linea in ops.read_text(encoding="utf-8").splitlines()
+        if linea.strip() and not linea.strip().startswith("#") and "=" in linea
+    }
+    assert set(SEIS_CADDY) <= claves, f"faltan en .env.ops.example: {set(SEIS_CADDY) - claves}"
+    assert set(SEIS_CADDY) <= NON_API_ENV_VARS
+    assert not set(SEIS_CADDY) & set(Settings.model_fields)
+    assert NON_API_ENV_VARS >= claves - set(Settings.model_fields)
+
+
+def test_missing_secrets_con_s3_exige_la_clave_secreta(tmp_path: Path) -> None:
+    settings = _cargar(tmp_path, ENV="dev", **S3_COMPLETO)
+    assert "S3_SECRET_ACCESS_KEY" not in missing_secrets(settings, exists=lambda _ruta: True)
+    sin_clave = settings.model_copy(update={"S3_SECRET_ACCESS_KEY": None})
+    assert "S3_SECRET_ACCESS_KEY" in missing_secrets(sin_clave, exists=lambda _ruta: True)
+    vacia = settings.model_copy(update={"S3_SECRET_ACCESS_KEY": SecretStr("")})
+    assert "S3_SECRET_ACCESS_KEY" in missing_secrets(vacia, exists=lambda _ruta: True)
+
+
+def test_missing_secrets_con_almacen_local_no_pide_la_clave_de_s3(tmp_path: Path) -> None:
+    settings = _cargar(tmp_path)
+    assert "S3_SECRET_ACCESS_KEY" not in missing_secrets(settings, exists=lambda _ruta: False)

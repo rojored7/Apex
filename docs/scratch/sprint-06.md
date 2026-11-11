@@ -66,3 +66,27 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - Seguridad 0 CRITICAL, 0 HIGH, 1 MEDIUM (NOTICE sin `python-dateutil`, `six` y `urllib3` del extra `s3`: corregido en `notice.sh`), 1 LOW (ADR citan pruebas diferidas a A1..A3 y C1..C4: aceptado con obligación). S6-D85 aplicada: `test_licenses.sh` sin red (`check-licenses-api.sh --from-list`).
 - Sello: `bash scripts/workflow/slice-gate.sh architecture tests/architecture/test_adr_docs.py`.
 
+
+## W0-5 · Rojo
+
+- Línea base: ruff, format y mypy en verde; `pytest --co` 8175 recogidas. Marca `# Rojo S6-W0-5`. Sin tocar `src/`.
+- Rojas por archivo: `tests/core/test_config.py` 47 (campos `STORAGE_PROVIDER`, `S3_*`, `APEX_DOMAIN`, `ALLOW_DOMAIN_PORT`, siete `USER_*` y `NON_API_ENV_VARS` aún inexistentes; 166 verdes, 2 de ellas controles nuevos: `ENV` solo dev|production y `missing_secrets` local); `test_env_example.py` 10 (comentario 23/22, 23 cubetas, `CLAVES_SIN_RUTA` de 7, `ci.yml` 22, reparto S6 en los dos ejemplos); `test_logging_redact.py` 1; `architecture/test_no_sensitive_in_logs.py` 1, `test_settings_no_secrets.py` 1, `test_user_limits_catalog.py` 2 (una es la existente `toda_clave_del_catalogo_tiene_ruta`, roja por `CLAVES_SIN_RUTA_TODAVIA` ya con 7 claves ausentes de `USER_LIMITS`). `tests/core/test_single_process.py` nuevo, 5 verdes (guardia: hoy ya se cumple).
+- Reparadas (números obsoletos, no debilitadas): en `test_env_example.py` 16/15 -> 23/22, `len(USER_LIMITS)` 16 -> 23, `CLAVES_SIN_RUTA == frozenset()` -> las 7, `ci.yml` 15 -> 22.
+- Bash (solo `bash -n` en verde; Docker no se ejecutó): `test_api_image.sh` (CMD sin `--workers`), `test_compose_config.sh` (sin `--workers`/`UVICORN_WORKERS`/`WEB_CONCURRENCY` en ningún servicio; el `api` recibe `STORAGE_PROVIDER`, `S3_*`, `APEX_DOMAIN`; `worker` y `tools` sin `APEX_DOMAIN` ni `S3_SECRET_ACCESS_KEY`; bloque Python parsea), `test_env_isolation.sh` (`S3_SECRET_ACCESS_KEY` solo en `api`; Caddy en ningún servicio existente). Las aserciones D79 son guardias verdes por naturaleza; las rojas son las de `api` environment y `S3_SECRET_ACCESS_KEY`.
+- Gate del paso 10 (Verde): `slice-gate.sh core/ratelimit tests/architecture/test_user_limits_catalog.py tests/core/test_ratelimit.py`; `slice-gate.sh core/logging tests/core/test_logging_redact.py`; `bash scripts/ci/test_env_isolation.sh && bash scripts/ci/test_compose_config.sh`; sello `slice-gate.sh core/config tests/core/test_config.py tests/core/test_env_example.py tests/core/test_config_secrets.py`.
+- Dudas: 1) con `STORAGE_PROVIDER=local` y `S3_*` parciales no se afirma nada (propuesta: se ignoran). 2) La falta de `S3_SECRET_ACCESS_KEY` con `s3` se exige en la carga (todo o nada, literal del plan) y también en `missing_secrets`; si el Verde prefiere solo `missing_secrets`, mover el caso de `test_con_s3_las_cinco_variables_son_todo_o_nada[S3_SECRET_ACCESS_KEY]`. 3) Los errores de puerto aceptan nombrar `APEX_DOMAIN` o `ALLOW_DOMAIN_PORT`. 4) `ci.yml` solo se comprueba por conteo y nombres (≥2 apariciones), no por forma del `sed`. 5) Falta añadir `s3_secret_access_key` a `SENSITIVE_KEYS` y a `user_limits_from` (Verde).
+
+## W0-5 · Verde
+
+- `core/config.py`: campos `STORAGE_PROVIDER`, `S3_*`, `S3_ENABLE_PRODUCTION`, `APEX_DOMAIN`, `ALLOW_DOMAIN_PORT` y las siete `USER_*`; dos validadores de modelo que lanzan `ConfigError` con nombres; `NON_API_ENV_VARS` suma las seis de Caddy; `missing_secrets` exige `S3_SECRET_ACCESS_KEY` con `s3`. Reglas puras en `core/config_storage.py` (nuevo, para que `config.py` no pase de 800 líneas).
+- `ratelimit.py` (siete cubetas, 23 en total), `logging.py` (`s3_secret_access_key`), `.env.example`, `.env.ops.example`, `compose.yml` (api con S3, dominio y `USER_*`; worker y tools con `STORAGE_PROVIDER=local`), `ci.yml`, `.env` de desarrollo, RUNBOOK §14, `adjuntos.md`, `tls.md`.
+- Conteo del `sed` de `ci.yml`: 15 -> 22 (simulado sobre `.env.example`: `grep -cE` da 22).
+- Desviaciones: `tests/core/test_ratelimit.py` (3 pruebas con 16 cubetas obsoletas, 16 -> 23) y `test_compose_config.sh` (la aserción de `APEX_DOMAIN` en worker/tools se hace sobre el render sin resolver env_file).
+- Pendiente para tools/attachments-check con S3: recibirá el secreto cuando exista ese comando (C-slice).
+
+## W0-5 · Revisiones y sello
+
+- Gate 10.1 `slice-gate.sh core/ratelimit` 731 verdes; 10.2 `core/logging` 730 verdes; 10.3 `test_compose_config.sh` 0 fallas (`test_env_isolation.sh` solo contra ensayo/smoke: queda para W0-2.7).
+- Seguridad 0 CRITICAL, 0 HIGH, 1 MEDIUM, 3 LOW, todo corregido por el orquestador (S6-D86, D87 y bloque de revisiones en DECISIONES): endpoint S3 sin credenciales/consulta/fragmento (+4 casos en `test_config.py`), aserción de `APEX_DOMAIN` renombrada, advertencia en `adjuntos.md`, comentario S5-D107 reubicado.
+- Sello: `slice-gate.sh core/config tests/core/test_config.py tests/core/test_env_example.py tests/core/test_config_secrets.py`.
+

@@ -41,6 +41,8 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from app.core.config_storage import S3_REQUIRED, domain_problems, s3_problems
+
 # Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
 # pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041: vive en `.env.seed`
 # y solo lo lee `SeedSettings` en el servicio tools; M-8).
@@ -109,6 +111,14 @@ NON_API_ENV_VARS: frozenset[str] = frozenset(
         "MIGRATE_DB_USER",
         # S5-W0-3 (S5-D96): rol del servicio `tools`; solo Compose.
         "TOOLS_DB_USER",
+        # S6-W0-5 (S6-D65, D77 final): variables de Caddy y del perfil `tls`; solo Compose y el
+        # servicio `caddy`. El api no lee el emisor ACME (`APEX_TLS_ISSUER`).
+        "APEX_CADDY_IP",
+        "APEX_TLS_ISSUER",
+        "APEX_ACME_EMAIL",
+        "APEX_ACME_CA",
+        "APEX_HSTS_MAX_AGE",
+        "TLS_PORT",
     }
 )
 
@@ -319,6 +329,30 @@ class Settings(BaseSettings):
     USER_EXPORT_LIMIT_PER_HOUR: int = Field(default=6, gt=0)
     USER_EXPORT_LIMIT_PER_DAY: int = Field(default=20, gt=0)
 
+    # S6-W0-5 (S6-D21, D47): almacén de adjuntos. `s3` está apagado por defecto; con `s3` las cinco
+    # `S3_*` son todo o nada y en producción exige `S3_ENABLE_PRODUCTION=true`. El secreto va en
+    # `.env.ops` y solo lo recibe el servicio `api`.
+    STORAGE_PROVIDER: Literal["local", "s3"] = "local"
+    S3_ENDPOINT_URL: str | None = None
+    S3_BUCKET: str | None = None
+    S3_REGION: str | None = None
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: SecretStr | None = None
+    S3_ENABLE_PRODUCTION: bool = False
+    # S6-D65, D77 final: dominio público `host[:puerto]`; el puerto solo con `ALLOW_DOMAIN_PORT` y
+    # un host `*.localhost`. El api no lee `APEX_TLS_ISSUER`.
+    APEX_DOMAIN: str | None = None
+    ALLOW_DOMAIN_PORT: bool = False
+    # S6-D57: siete cubetas nuevas de `USER_LIMITS` (23 cubetas, 22 variables; rutas en B3, C2,
+    # C4 y R1).
+    USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN: int = Field(default=10, gt=0)
+    USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN: int = Field(default=600, gt=0)
+    USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR: int = Field(default=200, gt=0)
+    USER_KEYS_ROTATE_LIMIT_PER_MIN: int = Field(default=3, gt=0)
+    USER_KEYS_ROTATE_LIMIT_PER_HOUR: int = Field(default=10, gt=0)
+    USER_CBOM_EXPORT_LIMIT_PER_MIN: int = Field(default=2, gt=0)
+
     @field_validator(
         "OPENBAO_TOKEN_FILE",
         "SMTP_HOST",
@@ -328,6 +362,12 @@ class Settings(BaseSettings):
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
         "BACKUP_SIGN_PUBKEY",
+        "S3_ENDPOINT_URL",
+        "S3_BUCKET",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "APEX_DOMAIN",
         mode="before",
     )
     @classmethod
@@ -474,6 +514,29 @@ class Settings(BaseSettings):
         faltan = [nombre for nombre, valor in campos.items() if valor is None]
         if faltan and len(faltan) < len(campos):
             raise ConfigError(missing=faltan, invalid=[])
+        return self
+
+    @model_validator(mode="after")
+    def _s3_todo_o_nada(self) -> Settings:
+        """S6-D21: con `s3` las cinco `S3_*` están completas, el endpoint es `https` (o `http` en
+        dev) y producción exige `S3_ENABLE_PRODUCTION`. Con almacén local no se valida nada."""
+        valores: dict[str, object | None] = {n: getattr(self, n) for n in S3_REQUIRED}
+        faltan, invalidas = s3_problems(
+            provider=self.STORAGE_PROVIDER,
+            env=self.ENV,
+            allow_production=self.S3_ENABLE_PRODUCTION,
+            values=valores,
+        )
+        if faltan or invalidas:
+            raise ConfigError(missing=faltan, invalid=invalidas)
+        return self
+
+    @model_validator(mode="after")
+    def _dominio_publico(self) -> Settings:
+        """S6-D77 final: forma de `APEX_DOMAIN` y tabla del puerto; nombra la variable."""
+        invalidas = domain_problems(self.APEX_DOMAIN, self.ALLOW_DOMAIN_PORT)
+        if invalidas:
+            raise ConfigError(missing=[], invalid=invalidas)
         return self
 
     @model_validator(mode="after")
@@ -686,6 +749,10 @@ def missing_secrets(settings: Settings, exists: Callable[[Path], bool] = Path.is
         # S5-D17: con OpenBao no hay KEK ni llave de firma locales; el token es el secreto.
         if settings.OPENBAO_TOKEN_FILE is None or not exists(settings.OPENBAO_TOKEN_FILE):
             faltan.append("OPENBAO_TOKEN_FILE")
+    if settings.STORAGE_PROVIDER == "s3":
+        clave = settings.S3_SECRET_ACCESS_KEY
+        if clave is None or not clave.get_secret_value():
+            faltan.append("S3_SECRET_ACCESS_KEY")
     return sorted(faltan)
 
 

@@ -395,6 +395,14 @@ CATALOGO = {
     "export": (2, 60),
     "export-hour": (6, 3600),
     "export-day": (20, 86400),
+    # S6-D57 (S6-W0-5, Verde: el Rojo no actualizó este catálogo): 23 cubetas en total.
+    "attachments-upload": (10, 60),
+    "attachments-photo": (600, 60),
+    "attachments-download": (30, 60),
+    "attachments-download-hour": (200, 3600),
+    "keys-rotate": (3, 60),
+    "keys-rotate-hour": (10, 3600),
+    "cbom-export": (2, 60),
 }
 
 
@@ -453,6 +461,13 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_EXPORT_LIMIT_PER_MIN": 23,
             "USER_EXPORT_LIMIT_PER_HOUR": 24,
             "USER_EXPORT_LIMIT_PER_DAY": 25,
+            "USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN": 26,
+            "USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN": 27,
+            "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN": 28,
+            "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR": 29,
+            "USER_KEYS_ROTATE_LIMIT_PER_MIN": 30,
+            "USER_KEYS_ROTATE_LIMIT_PER_HOUR": 31,
+            "USER_CBOM_EXPORT_LIMIT_PER_MIN": 32,
         }
     )
     assert user_limits_from(ajustes) == {
@@ -473,6 +488,14 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         "export": (23, 60),
         "export-hour": (24, 3600),
         "export-day": (25, 86400),
+        # S6-D57 (S6-W0-5): siete cubetas más, 23 en total.
+        "attachments-upload": (26, 60),
+        "attachments-photo": (27, 60),
+        "attachments-download": (28, 60),
+        "attachments-download-hour": (29, 3600),
+        "keys-rotate": (30, 60),
+        "keys-rotate-hour": (31, 3600),
+        "cbom-export": (32, 60),
     }
 
 
@@ -486,7 +509,7 @@ def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventan
     topes = user_limits_from(
         export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
     )
-    assert len(topes) == 16  # S5-D81: 12 de S4A más las 4 de S5
+    assert len(topes) == 23  # 12 de S4A, 4 de S5 (S5-D81) y 7 de S6 (S6-D57)
     assert topes["audit-verify-hour"] == (7, 3600)
     assert topes["audit-verify"][1] == 60
     assert topes["staff-read"][1] == 60

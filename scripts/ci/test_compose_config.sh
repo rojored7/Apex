@@ -651,6 +651,28 @@ check(not ({"mailpit", "telegram-fake"} & set(prod)) and "mailpit" not in texto 
 for svc in ("mailpit", "telegram-fake"):
     check(str((dav.get(svc) or {}).get("restart", "no")) in ("no", "", "None"), f"S5-B4: {svc} no se reinicia solo (herramienta de desarrollo)")
 
+
+# Rojo S6-W0-5 (S6-D79, O4): un solo proceso del api. Ningun servicio (en produccion, desarrollo y
+# con todos los perfiles) declara --workers en su comando ni recibe UVICORN_WORKERS o WEB_CONCURRENCY.
+for etiqueta, doc in (("produccion", prod), ("desarrollo", dev), ("desarrollo con perfiles", dev_perfiles)):
+    for nombre, servicio in doc.items():
+        orden = [str(x) for x in (servicio.get("command") or []) + (servicio.get("entrypoint") or [])]
+        check(not any(x == "--workers" or x.startswith("--workers=") for x in orden), f"S6-D79: {etiqueta}: {nombre} sin --workers en command/entrypoint")
+        entorno = servicio.get("environment") or {}
+        check(not ({"UVICORN_WORKERS", "WEB_CONCURRENCY"} & set(entorno)), f"S6-D79: {etiqueta}: {nombre} no recibe UVICORN_WORKERS ni WEB_CONCURRENCY")
+
+# Rojo S6-W0-5 (S6-D57, D65, D77): el bloque environment del api recibe el almacen y el dominio;
+# worker y tools no reciben APEX_DOMAIN (validate_origins solo corre en el api).
+entorno_api = prod["api"].get("environment") or {}
+for variable in ("STORAGE_PROVIDER", "S3_ENDPOINT_URL", "S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_ENABLE_PRODUCTION", "APEX_DOMAIN"):
+    check(variable in entorno_api, f"S6-W0-5: api recibe {variable} en su bloque environment")
+# Verde: `prod` resuelve el env_file (`.env` trae APEX_DOMAIN, no secreta, y por env_file le llega
+# también a worker y tools; Compose no permite quitar una clave del env_file). Lo que se afirma es
+# que ningún servicio salvo el api la declara explícitamente en su bloque environment.
+for svc in ("worker", "tools"):
+    check("APEX_DOMAIN" not in (crudo_doc["services"][svc].get("environment") or {}), f"S6-W0-5: {svc} no declara APEX_DOMAIN en su bloque environment (por env_file sí la hereda; solo el api la valida)")
+    check("S3_SECRET_ACCESS_KEY" not in (prod[svc].get("environment") or {}), f"S6-W0-5: {svc} no recibe S3_SECRET_ACCESS_KEY")
+
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)
 EOF

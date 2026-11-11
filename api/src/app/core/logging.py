@@ -68,6 +68,8 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "smtp_password",
         "telegram_bot_token",
         "bot_token",
+        # S6-W0-5 (S6-D21): clave secreta del almacén S3.
+        "s3_secret_access_key",
     }
 )
 REDACTED = "[redacted]"

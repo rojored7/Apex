@@ -167,7 +167,7 @@ def test_las_tres_variables_de_s4a_b3_van_activas_con_sus_valores() -> None:
 
 def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
     """E9: el comentario del bloque dice de dónde vienen (S4A-B3, M-1 y M-3) y el conteo nuevo
-    del catálogo (16 cubetas y 15 variables `USER_*` desde S5-D81)."""
+    del catálogo (23 cubetas y 22 variables `USER_*` desde S6-D57; antes 16 y 15 de S5-D81)."""
     lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
     indices = [i for i, linea in enumerate(lineas) if linea.startswith("USER_READ_LIMIT_PER_MIN=")]
     assert len(indices) == 1, "USER_READ_LIMIT_PER_MIN debe ir una vez como línea activa"
@@ -175,9 +175,9 @@ def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
         linea for linea in lineas[max(0, indices[0] - 4) : indices[0]] if linea.startswith("#")
     )
     assert "S4A-B3, M-1 y M-3" in comentario
-    assert "16 cubetas" in comentario and "15 variables" in comentario  # S5-D81
+    assert "23 cubetas" in comentario and "22 variables" in comentario  # S6-D57
     activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 15, activas  # 11 de S4A y las 4 de S5-D81
+    assert len(activas) == 22, activas  # 11 de S4A, 4 de S5-D81 y 7 de S6-D57
 
 
 def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
@@ -428,15 +428,17 @@ def test_el_reparto_s5_no_repite_claves_entre_los_dos_ejemplos() -> None:
     assert todas <= set(_claves()) | set(_claves(EJEMPLO_OPS))
 
 
-def test_el_comentario_del_catalogo_dice_16_cubetas_y_15_variables() -> None:
-    """S5-D81: el catálogo pasa a 16 cubetas y 15 variables `USER_*`."""
+def test_el_comentario_del_catalogo_dice_23_cubetas_y_22_variables() -> None:
+    """S6-D57: el catálogo pasa a 23 cubetas y 22 variables `USER_*` (antes 16 y 15, S5-D81)."""
     texto = EJEMPLO.read_text(encoding="utf-8")
     comentario = " ".join(linea for linea in texto.splitlines() if linea.startswith("#"))
-    assert "16 cubetas" in comentario and "15 variables" in comentario
+    assert "23 cubetas" in comentario and "22 variables" in comentario
+    assert "16 cubetas" not in comentario and "15 variables" not in comentario
     assert "12 cubetas" not in comentario and "11 variables" not in comentario
     activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 15, activas
+    assert len(activas) == 22, activas
     assert set(CUATRO_USER_S5) <= set(activas)
+    assert set(SIETE_USER_S6) <= set(activas)
 
 
 def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> None:
@@ -447,15 +449,16 @@ def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> No
     assert USER_LIMITS["export"] == (2, 60)
     assert USER_LIMITS["export-hour"] == (6, 3600)
     assert USER_LIMITS["export-day"] == (20, 86400)
-    assert len(USER_LIMITS) == 16
+    assert len(USER_LIMITS) == 23  # 16 de S5 y las 7 de S6-D57
 
 
 def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() -> None:
-    """S5-B5 dio ruta a `notifications-write`; B12 (Rojo) da ruta a las tres `export*`
-    (S5-D98, S5-D150): `CLAVES_SIN_RUTA_TODAVIA` queda vacío."""
+    """S5-B5 dio ruta a `notifications-write` y B12 a las tres `export*` (S5-D98, S5-D150); desde
+    S6-W0-5 `CLAVES_SIN_RUTA_TODAVIA` guarda solo las siete de S6-D57 hasta que cada slice les dé
+    ruta."""
     from tests.architecture.test_user_limits_catalog import CLAVES_SIN_RUTA_TODAVIA
 
-    assert CLAVES_SIN_RUTA_TODAVIA == frozenset()
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6)
     assert not set(CUATRO_BUCKETS_S5) & CLAVES_SIN_RUTA_TODAVIA
 
 
@@ -470,12 +473,12 @@ def test_user_limits_from_alimenta_las_cuatro_cubetas_desde_settings() -> None:
     assert topes["export-day"] == (20, 86400)
 
 
-def test_ci_sube_las_quince_variables_user_y_cuenta_quince() -> None:
-    """S5-D98: el `sed` del job e2e-stack sube también las cuatro nuevas y el conteo es 15."""
+def test_ci_sube_las_veintidos_variables_user_y_cuenta_veintidos() -> None:
+    """S5-D98, S6-D57: el `sed` del job e2e-stack sube también las siete de S6; el conteo es 22."""
     texto = CI_YML.read_text(encoding="utf-8")
-    assert '[ "$subidas" = "15" ]' in texto, "el conteo de subidas debe ser 15"
-    assert "se esperaban 15 cubetas USER_* subidas" in texto
-    for nombre in CUATRO_USER_S5:
+    assert '[ "$subidas" = "22" ]' in texto, "el conteo de subidas debe ser 22"
+    assert "se esperaban 22 cubetas USER_* subidas" in texto
+    for nombre in (*CUATRO_USER_S5, *SIETE_USER_S6):
         assert texto.count(nombre) >= 2, f"{nombre} debe estar en el sed y en la regex del conteo"
 
 
@@ -497,3 +500,111 @@ def test_los_roles_de_migrate_y_tools_valen_apex_owner_en_el_ejemplo_de_operacio
 def test_apex_owner_db_password_es_ajena_al_api() -> None:
     assert "APEX_OWNER_DB_PASSWORD" in NON_API_ENV_VARS
     assert "APEX_OWNER_DB_PASSWORD" not in Settings.model_fields
+
+
+# --- Rojo S6-W0-5 (S6-D47, D57, D65, D77): reparto de las variables nuevas ----------------------
+
+NO_SECRETAS_S6: dict[str, str] = {
+    "STORAGE_PROVIDER": "local",
+    "S3_ENABLE_PRODUCTION": "false",
+    "ALLOW_DOMAIN_PORT": "false",
+    "USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN": "10",
+    "USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN": "600",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN": "30",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR": "200",
+    "USER_KEYS_ROTATE_LIMIT_PER_MIN": "3",
+    "USER_KEYS_ROTATE_LIMIT_PER_HOUR": "10",
+    "USER_CBOM_EXPORT_LIMIT_PER_MIN": "2",
+}
+"""Líneas activas de `.env.example` con el valor por defecto de `Settings`."""
+
+NO_SECRETAS_S6_VACIAS: tuple[str, ...] = (
+    "S3_ENDPOINT_URL",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_ACCESS_KEY_ID",
+    "APEX_DOMAIN",
+)
+"""También en `.env.example` (no son secretas), vacías por defecto (almacén local, sin dominio)."""
+
+SIETE_USER_S6: tuple[str, ...] = (
+    "USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN",
+    "USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR",
+    "USER_KEYS_ROTATE_LIMIT_PER_MIN",
+    "USER_KEYS_ROTATE_LIMIT_PER_HOUR",
+    "USER_CBOM_EXPORT_LIMIT_PER_MIN",
+)
+SIETE_BUCKETS_S6: dict[str, tuple[int, int]] = {
+    "attachments-upload": (10, 60),
+    "attachments-photo": (600, 60),
+    "attachments-download": (30, 60),
+    "attachments-download-hour": (200, 3600),
+    "keys-rotate": (3, 60),
+    "keys-rotate-hour": (10, 3600),
+    "cbom-export": (2, 60),
+}
+SEIS_CADDY_S6: tuple[str, ...] = (
+    "APEX_CADDY_IP",
+    "APEX_TLS_ISSUER",
+    "APEX_ACME_EMAIL",
+    "APEX_ACME_CA",
+    "APEX_HSTS_MAX_AGE",
+    "TLS_PORT",
+)
+
+
+def test_lo_no_secreto_de_s6_va_en_env_example_con_su_valor_por_defecto() -> None:
+    claves = _claves()
+    distintas = {n: claves.get(n) for n, v in NO_SECRETAS_S6.items() if claves.get(n) != v}
+    assert distintas == {}, f"valores distintos o ausentes en .env.example: {distintas}"
+    for nombre, valor in NO_SECRETAS_S6.items():
+        assert nombre in Settings.model_fields, f"{nombre} aún no es un campo de Settings"
+        por_defecto = Settings.model_fields[nombre].default
+        assert str(por_defecto).lower() == valor, nombre
+    ausentes = [n for n in NO_SECRETAS_S6_VACIAS if n not in claves]
+    assert ausentes == [], f"faltan en .env.example: {ausentes}"
+    assert [n for n in NO_SECRETAS_S6_VACIAS if n not in Settings.model_fields] == []
+
+
+def test_lo_secreto_y_de_caddy_de_s6_va_en_env_ops_example_y_no_en_el_publico() -> None:
+    ops = _claves(EJEMPLO_OPS)
+    esperadas = ("S3_SECRET_ACCESS_KEY", *SEIS_CADDY_S6)
+    ausentes = [n for n in esperadas if n not in ops]
+    assert ausentes == [], f"faltan en .env.ops.example: {ausentes}"
+    en_publico = [n for n in esperadas if n in _claves()]
+    assert en_publico == [], f"no deben estar en .env.example: {en_publico}"
+    valor = ops["S3_SECRET_ACCESS_KEY"]
+    assert valor == "" or "cambiar-esto" in valor, (
+        "S3_SECRET_ACCESS_KEY parece llevar un valor real"
+    )
+
+
+def test_el_reparto_s6_no_repite_claves_entre_los_dos_ejemplos() -> None:
+    comunes = set(_claves()) & set(_claves(EJEMPLO_OPS))
+    assert comunes == set()
+    todas = set(NO_SECRETAS_S6) | set(NO_SECRETAS_S6_VACIAS)
+    assert todas <= set(_claves())
+
+
+def test_las_siete_cubetas_de_s6_estan_en_user_limits_con_sus_ventanas() -> None:
+    from app.core.ratelimit import USER_LIMITS
+
+    assert [b for b in SIETE_BUCKETS_S6 if b not in USER_LIMITS] == []
+    assert {b: USER_LIMITS[b] for b in SIETE_BUCKETS_S6 if b in USER_LIMITS} == SIETE_BUCKETS_S6
+
+
+def test_user_limits_from_alimenta_las_siete_cubetas_de_s6_desde_settings() -> None:
+    from app.cli import export_settings
+    from app.core.ratelimit import user_limits_from
+
+    topes = user_limits_from(export_settings())
+    assert {b: topes.get(b) for b in SIETE_BUCKETS_S6} == SIETE_BUCKETS_S6
+
+
+def test_las_siete_user_de_s6_son_campos_de_settings_con_el_tope_de_su_cubeta() -> None:
+    faltan = [n for n in SIETE_USER_S6 if n not in Settings.model_fields]
+    assert faltan == [], f"aún no son campos de Settings: {faltan}"
+    por_defecto = [Settings.model_fields[n].default for n in SIETE_USER_S6]
+    assert por_defecto == [10, 600, 30, 200, 3, 10, 2]

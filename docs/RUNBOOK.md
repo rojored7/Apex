@@ -1070,6 +1070,19 @@ Guías para quien opera: `docs/operacion/llaves.md`, `adjuntos.md` y `tls.md` (c
 - **Adjuntos.** Se suben como cuerpo crudo con `?kind=` (tope 5.242.880 bytes; 413 `file_too_large`), viven en el volumen `uploads` (incluido en el respaldo) y se sirven solo por el api con rol. La autorización y los otros documentos se cifran con el bus; la foto no. `tools attachments-check --as <correo>` detecta filas sin objeto y objetos sin fila (solo lectura).
 - **TLS.** Perfil `tls` de Compose con Caddy 2.11.3; ver `docs/operacion/tls.md` e `instalar-en-servidor.md`. La IP real del cliente llega a Nginx con `real_ip` desde Caddy; el archivo `real-ip.conf` se renderiza fuera del árbol (S6-D82).
 
+### Variables nuevas del Sprint 6 (S6-W0-5)
+
+Quién lee cada una. `.env` es lo no secreto; `.env.ops`, lo que no debe llegar a ningún servicio que no lo necesite.
+
+- `STORAGE_PROVIDER` (`local` por defecto, o `s3`, apagado en v0.3): `.env`; la lee el api. `worker` y `tools` reciben `STORAGE_PROVIDER=local` fijo en Compose para no validar S3.
+- `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`: `.env`; solo el api. Con `s3` las cinco `S3_*` son todo o nada; el endpoint es `https` salvo `ENV=dev`.
+- `S3_SECRET_ACCESS_KEY`: `.env.ops`; solo el api (`SecretStr`, enmascarada en logs). `check_secrets_or_exit` la exige con `s3`.
+- `S3_ENABLE_PRODUCTION` (`false`): `.env`; solo el api. Con `s3` y `ENV=production` sin esta bandera el api no arranca.
+- `APEX_DOMAIN`: `.env`; solo el api. Forma `host[:puerto]`, sin esquema. Vacío = sin dominio.
+- `ALLOW_DOMAIN_PORT` (`false`): `.env`; solo el api. Un puerto en `APEX_DOMAIN` solo pasa con esta bandera en `true` y un host `*.localhost`.
+- Siete topes por usuario, en `.env` y leídos por el api: `USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN` (10), `USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN` (600), `USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN` (30), `USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR` (200), `USER_KEYS_ROTATE_LIMIT_PER_MIN` (3), `USER_KEYS_ROTATE_LIMIT_PER_HOUR` (10) y `USER_CBOM_EXPORT_LIMIT_PER_MIN` (2). El catálogo pasa a 23 cubetas y 22 variables `USER_*`.
+- `APEX_CADDY_IP`, `APEX_TLS_ISSUER` (`internal`), `APEX_ACME_EMAIL`, `APEX_ACME_CA`, `APEX_HSTS_MAX_AGE` (`300`), `TLS_PORT` (`443`): `.env.ops`; solo Compose y el servicio `caddy`. El api no las lee (S6-D77 final) y `Settings` las ignora.
+
 ### Residuales declarados, con dueño
 
 - `apex_api` conserva `INSERT` en `crypto_keys` (S4B-D61) y gana `INSERT` en `crypto_jobs`: un api comprometido podría insertar un job `running` falso o una fila `active` de versión mayor. El daño está acotado: ninguna llave pasa de `decrypt_only` por el api, `finish_rotation` recuenta por `count_pending` y cerrar en `done` exige `done = total`; se detecta en `GET /crypto/jobs` y en la bitácora (S6-D61). Dueño: operador.

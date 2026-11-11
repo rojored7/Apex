@@ -332,6 +332,15 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "export": (2, 60),
     "export-hour": (6, 3600),
     "export-day": (20, 86400),
+    # S6-D57: adjuntos, rotación de llaves y CBOM (rutas en C2, C4, B3 y R1). 23 cubetas, 22
+    # variables `USER_*`.
+    "attachments-upload": (10, 60),
+    "attachments-photo": (600, 60),
+    "attachments-download": (30, 60),
+    "attachments-download-hour": (200, 3600),
+    "keys-rotate": (3, 60),
+    "keys-rotate-hour": (10, 3600),
+    "cbom-export": (2, 60),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -360,6 +369,13 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "export": settings.USER_EXPORT_LIMIT_PER_MIN,
         "export-hour": settings.USER_EXPORT_LIMIT_PER_HOUR,
         "export-day": settings.USER_EXPORT_LIMIT_PER_DAY,
+        "attachments-upload": settings.USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN,
+        "attachments-photo": settings.USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN,
+        "attachments-download": settings.USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN,
+        "attachments-download-hour": settings.USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_HOUR,
+        "keys-rotate": settings.USER_KEYS_ROTATE_LIMIT_PER_MIN,
+        "keys-rotate-hour": settings.USER_KEYS_ROTATE_LIMIT_PER_HOUR,
+        "cbom-export": settings.USER_CBOM_EXPORT_LIMIT_PER_MIN,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

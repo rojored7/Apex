@@ -467,3 +467,10 @@ def test_redact_text_recorta_el_token_del_bot_sin_prefijo_bot() -> None:
 def test_redact_text_no_toca_horas_ni_ids_cortos_con_dos_puntos() -> None:
     texto = "inicio 12:30:45 id 1234567:corto y 20261104:abc"
     assert redact_text(texto) == texto
+
+
+def test_sensitive_keys_suma_la_clave_secreta_de_s3() -> None:
+    """Rojo S6-W0-5: `s3_secret_access_key` se oculta por clave, sin distinguir mayúsculas."""
+    assert "s3_secret_access_key" in app_logging.SENSITIVE_KEYS
+    for clave in ("s3_secret_access_key", "S3_SECRET_ACCESS_KEY"):
+        assert redact({clave: "secreto-s3-no-real"}) == {clave: "[redacted]"}

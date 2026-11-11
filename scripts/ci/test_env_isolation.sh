@@ -151,5 +151,30 @@ else
   falla "no se pudo renderizar 'compose config' para el reparto estático (L-9)"
 fi
 
+
+# Rojo S6-W0-5 (S6-D57, D65): S3_SECRET_ACCESS_KEY solo en `api`; las seis de Caddy en ningun
+# servicio existente (la asercion de `caddy` se activa en W0-4). Solo se imprimen NOMBRES.
+if [ -n "${config_render:-}" ]; then
+  for svc in $SERVICIOS_ESTATICOS; do
+    nombres="$(nombres_de_config "$svc")"
+    if [ "$svc" = "api" ]; then
+      if printf '%s\n' "$nombres" | grep -qx 'S3_SECRET_ACCESS_KEY'; then
+        ok "api: recibe S3_SECRET_ACCESS_KEY"
+      else
+        falla "api: no recibe S3_SECRET_ACCESS_KEY (S6-D57)"
+      fi
+    elif printf '%s\n' "$nombres" | grep -qx 'S3_SECRET_ACCESS_KEY'; then
+      falla "$svc recibe S3_SECRET_ACCESS_KEY, que solo le toca a api"
+    else
+      ok "$svc: sin S3_SECRET_ACCESS_KEY"
+    fi
+    if printf '%s\n' "$nombres" | grep -qE '^(APEX_CADDY_IP|APEX_TLS_ISSUER|APEX_ACME_EMAIL|APEX_ACME_CA|APEX_HSTS_MAX_AGE|TLS_PORT)$'; then
+      falla "$svc recibe variables de Caddy que no le tocan"
+    else
+      ok "$svc: sin variables de Caddy"
+    fi
+  done
+fi
+
 echo "test_env_isolation: $fallas fallas"
 [ "$fallas" -eq 0 ]

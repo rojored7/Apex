@@ -66,5 +66,15 @@ done
 revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMG" 2>/dev/null || true)"
 if [ -n "$revision" ]; then ok "etiqueta org.opencontainers.image.revision ($revision)"; else falla "falta la etiqueta org.opencontainers.image.revision"; fi
 
+
+# Rojo S6-W0-5 (S6-D79, O4): un solo proceso del api. El CMD de la imagen arranca uvicorn sin
+# --workers (el semáforo de adjuntos, el rotador único y single_flight suponen un solo proceso).
+cmd_imagen="$(docker inspect --format '{{ json .Config.Cmd }}' "$IMG" 2>/dev/null || true)"
+if printf '%s' "$cmd_imagen" | grep -q 'uvicorn' && ! printf '%s' "$cmd_imagen" | grep -q -e '--workers'; then
+  ok "S6-D79: el CMD de la imagen es uvicorn sin --workers"
+else
+  falla "S6-D79: el CMD de la imagen no es uvicorn o lleva --workers ($cmd_imagen)"
+fi
+
 echo "test_api_image: $fallas fallas"
 [ "$fallas" -eq 0 ]

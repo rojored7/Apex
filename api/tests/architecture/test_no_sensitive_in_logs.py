@@ -186,6 +186,25 @@ def test_la_cabecera_x_vault_token_en_un_extra_no_llega_al_log(
     assert TOKEN_BAO not in texto and "clave-smtp-x" not in texto
 
 
+def test_la_clave_secreta_de_s3_en_un_extra_no_llega_al_log(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Rojo S6-W0-5: `s3_secret_access_key` está en `SENSITIVE_KEYS`."""
+
+    def emitir(logger: logging.Logger) -> None:
+        logger.warning(
+            "subida a s3 fallida",
+            extra={
+                "s3_secret_access_key": "secreto-s3-no-real",
+                "headers": {"S3_SECRET_ACCESS_KEY": "otro-secreto-s3"},
+            },
+        )
+
+    texto = _salida_de_un_registro(capsys, emitir)
+    assert "subida a s3 fallida" in texto
+    assert "secreto-s3-no-real" not in texto and "otro-secreto-s3" not in texto
+
+
 def test_el_token_de_openbao_en_el_texto_de_un_error_no_llega_al_log_por_clave_conocida(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

@@ -260,3 +260,16 @@ def test_credentials_present_no_es_un_campo_de_la_seccion() -> None:
     from app.modules.settings.schemas import ChannelsSettings
 
     assert "credentials_present" not in ChannelsSettings.model_fields
+
+
+def test_settings_declara_s3_secret_access_key_como_secretstr_opcional_y_la_enmascara() -> None:
+    """Rojo S6-W0-5 (S6-D21, D57): la clave secreta de S3 no se ve en `repr` ni en el volcado."""
+    from app.core.config import Settings
+
+    assert "S3_SECRET_ACCESS_KEY" in Settings.model_fields, "aún no es un campo de Settings"
+    campo = Settings.model_fields["S3_SECRET_ACCESS_KEY"]
+    assert _es_secretstr_opcional(campo.annotation), "debe ser SecretStr | None"
+    assert campo.default is None, "sin valor por defecto real"
+    valor = SecretStr("secreto-s3-no-real-0123456789")
+    assert "secreto-s3-no-real" not in repr(valor) and "**********" in repr(valor)
+    assert "secreto-s3-no-real" not in str(valor)

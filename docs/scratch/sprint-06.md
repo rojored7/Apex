@@ -126,3 +126,12 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - Primer `wave0-gate.sh W0-2` en verde (infra completa + architecture 964) → paso 17.2: `--migrate-layout` dijo «nada que migrar» sobre el volumen plano porque el `.env` de desarrollo conserva la ruta plana del JWT (raíz derivada `/run/apex`): S6-D91 (raíz robusta, aviso, `deploy.sh` exige rutas nuevas, `actualizar.md` corregido); `.env` de desarrollo actualizado a las cuatro rutas nuevas; imagen del api reconstruida; sello repetido.
 - Sello: `bash scripts/workflow/wave0-gate.sh W0-2 tests/cli/test_init_keys_layout.py tests/core/test_config.py tests/core/test_env_example.py`.
 
+## W0-2 · Docker de desarrollo (paso 17)
+
+- Segundo `wave0-gate.sh W0-2` (tras S6-D91) en verde: `test_check_release_version` 19 ok, `test_infra_scripts`, `test_openbao_infra` 101 ok, `test_api_image`, ocho `compose config --quiet`, architecture 965. Checkpoint `05ea83d` (36 archivos, +1116/-51).
+- Imágenes `apex-api:local` y `apex-web:local` reconstruidas con el árbol sellado; respaldo del volumen `apex_keys` previo a la migración en `C:\Users\PC\Desktop\apex-claves\keys-dev-antes-layout.tgz` (fuera del repo: `docs/scratch` no ignora `.tgz`; se borra en V12).
+- `init-keys --migrate-layout` con `tools` (api y worker parados desde el Verde, E3): primera corrida «movido kek.bin, sign-ed25519.key, jwt_ed25519.pem, jwt_ed25519.pub»; segunda «nada que migrar». Volumen: `custody/` y `jwt/` en 700, archivos en 600, dueño 10001.
+- `up -d --no-build --force-recreate api worker web`: 6/6 `healthy`; `/health` `{"status":"ok","db":"ok","backup":"attention","migrations":"ok","crypto":"ok"}`. El worker monta solo `apex_keys` en `/run/apex/keys/custody` (ro) y `ls /run/apex/keys/jwt` falla; el api ve `custody/` y `jwt/`.
+- Login `POST /auth/login` por Nginx (8180, con `Origin`) 200 y `GET /members/{id}` 200: JWT desde `jwt/` y KEK desde `custody/`. (Directo al 8181 sin pasar por Nginx responde 403 `forbidden`: comportamiento previo, el api exige el proxy de confianza.)
+- Nginx con las fixtures de `make_attachments.py`: 102.400, 5.242.880 y 5.242.881 bytes → 404 `not_found` del api (pasaron Nginx; la ruta llega en C2); 6.300.000 → 413 `{"error":{"code":"file_too_large","message":"El archivo supera el tamaño máximo de 5 MB.","field":"file"}}`; `curl -sI /` → `img-src 'self' data: blob:`.
+

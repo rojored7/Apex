@@ -112,6 +112,7 @@ def test_el_worker_existe_y_tiene_archivos_que_revisar() -> None:
         "jobs/expirations.py",
         "jobs/backup_check.py",
         "jobs/notify.py",
+        "jobs/sign_audit.py",
     }
     assert esperados <= nombres, sorted(esperados - nombres)
 
@@ -399,3 +400,41 @@ def test_control_un_job_que_importa_plans_o_un_privado_de_notifications_se_detec
     }
     reglas = [v.rsplit("(", 1)[1].rstrip(")") for v in _violaciones_de_imports(NOTIFY_JOB, falsa)]
     assert reglas == ["private_helper"]
+
+
+# S6-A2: `jobs/sign_audit.py` (S6-D8, D60). Rojo ---------------------------------------------------
+
+SIGN_JOB = WORKER / "jobs" / "sign_audit.py"
+
+
+def test_el_job_sign_audit_existe_y_entra_al_barrido_del_worker() -> None:
+    assert SIGN_JOB.is_file()
+    assert "worker/jobs/sign_audit.py" in {
+        p.relative_to(SRC).as_posix() for p in _archivos_de_aplicacion()
+    }
+
+
+def test_el_job_sign_audit_no_escribe_sql_ni_importa_models_ni_privados() -> None:
+    fuente = SIGN_JOB.read_text(encoding="utf-8")
+    assert llamadas_sql(fuente, "worker/jobs/sign_audit.py") == []
+    assert _violaciones_de_imports(SIGN_JOB) == []
+
+
+def test_el_job_sign_audit_llama_core_audit_sign() -> None:
+    fuente = SIGN_JOB.read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    importa = any(
+        (isinstance(n, ast.ImportFrom) and (n.module or "") == "app.core.audit_sign")
+        or (
+            isinstance(n, ast.ImportFrom)
+            and n.module == "app.core"
+            and any(a.name == "audit_sign" for a in n.names)
+        )
+        for n in ast.walk(arbol)
+    )
+    assert importa, "sign_audit.py no importa app.core.audit_sign"
+    assert "sign_latest" in fuente
+
+
+def test_el_job_sign_audit_no_importa_modulos_de_negocio() -> None:
+    assert modulos_importados(SIGN_JOB.read_text(encoding="utf-8")) == set()

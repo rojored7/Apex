@@ -332,3 +332,25 @@ async def test_forgot_y_alta_con_correo_no_dejan_el_enlace_ni_el_correo_en_los_l
     for correo in (coach.email, "centinela-alta@test.apex"):
         assert correo.lower() not in texto
     assert "/restablecer/" not in texto
+
+
+# S6-A2 (S6-D60): el job y el CLI de firma no escriben firmas ni hashes en logs, salida ni alertas
+
+import re as _re  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+_SRC_APP = _Path(__file__).resolve().parents[2] / "src" / "app"
+_SALIDAS = _re.compile(r"(logger\.\w+|logging\.\w+|typer\.echo|alert|print)\(")
+_SENSIBLE = _re.compile(r"\b(signature|chain_hash|firma|hash_|\.hash)\b")
+
+
+def test_s6_a2_el_job_y_el_cli_de_firma_no_emiten_firmas_ni_hashes() -> None:
+    for relativo in ("worker/jobs/sign_audit.py", "cli_ops/sign_audit.py"):
+        ruta = _SRC_APP / relativo
+        assert ruta.is_file(), relativo
+        malas = [
+            f"{relativo}:{n} {linea.strip()}"
+            for n, linea in enumerate(ruta.read_text(encoding="utf-8").splitlines(), 1)
+            if _SALIDAS.search(linea) and _SENSIBLE.search(linea)
+        ]
+        assert malas == []

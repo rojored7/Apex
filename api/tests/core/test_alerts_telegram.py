@@ -481,3 +481,59 @@ def test_register_from_settings_reemplaza_sin_tocar_la_lista_privada() -> None:
     assert len(_sinks_de_telegram()) == 1
     fuente = Path(alerts_telegram.__file__).read_text(encoding="utf-8")
     assert "_sinks" not in fuente
+
+
+# S6-A2 (S6-D60): alertas de la firma de la cadena ------------------------------------------------
+
+CASOS_FIRMA: list[tuple[str, dict[str, object], tuple[str, ...]]] = [
+    (
+        "audit_sign_failed",
+        {"job": "sign_audit", "result": "error", "error_type": "CryptoUnavailable", "attempts": 3},
+        ("firma", "falló"),
+    ),
+    ("audit_sign_late", {"job": "sign_audit", "age_h": 49}, ("firma", "atrasad")),
+    ("audit_chain_broken", {"job": "sign_audit", "through_seq": 1234}, ("cadena", "rota")),
+]
+
+
+@pytest.mark.parametrize(("codigo", "contexto", "palabras"), CASOS_FIRMA)
+def test_las_alertas_de_firma_estan_en_espanol_y_dicen_de_que_se_trata(
+    codigo: str, contexto: dict[str, object], palabras: tuple[str, ...]
+) -> None:
+    texto = render_message(codigo, contexto, FRONT)
+
+    assert not texto.startswith("APEX · alerta "), "cae en la línea genérica de código desconocido"
+    assert all(p in texto.casefold() for p in palabras), texto
+
+
+def test_las_alertas_de_firma_llevan_solo_enteros_y_el_job() -> None:
+    assert "49" in render_message("audit_sign_late", {"job": "sign_audit", "age_h": 49}, FRONT)
+    rota = render_message("audit_chain_broken", {"job": "sign_audit", "through_seq": 1234}, FRONT)
+    assert "1234" in rota
+    fallo = render_message("audit_sign_failed", CASOS_FIRMA[0][1], FRONT)
+    assert "3" in fallo and "sign_audit" in fallo
+
+
+@pytest.mark.parametrize(("codigo", "contexto", "_"), CASOS_FIRMA)
+def test_las_alertas_de_firma_no_escriben_nombres_hashes_ni_claves_ajenas(
+    codigo: str, contexto: dict[str, object], _: tuple[str, ...]
+) -> None:
+    sucio = {
+        **contexto,
+        "nombre": "Laura Gómez",
+        "hash": "a" * 64,
+        "signature": "apx1.llave.Ed25519.abc.def",
+        "email": "laura@correo.test",
+    }
+
+    texto = render_message(codigo, sucio, FRONT)
+
+    for dato in ("Laura", "Gómez", "a" * 64, "apx1.", "laura@correo.test"):
+        assert dato not in texto
+    assert "/avisos/hoy" not in texto
+
+
+def test_las_tres_alertas_de_firma_tienen_textos_distintos() -> None:
+    textos = {c: render_message(c, ctx, FRONT) for c, ctx, _ in CASOS_FIRMA}
+
+    assert len(set(textos.values())) == 3

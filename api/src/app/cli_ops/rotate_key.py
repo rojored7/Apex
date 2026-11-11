@@ -1,19 +1,17 @@
 """`rotate-key <clase> --reason TEXTO --as <correo> [--index] [--batch-size 500]` (S4B-B3b, US-030).
 
-Rota la llave de una clase de dato y recifra sus filas de a lotes; es reanudable (S4B-D39, D40,
-D63). Usa `crypto_runtime`, un admin activo en `--as` y `core.crypto.service` (siempre por el
-módulo, para que las pruebas lo alcancen).
+Rota la llave de una clase de dato y recifra sus filas de a lotes; reanudable (S4B-D39, D40, D63).
+Usa `crypto_runtime`, un admin activo en `--as` y `core.crypto.service` (siempre por el módulo).
 
 - `rotate-key: total=N` ANTES de empezar y `rotate-key: hecho=X/N` por lote; la última línea es
   `rotate-key: llave anterior en decrypt_only; retirar con retire-key` (retirar es otro comando).
 - `--reason` obligatorio (<= 200 caracteres, sin control, correo ni números largos); queda en la
-  auditoría (`update` sobre `crypto.crypto_keys`) en la misma transacción que abre la rotación.
-  Ninguna salida repite el motivo recibido.
+  auditoría (`update` sobre `crypto.crypto_keys`); ninguna salida lo repite.
 - `attachment.sensitive`: 2, `esa clase no admite rotación hasta EP-18 (G-09)`.
-- Candado de la clase tomado por otro proceso: 1, `rotación en curso`.
-- `DatabaseBusy`: un intento y tres reintentos con `asyncio.sleep(1)`; luego 1,
-  `la base está ocupada`. No necesita `--db-timeouts off` (cada lote es corto).
-- Falla en un lote: el job queda `failed`, 1, `repita el comando` para reanudar ese mismo job.
+- Candado de la clase tomado por otro proceso: 1, `rotación en curso`. `DatabaseBusy`: un intento y
+  tres reintentos con `asyncio.sleep(1)`; luego 1. Falla en un lote: `failed`, 1, repetir reanuda.
+- `--provider <local|openbao>` (solo `audit.signature`, S6-D81): llave de firma nueva allí; la
+  anterior queda `decrypt_only`; sin él esa clase sale 2 `purpose_not_rotatable`.
 - `--index` rota la llave de índice ciego y recalcula los `*_idx` en una sola transacción.
 """
 
@@ -46,6 +44,7 @@ from app.core.crypto.errors import CryptoError
 from app.core.crypto.keyring import current_keyring
 from app.core.crypto.models import CryptoJob
 from app.core.crypto.registry import get_spec
+from app.core.crypto.sign_rotation import SignRotationError, not_rotatable, switch_provider
 from app.core.db import DatabaseBusy
 
 COMMAND = "rotate-key"
@@ -188,25 +187,32 @@ async def _rotate(
     actor: str | None,
     index: bool,
     size: int,
+    provider: str | None = None,
 ) -> None:
     async with crypto_runtime(settings, options) as session:
         async with session.begin():
             actor_id = await resolve_admin_actor(session, actor, required=True)
         with unit_of_work(actor_id):
-            if index:
+            if provider:
+                await switch_provider(session, settings, data_class, provider, reason, actor_id)
+            elif index:
                 await _rotate_index(session, data_class, reason, actor_id)
             else:
                 await _rotate_data(session, data_class, reason, actor_id, size)
 
 
-def _check_arguments(data_class: str, reason: str, index: bool, size: int) -> str:
+def _check_arguments(
+    data_class: str, reason: str, index: bool, size: int, provider: str | None
+) -> str:
     if data_class == ATTACHMENT_CLASS:
         reject("esa clase no admite rotación hasta EP-18 (G-09)", COMMAND)
     try:
         spec = get_spec(data_class)
     except CryptoError:
         reject("clase de dato desconocida", COMMAND)
-    if not spec.encrypt or (index and spec.index_kind is None):
+    if (rechazo := not_rotatable(data_class, with_provider=provider is not None)) is not None:
+        reject(rechazo, COMMAND)
+    if not provider and (not spec.encrypt or (index and spec.index_kind is None)):
         reject("esa clase no admite este tipo de rotación", COMMAND)
     if not 1 <= size <= MAX_BATCH_SIZE:
         reject(f"--batch-size debe estar entre 1 y {MAX_BATCH_SIZE}", COMMAND)
@@ -231,16 +237,21 @@ def register(app: typer.Typer) -> None:
             bool, typer.Option("--index", help="Rota la llave de índice ciego.")
         ] = False,
         batch_size: Annotated[int, typer.Option("--batch-size")] = service.BATCH_SIZE,
+        provider: Annotated[str | None, typer.Option("--provider")] = None,
     ) -> None:
         """Rota la llave de una clase de dato y recifra sus filas (reanudable)."""
         settings, opciones = cli_base.get_settings(), runtime_options(ctx)
         if (rechazo := production_guard_error(settings, opciones, actor)) is not None:
             reject(rechazo, COMMAND)
-        limpio = _check_arguments(data_class, reason, index, batch_size)
+        limpio = _check_arguments(data_class, reason, index, batch_size, provider)
         try:
-            _run(_rotate(settings, opciones, data_class, limpio, actor, index, batch_size))
+            _run(
+                _rotate(settings, opciones, data_class, limpio, actor, index, batch_size, provider)
+            )
         except typer.Exit:
             raise
+        except SignRotationError as error:  # solo los rechazos de --provider (texto fijo)
+            raise _stop(str(error), 2) from None
         except service.RotationInProgress:
             raise _stop("rotación en curso en otro proceso; espere a que termine") from None
         except CryptoError as error:

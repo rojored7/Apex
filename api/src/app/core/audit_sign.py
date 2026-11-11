@@ -210,3 +210,24 @@ async def sign_latest(session: AsyncSession, *, by: UUID = SYSTEM_USER_ID) -> Si
     session.add(fila)
     await session.flush()
     return SignOutcome("signed", last_seq, fila.id)
+
+
+async def limit_statement_time(session: AsyncSession, timeout_s: float) -> None:
+    """`statement_timeout` local a la transacción (S6-A2): una consulta colgada no retiene el
+    candado de la firma más allá del tope. `set_config(..., true)` es válido con parámetros."""
+    milisegundos = max(1, int(timeout_s * 1000))
+    await session.execute(select(func.set_config("statement_timeout", f"{milisegundos}ms", True)))
+
+
+async def late_hours(session: AsyncSession, now: datetime) -> int | None:
+    """Horas enteras de la fila sin firmar más antigua si la firma está atrasada
+    (`is_signature_late` contra `now`), o `None`. Solo lectura, sin candado."""
+    last_seq = int(await session.scalar(select(func.coalesce(func.max(_LOG.c.seq), 0))) or 0)
+    previa = await latest_signature(session)
+    signed_seq = 0 if previa is None else previa.through_seq
+    primera = await session.scalar(select(func.min(_LOG.c.at)).where(_LOG.c.seq > signed_seq))
+    if not is_signature_late(
+        None if previa is None else previa.signed_at, last_seq, signed_seq, primera, now
+    ):
+        return None
+    return int((now - cast("datetime", primera)).total_seconds() // 3600)

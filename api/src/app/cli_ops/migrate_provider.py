@@ -1,10 +1,7 @@
 """`migrate-provider --from local --to openbao [--as] [--dry-run] [--yes] [--verify]` (S5-B2).
-
 Mueve la envoltura de cada DEK `encrypt|index` de un proveedor a otro (S5-D18, D183); reanudable y
-sin keyring. `--verify` (solo lectura, ubicación, no apertura) imprime `fuera_de_destino=N`, sale 1
-si N > 0; el plan imprime `total=N`; `--dry-run` termina ahí. Para escribir exige las
-pruebas de custodia (S5-D186), `MIGRAR` o `--yes` y el candado `apex:rotate:kek` (S5-D190). Un fallo
-sale 1 (`repita el comando`) sin texto del proveedor y se audita con `failed: true` (S5-D189).
+sin keyring. Escribir exige las pruebas de custodia (S5-D186), `MIGRAR` o `--yes` y el candado
+`apex:rotate:kek`; un fallo sale 1 (S5-D189); `--verify` sale 1 si algo no está; `--data-class`: 2.
 """
 
 from __future__ import annotations
@@ -138,11 +135,14 @@ def register(app: typer.Typer) -> None:
         yes: Annotated[bool, typer.Option("--yes")] = False,
         verify: Annotated[bool, typer.Option("--verify")] = False,
         manifest: Annotated[Path, typer.Option("--manifest")] = DEFAULT_MANIFEST,
+        data_class: Annotated[str | None, typer.Option("--data-class")] = None,
     ) -> None:
         """Migra las llaves envueltas de un proveedor a otro (reanudable)."""
         settings, opciones = cli_base.get_settings(), runtime_options(ctx)
         if (rechazo := production_guard_error(settings, opciones, actor)) is not None:
             reject(rechazo, COMMAND)
+        if data_class is not None:
+            reject(migration.data_class_error(data_class), COMMAND)
         if (origen, destino) not in PARES:
             reject("--from/--to deben ser local y openbao (en cualquier sentido)", COMMAND)
         pedido = Pedido(origen, destino, actor, dry_run, yes, verify, manifest)

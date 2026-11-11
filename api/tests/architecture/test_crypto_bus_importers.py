@@ -44,6 +44,7 @@ IMPORTADORES_REALES: Final = frozenset(
         "main.py",
         "worker/jobs/backup_check.py",
         "worker/jobs/notify.py",
+        "worker/jobs/sign_audit.py",  # S6-A2: error objetivo del Rojo (faltaba en el conjunto)
         "worker/runtime.py",
         "modules/members/changes.py",
         "modules/members/detail.py",
@@ -63,7 +64,7 @@ SOLO_FIRMA: Final = frozenset({"cli_manifest.py", "worker/jobs/backup_check.py"}
 """S5-B13 (S5-D72): verifican la firma del manifiesto por el bus y nada más; el único nombre
 que pueden importar de `bus` es `verified_manifest_bytes`."""
 PUERTA_DE_FIRMA: Final = "verified_manifest_bytes"
-SOLO_RECOVERY: Final = frozenset({"worker/jobs/notify.py"})
+SOLO_RECOVERY: Final = frozenset({"worker/jobs/notify.py", "worker/jobs/sign_audit.py"})
 """S5-B8 (S5-D16): el job `notify` llama `recovery.try_load` al comienzo; importa el módulo
 `recovery` (las pruebas lo espían por ese nombre) y nada más del bus."""
 PREFIJOS_PERMITIDOS: Final = (
@@ -511,3 +512,22 @@ def test_audit_sign_importa_del_bus_solo_el_bus() -> None:
     """Ni `types` (cifrado de columnas) ni `recovery`: la firma no descifra nada."""
     vistas = _importadores_de_core().get("core/audit_sign.py", {})
     assert set(vistas) == {f"{PAQUETE}.bus"}, vistas
+
+
+# S6-A2 (S6-D42, D60): el job `sign_audit` carga su keyring por `recovery` y nada más del bus ----
+
+
+def test_s6_a2_el_job_sign_audit_solo_importa_recovery_del_bus() -> None:
+    importadores = _importadores()
+    assert "worker/jobs/sign_audit.py" in SOLO_RECOVERY
+    assert set(importadores["worker/jobs/sign_audit.py"]) == {RECOVERY}, (
+        "sign_audit debe importar recovery (try_load) y ningún otro módulo del bus"
+    )
+    assert permitido("worker/jobs/sign_audit.py", importadores["worker/jobs/sign_audit.py"])
+
+
+def test_s6_a2_control_sign_audit_con_el_bus_falla() -> None:
+    con_bus = importaciones(
+        "from app.core.crypto import bus\nfrom app.core.crypto import recovery\n"
+    )
+    assert not permitido("worker/jobs/sign_audit.py", con_bus)

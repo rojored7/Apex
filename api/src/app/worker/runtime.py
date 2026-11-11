@@ -66,10 +66,15 @@ SIMULATION_DATABASE_SUFFIX: Final = "_sim"
 SIMULATION_TEST_DATABASE: Final = "apex_test"
 FIRST_WAIT_S: Final = 1.0
 SHUTDOWN_GRACE_S: Final = 30
-WORKER_CRYPTO_CLASSES: Final = frozenset({"member.phone", "member.email"})
-"""Clases que abre el worker con `with_crypto` (S5-D20, S5-D56, M-6): las de los avisos."""
 
 Sleep = Callable[[float], Awaitable[None]]
+
+
+def worker_crypto_classes() -> frozenset[str]:
+    """Unión de `JobSpec.crypto_classes` de los jobs registrados (S6-D42, D60; O11)."""
+    from app.worker.registry import get_registry  # perezoso: `jobs` importa `registry`
+
+    return frozenset().union(*(spec.crypto_classes for spec in get_registry()))
 
 
 def _telegram_gate() -> Callable[[], Awaitable[bool]]:
@@ -96,20 +101,17 @@ def _install_listeners() -> None:
 
 
 async def _open_crypto(settings: Settings) -> asyncio.Task[None] | None:
-    """Proveedor del proceso y primer intento de cargar `phone` y `email` (S5-D20). Sin `INSERT`
+    """Proveedor del proceso y primer intento de cargar las clases de los jobs. Sin `INSERT`
     en `crypto_keys` (`create_missing=False`). Un custodio sellado no aborta: el estado queda
     `sealed` y una tarea de sondeo lo recupera; `unwrap_failed` y `forbidden` sí suben."""
     configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER))
     session_factory = db.get_sessionmaker()
-    estado = await try_load(
-        session_factory, settings, create_missing=False, classes=WORKER_CRYPTO_CLASSES
-    )
+    clases = worker_crypto_classes()
+    estado = await try_load(session_factory, settings, create_missing=False, classes=clases)
     if estado == "ok":
         return None
     return asyncio.create_task(
-        poll_forever(
-            session_factory, settings, create_missing=False, classes=WORKER_CRYPTO_CLASSES
-        ),
+        poll_forever(session_factory, settings, create_missing=False, classes=clases),
         name="poll_forever",
     )
 

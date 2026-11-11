@@ -83,6 +83,12 @@ DETAIL_KEYS: Final[frozenset[str]] = frozenset(
         "omitidos",
         "pendientes",
         "sellado",
+        # S6-A2 (S6-D60): `sign_audit`; todos enteros.
+        "firmadas",
+        "nada_nuevo",
+        "reintentos",
+        "atrasada",
+        "cadena_rota",
     }
 )
 """Claves enteras admitidas en `details` (S4A-D55 d); `attempts` y `clock_override` aparte."""

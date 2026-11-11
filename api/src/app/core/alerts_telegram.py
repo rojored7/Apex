@@ -97,6 +97,38 @@ def _notify_summary(contexto: Mapping[str, object], front_base_url: str) -> str:
     return f"APEX · resumen de avisos de hoy: {cifras}. Revisa: {enlace}"
 
 
+def _audit_sign_failed(contexto: Mapping[str, object]) -> str:
+    texto = f"APEX · la firma de la cadena de auditoría falló en el job {_nombre(contexto, 'job')}"
+    intentos = _entero(contexto, "attempts")
+    if intentos:
+        texto += f" tras {intentos} intentos"
+    tipo = contexto.get("error_type")
+    if isinstance(tipo, str) and tipo.isidentifier():
+        texto += f" [{tipo}]"
+    return texto + "."
+
+
+def _audit_sign_late(contexto: Mapping[str, object]) -> str:
+    return (
+        "APEX · la firma de la cadena de auditoría está atrasada: hay filas sin firmar desde "
+        f"hace {_entero(contexto, 'age_h')} h (job {_nombre(contexto, 'job')})."
+    )
+
+
+def _audit_chain_broken(contexto: Mapping[str, object]) -> str:
+    return (
+        "APEX · la cadena de auditoría está rota cerca del registro "
+        f"{_entero(contexto, 'through_seq')}: no se firmó. Corre verify-audit "
+        f"(job {_nombre(contexto, 'job')})."
+    )
+
+
+_DINAMICOS: Final[dict[str, Callable[[Mapping[str, object]], str]]] = {
+    "audit_sign_failed": _audit_sign_failed,
+    "audit_sign_late": _audit_sign_late,
+    "audit_chain_broken": _audit_chain_broken,
+}
+
 _FIJOS: Final[dict[str, str]] = {
     "backup_unhealthy": "APEX · el respaldo tiene problemas. Revisa el servicio de respaldo.",
     "crypto_sealed": "APEX · el custodio de llaves está sellado: el api opera sin llaves.",
@@ -115,6 +147,8 @@ def render_message(code: str, context: Mapping[str, object], front_base_url: str
         texto = _job_failed(context)
     elif code == "notify_summary":
         texto = _notify_summary(context, front_base_url)
+    elif code in _DINAMICOS:
+        texto = _DINAMICOS[code](context)
     elif code in _FIJOS:
         texto = _FIJOS[code]
     else:

@@ -334,3 +334,18 @@ async def verify_provider(session_factory: SessionFactory, *, expected: str) -> 
     )
     async with session_factory() as session:
         return int(await session.scalar(consulta) or 0)
+
+
+def data_class_error(data_class: str) -> str:
+    """Rechazo de `migrate-provider --data-class` (S6-A2, E10): la migración mueve todas las DEK
+    `encrypt|index` y no admite elegir clase; una clase de firma guarda una referencia que las
+    firmas existentes citan por `key_id` (el cambio de proveedor es `rotate-key --provider`)."""
+    from app.core.crypto.registry import REGISTRY
+
+    spec = REGISTRY.get(data_class)
+    if spec is not None and spec.sign:
+        return (
+            "signatures_reference_key: la llave de firma no migra de proveedor; use "
+            "rotate-key audit.signature --provider"
+        )
+    return "--data-class no se admite: migrate-provider mueve todas las llaves de cifrado"

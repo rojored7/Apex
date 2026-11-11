@@ -21,7 +21,7 @@ from app.core.crypto.models import CryptoKey
 from app.core.crypto.provider import ProviderResolver, current_provider
 
 _RAZON = {
-    "sealed": "OpenBao sellado: desellarlo antes de continuar",
+    "sealed": "OpenBao sellado: desellar OpenBao antes de continuar",
     "unreachable": "OpenBao inalcanzable: revise la red y OPENBAO_ADDR",
     "forbidden": "OpenBao rechazó el token del servicio",
     "not_loaded": "las llaves no están cargadas",

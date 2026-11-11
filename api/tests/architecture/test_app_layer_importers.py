@@ -312,3 +312,32 @@ def test_control_cli_manifest_importado_desde_cli_ops_pasa() -> None:
     fuente = "from app.cli_manifest import recent_signed_manifest\n"
     assert violaciones_de_cli_manifest(fuente, "cli_ops/retire_key.py") == []
     assert violaciones_de_alcance(fuente, "cli_ops/retire_key.py") == []
+
+
+# S6-A2 (S6-D80, S4B-D30): `sign-audit` y `init-keys --data-class` -------------------------------
+
+NUEVOS_DE_A2: Final = ("cli_ops/sign_audit.py", "cli_ops/keys_data_class.py")
+
+
+def test_s6_a2_los_archivos_nuevos_existen_y_no_importan_el_bus_ni_hermanos() -> None:
+    fuentes = dict(_archivos())
+    for relativo in NUEVOS_DE_A2:
+        assert relativo in fuentes, relativo
+        assert violaciones_del_bus(fuentes[relativo], relativo) == [], relativo
+        assert violaciones_entre_hermanos(fuentes[relativo], relativo) == [], relativo
+        assert importa_models_o_router(fuentes[relativo], relativo) == [], relativo
+
+
+def test_s6_a2_sign_audit_pasa_por_crypto_runtime_y_core_audit_sign() -> None:
+    fuente = dict(_archivos())["cli_ops/sign_audit.py"]
+    modulos = modulos_importados(fuente, "cli_ops/sign_audit.py")
+    assert "app.core.audit_sign" in modulos, "no llama core.audit_sign"
+    assert "app.cli_base.crypto_runtime" in modulos, "no arranca el cifrado por cli_base"
+    assert set(importa_el_bus(fuente, "app.cli_ops")) == set()
+
+
+def test_s6_a2_keys_data_class_no_importa_keys_ni_el_bus() -> None:
+    fuente = dict(_archivos())["cli_ops/keys_data_class.py"]
+    modulos = modulos_importados(fuente, "cli_ops/keys_data_class.py")
+    assert not any(m.startswith("app.cli_ops") for m in modulos)
+    assert set(importa_el_bus(fuente, "app.cli_ops")) == set()

@@ -85,10 +85,12 @@ async def _fila(fabrica: Fabrica) -> Any:
 # Registro ----------------------------------------------------------------------------------------
 
 
-def test_notify_esta_entre_expirations_y_backup_check_a_las_siete() -> None:
+def test_notify_esta_entre_expirations_y_sign_audit_a_las_siete() -> None:
+    # S6-A2 (S6-D8): `sign_audit` entra después de `notify`; la prueba se actualiza por ese motivo.
     assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [
         ("expirations", DAILY_HOUR, DAILY_MINUTE, 900),
         ("notify", DAILY_HOUR, DAILY_MINUTE, 600),
+        ("sign_audit", DAILY_HOUR, DAILY_MINUTE, 300),
         ("backup_check", DAILY_HOUR, DAILY_MINUTE, 600),
     ]
     assert notify.NAME == "notify"

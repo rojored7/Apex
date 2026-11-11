@@ -481,3 +481,45 @@ async def test_una_falla_en_el_lote_2_deja_failed_y_repetir_reanuda_ese_job(
     (job,) = await _jobs(rotacion_lista)
     assert job.id == fallido.id and (job.status, job.done) == ("done", 1200)
     assert await _llaves(rotacion_lista) == [(1, "decrypt_only"), (2, "active")]
+
+
+# S6-A2 (S6-D69): la llave de firma no se rota en sitio --------------------------------------------
+
+
+async def test_rotate_key_audit_signature_sin_provider_sale_2_purpose_not_rotatable(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resultado = _rotar(
+        settings_prueba, monkeypatch, "audit.signature", "--reason", MOTIVO, "--as", admin.email
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "purpose_not_rotatable" in resultado.output
+    assert await _jobs(rotacion_lista) == []
+
+
+# S6-A2 (revisión de seguridad M1): un ValueError ajeno no se vuelve «rechazo de --provider» ------
+
+
+async def test_un_value_error_ajeno_de_la_rotacion_no_sale_2_ni_imprime_su_texto(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.cli_ops import rotate_key
+
+    async def explota(*_a: object, **_k: object) -> None:
+        raise ValueError("texto-del-proveedor-o-de-datos")
+
+    monkeypatch.setattr(rotate_key, "_rotate_data", explota)
+
+    resultado = _rotar(
+        settings_prueba, monkeypatch, CLASE_ROTADA, "--reason", MOTIVO, "--as", admin.email
+    )
+
+    assert resultado.exit_code != 2, resultado.output
+    assert "texto-del-proveedor-o-de-datos" not in resultado.output

@@ -68,6 +68,8 @@ Al terminar imprime `retire-key: llave retirada` y deja una entrada de auditorí
 
 La llave `audit.signature` no se rota en sitio ni se recifra: solo se cambia con `rotate-key audit.signature --provider <local|openbao> --reason "..." --as <correo>` (llave nueva, la anterior queda `decrypt_only`; las firmas guardadas siguen verificando por su `key_id`). Si alguien rota `apex-sign-audit` en Transit a mano, o cambia `custody/sign-ed25519.key`, la fila conserva la clave pública antigua: el job de firma falla con `signature_unverifiable` (no guarda firmas) hasta crear la fila nueva con el comando de arriba.
 
+Detalles de `rotate-key audit.signature --provider` (S6-A2): no recifra nada ni toca `audit.signatures`; deja `crypto_ops(wrap)` y una sola entrada de auditoría `update` sin material. Sin `--provider` o con el proveedor vigente sale 2 `purpose_not_rotatable`; con un destino sin configurar sale 2 nombrando la variable (`OPENBAO_TOKEN_FILE`). `retire-key` de la llave anterior mientras existan firmas con su `key_id` sale 2 `signatures_reference_key` (las firmas viejas necesitan su clave pública), y `migrate-provider` excluye las filas `sign` por la misma razón.
+
 ## Qué NO hace la rotación
 
 - No revoca respaldos anteriores: un respaldo de la base hecho antes de rotar sigue abriéndose con la KEK de entonces.

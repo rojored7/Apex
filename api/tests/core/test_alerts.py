@@ -70,10 +70,37 @@ def test_las_claves_de_contexto_son_las_del_plan() -> None:
                 "fallidos",
                 "omitidos",
                 "pendientes",
+                # S6-A2 (S6-D60): firma de la cadena
+                "through_seq",
+                "age_h",
             }
         )
         == ALERT_CONTEXT_KEYS
     )
+
+
+@pytest.mark.parametrize("clave", ["through_seq", "age_h"])
+def test_las_claves_de_la_firma_admiten_enteros(sinks_aislados: None, clave: str) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    alert("audit_sign_late", job="sign_audit", **{clave: 49})
+
+    assert bitacora == [("a", "audit_sign_late", {"job": "sign_audit", clave: 49})]
+
+
+@pytest.mark.parametrize("clave", ["through_seq", "age_h"])
+@pytest.mark.parametrize("valor", ["Laura Gómez", ["a"], True, "49"])
+def test_las_claves_de_la_firma_rechazan_todo_lo_que_no_sea_entero(
+    sinks_aislados: None, clave: str, valor: object
+) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    with pytest.raises(ValueError, match="debe ser un entero"):
+        alert("audit_chain_broken", job="sign_audit", **{clave: valor})
+
+    assert bitacora == []
 
 
 def test_el_resumen_de_avisos_pasa_con_sus_cinco_conteos_enteros(sinks_aislados: None) -> None:

@@ -26,6 +26,8 @@ class JobSpec:
     hour: int
     minute: int
     timeout_s: int = 900
+    crypto_classes: frozenset[str] = frozenset()
+    """Clases de dato que abre el job (S6-D42); el arranque sondea la unión."""
 
 
 def register(registry: tuple[JobSpec, ...], spec: JobSpec) -> tuple[JobSpec, ...]:

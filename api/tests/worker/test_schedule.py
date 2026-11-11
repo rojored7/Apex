@@ -182,10 +182,36 @@ def test_register_rechaza_un_nombre_repetido() -> None:
         register(base, JobSpec(name=base[0].name, run=base[0].run, hour=8, minute=0))
 
 
-def test_el_registro_del_proceso_es_jobs_con_expirations_notify_y_backup_check() -> None:
+def test_el_registro_del_proceso_son_cuatro_jobs_en_orden() -> None:
+    """S6-A2 (S6-D8): `sign_audit` va después de `notify` y antes de `backup_check`."""
     assert get_registry() is JOBS
     assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [
         ("expirations", 7, 0, 900),
         ("notify", 7, 0, 600),
+        ("sign_audit", 7, 0, 300),
         ("backup_check", 7, 0, 600),
     ]
+
+
+def test_cada_job_declara_sus_clases_de_cifrado() -> None:
+    """S6-D42: `notify` sigue con teléfono y correo; `sign_audit` abre solo la firma."""
+    por_nombre = {s.name: s.crypto_classes for s in JOBS}
+    assert por_nombre == {
+        "expirations": frozenset(),
+        "notify": frozenset({"member.phone", "member.email"}),
+        "sign_audit": frozenset({"audit.signature"}),
+        "backup_check": frozenset(),
+    }
+
+
+def test_el_job_sign_audit_con_error_del_dia_no_reintenta_cada_hora() -> None:
+    """Los reintentos del job son internos (2, 4, 8 s); `should_run` no reintenta por hora."""
+    ahora = datetime(2026, 10, 21, 9, 0, tzinfo=BOGOTA)
+    fila = _fila("error", ahora=ahora, job_name="sign_audit")
+    assert should_run("sign_audit", DIA, ahora, PROGRAMADA, fila, timeout_s=300) is False
+
+
+def test_el_job_sign_audit_running_de_hace_11_minutos_esta_muerto_con_timeout_300() -> None:
+    ahora = datetime(2026, 10, 21, 9, 0, tzinfo=BOGOTA)
+    previa = _fila("running", hace=timedelta(minutes=11), ahora=ahora, job_name="sign_audit")
+    assert should_run("sign_audit", DIA, ahora, PROGRAMADA, previa, timeout_s=300) is True

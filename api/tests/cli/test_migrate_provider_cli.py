@@ -562,3 +562,47 @@ async def test_un_fallo_parcial_tambien_se_audita_con_failed_true(
         "done": 2,
         "failed": True,
     }
+
+
+# S6-A2 (S6-D81, E10): la llave de firma no migra de proveedor -------------------------------------
+
+
+async def test_forzar_data_class_audit_signature_sale_2_signatures_reference_key_sin_tocar_nada(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import func
+
+    from app.core.crypto.models import CryptoKey, CryptoOp
+    from tests.crypto._firma_proveedor import instantanea_firmas, sembrar_firmas
+
+    sembrado = await sembrar_firmas(custodia)
+    await con_verify(custodia, admin_custodia)
+
+    async def estado() -> tuple[Any, ...]:
+        async with custodia.fabrica() as sesion:
+            fila = (
+                await sesion.scalars(select(CryptoKey).where(CryptoKey.purpose == "sign"))
+            ).one()
+            ops = await sesion.scalar(select(func.count()).select_from(CryptoOp))
+        return (fila.provider, bytes(fila.wrapped_material), fila.state, ops)
+
+    antes = (await estado(), await todos_los_jobs(custodia.fabrica))
+
+    resultado = _migrar(
+        settings_custodia,
+        monkeypatch,
+        admin_custodia,
+        manifiesto_bueno(tmp_path),
+        "--data-class",
+        "audit.signature",
+        "--yes",
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "signatures_reference_key" in resultado.output
+    assert (await estado(), await todos_los_jobs(custodia.fabrica)) == antes
+    assert await instantanea_firmas(custodia.fabrica) == sembrado.firmas

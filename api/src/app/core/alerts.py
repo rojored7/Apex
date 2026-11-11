@@ -34,12 +34,15 @@ ALERT_CONTEXT_KEYS: Final[frozenset[str]] = frozenset(
         "fallidos",
         "omitidos",
         "pendientes",
+        # S6-A2 (S6-D60): firma de la cadena, solo enteros.
+        "through_seq",
+        "age_h",
     }
 )
 """Únicas claves de contexto admitidas (S4A-D7, precisión de S4A-D56 a D7)."""
 
 COUNT_KEYS: Final[frozenset[str]] = frozenset(
-    {"generados", "enviados", "fallidos", "omitidos", "pendientes"}
+    {"generados", "enviados", "fallidos", "omitidos", "pendientes", "through_seq", "age_h"}
 )
 """Claves que solo admiten enteros (S5-B4)."""
 

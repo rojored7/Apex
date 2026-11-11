@@ -548,3 +548,34 @@ async def test_un_job_de_rotacion_abierto_impide_migrar(sembrada: Sembrada, kind
 
     assert await instantanea(e.fabrica) == antes
     assert await jobs_de(e.fabrica, "migrate_provider") == []
+
+
+# S6-A2 (S6-D81, E10): una fila `sign` con firmas no viaja con `migrate-provider` ------------------
+
+
+async def test_migrar_con_una_fila_sign_y_firmas_no_la_toca_ni_escribe_crypto_ops_de_firma(
+    migracion_lista: Entorno,
+) -> None:
+    from tests.crypto._firma_proveedor import instantanea_firmas, sembrar_firmas
+
+    e = migracion_lista
+    sembrado = await sembrar_firmas(e)
+    async with e.fabrica() as sesion:
+        antes = (await sesion.scalars(select(CryptoKey).where(CryptoKey.purpose == "sign"))).one()
+        previa = (antes.provider, antes.wrapped_material, antes.public_key, antes.state)
+
+    resultado = await _migrar(e)
+
+    assert resultado.failed_key_id is None and resultado.done == resultado.total
+    async with e.fabrica() as sesion:
+        despues = (await sesion.scalars(select(CryptoKey).where(CryptoKey.purpose == "sign"))).one()
+    assert (despues.provider, despues.wrapped_material, despues.public_key, despues.state) == previa
+    assert previa[0] == "local" and bytes(previa[1]) == b"local:sign-ed25519"
+    assert await instantanea_firmas(e.fabrica) == sembrado.firmas
+    async with e.fabrica() as sesion:
+        ops = await sesion.scalars(
+            select(CryptoOp).where(
+                CryptoOp.data_class == "audit.signature", CryptoOp.verb == "wrap"
+            )
+        )
+        assert list(ops) == []

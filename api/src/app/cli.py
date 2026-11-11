@@ -56,6 +56,8 @@ from app.cli_ops.keys import (
     key_paths_from_settings,
     key_paths_in,
 )
+from app.cli_ops.keys_data_class import data_class_error
+from app.cli_ops.keys_data_class import run as ensure_data_class_run
 from app.cli_ops.keys_layout import migrate_layout
 from app.cli_ops.openapi import (
     build_openapi_document,
@@ -132,6 +134,7 @@ def export_openapi(output: Path) -> None:
 
 @app.command("init-keys")
 def init_keys(
+    ctx: typer.Context,
     directory: Annotated[Path | None, typer.Option("--dir")] = None,
     actor: Annotated[str | None, typer.Option("--as")] = None,
     data_class: Annotated[str | None, typer.Option("--data-class")] = None,
@@ -141,14 +144,14 @@ def init_keys(
 
     Idempotente (A-1): lo que ya existe se conserva. No crea las DEK: las crea el api al
     arrancar (`ensure_keys`, US-025). `--as` solo se anota en el log porque no escribe en
-    la base. `--data-class` queda reservado para US-140.
+    la base. `--data-class <clase>` (S6-A2) crea o completa la fila de firma de esa clase.
     """
     if migrate_layout_flag:
         _migrate_layout_command(directory)
         return
     if data_class is not None:
-        typer.echo("init-keys --data-class no implementado todavía (US-140)", err=True)
-        raise typer.Exit(code=2)
+        _data_class_command(ctx, data_class, actor)
+        return
     rutas = (
         key_paths_in(directory)
         if directory is not None
@@ -158,6 +161,21 @@ def init_keys(
     quien = f" (por {actor})" if actor else ""
     for nombre, resultado in estado.items():
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
+
+
+def _data_class_command(ctx: typer.Context, data_class: str, actor: str | None) -> None:
+    """Cuerpo de `init-keys --data-class` (S6-A2): delega en `cli_ops/keys_data_class.py`."""
+    if (rechazo := data_class_error(data_class)) is not None:  # puro: antes de leer `.env`
+        reject(rechazo, "init-keys")
+    settings, opciones = get_settings(), runtime_options(ctx)
+    if (rechazo := production_guard_error(settings, opciones, actor)) is not None:
+        reject(rechazo, "init-keys")
+    informe = _run(ensure_data_class_run(settings, opciones, data_class, actor))
+    frases = {"created": "creada", "completed": "completada", "exists": "ya existe"}
+    typer.echo(
+        f"init-keys: {data_class}: {frases[informe.outcome]} la llave de firma "
+        f"({informe.provider}, {informe.algorithm})"
+    )
 
 
 def _jwt_path_para_migrar() -> Path:

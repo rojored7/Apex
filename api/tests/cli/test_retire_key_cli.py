@@ -39,6 +39,7 @@ from app.core.context import SYSTEM_USER_ID
 from app.core.crypto.models import CryptoKey
 from tests.cli._apoyo import correr
 from tests.conftest import CLAVE_PRUEBA
+from tests.crypto._migracion import migracion_lista  # noqa: F401
 from tests.crypto._rotacion import (
     LLAVE_RETIRO,
     Fabrica,
@@ -565,3 +566,39 @@ async def test_un_enlace_simbolico_como_manifiesto_sale_2_con_el_mensaje_fijo(
     assert resultado.exit_code == 2, resultado.output
     assert SIN_MANIFIESTO in resultado.output
     await _sin_retirar(rotacion_lista)
+
+
+# S6-A2 (M-2a): una llave `sign` referenciada por `audit.signatures` no se retira ---
+
+
+async def test_retire_key_de_una_llave_sign_referenciada_sale_2_y_no_cambia_el_estado(
+    settings_prueba: Settings,
+    migracion_lista: Any,  # noqa: F811
+    admin: Any,
+    manifiesto_reciente: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import select as _select
+
+    from tests.crypto._firma_proveedor import rotar_a_mano, sembrar_firmas
+
+    sembrado = await sembrar_firmas(migracion_lista)
+    await rotar_a_mano(migracion_lista, sembrado.v1)
+    await _con_verify(migracion_lista.fabrica, admin)
+
+    resultado = _retirar(
+        settings_prueba,
+        monkeypatch,
+        *_todo_en_orden(sembrado.v1, admin, manifiesto_reciente, blobs=0),
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "signatures_reference_key" in resultado.output
+    async with migracion_lista.fabrica() as sesion:
+        estados = [
+            (k.version, k.state)
+            for k in await sesion.scalars(
+                _select(CryptoKey).where(CryptoKey.purpose == "sign").order_by(CryptoKey.version)
+            )
+        ]
+    assert estados == [(1, "decrypt_only"), (2, "active")]

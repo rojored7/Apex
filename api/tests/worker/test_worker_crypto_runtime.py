@@ -139,3 +139,52 @@ async def test_por_defecto_no_crea_proveedor_ni_lee_crypto_keys(
         with pytest.raises(CryptoUnavailable):
             current_keyring()
     assert [s for s in sql_vista if "crypto_keys" in s] == []
+
+
+# S6-A2 (S6-D42, D60, O11): las clases son por job; el arranque sondea la unión --------------------
+
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
+
+CLASES_DEL_WORKER = {"member.phone", "member.email", "audit.signature"}
+WORKER_SRC = Path(__file__).resolve().parents[2] / "src" / "app" / "worker"
+
+
+def test_worker_crypto_classes_es_la_union_de_las_clases_de_los_jobs() -> None:
+    assert runtime.worker_crypto_classes() == frozenset(CLASES_DEL_WORKER)
+
+
+async def test_el_arranque_sondea_la_union_de_clases_de_los_jobs(
+    base_con_llaves: Fabrica,
+    proveedor_ctl: ProveedorControlable,
+    settings_prueba: Settings,
+    estado_de_recovery_limpio: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inyectar_proveedor(monkeypatch, proveedor_ctl)
+    vistas: list[Any] = []
+    original = runtime.try_load
+
+    async def espia(*args: Any, **kwargs: Any) -> Any:
+        vistas.append(kwargs.get("classes"))
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "try_load", espia)
+    async with runtime.worker_runtime(settings_prueba, with_crypto=True):
+        pass
+    assert vistas and set(vistas[0] or ()) == CLASES_DEL_WORKER
+
+
+def test_ningun_archivo_del_worker_conserva_las_listas_unicas_de_clases() -> None:
+    """O11: desaparecen `WORKER_CRYPTO_CLASSES` y `notify.CRYPTO_CLASSES`; cada job declara sus
+    clases en su `JobSpec` (el literal vive en `jobs/__init__.py` o en el propio job)."""
+    patron = re.compile(r"\bWORKER_CRYPTO_CLASSES\b")
+    con_la_lista_unica = [
+        p.relative_to(WORKER_SRC).as_posix()
+        for p in sorted(WORKER_SRC.rglob("*.py"))
+        if patron.search(p.read_text(encoding="utf-8"))
+    ]
+    assert con_la_lista_unica == []
+    notify_src = (WORKER_SRC / "jobs" / "notify.py").read_text(encoding="utf-8")
+    assert "CRYPTO_CLASSES" not in notify_src, "notify debe usar spec.crypto_classes (O11)"

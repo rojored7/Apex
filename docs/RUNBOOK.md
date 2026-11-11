@@ -834,6 +834,15 @@ Esqueletos que completan los slices del Sprint 4A (`docs/ddd/blueprints/sprint-0
 - **Ejecución registrada (V12, 2026-10-29):** 177 planes activos antes de la limpieza, 174 candidatos. Resultado: 102 planes dados de baja (`DELETE` 204); 72 desactivados porque tenían membresías activas (`DELETE` 409 `plan_has_active_memberships`, luego `deactivate` 200; esas membresías siguen activas en el plan desactivado, porque el procedimiento solo anula `pending_payment`); 27 membresías `pending_payment` anuladas (`cancel`). Quedan 3 planes activos (`mensual`, `Mensual V50137`, `Tiquetera 12`). Después, `verify-audit --as` dio código 0. Sin 5xx ni 429. Detalle en `docs/ddd/DECISIONES.md`, "Estado al cierre del Sprint 4A". Tras la corrida E2E final de V12 quedaron 4 planes de prueba más activos (7 en total); el procedimiento los retira en la próxima limpieza.
 - **Admin desechable (paso 5 de la limpieza):** dado de baja por API al cerrar V12. Pendiente de verificación del orquestador antes del commit. La contraseña del admin real no se tocó.
 
+### Firma diaria de la cadena: `sign_audit` (S6-A2, US-141)
+
+- Comandos: `docker compose run --rm worker python -m app.worker.main --run-once sign_audit` (firma ya), `--status sign_audit` (última corrida: `firmadas`, `nada_nuevo`, `reintentos`, `sellado`, `atrasada`, `cadena_rota`, todos enteros) y `docker compose --profile tools run --rm tools sign-audit --as <correo>` (0 firmó o sin novedades, 1 falló o cadena rota, 2 custodio sellado). Todos comparten el candado `4_270_004`: dos firmantes no firman lo mismo.
+- Con OpenBao sellado el job reintenta tras 2, 4 y 8 s; si sigue sellado termina en error y avisa `audit_sign_failed` (`attempts=3`). Se desella (`docs/operacion/openbao.md` §4) y se corre `--run-once sign_audit`. Nunca queda una firma a medias.
+- `audit_chain_broken` (con el número de registro): el job NO firma ni reintenta. Corra `tools verify-audit --as <correo>` y siga el procedimiento de incidente de §11 (verificación de la cadena) antes de nada.
+- `audit_sign_late`: hay filas sin firmar de más de 48 h; casi siempre es el custodio sellado o el worker parado.
+- `signature_unverifiable` (en `audit_sign_failed`, `attempts=1`): la firma del proveedor no verifica con la clave pública guardada (alguien rotó `apex-sign-audit` en Transit o cambió el archivo local). No se reintenta: cree la fila nueva con `tools rotate-key audit.signature --provider <local|openbao> --reason "..." --as <correo>`.
+- Crear la fila de firma tras instalar: `tools init-keys --data-class audit.signature --as <correo>` (idempotente; completa una fila `sign` sin clave pública).
+
 ## 12. Respaldo, restauración, KEK y rotación (Sprint 4B)
 
 Esqueleto de S4B-W0-1; cada slice completa su parte (W0-3 roles y entorno, B2 estado del respaldo, B3a restauración y KEK, B3b rotación, B4 despliegue). Todo lo de abajo corre desde Bash en la raíz del repo con `DC="docker compose --env-file .env -f infra/compose.yml -f infra/compose.dev.yml"`.

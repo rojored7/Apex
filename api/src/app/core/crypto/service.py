@@ -35,7 +35,18 @@ from datetime import timedelta
 from typing import Any, Final, Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, Text, bindparam, func, select, text, type_coerce, update
+from sqlalchemy import (
+    Select,
+    Text,
+    bindparam,
+    column,
+    func,
+    select,
+    table,
+    text,
+    type_coerce,
+    update,
+)
 from sqlalchemy.engine import Result
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
@@ -72,6 +83,19 @@ AUDIT_BLOBS_BY_KEY_SQL: Final = (
 """Blobs `apx1.<key_id>.` en `audit.audit_log` (S4B-D86); `:patron` es `%apx1.<key_id>.%`."""
 
 ROTATE_LOCK_PREFIX: Final = "apex:rotate:"
+
+ROTATE_XACT_LOCK_SQL: Final = "SELECT pg_advisory_xact_lock(hashtext(:clave))"
+"""Misma clave que `ROTATE_LOCK_KEY_SQL`, de transacción y bloqueante (S6-A2): serializa
+`init-keys --data-class` y `rotate-key --provider` entre sí y con la rotación de la clase."""
+
+
+async def lock_class_in_transaction(session: AsyncSession, data_class: str) -> None:
+    """Primera sentencia de la transacción; el candado se suelta con `commit` o `rollback`."""
+    await session.execute(
+        text(ROTATE_XACT_LOCK_SQL), {"clave": f"{ROTATE_LOCK_PREFIX}{data_class}"}
+    )
+
+
 BATCH_SIZE: Final = 500
 MAX_REASON_LENGTH: Final = 200
 MAX_INDEX_ROWS: Final = 50_000
@@ -521,11 +545,24 @@ async def count_audit_blobs(session: AsyncSession, key_id: UUID) -> int:
     return int(await session.scalar(text(AUDIT_BLOBS_BY_KEY_SQL), {"patron": patron}) or 0)
 
 
+_SIGNATURES = table("signatures", column("key_id"), schema="audit")
+"""`audit.signatures` por nombre (sin importar `core/audit_sign`): solo se cuenta `key_id`."""
+
+
+async def _signatures_reference(session: AsyncSession, key_id: UUID) -> bool:
+    cuantas = await session.scalar(
+        select(func.count()).select_from(_SIGNATURES).where(_SIGNATURES.c.key_id == key_id)
+    )
+    return int(cuantas or 0) > 0
+
+
 async def retire_key(
     session: AsyncSession, key_id: UUID, *, confirmed_audit_blobs: int, actor: UUID
 ) -> int:
     """Pasa la llave a `retired`; devuelve los blobs de auditoría confirmados."""
     llave = await _lock_key(session, key_id)
+    if llave.purpose == "sign" and await _signatures_reference(session, key_id):
+        raise ValueError("signatures_reference_key: hay firmas con esa llave; no se retira")
     nuevo = next_key_state(llave.state, "retire", llave.purpose)  # type: ignore[arg-type]
     pendientes = sum((await count_rows_by_key(session, key_id)).values())
     if pendientes:

@@ -3,7 +3,7 @@
 `run(ctx)`: tres fases en un `JobResult` de enteros:
 1. `generate`: `notifications.service.generate_today(session, ctx.today)` (confirma por lote);
 2. `send`: `notifications.service.send_pending(session_factory, ctx.today, settings=...)`, SOLO si
-   `recovery.try_load(..., create_missing=False, classes=WORKER_CRYPTO_CLASSES)` deja el keyring
+   `recovery.try_load(..., create_missing=False, classes=_classes())` deja el keyring
    cargado; si no (custodio sellado o inalcanzable), omite la fase, `details["sellado"] = 1` y
    el job queda `ok` (`recovery` ya emitió `crypto_sealed` al cambiar el estado, sin repetirlo).
    `forbidden` y `unwrap_failed` no se tragan: el job falla (M-4);
@@ -21,15 +21,20 @@ from app.core.alerts import alert
 from app.core.config import get_settings
 from app.core.crypto import recovery
 from app.modules.notifications import service as notifications_service
+from app.worker.registry import get_registry
 from app.worker.runner import JobContext, JobResult
 
 NAME: Final = "notify"
 SEALED_ALERT: Final = "crypto_sealed"
 SEALED_KEY: Final = "sellado"
-CRYPTO_CLASSES: Final = frozenset({"member.phone", "member.email"})
-"""Las clases que abre el job (las mismas que `runtime.WORKER_CRYPTO_CLASSES`)."""
 
 logger = logging.getLogger("app.worker")
+
+
+def _classes() -> frozenset[str]:
+    """Las clases que abre el job: las de su `JobSpec` (S6-D42, O11)."""
+    return next(s.crypto_classes for s in get_registry() if s.name == NAME)
+
 
 __all__ = ["NAME", "get_settings", "notifications_service", "recovery", "run", "run_send_only"]
 
@@ -53,7 +58,7 @@ async def _run(ctx: JobContext, *, generate: bool) -> JobResult:
         details.update(await _generate(ctx))
     settings = get_settings()
     estado = await recovery.try_load(
-        ctx.session_factory, settings, create_missing=False, classes=CRYPTO_CLASSES
+        ctx.session_factory, settings, create_missing=False, classes=_classes()
     )
     fallidos = 0
     if estado == "ok":

@@ -258,3 +258,10 @@ alembic_version = 0021_audit_signatures
 - OpenBao real: `pytest -m openbao tests/crypto` desde un contenedor `uv` en el auxiliar (`--network host --add-host openbao:172.31.12.2`, token de `tools` en archivo 600 temporal, `db_test` en 5443): 22 verdes, 4 saltos propios de las pruebas, 1 roja (`test_real_rewrap…`: el token de `tools` no tiene `rewrap`, S5-D55a); firma y verificación reales con `apex-sign-audit`, clave pública de 32 bytes, rotación y `key_info` en verde. Efecto colateral grave y restaurado: las pruebas rotaron la `apex-kek` del ensayo (S6-D102); `min_decryption_version` devuelto a 1, api/worker/web reiniciados, `crypto: ok`, 8 llaves `openbao`. Evidencia `paso41-openbao-pytest*.txt`.
 - Estado final: `apex` 7 contenedores (db, db_test, backup, openbao, api, worker, web) y `apex-ensayo` 6, todos `healthy`.
 
+
+## A2 · Verde
+
+- Job `worker/jobs/sign_audit.py` (intento acotado por `ATTEMPT_TIMEOUT_S`, reintentos 2/4/8, `signature_unverifiable` sin reintento, atraso/cadena rota con alerta), `core/audit_sign` suma `limit_statement_time` y `late_hours`; `JobSpec.crypto_classes` + `runtime.worker_crypto_classes()` (O11: sin listas únicas).
+- CLI: `sign-audit`, `init-keys --data-class` (`cli_ops/keys_data_class.py`), `rotate-key --provider` (`core/crypto/sign_rotation.py`; `rotate_key.py` 259 líneas), `migrate-provider --data-class` rechazado (E10), `retire-key` de `sign` referenciada: `signatures_reference_key` (en `service.retire_key`).
+- Correcciones objetivas al Rojo: `test_sign_audit_job` (autouse que inyecta `get_settings`), `test_crypto_bus_importers` (`sign_audit.py` en `IMPORTADORES_REALES`). Texto del sellado del CLI: «desellar OpenBao antes de continuar».
+- Falta (otros slices): `docs/operacion/llaves.md` (nace en su slice), Docker/evidencia del paso 47.

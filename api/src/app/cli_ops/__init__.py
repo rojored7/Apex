@@ -20,6 +20,7 @@ from app.cli_ops import (
     rotate_kek,
     rotate_key,
     seed_notifications,
+    sign_audit,
 )
 
 
@@ -34,3 +35,4 @@ def register_ops(app: typer.Typer) -> None:
     retire_local_kek.register(app)  # S5-B2
     seed_notifications.register(app)  # S5-B6
     notify.register(app)  # S5-B7 (provisional: --generate-only)
+    sign_audit.register(app)  # S6-A2

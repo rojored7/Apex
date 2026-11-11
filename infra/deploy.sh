@@ -10,13 +10,13 @@
 # al inicio (respaldo, construcción, arranque o salud); el detalle de lo que sigue en pie va a
 # <DEPLOY_STATE_DIR>/rollback-<fecha>.txt.
 #
-# Orden: argumentos -> git (fetch de etiquetas, la etiqueta resuelve al SHA esperado, firma:
+# Orden: argumentos -> versiones mínimas de Docker (S6-D78) -> git (fetch de etiquetas, la etiqueta resuelve al SHA esperado, firma:
 # sin .github/allowed_signers o con firma inválida exige --i-know-unsigned-ref, árbol limpio) ->
 # .env y .env.ops (modo, propietario, sin seguimiento de git, sin valores de ejemplo, contraseñas)
 # -> KEK (cabecera age) y destinatarios -> SKIP_BUILD -> checkout del SHA (desprendido; si algo
 # falla después se restaura el código anterior) -> `compose config -q` -> db en marcha ->
 # respaldo pre-deploy y su comprobación -> etiquetas prev-<fecha> y deploy-<fecha>.state.json ->
-# construcción (o DEPLOY_SKIP_BUILD) -> `up -d` -> sondeo de /api/v1/health -> entorno del api ->
+# construcción (o DEPLOY_SKIP_BUILD) -> `tools init-keys --migrate-layout` -> `up -d` -> sondeo de /api/v1/health -> entorno del api ->
 # versión.
 #
 # Sprint 5 (S5-D15, D74, D96): MIGRATE_DB_USER se exige en .env.ops y su rol debe existir en la base
@@ -81,6 +81,23 @@ main() {
   [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die2 "--ref debe ser una etiqueta vX.Y.Z, nunca una rama"
   [[ "$EXPECT_SHA" =~ ^[0-9a-f]{40}$ ]] || die2 "--expect-sha debe tener 40 caracteres hexadecimales en minúsculas"
 
+  # --- versiones mínimas de Docker (S6-D78, E4): Engine 26 / API 1.45 y Compose 2.26 --------------
+  # Antes de git y de cualquier otro uso de docker; solo las dos consultas de versión (nada remoto).
+  # `volume.subpath` (el worker ve solo custody/, S6-D58) exige estas versiones. Comparación
+  # numérica por componentes: 1.9 < 1.45 y 2.100 > 2.26.
+  local MIN_MSG="se necesita Docker Engine 26 / API 1.45 y Compose 2.26 o superiores"
+  version_ok() { # <versión> <mayor mínimo> <menor mínimo>
+    local v="${1#v}"
+    [[ "$v" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?([-+].*)?$ ]] || return 1
+    local mayor=$((10#${BASH_REMATCH[1]})) menor=$((10#${BASH_REMATCH[2]}))
+    [ "$mayor" -gt "$2" ] || { [ "$mayor" -eq "$2" ] && [ "$menor" -ge "$3" ]; }
+  }
+  local API_VER COMPOSE_VER
+  API_VER="$(docker version --format '{{.Server.APIVersion}}' 2> /dev/null | tr -d '\r' || true)"
+  COMPOSE_VER="$(docker compose version --short 2> /dev/null | tr -d '\r' || true)"
+  version_ok "$API_VER" 1 45 || die2 "$MIN_MSG (API del servidor: '${API_VER:-ilegible}')"
+  version_ok "$COMPOSE_VER" 2 26 || die2 "$MIN_MSG (Compose: '${COMPOSE_VER:-ilegible}')"
+
   # --- git: la etiqueta es el SHA esperado, firma si hay con qué verificarla, árbol limpio -------
   git fetch --tags --quiet || die2 "git fetch --tags falló (¿sin red al repositorio?)"
   local REAL_SHA
@@ -133,6 +150,18 @@ main() {
   valor() { # <archivo> <clave>: último valor de la clave, sin CR
     { grep -E "^$2=" "$1" || true; } | tail -1 | cut -d= -f2- | tr -d '\r'
   }
+
+  # S6-D91 (v0.3, layout custody/jwt del volumen keys): si .env conserva las rutas planas, tras
+  # --migrate-layout el api arrancaría sin sus archivos y el despliegue se revertiría. Se exige
+  # antes de construir; las rutas no son secretos. Vacío = valor por defecto de Settings (nuevo).
+  for k in JWT_PRIVATE_KEY_PATH JWT_PUBLIC_KEY_PATH; do
+    v="$(valor "$ENV_FILE" "$k")"
+    [ -z "$v" ] || [[ "$v" == */jwt/* ]] || die2 "$k en $ENV_FILE sigue en el layout plano ($v): debe apuntar a .../keys/jwt/... (docs/operacion/actualizar.md, paso 6)"
+  done
+  for k in CRYPTO_LOCAL_KEK_PATH CRYPTO_LOCAL_SIGNING_KEY_PATH; do
+    v="$(valor "$ENV_FILE" "$k")"
+    [ -z "$v" ] || [[ "$v" == */custody/* ]] || die2 "$k en $ENV_FILE sigue en el layout plano ($v): debe apuntar a .../keys/custody/... (docs/operacion/actualizar.md, paso 6)"
+  done
   local k
   local -a pw_names=(POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD)
   # S5-W0-4 (S5-D89, D142): con MIGRATE_DB_USER=apex_owner (pila nueva) su contraseña también se exige,
@@ -306,6 +335,15 @@ main() {
     GIT_SHA="$REF" "${DC[@]}" build || { printf 'deploy: ERROR la construcción falló; lo que corre no se tocó\n' >&2; exit 1; }
   fi
 
+  # --- layout del volumen keys (S6-D58, S5-D201) -----------------------------------------------
+  # Después de construir (la imagen vieja no conoce la bandera) y antes de `up -d`: mueve el
+  # volumen plano a custody/ y jwt/. Idempotente: con el layout nuevo dice «nada que migrar».
+  # Con conflicto (un archivo en los dos layouts) sale con 2 y no mueve nada: no se levanta nada.
+  log "layout del volumen keys (init-keys --migrate-layout)"
+  if ! GIT_SHA="$REF" "${DC[@]}" run --rm -T --no-deps tools init-keys --migrate-layout; then
+    die2 "init-keys --migrate-layout falló sobre el volumen keys (¿un archivo en los dos layouts?); no se levantó nada: resuélvalo a mano (docs/RUNBOOK.md sección 12, --migrate-layout)"
+  fi
+
   local ROLLBACK="$STATE_DIR/rollback-$NOW.txt"
   escribir_rollback() ( # <motivo>; subshell: el umask no escapa
     umask 077
@@ -395,7 +433,8 @@ main() {
   # S5-D74: con OpenBao la KEK ya no debe estar en un archivo a mano del api; tools conserva el
   # volumen keys solo para migrate-provider. Un kek.bin que sigue ahí es un aviso, nunca un fallo.
   if [ "$PROVIDER" = "openbao" ]; then
-    if "${DC[@]}" run --rm -T --no-deps --entrypoint test tools -f /run/apex/keys/kek.bin > /dev/null 2>&1; then
+    # S6-D58: la KEK vive en custody/; se mira también la raíz por si el volumen sigue plano.
+    if "${DC[@]}" run --rm -T --no-deps --entrypoint sh tools -c 'test -f /run/apex/keys/custody/kek.bin || test -f /run/apex/keys/kek.bin' > /dev/null 2>&1; then
       aviso "kek.bin sigue en el volumen keys: con OpenBao verificado, retírela (docs/operacion/openbao.md)"
     fi
   fi

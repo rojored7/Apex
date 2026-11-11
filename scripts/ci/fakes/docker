@@ -18,12 +18,34 @@
 #   FAKE_DOCKER_DATABASE_URL  DATABASE_URL de esa lectura (rol apex_api); vacío = no la imprime
 #   FAKE_DOCKER_ROLE_EXISTS   0 = `psql` (consulta del rol de MIGRATE_DB_USER, S5-D96) no devuelve fila; 1 por omisión
 #   FAKE_DOCKER_KEK_PRESENT   1 = `compose ... run|exec ... test -f .../keys/kek.bin` sale con 0 (kek.bin sigue en keys); 0 por omisión (sale con 1)
+#   FAKE_DOCKER_API_VERSION   lo que imprime `docker version --format ...APIVersion` (1.45)   [S6-W0-2, S6-D78]
+#   FAKE_DOCKER_COMPOSE_VERSION  lo que imprime `docker compose version --short` (2.26.0)       [S6-W0-2, S6-D78]
+#   FAKE_DOCKER_LAYOUT        plano | nuevo | mixto: lo que informa `... tools init-keys --migrate-layout`
+#                             (plano: mueve 4 archivos; nuevo: «nada que migrar»; mixto: conflicto, sale 2); nuevo por omisión
+#   FAKE_DOCKER_LAYOUT_RC     fuerza la salida de `init-keys --migrate-layout` (anula la de FAKE_DOCKER_LAYOUT)
 # Todo lo demás sale con 0 sin imprimir nada.
 set -u
 log="${FAKE_DOCKER_LOG:-/dev/null}"
 printf '%s\n' "$*" >> "$log"
 all=" $* "
 case "$all" in
+  *" compose version --short"*) printf '%s
+' "${FAKE_DOCKER_COMPOSE_VERSION:-2.26.0}"; exit 0 ;;
+  " version "*) printf '%s
+' "${FAKE_DOCKER_API_VERSION:-1.45}"; exit 0 ;;
+  *"init-keys --migrate-layout"*)
+    case "${FAKE_DOCKER_LAYOUT:-nuevo}" in
+      plano) printf 'init-keys: movido kek.bin
+init-keys: movido sign-ed25519.key
+init-keys: movido jwt_ed25519.pem
+init-keys: movido jwt_ed25519.pub
+'; rc=0 ;;
+      mixto) printf 'init-keys: conflicto: kek.bin existe en los dos layouts; no se movió nada
+' >&2; rc=2 ;;
+      *) printf 'init-keys: nada que migrar
+'; rc=0 ;;
+    esac
+    exit "${FAKE_DOCKER_LAYOUT_RC:-$rc}" ;;
   *" image inspect "*)
     [ "${FAKE_DOCKER_INSPECT_RC:-0}" = "0" ] || exit "${FAKE_DOCKER_INSPECT_RC}"
     printf '%s\n' "${FAKE_DOCKER_REVISION:-v0.1.0}"

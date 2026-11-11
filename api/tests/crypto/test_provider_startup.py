@@ -43,9 +43,8 @@ def test_kek_ausente(tmp_path: Path, test_database_url: str) -> None:
     with pytest.raises(CryptoError) as excinfo:
         get_key_provider(settings)
     assert excinfo.value.code == "kek_missing"
-    assert (
-        str(excinfo.value) == f"kek_missing: KEK no encontrada en {tmp_path / 'keys' / 'kek.bin'}"
-    )
+    kek = key_paths_in(tmp_path / "keys").kek  # S6-W0-2: custody/kek.bin
+    assert str(excinfo.value) == f"kek_missing: KEK no encontrada en {kek}"
 
 
 @SOLO_POSIX

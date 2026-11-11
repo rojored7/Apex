@@ -20,3 +20,7 @@ Hay dos redes de Compose:
 - `custody` (`${APEX_CUSTODY_SUBNET}`, 172.30.1.0/24; `internal: true`): `openbao`, `openbao-bootstrap`, `api`, `worker` y `tools`. Sin salida a internet ni al anfitrión; nadie publica puertos desde ella. `web`, `db` y `backup` no están (el respaldo entra en B13, para el snapshot).
 
 `api` y `worker` esperan a que `openbao` esté `healthy` (sellado cuenta como sano). El perfil `bootstrap` (`openbao-bootstrap`) y los archivos `infra/openbao/` instalan y operan OpenBao; `compose.openbao.yml` se apila cuando `CRYPTO_PROVIDER=openbao` y quita `keys` de `api` y `worker`. Operación: `docs/operacion/openbao.md`.
+
+## Volumen `keys`: `custody/` y `jwt/` (S6-D58)
+
+El volumen `keys` tiene dos subcarpetas: `custody/` (`kek.bin`, `sign-ed25519.key`) y `jwt/` (el par JWT). `api` y `tools` montan el volumen entero; `worker` monta solo `custody/` (`volume.subpath: custody`, en `/run/apex/keys/custody`) y con `compose.openbao.yml` no monta nada. Esto exige Docker Engine 26 (API 1.45) y Compose 2.26 (S6-D78). Un volumen plano se migra con `tools init-keys --migrate-layout` (lo hace `deploy.sh` antes de `up -d`; `docs/RUNBOOK.md` §12). `web` limita su tmpfs `/var/cache/nginx` a 64 MB (Nginx guarda ahí los cuerpos de hasta 6 MB de la subida de adjuntos) y la subida tiene su propia zona `apex_upload` (30 por minuto por IP, `snippets/upload-zone.conf`).

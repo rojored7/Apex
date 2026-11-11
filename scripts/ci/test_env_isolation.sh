@@ -176,5 +176,27 @@ if [ -n "${config_render:-}" ]; then
   done
 fi
 
+# Rojo S6-W0-2 (S6-D58, S5-D201): reparto VIVO del volumen `keys` por servicio. El worker solo ve la
+# subruta `custody/` (en /run/apex/keys/custody): ni jwt/ ni una llave JWT plana ni una KEK en la raíz.
+# El api ve el volumen entero con el layout nuevo (jwt/ presente, nada plano). Solo se imprimen rutas.
+visible() { # servicio ruta -> 0 si existe dentro del contenedor
+  $DC exec -T "$1" sh -c "test -e '$2'" > /dev/null 2>&1
+}
+for svc in $SERVICIOS; do
+  case "$svc" in
+    worker)
+      for ruta in /run/apex/keys/jwt /run/apex/keys/jwt_ed25519.pem /run/apex/keys/jwt_ed25519.pub /run/apex/keys/kek.bin /run/apex/keys/sign-ed25519.key; do
+        if visible worker "$ruta"; then falla "worker ve $ruta (solo debe ver custody/, S6-D58)"; else ok "worker no ve $ruta"; fi
+      done
+      ;;
+    api)
+      if visible api /run/apex/keys/jwt/jwt_ed25519.pem; then ok "api ve jwt/jwt_ed25519.pem (layout nuevo)"; else falla "api no ve /run/apex/keys/jwt/jwt_ed25519.pem"; fi
+      for ruta in /run/apex/keys/jwt_ed25519.pem /run/apex/keys/jwt_ed25519.pub /run/apex/keys/sign-ed25519.key; do
+        if visible api "$ruta"; then falla "api conserva $ruta plano (corra init-keys --migrate-layout)"; else ok "api sin $ruta plano"; fi
+      done
+      ;;
+  esac
+done
+
 echo "test_env_isolation: $fallas fallas"
 [ "$fallas" -eq 0 ]

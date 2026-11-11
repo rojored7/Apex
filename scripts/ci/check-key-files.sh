@@ -9,6 +9,52 @@
 # que el nombre es la única señal. Casos en scripts/ci/test_check_key_files.sh.
 set -euo pipefail
 
+# --- Modo `--layout <dir> [--provider local|openbao] [--only custody|all]` (S6-D58, S5-D201) -----
+# Comprueba el volumen `keys` (nunca imprime contenido): custody/kek.bin, custody/sign-ed25519.key
+# y jwt/jwt_ed25519.{pem,pub}, modo 600 y dueño 10001. Plano o mixto: error con la orden de
+# migración. `--only custody` es la vista del worker (si ve jwt/ es un error).
+check_layout() {
+  local dir="" provider="local" only="all"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --layout) dir="${2:-}"; shift 2 ;;
+      --provider) provider="${2:-}"; shift 2 ;;
+      --only) only="${2:-}"; shift 2 ;;
+      *) echo "check-key-files: argumento desconocido con --layout: $1" >&2; exit 2 ;;
+    esac
+  done
+  case "$only" in custody | all) ;; *) echo "check-key-files: --only admite custody|all" >&2; exit 2 ;; esac
+  case "$provider" in local | openbao) ;; *) echo "check-key-files: --provider admite local|openbao" >&2; exit 2 ;; esac
+  if [ ! -d "$dir" ]; then echo "check-key-files: la carpeta $dir no existe" >&2; exit 1; fi
+  local errores=() f
+  for f in kek.bin sign-ed25519.key jwt_ed25519.pem jwt_ed25519.pub; do
+    if [ -e "$dir/$f" ]; then
+      errores+=("$f sigue en la raíz del volumen (layout plano o mixto): corra init-keys --migrate-layout")
+    fi
+  done
+  local requeridos=()
+  if [ "$provider" = "local" ]; then requeridos+=(custody/kek.bin custody/sign-ed25519.key); fi
+  if [ "$only" = "all" ]; then requeridos+=(jwt/jwt_ed25519.pem jwt/jwt_ed25519.pub); fi
+  if [ "$only" = "custody" ] && [ -e "$dir/jwt" ]; then
+    errores+=("jwt/ es visible en la vista del worker: nada del JWT debe montarse ahí")
+  fi
+  for f in "${requeridos[@]}"; do
+    if [ ! -f "$dir/$f" ]; then errores+=("falta ${f##*/} ($f)"); continue; fi
+    local modo uid
+    modo="$(stat -c %a "$dir/$f")"; uid="$(stat -c %u "$dir/$f")"
+    [ "$modo" = "600" ] || errores+=("$f con modo $modo (se esperaba 600)")
+    [ "$uid" = "10001" ] || errores+=("$f con dueño $uid (se esperaba 10001)")
+  done
+  if [ "${#errores[@]}" -gt 0 ]; then
+    echo "check-key-files: layout del volumen keys incorrecto:" >&2
+    printf '  %s\n' "${errores[@]}" >&2
+    exit 1
+  fi
+  echo "check-key-files: layout del volumen keys correcto ($only, proveedor $provider)"
+  exit 0
+}
+if [ "${1:-}" = "--layout" ]; then check_layout "$@"; fi
+
 if [ "$#" -gt 0 ]; then
   archivos=("$@")
 else

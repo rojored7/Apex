@@ -84,8 +84,13 @@ sin_git="$(grep -nE '(^|[^[:alnum:]_])(git|curl|wget)([^[:alnum:]_]|$)' "$SRC" |
 assert_eq "el script no llama a git, curl ni wget (no lee SHA)" "" "$sin_git"
 
 # Contra el repositorio real: la etiqueta del release debe coincidir (lo exige la CI, paso 82).
-RC=0; (cd "$ROOT" && bash scripts/ci/check-release-version.sh --check v0.1.0 > /dev/null 2>&1) || RC=$?
-assert_eq "repositorio real: --check v0.1.0 sale con 0" 0 "$RC"
+# La versión esperada se lee de api/pyproject.toml (S6-D90): antes estaba fija en v0.1.0 y el
+# cierre del Sprint 5 (0.2.0) dejó la prueba en rojo sin que ningún gate la volviera a correr.
+VERSION_REAL="$(grep -m1 '^version = ' "$ROOT/api/pyproject.toml" | cut -d'"' -f2)"
+case "$VERSION_REAL" in [0-9]*.[0-9]*.[0-9]*) RC=0 ;; *) RC=1 ;; esac
+assert_eq "repositorio real: api/pyproject.toml tiene una versión X.Y.Z" 0 "$RC"
+RC=0; (cd "$ROOT" && bash scripts/ci/check-release-version.sh --check "v$VERSION_REAL" > /dev/null 2>&1) || RC=$?
+assert_eq "repositorio real: --check v$VERSION_REAL (la versión de pyproject) sale con 0" 0 "$RC"
 
 echo "  resumen: $PASSES ok, $FAILS fallas"
 echo "test_check_release_version: $FAILS fallas"

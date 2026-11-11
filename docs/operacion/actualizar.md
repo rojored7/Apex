@@ -19,6 +19,16 @@ quedó sana. No usa registro de imágenes: construye desde el código de la etiq
    con `db` en marcha. Este script actualiza un servidor instalado; no instala.
 4. **Los archivos de entorno.** `.env` y `.env.ops` con modo 600, tuyos, sin valores `cambiar-esto`,
    no versionados.
+5. **Docker al día (S6-D78).** Docker Engine 26 (API 1.45) o superior y Compose 2.26 o superior: el
+   worker monta solo `custody/` del volumen `keys` y eso exige `volume.subpath`. `deploy.sh` lo
+   comprueba al empezar y sale con 2 si no se cumple.
+6. **Rutas de llaves en `.env` (v0.3).** `CRYPTO_LOCAL_KEK_PATH` y `CRYPTO_LOCAL_SIGNING_KEY_PATH`
+   pasan a `/run/apex/keys/custody/...`; `JWT_PRIVATE_KEY_PATH` y `JWT_PUBLIC_KEY_PATH` a
+   `/run/apex/keys/jwt/...` (mira `.env.example`). Actualiza las cuatro ANTES de desplegar:
+   `deploy.sh` sale con 2 sin construir si alguna sigue plana (S6-D91), porque tras mover los
+   archivos el api no los encontraría. `deploy.sh` mueve los archivos del volumen
+   (`tools init-keys --migrate-layout`, después de construir y antes de `up -d`); si un archivo está
+   en los dos layouts sale con 2 sin levantar nada y `docs/RUNBOOK.md` §12 dice cómo resolverlo.
 
 ## Paso a paso
 

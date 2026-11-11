@@ -1267,3 +1267,31 @@ def test_missing_secrets_con_s3_exige_la_clave_secreta(tmp_path: Path) -> None:
 def test_missing_secrets_con_almacen_local_no_pide_la_clave_de_s3(tmp_path: Path) -> None:
     settings = _cargar(tmp_path)
     assert "S3_SECRET_ACCESS_KEY" not in missing_secrets(settings, exists=lambda _ruta: False)
+
+
+# Rojo S6-W0-2 (S6-D58, S5-D201): rutas por defecto del layout nuevo del volumen `keys`.
+RUTAS_LAYOUT_NUEVO: dict[str, str] = {
+    "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/custody/kek.bin",
+    "CRYPTO_LOCAL_SIGNING_KEY_PATH": "/run/apex/keys/custody/sign-ed25519.key",
+    "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pem",
+    "JWT_PUBLIC_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pub",
+}
+
+
+def test_env_example_apunta_las_cuatro_rutas_de_llaves_al_layout_nuevo() -> None:
+    ejemplo = Path(__file__).resolve().parents[3] / ".env.example"
+    claves: dict[str, str] = {}
+    for linea in ejemplo.read_text(encoding="utf-8").splitlines():
+        if linea.strip() and not linea.lstrip().startswith("#") and "=" in linea:
+            nombre, valor = linea.split("=", 1)
+            claves[nombre.strip()] = valor.strip()
+
+    distintas = {n: claves.get(n) for n, v in RUTAS_LAYOUT_NUEVO.items() if claves.get(n) != v}
+
+    assert distintas == {}, f"rutas de .env.example fuera del layout custody/jwt: {distintas}"
+
+
+def test_la_ruta_por_defecto_de_la_llave_de_firma_es_la_de_custody() -> None:
+    por_defecto = Settings.model_fields["CRYPTO_LOCAL_SIGNING_KEY_PATH"].default
+
+    assert Path(por_defecto) == Path(RUTAS_LAYOUT_NUEVO["CRYPTO_LOCAL_SIGNING_KEY_PATH"])

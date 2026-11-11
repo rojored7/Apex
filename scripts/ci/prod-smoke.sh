@@ -213,6 +213,39 @@ for svc in openbao api worker web backup; do
   if esperar_servicio "$svc" healthy 240; then ok "$svc healthy"; else muere "$svc no llegó a healthy"; fi
 done
 
+# --- versiones de Docker y layout del volumen keys (S6-D58, S6-D78) ---------------------------------------
+# Las versiones quedan en el log del smoke (el mínimo es Engine 26 / API 1.45 / Compose 2.26).
+paso "versiones: Docker API $(docker version --format '{{.Server.APIVersion}}' 2> /dev/null | tr -d '\r' || echo ilegible), Compose $(docker compose version --short 2> /dev/null | tr -d '\r' || echo ilegible)"
+# check-key-files.sh no va en la imagen: se pasa por stdin al bash del contenedor (solo lee modos y nombres).
+if "${DC[@]}" exec -T api bash -s -- --layout /run/apex/keys --provider "$PROVIDER" < scripts/ci/check-key-files.sh; then
+  ok "api: volumen keys con custody/ y jwt/ (modo 600, dueño 10001)"
+else
+  falla "api: layout del volumen keys incorrecto (/run/apex/keys/custody y /run/apex/keys/jwt)"
+fi
+if [ "$PROVIDER" = "local" ]; then
+  if "${DC[@]}" exec -T worker bash -s -- --layout /run/apex/keys --only custody < scripts/ci/check-key-files.sh; then
+    ok "worker: solo ve /run/apex/keys/custody (sin jwt/)"
+  else
+    falla "worker: el volumen keys no es solo custody (subpath) o tiene un modo o dueño incorrecto"
+  fi
+fi
+# Migración desde un volumen plano (un volumen de prueba aparte; nunca el real): coloca los cuatro
+# archivos en la raíz, corre `init-keys --migrate-layout` dos veces y comprueba el resultado.
+if "${DC[@]}" --profile tools run --rm -T --no-deps -v "$PROJECT-flat-keys:/flat" --entrypoint sh tools -c '
+  set -e
+  for f in kek.bin sign-ed25519.key jwt_ed25519.pem jwt_ed25519.pub; do printf x > /flat/$f; chmod 600 /flat/$f; done
+  python -m app.cli init-keys --migrate-layout --dir /flat
+  test -f /flat/custody/kek.bin && test -f /flat/custody/sign-ed25519.key
+  test -f /flat/jwt/jwt_ed25519.pem && test -f /flat/jwt/jwt_ed25519.pub
+  test ! -e /flat/kek.bin && test ! -e /flat/jwt_ed25519.pem
+  python -m app.cli init-keys --migrate-layout --dir /flat | grep -q "nada que migrar"
+' > /dev/null; then
+  ok "init-keys --migrate-layout: volumen plano -> custody/ y jwt/, y la segunda corrida no hace nada"
+else
+  falla "init-keys --migrate-layout sobre un volumen plano"
+fi
+docker volume rm "$PROJECT-flat-keys" > /dev/null 2>&1 || true
+
 # --- seed del primer admin y datos de demostración (la base termina en _smoke, S4B-D65) ---------------
 clave="$(aleatorio 16)"
 mascara "$clave"
@@ -278,7 +311,7 @@ if [ "$PROVIDER" = "openbao" ]; then
   # S5-B2 (H-2.3): con el api en CRYPTO_PROVIDER=openbao (compose.openbao.yml) no debe existir kek.bin.
   if [ "$("${DC[@]}" exec -T api printenv CRYPTO_PROVIDER 2>/dev/null | tr -d '\r')" = "openbao" ]; then
     for SVC in api worker; do
-      if "${DC[@]}" exec -T "$SVC" test ! -e /run/apex/keys/kek.bin; then ok "$SVC sin kek.bin (openbao)"; else falla "$SVC conserva kek.bin con CRYPTO_PROVIDER=openbao"; fi
+      if "${DC[@]}" exec -T "$SVC" test ! -e /run/apex/keys/kek.bin -a ! -e /run/apex/keys/custody/kek.bin; then ok "$SVC sin kek.bin (openbao)"; else falla "$SVC conserva kek.bin con CRYPTO_PROVIDER=openbao"; fi
     done
   else
     echo "  omitida: el api sigue en CRYPTO_PROVIDER=local (sin overlay de openbao); kek.bin se comprueba con él"

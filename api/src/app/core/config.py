@@ -204,7 +204,7 @@ class Settings(BaseSettings):
     CRYPTO_PROVIDER: Literal["local", "openbao"]
     CRYPTO_LOCAL_KEK_PATH: Path | None = None
     # Llave Ed25519 de firma del bus (semilla cruda de 32 bytes); la crea `init-keys`.
-    CRYPTO_LOCAL_SIGNING_KEY_PATH: Path = Path("/run/apex/keys/sign-ed25519.key")
+    CRYPTO_LOCAL_SIGNING_KEY_PATH: Path = Path("/run/apex/keys/custody/sign-ed25519.key")
 
     # Aplicación.
     ENV: Literal["dev", "production"] = "production"  # falla cerrado: /docs solo con ENV=dev

@@ -96,3 +96,33 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - `GET /api/v1/health` 200: `{"status":"ok","db":"ok","version":"dev","backup":"attention","migrations":"ok","crypto":"ok"}` (`backup: attention` es el estado conocido del stack de desarrollo sin respaldo reciente).
 - Checkpoint `114232b` (24 archivos, +946/-24).
 
+
+## W0-2 · Rojo
+
+- Línea base: ruff, format y mypy `src` en verde; 287 verdes / 2 saltadas en los archivos de llaves y config tocados; `test_deploy_script.sh` 282 ok / 0 fallas antes de editar. Marca `# Rojo S6-W0-2`. `pytest --co` recoge todo.
+- Stubs: `cli_ops/keys_layout.py` (`LayoutReport`, `migrate_layout(directory: Path)` con `NotImplementedError`); `cli.py` registra `init-keys --migrate-layout` y despacha al stub (raíz por omisión `/run/apex/keys`); `scripts/ci/fixtures/attachments/make_attachments.py` (stub). Rutas de `Settings`, `key_paths_in`, `local_provider` y compose NO se tocaron (E3: el Verde para api y worker antes).
+- Python rojas: `tests/cli/test_init_keys_layout.py` 13 rojas / 2 saltadas POSIX (layout `custody/` y `jwt/`, `migrate_layout` función y CLI, conflicto exit 2 todo o nada, idempotencia, raíz derivada de `JWT_PRIVATE_KEY_PATH` con OpenBao); `tests/crypto/test_init_keys.py` 1 (`test_crea_los_cuatro_archivos`, ya con `custody/` y `jwt/`); `tests/core/test_config.py` 2 (`.env.example` con las cuatro rutas nuevas y default de `CRYPTO_LOCAL_SIGNING_KEY_PATH`).
+- Adaptadas para seguir verdes con el layout nuevo: `test_init_keys_cli.py` y `test_init_keys.py` (`rglob`, subcarpetas 700, archivos 600), `tests/cli/conftest.py` (`parents=True`), `test_local_provider.py` y `test_provider_startup.py` (la ruta de la KEK sale de `key_paths_in`, no de `keys/kek.bin`).
+- Bash rojas (Nginx real corrió; el resto es fake): `test_nginx_conf.sh` 25 fallas; `test_compose_config.sh` 5; `test_check_key_files.sh` 14 (modo nuevo `--layout <dir> [--provider] [--only custody|all]`); `test_deploy_script.sh` 70 fallas / 291 ok (los 282 previos intactos; rojas: versiones D78, `--migrate-layout` antes de `up -d` y estático de `deploy.sh`/`prod-smoke.sh`); `test_env_isolation.sh` (bloque vivo worker sin jwt/, api con layout nuevo; `bash -n` solo); `fakes/docker` gana `FAKE_DOCKER_API_VERSION`, `FAKE_DOCKER_COMPOSE_VERSION`, `FAKE_DOCKER_LAYOUT` y `FAKE_DOCKER_LAYOUT_RC` (por omisión 1.45, 2.26.0 y «nada que migrar»: no cambia los 282 casos previos).
+- Reemplazadas (contrato nuevo, no debilitadas): en `test_nginx_conf.sh` el `5m` del server (ahora 64k + 6m solo en la subida) y la CSP exacta del documento (ahora con `blob:`); en `test_compose_config.sh` los montajes del worker (`/run/apex/keys` -> subruta `custody`).
+
+
+## W0-2 · Verde
+
+- E3: `stop api worker` antes de tocar `config.py`; ambos `Exited` y siguen parados (el paso 17 es del orquestador).
+- Python: `cli_ops/keys_layout.py` (60 líneas; `os.replace`, todo o nada, nunca sobrescribe), `cli.py` (378; `--migrate-layout`, raíz = `JWT_PRIVATE_KEY_PATH.parent.parent`, exit 2 con conflicto), `cli_ops/keys.py` (`custody/` y `jwt/`), `config.py` (default de la llave de firma en `custody/`), `.env.example` (cuatro rutas). `local_provider.py` no tenía rutas: sin cambio. 982 verdes / 3 saltadas (POSIX) en el lote del cierre; ruff, format y mypy en verde.
+- Nginx: `default.conf` (64k global, location regex de la subida con 6m, `proxy_request_buffering on`, `limit_req zone=apex_upload`, `@too_large` con envelope anidado, CSP con `blob:`), `snippets/upload-zone.conf`, `make_attachments.py`. `compose.e2e.yml` solo sustituye `auth-zone.conf`: no hace falta equivalente para `apex_upload`. `test_nginx_conf.sh` 0 fallas.
+- Compose: worker con `volume.subpath: custody` en `/run/apex/keys/custody`; tmpfs de web `/var/cache/nginx:size=64m`. `compose.dev.yml` no tenía binds de `keys` (volumen con nombre): sin cambio. `test_compose_config.sh` 0 fallas.
+- `check-key-files.sh --layout`, `deploy.sh` (versiones D78 tras los argumentos y antes de git; `--migrate-layout` entre build y `up -d`, aborta con 2; el aviso de `kek.bin` con OpenBao mira `custody/` y la raíz), `prod-smoke.sh` (versiones, layout por stdin en api y worker, migración desde volumen plano; ejecución viva queda para W0-2.7).
+- Pruebas del Rojo corregidas (objetivas): `test_nginx_conf.sh` (`UPLOAD_LOC` entre comillas: Nginx rechaza `{8}` sin comillas) y `test_deploy_script.sh` (`docker_ajeno` y las cinco aserciones «sin docker» excluyen las dos consultas de versión, que el contrato D78 hace antes que git).
+- Docs: RUNBOOK §12, `actualizar.md`, `instalar-en-servidor.md`, `infra/README.md`.
+
+## W0-2 · Revisiones y sello
+
+- Decisiones S6-D88 y S6-D89 (cuatro archivos, raíz por el JWT, zona `apex_upload`, envelope anidado, sin cabeceras duplicadas); el orquestador quitó el `include snippets/security-headers.conf` duplicado del `location` de subida y ajustó la aserción de `test_nginx_conf.sh` (0 fallas con Nginx real).
+- Gate 16.1 (`test_nginx_conf`, `test_compose_config`, `test_check_key_files`, `test_deploy_script` 361 ok, `workflow/tests` 6/6) 0 fallas; 16.2 `slice-gate.sh cli` 702 verdes; 16.3 `slice-gate.sh crypto` 702 verdes.
+- Seguridad 0C/0H/2M/3L: corregidos por el orquestador `limit_conn` + `client_body_timeout` en la subida, `ensure_subdirs` en `migrate_layout`, 413 con envelope también en `/api/`, symlink = conflicto; LOW de la fixture aceptado con dueño C1. Tras las correcciones: `test_init_keys_layout.py` 14 verdes (3 saltadas POSIX/NTFS), `test_nginx_conf.sh` 0 fallas, ruff/mypy verdes, `keys_layout.py` 67 líneas.
+- Primer `wave0-gate.sh W0-2` FALLÓ en `test_infra_scripts` → `test_check_release_version` («repositorio real: --check v0.1.0 sale con 0», obtenido 1): deuda del cierre del S5 (versión 0.2.0 con la prueba fija en v0.1.0). Corregido por el orquestador (S6-D90: la versión se lee de `pyproject`).
+- Primer `wave0-gate.sh W0-2` en verde (infra completa + architecture 964) → paso 17.2: `--migrate-layout` dijo «nada que migrar» sobre el volumen plano porque el `.env` de desarrollo conserva la ruta plana del JWT (raíz derivada `/run/apex`): S6-D91 (raíz robusta, aviso, `deploy.sh` exige rutas nuevas, `actualizar.md` corregido); `.env` de desarrollo actualizado a las cuatro rutas nuevas; imagen del api reconstruida; sello repetido.
+- Sello: `bash scripts/workflow/wave0-gate.sh W0-2 tests/cli/test_init_keys_layout.py tests/core/test_config.py tests/core/test_env_example.py`.
+

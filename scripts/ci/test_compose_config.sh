@@ -94,8 +94,15 @@ check(bool(keys_api) and keys_api[0].get("read_only") is True, "api monta keys e
 # S5-B3 (S5-D20, H-2): el worker descifra avisos; con CRYPTO_PROVIDER=local monta keys en solo lectura
 # (compose.openbao.yml lo quita). Uploads sigue sin montarse.
 destinos_worker = {v.get("target") for v in prod["worker"].get("volumes", []) or []}
-keys_worker = [v for v in prod["worker"].get("volumes", []) or [] if v.get("target") == "/run/apex/keys"]
-check(bool(keys_worker) and keys_worker[0].get("read_only") is True, "S5-B3: worker monta keys en solo lectura (proveedor local)")
+# S6-W0-2 (S6-D58): el worker monta SOLO la subruta custody del volumen keys, en /run/apex/keys/custody.
+keys_worker = [v for v in prod["worker"].get("volumes", []) or [] if v.get("source") == "keys"]
+check(
+    len(keys_worker) == 1
+    and keys_worker[0].get("target") == "/run/apex/keys/custody"
+    and keys_worker[0].get("read_only") is True
+    and (keys_worker[0].get("volume") or {}).get("subpath") == "custody",
+    f"S6-D58: worker monta keys con volume.subpath=custody en /run/apex/keys/custody en solo lectura ({keys_worker})",
+)
 check("/data/uploads" not in destinos_worker, "worker no monta uploads")
 tools = [v for v in prod["tools"].get("volumes", []) if v.get("target") == "/run/apex/keys"]
 check(bool(tools) and not tools[0].get("read_only"), "tools monta keys con escritura")
@@ -386,15 +393,15 @@ mont_w = montajes(prod["worker"])
 # proveedor local suma keys:ro (descifra avisos); compose.openbao.yml lo quita (S5-D193).
 check(
     sorted((m.get("source"), m.get("target"), m.get("read_only")) for m in mont_w)
-    == [("backups", "/data/backups", True), ("keys", "/run/apex/keys", True), ("openbao-token-worker", "/run/apex/openbao", True)],
-    f"worker monta exactamente backups en /data/backups, keys y su token en /run/apex/openbao, todos de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
+    == [("backups", "/data/backups", True), ("keys", "/run/apex/keys/custody", True), ("openbao-token-worker", "/run/apex/openbao", True)],
+    f"worker monta exactamente backups en /data/backups, keys (subpath custody) en /run/apex/keys/custody y su token en /run/apex/openbao, todos de solo lectura ({[(m.get('source'), m.get('target')) for m in mont_w]})",
 )
 
 # web (S4B-D11, D75).
 web = prod["web"]
 check(depende(prod, "web") == {"api": "service_healthy"}, f"web depende de api healthy ({depende(prod, 'web')})")
 check(web.get("read_only") is True and web.get("cap_drop") == ["ALL"] and "no-new-privileges:true" in (web.get("security_opt") or []), "web con read_only, cap_drop ALL y no-new-privileges")
-check(set(web.get("tmpfs") or []) >= {"/var/cache/nginx", "/var/run", "/tmp"}, f"web con tmpfs /var/cache/nginx, /var/run y /tmp ({web.get('tmpfs')})")
+check({str(t).split(":")[0] for t in (web.get("tmpfs") or [])} >= {"/var/cache/nginx", "/var/run", "/tmp"}, f"web con tmpfs /var/cache/nginx, /var/run y /tmp ({web.get('tmpfs')})")
 check(sorted(web.get("cap_add") or []) == ["CHOWN", "NET_BIND_SERVICE", "SETGID", "SETUID"], f"web con cap_add exactamente CHOWN, SETGID, SETUID, NET_BIND_SERVICE ({web.get('cap_add')})")
 
 # backup (S4B-D7: rol apex_backup en producción).
@@ -613,7 +620,7 @@ check("openbao-dev-data" not in texto, "S5 M-3: compose.yml no declara el volume
 ovl_doc = json.loads(os.environ["OVL"])
 ovl = ovl_doc.get("services", {})
 check(bool(ovl.get("api")) and bool(ovl.get("worker")), "S5: el overlay renderiza con api y worker")
-check("/run/apex/keys" not in {v.get("target") for v in montajes(ovl.get("worker", {}))} and bool(ovl.get("worker")), "S5: con compose.openbao.yml worker no monta keys")
+check(not [v for v in montajes(ovl.get("worker", {})) if v.get("source") == "keys" or str(v.get("target", "")).startswith("/run/apex/keys")] and bool(ovl.get("worker")), "S5: con compose.openbao.yml worker no monta keys (ni la subruta custody, S6-D58)")
 check(any(v.get("target") == "/run/apex/keys" and v.get("read_only") is True for v in montajes(ovl.get("api", {}))), "S5-D193: con compose.openbao.yml api monta keys en solo lectura (llave JWT)")
 for svc in ("api", "worker"):
     check(any(v.get("source") == f"openbao-token-{svc}" and v.get("read_only") is True for v in montajes(ovl.get(svc, {}))), f"S5: con compose.openbao.yml {svc} monta su token en solo lectura")
@@ -672,6 +679,24 @@ for variable in ("STORAGE_PROVIDER", "S3_ENDPOINT_URL", "S3_BUCKET", "S3_REGION"
 for svc in ("worker", "tools"):
     check("APEX_DOMAIN" not in (crudo_doc["services"][svc].get("environment") or {}), f"S6-W0-5: {svc} no declara APEX_DOMAIN en su bloque environment (por env_file sí la hereda; solo el api la valida)")
     check("S3_SECRET_ACCESS_KEY" not in (prod[svc].get("environment") or {}), f"S6-W0-5: {svc} no recibe S3_SECRET_ACCESS_KEY")
+
+# Rojo S6-W0-2 (S6-D54, D58, D59, E13): subruta custody del worker, volumen entero en api y tools,
+# tmpfs de web con tope (Nginx guarda ahi los cuerpos de hasta 6m con proxy_request_buffering on) y
+# api sin tmpfs de spool (la subida es cuerpo crudo sin archivos temporales).
+def sin_subruta(doc, svc):
+    m = [v for v in montajes(doc[svc]) if v.get("source") == "keys"]
+    return len(m) == 1 and m[0].get("target") == "/run/apex/keys" and not (m[0].get("volume") or {}).get("subpath")
+
+check(sin_subruta(prod, "api"), "S6-D58: api monta el volumen keys entero (sin subpath) en /run/apex/keys")
+check(sin_subruta(prod, "tools"), "S6-D58: tools monta el volumen keys entero (sin subpath) en /run/apex/keys")
+check(sin_subruta(ovl, "api"), "S6-D58: con compose.openbao.yml api sigue montando keys entero (la llave JWT vive en jwt/)")
+check(sin_subruta(ovl, "tools"), "S6-D58: con compose.openbao.yml tools sigue montando keys entero")
+check(sin_subruta(dev, "api"), "S6-D58: en desarrollo api monta keys entero")
+cache_web = [t for t in (web.get("tmpfs") or []) if str(t).split(":")[0] == "/var/cache/nginx"]
+check(len(cache_web) == 1 and "size=64m" in str(cache_web[0]).split(":", 1)[-1].split(","), f"E13: tmpfs /var/cache/nginx de web lleva size=64m ({cache_web})")
+check(list(prod["api"].get("tmpfs") or []) == ["/tmp"], f"S6-D59: tmpfs del api sin cambios, solo /tmp y sin spool de subida ({prod['api'].get('tmpfs')})")
+check(not [v for v in montajes(prod["worker"]) if v.get("source") == "keys" and (v.get("volume") or {}).get("subpath") != "custody"], "S6-D58: ningun montaje de keys del worker sin la subruta custody (nada del JWT visible al worker)")
+check("custody" in texto and "subpath: custody" in texto, "S6-D58: compose.yml declara volume.subpath: custody")
 
 print(f"test_compose_config: {len(fallas)} fallas")
 sys.exit(1 if fallas else 0)

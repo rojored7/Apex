@@ -201,7 +201,14 @@ services:
       BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
     volumes:
       - backups:/data/backups:ro
-      - keys:/run/apex/keys:ro
+      # S6-D58: el worker solo ve custody/ (KEK y llave de firma); jamás el par JWT (jwt/).
+      # Mismo volumen `keys`, subruta custody; en el worker la ruta es /run/apex/keys/custody.
+      - type: volume
+        source: keys
+        target: /run/apex/keys/custody
+        read_only: true
+        volume:
+          subpath: custody
       # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
       - openbao-token-worker:/run/apex/openbao:ro
     read_only: true
@@ -424,7 +431,8 @@ services:
     # cuatro capacidades; escribe solo en estos tmpfs.
     read_only: true
     tmpfs:
-      - /var/cache/nginx
+      # E13 (S6-D59): Nginx guarda aquí los cuerpos de hasta 6m (proxy_request_buffering on); tope fijo.
+      - /var/cache/nginx:size=64m
       - /var/run
       - /tmp
     cap_drop: ["ALL"]

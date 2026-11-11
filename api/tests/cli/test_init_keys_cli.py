@@ -17,7 +17,12 @@ from tests.cli._apoyo import correr
 
 
 def _contenidos(directorio: Path) -> dict[str, bytes]:
-    return {p.name: p.read_bytes() for p in sorted(directorio.iterdir())}
+    # S6-W0-2: layout con subcarpetas custody/ y jwt/ (rglob, claves relativas).
+    return {
+        p.relative_to(directorio).as_posix(): p.read_bytes()
+        for p in sorted(directorio.rglob("*"))
+        if p.is_file()
+    }
 
 
 def test_init_keys_crea_los_cuatro_archivos_privados(tmp_path: Path) -> None:

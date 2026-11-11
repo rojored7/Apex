@@ -127,7 +127,9 @@ d() {
 buenos() { echo --ref "$REF" --expect-sha "$SHA" --kek-file "$R/kek.bin" --i-know-unsigned-ref; }
 sin_firma_ok() { echo --ref "$REF" --expect-sha "$SHA" --kek-file "$R/kek.bin"; }
 # docker_ajeno: lineas del registro de docker que NO son `config -q` (debe quedar vacio en los 2).
-docker_ajeno() { grep -v ' config -q' "$LOGD" || true; }
+docker_ajeno() { grep -Ev ' config -q|(^|[[:space:]])version([[:space:]]|$)' "$LOGD" || true; }
+# S6-W0-2 (S6-D78): las dos consultas de versión no cuentan como «usar docker» (van antes que git).
+docker_sin_version() { grep -Ev '(^|[[:space:]])version([[:space:]]|$)' "$LOGD" || true; }
 
 # caso_2 <descripcion> [VAR=valor ...] -- <args>: sale con 2 y sin docker salvo config -q.
 caso_2() {
@@ -156,16 +158,16 @@ assert_eq "argumentos invalidos: sin docker" "" "$(cat "$LOGD")"
 echo "-- git: SHA, arbol limpio y firma"
 mk_repo; d FAKE_GIT_REV="$OTRO_SHA" -- $(buenos)
 assert_eq "SHA distinto: sale con 2" 2 "$RC"
-assert_eq "SHA distinto: no llama a docker" "" "$(cat "$LOGD")"
+assert_eq "SHA distinto: no llama a docker" "" "$(docker_sin_version)"
 assert_contains "SHA distinto: lo dice" "$OUT" "SHA"
 mk_repo; d FAKE_GIT_REV="" -- $(buenos)
 assert_eq "la etiqueta no existe (rev-parse falla): sale con 2" 2 "$RC"
 mk_repo; d FAKE_GIT_FETCH_RC=1 -- $(buenos)
 assert_eq "git fetch --tags falla: sale con 2" 2 "$RC"
-assert_eq "git fetch falla: no llama a docker" "" "$(cat "$LOGD")"
+assert_eq "git fetch falla: no llama a docker" "" "$(docker_sin_version)"
 mk_repo; d FAKE_GIT_PORCELAIN=" M api/src/app/main.py" -- $(buenos)
 assert_eq "arbol sucio: sale con 2" 2 "$RC"
-assert_eq "arbol sucio: no llama a docker" "" "$(cat "$LOGD")"
+assert_eq "arbol sucio: no llama a docker" "" "$(docker_sin_version)"
 mk_repo; d -- $(buenos)
 assert_lacks "con --i-know-unsigned-ref y sin allowed_signers no llama a verify-tag" "$(cat "$LOGG")" "verify-tag"
 assert_contains "usa git fetch --tags" "$(cat "$LOGG")" "fetch --tags"
@@ -178,7 +180,7 @@ mk_repo; d -- $(sin_firma_ok)
 assert_eq "sin allowed_signers ni --i-know-unsigned-ref: sale con 2" 2 "$RC"
 assert_contains "sin firma: el mensaje pide --i-know-unsigned-ref" "$OUT" "etiqueta sin firma verificable: use --i-know-unsigned-ref"
 assert_lacks "sin firma: no hay checkout" "$(cat "$LOGG")" "checkout"
-assert_eq "sin firma: no llama a docker" "" "$(cat "$LOGD")"
+assert_eq "sin firma: no llama a docker" "" "$(docker_sin_version)"
 mk_repo; mkdir -p "$R/.github"; printf 'rojored7 ssh-ed25519 AAAA-de-prueba\n' > "$R/.github/allowed_signers"
 d FAKE_GIT_VERIFY_RC=1 -- $(sin_firma_ok)
 assert_eq "allowed_signers presente y firma invalida: sale con 2" 2 "$RC"
@@ -271,7 +273,7 @@ mk_repo; printf 'SMTP_PASSWORD=secreto-en-env-123\n' >> "$R/.env"; d -- $(buenos
 assert_eq ".env con SMTP_PASSWORD con valor: sale con 2" 2 "$RC"
 assert_contains "nombra SMTP_PASSWORD" "$OUT" "SMTP_PASSWORD"
 assert_lacks "no imprime el valor" "$OUT" "secreto-en-env-123"
-assert_eq "sin docker" "" "$(cat "$LOGD")"
+assert_eq "sin docker" "" "$(docker_sin_version)"
 mk_repo; printf 'TELEGRAM_BOT_TOKEN=123456:token-en-env\n' >> "$R/.env"; d -- $(buenos)
 assert_eq ".env con TELEGRAM_BOT_TOKEN con valor: sale con 2" 2 "$RC"
 assert_lacks "no imprime el token" "$OUT" "token-en-env"
@@ -295,6 +297,14 @@ mk_repo; set_var .env DATABASE_URL ""
 caso_2 ".env con DATABASE_URL=" -- $(buenos)
 mk_repo; set_var .env OTRA_CLAVE cambiar-esto
 caso_2 ".env con cambiar-esto" -- $(buenos)
+# S6-D91: rutas de llaves planas en .env (servidor que actualiza a v0.3 sin tocar .env) -> 2 sin construir.
+for k in JWT_PRIVATE_KEY_PATH:/run/apex/keys/jwt_ed25519.pem JWT_PUBLIC_KEY_PATH:/run/apex/keys/jwt_ed25519.pub CRYPTO_LOCAL_KEK_PATH:/run/apex/keys/kek.bin CRYPTO_LOCAL_SIGNING_KEY_PATH:/run/apex/keys/sign-ed25519.key; do
+  mk_repo; set_var .env "${k%%:*}" "${k#*:}"
+  caso_2 ".env con ${k%%:*} en el layout plano (S6-D91)" -- $(buenos)
+  assert_contains "nombra ${k%%:*}" "$OUT" "${k%%:*}"
+done
+mk_repo; set_var .env JWT_PRIVATE_KEY_PATH /run/apex/keys/jwt/jwt_ed25519.pem; set_var .env CRYPTO_LOCAL_KEK_PATH /run/apex/keys/custody/kek.bin; d -- $(buenos)
+assert_eq ".env con rutas del layout nuevo: sale con 0" 0 "$RC"
 mk_repo; set_var .env.ops POSTGRES_PASSWORD cambiar-esto
 caso_2 ".env.ops con cambiar-esto" -- $(buenos)
 mk_repo; set_var .env.ops APEX_API_DB_PASSWORD cambiar-esto
@@ -518,6 +528,79 @@ mk_repo; d DEPLOY_SKIP_BUILD=1 FAKE_DOCKER_REVISION="$REF" -- $(buenos)
 assert_eq "SKIP_BUILD con etiqueta OCI igual: sale con 0" 0 "$RC"
 assert_lacks "SKIP_BUILD igual: no construye" "$(cat "$LOGD")" " build"
 assert_contains "SKIP_BUILD lee org.opencontainers.image.revision" "$(cat "$LOGD")" "org.opencontainers.image.revision"
+
+echo "-- Rojo S6-W0-2 (S6-D78, E4): versiones mínimas Docker Engine 26 / API 1.45 y Compose 2.26"
+# El chequeo va al principio, antes del checkout y de cualquier otro uso de docker: solo se admiten
+# las dos consultas de versión (`docker version --format '{{.Server.APIVersion}}'` y
+# `docker compose version --short`). La comparación es numérica por componentes (1.9 < 1.45,
+# 2.100 > 2.26). Con una versión ilegible también sale con 2.
+docker_salvo_version() { grep -Ev '(^|[[:space:]])version([[:space:]]|$)' "$LOGD" || true; }
+version_baja() { # <descripcion> <VAR=valor> <texto esperado en el mensaje>
+  mk_repo; d "$2" -- $(buenos)
+  assert_eq "$1: sale con 2" 2 "$RC"
+  assert_contains "$1: dice el mínimo" "$OUT" "Docker Engine 26 / API 1.45 y Compose 2.26 o superiores"
+  assert_contains "$1: dice lo que tiene" "$OUT" "$3"
+  assert_eq "$1: ningún docker salvo las consultas de versión" "" "$(docker_salvo_version)"
+  assert_lacks "$1: no hubo checkout" "$(cat "$LOGG")" "checkout"
+}
+version_baja "API 1.44" FAKE_DOCKER_API_VERSION=1.44 "1.44"
+version_baja "API 1.9 (1.9 < 1.45, no es una comparación de texto)" FAKE_DOCKER_API_VERSION=1.9 "1.9"
+version_baja "Compose 2.25.9" FAKE_DOCKER_COMPOSE_VERSION=2.25.9 "2.25.9"
+version_baja "Compose 1.29.2" FAKE_DOCKER_COMPOSE_VERSION=1.29.2 "1.29.2"
+version_baja "versión de API ilegible" FAKE_DOCKER_API_VERSION=ilegible "ilegible"
+version_baja "versión de Compose ilegible" FAKE_DOCKER_COMPOSE_VERSION=ilegible "ilegible"
+for par in "FAKE_DOCKER_API_VERSION=1.45" "FAKE_DOCKER_API_VERSION=1.56" "FAKE_DOCKER_API_VERSION=1.100" \
+  "FAKE_DOCKER_COMPOSE_VERSION=2.26.0" "FAKE_DOCKER_COMPOSE_VERSION=2.100.0" "FAKE_DOCKER_COMPOSE_VERSION=5.6.1"; do
+  mk_repo; d "$par" -- $(buenos)
+  assert_eq "$par: sigue (0)" 0 "$RC"
+  assert_contains "$par: consulta la versión de la API" "$(cat "$LOGD")" "version --format"
+  assert_contains "$par: consulta la versión de Compose" "$(cat "$LOGD")" "compose version --short"
+done
+mk_repo; d FAKE_DOCKER_API_VERSION=1.44 FAKE_GIT_VERIFY_RC=1 -- $(sin_firma_ok)
+assert_eq "versión baja y sin firma: la versión se comprueba antes de git (sale con 2)" 2 "$RC"
+assert_contains "versión baja y sin firma: el mensaje es el de las versiones" "$OUT" "Docker Engine 26 / API 1.45"
+
+echo "-- Rojo S6-W0-2 (S6-D58, E3): init-keys --migrate-layout antes de up -d"
+# La herramienta corre después de construir (la imagen vieja no conoce la bandera) y antes de
+# `up -d`; es idempotente, así que una segunda corrida del despliegue solo dice «nada que migrar».
+linea_de() { grep -n -- "$1" "$LOGD" | head -1 | cut -d: -f1 || true; }
+mk_repo; d FAKE_DOCKER_LAYOUT=plano -- $(buenos)
+assert_eq "volumen plano: migra y sigue (0)" 0 "$RC"
+assert_eq "volumen plano: una sola corrida de init-keys --migrate-layout" 1 "$(grep -c 'init-keys --migrate-layout' "$LOGD" || true)"
+mig="$(grep 'init-keys --migrate-layout' "$LOGD" | head -1 || true)"
+assert_contains "volumen plano: la corre en el servicio tools" "$mig" "tools init-keys --migrate-layout"
+assert_contains "volumen plano: con run --rm" "$mig" "run --rm"
+assert_contains "volumen plano: con --no-deps (sin arrancar db ni api)" "$mig" "--no-deps"
+l_build="$(linea_de ' build')"; l_mig="$(linea_de 'init-keys --migrate-layout')"; l_up="$(linea_de ' up -d')"
+if [ -n "$l_build" ] && [ -n "$l_mig" ] && [ -n "$l_up" ] && [ "$l_build" -lt "$l_mig" ] && [ "$l_mig" -lt "$l_up" ]; then _ok "volumen plano: el orden es build, migrate-layout, up -d"; else _fail "volumen plano: orden build($l_build) < migrate-layout($l_mig) < up -d($l_up)"; fi
+mk_repo; d FAKE_DOCKER_LAYOUT=nuevo -- $(buenos)
+assert_eq "layout nuevo: sigue (0)" 0 "$RC"
+assert_contains "layout nuevo: muestra «nada que migrar»" "$OUT" "nada que migrar"
+assert_contains "layout nuevo: igual corre la herramienta (idempotente)" "$(cat "$LOGD")" "init-keys --migrate-layout"
+mk_repo; d DEPLOY_SKIP_BUILD=1 FAKE_DOCKER_REVISION="$REF" -- $(buenos)
+assert_contains "con DEPLOY_SKIP_BUILD=1 también migra el layout" "$(cat "$LOGD")" "init-keys --migrate-layout"
+mk_repo; : > "$R/infra/compose.openbao.yml"; set_var .env CRYPTO_PROVIDER openbao; d -- $(buenos)
+assert_contains "con CRYPTO_PROVIDER=openbao también migra el layout (la llave JWT vive en jwt/)" "$(cat "$LOGD")" "init-keys --migrate-layout"
+
+for caso in "FAKE_DOCKER_LAYOUT=mixto" "FAKE_DOCKER_LAYOUT_RC=1"; do
+  mk_repo; d "$caso" -- $(buenos)
+  assert_eq "$caso: aborta con 2" 2 "$RC"
+  assert_lacks "$caso: no hubo up" "$(cat "$LOGD")" " up -d"
+  if grep -Eiq 'volumen[[:space:]`"]*(apex_)?keys' <<< "$OUT"; then _ok "$caso: nombra el volumen keys"; else _fail "$caso: el mensaje no nombra el volumen keys"; fi
+  assert_contains "$caso: apunta a la guía de migración" "$OUT" "--migrate-layout"
+  assert_eq "$caso: no se leyó el entorno del api (no se llegó al sondeo)" "" "$(grep '/proc/1/environ' "$LOGD" || true)"
+done
+
+echo "-- Rojo S6-W0-2: estático de deploy.sh y prod-smoke.sh"
+assert_contains "deploy.sh invoca init-keys --migrate-layout" "$(cat "$SRC_DEPLOY")" "init-keys --migrate-layout"
+assert_contains "deploy.sh consulta la versión de la API (D78)" "$(cat "$SRC_DEPLOY")" "Server.APIVersion"
+assert_contains "deploy.sh consulta la versión de Compose (D78)" "$(cat "$SRC_DEPLOY")" "compose version --short"
+smk_s6="$(cat "$ROOT/scripts/ci/prod-smoke.sh")"
+assert_contains "prod-smoke.sh imprime la versión de Docker Engine" "$smk_s6" "Server.APIVersion"
+assert_contains "prod-smoke.sh imprime la versión de Compose" "$smk_s6" "compose version --short"
+assert_contains "prod-smoke.sh comprueba el layout custody del volumen keys" "$smk_s6" "/run/apex/keys/custody"
+assert_contains "prod-smoke.sh comprueba el layout jwt del volumen keys" "$smk_s6" "/run/apex/keys/jwt"
+assert_contains "prod-smoke.sh prueba la migración desde un volumen plano" "$smk_s6" "migrate-layout"
 
 echo "-- estatico de infra/deploy.sh"
 fuente="$(cat "$SRC_DEPLOY")"

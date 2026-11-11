@@ -21,7 +21,12 @@ def _modo(path: Path) -> int:
 
 
 def _huellas(directorio: Path) -> dict[str, str]:
-    return {p.name: sha256_hex(p.read_bytes()) for p in sorted(directorio.iterdir())}
+    # S6-W0-2: layout con subcarpetas custody/ y jwt/ (rglob, claves relativas).
+    return {
+        p.relative_to(directorio).as_posix(): sha256_hex(p.read_bytes())
+        for p in sorted(directorio.rglob("*"))
+        if p.is_file()
+    }
 
 
 def test_crea_los_cuatro_archivos(tmp_path: Path) -> None:
@@ -34,11 +39,17 @@ def test_crea_los_cuatro_archivos(tmp_path: Path) -> None:
     pem = rutas.jwt_private.read_text(encoding="ascii")
     assert ("BEGIN " + "PRIVATE KEY") in pem
     assert "BEGIN PUBLIC KEY" in rutas.jwt_public.read_text(encoding="ascii")
-    assert sorted(p.name for p in directorio.iterdir()) == [
-        "jwt_ed25519.pem",
-        "jwt_ed25519.pub",
+    # S6-W0-2 (S6-D58): custody/ (KEK y firma) y jwt/ (el par JWT) bajo la raíz del volumen.
+    assert rutas.kek == directorio / "custody" / "kek.bin"
+    assert rutas.jwt_private == directorio / "jwt" / "jwt_ed25519.pem"
+    assert sorted(p.name for p in directorio.iterdir()) == ["custody", "jwt"]
+    assert sorted(p.name for p in (directorio / "custody").iterdir()) == [
         "kek.bin",
         "sign-ed25519.key",
+    ]
+    assert sorted(p.name for p in (directorio / "jwt").iterdir()) == [
+        "jwt_ed25519.pem",
+        "jwt_ed25519.pub",
     ]
     assert "creada" in resultado.output
 
@@ -47,9 +58,11 @@ def test_crea_los_cuatro_archivos(tmp_path: Path) -> None:
 def test_modo_600_y_directorio_700(tmp_path: Path) -> None:
     directorio = tmp_path / "keys"
     assert runner.invoke(app, ["init-keys", "--dir", str(directorio)]).exit_code == 0
-    assert _modo(directorio) == 0o700
-    for ruta in directorio.iterdir():
-        assert _modo(ruta) == 0o600, ruta
+    # S6-W0-2: las subcarpetas custody/ y jwt/ en 700 y cada archivo en 600.
+    for subcarpeta in (directorio / "custody", directorio / "jwt"):
+        assert _modo(subcarpeta) == 0o700, subcarpeta
+        for ruta in subcarpeta.iterdir():
+            assert _modo(ruta) == 0o600, ruta
 
 
 def test_segunda_ejecucion_es_idempotente_y_no_toca_nada(tmp_path: Path) -> None:

@@ -115,7 +115,7 @@ async def test_key_info_y_rotate(proveedor: LocalFileProvider) -> None:
 
 
 def test_el_proveedor_no_expone_la_kek(proveedor: LocalFileProvider, tmp_path: Path) -> None:
-    kek = (tmp_path / "keys" / "kek.bin").read_bytes()
+    kek = key_paths_in(tmp_path / "keys").kek.read_bytes()  # S6-W0-2: custody/kek.bin
     assert len(kek) == KEK_LEN
     publicos = [n for n in dir(proveedor) if not n.startswith("_")]
     assert not any("kek" in n.lower() for n in publicos)

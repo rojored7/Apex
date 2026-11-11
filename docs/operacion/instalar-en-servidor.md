@@ -46,6 +46,10 @@ systemctl is-enabled docker
 `systemctl is-enabled docker` debe decir `enabled`: así el servidor levanta Docker (y los
 contenedores con `restart: unless-stopped`) solo después de un reinicio.
 
+Desde la v0.3 se necesita Docker Engine 26 (API 1.45) o superior y Compose 2.26 o superior (S6-D78):
+el worker monta solo la subcarpeta `custody/` del volumen `keys`. `docker version --format
+'{{.Server.APIVersion}}'` debe dar 1.45 o más y `docker compose version --short`, 2.26 o más.
+
 También hacen falta `git`, `curl` y `openssl` (`sudo apt-get install -y git curl openssl`).
 
 ## 3. Obtener la versión
@@ -151,7 +155,7 @@ $DC --profile tools run --rm tools init-keys
 ```
 
 `GIT_SHA` es la versión que publicará `/health`; usa la etiqueta, nunca una rama. `init-keys` crea
-en el volumen `keys` la KEK, la llave de firma del bus y el par JWT, con modo 600, y no sobrescribe
+en el volumen `keys` la KEK y la llave de firma del bus (`custody/`) y el par JWT (`jwt/`), con modo 600 (subcarpetas 700), y no sobrescribe
 nada. Después:
 
 ```

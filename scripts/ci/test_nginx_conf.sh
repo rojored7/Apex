@@ -16,6 +16,8 @@
 # = /api/v1/settings/privacy (policy_text de 20.000 caracteres) y 5m en el server para los
 # adjuntos de v0.3; funcional: 60 KB pasan por /api/ y 70 KB dan 413; 100 KB pasan por la
 # política de privacidad y 140 KB dan 413.
+# S6-W0-2 (S6-D59, D73, D84, E13, E14): location de subida de adjuntos con 6m, @too_large (413 JSON),
+# server en 64k y CSP con blob: (bloque «Rojo S6-W0-2» al final).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -47,7 +49,7 @@ directiva() { # patrón descripción (busca en default.conf y en los snippets)
 bloque() { # imprime el cuerpo de "location <arg> {" en default.conf
   awk -v cab="location $1 {" 'index($0, cab) { d=1; next } d && /^\s*}/ { d=0 } d' "$CONF"
 }
-directiva '^\s*client_max_body_size\s+5m;' "client_max_body_size 5m"
+# S6-W0-2: el tope de 5m del server pasó a 64k y 6m vive solo en el location de la subida (abajo).
 directiva '^\s*server_tokens\s+off;' "server_tokens off"
 directiva '^\s*proxy_set_header\s+X-Forwarded-For\s+\$remote_addr;' "X-Forwarded-For sobrescrito con \$remote_addr"
 directiva '^\s*proxy_set_header\s+X-Request-ID\s+\$request_id;' "X-Request-ID propagado"
@@ -93,7 +95,7 @@ politica "/brand/" "strict-origin-when-cross-origin"
 politica "@rate_limited" "strict-origin-when-cross-origin"
 if grep -Eq '^\s*add_header\s+Referrer-Policy\s+"strict-origin-when-cross-origin"\s+always;' "$SNIP/proxy-api.conf"; then ok "proxy-api.conf: Referrer-Policy strict-origin-when-cross-origin"; else falla "proxy-api.conf sin Referrer-Policy strict-origin-when-cross-origin"; fi
 
-directiva "add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'nonce-\\\$request_id'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'\" always;" "CSP del HTML exacta con nonce-\$request_id y form-action 'self' (L-1)"
+# S6-W0-2: la CSP del documento (con img-src ... blob:) se comprueba en el bloque de adjuntos, abajo.
 directiva "add_header Content-Security-Policy \"default-src 'none'; frame-ancestors 'none'; form-action 'none'\" always;" "CSP mínima en /api/ con form-action 'none'"
 if grep -Eqh "unsafe-inline|unsafe-eval" "$CONF" "$SNIP"/*.conf; then falla "la CSP no debe contener unsafe-inline ni unsafe-eval"; else ok "sin unsafe-inline ni unsafe-eval"; fi
 directiva "^\s*sub_filter\s+'__CSP_NONCE__'\s+'\\\$request_id';" "sub_filter del marcador __CSP_NONCE__"
@@ -240,6 +242,96 @@ rm -rf "$FALSO"
 n_cc="$(grep -ci '^UPS Cache-Control:' <<< "$salida_falso" || true)"
 n_pr="$(grep -ci '^UPS Pragma:' <<< "$salida_falso" || true)"
 if grep -q '^UPS HTTP/1.1 200' <<< "$salida_falso" && [ "$n_cc" = "1" ] && [ "$n_pr" = "1" ]; then ok "funcional: /api/ con upstream que manda no-store responde una sola Cache-Control y un solo Pragma"; else falla "funcional: /api/ con upstream que manda no-store dio $n_cc Cache-Control y $n_pr Pragma (se esperaba 1 y 1)"; fi
+
+# --- Rojo S6-W0-2 (S6-D59, S6-D73, S6-D84, E13, E14, S3-D101): subida de adjuntos de hasta 6m ---------
+# Solo el location de la subida admite 6m; el resto de /api/ sigue en 64k y el server baja de 5m a
+# 64k. `@too_large` responde 413 con el envelope del api, sin eco del cuerpo ni de la query. La CSP
+# del documento suma `blob:` a img-src (la vista previa de la foto antes de subirla) y nada más.
+UUID_RE='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+UPLOAD_LOC="~ \"^/api/v1/members/${UUID_RE}/attachments$\""
+upload_loc="$(bloque "$UPLOAD_LOC")"
+if [ -n "$upload_loc" ]; then ok "existe el location regex de la subida de adjuntos (anclado, con UUID en minúsculas)"; else falla "falta location ~ ^/api/v1/members/<uuid>/attachments\$ (anclado)"; fi
+linea_subida="$(grep -nF "location $UPLOAD_LOC {" "$CONF" | head -1 | cut -d: -f1 || true)"
+linea_api="$(grep -nE '^\s*location /api/ \{' "$CONF" | head -1 | cut -d: -f1 || true)"
+if [ -n "$linea_subida" ] && [ -n "$linea_api" ] && [ "$linea_subida" -lt "$linea_api" ]; then ok "el location de la subida va antes de location /api/"; else falla "el location de la subida debe ir antes de location /api/ (líneas '${linea_subida:-<ausente>}' y '${linea_api:-<ausente>}')"; fi
+cuerpo_max "$UPLOAD_LOC" 6m
+if grep -Eq '^\s*error_page\s+413\s+=\s+@too_large;' <<< "$upload_loc"; then ok "subida: error_page 413 = @too_large"; else falla "subida sin error_page 413 = @too_large"; fi
+if grep -Eq '^\s*limit_req\s+zone=[A-Za-z_]+' <<< "$upload_loc"; then ok "subida: limit_req con una zona"; else falla "subida sin limit_req (como el resto de las rutas con tope por IP)"; fi
+zona_subida="$(sed -n 's/^\s*limit_req\s\+zone=\([A-Za-z_]*\).*/\1/p' <<< "$upload_loc" | head -1)"
+if [ -n "$zona_subida" ] && cat "$CONF" "$SNIP"/*.conf | grep -Eq "^\s*limit_req_zone\s+.*zone=${zona_subida}:"; then ok "subida: la zona $zona_subida está declarada en snippets/"; else falla "subida: la zona de limit_req '${zona_subida:-<ausente>}' no está declarada con limit_req_zone"; fi
+if grep -q 'include snippets/proxy-api.conf;' <<< "$upload_loc"; then ok "subida: include snippets/proxy-api.conf"; else falla "subida sin include snippets/proxy-api.conf"; fi
+# Revisión de seguridad de S6-W0-2: concurrencia por IP y tiempo máximo del cuerpo en la subida anónima.
+if grep -Eq '^\s*limit_conn\s+apex_upload_conn\s+[1-4];' <<< "$upload_loc"; then ok "subida: limit_conn apex_upload_conn (1 a 4 por IP)"; else falla "subida sin limit_conn apex_upload_conn N (N de 1 a 4)"; fi
+if grep -Eq '^\s*limit_conn_status\s+429;' <<< "$upload_loc"; then ok "subida: limit_conn_status 429"; else falla "subida sin limit_conn_status 429"; fi
+if cat "$SNIP"/*.conf | grep -Eq '^\s*limit_conn_zone\s+\$binary_remote_addr\s+zone=apex_upload_conn:'; then ok "subida: zona apex_upload_conn declarada en snippets/"; else falla "falta limit_conn_zone apex_upload_conn en snippets/"; fi
+if grep -Eq '^\s*client_body_timeout\s+(1[0-9]|[1-9]|2[0-9]|30)s;' <<< "$upload_loc"; then ok "subida: client_body_timeout de 1 a 30 s"; else falla "subida sin client_body_timeout (1 a 30 s)"; fi
+api_loc="$(bloque "/api/")"
+if grep -Eq '^\s*error_page\s+413\s+=\s+@too_large;' <<< "$api_loc"; then ok "/api/: error_page 413 = @too_large (el 413 de 64k también sale en el envelope)"; else falla "/api/ sin error_page 413 = @too_large"; fi
+# Las cabeceras de seguridad llegan por proxy-api.conf (que las incluye); incluirlas también aquí las duplicaría.
+if grep -q 'include snippets/proxy-api.conf;' <<< "$upload_loc" && ! grep -q 'include snippets/security-headers.conf;' <<< "$upload_loc"; then ok "subida: cabeceras por proxy-api.conf sin duplicar"; else falla "subida: debe incluir proxy-api.conf y no security-headers.conf directo"; fi
+n_6m="$(grep -Ec '^\s*client_max_body_size\s+6m;' "$CONF" || true)"
+if [ "$n_6m" = "1" ]; then ok "6m solo en un location (la subida)"; else falla "client_max_body_size 6m aparece $n_6m veces (solo la subida)"; fi
+if grep -Eq '^\s*client_max_body_size\s+5m;' "$CONF"; then falla "client_max_body_size 5m ya no debe existir (el server baja a 64k, la subida lleva 6m)"; else ok "sin client_max_body_size 5m"; fi
+tope_server="$(awk '/^server \{/ { s=1; next } s && /^    location/ { exit } s && /client_max_body_size/ { gsub(/[ ;]+/, " "); print $2 }' "$CONF")"
+if [ "$tope_server" = "64k" ]; then ok "el server baja client_max_body_size a 64k"; else falla "client_max_body_size del server es '${tope_server:-<ausente>}' (se esperaba 64k)"; fi
+
+too_large="$(bloque @too_large)"
+if [ -n "$too_large" ]; then ok "existe location @too_large"; else falla "falta location @too_large"; fi
+if grep -Fq "return 413 '{\"error\":{\"code\":\"file_too_large\"," <<< "$too_large" && grep -Fq '"field":"file"' <<< "$too_large"; then ok "@too_large devuelve el envelope file_too_large con field file"; else falla "@too_large sin el envelope {\"error\":{\"code\":\"file_too_large\",...,\"field\":\"file\"}}"; fi
+if grep -Eq '^\s*default_type\s+application/json;' <<< "$too_large"; then ok "@too_large con application/json"; else falla "@too_large sin default_type application/json"; fi
+if grep -q 'include snippets/security-headers.conf;' <<< "$too_large" && grep -Eq '^\s*add_header\s+Cache-Control\s+"no-store"\s+always;' <<< "$too_large"; then ok "@too_large con cabeceras de seguridad y no-store"; else falla "@too_large sin security-headers.conf o sin Cache-Control no-store"; fi
+if grep -Eq '\$request_body|\$args|\$arg_|\$request_uri|\$query_string|\$http_' <<< "$too_large"; then falla "@too_large no debe hacer eco del cuerpo, de la query ni de cabeceras del cliente"; else ok "@too_large sin eco del cuerpo ni de la query"; fi
+politica "@too_large" "strict-origin-when-cross-origin"
+indice="$(bloque "= /index.html")"
+if grep -Fq "img-src 'self' data: blob:;" <<< "$indice"; then ok "CSP del documento: img-src 'self' data: blob:"; else falla "CSP de = /index.html sin img-src 'self' data: blob:"; fi
+if grep -Fq "img-src 'self' data:;" <<< "$indice"; then falla "CSP de = /index.html conserva el img-src viejo sin blob:"; fi
+n_blob="$(cat "$CONF" "$SNIP"/*.conf | grep -v '^[[:space:]]*#' | grep -c 'blob:' || true)"
+if [ "$n_blob" = "1" ]; then ok "blob: aparece una sola vez (solo img-src del documento)"; else falla "blob: aparece $n_blob veces (solo img-src de = /index.html)"; fi
+if grep -Fq "script-src 'self' 'nonce-\$request_id'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" <<< "$indice"; then ok "CSP del documento: el resto de las directivas no cambia"; else falla "CSP del documento cambió algo más que img-src"; fi
+
+# Funcional con Nginx real y un upstream falso que contesta 200 a todo: 200 = la petición PASÓ Nginx
+# (el api decide); 413 = la cortó Nginx. Los cuerpos son ceros generados dentro del contenedor.
+FALSO_ADJ="$(mktemp -d)"
+cat > "$FALSO_ADJ/upstream-falso.conf" <<'CONF'
+server {
+    listen 127.0.0.1:8000;
+    client_max_body_size 64m;
+    location / {
+        default_type application/json;
+        return 200 '{}';
+    }
+}
+CONF
+cat > "$FALSO_ADJ/adjuntos.sh" <<'ADJ'
+U=11111111-2222-3333-4444-555555555555
+post() { # <etiqueta> <bytes> <ruta>
+  head -c "$2" /dev/zero | curl -s -o /dev/null -w "$1 %{http_code}\n" -X POST -H 'Content-Type: image/jpeg' --data-binary @- "http://127.0.0.1$3"
+}
+post ADJ5242880 5242880 "/api/v1/members/$U/attachments?kind=photo"
+post ADJ5242881 5242881 "/api/v1/members/$U/attachments?kind=photo"
+post ADJ6300000 6300000 "/api/v1/members/$U/attachments?kind=photo"
+post MEM100K 100000 "/api/v1/members"
+post MEM70K 70000 "/api/v1/members/$U"
+post SUFIJO100K 100000 "/api/v1/members/$U/attachments/extra"
+post SIN_UUID100K 100000 "/api/v1/members/no-es-un-uuid/attachments"
+post MAYUS100K 100000 "/api/v1/members/AAAAAAAA-2222-3333-4444-555555555555/attachments"
+post FOTO100K 100000 "/api/v1/members/$U/attachments?kind=photo"
+post PRIV140K 140000 "/api/v1/settings/privacy"
+head -c 6300000 /dev/zero | curl -s -D - -o /tmp/b413 -X POST --data-binary @- "http://127.0.0.1/api/v1/members/$U/attachments?kind=photo&secreto=BUSQ" | sed 's/^/H413 /'
+sed 's/^/B413 /' /tmp/b413; echo
+ADJ
+CON_ADJ="$PREPARA && cp /tmp/n/upstream-falso.conf /etc/nginx/conf.d/upstream-falso.conf && nginx && sleep 0.3 && sh /tmp/n/adjuntos.sh; nginx -s quit; sleep 0.3"
+salida_adj="$(tar -c -C "$DIR" default.conf snippets -C "$FALSO_ADJ" upstream-falso.conf adjuntos.sh | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$CON_ADJ" 2>&1 | tr -d '\r' || true)"
+rm -rf "$FALSO_ADJ"
+codigo_adj() { grep "^$1 " <<< "$salida_adj" | awk '{print $2}' || true; }
+for par in "ADJ5242880 200" "ADJ5242881 200" "ADJ6300000 413" "FOTO100K 200" "MEM100K 413" "MEM70K 413" "SUFIJO100K 413" "SIN_UUID100K 413" "MAYUS100K 413" "PRIV140K 413"; do
+  read -r nombre esperado <<< "$par"
+  if [ "$(codigo_adj "$nombre")" = "$esperado" ]; then ok "funcional: $nombre responde $esperado"; else falla "funcional: $nombre respondió '$(codigo_adj "$nombre")' (se esperaba $esperado)"; fi
+done
+if grep -Fq 'B413 {"error":{"code":"file_too_large",' <<< "$salida_adj" && grep -Fq '"field":"file"' <<< "$salida_adj"; then ok "funcional: el 413 de 6.300.000 bytes lleva el envelope file_too_large"; else falla "funcional: el 413 de la subida no lleva el envelope file_too_large"; fi
+if grep -qi '^H413 Content-Type: application/json' <<< "$salida_adj"; then ok "funcional: el 413 de la subida es application/json"; else falla "funcional: el 413 de la subida no es application/json"; fi
+if grep -qi '^H413 Cache-Control: no-store' <<< "$salida_adj"; then ok "funcional: el 413 de la subida lleva Cache-Control no-store"; else falla "funcional: el 413 de la subida sin Cache-Control no-store"; fi
+if grep -q 'BUSQ' <<< "$salida_adj"; then falla "funcional: el 413 hace eco de la query"; else ok "funcional: el 413 no hace eco de la query"; fi
 
 echo "test_nginx_conf: $fallas fallas"
 [ "$fallas" -eq 0 ]

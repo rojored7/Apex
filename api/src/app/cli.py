@@ -54,6 +54,7 @@ from app.cli_ops.keys import (
     key_paths_from_settings,
     key_paths_in,
 )
+from app.cli_ops.keys_layout import migrate_layout
 from app.cli_ops.openapi import (
     build_openapi_document,
     export_settings,
@@ -132,6 +133,7 @@ def init_keys(
     directory: Annotated[Path | None, typer.Option("--dir")] = None,
     actor: Annotated[str | None, typer.Option("--as")] = None,
     data_class: Annotated[str | None, typer.Option("--data-class")] = None,
+    migrate_layout_flag: Annotated[bool, typer.Option("--migrate-layout")] = False,
 ) -> None:
     """Crea la KEK, la llave de firma del bus y el par JWT Ed25519 (modo 600), sin sobrescribir.
 
@@ -139,6 +141,9 @@ def init_keys(
     arrancar (`ensure_keys`, US-025). `--as` solo se anota en el log porque no escribe en
     la base. `--data-class` queda reservado para US-140.
     """
+    if migrate_layout_flag:
+        _migrate_layout_command(directory)
+        return
     if data_class is not None:
         typer.echo("init-keys --data-class no implementado todavía (US-140)", err=True)
         raise typer.Exit(code=2)
@@ -151,6 +156,41 @@ def init_keys(
     quien = f" (por {actor})" if actor else ""
     for nombre, resultado in estado.items():
         typer.echo(f"init-keys: {nombre}: {resultado}{quien}")
+
+
+def _migrate_layout_command(directory: Path | None) -> None:
+    """Cuerpo de `init-keys --migrate-layout` (S6-D58): delega en `cli_ops/keys_layout.py`.
+
+    Sin `--dir`, la raíz del volumen sale de `JWT_PRIVATE_KEY_PATH` (con OpenBao no hay KEK local):
+    `<raíz>/jwt/jwt_ed25519.pem` con el layout nuevo o `<raíz>/jwt_ed25519.pem` si el `.env`
+    sigue en el plano (S6-D91); en ese caso avisa que hay que actualizar las cuatro rutas.
+    """
+    env_plano = False
+    if directory is None:  # con --dir no se leen los Settings (el volumen puede ser cualquiera)
+        jwt_path = get_settings().JWT_PRIVATE_KEY_PATH
+        env_plano = jwt_path.parent.name != "jwt"
+        directory = jwt_path.parent if env_plano else jwt_path.parent.parent
+    informe = migrate_layout(directory)
+    if env_plano:
+        typer.echo(
+            "init-keys --migrate-layout: AVISO: las rutas de llaves de .env siguen en el layout "
+            "plano; actualiza JWT_PRIVATE_KEY_PATH, JWT_PUBLIC_KEY_PATH, CRYPTO_LOCAL_KEK_PATH y "
+            "CRYPTO_LOCAL_SIGNING_KEY_PATH como en .env.example antes de levantar el api",
+            err=True,
+        )
+    if informe.conflicts:
+        typer.echo(
+            "init-keys --migrate-layout: conflicto, el archivo está en los dos layouts: "
+            + ", ".join(informe.conflicts)
+            + ". No se movió nada.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if informe.nothing_to_migrate:
+        typer.echo("init-keys --migrate-layout: nada que migrar")
+        return
+    for nombre in informe.moved:
+        typer.echo(f"init-keys --migrate-layout: movido {nombre}")
 
 
 @app.command("seed")

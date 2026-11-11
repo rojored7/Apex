@@ -130,7 +130,7 @@ from tests.crypto.conftest import age_falso  # noqa: E402,F401
 @pytest.fixture
 def kek_de_prueba(tmp_path: Path) -> KeyPaths:
     rutas = key_paths_in(tmp_path / "keys-cli")
-    rutas.kek.parent.mkdir()
+    rutas.kek.parent.mkdir(parents=True)  # S6-W0-2: custody/ cuelga de la raíz
     init_keys_files(rutas)
     return rutas
 

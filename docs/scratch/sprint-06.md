@@ -90,3 +90,9 @@ Rama `feat/sprint-06-auditoria-firmada-llaves-adjuntos-tls`, HEAD de partida `01
 - Seguridad 0 CRITICAL, 0 HIGH, 1 MEDIUM, 3 LOW, todo corregido por el orquestador (S6-D86, D87 y bloque de revisiones en DECISIONES): endpoint S3 sin credenciales/consulta/fragmento (+4 casos en `test_config.py`), aserción de `APEX_DOMAIN` renombrada, advertencia en `adjuntos.md`, comentario S5-D107 reubicado.
 - Sello: `slice-gate.sh core/config tests/core/test_config.py tests/core/test_env_example.py tests/core/test_config_secrets.py`.
 
+## W0-5 · Docker y evidencia
+
+- `apex-api:local` reconstruida con buildx (`src/` va dentro de la imagen); `$DC up -d --no-build --force-recreate api worker` con el `.env` ampliado (`extra="forbid"` satisfecho) y `restart web`: 6/6 `healthy`.
+- `GET /api/v1/health` 200: `{"status":"ok","db":"ok","version":"dev","backup":"attention","migrations":"ok","crypto":"ok"}` (`backup: attention` es el estado conocido del stack de desarrollo sin respaldo reciente).
+- Checkpoint `114232b` (24 archivos, +946/-24).
+

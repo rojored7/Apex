@@ -10,6 +10,7 @@ Lo único que importan los demás módulos (regla de módulos 2).
   borra si el `flush` falla (compensación, sin nombre de archivo en el log).
 - Las operaciones sensibles (subir y abrir) toman uno de `SENSITIVE_SLOTS` cupos globales sin
   esperar: la quinta concurrente da 503 `busy` con `Retry-After: 1` (M-3, D59). La foto no los usa.
+- `authorize(...)`: fila (404) y rol (403) antes de cobrar cubeta y de descifrar (S6-C4).
 - `open(...)`: DESCIFRA -> `audit.record("download")` -> COMMIT -> cuerpo (M-3): con el custodio
   sellado no queda una fila `download` falsa. La foto (`audit=False`) se sirve por `stream`.
 - `configure_storage(storage)`: lo llaman `main.py` y `cli_base.py`; `None` lo vuelve a derivar.
@@ -32,6 +33,7 @@ from app.core.context import actor_scope
 from app.core.crypto.reencryptor import reencryptor_registered
 from app.core.crypto.reencryptor import register_reencryptor as _register_port
 from app.core.db import DatabaseBusy
+from app.core.errors import ForbiddenError
 from app.core.pagination import Page, PageParams, to_page
 from app.modules.attachments import files, queries, rules
 from app.modules.attachments.exceptions import (
@@ -196,6 +198,17 @@ def _provider_name(storage: StorageProvider) -> str:
     return "s3" if type(storage).__name__ == "S3CompatibleStorage" else "local"
 
 
+async def authorize(session: AsyncSession, attachment_id: UUID, *, role: str) -> AttachmentOut:
+    """Fila (404) y luego rol (403), ANTES de cobrar cubeta y de descifrar (S6-C4, M-6). Devuelve
+    los metadatos para que el router elija la cubeta (sensible o foto)."""
+    fila = await queries.get_row(session, attachment_id)
+    if fila is None:
+        raise AttachmentNotFound
+    if not rules.can_download(role, fila.sensitive):
+        raise ForbiddenError
+    return AttachmentOut.model_validate(fila)
+
+
 async def open(
     session: AsyncSession, attachment_id: UUID, *, by: UUID, audit: bool = True
 ) -> AttachmentBody:
@@ -205,21 +218,39 @@ async def open(
     meta = AttachmentOut.model_validate(fila)
     storage = current_storage()
     if not fila.sensitive:
+        if not await storage.exists(fila.filename_random):
+            # Decidido antes de enviar cabeceras; el huérfano lo lista `attachments-check`.
+            logger.warning("adjunto %s sin objeto en el almacenamiento", attachment_id)
+            raise AttachmentNotFound
         if audit:
             with actor_scope(by):
                 await _record_download(session, fila, by)
-        return AttachmentBody(meta=meta, stream=storage.stream(fila.filename_random))
+        return AttachmentBody(meta=meta, stream=_guarded(storage.stream(fila.filename_random)))
     async with _sensitive_slot():
         try:
             blob = await storage.get(fila.filename_random)
         except FileNotFoundError:
-            logger.error("adjunto %s sin objeto en el almacenamiento", attachment_id)
+            logger.warning("adjunto %s sin objeto en el almacenamiento", attachment_id)
             raise AttachmentNotFound from None
         with actor_scope(by):  # el `decrypt` de `crypto_ops` y la fila `download` llevan al actor
             datos = files._decrypt_file(blob, fila.id)
             del blob
             await _record_download(session, fila, by)
     return AttachmentBody(meta=meta, data=datos)
+
+
+async def _guarded(stream: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    """Cuerpo de la foto: un fallo del almacén tras enviar las cabeceras corta la respuesta con UNA
+    línea WARNING (sin nombre de archivo) en vez de lanzar hacia el servidor (S6-C4)."""
+    try:
+        async for trozo in stream:
+            yield trozo
+    except Exception as error:
+        logger.warning("descarga de foto cortada a mitad (%s)", type(error).__name__)
+    finally:
+        cerrar = getattr(stream, "aclose", None)
+        if cerrar is not None:
+            await cerrar()
 
 
 async def _record_download(session: AsyncSession, fila: Attachment, by: UUID) -> None:

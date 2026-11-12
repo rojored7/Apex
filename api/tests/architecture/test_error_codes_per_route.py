@@ -130,6 +130,9 @@ CON_LIMITE = {
     # S6-C2 (US-148, S6-D57): subir consume `attachments-upload`; listar, `staff-read`.
     ("post", "/api/v1/members/{member_id}/attachments"),
     ("get", "/api/v1/members/{member_id}/attachments"),
+    # S6-C4 (US-150, S6-D57): descargar un adjunto consume `attachments-download` (y `-hour`) o
+    # `attachments-photo` según la fila.
+    ("get", "/api/v1/attachments/{attachment_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},
@@ -335,3 +338,20 @@ def test_s6_c2_las_rutas_de_adjuntos_del_socio_declaran_sus_codigos_exactos(
     assert parametros["kind"]["in"] == "query" and parametros["kind"]["required"] is True
     assert set(parametros["kind"]["schema"]["enum"]) == {"photo", "consent", "other"}
     assert "requestBody" not in esquema["paths"][ruta]["post"]  # cuerpo crudo, sin multipart
+
+
+def test_s6_c4_la_descarga_de_adjuntos_declara_sus_codigos_exactos(esquema: dict[str, Any]) -> None:
+    """S6-C4 (US-150, S6-D45, S6-D73): `GET /attachments/{attachment_id}` publica 200 (el archivo,
+    no JSON), 401, 403 (socio, o coach con consent/other), 404 (`attachment_not_found`), 422
+    (id mal formado) y 429 (tres cubetas), sin 400, 408, 409 ni 413; el 503 nombra `busy` y
+    `crypto_unavailable`. Rojo C4."""
+    operacion = esquema["paths"]["/api/v1/attachments/{attachment_id}"]["get"]
+    assert set(operacion["responses"]) == {"200", "401", "403", "404", "422", "429", "500", "503"}
+    ok = operacion["responses"]["200"]["content"]
+    assert "application/json" not in ok  # es una descarga, nunca el envelope JSON
+    descripcion = operacion["responses"]["503"]["description"]
+    assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion
+    parametros = {p["name"]: p for p in operacion["parameters"]}
+    assert parametros["attachment_id"]["in"] == "path"
+    assert parametros["attachment_id"]["schema"]["format"] == "uuid"
+    assert "requestBody" not in operacion

@@ -27,10 +27,10 @@ async def no_store(response: Response) -> None:
     response.headers["Cache-Control"] = NO_STORE
 
 
-class _CsvResponse(StreamingResponse):
-    """`StreamingResponse` que cierra el cuerpo al terminar el envío, también si el cliente
-    se desconecta o el cuerpo nunca empezó (S5-D252): el `finally` del generador escribe la fila
-    de cierre y suelta el flujo del usuario sin depender del recolector."""
+class _ClosingStreamingResponse(StreamingResponse):
+    """`StreamingResponse` (CSV y descargas) que cierra el cuerpo al terminar el envío, también si
+    el cliente se desconecta o el cuerpo nunca empezó (S5-D252): el `finally` del generador escribe
+    la fila de cierre y suelta el flujo del usuario sin depender del recolector."""
 
     def __init__(self, body: AsyncIterator[bytes], **kwargs: Any) -> None:
         super().__init__(body, **kwargs)
@@ -47,7 +47,7 @@ class _CsvResponse(StreamingResponse):
 
 def csv_download(body: AsyncIterator[bytes], filename: str) -> StreamingResponse:
     """Descarga CSV en streaming (S5-B12, S5-D41): UTF-8, adjunto, `no-store` y `nosniff`."""
-    return _CsvResponse(
+    return _ClosingStreamingResponse(
         body,
         media_type="text/csv; charset=utf-8",
         headers={
@@ -74,16 +74,25 @@ def _safe_filename(nombre: str) -> str:
     return limpio.strip() or "descarga.json"
 
 
+def _download_headers(filename: str) -> dict[str, str]:
+    """Cabeceras comunes de `file_download` y `file_stream` (una sola lista)."""
+    return {
+        "Content-Disposition": f"attachment; filename={_safe_filename(filename)}",
+        "Cache-Control": NO_STORE,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": CSP_DESCARGA,
+    }
+
+
 def file_download(body: bytes, *, filename: str, media_type: str) -> Response:
     """Descarga de un archivo ya armado en memoria (S6-B3): `attachment`, `no-store`, `nosniff`
     y una CSP que no deja ejecutar nada."""
-    return Response(
-        content=body,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f"attachment; filename={_safe_filename(filename)}",
-            "Cache-Control": NO_STORE,
-            "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": CSP_DESCARGA,
-        },
+    return Response(content=body, media_type=media_type, headers=_download_headers(filename))
+
+
+def file_stream(body: AsyncIterator[bytes], *, filename: str, media_type: str) -> StreamingResponse:
+    """Descarga en streaming de un archivo grande (S6-C4): mismas cabeceras que `file_download`,
+    sin `Content-Length` (lo da el transporte) y con el cuerpo cerrado al terminar el envío."""
+    return _ClosingStreamingResponse(
+        body, media_type=media_type, headers=_download_headers(filename)
     )

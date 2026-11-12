@@ -37,12 +37,11 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # Rojo S6-W0-5 (S6-D57, patrón S5-D98): las siete cubetas de adjuntos, llaves y CBOM nacen en el
 # catálogo sin ruta; cada slice las saca de aquí al darles ruta (B3 `keys-rotate*`, C2
 # `attachments-upload`/`attachments-photo`, C4 `attachments-download*`, R1 `cbom-export`).
+# Rojo S6-C4: `GET /attachments/{attachment_id}` saca `attachments-download`, `-download-hour` y
+# `attachments-photo`; quedan solo las dos de `keys-rotate*`.
 # S6-B3 sacó `cbom-export` con `GET /crypto/cbom` (Rojo B3); quedan seis sin ruta.
 CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
     {
-        "attachments-photo",
-        "attachments-download",
-        "attachments-download-hour",
         "keys-rotate",
         "keys-rotate-hour",
     }
@@ -438,8 +437,16 @@ def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None
         "cbom-export": (2, 60),
     }
     assert {clave: USER_LIMITS.get(clave) for clave in esperadas} == esperadas
-    # `cbom-export` (B3) y `attachments-upload` (C2) ya tienen ruta: las otras cinco no.
-    assert set(esperadas) - {"cbom-export", "attachments-upload"} == CLAVES_SIN_RUTA_TODAVIA
+    # S6-C4: la descarga (`GET /attachments/{id}`) dio ruta a las tres de adjuntos que faltaban.
+    CON_RUTA_S6 = {
+        "cbom-export",
+        "attachments-upload",
+        "attachments-photo",
+        "attachments-download",
+        "attachments-download-hour",
+    }
+    # Con ruta: `cbom-export` (B3), `attachments-upload` (C2) y las tres de la descarga (C4).
+    assert set(esperadas) - CON_RUTA_S6 == CLAVES_SIN_RUTA_TODAVIA
     assert "cbom-export" not in CLAVES_SIN_RUTA_TODAVIA
     assert len(USER_LIMITS) == 23
 
@@ -468,3 +475,28 @@ def test_el_cbom_consume_solo_la_cubeta_cbom_export() -> None:
                 ]
     assert llamadas == ["cbom-export"]
     assert USER_LIMITS["cbom-export"] == (2, 60)
+
+
+def test_la_descarga_de_adjuntos_consume_las_tres_cubetas_y_solo_esas() -> None:
+    """S6-C4 (S6-D57, M-5): `GET /attachments/{attachment_id}`, en `attachments/router.py`, llama
+    `enforce_user_limit` con constantes: `attachments-download` y `attachments-download-hour`
+    (sensibles) y `attachments-photo` (foto); ninguna otra y ninguna `staff-read` (Rojo C4)."""
+    fuente = (MODULES / "attachments" / "router.py").read_text(encoding="utf-8")
+    ruta = ("get", f"{API_PREFIX}/attachments/{{attachment_id}}")
+    llamadas = [
+        nodo.args[1].value
+        for funcion in ast.walk(ast.parse(fuente))
+        if isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef) and _ruta_de(funcion) == ruta
+        for nodo in ast.walk(funcion)
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) == "enforce_user_limit"
+        and isinstance(nodo.args[1], ast.Constant)
+    ]
+    assert sorted(llamadas) == [
+        "attachments-download",
+        "attachments-download-hour",
+        "attachments-photo",
+    ]
+    assert USER_LIMITS["attachments-download"] == (30, 60)
+    assert USER_LIMITS["attachments-download-hour"] == (200, 3600)
+    assert USER_LIMITS["attachments-photo"] == (600, 60)

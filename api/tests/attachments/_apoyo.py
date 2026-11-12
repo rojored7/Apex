@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -125,3 +128,87 @@ async def insertar(
         },
     )
     return identificador
+
+
+# ASGI en bruto (S6-C4) ---------------------------------------------------------------------------
+
+
+@dataclass
+class Capturada:
+    """Lo que el api mandó por `send`, mensaje a mensaje."""
+
+    mensajes: list[dict[str, Any]]
+
+    @property
+    def status(self) -> int:
+        return int(self.mensajes[0]["status"])
+
+    @property
+    def cabeceras(self) -> dict[str, str]:
+        return {k.decode().lower(): v.decode() for k, v in self.mensajes[0]["headers"]}
+
+    @property
+    def cuerpo(self) -> bytes:
+        return b"".join(m.get("body", b"") for m in self.mensajes[1:])
+
+
+async def pedir_asgi(
+    app: Any,
+    ruta: str,
+    cabeceras: dict[str, str],
+    *,
+    en_primer_mensaje: Callable[[], Awaitable[None]] | None = None,
+    cortar_tras_cabeceras: bool = False,
+    tiempo_max_s: float = 20.0,
+) -> Capturada:
+    """`GET ruta` directo a la app, sin `httpx` (que espera el cuerpo entero antes de devolver).
+
+    `en_primer_mensaje` corre DENTRO del primer `send` (cuando el api empieza a responder: es el
+    momento de comprobar lo que debía estar confirmado antes del primer byte). Con
+    `cortar_tras_cabeceras` el cliente «se va» al recibir las cabeceras: `receive` entrega
+    `http.disconnect` y los trozos del cuerpo se descartan. Una excepción del api sale tal cual.
+    """
+    mensajes: list[dict[str, Any]] = []
+    entregada = False
+    cabeceras_vistas = asyncio.Event()
+    nunca = asyncio.Event()
+
+    async def receive() -> dict[str, Any]:
+        nonlocal entregada
+        if not entregada:
+            entregada = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        if cortar_tras_cabeceras:
+            await cabeceras_vistas.wait()
+        else:
+            await nunca.wait()  # lo cancela quien termine de responder
+        return {"type": "http.disconnect"}
+
+    async def send(mensaje: dict[str, Any]) -> None:
+        if mensaje["type"] == "http.response.body" and cabeceras_vistas.is_set():
+            if cortar_tras_cabeceras:
+                return
+        mensajes.append(mensaje)
+        if len(mensajes) == 1 and en_primer_mensaje is not None:
+            await en_primer_mensaje()
+        if mensaje["type"] == "http.response.start":
+            cabeceras_vistas.set()
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": ruta,
+        "raw_path": ruta.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"host", b"t")]
+        + [(k.lower().encode(), v.encode()) for k, v in cabeceras.items()],
+        "client": ("127.0.0.1", 40000),
+        "server": ("t", 80),
+        "state": {},
+    }
+    await asyncio.wait_for(app(scope, receive, send), tiempo_max_s)
+    return Capturada(mensajes)

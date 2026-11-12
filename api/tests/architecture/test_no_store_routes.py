@@ -114,3 +114,13 @@ def test_s6_b3_el_cbom_tiene_rol_y_no_store(settings_prueba: Settings) -> None:
     assert len(halladas) == 1
     assert route_has_role_dependency(halladas[0])
     assert any(n.call is no_store for n in _nodos(halladas[0].dependant))
+
+
+def test_la_descarga_de_adjuntos_tiene_rol_y_no_store(settings_prueba: Settings) -> None:
+    """S6-C4 (US-150, M-6): `GET /attachments/{attachment_id}` existe una vez, exige rol y lleva la
+    dependencia `no_store` (Rojo C4)."""
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    halladas = [r for r in rutas if r.path.endswith("/attachments/{attachment_id}")]
+    assert len(halladas) == 1
+    assert route_has_role_dependency(halladas[0])
+    assert any(n.call is no_store for n in _nodos(halladas[0].dependant))

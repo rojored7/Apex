@@ -7,10 +7,13 @@ separadores de ruta, comillas ni caracteres de control).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
 from fastapi import Response
+from fastapi.responses import StreamingResponse
 
-from app.core.http import file_download
+from app.core.http import file_download, file_stream
 
 CSP = "default-src 'none'; sandbox"
 JSON = "application/json; charset=utf-8"
@@ -99,3 +102,75 @@ def test_no_agrega_cookies_ni_cabeceras_de_cache_publico() -> None:
     assert "set-cookie" not in r.headers
     assert "etag" not in r.headers
     assert "public" not in r.headers["cache-control"]
+
+
+# `file_stream` (S6-C4, US-150): la foto sale por streaming con las mismas cabeceras --------------
+
+
+async def _trozos(*partes: bytes) -> AsyncIterator[bytes]:
+    for parte in partes:
+        yield parte
+
+
+def transmitir(nombre: str = "adjunto-0a1b2c3d.jpg", tipo: str = "image/jpeg") -> StreamingResponse:
+    return file_stream(_trozos(b"uno", b"dos"), filename=nombre, media_type=tipo)
+
+
+def test_file_stream_devuelve_una_streaming_response_200() -> None:
+    r = transmitir()
+
+    assert isinstance(r, StreamingResponse)
+    assert r.status_code == 200
+
+
+async def test_file_stream_entrega_los_trozos_tal_cual() -> None:
+    r = transmitir()
+
+    recibido = [t async for t in r.body_iterator]
+
+    assert b"".join(recibido) == b"unodos"
+
+
+def test_file_stream_lleva_las_mismas_cuatro_cabeceras_que_file_download() -> None:
+    en_stream = transmitir("adjunto-0a1b2c3d.jpg", "image/jpeg")
+    en_memoria = file_download(b"x", filename="adjunto-0a1b2c3d.jpg", media_type="image/jpeg")
+
+    for cabecera in (
+        "content-disposition",
+        "cache-control",
+        "x-content-type-options",
+        "content-security-policy",
+    ):
+        assert en_stream.headers[cabecera] == en_memoria.headers[cabecera], cabecera
+    assert en_stream.headers["content-security-policy"] == CSP
+    assert en_stream.headers["content-type"] == "image/jpeg"
+
+
+def test_file_stream_no_fija_content_length_ni_cookies() -> None:
+    r = transmitir()
+
+    assert "content-length" not in r.headers  # el tamaño real lo da el almacén al transmitir
+    assert "set-cookie" not in r.headers
+    assert "etag" not in r.headers
+
+
+@pytest.mark.parametrize(
+    ("entrada", "prohibidos"),
+    [
+        ("../../etc/passwd", ("/", "..")),
+        ('a"b.jpg', ('"',)),
+        ("a\r\nSet-Cookie: x=1.jpg", ("\r", "\n")),
+        ("a;b.jpg", (";",)),
+        ("名前.jpg", ("名", "前")),
+    ],
+)
+def test_file_stream_sanea_el_nombre_como_file_download(
+    entrada: str, prohibidos: tuple[str, ...]
+) -> None:
+    r = transmitir(nombre=entrada)
+
+    disposicion = r.headers["content-disposition"]
+    assert disposicion.startswith("attachment; filename=")
+    for caracter in prohibidos:
+        assert caracter not in disposicion.removeprefix("attachment; filename="), entrada
+    assert "set-cookie" not in r.headers

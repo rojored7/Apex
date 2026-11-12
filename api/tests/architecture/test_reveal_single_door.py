@@ -237,3 +237,24 @@ def test_notifications_no_descifra_a_mano_ni_importa_el_bus() -> None:
         de_reveal, de_decrypt = llamadas(fuente)
         assert de_reveal == [] and de_decrypt == [], archivo.name
         assert "app.core.crypto" not in fuente, archivo.name
+
+
+def test_el_router_de_attachments_no_abre_puertas_de_descifrado() -> None:
+    """S6-C4 (US-150): la ruta de descarga solo llama al service; `files._decrypt_file` sigue siendo
+    la única puerta de `bus.decrypt` (el conjunto exacto lo fija el test de arriba) y el router no
+    importa el bus, `files` ni `types.reveal`. Rojo C4."""
+    fuente = (APP / "modules" / "attachments" / "router.py").read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    importados = {
+        (nodo.module or "") + "." + alias.name
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.ImportFrom)
+        for alias in nodo.names
+    } | {
+        alias.name
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Import)
+        for alias in nodo.names
+    }
+    assert not [m for m in importados if "crypto" in m or m.endswith(".files")], importados
+    assert "decrypt" not in fuente and "reveal" not in fuente

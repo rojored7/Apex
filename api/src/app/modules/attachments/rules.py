@@ -65,6 +65,19 @@ def kind_is_sensitive(kind: str) -> bool:
     return kind in _SENSITIVE
 
 
+def can_download(role: str, sensitive: bool) -> bool:
+    """Descarga (S6-C4, M-6): el admin baja todo; el coach solo lo no sensible (la foto)."""
+    return role == "admin" or (role == "coach" and not sensitive)
+
+
+_EXTENSION: Final = {JPEG: "jpg", PNG: "png", PDF: "pdf"}
+
+
+def download_filename(attachment_id: UUID, mime: str) -> str:
+    """`adjunto-<8 hex>.<ext>`: solo un prefijo del id, nunca `filename_random` ni el id entero."""
+    return f"adjunto-{attachment_id.hex[:8]}.{_EXTENSION[mime]}"
+
+
 def find_orphans(row_keys: Mapping[UUID, str], stored_keys: Iterable[str]) -> OrphanReport:
     guardadas = set(stored_keys)
     esperadas = set(row_keys.values())

@@ -20,6 +20,17 @@ Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3) y su rev
 - Subir `kind=consent` a un socio con `data_consent_at` nulo guarda el adjunto y, en la misma petición, fija `data_consent_at` con el reloj del servidor y `data_consent_version` con la versión vigente de la política; deja una fila `update` en `audit_log` con el antes y el después. Con autorización previa no cambia nada (ni fecha, ni versión, ni fila). `photo` y `other` nunca tocan el consentimiento.
 - Si el corte `consent_required_from` ya llegó y no hay política publicada, la subida responde 409 `privacy_version_missing` **antes de leer el cuerpo**: no se guarda adjunto ni objeto. Publica la política (`PATCH /settings/privacy`) y repite. Orden de los errores: socio 404, rol 403, 409, `Content-Length` 413, cubeta 429, cuerpo.
 
+## Descargar (S6-C4, US-150)
+
+- **Ruta.** `GET /attachments/{id}` (admin y coach). El admin baja todo; el coach solo `photo` (403 `forbidden` en `consent` y `other`, sin descifrar y sin dejar fila). Socio: 403; sin sesión: 401; id mal formado: 422.
+- **Orden de los errores.** Fila (404 `attachment_not_found`), rol (403), cubeta (429), cupo (503 `busy` con `Retry-After: 1`), descifrado (503 `crypto_unavailable` con `Retry-After: 30` si el custodio está sellado), fila de auditoría confirmada y por último el cuerpo.
+- **Auditoría.** Un sensible deja UNA fila `download` en `audit_log` por descarga (con el dueño como socio afectado) y un `decrypt` en `crypto_ops`; ambos quedan confirmados antes del primer byte. Con el custodio sellado no queda ninguna. La foto no deja fila por vista ni pasa por el bus de cifrado (ADR-007); se sirve por streaming desde el disco, también con el custodio sellado.
+- **Cubetas por usuario.** Sensibles: `attachments-download` (30 por minuto) y `attachments-download-hour` (200 por hora). Foto: `attachments-photo` (600 por minuto). Son contadores distintos y se cobran antes de descifrar.
+- **Cabeceras.** `Content-Disposition: attachment; filename=adjunto-<8 hex>.<ext>` (nunca el nombre del objeto ni el id completo), `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` y `Content-Security-Policy: default-src 'none'; sandbox`. Un PDF con JavaScript se sirve igual, como adjunto.
+- **Huérfano.** Si la fila existe y el objeto no, la respuesta es 404 `attachment_not_found` (foto y sensible) con una línea `WARNING` sin el nombre del archivo; `attachments-check` lo lista. Un fallo del disco a mitad de la foto corta la respuesta con otra línea `WARNING`.
+- **Socio de baja.** Sus adjuntos siguen descargables (N-20).
+- **Memoria.** Descargar un sensible de 5 MiB llega a unos 34 MiB de pico (S6-D115); por eso solo caben cuatro a la vez.
+
 ## Tipos, tamaños y bytes mágicos
 
 - Tipos admitidos: JPEG (`FF D8 FF`), PNG (`89 50 4E 47 0D 0A 1A 0A`) y PDF (`%PDF-`). El tipo lo deciden **solo los primeros bytes**: ni la extensión ni el `Content-Type` cuentan. Un ejecutable (ELF, PE) con nombre `.jpg` se rechaza con 422 `unsupported_type`.

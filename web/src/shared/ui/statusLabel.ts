@@ -99,3 +99,32 @@ export function paymentLabel(status: PaymentStatusView): string {
 export function paymentTone(status: PaymentStatusView): StatusTone {
   return PAYMENT_TONES[status];
 }
+
+/**
+ * S6-F1 · US-142: estado de la firma de la cadena de auditoría. Lo decide el api (`state`, `is_late`,
+ * `latest`); aquí solo se pinta. Sin «no verificable»: la verificación no depende del custodio (S6-D81).
+ */
+export type SignatureStateView = "intact" | "altered" | "late" | "none";
+
+export const SIGNATURE_LABELS = Object.freeze({
+  intact: "Íntegra",
+  altered: "Alterada",
+  late: "Firma atrasada",
+  none: "Sin firmas",
+} as const satisfies Record<SignatureStateView, string>);
+
+/** Íntegra como «al día»; atrasada como advertencia; alterada como error; sin firmas neutro. */
+export const SIGNATURE_TONES = Object.freeze({
+  intact: "ok",
+  altered: "danger",
+  late: "warning",
+  none: "neutral",
+} as const satisfies Record<SignatureStateView, StatusTone>);
+
+export function signatureLabel(state: SignatureStateView): string {
+  return SIGNATURE_LABELS[state];
+}
+
+export function signatureTone(state: SignatureStateView): StatusTone {
+  return SIGNATURE_TONES[state];
+}

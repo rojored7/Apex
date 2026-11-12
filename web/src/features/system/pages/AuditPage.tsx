@@ -1,5 +1,6 @@
 // S4A-F1 · US-102 a US-104 (front; S4A-D31, S4A-D58): /sistema/auditoria (Auditoria.html), solo admin.
-// - PageHeader "Auditoría" con el total; VerifyChainButton con la última verificación y "Verificar ahora".
+// - PageHeader "Auditoría" con el total; SignatureStatus (S6-F1, US-142: Íntegra, Alterada, Firma atrasada o
+//   Sin firmas) y, debajo, VerifyChainButton con la última verificación y "Verificar ahora".
 // - AuditFilters: Registro (búsqueda en memoria, S2-D41), Fecha (días de Bogotá), Usuario, Entidad y
 //   Acción. En la URL quedan los nombres del api (`from`, `to`, `table`, `user_id`, `action`,
 //   `record_id`, `subject_member_id`), `limit` y `offset`; auditFilters.toApiParams decide qué viaja.
@@ -26,6 +27,7 @@ import { auditListError } from "../auditErrors";
 import { AUDIT_FILTERS, MAX_AUDIT_OFFSET, SEQ_PARAM, actionLabel, auditUserLabel, readAuditFilters, tableLabel, toApiParams, type AuditFilter } from "../auditFilters";
 import { AuditDetailPanel } from "../components/AuditDetailPanel";
 import { AuditFilters } from "../components/AuditFilters";
+import { SignatureStatus } from "../components/SignatureStatus";
 import { VerifyChainButton } from "../components/VerifyChainButton";
 import type { AuditRowView } from "../schemas";
 import styles from "./AuditPage.module.css";
@@ -84,6 +86,7 @@ export default function AuditPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="Auditoría" {...(page ? { total: totalText(page.total) } : {})} />
+      <SignatureStatus />
       <VerifyChainButton />
       <AuditFilters
         filters={filters}

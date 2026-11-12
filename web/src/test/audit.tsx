@@ -80,6 +80,29 @@ export function verifyResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** SignatureInfoOut de GET /audit/signatures/latest (audit/schemas.py). */
+export function signatureInfo(overrides: Record<string, unknown> = {}) {
+  return { through_seq: 88412, signed_at: "2026-10-21T12:00:00Z", algorithm: "Ed25519", ...overrides };
+}
+
+/** SignaturesLatestOut: por defecto, firma íntegra, a tiempo y verificada. */
+export function signaturesLatest(overrides: Record<string, unknown> = {}) {
+  return { latest: signatureInfo(), last_valid: signatureInfo(), is_late: false, state: "ok", verified_at: "2026-10-21T15:00:02Z", ...overrides };
+}
+
+/** VerifyResultOut con los campos planos de firmas (S6-A3). */
+export function signedVerifyResult(overrides: Record<string, unknown> = {}) {
+  return verifyResult({
+    signatures_checked: 365,
+    signatures_valid: 365,
+    first_invalid_signature_seq: null,
+    last_valid_signature_seq: 88412,
+    last_valid_signature_at: "2026-10-21T12:00:00Z",
+    last_valid_signature_algorithm: "Ed25519",
+    ...overrides,
+  });
+}
+
 export function verifyStarted(last: Record<string, unknown> | null = verifyResult()) {
   return { status: "running", last };
 }
@@ -104,6 +127,7 @@ export function renderAuditPage(entry = AUDIT_PATH, { handlers = {}, queryClient
     "GET /audit": (call) => auditPageReply(call),
     "GET /users": (call) => pageReply(call, ALL_ROWS),
     "GET /audit/verify/last": { status: 200, body: verifyResult() },
+    "GET /audit/signatures/latest": { status: 200, body: signaturesLatest() },
     "GET /audit/88412": { status: 200, body: auditDetail() },
     ...handlers,
   });

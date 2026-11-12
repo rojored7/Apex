@@ -7,7 +7,8 @@ import type { ReactNode } from "react";
 import type { components } from "../../core/api/types";
 import { mockApi, testQueryClient } from "../../test/server";
 import { CONFLICT_REPLY, gymSection, privacySection } from "../../test/settings";
-import { CONFLICT_MESSAGE, isVersionConflict, settingsQueryKey, useSettingsSection, type GymSettings, type MembershipsSettings, type PrivacyInput } from "./api";
+import { signaturesLatest, signedVerifyResult, verifyResult } from "../../test/audit";
+import { CONFLICT_MESSAGE, SIGNATURE_LATEST_KEY, isVersionConflict, settingsQueryKey, useLatestSignature, useSettingsSection, useVerifyChain, type GymSettings, type MembershipsSettings, type PrivacyInput } from "./api";
 
 type Schemas = components["schemas"];
 
@@ -209,5 +210,88 @@ describe("isVersionConflict", () => {
     expect(isVersionConflict(new ApiError({ status: 422, code: "version_conflict", message: "x" }))).toBe(false);
     expect(isVersionConflict(new Error("x"))).toBe(false);
     expect(CONFLICT_MESSAGE).toBe("Otra persona cambió esta sección. Recarga para ver los cambios.");
+  });
+});
+
+// S6-F1 · US-142: estado de la firma (S6-D10) y verificación con firmas (S6-A3).
+describe("useLatestSignature (S6-F1)", () => {
+  it("lee GET /audit/signatures/latest con la clave [audit, signatures, latest]", async () => {
+    const mock = mockApi({ "GET /audit/signatures/latest": { status: 200, body: signaturesLatest() } });
+    const client = testQueryClient();
+
+    const { result } = renderHook(() => useLatestSignature(), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => {
+      expect(result.current.data?.state).toBe("ok");
+    });
+    expect(mock.callsTo("GET /audit/signatures/latest")).toHaveLength(1);
+    expect(result.current.data?.latest?.through_seq).toBe(88412);
+    expect(result.current.data?.last_valid?.algorithm).toBe("Ed25519");
+    expect(client.getQueryData(SIGNATURE_LATEST_KEY)).toBeDefined();
+    expect(SIGNATURE_LATEST_KEY).toEqual(["audit", "signatures", "latest"]);
+  });
+
+  it("sin firmas: latest y last_valid vienen nulos", async () => {
+    mockApi({ "GET /audit/signatures/latest": { status: 200, body: signaturesLatest({ latest: null, last_valid: null, state: "none", verified_at: null }) } });
+
+    const { result } = renderHook(() => useLatestSignature(), { wrapper: wrapperFor(testQueryClient()) });
+
+    await waitFor(() => {
+      expect(result.current.data?.state).toBe("none");
+    });
+    expect(result.current.data?.latest).toBeNull();
+  });
+
+  it("una respuesta con un estado desconocido se rechaza", async () => {
+    mockApi({ "GET /audit/signatures/latest": { status: 200, body: signaturesLatest({ state: "partial" }) } });
+
+    const { result } = renderHook(() => useLatestSignature(), { wrapper: wrapperFor(testQueryClient()) });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+  });
+});
+
+describe("useVerifyChain con firmas (S6-F1)", () => {
+  it("devuelve signatures_checked, signatures_valid y first_invalid_signature_seq", async () => {
+    mockApi({ "POST /audit/verify": { status: 200, body: signedVerifyResult({ signatures_valid: 364, first_invalid_signature_seq: 88000, ok: false }) } });
+
+    const { result } = renderHook(() => useVerifyChain(), { wrapper: wrapperFor(testQueryClient()) });
+    let outcome: Awaited<ReturnType<typeof result.current.mutateAsync>> | undefined;
+    await act(async () => {
+      outcome = await result.current.mutateAsync();
+    });
+
+    expect(outcome?.kind).toBe("done");
+    if (outcome?.kind !== "done") throw new Error("se esperaba 200");
+    expect(outcome.result.signatures_checked).toBe(365);
+    expect(outcome.result.signatures_valid).toBe(364);
+    expect(outcome.result.first_invalid_signature_seq).toBe(88000);
+    expect(outcome.result.last_valid_signature_algorithm).toBe("Ed25519");
+  });
+
+  it("una verificación sin los campos de firmas (api anterior) sigue válida", async () => {
+    mockApi({ "POST /audit/verify": { status: 200, body: verifyResult() } });
+
+    const { result } = renderHook(() => useVerifyChain(), { wrapper: wrapperFor(testQueryClient()) });
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(result.current.isSuccess || result.current.isIdle).toBe(true);
+  });
+
+  it("al terminar relee el estado de la firma", async () => {
+    const client = testQueryClient();
+    client.setQueryData(SIGNATURE_LATEST_KEY, signaturesLatest());
+    mockApi({ "POST /audit/verify": { status: 200, body: signedVerifyResult() } });
+
+    const { result } = renderHook(() => useVerifyChain(), { wrapper: wrapperFor(client) });
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(client.getQueryState(SIGNATURE_LATEST_KEY)?.isInvalidated).toBe(true);
   });
 });

@@ -25,6 +25,7 @@ import {
   lastVerificationSchema,
   userOutSchema,
   usersPageSchema,
+  signaturesLatestSchema,
   verifyResultSchema,
   verifyStartedSchema,
   type AuditDetailView,
@@ -33,6 +34,7 @@ import {
   type LinkPurpose,
   type UserRowView,
   type UserView,
+  type SignaturesLatestView,
   type VerifyResultView,
 } from "./schemas";
 
@@ -389,6 +391,7 @@ export function useResendLink(): UseMutationResult<IssuedLink, Error, UserTarget
 // - useVerifyChain(): POST /audit/verify por useSensitiveMutation (S3-D104): 200 con el resultado
 //   o 202 con la última terminada; nada queda en la caché de mutaciones.
 export const AUDIT_QUERY_KEY = ["audit"] as const;
+export const SIGNATURE_LATEST_KEY = ["audit", "signatures", "latest"] as const;
 export const LAST_VERIFICATION_KEY = ["audit", "verify", "last"] as const;
 /** Cada cuánto se pregunta por la verificación en segundo plano. */
 export const VERIFY_POLL_MS = 3_000;
@@ -457,6 +460,14 @@ export function useLastVerification({ polling, baseline = null, maxUpdates }: La
   });
 }
 
+/** S6-F1 · US-142: GET /audit/signatures/latest; el estado lo decide el api, el front no recalcula nada. */
+export function useLatestSignature(): UseQueryResult<SignaturesLatestView> {
+  return useQuery({
+    queryKey: SIGNATURE_LATEST_KEY,
+    queryFn: async ({ signal }) => parseResponse(signaturesLatestSchema, await api.get<unknown>("/audit/signatures/latest", { signal })),
+  });
+}
+
 export function useVerifyChain(): UseMutationResult<VerifyOutcome, Error, void> {
   const queryClient = useQueryClient();
   return useSensitiveMutation<VerifyOutcome>({
@@ -465,6 +476,8 @@ export function useVerifyChain(): UseMutationResult<VerifyOutcome, Error, void> 
     // la referencia del sondeo (así una copia vieja de la caché no se toma por el resultado nuevo).
     onSuccess: (outcome) => {
       queryClient.setQueryData(LAST_VERIFICATION_KEY, outcome.kind === "done" ? outcome.result : outcome.last);
+      // S6-F1: una verificación nueva puede cambiar el estado de la firma (Alterada, Íntegra).
+      void queryClient.invalidateQueries({ queryKey: SIGNATURE_LATEST_KEY });
     },
   });
 }

@@ -1,0 +1,30 @@
+/* S6-F1: estado de la firma de la cadena (Auditoria.html, nota bajo el título). Solo variables de tokens.css. */
+.box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.title {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.line {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.error {
+  color: var(--danger);
+  font-weight: 700;
+}

@@ -307,6 +307,13 @@ export const verifyResultSchema = z
     finished_at: instant,
     triggered_by: z.string().min(1),
     source: z.enum(["api", "cli"]),
+    // S6-A3: campos planos de las firmas; ausentes o nulos en verificaciones anteriores a v0.3.
+    signatures_checked: z.number().int().nonnegative().nullish(),
+    signatures_valid: z.number().int().nonnegative().nullish(),
+    first_invalid_signature_seq: seqSchema.nullish(),
+    last_valid_signature_seq: seqSchema.nullish(),
+    last_valid_signature_at: instant.nullish(),
+    last_valid_signature_algorithm: z.string().min(1).nullish(),
   })
   .strict();
 
@@ -320,6 +327,23 @@ export const verifyStartedSchema = z
 /** GET /audit/verify/last: la última verificación terminada o null (nunca 404). */
 export const lastVerificationSchema = verifyResultSchema.nullable();
 
+// S6-F1 · US-142: GET /audit/signatures/latest (SignaturesLatestOut y SignatureInfoOut de audit/schemas.py).
+export const signatureInfoSchema = z
+  .object({ through_seq: seqSchema, signed_at: instant, algorithm: z.string().min(1) })
+  .strict();
+
+export const signaturesLatestSchema = z
+  .object({
+    latest: signatureInfoSchema.nullable(),
+    last_valid: signatureInfoSchema.nullable(),
+    is_late: z.boolean(),
+    state: z.enum(["none", "ok", "invalid"]),
+    verified_at: instant.nullish(),
+  })
+  .strict();
+
+export type SignatureInfoView = z.infer<typeof signatureInfoSchema>;
+export type SignaturesLatestView = z.infer<typeof signaturesLatestSchema>;
 export type AuditRowView = z.infer<typeof auditRowSchema>;
 export type FieldChangeView = z.infer<typeof fieldChangeSchema>;
 export type AuditDetailView = z.infer<typeof auditDetailSchema>;

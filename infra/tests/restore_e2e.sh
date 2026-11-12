@@ -343,16 +343,15 @@ ORIGEN="$(valor FRONT_BASE_URL)"; ORIGEN="${ORIGEN:-http://localhost:$WEB_PORT_E
 ADJ="$WORK/adjuntos"; mkdir -p "$ADJ"
 FOTO_ID=""; CONSENT_ID=""; CONSENT_EN_REPOSO=""; CMP_FOTO=1; CMP_CONSENT=1
 OBJ_FOTO=""; OBJ_CONSENT=""; TOKEN=""
+# LocalDiskStorage(UPLOADS_DIR / "attachments"): los objetos viven en uploads/attachments/<filename_random> (S6-D118).
+OBJ_DIR="/data/uploads/attachments"
 
 cabecera_auth() { printf 'Authorization: Bearer %s\n' "$TOKEN"; }
 objeto_de() { psqlx -d "$MAIN_DB" -c "SELECT filename_random FROM attachments.attachments WHERE id = '$1'" | tr -d '\r'; }
 
-subir_adjuntos() {
-  local clave="${E2E_ADMIN_PASSWORD:-}" cuerpo respuesta tipo archivo id
+iniciar_sesion() { # deja TOKEN; se repite antes de las descargas porque el access dura 15 min
+  local clave="${E2E_ADMIN_PASSWORD:-}" cuerpo respuesta
   [ -n "$clave" ] || muere "falta E2E_ADMIN_PASSWORD (prod-smoke.sh la entrega) para subir adjuntos por la API"
-  # JPEG mínimo (ff d8 ff e0 + JFIF + ff d9) y PDF mínimo: pasan los bytes mágicos de rules.detect_mime.
-  printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00restore-e2e-foto\xff\xd9' > "$ADJ/foto.bin"
-  printf '%%PDF-1.4\n%% APEX-RESTORE-E2E-AUTORIZACION-%s\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%%%EOF\n' "$DOC" > "$ADJ/consent.bin"
   cuerpo="$ADJ/login.json"
   ( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN" "$clave" > "$cuerpo" )
   respuesta="$(curl -sS --max-time 30 -X POST -H "Origin: $ORIGEN" -H 'Content-Type: application/json' \
@@ -360,6 +359,14 @@ subir_adjuntos() {
   rm -f "$cuerpo"
   TOKEN="$(printf '%s' "$respuesta" | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')"
   [ -n "$TOKEN" ] || muere "el login no devolvió access_token (¿cambió la clave del admin?)"
+}
+
+subir_adjuntos() {
+  local respuesta tipo archivo id
+  # JPEG mínimo (ff d8 ff e0 + JFIF + ff d9) y PDF mínimo: pasan los bytes mágicos de rules.detect_mime.
+  printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00restore-e2e-foto\xff\xd9' > "$ADJ/foto.bin"
+  printf '%%PDF-1.4\n%% APEX-RESTORE-E2E-AUTORIZACION-%s\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%%%EOF\n' "$DOC" > "$ADJ/consent.bin"
+  iniciar_sesion
   for tipo in photo consent; do
     archivo="$ADJ/foto.bin"; if [ "$tipo" = consent ]; then archivo="$ADJ/consent.bin"; fi
     respuesta="$(cabecera_auth | curl -sS --max-time 60 -X POST -H @- -H 'Content-Type: application/octet-stream' \
@@ -375,7 +382,7 @@ respaldar_con_adjuntos() {
   local tar_name listado
   OBJ_FOTO="$(objeto_de "$FOTO_ID")"; OBJ_CONSENT="$(objeto_de "$CONSENT_ID")"
   [ -n "$OBJ_FOTO" ] && [ -n "$OBJ_CONSENT" ] || muere "no se encontraron los objetos de los adjuntos en attachments.attachments"
-  CONSENT_EN_REPOSO="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint head "$BACKUP_IMG" -c 5 "/data/uploads/$OBJ_CONSENT" | tr -d '\r')"
+  CONSENT_EN_REPOSO="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint head "$BACKUP_IMG" -c 5 "$OBJ_DIR/$OBJ_CONSENT" | tr -d '\r')"
   MSYS_NO_PATHCONV=1 BACKUP_SIGN_KEY_FILE="$CLAVE_FIRMA" BACKUP_AGE_RECIPIENT="$AGE_PUB" \
     "${DC[@]}" run --rm -T --no-deps --entrypoint /opt/backup/run.sh backup > /dev/null || muere "run.sh con adjuntos falló"
   tar_name="$(en_backup 'grep -F "\"kind\": \"uploads\"" /data/backups/latest.json | head -1 | sed -nE "s/.*\"name\": \"([^\"]*)\".*/\1/p"' | tr -d '\r')"
@@ -387,7 +394,7 @@ respaldar_con_adjuntos() {
 
 restaurar_adjuntos() {
   MSYS_NO_PATHCONV=1 docker run --rm --user 0 -v "$UPLOADS_VOL:/data/uploads" --entrypoint sh "$BACKUP_IMG" -c \
-    "rm -f '/data/uploads/$OBJ_FOTO' '/data/uploads/$OBJ_CONSENT'" || muere "no se pudieron retirar los objetos del volumen uploads"
+    "rm -f '$OBJ_DIR/$OBJ_FOTO' '$OBJ_DIR/$OBJ_CONSENT'" || muere "no se pudieron retirar los objetos del volumen uploads"
   psqlx -d postgres -c "DROP DATABASE IF EXISTS $RESTORE_DB" -c "CREATE DATABASE $RESTORE_DB" > /dev/null
   restore_sh "${ARGS[@]}"
   if [ "$RC" = 0 ]; then ok "restore.sh restaura el juego con adjuntos (salida 0)"; else falla "restore.sh con adjuntos salió $RC"; printf '%s\n' "$SALIDA_RESTORE" | sed 's/^/    /' >&2; fi
@@ -398,10 +405,12 @@ comparar_adjuntos() {
   filas="$(psqlx -d "$RESTORE_DB" -c "SELECT count(*) FROM attachments.attachments WHERE id IN ('$FOTO_ID', '$CONSENT_ID')" | tr -d '\r')"
   if [ "$filas" = 2 ]; then ok "apex_restore tiene las dos filas de adjuntos"; else falla "apex_restore tiene $filas de 2 filas de adjuntos"; fi
   for objeto in "$OBJ_FOTO" "$OBJ_CONSENT"; do
-    dueno="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint stat "$BACKUP_IMG" -c '%u:%g %a' "/data/uploads/$objeto" 2> /dev/null | tr -d '\r')"
+    dueno="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint stat "$BACKUP_IMG" -c '%u:%g %a' "$OBJ_DIR/$objeto" 2> /dev/null | tr -d '\r')"
     case "$dueno" in "10001:10001 6"*) ok "objeto restaurado ${objeto:0:8} del uid 10001 y privado ($dueno)" ;; *) falla "objeto ${objeto:0:8} con dueño/modo '$dueno'" ;; esac
   done
-  # Descarga por el api (volumen restaurado, base principal): cabeceras en -D, cuerpo en -o.
+  # Descarga por el api (volumen restaurado, base principal): cabeceras en -D, cuerpo en -o. Sesión nueva: el
+  # access de la subida puede haber caducado durante run.sh y restore.sh.
+  iniciar_sesion
   cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/foto.hdr" -o "$ADJ/foto.out" "$BASE_URL/api/v1/attachments/$FOTO_ID" || true
   cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/consent.hdr" -o "$ADJ/consent.out" "$BASE_URL/api/v1/attachments/$CONSENT_ID" || true
   if grep -q '^HTTP/[0-9.]* 200' "$ADJ/foto.hdr" 2> /dev/null; then ok "GET de la foto: 200"; else falla "GET de la foto no dio 200"; fi

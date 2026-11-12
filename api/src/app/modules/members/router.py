@@ -116,6 +116,7 @@ async def list_members(
     sort: MemberSort = DEFAULT_MEMBER_SORT,
     membership_status: MembershipFilterStatus | None = None,
     plan_id: UUID | None = None,
+    consent: Literal["missing"] | None = None,
 ) -> Page[MemberRowOut]:
     if q:
         await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
@@ -125,6 +126,7 @@ async def list_members(
         sort=sort,
         membership_status=membership_status,
         plan_id=plan_id,
+        consent=consent,
     )
     return await service.list(session, filtros, page)
 
@@ -145,6 +147,7 @@ async def export_members(
     member_status: Annotated[MemberStatusFilter | None, Query(alias="status")] = None,
     membership_status: MembershipFilterStatus | None = None,
     plan_id: UUID | None = None,
+    consent: Literal["missing"] | None = None,
 ) -> StreamingResponse:
     """US-138 (S5-D41, S5-D60): CSV de socios en streaming, solo admin; va antes de `/{id}`."""
 
@@ -154,7 +157,11 @@ async def export_members(
         await enforce_user_limit(request, "export-hour", principal.user_id)
         await enforce_user_limit(request, "export-day", principal.user_id)
         filtros = MemberExportQuery(
-            q=q, status=member_status, membership_status=membership_status, plan_id=plan_id
+            q=q,
+            status=member_status,
+            membership_status=membership_status,
+            plan_id=plan_id,
+            consent=consent,
         )
         return await service.export_members(
             session,

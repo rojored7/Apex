@@ -4784,6 +4784,7 @@ export interface operations {
                 sort?: "last_name" | "-last_name" | "first_name" | "-first_name" | "created_at" | "-created_at";
                 membership_status?: ("active" | "expiring" | "expired" | "frozen" | "pending_payment" | "none") | null;
                 plan_id?: string | null;
+                consent?: "missing" | null;
                 limit?: number;
                 offset?: number;
             };
@@ -4953,6 +4954,7 @@ export interface operations {
                 status?: ("active" | "inactive" | "deleted") | null;
                 membership_status?: ("active" | "expiring" | "expired" | "frozen" | "pending_payment" | "none") | null;
                 plan_id?: string | null;
+                consent?: "missing" | null;
             };
             header?: never;
             path?: never;

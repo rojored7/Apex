@@ -15,6 +15,8 @@
 #      coincide con `audit.verifications` de origen; los triggers `A` de origen siguen en `A`;
 #   4. `restore-kek` en tmpfs -> el api (create_app/crypto_runtime) arranca con esa KEK y `reveal`
 #      devuelve el documento; con otra KEK falla con `unwrap_failed` y sin material.
+#   5. adjuntos (S6-C5, US-151): foto y consent subidos por la API, respaldo con uploads, restauración y `cmp`
+#      contra los originales (necesita E2E_ADMIN_PASSWORD y E2E_WEB_PORT, que entrega prod-smoke.sh).
 # Variables: E2E_DC (comando compose completo; por omisión .env/.env.ops + compose.yml + dev),
 # E2E_ENV_DIR (carpeta de .env/.env.ops/.env.seed; por omisión la raíz; en el ensayo
 # docs/scratch/ensayo), E2E_ADMIN_EMAIL (por omisión el de .env.seed o admin@smoke.apex.local),
@@ -323,6 +325,97 @@ SALIDA_KEK="$(TOOLS_PY -e PTY_FRASE -e E2E_ADMIN="$ADMIN" -e E2E_DOC="$DOC" -e E
 case "$SALIDA_KEK" in *"REVELADO=$DOC"*) ok "con la KEK restaurada, reveal devuelve el documento" ;; *) falla "reveal no devolvió el documento" ;; esac
 case "$SALIDA_KEK" in *"unwrap_failed"*) ok "con otra KEK el arranque falla con unwrap_failed" ;; *) falla "con otra KEK no apareció unwrap_failed" ;; esac
 case "$SALIDA_KEK" in *"sin-documento"*) ok "con otra KEK no se ve el documento ni material" ;; *) falla "con otra KEK apareció el documento" ;; esac
+
+# --- 5. adjuntos: foto y consent sensible sobreviven al respaldo y a la restauración (S6-C5, US-151) ----------------
+# Supone el smoke: el api responde por el Nginx en 127.0.0.1:$E2E_WEB_PORT (por omisión WEB_PORT de .env.ops) y
+# prod-smoke.sh entrega E2E_ADMIN_PASSWORD (el .env.seed ya no existe). El api lee la base PRINCIPAL; la restaurada
+# (apex_restore) se comprueba por SQL y el volumen uploads por el api tras borrar los objetos y restaurarlos.
+#   subir_adjuntos          login por curl (Origin, token solo en variable) y dos POST de cuerpo crudo: foto y consent.
+#   respaldar_con_adjuntos  run.sh con uploads; el tar firmado del manifiesto trae los dos objetos y el sensible
+#                           en reposo empieza por `apx1.`.
+#   restaurar_adjuntos      borra los dos objetos del volumen, recrea apex_restore vacía y restaura con restore.sh.
+#   comparar_adjuntos       filas en apex_restore, dueño/modo de los objetos y descarga por el api con `cmp`.
+WEB_PORT_E2E="${E2E_WEB_PORT:-$(valor WEB_PORT)}"
+BASE_URL="http://127.0.0.1:$WEB_PORT_E2E"
+ORIGEN="$(valor FRONT_BASE_URL)"; ORIGEN="${ORIGEN:-http://localhost:$WEB_PORT_E2E}"
+ADJ="$WORK/adjuntos"; mkdir -p "$ADJ"
+FOTO_ID=""; CONSENT_ID=""; CONSENT_EN_REPOSO=""; CMP_FOTO=1; CMP_CONSENT=1
+OBJ_FOTO=""; OBJ_CONSENT=""; TOKEN=""
+
+cabecera_auth() { printf 'Authorization: Bearer %s\n' "$TOKEN"; }
+objeto_de() { psqlx -d "$MAIN_DB" -c "SELECT filename_random FROM attachments.attachments WHERE id = '$1'" | tr -d '\r'; }
+
+subir_adjuntos() {
+  local clave="${E2E_ADMIN_PASSWORD:-}" cuerpo respuesta tipo archivo id
+  [ -n "$clave" ] || muere "falta E2E_ADMIN_PASSWORD (prod-smoke.sh la entrega) para subir adjuntos por la API"
+  # JPEG mínimo (ff d8 ff e0 + JFIF + ff d9) y PDF mínimo: pasan los bytes mágicos de rules.detect_mime.
+  printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00restore-e2e-foto\xff\xd9' > "$ADJ/foto.bin"
+  printf '%%PDF-1.4\n%% APEX-RESTORE-E2E-AUTORIZACION-%s\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%%%EOF\n' "$DOC" > "$ADJ/consent.bin"
+  cuerpo="$ADJ/login.json"
+  ( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN" "$clave" > "$cuerpo" )
+  respuesta="$(curl -sS --max-time 30 -X POST -H "Origin: $ORIGEN" -H 'Content-Type: application/json' \
+    --data-binary "@$cuerpo" "$BASE_URL/api/v1/auth/login" | tr -d '\r')" || muere "el login por curl falló"
+  rm -f "$cuerpo"
+  TOKEN="$(printf '%s' "$respuesta" | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')"
+  [ -n "$TOKEN" ] || muere "el login no devolvió access_token (¿cambió la clave del admin?)"
+  for tipo in photo consent; do
+    archivo="$ADJ/foto.bin"; if [ "$tipo" = consent ]; then archivo="$ADJ/consent.bin"; fi
+    respuesta="$(cabecera_auth | curl -sS --max-time 60 -X POST -H @- -H 'Content-Type: application/octet-stream' \
+      --data-binary "@$archivo" "$BASE_URL/api/v1/members/$MEMBER_ID/attachments?kind=$tipo" | tr -d '\r')" \
+      || muere "la subida de $tipo falló"
+    id="$(printf '%s' "$respuesta" | sed -n 's/^{"id" *: *"\([0-9a-f-]*\)".*/\1/p')"
+    [ -n "$id" ] || muere "la subida de $tipo no devolvió id: $(printf '%s' "$respuesta" | cut -c1-200)"
+    if [ "$tipo" = photo ]; then FOTO_ID="$id"; else CONSENT_ID="$id"; fi
+  done
+}
+
+respaldar_con_adjuntos() {
+  local tar_name listado
+  OBJ_FOTO="$(objeto_de "$FOTO_ID")"; OBJ_CONSENT="$(objeto_de "$CONSENT_ID")"
+  [ -n "$OBJ_FOTO" ] && [ -n "$OBJ_CONSENT" ] || muere "no se encontraron los objetos de los adjuntos en attachments.attachments"
+  CONSENT_EN_REPOSO="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint head "$BACKUP_IMG" -c 5 "/data/uploads/$OBJ_CONSENT" | tr -d '\r')"
+  MSYS_NO_PATHCONV=1 BACKUP_SIGN_KEY_FILE="$CLAVE_FIRMA" BACKUP_AGE_RECIPIENT="$AGE_PUB" \
+    "${DC[@]}" run --rm -T --no-deps --entrypoint /opt/backup/run.sh backup > /dev/null || muere "run.sh con adjuntos falló"
+  tar_name="$(en_backup 'grep -F "\"kind\": \"uploads\"" /data/backups/latest.json | head -1 | sed -nE "s/.*\"name\": \"([^\"]*)\".*/\1/p"' | tr -d '\r')"
+  [ -n "$tar_name" ] || muere "el manifiesto no nombra el archivo de uploads"
+  listado="$(en_backup "age -d -i /k/id.txt /data/backups/$tar_name | tar -t" | tr -d '\r')" || muere "no se pudo listar el tar de uploads"
+  case "$listado" in *"$OBJ_FOTO"*) ok "el tar de uploads del manifiesto trae la foto" ;; *) falla "el tar de uploads no trae la foto" ;; esac
+  case "$listado" in *"$OBJ_CONSENT"*) ok "el tar de uploads del manifiesto trae el consent" ;; *) falla "el tar de uploads no trae el consent" ;; esac
+}
+
+restaurar_adjuntos() {
+  MSYS_NO_PATHCONV=1 docker run --rm --user 0 -v "$UPLOADS_VOL:/data/uploads" --entrypoint sh "$BACKUP_IMG" -c \
+    "rm -f '/data/uploads/$OBJ_FOTO' '/data/uploads/$OBJ_CONSENT'" || muere "no se pudieron retirar los objetos del volumen uploads"
+  psqlx -d postgres -c "DROP DATABASE IF EXISTS $RESTORE_DB" -c "CREATE DATABASE $RESTORE_DB" > /dev/null
+  restore_sh "${ARGS[@]}"
+  if [ "$RC" = 0 ]; then ok "restore.sh restaura el juego con adjuntos (salida 0)"; else falla "restore.sh con adjuntos salió $RC"; printf '%s\n' "$SALIDA_RESTORE" | sed 's/^/    /' >&2; fi
+}
+
+comparar_adjuntos() {
+  local filas dueno objeto
+  filas="$(psqlx -d "$RESTORE_DB" -c "SELECT count(*) FROM attachments.attachments WHERE id IN ('$FOTO_ID', '$CONSENT_ID')" | tr -d '\r')"
+  if [ "$filas" = 2 ]; then ok "apex_restore tiene las dos filas de adjuntos"; else falla "apex_restore tiene $filas de 2 filas de adjuntos"; fi
+  for objeto in "$OBJ_FOTO" "$OBJ_CONSENT"; do
+    dueno="$(MSYS_NO_PATHCONV=1 docker run --rm -v "$UPLOADS_VOL:/data/uploads:ro" --entrypoint stat "$BACKUP_IMG" -c '%u:%g %a' "/data/uploads/$objeto" 2> /dev/null | tr -d '\r')"
+    case "$dueno" in "10001:10001 6"*) ok "objeto restaurado ${objeto:0:8} del uid 10001 y privado ($dueno)" ;; *) falla "objeto ${objeto:0:8} con dueño/modo '$dueno'" ;; esac
+  done
+  # Descarga por el api (volumen restaurado, base principal): cabeceras en -D, cuerpo en -o.
+  cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/foto.hdr" -o "$ADJ/foto.out" "$BASE_URL/api/v1/attachments/$FOTO_ID" || true
+  cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/consent.hdr" -o "$ADJ/consent.out" "$BASE_URL/api/v1/attachments/$CONSENT_ID" || true
+  if grep -q '^HTTP/[0-9.]* 200' "$ADJ/foto.hdr" 2> /dev/null; then ok "GET de la foto: 200"; else falla "GET de la foto no dio 200"; fi
+  if grep -q '^HTTP/[0-9.]* 200' "$ADJ/consent.hdr" 2> /dev/null; then ok "GET del consent: 200"; else falla "GET del consent no dio 200"; fi
+  CMP_FOTO=0; cmp -s "$ADJ/foto.bin" "$ADJ/foto.out" || CMP_FOTO=1
+  CMP_CONSENT=0; cmp -s "$ADJ/consent.bin" "$ADJ/consent.out" || CMP_CONSENT=1
+}
+
+subir_adjuntos
+if [ -n "$FOTO_ID" ] && [ -n "$CONSENT_ID" ]; then ok "la foto y el consent se subieron por la API"; else falla "no se subieron la foto y el consent"; fi
+respaldar_con_adjuntos
+if [ "$CONSENT_EN_REPOSO" = "apx1." ]; then ok "el consent en reposo empieza por apx1."; else falla "el consent en reposo no está cifrado (empieza por '$CONSENT_EN_REPOSO')"; fi
+restaurar_adjuntos
+comparar_adjuntos
+if [ "$CMP_FOTO" = 0 ]; then ok "la foto restaurada es idéntica (cmp)"; else falla "la foto restaurada difiere del original"; fi
+if [ "$CMP_CONSENT" = 0 ]; then ok "el consent restaurado se descifra y es idéntico (cmp)"; else falla "el consent restaurado difiere del original"; fi
 
 echo "restore_e2e: $fallas fallas"
 [ "$fallas" -eq 0 ]

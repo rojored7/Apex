@@ -127,6 +127,7 @@ from app.modules.members.exceptions import (
 from app.modules.members.models import Member
 from app.modules.members.rules import (
     ADMIN_ONLY_FIELDS,
+    CONSENT_MISSING_CONDITION,
     EMAIL_DATA_CLASS,
     LIKE_ESCAPE,
     MEMBER_CHIPS,
@@ -370,12 +371,13 @@ async def count(session: AsyncSession, *, include_deleted: bool = False) -> int:
 
 
 async def count_without_consent(session: AsyncSession) -> int:
-    """Socios no dados de baja con `data_consent_at IS NULL` (S5-D80, S5-D240): una sola consulta
-    `count(*)`, sin descifrar nada y sin filtrar por estado de membresía."""
+    """Socios no dados de baja sin autorización (S5-D80, S5-D240): una sola consulta `count(*)`,
+    sin descifrar nada y sin filtrar por estado de membresía. La condición es la misma de la lista,
+    la exportación y el KPI (`CONSENT_MISSING_CONDITION`, S6-C5)."""
     consulta = (
         select(func.count())
         .select_from(Member)
-        .where(Member.deleted_at.is_(None), Member.data_consent_at.is_(None))
+        .where(Member.deleted_at.is_(None), CONSENT_MISSING_CONDITION)
     )
     return int(await session.scalar(consulta) or 0)
 
@@ -529,6 +531,7 @@ async def _consulta(
     q: str | None,
     membership_status: str | None,
     plan_id: UUID | None,
+    consent: str | None = None,
 ) -> Select[Member] | None:
     """Los socios que cumplen los filtros (sin columnas, orden ni página); la comparten la lista y
     la exportación CSV (S5-B12). `None` si el resultado es vacío por construcción: sin membresía
@@ -537,6 +540,8 @@ async def _consulta(
         return None
     estado = _filtro_de_estado(status)
     consulta = select(Member).where(*estado)
+    if consent == "missing":  # S6-C5 (US-151): la misma condición del KPI, sin reimplementarla
+        consulta = consulta.where(CONSENT_MISSING_CONDITION)
     plan = classify_query(q)
     if plan.q is not None:
         consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
@@ -556,6 +561,7 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
         q=filters.q,
         membership_status=filters.membership_status,
         plan_id=filters.plan_id,
+        consent=filters.consent,
     )
     if consulta is None:
         return to_page([], 0, page)
@@ -616,6 +622,7 @@ async def export_members(
         q=filters.q,
         membership_status=filters.membership_status,
         plan_id=filters.plan_id,
+        consent=filters.consent,
     )
     # lazy: G-03 (members -> memberships); la exportación recibe `status_for` en vez de importarlo
     from app.modules.memberships import service as memberships_service

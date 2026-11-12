@@ -156,6 +156,7 @@ class MemberListQuery(BaseModel):
     # S3-B9b (US-071, D22): estado de la membresía que decide y su plan.
     membership_status: MembershipFilterStatus | None = None
     plan_id: UUID | None = None
+    consent: Literal["missing"] | None = None  # S6-C5 (US-151): solo los sin autorización
 
 
 class MemberExportQuery(BaseModel):
@@ -168,6 +169,7 @@ class MemberExportQuery(BaseModel):
     status: MemberStatusFilter | None = None
     membership_status: MembershipFilterStatus | None = None
     plan_id: UUID | None = None
+    consent: Literal["missing"] | None = None  # S6-C5 (US-151): solo los sin autorización
 
 
 @dataclass(frozen=True)

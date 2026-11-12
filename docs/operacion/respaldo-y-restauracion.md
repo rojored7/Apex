@@ -130,3 +130,15 @@ Escribe la frase. `kek.bin` debe pesar exactamente 32 bytes. Con `umask 077` que
 - [ ] `verify-kek-backup` dio `failed=0` este mes.
 - [ ] Se restauró un respaldo en una base de prueba y se reveló un documento.
 - [ ] Otra persona siguió esta guía sin ayuda y llegó al mismo resultado (nombre y fecha: ____________).
+
+## Prueba de restauración con adjuntos (S6-C5, US-151)
+
+`infra/tests/restore_e2e.sh` (sección 5) comprueba que los adjuntos sobreviven al respaldo y a la restauración. En el smoke de producción (`scripts/ci/prod-smoke.sh`, que le pasa `E2E_ADMIN_PASSWORD` y `E2E_WEB_PORT`) hace esto, sobre `apex-smoke`:
+
+1. Entra como admin por `curl` contra el Nginx y sube, con cuerpo crudo, una foto (`?kind=photo`) y una autorización (`?kind=consent`, sensible).
+2. Comprueba que el objeto sensible en reposo empieza por `apx1.` (nunca el PDF en claro).
+3. Corre `run.sh` y exige que el tar de `uploads` del manifiesto firmado traiga los dos objetos.
+4. Borra los dos objetos del volumen `uploads`, recrea `apex_restore` vacía y restaura con `restore.sh -P --confirm-database`.
+5. Verifica que `apex_restore` tiene las dos filas, que los objetos vuelven con dueño 10001 y modo privado, y que `GET /api/v1/attachments/{id}` entrega la foto y la autorización (esta última descifrada) idénticas (`cmp`) a los originales.
+
+El api lee la base principal, no `apex_restore`: la parte de base restaurada se comprueba por SQL y la de archivos por el api. Para correrlo a mano hace falta que el stack esté arriba y exportar esas dos variables además de las de la sección anterior. Solo corre sobre `apex-smoke`, `apex-ensayo` o `apex-e2e`.

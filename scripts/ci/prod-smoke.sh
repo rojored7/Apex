@@ -334,7 +334,7 @@ else
 fi
 
 # --- restauración en una segunda base del mismo db (restore.sh con firma e inspección) ------------------------------
-if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" bash infra/tests/restore_e2e.sh; then
+if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$clave" E2E_WEB_PORT="$WEB_PORT" bash infra/tests/restore_e2e.sh; then
   ok "restore_e2e.sh (restore.sh en la base apex_restore)"
 else
   falla "restore_e2e.sh"

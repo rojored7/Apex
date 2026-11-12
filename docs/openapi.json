@@ -7878,6 +7878,23 @@
           },
           {
             "in": "query",
+            "name": "consent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "missing",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Consent"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8163,6 +8180,23 @@
                 }
               ],
               "title": "Plan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "consent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "missing",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Consent"
             }
           }
         ],

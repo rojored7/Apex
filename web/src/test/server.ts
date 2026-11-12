@@ -25,6 +25,8 @@ export interface RecordedCall {
   url: string;
   headers: Headers;
   body: unknown;
+  /** S6-F4: el cuerpo tal como salió (un File o Blob en una subida cruda); `undefined` sin cuerpo. */
+  rawBody: BodyInit | null | undefined;
   /** `credentials` del `RequestInit` (S2-D44: siempre "same-origin"). */
   credentials: RequestCredentials | undefined;
   /** S2-F6: la señal con la que salió la petición (cancelación de TanStack Query). */
@@ -62,6 +64,7 @@ export function mockApi(handlers: Record<string, MockHandler>): ApiMock {
       url,
       headers: new Headers(init?.headers),
       body: parseBody(init),
+      rawBody: init?.body,
       credentials: init?.credentials,
       signal: init?.signal ?? null,
     };

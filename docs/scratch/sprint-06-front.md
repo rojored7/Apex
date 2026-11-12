@@ -48,3 +48,34 @@
   - L2: `id`, `owner_id`, `uploaded_by` (adjuntos) y `photo_attachment_id` (socios) con `z.string().uuid()`.
   - L3: `mime` de `AttachmentOut` pasa a `z.string()`.
   - L4: `AttachmentDownloadButton` usa `instanceof ApiError`.
+
+## F4 · Foto y autorización en el formulario (US-148, US-149)
+
+- Base: `8fef9ff` (checkpoint de F3, rama `feat/sprint-06-front`). `gen:api` sin diff.
+- Rojo: `core/api/client.test.ts` (`api.upload`, 12 casos), `features/members/components/PhotoField.test.tsx` (17), `ConsentSection.test.tsx` (14), `features/members/schemas.test.ts` (15 nuevos: `fileError`, `photoFieldSchema`, `consentFileFieldSchema`), `memberErrors.test.ts` (errores de subida y 422 de `data_consent_at`), `api.test.ts` (`subirAdjunto`, `useSubirAdjunto`), `lib/uploadPending.test.ts` (4), `shared/data/privacyVersion.test.tsx` (5), `pages/MemberFormPage.photo.test.tsx` (alta y edición, claro y oscuro, 38). Solo `schemas.test.ts` y `memberErrors.test.ts` se vieron en rojo antes del Verde; en los demás Rojo y Verde se escribieron seguidos (el Verde pasó a la primera).
+- Verde: `core/api/client.ts` (`api.upload`, `UPLOAD_TIMEOUT_MS`, `UPLOAD_TOO_LARGE_MESSAGE`), `core/api/{status,errorCodes}.ts`, `features/members/{api,schemas,memberErrors}.ts`, `lib/uploadPending.ts`, `components/{PhotoField,ConsentSection}.tsx` (+ CSS con tokens), `MemberFormFields`, `MemberEditFields`, `MemberFormPage`, `MemberEditView`; `shared/data/privacyVersion.ts`; `test/server.ts` suma `rawBody` a `RecordedCall`.
+- Decisiones:
+  - `api.upload(path, file, {kind})`: `fetch` con `body: file`, `?kind=`, `Content-Type` = `file.type` o `application/octet-stream`, 30 s, mismo manejo del 401 (un reintento con el mismo archivo), 503 `crypto_unavailable` con el aviso global; nunca reintenta un 503 `busy`. Un 413 sin envelope (Nginx) o con él llega como `file_too_large` con el mismo mensaje.
+  - `fileError(kind, file)` es la única regla (tipo, 5 MiB exactos, vacío) y la usan el campo y Zod. Un archivo inválido avisa en el campo y NO se entrega al formulario (`onChange(null)`): nada se pierde.
+  - `photo` y `consent_file` viven en los valores de React Hook Form (`File | null`) pero nunca viajan en el JSON (`toMemberCreate` y `toMemberPatch` no los leen).
+  - Orden al crear: `POST /members` → foto → documento (`kind=consent`). Un fallo de subida no deshace el alta: pantalla «El socio quedó creado sin foto» con enlaces a la ficha y a la edición (el formulario se cierra para no repetir el `POST`). Al editar: PATCH solo si hay cambios, luego las subidas; con fallo se queda en la edición («Los cambios se guardaron, pero la foto no se subió») y lo que sí subió se limpia del formulario.
+  - Sin cambios y sin archivos la edición sigue diciendo «No hay cambios para guardar»; con solo un archivo no hay PATCH.
+  - La versión vigente sale de `GET /settings/privacy` (solo admin) con clave propia `["settings","privacy","version"]` en `shared/data` (una feature no importa otra). Publicada: la versión; sin política: «versión no registrada»; ilegible (coach, 403): «Se registra la versión vigente al guardar».
+  - La fecha de aceptación es «ahora» en Bogotá, fija mientras la casilla siga marcada; fecha y versión son de solo lectura y no viajan (las fija el api, S6-C3).
+  - El 422 de `data_consent_at` se mapea a la casilla (alta y edición) y le lleva el foco desde `ConsentSection`.
+  - Con la autorización ya registrada (edición) se muestra su texto, sin casilla, y aún se puede subir el documento firmado.
+  - 422 `unsupported_type` y 413 tienen mensajes distintos en pantalla (tipo vs. 5 MB); el brief los pedía «con el mismo mensaje» solo para el cliente HTTP, donde ambos conservan su código.
+- Pruebas que cambian: `schemas.test.ts` (`editDefaults` suma `photo` y `consent_file` en `null`).
+- E2E: `tests/e2e/members.spec.ts` (preview: 15 casos verdes; 5 nuevos: foto y documento en claro 1440 y oscuro 390 con axe y sin desborde, subida cruda en orden, fallo de foto, 5.242.881 vs 5.242.880) y `tests/e2e/stack/members-photo.spec.ts` (escrito, NO corrido; V7: 5.242.880 pasa por Nginx y 5.242.881 muestra el mensaje).
+- DESIGN-GAP: campo de foto (`MemberFormFields.tsx`, BRECHAS 14.2, cerrada) y fecha/versión/documento de la autorización (14.3, cerrada). Nuevas: 14.11 (cerrada) y 14.12 (el coach no puede leer la versión).
+- Pendiente: revisión `security-reviewer` y sello `slice-gate.sh web/members` (orquestador); decisión de contrato de 14.12.
+
+- Revisión de seguridad 0C/0H/2M/5L: M1, M2, L1 a L4 corregidas, L5 aceptada.
+  - M1: tras un PATCH correcto, `MemberEditView` resetea el formulario (sin `dirty`, sin modos «Cambiar»/«Quitar», archivos conservados); un reintento por una subida fallida solo repite la subida (prueba en `MemberFormPage.photo.test.tsx`).
+  - M2: `usePrivacyVersion(enabled)` solo pide `GET /settings/privacy` con la casilla marcada y sin autorización registrada; un coach no recibe un 403 por visita (pruebas en `ConsentSection.test.tsx` y `privacyVersion.test.tsx`).
+  - L1: `UPLOAD_TIMEOUT_MS` a 35 000 (5 s sobre los 30 s del api, S6-D84) para que llegue el 408 `upload_timeout` antes del aborto del cliente.
+  - L2: `ATTACHMENT_KINDS` y `attachmentRefSchema` en `shared/data/attachments.ts`, usados por `features/attachments/schemas.ts` y `features/members/schemas.ts`.
+  - L3: quitada la prueba tautológica del mensaje de `data_consent_at` en `memberErrors.test.ts` (lo cubre `MemberFormPage.photo.test.tsx`).
+  - L4: `MemberFormPage.photo.test.tsx` usa `vi.stubGlobal("URL", ...)` con una subclase de `URL` (el literal plano rompe `new URL` del mock del api y del router).
+  - L5 (aceptada): la rama del 413 de Nginx sin envelope es defensiva: `client_max_body_size 6m` y el cliente bloquea a 5 MiB antes de enviar.
+- Proceso (honesto): el Rojo previo solo se hizo en `schemas.test.ts` y `memberErrors.test.ts`; en lo demás prueba y código se escribieron seguidos.

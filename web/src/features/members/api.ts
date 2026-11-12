@@ -25,7 +25,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { api } from "../../core/api/client";
+import { api, type UploadKind } from "../../core/api/client";
 import type { Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
@@ -47,6 +47,8 @@ import {
   type MembershipFilterStatus,
   type RevealField,
   type RevealOutView,
+  type UploadedAttachment,
+  uploadedAttachmentSchema,
 } from "./schemas";
 
 export interface MembersParams {
@@ -282,5 +284,32 @@ export function useMemberHistoryPreview(id: string): UseQueryResult<Page<MemberH
     refetchOnWindowFocus: false,
     gcTime: 0,
     enabled: isMemberId(id),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: subir la foto o el documento firmado (POST /members/{id}/attachments?kind=).
+// - subirAdjunto(memberId, kind, file): cuerpo crudo por api.upload (nunca FormData); el 201 se valida.
+// - useSubirAdjunto(): useSensitiveMutation (el archivo es un dato personal y no se queda en la
+//   caché de mutaciones). Al salir bien relee ["members"] (la ficha trae photo_attachment_id) y
+//   ["attachments"] (la pestaña Adjuntos); la foto anterior queda con otro id, así que su blob no se reusa.
+export interface SubirAdjuntoVariables {
+  memberId: string;
+  kind: UploadKind;
+  file: File;
+}
+
+export async function subirAdjunto(memberId: string, kind: UploadKind, file: File): Promise<UploadedAttachment> {
+  return parseResponse(uploadedAttachmentSchema, await api.upload<unknown>(`${memberPath(memberId)}/attachments`, file, { kind }));
+}
+
+export function useSubirAdjunto(): UseMutationResult<UploadedAttachment, Error, SubirAdjuntoVariables> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<UploadedAttachment, Error, SubirAdjuntoVariables>({
+    mutationFn: ({ memberId, kind, file }) => subirAdjunto(memberId, kind, file),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    },
   });
 }

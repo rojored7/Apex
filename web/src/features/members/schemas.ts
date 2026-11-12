@@ -21,6 +21,7 @@ import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
 import type { components, operations } from "../../core/api/types";
 import { formatDate, todayBogota } from "../../core/i18n/format";
+import { attachmentRefSchema, type AttachmentRef } from "../../shared/data/attachments";
 import { CUSTOM_ISSUE } from "../../shared/lib/zodIssues";
 
 export type MemberCreateBody = components["schemas"]["MemberCreate"];
@@ -136,6 +137,43 @@ export interface EmergencyContactValues {
   relationship: string;
 }
 
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: la foto y el documento firmado de la autorización. Viajan aparte del
+// JSON: se suben después de guardar (POST /members/{id}/attachments?kind=). fileError es la única
+// regla (tipo, tamaño exacto de 5 MiB, vacío) para el campo, el esquema y las pruebas.
+export const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+export const PHOTO_TYPES: readonly string[] = ["image/jpeg", "image/png"];
+export const CONSENT_FILE_TYPES: readonly string[] = ["application/pdf", "image/jpeg", "image/png"];
+
+export const ATTACHMENT_MESSAGES = {
+  photoTooLarge: "La foto supera 5 MB. Elige una de menos de 5 MB.",
+  photoType: "La foto debe ser JPEG o PNG. Elige otra imagen.",
+  consentTooLarge: "El documento supera 5 MB. Elige uno de menos de 5 MB.",
+  consentType: "El documento debe ser PDF, JPEG o PNG. Elige otro archivo.",
+  empty: "El archivo está vacío. Elige otro.",
+  notFile: "Elige un archivo válido.",
+} as const;
+
+export type MemberFileKind = "photo" | "consent";
+
+/** El mensaje de por qué el archivo no se puede subir como `kind`, o null si sirve. */
+export function fileError(kind: MemberFileKind, file: File): string | null {
+  const allowed = kind === "photo" ? PHOTO_TYPES : CONSENT_FILE_TYPES;
+  if (!allowed.includes(file.type)) return kind === "photo" ? ATTACHMENT_MESSAGES.photoType : ATTACHMENT_MESSAGES.consentType;
+  if (file.size === 0) return ATTACHMENT_MESSAGES.empty;
+  if (file.size > ATTACHMENT_MAX_BYTES) return kind === "photo" ? ATTACHMENT_MESSAGES.photoTooLarge : ATTACHMENT_MESSAGES.consentTooLarge;
+  return null;
+}
+
+const fileFieldSchema = (kind: MemberFileKind): z.ZodType<File | null, File | null> =>
+  z.custom<File | null>((value) => value === null || value instanceof File, ATTACHMENT_MESSAGES.notFile).superRefine((value, ctx) => {
+    const message = value === null ? null : fileError(kind, value);
+    if (message !== null) ctx.addIssue({ code: CUSTOM_ISSUE, message });
+  });
+
+export const photoFieldSchema = fileFieldSchema("photo");
+export const consentFileFieldSchema = fileFieldSchema("consent");
+
 export interface MemberFormValues {
   first_name: string;
   last_name: string;
@@ -147,6 +185,10 @@ export interface MemberFormValues {
   email: string;
   emergency_contact: EmergencyContactValues;
   data_consent: boolean;
+  /** S6-F4: foto opcional; se sube tras guardar. Nunca viaja en el JSON. */
+  photo: File | null;
+  /** S6-F4: documento firmado opcional (kind=consent); se sube tras guardar. */
+  consent_file: File | null;
 }
 
 /** M-4: la casilla de autorización nunca empieza marcada. */
@@ -161,6 +203,8 @@ export const EMPTY_MEMBER_FORM: MemberFormValues = Object.freeze({
   email: "",
   emergency_contact: Object.freeze({ name: "", phone: "", relationship: "" }),
   data_consent: false,
+  photo: null,
+  consent_file: null,
 });
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -228,6 +272,8 @@ export function memberFormSchema(today: string = todayBogota()): z.ZodType<Membe
     email: optionalEmail,
     emergency_contact: emergencyContactSchema,
     data_consent: z.boolean(),
+    photo: photoFieldSchema,
+    consent_file: consentFileFieldSchema,
   });
 }
 
@@ -374,6 +420,10 @@ export interface MemberEditValues {
   email: string;
   emergency_contact: EmergencyContactValues;
   data_consent: boolean;
+  /** S6-F4: foto nueva (reemplaza a la vigente); se sube tras guardar. */
+  photo: File | null;
+  /** S6-F4: documento firmado opcional (kind=consent). */
+  consent_file: File | null;
   modes: Record<SensitiveEditField, SensitiveEditMode>;
 }
 
@@ -407,6 +457,8 @@ export function editDefaults(member: MemberDetailView): MemberEditValues {
     email: "",
     emergency_contact: { name: "", phone: "", relationship: "" },
     data_consent: false,
+    photo: null,
+    consent_file: null,
     modes: { ...KEEP_ALL },
   };
 }
@@ -459,6 +511,8 @@ export function memberEditSchema(today: string = todayBogota()): z.ZodType<Membe
       email: z.string(),
       emergency_contact: z.object({ name: z.string(), phone: z.string(), relationship: z.string() }),
       data_consent: z.boolean(),
+      photo: photoFieldSchema,
+      consent_file: consentFileFieldSchema,
       modes: z.object({ document: mode, phone: mode, email: mode, birth_date: mode, emergency_contact: mode }),
     })
     .superRefine((values, ctx) => {
@@ -532,3 +586,9 @@ export const memberHistoryItemSchema = z
   .strict();
 export type MemberHistoryItemView = z.infer<typeof memberHistoryItemSchema>;
 export const memberHistoryPageSchema = pageSchema(memberHistoryItemSchema);
+
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: lo que el front usa de AttachmentOut al subir (201): la referencia mínima
+// compartida en shared/data/attachments (una feature no importa de otra).
+export const uploadedAttachmentSchema = attachmentRefSchema;
+export type UploadedAttachment = AttachmentRef;

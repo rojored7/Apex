@@ -176,3 +176,102 @@ test("alta: el 409 enlaza al socio existente y el 201 vuelve a la lista con el a
   expect(Object.keys(api.createBodies.at(-1) ?? {})).not.toContain("data_consent_at");
   expect(await page.evaluate(storedText)).not.toContain("5566779988");
 });
+
+// S6-F4 (US-148, US-149): foto y documento firmado en el alta, contra `vite preview` con el api simulado.
+const NEW_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+// PNG de 1x1 píxel: el navegador puede dibujar la vista previa.
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+const PDF = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+const MAX_BYTES = 5 * 1024 * 1024;
+
+interface UploadCall {
+  kind: string | null;
+  contentType: string | undefined;
+  bytes: number;
+}
+
+/** Responde la subida cruda de adjuntos y registra kind, Content-Type y tamaño; `failKind` la rechaza con 422. */
+async function fakeUploads(page: Page, failKind?: string): Promise<UploadCall[]> {
+  const calls: UploadCall[] = [];
+  await page.route(/\/api\/v1\/members\/[^/]+\/attachments(\?.*)?$/, (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") return json(route, 200, { items: [], total: 0, limit: 25, offset: 0 });
+    const kind = new URL(request.url()).searchParams.get("kind");
+    calls.push({ kind, contentType: request.headers()["content-type"], bytes: request.postDataBuffer()?.length ?? 0 });
+    if (kind === failKind) return json(route, 422, { error: { code: "unsupported_type", message: "Tipo no admitido." } });
+    return json(route, 201, { id: "bbbb0001-0000-4000-8000-000000000001", kind, mime: request.headers()["content-type"], size_bytes: 1, sensitive: kind !== "photo" });
+  });
+  return calls;
+}
+
+async function fillNewMember(page: Page): Promise<void> {
+  await page.getByRole("textbox", { name: /^Nombres/ }).fill("Sara");
+  await page.getByRole("textbox", { name: /^Apellidos/ }).fill("Mejía");
+  await page.getByRole("textbox", { name: /^Número de documento/ }).fill("5566779988");
+}
+
+for (const [theme, width] of [
+  ["light", 1440],
+  ["dark", 390],
+] as const) {
+  test(`Nuevo socio con foto y documento en ${theme} a ${String(width)} px: vista previa, axe y sin desborde`, async ({ page }) => {
+    await fakeApi(page);
+    await open(page, "/socios/nuevo", theme, width);
+
+    await page.getByLabel(/^Foto del socio/).setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: PNG });
+    await expect(page.getByRole("img", { name: "Vista previa de la foto" })).toBeVisible();
+    await page.getByLabel(/^Documento firmado/).setInputFiles({ name: "firmado.pdf", mimeType: "application/pdf", buffer: PDF });
+    await page.getByRole("checkbox", { name: "El socio autorizó el tratamiento de datos" }).check();
+    await expect(page.getByLabel("Fecha de aceptación")).toHaveJSProperty("readOnly", true);
+
+    expect(await axeViolations(page)).toEqual([]);
+    await expectNoOverflow(page);
+    await page.screenshot({ path: `test-results/captures/socio-nuevo-foto-${theme}-${String(width)}.png`, fullPage: true });
+  });
+}
+
+test("alta con foto: el JSON no lleva archivos y después sube la foto (kind=photo) y el documento (kind=consent) como cuerpo crudo", async ({ page }) => {
+  const api = await fakeApi(page);
+  const uploads = await fakeUploads(page);
+  await open(page, "/socios/nuevo", "light", 1440);
+  await fillNewMember(page);
+  await page.getByLabel(/^Foto del socio/).setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: PNG });
+  await page.getByLabel(/^Documento firmado/).setInputFiles({ name: "firmado.pdf", mimeType: "application/pdf", buffer: PDF });
+
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await expect(page).toHaveURL(/\/socios$/);
+  expect(uploads.map((u) => u.kind)).toEqual(["photo", "consent"]);
+  expect(uploads[0]).toMatchObject({ contentType: "image/png", bytes: PNG.length });
+  expect(uploads[1]).toMatchObject({ contentType: "application/pdf", bytes: PDF.length });
+  expect(Object.keys(api.createBodies.at(-1) ?? {})).toEqual(["first_name", "last_name", "document_type", "document", "data_consent"]);
+  expect(await page.evaluate(storedText)).not.toContain("foto.png");
+});
+
+test("alta: si la foto no sube, el socio queda creado, se avisa y se conserva el id", async ({ page }) => {
+  const api = await fakeApi(page);
+  await fakeUploads(page, "photo");
+  await open(page, "/socios/nuevo", "light", 1440);
+  await fillNewMember(page);
+  await page.getByLabel(/^Foto del socio/).setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: PNG });
+
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("El socio quedó creado sin foto.");
+  await expect(page.getByRole("link", { name: "Ir a la ficha" })).toHaveAttribute("href", `/socios/${NEW_ID}`);
+  expect(api.createBodies).toHaveLength(1);
+  expect(await axeViolations(page)).toEqual([]);
+});
+
+test("una foto de 5.242.881 bytes muestra «La foto supera 5 MB» sin perder el formulario; 5.242.880 pasa", async ({ page }) => {
+  await fakeApi(page);
+  await open(page, "/socios/nuevo", "light", 1440);
+  await fillNewMember(page);
+
+  await page.getByLabel(/^Foto del socio/).setInputFiles({ name: "grande.png", mimeType: "image/png", buffer: Buffer.alloc(MAX_BYTES + 1) });
+  await expect(page.getByText(/^La foto supera 5 MB/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /^Nombres/ })).toHaveValue("Sara");
+
+  await page.getByLabel(/^Foto del socio/).setInputFiles({ name: "justa.png", mimeType: "image/png", buffer: Buffer.alloc(MAX_BYTES) });
+  await expect(page.getByText(/^La foto supera 5 MB/)).toHaveCount(0);
+});

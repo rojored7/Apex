@@ -19,14 +19,15 @@ import { Button } from "../../../shared/ui/Button";
 import { Field, type FieldErrorAction } from "../../../shared/ui/Field";
 import { memberHref } from "../memberLinks";
 import { DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES, MEMBER_LIMITS, REMOVABLE_FIELDS, SEX_LABELS, SEXES, type MemberDetailView, type MemberEditValues, type SensitiveEditField } from "../schemas";
+import { ConsentSection } from "./ConsentSection";
 import { EXISTING_LINK_TEXT } from "./MemberFormFields";
+import { PhotoField } from "./PhotoField";
 import formStyles from "./MemberFormFields.module.css";
 import styles from "./MemberEditFields.module.css";
 
 export const CONSENT_EDIT_LABEL = "Registrar autorización";
 export const DOCUMENT_ADMIN_ONLY = "Solo un administrador puede cambiar el documento.";
-const CONSENT_EDIT_HINT_ID = "member-edit-consent-hint";
-const CONSENT_EDIT_ERROR_ID = "member-edit-consent-error";
+const CONSENT_EDIT_HINT = "Márcala solo si el socio leyó y aceptó la política de tratamiento de datos del gimnasio. Una vez registrada no se retira desde aquí.";
 
 type Focus = "input" | "change" | "remove" | "undo" | null;
 
@@ -133,6 +134,14 @@ export function MemberEditFields({ form, member, canChangeDocument, existingId, 
     <>
       <fieldset className={formStyles.section}>
         <legend className={formStyles.legend}>1 · Identificación</legend>
+        <PhotoField
+          value={form.watch("photo")}
+          onChange={(file) => {
+            form.setValue("photo", file, { shouldDirty: true, shouldValidate: true });
+          }}
+          error={errors.photo?.message}
+          currentPhotoId={member.photo_attachment_id}
+        />
         <div className={formStyles.grid}>
           <Field label="Nombres" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.first_name?.message} {...register("first_name")} />
           <Field label="Apellidos" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.last_name?.message} {...register("last_name")} />
@@ -202,33 +211,19 @@ export function MemberEditFields({ form, member, canChangeDocument, existingId, 
         </SensitiveBlock>
       </fieldset>
 
-      <fieldset className={formStyles.section}>
-        <legend className={formStyles.legend}>4 · Autorización de datos (Ley 1581)</legend>
-        {registered ? (
-          <p className={styles.registered}>{registered}</p>
-        ) : (
-          <>
-            <label className={formStyles.check}>
-              <input
-                type="checkbox"
-                className={formStyles.checkbox}
-                aria-describedby={consentError ? `${CONSENT_EDIT_HINT_ID} ${CONSENT_EDIT_ERROR_ID}` : CONSENT_EDIT_HINT_ID}
-                aria-invalid={consentError ? true : undefined}
-                {...register("data_consent")}
-              />
-              <span>{CONSENT_EDIT_LABEL}</span>
-            </label>
-            <p id={CONSENT_EDIT_HINT_ID} className={formStyles.note}>
-              Márcala solo si el socio leyó y aceptó la política de tratamiento de datos del gimnasio. Una vez registrada no se retira desde aquí.
-            </p>
-            {consentError ? (
-              <p id={CONSENT_EDIT_ERROR_ID} className={styles.error}>
-                {consentError}
-              </p>
-            ) : null}
-          </>
-        )}
-      </fieldset>
+      <ConsentSection
+        checkbox={register("data_consent")}
+        accepted={form.watch("data_consent")}
+        registeredText={registered}
+        checkboxLabel={CONSENT_EDIT_LABEL}
+        checkboxHint={CONSENT_EDIT_HINT}
+        checkboxError={consentError}
+        file={form.watch("consent_file")}
+        onFileChange={(file) => {
+          form.setValue("consent_file", file, { shouldDirty: true, shouldValidate: true });
+        }}
+        fileErrorText={errors.consent_file?.message}
+      />
     </>
   );
 }

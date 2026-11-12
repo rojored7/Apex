@@ -5,15 +5,13 @@
 //   Content-Disposition (adjunto-<8 hex>.<ext>).
 import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
+import { ATTACHMENT_KINDS, attachmentRefSchema, type AttachmentKind } from "../../shared/data/attachments";
 
-export const ATTACHMENT_KINDS = ["photo", "consent", "other"] as const;
-export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+export { ATTACHMENT_KINDS, type AttachmentKind };
 
-export const attachmentSchema = z.object({
-  id: z.uuid(),
+export const attachmentSchema = attachmentRefSchema.extend({
   owner_table: z.string(),
   owner_id: z.uuid(),
-  kind: z.enum(ATTACHMENT_KINDS),
   // Un mime nuevo del api no debe tumbar la lista: la tabla no usa `mime`.
   mime: z.string(),
   size_bytes: z.number().int().nonnegative(),

@@ -15,13 +15,16 @@
 //   (BLOB_TIMEOUT_MS), sin caché ni almacenamiento: devuelve el Blob al que llama y no lo guarda. Un
 //   error llega como ApiError con el envelope del api; 401 y 503 crypto_unavailable se tratan como en
 //   el JSON, pero un 503 busy no se reintenta (la descarga ya pudo auditarse).
+// - S6-F4 (E1): api.upload sube UN archivo como cuerpo crudo (nunca FormData) con ?kind= en la URL y
+//   Content-Type del archivo, con tiempo propio (UPLOAD_TIMEOUT_MS). Un 413 sin envelope (Nginx) se
+//   normaliza a file_too_large con UPLOAD_TOO_LARGE_MESSAGE; una escritura no se reintenta salvo el 401.
 // - Nunca escribe en console ni registra cuerpos o tokens.
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "./errorCodes";
 import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { filenameFromDisposition } from "./disposition";
 import { toQueryString, type QueryParams } from "./query";
 import { reportCustodyUnavailable } from "../custody/custodyNotice";
-import { HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
+import { HTTP_PAYLOAD_TOO_LARGE, HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
 
 export const API_BASE = "/api/v1";
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -29,6 +32,9 @@ export const REQUEST_TIMEOUT_MS = 15_000;
 export const BLOB_TIMEOUT_MS = 120_000;
 /** S5-F4 (revisión LOW 3): una descarga solo es PDF o CSV; otro tipo no se entrega. S6-F3: suma la foto (JPEG, PNG); application/json solo va en el Accept (S6-D120), nunca se entrega como archivo. */
 export const BLOB_CONTENT_TYPES = ["application/pdf", "text/csv", "image/jpeg", "image/png"] as const;
+/** S6-F4: una subida de hasta 5 MiB. El api corta a los 30 s (S6-D84, 408 upload_timeout); el cliente espera 5 s más para que ese 408 llegue antes que su propio aborto. */
+export const UPLOAD_TIMEOUT_MS = 35_000;
+export const UPLOAD_TOO_LARGE_MESSAGE = "El archivo supera 5 MB. Elige uno más liviano.";
 export const UNEXPECTED_CONTENT_MESSAGE = "El servidor devolvió un archivo que no esperábamos y no se descargó. Intenta de nuevo.";
 
 export interface RequestOptions {
@@ -41,6 +47,8 @@ export interface RequestOptions {
    * sí mismo o que un 401 de credenciales malas dispare un refresh inútil.
    */
   skipAuthRetry?: boolean;
+  /** S6-F4: cuerpo crudo de una subida; excluye al cuerpo JSON. */
+  file?: File;
 }
 
 export interface BlobOptions extends Omit<RequestOptions, "body"> {
@@ -53,6 +61,14 @@ export interface BlobResult {
   blob: Blob;
   filename: string | null;
   contentType: string | null;
+}
+
+export type UploadKind = "photo" | "consent" | "other";
+
+export interface UploadOptions {
+  kind: UploadKind;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 export type UnauthorizedResult = "retry" | "fail";
@@ -84,9 +100,10 @@ function buildUrl(path: string, query: QueryParams | undefined): string {
 
 const BLOB_ACCEPT = [...BLOB_CONTENT_TYPES, "application/json"].join(", ");
 
-function buildHeaders(hasBody: boolean, token: string | null, accept: string = "application/json"): Headers {
+function buildHeaders(hasBody: boolean, token: string | null, accept: string = "application/json", file?: File): Headers {
   const headers = new Headers({ Accept: accept });
-  if (hasBody) headers.set("Content-Type", "application/json");
+  if (file) headers.set("Content-Type", file.type || "application/octet-stream");
+  else if (hasBody) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return headers;
 }
@@ -195,13 +212,14 @@ function waitFor(seconds: number, signal: AbortSignal | undefined): Promise<void
 
 /** Envía la petición con sus reintentos (401 una vez, 503 busy en lecturas JSON) y devuelve la respuesta correcta. */
 async function send(method: Method, path: string, options: RequestOptions, settings: FetchSettings, retries: Retries = FRESH): Promise<RawResponse> {
+  const { file } = options;
   const hasBody = options.body !== undefined;
   const token = accessTokenGetter?.() ?? null;
   const init: RequestInit = {
     method,
     credentials: "same-origin",
-    headers: buildHeaders(hasBody, token, settings.binary ? BLOB_ACCEPT : "application/json"),
-    ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
+    headers: buildHeaders(hasBody, token, settings.binary ? BLOB_ACCEPT : "application/json", file),
+    ...(file ? { body: file } : hasBody ? { body: JSON.stringify(options.body) } : {}),
   };
   const response = await fetchWithTimeout(buildUrl(path, options.query), init, options.signal, settings);
   if (response.ok) return response;
@@ -237,6 +255,22 @@ async function requestBlob(path: string, options: BlobOptions): Promise<BlobResu
   return { blob: response.blob, filename: filenameFromDisposition(response.disposition), contentType: response.contentType };
 }
 
+async function requestUpload<T>(path: string, file: File, options: UploadOptions): Promise<T> {
+  const { kind, timeoutMs = UPLOAD_TIMEOUT_MS, ...rest } = options;
+  try {
+    return readSuccess(await send("POST", path, { ...rest, query: { kind }, file }, { timeoutMs, binary: false })) as T;
+  } catch (error) {
+    // Nginx corta por tamaño con HTML: sin envelope llega como network_error; es el mismo 413 del api.
+    if (error instanceof ApiError && error.status === HTTP_PAYLOAD_TOO_LARGE && error.code !== API_ERROR_CODES.fileTooLarge) {
+      throw new ApiError({ status: HTTP_PAYLOAD_TOO_LARGE, code: API_ERROR_CODES.fileTooLarge, message: UPLOAD_TOO_LARGE_MESSAGE });
+    }
+    if (error instanceof ApiError && error.code === API_ERROR_CODES.fileTooLarge) {
+      throw new ApiError({ status: error.status, code: error.code, message: UPLOAD_TOO_LARGE_MESSAGE });
+    }
+    throw error;
+  }
+}
+
 export const api = {
   get: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("GET", path, options),
   post: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("POST", path, options),
@@ -244,5 +278,7 @@ export const api = {
   patch: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PATCH", path, options),
   delete: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("DELETE", path, options),
   /** S5-F4: GET de un archivo (PDF, CSV). No se guarda en ninguna caché. */
+  /** S6-F4: sube un archivo como cuerpo crudo (foto, autorización); el tipo (kind) va en la URL. */
+  upload: <T>(path: string, file: File, options: UploadOptions): Promise<T> => requestUpload<T>(path, file, options),
   blob: (path: string, options: BlobOptions = {}): Promise<BlobResult> => requestBlob(path, options),
 };

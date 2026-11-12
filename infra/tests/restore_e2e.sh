@@ -16,7 +16,8 @@
 #   4. `restore-kek` en tmpfs -> el api (create_app/crypto_runtime) arranca con esa KEK y `reveal`
 #      devuelve el documento; con otra KEK falla con `unwrap_failed` y sin material.
 #   5. adjuntos (S6-C5, US-151): foto y consent subidos por la API, respaldo con uploads, restauración y `cmp`
-#      contra los originales (necesita E2E_ADMIN_PASSWORD y E2E_WEB_PORT, que entrega prod-smoke.sh).
+#      contra los originales (necesita E2E_ADMIN_PASSWORD y E2E_WEB_PORT, que entrega prod-smoke.sh; la clave es
+#      la ya cambiada en el primer inicio de sesión: con must_change_password el POST responde 403, S6-D117).
 # Variables: E2E_DC (comando compose completo; por omisión .env/.env.ops + compose.yml + dev),
 # E2E_ENV_DIR (carpeta de .env/.env.ops/.env.seed; por omisión la raíz; en el ensayo
 # docs/scratch/ensayo), E2E_ADMIN_EMAIL (por omisión el de .env.seed o admin@smoke.apex.local),
@@ -328,7 +329,8 @@ case "$SALIDA_KEK" in *"sin-documento"*) ok "con otra KEK no se ve el documento 
 
 # --- 5. adjuntos: foto y consent sensible sobreviven al respaldo y a la restauración (S6-C5, US-151) ----------------
 # Supone el smoke: el api responde por el Nginx en 127.0.0.1:$E2E_WEB_PORT (por omisión WEB_PORT de .env.ops) y
-# prod-smoke.sh entrega E2E_ADMIN_PASSWORD (el .env.seed ya no existe). El api lee la base PRINCIPAL; la restaurada
+# prod-smoke.sh entrega E2E_ADMIN_PASSWORD ya cambiada en el primer inicio de sesión (S6-D117: el seed deja
+# must_change_password y las escrituras responden 403 password_change_required). El api lee la base PRINCIPAL; la restaurada
 # (apex_restore) se comprueba por SQL y el volumen uploads por el api tras borrar los objetos y restaurarlos.
 #   subir_adjuntos          login por curl (Origin, token solo en variable) y dos POST de cuerpo crudo: foto y consent.
 #   respaldar_con_adjuntos  run.sh con uploads; el tar firmado del manifiesto trae los dos objetos y el sensible

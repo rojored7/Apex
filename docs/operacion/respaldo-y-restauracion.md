@@ -133,7 +133,7 @@ Escribe la frase. `kek.bin` debe pesar exactamente 32 bytes. Con `umask 077` que
 
 ## Prueba de restauración con adjuntos (S6-C5, US-151)
 
-`infra/tests/restore_e2e.sh` (sección 5) comprueba que los adjuntos sobreviven al respaldo y a la restauración. En el smoke de producción (`scripts/ci/prod-smoke.sh`, que le pasa `E2E_ADMIN_PASSWORD` y `E2E_WEB_PORT`) hace esto, sobre `apex-smoke`:
+`infra/tests/restore_e2e.sh` (sección 5) comprueba que los adjuntos sobreviven al respaldo y a la restauración. En el smoke de producción (`scripts/ci/prod-smoke.sh`, que antes cambia la contraseña inicial del admin, porque el seed la deja con cambio obligatorio y las subidas responderían 403, y le pasa `E2E_ADMIN_PASSWORD` y `E2E_WEB_PORT`) hace esto, sobre `apex-smoke`:
 
 1. Entra como admin por `curl` contra el Nginx y sube, con cuerpo crudo, una foto (`?kind=photo`) y una autorización (`?kind=consent`, sensible).
 2. Comprueba que el objeto sensible en reposo empieza por `apx1.` (nunca el PDF en claro).

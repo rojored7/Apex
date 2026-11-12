@@ -333,6 +333,38 @@ else
   falla "deploy_e2e.sh"
 fi
 
+# --- primer inicio de sesión del admin: cambio obligatorio de contraseña (US-046, S6-D117) -------------------------
+# El seed deja al admin con must_change_password: las escrituras con rol (las subidas de adjuntos de restore_e2e.sh)
+# responden 403 password_change_required hasta que la cambie. El smoke lo hace una sola vez, como una persona en su
+# primer acceso, y la clave nueva viaja a las pruebas siguientes (restore_e2e.sh, openbao-smoke.sh). Con --tls web no
+# publica WEB_PORT (como deploy_e2e.sh): se omite y restore_e2e.sh lo anota.
+if [ "$TLS" -eq 1 ]; then
+  echo "  omitida: cambio de contraseña del admin con --tls (web no publica WEB_PORT; la sección 5 de restore_e2e.sh tampoco)"
+else
+  nueva="$(aleatorio 16)"
+  mascara "$nueva"
+  cuerpo_login="$SMOKE_DIR/login.json"
+  ( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN_EMAIL" "$clave" > "$cuerpo_login" )
+  token_pendiente="$(curl -sS --max-time 30 -X POST -H "Origin: http://localhost:$WEB_PORT" -H 'Content-Type: application/json' \
+    --data-binary "@$cuerpo_login" "http://127.0.0.1:$WEB_PORT/api/v1/auth/login" | tr -d '\r' \
+    | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')" || true
+  rm -f "$cuerpo_login"
+  if [ -z "$token_pendiente" ]; then
+    falla "login del admin recién sembrado (sin access_token)"
+  else
+    ( umask 077; printf '{"current_password":"%s","new_password":"%s"}' "$clave" "$nueva" > "$cuerpo_login" )
+    respuesta_clave="$(printf 'Authorization: Bearer %s\n' "$token_pendiente" | curl -sS --max-time 30 -X POST -H @- \
+      -H "Origin: http://localhost:$WEB_PORT" -H 'Content-Type: application/json' --data-binary "@$cuerpo_login" \
+      "http://127.0.0.1:$WEB_PORT/api/v1/auth/me/password" | tr -d '\r')" || true
+    rm -f "$cuerpo_login"
+    case "$respuesta_clave" in
+      *'"access_token"'*) clave="$nueva"; ok "primer inicio de sesión del admin: contraseña cambiada (must_change_password en falso)" ;;
+      *) falla "cambio de contraseña del admin: $(printf '%s' "$respuesta_clave" | cut -c1-160)" ;;
+    esac
+  fi
+  unset nueva token_pendiente respuesta_clave
+fi
+
 # --- restauración en una segunda base del mismo db (restore.sh con firma e inspección) ------------------------------
 if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$clave" E2E_WEB_PORT="$WEB_PORT" bash infra/tests/restore_e2e.sh; then
   ok "restore_e2e.sh (restore.sh en la base apex_restore)"

@@ -327,3 +327,9 @@ alembic_version = 0021_audit_signatures
 - Error objetivo del Rojo corregido en `tests/crypto/_bitacora.py`: `ensure_keys` del bus de la prueba deja 16 filas `wrap` en `crypto_ops` que contaban en `total`; `sembrar_ops` y `sembrar_muchas_ops` las quitan antes de sembrar (`vaciar_ops_de_arranque`, dentro del savepoint, con los helpers de triggers de `tests/factories/triggers.py`).
 - P-API: `docs/openapi.json` y `web/src/core/api/types.ts` regenerados. `docs/operacion/llaves.md`: sección de bitácora y trabajos.
 - Resultados: test_ops_jobs 112, test_job_percent_pure 21, test_router_keys 21, test_inventory 37, test_openapi_export 6, architecture 729; ruff, ruff format, mypy y `tsc` limpios.
+
+## B2 · Revisiones, sello y Docker (paso 68)
+
+- Seguridad 0C/0H/1M/3L sin cambios de código (bloque S6-B2 de DECISIONES; S6-D108: el índice `(user_id, at DESC)` de `crypto_ops` entra en `0023`, C1). Sello `slice-gate.sh crypto` 920 verdes (incluye arquitectura). Checkpoint `437045d` (17 archivos, +2344/-20). Imagen `apex-api:local` `dac74627e8c7`.
+- Docker (paso 68): desarrollo: api, worker y web recreados con `dac74627e8c7`, `/health` 200; `GET /crypto/ops?verb=sign` 200 con 13 filas (1 `ok`, 12 `error` previos: intentos de A2 con la fila huérfana y el custodio), `data_class audit.signature` y `key_id` presentes; `?verb=sign&result=ok` 1; `GET /crypto/jobs` vacío; 422 en `from` 400 días, `kind=invent`, `limit=201` (ops y jobs). Ensayo (arrancado, desellado sin mostrar llaves, api/worker recreados, `/health` `crypto ok`): `ops?verb=sign` 2 filas `ok`; `ops?verb=unwrap&result=error` 0; `jobs?kind=migrate_provider` 1 trabajo `done` 8/8 `percent 100` (la migración local → OpenBao de W0-2); `jobs?status=running` 0. `grep -c` de material y referencias = 0 en los seis archivos `paso68-*.json`. Limpieza: ensayo detenido, sin residuos, caché de la VM vaciada; corriendo solo `apex` e `infra`.
+

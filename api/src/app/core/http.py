@@ -11,6 +11,7 @@ Solo importa FastAPI; ningún módulo de negocio.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Final
 
@@ -53,5 +54,36 @@ def csv_download(body: AsyncIterator[bytes], filename: str) -> StreamingResponse
             "Content-Disposition": f"attachment; filename={filename}",
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": NO_STORE,
+        },
+    )
+
+
+# Solo ASCII imprimible sin separadores de ruta, comillas, `;` ni `%`: el nombre va sin comillas en
+# `Content-Disposition`, así que un `;` añadiría parámetros y un carácter fuera de latin-1 haría
+# fallar la codificación de la cabecera (revisión de seguridad de S6-B3).
+_FUERA_DEL_NOMBRE: Final = re.compile(r'[^\x20-\x7e]|[/\\";%]')
+CSP_DESCARGA: Final = "default-src 'none'; sandbox"
+
+
+def _safe_filename(nombre: str) -> str:
+    """Deja solo ASCII imprimible sin `/`, `\\`, comillas, `;`, `%`, controles ni `..`; vacío cae a
+    `descarga.json`."""
+    limpio = _FUERA_DEL_NOMBRE.sub("", nombre)
+    while ".." in limpio:
+        limpio = limpio.replace("..", "")
+    return limpio.strip() or "descarga.json"
+
+
+def file_download(body: bytes, *, filename: str, media_type: str) -> Response:
+    """Descarga de un archivo ya armado en memoria (S6-B3): `attachment`, `no-store`, `nosniff`
+    y una CSP que no deja ejecutar nada."""
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename={_safe_filename(filename)}",
+            "Cache-Control": NO_STORE,
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": CSP_DESCARGA,
         },
     )

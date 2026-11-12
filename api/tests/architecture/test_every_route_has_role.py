@@ -179,6 +179,7 @@ def test_s6_b1_las_rutas_de_llaves_exigen_admin_y_no_son_publicas(
     app.openapi()
     rutas = [r for r in effective_routes(app)[0] if r.path.startswith("/api/v1/crypto/")]
     assert sorted(r.path for r in rutas) == [
+        "/api/v1/crypto/cbom",  # S6-B3
         "/api/v1/crypto/jobs",
         "/api/v1/crypto/keys",
         "/api/v1/crypto/ops",

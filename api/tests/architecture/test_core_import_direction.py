@@ -509,3 +509,55 @@ def test_s6_b2_inventory_schemas_y_router_no_importan_modulos_ni_auditoria() -> 
         ruta = CORE / "crypto" / nombre
         assert ruta.is_file(), nombre
         assert _prohibidos_b1(ruta.read_text(encoding="utf-8")) == [], nombre
+
+
+# S6-B3 (S6-D17, S6-D57): el CBOM es puro y la descarga de archivos solo conoce FastAPI -----------
+
+
+def test_s6_b3_cbom_es_puro_y_no_importa_modulos_auditoria_ni_base() -> None:
+    """`core/crypto/cbom.py` existe y no importa `app.modules`, `core.audit*`, `core.db`,
+    `core.clock`, `core.config` ni `sqlalchemy`: arma el dict solo con lo que recibe."""
+    ruta = CORE / "crypto" / "cbom.py"
+    assert ruta.is_file(), "falta core/crypto/cbom.py"
+    prohibidos = (
+        "app.modules",
+        "app.core.audit",
+        "app.core.db",
+        "app.core.clock",
+        "app.core.config",
+        "app.cli",
+        "app.main",
+        "sqlalchemy",
+    )
+    assert [n for n in _imports(ruta) if n.startswith(prohibidos)] == []
+
+
+def test_s6_b3_core_http_no_importa_modulos_ni_audit_ni_crypto() -> None:
+    ruta = CORE / "http.py"
+    assert ruta.is_file()
+    prohibidos = ("app.modules", "app.core.audit", "app.core.crypto", "app.core.db")
+    assert [n for n in _imports(ruta) if n.startswith(prohibidos)] == []
+
+
+def test_s6_b3_core_http_define_file_download() -> None:
+    arbol = ast.parse((CORE / "http.py").read_text(encoding="utf-8"))
+    funciones = {n.name for n in arbol.body if isinstance(n, ast.FunctionDef)}
+    assert "file_download" in funciones
+
+
+def test_s6_b3_el_cbom_declara_su_formato_y_sus_algoritmos_fijos() -> None:
+    arbol = ast.parse((CORE / "crypto" / "cbom.py").read_text(encoding="utf-8"))
+    asignados = {
+        n.target.id
+        for n in arbol.body
+        if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+    } | {
+        t.id
+        for n in arbol.body
+        if isinstance(n, ast.Assign)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+    funciones = {n.name for n in arbol.body if isinstance(n, ast.FunctionDef)}
+    assert {"CBOM_FORMAT", "FIXED_ALGORITHMS"} <= asignados
+    assert "build_cbom" in funciones

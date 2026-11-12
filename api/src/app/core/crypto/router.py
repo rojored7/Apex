@@ -7,14 +7,17 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
+from app.core.clock import current_clock
 from app.core.crypto import inventory
+from app.core.crypto.cbom import CBOM_FORMAT, build_cbom
 from app.core.crypto.models import DATA_CLASS_PATTERN
 from app.core.crypto.schemas import (
     CryptoJobOut,
@@ -26,9 +29,9 @@ from app.core.crypto.schemas import (
     OpsFilters,
     OpVerb,
 )
-from app.core.db import SessionDep
+from app.core.db import DatabaseBusy, SessionDep
 from app.core.errors import responses_for
-from app.core.http import no_store
+from app.core.http import file_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import enforce_user_limit
 from app.core.security import AdminDep
@@ -123,3 +126,43 @@ async def list_crypto_jobs(
     await enforce_user_limit(request, "staff-read", principal.user_id)
     filtros = JobsFilters(status=status, kind=kind, data_class=data_class, q=q)
     return await inventory.list_jobs(session, filtros, page)
+
+
+@router.get(
+    "/crypto/cbom",
+    responses=responses_for(429)
+    | {200: {"content": {"application/json": {}}, "description": "CBOM apex-cbom/1"}},
+)
+async def export_cbom(request: Request, principal: AdminDep, session: SessionDep) -> Response:
+    """CBOM `apex-cbom/1` como descarga JSON (S6-B3, US-146). Audita `export` por la puerta
+    registrada (S6-D52) en la misma transacción y ANTES del cuerpo; sin puerta, 503 `busy`."""
+    await enforce_user_limit(request, "cbom-export", principal.user_id)
+    escritor = _audit_writer
+    if escritor is None:
+        raise DatabaseBusy()
+    settings = request.app.state.settings
+    reloj = current_clock()
+    llaves = await inventory.all_keys(session)
+    resumen = await inventory.summary(session)
+    cbom = build_cbom(
+        llaves,
+        app_version=settings.APP_VERSION,
+        generated_at=reloj.now_utc(),
+        provider=resumen.provider,
+        tls_declared=bool(settings.APEX_DOMAIN),
+    )
+    await escritor(
+        session,
+        action="export",
+        table_name="crypto.crypto_keys",
+        record_id=None,
+        before=None,
+        after={"count": len(llaves), "format": CBOM_FORMAT},
+        user_id=principal.user_id,
+    )
+    cuerpo = json.dumps(cbom, ensure_ascii=False, indent=2).encode("utf-8")
+    return file_download(
+        cuerpo,
+        filename=f"apex-cbom-{reloj.today_bogota().isoformat()}.json",
+        media_type="application/json; charset=utf-8",
+    )

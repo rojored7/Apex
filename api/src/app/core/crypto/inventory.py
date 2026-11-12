@@ -136,6 +136,24 @@ async def list_keys(
     )
 
 
+async def all_keys(session: AsyncSession) -> list[CryptoKeyOut]:
+    """Todas las llaves (también `decrypt_only` y `retired`), sin paginar y sin conteos, con
+    columnas explícitas (CBOM, S6-B3). Orden `data_class, purpose, version, id`."""
+    consulta = select(
+        CryptoKey.id,
+        CryptoKey.purpose,
+        CryptoKey.data_class,
+        CryptoKey.algorithm,
+        CryptoKey.version,
+        CryptoKey.state,
+        CryptoKey.provider,
+        CryptoKey.created_at,
+        CryptoKey.rotated_at,
+    ).order_by(CryptoKey.data_class, CryptoKey.purpose, CryptoKey.version, CryptoKey.id)
+    ahora = current_clock().now_utc()
+    return [_item(f, ahora, None) for f in (await session.execute(consulta)).all()]
+
+
 def _bogota_day_bounds(hoy: date) -> tuple[datetime, datetime]:
     inicio = datetime.combine(hoy, time.min, tzinfo=BOGOTA)
     return inicio, inicio + timedelta(days=1)

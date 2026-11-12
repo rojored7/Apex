@@ -86,6 +86,8 @@ CON_LIMITE = {
     # S6-B2 (US-144, S6-D16): la bitacora y los trabajos consumen la misma `staff-read`.
     ("get", "/api/v1/crypto/ops"),
     ("get", "/api/v1/crypto/jobs"),
+    # S6-B3 (US-146, S6-D57): el CBOM consume `cbom-export` (2 por minuto).
+    ("get", "/api/v1/crypto/cbom"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
     # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen
@@ -294,3 +296,16 @@ def test_s6_b2_la_bitacora_y_los_trabajos_declaran_sus_codigos_exactos(
         )
         descripcion = operacion["responses"]["503"]["description"]
         assert "busy" in descripcion and "crypto_unavailable" in descripcion, (ruta, descripcion)
+
+
+def test_s6_b3_el_cbom_declara_sus_codigos_exactos(esquema: dict[str, Any]) -> None:
+    """S6-B3 (S6-D17, S6-D52, S6-D57): `GET /crypto/cbom` publica 200 JSON, 401, 403 (solo admin)
+    y 429 (`cbom-export`), sin 404, 409 ni 422 (no recibe parametros); el 503 nombra `busy` (por
+    ejemplo, sin puerta de auditoria) y `crypto_unavailable`. Rojo B3."""
+    operacion = esquema["paths"]["/api/v1/crypto/cbom"]["get"]
+    assert set(operacion["responses"]) == {"200", "401", "403", "429", "500", "503"}
+    assert "application/json" in operacion["responses"]["200"]["content"]
+    descripcion = operacion["responses"]["503"]["description"]
+    assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion
+    assert not operacion.get("parameters")
+    assert ("get", "/api/v1/crypto/cbom") in CON_LIMITE

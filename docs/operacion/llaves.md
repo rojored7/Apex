@@ -1,6 +1,6 @@
 # Llaves: inventario y estado del custodio
 
-Alcance: lectura del inventario de llaves del bus de criptografía por el api (S6-B1, US-143). Rotar, retirar y migrar siguen en `rotar-llave.md` y `openbao.md`; esta guía solo explica qué se ve y cómo leerlo. Las cubetas del router de llaves se resumen al final; el CBOM y la rotación desde el panel llegan en B2 y B3.
+Alcance: lectura del inventario de llaves del bus de criptografía por el api (S6-B1, US-143). Rotar, retirar y migrar siguen en `rotar-llave.md` y `openbao.md`; esta guía solo explica qué se ve y cómo leerlo. Las cubetas del router de llaves se resumen al final; el CBOM se describe al final.
 
 ## El inventario: `GET /api/v1/crypto/keys`
 
@@ -41,3 +41,12 @@ Una clase que se cifra pero cuyos datos no están en columnas del registro (los 
 ## La llave de firma de la auditoría
 
 La llave `audit.signature` no se rota en sitio ni se recifra en v0.3 (S6-D69): solo se cambia de proveedor con `rotate-key audit.signature --provider <local|openbao> --reason "..." --as <correo>` (llave nueva; la anterior queda `decrypt_only` y sus firmas siguen verificando por su `key_id`). Detalle y casos de error en `rotar-llave.md` («La llave de firma de la auditoría») y `openbao.md` §12.
+
+## El CBOM: `GET /api/v1/crypto/cbom`
+
+Descarga JSON `apex-cbom/1` con el inventario criptográfico para auditores y para el panel «Sistema → Llaves». Solo admin, cubeta `cbom-export` (2 por minuto), `Content-Disposition: attachment; filename=apex-cbom-AAAA-MM-DD.json` (fecha de Bogotá), `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` y CSP `default-src 'none'; sandbox`.
+
+- Contiene: `format`, `generated_at`, `app_version`, `provider` (`names`, `state`), `keys` (TODAS las llaves, también `decrypt_only` y `retired`, ordenadas por `data_class`, `purpose`, `version`, con `id`, `purpose`, `data_class`, `algorithm`, `version`, `state`, `provider`, `created_at` y `rotated_at`), `fixed_algorithms` (los seis usos con algoritmo fijo: JWT, contraseñas, índices ciegos, cadena de auditoría, firma de auditoría y respaldos) y `tls`.
+- No contiene: material de llave, claves públicas, referencias del proveedor, `records_count` ni `age_days`.
+- `tls = {"declared": bool, "source": "configuration"}`: es una declaración, no una sonda. `declared` es verdadero cuando `APEX_DOMAIN` tiene valor; no prueba que el certificado esté vigente.
+- Cada descarga deja una fila de auditoría `export` sobre `crypto.crypto_keys` con `after = {"count": n, "format": "apex-cbom/1"}`, escrita antes de enviar el cuerpo. Si la auditoría no está disponible responde 503 `busy` y no descarga nada.

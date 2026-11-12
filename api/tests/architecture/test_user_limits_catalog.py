@@ -37,6 +37,7 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # Rojo S6-W0-5 (S6-D57, patrón S5-D98): las siete cubetas de adjuntos, llaves y CBOM nacen en el
 # catálogo sin ruta; cada slice las saca de aquí al darles ruta (B3 `keys-rotate*`, C2
 # `attachments-upload`/`attachments-photo`, C4 `attachments-download*`, R1 `cbom-export`).
+# S6-B3 sacó `cbom-export` con `GET /crypto/cbom` (Rojo B3); quedan seis sin ruta.
 CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
     {
         "attachments-upload",
@@ -45,7 +46,6 @@ CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
         "attachments-download-hour",
         "keys-rotate",
         "keys-rotate-hour",
-        "cbom-export",
     }
 )
 
@@ -439,5 +439,33 @@ def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None
         "cbom-export": (2, 60),
     }
     assert {clave: USER_LIMITS.get(clave) for clave in esperadas} == esperadas
-    assert set(esperadas) == CLAVES_SIN_RUTA_TODAVIA
+    # `cbom-export` ya tiene ruta desde S6-B3: las otras seis siguen sin ella.
+    assert set(esperadas) - {"cbom-export"} == CLAVES_SIN_RUTA_TODAVIA
+    assert "cbom-export" not in CLAVES_SIN_RUTA_TODAVIA
     assert len(USER_LIMITS) == 23
+
+
+def test_el_cbom_consume_solo_la_cubeta_cbom_export() -> None:
+    """S6-B3 (S6-D57): `GET /crypto/cbom`, en `core/crypto/router.py`, llama una vez a
+    `enforce_user_limit` con `cbom-export` (2 por minuto) y con ninguna otra cubeta (Rojo B3)."""
+    fuente = (MODULES.parent / "core" / "crypto" / "router.py").read_text(encoding="utf-8")
+    llamadas: list[str] = []
+    for funcion in ast.walk(ast.parse(fuente)):
+        if not isinstance(funcion, ast.AsyncFunctionDef | ast.FunctionDef):
+            continue
+        for decorador in funcion.decorator_list:
+            if (
+                isinstance(decorador, ast.Call)
+                and decorador.args
+                and isinstance(decorador.args[0], ast.Constant)
+                and decorador.args[0].value == "/crypto/cbom"
+            ):
+                llamadas = [
+                    nodo.args[1].value
+                    for nodo in ast.walk(funcion)
+                    if isinstance(nodo, ast.Call)
+                    and _nombre_llamado(nodo) == "enforce_user_limit"
+                    and isinstance(nodo.args[1], ast.Constant)
+                ]
+    assert llamadas == ["cbom-export"]
+    assert USER_LIMITS["cbom-export"] == (2, 60)

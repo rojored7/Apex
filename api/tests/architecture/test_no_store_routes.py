@@ -104,3 +104,13 @@ def test_s6_b2_la_bitacora_y_los_trabajos_tienen_rol_de_admin_y_no_store(
         assert len(halladas) == 1, ruta
         assert route_has_role_dependency(halladas[0]), ruta
         assert any(n.call is no_store for n in _nodos(halladas[0].dependant)), ruta
+
+
+def test_s6_b3_el_cbom_tiene_rol_y_no_store(settings_prueba: Settings) -> None:
+    """S6-B3: `GET /crypto/cbom` existe, exige rol y lleva la dependencia `no_store` ademas de
+    las cabeceras de `file_download` (Rojo B3)."""
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    halladas = [r for r in rutas if r.path == "/api/v1/crypto/cbom"]
+    assert len(halladas) == 1
+    assert route_has_role_dependency(halladas[0])
+    assert any(n.call is no_store for n in _nodos(halladas[0].dependant))

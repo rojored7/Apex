@@ -6694,6 +6694,76 @@
         ]
       }
     },
+    "/api/v1/crypto/cbom": {
+      "get": {
+        "description": "CBOM `apex-cbom/1` como descarga JSON (S6-B3, US-146). Audita `export` por la puerta\nregistrada (S6-D52) en la misma transacción y ANTES del cuerpo; sin puerta, 503 `busy`.",
+        "operationId": "export_cbom_api_v1_crypto_cbom_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "CBOM apex-cbom/1"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Export Cbom",
+        "tags": [
+          "crypto"
+        ]
+      }
+    },
     "/api/v1/crypto/jobs": {
       "get": {
         "operationId": "list_crypto_jobs_api_v1_crypto_jobs_get",

@@ -314,3 +314,10 @@ alembic_version = 0021_audit_signatures
 - MEDIUM 1: `finish_rotation` devuelve `False` sin marcar el job (puerto y columnas igual); el CLI marca `failed` (`pending_records`) y sale 1 al agotar `EMPTY_PASSES`. La prueba del Rojo en `test_reencryptor.py` exigía `failed` dentro de `finish_rotation`: cambiada a esta regla.
 - MEDIUM 2: `reencryptor._reset_for_tests()` y fixture autouse en `tests/crypto/conftest.py`.
 - LOW aceptado sin cambio: `records_count` sin caché; medir en C1 con el puerto de S3.
+
+## B1 · Revisiones, sello y Docker (paso 63)
+
+- Seguridad 0C/1H/2M/1L, todo corregido por el Verde en segunda ronda (bloque S6-B1 de DECISIONES: S6-D106 `service_pending.py`; S6-D107 `count_by_key` en el puerto y `retire-key` que cuenta objetos; `finish_rotation` simétrico y el CLI falla el job al agotar `EMPTY_PASSES`; `_reset_for_tests` del registro de puertos; LOW de `records_count` sin caché con dueño C1).
+- Gates a solas: 62.1 main verde, 62.2 arquitectura 722, 62.3 cli 779, sello 62.5 crypto 861. Checkpoint `f9e5dae` (34 archivos, +2590/-62). Imagen `apex-api:local` `47cd3280b276`.
+- Docker (paso 63): desarrollo: api, worker y web recreados con `47cd3280b276`, `/health` 200; `GET /crypto/keys` (8180, admin) 200 con 9 filas (5 `encrypt`, 3 `index`, 1 `sign`), `summary.provider` `names [local]` `state ok`, `records_count` 285 para `member.document` y nulo para `audit.signature`; `?purpose=sign` 1 fila, `?q=member` 8 filas, `?limit=201` 422; `Cache-Control: no-store`; `grep -c` de material y referencias = 0 (`paso63-dev-keys.json`). Ensayo (arrancado, desellado sin mostrar llaves, api y worker recreados con la imagen de B1, 6/6 `healthy`, `crypto ok`): 9 filas, `names [openbao]` `state ok`, `records_count` 0 para `member.document` (sin socios) y nulo para `audit.signature`; sin token 401; `no-store`; `grep -c` = 0 (`paso63-ensayo-keys.json`). El 403 de coach no se probó en vivo (el ensayo solo tiene admin): lo cubre `test_router_keys.py`. Limpieza: ensayo detenido, sin residuos, caché de la VM vaciada; corriendo solo `apex` (7) e `infra`.
+

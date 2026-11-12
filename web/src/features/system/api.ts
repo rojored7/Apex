@@ -18,11 +18,18 @@ import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../core/api/status";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import { isUuid } from "../../shared/lib/ids";
+import { SUMMARY_PARAMS } from "./cryptoFilters";
+import { KEYS_MESSAGES, rotateError } from "./keysErrors";
 import {
   LINK_PURPOSES,
   auditDetailSchema,
   auditPageSchema,
   lastVerificationSchema,
+  cryptoJobsPageSchema,
+  cryptoOpsPageSchema,
+  keysPageSchema,
+  rotationStartedSchema,
   userOutSchema,
   usersPageSchema,
   signaturesLatestSchema,
@@ -30,6 +37,10 @@ import {
   verifyStartedSchema,
   type AuditDetailView,
   type AuditRowView,
+  type CryptoJobsPageView,
+  type CryptoOpsPageView,
+  type KeysPageView,
+  type RotationStartedView,
   type CreateUserForm,
   type LinkPurpose,
   type UserRowView,
@@ -478,6 +489,93 @@ export function useVerifyChain(): UseMutationResult<VerifyOutcome, Error, void> 
       queryClient.setQueryData(LAST_VERIFICATION_KEY, outcome.kind === "done" ? outcome.result : outcome.last);
       // S6-F1: una verificación nueva puede cambiar el estado de la firma (Alterada, Íntegra).
       void queryClient.invalidateQueries({ queryKey: SIGNATURE_LATEST_KEY });
+    },
+  });
+}
+
+// S6-F2 · US-143 a US-146: llaves de cifrado (solo admin).
+// - useCryptoKeys(params): GET /crypto/keys (página del inventario más `summary`); la búsqueda `q` viaja al api (no queda en la URL) y no se conserva en la
+//   caché (`gcTime: 0`). useKeysSummary(): la misma lectura con limit 200 para las tarjetas (el inventario
+//   completo es corto) y las pestañas; clave propia para no depender de la página del inventario.
+// - useCryptoOps(params): GET /crypto/ops, bitácora inmutable.
+// - useCryptoJobs(params): GET /crypto/jobs; `refetchInterval` de JOBS_POLL_MS solo mientras haya un trabajo
+//   pendiente o en curso; un error o una lectura fallida lo frena y nunca sondea en segundo plano.
+// - useRotateKey(): POST /crypto/keys/{id}/rotate por useSensitiveMutation (el motivo no queda en la caché de
+//   mutaciones); `confirm` es el texto fijo ROTAR (el api lo exige exacto) y el id debe ser un UUID. Al 202 se
+//   invalida todo ["crypto"].
+// El CBOM no tiene hook de consulta: se baja con useBlobDownload (la mutación no cachea el archivo).
+// Ningún material de llave llega aquí: el contrato no lo trae y Zod `.strict()` rechaza campos extra.
+export const CRYPTO_QUERY_KEY = ["crypto"] as const;
+export const KEYS_QUERY_KEY = ["crypto", "keys"] as const;
+/** Cada cuánto se relee la tabla de trabajos mientras hay uno pendiente o en curso (S6-D16). */
+export const JOBS_POLL_MS = 5_000;
+/** El texto que el api exige en `confirm` para rotar (S6-D121). */
+export const ROTATE_CONFIRM = "ROTAR";
+
+export function useCryptoKeys(params: URLSearchParams): UseQueryResult<KeysPageView> {
+  const query = params.toString();
+  return useQuery({
+    queryKey: [...KEYS_QUERY_KEY, "list", query],
+    queryFn: async ({ signal }) => parseResponse(keysPageSchema, await api.get<unknown>("/crypto/keys", { query: Object.fromEntries(params), signal })),
+    placeholderData: keepPreviousData,
+    ...(params.has("q") ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
+  });
+}
+
+export function useKeysSummary(): UseQueryResult<KeysPageView> {
+  return useQuery({
+    queryKey: [...KEYS_QUERY_KEY, "all"],
+    queryFn: async ({ signal }) => parseResponse(keysPageSchema, await api.get<unknown>("/crypto/keys", { query: Object.fromEntries(SUMMARY_PARAMS), signal })),
+  });
+}
+
+export function useCryptoOps(params: URLSearchParams): UseQueryResult<CryptoOpsPageView> {
+  const query = params.toString();
+  return useQuery({
+    queryKey: [...CRYPTO_QUERY_KEY, "ops", query],
+    queryFn: async ({ signal }) => parseResponse(cryptoOpsPageSchema, await api.get<unknown>("/crypto/ops", { query: Object.fromEntries(params), signal })),
+    placeholderData: keepPreviousData,
+    ...(params.has("q") ? { gcTime: 0, refetchOnWindowFocus: false } : {}),
+  });
+}
+
+/** ¿Hay un trabajo que todavía no termina (pendiente o en curso)? */
+export function hasActiveJob(page: CryptoJobsPageView | undefined): boolean {
+  return page?.items.some((job) => job.status === "running" || job.status === "pending") ?? false;
+}
+
+export function useCryptoJobs(params: URLSearchParams): UseQueryResult<CryptoJobsPageView> {
+  const query = params.toString();
+  return useQuery({
+    queryKey: [...CRYPTO_QUERY_KEY, "jobs", query],
+    queryFn: async ({ signal }) => parseResponse(cryptoJobsPageSchema, await api.get<unknown>("/crypto/jobs", { query: Object.fromEntries(params), signal })),
+    placeholderData: keepPreviousData,
+    refetchInterval: (observed) => {
+      const { state } = observed;
+      if (state.status === "error" || state.fetchFailureCount > 0) return false;
+      return hasActiveJob(state.data) ? JOBS_POLL_MS : false;
+    },
+  });
+}
+
+export interface RotateKeyInput {
+  keyId: string;
+  reason: string;
+}
+
+export function useRotateKey(): UseMutationResult<RotationStartedView, Error, RotateKeyInput> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<RotationStartedView, Error, RotateKeyInput>({
+    mutationFn: async ({ keyId, reason }) => {
+      if (!isUuid(keyId)) throw new ApiError({ status: 0, code: CLIENT_ERROR_CODES.unknown, message: KEYS_MESSAGES.rotateInvalidKey });
+      try {
+        return parseResponse(rotationStartedSchema, await api.post<unknown>(`/crypto/keys/${keyId}/rotate`, { body: { reason: reason.trim(), confirm: ROTATE_CONFIRM } }));
+      } catch (error) {
+        throw rotateError(error);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: CRYPTO_QUERY_KEY });
     },
   });
 }

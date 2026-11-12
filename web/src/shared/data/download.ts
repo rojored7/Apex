@@ -23,6 +23,8 @@ export interface DownloadRequest {
   query?: QueryParams;
   /** Nombre si el api no propone uno en `Content-Disposition`. */
   fallbackName: string;
+  /** S6-F2: tipos extra que acepta esta descarga (el CBOM, application/json); ver BlobOptions.allow. */
+  allow?: readonly string[];
 }
 
 export interface BlobDownload {
@@ -64,11 +66,11 @@ export function useBlobDownload(): BlobDownload {
   };
 
   const { mutateAsync, isPending } = useSensitiveMutation<undefined, Error, DownloadRequest>({
-    mutationFn: async ({ path, query, fallbackName }) => {
+    mutationFn: async ({ path, query, fallbackName, allow }) => {
       const controller = new AbortController();
       controllers.current.add(controller);
       try {
-        const result = await api.blob(path, { ...(query ? { query } : {}), signal: controller.signal });
+        const result = await api.blob(path, { ...(query ? { query } : {}), ...(allow ? { allow } : {}), signal: controller.signal });
         if (!controller.signal.aborted) saveDownload(result, fallbackName);
         return undefined;
       } catch (error) {

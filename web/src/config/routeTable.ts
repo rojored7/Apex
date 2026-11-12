@@ -166,7 +166,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", { load: () => import("../features/system/pages/UsersPage") }),
   // S4A-F1: consulta, detalle sin descifrar y verificación de la cadena (US-102 a US-104, S4A-D31).
   route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel", { load: () => import("../features/system/pages/AuditPage") }),
-  route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel"),
+  // S6-F2: inventario, bitácora, trabajos, rotación y CBOM (US-143 a US-146).
+  route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel", { load: () => import("../features/system/pages/KeysPage") }),
   // S2-F5: Gimnasio, Privacidad y Membresías (S2-D15).
   route("/sistema/configuracion", "Configuración", "settings", "settings.manage", "panel", { load: () => import("../features/system/pages/ConfigPage") }),
 

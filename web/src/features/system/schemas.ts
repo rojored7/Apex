@@ -349,3 +349,103 @@ export type FieldChangeView = z.infer<typeof fieldChangeSchema>;
 export type AuditDetailView = z.infer<typeof auditDetailSchema>;
 export type VerifyResultView = z.infer<typeof verifyResultSchema>;
 export type VerifyStartedView = z.infer<typeof verifyStartedSchema>;
+
+// S6-F2 · US-143 a US-146: llaves de cifrado (CryptoKeyOut, KeysSummary, KeysPage, CryptoOpOut, CryptoJobOut y
+// RotationStartedOut de core/crypto/schemas.py). Todos estrictos (`extra="forbid"` en el api): un campo de más,
+// como material de llave, `wrapped_material`, una referencia `vault:` o el texto `error` de un trabajo, hace
+// la respuesta inválida y nunca llega al estado ni a la caché. El id de usuario tiene forma de UUID sin
+// exigir versión: el técnico del sistema (00000000-…-0001) no es un UUID RFC.
+export const KEY_PURPOSES = ["encrypt", "index", "sign"] as const;
+export const KEY_STATES = ["active", "decrypt_only", "retired"] as const;
+export const KEY_PROVIDERS = ["local", "openbao"] as const;
+export const CRYPTO_VERBS = ["encrypt", "decrypt", "index", "sign", "verify", "wrap", "unwrap", "rotate", "export"] as const;
+export const JOB_KINDS = ["rotate", "reencrypt", "migrate_provider", "rewrap"] as const;
+export const JOB_STATUSES = ["pending", "running", "done", "failed"] as const;
+export const PROVIDER_STATES = ["ok", "sealed", "unreachable", "unknown"] as const;
+export type KeyPurpose = (typeof KEY_PURPOSES)[number];
+export type KeyState = (typeof KEY_STATES)[number];
+export type KeyProvider = (typeof KEY_PROVIDERS)[number];
+export type CryptoVerb = (typeof CRYPTO_VERBS)[number];
+export type JobKind = (typeof JOB_KINDS)[number];
+export type JobStatus = (typeof JOB_STATUSES)[number];
+export type ProviderState = (typeof PROVIDER_STATES)[number];
+
+/** Forma de UUID sin exigir versión: admite el usuario técnico fijo (00000000-…-0001) y no acepta texto libre. */
+const UUID_SHAPE = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const count = z.number().int().nonnegative();
+
+export const cryptoKeySchema = z
+  .object({
+    id: z.uuid(),
+    purpose: z.enum(KEY_PURPOSES),
+    data_class: z.string().min(1),
+    algorithm: z.string().min(1),
+    version: z.number().int().positive(),
+    state: z.enum(KEY_STATES),
+    provider: z.enum(KEY_PROVIDERS),
+    created_at: instant,
+    rotated_at: instant.nullable(),
+    age_days: count,
+    records_count: count.nullable(),
+  })
+  .strict();
+
+export const keysSummarySchema = z
+  .object({
+    active_count: count,
+    operations_today: count,
+    running_jobs: count,
+    provider: z.object({ names: z.array(z.string().min(1)), state: z.enum(PROVIDER_STATES) }).strict(),
+  })
+  .strict();
+
+const pageShape = { total: count, limit: z.number().int().min(1).max(200), offset: count };
+
+export const keysPageSchema = z.object({ items: z.array(cryptoKeySchema), ...pageShape, summary: keysSummarySchema }).strict();
+
+export const cryptoOpSchema = z
+  .object({
+    id: z.uuid(),
+    at: instant,
+    user_id: z.string().regex(UUID_SHAPE),
+    verb: z.enum(CRYPTO_VERBS),
+    data_class: z.string().nullable(),
+    key_id: z.uuid().nullable(),
+    key_version: z.number().int().positive().nullable(),
+    record_id: z.uuid().nullable(),
+    purpose: z.string().nullable(),
+    result: z.enum(["ok", "error"]),
+    batch_id: z.uuid().nullable(),
+    count,
+  })
+  .strict();
+
+export const cryptoOpsPageSchema = z.object({ items: z.array(cryptoOpSchema), ...pageShape }).strict();
+
+export const cryptoJobSchema = z
+  .object({
+    id: z.uuid(),
+    kind: z.enum(JOB_KINDS),
+    data_class: z.string().nullable(),
+    status: z.enum(JOB_STATUSES),
+    total: count,
+    done: count,
+    percent: z.number().int().min(0).max(100),
+    started_at: instant.nullable(),
+    finished_at: instant.nullable(),
+    created_at: instant,
+  })
+  .strict();
+
+export const cryptoJobsPageSchema = z.object({ items: z.array(cryptoJobSchema), ...pageShape }).strict();
+
+export const rotationStartedSchema = z.object({ job_id: z.uuid(), new_key_id: z.uuid(), previous_key_id: z.uuid() }).strict();
+
+export type CryptoKeyView = z.infer<typeof cryptoKeySchema>;
+export type KeysSummaryView = z.infer<typeof keysSummarySchema>;
+export type KeysPageView = z.infer<typeof keysPageSchema>;
+export type CryptoOpView = z.infer<typeof cryptoOpSchema>;
+export type CryptoOpsPageView = z.infer<typeof cryptoOpsPageSchema>;
+export type CryptoJobView = z.infer<typeof cryptoJobSchema>;
+export type CryptoJobsPageView = z.infer<typeof cryptoJobsPageSchema>;
+export type RotationStartedView = z.infer<typeof rotationStartedSchema>;

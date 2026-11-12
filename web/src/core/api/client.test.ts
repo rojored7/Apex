@@ -708,6 +708,25 @@ describe("api.blob: tipos de S6-F3 (foto y adjuntos)", () => {
   });
 });
 
+describe("api.blob: tipos extra por llamada (S6-F2, CBOM)", () => {
+  it("con allow: [\"application/json\"] entrega un 200 JSON (el CBOM) y sin allow lo sigue rechazando", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200, headers: { "Content-Type": "application/json", "Content-Disposition": "attachment; filename=apex-cbom-2026-10-20.json" } }));
+    const result = await api.blob("/crypto/cbom", { allow: ["application/json"] });
+
+    expect(result.filename).toBe("apex-cbom-2026-10-20.json");
+    expect(await result.blob.text()).toBe("{}");
+
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(api.blob("/crypto/cbom")).rejects.toMatchObject({ code: "unexpected_content_type" });
+  });
+
+  it("allow no abre otros tipos: text/html sigue rechazado", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200, headers: { "Content-Type": "text/html" } }));
+
+    await expect(api.blob("/crypto/cbom", { allow: ["application/json"] })).rejects.toMatchObject({ code: "unexpected_content_type" });
+  });
+});
+
 describe("api.upload: subida cruda de un archivo (S6-F4, E1)", () => {
   const MEMBER_PATH = "/members/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/attachments";
   const png = (): File => new File([new Uint8Array([1, 2, 3])], "foto.png", { type: "image/png" });

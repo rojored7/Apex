@@ -54,6 +54,11 @@ export interface RequestOptions {
 export interface BlobOptions extends Omit<RequestOptions, "body"> {
   /** Tiempo máximo de la descarga completa; por defecto BLOB_TIMEOUT_MS. */
   timeoutMs?: number;
+  /**
+   * S6-F2: tipos que esta llamada acepta además de BLOB_CONTENT_TYPES (el CBOM es application/json).
+   * Es por llamada: el resto de las descargas sigue rechazando un 200 JSON (S6-D120).
+   */
+  allow?: readonly string[];
 }
 
 /** Un archivo descargado: el Blob, el nombre que propuso el api (sin sanear) y su tipo. */
@@ -245,11 +250,11 @@ async function request<T>(method: Method, path: string, options: RequestOptions)
 }
 
 async function requestBlob(path: string, options: BlobOptions): Promise<BlobResult> {
-  const { timeoutMs = BLOB_TIMEOUT_MS, ...rest } = options;
+  const { timeoutMs = BLOB_TIMEOUT_MS, allow = [], ...rest } = options;
   const response = await send("GET", path, rest, { timeoutMs, binary: true });
   if (response.blob === null) throw new ApiError({ status: response.status, code: "network_error", message: GENERIC_MESSAGES.network_error });
   const type = (response.contentType ?? "").trim().toLowerCase();
-  if (!BLOB_CONTENT_TYPES.some((allowed) => type.startsWith(allowed))) {
+  if (![...BLOB_CONTENT_TYPES, ...allow].some((allowed) => type.startsWith(allowed))) {
     throw new ApiError({ status: response.status, code: CLIENT_ERROR_CODES.unexpectedContentType, message: UNEXPECTED_CONTENT_MESSAGE });
   }
   return { blob: response.blob, filename: filenameFromDisposition(response.disposition), contentType: response.contentType };

@@ -1,0 +1,30 @@
+/* S6-F2: Llaves.html, línea del proveedor y tarjetas de resumen. Solo variables de tokens.css. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.provider {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+/* Custodio sellado o inalcanzable: el texto lleva el aviso; el borde de peligro lo refuerza. */
+.alert {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--danger);
+  font: var(--text-label);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-3);
+}

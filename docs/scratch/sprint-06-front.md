@@ -100,3 +100,27 @@
   - L4: `// DESIGN-GAP:` junto a la ayuda nueva de «Autorización obligatoria desde» (BRECHAS 14.14).
   - L5 (aceptada): el chip «Todos» muestra el total sin `consent` (constancia en BRECHAS 14.13).
 - Pendiente: sello `slice-gate.sh web/members` (orquestador).
+
+## F2 · Pantalla Llaves (US-143 a US-146)
+
+- Base: `8595d6b` (checkpoint de F5, rama `feat/sprint-06-front` rebasada sobre el checkpoint de R1 `0da0962`). `gen:api` sin diff antes de empezar.
+- Rojo (visto en rojo antes del Verde, 9 archivos de prueba; 11 fallos de aserción y 7 de importación): `config/features.test.ts` (11 features con `crypto`; `/sistema/llaves` con `load`), `core/api/client.test.ts` (`api.blob` con `allow`), `shared/ui/StatusTag.crypto.test.tsx`, `pages/KeysPage.test.tsx`, `components/{KeysInventory,CryptoOpsLog,CryptoJobs,RotateKeyModal,ExportCbomButton}.test.tsx` y el montaje `test/keys.tsx`.
+- Verde: `config/{features,routeTable}.ts`, `core/api/client.ts` (`BlobOptions.allow`), `shared/data/download.ts` (`DownloadRequest.allow`), `shared/ui/{statusLabel,StatusTag}` (variante `crypto`), `features/system/{schemas,api,cryptoFilters,cryptoLabels,keysErrors}.ts`, `pages/KeysPage.tsx` y `components/{KeysSummaryCards,KeysInventory,CryptoOpsLog,CryptoJobs,RotateKeyModal,ExportCbomButton}.tsx` con sus CSS modules.
+- Decisiones:
+  - El CBOM es `application/json` y `BLOB_CONTENT_TYPES` no lo admite (S6-D120). `api.blob` gana `allow` por llamada (`["application/json"]` solo en el CBOM); el resto de las descargas sigue rechazando un 200 JSON. `useBlobDownload` lo reenvía. Se corrige la nota de BRECHAS 14.10 que decía lo contrario.
+  - `ExportCbomButton` no va en `PageHeader.actions` (una `PageAction` no puede llevar su aviso de error): queda en la fila bajo el encabezado, como `ExportButton` de Pagos.
+  - Resumen: `KeysSummaryCards` lee las llaves con `limit=200` (clave `["crypto","keys","all"]`, aparte de la página del inventario) para el `summary` y la antigüedad. «Rotación vencida (30 días)» es DESIGN-GAP (BRECHAS 14.15): el api no define plazo; muestra `age_days` de la llave activa más antigua.
+  - Trabajos se relee cada 5 s mientras haya uno `running` **o `pending`** (el brief decía solo `running`): un trabajo recién creado nace pendiente y sin esto la tabla quedaría congelada tras rotar. Un error o una lectura fallida frena el sondeo; al pasar de «hay uno en curso» a ninguno se invalida `["crypto","keys"]`.
+  - Rotar: `ConfirmModal` con `minReasonLength=1` y `maxReasonLength=200` (el contrato, no el «3 a 500» del plan), `confirmText="ROTAR"`; `useRotateKey` por `useSensitiveMutation`, `isUuid` antes de armar la URL, `confirm` fijo; al 202 invalida `["crypto"]` y pone `?tab=trabajos`. 409/422 muestran el texto del api; 503 `crypto_unavailable`, 429, 403 y 404 tienen el suyo (`keysErrors.ts`).
+  - Zod `.strict()` en inventario, resumen, bitácora, trabajos y rotación: `wrapped_material`, `vault:` o el `error` de un trabajo vuelven la respuesta inválida (prueba en cada lista).
+  - La bitácora valida el rango en el cliente con la regla del api (piso 2020, techo hoy, orden, 366 días); un rango inválido no viaja y se explica con un `role="alert"`. El usuario se ve como «Usuario <8 hex>» o «Sistema (worker)».
+  - Pestañas: Inventario, Bitácora y Trabajos (el diseño dice «Bitácora de operaciones» y «Tareas de recifrado»).
+- Pruebas que cambian: solo `features.test.ts` (diez → once features).
+- E2E: `tests/e2e/keys.spec.ts` en preview, 11 verdes (flujo completo con ROTAR exacto, CBOM descargado, rango de Bogotá, axe claro y oscuro a 320/768/1024/1440 con modal y las tres pestañas, coach en «Sin permiso»); `tests/e2e/stack/keys-rotate.spec.ts` escrito, NO corrido (V7: rotación de `member.phone` desde la pantalla, `reveal` del socio durante y después, v2 `active` y v1 `decrypt_only`, CBOM sin material).
+- DESIGN-GAP: BRECHAS 14.15 (abierta, decisión de contrato), 14.16 y 14.17 (aceptadas); 14.7 cerrada.
+- Pendiente: revisión `security-reviewer` (ningún material en estado ni caché; el CBOM no se cachea: viaja por una mutación sin `gcTime`) y sello `slice-gate.sh web/system` (orquestador).
+- Revisión de seguridad 0C/0H/1M/3L: todas corregidas.
+  - M1: pruebas de rechazo por campo extra en la bitácora (`raw`), en `summary.provider` (`token`) y en la respuesta 202 de la rotación (`wrapped_material`); estado de error y el texto del campo no llega al DOM.
+  - L1: el 503 `crypto_unavailable` de la rotación muestra el texto del api (como `downloadErrors.ts`); se quitó `rotateCustody` y el `CustodyNotice` global explica el sellado.
+  - L2: comentarios de `api.ts`, `KeysInventory.tsx` y `CryptoOpsLog.tsx`: `q` viaja al api y no queda en la URL ni en la caché (`gcTime: 0`).
+  - L3: `cryptoOpSchema.user_id` con forma de UUID (admite el usuario técnico fijo, rechaza texto libre); prueba en `CryptoOpsLog.test.tsx`.

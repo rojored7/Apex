@@ -128,3 +128,38 @@ export function signatureLabel(state: SignatureStateView): string {
 export function signatureTone(state: SignatureStateView): StatusTone {
   return SIGNATURE_TONES[state];
 }
+
+/**
+ * S6-F2 · US-143, US-145: estado de una llave de cifrado (`CryptoKeyOut.state`) o de un trabajo de
+ * rotación o recifrado (`CryptoJobOut.status`). Dos listas distintas del contrato, una sola píldora.
+ */
+export type CryptoStatusView = "active" | "decrypt_only" | "retired" | "pending" | "running" | "done" | "failed";
+
+export const CRYPTO_LABELS = Object.freeze({
+  active: "Activa",
+  decrypt_only: "Solo descifrar",
+  retired: "Retirada",
+  pending: "Pendiente",
+  running: "En curso",
+  done: "Terminado",
+  failed: "Falló",
+} as const satisfies Record<CryptoStatusView, string>);
+
+/** Activa y terminado como «al día»; solo descifrar y en curso piden atención; falló es error. */
+export const CRYPTO_TONES = Object.freeze({
+  active: "ok",
+  decrypt_only: "warning",
+  retired: "neutral",
+  pending: "neutral",
+  running: "warning",
+  done: "ok",
+  failed: "danger",
+} as const satisfies Record<CryptoStatusView, StatusTone>);
+
+export function cryptoLabel(status: CryptoStatusView): string {
+  return CRYPTO_LABELS[status];
+}
+
+export function cryptoTone(status: CryptoStatusView): StatusTone {
+  return CRYPTO_TONES[status];
+}

@@ -4565,6 +4565,89 @@
         "title": "SellMembershipOut",
         "type": "object"
       },
+      "SignatureInfoOut": {
+        "description": "Una firma sin hash, blob ni llave (S6-A3): hasta dónde cubre, cuándo y con qué.",
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "signed_at": {
+            "format": "date-time",
+            "title": "Signed At",
+            "type": "string"
+          },
+          "through_seq": {
+            "title": "Through Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "through_seq",
+          "signed_at",
+          "algorithm"
+        ],
+        "title": "SignatureInfoOut",
+        "type": "object"
+      },
+      "SignaturesLatestOut": {
+        "description": "`GET /audit/signatures/latest` (S6-D10): la última firma registrada, la última válida de la\núltima verificación, si la firma está atrasada y el estado de esa verificación.",
+        "properties": {
+          "is_late": {
+            "title": "Is Late",
+            "type": "boolean"
+          },
+          "last_valid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignatureInfoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignatureInfoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "none",
+              "ok",
+              "invalid"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "latest",
+          "last_valid",
+          "is_late",
+          "state"
+        ],
+        "title": "SignaturesLatestOut",
+        "type": "object"
+      },
       "SkipIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /notifications/{id}/skip`: el motivo, de 3 a 500 caracteres visibles.",
@@ -4925,6 +5008,51 @@
             "title": "Finished At",
             "type": "string"
           },
+          "first_invalid_signature_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Invalid Signature Seq"
+          },
+          "last_valid_signature_algorithm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Valid Signature Algorithm"
+          },
+          "last_valid_signature_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Valid Signature At"
+          },
+          "last_valid_signature_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Valid Signature Seq"
+          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
@@ -4932,6 +5060,28 @@
           "rows_checked": {
             "title": "Rows Checked",
             "type": "integer"
+          },
+          "signatures_checked": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signatures Checked"
+          },
+          "signatures_valid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signatures Valid"
           },
           "source": {
             "enum": [
@@ -5286,6 +5436,77 @@
           }
         },
         "summary": "List Audit",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/v1/audit/signatures/latest": {
+      "get": {
+        "operationId": "latest_signatures_api_v1_audit_signatures_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignaturesLatestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Latest Signatures",
         "tags": [
           "audit"
         ]

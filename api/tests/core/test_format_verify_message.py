@@ -78,3 +78,91 @@ def test_rota_por_el_ancla() -> None:
     assert texto.startswith("Cadena rota en el registro seq 49")
     assert "no coincide con la verificación anterior" in texto
     _sin_secretos(texto)
+
+
+# Firmas (S6-A3, US-142; S6-D10) -------------------------------------------------------------------
+# Contrato fijado por el Rojo:
+# - sin datos de firmas (verificación vieja, campos nulos) el texto no menciona firmas;
+# - con `signatures_checked = 0` dice `Sin firmas que verificar` y el código sigue siendo 0;
+# - todas válidas: `Firmas: N de N válidas` y el último `seq` válido; código 0;
+# - alguna inválida: `Firma inválida` con el `seq` de `first_invalid_signature_seq`, `V de C
+#   válidas`, código 1 también con la cadena sana (`broken_at_seq` lo fija el servicio);
+# - nunca lleva el algoritmo ni ids, hashes o el blob `apx1.` de la firma.
+
+FIRMA_EN = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+CON_FIRMAS = replace(
+    INTEGRA,
+    signatures_checked=3,
+    signatures_valid=3,
+    last_valid_signature_seq=4504,
+    last_valid_signature_at=FIRMA_EN,
+    last_valid_signature_algorithm="Ed25519",
+)
+
+
+def _sin_blobs(texto: str) -> None:
+    _sin_secretos(texto)
+    assert "apx1." not in texto and "Ed25519" not in texto
+
+
+def test_sin_datos_de_firmas_el_texto_no_las_menciona() -> None:
+    texto, codigo = format_verify_message(INTEGRA)
+    assert codigo == 0
+    assert "irma" not in texto  # ni «firma» ni «Firmas»
+
+
+def test_sin_firmas_que_verificar_lo_dice_y_sale_0() -> None:
+    texto, codigo = format_verify_message(
+        replace(INTEGRA, signatures_checked=0, signatures_valid=0)
+    )
+    assert codigo == 0
+    assert texto.startswith("Cadena íntegra")
+    assert "Sin firmas que verificar" in texto
+    _sin_blobs(texto)
+
+
+def test_firmas_validas_dicen_cuantas_y_hasta_donde() -> None:
+    texto, codigo = format_verify_message(CON_FIRMAS)
+    assert codigo == 0
+    assert texto.startswith("Cadena íntegra")
+    assert "Firmas: 3 de 3 válidas" in texto
+    assert "4504" in texto
+    _sin_blobs(texto)
+
+
+def test_firma_invalida_con_la_cadena_sana_sale_1_y_dice_cual() -> None:
+    invalida = replace(
+        CON_FIRMAS,
+        ok=False,
+        broken_at_seq=3000,
+        signatures_valid=1,
+        first_invalid_signature_seq=3000,
+        last_valid_signature_seq=1200,
+    )
+    texto, codigo = format_verify_message(invalida)
+    assert codigo == 1
+    assert "Firma inválida" in texto and "3000" in texto
+    assert "1 de 3 válidas" in texto
+    _sin_blobs(texto)
+
+
+def test_cadena_rota_y_firma_invalida_conserva_el_aviso_de_la_cadena() -> None:
+    ambas = replace(
+        CON_FIRMAS,
+        ok=False,
+        rows_checked=42,
+        broken_at_seq=42,
+        signatures_valid=2,
+        first_invalid_signature_seq=100,
+    )
+    texto, codigo = format_verify_message(ambas)
+    assert codigo == 1
+    assert "Cadena rota en el registro seq 42" in texto
+    assert "Firma inválida" in texto and "100" in texto
+    _sin_blobs(texto)
+
+
+def test_las_verificaciones_rotas_sin_firmas_conservan_el_texto_de_antes() -> None:
+    rota = replace(INTEGRA, ok=False, rows_checked=42, broken_at_seq=42)
+    texto, codigo = format_verify_message(rota)
+    assert (texto, codigo) == ("Cadena rota en el registro seq 42.", 1)

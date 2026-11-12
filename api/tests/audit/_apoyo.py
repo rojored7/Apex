@@ -54,6 +54,22 @@ CAMPOS_RESULTADO: Final = frozenset(
         "finished_at",
         "triggered_by",
         "source",
+        "signatures_checked",
+        "signatures_valid",
+        "first_invalid_signature_seq",
+        "last_valid_signature_seq",
+        "last_valid_signature_at",
+        "last_valid_signature_algorithm",
+    }
+)
+CAMPOS_FIRMAS: Final = frozenset(
+    {
+        "signatures_checked",
+        "signatures_valid",
+        "first_invalid_signature_seq",
+        "last_valid_signature_seq",
+        "last_valid_signature_at",
+        "last_valid_signature_algorithm",
     }
 )
 CLAVES_AFTER: Final = frozenset(

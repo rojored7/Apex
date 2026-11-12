@@ -34,12 +34,18 @@ from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID
 from tests.audit._apoyo import EspiaDeConexiones, candado_libre
 from tests.cli._apoyo import correr
+from tests.cli._apoyo_firma import con_proveedor, firma_lista
 from tests.conftest import CLAVE_PRUEBA
+from tests.core._cripto_apoyo import proveedor_ctl
 from tests.factories.audit_chain import MARCA_AFTER, last_seq, make_audit_chain, tamper_row
+from tests.factories.fake_provider import ProveedorControlable
+from tests.factories.firma_real import cadena, firmas
 from tests.factories.users import make_user
 
 Fabrica = async_sessionmaker[AsyncSession]
 UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+__all__ = ["firma_lista", "proveedor_ctl"]
 
 pytestmark = pytest.mark.usefixtures("reloj")
 
@@ -245,3 +251,95 @@ async def test_la_conexion_del_candado_es_autocommit_e_invalidada(
     assert resultado.exit_code == 0, resultado.output
     assert espia_de_conexiones.autocommit_invalidadas(), espia_de_conexiones
     assert await candado_libre(settings_prueba.DATABASE_URL.get_secret_value())
+
+
+# Firmas (S6-A3, US-142; S6-D10, S6-D81) -----------------------------------------------------------
+# Contrato fijado por el Rojo: la salida dice cuántas firmas verificaron (`Firmas: N de N válidas`,
+# `Sin firmas que verificar` si no hay) y sale 1 con una firma inválida aunque la cadena esté sana
+# (`Firma inválida`); con el custodio sellado sale 0 y el proveedor no recibe ninguna llamada
+# (`verify-audit` sigue sin depender del custodio, D81); ni hashes, ni ids, ni el blob `apx1.`.
+
+
+def _firmar_cadena(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Any:
+    return correr(app, ["sign-audit"], "dev", base=settings, monkeypatch=monkeypatch)
+
+
+async def _dos_firmas(fabrica: Fabrica, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> int:
+    """Dos tramos firmados (`sign-audit` real); devuelve el `seq` de la última fila."""
+    await cadena(fabrica, 5)
+    assert _firmar_cadena(settings, monkeypatch).exit_code == 0
+    _, ultimo = await cadena(fabrica, 4)
+    assert _firmar_cadena(settings, monkeypatch).exit_code == 0
+    assert len(await firmas(fabrica)) == 2
+    return ultimo
+
+
+async def test_firmas_validas_salen_en_la_salida_y_el_codigo_es_0(
+    firma_lista: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _dos_firmas(firma_lista, settings_prueba, monkeypatch)
+
+    resultado = correr(app, ["verify-audit"], "dev", base=settings_prueba, monkeypatch=monkeypatch)
+
+    _sin_excepcion(resultado)
+    assert resultado.exit_code == 0, resultado.output
+    assert "Cadena íntegra" in resultado.output
+    assert "Firmas: 2 de 2 válidas" in resultado.output
+    assert "apx1." not in resultado.output and "Ed25519" not in resultado.output
+    _limpia(resultado.output)
+    [fila] = await _verificaciones(firma_lista)
+    assert (fila.signatures_checked, fila.signatures_valid) == (2, 2)
+    assert fila.first_invalid_signature_seq is None and fila.last_valid_signature_seq is not None
+
+
+async def test_sin_firmas_lo_dice_y_sale_0(
+    firma_lista: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await cadena(firma_lista, 5)
+
+    resultado = correr(app, ["verify-audit"], "dev", base=settings_prueba, monkeypatch=monkeypatch)
+
+    _sin_excepcion(resultado)
+    assert resultado.exit_code == 0, resultado.output
+    assert "Sin firmas que verificar" in resultado.output
+    [fila] = await _verificaciones(firma_lista)
+    assert (fila.signatures_checked, fila.signatures_valid) == (0, 0)
+
+
+async def test_una_firma_invalida_con_la_cadena_sana_sale_1(
+    firma_lista: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ultimo = await _dos_firmas(firma_lista, settings_prueba, monkeypatch)
+    async with firma_lista() as sesion:  # cadena reescrita con los hashes recalculados
+        await tamper_row(sesion, ultimo, "after", {"n": ultimo, "alterado": True}, rehash=True)
+        await sesion.commit()
+
+    resultado = correr(app, ["verify-audit"], "dev", base=settings_prueba, monkeypatch=monkeypatch)
+
+    _sin_excepcion(resultado)
+    assert resultado.exit_code == 1, resultado.output
+    assert "Firma inválida" in resultado.output
+    assert "apx1." not in resultado.output
+    _limpia(resultado.output)
+    [fila] = await _verificaciones(firma_lista)
+    assert fila.ok is False and fila.first_invalid_signature_seq is not None
+    assert fila.broken_at_seq == fila.first_invalid_signature_seq
+
+
+async def test_con_el_custodio_sellado_sale_0_y_el_proveedor_no_recibe_llamadas(
+    firma_lista: Fabrica,
+    settings_prueba: Settings,
+    proveedor_ctl: ProveedorControlable,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _dos_firmas(firma_lista, settings_prueba, monkeypatch)
+    proveedor_ctl.estado = "sealed"
+    con_proveedor(monkeypatch, proveedor_ctl)
+
+    resultado = correr(app, ["verify-audit"], "dev", base=settings_prueba, monkeypatch=monkeypatch)
+
+    _sin_excepcion(resultado)
+    assert resultado.exit_code == 0, resultado.output
+    assert "Firmas: 2 de 2 válidas" in resultado.output
+    assert "desellar" not in resultado.output
+    assert (proveedor_ctl.wrap_calls, proveedor_ctl.unwrap_calls) == (0, 0)

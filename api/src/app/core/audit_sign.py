@@ -16,7 +16,7 @@ irreversible (ADR-004) y no se toca. Importa solo `core.audit`, `core.crypto.bus
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final, Literal, cast
@@ -84,17 +84,28 @@ class SignOutcome:
     signature_id: UUID | None
 
 
-def signature_payload(
-    through_seq: int, chain_hash: str, *, version: int = PAYLOAD_VERSION
-) -> bytes:
-    """Los bytes que se firman (ADR-006). Rechaza con `CanonicalError` toda entrada inválida."""
-    if version != PAYLOAD_VERSION:
-        raise CanonicalError(f"versión de payload desconocida: {version!r}")
+def _payload_v1(through_seq: int, chain_hash: str) -> bytes:
+    """Constructor del payload `payload_version = 1` (ADR-006). Rechaza con `CanonicalError`."""
     if type(through_seq) is not int or through_seq < 1:
         raise CanonicalError("through_seq debe ser un entero mayor o igual a 1")
     if not isinstance(chain_hash, str) or _HASH_RE.fullmatch(chain_hash) is None:
         raise CanonicalError("chain_hash debe ser 64 hexadecimales en minúscula")
-    return f"{PAYLOAD_PREFIX}{version}\n{through_seq}\n{chain_hash}".encode("ascii")
+    return f"{PAYLOAD_PREFIX}1\n{through_seq}\n{chain_hash}".encode("ascii")
+
+
+PAYLOAD_BUILDERS: Final[dict[int, Callable[[int, str], bytes]]] = {1: _payload_v1}
+"""Constructores del payload por `payload_version` (S6-A3, S6-D62): quien firma o verifica elige el
+de la fila. Una versión sin constructor es inválida (nunca una excepción para quien verifica)."""
+
+
+def signature_payload(
+    through_seq: int, chain_hash: str, *, version: int = PAYLOAD_VERSION
+) -> bytes:
+    """Los bytes que se firman (ADR-006). Rechaza con `CanonicalError` toda entrada inválida."""
+    constructor = PAYLOAD_BUILDERS.get(version)
+    if constructor is None:
+        raise CanonicalError(f"versión de payload desconocida: {version!r}")
+    return constructor(through_seq, chain_hash)
 
 
 def needs_signature(last_seq: int, last_signed_seq: int) -> bool:

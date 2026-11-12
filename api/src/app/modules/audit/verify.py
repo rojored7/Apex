@@ -16,6 +16,8 @@
   al terminar) y devuelve `Started(last)`. La tarea libera el candado en su `finally` y, si falla o
   vence, no deja fila y registra solo el tipo.
 - `last_verification(session)`: la última verificación por `finished_at` (`ok` o no), o `None`.
+- `signatures_latest(session)` (S6-A3, US-142): `SignaturesLatestOut` desde `audit.signatures`, la
+  última verificación y `audit_sign.late_hours`; solo lectura.
 - `cancel_background_verifications()`: el `shutdown` del lifespan cancela las tareas y espera su
   `finally` (sueltan el candado) antes de cerrar el engine; el candado de una tarea cancelada
   antes de su primer paso lo suelta ella misma (S4A-D101).
@@ -32,17 +34,21 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from app.core import audit_verify, db
+from app.core import audit_sign, audit_verify, db
 from app.core.audit import AuditEntry
 from app.core.audit_verify import (
     TRY_LOCK_STATEMENT,
     UNLOCK_STATEMENT,
     AuditVerification,
+    SignatureState,
     VerificationView,
     run_verification,
+    signature_state,
     view_of,
 )
+from app.core.clock import current_clock
 from app.modules.audit.exceptions import VerificationRunning
+from app.modules.audit.schemas import SignatureInfoOut, SignaturesLatestOut
 
 logger = logging.getLogger("app.audit")
 
@@ -200,6 +206,47 @@ async def last_verification(session: AsyncSession) -> VerificationView | None:
         .limit(1)
     )
     return None if row is None else view_of(row)
+
+
+async def signatures_latest(session: AsyncSession) -> SignaturesLatestOut:
+    """`GET /audit/signatures/latest` (S6-D10): la última firma guardada, la última válida y el
+    estado de la última verificación (`none` si no hay ninguna o es anterior a `0022`) y si la firma
+    está atrasada (`late_hours`, criterio de S6-D40). Solo lectura; nunca hash, blob ni llave."""
+    ultima = await audit_sign.latest_signature(session)
+    verificacion = await last_verification(session)
+    latest = (
+        None
+        if ultima is None
+        else SignatureInfoOut(
+            through_seq=ultima.through_seq, signed_at=ultima.signed_at, algorithm=ultima.algorithm
+        )
+    )
+    last_valid = None
+    state: SignatureState = "none"
+    if verificacion is not None and verificacion.signatures_checked is not None:
+        state = signature_state(
+            verificacion.signatures_checked,
+            verificacion.signatures_valid or 0,
+            verificacion.first_invalid_signature_seq,
+        )
+        if (
+            verificacion.last_valid_signature_seq is not None
+            and verificacion.last_valid_signature_at is not None
+            and verificacion.last_valid_signature_algorithm is not None
+        ):
+            last_valid = SignatureInfoOut(
+                through_seq=verificacion.last_valid_signature_seq,
+                signed_at=verificacion.last_valid_signature_at,
+                algorithm=verificacion.last_valid_signature_algorithm,
+            )
+    atrasada = await audit_sign.late_hours(session, current_clock().now_utc()) is not None
+    return SignaturesLatestOut(
+        latest=latest,
+        last_valid=last_valid,
+        is_late=atrasada,
+        state=state,
+        verified_at=None if verificacion is None else verificacion.finished_at,
+    )
 
 
 async def cancel_background_verifications() -> None:

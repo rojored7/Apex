@@ -4,6 +4,9 @@ decorador (S2-D3).
 - `GET /audit/verify/last` (admin, `AdminDep`): 200 `VerifyResultOut | null` (nunca 404). Sin
   límite por usuario (lee una fila, M-1) y sin parámetros (sin 422). Se registra antes de
   `GET /audit/{seq}` (S4A-B4).
+- `GET /audit/signatures/latest` (admin; S6-A3, US-142; S6-D10): `SignaturesLatestOut`,
+  consume `staff-read`, 429. Se registra ANTES de `GET /audit/{seq}` (si no, `signatures`
+  caería en `seq`).
 - `POST /audit/verify` (admin, `AdminDep`): consume `audit-verify` (3 por minuto) y
   `audit-verify-hour` (20 por hora) por usuario (M-3, S4A-D47). 200 `VerifyResultOut` (hasta
   `SYNC_VERIFY_MAX_ROWS` filas), 202 `VerifyStartedOut` (segundo plano; la respuesta lleva
@@ -45,6 +48,7 @@ from app.modules.audit.schemas import (
     AuditDetail,
     AuditListQuery,
     AuditRow,
+    SignaturesLatestOut,
     VerifyResultOut,
     VerifyStartedOut,
 )
@@ -89,6 +93,18 @@ async def verify_chain(
         cuerpo = VerifyStartedOut(last=last).model_dump(mode="json")
         return JSONResponse(status_code=202, content=cuerpo, headers={"Cache-Control": NO_STORE})
     return VerifyResultOut.model_validate(salida.result, from_attributes=True)
+
+
+@router.get(
+    "/audit/signatures/latest",
+    response_model=SignaturesLatestOut,
+    responses=responses_for(429),
+)
+async def latest_signatures(
+    request: Request, principal: AdminDep, session: SessionDep
+) -> SignaturesLatestOut:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.signatures_latest(session)
 
 
 @router.get(

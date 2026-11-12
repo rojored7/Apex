@@ -77,8 +77,9 @@ def test_load_module_services_suscribe_cada_handler_una_vez(
 
 def test_audit_publica_verify_lista_y_detalle_y_sigue_sin_models() -> None:
     """S4A-B3 y S4A-B4 (S4A-D14, S4A-D16, S4A-D17, S4A-D18): el router de `audit` tiene exactamente
-    las cuatro rutas, lleva `no_store` en el `APIRouter` y el módulo sigue sin `models.py`
-    (`AuditEntry` vive en `core/audit.py` y `AuditVerification` en `core/audit_verify.py`)."""
+    las cinco rutas (S6-A3 suma `GET /audit/signatures/latest`), lleva `no_store` en el
+    `APIRouter` y el módulo sigue sin `models.py` (`AuditEntry` vive en `core/audit.py` y
+    `AuditVerification` en `core/audit_verify.py`)."""
     router = importlib.import_module("app.modules.audit.router").router
     rutas = {
         (metodo, ruta.path)
@@ -91,6 +92,7 @@ def test_audit_publica_verify_lista_y_detalle_y_sigue_sin_models() -> None:
         ("GET", "/audit/verify/last"),
         ("GET", "/audit"),
         ("GET", "/audit/{seq}"),
+        ("GET", "/audit/signatures/latest"),  # S6-A3 (S6-D10)
     }
     assert any(d.dependency is no_store for d in router.dependencies)
     assert find_spec("app.modules.audit.service") is not None

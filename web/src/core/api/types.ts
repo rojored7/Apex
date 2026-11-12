@@ -24,6 +24,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit/signatures/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest Signatures */
+        get: operations["latest_signatures_api_v1_audit_signatures_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/verify": {
         parameters: {
             query?: never;
@@ -2889,6 +2906,39 @@ export interface components {
             status: components["schemas"]["MembershipStatus"];
         };
         /**
+         * SignatureInfoOut
+         * @description Una firma sin hash, blob ni llave (S6-A3): hasta dónde cubre, cuándo y con qué.
+         */
+        SignatureInfoOut: {
+            /** Algorithm */
+            algorithm: string;
+            /**
+             * Signed At
+             * Format: date-time
+             */
+            signed_at: string;
+            /** Through Seq */
+            through_seq: number;
+        };
+        /**
+         * SignaturesLatestOut
+         * @description `GET /audit/signatures/latest` (S6-D10): la última firma registrada, la última válida de la
+         *     última verificación, si la firma está atrasada y el estado de esa verificación.
+         */
+        SignaturesLatestOut: {
+            /** Is Late */
+            is_late: boolean;
+            last_valid: components["schemas"]["SignatureInfoOut"] | null;
+            latest: components["schemas"]["SignatureInfoOut"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "none" | "ok" | "invalid";
+            /** Verified At */
+            verified_at?: string | null;
+        };
+        /**
          * SkipIn
          * @description Cuerpo de `POST /notifications/{id}/skip`: el motivo, de 3 a 500 caracteres visibles.
          */
@@ -3033,10 +3083,22 @@ export interface components {
              * Format: date-time
              */
             finished_at: string;
+            /** First Invalid Signature Seq */
+            first_invalid_signature_seq?: number | null;
+            /** Last Valid Signature Algorithm */
+            last_valid_signature_algorithm?: string | null;
+            /** Last Valid Signature At */
+            last_valid_signature_at?: string | null;
+            /** Last Valid Signature Seq */
+            last_valid_signature_seq?: number | null;
             /** Ok */
             ok: boolean;
             /** Rows Checked */
             rows_checked: number;
+            /** Signatures Checked */
+            signatures_checked?: number | null;
+            /** Signatures Valid */
+            signatures_valid?: number | null;
             /**
              * Source
              * @enum {string}
@@ -3143,6 +3205,71 @@ export interface operations {
             };
             /** @description Petición inválida */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    latest_signatures_api_v1_audit_signatures_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignaturesLatestOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

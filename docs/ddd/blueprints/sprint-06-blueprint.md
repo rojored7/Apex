@@ -35,7 +35,7 @@
 
 **S6-D1 · Slices y orden.** Wave 0: W0-1 (documentos y ADR), W0-2 (Nginx de adjuntos), W0-3 (OpenBao: políticas y llave ML-DSA), W0-4 (Caddy y perfil `tls`), W0-5 (dependencias y `Settings`). Backend por bloques de `SPRINT-06.md`: A1 a A3 (EP-17), B1 a B3 (EP-18, lectura y CBOM), C1 a C5 (EP-19), R1 (US-145) y E1 (EP-20 en `core/config.py`). Front en worktree: F1 a F5. Validación V1 a V12. Orden: A1 corrige el bus (hallazgos 3 y 4) y todo lo demás lo usa; B1 crea el puerto `Reencryptor` que C1 implementa y R1 consume; R1 va después de C1 (G-09).
 
-**S6-D2 · Migraciones.** `0021_audit_signatures` (A1), `0022_audit_verifications_signatures` (A3), `0023_attachments` (C1), `0024_crypto_rotation_from_api` (R1: guarda de `crypto_keys` por rol, S6-D15). Una sola cabeza; ciclo `downgrade -1`/`upgrade head` por migración (P-MIG: volcado previo, `$DC stop api` mientras se redacta); `infra/db/grants.sql` (matriz, `-- clasificada:` y ARRAY) y `tests/migrations/test_db_grants.py` se actualizan en el mismo checkpoint (S4B-D201). `apex-db-1` solo recibe migraciones con volcado previo (S4B-D3). Los números `0040-0059` quedan sin usar (se anota en DECISIONES).
+**S6-D2 · Migraciones.** `0021_audit_signatures` (A1), `0022_verify_signatures` (A3), `0023_attachments` (C1), `0024_crypto_rotation_from_api` (R1: guarda de `crypto_keys` por rol, S6-D15). Una sola cabeza; ciclo `downgrade -1`/`upgrade head` por migración (P-MIG: volcado previo, `$DC stop api` mientras se redacta); `infra/db/grants.sql` (matriz, `-- clasificada:` y ARRAY) y `tests/migrations/test_db_grants.py` se actualizan en el mismo checkpoint (S4B-D201). `apex-db-1` solo recibe migraciones con volcado previo (S4B-D3). Los números `0040-0059` quedan sin usar (se anota en DECISIONES).
 
 ### EP-17 · Auditoría firmada (US-140..US-142)
 
@@ -164,9 +164,9 @@ Orden obligatorio: W0-1, W0-5, W0-3, W0-2, W0-4, A1, A2, A3, B1, B2, B3, C1, C2,
 - Gate: `slice-gate.sh worker tests/worker/test_sign_audit_job.py tests/audit/test_sign_latest.py tests/cli/test_sign_audit_cli.py tests/cli/test_rotate_sign.py`.
 
 ### S6-A3 · Verificación con firmas y estado (US-142)
-- Crear `migrations/versions/0022_audit_verifications_signatures.py`, `tests/migrations/test_0022_*.py`; modificar `core/audit_verify.py` (`verify_signatures`, `signature_state`, `VerificationView`, `_persist`), `modules/audit/{schemas,service,verify,router,queries}.py` (`GET /audit/signatures/latest`, `AUDITABLE_TABLES`), `cli_ops/verify_audit.py`, `docs/openapi.json` y `web/src/core/api/types.ts`.
+- Crear `migrations/versions/0022_verify_signatures.py`, `tests/migrations/test_0022_*.py`; modificar `core/audit_verify.py` (`verify_signatures`, `signature_state`, `VerificationView`, `_persist`), `modules/audit/{schemas,service,verify,router,queries}.py` (`GET /audit/signatures/latest`, `AUDITABLE_TABLES`), `cli_ops/verify_audit.py`, `docs/openapi.json` y `web/src/core/api/types.ts`.
 - Pruebas: `tests/audit/test_verify_signatures.py` (firma alterada, firma borrada con el trigger apagado, llave `decrypt_only`, sellado: `unavailable` sin voltear `ok`), `tests/audit/test_router_signatures.py` (admin; coach 403; `no-store`; `is_late`), `tests/core/test_signature_state_pure.py`.
-- Gate: `slice-gate.sh audit tests/audit tests/core/test_signature_state_pure.py tests/migrations/test_0022_audit_verifications_signatures.py`.
+- Gate: `slice-gate.sh audit tests/audit tests/core/test_signature_state_pure.py tests/migrations/test_0022_verify_signatures.py`.
 
 ### S6-B1 · Inventario de llaves y puerto `Reencryptor` (US-143)
 - Crear `core/crypto/{router,inventory,schemas,reencryptor}.py`; vaciar `core/crypto/__init__.py`; registrar el router en `main.py` (explícito, con `require_role("admin")` por ruta); modificar `core/crypto/service.py` (ramas del puerto en `_pending_total` y `reencrypt_batch`).

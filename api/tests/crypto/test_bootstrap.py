@@ -146,3 +146,27 @@ async def test_ensure_keys_nunca_crea_filas_sign(
 
     assert [k for k in llaves if k.purpose == "sign"] == []
     assert len(llaves) == len(CIFRADO) + len(INDICE)
+
+
+async def test_una_base_con_solo_filas_sign_no_bloquea_la_creacion(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    """L5 (S5-D200) cuenta solo las DEK de cifrado: una fila `sign` (referencia al proveedor,
+    S6-A1) no es una DEK que abrir y no debe hacer creer que la KEK es ajena."""
+    sin_llaves.add(
+        CryptoKey(
+            created_by=SYSTEM_USER_ID,
+            purpose="sign",
+            data_class="prueba.solo_firma",
+            algorithm="Ed25519",
+            provider="local",
+            version=1,
+            state="retired",
+            wrapped_material=b"local:sign-ed25519",
+            public_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+    )
+    await sin_llaves.flush()
+    with actor_scope(SYSTEM_USER_ID):
+        keyring = await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+    assert sorted(k.data_class for k in keyring.keys() if k.purpose == "encrypt") == CIFRADO

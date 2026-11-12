@@ -70,6 +70,8 @@ def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
     # S4A-B4 (S4A-D45): la lista y el detalle consumen solo `staff-read`.
     assert por_ruta[("get", f"{API_PREFIX}/audit")] == {"staff-read"}
     assert por_ruta[("get", f"{API_PREFIX}/audit/{{seq}}")] == {"staff-read"}
+    # S6-A3 (S6-D10): el estado de las firmas también consume solo `staff-read`.
+    assert por_ruta[("get", f"{API_PREFIX}/audit/signatures/latest")] == {"staff-read"}
     assert USER_LIMITS["audit-verify"] == (3, 60)
     # S4A-B5 (S4A-D20, S4A-D45): el historial del socio, en `members/router.py`, también.
     miembros = (MODULES / "members" / "router.py").read_text(encoding="utf-8")

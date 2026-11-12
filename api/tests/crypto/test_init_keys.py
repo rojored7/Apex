@@ -88,7 +88,9 @@ def test_completa_solo_lo_que_falta(tmp_path: Path) -> None:
     assert rutas.jwt_private.is_file() and rutas.jwt_public.is_file()
 
 
-def test_as_solo_se_anota_y_data_class_queda_reservado(tmp_path: Path) -> None:
+def test_as_solo_se_anota_y_data_class_solo_admite_clases_de_firma(tmp_path: Path) -> None:
+    """Desde A2 (US-141) la opcion --data-class existe de verdad: una clase que no es de firma
+    sale con 2 y unknown_data_class, sin tocar el directorio de llaves."""
     directorio = tmp_path / "keys"
     resultado = runner.invoke(
         app, ["init-keys", "--dir", str(directorio), "--as", "ana@apex.local"]
@@ -97,8 +99,8 @@ def test_as_solo_se_anota_y_data_class_queda_reservado(tmp_path: Path) -> None:
     con_clase = runner.invoke(
         app, ["init-keys", "--dir", str(directorio), "--data-class", "member.document"]
     )
-    assert con_clase.exit_code != 0
-    assert "US-140" in con_clase.output or "no implementado" in con_clase.output
+    assert con_clase.exit_code == 2
+    assert "unknown_data_class" in con_clase.output
 
 
 def test_la_salida_no_contiene_material(tmp_path: Path) -> None:

@@ -591,13 +591,13 @@ Todas aceptadas tal como las propone `sprint-06-seguridad-diseno.md`:
 ### S6-A3 · Verificación con firmas, `0022` y estado en pantalla (US-142)
 
 - **Cierra:** parte de C2 (`verify` con firmas, `GET /audit/signatures/latest`), M-1, bug 19 de la exploración, D10, D36, D62, Q5.
-- **Depende de:** A2. **Migración:** `0022_audit_verifications_signatures`.
+- **Depende de:** A2. **Migración:** `0022_verify_signatures`.
 
 **Paso 50 · A3.1 · P-MIG y stubs.** Volcado `antes-0022`; `stop api worker`. Stubs: `core/audit_verify.py` (`SignatureVerdict(state, checked, valid, first_invalid_seq, last_valid_seq, last_valid_at, last_valid_algorithm)`, `signature_state(checked, valid, first_invalid_seq) -> Literal["none","ok","invalid"]` pura, `async verify_signatures(session, *, through_seq) -> SignatureVerdict` (todas las firmas, por lotes de 100, con la clave pública; D62, D81), `anti_rollback(prev_last_valid_seq, max_signed_seq, signatures_count) -> bool` pura, `AuditVerification` con las seis columnas, `VerificationView` ampliada); `modules/audit/schemas.py` (`VerifyResultOut` y `VerifyStartedOut` con los campos opcionales; `SignaturesLatestOut(latest, last_valid, is_late, state)`); `modules/audit/{service,verify,router}.py` (`GET /audit/signatures/latest` antes de `/audit/{seq}`; `AdminDep`; `staff-read`; `no_store`); `cli_ops/verify_audit.py` (firmas en la salida; 1 con `invalid`; sigue sin depender del custodio).
 
 **Paso 51 · A3.2 · Rojo**
 
-- `tests/migrations/test_0022_audit_verifications_signatures.py`: seis columnas nulas; filas previas intactas; `signatures_forbid`/`verifications_*` de `0013` conservados en `A`; `downgrade` quita las columnas; ciclo; `test_0021_*` pasa a «en la cadena».
+- `tests/migrations/test_0022_verify_signatures.py`: seis columnas nulas; filas previas intactas; `signatures_forbid`/`verifications_*` de `0013` conservados en `A`; `downgrade` quita las columnas; ciclo; `test_0021_*` pasa a «en la cadena».
 - `tests/core/test_signature_state_pure.py`: tabla de `signature_state` y de `anti_rollback`.
 - `tests/audit/test_verify_signatures.py`: cadena sana con tres firmas → `ok`, `checked = 3`, `valid = 3`; firma alterada → `invalid`, `ok = false`, `broken_at_seq = first_invalid_seq`; firma borrada con el trigger apagado → `anti_rollback` lo detecta sin ninguna llamada a Transit (contador del `FakeTransit` en 0 para esa parte); llave `decrypt_only` y llave `retired` (`firma_de_llave_retirada`) verifican por su `public_key`; `custodio_sellado` → la verificación completa sigue en `ok` con `checked = valid = 3` y cero llamadas al proveedor (D81: cierra M-1); con 365 firmas (`cadena_con_firmas`, mitad `local` y mitad `openbao` con `fake_transit`) se verifican las 365 (`checked = 365`) y el contador de `verify` del `FakeTransit` queda en 0; una `public_key` alterada en la fila → `invalid`; `payload_version` elige el constructor (una firma con `payload_version = 1` y un constructor falso `v2` registrado en la prueba).
 - `tests/audit/test_router_signatures.py`: `GET /audit/signatures/latest` admin; coach y socio 403; 401; `no-store`; cubeta `staff-read`; `is_late` verdadero a las 49 h; `state`; `last_valid` nulo sin verificaciones; `POST /audit/verify` y `GET /audit/verify/last` con los campos nuevos (nulos para verificaciones viejas); `tests/audit/test_router_verify.py`, `test_verify.py` y `test_verify_concurrency.py` existentes siguen en verde.
@@ -611,11 +611,11 @@ Todas aceptadas tal como las propone `sprint-06-seguridad-diseno.md`:
 
 **Paso 54 · A3.5 · Gate**
 
-1. `slice-gate.sh core/audit_verify tests/core/test_signature_state_pure.py tests/core/test_format_verify_message.py tests/audit/test_verify_signatures.py tests/migrations/test_0022_audit_verifications_signatures.py`.
+1. `slice-gate.sh core/audit_verify tests/core/test_signature_state_pure.py tests/core/test_format_verify_message.py tests/audit/test_verify_signatures.py tests/migrations/test_0022_verify_signatures.py`.
 2. `slice-gate.sh cli tests/cli/test_verify_audit.py`.
 3. `slice-gate.sh architecture tests/architecture/test_error_codes_per_route.py tests/architecture/test_no_store_routes.py tests/architecture/test_every_route_has_role.py tests/architecture/test_user_limits_catalog.py`.
 4. `database-reviewer` (`0022`) y `security-reviewer` (M-1 cerrada: verificación sin custodio con la clave pública; `public_key` inmutable; anti-retroceso sin Transit), en paralelo.
-5. Sello: `slice-gate.sh audit tests/audit/test_verify_signatures.py tests/audit/test_router_signatures.py tests/audit/test_router_verify.py tests/audit/test_verify.py tests/audit/test_verify_concurrency.py tests/migrations/test_0022_audit_verifications_signatures.py tests/migrations/test_0021_audit_signatures.py`.
+5. Sello: `slice-gate.sh audit tests/audit/test_verify_signatures.py tests/audit/test_router_signatures.py tests/audit/test_router_verify.py tests/audit/test_verify.py tests/audit/test_verify_concurrency.py tests/migrations/test_0022_verify_signatures.py tests/migrations/test_0021_audit_signatures.py`.
 6. Después del sello, sin tocar el árbol: `run-gates.sh` (primera de cuatro) con el ensayo detenido.
 
 **Paso 55 · A3.6 · Docker y evidencia (demo 1 completa)**
@@ -747,7 +747,7 @@ Todas aceptadas tal como las propone `sprint-06-seguridad-diseno.md`:
 4. `slice-gate.sh crypto tests/crypto/test_reencryptor.py tests/crypto/test_registry.py`.
 5. `slice-gate.sh core/audit tests/core/test_audit_hook_db.py tests/core/test_audit_serialize.py tests/core/test_chain_hash_vector.py`.
 6. `database-reviewer` (`0023`, esquema, grants, índice, triggers) y `security-reviewer` (M-3, M-4, M-9, L-1, D76), en paralelo.
-7. Sello: `slice-gate.sh attachments tests/attachments tests/migrations/test_0023_attachments.py tests/migrations/test_0022_audit_verifications_signatures.py tests/migrations/test_db_grants.py tests/migrations/test_triggers_siempre_activos.py`.
+7. Sello: `slice-gate.sh attachments tests/attachments tests/migrations/test_0023_attachments.py tests/migrations/test_0022_verify_signatures.py tests/migrations/test_db_grants.py tests/migrations/test_triggers_siempre_activos.py`.
 
 **Paso 83 · C1.8 · Docker y evidencia.** P-MIG 6 y 7 hechos; buildx (cambió `src`); recreación en desarrollo (+ `restart web`); `$DC run --rm tools init-keys --data-class attachment.sensitive --as <admin>` → fila `encrypt` A256GCM (en desarrollo `ensure_keys` también la habría creado al arrancar: se comprueba que no hay dos); `GET /crypto/keys` → 10 filas; `\dn attachments`; ensayo: `stop worker`, `migrate` → `0022 -> 0023`, `dbsetup` → «22 tablas clasificadas», `test_db_roles.sh`, recreación, `restart web`; `$DCEB run --rm tools attachments-check --as <admin>` → 0 filas, 0 objetos, salida 0; `GET /crypto/keys` en 8280 → 10 filas, la nueva `openbao`.
 
@@ -1210,7 +1210,7 @@ Regla de RUNBOOK §6: `downgrade` primero, después `git revert`, después `rest
   - Front: 5 (F1, F3, F4, F5, F2).
 - **Pasos:** 150 numerados (W0-1 6; W0-5 5; W0-2 8; W0-3 6; W0-4 8; A1 9; A2 7; A3 7; B1 8; B2 5; B3 6; C1 9; C2 6; C3 6; C4 6; C5 5; R1 9; E1 6; F1 6; F3 5; F4 5; F5 5; F2 7), más V1 a V12: 162.
 - **Checkpoints:** 23 de slice (18 del backend en la rama del sprint y 5 del front en el worktree), más los de evidencia y validación.
-- **Migraciones:** 4 (`0021_audit_signatures`, `0022_audit_verifications_signatures`, `0023_attachments`, `0024_crypto_rotation_from_api`); revisión de base de datos en A1, A3, C1, R1 y V9.
+- **Migraciones:** 4 (`0021_audit_signatures`, `0022_verify_signatures`, `0023_attachments`, `0024_crypto_rotation_from_api`); revisión de base de datos en A1, A3, C1, R1 y V9.
 - **Endpoints:** 9 nuevos, todos con rol y `no-store` (`GET /audit/signatures/latest`; `GET /crypto/keys`, `GET /crypto/ops`, `GET /crypto/jobs`, `POST /crypto/keys/{id}/rotate`, `GET /crypto/cbom`; `POST` y `GET /members/{id}/attachments`; `GET /attachments/{id}`). Cambian de respuesta `POST /audit/verify`, `GET /audit/verify/last`, `GET /members` (`consent`), `GET /members/{id}` (`photo_attachment_id`) y `POST /members` (409 `privacy_version_missing`; mismo cuerpo). `PUBLIC_ROUTES` sigue en ocho.
 - **Códigos nuevos del catálogo:** 409 `key_not_active`, `purpose_not_rotatable`, `rotation_running`, `rotation_not_supported`, `privacy_version_missing`; 413 `file_too_large` (api y Nginx, mismo envelope; D73); 422 `unsupported_type`, `field` `confirm`, `reason`, `data_consent_at`; 404 `attachment_not_found`.
 - **Comandos de CLI nuevos o ampliados:** `sign-audit`, `init-keys --data-class` (real), `init-keys --migrate-layout`, `attachments-check`, `retire-key` (llave `sign` y respaldo posterior), `rotate-key` (`run_rotation`; `attachment.sensitive`; `audit.signature --provider`, D81), `migrate-provider` (sigue excluyendo `sign`, con salida 2 si se fuerza), `verify-audit` (firmas, sin custodio). El worker suma `--run-once sign_audit`.

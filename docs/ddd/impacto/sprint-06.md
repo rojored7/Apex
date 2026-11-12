@@ -585,7 +585,7 @@ Lo que cambia de firma en esos contratos es poco (secciones 1 y 5): `VerifyResul
 - Archivos nuevos: `core/audit_sign.py` (`AuditSignature` modelo de `audit.signatures`, `sign_latest`,
   `AUDIT_SIGN_LOCK_KEY = 4_270_004`, `latest_signature`), `cli_ops/sign_audit.py`,
   `worker/jobs/sign_audit.py`, `migrations/versions/0021_audit_signatures.py`,
-  `0022_audit_verifications_signatures.py`, `tests/audit/test_sign_*.py`, `tests/worker/
+  `0022_verify_signatures.py`, `tests/audit/test_sign_*.py`, `tests/worker/
   test_sign_audit.py`, `tests/cli/test_sign_audit.py`, `tests/migrations/test_002[12]_*.py`,
   `tests/crypto/test_sign_openbao.py` (marcador `openbao`, dos modos: con la llave Ed25519 real y con
   el 400 de `ml-dsa` simulado por `httpx.MockTransport`). Tocados: `core/audit.py`
@@ -825,7 +825,7 @@ solo por regeneración, `web/src/config/routes.reference.ts` (la ruta de llaves 
   `key_id` UUID (FK lógica), `algorithm` text con CHECK (`Ed25519`, `ML-DSA-65`), `signed_at`
   TIMESTAMPTZ, columnas comunes; índice `signed_at DESC`; triggers `signatures_forbid_mutation` y
   `signatures_forbid_truncate` sobre `audit.forbid_mutation()` con `ENABLE ALWAYS`, patrón de `0013`;
-  `downgrade` borra triggers y tabla), `0022_audit_verifications_signatures` (US-142: seis columnas
+  `downgrade` borra triggers y tabla), `0022_verify_signatures` (US-142: seis columnas
   nulas en `audit.verifications`; sin llenado; los triggers de `0013` se conservan; `downgrade` las
   quita), `0023_attachments` (US-147: `CREATE SCHEMA attachments`; tabla con CHECKs y `key_id` nulo,
   G-09; `downgrade` borra tabla y esquema: solo en desarrollo), `0024_members_consent_missing_idx`

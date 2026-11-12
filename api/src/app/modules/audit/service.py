@@ -61,6 +61,7 @@ from app.modules.audit.verify import (
     cancel_background_verifications,
     last_verification,
     release_verify_lock,
+    signatures_latest,
     verify,
 )
 from app.modules.auth.service import (
@@ -92,6 +93,7 @@ __all__ = [
     "on_user_locked",
     "recent",
     "release_verify_lock",
+    "signatures_latest",
     "verify",
 ]
 

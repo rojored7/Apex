@@ -30,6 +30,7 @@ from app.core.audit_sign import AuditSignature, SignOutcome
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto import bus
+from app.core.crypto.keyring import Keyring, configure_keyring
 from tests.factories import audit_chain
 from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
@@ -99,3 +100,79 @@ async def cadena_con_firmas(session: AsyncSession, segmentos: Sequence[int]) -> 
         await audit_chain.make_audit_chain(session, n)
         salida.append(await audit_sign.sign_latest(session))
     return salida
+
+
+# Escenarios de verificación (S6-A3; S6-D62, S6-D81) ----------------------------------------
+
+
+async def copiar_firma(session: AsyncSession, *, de_seq: int, a_seq: int) -> None:
+    """Pone en la fila `a_seq` la firma de `de_seq` (base64 válido, firma equivocada): triggers
+    apagados y vueltos a encender uno por uno con `ENABLE ALWAYS`."""
+    await session.execute(text(disable_user_sql("audit.signatures")))
+    await session.execute(
+        text(
+            "UPDATE audit.signatures SET signature = "
+            "(SELECT signature FROM audit.signatures WHERE through_seq = :de) "
+            "WHERE through_seq = :a"
+        ),
+        {"de": de_seq, "a": a_seq},
+    )
+    await session.execute(text(rearm_always_sql("audit.signatures")))
+
+
+async def escribir_firma(session: AsyncSession, through_seq: int, texto: str) -> None:
+    """Reemplaza el texto de la firma de `through_seq` (por ejemplo, basura que no se parsea)."""
+    await session.execute(text(disable_user_sql("audit.signatures")))
+    await session.execute(
+        text("UPDATE audit.signatures SET signature = :s WHERE through_seq = :a"),
+        {"s": texto, "a": through_seq},
+    )
+    await session.execute(text(rearm_always_sql("audit.signatures")))
+
+
+async def cambiar_llave(
+    session: AsyncSession,
+    key_id: UUID,
+    *,
+    state: str | None = None,
+    public_key: str | None = None,
+) -> None:
+    """Cambia el estado o la clave pública de una fila de `crypto.crypto_keys` (triggers apagados y
+    vueltos a encender). Solo para armar escenarios: producción no toca `public_key` (D81)."""
+    await session.execute(text(disable_user_sql("crypto.crypto_keys")))
+    if state is not None:
+        await session.execute(
+            text("UPDATE crypto.crypto_keys SET state = :v WHERE id = :i"),
+            {"v": state, "i": key_id},
+        )
+    if public_key is not None:
+        await session.execute(
+            text("UPDATE crypto.crypto_keys SET public_key = :v WHERE id = :i"),
+            {"v": public_key, "i": key_id},
+        )
+    await session.execute(text(rearm_always_sql("crypto.crypto_keys")))
+
+
+async def keyring_nuevo(session: AsyncSession, resolver: Any) -> Keyring:
+    """Un keyring recién cargado desde la base (como tras reiniciar el api) y fijado como el del
+    proceso; refleja los cambios de `cambiar_llave`, que un keyring ya cargado no ve."""
+    nuevo = Keyring()
+    await nuevo.load_all(session, resolver)
+    configure_keyring(nuevo)
+    return nuevo
+
+
+async def firma_de_llave_retirada(
+    session: AsyncSession, proveedor: Any, through_seq: int, *, estado: str = "retired"
+) -> UUID:
+    """Firma `through_seq` con la llave activa, la pasa a `estado` (`retired` o `decrypt_only`) y
+    crea la versión 2 `active` (como tras `rotate-key audit.signature`); devuelve el `key_id` de la
+    llave vieja. El keyring del proceso queda recargado (`keyring_nuevo`)."""
+    from tests.crypto.conftest import fila_sign
+
+    await firmar_hasta(session, through_seq)
+    vieja = (await firmas(session))[-1]["key_id"]
+    await cambiar_llave(session, vieja, state=estado)
+    await fila_sign(session, proveedor, version=2)
+    await keyring_nuevo(session, lambda _n: proveedor)
+    return UUID(str(vieja))

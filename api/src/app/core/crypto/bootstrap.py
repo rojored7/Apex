@@ -90,10 +90,14 @@ async def ensure_keys(
     una KEK ajena nunca llega a guardar llaves que nadie más podría abrir."""
     keyring = Keyring()
     await keyring.load_all(session, resolver)
-    hay_filas = await session.scalar(select(func.count()).select_from(CryptoKey))
-    if hay_filas and not any(k.purpose == "encrypt" for k in keyring.keys()):
-        # L5 (S5-D200): hay llaves guardadas y ninguna DEK de cifrado abrió; crear otras sería
-        # envolver con una KEK que no es la de los datos.
+    hay_envueltas = await session.scalar(
+        select(func.count()).select_from(CryptoKey).where(CryptoKey.purpose != "sign")
+    )
+    if hay_envueltas and not any(k.purpose == "encrypt" for k in keyring.keys()):
+        # L5 (S5-D200): hay llaves envueltas con la KEK (`encrypt` o `index`) y ninguna DEK de
+        # cifrado abrió; crear otras sería envolver con una KEK que no es la de los datos. Las
+        # filas `sign` no cuentan: guardan una referencia al proveedor (S6-A1), no material
+        # envuelto.
         raise CryptoError("unwrap_failed", "ninguna DEK de cifrado existente se pudo abrir")
     if await _create_missing(session, provider):
         await keyring.load_all(session, resolver)

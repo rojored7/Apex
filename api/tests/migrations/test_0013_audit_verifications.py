@@ -173,7 +173,17 @@ def test_columnas_tipos_y_nulabilidad(base: str) -> None:
         "FROM information_schema.columns "
         "WHERE table_schema = 'audit' AND table_name = 'verifications'",
     )
-    assert {f["column_name"]: (f["data_type"], f["is_nullable"]) for f in filas} == COLUMNAS
+    actuales = {f["column_name"]: (f["data_type"], f["is_nullable"]) for f in filas}
+    # S6-A3: `0022` suma seis columnas de firmas (nulas); las trece originales no cambian.
+    assert {k: v for k, v in actuales.items() if k in COLUMNAS} == COLUMNAS
+    assert set(actuales) - set(COLUMNAS) <= {
+        "signatures_checked",
+        "signatures_valid",
+        "first_invalid_signature_seq",
+        "last_valid_signature_seq",
+        "last_valid_signature_at",
+        "last_valid_signature_algorithm",
+    }
     assert {f["column_name"]: f["largo"] for f in filas}["through_hash"] == 64
 
 

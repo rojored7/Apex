@@ -79,6 +79,8 @@ CON_LIMITE = {
     # S4A-B4 (S4A-D45, M-1): la lista y el detalle de la auditoría consumen `staff-read`.
     ("get", "/api/v1/audit"),
     ("get", "/api/v1/audit/{seq}"),
+    # S6-A3 (S6-D10): el estado de las firmas consume la misma `staff-read`.
+    ("get", "/api/v1/audit/signatures/latest"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
     # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen

@@ -46,6 +46,31 @@ class VerifyResultOut(BaseModel):
     finished_at: datetime
     triggered_by: UUID
     source: Literal["api", "cli"]
+    signatures_checked: int | None = None
+    signatures_valid: int | None = None
+    first_invalid_signature_seq: int | None = None
+    last_valid_signature_seq: int | None = None
+    last_valid_signature_at: datetime | None = None
+    last_valid_signature_algorithm: str | None = None
+
+
+class SignatureInfoOut(BaseModel):
+    """Una firma sin hash, blob ni llave (S6-A3): hasta dónde cubre, cuándo y con qué."""
+
+    through_seq: int
+    signed_at: datetime
+    algorithm: str
+
+
+class SignaturesLatestOut(BaseModel):
+    """`GET /audit/signatures/latest` (S6-D10): la última firma registrada, la última válida de la
+    última verificación, si la firma está atrasada y el estado de esa verificación."""
+
+    latest: SignatureInfoOut | None
+    last_valid: SignatureInfoOut | None
+    is_late: bool
+    state: Literal["none", "ok", "invalid"]
+    verified_at: datetime | None = None
 
 
 class VerifyStartedOut(BaseModel):

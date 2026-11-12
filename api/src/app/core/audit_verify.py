@@ -16,12 +16,22 @@
   through_hash, started_at, finished_at, source}`, `user_id = by`). Si `ok`, una línea de log
   `audit anchor` con `through_seq` y `through_hash` (nunca `before`/`after`). Solo una
   verificación `ok` mueve el ancla. Nunca modifica filas existentes de `audit.audit_log`.
-- `format_verify_message(result) -> (texto, código)`: 0 íntegra, 1 rota (CLI y logs).
+- Firmas (S6-A3, US-142; S6-D10, D62, D81; `0022`): `verify_signatures(session, through_seq=)`
+  verifica TODAS las firmas de `audit.signatures` del tramo, por lotes de `SIGNATURE_BATCH_SIZE`,
+  en proceso con `crypto_keys.public_key` de su `key_id` (cualquier estado) y el constructor de
+  `audit_sign.PAYLOAD_BUILDERS[payload_version]`; una firma vale si también su hash es el que la
+  cadena guarda hoy. Sin proveedor, keyring ni red (por eso funciona con el custodio sellado).
+  `anti_rollback` (pura) compara con el mayor `last_valid_signature_seq` de las verificaciones `ok`
+  anteriores y detecta firmas borradas. `signature_state` es pura (`none|ok|invalid`). Con la
+  cadena sana, una firma inválida voltea `ok` y fija `broken_at_seq = first_invalid_signature_seq`.
+- `format_verify_message(result) -> (texto, código)`: 0 íntegra, 1 rota o con firma inválida (CLI y
+  logs); añade el estado de las firmas si la verificación las midió.
 
 El candado de la verificación (`AUDIT_VERIFY_LOCK_KEY`, de sesión) lo toma quien llama en una
 conexión dedicada `AUTOCOMMIT` (`modules/audit/verify.py`, S4A-D44); las sentencias son constantes
-de módulo (`test_sql_literals_constant.py`). Importa solo de `core/audit`, `core/db`, `core/clock` y
-`core/context` (S4A-D12).
+de módulo (`test_sql_literals_constant.py`). Importa de `core/audit`, `core/audit_sign` (tabla y
+constructores de payload), `core/db`, `core/clock` y, para verificar firmas, de `core/crypto`
+(`signature`, `models`, `errors`); nunca del bus ni de un proveedor (S4A-D12, S6-D81).
 """
 
 from __future__ import annotations
@@ -31,15 +41,27 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Final, Literal, cast
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
-from sqlalchemy import CHAR, BigInteger, Boolean, Text, func, select, text
+from sqlalchemy import CHAR, BigInteger, Boolean, Integer, Row, Text, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.audit import ZERO_HASH, AuditEntry, VerifyResult, record, verify_chain
+from app.core import audit_sign
+from app.core.audit import (
+    ZERO_HASH,
+    AuditEntry,
+    CanonicalError,
+    VerifyResult,
+    record,
+    verify_chain,
+)
+from app.core.audit_sign import AuditSignature
 from app.core.clock import current_clock
+from app.core.crypto.errors import CryptoError
+from app.core.crypto.models import CryptoKey
+from app.core.crypto.signature import parse_signature, verify_ed25519
 from app.core.db import Base, CommonColumnsMixin
 
 logger = logging.getLogger("app.audit")
@@ -80,6 +102,13 @@ class AuditVerification(CommonColumnsMixin, Base):
     broken_at_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     triggered_by: Mapped[UUID] = mapped_column(nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
+    # Firmas (S6-A3, S6-D10, `0022`): nulas en las verificaciones anteriores a la migración.
+    signatures_checked: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    signatures_valid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_invalid_signature_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_valid_signature_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_valid_signature_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_valid_signature_algorithm: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 @dataclass(frozen=True)
@@ -100,6 +129,12 @@ class VerificationView:
     source: str
     anchor_seq: int | None = None
     anchor_broken: bool = False
+    signatures_checked: int | None = None
+    signatures_valid: int | None = None
+    first_invalid_signature_seq: int | None = None
+    last_valid_signature_seq: int | None = None
+    last_valid_signature_at: datetime | None = None
+    last_valid_signature_algorithm: str | None = None
 
 
 def view_of(row: AuditVerification) -> VerificationView:
@@ -115,7 +150,166 @@ def view_of(row: AuditVerification) -> VerificationView:
         finished_at=row.finished_at,
         triggered_by=row.triggered_by,
         source=row.source,
+        signatures_checked=row.signatures_checked,
+        signatures_valid=row.signatures_valid,
+        first_invalid_signature_seq=row.first_invalid_signature_seq,
+        last_valid_signature_seq=row.last_valid_signature_seq,
+        last_valid_signature_at=row.last_valid_signature_at,
+        last_valid_signature_algorithm=row.last_valid_signature_algorithm,
     )
+
+
+SignatureState = Literal["none", "ok", "invalid"]
+SIGNATURE_BATCH_SIZE: Final = 100
+"""Firmas por lote de `verify_signatures` (S6-D62)."""
+SIGNATURE_ALGORITHM: Final = "Ed25519"
+"""Único algoritmo que se verifica hoy con la clave pública guardada (`ML-DSA-65`: EP-26)."""
+_SIG = AuditSignature.__table__
+
+
+@dataclass(frozen=True)
+class SignatureVerdict:
+    """Veredicto de las firmas de un tramo (S6-D10, D62). `state` sale de `signature_state`."""
+
+    state: SignatureState
+    checked: int
+    valid: int
+    first_invalid_seq: int | None
+    last_valid_seq: int | None
+    last_valid_at: datetime | None
+    last_valid_algorithm: str | None
+
+
+def signature_state(checked: int, valid: int, first_invalid_seq: int | None) -> SignatureState:
+    """Pura: `none` sin firmas, `invalid` con alguna inválida, `ok` si todas verifican."""
+    if first_invalid_seq is not None or valid < checked:
+        return "invalid"
+    return "none" if checked == 0 else "ok"
+
+
+def anti_rollback(
+    prev_last_valid_seq: int | None, max_signed_seq: int | None, signatures_count: int
+) -> bool:
+    """Pura: `True` si hubo retroceso (firmas borradas desde la verificación anterior)."""
+    if prev_last_valid_seq is None:
+        return False
+    if max_signed_seq is None or signatures_count == 0:
+        return True
+    return max_signed_seq < prev_last_valid_seq
+
+
+def _signature_is_valid(
+    fila: Row[Any], public_key: str | None, stored_chain_hash: str | None
+) -> bool:
+    """Una firma vale si firma el hash que la cadena tiene HOY en su `through_seq`, su blob
+    corresponde a su fila y `Ed25519` verifica con la clave pública guardada. Cualquier defecto
+    (blob ilegible, versión sin constructor, llave ausente) es «inválida», nunca una excepción."""
+    constructor = audit_sign.PAYLOAD_BUILDERS.get(fila.payload_version)
+    if constructor is None or public_key is None or fila.algorithm != SIGNATURE_ALGORITHM:
+        return False
+    if stored_chain_hash is None or str(stored_chain_hash) != str(fila.chain_hash):
+        return False
+    try:
+        partes = parse_signature(fila.signature)
+        payload = constructor(fila.through_seq, str(fila.chain_hash))
+    except (CryptoError, CanonicalError, ValueError, TypeError):
+        return False
+    if partes.key_id != fila.key_id or partes.alg != fila.algorithm:
+        return False
+    return verify_ed25519(public_key, payload, partes.sig)
+
+
+async def _public_keys(session: AsyncSession) -> dict[UUID, str | None]:
+    """`{key_id: public_key}` de todas las filas `sign`, en cualquier estado (D81)."""
+    filas = await session.execute(
+        select(CryptoKey.id, CryptoKey.public_key).where(CryptoKey.purpose == "sign")
+    )
+    return {llave: publica for llave, publica in filas.all()}
+
+
+async def _signature_batch(
+    session: AsyncSession, after_seq: int, through_seq: int
+) -> Sequence[Row[Any]]:
+    """Hasta `SIGNATURE_BATCH_SIZE` firmas con `after_seq < through_seq <= through_seq`, ascendente
+    (columnas, no entidades: nunca una fila obsoleta del identity map)."""
+    lote = await session.execute(
+        select(
+            _SIG.c.through_seq,
+            _SIG.c.hash.label("chain_hash"),
+            _SIG.c.signature,
+            _SIG.c.key_id,
+            _SIG.c.algorithm,
+            _SIG.c.payload_version,
+            _SIG.c.signed_at,
+        )
+        .where(_SIG.c.through_seq > after_seq, _SIG.c.through_seq <= through_seq)
+        .order_by(_SIG.c.through_seq)
+        .limit(SIGNATURE_BATCH_SIZE)
+    )
+    return cast("Sequence[Row[Any]]", lote.all())
+
+
+async def _stored_hashes(session: AsyncSession, seqs: list[int]) -> dict[int, str]:
+    """`{seq: hash}` que la cadena guarda HOY para esos `seq`."""
+    filas = await session.execute(select(_LOG.c.seq, _LOG.c.hash).where(_LOG.c.seq.in_(seqs)))
+    return {int(seq): str(hash_) for seq, hash_ in filas.all()}
+
+
+async def verify_signatures(session: AsyncSession, *, through_seq: int) -> SignatureVerdict:
+    """Todas las firmas con `through_seq` dentro del tramo, por lotes de 100, con la clave pública
+    guardada en `crypto_keys.public_key` de su `key_id` (cualquier estado de la llave), en proceso:
+    sin proveedor, sin keyring y sin red (S6-D62, D81)."""
+    llaves = await _public_keys(session)
+    checked = valid = last_seq = 0
+    first_invalid: int | None = None
+    ultima: Row[Any] | None = None
+    while lote := await _signature_batch(session, last_seq, through_seq):
+        if checked:
+            await _pause_between_batches()
+        guardados = await _stored_hashes(session, [int(fila.through_seq) for fila in lote])
+        for fila in lote:
+            checked += 1
+            if _signature_is_valid(
+                fila, llaves.get(fila.key_id), guardados.get(int(fila.through_seq))
+            ):
+                valid += 1
+                ultima = fila
+            elif first_invalid is None:
+                first_invalid = int(fila.through_seq)
+        last_seq = int(lote[-1].through_seq)
+    return SignatureVerdict(
+        signature_state(checked, valid, first_invalid),
+        checked,
+        valid,
+        first_invalid,
+        None if ultima is None else int(ultima.through_seq),
+        None if ultima is None else ultima.signed_at,
+        None if ultima is None else str(ultima.algorithm),
+    )
+
+
+async def _with_anti_rollback(
+    session: AsyncSession, veredicto: SignatureVerdict, through_seq: int
+) -> SignatureVerdict:
+    """Aplica la regla anti-retroceso (S6-D62): si una verificación `ok` anterior dio por válida una
+    firma más alta que la mayor que queda (o ya no hay firmas), el veredicto es `invalid` con
+    `first_invalid_seq` = la firma que faltaba. Solo base de datos: sin proveedor ni red."""
+    previo = await session.scalar(
+        select(func.max(AuditVerification.last_valid_signature_seq)).where(
+            AuditVerification.ok.is_(True),
+            AuditVerification.last_valid_signature_seq
+            <= through_seq,  # tramo menor: no es retroceso
+        )
+    )
+    maximo = await session.scalar(
+        select(func.max(_SIG.c.through_seq)).where(_SIG.c.through_seq <= through_seq)
+    )
+    if previo is None or not anti_rollback(previo, maximo, veredicto.checked):
+        return veredicto
+    primera = (
+        previo if veredicto.first_invalid_seq is None else min(previo, veredicto.first_invalid_seq)
+    )
+    return replace(veredicto, state="invalid", first_invalid_seq=primera)
 
 
 async def _pause_between_batches() -> None:
@@ -137,6 +331,11 @@ async def run_verification(
     if scan.ok:
         broken_at_seq = await _check_anchor(session, anchor, scan)
         anchor_broken = broken_at_seq is not None
+    firmas = await _with_anti_rollback(
+        session, await verify_signatures(session, through_seq=through_seq), through_seq
+    )
+    if broken_at_seq is None and firmas.state == "invalid":
+        broken_at_seq = firmas.first_invalid_seq  # cadena sana: manda la primera firma inválida
     through_hash = _verified_through_hash(scan, through_seq)
     row = await _persist(
         session,
@@ -144,6 +343,7 @@ async def run_verification(
         through_seq=through_seq,
         through_hash=through_hash,
         scan=scan,
+        signatures=firmas,
         broken_at_seq=broken_at_seq,
         source=source,
         by=by,
@@ -157,8 +357,10 @@ async def run_verification(
 
 
 def format_verify_message(result: VerificationView) -> tuple[str, int]:
-    """`("Cadena íntegra ...", 0)` o `("Cadena rota en el registro seq N ...", 1)`. Nunca lleva
-    ids, hashes, `before` ni `after` (sale en la CLI y en los logs)."""
+    """`("Cadena íntegra ...", 0)` o `("Cadena rota en el registro seq N ...", 1)`, más el estado de
+    las firmas si la verificación las midió (`Firmas: N de N válidas`, `Sin firmas que verificar`,
+    `Firma inválida ...`). Nunca lleva ids, hashes, algoritmo, blobs, `before` ni `after` (sale en
+    la CLI y en los logs)."""
     if result.ok:
         texto = (
             f"Cadena íntegra: {result.rows_checked} registros verificados hasta el seq "
@@ -166,11 +368,45 @@ def format_verify_message(result: VerificationView) -> tuple[str, int]:
         )
         if result.anchor_seq is None:
             texto += ", sin verificación anterior que comparar"
-        return f"{texto}.", 0
-    texto = f"Cadena rota en el registro seq {result.broken_at_seq}"
-    if result.anchor_broken:
-        texto += ": no coincide con la verificación anterior"
-    return f"{texto}.", 1
+        codigo = 0
+    elif _only_signatures_broke(result):
+        # Cadena sana: el prefijo es la firma (S6-A3, revisión de seguridad), no «Cadena rota».
+        return _signatures_text(result) or "", 1
+    else:
+        texto = f"Cadena rota en el registro seq {result.broken_at_seq}"
+        if result.anchor_broken:
+            texto += ": no coincide con la verificación anterior"
+        codigo = 1
+    firmas = _signatures_text(result)
+    return (f"{texto}." if firmas is None else f"{texto}. {firmas}"), codigo
+
+
+def _only_signatures_broke(result: VerificationView) -> bool:
+    """La verificación falló solo por las firmas: `broken_at_seq` es la primera firma inválida."""
+    checked, valid = result.signatures_checked, result.signatures_valid
+    if checked is None or valid is None or result.anchor_broken:
+        return False
+    estado = signature_state(checked, valid, result.first_invalid_signature_seq)
+    return estado == "invalid" and result.broken_at_seq == result.first_invalid_signature_seq
+
+
+def _signatures_text(result: VerificationView) -> str | None:
+    """La frase de firmas, o `None` si la verificación es anterior a `0022` (sin datos)."""
+    checked, valid = result.signatures_checked, result.signatures_valid
+    if checked is None or valid is None:
+        return None
+    estado = signature_state(checked, valid, result.first_invalid_signature_seq)
+    if estado == "invalid":
+        return (
+            f"Firma inválida en el seq {result.first_invalid_signature_seq}: "
+            f"{valid} de {checked} válidas."
+        )
+    if estado == "none":
+        return "Sin firmas que verificar."
+    hasta = result.last_valid_signature_seq
+    return f"Firmas: {valid} de {checked} válidas" + (
+        "." if hasta is None else f", la última hasta el seq {hasta}."
+    )
 
 
 async def _anchor(session: AsyncSession) -> VerificationView | None:
@@ -261,6 +497,18 @@ async def _check_anchor(
     return None
 
 
+def _signature_columns(veredicto: SignatureVerdict) -> dict[str, Any]:
+    """Las seis columnas de firmas de `audit.verifications` (`0022`) para un veredicto."""
+    return {
+        "signatures_checked": veredicto.checked,
+        "signatures_valid": veredicto.valid,
+        "first_invalid_signature_seq": veredicto.first_invalid_seq,
+        "last_valid_signature_seq": veredicto.last_valid_seq,
+        "last_valid_signature_at": veredicto.last_valid_at,
+        "last_valid_signature_algorithm": veredicto.last_valid_algorithm,
+    }
+
+
 async def _persist(
     session: AsyncSession,
     *,
@@ -268,6 +516,7 @@ async def _persist(
     through_seq: int,
     through_hash: str,
     scan: VerifyResult,
+    signatures: SignatureVerdict,
     broken_at_seq: int | None,
     source: VerifySource,
     by: UUID,
@@ -284,6 +533,7 @@ async def _persist(
         broken_at_seq=broken_at_seq,
         triggered_by=by,
         source=source,
+        **_signature_columns(signatures),
         created_by=by,
     )
     session.add(row)

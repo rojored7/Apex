@@ -633,11 +633,15 @@ def test_apex_worker_inserta_firmas_y_el_api_las_lee_sin_poder_insertarlas(
     """S6-A1: el worker firma (`INSERT`), el api lee; el api no inserta ni el worker modifica."""
     seq = uuid4().int % 1_000_000_000 + 1
     llave = str(uuid4())  # la FK de `key_id` exige una llave real (S6-A1)
+    # La fila queda en apex_roles (la firma no se puede borrar: trigger siempre activo). Es una
+    # llave `sign` retirada con referencia y clave pública ficticias: el keyring no la desenvuelve
+    # y `ensure_keys` no la cuenta como DEK de cifrado (test_worker_role_paths carga todas).
     propietario(
         apex_roles,
         "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "  # noqa: S608
-        f"provider, version, state, wrapped_material) VALUES ('{llave}', '{SYSTEM}', "
-        "'encrypt', 'prueba.cero_firma', 'A256GCM', 'local', 1, 'decrypt_only', '\\x00')",
+        f"provider, version, state, wrapped_material, public_key) VALUES ('{llave}', '{SYSTEM}', "
+        "'sign', 'prueba.cero_firma', 'Ed25519', 'local', 1, 'retired', 'local:sign-ed25519', "
+        "'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=')",
     )
     assert intentar(como(apex_roles, "apex_worker"), _signature_insert(seq, llave)) is None
     assert intentar(como(apex_roles, "apex_api"), "SELECT count(*) FROM audit.signatures") is None

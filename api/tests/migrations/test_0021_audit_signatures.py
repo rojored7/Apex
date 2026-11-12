@@ -1,7 +1,7 @@
 """`0021_audit_signatures` (S6-A1, US-140; S6-D2, S6-D7, S6-D81). # Rojo A1
 
-Padre `0020_notifications_indexes`; es head. Crea `audit.signatures` y añade
-`crypto.crypto_keys.public_key`:
+Padre `0020_notifications_indexes`; en la cadena hasta head (S6-A3: la `0022` cuelga de ella).
+Crea `audit.signatures` y añade `crypto.crypto_keys.public_key`:
 - `audit.signatures`: `id uuid` PK; `through_seq bigint NOT NULL` con índice único; `hash char(64)
   NOT NULL` (CHECK `^[0-9a-f]{64}$`); `signature text NOT NULL`; `key_id uuid NOT NULL` (FK lógica);
   `algorithm text NOT NULL` (CHECK en `Ed25519`, `ML-DSA-65`); `payload_version smallint NOT NULL
@@ -194,12 +194,13 @@ def base(alembic_config: Config, migrated_database: str) -> Iterator[str]:
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_cuelga_de_0020_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_cuelga_de_0020_y_esta_en_la_cadena_hasta_head(alembic_config: Config) -> None:
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    (head,) = scripts.get_heads()  # S6-A3: ya no es head (la `0022` cuelga de ella)
+    assert REVISION in {r.revision for r in scripts.iterate_revisions(head, "base")}
 
 
 # Forma de audit.signatures -----------------------------------------------------------------------

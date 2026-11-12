@@ -170,9 +170,24 @@ describe("PrivacySettingsForm", () => {
     expect(within(alert).getByRole("button", { name: "Recargar" })).toBeInTheDocument();
   });
 
-  it("es accesible", async () => {
+  it("S6-F5: la ayuda de la fecha dice que desde esa fecha el alta exige la autorización de datos", async () => {
+    await renderLoaded();
+
+    const field = screen.getByLabelText(/Autorización obligatoria desde/);
+    const hint = document.getElementById(field.getAttribute("aria-describedby") ?? "");
+    expect(hint).toHaveTextContent("Desde esa fecha el alta exige la autorización de datos del socio.");
+    expect(hint).toHaveTextContent("Déjalo vacío si aún no aplica.");
+    expect(hint).toHaveTextContent("Antes de esa fecha el alta puede seguir sin ella.");
+  });
+
+  it.each([
+    ["claro", null],
+    ["oscuro", "dark"],
+  ])("es accesible en tema %s", async (_name, theme) => {
+    if (theme) document.documentElement.dataset.theme = theme;
     const { container } = await renderLoaded();
 
     expect(await axe(container)).toHaveNoViolations();
+    document.documentElement.removeAttribute("data-theme");
   });
 });

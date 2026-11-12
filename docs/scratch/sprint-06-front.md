@@ -79,3 +79,24 @@
   - L4: `MemberFormPage.photo.test.tsx` usa `vi.stubGlobal("URL", ...)` con una subclase de `URL` (el literal plano rompe `new URL` del mock del api y del router).
   - L5 (aceptada): la rama del 413 de Nginx sin envelope es defensiva: `client_max_body_size 6m` y el cliente bloquea a 5 MiB antes de enviar.
 - Proceso (honesto): el Rojo previo solo se hizo en `schemas.test.ts` y `memberErrors.test.ts`; en lo demás prueba y código se escribieron seguidos.
+
+## F5 · Inicio y Config (US-151, US-153 en textos)
+
+- Base: `0355f7b` (checkpoint de F4, rama `feat/sprint-06-front`). `gen:api` sin diff.
+- Rojo (visto en rojo antes del Verde, 11 fallos en las tres pruebas): `features/dashboard/components/NotificationKpis.test.tsx` (tarjeta «Sin autorización» con enlace a `/socios?consent=missing`, «Todos con autorización» en 0, null sin enlace), `features/members/pages/MembersListPage.test.tsx` (bloque nuevo de 9 casos: lectura de la URL, consulta con `consent=missing`, chip, quitar el chip, limpiar, valor ajeno ignorado, celular, exportación, axe claro y oscuro), `features/system/components/PrivacySettingsForm.test.tsx` (ayuda de la fecha; axe en claro y oscuro). `FutureKpis.test.tsx` solo cambia el nombre negado.
+- Verde: `NotificationKpis.tsx`, `MembersListPage.tsx`, `members/api.ts` (`MembersParams.consent`, `ConsentFilter`), `components/ExportButton.tsx` (`consent` en los filtros de la exportación), `PrivacySettingsForm.tsx` (texto de ayuda).
+- Decisiones:
+  - El chip «Sin autorización» es un `Chips` de modo único (grupo «Autorización») que solo existe con el filtro activo; quitarlo llama `setFilter("consent", undefined)` (vuelve a la primera página, conserva `limit`). `consent` entra en `FILTERS`, en la consulta (después de `plan_id`), en la exportación y en `isFiltered` (el vacío ofrece «Limpiar filtros»). Cualquier valor distinto de `missing` se ignora.
+  - La tarjeta es enlace solo con un número (con 0 también: la lista filtrada queda vacía y lo confirma); con null o error sigue siendo un grupo. `attention` con conteo > 0.
+  - `useMembersTotal` (chip «Todos») no lleva el filtro.
+- Pruebas que cambian: `NotificationKpis.test.tsx` (nombres «Sin autorización»), `FutureKpis.test.tsx` (nombre negado).
+- E2E: `tests/e2e/home.spec.ts` (enlace) y `members.spec.ts` (chip, axe, quitar) en preview: 28 verdes; `stack/home.spec.ts` suma el conteo contra `/members?consent=missing` (escrito, NO corrido; V7).
+- DESIGN-GAP: chip «Sin autorización» (BRECHAS 14.13) y texto de ayuda de la fecha (14.14), ambas aceptadas; 14.5 y 13.24 cerradas.
+- Revisión de seguridad 0C/0H/1M/5L: M1 y L1 a L4 corregidas, L5 aceptada.
+  - M1: `ConsentFilter` sale del contrato (`operations["list_members_api_v1_members_get"]`), no de un literal.
+  - L1: `ExportButton` tipa `consent?: ConsentFilter` (importado de `../api`), no `string`.
+  - L2: `exportFilters` se deriva de `params` sin `limit` ni `sort`: una sola construcción de filtros.
+  - L3: `CONSENT_MISSING_PATH` usa `MEMBERS_PATH` de `shared/lib/routes.ts`.
+  - L4: `// DESIGN-GAP:` junto a la ayuda nueva de «Autorización obligatoria desde» (BRECHAS 14.14).
+  - L5 (aceptada): el chip «Todos» muestra el total sin `consent` (constancia en BRECHAS 14.13).
+- Pendiente: sello `slice-gate.sh web/members` (orquestador).

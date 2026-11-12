@@ -93,9 +93,12 @@ test.describe("Inicio (preview)", () => {
     await expect(income.getByText("Solo administración")).toBeVisible();
     await expect(page.getByText("$ 0")).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Hoy en el box" }).getByText("Disponible en v0.4")).toBeVisible();
-    // S5-F3 (US-132): los avisos ya tienen dato: enlace a /avisos/hoy y el conteo sin consentimiento.
+    // S5-F3 (US-132): los avisos ya tienen dato: enlace a /avisos/hoy. S6-F5 (US-151): "Sin autorización" lleva al filtro.
     await expect(page.getByRole("link", { name: "Por avisar hoy: 9" })).toHaveAttribute("href", "/avisos/hoy");
-    await expect(page.getByRole("group", { name: "Sin consentimiento" }).getByText("2")).toBeVisible();
+    const withoutConsent = page.getByRole("link", { name: "Sin autorización: 2" });
+    await expect(withoutConsent).toHaveAttribute("href", "/socios?consent=missing");
+    await expect(withoutConsent.getByText("2")).toBeVisible();
+    await expect(page.getByText("Sin consentimiento")).toHaveCount(0);
     await expect(page.getByText("Disponible en v0.2")).toHaveCount(0);
 
     const movements = page.getByRole("list", { name: "Últimos movimientos" }).getByRole("listitem");

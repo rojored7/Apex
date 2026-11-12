@@ -27,6 +27,7 @@ import {
 } from "@tanstack/react-query";
 import { api, type UploadKind } from "../../core/api/client";
 import type { Page } from "../../core/api/page";
+import type { operations } from "../../core/api/types";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
@@ -61,7 +62,11 @@ export interface MembersParams {
   membership_status?: MembershipFilterStatus;
   /** S3-F2 (D22): el plan de esa membresía (UUID). */
   plan_id?: string;
+  /** S6-F5 (S6-C5): `missing` = socios sin la autorización de datos (la condición del KPI members_without_consent). */
+  consent?: ConsentFilter;
 }
+
+export type ConsentFilter = NonNullable<NonNullable<operations["list_members_api_v1_members_get"]["parameters"]["query"]>["consent"]>;
 
 /** "Cargar más" (US-072): los mismos filtros sin `offset`; cada página lo pone. */
 export type MembersInfiniteParams = Omit<MembersParams, "offset">;

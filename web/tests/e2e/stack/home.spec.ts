@@ -17,6 +17,7 @@ interface DashboardCounts {
   members_active: number;
   members_expiring: number;
   members_expired: number;
+  members_without_consent: number;
   income_month_cop: number | null;
 }
 
@@ -78,6 +79,23 @@ test.describe("Inicio contra el stack", () => {
     await page.getByRole("link", { name: `Por vencer: ${miles(api.members_expiring)}` }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe("/socios");
     expect(new URL(page.url()).searchParams.get("membership_status")).toBe("expiring");
+  });
+
+  test("S6-F5: 'Sin autorización' coincide con el total de GET /members?consent=missing y lleva a la lista filtrada (V7)", async ({ page }) => {
+    exigirStackLocal(process.env.E2E_BASE_URL);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const token = await loginComo(page, datosDeBase());
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: /^Sin autorización: / })).toBeVisible();
+    const api = await dashboardPorApi(page, token);
+    const lista = await page.request.get("/api/v1/members?consent=missing&limit=1&offset=0", { headers: { Authorization: `Bearer ${token}` } });
+    expect(lista.status()).toBe(200);
+
+    expect(((await lista.json()) as { total: number }).total).toBe(api.members_without_consent);
+    await page.getByRole("link", { name: `Sin autorización: ${miles(api.members_without_consent)}` }).click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/socios");
+    expect(new URL(page.url()).searchParams.get("consent")).toBe("missing");
+    await expect(page.getByRole("group", { name: "Autorización" }).getByRole("button", { name: "Sin autorización" })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("los KPI de Inicio coinciden con GET /dashboard y con psql sobre la base del ensayo", async ({ page }) => {

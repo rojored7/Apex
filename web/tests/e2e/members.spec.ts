@@ -150,6 +150,22 @@ test("la búsqueda va al api y nunca a la URL; el chip de dados de baja sí", as
   expect(page.url()).not.toContain("laura");
 });
 
+test("S6-F5: ?consent=missing viaja al api, se ve como el chip 'Sin autorización' y quitarlo limpia la URL", async ({ page }) => {
+  const api = await fakeApi(page);
+  await open(page, "/socios?consent=missing", "light", 1440);
+  await expect(page.getByRole("link", { name: "Laura Gómez" })).toBeVisible();
+
+  expect(api.listQueries.some((s) => s.includes("consent=missing"))).toBe(true);
+  const chip = page.getByRole("group", { name: "Autorización" }).getByRole("button", { name: "Sin autorización" });
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  expect(await axeViolations(page)).toEqual([]);
+
+  await chip.click();
+  await expect.poll(() => new URL(page.url()).search).toBe("");
+  await expect(page.getByRole("group", { name: "Autorización" })).toHaveCount(0);
+  await expect.poll(() => api.listQueries.at(-1)).not.toContain("consent");
+});
+
 test("alta: el 409 enlaza al socio existente y el 201 vuelve a la lista con el aviso", async ({ page }) => {
   const api = await fakeApi(page);
   await open(page, "/socios", "light", 1440);

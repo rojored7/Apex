@@ -470,3 +470,104 @@ describe("MembersListPage · exportar (S5-F4, US-138)", () => {
     expect(screen.queryByRole("button", { name: "Exportar" })).not.toBeInTheDocument();
   });
 });
+
+describe("MembersListPage · sin autorización (S6-F5, US-151)", () => {
+  const CSV_FILE = { status: 200, file: { content: "nombre;documento\r\n", contentType: "text/csv", filename: "socios-20261112.csv" } };
+  const consentChip = () => screen.getByRole("group", { name: "Autorización" });
+
+  it("sin el filtro no hay chip y la consulta no manda consent", async () => {
+    const { mock } = renderMembers();
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(screen.queryByRole("group", { name: "Autorización" })).not.toBeInTheDocument();
+    expect(listCalls(mock)[0]?.has("consent")).toBe(false);
+  });
+
+  it("?consent=missing se manda a GET /members y se muestra como chip activo 'Sin autorización'", async () => {
+    const { mock } = renderMembers("/socios?consent=missing");
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(listCalls(mock)[0]?.toString()).toBe("limit=25&offset=0&consent=missing");
+    expect(within(consentChip()).getByRole("button", { name: "Sin autorización" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("combina con el chip de estado y el plan sin perderlos", async () => {
+    const PLAN = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { mock, router } = renderMembers(`/socios?consent=missing&membership_status=expired&plan_id=${PLAN}`);
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(listCalls(mock)[0]?.toString()).toBe(`limit=25&offset=0&membership_status=expired&plan_id=${PLAN}&consent=missing`);
+    expect(router.state.location.search).toContain("consent=missing");
+  });
+
+  it("quitar el chip limpia consent de la URL (conserva el tamaño de página) y relee sin el filtro", async () => {
+    const { mock, router, user } = renderMembers("/socios?consent=missing&limit=50");
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    await user.click(within(consentChip()).getByRole("button", { name: "Sin autorización" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("?limit=50");
+    });
+    expect(screen.queryByRole("group", { name: "Autorización" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(listCalls(mock).at(-1)?.toString()).toBe("limit=50&offset=0");
+    });
+  });
+
+  it("'Limpiar filtros' también quita consent y el vacío del filtro guía a limpiarlo", async () => {
+    const { router, user } = renderMembers("/socios?consent=missing", { rows: [] });
+
+    expect(await screen.findByText("No hay socios que coincidan con la búsqueda")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("");
+    });
+  });
+
+  it("un valor distinto de missing se ignora: no viaja ni se pinta el chip", async () => {
+    const { mock } = renderMembers("/socios?consent=all");
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(listCalls(mock)[0]?.has("consent")).toBe(false);
+    expect(screen.queryByRole("group", { name: "Autorización" })).not.toBeInTheDocument();
+  });
+
+  it("en el celular el filtro también viaja y el chip se ve", async () => {
+    setViewportWidth(390);
+    const { mock } = renderMembers("/socios?consent=missing");
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(listCalls(mock)[0]?.get("consent")).toBe("missing");
+    expect(consentChip()).toBeInTheDocument();
+  });
+
+  it("la exportación conserva consent=missing junto a los demás filtros", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/2"), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const { mock, user } = renderMembers("/socios?consent=missing&membership_status=expiring&sort=-created_at", { handlers: { "GET /members/export": CSV_FILE } });
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    await user.click(within(screen.getByRole("dialog", { name: "¿Exportar la lista de socios?" })).getByRole("button", { name: "Descargar CSV" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo("GET /members/export")).toHaveLength(1);
+    });
+    const params = new URL(mock.callsTo("GET /members/export")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(Object.fromEntries(params)).toEqual({ membership_status: "expiring", consent: "missing" });
+  });
+
+  it.each([
+    ["claro", null],
+    ["oscuro", "dark"],
+  ])("con el chip es accesible en tema %s", async (_name, theme) => {
+    if (theme) document.documentElement.dataset.theme = theme;
+    const { container } = renderMembers("/socios?consent=missing");
+    await screen.findByRole("link", { name: "Laura Gómez" });
+
+    expect(await axe(container)).toHaveNoViolations();
+    document.documentElement.removeAttribute("data-theme");
+  });
+});

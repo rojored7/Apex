@@ -500,3 +500,12 @@ def test_s6_b1_core_security_no_importa_el_router_de_llaves() -> None:
     assert "app.core.crypto" in {
         n.rpartition(".")[0] if n.endswith(".router") else n for n in _imports(SRC / "main.py")
     }, "main.py debe importar core.crypto (router) de forma explícita"
+
+
+def test_s6_b2_inventory_schemas_y_router_no_importan_modulos_ni_auditoria() -> None:
+    """S6-B2: la bitacora y los trabajos se leen desde `core/crypto` sin `app.modules`, sin
+    `core.audit*`, sin `app.cli` ni `app.main` (la auditoria llega por `set_audit_writer`)."""
+    for nombre in ("inventory.py", "schemas.py", "router.py"):
+        ruta = CORE / "crypto" / nombre
+        assert ruta.is_file(), nombre
+        assert _prohibidos_b1(ruta.read_text(encoding="utf-8")) == [], nombre

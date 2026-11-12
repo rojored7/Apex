@@ -238,3 +238,68 @@ def test_s6_b1_el_inventario_de_llaves_pagina_y_filtra_por_data_class(
     nombre = _respuesta_200(operacion)["$ref"].removeprefix(SCHEMA_REF)
     propiedades = esquema["components"]["schemas"][nombre]["properties"]
     assert set(propiedades) == {"items", "total", "limit", "offset", "summary"}
+
+
+def test_s6_b2_la_bitacora_y_los_trabajos_paginan_y_aceptan_q(settings_prueba: Settings) -> None:
+    """S6-B2 (S6-D16): `GET /crypto/ops` y `GET /crypto/jobs` responden `Page_...` con
+    `PageParams`, `q` de hasta 100 caracteres, `limit` 1 a 200 y los filtros de la historia."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = problemas_de_listas(app)
+    assert problemas == []
+    assert {"GET /api/v1/crypto/ops", "GET /api/v1/crypto/jobs"} <= set(listas)
+    esquema = app.openapi()
+    esperados = {
+        "/api/v1/crypto/ops": {
+            "limit",
+            "offset",
+            "q",
+            "from",
+            "to",
+            "verb",
+            "data_class",
+            "key_id",
+            "user_id",
+            "result",
+            "batch_id",
+        },
+        "/api/v1/crypto/jobs": {"limit", "offset", "q", "status", "kind", "data_class"},
+    }
+    for ruta, parametros_esperados in esperados.items():
+        efectiva = next(
+            r for r in effective_routes(app)[0] if r.path == ruta and "GET" in r.methods
+        )
+        assert _usa_page_params(efectiva.dependant), ruta
+        assert _query_params(efectiva.dependant) == parametros_esperados, ruta
+        operacion = esquema["paths"][ruta]["get"]
+        assert _limite_maximo(operacion) == MAX_LIMIT, ruta
+        parametros = {p["name"]: p for p in operacion["parameters"] if p["in"] == "query"}
+        assert parametros["limit"]["schema"]["minimum"] == 1, ruta
+        q = parametros["q"]["schema"]
+        assert any(v.get("maxLength") == 100 for v in q.get("anyOf", [q])), ruta
+        propiedades = esquema["components"]["schemas"][
+            _respuesta_200(operacion)["$ref"].removeprefix(SCHEMA_REF)
+        ]["properties"]
+        assert set(propiedades) == {"items", "total", "limit", "offset"}, ruta
+
+
+def test_s6_b2_los_enums_de_los_filtros_salen_de_los_modelos(settings_prueba: Settings) -> None:
+    """Bug 22 (S6-D16): `kind` solo admite `JOB_KINDS`, `status` `JOB_STATUSES`, `verb`
+    `OP_VERBS` y `result` `OP_RESULTS`; el OpenAPI publica exactamente esas listas cerradas."""
+    from app.core.crypto.models import JOB_KINDS, JOB_STATUSES, OP_RESULTS, OP_VERBS
+
+    esquema = create_app(settings_prueba, run_migrations_on_startup=False).openapi()
+
+    def enum_de(ruta: str, nombre: str) -> list[str]:
+        operacion = esquema["paths"][ruta]["get"]
+        parametro = next(p for p in operacion["parameters"] if p["name"] == nombre)
+        sch = parametro["schema"]
+        variante = next(v for v in sch.get("anyOf", [sch]) if "enum" in v or "$ref" in v)
+        if "$ref" in variante:
+            variante = esquema["components"]["schemas"][variante["$ref"].removeprefix(SCHEMA_REF)]
+        return list(variante["enum"])
+
+    assert JOB_KINDS == ("rotate", "reencrypt", "migrate_provider", "rewrap")
+    assert enum_de("/api/v1/crypto/jobs", "kind") == list(JOB_KINDS)
+    assert enum_de("/api/v1/crypto/jobs", "status") == list(JOB_STATUSES)
+    assert enum_de("/api/v1/crypto/ops", "verb") == list(OP_VERBS)
+    assert enum_de("/api/v1/crypto/ops", "result") == list(OP_RESULTS)

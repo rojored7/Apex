@@ -211,6 +211,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/crypto/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Crypto Jobs */
+        get: operations["list_crypto_jobs_api_v1_crypto_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/crypto/keys": {
         parameters: {
             query?: never;
@@ -220,6 +237,23 @@ export interface paths {
         };
         /** List Crypto Keys */
         get: operations["list_crypto_keys_api_v1_crypto_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crypto/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Crypto Ops */
+        get: operations["list_crypto_ops_api_v1_crypto_ops_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1339,6 +1373,44 @@ export interface components {
             /** Telegram */
             telegram: boolean;
         };
+        /**
+         * CryptoJobOut
+         * @description Un trabajo de rotación o recifrado con su avance (S6-D16, S6-B2). Sin el texto `error`.
+         */
+        CryptoJobOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Data Class */
+            data_class: string | null;
+            /** Done */
+            done: number;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rotate" | "reencrypt" | "migrate_provider" | "rewrap";
+            /** Percent */
+            percent: number;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "done" | "failed";
+            /** Total */
+            total: number;
+        };
         /** CryptoKeyOut */
         CryptoKeyOut: {
             /** Age Days */
@@ -1378,6 +1450,52 @@ export interface components {
             state: "active" | "decrypt_only" | "retired";
             /** Version */
             version: number;
+        };
+        /**
+         * CryptoOpOut
+         * @description Una fila de la bitácora (S6-D16, S6-B2). Nunca lleva material, referencias ni detalle de
+         *     error del proveedor.
+         */
+        CryptoOpOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Batch Id */
+            batch_id: string | null;
+            /** Count */
+            count: number;
+            /** Data Class */
+            data_class: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key Id */
+            key_id: string | null;
+            /** Key Version */
+            key_version: number | null;
+            /** Purpose */
+            purpose: string | null;
+            /** Record Id */
+            record_id: string | null;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "ok" | "error";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Verb
+             * @enum {string}
+             */
+            verb: "encrypt" | "decrypt" | "index" | "sign" | "verify" | "wrap" | "unwrap" | "rotate" | "export";
         };
         /**
          * DashboardOut
@@ -2186,6 +2304,28 @@ export interface components {
         Page_AuditRow_: {
             /** Items */
             items: components["schemas"]["AuditRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CryptoJobOut] */
+        Page_CryptoJobOut_: {
+            /** Items */
+            items: components["schemas"]["CryptoJobOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CryptoOpOut] */
+        Page_CryptoOpOut_: {
+            /** Items */
+            items: components["schemas"]["CryptoOpOut"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -4015,6 +4155,88 @@ export interface operations {
             };
         };
     };
+    list_crypto_jobs_api_v1_crypto_jobs_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                status?: ("pending" | "running" | "done" | "failed") | null;
+                kind?: ("rotate" | "reencrypt" | "migrate_provider" | "rewrap") | null;
+                data_class?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CryptoJobOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_crypto_keys_api_v1_crypto_keys_get: {
         parameters: {
             query?: {
@@ -4040,6 +4262,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KeysPage"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_crypto_ops_api_v1_crypto_ops_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                from?: string | null;
+                to?: string | null;
+                verb?: ("encrypt" | "decrypt" | "index" | "sign" | "verify" | "wrap" | "unwrap" | "rotate" | "export") | null;
+                data_class?: string | null;
+                key_id?: string | null;
+                user_id?: string | null;
+                result?: ("ok" | "error") | null;
+                batch_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CryptoOpOut_"];
                 };
             };
             /** @description Sin sesión válida */

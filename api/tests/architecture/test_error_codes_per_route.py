@@ -83,6 +83,9 @@ CON_LIMITE = {
     ("get", "/api/v1/audit/signatures/latest"),
     # S6-B1 (US-143, S6-D13): el inventario de llaves consume `staff-read`.
     ("get", "/api/v1/crypto/keys"),
+    # S6-B2 (US-144, S6-D16): la bitacora y los trabajos consumen la misma `staff-read`.
+    ("get", "/api/v1/crypto/ops"),
+    ("get", "/api/v1/crypto/jobs"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
     # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen
@@ -276,3 +279,18 @@ def test_s6_b1_el_inventario_de_llaves_declara_sus_codigos_exactos(
     assert set(operacion["responses"]) == {"200", "401", "403", "422", "429", "500", "503"}
     descripcion = operacion["responses"]["503"]["description"]
     assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion
+
+
+def test_s6_b2_la_bitacora_y_los_trabajos_declaran_sus_codigos_exactos(
+    esquema: dict[str, Any],
+) -> None:
+    """S6-B2 (S6-D16): `GET /crypto/ops` y `GET /crypto/jobs` publican 200, 401, 403 (solo admin),
+    422 (filtros y rango) y 429 (`staff-read`), sin 404 ni 409; el 503 nombra `busy` y
+    `crypto_unavailable`."""
+    for ruta in ("/api/v1/crypto/ops", "/api/v1/crypto/jobs"):
+        operacion = esquema["paths"][ruta]["get"]
+        assert set(operacion["responses"]) == {"200", "401", "403", "422", "429", "500", "503"}, (
+            ruta
+        )
+        descripcion = operacion["responses"]["503"]["description"]
+        assert "busy" in descripcion and "crypto_unavailable" in descripcion, (ruta, descripcion)

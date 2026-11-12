@@ -1,23 +1,35 @@
 """Router de llaves (EP-18; S6-D12, S6-D44, S6-D52, S6-B1).
 
-`GET /crypto/keys` (admin, `staff-read`). `main.py` lo registra bajo `/api/v1` y cablea la puerta
-de auditoría con `set_audit_writer`; el router nunca importa `core.audit` ni `app.modules`.
+`GET /crypto/keys`, `/crypto/ops` y `/crypto/jobs` (admin, `staff-read`; S6-B2, US-144).
+`main.py` lo registra bajo `/api/v1` y cablea la puerta de auditoría con
+`set_audit_writer`; el router nunca importa `core.audit` ni `app.modules`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.crypto import inventory
 from app.core.crypto.models import DATA_CLASS_PATTERN
-from app.core.crypto.schemas import KeysFilters, KeysPage
+from app.core.crypto.schemas import (
+    CryptoJobOut,
+    CryptoOpOut,
+    JobKind,
+    JobsFilters,
+    KeysFilters,
+    KeysPage,
+    OpsFilters,
+    OpVerb,
+)
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
-from app.core.pagination import PageParams, SearchQuery
+from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import enforce_user_limit
 from app.core.security import AdminDep
 
@@ -64,3 +76,50 @@ async def list_crypto_keys(
         offset=pagina.offset,
         summary=await inventory.summary(session),
     )
+
+
+@router.get("/crypto/ops", response_model=Page[CryptoOpOut], responses=responses_for(422, 429))
+async def list_crypto_ops(
+    request: Request,
+    principal: AdminDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    from_: Annotated[datetime | None, Query(alias="from")] = None,
+    to: datetime | None = None,
+    verb: OpVerb | None = None,
+    data_class: Annotated[str | None, Query(pattern=DATA_CLASS_PATTERN, max_length=100)] = None,
+    key_id: UUID | None = None,
+    user_id: UUID | None = None,
+    result: Literal["ok", "error"] | None = None,
+    batch_id: UUID | None = None,
+) -> Page[CryptoOpOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    filtros = OpsFilters(
+        start=from_,
+        end=to,
+        verb=verb,
+        data_class=data_class,
+        key_id=key_id,
+        user_id=user_id,
+        result=result,
+        batch_id=batch_id,
+        q=q,
+    )
+    return await inventory.list_ops(session, filtros, page)
+
+
+@router.get("/crypto/jobs", response_model=Page[CryptoJobOut], responses=responses_for(422, 429))
+async def list_crypto_jobs(
+    request: Request,
+    principal: AdminDep,
+    session: SessionDep,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+    status: Literal["pending", "running", "done", "failed"] | None = None,
+    kind: JobKind | None = None,
+    data_class: Annotated[str | None, Query(pattern=DATA_CLASS_PATTERN, max_length=100)] = None,
+) -> Page[CryptoJobOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    filtros = JobsFilters(status=status, kind=kind, data_class=data_class, q=q)
+    return await inventory.list_jobs(session, filtros, page)

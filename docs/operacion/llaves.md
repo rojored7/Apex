@@ -21,6 +21,19 @@ Cada llave trae `id`, `purpose` (`encrypt`, `index` o `sign`), `data_class`, `al
 - `provider.names`: proveedores que custodian hoy, es decir los de las filas `active`, sin repetir (`["local"]`, `["openbao"]` o ambos mientras dura una migración). Una llave `decrypt_only` en otro proveedor no cuenta.
 - `provider.state`: `ok`, `sealed`, `unreachable` o `unknown`. Es el mismo estado de `/health.crypto` (ver `openbao.md` §5). `unknown` es normal justo tras arrancar, antes de la primera observación; `sealed` pide desellar (`openbao.md` §4) y `unreachable` pide revisar la red `custody` y el servicio OpenBao.
 
+## La bitácora de operaciones y los trabajos (US-144)
+
+`GET /crypto/ops` lista la bitácora `crypto_ops` (solo lectura, solo admin, sin caché). Orden fijo: la más reciente primero (`at` y, en empate, `id` descendentes). Cada fila trae quién (`user_id`), qué (`verb`), sobre qué (`data_class`, `key_id`, `key_version`, `record_id`), el `result` (`ok` o `error`), el `batch_id` de las operaciones de un mismo lote y `count` (las filas iguales de un lote se agregan). Nunca trae material de llave ni el texto de un error del proveedor. Filtros, todos opcionales y combinables:
+
+- `from` y `to`: instantes con zona, rango `[from, to)`. Piso 2020-01-01, techo mañana, y como mucho 366 días entre los dos. Un rango invertido, vacío, sin zona o fuera de tope da 422 con `field` `from` o `to`.
+- `verb`: `encrypt`, `decrypt`, `index`, `sign`, `verify`, `wrap`, `unwrap`, `rotate` o `export`. `result`: `ok` o `error`.
+- `data_class`: la clase exacta (`member.document`). `key_id`, `user_id` y `batch_id`: UUID exactos.
+- `q`: texto libre que busca solo dentro de `data_class` (sin distinguir mayúsculas; `%` y `_` valen como texto). No busca ids, verbos ni errores.
+
+`GET /crypto/jobs` lista los trabajos `crypto_jobs` (rotaciones, recifrados, migraciones de proveedor y re-envolturas), del más reciente al más antiguo (`created_at` y `id` descendentes). Filtros: `status` (`pending`, `running`, `done`, `failed`), `kind` (`rotate`, `reencrypt`, `migrate_provider`, `rewrap`), `data_class` y `q` (igual que arriba). Cada fila trae `total`, `done` y `percent`: el avance entero de 0 a 100 (`done * 100 // total`, redondeado hacia abajo, de modo que solo llega a 100 al terminar; `total = 0` da 0). El texto `error` de un trabajo fallido no se expone: se consulta en los registros del worker.
+
+Ambas listas paginan con `limit` (25 por defecto, máximo 200) y `offset`, y leerlas no escribe en `crypto_ops`.
+
 ## Recifrado de clases sin columnas (puerto `Reencryptor`)
 
 Una clase que se cifra pero cuyos datos no están en columnas del registro (los adjuntos sensibles, `attachment.sensitive`, desde C1) registra al arrancar quien cuenta y recifra sus registros. Mientras no lo registre, `rotate-key <clase>` sale 2 con `rotation_not_supported` y no crea trabajo ni llave. Al cerrar una rotación con registros pendientes el comando espera y repasa (cinco pasadas); si el puerto no los vacía, el trabajo queda `failed` (`pending_records`), la llave anterior sigue en `decrypt_only` y repetir el comando reanuda. El retiro (`retire-key`) cuenta columnas y los objetos que informa el puerto (`count_by_key`, entrada `objetos` en `filas_negocio`): con objetos aún cifrados con la llave se niega (sale 2) y no cambia el estado.

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.main import create_app
 from tests.conftest import Cabeceras, CrearUsuario
+from tests.crypto._bitacora import JOBS_URL, OPS_URL, sembrar_jobs, sembrar_ops
 from tests.crypto.conftest import KEYS_URL, llaves_mixtas
 
 CLAVES_PROHIBIDAS = frozenset({"wrapped_material", "key_ref", "material", "reference"})
@@ -111,3 +112,40 @@ def test_control_el_recorrido_detecta_claves_y_valores_prohibidos() -> None:
         }
     }
     assert claves_prohibidas_en_esquema(esquema, {"$ref": f"{SCHEMA_REF}A"}) == ["key_ref"]
+
+
+# S6-B2: la bitacora y los trabajos tampoco exponen material ni el `error` del proveedor --------
+
+
+def test_el_contrato_openapi_de_ops_y_jobs_no_declara_material(settings_prueba: Settings) -> None:
+    esquema = create_app(settings_prueba, run_migrations_on_startup=False).openapi()
+
+    for ruta in (OPS_URL, JOBS_URL):
+        operacion = esquema["paths"][ruta]["get"]
+        assert claves_prohibidas_en_esquema(esquema, operacion["responses"]) == [], ruta
+    propiedades_job = esquema["components"]["schemas"]["CryptoJobOut"]["properties"]
+    propiedades_op = esquema["components"]["schemas"]["CryptoOpOut"]["properties"]
+    assert "error" not in propiedades_job
+    assert not {"wrapped_material", "key_ref", "error", "detail"} & set(propiedades_op)
+
+
+async def test_respuestas_reales_de_ops_y_jobs_no_traen_claves_ni_valores_de_material(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    bus_listo: object,
+    proveedor_local: object,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+) -> None:
+    await llaves_mixtas(session, proveedor_local)  # type: ignore[arg-type]
+    await sembrar_ops(session)
+    await sembrar_jobs(session)  # el trabajo 4 trae un `error` con `vault:` y un token
+    admin = await usuario_real("admin")
+
+    for ruta in (OPS_URL, JOBS_URL):
+        r = await app_http.get(ruta, headers=cabeceras(admin))
+
+        assert r.status_code == 200, (ruta, r.text)
+        assert r.json()["items"], ruta
+        assert problemas_en_json(r.json()) == [], ruta
+        assert "SECRETO" not in r.text and "vault:" not in r.text, ruta

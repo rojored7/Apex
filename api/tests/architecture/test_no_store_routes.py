@@ -91,3 +91,16 @@ def test_s6_b1_el_inventario_de_llaves_tiene_rol_de_admin_y_no_store(
     assert len(halladas) == 1
     assert route_has_role_dependency(halladas[0])
     assert any(n.call is no_store for n in _nodos(halladas[0].dependant))
+
+
+def test_s6_b2_la_bitacora_y_los_trabajos_tienen_rol_de_admin_y_no_store(
+    settings_prueba: Settings,
+) -> None:
+    """S6-B2 (US-144, S6-D16): `GET /crypto/ops` y `GET /crypto/jobs` existen una vez bajo
+    `/api/v1`, exigen rol y llevan `no_store` (la dependencia del `APIRouter` de crypto)."""
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    for ruta in ("/api/v1/crypto/ops", "/api/v1/crypto/jobs"):
+        halladas = [r for r in rutas if r.path == ruta and "GET" in r.methods]
+        assert len(halladas) == 1, ruta
+        assert route_has_role_dependency(halladas[0]), ruta
+        assert any(n.call is no_store for n in _nodos(halladas[0].dependant)), ruta

@@ -1,4 +1,4 @@
-"""Inventario de llaves sin material (S6-D13, S6-D14, S6-D54; S6-B1, US-143).
+"""Inventario de llaves, bitácora y trabajos, sin material (S6-D13, D14, D16, D54; S6-B1, B2).
 
 Solo lectura: nunca escribe `crypto_ops`. La consulta nombra columnas explícitas (jamás
 `wrapped_material`, `public_key` ni la referencia de las filas `sign`). `records_count` sale del
@@ -20,10 +20,21 @@ from app.core.crypto.discovery import encrypted_columns
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.models import CryptoJob, CryptoKey, CryptoOp
 from app.core.crypto.reencryptor import get_reencryptor
-from app.core.crypto.schemas import CryptoKeyOut, KeysFilters, KeysSummary, ProviderSummary
+from app.core.crypto.schemas import (
+    CryptoJobOut,
+    CryptoKeyOut,
+    CryptoOpOut,
+    JobsFilters,
+    KeysFilters,
+    KeysSummary,
+    OpsFilters,
+    ProviderSummary,
+)
 from app.core.db import Base
+from app.core.errors import ValidationFailed
 from app.core.pagination import Page, PageParams
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern
+from app.core.validators import check_instant_range
 
 _SECONDS_PER_DAY = 86_400
 
@@ -156,4 +167,155 @@ async def summary(session: AsyncSession) -> KeysSummary:
         operations_today=int(operaciones or 0),
         running_jobs=int(trabajos or 0),
         provider=ProviderSummary(names=list(nombres), state=recovery.current_state()),
+    )
+
+
+def job_percent(total: int, done: int) -> int:
+    """Avance entero de un trabajo, de 0 a 100 (S6-D16): `total = 0` da 0, `done > total` da 100
+    y un negativo es un error de programación (`ValueError`)."""
+    if total < 0 or done < 0:
+        raise ValueError("total y done no pueden ser negativos")
+    if total == 0:
+        return 0
+    return min(done * 100 // total, 100)
+
+
+MAX_OPS_RANGE = timedelta(days=366)
+
+
+def _check_ops_range(filters: OpsFilters, now: datetime) -> None:
+    """Rango de `from`/`to` (S6-D16): `check_instant_range` más el tope de 366 días; 422
+    `validation_error` con el campo que falla y sin el valor."""
+    try:
+        check_instant_range(filters.start, filters.end, now=now, field_start="from", field_end="to")
+    except ValueError as error:
+        raise ValidationFailed(
+            message="El rango de fechas no es válido.", field=str(error.args[0])
+        ) from None
+    if (
+        filters.start is not None
+        and filters.end is not None
+        and filters.end - filters.start > MAX_OPS_RANGE
+    ):
+        raise ValidationFailed(message="El rango de fechas no puede pasar de 366 días.", field="to")
+
+
+def _ops_conditions(filters: OpsFilters) -> list[ColumnElement[bool]]:
+    condiciones: list[ColumnElement[bool]] = []
+    if filters.start is not None:
+        condiciones.append(CryptoOp.at >= filters.start)
+    if filters.end is not None:
+        condiciones.append(CryptoOp.at < filters.end)
+    if filters.verb is not None:
+        condiciones.append(CryptoOp.verb == filters.verb)
+    if filters.data_class is not None:
+        condiciones.append(CryptoOp.data_class == filters.data_class)
+    if filters.key_id is not None:
+        condiciones.append(CryptoOp.key_id == filters.key_id)
+    if filters.user_id is not None:
+        condiciones.append(CryptoOp.user_id == filters.user_id)
+    if filters.result is not None:
+        condiciones.append(CryptoOp.result == filters.result)
+    if filters.batch_id is not None:
+        condiciones.append(CryptoOp.batch_id == filters.batch_id)
+    termino = clean_query(filters.q)
+    if termino:
+        condiciones.append(CryptoOp.data_class.ilike(contains_pattern(termino), escape=LIKE_ESCAPE))
+    return condiciones
+
+
+async def list_ops(
+    session: AsyncSession, filters: OpsFilters, page: PageParams
+) -> Page[CryptoOpOut]:
+    """Una página de la bitácora `crypto_ops`, solo lectura, orden `at DESC, id DESC`."""
+    _check_ops_range(filters, current_clock().now_utc())
+    donde = and_(True, *_ops_conditions(filters))
+    total = await session.scalar(select(func.count(CryptoOp.id)).where(donde))
+    consulta = (
+        select(
+            CryptoOp.id,
+            CryptoOp.at,
+            CryptoOp.user_id,
+            CryptoOp.verb,
+            CryptoOp.data_class,
+            CryptoOp.key_id,
+            CryptoOp.key_version,
+            CryptoOp.record_id,
+            CryptoOp.purpose,
+            CryptoOp.result,
+            CryptoOp.batch_id,
+            CryptoOp.count,
+        )
+        .where(donde)
+        .order_by(CryptoOp.at.desc(), CryptoOp.id.desc())
+        .limit(page.limit)
+        .offset(page.offset)
+    )
+    filas = (await session.execute(consulta)).all()
+    return Page[CryptoOpOut](
+        items=[CryptoOpOut.model_validate(f, from_attributes=True) for f in filas],
+        total=int(total or 0),
+        limit=page.limit,
+        offset=page.offset,
+    )
+
+
+def _jobs_conditions(filters: JobsFilters) -> list[ColumnElement[bool]]:
+    condiciones: list[ColumnElement[bool]] = []
+    if filters.status is not None:
+        condiciones.append(CryptoJob.status == filters.status)
+    if filters.kind is not None:
+        condiciones.append(CryptoJob.kind == filters.kind)
+    if filters.data_class is not None:
+        condiciones.append(CryptoJob.data_class == filters.data_class)
+    termino = clean_query(filters.q)
+    if termino:
+        condiciones.append(
+            CryptoJob.data_class.ilike(contains_pattern(termino), escape=LIKE_ESCAPE)
+        )
+    return condiciones
+
+
+async def list_jobs(
+    session: AsyncSession, filters: JobsFilters, page: PageParams
+) -> Page[CryptoJobOut]:
+    """Una página de `crypto_jobs` con `percent`, solo lectura, orden `created_at DESC, id DESC`.
+    Nunca selecciona `error`."""
+    donde = and_(True, *_jobs_conditions(filters))
+    total = await session.scalar(select(func.count(CryptoJob.id)).where(donde))
+    consulta = (
+        select(
+            CryptoJob.id,
+            CryptoJob.kind,
+            CryptoJob.data_class,
+            CryptoJob.status,
+            CryptoJob.total,
+            CryptoJob.done,
+            CryptoJob.started_at,
+            CryptoJob.finished_at,
+            CryptoJob.created_at,
+        )
+        .where(donde)
+        .order_by(CryptoJob.created_at.desc(), CryptoJob.id.desc())
+        .limit(page.limit)
+        .offset(page.offset)
+    )
+    filas = (await session.execute(consulta)).all()
+    items = [
+        CryptoJobOut(
+            id=f.id,
+            kind=f.kind,
+            data_class=f.data_class,
+            status=f.status,
+            total=f.total,
+            done=f.done,
+            percent=job_percent(f.total, f.done),
+            started_at=f.started_at,
+            finished_at=f.finished_at,
+            created_at=f.created_at,
+        )
+        for f in filas
+    ]
+    return Page[CryptoJobOut](
+        items=items, total=int(total or 0), limit=page.limit, offset=page.offset
     )

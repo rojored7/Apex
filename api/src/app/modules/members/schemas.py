@@ -112,6 +112,8 @@ class MemberDetailOut(BaseModel):
     # S3-B9b (US-073, D22): la membresía que decide el estado (`memberships.status_for`).
     plan_name: str | None = None
     membership_end_date: date | None = None
+    # S6-C2 (S6-D20): la foto vigente; el Verde la llena con `attachments.current_photo_id`.
+    photo_attachment_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
     warnings: list[str]
@@ -140,6 +142,7 @@ class MemberRowOut(BaseModel):
     membership_status: str | None = None
     plan_name: str | None = None
     membership_end_date: date | None = None  # S3-B9b (D22, D35): "Vence" de la lista
+    photo_attachment_id: UUID | None = None  # S6-C2 (S6-D20)
 
 
 class MemberListQuery(BaseModel):

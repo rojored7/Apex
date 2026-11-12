@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
 from app.core.crypto import types
+from app.modules.members.attachments import current_photo
 from app.modules.members.exceptions import MemberNotFound
 from app.modules.members.models import Member
 from app.modules.members.rules import MaskField, MaskValue, mask
@@ -84,6 +85,7 @@ async def get(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
     from app.modules.memberships import service as memberships_service
 
     membresia = (await memberships_service.status_for(session, [socio.id])).get(socio.id)
+    foto = (await current_photo(session, [socio.id])).get(socio.id)  # S6-C2 (S6-D20)
     return MemberDetailOut.model_validate(
         {
             "id": socio.id,
@@ -99,6 +101,7 @@ async def get(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
             "membership_status": SIN_MEMBRESIA if membresia is None else membresia.status,
             "plan_name": None if membresia is None else membresia.plan_name,
             "membership_end_date": None if membresia is None else membresia.end_date,
+            "photo_attachment_id": foto,
             "created_at": socio.created_at,
             "updated_at": socio.updated_at,
             "warnings": [],

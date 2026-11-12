@@ -127,6 +127,9 @@ CON_LIMITE = {
     ("post", "/api/v1/notifications/{notification_id}/wa-link"),
     ("post", "/api/v1/notifications/{notification_id}/skip"),
     ("get", "/api/v1/members/{member_id}/notifications"),
+    # S6-C2 (US-148, S6-D57): subir consume `attachments-upload`; listar, `staff-read`.
+    ("post", "/api/v1/members/{member_id}/attachments"),
+    ("get", "/api/v1/members/{member_id}/attachments"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},
@@ -309,3 +312,23 @@ def test_s6_b3_el_cbom_declara_sus_codigos_exactos(esquema: dict[str, Any]) -> N
     assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion
     assert not operacion.get("parameters")
     assert ("get", "/api/v1/crypto/cbom") in CON_LIMITE
+
+
+def test_s6_c2_las_rutas_de_adjuntos_del_socio_declaran_sus_codigos_exactos(
+    esquema: dict[str, Any],
+) -> None:
+    """S6-C2 (S6-D59, S6-D73, S6-D84): la subida declara 404 (socio), 408 (tiempo), 413 (tamaño),
+    422 (`kind` y `unsupported_type`), 429 (`attachments-upload`) y 403 (coach con consent/other);
+    el listado 404, 422 y 429. Ambas con 401 y 503."""
+    ruta = "/api/v1/members/{member_id}/attachments"
+    subida = esquema["paths"][ruta]["post"]["responses"]
+    assert set(subida) == {"201", "401", "403", "404", "408", "413", "422", "429", "500", "503"}
+    listado = esquema["paths"][ruta]["get"]["responses"]
+    assert set(listado) == {"200", "401", "403", "404", "422", "429", "500", "503"}
+    for codigo in ("408", "413"):
+        ref = subida[codigo]["content"]["application/json"]["schema"]["$ref"]
+        assert ref == "#/components/schemas/ErrorResponse"
+    parametros = {p["name"]: p for p in esquema["paths"][ruta]["post"]["parameters"]}
+    assert parametros["kind"]["in"] == "query" and parametros["kind"]["required"] is True
+    assert set(parametros["kind"]["schema"]["enum"]) == {"photo", "consent", "other"}
+    assert "requestBody" not in esquema["paths"][ruta]["post"]  # cuerpo crudo, sin multipart

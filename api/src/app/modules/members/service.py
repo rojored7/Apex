@@ -92,6 +92,12 @@ from app.core.search import sql_fold
 from app.modules.audit import service as audit_service
 from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import exports
+from app.modules.members.attachments import (
+    attach,
+    current_photo,
+    ensure_declared_size,
+    list_attachments,
+)
 from app.modules.members.changes import (
     DOCUMENT_ALIVE_INDEX,
     DOCUMENT_DATA_CLASS,
@@ -166,6 +172,7 @@ __all__ = [
     "MemberUpdated",
     "QueryPlan",
     "active_ids",
+    "attach",
     "channels_for",
     "chip_to_filter",
     "classify_query",
@@ -173,9 +180,11 @@ __all__ = [
     "contact_for_notification",
     "count",
     "create",
+    "current_photo",
     "deactivate",
     "diff_fields",
     "ensure_can_change",
+    "ensure_declared_size",
     "ensure_exists",
     "export_members",
     "get",
@@ -184,6 +193,7 @@ __all__ = [
     "history",
     "id_by_document",
     "list",
+    "list_attachments",
     "mask",
     "names_for",
     "reactivate",
@@ -429,7 +439,9 @@ _ORDEN: Final[Mapping[str, tuple[ColumnElement[Any], ...]]] = {
 }
 
 
-def _fila(socio: Member, membresia: MemberMembership | None) -> MemberRowOut:
+def _fila(
+    socio: Member, membresia: MemberMembership | None, foto: UUID | None = None
+) -> MemberRowOut:
     """Solo columnas en claro (N-01): ni el blob ni la máscara. Sin membresía que decida,
     `none` y plan y fin nulos (blueprint B7)."""
     return MemberRowOut.model_validate(
@@ -443,6 +455,7 @@ def _fila(socio: Member, membresia: MemberMembership | None) -> MemberRowOut:
             "membership_status": SIN_MEMBRESIA if membresia is None else membresia.status,
             "plan_name": None if membresia is None else membresia.plan_name,
             "membership_end_date": None if membresia is None else membresia.end_date,
+            "photo_attachment_id": foto,
         }
     )
 
@@ -455,8 +468,10 @@ async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.li
     # lazy: G-03 (members -> memberships)
     from app.modules.memberships import service as memberships_service
 
-    estados = await memberships_service.status_for(session, [s.id for s in socios])
-    return [_fila(s, estados.get(s.id)) for s in socios]
+    ids = [s.id for s in socios]
+    estados = await memberships_service.status_for(session, ids)
+    fotos = await current_photo(session, ids)  # S6-C2 (E8): UNA consulta por página
+    return [_fila(s, estados.get(s.id), fotos.get(s.id)) for s in socios]
 
 
 async def _por_membresia(

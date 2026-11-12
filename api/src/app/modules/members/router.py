@@ -41,14 +41,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from ipaddress import IPv4Network, IPv6Network
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
-from app.core.errors import responses_for
+from app.core.errors import ForbiddenError, responses_for
 from app.core.export import ExportStream, begin_export
 from app.core.http import csv_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
@@ -60,6 +60,7 @@ from app.core.ratelimit import (
     usage,
 )
 from app.core.security import AdminDep, StaffDep
+from app.modules.attachments.schemas import AttachmentOut
 from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import service
 from app.modules.members.schemas import (
@@ -195,6 +196,51 @@ async def member_history(
     # Literal: `test_user_limits_catalog.py` exige la cubeta como constante (S4A-D45).
     await enforce_user_limit(request, "staff-read", principal.user_id)
     return await service.history(session, member_id, page, q)
+
+
+@router.post(
+    "/members/{member_id}/attachments",
+    status_code=201,
+    response_model=AttachmentOut,
+    responses=responses_for(404, 408, 413, 422, 429),
+)
+async def attach_to_member(
+    request: Request,
+    member_id: UUID,
+    kind: Literal["photo", "consent", "other"],
+    principal: StaffDep,
+    session: Session,
+) -> AttachmentOut:
+    """S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, `Content-Length`,
+    cubeta y recién entonces se lee el cuerpo."""
+    await service.ensure_exists(session, member_id)
+    # S6-D114 (revisión de seguridad de C2): el socio ya se validó; se suelta la conexión para
+    # no retenerla «idle in transaction» mientras el cliente manda el cuerpo (hasta 30 s, D84).
+    # `store` vuelve a abrir la transacción al escribir y `get_session` confirma al salir.
+    await session.rollback()
+    if kind != "photo" and principal.role != "admin":
+        raise ForbiddenError
+    service.ensure_declared_size(request.headers.get("content-length"))
+    await enforce_user_limit(request, "attachments-upload", principal.user_id)
+    return await service.attach(
+        session, member_id, kind=kind, chunks=request.stream(), by=principal.user_id
+    )
+
+
+@router.get(
+    "/members/{member_id}/attachments",
+    response_model=Page[AttachmentOut],
+    responses=responses_for(404, 422, 429),
+)
+async def list_member_attachments(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+) -> Page[AttachmentOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_attachments(session, member_id, page)
 
 
 def _ip(request: Request) -> str:

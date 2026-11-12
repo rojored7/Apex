@@ -458,8 +458,10 @@ def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() ->
     ruta."""
     from tests.architecture.test_user_limits_catalog import CLAVES_SIN_RUTA_TODAVIA
 
-    # S6-B3: `cbom-export` ya tiene ruta (`GET /crypto/cbom`).
-    assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6) - {"cbom-export"}
+    # S6-B3: `cbom-export` ya tiene ruta (`GET /crypto/cbom`); S6-C2: `attachments-upload`
+    # (`POST /members/{id}/attachments`).
+    con_ruta = {"cbom-export", "attachments-upload"}
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6) - con_ruta
     assert not set(CUATRO_BUCKETS_S5) & CLAVES_SIN_RUTA_TODAVIA
 
 

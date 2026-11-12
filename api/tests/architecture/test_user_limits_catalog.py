@@ -40,7 +40,6 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S6-B3 sacó `cbom-export` con `GET /crypto/cbom` (Rojo B3); quedan seis sin ruta.
 CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
     {
-        "attachments-upload",
         "attachments-photo",
         "attachments-download",
         "attachments-download-hour",
@@ -439,8 +438,8 @@ def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None
         "cbom-export": (2, 60),
     }
     assert {clave: USER_LIMITS.get(clave) for clave in esperadas} == esperadas
-    # `cbom-export` ya tiene ruta desde S6-B3: las otras seis siguen sin ella.
-    assert set(esperadas) - {"cbom-export"} == CLAVES_SIN_RUTA_TODAVIA
+    # `cbom-export` (B3) y `attachments-upload` (C2) ya tienen ruta: las otras cinco no.
+    assert set(esperadas) - {"cbom-export", "attachments-upload"} == CLAVES_SIN_RUTA_TODAVIA
     assert "cbom-export" not in CLAVES_SIN_RUTA_TODAVIA
     assert len(USER_LIMITS) == 23
 

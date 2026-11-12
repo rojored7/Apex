@@ -57,6 +57,7 @@ CAMPOS_DETALLE = frozenset(
         "membership_status",
         "plan_name",
         "membership_end_date",
+        "photo_attachment_id",
         "created_at",
         "updated_at",
         "warnings",
@@ -74,6 +75,7 @@ CAMPOS_FILA = frozenset(
         "membership_status",
         "plan_name",
         "membership_end_date",
+        "photo_attachment_id",
     }
 )
 

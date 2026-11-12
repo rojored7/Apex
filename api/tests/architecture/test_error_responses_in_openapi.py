@@ -138,3 +138,13 @@ def test_s5_b3_el_503_comun_describe_busy_o_crypto_unavailable(settings_prueba: 
     salud = esquema["paths"]["/health"]["get"]["responses"]["503"]
     assert _ref(salud) == "#/components/schemas/HealthOut"
     assert "crypto_unavailable" not in salud["description"]
+
+
+def test_s6_c2_la_subida_de_adjuntos_describe_el_413_y_el_408(settings_prueba: Settings) -> None:
+    """S6-C2 (S6-D73, S6-D84): el 413 `file_too_large` y el 408 `upload_timeout` salen como
+    `ErrorResponse` en `POST /members/{member_id}/attachments`."""
+    esquema = create_app(settings_prueba, run_migrations_on_startup=False).openapi()
+    respuestas = esquema["paths"]["/api/v1/members/{member_id}/attachments"]["post"]["responses"]
+    for codigo in ("408", "413"):
+        assert codigo in respuestas, codigo
+        assert _ref(respuestas[codigo]) == "#/components/schemas/ErrorResponse"

@@ -5,7 +5,7 @@
 - `sqlstate_of(error)` lee `error.orig.sqlstate`; `translate_busy(error)` da `DatabaseBusy`
   (503 `busy`, `Retry-After: 1`) para 55P03, 57014 y 40P01 y `None` para cualquier otro error.
 - `get_session` traduce un 55P03 lanzado dentro del cuerpo de la ruta y también uno que ocurre
-  **al confirmar** (el flush del commit, en el `__aexit__` de `session.begin()`, E7).
+  **al confirmar** (el flush del commit explícito de `get_session`, E7).
 - `migrations/env.py` crea su propio engine, sin `create_engine_from` (E7): las migraciones no
   heredan los tiempos de espera.
 
@@ -259,8 +259,8 @@ async def test_get_session_traduce_un_55p03_del_cuerpo(
 async def test_get_session_traduce_un_55p03_al_confirmar(
     dos_sesiones: tuple[AsyncSession, AsyncSession], sesiones_de_get_session: None
 ) -> None:
-    """E7: el `UPDATE` pendiente sale en el flush del commit (`__aexit__` de `session.begin()`)
-    y espera el candado de la otra sesión hasta el `lock_timeout` de 200 ms."""
+    """E7: el `UPDATE` pendiente sale en el flush del commit explícito de `get_session` y
+    espera el candado de la otra sesión hasta el `lock_timeout` de 200 ms."""
     duena, _ = dos_sesiones
     plan = await make_plan(duena, name="Candado commit")
     generador = get_session()
@@ -279,6 +279,50 @@ async def test_get_session_traduce_un_55p03_al_confirmar(
     finally:
         await generador.aclose()
         await duena.rollback()
+
+
+async def test_get_session_confirma_lo_escrito_despues_de_un_rollback_a_mitad(
+    engine: AsyncEngine,
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    sesiones_de_get_session: None,
+) -> None:
+    """S6-D114 (revisión de seguridad de C2): una ruta valida, suelta la conexión con
+    `session.rollback()` mientras el cliente manda el cuerpo y después escribe. Entre medias
+    ninguna conexión del pool queda tomada, y lo escrito se confirma al salir porque el commit
+    de `get_session` es explícito (con `session.begin()` como contexto se perdía)."""
+    duena, _ = dos_sesiones
+    tomadas_antes = engine.pool.checkedout()
+    generador = get_session()
+    try:
+        with actor_scope(SYSTEM_USER_ID):
+            sesion = await generador.__anext__()
+            await sesion.execute(text("SELECT 1"))
+            assert sesion.in_transaction()
+            assert engine.pool.checkedout() == tomadas_antes + 1
+            await sesion.rollback()
+            assert not sesion.in_transaction()
+            assert engine.pool.checkedout() == tomadas_antes
+            plan = Plan(
+                name="Tras rollback",
+                price_cop=1000,
+                kind="days",
+                duration_days=30,
+                class_count=None,
+                is_active=True,
+                created_by=SYSTEM_USER_ID,
+            )
+            sesion.add(plan)
+            await sesion.flush()
+            plan_id = plan.id
+            with pytest.raises(StopAsyncIteration):
+                await generador.__anext__()
+    finally:
+        await generador.aclose()
+    confirmado = await duena.scalar(
+        text("SELECT count(*) FROM plans.plans WHERE id = :id"), {"id": plan_id}
+    )
+    await duena.rollback()
+    assert confirmado == 1
 
 
 @pytest.mark.parametrize("sqlstate", sorted(BUSY_SQLSTATES))

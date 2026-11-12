@@ -155,3 +155,12 @@ def test_s6_b1_los_archivos_nuevos_de_crypto_miden_menos_de_400() -> None:
         if lineas >= MAX_LINEAS_ARCHIVO_NUEVO_B1:
             largos[nombre] = lineas
     assert largos == {}, largos
+
+
+def test_s6_c2_members_service_y_router_caben_en_el_tope() -> None:
+    """S6-C2: `members/service.py` < 800 líneas y `members/router.py` < 400, o las rutas de
+    adjuntos pasan a `members/router_attachments.py` (privado, con decisión)."""
+    base = SRC / "modules/members"
+    assert len((base / "service.py").read_text(encoding="utf-8").splitlines()) < MAX_LINEAS_ARCHIVO
+    router = len((base / "router.py").read_text(encoding="utf-8").splitlines())
+    assert router < 400 or (base / "router_attachments.py").is_file(), router

@@ -79,6 +79,13 @@ async def _sensitive_slot() -> AsyncIterator[None]:
         _slots.release()
 
 
+def ensure_declared_size(content_length: str | None) -> None:
+    """413 sin leer el cuerpo si el `Content-Length` declarado supera el tope (S6-D84, S6-C2)."""
+    if content_length is not None and content_length.isdigit():
+        if int(content_length) > rules.ATTACHMENT_MAX_BYTES:
+            raise FileTooLarge
+
+
 async def _read_body(chunks: AsyncIterator[bytes]) -> bytes:
     """Acumula hasta el tope; corta al cruzar `ATTACHMENT_READ_LIMIT` y al agotar el tiempo."""
     limite = time.monotonic() + rules.ATTACHMENT_UPLOAD_TIMEOUT_S

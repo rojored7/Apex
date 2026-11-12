@@ -230,15 +230,23 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     Abre una transacción, cede la sesión y hace commit al salir; cualquier excepción revierte.
     Con `scope="function"` (el de `SessionDep`) el commit corre antes de enviar la respuesta.
 
-    El `try` abarca todo el `async with`, también el commit del `__aexit__` de `session.begin()`
+    El commit es explícito (no el `__aexit__` de `session.begin()`): una ruta puede soltar la
+    conexión a mitad con `session.rollback()` (por ejemplo mientras el cliente manda el cuerpo de
+    un adjunto, S6-D114) y lo que escriba después se confirma igual al salir. El `try` abarca
+    todo el `async with`, también ese commit
     (E7): un candado no obtenido (55P03), una sentencia cortada (57014) o un deadlock (40P01),
     en el cuerpo o al confirmar, salen como `DatabaseBusy` (503 `busy`, S3-D67) encadenado con
     `from`; cualquier otro error sale intacto (la misma instancia). El 503 deja un `WARNING`
     `db busy` con solo el SQLSTATE (nunca la sentencia ni sus parámetros) y ninguna traza.
     """
     try:
-        async with get_sessionmaker()() as session, session.begin():
-            yield session
+        async with get_sessionmaker()() as session:
+            try:
+                yield session
+            except BaseException:
+                await session.rollback()
+                raise
+            await session.commit()
     except DBAPIError as error:
         busy = translate_busy(error)
         if busy is None:

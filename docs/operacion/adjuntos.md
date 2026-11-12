@@ -1,12 +1,19 @@
 # Adjuntos
 
-Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3) y su revisión. Decisiones: ADR-007 y `docs/ddd/DECISIONES.md`, «Sprint 6». Las rutas HTTP para subir y descargar llegan con los slices S6-C2 a S6-C4; esta guía cubre lo que ya existe en C1: tabla, almacenamiento, cifrado, recifrado y `attachments-check`.
+Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3) y su revisión. Decisiones: ADR-007 y `docs/ddd/DECISIONES.md`, «Sprint 6». La ruta para subir (la foto del socio, C2) y listar existe; la descarga llega con S6-C3 y S6-C4. Esta guía cubre: tabla, almacenamiento, cifrado, recifrado y `attachments-check`.
 
 ## Qué se guarda y dónde
 
 - **Metadatos** en `attachments.attachments` (base de datos): dueño (`owner_table`, solo `members`, y `owner_id`), `kind`, tipo, tamaño, quién lo subió, `sensitive`, `key_id` y el nombre del objeto (`filename_random`). La tabla es de solo inserción: no hay `DELETE` ni `TRUNCATE`, y el `UPDATE` solo admite `key_id` y `updated_at` (triggers `ENABLE ALWAYS` de la migración `0023`).
 - **Contenido** en el almacenamiento de objetos, nunca en la base: por omisión `UPLOADS_DIR/attachments` (volumen `uploads`), un archivo por nombre aleatorio de 32 hexadecimales en minúscula. El nombre original del archivo no se guarda.
 - **Sin llaves foráneas** hacia otros esquemas: `owner_id` y `key_id` son referencias lógicas.
+
+## Foto del socio (S6-C2, US-148)
+
+- **Subir.** `POST /members/{id}/attachments?kind=photo|consent|other` con el archivo como cuerpo crudo (sin formulario). Admin y coach suben `photo`; `consent` y `other` solo el admin (el coach recibe 403 sin que se lea el cuerpo). Un socio dado de baja no admite subidas (404 `member_not_found`). Tope de 5.242.880 bytes (413 `file_too_large` también si el `Content-Length` declarado lo supera, sin leer), solo JPEG o PNG para la foto, 10 subidas por minuto por usuario (cubeta `attachments-upload`, 429).
+- **Reemplazo.** La foto nueva pasa a ser la vigente (la más reciente por fecha); la anterior no se borra y sigue en el listado.
+- **Listar.** `GET /members/{id}/attachments` (admin y coach, paginado) incluye a los socios dados de baja. Cada adjunto trae metadatos, nunca el nombre del archivo.
+- **`photo_attachment_id`.** La ficha (`GET /members/{id}`) y cada fila de `GET /members` traen el id de la foto vigente o `null`, con una sola consulta por página.
 
 ## Tipos, tamaños y bytes mágicos
 

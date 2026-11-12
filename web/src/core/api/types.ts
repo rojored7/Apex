@@ -374,6 +374,28 @@ export interface paths {
         patch: operations["update_member_api_v1_members__member_id__patch"];
         trace?: never;
     };
+    "/api/v1/members/{member_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Member Attachments */
+        get: operations["list_member_attachments_api_v1_members__member_id__attachments_get"];
+        put?: never;
+        /**
+         * Attach To Member
+         * @description S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, `Content-Length`,
+         *     cubeta y recién entonces se lee el cuerpo.
+         */
+        post: operations["attach_to_member_api_v1_members__member_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members/{member_id}/audit": {
         parameters: {
             query?: never;
@@ -1219,6 +1241,45 @@ export interface components {
              */
             token_type: "bearer";
         };
+        /** AttachmentOut */
+        AttachmentOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "photo" | "consent" | "other";
+            /**
+             * Mime
+             * @enum {string}
+             */
+            mime: "image/jpeg" | "image/png" | "application/pdf";
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Owner Table */
+            owner_table: string;
+            /** Sensitive */
+            sensitive: boolean;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded By
+             * Format: uuid
+             */
+            uploaded_by: string;
+        };
         /**
          * AuditDetail
          * @description `GET /audit/{seq}` (S4A-D17): la fila completa, sin blobs (marcador) y con `changes`.
@@ -1943,6 +2004,8 @@ export interface components {
             membership_status?: string | null;
             /** Phone */
             phone: string | null;
+            /** Photo Attachment Id */
+            photo_attachment_id?: string | null;
             /** Plan Name */
             plan_name?: string | null;
             /** Sex */
@@ -2047,6 +2110,8 @@ export interface components {
             membership_end_date?: string | null;
             /** Membership Status */
             membership_status?: string | null;
+            /** Photo Attachment Id */
+            photo_attachment_id?: string | null;
             /** Plan Name */
             plan_name?: string | null;
             /** Sex */
@@ -2320,6 +2385,17 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** Page[AttachmentOut] */
+        Page_AttachmentOut_: {
+            /** Items */
+            items: components["schemas"]["AttachmentOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** Page[AuditRow] */
         Page_AuditRow_: {
@@ -5085,6 +5161,199 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_member_attachments_api_v1_members__member_id__attachments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AttachmentOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    attach_to_member_api_v1_members__member_id__attachments_post: {
+        parameters: {
+            query: {
+                kind: "photo" | "consent" | "other";
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description La subida tardó demasiado */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Archivo demasiado grande */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

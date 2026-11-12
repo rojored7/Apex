@@ -24,6 +24,8 @@ from app.core.security import effective_routes
 from app.main import create_app
 
 SCHEMA_REF = "#/components/schemas/"
+SIN_Q: frozenset[str] = frozenset({"GET /api/v1/members/{member_id}/attachments"})
+"""S6-C2 (S6-D57): el listado de adjuntos de un socio pagina sin `q` (exclusión anotada)."""
 
 
 def _usa_page_params(dependant: Dependant) -> bool:
@@ -71,7 +73,7 @@ def problemas_de_listas(app: FastAPI) -> tuple[list[str], list[str]]:
         listas.append(f"GET {ruta.path}")
         if not _usa_page_params(ruta.dependant):
             problemas.append(f"GET {ruta.path}: sin PageParams")
-        if "q" not in _query_params(ruta.dependant):
+        if "q" not in _query_params(ruta.dependant) and f"GET {ruta.path}" not in SIN_Q:
             problemas.append(f"GET {ruta.path}: sin q")
         if _limite_maximo(operacion) != MAX_LIMIT:
             problemas.append(f"GET {ruta.path}: limit sin máximo {MAX_LIMIT}")
@@ -303,3 +305,18 @@ def test_s6_b2_los_enums_de_los_filtros_salen_de_los_modelos(settings_prueba: Se
     assert enum_de("/api/v1/crypto/jobs", "status") == list(JOB_STATUSES)
     assert enum_de("/api/v1/crypto/ops", "verb") == list(OP_VERBS)
     assert enum_de("/api/v1/crypto/ops", "result") == list(OP_RESULTS)
+
+
+def test_s6_c2_el_listado_de_adjuntos_pagina_sin_q(settings_prueba: Settings) -> None:
+    """S6-C2: `GET /members/{member_id}/attachments` usa `PageParams` (limit 1..200) y NO acepta
+    `q`; la exclusión de `SIN_Q` es solo esa ruta."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = problemas_de_listas(app)
+    assert problemas == [], "\n".join(problemas)
+    ruta_attachments = "/api/v1/members/{member_id}/attachments"
+    assert f"GET {ruta_attachments}" in listas
+    rutas = {r.path: r for r in effective_routes(app)[0] if "GET" in r.methods}
+    assert _usa_page_params(rutas[ruta_attachments].dependant)
+    assert _query_params(rutas[ruta_attachments].dependant) == {"limit", "offset"}
+    assert _limite_maximo(app.openapi()["paths"][ruta_attachments]["get"]) == MAX_LIMIT
+    assert SIN_Q == {f"GET {ruta_attachments}"}

@@ -12,7 +12,9 @@ confirma en otra conexión (prueba del commit que falla en `test_router_reveal.p
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import tempfile
+from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +24,8 @@ from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.keyring import Keyring, configure_keyring
 from app.core.crypto.local_provider import LocalFileProvider
+from app.modules.attachments import service as attachments_service
+from app.modules.attachments.storage.local import LocalDiskStorage
 from tests.conftest import LIMPIAR_LLAVES
 from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
@@ -76,3 +80,37 @@ async def ops_tras_el_rollback(engine: AsyncEngine) -> AsyncIterator[None]:
                 text("DELETE FROM crypto.crypto_ops WHERE at >= :t"), {"t": desde}
             )
             await conexion.execute(text(rearm_always_sql("crypto.crypto_ops")))
+
+
+# Subida de adjuntos (S6-C2) --------------------------------------------------------------------
+
+
+@pytest.fixture
+def almacen(tmp_path: Path) -> Iterator[LocalDiskStorage]:
+    """`LocalDiskStorage` sobre `tmp_path/attachments`, ya configurado en el service de adjuntos."""
+    raiz = tmp_path / "attachments"
+    raiz.mkdir()
+    almacen = LocalDiskStorage(raiz)
+    attachments_service.configure_storage(almacen)
+    try:
+        yield almacen
+    finally:
+        attachments_service.configure_storage(None)
+
+
+@pytest.fixture
+def sin_tempfile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cualquier uso de `tempfile` durante la petición falla la prueba (E1, S6-D59)."""
+
+    def prohibido(*_a: object, **_k: object) -> None:
+        raise AssertionError("tempfile no se usa en la subida de adjuntos (E1, S6-D59)")
+
+    for nombre in (
+        "SpooledTemporaryFile",
+        "NamedTemporaryFile",
+        "TemporaryFile",
+        "mkstemp",
+        "mkdtemp",
+        "TemporaryDirectory",
+    ):
+        monkeypatch.setattr(tempfile, nombre, prohibido)

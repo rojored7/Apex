@@ -169,8 +169,8 @@ def test_los_privados_de_members_son_los_de_b9a() -> None:
     S4A-B6 (S4A-D21) suma `contact` (el contacto para avisos); S5-B5 (S4A-D72) suma
     `channels` (las preferencias de canal). Conjunto exacto."""
     assert frozenset(
-        {"rules", "detail", "changes", "contact", "channels", "exports"}
-    ) == PRIVATE_HELPERS.get("members")
+        {"rules", "detail", "changes", "contact", "channels", "exports", "attachments"}
+    ) == PRIVATE_HELPERS.get("members")  # S6-C2 suma `attachments`
     for archivo in PRIVATE_HELPERS["members"]:
         assert (MODULES_DIR / "members" / f"{archivo}.py").is_file(), archivo
 
@@ -178,7 +178,7 @@ def test_los_privados_de_members_son_los_de_b9a() -> None:
 def test_nadie_fuera_de_members_importa_rules_detail_ni_changes() -> None:
     privados = tuple(
         f"app.modules.members.{a}"
-        for a in ("rules", "detail", "changes", "contact", "channels", "exports")
+        for a in ("rules", "detail", "changes", "contact", "channels", "exports", "attachments")
     )
     violaciones = [
         str(v)

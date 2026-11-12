@@ -580,3 +580,18 @@ def test_core_crypto_no_importa_el_modulo_attachments() -> None:
         if n.startswith("app.modules")
     ]
     assert violaciones == [], violaciones
+
+
+def test_s6_r1_rotate_job_no_importa_modulos_ni_la_auditoria_ni_la_ruta() -> None:
+    """S6-R1 (S6-D61): `core/crypto/rotate_job.py` (la rotación que comparten el CLI y la
+    pantalla) no importa `app.modules`, `core.audit`, `core.jobs` ni el router; la auditoría la
+    escribe quien lo llama (el CLI o la puerta del router)."""
+    ruta = CORE / "crypto" / "rotate_job.py"
+    assert ruta.is_file()
+    prohibidos = [
+        n
+        for n in _imports(ruta)
+        if n.startswith(("app.modules", "app.core.audit", "app.core.jobs", "app.cli", "app.worker"))
+        or n == "app.core.crypto.router"
+    ]
+    assert prohibidos == [], prohibidos

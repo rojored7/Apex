@@ -182,6 +182,7 @@ def test_s6_b1_las_rutas_de_llaves_exigen_admin_y_no_son_publicas(
         "/api/v1/crypto/cbom",  # S6-B3
         "/api/v1/crypto/jobs",
         "/api/v1/crypto/keys",
+        "/api/v1/crypto/keys/{key_id}/rotate",  # S6-R1
         "/api/v1/crypto/ops",
     ]
     for ruta in rutas:

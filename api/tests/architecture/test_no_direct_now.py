@@ -111,3 +111,21 @@ def test_control_rotated_at_con_now_o_sin_reloj_se_detecta() -> None:
     assert [_viene_del_reloj(v) for v in _asignaciones_de_rotated_at(mala)] == [False]
     assert [_viene_del_reloj(v) for v in _asignaciones_de_rotated_at(buena)] == [True]
     assert [_viene_del_reloj(v) for v in _asignaciones_de_rotated_at(kw)] == [False]
+
+
+def test_s6_r1_la_tarea_de_rotacion_mide_el_tiempo_con_current_clock() -> None:
+    """S6-R1 (S6-D61): `ROTATION_MAX_S` se mide con el reloj inyectable (`current_clock()`), no con
+    `time.monotonic()`, `time.time()` ni `datetime.now()`, para poder probarlo con `FrozenClock`."""
+    ruta = SRC / "core" / "crypto" / "rotate_job.py"
+    fuente = ruta.read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    llamadas = {
+        f"{nodo.func.value.id}.{nodo.func.attr}"
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Call)
+        and isinstance(nodo.func, ast.Attribute)
+        and isinstance(nodo.func.value, ast.Name)
+    }
+    assert not {"time.monotonic", "time.time", "time.perf_counter"} & llamadas, llamadas
+    assert "current_clock" in fuente
+    assert _usos(ruta) == []

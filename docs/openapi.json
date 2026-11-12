@@ -4689,6 +4689,55 @@
         "title": "RevokeSessionsOut",
         "type": "object"
       },
+      "RotateIn": {
+        "additionalProperties": false,
+        "description": "Cuerpo de `POST /crypto/keys/{id}/rotate` (S6-R1, US-145): `confirm` es exactamente\n`ROTAR` y `reason` de 1 a 200 caracteres sin correos ni números largos, la misma regla que el\nCLI (S6-D122; `inventory.validate_rotation_request`).",
+        "properties": {
+          "confirm": {
+            "maxLength": 20,
+            "title": "Confirm",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 200,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "confirm"
+        ],
+        "title": "RotateIn",
+        "type": "object"
+      },
+      "RotationStartedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "new_key_id": {
+            "format": "uuid",
+            "title": "New Key Id",
+            "type": "string"
+          },
+          "previous_key_id": {
+            "format": "uuid",
+            "title": "Previous Key Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "new_key_id",
+          "previous_key_id"
+        ],
+        "title": "RotationStartedOut",
+        "type": "object"
+      },
       "RuleCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7378,6 +7427,130 @@
           }
         },
         "summary": "List Crypto Keys",
+        "tags": [
+          "crypto"
+        ]
+      }
+    },
+    "/api/v1/crypto/keys/{key_id}/rotate": {
+      "post": {
+        "description": "Rota la llave `key_id` desde la pantalla (S6-R1, US-145; S6-D121).\n\nEn UNA transacción: el job `running`, la anterior a `decrypt_only`, la nueva `active` y la fila\n`update` de auditoría (sin material). Se confirma con `commit` explícito ANTES de lanzar la\ntarea (el commit de `get_session` llega después de retornar y la tarea no debe adelantarse).\nUn rotador por proceso (`ROTATION_SLOTS`): si ya hay uno, 409 `rotation_running`.",
+        "operationId": "rotate_crypto_key_api_v1_crypto_keys__key_id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotationStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Rotate Crypto Key",
         "tags": [
           "crypto"
         ]

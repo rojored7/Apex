@@ -164,3 +164,26 @@ def test_s6_c2_members_service_y_router_caben_en_el_tope() -> None:
     assert len((base / "service.py").read_text(encoding="utf-8").splitlines()) < MAX_LINEAS_ARCHIVO
     router = len((base / "router.py").read_text(encoding="utf-8").splitlines())
     assert router < 400 or (base / "router_attachments.py").is_file(), router
+
+
+def test_s6_r1_rotate_job_existe_y_mide_menos_de_400_lineas() -> None:
+    """S6-R1 (S6-D61): la rotación compartida entre el CLI y la pantalla vive en
+    `core/crypto/rotate_job.py`, con menos de 400 líneas y funciones de menos de 50."""
+    ruta = SRC / "core" / "crypto" / "rotate_job.py"
+    assert ruta.is_file()
+    assert len(ruta.read_text(encoding="utf-8").splitlines()) < 400
+    arbol = ast.parse(ruta.read_text(encoding="utf-8"))
+    funciones = {
+        nodo.name: (nodo.end_lineno or nodo.lineno) - nodo.lineno + 1
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    assert {"rotation_engine", "run_rotation", "resume_running_jobs"} <= set(funciones)
+    assert [n for n, lineas in funciones.items() if lineas >= MAX_LINEAS_FUNCION] == []
+
+
+def test_s6_r1_cli_ops_rotate_key_sigue_bajo_260_lineas() -> None:
+    """S6-D80, S6-D109: al pasar el bucle a `run_rotation` el CLI se mantiene bajo su tope."""
+    ruta = SRC / "cli_ops" / "rotate_key.py"
+    assert len(ruta.read_text(encoding="utf-8").splitlines()) < 260
+    assert len((SRC / "cli_ops" / "retire_key.py").read_text(encoding="utf-8").splitlines()) <= 200

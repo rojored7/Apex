@@ -11,16 +11,21 @@ Luego cuenta las filas de negocio con ese `key_id` (deben ser 0) y los blobs de 
 audit_blobs=A`; `N` distinto de `A` sale 2. En orden: `retire-key: llave retirada`, auditoría
 `update` sobre `crypto.crypto_keys` con `after = {"event": "retire", "business_rows": 0,
 "audit_blobs": N}` y `crypto_ops` `rotate`.
+Con una rotación `done` de la clase (S6-D74, L-3), el manifiesto debe ser POSTERIOR a su
+`finished_at`: un respaldo anterior no contiene lo recifrado y retirar la llave lo dejaría ilegible
+(2 `backup_older_than_rotation`; va después de la exigencia de la firma).
 Todo rechazo sale con 2 (textos fijos NO_VERIFY y NO_MANIFEST); sin material ni blobs.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 import typer
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import cli_base
@@ -39,15 +44,41 @@ from app.core import audit
 from app.core.clock import current_clock
 from app.core.config import Settings
 from app.core.crypto import service
+from app.core.crypto.models import CryptoJob, CryptoKey
 
 COMMAND = "retire-key"
 AUDIT_TABLE = "crypto.crypto_keys"
 DEFAULT_MANIFEST = Path("/data/backups/latest.json")
 NO_VERIFY = "no hay un verify-kek-backup ok de una persona en las últimas 24 h"
 NO_MANIFEST = "no hay un latest.json reciente con firma adjunta en /data/backups (verify: ok)"
+OLDER_BACKUP = (
+    "backup_older_than_rotation: el último respaldo es anterior al fin de la rotación; "
+    "ejecute un respaldo nuevo y repita"
+)
 
 
-async def _require_recent(session: AsyncSession, manifest: Path, settings: Settings) -> None:
+async def _rotation_finished_at(session: AsyncSession, key_id: UUID) -> datetime | None:
+    """Cuándo terminó la última rotación `done` de la clase de la llave (`None` si no hubo)."""
+    async with session.begin():
+        clase = await session.scalar(
+            select(CryptoKey.data_class).where(
+                CryptoKey.id == key_id, CryptoKey.purpose == "encrypt"
+            )
+        )
+        if clase is None:
+            return None
+        return await session.scalar(
+            select(func.max(CryptoJob.finished_at)).where(
+                CryptoJob.kind == "rotate",
+                CryptoJob.status == "done",
+                CryptoJob.data_class == clase,
+            )
+        )
+
+
+async def _require_recent(
+    session: AsyncSession, manifest: Path, settings: Settings, key_id: UUID
+) -> None:
     async with session.begin():
         verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
     if not verificado:
@@ -60,6 +91,9 @@ async def _require_recent(session: AsyncSession, manifest: Path, settings: Setti
     )
     if not revision.ok:
         reject(NO_MANIFEST, COMMAND)
+    terminada = await _rotation_finished_at(session, key_id)
+    if terminada is not None and (revision.created_at is None or revision.created_at <= terminada):
+        reject(OLDER_BACKUP, COMMAND)
 
 
 async def _count(session: AsyncSession, key_id: UUID) -> tuple[int, int]:
@@ -104,7 +138,7 @@ async def _retire_flow(
     async with crypto_runtime(settings, options) as session:
         async with session.begin():
             actor_id = await resolve_admin_actor(session, actor, required=True)
-        await _require_recent(session, manifest, settings)
+        await _require_recent(session, manifest, settings, key_id)
         filas, blobs = await _count(session, key_id)
         if filas:
             reject("quedan filas de negocio con esa llave; termine la rotación antes", COMMAND)

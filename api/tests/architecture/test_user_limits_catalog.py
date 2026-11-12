@@ -40,12 +40,9 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # Rojo S6-C4: `GET /attachments/{attachment_id}` saca `attachments-download`, `-download-hour` y
 # `attachments-photo`; quedan solo las dos de `keys-rotate*`.
 # S6-B3 sacó `cbom-export` con `GET /crypto/cbom` (Rojo B3); quedan seis sin ruta.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset(
-    {
-        "keys-rotate",
-        "keys-rotate-hour",
-    }
-)
+# S6-R1 (US-145): `POST /crypto/keys/{key_id}/rotate` saca `keys-rotate` y `keys-rotate-hour`; el
+# catálogo entero vuelve a tener ruta.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -444,8 +441,11 @@ def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None
         "attachments-photo",
         "attachments-download",
         "attachments-download-hour",
+        "keys-rotate",  # S6-R1
+        "keys-rotate-hour",  # S6-R1
     }
-    # Con ruta: `cbom-export` (B3), `attachments-upload` (C2) y las tres de la descarga (C4).
+    # Con ruta: `cbom-export` (B3), `attachments-upload` (C2), las tres de la descarga (C4) y las
+    # dos de la rotación (R1).
     assert set(esperadas) - CON_RUTA_S6 == CLAVES_SIN_RUTA_TODAVIA
     assert "cbom-export" not in CLAVES_SIN_RUTA_TODAVIA
     assert len(USER_LIMITS) == 23
@@ -500,3 +500,22 @@ def test_la_descarga_de_adjuntos_consume_las_tres_cubetas_y_solo_esas() -> None:
     assert USER_LIMITS["attachments-download"] == (30, 60)
     assert USER_LIMITS["attachments-download-hour"] == (200, 3600)
     assert USER_LIMITS["attachments-photo"] == (600, 60)
+
+
+def test_la_rotacion_desde_la_pantalla_consume_keys_rotate_y_su_hora_con_constantes() -> None:
+    """S6-R1 (S6-D57, US-145):
+    `POST /crypto/keys/{key_id}/rotate`, en `core/crypto/router.py`, llama
+    a `enforce_user_limit` con las constantes `keys-rotate` y `keys-rotate-hour` en la función de
+    la ruta (y a ninguna otra cubeta)."""
+    fuente = (MODULES.parent / "core" / "crypto" / "router.py").read_text(encoding="utf-8")
+    cubetas: set[str] = set()
+    for funcion in ast.walk(ast.parse(fuente)):
+        if isinstance(funcion, ast.AsyncFunctionDef) and funcion.name == "rotate_crypto_key":
+            cubetas = {
+                nodo.args[1].value
+                for nodo in ast.walk(funcion)
+                if isinstance(nodo, ast.Call)
+                and _nombre_llamado(nodo) == "enforce_user_limit"
+                and isinstance(nodo.args[1], ast.Constant)
+            }
+    assert cubetas == {"keys-rotate", "keys-rotate-hour"}

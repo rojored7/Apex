@@ -35,12 +35,18 @@ CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     "crypto.crypto_keys": ("crypto_keys_guard", "crypto_keys_forbid_truncate"),
     "crypto.crypto_jobs": ("crypto_jobs_guard", "crypto_jobs_forbid_truncate"),
 }
+ROTACION_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
+    "crypto.crypto_keys": ("crypto_keys_guard_cierre",),
+    "crypto.crypto_jobs": ("crypto_jobs_guard_insert", "crypto_jobs_guard_update"),
+}
+"""Guardas por rol de `0024_crypto_rotation_from_api` (S6-R1): también `ENABLE ALWAYS`; las
+limpiezas las rearman por nombre (si no, `DISABLE TRIGGER USER` las dejaría apagadas)."""
 ALWAYS_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     AUDIT_LOG_TABLE: AUDIT_LOG_TRIGGERS,
     VERIFICATIONS_TABLE: VERIFICATIONS_TRIGGERS,
     SIGNATURES_TABLE: SIGNATURES_TRIGGERS,  # S6-A1 (0021)
     ATTACHMENTS_TABLE: ATTACHMENTS_TRIGGERS,  # S6-C1 (0023)
-    **CRYPTO_TRIGGERS,
+    **{t: (*n, *ROTACION_TRIGGERS.get(t, ())) for t, n in CRYPTO_TRIGGERS.items()},
 }
 """Los quince triggers inmutables por tabla (`tgenabled = 'A'`; S6-A1 suma `audit.signatures`, S6-C1
 `attachments.attachments`)."""
@@ -55,7 +61,14 @@ def disable_user_sql(tabla: str) -> str:
 
 def rearm_always_sql(tabla: str) -> str:
     """Vuelve a encender, uno por nombre y con `ENABLE ALWAYS`, los triggers de `tabla`."""
+    opcionales = ROTACION_TRIGGERS.get(tabla, ())
     altas = " ".join(
-        f"ALTER TABLE {tabla} ENABLE ALWAYS TRIGGER {nombre};" for nombre in ALWAYS_TRIGGERS[tabla]
+        f"ALTER TABLE {tabla} ENABLE ALWAYS TRIGGER {nombre};"
+        if nombre not in opcionales
+        # los de 0024 no existen si la prueba bajó la base a una revisión anterior
+        else f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}' "  # noqa: S608
+        f"AND tgrelid = '{tabla}'::regclass) "
+        f"THEN ALTER TABLE {tabla} ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in ALWAYS_TRIGGERS[tabla]
     )
     return f"DO $$ BEGIN {altas} END $$"

@@ -81,6 +81,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "auth.one_time_tokens",
         "settings.settings_sections",
         "audit.verifications",
+        "crypto.crypto_keys",  # S6-R1: la fila `update` de la rotación (puerta del router)
     }
 )
 AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
@@ -92,6 +93,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",
     "notifications.notifications": "un aviso por socio y regla al día: ruido para el tablero",
+    "crypto.crypto_keys": "operación de llaves, no actividad de negocio (S6-R1)",
 }
 """Tablas auditadas que `recent` nunca lee, con su motivo (S4A-D61 b)."""
 RECENT_TABLES_ALLOWED: Final[frozenset[str]] = AUDITABLE_TABLES - frozenset(

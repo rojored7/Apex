@@ -34,6 +34,7 @@ from tests.factories.triggers import (
     ALWAYS_TRIGGERS,
     AUDIT_LOG_TRIGGERS,
     CRYPTO_TRIGGERS,
+    ROTACION_TRIGGERS,
     VERIFICATIONS_TRIGGERS,
     disable_user_sql,
     rearm_always_sql,
@@ -54,8 +55,9 @@ TRIGGERS_QUE_CAMBIAN = (
 )
 # `audit.signatures` nace en `0021` (S6-A1): sus triggers no existen en `0013` ni en `0014`.
 # `attachments.attachments` nace en `0023` (S6-C1): tampoco existe en `0014`.
+# Los de `0024` (S6-R1) tampoco: `ALWAYS_DE_0014` son los nombres que existen desde `0014`.
 ALWAYS_DE_0014 = {
-    t: n
+    t: tuple(x for x in n if x not in ROTACION_TRIGGERS.get(t, ()))
     for t, n in ALWAYS_TRIGGERS.items()
     if t not in {"audit.signatures", "attachments.attachments"}
 }
@@ -315,7 +317,8 @@ def test_cada_tabla_tiene_exactamente_sus_triggers_y_todos_en_always(base: str, 
         "WHERE tgrelid = $1::regclass AND NOT tgisinternal",
         tabla,
     )
-    assert {f["tgname"]: f["estado"] for f in filas} == dict.fromkeys(ALWAYS_DE_0014[tabla], "A")
+    esperados = (*ALWAYS_DE_0014[tabla], *ROTACION_TRIGGERS.get(tabla, ()))  # el head suma 0024
+    assert {f["tgname"]: f["estado"] for f in filas} == dict.fromkeys(esperados, "A")
 
 
 # Funciones --------------------------------------------------------------------------------------

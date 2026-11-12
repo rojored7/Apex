@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import app
 from app.core.audit import AuditEntry
+from app.core.clock import current_clock
 from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto.models import CryptoKey
@@ -80,6 +81,13 @@ async def rotada(rotacion_lista: Fabrica) -> dict[str, Any]:
         ids = await filas_rotacion(sesion, 30)
         viejos = await blobs_de_rotacion(sesion)
     await rotar(rotacion_lista)
+    # S6-D74 (R1): `retire-key` exige un manifiesto POSTERIOR al fin de la rotación. El job de la
+    # fixture terminó "hace 6 h" (el `manifiesto_reciente` de la fixture es de hace 5 h).
+    async with rotacion_lista() as sesion, sesion.begin():
+        await sesion.execute(
+            text("UPDATE crypto.crypto_jobs SET finished_at = :f WHERE kind = 'rotate'"),
+            {"f": current_clock().now_utc() - timedelta(hours=6)},
+        )
     await registrar_blob(rotacion_lista, viejos[ids[0]])
     async with rotacion_lista() as sesion:
         v1, _ = await llaves_de(sesion)
@@ -636,3 +644,75 @@ async def test_retire_key_suma_los_objetos_del_puerto_a_las_filas(
     assert resultado.exit_code == salida, resultado.output
     assert f"retire-key: filas_negocio={objetos}" in resultado.output
     assert await _estado(rotacion_lista) == [(1, estado), (2, "active")]
+
+
+# S6-D74 (L-3, R1): el respaldo debe conservar lo recifrado ---------------------------------------
+
+
+@pytest.mark.parametrize("antiguedad_h", [8, 7])
+async def test_un_manifiesto_anterior_al_fin_de_la_rotacion_sale_2_backup_older_than_rotation(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    antiguedad_h: int,
+) -> None:
+    """El job terminó hace 6 h; un manifiesto de hace 7 u 8 h (firmado, `verify: ok`, de menos de
+    24 h) no contiene lo recifrado: 2 con `backup_older_than_rotation` y la llave sigue igual."""
+    await _con_verify(rotacion_lista, admin)
+    manifiesto = escribir_manifiesto(
+        tmp_path / "anterior", antiguedad=timedelta(hours=antiguedad_h)
+    )
+
+    resultado = _retirar(
+        settings_prueba, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto)
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "backup_older_than_rotation" in resultado.output
+    assert SIN_MANIFIESTO not in resultado.output  # es otra causa, con su propio texto
+    await _sin_retirar(rotacion_lista)
+
+
+async def test_un_manifiesto_posterior_al_fin_de_la_rotacion_permite_retirar(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _con_verify(rotacion_lista, admin)
+    manifiesto = escribir_manifiesto(tmp_path / "posterior", antiguedad=timedelta(hours=1))
+
+    resultado = _retirar(
+        settings_prueba, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto)
+    )
+
+    assert resultado.exit_code == 0, resultado.output
+    assert await _estado(rotacion_lista) == [(1, "retired"), (2, "active")]
+
+
+async def test_el_orden_de_las_exigencias_pone_el_manifiesto_posterior_despues_del_firmado(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un manifiesto sin firma válida da el texto fijo de siempre aunque además sea anterior."""
+    await _con_verify(rotacion_lista, admin)
+    manifiesto = escribir_manifiesto(
+        tmp_path / "sinfirma", antiguedad=timedelta(hours=8), con_firma=False
+    )
+
+    resultado = _retirar(
+        settings_prueba, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto)
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert SIN_MANIFIESTO in resultado.output
+    assert "backup_older_than_rotation" not in resultado.output

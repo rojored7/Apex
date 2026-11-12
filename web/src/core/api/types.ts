@@ -283,6 +283,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/crypto/keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Crypto Key
+         * @description Rota la llave `key_id` desde la pantalla (S6-R1, US-145; S6-D121).
+         *
+         *     En UNA transacción: el job `running`, la anterior a `decrypt_only`, la nueva `active` y la fila
+         *     `update` de auditoría (sin material). Se confirma con `commit` explícito ANTES de lanzar la
+         *     tarea (el commit de `get_session` llega después de retornar y la tarea no debe adelantarse).
+         *     Un rotador por proceso (`ROTATION_SLOTS`): si ya hay uno, 409 `rotation_running`.
+         */
+        post: operations["rotate_crypto_key_api_v1_crypto_keys__key_id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/crypto/ops": {
         parameters: {
             query?: never;
@@ -3064,6 +3089,36 @@ export interface components {
             /** Revoked */
             revoked: number;
         };
+        /**
+         * RotateIn
+         * @description Cuerpo de `POST /crypto/keys/{id}/rotate` (S6-R1, US-145): `confirm` es exactamente
+         *     `ROTAR` y `reason` de 1 a 200 caracteres sin correos ni números largos, la misma regla que el
+         *     CLI (S6-D122; `inventory.validate_rotation_request`).
+         */
+        RotateIn: {
+            /** Confirm */
+            confirm: string;
+            /** Reason */
+            reason: string;
+        };
+        /** RotationStartedOut */
+        RotationStartedOut: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * New Key Id
+             * Format: uuid
+             */
+            new_key_id: string;
+            /**
+             * Previous Key Id
+             * Format: uuid
+             */
+            previous_key_id: string;
+        };
         /** RuleCreate */
         RuleCreate: {
             /**
@@ -4540,6 +4595,104 @@ export interface operations {
             };
             /** @description Sin permiso */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rotate_crypto_key_api_v1_crypto_keys__key_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RotationStartedOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

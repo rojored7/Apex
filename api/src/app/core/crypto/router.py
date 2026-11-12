@@ -13,10 +13,11 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
+from app.core import db
 from app.core.clock import current_clock
-from app.core.crypto import inventory
+from app.core.crypto import inventory, rotate_job
 from app.core.crypto.cbom import CBOM_FORMAT, build_cbom
 from app.core.crypto.models import DATA_CLASS_PATTERN
 from app.core.crypto.schemas import (
@@ -28,9 +29,11 @@ from app.core.crypto.schemas import (
     KeysPage,
     OpsFilters,
     OpVerb,
+    RotateIn,
+    RotationStartedOut,
 )
 from app.core.db import DatabaseBusy, SessionDep
-from app.core.errors import responses_for
+from app.core.errors import ConflictError, responses_for
 from app.core.http import file_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import enforce_user_limit
@@ -165,4 +168,55 @@ async def export_cbom(request: Request, principal: AdminDep, session: SessionDep
         cuerpo,
         filename=f"apex-cbom-{reloj.today_bogota().isoformat()}.json",
         media_type="application/json; charset=utf-8",
+    )
+
+
+@router.post(
+    "/crypto/keys/{key_id}/rotate",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RotationStartedOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def rotate_crypto_key(
+    request: Request, key_id: UUID, body: RotateIn, principal: AdminDep, session: SessionDep
+) -> RotationStartedOut:
+    """Rota la llave `key_id` desde la pantalla (S6-R1, US-145; S6-D121).
+
+    En UNA transacción: el job `running`, la anterior a `decrypt_only`, la nueva `active` y la fila
+    `update` de auditoría (sin material). Se confirma con `commit` explícito ANTES de lanzar la
+    tarea (el commit de `get_session` llega después de retornar y la tarea no debe adelantarse).
+    Un rotador por proceso (`ROTATION_SLOTS`): si ya hay uno, 409 `rotation_running`."""
+    await enforce_user_limit(request, "keys-rotate", principal.user_id)
+    await enforce_user_limit(request, "keys-rotate-hour", principal.user_id)
+    motivo = inventory.validate_rotation_request(body.reason, body.confirm)
+    escritor = _audit_writer
+    if escritor is None:
+        raise DatabaseBusy()
+    if not rotate_job.try_claim_slot():
+        raise ConflictError("rotation_running", "Ya hay una rotación en curso en este proceso.")
+    try:
+        inicio = await inventory.start_from_screen(
+            session, key_id, reason=motivo, by=principal.user_id
+        )
+        if inicio.resumed:  # la llave no cambia: el rastro es el evento y el job (sin material)
+            registro, quien = inicio.new_key_id, {"event": "resume", "job_id": str(inicio.job_id)}
+        else:
+            registro = inicio.previous_key_id
+            quien = {"reason": motivo, "data_class": inicio.data_class, "state": "decrypt_only"}
+        await escritor(
+            session,
+            action="update",
+            table_name="crypto.crypto_keys",
+            record_id=registro,
+            before=None,
+            after=quien,
+            user_id=principal.user_id,
+        )
+        await session.commit()
+    except BaseException:
+        rotate_job.release_slot()
+        raise
+    rotate_job.track(request.app.state, rotate_job.launch(db.get_sessionmaker(), inicio.job_id))
+    return RotationStartedOut(
+        job_id=inicio.job_id, new_key_id=inicio.new_key_id, previous_key_id=inicio.previous_key_id
     )

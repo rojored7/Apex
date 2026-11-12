@@ -337,3 +337,11 @@ async def llaves_mixtas_listas(
     session: AsyncSession, bus_listo: object, proveedor_local: LocalFileProvider
 ) -> dict[str, CryptoKey]:
     return await llaves_mixtas(session, proveedor_local)
+
+
+# Rotación desde la pantalla (S6-R1): app con commit real, puerta de lotes y motor dedicado
+from tests.crypto._rotacion_pantalla import (  # noqa: E402,F401
+    motor_dedicado_contado,
+    pantalla,
+    puerta,
+)

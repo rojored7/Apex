@@ -88,6 +88,7 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "auth.one_time_tokens",
                 "settings.settings_sections",
                 "audit.verifications",
+                "crypto.crypto_keys",  # S6-R1 (S6-D61): la rotación desde la pantalla
             }
         )
         == AUDITABLE_TABLES

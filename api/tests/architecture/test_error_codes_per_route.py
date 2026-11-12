@@ -88,6 +88,8 @@ CON_LIMITE = {
     ("get", "/api/v1/crypto/jobs"),
     # S6-B3 (US-146, S6-D57): el CBOM consume `cbom-export` (2 por minuto).
     ("get", "/api/v1/crypto/cbom"),
+    # S6-R1 (US-145, S6-D57): rotar desde la pantalla consume `keys-rotate` y `keys-rotate-hour`.
+    ("post", "/api/v1/crypto/keys/{key_id}/rotate"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
     # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen
@@ -355,3 +357,30 @@ def test_s6_c4_la_descarga_de_adjuntos_declara_sus_codigos_exactos(esquema: dict
     assert parametros["attachment_id"]["in"] == "path"
     assert parametros["attachment_id"]["schema"]["format"] == "uuid"
     assert "requestBody" not in operacion
+
+
+def test_s6_r1_rotar_desde_la_pantalla_declara_sus_codigos_exactos(esquema: dict[str, Any]) -> None:
+    """S6-R1 (US-145, S6-D43, S6-D69): `POST /crypto/keys/{key_id}/rotate` publica 202
+    (`RotationStartedOut`), 401, 403 (solo admin), 404 (llave inexistente), 409 (`key_not_active`,
+    `purpose_not_rotatable`, `rotation_running`, `rotation_not_supported`), 422 (`confirm` y
+    `reason`) y 429 (`keys-rotate`); el 503 nombra `busy` y `crypto_unavailable`. Rojo R1."""
+    operacion = esquema["paths"]["/api/v1/crypto/keys/{key_id}/rotate"]["post"]
+    assert set(operacion["responses"]) == {
+        "202",
+        "401",
+        "403",
+        "404",
+        "409",
+        "422",
+        "429",
+        "500",
+        "503",
+    }
+    ref = operacion["responses"]["202"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref.endswith("/RotationStartedOut")
+    descripcion = operacion["responses"]["503"]["description"]
+    assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion
+    assert ("post", "/api/v1/crypto/keys/{key_id}/rotate") in CON_LIMITE
+    cuerpo = esquema["components"]["schemas"]["RotateIn"]
+    assert set(cuerpo["properties"]) == {"reason", "confirm"}
+    assert cuerpo.get("additionalProperties") is False

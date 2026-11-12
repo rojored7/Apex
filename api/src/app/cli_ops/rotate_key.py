@@ -17,9 +17,7 @@ Usa `crypto_runtime`, un admin activo en `--as` y `core.crypto.service` (siempre
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from typing import Annotated
 from uuid import UUID
 
@@ -37,23 +35,21 @@ from app.cli_base import (
     runtime_options,
     unit_of_work,
 )
-from app.core import audit
+from app.core import audit, db
 from app.core.config import Settings
-from app.core.crypto import service
+from app.core.crypto import rotate_job, service
 from app.core.crypto.errors import CryptoError
-from app.core.crypto.keyring import current_keyring
 from app.core.crypto.models import CryptoJob
 from app.core.crypto.registry import get_spec
 from app.core.crypto.sign_rotation import SignRotationError, not_rotatable, switch_provider
-from app.core.db import DatabaseBusy
 
 COMMAND = "rotate-key"
 AUDIT_TABLE = "crypto.crypto_keys"
-RETRIES = 3
-WAIT_S = 1
+RETRIES = rotate_job.RETRIES
+WAIT_S = rotate_job.WAIT_S
 MAX_BATCH_SIZE = 5000
 FINAL = "llave anterior en decrypt_only; retirar con retire-key"
-EMPTY_PASSES = 5
+EMPTY_PASSES = rotate_job.EMPTY_PASSES
 
 
 def _say(mensaje: str) -> None:
@@ -66,15 +62,11 @@ def _stop(mensaje: str, code: int = 1) -> typer.Exit:
 
 
 async def _retry[T](operation: Callable[[], Awaitable[T]]) -> T:
-    """Un intento y `RETRIES` reintentos ante `DatabaseBusy`, con espera de `WAIT_S` s."""
-    for intento in range(RETRIES + 1):
-        try:
-            return await operation()
-        except DatabaseBusy:
-            if intento == RETRIES:
-                break
-            await asyncio.sleep(WAIT_S)
-    raise _stop("la base está ocupada; repita el comando en unos minutos")
+    """Un intento y tres reintentos ante `DatabaseBusy` (`core.crypto.rotate_job.retry`)."""
+    try:
+        return await rotate_job.retry(operation)
+    except rotate_job.RotationBusy:
+        raise _stop("la base está ocupada; repita el comando en unos minutos") from None
 
 
 async def _start(session: AsyncSession, data_class: str, reason: str, actor_id: UUID) -> CryptoJob:
@@ -93,66 +85,31 @@ async def _start(session: AsyncSession, data_class: str, reason: str, actor_id: 
     return job
 
 
-async def _in_job[T](
-    session: AsyncSession, job_id: UUID, work: Callable[[CryptoJob], Awaitable[T]]
-) -> tuple[T, int, int]:
-    """Una transacción corta sobre el job (recargado): trabajo y su avance `(hecho, total)`."""
-    async with session.begin():
-        job = await session.get(CryptoJob, job_id, populate_existing=True)
-        if job is None:
-            raise _stop("el job de rotación no existe")
-        resultado = await work(job)
-        return resultado, job.done, job.total
-
-
-async def _fail(job_id: UUID, error: Exception) -> typer.Exit:
-    codigo = getattr(error, "code", None) or type(error).__name__
-    with suppress(Exception):  # el job queda como estaba; el aviso sale igual
-        await service.fail_job(job_id, str(codigo))
-    return _stop("un lote falló; repita el comando para reanudar el mismo job")
-
-
 async def _rotate_data(
     session: AsyncSession, data_class: str, reason: str, actor_id: UUID, size: int
 ) -> None:
     job = await _retry(lambda: _start(session, data_class, reason, actor_id))
-    keyring = current_keyring()
-    if keyring.resolver is not None:
-        async with session.begin():
-            await keyring.load_all(session, keyring.resolver)
     job_id, total, hecho = job.id, job.total, job.done  # tras un rollback el ORM expira
     _say(f"total={total}")
     if hecho:
         _say(f"reanudando desde hecho={hecho}/{total}")
-    vacias = 0
-    while True:
-        try:
-            n, done, total = await _retry(
-                lambda: _in_job(
-                    session, job_id, lambda j: service.reencrypt_batch(session, j, size)
-                )
-            )
-        except typer.Exit:
-            raise
-        except Exception as error:
-            raise await _fail(job_id, error) from None
-        if n:
-            _say(f"hecho={done}/{total}")
-        if n >= size:
-            continue
-        cerrada, _, _ = await _retry(
-            lambda: _in_job(session, job_id, lambda j: service.finish_rotation(session, j))
+    try:  # el bucle es el mismo de la pantalla (S6-R1, E5): sesiones propias, un lote por vez
+        await rotate_job.execute_rotation(
+            db.get_sessionmaker(),
+            job_id,
+            batch_size=size,
+            on_progress=lambda hecho, total: _say(f"hecho={hecho}/{total}"),
         )
-        if cerrada:
-            return
-        vacias += 1  # filas saltadas por estar bloqueadas: se espera y se vuelve a pasar
-        await asyncio.sleep(WAIT_S)
-        if vacias >= EMPTY_PASSES:
-            with suppress(Exception):  # el job queda `failed`; repetir el comando lo reanuda
-                await service.fail_job(job_id, "pending_records")
+    except rotate_job.RotationBusy as error:
+        if error.lock:
+            raise service.RotationInProgress from None
+        raise _stop("la base está ocupada; repita el comando en unos minutos") from None
+    except rotate_job.RotationFailed as error:
+        if error.code == "pending_records":
             raise _stop(
                 "quedan filas con la llave anterior (bloqueadas por otra escritura); repita"
-            )
+            ) from None
+        raise _stop("un lote falló; repita el comando para reanudar el mismo job") from None
 
 
 async def _rotate_index(

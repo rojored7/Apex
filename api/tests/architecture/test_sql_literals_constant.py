@@ -278,3 +278,15 @@ def test_audit_sign_toma_su_candado_con_sql_constante_y_llave_ligada() -> None:
     assert "pg_advisory_xact_lock(:key)" in fuente
     assert "AUDIT_SIGN_LOCK_KEY" in fuente
     assert hallazgos(fuente, "app/core/audit_sign.py") == []
+
+
+def test_s6_r1_rotate_job_no_define_candados_nuevos_ni_sql_propio() -> None:
+    """S6-R1 (S6-D61): el candado `apex:rotate:<clase>` sigue siendo `ROTATE_LOCK_KEY_SQL` de
+    `core/crypto/service.py`; `rotate_job.py` lo usa por el service y no escribe `advisory` ni
+    SQL en texto."""
+    from pathlib import Path
+
+    ruta = Path(__file__).resolve().parents[2] / "src" / "app" / "core" / "crypto" / "rotate_job.py"
+    fuente = ruta.read_text(encoding="utf-8")
+    assert "advisory" not in fuente.lower()
+    assert "pg_try_advisory_lock" not in fuente

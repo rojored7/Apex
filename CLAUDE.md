@@ -68,7 +68,8 @@ apex/
           schemas.py     #   DTO del router de llaves (Sprint 6)
           reencryptor.py #   puerto `Reencryptor` (count_total, count_pending, reencrypt_batch) que cada módulo con datos cifrados registra al arrancar (Sprint 6, G-09)
           cbom.py        #   exportación del CBOM sin material ni referencias de llaves `sign` (Sprint 6, S6-D57)
-          rotate_job.py  #   run_rotation y rotation_engine: rotación reanudable fuera del request, un solo rotador en vuelo (Sprint 6, S6-D61)
+          rotate_job.py  #   execute_rotation / run_rotation, rotation_engine (motor propio de una conexión para el candado `apex:rotate:<clase>`) y resume_running_jobs: el bucle de rotación compartido por `rotate-key` y `POST /crypto/keys/{id}/rotate`, un solo rotador en vuelo, la tarea queda en `app.state.rotation_task` (Sprint 6, S6-R1, S6-D61, S6-D121)
+          rotate_screen.py #   validate_rotation_request y start_from_screen: la transacción del request de la rotación desde la pantalla (job `running`, anterior a `decrypt_only`, nueva `active`); `inventory.py` los reexporta (S6-R1)
           signature.py   #   verify_ed25519(public_key, data, signature): verificación con la clave pública de `crypto_keys.public_key`, sin proveedor (Sprint 6, S6-D62, S6-D81)
           provider.py    #   puerto KeyProvider (name, status, rewrap), get_provider_named y make_resolver: proveedor por fila de crypto_keys (Sprint 5, S5-D3)
           openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao

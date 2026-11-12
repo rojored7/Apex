@@ -7,15 +7,17 @@ y de la anulación) con una sesión conectada como `apex_api`.
 Las filas se siembran como propietario; `apex_roles` se descarta al terminar la sesión.
 """
 
+# ruff: noqa: S608
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
+from typing import TypeVar
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -24,12 +26,33 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto import bus, inventory, rotate_job
+from app.core.crypto.bootstrap import ensure_keys
+from app.core.crypto.keyring import configure_keyring
+from app.core.crypto.local_provider import LocalFileProvider
+from app.core.crypto.models import CryptoJob, CryptoKey
+from app.core.crypto.provider import configure_provider
 from app.modules.memberships import service as _memberships_service  # registra el gate  # noqa: F401
 from app.modules.payments import service as payments_service
+from tests.conftest import LIMPIAR_LLAVES
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
+from tests.migrations._apoyo_notificaciones import consultar
 from tests.migrations.conftest import RolesDb, url_por_rol
 from tests.migrations.test_db_grants import propietario
 
+T = TypeVar("T")
 SYSTEM = str(SYSTEM_USER_ID)
+USUARIO_ROTADOR = UUID("00000000-0000-0000-0000-0000000000f1")
+LIMPIAR_JOBS_Y_LLAVES = (
+    disable_user_sql("crypto.crypto_jobs"),
+    "DELETE FROM crypto.crypto_jobs",
+    rearm_always_sql("crypto.crypto_jobs"),
+    *LIMPIAR_LLAVES,
+)
+
+
+def _blob(socio: UUID) -> str:
+    return bus.encrypt("member.document", b"123456", bus.aad_for(socio), record_id=socio)
 
 
 def _como_api[T](apex: RolesDb, trabajo: Callable[[AsyncSession], Awaitable[T]]) -> T:
@@ -55,13 +78,13 @@ def membresia_activa(apex_roles: RolesDb) -> UUID:
     hoy = date.today()
     propietario(
         apex_roles,
-        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "  # noqa: S608
+        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
         "document_idx, phone, phone_idx, email, email_idx) "
         f"VALUES ('{socio}', '{SYSTEM}', 'Ana', 'Api', "
         f"'apx1.doc', 'idx-{socio}', 'apx1.fono', 'pidx-{socio}', 'apx1.correo', 'eidx-{socio}')",
-        "INSERT INTO plans.plans (id, created_by, name, price_cop, kind, duration_days) "  # noqa: S608
+        "INSERT INTO plans.plans (id, created_by, name, price_cop, kind, duration_days) "
         f"VALUES ('{plan}', '{SYSTEM}', 'Plan {plan}', 100000, 'days', 30)",
-        "INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, "  # noqa: S608
+        "INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, "
         "agreed_price_cop, start_date, end_date, status) "
         f"VALUES ('{membresia}', '{SYSTEM}', '{socio}', '{plan}', 100000, "
         f"'{hoy}', '{hoy + timedelta(days=30)}', 'active')",
@@ -121,3 +144,90 @@ def test_anular_un_pago_como_apex_api_usa_el_update_por_columna(
         return anulado.voided
 
     assert _como_api(apex_roles, anular) is True
+
+
+# S6-R1 (S6-D43, S6-D61, H-2, E6): la rotacion desde la pantalla corre como `apex_api` ---
+
+
+def test_start_from_screen_y_run_rotation_como_apex_api_pasan_las_guardas_de_0024(
+    apex_roles: RolesDb, proveedor_local: LocalFileProvider
+) -> None:
+    """`start_from_screen` (job `running`, anterior a `decrypt_only`, nueva `active`) y
+    `run_rotation` (progreso del job, recifrado de `members.members.document`) con las sesiones de
+    `apex_api`: sin los grants por columna y las guardas de `0024` esto falla en la base real."""
+    miembro = uuid4()
+
+    async def con_api(trabajo: Callable[[async_sessionmaker[AsyncSession]], Awaitable[T]]) -> T:
+        motor = create_async_engine(url_por_rol(apex_roles, "apex_api"))
+        try:
+            with actor_scope(SYSTEM_USER_ID):
+                return await trabajo(async_sessionmaker(motor, expire_on_commit=False))
+        finally:
+            await motor.dispose()
+
+    async def crear_llaves(fabrica: async_sessionmaker[AsyncSession]) -> None:
+        async with fabrica() as sesion, sesion.begin():
+            await ensure_keys(sesion, proveedor_local, lambda _n: proveedor_local)
+
+    async def rotar(fabrica: async_sessionmaker[AsyncSession]) -> tuple[str, int, list[str]]:
+        async with fabrica() as sesion, sesion.begin():
+            activa = await sesion.scalar(
+                select(CryptoKey.id).where(
+                    CryptoKey.data_class == "member.document",
+                    CryptoKey.purpose == "encrypt",
+                    CryptoKey.state == "active",
+                )
+            )
+            assert activa is not None
+            inicio = await inventory.start_from_screen(
+                sesion, activa, reason="prueba de roles", by=USUARIO_ROTADOR
+            )
+        await rotate_job.run_rotation(fabrica, inicio.job_id)
+        async with fabrica() as sesion:
+            job = await sesion.get(CryptoJob, inicio.job_id)
+            assert job is not None
+            estados = (
+                await sesion.scalars(
+                    select(CryptoKey.state)
+                    .where(CryptoKey.data_class == "member.document")
+                    .where(CryptoKey.purpose == "encrypt")
+                    .order_by(CryptoKey.version)
+                )
+            ).all()
+            return job.status, job.done, list(estados)
+
+    configure_provider(proveedor_local)
+    try:
+        asyncio.run(con_api(crear_llaves))
+        # Los socios de las otras pruebas del módulo traen un `document` de relleno (`apx1.doc`):
+        # no descifra y la rotación recifra TODA la clase. Se les pone un blob válido (S6-R1).
+        otros = consultar(apex_roles.dsn(), "SELECT id FROM members.members")
+        propietario(
+            apex_roles,
+            *(
+                f"UPDATE members.members SET document = '{_blob(fila['id'])}' "
+                f"WHERE id = '{fila['id']}'"
+                for fila in otros
+            ),
+        )
+        blob = _blob(miembro)
+        propietario(
+            apex_roles,
+            "INSERT INTO members.members (id, created_by, first_name, last_name, "
+            f"document, document_idx) VALUES ('{miembro}', '{SYSTEM}', 'Ana', 'Rol', "
+            f"'{blob}', 'idx-{miembro}')",
+            "INSERT INTO auth.users (id, created_by, email, role) VALUES "
+            f"('{USUARIO_ROTADOR}', '{SYSTEM}', 'rol-{miembro}@test.apex', 'admin')",
+        )
+        estado, hechas, llaves = asyncio.run(con_api(rotar))
+    finally:
+        configure_provider(None)
+        configure_keyring(None)
+        propietario(
+            apex_roles,
+            f"DELETE FROM members.members WHERE id = '{miembro}'",
+            f"DELETE FROM auth.users WHERE id = '{USUARIO_ROTADOR}'",
+            *LIMPIAR_JOBS_Y_LLAVES,
+        )
+    assert (estado, hechas) == ("done", 1 + len(otros))
+    assert llaves == ["decrypt_only", "active"]

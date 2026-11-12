@@ -42,6 +42,7 @@ from app.core.audit import install_audit_listeners, record
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto import rotate_job
 from app.core.crypto import router as crypto_router
 from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
@@ -221,6 +222,35 @@ async def _startup(
     return estado
 
 
+async def _after_recovery(app: FastAPI, settings: Settings) -> None:
+    """Tras recuperar el custodio sellado: pasos de arranque y rotaciones pendientes (S6-R1)."""
+    await _run_startup_steps(settings)
+    _resume_rotations(app)
+
+
+def _resume_rotations(app: FastAPI) -> None:
+    """S6-R1 (E7): con el keyring cargado, termina las rotaciones que dejó un reinicio."""
+    rotate_job.track(
+        app.state,
+        asyncio.create_task(
+            rotate_job.resume_running_jobs(db.get_sessionmaker()), name="resume_rotations"
+        ),
+    )
+
+
+async def _cancel_rotation(app: FastAPI) -> None:
+    """Cancela la tarea de rotación (la del arranque o la de un `POST`) y espera su fin; el job
+    queda `running` y el próximo arranque lo reanuda."""
+    tareas: set[asyncio.Task[None]] = set(getattr(app.state, "rotation_tasks", None) or ())
+    ultima: asyncio.Task[None] | None = getattr(app.state, "rotation_task", None)
+    if ultima is not None:
+        tareas.add(ultima)
+    for tarea in tareas:
+        if not tarea.done():
+            tarea.cancel()
+    await asyncio.gather(*tareas, return_exceptions=True)
+
+
 async def _cancel_crypto_poll(app: FastAPI) -> None:
     """Cancela el sondeo de recuperación del lifespan y espera su fin (S5-D195)."""
     tarea: asyncio.Task[None] | None = getattr(app.state, "crypto_poll", None)
@@ -297,15 +327,18 @@ def _make_lifespan(
                         db.get_sessionmaker(),
                         settings,
                         create_missing=True,
-                        on_loaded=lambda: _run_startup_steps(settings),
+                        on_loaded=lambda: _after_recovery(app, settings),
                     ),
                     name="poll_forever",
                 )
+            if estado == "ok":
+                _resume_rotations(app)
             yield
         finally:
             await flush_telegram()  # S5-D203: las alertas pendientes salen antes del apagado
             set_telegram_gate(None)
-            await _cancel_crypto_poll(app)
+            await _cancel_crypto_poll(app)  # antes que la rotación: _after_recovery la lanza
+            await _cancel_rotation(app)
             await _cancel_background_verifications()
             configure_keyring(None)
             configure_provider(None)

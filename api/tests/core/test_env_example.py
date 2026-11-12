@@ -466,6 +466,8 @@ def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() ->
         "attachments-photo",
         "attachments-download",
         "attachments-download-hour",
+        "keys-rotate",  # S6-R1: `POST /crypto/keys/{key_id}/rotate`
+        "keys-rotate-hour",
     }
     assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6) - con_ruta
     assert not set(CUATRO_BUCKETS_S5) & CLAVES_SIN_RUTA_TODAVIA

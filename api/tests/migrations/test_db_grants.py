@@ -93,6 +93,17 @@ COLUMNAS_API_NOTIFICATIONS_UPDATE: tuple[str, ...] = (
     "updated_at",
 )
 COLUMNAS_API_CHANNEL_PREFS_UPDATE: tuple[str, ...] = ("active", "updated_at")
+# S6-R1 (S6-D61, D43, P-ROL): la rotación desde la pantalla. `apex_api` inserta jobs (con la guarda
+# `guard_jobs_insert`) y solo actualiza el progreso; en `crypto_keys` solo el estado y su rastro.
+COLUMNAS_API_JOBS_UPDATE: tuple[str, ...] = (
+    "done",
+    "status",
+    "error",
+    "started_at",
+    "finished_at",
+    "updated_at",
+)
+COLUMNAS_API_KEYS_UPDATE: tuple[str, ...] = ("state", "rotated_at", "rotated_by", "updated_at")
 COLUMNAS_API_PAYMENTS_INSERT: tuple[str, ...] = (
     "id",
     "created_at",
@@ -141,11 +152,11 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_jobs": {
-        "apex_api": (frozenset({"SELECT"}), frozenset()),
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_JOBS_UPDATE)),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_keys": {
-        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({"updated_at"})),
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_KEYS_UPDATE)),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_ops": {
@@ -713,7 +724,15 @@ PROHIBIDAS_API = [
     "DELETE FROM audit.signatures",  # S6-A1
     "TRUNCATE audit.signatures",  # S6-A1
     "UPDATE crypto.crypto_keys SET public_key = 'x'",  # S6-D81: inmutable
-    "UPDATE crypto.crypto_keys SET state = 'retired'",
+    "UPDATE crypto.crypto_keys SET provider = 'openbao'",  # S6-R1: solo estado y su rastro
+    "UPDATE crypto.crypto_keys SET wrapped_material = '\x02'",  # S6-R1
+    "UPDATE crypto.crypto_keys SET version = 9",  # S6-R1
+    "UPDATE crypto.crypto_keys SET data_class = 'x.y'",  # S6-R1
+    "UPDATE crypto.crypto_jobs SET kind = 'rewrap'",  # S6-R1: kind y data_class fijos
+    "UPDATE crypto.crypto_jobs SET data_class = 'x.y'",  # S6-R1
+    "UPDATE crypto.crypto_jobs SET total = 1",  # S6-R1: el total no lo cambia el api
+    "DELETE FROM crypto.crypto_jobs",  # S6-R1
+    "TRUNCATE crypto.crypto_jobs",  # S6-R1
     "UPDATE crypto.crypto_ops SET result = 'error'",
     "UPDATE payments.payments SET amount_cop = 1",
     "UPDATE payments.payments SET registered_by = created_by",
@@ -791,7 +810,9 @@ def test_residual_d61_apex_api_puede_insertar_una_llave_decrypt_only_pero_no_cam
     dsn = como(apex_roles, "apex_api")
     assert intentar(dsn, _crypto_key_insert()) is None
     error = intentar(dsn, _crypto_key_insert(), "UPDATE crypto.crypto_keys SET state = 'retired'")
-    assert error is not None and error.sqlstate == PRIVACION
+    # S6-R1: `apex_api` ya tiene `UPDATE (state)`; lo frena la guarda de `0024` (sin job ni
+    # fila nueva ni `retired` para el api), con `check_violation`, no el privilegio.
+    assert error is not None and error.sqlstate == "23514"
 
 
 def test_apex_api_no_inserta_en_job_runs(apex_roles: RolesDb) -> None:
@@ -1243,6 +1264,8 @@ def test_las_listas_de_columnas_coinciden_en_el_plan_grants_sql_y_la_base(
         ("UPDATE", "members.member_channel_preferences", "apex_api"): set(
             COLUMNAS_API_CHANNEL_PREFS_UPDATE
         ),
+        ("UPDATE", "crypto.crypto_jobs", "apex_api"): set(COLUMNAS_API_JOBS_UPDATE),  # S6-R1
+        ("UPDATE", "crypto.crypto_keys", "apex_api"): set(COLUMNAS_API_KEYS_UPDATE),  # S6-R1
     }
     en_grants = _columnas_de_grants_sql()
     for clave, columnas in esperadas.items():
@@ -1260,6 +1283,8 @@ def test_el_privilegio_de_tabla_completa_ya_no_existe_donde_se_paso_a_columnas(
         ("apex_api", "payments.payments", "INSERT"),
         ("apex_api", "notifications.notifications", "UPDATE"),
         ("apex_api", "members.member_channel_preferences", "UPDATE"),
+        ("apex_api", "crypto.crypto_jobs", "UPDATE"),  # S6-R1
+        ("apex_api", "crypto.crypto_keys", "UPDATE"),  # S6-R1
     }
     con_tabla = [
         (rol, tabla, verbo)

@@ -17,8 +17,11 @@
 --                                     deleted_at, locked_at, last_login_at,
 --                                     must_change_password, failed_login_count,
 --                                     tokens_valid_after, updated_at)
---   crypto.crypto_jobs              S                                 S
---   crypto.crypto_keys              S I U(updated_at)                 S
+--   crypto.crypto_jobs              S I U(done, status, error,        S
+--                                     started_at, finished_at,
+--                                     updated_at)
+--   crypto.crypto_keys              S I U(state, rotated_at,          S
+--                                     rotated_by, updated_at)
 --                                   (public_key: INSERT sí, UPDATE nunca; S6-D81)
 --   crypto.crypto_ops               S I                               S I
 --   members.member_channel_preferences S I U(active, updated_at)      S
@@ -65,8 +68,9 @@
 -- clasificada: worker.job_runs
 --
 -- Residuales aceptados (S4B-D61): apex_api puede INSERT en crypto.crypto_keys (ensure_keys) y en
--- audit.audit_log; el UPDATE de crypto_keys se limita a updated_at (necesario para SELECT ... FOR
--- SHARE), nunca a state.
+-- audit.audit_log; el UPDATE de crypto_keys se limita (S6-R1) a state, rotated_at, rotated_by y
+-- updated_at, y la guarda de 0024 solo admite active -> decrypt_only con las tres condiciones de H-2;
+-- nunca retired ni provider ni wrapped_material.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -103,9 +107,15 @@ GRANT SELECT, INSERT ON auth.users TO apex_api;
 -- is_active, member_id, id, created_at y created_by quedan fijos.
 GRANT UPDATE (email, password_hash, role, deleted_at, locked_at, last_login_at, must_change_password, failed_login_count, tokens_valid_after, updated_at) ON auth.users TO apex_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON auth.refresh_tokens TO apex_api;
-GRANT SELECT ON crypto.crypto_jobs TO apex_api;
+-- S6-R1 (S6-D43, S6-D61, H-2, E6): la rotacion desde la pantalla corre como apex_api. INSERT de jobs
+-- solo con la forma que admite crypto.guard_jobs_insert (migracion 0024); UPDATE por columna del
+-- progreso (crypto.guard_jobs_update); kind, data_class y total quedan fijos. En crypto_keys solo
+-- state y su rastro: crypto.guard_keys_update (0024) deja pasar unicamente active -> decrypt_only de
+-- una llave encrypt con otra active de version mayor, un job running de la clase y un usuario real.
+GRANT SELECT, INSERT ON crypto.crypto_jobs TO apex_api;
+GRANT UPDATE (done, status, error, started_at, finished_at, updated_at) ON crypto.crypto_jobs TO apex_api;
 GRANT SELECT, INSERT ON crypto.crypto_keys TO apex_api;
-GRANT UPDATE (updated_at) ON crypto.crypto_keys TO apex_api;
+GRANT UPDATE (state, rotated_at, rotated_by, updated_at) ON crypto.crypto_keys TO apex_api;
 GRANT SELECT, INSERT ON crypto.crypto_ops TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON members.members TO apex_api;
 -- S5-B5 (US-123): upsert de preferencias de canal; sin DELETE (el borrado de socios es logico).

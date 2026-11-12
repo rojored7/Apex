@@ -22,7 +22,8 @@ Desde la raíz del repositorio, con `DC="docker compose --env-file .env --env-fi
 $DC --profile tools run --rm tools rotate-key member.document --reason "rotación anual 2026" --as <correo de un admin>
 ```
 
-- Cambia `member.document` por la clase que toque (`member.phone`, `member.email`, `member.birth_date`, `member.emergency_contact`). `attachment.sensitive` no se puede rotar hasta EP-18 (G-09).
+- Cambia `member.document` por la clase que toque (`member.phone`, `member.email`, `member.birth_date`, `member.emergency_contact`, `attachment.sensitive`). Los adjuntos sensibles se recifran de a 10 objetos por lote por el puerto `Reencryptor` (S6-R1).
+- El CLI y la pantalla (`POST /crypto/keys/{id}/rotate`, ver `llaves.md`) comparten el mismo bucle, `core/crypto/rotate_job.py`: el candado de la clase vive en una conexión dedicada durante todo el proceso y, si el api tiene una rotación de esa clase en curso, el comando sale con `rotación en curso`.
 - Imprime `rotate-key: total=N` y luego `rotate-key: hecho=X/N` por cada lote de 500 filas. Cada lote es una transacción corta: el sistema sigue atendiendo, y los datos se leen con cualquiera de las dos llaves durante el proceso. No hace falta `--db-timeouts off`.
 - CPU: cada fila se descifra y se vuelve a cifrar en el proceso del comando. Con decenas de miles de filas tarda unos minutos y usa un núcleo; hazlo en horario de poca carga.
 - El api no necesita reinicio: aprende la llave nueva en la siguiente petición autenticada (`keyring.refresh_current`).

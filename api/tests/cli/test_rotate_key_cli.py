@@ -580,3 +580,55 @@ async def test_un_puerto_que_nunca_vacia_agota_las_pasadas_marca_failed_y_sale_1
     jobs = await _jobs(rotacion_lista)
     assert [(j.status, j.error) for j in jobs] == [("failed", "pending_records")]
     assert await _llaves(rotacion_lista) == [(1, "decrypt_only"), (2, "active")]
+
+
+async def test_rotate_key_de_attachment_sensitive_sale_0_con_el_puerto_real(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    engine: Any,
+    admin: Any,
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S6-R1 (S6-D26, E5): con el puerto `Reencryptor` real registrado por `cli_runtime`, el CLI y
+    la pantalla comparten `run_rotation`; rotar `attachment.sensitive` sale 0 y recifra los
+    objetos (antes de C1 salía 2 `rotation_not_supported`)."""
+    from uuid import uuid4
+
+    from sqlalchemy import text
+
+    from app.modules.attachments import service as adjuntos
+    from app.modules.attachments.storage.local import LocalDiskStorage
+    from tests.attachments._apoyo import subir_real
+    from tests.conftest import LIMPIAR_ATTACHMENTS
+    from tests.factories import files
+
+    uploads = tmp_path / "uploads"
+    raiz = uploads / "attachments"
+    raiz.mkdir(parents=True)
+    ajustes = settings_prueba.model_copy(update={"UPLOADS_DIR": uploads})
+    adjuntos.configure_storage(LocalDiskStorage(raiz))
+    try:
+        for _ in range(25):
+            await subir_real(rotacion_lista, uuid4(), "consent", files.pdf(2000))
+
+        resultado = _rotar(
+            ajustes, monkeypatch, "attachment.sensitive", "--reason", MOTIVO, "--as", admin.email
+        )
+
+        assert resultado.exit_code == 0, resultado.output
+        assert "rotate-key: total=25" in resultado.output
+        assert FINAL in resultado.output
+        async with rotacion_lista() as sesion:
+            llaves = await llaves_de(sesion, "encrypt", "attachment.sensitive")
+            nueva = llaves[-1].id
+            sin_actualizar = await sesion.scalar(
+                text("SELECT count(*) FROM attachments.attachments WHERE key_id <> :k"),
+                {"k": nueva},
+            )
+        assert _estados(llaves) == [(1, "decrypt_only"), (2, "active")]
+        assert sin_actualizar == 0
+    finally:
+        adjuntos.configure_storage(None)
+        async with engine.begin() as conexion:
+            await conexion.execute(text(LIMPIAR_ATTACHMENTS))

@@ -9,7 +9,13 @@ from alembic import command
 from alembic.config import Config
 
 TABLAS = ("crypto_keys", "crypto_ops", "crypto_jobs")
-FUNCIONES = ("forbid_ops_mutation", "guard_keys_update", "guard_jobs_mutation")
+FUNCIONES = (
+    "forbid_ops_mutation",
+    "guard_keys_update",
+    "guard_jobs_mutation",
+    "guard_jobs_insert",  # 0024 (S6-R1): el head las trae
+    "guard_jobs_update",
+)
 
 
 def _estado(url: str) -> tuple[list[str], list[str], bool]:

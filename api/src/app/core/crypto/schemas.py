@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.crypto.state import CryptoState
 from app.core.pagination import Page
@@ -103,6 +103,25 @@ class CryptoJobOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
+
+
+class RotateIn(BaseModel):
+    """Cuerpo de `POST /crypto/keys/{id}/rotate` (S6-R1, US-145): `confirm` es exactamente
+    `ROTAR` y `reason` de 1 a 200 caracteres sin correos ni números largos, la misma regla que el
+    CLI (S6-D122; `inventory.validate_rotation_request`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(max_length=200)
+    confirm: str = Field(max_length=20)
+
+
+class RotationStartedOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: UUID
+    new_key_id: UUID
+    previous_key_id: UUID
 
 
 class OpsFilters(BaseModel):

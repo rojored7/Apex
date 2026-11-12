@@ -307,6 +307,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7
+        "crypto.crypto_keys",  # S6-R1: auditable por la puerta del router, no es actividad reciente
     }
     assert not any(t.startswith("crypto.") for t in RECENT_TABLES_ALLOWED)
 
@@ -384,3 +385,16 @@ def test_ningun_modelo_declara_audit_exclude_con_columnas_inexistentes() -> None
         columnas = {a.key for a in class_mapper(clase).column_attrs}
         malas += [f"{nombre}.{c}" for c in excluidas if c not in columnas]
     assert malas == []
+
+
+def test_crypto_keys_es_auditable_sin_ser_audited_y_el_tablero_no_la_lee() -> None:
+    """S6-R1 (S6-D61, E5): `crypto.crypto_keys` entra en `AUDITABLE_TABLES` para que `GET /audit`
+    liste la fila `update` de la rotación, pero el modelo NO es `__audited__` (la bitácora propia
+    es `crypto_ops`; una rotación deja exactamente una fila, escrita por la puerta del router) y
+    el tablero (`recent`) no la lee."""
+    tablas = _tablas_de_la_app()
+    assert "crypto.crypto_keys" in AUDITABLE_TABLES
+    assert "crypto.crypto_keys" in EXCLUIDAS
+    assert not getattr(tablas["crypto.crypto_keys"], "__audited__", False)
+    assert "crypto.crypto_keys" in AUDIT_TABLES_EXCLUDED_FROM_RECENT
+    assert "crypto.crypto_keys" not in RECENT_TABLES_ALLOWED

@@ -52,6 +52,7 @@ from tests.cli._apoyo import correr
 from tests.conftest import CLAVE_PRUEBA
 from tests.factories.members import make_member
 from tests.factories.users import make_user
+from tests.members._consentimiento import HOY, publicar_politica
 from tests.memberships.conftest import bus_confirmado, sin_cache_de_resumen  # noqa: F401
 
 Fabrica = async_sessionmaker[AsyncSession]
@@ -143,6 +144,20 @@ async def test_los_cinco_datos_sensibles_estan_cifrados_en_reposo(
             select(func.count()).select_from(Member).where(Member.data_consent_at.is_(None))
         )
     assert sin_consentimiento == 0
+
+
+async def test_con_el_corte_de_autorizacion_vigente_el_seed_demo_sigue_funcionando(
+    limpiar_demo: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S6-C3 (S6-D46, M-11): el seed llama `create(enforce_consent=False)`; con
+    `consent_required_from` = hoy crea los 30 socios igual (guarda de regresión)."""
+    async with limpiar_demo() as sesion:
+        await publicar_politica(sesion, SYSTEM_USER_ID, corte=HOY)
+
+    resultado = _sembrar(settings_prueba, monkeypatch)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert (await demo.contar(limpiar_demo))["socios"] == 30
 
 
 # Auditoría ------------------------------------------------------------------------------------

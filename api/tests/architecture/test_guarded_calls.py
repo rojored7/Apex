@@ -509,3 +509,20 @@ def test_control_discovery_con_membership_o_isolation_level_se_detecta() -> None
     )
     assert not nombra("x = 'Membership'\n", "Membership")
     assert con_isolation_level("create_async_engine(u, isolation_level='SERIALIZABLE')\n") == [1]
+
+
+LLAMADORES_SIN_AUTORIZACION: Final = frozenset({"imports/persist.py", "seed/apply.py"})
+"""S6-C3 (M-11): lista exacta de quién pasa `enforce_consent=` a `members.service.create`."""
+
+
+def test_enforce_consent_solo_lo_pasan_el_import_y_el_seed() -> None:
+    """M-11: el alta por HTTP siempre exige la autorización cuando el corte llegó; solo
+    `import-members` y `seed --demo` pasan `enforce_consent=False`, y ningún router lo hace."""
+    llamadores = {
+        _relativo(path)
+        for path in _archivos()
+        if path.relative_to(APP).parts[:2] != ("modules", "members")
+        and con_argumento(path.read_text(encoding="utf-8"), "enforce_consent")
+    }
+    assert llamadores == LLAMADORES_SIN_AUTORIZACION, llamadores
+    assert con_argumento("create(s, d, enforce_consent=False)", "enforce_consent") == [1]

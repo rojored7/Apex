@@ -191,6 +191,7 @@ async def _ensure_member(session_factory: Any, member: DemoMember) -> UUID:
                 sex=member.sex,
                 data_consent=member.data_consent,
             ),
+            enforce_consent=False,
         )
         return creado.id
 

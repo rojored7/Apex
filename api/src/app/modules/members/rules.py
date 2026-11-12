@@ -38,11 +38,13 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from sqlalchemy import ColumnElement
+
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.normalize import IndexKind, normalize_for_index
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern
 from app.modules.members.exceptions import MemberFieldForbidden, MemberValidationError
-from app.modules.members.models import SEXES
+from app.modules.members.models import SEXES, Member
 from app.modules.members.schemas import (
     DATA_CONSENT_MISSING,
     MemberCreate,
@@ -57,6 +59,7 @@ if TYPE_CHECKING:  # solo el tipo (PM5 de Fase 4): las reglas no cargan `core.se
 __all__ = [
     "ADMIN_ONLY_FIELDS",
     "BIRTH_DATE_MIN",
+    "CONSENT_MISSING_CONDITION",
     "DOCUMENT_MIN_MASKED",
     "DOTS",
     "EMAIL_DATA_CLASS",
@@ -75,9 +78,11 @@ __all__ = [
     "chip_to_filter",
     "classify_query",
     "compute_warnings",
+    "consent_required",
     "diff_fields",
     "effective_channels",
     "ensure_can_change",
+    "ensure_consent_given",
     "mask",
     "validate_member_input",
     "validate_member_patch",
@@ -103,6 +108,7 @@ _MENSAJES: Final[Mapping[str, str]] = {
     "document": "El documento no tiene caracteres válidos.",
     "phone": "El teléfono no tiene suficientes dígitos.",
     "email": "El correo no es válido.",
+    "data_consent_at": "Hay que registrar la autorización de tratamiento de datos.",
 }
 
 
@@ -363,3 +369,23 @@ def effective_channels(
     if "email" in active:
         canales.add("email")
     return frozenset(canales)
+
+
+# S6-C3 (US-149; S6-D46) ---------------------------------------------------------------------
+
+CONSENT_MISSING_CONDITION: Final[ColumnElement[bool]] = Member.data_consent_at.is_(None)
+"""La condición «sin autorización» que comparten el conteo, el filtro `consent=missing` y el KPI."""
+
+
+def consent_required(today: date, consent_required_from: date | None) -> bool:
+    """Si el alta exige `data_consent=true`: la fecha de corte ya llegó (hoy o antes)."""
+    return consent_required_from is not None and consent_required_from <= today
+
+
+def ensure_consent_given(
+    data: MemberCreate, today: date, consent_required_from: date | None
+) -> None:
+    """Con el corte vigente el alta exige `data_consent=true`: si no, `MemberValidationError` con
+    `field = "data_consent_at"` (422, S6-D46); sin corte o con corte futuro no exige nada."""
+    if not data.data_consent and consent_required(today, consent_required_from):
+        raise _invalido("data_consent_at")

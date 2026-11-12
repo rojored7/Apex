@@ -31,7 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
 from app.core.crypto import types
-from app.modules.members.attachments import current_photo
+
+# Import de módulo y no de nombre: `attachments` importa `changes`, que importa este archivo
+# (S6-C3);
+# la función se resuelve al llamar, cuando el ciclo de carga ya terminó.
+from app.modules.members import attachments as member_attachments
 from app.modules.members.exceptions import MemberNotFound
 from app.modules.members.models import Member
 from app.modules.members.rules import MaskField, MaskValue, mask
@@ -85,7 +89,9 @@ async def get(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
     from app.modules.memberships import service as memberships_service
 
     membresia = (await memberships_service.status_for(session, [socio.id])).get(socio.id)
-    foto = (await current_photo(session, [socio.id])).get(socio.id)  # S6-C2 (S6-D20)
+    foto = (await member_attachments.current_photo(session, [socio.id])).get(
+        socio.id
+    )  # S6-C2 (S6-D20)
     return MemberDetailOut.model_validate(
         {
             "id": socio.id,

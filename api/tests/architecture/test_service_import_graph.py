@@ -68,6 +68,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("members", "audit"),
         # S6-C2 (S6-D18): la foto y los adjuntos del socio viven en `attachments`.
         ("members", "attachments"),
+        # S6-C3 (S6-D46, S6-D60): el alta y la autorizacion tardia leen la politica vigente.
+        ("members", "settings"),
         ("memberships", "members"),
         ("memberships", "payments"),
         ("memberships", "plans"),
@@ -282,7 +284,10 @@ def test_el_par_perezoso_members_memberships_existe_y_esta_permitido() -> None:
     historial del socio); nunca `memberships` ni `payments`."""
     arriba, perezosas = _grafo_real()
     assert perezosas["members"] == {"memberships"}
-    assert arriba["members"] == {"audit", "attachments"}  # S6-C2 suma attachments
+    # S6-C2 suma attachments; S6-C3 suma settings (lectura de la politica, sin ciclo)
+    assert arriba["members"] == {"audit", "attachments", "settings"}
+    assert ("members", "settings") in ALLOWED_EDGES
+    assert "members" not in arriba["settings"], "settings -> members crearia un ciclo (S6-C3)"
     assert ("members", "audit") in ALLOWED_EDGES
     assert "members" not in arriba["audit"], "audit -> members crearía un ciclo (S4A-D20)"
     assert ("members", "memberships") in LAZY_IMPORT_WHITELIST

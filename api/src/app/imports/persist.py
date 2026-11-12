@@ -29,7 +29,7 @@ async def create_member(session_factory: Any, data: MemberCreate) -> bool:
     """Alta en su propia transacción; `False` si otro proceso ya dio de alta ese documento."""
     try:
         async with session_factory() as session, session.begin():
-            await members_service.create(session, data)
+            await members_service.create(session, data, enforce_consent=False)
     except MemberDocumentDuplicated:
         return False
     return True

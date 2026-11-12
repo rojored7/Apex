@@ -62,10 +62,17 @@ from app.modules.members.exceptions import (
     MemberIsDeactivated,
     MemberNotDeactivated,
     MemberNotFound,
+    PrivacyVersionMissing,
 )
 from app.modules.members.models import Member
-from app.modules.members.rules import diff_fields, ensure_can_change, validate_member_patch
+from app.modules.members.rules import (
+    consent_required,
+    diff_fields,
+    ensure_can_change,
+    validate_member_patch,
+)
 from app.modules.members.schemas import DATA_CONSENT_MISSING, MemberDetailOut, MemberPatch
+from app.modules.settings import service as settings_service
 
 DOCUMENT_DATA_CLASS: Final = "member.document"
 DOCUMENT_ALIVE_INDEX: Final = "uq_members_document_idx_alive"
@@ -157,6 +164,19 @@ async def _bloquear_y_cargar(session: AsyncSession, member_id: UUID) -> Member:
 # Editar (US-075) ----------------------------------------------------------------------
 
 
+async def consent_version(session: AsyncSession) -> str | None:
+    """La versión de la política que se copia a `data_consent_version` al registrar una
+    autorización (alta, `PATCH` tardío o `consent` subido; S6-D46): la vigente, o `None` si no hay
+    política publicada. Si además el corte de `consent_required_from` ya llegó, no se puede
+    registrar sin versión: `PrivacyVersionMissing` (409). Única puerta de las tres rutas."""
+    version = await settings_service.current_privacy_version(session)
+    if version is None:
+        corte = await settings_service.consent_required_from(session)
+        if consent_required(current_clock().today_bogota(), corte):
+            raise PrivacyVersionMissing
+    return version
+
+
 def _actuales(socio: Member, campos: frozenset[str]) -> dict[str, object]:
     """Los valores actuales en claro de los campos presentes; solo descifra los cifrados que el
     patch trae (`purpose="mask"`, D20)."""
@@ -200,11 +220,14 @@ async def _ficha(session: AsyncSession, socio: Member) -> MemberDetailOut:
     return ficha.model_copy(update={"warnings": [DATA_CONSENT_MISSING]})
 
 
-def _asignador(socio: Member, patch: MemberPatch, cambios: list[str]) -> Callable[[], None]:
+def _asignador(
+    socio: Member, patch: MemberPatch, cambios: list[str], version: str | None
+) -> Callable[[], None]:
     def asignar() -> None:
         for campo in cambios:
             if campo == "data_consent_at":
                 socio.data_consent_at = current_clock().now_utc()
+                socio.data_consent_version = version
             else:
                 setattr(socio, campo, _valor_nuevo(patch, campo))
 
@@ -242,9 +265,10 @@ async def update(
     cambios = _cambios(socio, patch)
     if not cambios:
         return await _ficha(session, socio)
+    version = await consent_version(session) if "data_consent_at" in cambios else None
     await _escribir(
         session,
-        _asignador(socio, patch, cambios),
+        _asignador(socio, patch, cambios, version),
         lambda: _ganador_del_documento(session, patch),
     )
     await events.emit(MemberUpdated(member_id=member_id, changed_fields=tuple(cambios)), session)
@@ -288,3 +312,23 @@ async def reactivate(session: AsyncSession, member_id: UUID) -> MemberDetailOut:
     await events.emit(evento, session)
     await events.emit(MemberReactivated(member_id=member_id), session)
     return await _ficha(session, socio)
+
+
+# Autorización por adjunto (S6-C3, US-149) ----------------------------------------------
+
+
+async def grant_consent_if_missing(session: AsyncSession, member_id: UUID) -> bool:
+    """Tras guardar el adjunto `consent`: fija `data_consent_at` (reloj) y la versión vigente de
+    la política si la autorización estaba nula (fila `update` del hook y `MemberUpdated`); con
+    autorización previa no cambia nada. `True` si la fijó."""
+    socio = await _bloquear_y_cargar(session, member_id)
+    if socio.data_consent_at is not None:
+        return False
+    version = await consent_version(session)
+    socio.data_consent_at = current_clock().now_utc()
+    socio.data_consent_version = version
+    await session.flush()
+    await events.emit(
+        MemberUpdated(member_id=member_id, changed_fields=("data_consent_at",)), session
+    )
+    return True

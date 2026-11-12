@@ -153,3 +153,15 @@ class MemberContactUnreadable(MemberError):
     status = 422
     code = "member_contact_unreadable"
     default_message = "El contacto del socio no se puede leer."
+
+
+# S6-C3 (US-149; S6-D46) ---------------------------------------------------------------------
+
+
+class PrivacyVersionMissing(MemberError):
+    """Hay que fijar la autorización pero no hay política publicada que copiar: 409
+    `privacy_version_missing`. Se publica la política en `PATCH /settings/privacy` y se repite."""
+
+    status = 409
+    code = "privacy_version_missing"
+    default_message = "No hay una política de privacidad publicada; publícala antes de continuar."

@@ -15,6 +15,11 @@ Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3) y su rev
 - **Listar.** `GET /members/{id}/attachments` (admin y coach, paginado) incluye a los socios dados de baja. Cada adjunto trae metadatos, nunca el nombre del archivo.
 - **`photo_attachment_id`.** La ficha (`GET /members/{id}`) y cada fila de `GET /members` traen el id de la foto vigente o `null`, con una sola consulta por página.
 
+## La autorización subida fija la autorización de datos (S6-C3, US-149)
+
+- Subir `kind=consent` a un socio con `data_consent_at` nulo guarda el adjunto y, en la misma petición, fija `data_consent_at` con el reloj del servidor y `data_consent_version` con la versión vigente de la política; deja una fila `update` en `audit_log` con el antes y el después. Con autorización previa no cambia nada (ni fecha, ni versión, ni fila). `photo` y `other` nunca tocan el consentimiento.
+- Si el corte `consent_required_from` ya llegó y no hay política publicada, la subida responde 409 `privacy_version_missing` **antes de leer el cuerpo**: no se guarda adjunto ni objeto. Publica la política (`PATCH /settings/privacy`) y repite. Orden de los errores: socio 404, rol 403, 409, `Content-Length` 413, cubeta 429, cuerpo.
+
 ## Tipos, tamaños y bytes mágicos
 
 - Tipos admitidos: JPEG (`FF D8 FF`), PNG (`89 50 4E 47 0D 0A 1A 0A`) y PDF (`%PDF-`). El tipo lo deciden **solo los primeros bytes**: ni la extensión ni el `Content-Type` cuentan. Un ejecutable (ELF, PE) con nombre `.jpg` se rechaza con 422 `unsupported_type`.

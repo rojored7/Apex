@@ -322,7 +322,10 @@ def test_s6_c2_las_rutas_de_adjuntos_del_socio_declaran_sus_codigos_exactos(
     el listado 404, 422 y 429. Ambas con 401 y 503."""
     ruta = "/api/v1/members/{member_id}/attachments"
     subida = esquema["paths"][ruta]["post"]["responses"]
-    assert set(subida) == {"201", "401", "403", "404", "408", "413", "422", "429", "500", "503"}
+    # S6-C3 suma 409 `privacy_version_missing` (subir `consent` sin politica publicada)
+    assert set(subida) == {
+        "201", "401", "403", "404", "408", "409", "413", "422", "429", "500", "503",
+    }  # fmt: skip
     listado = esquema["paths"][ruta]["get"]["responses"]
     assert set(listado) == {"200", "401", "403", "404", "422", "429", "500", "503"}
     for codigo in ("408", "413"):

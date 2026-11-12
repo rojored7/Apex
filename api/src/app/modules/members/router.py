@@ -202,7 +202,7 @@ async def member_history(
     "/members/{member_id}/attachments",
     status_code=201,
     response_model=AttachmentOut,
-    responses=responses_for(404, 408, 413, 422, 429),
+    responses=responses_for(404, 408, 409, 413, 422, 429),
 )
 async def attach_to_member(
     request: Request,
@@ -211,15 +211,18 @@ async def attach_to_member(
     principal: StaffDep,
     session: Session,
 ) -> AttachmentOut:
-    """S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, `Content-Length`,
+    """S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, 409 (S6-C3),
+    `Content-Length`,
     cubeta y recién entonces se lee el cuerpo."""
     await service.ensure_exists(session, member_id)
+    if kind != "photo" and principal.role != "admin":
+        raise ForbiddenError
+    # S6-C3: la política se consulta antes de soltar la conexión y antes de leer el cuerpo.
+    await service.ensure_consent_upload(session, member_id, kind)
     # S6-D114 (revisión de seguridad de C2): el socio ya se validó; se suelta la conexión para
     # no retenerla «idle in transaction» mientras el cliente manda el cuerpo (hasta 30 s, D84).
     # `store` vuelve a abrir la transacción al escribir y `get_session` confirma al salir.
     await session.rollback()
-    if kind != "photo" and principal.role != "admin":
-        raise ForbiddenError
     service.ensure_declared_size(request.headers.get("content-length"))
     await enforce_user_limit(request, "attachments-upload", principal.user_id)
     return await service.attach(

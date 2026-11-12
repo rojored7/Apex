@@ -386,7 +386,8 @@ export interface paths {
         put?: never;
         /**
          * Attach To Member
-         * @description S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, `Content-Length`,
+         * @description S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, 409 (S6-C3),
+         *     `Content-Length`,
          *     cubeta y recién entonces se lee el cuerpo.
          */
         post: operations["attach_to_member_api_v1_members__member_id__attachments_post"];
@@ -5345,6 +5346,15 @@ export interface operations {
             };
             /** @description La subida tardó demasiado */
             408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

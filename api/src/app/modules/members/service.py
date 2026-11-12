@@ -59,6 +59,7 @@ import logging
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
@@ -95,6 +96,7 @@ from app.modules.members import exports
 from app.modules.members.attachments import (
     attach,
     current_photo,
+    ensure_consent_upload,
     ensure_declared_size,
     list_attachments,
 )
@@ -104,6 +106,7 @@ from app.modules.members.changes import (
     MemberDeactivated,
     MemberReactivated,
     MemberUpdated,
+    consent_version,
     deactivate,
     id_by_document,
     reactivate,
@@ -135,6 +138,7 @@ from app.modules.members.rules import (
     compute_warnings,
     diff_fields,
     ensure_can_change,
+    ensure_consent_given,
     mask,
     validate_member_input,
 )
@@ -147,6 +151,7 @@ from app.modules.members.schemas import (
     MemberRef,
     MemberRowOut,
 )
+from app.modules.settings import service as settings_service
 
 if TYPE_CHECKING:  # solo el tipo del contrato de `status_for` (regla de módulos 2)
     from app.modules.memberships.schemas import MemberMembership
@@ -184,6 +189,7 @@ __all__ = [
     "deactivate",
     "diff_fields",
     "ensure_can_change",
+    "ensure_consent_upload",
     "ensure_declared_size",
     "ensure_exists",
     "export_members",
@@ -231,7 +237,22 @@ def _contacto(data: MemberCreate) -> dict[str, Any] | None:
     return data.emergency_contact.model_dump(exclude_none=True)
 
 
-def _build(data: MemberCreate, actor: UUID) -> Member:
+async def _autorizacion(
+    session: AsyncSession, data: MemberCreate, hoy: date, enforce_consent: bool
+) -> str | None:
+    """La versión de política que copia el alta (S6-D46): con `data_consent=true` la vigente (409
+    `privacy_version_missing` si el corte llegó y no hay política); sin él, con el corte vigente,
+    422 `data_consent_at`. `enforce_consent=False` (import y seed) no exige ni da 409."""
+    if not data.data_consent:
+        if enforce_consent:
+            ensure_consent_given(data, hoy, await settings_service.consent_required_from(session))
+        return None
+    if enforce_consent:
+        return await consent_version(session)
+    return await settings_service.current_privacy_version(session)
+
+
+def _build(data: MemberCreate, actor: UUID, version: str | None) -> Member:
     """El `Member` del alta; los nombres en NFC aunque el que llama no pase por el schema
     (Python H2: así "José" compuesto y descompuesto se buscan y ordenan igual)."""
     return Member(
@@ -241,7 +262,7 @@ def _build(data: MemberCreate, actor: UUID) -> Member:
         status="active",
         document_type=data.document_type,
         data_consent_at=current_clock().now_utc() if data.data_consent else None,
-        data_consent_version=None,
+        data_consent_version=version if data.data_consent else None,
         document=Secret.from_plain(data.document),
         phone=_secreto(data.phone),
         email=_secreto(data.email),
@@ -266,7 +287,7 @@ def _detail(socio: Member, data: MemberCreate) -> MemberDetailOut:
         birth_date=mask("birth_date", data.birth_date),
         emergency_contact=mask("emergency_contact", _contacto(data)),
         data_consent_at=socio.data_consent_at,
-        data_consent_version=None,
+        data_consent_version=socio.data_consent_version,
         deleted_at=None,
         membership_status=SIN_MEMBRESIA,  # PL4 de Fase 4: un socio recién creado no tiene membresía
         created_at=socio.created_at,
@@ -288,14 +309,21 @@ async def _insert(session: AsyncSession, socio: Member, document: str) -> None:
         raise MemberDocumentDuplicated(await id_by_document(session, document)) from None
 
 
-async def create(session: AsyncSession, data: MemberCreate) -> MemberDetailOut:
+async def create(
+    session: AsyncSession, data: MemberCreate, *, enforce_consent: bool = True
+) -> MemberDetailOut:
     """Alta de un socio (US-069): valida, rechaza el documento repetido, cifra y emite
-    `MemberCreated`; responde enmascarado desde la entrada, sin descifrar."""
-    validate_member_input(data, current_clock().today_bogota())
+    `MemberCreated`; responde enmascarado desde la entrada, sin descifrar.
+
+    `enforce_consent` (S6-C3, M-11): solo `import-members` y `seed --demo` lo apagan; nunca llega
+    por HTTP. Apagado, ni el corte exige la autorización ni la falta de política da 409."""
+    hoy = current_clock().today_bogota()
+    validate_member_input(data, hoy)
+    version = await _autorizacion(session, data, hoy, enforce_consent)
     existente = await id_by_document(session, data.document)
     if existente is not None:
         raise MemberDocumentDuplicated(existente)
-    socio = _build(data, get_actor())
+    socio = _build(data, get_actor(), version)
     await _insert(session, socio, data.document)  # `eager_defaults`: fechas ya cargadas (M4)
     await events.emit(MemberCreated(member_id=socio.id), session)
     logger.info("members: socio creado", extra={"member_id": str(socio.id)})

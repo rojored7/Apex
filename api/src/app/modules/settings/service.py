@@ -13,7 +13,8 @@
   (`model_dump(mode="json")`), `version += 1`, `updated_by = by` y `flush`. El hook de US-016
   audita `insert` y luego `update` (`__audited__`).
 - API interna para otros módulos (S2-D45): `get`, `memberships_policy`,
-  `current_privacy_version` (`None` sin política publicada) y `gym_name` (respaldo `"APEX"`,
+  `current_privacy_version` (`None` sin política publicada), `consent_required_from` (S6-C3) y
+  `gym_name` (respaldo `"APEX"`,
   también si lo guardado ya no valida; revisión Python M3).
 - Medios de pago (S3-B3, US-056; D24, S3-D55, L-3): la pura `decorate_methods(codes, labels)`
   devuelve un `PaymentMethodInfo` por código, en el orden de `codes` (nunca el del JSON), con la
@@ -29,6 +30,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import date
 from typing import Any, Final
 from uuid import UUID
 
@@ -215,6 +217,12 @@ async def memberships_policy(session: AsyncSession) -> MembershipsPolicy:
 async def current_privacy_version(session: AsyncSession) -> str | None:
     """Versión publicada de la política, o `None` si nunca se publicó (US-057 T4)."""
     return (await _read_as(session, SectionKey.privacy, PrivacyView)).policy_version
+
+
+async def consent_required_from(session: AsyncSession) -> date | None:
+    """Fecha de corte desde la que el alta exige la autorización de datos (S6-C3, US-149), o
+    `None` si nunca se fijó (no se exige nada, Q16). Lectura de la sección `privacy`."""
+    return (await _read_as(session, SectionKey.privacy, PrivacyView)).consent_required_from
 
 
 async def gym_name(session: AsyncSession) -> str:

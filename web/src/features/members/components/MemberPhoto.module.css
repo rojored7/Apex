@@ -1,0 +1,34 @@
+/* S6-F3: miniatura de la foto del socio (círculo de Socio_Ficha.html y Socios_Movil.html). Solo tokens.css. */
+.photo {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--blue-tint);
+  color: var(--muted);
+}
+
+.photo[data-size="sm"] {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+
+.photo[data-size="lg"] {
+  width: calc(var(--space-8) * 2);
+  height: calc(var(--space-8) * 2);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  display: inline-flex;
+  width: 55%;
+  height: 55%;
+}

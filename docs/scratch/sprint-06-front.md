@@ -22,3 +22,29 @@
   - L1: `through_seq` de la firma reutiliza `seqSchema` (positivo).
   - L2 (aceptada): los `px` literales del CSS siguen el precedente de `VerifyChainButton.module.css`.
   - L3 (aceptada): el `test.skip` del spec `stack/` es correcto; el proyecto `preview` lo ignora con `testIgnore`.
+
+## F3 · Foto y pestaña Adjuntos (US-148, US-150)
+
+- Base: `e85bd22` (checkpoint de F1, rama `feat/sprint-06-front`). `gen:api` sin diff (`AttachmentOut`, `photo_attachment_id` ya estaban).
+- Rojo: `features/attachments/pages/AttachmentsTab.test.tsx` (24 casos), `features/attachments/lib/attachmentText.test.ts`, `shared/data/memberPhoto.test.ts` (6), `features/members/components/MemberPhoto.test.tsx` (8), `core/api/client.test.ts` (tipos de `api.blob`); módulos inexistentes al inicio. Helper `test/attachments.tsx`.
+- Verde: `features/attachments/{api,schemas,attachmentErrors}.ts`, `lib/attachmentText.ts`, `components/AttachmentDownloadButton.tsx`, `pages/AttachmentsTab.tsx`; `shared/data/memberPhoto.ts`; `features/members/components/MemberPhoto.tsx`; `MemberDetailPage` (foto en el encabezado, Adjuntos sin `disabledUntil`), `MembersListPage` y `MemberCardList` (miniatura); `PageHeader` suma `leading`; `core/api/client.ts`; `config/{routeTable,routes.reference,features}.ts`; `permissions.ts`.
+- Decisiones:
+  - La pestaña es hija de `members` (`/socios/:id/adjuntos`, `members.view`), sin feature `attachments` aparte (anotado en `features.ts`).
+  - `attachments.download.restricted` (solo admin) en la matriz de permisos: el coach no ve «Descargar» en `consent`/`other` (M-6) y lee «Solo administradores»; el 403 del api se muestra igual.
+  - `useMemberPhoto`: `useQuery` con `gcTime: 0`, sin reintentos; el `blob:` se crea en un efecto y se revoca al desmontar y al cambiar de id; un error deja el marcador (no rompe la pantalla).
+  - Descarga con `useBlobDownload` (`api.blob` + `a[download]`), una instancia por fila; 403 y 404 con texto propio, el resto con los mensajes de descargas.
+  - Tamaño en base 1024 con coma decimal («220 KB», «1,5 MB»); «quién subió»: `uploaded_by_name` si llega, si no «Usuario <8 hex>» (el contrato no trae el nombre: BRECHAS 14.10).
+  - `BLOB_CONTENT_TYPES` suma `image/jpeg`, `image/png` y `application/json`; `BLOB_ACCEPT` se deriva de la lista.
+  - `memberRowSchema` (estricto) y `memberDetailViewSchema` aceptan `photo_attachment_id` (nulo por defecto).
+- Pruebas que cambian: `client.test.ts` (JSON ya no se rechaza; `image/gif`, `image/svg+xml` sí), `permissions.test.ts`, `routes.test.ts` (Adjuntos, última hija), `schemas.test.ts` (diez claves), `MemberDetailPage.test.tsx` (Adjuntos habilitada), `PageHeader.test.tsx`, `MembersListPage.test.tsx`.
+- E2E: `tests/e2e/member-tabs.spec.ts` (preview, 16 casos verdes; Adjuntos con axe en claro y oscuro a 390 y 1440; a 390 la tabla es de tarjetas) y `tests/e2e/stack/members-attachments.spec.ts` (escrito, no corrido; V7).
+- DESIGN-GAP: tabla de Adjuntos (14.4, cerrada con el gap en `AttachmentsTab.tsx`); el gap de la foto de `MemberCardList` se cierra (14.9). Campo de foto y autorización en el formulario siguen en F4 (14.2, 14.3).
+- Pendiente: revisión `security-reviewer` y sello `slice-gate.sh web/attachments` (orquestador); nombre de quien subió (14.10).
+
+- Revisión de seguridad 0C/0H/2M/4L: todas corregidas.
+  - M1: `application/json` sale de `BLOB_CONTENT_TYPES` (solo va en el `Accept`: `[...BLOB_CONTENT_TYPES, "application/json"]`, S6-D120); vuelve la prueba «rechaza application/json».
+  - M2: `useMemberPhoto` con `gcTime` de 60 s: el Blob se reutiliza entre lista y ficha; el `blob:` se sigue revocando por componente.
+  - L1: `useMemberPhoto` lanza `unexpected_content_type` si la respuesta no es `image/*`.
+  - L2: `id`, `owner_id`, `uploaded_by` (adjuntos) y `photo_attachment_id` (socios) con `z.string().uuid()`.
+  - L3: `mime` de `AttachmentOut` pasa a `z.string()`.
+  - L4: `AttachmentDownloadButton` usa `instanceof ApiError`.

@@ -11,7 +11,7 @@
 // DESIGN-GAP:
 // - Socios_Movil.html pagina con "Anterior" y "Siguiente"; US-072 y D39 piden "Cargar más".
 // - Socios_Movil.html pone "+ Nuevo" junto al título; el blueprint F2 pide botón flotante.
-// - Sin el círculo de la foto (los adjuntos llegan en v0.3) ni "12 clases · quedan 2" (la fila de
+// - Sin "12 clases · quedan 2" (la fila de
 //   GET /members no trae las clases restantes).
 import { Plus } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
@@ -23,6 +23,7 @@ import { useCan } from "../../../core/auth/useCan";
 import { formatCount } from "../../../core/i18n/format";
 import { Button } from "../../../shared/ui/Button";
 import { StatusTag } from "../../../shared/ui/StatusTag";
+import { MemberPhoto } from "./MemberPhoto";
 import { MEMBERS_MAX_PAGES, useMembersInfinite, type MembersInfiniteParams } from "../api";
 import { accountStatusOf, membershipDetail, membershipStatusOf } from "../lib/memberRow";
 import { LIST_MESSAGES, listError } from "../memberErrors";
@@ -53,6 +54,7 @@ function MemberCard({ row }: { row: MemberRowView }) {
   return (
     <li>
       <Link to={memberHref(row.id)} className={styles.card} aria-labelledby={`${id}-name`} aria-describedby={`${id}-detail ${id}-tags`}>
+        <MemberPhoto photoAttachmentId={row.photo_attachment_id} size="sm" />
         <span className={styles.main}>
           <span id={`${id}-name`} className={styles.name}>{`${row.first_name} ${row.last_name}`}</span>
           <span id={`${id}-detail`} className={styles.detail}>

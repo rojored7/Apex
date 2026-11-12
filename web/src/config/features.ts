@@ -2,6 +2,8 @@
 // cuya feature no está habilitada no existe para el usuario (404 y fuera del menú).
 // `system` de 05_service_design.md se parte en users, audit, settings y crypto porque se
 // habilitan en versiones distintas.
+// S6-F3 (US-150): `attachments` NO es una feature aparte del panel: la pestaña Adjuntos vive bajo `members`
+// (ruta hija /socios/:id/adjuntos con members.view), como Avisos bajo `notifications` en S3-D65.
 
 export const FEATURES = [
   "auth",

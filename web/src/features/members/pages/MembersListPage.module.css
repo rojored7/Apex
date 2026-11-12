@@ -109,3 +109,10 @@
 .tools:empty {
   display: none;
 }
+
+/* S6-F3: miniatura de la foto junto al nombre en la primera columna. */
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}

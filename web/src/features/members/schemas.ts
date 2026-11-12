@@ -261,6 +261,8 @@ export const memberRowSchema = z
     membership_status: z.string().nullable().default(null),
     plan_name: z.string().nullable().default(null),
     membership_end_date: z.string().nullable().optional().default(null),
+    // S6-F3 (US-148): el adjunto kind=photo vigente; null si el socio no tiene foto.
+    photo_attachment_id: z.uuid().nullable().optional().default(null),
   })
   .strict();
 
@@ -323,6 +325,8 @@ export const memberDetailViewSchema = z.object({
   membership_status: nullableText.optional().default(null),
   plan_name: nullableText.optional().default(null),
   membership_end_date: nullableText.optional().default(null),
+  // S6-F3 (US-148): el adjunto kind=photo vigente; null si el socio no tiene foto.
+  photo_attachment_id: z.uuid().nullable().optional().default(null),
   created_at: z.string(),
   updated_at: z.string(),
   warnings: z.array(z.string()),

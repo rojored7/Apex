@@ -1,0 +1,48 @@
+/* S6-F3: pestaña Adjuntos de la ficha (patrón de la tabla de Pagos). Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.loading {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.kind {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sensitive {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.restricted {
+  color: var(--muted);
+  font: var(--text-caption);
+}

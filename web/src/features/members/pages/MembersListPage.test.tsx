@@ -120,6 +120,22 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
     expect(table().textContent).not.toContain("•");
   });
 
+  it("S6-F3: la fila de un socio con foto muestra la miniatura con el alt fijo y la que no tiene, el marcador", async () => {
+    const PHOTO_ID = "bbbb0001-0000-4000-8000-000000000001";
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/foto"), revokeObjectURL: vi.fn() }));
+    const rows = [{ ...MEMBERS.laura, photo_attachment_id: PHOTO_ID }, MEMBERS.andres];
+    const { mock } = renderMembers("/socios", {
+      rows,
+      handlers: { [`GET /attachments/${PHOTO_ID}`]: { status: 200, file: { content: "jpeg", contentType: "image/jpeg", filename: "adjunto-bbbb0001.jpg" } } },
+    });
+
+    const image = await within(table()).findByRole("img", { name: "Foto del socio" });
+    expect(image).toHaveAttribute("src", "blob:apex/foto");
+    expect(within(table()).getAllByTestId("member-photo-placeholder")).toHaveLength(1);
+    expect(mock.callsTo(`GET /attachments/${PHOTO_ID}`)).toHaveLength(1);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado"]);
+  });
+
   it("la primera petición pide la primera página de 25 sin búsqueda, filtro ni orden", async () => {
     const { mock } = renderMembers();
     await screen.findByRole("link", { name: "Laura Gómez" });

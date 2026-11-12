@@ -27,8 +27,8 @@ export const API_BASE = "/api/v1";
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** S5-F4: una exportación de hasta 20 000 filas tarda más que una consulta JSON. */
 export const BLOB_TIMEOUT_MS = 120_000;
-/** S5-F4 (revisión LOW 3): una descarga solo es PDF o CSV; otro tipo no se entrega. */
-export const BLOB_CONTENT_TYPES = ["application/pdf", "text/csv"] as const;
+/** S5-F4 (revisión LOW 3): una descarga solo es PDF o CSV; otro tipo no se entrega. S6-F3: suma la foto (JPEG, PNG); application/json solo va en el Accept (S6-D120), nunca se entrega como archivo. */
+export const BLOB_CONTENT_TYPES = ["application/pdf", "text/csv", "image/jpeg", "image/png"] as const;
 export const UNEXPECTED_CONTENT_MESSAGE = "El servidor devolvió un archivo que no esperábamos y no se descargó. Intenta de nuevo.";
 
 export interface RequestOptions {
@@ -82,7 +82,7 @@ function buildUrl(path: string, query: QueryParams | undefined): string {
   return `${API_BASE}${path}${qs ? `?${qs}` : ""}`;
 }
 
-const BLOB_ACCEPT = "application/pdf, text/csv, application/json";
+const BLOB_ACCEPT = [...BLOB_CONTENT_TYPES, "application/json"].join(", ");
 
 function buildHeaders(hasBody: boolean, token: string | null, accept: string = "application/json"): Headers {
   const headers = new Headers({ Accept: accept });

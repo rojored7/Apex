@@ -26,6 +26,8 @@ export interface MemberRowFixture {
   membership_status: string | null;
   plan_name: string | null;
   membership_end_date: string | null;
+  /** S6-F3: la foto del socio; ausente en las filas sin foto. */
+  photo_attachment_id?: string | null;
 }
 
 const row = (id: string, first_name: string, last_name: string, overrides: Partial<MemberRowFixture> = {}): MemberRowFixture => ({

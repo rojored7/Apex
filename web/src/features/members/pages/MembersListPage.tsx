@@ -39,6 +39,7 @@ import { StatusTag } from "../../../shared/ui/StatusTag";
 import { useMembers, useMembersTotal, type MembersInfiniteParams } from "../api";
 import { ExportButton } from "../components/ExportButton";
 import { MemberCardList } from "../components/MemberCardList";
+import { MemberPhoto } from "../components/MemberPhoto";
 import { MemberStatusChips } from "../components/MemberStatusChips";
 import { PLAN_FILTER_NAME, readPlanId, usePlanFilter } from "../components/PlanFilter";
 import { accountStatusOf, membershipStatusOf } from "../lib/memberRow";
@@ -58,7 +59,16 @@ export const CONSENT_MISSING_NOTICE = "Falta la autorización de tratamiento de 
 const SORT_OPTIONS = MEMBER_SORTS.map((value) => ({ value, label: MEMBER_SORT_LABELS[value] }));
 
 const COLUMNS: Column<MemberRowView>[] = [
-  { key: "name", header: "Socio", render: (row) => `${row.first_name} ${row.last_name}` },
+  {
+    key: "name",
+    header: "Socio",
+    render: (row) => (
+      <span className={styles.person}>
+        <MemberPhoto photoAttachmentId={row.photo_attachment_id} size="sm" />
+        {`${row.first_name} ${row.last_name}`}
+      </span>
+    ),
+  },
   { key: "plan", header: "Plan vigente", render: (row) => row.plan_name ?? EMPTY_VALUE },
   { key: "end", header: "Vence", render: (row) => (row.membership_end_date ? <span className={styles.nowrap}>{formatDate(row.membership_end_date)}</span> : EMPTY_VALUE) },
   {

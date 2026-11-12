@@ -3,6 +3,7 @@
 // falta otra dependencia para responder 200, 204, 401, 409, 422 y 502).
 import {
   API_BASE,
+  BLOB_CONTENT_TYPES,
   BLOB_TIMEOUT_MS,
   UNEXPECTED_CONTENT_MESSAGE,
   REQUEST_TIMEOUT_MS,
@@ -676,15 +677,31 @@ describe("api.blob: descargas de archivos (S5-F4, L-8)", () => {
 });
 
 describe("api.blob: tipo de contenido (revisión F4, LOW 3)", () => {
-  it.each(["application/pdf", "text/csv", "text/csv; charset=utf-8", "Application/PDF"])("acepta %s", async (type) => {
+  it.each(["application/pdf", "text/csv", "text/csv; charset=utf-8", "Application/PDF", "image/jpeg", "image/png"])("acepta %s", async (type) => {
     fetchMock.mockResolvedValueOnce(new Response("x", { status: 200, headers: { "Content-Type": type } }));
 
     await expect(api.blob("/x")).resolves.toMatchObject({ contentType: type });
   });
 
-  it.each(["text/html", "application/json", "application/octet-stream", ""])("rechaza un 200 de tipo '%s' con unexpected_content_type", async (type) => {
+  it.each(["text/html", "application/json", "image/gif", "image/svg+xml", "application/octet-stream", ""])("rechaza un 200 de tipo '%s' con unexpected_content_type", async (type) => {
     fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200, headers: type ? { "Content-Type": type } : {} }));
 
     await expect(api.blob("/x")).rejects.toMatchObject({ code: "unexpected_content_type", message: UNEXPECTED_CONTENT_MESSAGE });
+  });
+});
+
+describe("api.blob: tipos de S6-F3 (foto y adjuntos)", () => {
+  it("BLOB_CONTENT_TYPES incluye image/jpeg e image/png y no application/json; el Accept sí lo ofrece", () => {
+    expect([...BLOB_CONTENT_TYPES]).toEqual(["application/pdf", "text/csv", "image/jpeg", "image/png"]);
+    expect(BLOB_CONTENT_TYPES).not.toContain("application/json");
+  });
+
+  it("el Accept de una descarga ofrece también las imágenes", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("x", { status: 200, headers: { "Content-Type": "image/png" } }));
+    await api.blob("/attachments/x");
+
+    const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    const accept = new Headers(init.headers).get("Accept") ?? "";
+    for (const type of ["application/pdf", "text/csv", "image/jpeg", "image/png", "application/json"]) expect(accept).toContain(type);
   });
 });

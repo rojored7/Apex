@@ -36,6 +36,14 @@ describe("PageHeader", () => {
     expect(within(nav).getByText("Laura Gómez")).toHaveAttribute("aria-current", "page");
   });
 
+  it("S6-F3: un elemento inicial (la foto) va antes del título, fuera del h1", () => {
+    renderHeader(<PageHeader title="Laura Gómez" leading={<span data-testid="lead">foto</span>} />);
+
+    expect(screen.getByTestId("lead")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).not.toContainElement(screen.getByTestId("lead"));
+    expect(screen.getByTestId("lead").compareDocumentPosition(screen.getByRole("heading", { level: 1 })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("muestra la insignia y la descripción", () => {
     renderHeader(<PageHeader title="Laura Gómez" badge={<StatusTag status="active" />} description="Socia desde 12 mar 2026" />);
 

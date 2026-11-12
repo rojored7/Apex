@@ -326,3 +326,77 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+// S6-F3 (US-148, US-150): la foto en el encabezado de la ficha y la pestaña Adjuntos, con el api simulado.
+const PHOTO_ID = "bbbb0001-0000-4000-8000-000000000001";
+const CONSENT_ID = "bbbb0002-0000-4000-8000-000000000002";
+const PNG_1X1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const attachment = (overrides: Record<string, unknown>) => ({
+  id: PHOTO_ID,
+  owner_table: "members.members",
+  owner_id: MEMBER_ID,
+  kind: "photo",
+  mime: "image/png",
+  size_bytes: 225_280,
+  sensitive: false,
+  uploaded_by: ADMIN.id,
+  created_at: "2026-03-12T15:00:00Z",
+  ...overrides,
+});
+const ATTACHMENTS = [attachment({ id: CONSENT_ID, kind: "consent", mime: "application/pdf", size_bytes: 1_572_864, sensitive: true, created_at: "2026-03-12T16:00:00Z" }), attachment({})];
+
+async function attachmentsApi(page: Page): Promise<{ downloads: string[] }> {
+  const state = { downloads: [] as string[] };
+  await fakeApi(page);
+  await page.route(`**/api/v1/members/${MEMBER_ID}`, (route) => json(route, 200, { ...DETAIL, photo_attachment_id: PHOTO_ID }));
+  await page.route(new RegExp(`/api/v1/members/${MEMBER_ID}/attachments(\\?.*)?$`), (route) => json(route, 200, page25(ATTACHMENTS)));
+  await page.route(`**/api/v1/attachments/${PHOTO_ID}`, (route) =>
+    route.fulfill({ status: 200, contentType: "image/png", headers: { "Content-Disposition": "attachment; filename=adjunto-bbbb0001.png" }, body: PNG_1X1 }),
+  );
+  await page.route(`**/api/v1/attachments/${CONSENT_ID}`, (route) => {
+    state.downloads.push(CONSENT_ID);
+    return route.fulfill({ status: 200, contentType: "application/pdf", headers: { "Content-Disposition": "attachment; filename=adjunto-bbbb0002.pdf" }, body: "%PDF-1.4" });
+  });
+  return state;
+}
+
+test("la ficha muestra la foto del socio y la pestaña Adjuntos descarga la autorización con a[download], sin abrir una pestaña", async ({ page }) => {
+  const api = await attachmentsApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/socios/${MEMBER_ID}`);
+
+  await expect(page.getByRole("img", { name: "Foto del socio" })).toBeVisible();
+  await page.getByRole("tab", { name: "Adjuntos" }).click();
+  await expect(page).toHaveURL(new RegExp(`/socios/${MEMBER_ID}/adjuntos$`));
+  const table = page.getByRole("table", { name: "Adjuntos del socio" });
+  await expect(table.getByText("Autorización de datos")).toBeVisible();
+  await expect(table.getByText("1,5 MB")).toBeVisible();
+  await expect(table.getByText("220 KB")).toBeVisible();
+
+  const popup = page.waitForEvent("popup", { timeout: 1500 }).then(
+    () => true,
+    () => false,
+  );
+  const download = page.waitForEvent("download");
+  await table.getByRole("button", { name: /^Descargar Autorización de datos/ }).click();
+  expect((await download).suggestedFilename()).toBe("adjunto-bbbb0002.pdf");
+  expect(await popup).toBe(false);
+  expect(api.downloads).toEqual([CONSENT_ID]);
+});
+
+for (const theme of ["light", "dark"] as const) {
+  test(`la pestaña Adjuntos en ${theme} a 390 y 1440 px pasa axe, no desborda y tiene captura`, async ({ page }) => {
+    await attachmentsApi(page);
+    await setTheme(page, theme);
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/socios/${MEMBER_ID}/adjuntos`);
+      await expect(page.getByText("Autorización de datos")).toBeVisible();
+      await expect(page.getByRole("img", { name: "Foto del socio" })).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      expect(await axeViolations(page)).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `test-results/captures/ficha-adjuntos-${theme}-${String(width)}.png`, fullPage: true });
+    }
+  });
+}

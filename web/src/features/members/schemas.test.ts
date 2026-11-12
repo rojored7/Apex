@@ -168,7 +168,7 @@ describe("esquemas de respuesta", () => {
   it("S3-B9b (D35): memberRowSchema acepta la fila con membership_end_date y la de B9b completa", () => {
     const row = { id: "x", first_name: "A", last_name: "B", sex: "f", status: "active", deleted_at: null, membership_status: "expiring", plan_name: "Mensual", membership_end_date: "2026-10-25" };
 
-    expect(memberRowSchema.parse(row)).toEqual(row);
+    expect(memberRowSchema.parse(row)).toEqual({ ...row, photo_attachment_id: null });
     expect(memberRowSchema.parse({ ...row, membership_status: "none", plan_name: null, membership_end_date: null }).membership_end_date).toBeNull();
   });
 
@@ -232,7 +232,7 @@ describe("S3-F2 · chips de la lista (US-071)", () => {
     expect(chipFromFilters([], ["deleted"])).toBeNull();
   });
 
-  it("memberRowSchema sigue estricto con las nueve claves (las ocho de B8 más membership_end_date)", () => {
+  it("memberRowSchema sigue estricto con las diez claves (las ocho de B8, membership_end_date y, desde S6-F3, photo_attachment_id)", () => {
     const row = {
       id: "x",
       first_name: "A",
@@ -245,7 +245,8 @@ describe("S3-F2 · chips de la lista (US-071)", () => {
       membership_end_date: "2026-11-27",
     };
 
-    expect(Object.keys(memberRowSchema.parse(row))).toHaveLength(9);
+    expect(Object.keys(memberRowSchema.parse(row))).toHaveLength(10);
+    expect(memberRowSchema.parse({ ...row, photo_attachment_id: "bbbb0001-0000-4000-8000-000000000001" }).photo_attachment_id).toBe("bbbb0001-0000-4000-8000-000000000001");
     expect(memberRowSchema.safeParse({ ...row, document: "CC •••• 4417" }).success).toBe(false);
     expect(memberRowSchema.safeParse({ ...row, phone: "••• ••• 4567" }).success).toBe(false);
   });

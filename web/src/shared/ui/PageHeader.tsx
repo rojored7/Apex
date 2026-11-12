@@ -31,6 +31,8 @@ export interface PageHeaderProps {
   title: string;
   /** Texto junto al título, por ejemplo "342 en total · 269 con membresía". */
   total?: string;
+  /** S6-F3: elemento antes del título, fuera del h1 (la foto del socio en la ficha). */
+  leading?: ReactNode;
   /** Insignia junto al título (por ejemplo un StatusTag en la ficha). */
   badge?: ReactNode;
   description?: string;
@@ -169,10 +171,21 @@ function MoreMenu({ items }: { items: PageAction[] }) {
   );
 }
 
-export function PageHeader({ title, total, badge, description, breadcrumbs = [], actions = [] }: PageHeaderProps) {
+export function PageHeader({ title, total, badge, leading, description, breadcrumbs = [], actions = [] }: PageHeaderProps) {
   const visible = actions.slice(0, MAX_VISIBLE_ACTIONS);
   const overflow = actions.slice(MAX_VISIBLE_ACTIONS);
   const lastCrumb = breadcrumbs.length - 1;
+
+  const titleBlock = (
+    <div className={styles.titleBlock}>
+      <h1 className={styles.title}>
+        {title}
+        {total ? <span className={styles.total}>{total}</span> : null}
+        {badge ? <span className={styles.badge}>{badge}</span> : null}
+      </h1>
+      {description ? <p className={styles.description}>{description}</p> : null}
+    </div>
+  );
 
   return (
     <header className={styles.header}>
@@ -194,14 +207,14 @@ export function PageHeader({ title, total, badge, description, breadcrumbs = [],
         </nav>
       ) : null}
       <div className={styles.row}>
-        <div className={styles.titleBlock}>
-          <h1 className={styles.title}>
-            {title}
-            {total ? <span className={styles.total}>{total}</span> : null}
-            {badge ? <span className={styles.badge}>{badge}</span> : null}
-          </h1>
-          {description ? <p className={styles.description}>{description}</p> : null}
-        </div>
+        {leading ? (
+          <div className={styles.identity}>
+            <span className={styles.leading}>{leading}</span>
+            {titleBlock}
+          </div>
+        ) : (
+          titleBlock
+        )}
         {actions.length > 0 ? (
           <div className={styles.actions}>
             {visible.map((action) => (

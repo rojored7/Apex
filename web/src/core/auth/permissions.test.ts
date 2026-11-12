@@ -19,6 +19,8 @@ const ADMIN_ONLY = [
   "settings.manage",
   "crypto.manage",
   "notifications.rules.edit",
+  // S6-F3 (M-6): descargar la autorización de datos y otros documentos sensibles; el coach solo la foto.
+  "attachments.download.restricted",
   // S2-F2: /clases/horario es solo admin (ROUTES.md, "Clases").
   "classes.schedule",
 ] as const;

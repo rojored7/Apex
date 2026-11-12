@@ -1,0 +1,16 @@
+/* S6-F3: botón Descargar de la fila de adjuntos. Solo variables de tokens.css. */
+.root {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.busy {
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.busy:empty {
+  display: none;
+}

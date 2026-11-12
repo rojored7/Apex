@@ -15,6 +15,7 @@ import MemberDataTab from "../features/members/components/MemberDataTab";
 import MemberHistoryTab from "../features/members/components/MemberHistoryTab";
 import MemberMembershipsTab from "../features/memberships/components/MemberMembershipsTab";
 import MemberPaymentsTab from "../features/payments/components/MemberPaymentsTab";
+import AttachmentsTab from "../features/attachments/pages/AttachmentsTab";
 import { MemberSensitiveField, type MemberSensitiveFieldProps } from "../features/members/components/MemberSensitiveField";
 import MemberDetailPage from "../features/members/pages/MemberDetailPage";
 import MemberFormPage from "../features/members/pages/MemberFormPage";
@@ -55,6 +56,8 @@ export interface MemberDetailFixture {
   created_at: string;
   updated_at: string;
   warnings: string[];
+  /** S6-F3: la foto del socio (adjunto kind=photo); ausente o null si no tiene. */
+  photo_attachment_id?: string | null;
 }
 
 /** MemberDetailOut de Laura Gómez: al día con Mensual, vence el 28 oct 2026, con autorización. */
@@ -139,6 +142,8 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
     [`GET ${DETAIL_PATH}/payments`]: emptyPage,
     // S4A-F2: la caja "Historial reciente" de Datos y la pestaña Historial; por defecto, vacías.
     [`GET ${DETAIL_PATH}/audit`]: emptyPage,
+    // S6-F3: la pestaña Adjuntos; por defecto, vacía.
+    [`GET ${DETAIL_PATH}/attachments`]: emptyPage,
     "GET /payments/methods": ok({ items: [] }),
     ...handlers,
   });
@@ -153,6 +158,7 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
           { path: "/socios/:id/membresias", element: <MemberMembershipsTab /> },
           { path: "/socios/:id/pagos", element: <MemberPaymentsTab /> },
           { path: "/socios/:id/historial", element: <MemberHistoryTab /> },
+          { path: "/socios/:id/adjuntos", element: <AttachmentsTab /> },
         ],
       },
       { path: "/socios/:id/editar", element: shell(<MemberFormPage />) },

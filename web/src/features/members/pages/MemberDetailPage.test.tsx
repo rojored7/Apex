@@ -105,13 +105,14 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of ["Membresías", "Pagos", "Avisos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
-    for (const name of [/^Asistencia/, /^Resultados/, /^Atleta/, /^Adjuntos/]) {
+    for (const name of ["Membresías", "Pagos", "Avisos", "Adjuntos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    for (const name of [/^Asistencia/, /^Resultados/, /^Atleta/]) {
       expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
     }
     expect(within(tablist).getByRole("tab", { name: /^Asistencia/ })).toHaveTextContent("Disponible en v0.4");
     expect(within(tablist).getByRole("tab", { name: "Avisos" })).not.toHaveTextContent("Disponible en");
     expect(within(tablist).getByRole("tab", { name: "Historial" })).not.toHaveTextContent("Disponible en");
+    expect(within(tablist).getByRole("tab", { name: "Adjuntos" })).not.toHaveTextContent("Disponible en");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
   });
 
@@ -448,5 +449,46 @@ describe("MemberDetailPage · revisión S3-F1", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Socio no encontrado" })).toBeInTheDocument();
     expect(mock.calls).toHaveLength(0);
+  });
+});
+
+describe("MemberDetailPage · foto y pestaña Adjuntos (S6-F3, US-148, US-150)", () => {
+  const PHOTO_ID = "bbbb0001-0000-4000-8000-000000000001";
+
+  beforeEach(() => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/foto"), revokeObjectURL: vi.fn() }));
+  });
+
+  it("sin foto el encabezado muestra el marcador y no pide ningún adjunto", async () => {
+    const { mock } = renderMemberDetail();
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(within(header()).getByTestId("member-photo-placeholder")).toBeInTheDocument();
+    expect(mock.calls.some((call) => call.path.startsWith("/attachments/"))).toBe(false);
+  });
+
+  it("con photo_attachment_id baja la foto con api.blob y la pinta con el alt fijo", async () => {
+    const { mock } = renderMemberDetail(`/socios/${MEMBER_ID}`, {
+      handlers: {
+        [`GET ${DETAIL_PATH}`]: ok(memberDetailBody({ photo_attachment_id: PHOTO_ID })),
+        [`GET /attachments/${PHOTO_ID}`]: { status: 200, file: { content: "jpeg", contentType: "image/jpeg", filename: "adjunto-bbbb0001.jpg" } },
+      },
+    });
+
+    await screen.findByRole("heading", { level: 1 });
+    const image = await within(header()).findByRole("img", { name: "Foto del socio" });
+    expect(image).toHaveAttribute("src", "blob:apex/foto");
+    expect(mock.callsTo(`GET /attachments/${PHOTO_ID}`)).toHaveLength(1);
+  });
+
+  it("Adjuntos navega a /socios/:id/adjuntos y monta la pestaña sin volver a pedir la ficha", async () => {
+    const { mock, user } = renderMemberDetail();
+    await user.click(await screen.findByRole("tab", { name: "Adjuntos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/adjuntos`);
+    expect(screen.getByRole("tab", { name: "Adjuntos" })).toHaveAttribute("aria-selected", "true");
+    expect(await within(screen.getByRole("tabpanel")).findByText("Este socio no tiene adjuntos")).toBeInTheDocument();
+    expect(mock.callsTo(`GET ${DETAIL_PATH}`)).toHaveLength(1);
+    expect(mock.callsTo(`GET ${DETAIL_PATH}/attachments`)).toHaveLength(1);
   });
 });

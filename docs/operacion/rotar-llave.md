@@ -62,6 +62,8 @@ Para ver los conteos, corre primero con `--confirm-audit-blobs 0`: el comando im
 
 `retire-key` recorre `audit.audit_log` completo para contar los blobs (lectura secuencial, sin índice por diseño): es una operación rara y tarda en proporción al tamaño de la tabla.
 
+El conteo de filas de negocio suma las columnas cifradas y, para las clases con puerto `Reencryptor` (por ejemplo los adjuntos sensibles), los objetos del puerto que aún usan la llave (`count_by_key`); con cualquiera pendiente el comando se niega.
+
 Al terminar imprime `retire-key: llave retirada` y deja una entrada de auditoría con ambos conteos.
 
 ## La llave de firma de la auditoría

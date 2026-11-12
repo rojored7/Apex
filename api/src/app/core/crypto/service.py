@@ -5,18 +5,15 @@ Contrato (S4B-D39, D40, D63, D86, D95):
   hay, pasa la llave `active` a `decrypt_only` bajo `FOR UPDATE`, crea la DEK `version + 1`,
   abre el job con `total` y registra el verbo `rotate`. Exclusión por clase con
   `pg_try_advisory_lock(hashtext(:clave))` (`ROTATE_LOCK_KEY_SQL`, clave `apex:rotate:<clase>`)
-  en una conexión DEDICADA del pool, sin `isolation_level`: se toma, se confirma (el candado de
-  sesión sobrevive al commit y la conexión no queda en transacción) y se suelta SIEMPRE en el
-  `finally` con `pg_advisory_unlock`; si soltar falla, la conexión se invalida y el candado muere
-  con ella. Nunca queda tomado en una conexión que vuelve al pool. Si otra conexión lo tiene,
-  lanza `RotationInProgress` sin crear nada. Entre lotes la exclusión la dan los `FOR UPDATE` de
-  las filas y el índice único de jobs en curso.
+  en una conexión DEDICADA del pool: se toma, se confirma (el candado de sesión sobrevive) y se
+  suelta SIEMPRE en el `finally`; si soltar falla, la conexión se invalida y el candado muere con
+  ella. Si otra conexión lo tiene, lanza `RotationInProgress` sin crear nada. Entre lotes la
+  exclusión la dan los `FOR UPDATE` de las filas y el índice único de jobs en curso.
 - `reencrypt_batch` recifra hasta `batch_size` filas con SQL de Core y conserva `updated_at`; salta
-  con `skip_locked` las filas que otra transacción tiene bloqueadas (las recoge la pasada siguiente,
-  S4B-D150); llama
-  a `bus.decrypt` y `bus.encrypt` por atributo de módulo.
-- `finish_rotation` recuenta bajo `FOR UPDATE` de la llave activa; con cero filas anteriores cierra
-  el job en `done` y deja la llave anterior en `decrypt_only` (nunca `retired`).
+  con `skip_locked` las bloqueadas (S4B-D150); llama a `bus.decrypt` y `bus.encrypt` por atributo.
+- `finish_rotation` recuenta bajo `FOR UPDATE` de la llave activa; con cero cierra en `done` y deja
+  la anterior en `decrypt_only`. Una clase con puerto `Reencryptor` (S6-D14) cuenta, recifra y
+  se retira (`count_by_key`) por el puerto; sin columnas ni puerto: `rotation_not_supported`.
 - `retire_key` es el único camino a `retired`: exige estado `decrypt_only`, filas de negocio en
   cero (conteo bajo `FOR UPDATE` de la llave), el conteo de blobs de `audit.audit_log` que el
   operador confirmó, y registra el verbo `rotate`.
@@ -64,7 +61,9 @@ from app.core.crypto.mac import hmac_sha256_hex
 from app.core.crypto.models import CryptoJob, CryptoKey, CryptoOp, KeyState
 from app.core.crypto.normalize import normalize_for_index
 from app.core.crypto.provider import KeyProvider, current_provider
+from app.core.crypto.reencryptor import get_reencryptor
 from app.core.crypto.registry import get_spec
+from app.core.crypto.service_pending import blob_key, count_where, pending_total, require_rotatable
 from app.core.crypto.types import BlindIndexed
 from app.core.db import Base, translate_busy
 
@@ -214,27 +213,13 @@ def _single_active(llaves: Sequence[CryptoKey], purpose: str) -> CryptoKey:
     raise CryptoError("key_missing", f"no hay llave {purpose} activa para rotar")
 
 
-def _blob_key(ref: ColumnRef) -> Any:
-    """Segundo campo del blob `apx1.<key_id>.<alg>...`, como texto."""
-    return func.split_part(ref.column, ".", 2)
-
-
 def _pending_stmt(ref: ColumnRef, active_id: UUID) -> Select[Any]:
     """`(id, blob)` de las filas cuyo blob no es de la llave activa (los `NULL` no cuentan)."""
     return (
         select(ref.table.c.id, type_coerce(ref.column, Text))
-        .where(_blob_key(ref) != str(active_id))
+        .where(blob_key(ref) != str(active_id))
         .order_by(ref.table.c.id)
     )
-
-
-async def _count_where(session: AsyncSession, ref: ColumnRef, condition: Any) -> int:
-    stmt = select(func.count()).select_from(ref.table).where(condition)
-    return int(await session.scalar(stmt) or 0)
-
-
-async def _pending_total(session: AsyncSession, refs: list[ColumnRef], active_id: UUID) -> int:
-    return sum([await _count_where(session, r, _blob_key(r) != str(active_id)) for r in refs])
 
 
 @asynccontextmanager
@@ -336,6 +321,7 @@ async def start_rotation(
     validate_reason(reason)
     if not get_spec(data_class).encrypt:
         raise CryptoError("unsupported", f"la clase {data_class} no se cifra")
+    require_rotatable(data_class)
     await _no_custody_job(session)
     async with _rotation_lock(session, data_class):
         llaves = (await _run(session, _key_stmt("encrypt", data_class).with_for_update())).scalars()
@@ -346,9 +332,7 @@ async def start_rotation(
             return abierto  # type: ignore[no-any-return]
         nueva, dek = await _swap_key(session, activa, actor)
         dek[:] = bytes(len(dek))
-        total = await _pending_total(
-            session, encrypted_columns(Base.metadata, data_class), nueva.id
-        )
+        total = await pending_total(session, data_class, nueva.id)
         job = CryptoJob(
             kind="rotate",
             data_class=data_class,
@@ -403,6 +387,10 @@ async def reencrypt_batch(
     if vigente != activa.key_id:
         raise CryptoError("crypto_key_changed", "el keyring de este proceso no es el vigente")
     migradas = 0
+    if (puerto := get_reencryptor(clase)) is not None:
+        migradas = await puerto.reencrypt_batch(session, activa.key_id, batch_size)
+        job.done = min(job.done + migradas, job.total)
+        return migradas
     with oplog.batch("rotate", clase):
         for ref in encrypted_columns(Base.metadata, clase):
             if migradas >= batch_size:
@@ -424,9 +412,8 @@ async def finish_rotation(session: AsyncSession, job: CryptoJob) -> bool:
     activa = (await _run(session, consulta.with_for_update())).scalar()
     if activa is None:
         raise CryptoError("key_missing", f"no hay llave activa para {clase}")
-    refs = encrypted_columns(Base.metadata, clase)
-    if await _pending_total(session, refs, activa.id):
-        return False
+    if await pending_total(session, clase, activa.id):
+        return False  # con columnas o con puerto: el CLI reintenta y, al agotarse, marca failed
     job.status, job.done, job.error = "done", job.total, None
     job.finished_at = current_clock().now_utc()
     return True
@@ -497,7 +484,7 @@ async def rotate_index(session: AsyncSession, data_class: str, reason: str, acto
     pares = [
         (r, _index_column(r, data_class)) for r in encrypted_columns(Base.metadata, data_class)
     ]
-    total = sum([await _count_where(session, r, r.column.is_not(None)) for r, _ in pares])
+    total = sum([await count_where(session, r, r.column.is_not(None)) for r, _ in pares])
     if total > MAX_INDEX_ROWS:
         raise ValueError(f"la clase tiene más de {MAX_INDEX_ROWS} filas; --index se niega")
     nueva, dek = await _swap_key(session, activa, actor)
@@ -536,7 +523,12 @@ async def count_rows_by_key(session: AsyncSession, key_id: UUID) -> dict[str, in
     if llave.purpose != "encrypt":
         return {}  # solo los blobs de cifrado llevan el `key_id`
     refs = encrypted_columns(Base.metadata, llave.data_class)
-    return {r.qualified: await _count_where(session, r, _blob_key(r) == str(key_id)) for r in refs}
+    filas = {r.qualified: await count_where(session, r, blob_key(r) == str(key_id)) for r in refs}
+    if (
+        puerto := get_reencryptor(llave.data_class)
+    ) is not None:  # S6-D14: objetos fuera de columnas
+        filas["objetos"] = await puerto.count_by_key(session, key_id)
+    return filas
 
 
 async def count_audit_blobs(session: AsyncSession, key_id: UUID) -> int:

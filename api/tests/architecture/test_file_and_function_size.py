@@ -129,3 +129,29 @@ def test_control_un_stub_y_una_funcion_larga_se_detectan() -> None:
     real = ast.parse("def f():\n    x = 1\n    return x\n").body[0]
     assert isinstance(stub, ast.AsyncFunctionDef) and _es_stub(stub)
     assert isinstance(real, ast.FunctionDef) and not _es_stub(real)
+
+
+# S6-B1 (S6-D12, S6-D44): `service.py` no crece al ramificar por el puerto `Reencryptor` --------
+
+MAX_LINEAS_SERVICE_S6_B1 = 593
+"""Líneas físicas de `core/crypto/service.py` al cerrar A3 (medidas con `splitlines()`). El plan
+dice 556 (cifra anterior a A1 y A2); el tope real es el medido. Si la rama del puerto no cabe, se
+extrae `core/crypto/service_pending.py` con decisión del slice (plan, paso 60)."""
+ARCHIVOS_NUEVOS_DE_B1 = ("router", "inventory", "schemas", "reencryptor")
+MAX_LINEAS_ARCHIVO_NUEVO_B1 = 400
+
+
+def test_s6_b1_service_de_crypto_no_crece() -> None:
+    lineas = len((SRC / "core/crypto/service.py").read_text(encoding="utf-8").splitlines())
+    assert lineas <= MAX_LINEAS_SERVICE_S6_B1, lineas
+
+
+def test_s6_b1_los_archivos_nuevos_de_crypto_miden_menos_de_400() -> None:
+    largos = {}
+    for nombre in ARCHIVOS_NUEVOS_DE_B1:
+        ruta = SRC / "core/crypto" / f"{nombre}.py"
+        assert ruta.is_file(), f"falta core/crypto/{nombre}.py"
+        lineas = len(ruta.read_text(encoding="utf-8").splitlines())
+        if lineas >= MAX_LINEAS_ARCHIVO_NUEVO_B1:
+            largos[nombre] = lineas
+    assert largos == {}, largos

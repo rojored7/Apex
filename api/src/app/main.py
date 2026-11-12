@@ -38,10 +38,11 @@ from app.core import db, health
 from app.core.alerts_telegram import flush as flush_telegram
 from app.core.alerts_telegram import register_from_settings as register_telegram_sink
 from app.core.alerts_telegram import set_enabled_gate as set_telegram_gate
-from app.core.audit import install_audit_listeners
+from app.core.audit import install_audit_listeners, record
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
 from app.core.config import Settings, check_secrets_or_exit, get_settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.crypto import router as crypto_router
 from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider, current_provider, get_provider_named
@@ -383,6 +384,8 @@ def create_app(
 
     api = APIRouter(prefix=API_PREFIX)
     include_module_routers(api)
+    crypto_router.set_audit_writer(record)  # S6-D52: puerta de auditoría del router de llaves
+    api.include_router(crypto_router.router)  # S6-D12: explícito, como health
     api.include_router(health.router)
     app.include_router(api)
     app.include_router(health.router)

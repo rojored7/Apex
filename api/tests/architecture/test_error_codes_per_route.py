@@ -81,6 +81,8 @@ CON_LIMITE = {
     ("get", "/api/v1/audit/{seq}"),
     # S6-A3 (S6-D10): el estado de las firmas consume la misma `staff-read`.
     ("get", "/api/v1/audit/signatures/latest"),
+    # S6-B1 (US-143, S6-D13): el inventario de llaves consume `staff-read`.
+    ("get", "/api/v1/crypto/keys"),
     # S4A-B5 (S4A-D20, S4A-D45, M-1): el historial del socio consume la misma `staff-read`.
     ("get", "/api/v1/members/{member_id}/audit"),
     # S4A-B7 (S4A-D26, C8): editar, activar, desactivar y dar de baja un plan consumen
@@ -261,3 +263,16 @@ def test_las_exportaciones_declaran_sus_codigos_exactos(esquema: dict[str, Any],
     assert set(operacion["responses"]) == {"200", "401", "403", "409", "422", "429", "500", "503"}
     assert "text/csv" in operacion["responses"]["200"]["content"]
     assert ("get", ruta) in CON_LIMITE
+
+
+def test_s6_b1_el_inventario_de_llaves_declara_sus_codigos_exactos(
+    esquema: dict[str, Any],
+) -> None:
+    """S6-B1 (S6-D13): `GET /crypto/keys` publica 200, 401, 403 (solo admin), 422 (filtros) y 429
+    (`staff-read`), sin 404 ni 409, y el 503 nombra `busy` y `crypto_unavailable` como el resto de
+    las rutas con rol. El 503 `busy` por falta de la puerta de auditoría (S6-D52) llega con las
+    rutas auditadas de B3 y R1."""
+    operacion = esquema["paths"]["/api/v1/crypto/keys"]["get"]
+    assert set(operacion["responses"]) == {"200", "401", "403", "422", "429", "500", "503"}
+    descripcion = operacion["responses"]["503"]["description"]
+    assert "busy" in descripcion and "crypto_unavailable" in descripcion, descripcion

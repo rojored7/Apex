@@ -207,3 +207,133 @@ async def fila_sign(
     session.add(fila)
     await session.flush()
     return fila
+
+
+# Router de llaves y puerto `Reencryptor` (S6-B1; S6-D12, S6-D13, S6-D14, S6-D52) ----------------
+import secrets as _secrets  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
+from uuid import UUID  # noqa: E402
+
+from fastapi import FastAPI  # noqa: E402
+from httpx import AsyncClient, Response  # noqa: E402
+
+from app.core.crypto import reencryptor as reencryptor_mod  # noqa: E402
+from app.core.crypto import router as keys_router  # noqa: E402
+from tests.conftest import Cabeceras, CrearUsuario, UsuarioPrueba  # noqa: E402
+
+KEYS_URL = "/api/v1/crypto/keys"
+
+
+@dataclass
+class ReencryptorDoble:
+    """Implementación en memoria del `Protocol` `Reencryptor`, con contadores de llamadas."""
+
+    total: int = 7
+    pendientes: int = 0
+    migradas_por_lote: int = 0
+    llamadas: list[tuple[str, UUID | None, int | None]] = field(default_factory=list)
+
+    async def count_total(self, session: object) -> int:
+        self.llamadas.append(("count_total", None, None))
+        return self.total
+
+    async def count_pending(self, session: object, active_key_id: UUID) -> int:
+        self.llamadas.append(("count_pending", active_key_id, None))
+        return self.pendientes
+
+    async def reencrypt_batch(self, session: object, active_key_id: UUID, batch_size: int) -> int:
+        self.llamadas.append(("reencrypt_batch", active_key_id, batch_size))
+        migradas = min(self.migradas_por_lote, batch_size)
+        self.pendientes = max(self.pendientes - migradas, 0)
+        return migradas
+
+    por_llave: int = 0
+
+    async def count_by_key(self, session: object, key_id: UUID) -> int:
+        self.llamadas.append(("count_by_key", key_id, None))
+        return self.por_llave
+
+    def nombres(self) -> list[str]:
+        return [nombre for nombre, _, _ in self.llamadas]
+
+
+@pytest.fixture(autouse=True)
+def _registro_de_reencryptor_limpio() -> Iterator[None]:
+    """S6-B1: ningún registro del puerto sobrevive a su prueba."""
+    try:
+        yield
+    finally:
+        reencryptor_mod._reset_for_tests()
+
+
+@pytest.fixture
+def reencryptor_doble(monkeypatch: pytest.MonkeyPatch) -> ReencryptorDoble:
+    """Un puerto de prueba SIN registrar, con el registro del proceso aislado (vacío) mientras
+    dura la prueba: la prueba lo registra con `register_reencryptor(clase, doble)`."""
+    monkeypatch.setattr(reencryptor_mod, "_registered", {})
+    return ReencryptorDoble()
+
+
+@pytest.fixture
+def sin_audit_writer(api_prueba: FastAPI) -> Iterator[None]:
+    """La app de `api_prueba` sin la puerta de auditoría del router de llaves (S6-D52); al salir
+    se deja como la dejó `create_app`."""
+    keys_router.set_audit_writer(None)
+    try:
+        yield
+    finally:
+        keys_router.set_audit_writer(None)
+
+
+@dataclass
+class ClienteAdmin:
+    """`GET` autenticado como admin sobre la app real (S6-D52: con la puerta cableada)."""
+
+    http: AsyncClient
+    admin: UsuarioPrueba
+    cabeceras: Cabeceras
+
+    async def get(self, ruta: str = KEYS_URL, **params: object) -> Response:
+        return await self.http.get(
+            ruta,
+            params={k: v for k, v in params.items() if v is not None},
+            headers=self.cabeceras(self.admin),
+        )
+
+
+@pytest.fixture
+async def cliente_admin(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> ClienteAdmin:
+    """Cliente admin de la app real: `create_app` cableó `set_audit_writer(audit.record)`."""
+    assert keys_router.audit_writer_registered(), "create_app no cableó set_audit_writer"
+    return ClienteAdmin(app_http, await usuario_real("admin"), cabeceras)
+
+
+async def llaves_mixtas(
+    session: AsyncSession, proveedor: LocalFileProvider
+) -> dict[str, CryptoKey]:
+    """Suma a las ocho llaves de `bus_listo` (5 `encrypt` y 3 `index`, todas `active`) una `sign`
+    `active` (`audit.signature`) y una `encrypt` `decrypt_only` (`member.email`, versión 2): nueve
+    `active` y diez filas en total. Devuelve `{"sign": ..., "decrypt_only": ...}`."""
+    firma = await fila_sign(session, proveedor)
+    anterior = CryptoKey(
+        purpose="encrypt",
+        data_class="member.email",
+        algorithm="A256GCM",
+        provider="local",
+        version=2,
+        state="decrypt_only",
+        wrapped_material=await proveedor.wrap(bytearray(_secrets.token_bytes(32))),
+        created_by=SYSTEM_USER_ID,
+    )
+    session.add(anterior)
+    await session.flush()
+    return {"sign": firma, "decrypt_only": anterior}
+
+
+@pytest.fixture
+async def llaves_mixtas_listas(
+    session: AsyncSession, bus_listo: object, proveedor_local: LocalFileProvider
+) -> dict[str, CryptoKey]:
+    return await llaves_mixtas(session, proveedor_local)

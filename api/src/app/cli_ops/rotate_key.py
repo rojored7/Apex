@@ -7,7 +7,8 @@ Usa `crypto_runtime`, un admin activo en `--as` y `core.crypto.service` (siempre
   `rotate-key: llave anterior en decrypt_only; retirar con retire-key` (retirar es otro comando).
 - `--reason` obligatorio (<= 200 caracteres, sin control, correo ni números largos); queda en la
   auditoría (`update` sobre `crypto.crypto_keys`); ninguna salida lo repite.
-- `attachment.sensitive`: 2, `esa clase no admite rotación hasta EP-18 (G-09)`.
+- clase que cifra sin columnas ni puerto `Reencryptor` (`attachment.sensitive` hasta C1): 2 con
+  `rotation_not_supported`, el error del service (S6-B1, S6-D14).
 - Candado de la clase tomado por otro proceso: 1, `rotación en curso`. `DatabaseBusy`: un intento y
   tres reintentos con `asyncio.sleep(1)`; luego 1. Falla en un lote: `failed`, 1, repetir reanuda.
 - `--provider <local|openbao>` (solo `audit.signature`, S6-D81): llave de firma nueva allí; la
@@ -49,7 +50,6 @@ from app.core.db import DatabaseBusy
 
 COMMAND = "rotate-key"
 AUDIT_TABLE = "crypto.crypto_keys"
-ATTACHMENT_CLASS = "attachment.sensitive"
 RETRIES = 3
 WAIT_S = 1
 MAX_BATCH_SIZE = 5000
@@ -149,6 +149,8 @@ async def _rotate_data(
         vacias += 1  # filas saltadas por estar bloqueadas: se espera y se vuelve a pasar
         await asyncio.sleep(WAIT_S)
         if vacias >= EMPTY_PASSES:
+            with suppress(Exception):  # el job queda `failed`; repetir el comando lo reanuda
+                await service.fail_job(job_id, "pending_records")
             raise _stop(
                 "quedan filas con la llave anterior (bloqueadas por otra escritura); repita"
             )
@@ -204,8 +206,6 @@ async def _rotate(
 def _check_arguments(
     data_class: str, reason: str, index: bool, size: int, provider: str | None
 ) -> str:
-    if data_class == ATTACHMENT_CLASS:
-        reject("esa clase no admite rotación hasta EP-18 (G-09)", COMMAND)
     try:
         spec = get_spec(data_class)
     except CryptoError:
@@ -255,5 +255,6 @@ def register(app: typer.Typer) -> None:
         except service.RotationInProgress:
             raise _stop("rotación en curso en otro proceso; espere a que termine") from None
         except CryptoError as error:
-            raise _stop(f"error de llaves ({error.code})") from None
+            codigo = 2 if error.code == "rotation_not_supported" else 1
+            raise _stop(f"error de llaves ({error.code})", codigo) from None
         _say(FINAL)

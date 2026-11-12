@@ -293,3 +293,24 @@ alembic_version = 0021_audit_signatures
 - Verificación con firmas (8280, admin): `POST /audit/verify` 200 `ok: true`, `rows_checked 18`, `signatures_checked 2`, `signatures_valid 2`, `last_valid_signature_algorithm Ed25519`; `GET /audit/signatures/latest` `latest` y `last_valid` con `through_seq 14`, `Ed25519`, `is_late false`, `state ok`; `GET /audit/verify/last` con los campos nuevos; `grep -c 'vault:|apex-sign-audit|public_key'` = 0 en las tres respuestas. Custodio sellado (`restart openbao`): `POST /audit/verify` 200 con 2 de 2 válidas igual que desellado (D81/D104); `tools verify-audit --as admin@apex.test` exit 0 («Cadena íntegra: 20 registros… Firmas: 2 de 2 válidas, la última hasta el seq 14»); `--run-once sign_audit` exit 1 con `crypto_unavailable`, 3 intentos y alertas `crypto_sealed` + `audit_sign_failed`; desellado y `crypto: ok`. Cadena reescrita y firma inválida: solo en `tests/audit/test_verify_signatures.py` (db_test), nunca contra el ensayo. Evidencia `paso55-*`.
 - Limpieza (regla del usuario del 2026-11-11): ensayo detenido (`stop`), residuos de `compose run` eliminados, caché de la VM vaciada; corriendo solo `apex` (7) e `infra`. Incidente repetido: el DevOps volvió a imprimir en su propia salida las cinco llaves de desello del ensayo (custodio efímero; no salieron a ningún servicio): los briefs de DevOps prohíben desde ahora `cat`/`sed` sobre `init.txt` y exigen leer cada llave a un archivo temporal 600.
 
+
+
+## B1 · Rojo
+
+- Stubs: `core/crypto/{router,inventory,schemas,reencryptor}.py` (NotImplementedError), `__init__.py` vacío (0 bytes), `main.py` (`set_audit_writer(record)` e `include_router(crypto_router.router)` antes de `health`), `CryptoCode` suma `rotation_not_supported`. `service.py` y `rotate_key.py` sin tocar (593 líneas: tope fijado en 593, el plan decía 556).
+- E6: `responses_for(*codes)` solo valida contra `_DESCRIPCIONES` y devuelve `ERROR_RESPONSES[c]`; no distingue `core/` de módulos, así que el router de llaves usa `responses_for(401, 403)` en el `APIRouter` y `responses_for(422, 429)` por ruta. El gancho del OpenAPI agrega 500 y 503 (descripción con `busy` y `crypto_unavailable`) a toda ruta con rol; `core/health.py` no lo usa (su 503 es `HealthOut`). Confirmado por `test_s6_b1_el_inventario_de_llaves_declara_sus_codigos_exactos`.
+- E7: `main.create_app` incluye `health.router` dos veces (dentro de `api` con prefijo y en la raíz). El router de llaves entra solo bajo `/api/v1`, explícito, con `api.include_router(crypto_router.router)`; `effective_routes` lo ve igual que a los de módulos.
+- Contratos que el Rojo asumió (el Verde puede discutirlos): respuesta `KeysPage(Page[CryptoKeyOut])` + `summary`; `age_days` = días completos entre `created_at` y `rotated_at` (o `now`), mínimo 0; `operations_today` por día de Bogotá con `current_clock()`; `running_jobs` = estado `running`; `q` y `data_class` filtran sobre `data_class` (exacto / contiene sin comodines); registro duplicado = `ValueError` o `CryptoError`; el puerto gana sobre las columnas; `finish_rotation` con pendientes deja el job `failed`; registro del puerto en `reencryptor._registered`; `router.audit_writer_registered()` y `router._audit_writer`.
+
+## B1 · Verde
+
+- Implementado: `core/crypto/{inventory,schemas,router,reencryptor}.py` (sin stubs), `core/crypto/service_pending.py` (decisión del slice: `blob_key`, `count_where`, `require_rotatable` y `pending_total` salen de `service.py` para dar cabida a la rama del puerto; `service.py` baja de 593 a 582 líneas), `service.py` (`start_rotation` → `rotation_not_supported` sin puerto ni columnas; `reencrypt_batch` delega en el puerto; `finish_rotation` recuenta por el puerto y, con pendientes, `fail_job("pending_records")` y devuelve `False`; las columnas siguen como antes), `cli_ops/rotate_key.py` (sin `ATTACHMENT_CLASS`; `rotation_not_supported` sale 2).
+- `finish_rotation` mantiene el `FOR UPDATE` de la llave activa que ya existía (el brief decía `FOR SHARE`; `FOR UPDATE` es más fuerte y no cambia pruebas).
+- P-API: `docs/openapi.json` y `web/src/core/api/types.ts` regenerados. Docs: `docs/operacion/llaves.md`, `CLAUDE.md` regla 4, BRECHAS 13.26.
+
+## B1 · Verde, ronda 2 (revisión de seguridad 0C/1H/2M/1L)
+
+- HIGH: `Reencryptor.count_by_key`; `count_rows_by_key` suma la entrada `objetos` si la clase tiene puerto; `retire_key` se niega con pendientes. Pruebas en `test_retire_key.py` y `test_retire_key_cli.py`.
+- MEDIUM 1: `finish_rotation` devuelve `False` sin marcar el job (puerto y columnas igual); el CLI marca `failed` (`pending_records`) y sale 1 al agotar `EMPTY_PASSES`. La prueba del Rojo en `test_reencryptor.py` exigía `failed` dentro de `finish_rotation`: cambiada a esta regla.
+- MEDIUM 2: `reencryptor._reset_for_tests()` y fixture autouse en `tests/crypto/conftest.py`.
+- LOW aceptado sin cambio: `records_count` sin caché; medir en C1 con el puerto de S3.

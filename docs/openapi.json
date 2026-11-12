@@ -459,6 +459,101 @@
         "title": "CredentialsPresent",
         "type": "object"
       },
+      "CryptoKeyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "age_days": {
+            "title": "Age Days",
+            "type": "integer"
+          },
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_class": {
+            "title": "Data Class",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "local",
+              "openbao"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "encrypt",
+              "index",
+              "sign"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "records_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records Count"
+          },
+          "rotated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated At"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "decrypt_only",
+              "retired"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "data_class",
+          "algorithm",
+          "version",
+          "state",
+          "provider",
+          "created_at",
+          "rotated_at",
+          "age_days",
+          "records_count"
+        ],
+        "title": "CryptoKeyOut",
+        "type": "object"
+      },
       "DashboardOut": {
         "additionalProperties": false,
         "description": "`GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.",
@@ -1147,6 +1242,71 @@
           "expires_at"
         ],
         "title": "IssuedLinkOut",
+        "type": "object"
+      },
+      "KeysPage": {
+        "additionalProperties": false,
+        "description": "`Page` de llaves más el bloque `summary` (S6-D13).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CryptoKeyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/KeysSummary"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "summary"
+        ],
+        "title": "KeysPage",
+        "type": "object"
+      },
+      "KeysSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "active_count": {
+            "title": "Active Count",
+            "type": "integer"
+          },
+          "operations_today": {
+            "title": "Operations Today",
+            "type": "integer"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderSummary"
+          },
+          "running_jobs": {
+            "title": "Running Jobs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_count",
+          "operations_today",
+          "running_jobs",
+          "provider"
+        ],
+        "title": "KeysSummary",
         "type": "object"
       },
       "LoginIn": {
@@ -3921,6 +4081,34 @@
         "title": "PrivacyView",
         "type": "object"
       },
+      "ProviderSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "sealed",
+              "unreachable",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "names",
+          "state"
+        ],
+        "title": "ProviderSummary",
+        "type": "object"
+      },
       "RefreshOut": {
         "additionalProperties": false,
         "properties": {
@@ -6209,6 +6397,213 @@
         "summary": "Reset",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/crypto/keys": {
+      "get": {
+        "operationId": "list_crypto_keys_api_v1_crypto_keys_get",
+        "parameters": [
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "encrypt",
+                    "index",
+                    "sign"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purpose"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "decrypt_only",
+                    "retired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "local",
+                    "openbao"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "data_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[a-z_]+\\.[a-z_]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Class"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeysPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Crypto Keys",
+        "tags": [
+          "crypto"
         ]
       }
     },

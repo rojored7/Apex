@@ -602,3 +602,37 @@ async def test_retire_key_de_una_llave_sign_referenciada_sale_2_y_no_cambia_el_e
             )
         ]
     assert estados == [(1, "decrypt_only"), (2, "active")]
+
+
+@pytest.mark.parametrize(
+    ("objetos", "salida", "estado"), [(3, 2, "decrypt_only"), (0, 0, "retired")]
+)
+async def test_retire_key_suma_los_objetos_del_puerto_a_las_filas(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    rotada: dict[str, Any],
+    admin: Any,
+    manifiesto_reciente: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    objetos: int,
+    salida: int,
+    estado: str,
+) -> None:
+    """S6-B1 (revisión de seguridad): una llave con objetos del puerto `Reencryptor` (archivos
+    fuera de columnas) no se retira; con 0 se retira."""
+    from app.core.crypto import reencryptor as puerto_mod
+    from tests.crypto._rotacion import CLASE_ROTADA
+    from tests.crypto.conftest import ReencryptorDoble
+
+    monkeypatch.setattr(
+        puerto_mod, "_registered", {CLASE_ROTADA: ReencryptorDoble(por_llave=objetos)}
+    )
+    await _con_verify(rotacion_lista, admin)
+
+    resultado = _retirar(
+        settings_prueba, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto_reciente)
+    )
+
+    assert resultado.exit_code == salida, resultado.output
+    assert f"retire-key: filas_negocio={objetos}" in resultado.output
+    assert await _estado(rotacion_lista) == [(1, estado), (2, "active")]

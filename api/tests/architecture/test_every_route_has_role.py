@@ -153,3 +153,33 @@ def test_las_rutas_de_pagos_existen_y_exigen_rol(
     assert len(registrar) == 1 and registrar[0].methods == {"POST"}
     assert route_has_role_dependency(registrar[0])
     assert ("POST", pago) not in PUBLIC_ROUTES
+
+
+def test_s6_b1_las_rutas_de_llaves_exigen_admin_y_no_son_publicas(
+    tmp_path: Path, settings_prueba: Settings, claves_prueba: Path
+) -> None:
+    """S6-B1 (S6-D12): `GET /crypto/keys` se publica con rol, solo admin, y no entra a
+    `PUBLIC_ROUTES`. Toda ruta `/crypto/*` exige `AdminDep` (el router no tiene rutas de coach)."""
+    from fastapi.dependencies.models import Dependant
+
+    from app.core.security import route_has_role_dependency
+
+    def roles_de(dependant: Dependant) -> set[str]:
+        roles: set[str] = set()
+        for dep in dependant.dependencies:
+            marca = getattr(dep.call, "__apex_roles__", None)
+            if marca is not None:
+                roles |= set(marca)
+            roles |= roles_de(dep)
+        return roles
+
+    app = create_app(
+        _produccion(tmp_path, settings_prueba, claves_prueba), run_migrations_on_startup=False
+    )
+    app.openapi()
+    rutas = [r for r in effective_routes(app)[0] if r.path.startswith("/api/v1/crypto/")]
+    assert [r.path for r in rutas] == ["/api/v1/crypto/keys"]
+    for ruta in rutas:
+        assert route_has_role_dependency(ruta), ruta.path
+        assert roles_de(ruta.dependant) == {"admin"}, ruta.path
+        assert not any((m, ruta.path) in PUBLIC_ROUTES for m in ruta.methods)

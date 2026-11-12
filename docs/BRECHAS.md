@@ -598,7 +598,7 @@ El Sprint 5 (v0.2) construye en el front las pantallas de avisos, la pestaña Ca
 
 El Sprint 6 (v0.3) construye en el front el estado de la firma en Auditoría, la pantalla Llaves, la foto y la autorización de datos en `Socio_Form`, la pestaña Adjuntos y la tarjeta de socios sin autorización. Orden de los slices del front: F1, F3, F4, F5 y F2 (F2 tras el checkpoint de R1; S6-D70). Fuente de verdad: `docs/design/` y `docs/design/ROUTES.md`. Las diferencias de contrato se cerraron en T-DOC (S6-W0-1, `docs/ddd/DECISIONES.md`, «Contradicciones de contrato cerradas en T-DOC»).
 
-Arrastradas del §13: la 13.26 se cierra con el Sprint 6 (el aviso de custodio ya existe; el sprint no lo cambia); la 13.6 (logo del recibo), la 13.10 («Exportar rango» de Auditoría) y la 13.11 (`display_name`) siguen abiertas con su dueño.
+Arrastradas del §13: la 13.26 queda cerrada en S6-B1 (el aviso de custodio ya existe; el estado del proveedor se lee en `GET /crypto/keys`, `summary.provider.state`, y la pantalla Llaves llega en F3); la 13.6 (logo del recibo), la 13.10 («Exportar rango» de Auditoría) y la 13.11 (`display_name`) siguen abiertas con su dueño.
 
 | # | Archivo | Brecha | Slice | Estado |
 |---|---------|--------|-------|--------|

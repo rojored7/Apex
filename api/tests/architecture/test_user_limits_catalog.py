@@ -250,7 +250,12 @@ def analizar(fuente: str, archivo: str) -> Hallazgos:
 
 def _routers() -> Hallazgos:
     total = Hallazgos([], [], set(), set())
-    for router in sorted(MODULES.glob("*/router.py")):
+    # S6-B1 (S6-D12): el router de llaves vive en `core/crypto/` y también consume cubetas.
+    routers = [
+        *sorted(MODULES.glob("*/router.py")),
+        MODULES.parent / "core" / "crypto" / "router.py",
+    ]
+    for router in routers:
         parcial = analizar(router.read_text(encoding="utf-8"), router.parent.name + "/router.py")
         total.enforce_de_usuario.extend(parcial.enforce_de_usuario)
         total.buckets_invalidos.extend(parcial.buckets_invalidos)

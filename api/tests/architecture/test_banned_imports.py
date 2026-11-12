@@ -117,3 +117,16 @@ def test_el_analizador_respeta_core_crypto() -> None:
     assert is_allowed((APP / "core" / "security.py").relative_to(SRC).as_posix())
     assert not is_allowed((APP / "core" / "audit.py").relative_to(SRC).as_posix())
     assert not is_allowed("app/modules/members/service.py")
+
+
+def test_s6_b1_router_e_inventario_de_llaves_no_importan_primitivas() -> None:
+    """S6-B1 (S6-D12, S6-D44): `core/crypto` está dentro de la lista blanca del lint, así que el
+    router y el inventario se miden como si estuvieran fuera del bus: ni `cryptography`, ni
+    `hashlib`, ni `hmac`, ni `jwt`, ni `argon2`, ni `oqs`."""
+    for nombre in ("router", "inventory", "schemas", "reencryptor"):
+        ruta = APP / "core" / "crypto" / f"{nombre}.py"
+        assert ruta.is_file(), f"falta core/crypto/{nombre}.py"
+        fuente = ruta.read_text(encoding="utf-8")
+        assert find_banned_imports(fuente, f"app/modules/_como_fuera_del_bus/{nombre}.py") == [], (
+            nombre
+        )

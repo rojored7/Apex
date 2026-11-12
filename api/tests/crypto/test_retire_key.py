@@ -359,3 +359,29 @@ async def test_recent_kek_verify_acepta_la_fila_buena_entre_filas_malas(
         assert await recent_kek_verify(sesion, within=VENTANA) is False
         await verify_reciente(sesion, PERSONA, edad=timedelta(minutes=5))
         assert await recent_kek_verify(sesion, within=VENTANA) is True
+
+
+@pytest.mark.parametrize("objetos", [3, 0])
+async def test_retire_key_cuenta_los_objetos_del_puerto_y_se_niega_con_pendientes(
+    rotacion_lista: Fabrica, auditoria_limpia: None, monkeypatch: pytest.MonkeyPatch, objetos: int
+) -> None:
+    """S6-B1 (revisión de seguridad): `count_rows_by_key` suma `count_by_key` del puerto bajo la
+    entrada `objetos`; con objetos pendientes `retire_key` se niega, con 0 retira."""
+    from app.core.crypto import reencryptor as puerto_mod
+    from tests.crypto._rotacion import CLASE_ROTADA
+    from tests.crypto.conftest import ReencryptorDoble
+
+    await rotar(rotacion_lista)  # v1 `decrypt_only` sin filas en columnas
+    async with rotacion_lista() as sesion:
+        v1 = (await llaves_de(sesion))[0]
+    doble = ReencryptorDoble(por_llave=objetos)
+    monkeypatch.setattr(puerto_mod, "_registered", {CLASE_ROTADA: doble})
+
+    assert (await _contar_filas(rotacion_lista, v1.id))["objetos"] == objetos
+    if objetos:
+        with pytest.raises(ValueError):
+            await _retirar(rotacion_lista, v1.id, 0)
+        assert await _estado(rotacion_lista) == [(1, "decrypt_only"), (2, "active")]
+    else:
+        assert await _retirar(rotacion_lista, v1.id, 0) == 0
+        assert await _estado(rotacion_lista) == [(1, "retired"), (2, "active")]

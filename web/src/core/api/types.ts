@@ -211,6 +211,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/crypto/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Crypto Keys */
+        get: operations["list_crypto_keys_api_v1_crypto_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard": {
         parameters: {
             query?: never;
@@ -1322,6 +1339,46 @@ export interface components {
             /** Telegram */
             telegram: boolean;
         };
+        /** CryptoKeyOut */
+        CryptoKeyOut: {
+            /** Age Days */
+            age_days: number;
+            /** Algorithm */
+            algorithm: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Data Class */
+            data_class: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "local" | "openbao";
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "encrypt" | "index" | "sign";
+            /** Records Count */
+            records_count: number | null;
+            /** Rotated At */
+            rotated_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "decrypt_only" | "retired";
+            /** Version */
+            version: number;
+        };
         /**
          * DashboardOut
          * @description `GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.
@@ -1601,6 +1658,31 @@ export interface components {
             purpose: "activate" | "reset";
             /** Url */
             url: string;
+        };
+        /**
+         * KeysPage
+         * @description `Page` de llaves más el bloque `summary` (S6-D13).
+         */
+        KeysPage: {
+            /** Items */
+            items: components["schemas"]["CryptoKeyOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            summary: components["schemas"]["KeysSummary"];
+            /** Total */
+            total: number;
+        };
+        /** KeysSummary */
+        KeysSummary: {
+            /** Active Count */
+            active_count: number;
+            /** Operations Today */
+            operations_today: number;
+            provider: components["schemas"]["ProviderSummary"];
+            /** Running Jobs */
+            running_jobs: number;
         };
         /** LoginIn */
         LoginIn: {
@@ -2640,6 +2722,16 @@ export interface components {
              * @default 5
              */
             retention_years: number;
+        };
+        /** ProviderSummary */
+        ProviderSummary: {
+            /** Names */
+            names: string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "sealed" | "unreachable" | "unknown";
         };
         /** RefreshOut */
         RefreshOut: {
@@ -3914,6 +4006,89 @@ export interface operations {
             };
             /** @description Error inesperado */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_crypto_keys_api_v1_crypto_keys_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                purpose?: ("encrypt" | "index" | "sign") | null;
+                state?: ("active" | "decrypt_only" | "retired") | null;
+                provider?: ("local" | "openbao") | null;
+                data_class?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeysPage"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

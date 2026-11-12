@@ -76,3 +76,18 @@ def test_las_dos_exportaciones_tienen_rol_y_no_store(settings_prueba: Settings) 
         assert len(halladas) == 1, sufijo
         assert route_has_role_dependency(halladas[0]), sufijo
         assert any(n.call is no_store for n in _nodos(halladas[0].dependant)), sufijo
+
+
+def test_s6_b1_el_inventario_de_llaves_tiene_rol_de_admin_y_no_store(
+    settings_prueba: Settings,
+) -> None:
+    """S6-B1 (US-143, S6-D12): `GET /crypto/keys` existe una vez bajo `/api/v1`, exige rol y lleva
+    la dependencia `no_store`; el router lo declara en el `APIRouter`, como `audit`."""
+    from app.core.crypto.router import router
+
+    assert any(d.dependency is no_store for d in router.dependencies)
+    rutas, _ = effective_routes(create_app(settings_prueba, run_migrations_on_startup=False))
+    halladas = [r for r in rutas if r.path == "/api/v1/crypto/keys" and "GET" in r.methods]
+    assert len(halladas) == 1
+    assert route_has_role_dependency(halladas[0])
+    assert any(n.call is no_store for n in _nodos(halladas[0].dependant))

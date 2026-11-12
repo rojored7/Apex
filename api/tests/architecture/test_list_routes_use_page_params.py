@@ -201,3 +201,40 @@ def test_las_exportaciones_csv_son_la_excepcion_nombrada_a_la_paginacion(
         assert "text/csv" in esquema["paths"][ruta]["get"]["responses"]["200"]["content"]
         assert not _usa_page_params(rutas[ruta].dependant)
         assert not {"limit", "offset"} & _query_params(rutas[ruta].dependant)
+
+
+def test_s6_b1_el_inventario_de_llaves_pagina_y_filtra_por_data_class(
+    settings_prueba: Settings,
+) -> None:
+    """S6-B1 (S6-D13): `GET /crypto/keys` responde un `Page` de llaves con `summary` (por eso su
+    esquema no se llama `Page_...` y el recorrido genérico no lo toma por lista): se comprueba
+    aquí, con `PageParams`, `q` (sobre `data_class`), los cuatro filtros, `limit` 1 a 200 y los
+    cuatro campos de `Page` más `summary`."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, _ = problemas_de_listas(app)
+    assert problemas == []
+    esquema = app.openapi()
+    ruta = next(
+        r
+        for r in effective_routes(app)[0]
+        if r.path == "/api/v1/crypto/keys" and "GET" in r.methods
+    )
+    assert _usa_page_params(ruta.dependant)
+    assert _query_params(ruta.dependant) == {
+        "limit",
+        "offset",
+        "q",
+        "purpose",
+        "state",
+        "provider",
+        "data_class",
+    }
+    operacion = esquema["paths"]["/api/v1/crypto/keys"]["get"]
+    assert _limite_maximo(operacion) == MAX_LIMIT
+    parametros = {p["name"]: p for p in operacion["parameters"] if p["in"] == "query"}
+    assert parametros["limit"]["schema"]["minimum"] == 1
+    q = parametros["q"]["schema"]
+    assert any(v.get("maxLength") == 100 for v in q.get("anyOf", [q]))
+    nombre = _respuesta_200(operacion)["$ref"].removeprefix(SCHEMA_REF)
+    propiedades = esquema["components"]["schemas"][nombre]["properties"]
+    assert set(propiedades) == {"items", "total", "limit", "offset", "summary"}

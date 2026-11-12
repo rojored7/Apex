@@ -423,3 +423,80 @@ def test_audit_sign_no_crea_ciclos_con_el_bus() -> None:
     path = CORE / "audit_sign.py"
     assert path.is_file()
     assert "app.core.crypto.bus" in _imports_de_modulo(path)
+
+
+# S6-B1 (S6-D12, S6-D44, S6-D52): el router de llaves vive en `core/crypto` sin conocer módulos ---
+
+ARCHIVOS_DE_LLAVES_B1 = ("router.py", "inventory.py", "schemas.py", "reencryptor.py")
+PROHIBIDOS_DE_LLAVES_B1 = (
+    "app.modules",
+    "app.core.audit",
+    "app.core.audit_verify",
+    "app.core.audit_sign",
+)
+
+
+def _prohibidos_de_llaves(fuente: str) -> list[str]:
+    arbol = ast.parse(fuente)
+    nombres: list[str] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            nombres.extend(a.name for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            nombres.append(nodo.module)
+            if nodo.module == "app.core":
+                nombres.extend(f"app.core.{a.name}" for a in nodo.names)
+    return [n for n in nombres if n.startswith(PROHIBIDOS_DE_LLAVES_B1)]
+
+
+def test_s6_b1_router_inventario_schemas_y_puerto_no_importan_modulos_ni_audit() -> None:
+    """Los cuatro archivos existen (si no, la regla no vigila) y no importan `app.modules` ni
+    `core.audit*`: la auditoría llega por el puerto `set_audit_writer` (S6-D52)."""
+    for nombre in ARCHIVOS_DE_LLAVES_B1:
+        ruta = CORE / "crypto" / nombre
+        assert ruta.is_file(), f"falta core/crypto/{nombre}"
+        assert _prohibidos_de_llaves(ruta.read_text(encoding="utf-8")) == [], nombre
+
+
+def test_s6_b1_control_un_import_de_audit_o_modules_se_detecta() -> None:
+    assert _prohibidos_de_llaves("from app.core.audit import record\n") == ["app.core.audit"]
+    assert _prohibidos_de_llaves("from app.core import audit_sign\n") == ["app.core.audit_sign"]
+    assert _prohibidos_de_llaves("def f():\n    import app.modules.members.service\n") == [
+        "app.modules.members.service"
+    ]
+    assert _prohibidos_de_llaves("from app.core.crypto.service import x\n") == []
+
+
+def test_s6_b1_core_crypto_init_esta_vacio() -> None:
+    """S6-D12: la docstring de 6 líneas desaparece; un `__init__` con código crearía ciclos
+    entre `service`, `bus` y el router."""
+    ruta = CORE / "crypto" / "__init__.py"
+    assert ruta.is_file()
+    assert ruta.read_bytes() == b""
+
+
+def test_s6_b1_solo_main_importa_el_router_de_llaves() -> None:
+    """Nadie más en `src/app` (ni `core.security`, ni los módulos, ni el CLI, ni el worker)
+    importa `core.crypto.router`; `main.py` sí, de forma explícita."""
+    importadores: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        if path.relative_to(SRC).as_posix() == "core/crypto/router.py":
+            continue
+        arbol = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.ImportFrom) and nodo.module:
+                nombres = {nodo.module} | {f"{nodo.module}.{a.name}" for a in nodo.names}
+            elif isinstance(nodo, ast.Import):
+                nombres = {a.name for a in nodo.names}
+            else:
+                continue
+            if "app.core.crypto.router" in nombres:
+                importadores.append(path.relative_to(SRC).as_posix())
+    assert sorted(set(importadores)) == ["main.py"]
+
+
+def test_s6_b1_core_security_no_importa_el_router_de_llaves() -> None:
+    assert not [n for n in _imports(CORE / "security.py") if n.startswith("app.core.crypto.router")]
+    assert "app.core.crypto" in {
+        n.rpartition(".")[0] if n.endswith(".router") else n for n in _imports(SRC / "main.py")
+    }, "main.py debe importar core.crypto (router) de forma explícita"

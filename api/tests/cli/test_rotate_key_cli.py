@@ -8,7 +8,8 @@ Contrato de salida (stdout/stderr juntos en `resultado.output`):
 - sin `--reason`, en blanco, con correo/`\\d{6,}`/control o de más de 200 caracteres: 2 y un texto
   con `--reason`, sin tocar llaves; sin `--as`: `--as es obligatorio`; `--as` de un coach:
   `no existe un admin activo`;
-- `attachment.sensitive`: 2 con `esa clase no admite rotación hasta EP-18 (G-09)`;
+- `attachment.sensitive` (cifra, sin columnas ni puerto; S6-B1): 2 con `rotation_not_supported`,
+  el error del service (ya no hay constante en el CLI);
 - `--db-timeouts off` con `ENV=production`: 2 y `no se acepta con ENV=production`;
 - candado tomado por otro proceso: 1 y `rotación en curso`;
 - `DatabaseBusy` al iniciar: tres reintentos con espera de 1 s (cuatro intentos) y luego 1 con
@@ -32,9 +33,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cli import app
 from app.core.audit import AuditEntry
 from app.core.config import Settings
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import service
+from app.core.crypto.bootstrap import ensure_keys
 from app.core.crypto.errors import CryptoError
+from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.models import CryptoJob
+from app.core.crypto.registry import DataClassSpec, override_registry
 from app.core.db import DatabaseBusy
 from tests.cli._apoyo import correr
 from tests.conftest import CLAVE_PRUEBA
@@ -44,6 +49,7 @@ from tests.crypto._rotacion import (
     blobs_de_rotacion,
     filas_rotacion,
     llaves_de,
+    registro_de_rotacion,
 )
 from tests.crypto._rotacion_flujo import todo_se_lee
 from tests.factories.users import make_user
@@ -346,24 +352,39 @@ async def test_as_de_un_coach_sale_2(
     await _sin_cambios(rotacion_lista)
 
 
-async def test_attachment_sensitive_sale_2_con_el_texto_de_g09(
+async def test_attachment_sensitive_sin_puerto_sale_2_con_el_error_del_service(
     settings_prueba: Settings,
     rotacion_lista: Fabrica,
+    proveedor_local: LocalFileProvider,
     admin: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    resultado = _rotar(
-        settings_prueba,
-        monkeypatch,
-        "attachment.sensitive",
-        "--reason",
-        MOTIVO,
-        "--as",
-        admin.email,
-    )
+    """S6-B1 (S6-D14): la constante `ATTACHMENT_CLASS` desaparece del CLI. La clase ya está en el
+    registro (C1 la suma; aquí se simula), cifra, no tiene columnas ni puerto: `start_rotation`
+    responde `rotation_not_supported` y el CLI sale 2 con ese código, sin job ni llave nueva."""
+    clase = DataClassSpec("attachment.sensitive", True, None, False, "str", ())
+    with override_registry({**registro_de_rotacion(), clase.name: clase}):
+        async with rotacion_lista() as sesion, sesion.begin():
+            with actor_scope(SYSTEM_USER_ID):
+                await ensure_keys(sesion, proveedor_local, lambda _n: proveedor_local)
 
-    assert resultado.exit_code == 2, resultado.output
-    assert "esa clase no admite rotación hasta EP-18 (G-09)" in resultado.output
+        resultado = _rotar(
+            settings_prueba,
+            monkeypatch,
+            clase.name,
+            "--reason",
+            MOTIVO,
+            "--as",
+            admin.email,
+        )
+
+        assert resultado.exit_code == 2, resultado.output
+        assert "rotation_not_supported" in resultado.output
+        assert "EP-18" not in resultado.output and "G-09" not in resultado.output
+        async with rotacion_lista() as sesion:
+            llaves = await llaves_de(sesion, "encrypt", clase.name)
+        assert [(k.version, k.state) for k in llaves] == [(1, "active")]
+        assert await _jobs(rotacion_lista) == []
     await _sin_cambios(rotacion_lista)
 
 
@@ -523,3 +544,36 @@ async def test_un_value_error_ajeno_de_la_rotacion_no_sale_2_ni_imprime_su_texto
 
     assert resultado.exit_code != 2, resultado.output
     assert "texto-del-proveedor-o-de-datos" not in resultado.output
+
+
+async def test_un_puerto_que_nunca_vacia_agota_las_pasadas_marca_failed_y_sale_1(
+    settings_prueba: Settings,
+    rotacion_lista: Fabrica,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S6-B1 (revisión de seguridad): `finish_rotation` no marca `failed` en el primer intento;
+    el CLI reintenta y, al agotar `EMPTY_PASSES`, deja el job `failed` con `pending_records`."""
+    from app.cli_ops import rotate_key as modulo
+    from app.core.crypto import reencryptor as puerto_mod
+    from tests.crypto.conftest import ReencryptorDoble
+
+    doble = ReencryptorDoble(pendientes=4, migradas_por_lote=0)
+    monkeypatch.setattr(puerto_mod, "_registered", {CLASE_ROTADA: doble})
+    esperas: list[float] = []
+
+    async def sin_dormir(segundos: float, *args: object) -> None:
+        esperas.append(segundos)
+
+    monkeypatch.setattr(asyncio, "sleep", sin_dormir)
+
+    resultado = _rotar(
+        settings_prueba, monkeypatch, CLASE_ROTADA, "--reason", MOTIVO, "--as", admin.email
+    )
+
+    assert resultado.exit_code == 1, resultado.output
+    assert "quedan filas con la llave anterior" in resultado.output
+    assert doble.nombres().count("count_pending") >= modulo.EMPTY_PASSES
+    jobs = await _jobs(rotacion_lista)
+    assert [(j.status, j.error) for j in jobs] == [("failed", "pending_records")]
+    assert await _llaves(rotacion_lista) == [(1, "decrypt_only"), (2, "active")]

@@ -561,3 +561,22 @@ def test_s6_b3_el_cbom_declara_su_formato_y_sus_algoritmos_fijos() -> None:
     funciones = {n.name for n in arbol.body if isinstance(n, ast.FunctionDef)}
     assert {"CBOM_FORMAT", "FIXED_ALGORITHMS"} <= asignados
     assert "build_cbom" in funciones
+
+
+def test_audit_exclude_no_acopla_core_audit_a_attachments_ni_a_crypto() -> None:
+    """S6-C1 (S6-D75): `core/audit.py` lee `__audit_exclude__` por `getattr` sobre el modelo, sin
+    importar `app.modules` (ni `attachments`) ni nada de `core/crypto` salvo `digest`."""
+    nombres = _imports(CORE / "audit.py")
+    assert not [n for n in nombres if n.startswith("app.modules")], nombres
+    assert {n for n in nombres if n.startswith("app.core.crypto")} <= {"app.core.crypto.digest"}
+
+
+def test_core_crypto_no_importa_el_modulo_attachments() -> None:
+    """El puerto `Reencryptor` es lo único que une el bus con los adjuntos (S6-D14)."""
+    violaciones = [
+        f"{p.name}: {n}"
+        for p in sorted((CORE / "crypto").rglob("*.py"))
+        for n in _imports(p)
+        if n.startswith("app.modules")
+    ]
+    assert violaciones == [], violaciones

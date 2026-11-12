@@ -173,7 +173,8 @@ def _data_class_command(ctx: typer.Context, data_class: str, actor: str | None) 
     informe = _run(ensure_data_class_run(settings, opciones, data_class, actor))
     frases = {"created": "creada", "completed": "completada", "exists": "ya existe"}
     typer.echo(
-        f"init-keys: {data_class}: {frases[informe.outcome]} la llave de firma "
+        f"init-keys: {data_class}: {frases[informe.outcome]} la llave de "
+        f"{'firma' if informe.purpose == 'sign' else 'cifrado'} "
         f"({informe.provider}, {informe.algorithm})"
     )
 

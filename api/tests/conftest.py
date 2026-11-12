@@ -347,6 +347,28 @@ LIMPIAR_SIGNATURES = (
 # `audit.signatures.key_id` es FK a `crypto_keys` (S6-A1): las firmas van antes que las llaves.
 LIMPIAR_LLAVES = (LIMPIAR_SIGNATURES, *LIMPIAR_LLAVES)
 
+# S6-C1 (S6-D25): los adjuntos que una prueba con commit real (`dos_sesiones`), la CLI o una corrida
+# cortada hayan dejado en `attachments.attachments`. La tabla nace en `0023_attachments`: mientras
+# no exista (Rojo de C1) no se toca. Sus tres triggers rechazan `UPDATE` ajeno, `DELETE` y
+# `TRUNCATE`: se apagan, se borra y se vuelven a encender UNO POR UNO con `ENABLE ALWAYS`
+# (S3-D49). Nunca `ENABLE TRIGGER USER` (`tests/migrations/test_triggers_siempre_activos.py`).
+TRIGGERS_DE_ATTACHMENTS = (
+    "attachments_guard_update",
+    "attachments_forbid_delete",
+    "attachments_forbid_truncate",
+)
+LIMPIAR_ATTACHMENTS = (
+    "DO $$ BEGIN IF to_regclass('attachments.attachments') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE attachments.attachments DISABLE TRIGGER USER; "
+    "DELETE FROM attachments.attachments; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE attachments.attachments ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_ATTACHMENTS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -365,6 +387,7 @@ LIMPIEZA_DE_SESION = (
     LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
     LIMPIAR_MEMBERSHIPS,  # S3-B1 (sección 0 del plan del Sprint 3): antes que socios y planes
     LIMPIAR_CHANNEL_PREFS,  # S5-B5: antes que los socios (FK RESTRICT)
+    LIMPIAR_ATTACHMENTS,  # S6-C1 (S6-D25)
     LIMPIAR_MEMBERS,  # E6 y plan, sección 2 (B7)
     LIMPIAR_PLANS,  # E6 y plan, sección 2 (B9)
     LIMPIAR_JOB_RUNS,  # S4A-D70 (plan del Sprint 4A, sección 2, B1)
@@ -760,6 +783,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_PAYMENTS))
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
         await conexion.execute(text(LIMPIAR_CHANNEL_PREFS))
+        await conexion.execute(text(LIMPIAR_ATTACHMENTS))  # S6-C1
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70

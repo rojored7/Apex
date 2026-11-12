@@ -367,3 +367,113 @@ def test_control_dependencias_declaradas_ve_runtime_extras_y_grupos() -> None:
 def test_control_un_import_de_multipart_se_detecta() -> None:
     assert terceros_importados("import python_multipart\n") == {"python_multipart"}
     assert terceros_importados("from multipart import parse\n") == {"multipart"}
+
+
+# S6-C1 (S6-D21, S6-D59, E1/E9): boto3 confinado y nada de spool de Starlette ---------------
+
+S3_PERMITIDO: Final = frozenset({"modules/attachments/storage/s3.py"})
+TERCEROS_S3: Final = ("boto3", "botocore")
+PROHIBIDOS_DOTTED: Final = (
+    "python_multipart",
+    "multipart",
+    "starlette.formparsers",
+    "starlette.datastructures.UploadFile",
+    "tempfile.SpooledTemporaryFile",
+)
+
+
+def nombres_dotted(fuente: str) -> set[str]:
+    """Todo nombre importado con ruta completa: `import a.b` -> `a.b`; `from a.b import c` ->
+    `a.b` y `a.b.c`; `import_module('a.b')` / `__import__('a.b')` -> `a.b`. Incluye los
+    relativos (sin resolver) y el uso por atributo de `tempfile.SpooledTemporaryFile(...)`."""
+    salida: set[str] = set()
+    arbol = ast.parse(fuente)
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            salida.update(a.name for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            base = nodo.module
+            salida.add(base)
+            salida.update(f"{base}.{a.name}" for a in nodo.names)
+        elif (
+            isinstance(nodo, ast.Call)
+            and nodo.args
+            and isinstance(nodo.args[0], ast.Constant)
+            and isinstance(nodo.args[0].value, str)
+            and (
+                (isinstance(nodo.func, ast.Attribute) and nodo.func.attr == "import_module")
+                or (isinstance(nodo.func, ast.Name) and nodo.func.id == "__import__")
+            )
+        ):
+            salida.add(nodo.args[0].value)
+        elif isinstance(nodo, ast.Attribute) and nodo.attr == "SpooledTemporaryFile":
+            salida.add("tempfile.SpooledTemporaryFile")
+    return salida
+
+
+def prohibidos_en(fuente: str) -> list[str]:
+    vistos = nombres_dotted(fuente)
+    return sorted(
+        p for p in PROHIBIDOS_DOTTED if any(v == p or v.startswith(f"{p}.") for v in vistos)
+    )
+
+
+@pytest.mark.parametrize("tercero", TERCEROS_S3)
+def test_boto3_y_botocore_solo_en_storage_s3(tercero: str) -> None:
+    assert importadores(tercero) <= S3_PERMITIDO, importadores(tercero)
+
+
+def test_storage_s3_existe_y_sus_imports_de_boto3_son_perezosos() -> None:
+    """S6-D21: `boto3` se importa dentro de una función (el extra `s3` puede no estar instalado);
+    ningún import de `boto3`/`botocore` a nivel de módulo."""
+    ruta = SRC / "modules" / "attachments" / "storage" / "s3.py"
+    assert ruta.is_file()
+    arbol = ast.parse(ruta.read_text(encoding="utf-8"))
+    for nodo in arbol.body:
+        if isinstance(nodo, ast.Import):
+            assert not {a.name.split(".")[0] for a in nodo.names} & set(TERCEROS_S3), nodo.lineno
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            assert nodo.module.split(".")[0] not in TERCEROS_S3, nodo.lineno
+
+
+def test_ni_multipart_ni_formparsers_ni_uploadfile_ni_spooled_en_src() -> None:
+    """E1/E9: la subida lee `request.stream()`; nada de `request.form()` en el módulo."""
+    malos = {r: p for r, f in _archivos() if (p := prohibidos_en(f))}
+    assert malos == {}, malos
+    for relativo, fuente in _archivos():
+        if relativo.startswith(("modules/attachments/", "modules/members/")):
+            assert ".form(" not in fuente, relativo
+            assert "UploadFile" not in fuente, relativo
+
+
+@pytest.mark.parametrize(
+    ("fuente", "esperado"),
+    [
+        ("import python_multipart\n", ["python_multipart"]),
+        ("from multipart import parse\n", ["multipart"]),
+        ("from starlette.formparsers import MultiPartParser\n", ["starlette.formparsers"]),
+        (
+            "from starlette.datastructures import UploadFile\n",
+            ["starlette.datastructures.UploadFile"],
+        ),
+        (
+            "import tempfile\nx = tempfile.SpooledTemporaryFile()\n",
+            ["tempfile.SpooledTemporaryFile"],
+        ),
+        ("from tempfile import SpooledTemporaryFile\n", ["tempfile.SpooledTemporaryFile"]),
+        (
+            "import importlib\nimportlib.import_module('starlette.formparsers')\n",
+            ["starlette.formparsers"],
+        ),
+        ("from starlette.datastructures import Headers\nimport tempfile\n", []),
+    ],
+)
+def test_control_el_detector_de_spool_y_multipart_ve_cada_forma(
+    fuente: str, esperado: list[str]
+) -> None:
+    assert prohibidos_en(fuente) == esperado
+
+
+def test_control_boto3_fuera_de_s3_py_se_detecta() -> None:
+    assert "boto3" in terceros_importados("def f():\n    import boto3\n")
+    assert "botocore" in terceros_importados("from botocore.config import Config\n")

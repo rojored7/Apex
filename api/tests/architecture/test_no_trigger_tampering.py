@@ -92,3 +92,17 @@ def test_audit_sign_esta_barrido_y_no_apaga_triggers() -> None:
     path = APP / "core" / "audit_sign.py"
     assert path.is_file()
     assert hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix()) == []
+
+
+def test_attachments_esta_barrido_y_no_apaga_triggers() -> None:
+    """S6-C1: el módulo de adjuntos (tabla con `attachments_guard_update`, `attachments_forbid_*`)
+    existe, está dentro del barrido de `app/` y ninguna de sus cadenas apaga o salta triggers."""
+    carpeta = APP / "modules" / "attachments"
+    archivos = sorted(carpeta.rglob("*.py"))
+    assert (carpeta / "service.py").is_file() and archivos
+    encontrados = [
+        h
+        for path in archivos
+        for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
+    ]
+    assert encontrados == [], "\n".join(encontrados)

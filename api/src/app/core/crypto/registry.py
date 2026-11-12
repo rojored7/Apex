@@ -46,6 +46,9 @@ _V01: tuple[DataClassSpec, ...] = (
     DataClassSpec("kek.backup", False, None, False, "str", ()),
     # S6-D40: clase de firma de la cadena de auditoría; la fila `sign` la crea `init-keys` (D72).
     DataClassSpec("audit.signature", False, None, True, "str", ()),
+    # S6-D25: cifrado de los adjuntos sensibles; el blob textual se guarda en el objeto del
+    # almacenamiento (no hay columna), por eso `columns=()`; sin índice ciego y sin firma.
+    DataClassSpec("attachment.sensitive", True, None, False, "str", ()),
 )
 
 REGISTRY: Mapping[str, DataClassSpec] = {spec.name: spec for spec in _V01}

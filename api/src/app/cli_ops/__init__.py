@@ -11,6 +11,7 @@ from __future__ import annotations
 import typer
 
 from app.cli_ops import (
+    attachments_check,
     import_members,
     kek,
     migrate_provider,
@@ -36,3 +37,4 @@ def register_ops(app: typer.Typer) -> None:
     seed_notifications.register(app)  # S5-B6
     notify.register(app)  # S5-B7 (provisional: --generate-only)
     sign_audit.register(app)  # S6-A2
+    attachments_check.register(app)  # S6-C1

@@ -26,8 +26,9 @@ el CLI y `tests/conftest.py`:
   Un borrado lógico (`deleted_at`) es un `update`.
 - Atributos de clase opcionales del modelo: `__audit_redact__` (valores sustituidos por
   `"***"`, por ejemplo `password_hash`), `__audit_exclude__` (columnas que no generan un
-  `update`, por ejemplo `last_login_at`) y `__audit_subject__` (nombre del atributo que
-  da el socio: `"id"` en `members`, `"member_id"` en `memberships` y `payments`).
+  `update` y nunca salen en `before`/`after`, por ejemplo `last_login_at`; S6-D75) y
+  `__audit_subject__` (nombre del atributo que da el socio: `"id"` en `members`,
+  `"member_id"` en `memberships` y `payments`).
 
 Contratos:
 - Para US-028: el atributo mapeado de una columna `Encrypted` contiene siempre el blob
@@ -450,10 +451,16 @@ def _bind_value(attr: Any, value: object) -> object:
 
 
 def _snapshot(obj: object) -> dict[str, object]:
-    """Valores cargados del objeto, sin disparar cargas durante el flush."""
+    """Valores cargados del objeto, sin disparar cargas durante el flush.
+
+    Las columnas de `__audit_exclude__` nunca salen en `before` ni `after` (S6-D75, L-1).
+    """
     estado = instance_state(obj)
+    excluded = frozenset(getattr(type(obj), "__audit_exclude__", frozenset()))
     valores: dict[str, object] = {}
     for attr in estado.mapper.column_attrs:
+        if attr.key in excluded:
+            continue
         valor = estado.attrs[attr.key].loaded_value
         if valor is not NO_VALUE:
             valores[attr.key] = _bind_value(attr, valor)

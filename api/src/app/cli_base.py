@@ -95,6 +95,10 @@ async def cli_runtime(
     install_oplog_listeners()
     install_crypto_type_listeners()
     _load_module_services()
+    from app import main
+
+    main.register_reencryptors()  # S6-D60: puertos Reencryptor (retire-key y rotate-key)
+    main.configure_attachments_storage(settings)  # S6-D21: almacén de adjuntos del proceso
     opciones = options or RuntimeOptions()
     efectivos = settings if opciones.db_timeouts else _sin_tiempos_de_espera(settings)
     db.configure_engine(db.create_engine_from(efectivos))

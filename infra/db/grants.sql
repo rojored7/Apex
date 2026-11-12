@@ -7,6 +7,7 @@
 -- S = SELECT, I = INSERT, U = UPDATE, D = DELETE; nunca TRUNCATE, TRIGGER ni REFERENCES.
 -- apex_backup lee todo por pg_read_all_data y no escribe nada.
 --   tabla                           apex_api                          apex_worker
+--   attachments.attachments         S I U(key_id, updated_at)         -
 --   audit.audit_log                 S I                               S I
 --   audit.signatures                S                                 S I
 --   audit.verifications             S I                               -
@@ -40,6 +41,7 @@
 --   public.alembic_version          S                                 -
 --   settings.settings_sections      S I U                             S
 --   worker.job_runs                 S                                 S I U
+-- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
 -- clasificada: audit.signatures
 -- clasificada: audit.verifications
@@ -71,23 +73,27 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
-GRANT USAGE ON SCHEMA audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
+GRANT USAGE ON SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
 GRANT pg_read_all_data TO apex_backup WITH INHERIT TRUE;
 
 -- 5. apex_api.
+-- S6-C1 (S6-D25): el api sube adjuntos (INSERT) y recifra (UPDATE solo de key_id y updated_at); sin
+-- DELETE ni TRUNCATE (el trigger tambien los prohibe); el worker no toca la tabla.
+GRANT SELECT, INSERT ON attachments.attachments TO apex_api;
+GRANT UPDATE (key_id, updated_at) ON attachments.attachments TO apex_api;
 GRANT SELECT, INSERT ON audit.audit_log, audit.verifications TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
@@ -150,7 +156,7 @@ GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
-        'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
+        'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
         'auth.users', 'crypto.crypto_jobs', 'crypto.crypto_keys', 'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',

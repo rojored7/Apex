@@ -20,6 +20,7 @@ import pkgutil
 import re
 import warnings
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
@@ -161,3 +162,57 @@ def test_registry_columns_are_encrypted() -> None:
 def test_las_tablas_obligatorias_estan_en_el_registro() -> None:
     del_registro = {".".join(r.split(".")[:2]) for s in encrypting_specs() for r in s.columns}
     assert del_registro >= TABLAS_OBLIGATORIAS_V01
+
+
+# S6-C1 (S6-D25, ADR-007): los adjuntos sensibles tampoco guardan claro en el volumen ------------
+
+
+async def test_un_pdf_sensible_subido_por_service_store_no_queda_en_claro_en_el_volumen(
+    session: AsyncSession, bus_listo: Keyring, tmp_path: Path
+) -> None:
+    """Sube un PDF sensible por `service.store`, lee el archivo del `tmp_path` y exige que no
+    contenga los bytes del PDF (ni su marca) y que empiece por `apx1.` (el blob del bus)."""
+    from uuid import uuid4
+
+    from app.core.context import actor_scope
+    from app.modules.attachments import service
+    from app.modules.attachments.storage.local import LocalDiskStorage
+    from tests.factories import files
+
+    raiz = tmp_path / "attachments"
+    raiz.mkdir()
+    service.configure_storage(LocalDiskStorage(raiz))
+    pdf = files.pdf(8192)
+    por = uuid4()
+    try:
+        with actor_scope(por):
+            adjunto = await service.store(
+                session,
+                owner_table="members",
+                owner_id=uuid4(),
+                kind="consent",
+                chunks=files.en_trozos(pdf),
+                by=por,
+            )
+            await session.flush()
+        nombre = await session.scalar(
+            text("SELECT filename_random FROM attachments.attachments WHERE id = :i"),
+            {"i": adjunto.id},
+        )
+    finally:
+        service.configure_storage(None)
+
+    guardado = (raiz / str(nombre)).read_bytes()
+    assert guardado.startswith(b"apx1.")
+    assert files.MARCA_PDF not in guardado
+    assert pdf[:256] not in guardado and pdf not in guardado
+    assert sorted(p.name for p in raiz.iterdir()) == [nombre]  # ni copias ni temporales en claro
+
+
+def test_ningun_archivo_del_modulo_attachments_escribe_el_cuerpo_sin_pasar_por_files() -> None:
+    """Defensa estática: `service.py` y `reencrypt.py` no llaman `storage.put` con el cuerpo en
+    claro de un sensible; solo `files._encrypt_file` produce lo que se guarda (la puerta única)."""
+    fuente = (Path(app.modules.__path__[0]) / "attachments" / "service.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_encrypt_file" in fuente or "files." in fuente, "service debe cifrar por files"

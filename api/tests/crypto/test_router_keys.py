@@ -36,15 +36,19 @@ async def test_admin_recibe_200_con_la_forma_de_page_mas_summary(
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert set(cuerpo) == {"items", "total", "limit", "offset", "summary"}
-    assert (cuerpo["total"], cuerpo["limit"], cuerpo["offset"]) == (10, 25, 0)
-    assert len(cuerpo["items"]) == 10
+    assert (cuerpo["total"], cuerpo["limit"], cuerpo["offset"]) == (
+        11,
+        25,
+        0,
+    )  # S6-C1: +1 por `attachment.sensitive` (antes 10)
+    assert len(cuerpo["items"]) == 11
     assert set(cuerpo["summary"]) == {
         "active_count",
         "operations_today",
         "running_jobs",
         "provider",
     }
-    assert cuerpo["summary"]["active_count"] == 9
+    assert cuerpo["summary"]["active_count"] == 10  # S6-C1: +1 (antes 9)
     assert cuerpo["summary"]["provider"]["names"] == ["local"]
 
 

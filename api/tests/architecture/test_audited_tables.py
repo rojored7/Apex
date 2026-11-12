@@ -60,6 +60,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "settings.settings_sections",
         "members.members",
         "members.member_channel_preferences",
+        "attachments.attachments",  # S6-C1 (S6-D25)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -302,6 +303,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "auth.one_time_tokens",
         "audit.verifications",
         "members.member_channel_preferences",  # S5-B5
+        "attachments.attachments",  # S6-C1: adjuntos y foto no son actividad reciente
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7
@@ -352,3 +354,33 @@ def test_audit_signatures_esta_excluida_con_motivo_y_no_es_auditable() -> None:
     assert "auditaría la auditoría" in EXCLUIDAS["audit.signatures"]
     assert not getattr(tablas["audit.signatures"], "__audited__", False)
     assert "audit.signatures" not in AUDITABLE_TABLES
+
+
+def test_attachments_es_requerida_declara_sujeto_y_excluye_columnas_que_existen() -> None:
+    """S6-C1 (S6-D25, S6-D75): `attachments.attachments` es requerida, auditada, con sujeto
+    `owner_id`; `__audit_exclude__` nombra `filename_random` y `key_id`, y todo nombre excluido
+    es una columna mapeada del modelo (un nombre inexistente ocultaría un dato por error)."""
+    from sqlalchemy.orm import class_mapper
+
+    tabla = "attachments.attachments"
+    assert tabla in REQUIRED_AUDITED_TABLES_V01 and tabla not in PENDING_AUDITED
+    assert "attachments" in MODULES
+    clase = _tablas_de_la_app()[tabla]
+    assert getattr(clase, "__audited__", False) is True
+    assert getattr(clase, "__audit_subject__", None) == "owner_id"
+    assert tuple(clase.__audit_exclude__) == ("filename_random", "key_id")  # type: ignore[attr-defined]
+    columnas = {a.key for a in class_mapper(clase).column_attrs}
+    assert set(clase.__audit_exclude__) <= columnas  # type: ignore[attr-defined]
+    assert tabla in AUDITABLE_TABLES
+
+
+def test_ningun_modelo_declara_audit_exclude_con_columnas_inexistentes() -> None:
+    """S6-D75: `__audit_exclude__` solo admite columnas existentes (en cualquier modelo)."""
+    from sqlalchemy.orm import class_mapper
+
+    malas = []
+    for nombre, clase in _tablas_de_la_app().items():
+        excluidas = getattr(clase, "__audit_exclude__", ())
+        columnas = {a.key for a in class_mapper(clase).column_attrs}
+        malas += [f"{nombre}.{c}" for c in excluidas if c not in columnas]
+    assert malas == []

@@ -40,6 +40,7 @@ SYSTEM = "00000000-0000-0000-0000-000000000001"
 PRIVACION = "42501"  # insufficient_privilege
 
 ESQUEMAS = (
+    "attachments",  # S6-C1 (0023)
     "audit",
     "auth",
     "crypto",
@@ -115,6 +116,11 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "audit.verifications": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset()),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    # S6-C1 (S6-D25, P-ROL): el api sube (INSERT) y recifra (UPDATE de `key_id`); el worker no toca.
+    "attachments.attachments": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset({"key_id", "updated_at"})),
         "apex_worker": (frozenset(), frozenset()),
     },
     # S6-A1 (S6-D7, P-ROL): el worker firma (INSERT) y el api solo lee; apex_backup lee todo.
@@ -681,6 +687,11 @@ PROHIBIDAS_API = [
     "TRUNCATE notifications.notifications",  # S5-B7
     "DELETE FROM memberships.memberships",
     "DELETE FROM crypto.crypto_keys",
+    "DELETE FROM attachments.attachments",  # S6-C1: append-only
+    "TRUNCATE attachments.attachments",  # S6-C1
+    "UPDATE attachments.attachments SET kind = 'photo'",  # S6-C1: solo key_id y updated_at
+    "UPDATE attachments.attachments SET filename_random = filename_random",  # S6-C1
+    "UPDATE attachments.attachments SET sensitive = sensitive",  # S6-C1
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -746,6 +757,7 @@ PROHIBIDAS_WORKER = [
     "UPDATE members.members SET deleted_at = now()",
     "UPDATE memberships.memberships SET end_date = end_date",
     "UPDATE memberships.memberships SET classes_remaining = 0",
+    "SELECT count(*) FROM attachments.attachments",  # S6-C1: el worker no lee adjuntos
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",
@@ -1481,3 +1493,50 @@ def test_el_script_de_initdb_rechaza_el_valor_de_ejemplo(apex_roles: RolesDb) ->
     resultado = _correr_script_owner(apex_roles.nombre, "cambiar-esto")
     assert resultado.returncode == 1
     assert "cambiar-esto" in resultado.stderr
+
+
+def test_grants_sql_nombra_el_esquema_attachments_en_las_cuatro_sentencias() -> None:
+    """S6-C1 (S6-D25): `attachments` entra en el `REVOKE ... FROM PUBLIC` de tablas, secuencias y
+    funciones y en el `GRANT USAGE ON SCHEMA`; sin el esquema, `apex_api` no podría usar la tabla
+    nueva o `PUBLIC` conservaría privilegios sobre ella."""
+    texto = _leer("grants.sql")
+    revoke = r"^REVOKE ALL ON ALL {} IN SCHEMA ([^;]*?) FROM PUBLIC;"
+    sentencias = {
+        "REVOKE TABLES": revoke.format("TABLES"),
+        "REVOKE SEQUENCES": revoke.format("SEQUENCES"),
+        "REVOKE FUNCTIONS": revoke.format("FUNCTIONS"),
+        "GRANT USAGE ON SCHEMA": r"^GRANT USAGE ON SCHEMA ([^;]*?) TO apex_api",
+    }
+    for nombre, patron in sentencias.items():
+        encontrada = re.search(patron, texto, re.M)
+        assert encontrada is not None, nombre
+        esquemas = {e.strip() for e in encontrada.group(1).split(",")}
+        assert "attachments" in esquemas, nombre
+
+
+def test_attachments_apex_api_inserta_y_actualiza_key_id_y_apex_backup_lee(
+    apex_roles: RolesDb,
+) -> None:
+    """S6-C1: privilegios de tabla y de columna reales de `attachments.attachments`."""
+    dsn = apex_roles.dsn()
+    tabla = "attachments.attachments"
+
+    def verbo(rol: str, que: str) -> bool:
+        return bool(
+            consultar(dsn, "SELECT has_table_privilege($1, $2, $3) AS v", rol, tabla, que)[0]["v"]
+        )
+
+    def columna(rol: str, col: str) -> bool:
+        return bool(
+            consultar(
+                dsn, "SELECT has_column_privilege($1, $2, $3, 'UPDATE') AS v", rol, tabla, col
+            )[0]["v"]
+        )
+
+    assert verbo("apex_api", "SELECT") and verbo("apex_api", "INSERT")
+    assert not verbo("apex_api", "DELETE") and not verbo("apex_api", "TRUNCATE")
+    assert columna("apex_api", "key_id") and columna("apex_api", "updated_at")
+    for prohibida in ("kind", "filename_random", "mime", "size_bytes", "sensitive", "owner_id"):
+        assert not columna("apex_api", prohibida), prohibida
+    assert not any(verbo("apex_worker", v) for v in ("SELECT", "INSERT", "DELETE", "TRUNCATE"))
+    assert verbo("apex_backup", "SELECT") and not verbo("apex_backup", "INSERT")

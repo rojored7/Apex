@@ -302,3 +302,66 @@ def test_notifications_no_importa_models_de_otros_modulos(ajeno: str) -> None:
         if v.imported.startswith(f"app.modules.{ajeno}.models")
     ]
     assert violaciones == [], "\n".join(violaciones)
+
+
+def test_los_privados_de_attachments_son_los_de_s6_d60() -> None:
+    """S6-C1 (S6-D60): conjunto exacto por igualdad; `storage` es un paquete, el resto archivos."""
+    assert frozenset({"files", "rules", "queries", "reencrypt", "storage"}) == PRIVATE_HELPERS.get(
+        "attachments"
+    )
+    carpeta = MODULES_DIR / "attachments"
+    for nombre in PRIVATE_HELPERS["attachments"]:
+        if nombre == "storage":
+            assert (carpeta / "storage" / "__init__.py").is_file()
+        else:
+            assert (carpeta / f"{nombre}.py").is_file(), nombre
+
+
+def test_attachments_no_importa_members_models_ni_nada_de_otros_modulos() -> None:
+    """S6-D18: el sentido es `members -> attachments`; `attachments` nunca llama a `members`."""
+    carpeta = MODULES_DIR / "attachments"
+    assert (carpeta / "service.py").is_file()
+    violaciones = [
+        str(v)
+        for archivo in sorted(carpeta.rglob("*.py"))
+        for v in find_forbidden_imports(archivo, module="attachments")
+    ]
+    assert violaciones == [], "\n".join(violaciones)
+    ajenos = [
+        f"{archivo.name}:{linea}"
+        for archivo in sorted(carpeta.rglob("*.py"))
+        for linea, nombre in _importados_de_modulos(archivo)
+        if not nombre.startswith("app.modules.attachments")
+    ]
+    assert ajenos == [], ajenos
+
+
+def test_el_privado_de_attachments_se_detecta_desde_otro_modulo() -> None:
+    """Control: `members` importando `attachments.files` o `attachments.storage` es violación."""
+    fuente = "from app.modules.attachments.files import _decrypt_file\n"
+    archivo = MODULES_DIR / "members" / "service.py"
+    assert [
+        (v.imported, v.rule)
+        for v in find_forbidden_imports(archivo, module="members", source=fuente)
+    ] == [("app.modules.attachments.files", "private_helper")]
+    fuente = "from app.modules.attachments.models import Attachment\n"
+    assert [v.rule for v in find_forbidden_imports(archivo, module="members", source=fuente)] == [
+        "foreign_models"
+    ]
+
+
+def _importados_de_modulos(archivo: Path) -> list[tuple[int, str]]:
+    import ast
+
+    salida: list[tuple[int, str]] = []
+    for nodo in ast.walk(ast.parse(archivo.read_text(encoding="utf-8"))):
+        if isinstance(nodo, ast.ImportFrom) and nodo.module and not nodo.level:
+            if nodo.module.startswith("app.modules."):
+                salida.append((nodo.lineno, nodo.module))
+        elif isinstance(nodo, ast.Import):
+            salida += [
+                (nodo.lineno, a.name) for a in nodo.names if a.name.startswith("app.modules.")
+            ]
+        elif isinstance(nodo, ast.ImportFrom) and nodo.level >= 2:
+            salida.append((nodo.lineno, "app.modules." + (nodo.module or "")))
+    return salida

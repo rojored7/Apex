@@ -107,13 +107,78 @@ def test_la_exportacion_es_la_segunda_puerta_de_reveal_y_solo_una_vez() -> None:
     assert sorted(encontradas, key=str) == sorted([PUERTA, PUERTA_EXPORTACION], key=str)
 
 
-def test_nadie_fuera_de_core_llama_a_bus_decrypt() -> None:
-    malas = [
-        f"{archivo.relative_to(APP).as_posix()}:{linea}"
+# S6-C1 (S6-D53, S6-D60): la TERCERA puerta de descifrado es la de los adjuntos. No es `reveal` (los
+# adjuntos no son campos del socio) sino `bus.decrypt` dentro de `_decrypt_file`; la fila `download`
+# de `audit_log` la escribe `attachments.service.open` (no hay evento `SensitiveFieldRevealed`).
+PUERTA_ADJUNTOS = ("modules/attachments/files.py", "_decrypt_file")
+CIFRADO_ADJUNTOS = ("modules/attachments/files.py", "_encrypt_file")
+
+
+def llamadas_al_bus(fuente: str, metodo: str) -> list[tuple[str | None, int]]:
+    """Cada `bus.<metodo>(...)` con la función que la contiene (o `None`)."""
+    arbol = ast.parse(fuente)
+    _, _, buses = _alias(arbol)
+    salida: list[tuple[str | None, int]] = []
+
+    def visitar(nodo: ast.AST, funcion: str | None) -> None:
+        for hijo in ast.iter_child_nodes(nodo):
+            actual = (
+                hijo.name if isinstance(hijo, ast.FunctionDef | ast.AsyncFunctionDef) else funcion
+            )
+            if (
+                isinstance(hijo, ast.Call)
+                and isinstance(hijo.func, ast.Attribute)
+                and hijo.func.attr == metodo
+                and (_texto(hijo.func.value) in buses or _texto(hijo.func.value).endswith("bus"))
+            ):
+                salida.append((actual, hijo.lineno))
+            visitar(hijo, actual)
+
+    visitar(arbol, None)
+    return salida
+
+
+def _bus_fuera_de_core(metodo: str) -> list[tuple[str, str | None]]:
+    return [
+        (archivo.relative_to(APP).as_posix(), funcion)
         for archivo in _fuera_de_core()
-        for linea in llamadas(archivo.read_text(encoding="utf-8"))[1]
+        for funcion, _ in llamadas_al_bus(archivo.read_text(encoding="utf-8"), metodo)
     ]
-    assert malas == [], malas
+
+
+def test_bus_decrypt_fuera_de_core_tiene_una_sola_puerta_la_de_attachments() -> None:
+    """Conjunto exacto y una sola vez: `files.py::_decrypt_file`. Nadie más descifra a mano."""
+    assert _bus_fuera_de_core("decrypt") == [PUERTA_ADJUNTOS]
+
+
+def test_bus_encrypt_de_attachments_es_una_llamada_en_encrypt_file() -> None:
+    """`_encrypt_file` es la única llamada a `bus.encrypt` del módulo `attachments`; los demás
+    llamadores de `bus.encrypt` fuera de `core/` son de `members`."""
+    llamadas_encrypt = _bus_fuera_de_core("encrypt")
+    de_adjuntos = [c for c in llamadas_encrypt if c[0].startswith("modules/attachments/")]
+    assert de_adjuntos == [CIFRADO_ADJUNTOS]
+    ajenas = [
+        c
+        for c in llamadas_encrypt
+        if not c[0].startswith(("modules/members/", "modules/attachments/"))
+    ]
+    assert ajenas == [], ajenas
+
+
+def test_control_la_tercera_puerta_se_detecta_y_otra_funcion_no_pasa() -> None:
+    cabecera = "from app.core.crypto import bus\n\n"
+    bien = cabecera + "def _decrypt_file(b, i):\n    return bus.decrypt(b, i)\n"
+    assert llamadas_al_bus(bien, "decrypt") == [("_decrypt_file", 4)]
+    mal = cabecera + "async def open(b, i):\n    return bus.decrypt(b, i)\n"
+    assert llamadas_al_bus(mal, "decrypt") == [("open", 4)]
+    assert llamadas_al_bus(mal, "encrypt") == []
+
+
+def test_attachments_no_llama_a_types_reveal() -> None:
+    """Los adjuntos no son campos del socio: la tercera puerta no pasa por `types.reveal`."""
+    for archivo in sorted((APP / "modules" / "attachments").rglob("*.py")):
+        de_reveal, _ = llamadas(archivo.read_text(encoding="utf-8"))
+        assert de_reveal == [], archivo.name
 
 
 # Controles del analizador --------------------------------------------------------------------

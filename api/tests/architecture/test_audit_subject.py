@@ -25,6 +25,7 @@ from sqlalchemy.orm import class_mapper
 
 import app
 from app.core import audit as core_audit
+from app.modules.attachments.models import Attachment
 from app.modules.members.models import Member, MemberChannelPreference
 from app.modules.memberships.models import Membership, MembershipFreeze
 from app.modules.payments.models import Payment
@@ -40,8 +41,9 @@ PROHIBIDOS_ARRIBA: Final = frozenset({"memberships", "payments"})
         (Membership, "member_id"),
         (Payment, "member_id"),
         (MemberChannelPreference, "member_id"),  # S5-B5
+        (Attachment, "owner_id"),  # S6-C1 (S6-D18): el dueño del adjunto es el socio
     ],
-    ids=["Member", "Membership", "Payment", "MemberChannelPreference"],
+    ids=["Member", "Membership", "Payment", "MemberChannelPreference", "Attachment"],
 )
 def test_los_modelos_con_socio_declaran_su_sujeto(modelo: type, atributo: str) -> None:
     assert getattr(modelo, "__audited__", False) is True
@@ -54,6 +56,13 @@ def test_membership_freeze_no_declara_sujeto_por_s4a_d20() -> None:
     assert getattr(MembershipFreeze, "__audited__", False) is True
     assert getattr(MembershipFreeze, "__audit_subject__", None) is None
     assert "member_id" not in {attr.key for attr in class_mapper(MembershipFreeze).column_attrs}
+
+
+def test_el_sujeto_de_un_adjunto_es_su_owner_id() -> None:
+    """S6-C1: `core.audit._subject` lee `owner_id` (la fila `download` y el `insert` lo llevan)."""
+    socio_id = uuid4()
+    adjunto = Attachment(owner_id=socio_id)
+    assert core_audit._subject(adjunto) == socio_id
 
 
 def test_el_mecanismo_real_lee_audit_subject() -> None:

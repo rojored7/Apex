@@ -113,7 +113,8 @@ async def test_load_wrapped_devuelve_las_llaves_envueltas_con_un_solo_select(
 
     sentencias = [s for s in contador_de_consultas.sentencias if "crypto_keys" in s]
     assert len(sentencias) == 1 and sentencias[0].lstrip().upper().startswith("SELECT")
-    assert len(filas) == 8  # cinco DEK y tres llaves de índice (documento, teléfono, correo)
+    # seis DEK (S6-C1: +attachment.sensitive) y tres llaves de índice (documento, teléfono, correo)
+    assert len(filas) == 9
     assert all(isinstance(f, WrappedDek) and f.wrapped_material.startswith(b"apxw1") for f in filas)
     assert {f.state for f in filas} == {"active"}
 
@@ -175,7 +176,7 @@ async def test_load_wrapped_solo_trae_las_filas_local(migracion_lista: Entorno) 
     e = migracion_lista
     async with e.fabrica() as sesion:
         antes = await load_wrapped(sesion)
-    assert len(antes) == 8
+    assert len(antes) == 9  # S6-C1: +1 por la DEK de `attachment.sensitive` (antes 8)
 
     await migrar_a_mano(e)
 

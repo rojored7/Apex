@@ -7,7 +7,10 @@ vigente; no toca archivos (`--dir` no interviene). Contrato (stdout y stderr jun
 - idempotente: la segunda corrida dice «ya existe» y sale 0 sin escribir;
 - fila sin `public_key` (S6-D99, base de desarrollo): la completa una vez, auditada (`update`), y
   una clave pública ya puesta no se cambia;
-- clase desconocida: 2; `attachment.sensitive`: 2 `unknown_data_class` hasta C1;
+- clase desconocida (o que ni se firma ni es de adjuntos): 2 `unknown_data_class`;
+- `attachment.sensitive` (S6-C1, S6-D72): crea la fila `encrypt` `A256GCM` activa, versión 1, con la
+  DEK envuelta por el proveedor (sin clave pública); idempotente («ya existe»), auditada sin
+  material y nunca deja dos filas activas;
 - auditado: `audit_log` `insert` sobre `crypto.crypto_keys` sin material; sin `crypto_ops` de la
   clase (crear la fila no firma ni cifra nada);
 - `ENV=production` sin `--as`: 2.
@@ -34,6 +37,7 @@ from tests.cli._apoyo_custodia import (
 )
 from tests.cli._apoyo_firma import Fabrica, admin, llaves_sign, sin_fila_sign
 from tests.crypto._migracion import Entorno
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 __all__ = ["admin", "custodia", "settings_custodia", "sin_fila_sign"]
 
@@ -217,8 +221,8 @@ async def test_una_clave_publica_ya_puesta_no_se_cambia(
 # Rechazos ----------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("clase", ["member.x", "attachment.sensitive"])
-async def test_una_clase_que_no_se_firma_sale_2_con_unknown_data_class_y_no_crea_filas(
+@pytest.mark.parametrize("clase", ["member.x", "member.document"])
+async def test_una_clase_desconocida_o_de_columnas_sale_2_con_unknown_data_class_y_no_crea_filas(
     settings_prueba: Settings,
     sin_fila_sign: Fabrica,
     admin: Any,
@@ -252,3 +256,124 @@ async def test_sin_as_en_dev_atribuye_al_usuario_tecnico(
     (llave,) = await llaves_sign(sin_fila_sign)
     assert str(llave.created_by) == "00000000-0000-0000-0000-000000000001"
     assert isinstance(llave, CryptoKey)
+
+
+# attachment.sensitive (S6-C1: el caso de A2 pasa a verde) ----------------------------------------
+
+ADJUNTOS = "attachment.sensitive"
+
+
+async def _filas_de(fabrica: Fabrica, clase: str) -> list[CryptoKey]:
+    async with fabrica() as sesion:
+        filas = await sesion.scalars(
+            select(CryptoKey).where(CryptoKey.data_class == clase).order_by(CryptoKey.version)
+        )
+        return list(filas)
+
+
+async def _quitar_clase(engine: AsyncEngine, clase: str) -> None:
+    """Deja la base sin la llave de adjuntos (como una instalación anterior a C1)."""
+    async with engine.begin() as conexion:
+        await conexion.execute(text(disable_user_sql("crypto.crypto_keys")))
+        await conexion.execute(
+            text("DELETE FROM crypto.crypto_keys WHERE data_class = :c"), {"c": clase}
+        )
+        await conexion.execute(text(rearm_always_sql("crypto.crypto_keys")))
+
+
+async def test_attachment_sensitive_crea_la_fila_encrypt_a256gcm_envuelta_y_sin_clave_publica(
+    settings_prueba: Settings,
+    sin_fila_sign: Fabrica,
+    engine: AsyncEngine,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _quitar_clase(engine, ADJUNTOS)
+    assert await _filas_de(sin_fila_sign, ADJUNTOS) == []
+
+    resultado = _crear(settings_prueba, monkeypatch, ADJUNTOS, "--as", admin.email)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert not isinstance(resultado.exception, NotImplementedError)
+    (llave,) = await _filas_de(sin_fila_sign, ADJUNTOS)
+    assert (llave.purpose, llave.algorithm, llave.state, llave.version) == (
+        "encrypt",
+        "A256GCM",
+        "active",
+        1,
+    )
+    assert llave.provider == "local" and llave.public_key is None
+    assert len(bytes(llave.wrapped_material)) > 32  # la DEK envuelta, no una referencia
+    assert not bytes(llave.wrapped_material).startswith(b"local:")
+    assert ADJUNTOS in resultado.output and "A256GCM" in resultado.output
+
+
+async def test_attachment_sensitive_segunda_corrida_dice_ya_existe_y_no_agrega_otra_fila(
+    settings_prueba: Settings,
+    sin_fila_sign: Fabrica,
+    engine: AsyncEngine,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _quitar_clase(engine, ADJUNTOS)
+    _crear(settings_prueba, monkeypatch, ADJUNTOS, "--as", admin.email)
+    (primera,) = await _filas_de(sin_fila_sign, ADJUNTOS)
+
+    segunda = _crear(settings_prueba, monkeypatch, ADJUNTOS, "--as", admin.email)
+
+    assert segunda.exit_code == 0, segunda.output
+    assert "ya existe" in segunda.output
+    (misma,) = await _filas_de(sin_fila_sign, ADJUNTOS)
+    assert misma.id == primera.id
+
+
+async def test_attachment_sensitive_con_la_fila_ya_creada_por_ensure_keys_no_hay_dos(
+    settings_prueba: Settings,
+    sin_fila_sign: Fabrica,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """En desarrollo `ensure_keys` la crea al arrancar (el registro ya la nombra): el comando lo
+    reconoce y sale 0 sin duplicar."""
+    assert len(await _filas_de(sin_fila_sign, ADJUNTOS)) == 1
+
+    resultado = _crear(settings_prueba, monkeypatch, ADJUNTOS, "--as", admin.email)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "ya existe" in resultado.output
+    assert len(await _filas_de(sin_fila_sign, ADJUNTOS)) == 1
+
+
+async def test_attachment_sensitive_se_audita_sin_material_y_con_el_actor(
+    settings_prueba: Settings,
+    sin_fila_sign: Fabrica,
+    engine: AsyncEngine,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _quitar_clase(engine, ADJUNTOS)
+    previos = {f.id for f in await _auditoria(sin_fila_sign, "insert")}
+
+    resultado = _crear(settings_prueba, monkeypatch, ADJUNTOS, "--as", admin.email)
+
+    assert resultado.exit_code == 0, resultado.output
+    (llave,) = await _filas_de(sin_fila_sign, ADJUNTOS)
+    (nueva,) = [f for f in await _auditoria(sin_fila_sign, "insert") if f.id not in previos]
+    assert nueva.user_id == admin.id and nueva.record_id == llave.id
+    assert "wrapped_material" not in (nueva.after or {})
+    assert bytes(llave.wrapped_material).hex() not in str(nueva.after)
+
+
+async def test_attachment_sensitive_en_produccion_sin_as_sale_2_y_no_crea_filas(
+    settings_prueba: Settings,
+    sin_fila_sign: Fabrica,
+    engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _quitar_clase(engine, ADJUNTOS)
+
+    resultado = _crear(settings_prueba, monkeypatch, ADJUNTOS, env="production")
+
+    assert resultado.exit_code == 2
+    assert "--as <correo> es obligatorio con ENV=production" in resultado.output
+    assert await _filas_de(sin_fila_sign, ADJUNTOS) == []

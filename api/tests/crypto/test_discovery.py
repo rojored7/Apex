@@ -115,6 +115,14 @@ def test_kek_backup_no_tiene_columnas() -> None:
 
 def test_una_clase_fuera_del_registro_lanza_unknown_data_class() -> None:
     with pytest.raises(CryptoError) as error:
-        encrypted_columns(Base.metadata, "attachment.sensitive")
+        encrypted_columns(Base.metadata, "adjuntos.inexistente")
 
     assert error.value.code == "unknown_data_class"
+
+
+def test_attachment_sensitive_esta_en_el_registro_y_no_tiene_columnas() -> None:
+    """S6-C1 (S6-D25): la clase existe (su blob vive en el objeto del almacenamiento), así que ya no
+    es `unknown_data_class`; sin columnas el descubrimiento devuelve una lista vacía."""
+    load_module_services()
+
+    assert encrypted_columns(Base.metadata, "attachment.sensitive") == []

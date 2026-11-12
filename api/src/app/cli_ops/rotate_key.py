@@ -7,8 +7,7 @@ Usa `crypto_runtime`, un admin activo en `--as` y `core.crypto.service` (siempre
   `rotate-key: llave anterior en decrypt_only; retirar con retire-key` (retirar es otro comando).
 - `--reason` obligatorio (<= 200 caracteres, sin control, correo ni números largos); queda en la
   auditoría (`update` sobre `crypto.crypto_keys`); ninguna salida lo repite.
-- clase que cifra sin columnas ni puerto `Reencryptor` (`attachment.sensitive` hasta C1): 2 con
-  `rotation_not_supported`, el error del service (S6-B1, S6-D14).
+- clase que cifra sin columnas ni puerto `Reencryptor`: 2 `rotation_not_supported` (S6-B1, D14).
 - Candado de la clase tomado por otro proceso: 1, `rotación en curso`. `DatabaseBusy`: un intento y
   tres reintentos con `asyncio.sleep(1)`; luego 1. Falla en un lote: `failed`, 1, repetir reanuda.
 - `--provider <local|openbao>` (solo `audit.signature`, S6-D81): llave de firma nueva allí; la

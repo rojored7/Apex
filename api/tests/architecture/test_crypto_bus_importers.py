@@ -46,6 +46,7 @@ IMPORTADORES_REALES: Final = frozenset(
         "worker/jobs/notify.py",
         "worker/jobs/sign_audit.py",  # S6-A2: error objetivo del Rojo (faltaba en el conjunto)
         "worker/runtime.py",
+        "modules/attachments/files.py",  # S6-C1 (S6-D60): tercera puerta, única del módulo
         "modules/members/changes.py",
         "modules/members/detail.py",
         "modules/members/exports.py",
@@ -531,3 +532,16 @@ def test_s6_a2_control_sign_audit_con_el_bus_falla() -> None:
         "from app.core.crypto import bus\nfrom app.core.crypto import recovery\n"
     )
     assert not permitido("worker/jobs/sign_audit.py", con_bus)
+
+
+def test_attachments_solo_files_importa_el_bus_y_el_resto_del_modulo_no() -> None:
+    """S6-C1 (S6-D60): `modules/attachments/files.py` es el único importador del bus del módulo;
+    `service.py`, `reencrypt.py`, `storage/`, el router y el CLI pasan por `files`."""
+    importadores = {
+        r
+        for r in _importadores()
+        if r.startswith("modules/attachments/") or r.endswith("attachments_check.py")
+    }
+    assert importadores == {"modules/attachments/files.py"}
+    vistas = _importadores()["modules/attachments/files.py"]
+    assert set(vistas) == {f"{PAQUETE}.bus"}, vistas

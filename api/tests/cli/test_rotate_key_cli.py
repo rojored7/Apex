@@ -363,6 +363,9 @@ async def test_attachment_sensitive_sin_puerto_sale_2_con_el_error_del_service(
     registro (C1 la suma; aquí se simula), cifra, no tiene columnas ni puerto: `start_rotation`
     responde `rotation_not_supported` y el CLI sale 2 con ese código, sin job ni llave nueva."""
     clase = DataClassSpec("attachment.sensitive", True, None, False, "str", ())
+    # C1 registra el puerto real al arrancar `cli_runtime`; esta prueba simula la clase SIN puerto.
+    monkeypatch.setattr("app.main.register_reencryptors", lambda: None)
+    monkeypatch.setattr("app.core.crypto.reencryptor._registered", {})
     with override_registry({**registro_de_rotacion(), clase.name: clase}):
         async with rotacion_lista() as sesion, sesion.begin():
             with actor_scope(SYSTEM_USER_ID):

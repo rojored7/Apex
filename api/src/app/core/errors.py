@@ -147,6 +147,8 @@ _DESCRIPCIONES = {
     401: "Sin sesión válida",
     403: "Sin permiso",
     404: "No encontrado",
+    408: "La subida tardó demasiado",
+    413: "Archivo demasiado grande",
     409: "Conflicto con el estado actual",
     422: "Petición inválida",
     500: "Error inesperado",

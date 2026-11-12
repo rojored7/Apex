@@ -76,6 +76,7 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
             {
                 "members.members",
                 "members.member_channel_preferences",
+                "attachments.attachments",  # S6-C1
                 "notifications.notification_templates",
                 "notifications.notification_rules",
                 "notifications.notifications",

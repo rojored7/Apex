@@ -20,6 +20,7 @@ from app.core.audit import (
 )
 from app.core.context import SYSTEM_USER_ID, MissingActorError, actor_scope
 from app.core.db import Base, CommonColumnsMixin, SoftDeleteMixin
+from tests.core._adjunto_auditado import AdjuntoAuditado
 from tests.factories.triggers import disable_user_sql, rearm_always_sql
 
 ACTOR = UUID(int=42)
@@ -72,7 +73,12 @@ class CosaNoAuditada(CommonColumnsMixin, Base):
     nombre: Mapped[str] = mapped_column()
 
 
-TABLAS = [SocioAuditado.__table__, PagoAuditado.__table__, CosaNoAuditada.__table__]
+TABLAS = [
+    SocioAuditado.__table__,
+    PagoAuditado.__table__,
+    CosaNoAuditada.__table__,
+    AdjuntoAuditado.__table__,
+]
 
 
 @pytest.fixture
@@ -247,3 +253,33 @@ async def test_record_toma_el_actor_del_contexto(db: AsyncSession) -> None:
     guardada = (await _auditoria(db))[0]
     assert guardada["subject_member_id"] == SOCIO and guardada["user_id"] == ACTOR
     assert verify_chain([guardada]).ok is True
+
+
+# S6-C1 (S6-D75, L-1): `__audit_exclude__` omite las columnas de `before` y `after` ---------------
+
+
+async def test_audit_exclude_omite_las_columnas_en_insert_update_y_delete(db: AsyncSession) -> None:
+    """Las columnas excluidas (`nombre_azar`, `llave`) no aparecen en ningún `before`/`after` y
+    el resto sí; el sujeto sigue saliendo de `dueno_id`."""
+    dueno, llave = UUID(int=5), UUID(int=6)
+    adjunto = AdjuntoAuditado(dueno_id=dueno, tipo="foto", nombre_azar="a" * 32, llave=llave)
+    db.add(adjunto)
+    await db.flush()
+    adjunto.tipo = "otro"
+    adjunto.llave = UUID(int=9)
+    adjunto.nombre_azar = "b" * 32
+    await db.flush()
+    await db.delete(adjunto)
+    await db.flush()
+    filas = await _auditoria(db)
+    assert [f["action"] for f in filas] == ["insert", "update", "delete"]
+    insert, update, borrado = filas
+    assert insert["after"]["tipo"] == "foto" and insert["after"]["dueno_id"] == str(dueno)
+    assert update["before"] == {"tipo": "foto"} and update["after"] == {"tipo": "otro"}
+    assert borrado["before"]["tipo"] == "otro" and borrado["before"]["dueno_id"] == str(dueno)
+    for fila in (insert, update, borrado):
+        carga = fila["after"] or fila["before"]
+        assert "nombre_azar" not in carga and "llave" not in carga, fila["action"]
+        assert fila["subject_member_id"] == dueno
+    texto = str(filas)
+    assert "a" * 32 not in texto and "b" * 32 not in texto and str(llave) not in texto

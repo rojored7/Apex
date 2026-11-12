@@ -35,6 +35,7 @@ MODELOS = (
     "Notification",  # S5-B7 (RN-14): los avisos se envían u omiten, no se borran
     "NotificationRule",  # S5-B7: las reglas se desactivan
     "NotificationTemplate",  # S5-B7: las plantillas no se borran
+    "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
 )
 TABLAS = (
     "members.members",
@@ -50,6 +51,7 @@ TABLAS = (
     "notifications.notifications",  # S5-B7
     "notifications.notification_rules",  # S5-B7
     "notifications.notification_templates",  # S5-B7
+    "attachments.attachments",  # S6-C1
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -125,3 +127,16 @@ def test_el_patron_deja_pasar_lo_legitimo() -> None:
         "SQL = 'DELETE FROM members.members_staging'\n"
     )
     assert violaciones_en(fuente) == []
+
+
+def test_el_patron_detecta_el_borrado_de_adjuntos() -> None:
+    """S6-C1 (S6-D25, S6-D76): la fila de `attachments.attachments` no se borra desde el api; la
+    supresión a petición es manual y no toca la fila (el trigger la prohíbe)."""
+    fuente = (
+        "stmt = delete(Attachment)\n"
+        "SQL = 'DELETE FROM attachments.attachments'\n"
+        "SQL = 'TRUNCATE attachments.attachments'\n"
+        "await session.delete(adjunto)\n"
+    )
+    assert len(violaciones_en(fuente)) == 4
+    assert violaciones_en("await storage.delete_object(clave)\n") == []

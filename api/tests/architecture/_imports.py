@@ -53,6 +53,9 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "notifications": frozenset(
         {"rules", "templates", "rules_crud", "generate", "queries", "whatsapp", "sending", "events"}
     ),
+    # S6-C1 (S6-D60): `attachments` nace partido tras la fachada `service.py`; `storage` es un
+    # paquete (`storage/`), el resto son archivos.
+    "attachments": frozenset({"files", "rules", "queries", "reencrypt", "storage"}),
 }
 
 Rule = Literal[

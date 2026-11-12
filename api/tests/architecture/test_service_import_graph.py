@@ -578,3 +578,14 @@ def test_auth_no_usa_smtplib_ni_importa_el_texto_de_otro_modulo() -> None:
     for otro in MODULES_DIR.glob("*/*.py"):
         if otro.parent.name != "auth":
             assert "auth.mail_texts" not in otro.read_text(encoding="utf-8"), otro
+
+
+def test_attachments_no_tiene_aristas_salientes_a_otros_modulos() -> None:
+    """S6-C1 (S6-D18, S6-D60): `attachments` no importa el `service.py` de ningún módulo ni a
+    nivel de módulo ni perezoso; la arista `members -> attachments` llega en C2 (no está aún en
+    `ALLOWED_EDGES`). Ningún par de la lista blanca ni de las aristas nombra a `attachments`."""
+    assert (MODULES_DIR / "attachments" / "service.py").is_file()
+    arriba, perezosas = _grafo_real()
+    assert arriba["attachments"] == set()
+    assert perezosas["attachments"] == set()
+    assert not any("attachments" in par for par in ALLOWED_EDGES | LAZY_IMPORT_WHITELIST)

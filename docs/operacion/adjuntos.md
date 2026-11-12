@@ -1,6 +1,62 @@
 # Adjuntos
 
-Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3). El resto de la guía llega en C1.
+Alcance: almacén de archivos adjuntos del api (volumen `uploads` o S3) y su revisión. Decisiones: ADR-007 y `docs/ddd/DECISIONES.md`, «Sprint 6». Las rutas HTTP para subir y descargar llegan con los slices S6-C2 a S6-C4; esta guía cubre lo que ya existe en C1: tabla, almacenamiento, cifrado, recifrado y `attachments-check`.
+
+## Qué se guarda y dónde
+
+- **Metadatos** en `attachments.attachments` (base de datos): dueño (`owner_table`, solo `members`, y `owner_id`), `kind`, tipo, tamaño, quién lo subió, `sensitive`, `key_id` y el nombre del objeto (`filename_random`). La tabla es de solo inserción: no hay `DELETE` ni `TRUNCATE`, y el `UPDATE` solo admite `key_id` y `updated_at` (triggers `ENABLE ALWAYS` de la migración `0023`).
+- **Contenido** en el almacenamiento de objetos, nunca en la base: por omisión `UPLOADS_DIR/attachments` (volumen `uploads`), un archivo por nombre aleatorio de 32 hexadecimales en minúscula. El nombre original del archivo no se guarda.
+- **Sin llaves foráneas** hacia otros esquemas: `owner_id` y `key_id` son referencias lógicas.
+
+## Tipos, tamaños y bytes mágicos
+
+- Tipos admitidos: JPEG (`FF D8 FF`), PNG (`89 50 4E 47 0D 0A 1A 0A`) y PDF (`%PDF-`). El tipo lo deciden **solo los primeros bytes**: ni la extensión ni el `Content-Type` cuentan. Un ejecutable (ELF, PE) con nombre `.jpg` se rechaza con 422 `unsupported_type`.
+- `kind`: `photo` (solo JPEG o PNG; no sensible), `consent` (autorización de tratamiento de datos) y `other`, estos dos con imagen o PDF y siempre sensibles. Lo sensible lo decide el servidor.
+- Tamaño: de 1 a 5.242.880 bytes. El lector corta al llegar al byte 5.242.881 sin seguir leyendo (413 `file_too_large`) y, si el cliente deja de enviar más de 30 s en total, responde 408 `upload_timeout`. Nunca se usa `tempfile` ni `multipart`: el cuerpo se acumula en memoria acotada.
+
+## Cifrado en reposo
+
+- Los sensibles (`consent`, `other`) se cifran con el bus (`attachment.sensitive`, AES-256-GCM) con `aad` = id de la fila antes de tocar el disco. El objeto guardado es el blob de texto `apx1.<key_id>.A256GCM.<nonce>.<texto cifrado>`; el contenido en claro no aparece en el volumen. Un objeto copiado sobre otra fila no se abre (el `aad` no coincide).
+- La foto va **sin cifrar** en el volumen (modo 600, nombre aleatorio, solo el api con rol): es el residual que acepta ADR-007.
+- La DEK de la clase la crea el arranque del api (`ensure_keys`) o, a mano, `docker compose --profile tools run --rm tools init-keys --data-class attachment.sensitive --as <correo>` (idempotente: si ya existe dice «ya existe»; audita un `insert` sobre `crypto.crypto_keys` sin material).
+- Descargar un sensible: se descifra, se escribe la fila `download` en `audit_log`, se confirma y solo entonces se entrega el cuerpo. Con el custodio de llaves sellado la descarga da 503 `crypto_unavailable` y **no** deja fila `download`. Como mucho cuatro operaciones sensibles (subir o abrir) corren a la vez; la quinta recibe 503 `busy` con `Retry-After: 1`.
+
+## Rotar la llave de los adjuntos
+
+`tools rotate-key attachment.sensitive --reason "..." --as <correo>` (o la pantalla Llaves) crea una DEK nueva y recifra los objetos de a 10 (S6-D111): descifra con la llave anterior, cifra con la activa, **reemplaza el objeto de forma atómica** (misma clave de archivo) y después actualiza `key_id`. Si el proceso se corta entre el objeto y la base, el siguiente lote lo recifra otra vez sin error. La llave anterior queda `decrypt_only`; `retire-key` se niega mientras queden objetos con ella (cuenta por `key_id`, sin leer archivos).
+
+## Huérfanos: `attachments-check`
+
+`docker compose --profile tools run --rm tools attachments-check --as <correo>` (solo lectura; con `ENV=production` `--as` es obligatorio). Imprime:
+
+```
+attachments-check: filas sin objeto: N
+attachments-check: objetos sin fila: N
+  fila sin objeto: <id de la fila>
+  objeto sin fila: <nombre hexadecimal>
+```
+
+Sale 0 sin huérfanos y 1 con ellos. Nunca imprime el `filename_random` de una fila (con S3 es la clave del objeto) ni borra, repara o crea nada, ni siquiera la carpeta del volumen. Las causas habituales: una subida cortada entre guardar el objeto y confirmar la fila (el servicio borra el objeto al fallar el `flush`, pero un corte del proceso puede dejarlo), una restauración parcial del volumen, o el `downgrade` de `0023` (RUNBOOK §6). Qué hacer con cada huérfano es decisión de la persona; no hay comando de reparación.
+
+## S3 (apagado en v0.3)
+
+El adaptador `S3CompatibleStorage` existe y se prueba con respuestas simuladas, pero **no se usa** salvo que el titular lo pida. `STORAGE_PROVIDER=s3` exige las cinco variables `S3_*`, `https` (salvo `ENV=dev`) y, con `ENV=production`, `S3_ENABLE_PRODUCTION=true`; sin ellas el api no arranca y el error nombra la variable, nunca su valor. El cliente usa solo las credenciales de `Settings` (nunca `AWS_*` ni `~/.aws`), `verify=True`, sin proxies del entorno y tres reintentos. `boto3` es opcional: la imagen del api no lo instala; para probarlo hay que construir con el extra `s3` (`uv sync --extra s3`), y sin él el mensaje es «instale el extra s3».
+
+## Supresión a petición (Ley 1581): procedimiento manual
+
+En v0.3 no hay comando de borrado (la tabla es de solo inserción). Ante una solicitud de supresión:
+
+1. Guardar la evidencia de la solicitud (quién, cuándo, qué socio).
+2. `attachments-check --as <correo>` antes, para tener la línea base.
+3. Borrar el **objeto** del volumen `uploads/attachments` desde el contenedor `tools` (el nombre sale de la base: `SELECT filename_random FROM attachments.attachments WHERE id = '<id>'` con el rol de consulta). La fila **no** se toca: el trigger prohíbe `DELETE` y el `UPDATE` solo admite `key_id`.
+4. Dejar la constancia con una fila de auditoría `delete` sobre `attachments.attachments` desde `tools` con `--as`.
+5. `attachments-check --as <correo>` después: la fila aparecerá como «fila sin objeto», que es lo esperado. Desde ese momento el comando sale con 1 por ese huérfano (y por cada supresión posterior) hasta que exista `attachments purge` (v0.4): la constancia del paso 4 es el registro que explica cada uno.
+
+El respaldo conserva el archivo hasta que rote. **Residual con dueño:** el comando `attachments purge`, con la columna `purged_at`, es del titular del tratamiento y llega en v0.4.
+
+## Respaldo
+
+Los adjuntos viajan en `<nombre>-uploads.tar.age` junto con el resto del volumen `uploads` (`respaldo-y-restauracion.md`). Para abrir un documento sensible restaurado hacen falta la base (que guarda la DEK envuelta) y la KEK del mismo respaldo.
 
 ## Variables
 

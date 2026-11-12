@@ -69,6 +69,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
     {
         "members.members",
         "members.member_channel_preferences",
+        "attachments.attachments",
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -87,6 +88,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "auth.one_time_tokens": "técnica",
     "audit.verifications": "es la verificación misma",
     "members.member_channel_preferences": "preferencia de aviso, no es negocio ni configuración",
+    "attachments.attachments": "adjuntos y foto: ruido para el tablero",
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",
     "notifications.notifications": "un aviso por socio y regla al día: ruido para el tablero",

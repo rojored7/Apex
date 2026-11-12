@@ -1,6 +1,6 @@
 """`0022_verify_signatures` (S6-A3, US-142; S6-D10, S6-D99). Rojo A3.
 
-Padre `0021_audit_signatures`; es head. Contrato:
+Padre `0021_audit_signatures`; en la cadena hasta head (S6-C1: la `0023` cuelga de ella). Contrato:
 - `audit.verifications` gana seis columnas NULAS: `signatures_checked` integer,
   `signatures_valid` integer, `first_invalid_signature_seq` bigint, `last_valid_signature_seq`
   bigint, `last_valid_signature_at` timestamptz y `last_valid_signature_algorithm` text; las trece
@@ -150,12 +150,14 @@ def base(alembic_config: Config, migrated_database: str) -> Iterator[str]:
 # Revisión ---------------------------------------------------------------------------------------
 
 
-def test_la_revision_cuelga_de_0021_y_es_head(alembic_config: Config) -> None:
+def test_la_revision_cuelga_de_0021_y_esta_en_la_cadena_hasta_head(alembic_config: Config) -> None:
     _revision_existe(alembic_config)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    # S6-C1: ya no es head (la `0023_attachments` cuelga de ella).
+    (head,) = scripts.get_heads()
+    assert REVISION in {r.revision for r in scripts.iterate_revisions(head, "base")}
 
 
 # Forma ------------------------------------------------------------------------------------------

@@ -65,6 +65,7 @@ MODULES: Final[tuple[str, ...]] = (
     "auth",
     "settings",
     "audit",
+    "attachments",  # S6-C1 (S6-D60): antes de `members`; no importa ningún otro módulo
     "members",
     "plans",
     "memberships",
@@ -100,6 +101,23 @@ def load_module_services() -> None:
     """Importa el `service.py` de cada módulo: ahí se suscriben los handlers del bus."""
     for modulo in MODULES:
         importlib.import_module(f"app.modules.{modulo}.service")
+
+
+def register_reencryptors() -> None:
+    """Puertos `Reencryptor` de las clases cuyos blobs no viven en columnas (S6-D60, G-09): lo
+    llaman `create_app` y `cli_base.cli_runtime` (`test_reencryptor_registered_in_every_root`)."""
+    from app.modules.attachments import service as attachments_service
+
+    attachments_service.register_reencryptor()
+
+
+def configure_attachments_storage(settings: Settings) -> None:
+    """Fija el almacén de adjuntos del proceso (S6-D21): falla el arranque con una configuración
+    de S3 inválida (`ValueError` con el nombre de la variable, nunca su valor)."""
+    from app.modules.attachments import service as attachments_service
+    from app.modules.attachments.storage import storage_from_settings
+
+    attachments_service.configure_storage(storage_from_settings(settings))
 
 
 def include_module_routers(router: APIRouter) -> None:
@@ -380,6 +398,8 @@ def create_app(
     app.state.settings = settings
     _install_middleware(app, settings)
     load_module_services()
+    register_reencryptors()  # S6-D60
+    configure_attachments_storage(settings)  # S6-D21
     _register_health_checks(settings, migrations_script_location)
 
     api = APIRouter(prefix=API_PREFIX)

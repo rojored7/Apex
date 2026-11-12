@@ -28,10 +28,12 @@ SIN_LLAVE = {"kek.backup"}
 """Clases sin llave (S4B-D85): nombran las filas de `crypto_ops` del respaldo de la KEK."""
 DE_FIRMA = {"audit.signature"}
 """S6-D40: clase de firma de la cadena; su fila `sign` la crea `init-keys` (D72)."""
+DE_ADJUNTOS = {"attachment.sensitive"}
+"""S6-C1 (S6-D25): cifrado de los adjuntos sensibles; el blob vive en el objeto, sin columnas."""
 
 
 def test_las_cinco_clases_de_v01() -> None:
-    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE | DE_FIRMA
+    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE | DE_FIRMA | DE_ADJUNTOS
     for nombre, (tipo, indice) in ESPERADAS.items():
         spec = get_spec(nombre)
         assert spec.name == nombre and spec.encrypt is True and spec.sign is False
@@ -65,7 +67,7 @@ def test_kek_backup_es_una_clase_sin_llave() -> None:
 def test_kek_backup_no_entra_en_las_listas_que_crean_llaves() -> None:
     for lista in (encrypting_specs(), indexing_specs(), signing_specs()):
         assert "kek.backup" not in {s.name for s in lista}
-    assert {s.name for s in encrypting_specs()} == set(ESPERADAS)
+    assert {s.name for s in encrypting_specs()} == set(ESPERADAS) | DE_ADJUNTOS
 
 
 def test_audit_signature_es_una_clase_de_firma_sin_columnas_ni_cifrado() -> None:
@@ -76,3 +78,14 @@ def test_audit_signature_es_una_clase_de_firma_sin_columnas_ni_cifrado() -> None
     assert "audit.signature" in {s.name for s in signing_specs()}
     assert "audit.signature" not in {s.name for s in encrypting_specs()}
     assert "audit.signature" not in {s.name for s in indexing_specs()}
+
+
+def test_attachment_sensitive_cifra_sin_indice_sin_firma_y_sin_columnas() -> None:
+    """S6-D25: `encrypt=True`, `index_kind=None`, `sign=False`, `value_type="str"`, `columns=()`.
+    Entra a `encrypting_specs` (su DEK la crea `ensure_keys`) y no a las de índice ni firma."""
+    spec = get_spec("attachment.sensitive")
+    assert (spec.encrypt, spec.index_kind, spec.sign, spec.value_type) == (True, None, False, "str")
+    assert spec.columns == ()
+    assert "attachment.sensitive" in {s.name for s in encrypting_specs()}
+    assert "attachment.sensitive" not in {s.name for s in indexing_specs()}
+    assert "attachment.sensitive" not in {s.name for s in signing_specs()}

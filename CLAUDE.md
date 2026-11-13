@@ -35,6 +35,8 @@ apex/
       imports/           # `import-members` (S4B-D34): members_xlsx.py (fachada y lector openpyxl), limits.py, parse.py, persist.py, report.py, results.py; único sitio de openpyxl y defusedxml; solo lo importa cli_ops/import_members.py
       core/
         config.py        # Settings con pydantic-settings, todo desde .env
+        config_storage.py # reglas puras de S3 y dominio público (nombres de variables inválidas, nunca valores); config.py las reexporta para no pasar de 800 líneas (S6-W0-5, S6-D21)
+        config_origin.py # public_origin, validate_origins y cookie_secure: con APEX_DOMAIN el origen es https://<dominio>, sin él FRONT_BASE_URL; config.py las reexporta y las llama en su validador final (S6-E1, S6-D125)
         db.py            # engine async, sesión, Base, CommonColumnsMixin
         clock.py         # Clock, SystemClock, FrozenClock, today_bogota()
         context.py       # SYSTEM_USER_ID, actor y lote actuales (contextvars), request_id
@@ -71,6 +73,7 @@ apex/
           rotate_job.py  #   execute_rotation / run_rotation, rotation_engine (motor propio de una conexión para el candado `apex:rotate:<clase>`) y resume_running_jobs: el bucle de rotación compartido por `rotate-key` y `POST /crypto/keys/{id}/rotate`, un solo rotador en vuelo, la tarea queda en `app.state.rotation_task` (Sprint 6, S6-R1, S6-D61, S6-D121)
           rotate_screen.py #   validate_rotation_request y start_from_screen: la transacción del request de la rotación desde la pantalla (job `running`, anterior a `decrypt_only`, nueva `active`); `inventory.py` los reexporta (S6-R1)
           signature.py   #   verify_ed25519(public_key, data, signature): verificación con la clave pública de `crypto_keys.public_key`, sin proveedor (Sprint 6, S6-D62, S6-D81)
+          sign_rotation.py #   switch_provider: cambio de proveedor de la llave de firma; llave NUEVA en el destino y la anterior decrypt_only, sin recifrar nada (S6-A2, S6-D69, D81)
           provider.py    #   puerto KeyProvider (name, status, rewrap), get_provider_named y make_resolver: proveedor por fila de crypto_keys (Sprint 5, S5-D3)
           openbao_provider.py #   OpenBaoProvider (Transit, httpx async) y map_error (Sprint 5, S5-D17); único sitio de httpx hacia OpenBao
           state.py       #   estado del proveedor y health_state puro (Sprint 5, S5-D13)
@@ -81,6 +84,7 @@ apex/
           digest.py      #   SHA-256 sin dependencias (solo `hashlib`; lo usa core/audit)
           file_digest.py #   digest_file(path, chunk, max_bytes=): SHA-256 de un archivo en reposo sin seguir enlaces, el único lector de archivos de respaldo que usa el worker; solo biblioteca estándar (S4B-D134, S4B-D139)
           service.py     #   rotación reanudable (start_rotation, reencrypt_batch, finish_rotation, fail_job, rotate_index) y retiro (count_rows_by_key, count_audit_blobs, retire_key, recent_kek_verify, next_key_state, validate_reason); candado `apex:rotate:<clase>`, único sitio con FOR UPDATE de llaves y tablas cifradas; sin core/audit (S4B-D39, D142 a D146)
+          service_pending.py # count_pending de una clase por el puerto Reencryptor o por las columnas Encrypted del registro; parte de service.py (S6-B1, S6-D14)
           discovery.py   #   encrypted_columns(metadata, data_class): columnas Encrypted de una clase por el registro, sin importar módulos (S4B-D39)
           archive.py     #   digest_file() y, desde B3a, export_kek_file/restore_kek_file/verify_kek_backup: `age -p`/`age -d` por Popen (lista, env={}, sin shell), la KEK por descriptor, salida O_EXCL 0o600, errores tipados sin texto del hijo (S4B-D20, D58, D121 a D126); única puerta de la KEK junto con local_provider
           kek_backup.py  #   WrappedDek, verify_wrapped (AESGCM + parse_wrapped; deja el bytearray en ceros) y load_wrapped (un SELECT de solo lectura); la clase de dato `kek.backup` (registry.py, sin llave) da nombre a las filas de crypto_ops de export-kek, verify-kek-backup y restore-kek (S4B-D85)

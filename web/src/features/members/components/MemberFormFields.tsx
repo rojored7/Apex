@@ -2,9 +2,10 @@
 // 1 · Identificación (nombres, apellidos, sexo, tipo y número de documento, fecha de nacimiento),
 // 2 · Contacto (teléfono, correo), 3 · Contacto de emergencia (nombre, parentesco, teléfono) y
 // 4 · Autorización de datos (la casilla de M-4, nunca marcada de entrada).
+// S6-F4: foto (PhotoField, arriba de la sección 1) y documento firmado (ConsentSection) se suben tras
+//   guardar con POST /members/:id/attachments.
 // DESIGN-GAP:
-// - Sin foto (cuadro "foto"), sin firma táctil ni documento firmado (opciones A y B de la
-//   sección 4): los adjuntos llegan con v0.3 (POST /members/:id/attachments).
+// - Sin firma táctil (opción A de la sección 4) y el campo de foto no está en Socio_Form.html.
 // - Sin "5 · Acceso al portal" (v1.0), sin "Unidad para cargas" (atleta, v0.6) y sin
 //   "Observaciones de salud" (no están en MemberCreate; tampoco hay notas, M-5).
 // - El nombre va en dos campos (Nombres y Apellidos) y no en "Nombre completo": MemberCreate
@@ -14,6 +15,8 @@
 import type { UseFormReturn } from "react-hook-form";
 import { Field, type FieldErrorAction } from "../../../shared/ui/Field";
 import { memberHref } from "../memberLinks";
+import { ConsentSection } from "./ConsentSection";
+import { PhotoField } from "./PhotoField";
 import { DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES, MEMBER_LIMITS, SEX_LABELS, SEXES, type MemberFormValues } from "../schemas";
 import styles from "./MemberFormFields.module.css";
 
@@ -26,7 +29,7 @@ export interface MemberFormFieldsProps {
 
 export const CONSENT_LABEL = "El socio autorizó el tratamiento de datos";
 export const EXISTING_LINK_TEXT = "Ver socio existente";
-const CONSENT_HINT_ID = "member-consent-hint";
+export const CONSENT_HINT = "Márcala solo si el socio leyó y aceptó la política de tratamiento de datos del gimnasio. Si no la marcas, el socio queda registrado y la lista avisa que falta la autorización.";
 
 
 export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFieldsProps) {
@@ -40,6 +43,13 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
     <>
       <fieldset className={styles.section}>
         <legend className={styles.legend}>1 · Identificación</legend>
+        <PhotoField
+          value={form.watch("photo")}
+          onChange={(file) => {
+            form.setValue("photo", file, { shouldDirty: true, shouldValidate: true });
+          }}
+          error={errors.photo?.message}
+        />
         <div className={styles.grid}>
           <Field label="Nombres" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.first_name?.message} {...register("first_name")} />
           <Field label="Apellidos" required autoComplete="off" maxLength={MEMBER_LIMITS.name} error={errors.last_name?.message} {...register("last_name")} />
@@ -112,17 +122,19 @@ export function MemberFormFields({ form, existingId, onNavigate }: MemberFormFie
         <p className={styles.note}>Opcional. Si lo llenas, escribe al menos el nombre y el teléfono.</p>
       </fieldset>
 
-      <fieldset className={styles.section}>
-        <legend className={styles.legend}>4 · Autorización de datos (Ley 1581)</legend>
-        <label className={styles.check}>
-          <input type="checkbox" className={styles.checkbox} aria-describedby={CONSENT_HINT_ID} {...register("data_consent")} />
-          <span>{CONSENT_LABEL}</span>
-        </label>
-        <p id={CONSENT_HINT_ID} className={styles.note}>
-          Márcala solo si el socio leyó y aceptó la política de tratamiento de datos del gimnasio. Si no la marcas, el socio queda registrado y la lista
-          avisa que falta la autorización.
-        </p>
-      </fieldset>
+      <ConsentSection
+        checkbox={register("data_consent")}
+        accepted={form.watch("data_consent")}
+        registeredText={null}
+        checkboxLabel={CONSENT_LABEL}
+        checkboxHint={CONSENT_HINT}
+        checkboxError={errors.data_consent?.message}
+        file={form.watch("consent_file")}
+        onFileChange={(file) => {
+          form.setValue("consent_file", file, { shouldDirty: true, shouldValidate: true });
+        }}
+        fileErrorText={errors.consent_file?.message}
+      />
     </>
   );
 }

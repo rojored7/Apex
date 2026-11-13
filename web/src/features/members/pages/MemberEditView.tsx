@@ -9,6 +9,9 @@
 // - Errores bajo su campo con foco (403 `forbidden_field`, 409 de documento con "Ver socio
 //   existente", `consent_cannot_be_withdrawn`, 422 con `field`); el resto como aviso general con foco.
 // - Al guardar vuelve a la ficha con "Cambios guardados" (estado de la navegación).
+// - S6-F4 (US-148, US-149): foto nueva (reemplaza a la vigente) y documento firmado opcionales. Primero el
+//   PATCH (si hay cambios) y DESPUÉS las subidas; sin otros cambios no hay PATCH. Si una subida falla, los
+//   cambios ya quedaron guardados: se avisa «Los cambios se guardaron, pero … no se subió» y se queda aquí.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, type FieldPath } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
@@ -17,9 +20,10 @@ import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { MessagePage } from "../../../shared/ui/MessagePage";
 import { PageHeader } from "../../../shared/ui/PageHeader";
-import { useMember, useUpdateMember } from "../api";
+import { useMember, useSubirAdjunto, useUpdateMember } from "../api";
 import { MemberEditFields } from "../components/MemberEditFields";
-import { DETAIL_MESSAGES, detailErrorOf, EDIT_ERROR_MESSAGES, editErrorMessage, editFieldErrorOf } from "../memberErrors";
+import { DETAIL_MESSAGES, detailErrorOf, EDIT_ERROR_MESSAGES, editErrorMessage, editFieldErrorOf, savedWithoutMessage } from "../memberErrors";
+import { uploadPending } from "../lib/uploadPending";
 import { isMemberId, memberHref, MEMBERS_PATH, type MemberUpdatedState } from "../memberLinks";
 import { editDefaults, memberEditSchema, SENSITIVE_EDIT_FIELDS, toMemberPatch, type MemberDetailView, type MemberEditValues, type SensitiveEditField } from "../schemas";
 import styles from "./MemberFormPage.module.css";
@@ -51,6 +55,9 @@ function MemberEditForm({ member, refreshError }: { member: MemberDetailView; re
   const navigate = useNavigate();
   const canChangeDocument = useCan("members.document.update");
   const { update, isPending } = useUpdateMember(member.id);
+  const upload = useSubirAdjunto();
+  const [uploading, setUploading] = useState(false);
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const resolver = useMemo(() => zodResolver(memberEditSchema()), []);
   const form = useForm<MemberEditValues>({ resolver, defaultValues: editDefaults(member) });
   // Se lee en el render: formState es un Proxy y react-hook-form solo calcula y sigue lo que se lee.
@@ -70,15 +77,40 @@ function MemberEditForm({ member, refreshError }: { member: MemberDetailView; re
     if (inFlight.current) return;
     setExistingId(null);
     setGeneralError(null);
+    setUploadWarnings([]);
     const body = toMemberPatch(values, dirtyFields);
-    if (Object.keys(body).length === 0) {
+    const hasFiles = values.photo !== null || values.consent_file !== null;
+    if (Object.keys(body).length === 0 && !hasFiles) {
       setNoChanges(true);
       return;
     }
     setNoChanges(false);
     inFlight.current = true;
     try {
-      await update(body);
+      if (Object.keys(body).length > 0) {
+        await update(body);
+        // Ya guardado: el formulario queda limpio (sin dirty ni modos "Cambiar"/"Quitar") para que un reintento por una
+        // subida fallida no repita el PATCH (ni su auditoría). Los archivos elegidos se conservan.
+        form.reset({
+          ...values,
+          document: "",
+          birth_date: "",
+          phone: "",
+          email: "",
+          emergency_contact: { name: "", phone: "", relationship: "" },
+          data_consent: false,
+          modes: editDefaults(member).modes,
+        });
+      }
+      setUploading(true);
+      const failures = await uploadPending((kind, file) => upload.mutateAsync({ memberId: member.id, kind, file }), { photo: values.photo, consent: values.consent_file });
+      if (failures.length > 0) {
+        // Lo que sí subió no se repite si la persona vuelve a guardar.
+        if (!failures.some((f) => f.kind === "photo")) form.setValue("photo", null);
+        if (!failures.some((f) => f.kind === "consent")) form.setValue("consent_file", null);
+        setUploadWarnings(failures.map((f) => savedWithoutMessage(f.kind, f.reason)));
+        return;
+      }
       const state: MemberUpdatedState = { memberUpdated: true };
       void navigate(memberHref(member.id), { state });
     } catch (error) {
@@ -92,6 +124,7 @@ function MemberEditForm({ member, refreshError }: { member: MemberDetailView; re
         setGeneralError(editErrorMessage(error));
       }
     } finally {
+      setUploading(false);
       inFlight.current = false;
     }
   };
@@ -119,6 +152,16 @@ function MemberEditForm({ member, refreshError }: { member: MemberDetailView; re
             {generalError}
           </p>
         ) : null}
+        {uploadWarnings.length > 0 ? (
+          <div className={styles.error} role="alert">
+            {uploadWarnings.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+            <Link className={styles.cancel} to={memberHref(member.id)}>
+              Ir a la ficha
+            </Link>
+          </div>
+        ) : null}
         <MemberEditFields
           form={form}
           member={member}
@@ -138,8 +181,8 @@ function MemberEditForm({ member, refreshError }: { member: MemberDetailView; re
           <Link className={styles.cancel} to={memberHref(member.id)}>
             Cancelar
           </Link>
-          <Button type="submit" loading={isPending}>
-            {isPending ? "Guardando…" : "Guardar cambios"}
+          <Button type="submit" loading={isPending || uploading}>
+            {isPending || uploading ? "Guardando…" : "Guardar cambios"}
           </Button>
         </div>
       </form>

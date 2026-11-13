@@ -10,7 +10,7 @@ import { memberNameKey } from "../../shared/data/members";
 import { DETAIL_PATH, MEMBER_ID, memberDetailBody } from "../../test/memberDetail";
 import { memberRows, pagedMemberPage } from "../../test/members";
 import { mockApi, testQueryClient } from "../../test/server";
-import { membersInfiniteKey, useMembersInfinite, useUpdateMember, type MembersInfiniteParams } from "./api";
+import { membersInfiniteKey, subirAdjunto, useMembersInfinite, useSubirAdjunto, useUpdateMember, type MembersInfiniteParams } from "./api";
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -93,5 +93,44 @@ describe("useMembersInfinite", () => {
     });
 
     expect(offsetsOf(mock)).toEqual(["0", "25", "0", "0"]);
+  });
+});
+
+describe("subirAdjunto y useSubirAdjunto (S6-F4)", () => {
+  const PATH = `${DETAIL_PATH}/attachments`;
+  const created = { id: "bbbb0001-0000-4000-8000-000000000001", kind: "photo", mime: "image/png", size_bytes: 3, sensitive: false };
+
+  it("sube el File crudo a /members/{id}/attachments?kind= y valida el 201", async () => {
+    const mock = mockApi({ [`POST ${PATH}`]: { status: 201, body: created } });
+    const file = new File(["abc"], "f.png", { type: "image/png" });
+
+    await expect(subirAdjunto(MEMBER_ID, "photo", file)).resolves.toMatchObject({ id: created.id, kind: "photo" });
+
+    const call = mock.callsTo(`POST ${PATH}`)[0];
+    expect(call?.rawBody).toBe(file);
+    expect(new URL(call?.url ?? "", "http://x").searchParams.get("kind")).toBe("photo");
+  });
+
+  it("una respuesta con otra forma es invalid_response", async () => {
+    mockApi({ [`POST ${PATH}`]: { status: 201, body: { nada: 1 } } });
+    await expect(subirAdjunto(MEMBER_ID, "photo", new File(["a"], "f.png", { type: "image/png" }))).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("el hook relee ['members'] y ['attachments'] al salir bien y no guarda el archivo en la caché de mutaciones", async () => {
+    mockApi({ [`POST ${PATH}`]: { status: 201, body: created } });
+    const queryClient = testQueryClient();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useSubirAdjunto(), { wrapper: wrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ memberId: MEMBER_ID, kind: "photo", file: new File(["a"], "f.png", { type: "image/png" }) });
+    });
+
+    const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(["members"]);
+    expect(keys).toContainEqual(["attachments"]);
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll().every((m) => m.state.variables === undefined)).toBe(true);
+    });
   });
 });

@@ -7,9 +7,9 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES, CLIENT_ERROR_CODES } from "../../core/api/errorCodes";
 import { ApiError, isApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_PAYLOAD_TOO_LARGE, HTTP_SERVICE_UNAVAILABLE, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, statusMessage, toScreenError } from "../../shared/lib/apiMessages";
-import { MEMBER_MESSAGES, type MemberEditValues, type MemberFormValues } from "./schemas";
+import { ATTACHMENT_MESSAGES, MEMBER_MESSAGES, type MemberEditValues, type MemberFileKind, type MemberFormValues } from "./schemas";
 
 export const CREATE_MESSAGES = {
   duplicated: "Ya existe un socio con este documento.",
@@ -27,6 +27,9 @@ export const LIST_MESSAGES = {
 
 const RECHECK = "Revisa este dato e intenta de nuevo.";
 
+/** S6-F4 (S6-C3): el 422 de data_consent_at (corte de la política vigente y sin autorización) va bajo la casilla. */
+export const CONSENT_REQUIRED_MESSAGE = "Falta la autorización de datos. Márcala o, si el socio no la dio, pide al administrador que revise la fecha de corte de la política.";
+
 /** Campo del api → campo del formulario y su mensaje. */
 const FIELD_ERRORS: Readonly<Record<string, { path: FieldPath<MemberFormValues>; message: string }>> = {
   first_name: { path: "first_name", message: MEMBER_MESSAGES.firstNameRequired },
@@ -38,6 +41,7 @@ const FIELD_ERRORS: Readonly<Record<string, { path: FieldPath<MemberFormValues>;
   phone: { path: "phone", message: "El teléfono no tiene suficientes dígitos. Revísalo e intenta de nuevo." },
   email: { path: "email", message: "El servidor no aceptó este correo. Revísalo e intenta de nuevo." },
   emergency_contact: { path: "emergency_contact.name", message: RECHECK },
+  data_consent_at: { path: "data_consent", message: CONSENT_REQUIRED_MESSAGE },
   "emergency_contact.name": { path: "emergency_contact.name", message: RECHECK },
   "emergency_contact.phone": { path: "emergency_contact.phone", message: RECHECK },
   "emergency_contact.relationship": { path: "emergency_contact.relationship", message: RECHECK },
@@ -188,6 +192,46 @@ export function editErrorMessage(error: unknown): string {
   if (connection) return connection;
   if (error.code === API_ERROR_CODES.memberDeactivated) return EDIT_ERROR_MESSAGES.deactivated;
   return statusMessage(error, EDIT_ERROR_MESSAGES);
+}
+
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: subir la foto y el documento firmado tras guardar.
+export const UPLOAD_MESSAGES = {
+  forbidden: "No tienes permiso para subir este archivo. Si lo necesitas, pídeselo a un administrador.",
+  notFound: "Este socio ya no existe. Vuelve a la lista de socios.",
+  privacyMissing: "Falta publicar la política de privacidad. Pídele a un administrador que la publique en Configuración.",
+  timeout: "La subida tardó demasiado. Revisa tu conexión e intenta de nuevo.",
+  tooMany: (wait: string) => `Subiste muchos archivos seguidos. Espera ${wait} e intenta de nuevo.`,
+  generic: "No pudimos subir el archivo. Intenta de nuevo en un momento.",
+} as const;
+
+/** Por qué falló la subida de un archivo de tipo `kind`, en palabras de la pantalla. */
+export function uploadErrorMessage(kind: MemberFileKind, error: unknown): string {
+  if (!isApiError(error)) return UPLOAD_MESSAGES.generic;
+  const connection = connectionMessage(error);
+  if (connection) return connection;
+  if (error.code === API_ERROR_CODES.fileTooLarge || error.status === HTTP_PAYLOAD_TOO_LARGE) return kind === "photo" ? ATTACHMENT_MESSAGES.photoTooLarge : ATTACHMENT_MESSAGES.consentTooLarge;
+  if (error.code === API_ERROR_CODES.unsupportedType) return kind === "photo" ? ATTACHMENT_MESSAGES.photoType : ATTACHMENT_MESSAGES.consentType;
+  if (error.code === API_ERROR_CODES.privacyVersionMissing) return UPLOAD_MESSAGES.privacyMissing;
+  if (error.code === API_ERROR_CODES.uploadTimeout) return UPLOAD_MESSAGES.timeout;
+  // 503 crypto_unavailable: el api explica el custodio sellado y cuándo reintentar.
+  if (error.status === HTTP_SERVICE_UNAVAILABLE) return error.message;
+  return statusMessage(error, { forbidden: UPLOAD_MESSAGES.forbidden, notFound: UPLOAD_MESSAGES.notFound, tooMany: UPLOAD_MESSAGES.tooMany, generic: UPLOAD_MESSAGES.generic });
+}
+
+const FILE_NAMES: Readonly<Record<MemberFileKind, { without: string; saved: string }>> = {
+  photo: { without: "foto", saved: "la foto" },
+  consent: { without: "el documento firmado", saved: "el documento firmado" },
+};
+
+/** Alta: el socio quedó creado pero un archivo no subió. */
+export function createdWithoutMessage(kind: MemberFileKind, reason: string): string {
+  return `El socio quedó creado sin ${FILE_NAMES[kind].without}. ${reason}`;
+}
+
+/** Edición: los cambios se guardaron pero un archivo no subió. */
+export function savedWithoutMessage(kind: MemberFileKind, reason: string): string {
+  return `Los cambios se guardaron, pero ${FILE_NAMES[kind].saved} no se subió. ${reason}`;
 }
 
 export type StatusChange = "deactivate" | "reactivate";

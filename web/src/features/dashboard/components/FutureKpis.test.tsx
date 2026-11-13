@@ -51,13 +51,13 @@ describe("FutureKpis", () => {
     expect(within(region).getAllByRole("group")).toHaveLength(3);
   });
 
-  it("S5-F3: ya no trae Por avisar hoy ni Sin consentimiento (viven en Avisos)", async () => {
+  it("S5-F3: ya no trae Por avisar hoy ni Sin autorización (viven en Avisos)", async () => {
     mockDashboard(ok());
     renderDashboard(<FutureKpis />);
 
     await screen.findByRole("group", { name: "Hoy en el box" });
     expect(screen.queryByRole("group", { name: "Por avisar hoy" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Sin consentimiento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Sin autorización" })).not.toBeInTheDocument();
   });
 
   it("si el tablero falla no inventa valores (el error lo explica KpiGrid)", async () => {

@@ -12,6 +12,7 @@ import { todayBogota } from "../../../core/i18n/format";
 import { EXPORT_CONSEQUENCE, exportFallbackName, useBlobDownload } from "../../../shared/data/download";
 import { Button } from "../../../shared/ui/Button";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
+import type { ConsentFilter } from "../api";
 
 export const EXPORT_TITLE = "¿Exportar la lista de socios?";
 export const EXPORT_CONFIRM_LABEL = "Descargar CSV";
@@ -21,6 +22,8 @@ export interface MembersExportFilters {
   status?: string;
   membership_status?: string;
   plan_id?: string;
+  /** S6-F5: `missing` exporta solo los socios sin autorización de datos (GET /members/export?consent=missing). */
+  consent?: ConsentFilter;
 }
 
 export interface ExportButtonProps {

@@ -120,3 +120,18 @@ describe("StatusTag con payment", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+// S6-F1 · US-142: estado de la firma de la cadena.
+describe("StatusTag · firma", () => {
+  it.each([
+    ["intact", "Íntegra", "ok"],
+    ["altered", "Alterada", "danger"],
+    ["late", "Firma atrasada", "warning"],
+    ["none", "Sin firmas", "neutral"],
+  ] as const)("%s muestra '%s' con el tono %s", (signature, label, tone) => {
+    render(<StatusTag signature={signature} />);
+
+    expect(screen.getByText(label)).toHaveClass("tag", tone);
+    expect(screen.getByText(label)).toHaveAttribute("data-signature", signature);
+  });
+});

@@ -99,3 +99,67 @@ export function paymentLabel(status: PaymentStatusView): string {
 export function paymentTone(status: PaymentStatusView): StatusTone {
   return PAYMENT_TONES[status];
 }
+
+/**
+ * S6-F1 · US-142: estado de la firma de la cadena de auditoría. Lo decide el api (`state`, `is_late`,
+ * `latest`); aquí solo se pinta. Sin «no verificable»: la verificación no depende del custodio (S6-D81).
+ */
+export type SignatureStateView = "intact" | "altered" | "late" | "none";
+
+export const SIGNATURE_LABELS = Object.freeze({
+  intact: "Íntegra",
+  altered: "Alterada",
+  late: "Firma atrasada",
+  none: "Sin firmas",
+} as const satisfies Record<SignatureStateView, string>);
+
+/** Íntegra como «al día»; atrasada como advertencia; alterada como error; sin firmas neutro. */
+export const SIGNATURE_TONES = Object.freeze({
+  intact: "ok",
+  altered: "danger",
+  late: "warning",
+  none: "neutral",
+} as const satisfies Record<SignatureStateView, StatusTone>);
+
+export function signatureLabel(state: SignatureStateView): string {
+  return SIGNATURE_LABELS[state];
+}
+
+export function signatureTone(state: SignatureStateView): StatusTone {
+  return SIGNATURE_TONES[state];
+}
+
+/**
+ * S6-F2 · US-143, US-145: estado de una llave de cifrado (`CryptoKeyOut.state`) o de un trabajo de
+ * rotación o recifrado (`CryptoJobOut.status`). Dos listas distintas del contrato, una sola píldora.
+ */
+export type CryptoStatusView = "active" | "decrypt_only" | "retired" | "pending" | "running" | "done" | "failed";
+
+export const CRYPTO_LABELS = Object.freeze({
+  active: "Activa",
+  decrypt_only: "Solo descifrar",
+  retired: "Retirada",
+  pending: "Pendiente",
+  running: "En curso",
+  done: "Terminado",
+  failed: "Falló",
+} as const satisfies Record<CryptoStatusView, string>);
+
+/** Activa y terminado como «al día»; solo descifrar y en curso piden atención; falló es error. */
+export const CRYPTO_TONES = Object.freeze({
+  active: "ok",
+  decrypt_only: "warning",
+  retired: "neutral",
+  pending: "neutral",
+  running: "warning",
+  done: "ok",
+  failed: "danger",
+} as const satisfies Record<CryptoStatusView, StatusTone>);
+
+export function cryptoLabel(status: CryptoStatusView): string {
+  return CRYPTO_LABELS[status];
+}
+
+export function cryptoTone(status: CryptoStatusView): StatusTone {
+  return CRYPTO_TONES[status];
+}

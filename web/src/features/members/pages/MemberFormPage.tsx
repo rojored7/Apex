@@ -8,6 +8,10 @@
 //   (con la espera de Retry-After), 5xx, red y respuesta inválida como aviso general.
 // - 201: vuelve a /socios con el aviso "Socio registrado" y, si el api devolvió
 //   `data_consent_missing`, "Falta la autorización de tratamiento de datos" (DECISIÓN 34).
+// - S6-F4 (US-148, US-149): foto y documento firmado opcionales. Orden: POST /members → subir la foto →
+//   subir el documento (kind=consent). Un fallo de subida NO deshace el alta: se queda en la pantalla con
+//   «El socio quedó creado sin …», el id conservado (enlaces a la ficha y a la edición) y el formulario
+//   cerrado para no repetir el POST /members. El 422 de data_consent_at va bajo la casilla.
 // DESIGN-GAP:
 // - Sin "Guardar y vender membresía". Tras guardar el alta vuelve a la lista con un aviso, no a la
 //   ficha (S2-F6; la ficha existe desde S3-F1). S3-F1: con `:id` la ruta es la edición (MemberEditView).
@@ -19,19 +23,50 @@ import { Link, useNavigate, useParams } from "react-router";
 import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { PageHeader } from "../../../shared/ui/PageHeader";
-import { useCreateMember } from "../api";
+import { useCreateMember, useSubirAdjunto } from "../api";
 import { MemberFormFields } from "../components/MemberFormFields";
-import { createErrorMessage, fieldErrorOf } from "../memberErrors";
-import { MEMBERS_PATH, type MemberCreatedState } from "../memberLinks";
+import { createdWithoutMessage, createErrorMessage, fieldErrorOf } from "../memberErrors";
+import { editMemberHref, memberHref, MEMBERS_PATH, type MemberCreatedState } from "../memberLinks";
+import { uploadPending } from "../lib/uploadPending";
 import { EMPTY_MEMBER_FORM, memberFormSchema, toMemberCreate, type MemberFormValues } from "../schemas";
 import styles from "./MemberFormPage.module.css";
 import { MemberEditView } from "./MemberEditView";
 
 export const NEW_MEMBER_TITLE = "Nuevo socio";
 
+interface PartialCreate {
+  memberId: string;
+  messages: string[];
+}
+
+/** S6-F4: el socio quedó creado pero un archivo no subió; se conserva el id y se ofrece seguir sin repetir el alta. */
+function PartialCreateNotice({ partial }: { partial: PartialCreate }) {
+  return (
+    <div className={styles.page}>
+      <PageHeader title={NEW_MEMBER_TITLE} breadcrumbs={[{ label: "Socios", href: MEMBERS_PATH }, { label: NEW_MEMBER_TITLE }]} />
+      <div className={styles.error} role="alert">
+        {partial.messages.map((message) => (
+          <p key={message}>{message}</p>
+        ))}
+      </div>
+      <span className={styles.actions}>
+        <Link className={styles.cancel} to={memberHref(partial.memberId)}>
+          Ir a la ficha
+        </Link>
+        <Link className={styles.cancel} to={editMemberHref(partial.memberId)}>
+          Subir el archivo desde la edición
+        </Link>
+      </span>
+    </div>
+  );
+}
+
 function MemberCreateForm() {
   const navigate = useNavigate();
   const create = useCreateMember();
+  const upload = useSubirAdjunto();
+  const [uploading, setUploading] = useState(false);
+  const [partial, setPartial] = useState<PartialCreate | null>(null);
   const resolver = useMemo(() => zodResolver(memberFormSchema()), []);
   const form = useForm<MemberFormValues>({ resolver, defaultValues: EMPTY_MEMBER_FORM });
   const [existingId, setExistingId] = useState<string | null>(null);
@@ -53,6 +88,12 @@ function MemberCreateForm() {
     try {
       const created = await create.mutateAsync(toMemberCreate(values));
       const state: MemberCreatedState = { memberCreated: { name: `${created.firstName} ${created.lastName}`, consentMissing: created.consentMissing } };
+      setUploading(true);
+      const failures = await uploadPending((kind, file) => upload.mutateAsync({ memberId: created.id, kind, file }), { photo: values.photo, consent: values.consent_file });
+      if (failures.length > 0) {
+        setPartial({ memberId: created.id, messages: failures.map((f) => createdWithoutMessage(f.kind, f.reason)) });
+        return;
+      }
       void navigate(MEMBERS_PATH, { state });
     } catch (error) {
       const target = fieldErrorOf(error);
@@ -63,6 +104,7 @@ function MemberCreateForm() {
         setGeneralError(createErrorMessage(error));
       }
     } finally {
+      setUploading(false);
       inFlight.current = false;
     }
   };
@@ -70,6 +112,8 @@ function MemberCreateForm() {
   const goToExisting = (href: string): void => {
     void navigate(href);
   };
+
+  if (partial) return <PartialCreateNotice partial={partial} />;
 
   return (
     <div className={styles.page}>
@@ -87,8 +131,8 @@ function MemberCreateForm() {
           <Link className={styles.cancel} to={MEMBERS_PATH}>
             Cancelar
           </Link>
-          <Button type="submit" loading={create.isPending}>
-            {create.isPending ? "Guardando…" : "Guardar"}
+          <Button type="submit" loading={create.isPending || uploading}>
+            {create.isPending || uploading ? "Guardando…" : "Guardar"}
           </Button>
         </div>
       </form>

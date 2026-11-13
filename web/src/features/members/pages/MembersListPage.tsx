@@ -19,6 +19,10 @@
 //   trae datos cifrados (N-01) y la asistencia llega con v0.4; sin el documento enmascarado bajo el
 //   nombre (N-01). "Vence" muestra la fecha de fin con año; no "Vencido · 5 días", "reanuda 1 nov"
 //   ni "12 clases · quedan 2" (la fila no trae días ni clases restantes).
+// S6-F5 (US-151): `?consent=missing` (enlace de la tarjeta "Sin autorización" de Inicio) filtra la lista y la
+//   exportación; se muestra como el chip "Sin autorización" y quitarlo limpia la URL.
+// DESIGN-GAP: Socios_Lista.html no dibuja el chip "Sin autorización"; va como un grupo de Chips propio
+//   ("Autorización") entre los chips de estado y la FilterBar, solo mientras el filtro está activo.
 // - Sin filtro de última asistencia (v0.4). S5-F4: "Exportar" (solo admin) con los filtros vigentes. El encabezado no
 //   dice "· 269 con membresía": el número está en los chips.
 // - Sin la nota de la búsqueda por valor exacto: va como ayuda corta bajo la lista.
@@ -32,6 +36,7 @@ import { parseSort, useListParams } from "../../../shared/hooks/useListParams";
 import { MOBILE_QUERY, useMediaQuery } from "../../../shared/hooks/useMediaQuery";
 import { Button } from "../../../shared/ui/Button";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
+import { Chips } from "../../../shared/ui/Chips";
 import { FilterBar } from "../../../shared/ui/FilterBar";
 import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
@@ -39,6 +44,7 @@ import { StatusTag } from "../../../shared/ui/StatusTag";
 import { useMembers, useMembersTotal, type MembersInfiniteParams } from "../api";
 import { ExportButton } from "../components/ExportButton";
 import { MemberCardList } from "../components/MemberCardList";
+import { MemberPhoto } from "../components/MemberPhoto";
 import { MemberStatusChips } from "../components/MemberStatusChips";
 import { PLAN_FILTER_NAME, readPlanId, usePlanFilter } from "../components/PlanFilter";
 import { accountStatusOf, membershipStatusOf } from "../lib/memberRow";
@@ -47,7 +53,9 @@ import { memberHref, NEW_MEMBER_PATH, readCreatedNotice, type MemberCreatedNotic
 import { chipFromFilters, chipToFilter, DEFAULT_MEMBER_SORT, DELETED_STATUS, MEMBER_SORT_FIELDS, MEMBER_SORT_LABELS, MEMBER_SORTS, type MemberChip, type MemberRowView } from "../schemas";
 import styles from "./MembersListPage.module.css";
 
-const FILTERS = ["status", "membership_status", "plan_id"] as const;
+const FILTERS = ["status", "membership_status", "plan_id", "consent"] as const;
+const CONSENT_MISSING = "missing";
+const CONSENT_CHIP_OPTIONS = [{ value: CONSENT_MISSING, label: "Sin autorización" }];
 type MemberFilter = (typeof FILTERS)[number];
 
 export const MEMBERS_EMPTY_SEARCH = "No hay socios que coincidan con la búsqueda";
@@ -58,7 +66,16 @@ export const CONSENT_MISSING_NOTICE = "Falta la autorización de tratamiento de 
 const SORT_OPTIONS = MEMBER_SORTS.map((value) => ({ value, label: MEMBER_SORT_LABELS[value] }));
 
 const COLUMNS: Column<MemberRowView>[] = [
-  { key: "name", header: "Socio", render: (row) => `${row.first_name} ${row.last_name}` },
+  {
+    key: "name",
+    header: "Socio",
+    render: (row) => (
+      <span className={styles.person}>
+        <MemberPhoto photoAttachmentId={row.photo_attachment_id} size="sm" />
+        {`${row.first_name} ${row.last_name}`}
+      </span>
+    ),
+  },
   { key: "plan", header: "Plan vigente", render: (row) => row.plan_name ?? EMPTY_VALUE },
   { key: "end", header: "Vence", render: (row) => (row.membership_end_date ? <span className={styles.nowrap}>{formatDate(row.membership_end_date)}</span> : EMPTY_VALUE) },
   {
@@ -208,6 +225,8 @@ export default function MembersListPage() {
   const { limit, offset, sort } = list.params;
   const { q } = list;
   const { status, membership_status } = chipToFilter(chip);
+  // S6-F5 (US-151): `?consent=missing` es el único valor; cualquier otro se ignora y no viaja.
+  const consent = list.filters.consent.includes(CONSENT_MISSING) ? CONSENT_MISSING : undefined;
 
   const params = useMemo<MembersInfiniteParams>(
     () => ({
@@ -216,15 +235,19 @@ export default function MembersListPage() {
       ...(status ? { status } : {}),
       ...(membership_status ? { membership_status } : {}),
       ...(planId ? { plan_id: planId } : {}),
+      ...(consent ? { consent } : {}),
       ...(sort ? { sort } : {}),
     }),
-    [limit, q, status, membership_status, planId, sort],
+    [limit, q, status, membership_status, planId, consent, sort],
   );
-  const exportFilters = useMemo(
-    () => ({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(membership_status ? { membership_status } : {}), ...(planId ? { plan_id: planId } : {}) }),
-    [q, status, membership_status, planId],
-  );
-  const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "", canCreate, onClear: list.clear };
+  // Los filtros de la exportación son los de la lista sin paginar ni ordenar.
+  const exportFilters = useMemo(() => {
+    const filters: Partial<MembersInfiniteParams> = { ...params };
+    delete filters.limit;
+    delete filters.sort;
+    return filters;
+  }, [params]);
+  const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "" || consent !== undefined, canCreate, onClear: list.clear };
 
   // En el celular "Nuevo socio" es el botón flotante de MemberCardList.
   const actions: PageAction[] = canCreate && !isMobile ? [{ id: "new-member", label: "Nuevo socio", href: NEW_MEMBER_PATH, variant: "primary" }] : [];
@@ -243,6 +266,17 @@ export default function MembersListPage() {
           list.setFilters({ status: filter.status, membership_status: filter.membership_status });
         }}
       />
+      {consent ? (
+        <Chips
+          label="Autorización"
+          mode="single"
+          options={CONSENT_CHIP_OPTIONS}
+          value={[consent]}
+          onChange={() => {
+            list.setFilter("consent", undefined);
+          }}
+        />
+      ) : null}
       <FilterBar
         query={list.q}
         onQueryChange={list.setQuery}

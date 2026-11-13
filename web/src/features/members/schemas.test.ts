@@ -2,6 +2,11 @@
 // S3-F1: la ficha (MemberDetailOut), revelar (RevealOut) y la edición (MemberPatch, S3-D46).
 import { MEMBER_ID, memberDetailBody, REVEALED } from "../../test/memberDetail";
 import {
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_MESSAGES,
+  consentFileFieldSchema,
+  fileError,
+  photoFieldSchema,
   chipFromFilters,
   chipToFilter,
   editDefaults,
@@ -168,7 +173,7 @@ describe("esquemas de respuesta", () => {
   it("S3-B9b (D35): memberRowSchema acepta la fila con membership_end_date y la de B9b completa", () => {
     const row = { id: "x", first_name: "A", last_name: "B", sex: "f", status: "active", deleted_at: null, membership_status: "expiring", plan_name: "Mensual", membership_end_date: "2026-10-25" };
 
-    expect(memberRowSchema.parse(row)).toEqual(row);
+    expect(memberRowSchema.parse(row)).toEqual({ ...row, photo_attachment_id: null });
     expect(memberRowSchema.parse({ ...row, membership_status: "none", plan_name: null, membership_end_date: null }).membership_end_date).toBeNull();
   });
 
@@ -232,7 +237,7 @@ describe("S3-F2 · chips de la lista (US-071)", () => {
     expect(chipFromFilters([], ["deleted"])).toBeNull();
   });
 
-  it("memberRowSchema sigue estricto con las nueve claves (las ocho de B8 más membership_end_date)", () => {
+  it("memberRowSchema sigue estricto con las diez claves (las ocho de B8, membership_end_date y, desde S6-F3, photo_attachment_id)", () => {
     const row = {
       id: "x",
       first_name: "A",
@@ -245,7 +250,8 @@ describe("S3-F2 · chips de la lista (US-071)", () => {
       membership_end_date: "2026-11-27",
     };
 
-    expect(Object.keys(memberRowSchema.parse(row))).toHaveLength(9);
+    expect(Object.keys(memberRowSchema.parse(row))).toHaveLength(10);
+    expect(memberRowSchema.parse({ ...row, photo_attachment_id: "bbbb0001-0000-4000-8000-000000000001" }).photo_attachment_id).toBe("bbbb0001-0000-4000-8000-000000000001");
     expect(memberRowSchema.safeParse({ ...row, document: "CC •••• 4417" }).success).toBe(false);
     expect(memberRowSchema.safeParse({ ...row, phone: "••• ••• 4567" }).success).toBe(false);
   });
@@ -329,6 +335,8 @@ describe("S3-F1 · editDefaults y memberEditSchema (US-075)", () => {
       email: "",
       emergency_contact: { name: "", phone: "", relationship: "" },
       data_consent: false,
+      photo: null,
+      consent_file: null,
       modes: { document: "keep", phone: "keep", email: "keep", birth_date: "keep", emergency_contact: "keep" },
     });
     expect(JSON.stringify(editDefaults(memberDetailView()))).not.toContain("•");
@@ -412,5 +420,68 @@ describe("S3-F1 · memberEditSchema con valores demasiado largos (topes de Membe
     expect(editIssue(contact("a".repeat(101), "3110000008", ""), "emergency_contact.name")).toBe("El nombre admite hasta 100 caracteres.");
     expect(editIssue(contact("Marta", long(31), ""), "emergency_contact.phone")).toBe("El teléfono admite hasta 30 caracteres.");
     expect(editIssue(contact("Marta", "3110000008", "a".repeat(51)), "emergency_contact.relationship")).toBe("El parentesco admite hasta 50 caracteres.");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: la foto y el documento de autorización (Zod de los dos campos).
+const fileOf = (type: string, size: number, name = "a"): File => {
+  const file = new File(["x"], name, { type });
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+};
+
+describe("S6-F4 · fileError, photoFieldSchema y consentFileFieldSchema", () => {
+  it("el tope es 5 MiB exactos: 5.242.880 pasa y 5.242.881 no", () => {
+    expect(ATTACHMENT_MAX_BYTES).toBe(5_242_880);
+    expect(fileError("photo", fileOf("image/png", 5_242_880))).toBeNull();
+    expect(fileError("photo", fileOf("image/png", 5_242_881))).toBe(ATTACHMENT_MESSAGES.photoTooLarge);
+    expect(ATTACHMENT_MESSAGES.photoTooLarge).toContain("La foto supera 5 MB");
+  });
+
+  it.each(["image/jpeg", "image/png"])("la foto acepta %s", (type) => {
+    expect(fileError("photo", fileOf(type, 10))).toBeNull();
+  });
+
+  it.each(["application/pdf", "image/gif", "image/webp", "text/plain", ""])("la foto rechaza '%s' pidiendo JPEG o PNG", (type) => {
+    expect(fileError("photo", fileOf(type, 10))).toBe(ATTACHMENT_MESSAGES.photoType);
+  });
+
+  it.each(["application/pdf", "image/jpeg", "image/png"])("el documento firmado acepta %s", (type) => {
+    expect(fileError("consent", fileOf(type, 10))).toBeNull();
+  });
+
+  it("el documento firmado rechaza otros tipos y más de 5 MB con su propio texto", () => {
+    expect(fileError("consent", fileOf("application/zip", 10))).toBe(ATTACHMENT_MESSAGES.consentType);
+    expect(fileError("consent", fileOf("application/pdf", 5_242_881))).toBe(ATTACHMENT_MESSAGES.consentTooLarge);
+  });
+
+  it("un archivo vacío no se sube", () => {
+    expect(fileError("photo", fileOf("image/png", 0))).toBe(ATTACHMENT_MESSAGES.empty);
+  });
+
+  it("los esquemas aceptan null (campo opcional), un archivo válido, y rechazan un inválido o un valor que no es File", () => {
+    expect(photoFieldSchema.safeParse(null).success).toBe(true);
+    expect(photoFieldSchema.safeParse(fileOf("image/jpeg", 10)).success).toBe(true);
+    const bad = photoFieldSchema.safeParse(fileOf("image/gif", 10));
+    expect(bad.success).toBe(false);
+    expect(bad.error?.issues[0]?.message).toBe(ATTACHMENT_MESSAGES.photoType);
+    expect(photoFieldSchema.safeParse("foto.png").success).toBe(false);
+    expect(consentFileFieldSchema.safeParse(fileOf("application/pdf", 10)).success).toBe(true);
+    expect(consentFileFieldSchema.safeParse(fileOf("image/gif", 10)).success).toBe(false);
+  });
+
+  it("memberFormSchema y memberEditSchema validan photo y consent_file; el cuerpo de POST no los lleva", () => {
+    expect(EMPTY_MEMBER_FORM.photo).toBeNull();
+    expect(EMPTY_MEMBER_FORM.consent_file).toBeNull();
+    expect(memberFormSchema(TODAY).safeParse(valid({ photo: fileOf("image/gif", 10) })).success).toBe(false);
+    expect(memberFormSchema(TODAY).safeParse(valid({ consent_file: fileOf("image/gif", 10) })).success).toBe(false);
+    const ok = valid({ photo: fileOf("image/png", 10), consent_file: fileOf("application/pdf", 10) });
+    expect(memberFormSchema(TODAY).safeParse(ok).success).toBe(true);
+    expect(Object.keys(toMemberCreate(ok))).not.toContain("photo");
+    expect(JSON.stringify(toMemberCreate(ok))).not.toContain("consent_file");
+    expect(memberEditSchema(TODAY).safeParse(editValues({ photo: fileOf("image/gif", 10) })).success).toBe(false);
+    expect(memberEditSchema(TODAY).safeParse(editValues({ photo: fileOf("image/png", 10) })).success).toBe(true);
+    expect(Object.keys(toMemberPatch(editValues({ photo: fileOf("image/png", 10) }), { photo: true }))).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ import { act, render, renderHook, screen, waitFor } from "@testing-library/react
 import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { verifyResult, verifyStarted } from "../../../test/audit";
+import { signedVerifyResult, verifyResult, verifyStarted } from "../../../test/audit";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import { VERIFY_MAX_MS, VERIFY_MAX_POLLS, VERIFY_POLL_MS, lastVerificationPollLimit, useLastVerification } from "../api";
 import { VERIFY_POLL_FAILED_MESSAGE, VerifyChainButton } from "./VerifyChainButton";
@@ -272,5 +272,68 @@ describe("VerifyChainButton · sondeo acotado (revisión de seguridad de F1, MED
 
     expect(mock.callsTo("GET /audit/verify/last")).toHaveLength(4);
     expect(lastVerificationPollLimit(queryClient)).toBe(4 + VERIFY_MAX_POLLS);
+  });
+});
+
+// S6-F1 · US-142 (S6-D62, D81, S6-A3): la verificación suma las firmas.
+describe("VerifyChainButton · firmas (S6-F1)", () => {
+  it("200 con firmas: muestra signatures_valid de signatures_checked", async () => {
+    const { user } = renderButton({ "POST /audit/verify": { status: 200, body: signedVerifyResult({ rows_checked: 5000, finished_at: "2026-10-21T16:04:00Z" }) } });
+    await screen.findByText(/Última verificación/);
+
+    await user.click(verifyButton());
+
+    expect(await screen.findByText(/Cadena íntegra: 5\.000 filas verificadas/)).toBeInTheDocument();
+    expect(screen.getByText("Firmas verificadas: 365 de 365 válidas")).toBeInTheDocument();
+    expect(screen.getByText(/Última firma válida: seq 88412 · 21 oct 2026, 7:00 a\. m\. · Ed25519/)).toBeInTheDocument();
+  });
+
+  it("una firma alterada dice el registro y enlaza a ?seq= conservando los filtros; no dice «Cadena íntegra»", async () => {
+    const { user } = renderButton({
+      "POST /audit/verify": { status: 200, body: signedVerifyResult({ ok: false, signatures_valid: 364, first_invalid_signature_seq: 88000 }) },
+    });
+    await screen.findByText(/Última verificación/);
+
+    await user.click(verifyButton());
+
+    expect(await screen.findByText("Firmas verificadas: 364 de 365 válidas")).toBeInTheDocument();
+    expect(screen.getByText(/Firma alterada en el registro seq 88000/)).toBeInTheDocument();
+    expect(screen.queryByText(/Cadena íntegra/)).not.toBeInTheDocument();
+    const href = new URL(screen.getByRole("link", { name: "Ver el registro 88000" }).getAttribute("href") ?? "", "http://apex.test");
+    expect(href.searchParams.get("seq")).toBe("88000");
+    expect(href.searchParams.get("action")).toBe("update");
+  });
+
+  it("con el custodio sellado la verificación sigue completa: ninguna firma queda «no verificable»", async () => {
+    const { user, container } = renderButton({ "POST /audit/verify": { status: 200, body: signedVerifyResult() } });
+    await screen.findByText(/Última verificación/);
+
+    await user.click(verifyButton());
+
+    expect(await screen.findByText("Firmas verificadas: 365 de 365 válidas")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/no verificable|parcial|sellado/i);
+  });
+
+  it("sin campos de firmas (verificación anterior a v0.3) no inventa la línea de firmas", async () => {
+    const { user } = renderButton({ "POST /audit/verify": { status: 200, body: NEW } });
+    await screen.findByText(/Última verificación/);
+
+    await user.click(verifyButton());
+
+    await screen.findByText(/Cadena íntegra/);
+    expect(screen.queryByText(/Firmas verificadas/)).not.toBeInTheDocument();
+  });
+
+  it("la línea de la última verificación suma las firmas cuando vienen", async () => {
+    renderButton({ "GET /audit/verify/last": { status: 200, body: signedVerifyResult() } });
+
+    expect(await screen.findByText("Última verificación: 21 oct 2026, 10:00 a. m. · íntegra, 3.418 filas · firmas 365 de 365")).toBeInTheDocument();
+  });
+
+  it("el DESIGN-GAP de ML-DSA se cerró: el código dice Ed25519", () => {
+    const code = (import.meta.glob<string>("./VerifyChainButton.tsx", { query: "?raw", import: "default", eager: true })["./VerifyChainButton.tsx"]) ?? "";
+
+    expect(code).not.toContain("ML-DSA");
+    expect(code).toContain("Ed25519");
   });
 });

@@ -1,0 +1,52 @@
+/* S6-F4: campo de foto del formulario del socio (DESIGN-GAP: Socio_Form.html no lo dibuja).
+   Círculo como el de la ficha (MemberPhoto) y el control de archivo estándar. Solo tokens.css. */
+.root {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.preview {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-8) * 2);
+  height: calc(var(--space-8) * 2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--blue-tint);
+  color: var(--muted);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  display: inline-flex;
+  width: 55%;
+  height: 55%;
+}
+
+.controls {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.remove {
+  align-self: flex-start;
+}

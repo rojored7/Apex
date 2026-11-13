@@ -59,12 +59,21 @@ const verification = (finished: string, rows = 3418) => ({
   source: "api",
 });
 
+const sigInfo = { through_seq: 88412, signed_at: "2026-10-21T12:00:00Z", algorithm: "Ed25519" };
+const SIGNATURES = {
+  intact: { latest: sigInfo, last_valid: sigInfo, is_late: false, state: "ok", verified_at: "2026-10-21T15:00:02Z" },
+  altered: { latest: sigInfo, last_valid: { ...sigInfo, through_seq: 88000 }, is_late: false, state: "invalid", verified_at: "2026-10-21T15:00:02Z" },
+  late: { latest: sigInfo, last_valid: sigInfo, is_late: true, state: "ok", verified_at: "2026-10-21T15:00:02Z" },
+  none: { latest: null, last_valid: null, is_late: false, state: "none", verified_at: null },
+} as const;
+type SignatureCase = keyof typeof SIGNATURES | "error";
+
 interface FakeAudit {
   listQueries: URLSearchParams[];
   finishVerification: () => void;
 }
 
-async function fakeAudit(page: Page): Promise<FakeAudit> {
+async function fakeAudit(page: Page, signature: SignatureCase = "intact"): Promise<FakeAudit> {
   const listQueries: URLSearchParams[] = [];
   let last = verification("2026-10-21T15:00:02Z");
   await page.route((url) => url.pathname === "/api/v1/users", (route: Route) => json(route, 200, { items: [], total: 0, limit: 200, offset: 0 }));
@@ -73,6 +82,9 @@ async function fakeAudit(page: Page): Promise<FakeAudit> {
     if (url.pathname === "/api/v1/audit") {
       listQueries.push(url.searchParams);
       return json(route, 200, { items: ROWS, total: ROWS.length, limit: Number(url.searchParams.get("limit")), offset: Number(url.searchParams.get("offset")) });
+    }
+    if (url.pathname === "/api/v1/audit/signatures/latest") {
+      return signature === "error" ? json(route, 500, { error: { code: "internal", message: "x" } }) : json(route, 200, SIGNATURES[signature]);
     }
     if (url.pathname === "/api/v1/audit/verify/last") return json(route, 200, last);
     if (url.pathname === "/api/v1/audit/verify") return json(route, 202, { status: "running", last });
@@ -127,6 +139,32 @@ test.describe("auditoría (preview)", () => {
     api.finishVerification();
     await expect(page.getByText(/^Cadena íntegra: 5\.000 filas verificadas/)).toBeVisible({ timeout: 15_000 });
   });
+
+  const STATES: [SignatureCase, string][] = [
+    ["intact", "Íntegra"],
+    ["altered", "Alterada"],
+    ["late", "Firma atrasada"],
+    ["none", "Sin firmas"],
+    ["error", "No pudimos consultar el estado de la firma"],
+  ];
+  // S6-F1 · US-142: los cinco estados del bloque de la firma, con axe en claro y oscuro.
+  for (const [signature, text] of STATES) {
+    for (const scheme of ["light", "dark"] as const) {
+      test(`firma «${signature}» sin violaciones de axe en ${scheme}`, async ({ page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await mockSession(page, ADMIN);
+        await fakeAudit(page, signature);
+
+        await page.goto("/sistema/auditoria");
+        const block = page.getByRole("region", { name: "Firma de la cadena" });
+        await expect(block.getByText(text, { exact: false })).toBeVisible();
+        if (signature === "intact") await expect(block.getByText("Última firma válida: seq 88412 · 21 oct 2026, 7:00 a. m. · Ed25519")).toBeVisible();
+        expect(await axeViolations(page)).toEqual([]);
+        await page.screenshot({ path: testInfo.outputPath(`firma-${signature}-${scheme}.png`), fullPage: true });
+      });
+    }
+  }
 
   for (const scheme of ["light", "dark"] as const) {
     for (const width of WIDTHS) {

@@ -9,13 +9,14 @@
 // - Las pestañas son rutas hijas (S3-D65, E3, E14): la página pinta la activa en su <Outlet /> y le
 //   pasa la ficha por el contexto (MemberOutletContext, que cumple MemberTabContext de shared/data).
 //   "Datos" es la hija índice (MemberDataTab); Membresías y Pagos son hijas de sus features (S3-F7;
-//   se ven deshabilitadas si su ruta no abre una página para el rol, memberTabs); Historial (S4A-F2,
+//   se ven deshabilitadas si su ruta no abre una página para el rol, memberTabs); Adjuntos (S6-F3, US-150)
+//   es hija de members con la tabla en features/attachments; Historial (S4A-F2,
 //   US-106) es hija de members con members.history.view y la última; las demás, con su versión.
 // - Estados: cargando, 404 "Socio no encontrado", error con "Reintentar", aviso de autorización
 //   faltante (Q16), avisos de "Cambios guardados", "Socio dado de baja" y "Socio reactivado", y el
 //   409 de documento al reactivar con enlace al socio vivo.
 // DESIGN-GAP:
-// - Sin foto (v0.3) ni las cuatro tarjetas de resumen (Membresía, Asistencia, Último WOD, Avisos):
+// - La foto (S6-F3) es la miniatura del encabezado (MemberPhoto, blob: en memoria); sin las cuatro tarjetas de resumen (Membresía, Asistencia, Último WOD, Avisos):
 //   la de Membresía es la tarjeta de la vigente en la pestaña Membresías (S3-F7) y las demás llegan
 //   con v0.2 a v0.5. "Renovar" y "Registrar pago" no van en el encabezado sino en las pestañas
 //   Membresías (Renovar, Registrar saldo) y Pagos (Registrar pago); "Vender membresía" siempre
@@ -37,6 +38,7 @@ import { Tabs, type TabItem } from "../../../shared/ui/Tabs";
 import { useMember } from "../api";
 import type { MemberOutletContext } from "../memberOutlet";
 import { DeactivateMemberModal, ReactivateMemberModal } from "../components/DeactivateMemberModal";
+import { MemberPhoto } from "../components/MemberPhoto";
 import { membershipDetail, membershipStatusOf } from "../lib/memberRow";
 import { DETAIL_MESSAGES, detailErrorOf, STATUS_CHANGE_MESSAGES } from "../memberErrors";
 import { editMemberHref, isMemberId, memberHref, MEMBERS_PATH, readUpdatedNotice, sellHref } from "../memberLinks";
@@ -53,7 +55,8 @@ export const MEMBER_TABS: readonly TabItem[] = [
   { id: "atleta", label: "Atleta", disabledUntil: "v0.6" },
   // S5-F3 (US-123, US-130, S3-D65): hija /socios/:id/avisos de la feature notifications.
   { id: "avisos", label: "Avisos" },
-  { id: "adjuntos", label: "Adjuntos", disabledUntil: "v0.3" },
+  // S6-F3 (US-150, S3-D65): hija /socios/:id/adjuntos de members (la tabla vive en features/attachments).
+  { id: "adjuntos", label: "Adjuntos" },
   // S4A-F2 (US-106, S4A-D30): hija /socios/:id/historial de la feature members (members.history.view).
   { id: "historial", label: "Historial" },
 ];
@@ -62,7 +65,7 @@ const INDEX_TAB = "datos";
 export const TAB_UNAVAILABLE = "No disponible";
 
 /** S3-F7: pestañas que son rutas hijas con su propio acceso (Membresías, Pagos; S4A-F2: Historial). */
-const CHILD_TABS: ReadonlySet<string> = new Set(["membresias", "pagos", "historial", "avisos"]);
+const CHILD_TABS: ReadonlySet<string> = new Set(["membresias", "pagos", "historial", "avisos", "adjuntos"]);
 
 /**
  * Las pestañas con su estado para este rol: una hija cuya ruta no abre una página (su feature
@@ -190,6 +193,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
     <div className={styles.page}>
       <PageHeader
         title={name}
+        leading={<MemberPhoto photoAttachmentId={member.photo_attachment_id} size="lg" />}
         badge={
           <span className={styles.badges}>
             <StatusTag status={membershipStatusOf(member) ?? "none"} />

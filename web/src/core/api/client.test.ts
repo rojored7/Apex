@@ -3,9 +3,12 @@
 // falta otra dependencia para responder 200, 204, 401, 409, 422 y 502).
 import {
   API_BASE,
+  BLOB_CONTENT_TYPES,
   BLOB_TIMEOUT_MS,
   UNEXPECTED_CONTENT_MESSAGE,
   REQUEST_TIMEOUT_MS,
+  UPLOAD_TIMEOUT_MS,
+  UPLOAD_TOO_LARGE_MESSAGE,
   api,
   registerOnUnauthorized,
   setAccessTokenGetter,
@@ -676,15 +679,155 @@ describe("api.blob: descargas de archivos (S5-F4, L-8)", () => {
 });
 
 describe("api.blob: tipo de contenido (revisión F4, LOW 3)", () => {
-  it.each(["application/pdf", "text/csv", "text/csv; charset=utf-8", "Application/PDF"])("acepta %s", async (type) => {
+  it.each(["application/pdf", "text/csv", "text/csv; charset=utf-8", "Application/PDF", "image/jpeg", "image/png"])("acepta %s", async (type) => {
     fetchMock.mockResolvedValueOnce(new Response("x", { status: 200, headers: { "Content-Type": type } }));
 
     await expect(api.blob("/x")).resolves.toMatchObject({ contentType: type });
   });
 
-  it.each(["text/html", "application/json", "application/octet-stream", ""])("rechaza un 200 de tipo '%s' con unexpected_content_type", async (type) => {
+  it.each(["text/html", "application/json", "image/gif", "image/svg+xml", "application/octet-stream", ""])("rechaza un 200 de tipo '%s' con unexpected_content_type", async (type) => {
     fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200, headers: type ? { "Content-Type": type } : {} }));
 
     await expect(api.blob("/x")).rejects.toMatchObject({ code: "unexpected_content_type", message: UNEXPECTED_CONTENT_MESSAGE });
+  });
+});
+
+describe("api.blob: tipos de S6-F3 (foto y adjuntos)", () => {
+  it("BLOB_CONTENT_TYPES incluye image/jpeg e image/png y no application/json; el Accept sí lo ofrece", () => {
+    expect([...BLOB_CONTENT_TYPES]).toEqual(["application/pdf", "text/csv", "image/jpeg", "image/png"]);
+    expect(BLOB_CONTENT_TYPES).not.toContain("application/json");
+  });
+
+  it("el Accept de una descarga ofrece también las imágenes", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("x", { status: 200, headers: { "Content-Type": "image/png" } }));
+    await api.blob("/attachments/x");
+
+    const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    const accept = new Headers(init.headers).get("Accept") ?? "";
+    for (const type of ["application/pdf", "text/csv", "image/jpeg", "image/png", "application/json"]) expect(accept).toContain(type);
+  });
+});
+
+describe("api.blob: tipos extra por llamada (S6-F2, CBOM)", () => {
+  it("con allow: [\"application/json\"] entrega un 200 JSON (el CBOM) y sin allow lo sigue rechazando", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200, headers: { "Content-Type": "application/json", "Content-Disposition": "attachment; filename=apex-cbom-2026-10-20.json" } }));
+    const result = await api.blob("/crypto/cbom", { allow: ["application/json"] });
+
+    expect(result.filename).toBe("apex-cbom-2026-10-20.json");
+    expect(await result.blob.text()).toBe("{}");
+
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(api.blob("/crypto/cbom")).rejects.toMatchObject({ code: "unexpected_content_type" });
+  });
+
+  it("allow no abre otros tipos: text/html sigue rechazado", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200, headers: { "Content-Type": "text/html" } }));
+
+    await expect(api.blob("/crypto/cbom", { allow: ["application/json"] })).rejects.toMatchObject({ code: "unexpected_content_type" });
+  });
+});
+
+describe("api.upload: subida cruda de un archivo (S6-F4, E1)", () => {
+  const MEMBER_PATH = "/members/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/attachments";
+  const png = (): File => new File([new Uint8Array([1, 2, 3])], "foto.png", { type: "image/png" });
+
+  it("hace POST con el File como cuerpo, ?kind= en la URL y Content-Type igual al del archivo; nunca FormData", async () => {
+    fetchMock.mockResolvedValueOnce(json(201, { id: "x" }));
+    const file = png();
+
+    await api.upload(MEMBER_PATH, file, { kind: "photo" });
+
+    const { url, init } = lastCall();
+    expect(url).toBe(`/api/v1${MEMBER_PATH}?kind=photo`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(file);
+    expect(init.body).not.toBeInstanceOf(FormData);
+    expect(init.credentials).toBe("same-origin");
+    expect(headersOf(init).get("Content-Type")).toBe("image/png");
+  });
+
+  it.each(["consent", "other"] as const)("envía kind=%s", async (kind) => {
+    fetchMock.mockResolvedValueOnce(json(201, {}));
+    await api.upload(MEMBER_PATH, png(), { kind });
+    expect(lastCall().url).toContain(`?kind=${kind}`);
+  });
+
+  it("sin tipo en el archivo usa application/octet-stream y lleva el access token", async () => {
+    setAccessTokenGetter(() => "tok");
+    fetchMock.mockResolvedValueOnce(json(201, {}));
+
+    await api.upload(MEMBER_PATH, new File(["x"], "a"), { kind: "other" });
+
+    expect(headersOf(lastCall().init).get("Content-Type")).toBe("application/octet-stream");
+    expect(headersOf(lastCall().init).get("Authorization")).toBe("Bearer tok");
+  });
+
+  it("devuelve el JSON del 201", async () => {
+    fetchMock.mockResolvedValueOnce(json(201, { id: "abc", kind: "photo" }));
+    await expect(api.upload(MEMBER_PATH, png(), { kind: "photo" })).resolves.toEqual({ id: "abc", kind: "photo" });
+  });
+
+  it("vence a los 35 s (5 s más que el api, S6-D84) con timeout", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("a", "AbortError"));
+          });
+        }),
+    );
+    const pending = expect(api.upload(MEMBER_PATH, png(), { kind: "photo" })).rejects.toMatchObject({ code: "timeout" });
+    await vi.advanceTimersByTimeAsync(UPLOAD_TIMEOUT_MS);
+    await pending;
+    expect(UPLOAD_TIMEOUT_MS).toBe(35_000);
+  });
+
+  it("un 413 con el envelope del api es file_too_large", async () => {
+    fetchMock.mockResolvedValueOnce(envelope(413, "file_too_large", "Mensaje del api."));
+    await expect(api.upload(MEMBER_PATH, png(), { kind: "photo" })).rejects.toMatchObject({ status: 413, code: "file_too_large" });
+  });
+
+  it("un 413 de Nginx (HTML, sin envelope) también es file_too_large con el mismo mensaje", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<html>413</html>", { status: 413, headers: { "Content-Type": "text/html" } }));
+    const nginx = await api.upload(MEMBER_PATH, png(), { kind: "photo" }).catch((e: unknown) => e);
+    fetchMock.mockResolvedValueOnce(envelope(413, "file_too_large", "x"));
+    const back = await api.upload(MEMBER_PATH, png(), { kind: "photo" }).catch((e: unknown) => e);
+
+    expect(nginx).toBeInstanceOf(ApiError);
+    expect(nginx).toMatchObject({ status: 413, code: "file_too_large", message: UPLOAD_TOO_LARGE_MESSAGE });
+    expect(back).toMatchObject({ status: 413, code: "file_too_large", message: UPLOAD_TOO_LARGE_MESSAGE });
+  });
+
+  it("un 422 unsupported_type conserva el código", async () => {
+    fetchMock.mockResolvedValueOnce(envelope(422, "unsupported_type", "Tipo no admitido."));
+    await expect(api.upload(MEMBER_PATH, png(), { kind: "photo" })).rejects.toMatchObject({ status: 422, code: "unsupported_type" });
+  });
+
+  it("un 503 no se reintenta y respeta Retry-After", async () => {
+    fetchMock.mockResolvedValueOnce(envelope(503, "busy", "Ocupado.", {}).clone());
+    fetchMock.mockResolvedValueOnce(json(201, {}));
+    await expect(api.upload(MEMBER_PATH, png(), { kind: "photo" })).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("un 503 crypto_unavailable activa el aviso global", async () => {
+    clearCustodyNotice();
+    fetchMock.mockResolvedValueOnce(envelope(503, "crypto_unavailable", "Sellado."));
+    await expect(api.upload(MEMBER_PATH, png(), { kind: "consent" })).rejects.toMatchObject({ status: 503, code: "crypto_unavailable" });
+    expect(getCustodyNotice()).not.toBeNull();
+    clearCustodyNotice();
+  });
+
+  it("un 401 invoca el gancho y repite la subida una sola vez con el mismo archivo", async () => {
+    const handler: UnauthorizedHandler = vi.fn(() => Promise.resolve("retry" as const));
+    registerOnUnauthorized(handler);
+    fetchMock.mockResolvedValueOnce(envelope(401, "token_expired", "x")).mockResolvedValueOnce(json(201, {}));
+    const file = png();
+
+    await api.upload(MEMBER_PATH, file, { kind: "photo" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(file);
   });
 });

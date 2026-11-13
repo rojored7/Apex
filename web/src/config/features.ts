@@ -2,6 +2,8 @@
 // cuya feature no está habilitada no existe para el usuario (404 y fuera del menú).
 // `system` de 05_service_design.md se parte en users, audit, settings y crypto porque se
 // habilitan en versiones distintas.
+// S6-F3 (US-150): `attachments` NO es una feature aparte del panel: la pestaña Adjuntos vive bajo `members`
+// (ruta hija /socios/:id/adjuntos con members.view), como Avisos bajo `notifications` en S3-D65.
 
 export const FEATURES = [
   "auth",
@@ -30,7 +32,7 @@ export function isRouteEnabled(route: { feature?: Feature | undefined }, enabled
   return route.feature === undefined || enabled.has(route.feature);
 }
 
-/** Features del Sprint 2 (decisión 25 del blueprint), membresías desde S3-F3, pagos desde S3-F4 (D36), auditoría desde S4A-F1 (S4A-D30) y avisos desde S5-F1. */
+/** Features del Sprint 2 (decisión 25 del blueprint), membresías desde S3-F3, pagos desde S3-F4 (D36), auditoría desde S4A-F1 (S4A-D30) y avisos desde S5-F1 y llaves (crypto) desde S6-F2. */
 export const ENABLED_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   "auth",
   "dashboard",
@@ -42,4 +44,5 @@ export const ENABLED_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   "audit",
   "settings",
   "notifications",
+  "crypto",
 ]);

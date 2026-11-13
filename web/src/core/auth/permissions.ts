@@ -35,6 +35,8 @@ const TABLE = {
   "settings.manage": ADMIN,
   "crypto.manage": ADMIN,
   "notifications.rules.edit": ADMIN,
+  // S6-F3 (M-6): descargar la autorización de datos y otros documentos sensibles; el coach solo descarga la foto.
+  "attachments.download.restricted": ADMIN,
   // Admin y coach (Q6 reveal, Q7 congelar, Q8 borrar asistencia; Q25: "Hoy" no es acción).
   "dashboard.view": STAFF,
   "members.view": STAFF,

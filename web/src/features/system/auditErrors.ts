@@ -3,7 +3,7 @@
 // core/api/errorCodes (nunca un literal suelto).
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_TOO_MANY } from "../../core/api/status";
 import { connectionMessage, statusMessage, toScreenError } from "../../shared/lib/apiMessages";
 
 export const AUDIT_MESSAGES = {
@@ -16,8 +16,21 @@ export const AUDIT_MESSAGES = {
   verifyFailed: "No pudimos verificar la cadena. Intenta de nuevo en un momento.",
   verifyRunning: "Ya hay una verificación en curso. Espera a que termine; el resultado aparece aquí.",
   verifyTooMany: (wait: string) => `Demasiadas verificaciones; espera ${wait} y vuelve a intentarlo.`,
+  signatureFailed: "No pudimos consultar el estado de la firma; vuelve a intentarlo.",
+  signatureForbidden: "No tienes permiso para ver el estado de la firma.",
   verifyForbidden: "No tienes permiso para verificar la cadena. Solo un administrador puede hacerlo.",
 } as const;
+
+/** El error del estado de la firma (S6-F1): 403, 429 y genérico; `retryable` es false con 429 (el texto ya dice que espere). */
+export function signatureError(error: unknown): { message: string; retryable: boolean } {
+  const screen = toScreenError(
+    error,
+    (e) => statusMessage(e, { forbidden: AUDIT_MESSAGES.signatureForbidden, tooMany: AUDIT_MESSAGES.tooMany, generic: AUDIT_MESSAGES.signatureFailed }),
+    AUDIT_MESSAGES.signatureFailed,
+  );
+  const status = screen?.status ?? 0;
+  return { message: screen?.message ?? AUDIT_MESSAGES.signatureFailed, retryable: status !== HTTP_FORBIDDEN && status !== HTTP_TOO_MANY };
+}
 
 /** El error de la lista (lo pinta DataTable). */
 export function auditListError(error: unknown): ApiError | null {

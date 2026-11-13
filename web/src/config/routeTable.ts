@@ -132,6 +132,12 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "notifications.view",
     load: () => import("../features/notifications/tabs/NotificationsTab"),
   }),
+  // S6-F3 (US-150, S3-D65): Adjuntos es hija de la ficha y de la feature members (no hay feature aparte);
+  // la tabla y la descarga viven en features/attachments y solo la ruta cruza.
+  childRoute(MEMBER_DETAIL, "/socios/:id/adjuntos", "Adjuntos del socio", {
+    access: "members.view",
+    load: () => import("../features/attachments/pages/AttachmentsTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
@@ -160,7 +166,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/sistema/usuarios", "Usuarios y roles", "users", "users.manage", "panel", { load: () => import("../features/system/pages/UsersPage") }),
   // S4A-F1: consulta, detalle sin descifrar y verificación de la cadena (US-102 a US-104, S4A-D31).
   route("/sistema/auditoria", "Auditoría", "audit", "audit.view", "panel", { load: () => import("../features/system/pages/AuditPage") }),
-  route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel"),
+  // S6-F2: inventario, bitácora, trabajos, rotación y CBOM (US-143 a US-146).
+  route("/sistema/llaves", "Llaves de cifrado", "crypto", "crypto.manage", "panel", { load: () => import("../features/system/pages/KeysPage") }),
   // S2-F5: Gimnasio, Privacidad y Membresías (S2-D15).
   route("/sistema/configuracion", "Configuración", "settings", "settings.manage", "panel", { load: () => import("../features/system/pages/ConfigPage") }),
 

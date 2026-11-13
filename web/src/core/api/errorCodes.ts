@@ -81,6 +81,11 @@ export const API_ERROR_CODES = {
   auditEntryNotFound: "audit_entry_not_found",
   // S4A-F4: dar de baja un plan con membresías activas (US-082; plans/exceptions.py, S4A-D24).
   planHasActiveMemberships: "plan_has_active_memberships",
+  // S6-F4: subir la foto o la autorización firmada (attachments/exceptions.py, members/exceptions.py).
+  fileTooLarge: "file_too_large",
+  unsupportedType: "unsupported_type",
+  uploadTimeout: "upload_timeout",
+  privacyVersionMissing: "privacy_version_missing",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

@@ -5,7 +5,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { canAccessRoute, isPageAvailable } from "../../../core/auth/routeAccess";
-import { AUDIT_PATH, AUDIT_ROWS, auditDetail, COACH_ID, LAURA_ID, SYSTEM_ID, auditPageReply, auditRow, queryOf, renderAuditPage } from "../../../test/audit";
+import { AUDIT_PATH, AUDIT_ROWS, auditDetail, COACH_ID, LAURA_ID, SYSTEM_ID, auditPageReply, auditRow, queryOf, renderAuditPage, signaturesLatest } from "../../../test/audit";
 import type { RecordedCall } from "../../../test/server";
 
 const SOURCES = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], { query: "?raw", import: "default", eager: true });
@@ -223,7 +223,7 @@ describe("AuditPage · detalle por ?seq= (US-103)", () => {
     await loadedTable();
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(mock.calls.filter((c) => c.path.startsWith("/audit/") && c.path !== "/audit/verify/last")).toEqual([]);
+    expect(mock.calls.filter((c) => c.path.startsWith("/audit/") && c.path !== "/audit/verify/last" && c.path !== "/audit/signatures/latest")).toEqual([]);
   });
 });
 
@@ -263,9 +263,10 @@ describe("AuditPage · acceso y diseño", () => {
       .join("\n");
     const gaps = code.split("\n").filter((line) => line.includes("DESIGN-GAP:")).join("\n");
 
-    for (const topic of ["Qué cambió", "nombre del socio", "Exportar rango", "ML-DSA", "Resultado", "Llave", "enmascarad", "Descifrar"]) {
+    for (const topic of ["Qué cambió", "nombre del socio", "Exportar rango", "Resultado", "Llave", "enmascarad", "Descifrar"]) {
       expect(gaps).toContain(topic);
     }
+    expect(gaps).not.toContain("ML-DSA");
     expect(code).not.toContain("dangerouslySetInnerHTML");
   });
 });
@@ -306,5 +307,60 @@ describe("AuditPage · tabla desconocida (S4B-D51)", () => {
     const panel = await screen.findByRole("dialog", { name: "Entrada #90002" });
 
     expect(await within(panel).findByText("crypto.crypto_keys")).toBeInTheDocument();
+  });
+});
+
+// S6-F1 · US-142: el estado de la firma va arriba del botón Verificar.
+describe("AuditPage · estado de la firma (S6-F1)", () => {
+  it("el bloque de la firma está arriba del botón Verificar ahora", async () => {
+    renderAuditPage();
+
+    const block = await screen.findByRole("region", { name: "Firma de la cadena" });
+    const button = screen.getByRole("button", { name: "Verificar ahora" });
+    expect(await within(block).findByText("Íntegra")).toBeInTheDocument();
+    expect(block.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("pide GET /audit/signatures/latest una vez", async () => {
+    const { mock } = renderAuditPage();
+
+    await screen.findByText("Íntegra");
+    expect(mock.callsTo("GET /audit/signatures/latest")).toHaveLength(1);
+  });
+
+  it("muestra la carga de la firma sin bloquear la lista", async () => {
+    renderAuditPage(AUDIT_PATH, { handlers: { "GET /audit/signatures/latest": () => new Promise(() => undefined) as never } });
+
+    expect(screen.getByText("Consultando el estado de la firma…")).toBeInTheDocument();
+    await loadedTable();
+  });
+
+  it("un error de la firma se muestra y la lista sigue funcionando", async () => {
+    renderAuditPage(AUDIT_PATH, { handlers: { "GET /audit/signatures/latest": { status: 500, body: { error: { code: "internal", message: "x" } } } } });
+
+    expect(await screen.findByText("No pudimos consultar el estado de la firma; vuelve a intentarlo.")).toBeInTheDocument();
+    await loadedTable();
+  });
+
+  it("Sin firmas se muestra con el mensaje de qué hacer", async () => {
+    renderAuditPage(AUDIT_PATH, { handlers: { "GET /audit/signatures/latest": { status: 200, body: signaturesLatest({ latest: null, last_valid: null, state: "none", verified_at: null }) } } });
+
+    expect(await screen.findByText("Sin firmas")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["claro", null],
+    ["oscuro", "dark"],
+  ])("sin violaciones de accesibilidad con la firma atrasada en tema %s", async (_name, theme) => {
+    if (theme) document.documentElement.dataset.theme = theme;
+    try {
+      const { container } = renderAuditPage(AUDIT_PATH, { handlers: { "GET /audit/signatures/latest": { status: 200, body: signaturesLatest({ is_late: true }) } } });
+      await screen.findByText("Firma atrasada");
+      await loadedTable();
+
+      expect(await axe(container)).toHaveNoViolations();
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
   });
 });

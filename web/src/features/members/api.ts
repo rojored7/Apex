@@ -25,8 +25,9 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { api } from "../../core/api/client";
+import { api, type UploadKind } from "../../core/api/client";
 import type { Page } from "../../core/api/page";
+import type { operations } from "../../core/api/types";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
@@ -47,6 +48,8 @@ import {
   type MembershipFilterStatus,
   type RevealField,
   type RevealOutView,
+  type UploadedAttachment,
+  uploadedAttachmentSchema,
 } from "./schemas";
 
 export interface MembersParams {
@@ -59,7 +62,11 @@ export interface MembersParams {
   membership_status?: MembershipFilterStatus;
   /** S3-F2 (D22): el plan de esa membresía (UUID). */
   plan_id?: string;
+  /** S6-F5 (S6-C5): `missing` = socios sin la autorización de datos (la condición del KPI members_without_consent). */
+  consent?: ConsentFilter;
 }
+
+export type ConsentFilter = NonNullable<NonNullable<operations["list_members_api_v1_members_get"]["parameters"]["query"]>["consent"]>;
 
 /** "Cargar más" (US-072): los mismos filtros sin `offset`; cada página lo pone. */
 export type MembersInfiniteParams = Omit<MembersParams, "offset">;
@@ -282,5 +289,32 @@ export function useMemberHistoryPreview(id: string): UseQueryResult<Page<MemberH
     refetchOnWindowFocus: false,
     gcTime: 0,
     enabled: isMemberId(id),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// S6-F4 · US-148 y US-149: subir la foto o el documento firmado (POST /members/{id}/attachments?kind=).
+// - subirAdjunto(memberId, kind, file): cuerpo crudo por api.upload (nunca FormData); el 201 se valida.
+// - useSubirAdjunto(): useSensitiveMutation (el archivo es un dato personal y no se queda en la
+//   caché de mutaciones). Al salir bien relee ["members"] (la ficha trae photo_attachment_id) y
+//   ["attachments"] (la pestaña Adjuntos); la foto anterior queda con otro id, así que su blob no se reusa.
+export interface SubirAdjuntoVariables {
+  memberId: string;
+  kind: UploadKind;
+  file: File;
+}
+
+export async function subirAdjunto(memberId: string, kind: UploadKind, file: File): Promise<UploadedAttachment> {
+  return parseResponse(uploadedAttachmentSchema, await api.upload<unknown>(`${memberPath(memberId)}/attachments`, file, { kind }));
+}
+
+export function useSubirAdjunto(): UseMutationResult<UploadedAttachment, Error, SubirAdjuntoVariables> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<UploadedAttachment, Error, SubirAdjuntoVariables>({
+    mutationFn: ({ memberId, kind, file }) => subirAdjunto(memberId, kind, file),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    },
   });
 }

@@ -1,5 +1,6 @@
 // US-067 T1: features por versión e isRouteEnabled.
 import { ENABLED_FEATURES, FEATURES, isRouteEnabled } from "./features";
+import { ROUTE_TABLE } from "./routeTable";
 
 describe("features", () => {
   it("declara las 17 features y ninguna repetida", () => {
@@ -7,10 +8,17 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("habilita diez: las nueve anteriores y notifications (S5-F1)", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "dashboard", "members", "memberships", "notifications", "payments", "plans", "settings", "users"]);
-    expect(ENABLED_FEATURES.size).toBe(10);
+  it("habilita once: las diez anteriores y crypto (S6-F2)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "crypto", "dashboard", "members", "memberships", "notifications", "payments", "plans", "settings", "users"]);
+    expect(ENABLED_FEATURES.size).toBe(11);
     expect(ENABLED_FEATURES.has("classes")).toBe(false);
+  });
+
+  it("/sistema/llaves tiene pantalla (load) y solo el admin la ve en el menú Sistema", () => {
+    const route = ROUTE_TABLE.find((r) => r.path === "/sistema/llaves");
+    expect(route?.feature).toBe("crypto");
+    expect(route?.load).toBeTypeOf("function");
+    expect(isRouteEnabled({ feature: "crypto" }, ENABLED_FEATURES)).toBe(true);
   });
 
   it("una ruta con feature habilitada está habilitada", () => {

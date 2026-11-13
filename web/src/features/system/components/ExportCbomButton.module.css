@@ -1,0 +1,15 @@
+/* S6-F2: «Exportar CBOM» y su aviso de error. Solo variables de tokens.css. */
+.root {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+  overflow-wrap: anywhere;
+}

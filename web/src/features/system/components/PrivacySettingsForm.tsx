@@ -123,7 +123,8 @@ function PrivacyFields({ section, api, onDirtyChange }: SettingsFormProps & { se
         <Field
           label="Autorización obligatoria desde"
           type="date"
-          hint="Desde esta fecha cada socio nuevo debe aceptar la política. Déjalo vacío si aún no aplica."
+          // DESIGN-GAP: Config.html no trae la ayuda de «Autorización obligatoria desde» (14.14).
+          hint="Desde esa fecha el alta exige la autorización de datos del socio. Antes de esa fecha el alta puede seguir sin ella. Déjalo vacío si aún no aplica."
           error={errors.consent_required_from?.message}
           {...register("consent_required_from")}
         />

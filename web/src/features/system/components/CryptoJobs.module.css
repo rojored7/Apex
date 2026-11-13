@@ -1,0 +1,44 @@
+/* S6-F2: Llaves.html, pestaña de trabajos de recifrado. Solo variables de tokens.css. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 160px;
+}
+
+/* La barra usa el azul de marca; el porcentaje en texto lleva el significado. */
+.bar {
+  width: 100%;
+  height: var(--space-3);
+  accent-color: var(--apex-blue);
+}
+
+.percent {
+  color: var(--ink);
+  font: var(--text-label);
+  white-space: nowrap;
+}
+
+.count {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.help {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}

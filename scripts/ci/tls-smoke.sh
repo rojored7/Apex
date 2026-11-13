@@ -12,10 +12,14 @@
 # `--dry-run` no levanta nada: renderiza `docker compose config` con y sin el perfil tls y lista las
 # comprobaciones. `--dc` por omisión: el desarrollo (`-f infra/compose.dev.yml`, más `--profile tls`
 # salvo con --lan). Sale con 0 en verde, 1 con fallas, 2 si el uso es inválido.
-# La cookie de refresh con Secure llega con el login real (E1, S6-W1): hoy se omite y se dice.
+# Cookie y CORS (S6-E1, US-153): con TLS_SMOKE_ADMIN_EMAIL y TLS_SMOKE_ADMIN_PASSWORD_FILE (archivo de una
+# línea, modo 600; nunca se imprime) hace login real y exige 200, Access-Control-Allow-Origin igual al origen
+# público y la cookie apex_refresh con HttpOnly, SameSite=strict y Secure (con --lan, sin Secure); con
+# Origin http://<dominio> exige 403 y sin Access-Control-Allow-Origin. Sin ellas: «omitida». Con
+# TLS_SMOKE_ALLOW_SEALED=1, /api/v1/health acepta 503 con "crypto":"sealed" como aviso (por omisión, 200).
 set -euo pipefail
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # alpine:3.22 por digest (2026-11-11, W0-1.1); renovar (docs/RUNBOOK.md §7):
 #   docker buildx imagetools inspect alpine:3.22 --format '{{json .Manifest.Digest}}'
@@ -69,7 +73,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
   comprobacion: http://caddy/.well-known/acme-challenge/x no responde 308
   comprobacion: http://caddy/_caddy_health -> 200
   comprobacion: Strict-Transport-Security max-age=300 por HTTPS y ausente por HTTP y con --lan
-  comprobacion: cookie de refresh con Secure por HTTPS y sin Secure con --lan (desde E1)
+  comprobacion: login real (TLS_SMOKE_ADMIN_EMAIL y TLS_SMOKE_ADMIN_PASSWORD_FILE): 200, Access-Control-Allow-Origin igual al origen, cookie apex_refresh HttpOnly + SameSite=strict + Secure (con --lan sin Secure); Origin http:// -> 403 sin Access-Control-Allow-Origin (omitida sin TLS_SMOKE_ADMIN_*)
+  comprobacion: con TLS_SMOKE_ALLOW_SEALED=1 /api/v1/health acepta 503 con "crypto":"sealed" (aviso: custodio sellado)
   comprobacion: limitador por IP real con dos clientes (el primero recibe 429; el segundo, desde otra IP, sigue pasando)
   comprobacion: docker compose config con y sin perfil tls (web sin ports con el overlay; caddy ausente sin perfil)
 LISTA
@@ -112,6 +117,58 @@ limpiar() {
 }
 trap limpiar EXIT
 
+# --- cookie y CORS con el login real (S6-E1, US-153) ---------------------------------------------------------
+# Solo con TLS_SMOKE_ADMIN_EMAIL y TLS_SMOKE_ADMIN_PASSWORD_FILE. La clave sale de un archivo (modo 600) a un
+# cuerpo temporal 600 dentro de $TMP; el token y la cookie viven en variables y nunca se imprimen (solo se
+# comprueban sus atributos).
+ADMIN_EMAIL="${TLS_SMOKE_ADMIN_EMAIL:-}"
+ADMIN_PW_FILE="${TLS_SMOKE_ADMIN_PASSWORD_FILE:-}"
+ALLOW_SEALED="${TLS_SMOKE_ALLOW_SEALED:-0}"
+
+preparar_login() { # 0 si hay credenciales y dejó $TMP/login.json; 1 si se omite
+  [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PW_FILE" ] || return 1
+  [ -f "$ADMIN_PW_FILE" ] || muere "TLS_SMOKE_ADMIN_PASSWORD_FILE no es un archivo"
+  local clave esc_c esc_e
+  clave="$(head -1 "$ADMIN_PW_FILE" | tr -d '\r\n')"
+  [ -n "$clave" ] || muere "TLS_SMOKE_ADMIN_PASSWORD_FILE está vacío"
+  esc_c="$(printf '%s' "$clave" | sed 's/\/\\/g; s/"/\\"/g')"
+  esc_e="$(printf '%s' "$ADMIN_EMAIL" | sed 's/\/\\/g; s/"/\\"/g')"
+  ( umask 077; printf '{"email":"%s","password":"%s"}' "$esc_e" "$esc_c" > "$TMP/login.json" )
+  chmod 644 "$TMP/login.json"  # el cliente alpine (root) lo lee por el montaje ro; vive solo en $TMP
+  return 0
+}
+
+# comprobar_cookie_y_cors <origen público> <origen http o vacío> <con Secure: 1|0> <función de POST>
+# La función de POST recibe el Origin e imprime las cabeceras y, al final, __CODE__<código>.
+comprobar_cookie_y_cors() {
+  local origen="$1" origen_http="$2" con_secure="$3" post="$4" salida cod cab linea attrs acao
+  salida="$("$post" "$origen" | tr -d '\r' || true)"
+  cod="${salida##*__CODE__}"; cab="${salida%__CODE__*}"
+  if [ "$cod" = "200" ]; then ok "login real con Origin $origen responde 200"; else falla "login real con Origin $origen respondió '$cod'"; fi
+  acao="$(grep -i '^access-control-allow-origin:' <<< "$cab" | head -1 | cut -d: -f2- | tr -d ' ' || true)"
+  if [ "$acao" = "$origen" ]; then ok "Access-Control-Allow-Origin igual al origen público"
+  elif [ "$con_secure" = "1" ]; then falla "Access-Control-Allow-Origin distinto del origen público"
+  else echo "  aviso: sin Access-Control-Allow-Origin en modo LAN (CORS_ORIGINS no incluye el origen; mismo origen no lo necesita)"; fi
+  linea="$(grep -i '^set-cookie: apex_refresh=' <<< "$cab" | head -1 || true)"
+  if [ -z "$linea" ]; then falla "el login no puso la cookie apex_refresh"
+  else
+    attrs="$(sed 's/^[^;]*;//' <<< "$linea")" # sin nombre ni valor de la cookie
+    if grep -qi 'httponly' <<< "$attrs"; then ok "cookie apex_refresh con HttpOnly"; else falla "cookie apex_refresh sin HttpOnly"; fi
+    if grep -qi 'samesite=strict' <<< "$attrs"; then ok "cookie apex_refresh con SameSite=strict"; else falla "cookie apex_refresh sin SameSite=strict"; fi
+    if grep -qiE '(^|;) *secure *(;|$)' <<< "$attrs"; then
+      if [ "$con_secure" = "1" ]; then ok "cookie apex_refresh con Secure"; else falla "cookie apex_refresh con Secure en modo LAN"; fi
+    else
+      if [ "$con_secure" = "1" ]; then falla "cookie apex_refresh sin Secure"; else ok "cookie apex_refresh sin Secure (modo LAN)"; fi
+    fi
+  fi
+  if [ -n "$origen_http" ]; then
+    salida="$("$post" "$origen_http" | tr -d '\r' || true)"
+    cod="${salida##*__CODE__}"; cab="${salida%__CODE__*}"
+    if [ "$cod" = "403" ]; then ok "login con Origin http:// responde 403"; else falla "login con Origin http:// respondió '$cod'"; fi
+    if grep -qi '^access-control-allow-origin:' <<< "$cab"; then falla "Access-Control-Allow-Origin con Origin http://"; else ok "sin Access-Control-Allow-Origin con Origin http://"; fi
+  fi
+}
+
 # ------------------------------- modo LAN: stack sin perfil tls ---------------------------------------------
 if [ "$LAN" -eq 1 ]; then
   echo "tls-smoke: modo LAN (sin perfil tls)"
@@ -122,11 +179,23 @@ if [ "$LAN" -eq 1 ]; then
   base="http://127.0.0.1:$puerto"
   cod="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/" || true)"
   if [ "$cod" = "200" ]; then ok "GET / por HTTP responde 200"; else falla "GET / por HTTP respondió '$cod'"; fi
-  cod="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/v1/health" || true)"
-  if [ "$cod" = "200" ]; then ok "/api/v1/health por HTTP responde 200"; else falla "/api/v1/health respondió '$cod'"; fi
+  cod="$(curl -s -o "$TMP/health.body" -w '%{http_code}' --max-time 10 "$base/api/v1/health" || true)"
+  if [ "$cod" = "200" ]; then ok "/api/v1/health por HTTP responde 200"
+  elif [ "$cod" = "503" ] && [ "$ALLOW_SEALED" = "1" ] && grep -q '"crypto" *: *"sealed"' "$TMP/health.body"; then echo "  aviso: custodio sellado (/api/v1/health 503 aceptado con TLS_SMOKE_ALLOW_SEALED=1)"
+  else falla "/api/v1/health respondió '$cod'"; fi
   cab="$(curl -sI --max-time 10 "$base/" | tr -d '\r' || true)"
   if grep -qi '^strict-transport-security:' <<< "$cab"; then falla "modo LAN con Strict-Transport-Security"; else ok "modo LAN sin Strict-Transport-Security"; fi
-  echo "  omitida: cookie de refresh sin Secure en LAN (llega con el login real, E1)"
+  if preparar_login; then
+    origen_lan="$("${DC[@]}" exec -T api printenv FRONT_BASE_URL 2> /dev/null | tr -d '\r' || true)"
+    origen_lan="${origen_lan:-$base}"
+    post_lan() { # Origin -> cabeceras y __CODE__<código>; el cuerpo (token) se descarta
+      curl -s -D - -o /dev/null -w '\n__CODE__%{http_code}' --max-time 15 -X POST -H "Origin: $1" \
+        -H 'Content-Type: application/json' --data "@$(nativa "$TMP")/login.json" "$base/api/v1/auth/login" || true
+    }
+    comprobar_cookie_y_cors "$origen_lan" "" 0 post_lan
+  else
+    echo "  omitida: cookie y CORS (sin TLS_SMOKE_ADMIN_*)"
+  fi
   if [ "$fallas" -ne 0 ]; then echo "tls-smoke: $fallas fallas" >&2; exit 1; fi
   echo "tls-smoke: todo en verde (LAN)"
   exit 0
@@ -198,7 +267,9 @@ if grep -qi '^strict-transport-security:' /tmp/hc.h2; then falla "HSTS en /_cadd
 CURL_TLS=(--cacert /ca/root.crt --resolve "$HOST:$PORT:$CIP" --tlsv1.3 --max-time 15)
 sc="$(curl -s -D /tmp/h.hdr -o /tmp/h.body -w '%{http_code}' "${CURL_TLS[@]}" "https://$HOST$SUF/api/v1/health")"
 tr -d '\r' < /tmp/h.hdr > /tmp/h.h2
-if [ "$sc" = "200" ]; then ok "https /api/v1/health por Caddy responde 200"; else falla "https /api/v1/health responde '$sc'"; fi
+if [ "$sc" = "200" ]; then ok "https /api/v1/health por Caddy responde 200"
+elif [ "$sc" = "503" ] && [ "$ALLOW_SEALED" = "1" ] && grep -q '"crypto" *: *"sealed"' /tmp/h.body; then echo "  aviso: custodio sellado (https /api/v1/health 503 aceptado con TLS_SMOKE_ALLOW_SEALED=1)"
+else falla "https /api/v1/health responde '$sc'"; fi
 if grep -qi "^strict-transport-security: max-age=$HSTS_AGE\$" /tmp/h.h2; then ok "Strict-Transport-Security: max-age=$HSTS_AGE por HTTPS"; else falla "HSTS distinto de max-age=$HSTS_AGE: $(grep -i '^strict-transport-security:' /tmp/h.h2)"; fi
 if grep -qiE '^strict-transport-security:.*(includeSubDomains|preload)' /tmp/h.h2; then falla "HSTS con includeSubDomains o preload"; else ok "HSTS sin includeSubDomains ni preload"; fi
 CLIENTE
@@ -220,7 +291,7 @@ cliente_nuevo "tls-smoke-b-$$"
 A="tls-smoke-a-$$"
 B="tls-smoke-b-$$"
 
-salida="$(docker exec -e CIP="$CIP" -e HOST="$HOST" -e PORT="$PORT" -e SUF="$SUF" -e HSTS_AGE="$HSTS_AGE" "$A" bash /ca/cliente.sh 2>&1 | tr -d '\r' || true)"
+salida="$(docker exec -e CIP="$CIP" -e HOST="$HOST" -e PORT="$PORT" -e SUF="$SUF" -e HSTS_AGE="$HSTS_AGE" -e ALLOW_SEALED="$ALLOW_SEALED" "$A" bash /ca/cliente.sh 2>&1 | tr -d '\r' || true)"
 printf '%s\n' "$salida"
 n_mal="$(grep -c '^  FALLA ' <<< "$salida" || true)"
 fallas=$((fallas + n_mal))
@@ -243,7 +314,14 @@ del_otro="$(intento "$B")"
 case "$primero" in 401|422) ok "limitador: el primer intento del cliente A pasa ($primero)" ;; *) falla "limitador: el primer intento del cliente A respondió '$primero'" ;; esac
 if [ "$n429" -ge 1 ]; then ok "limitador: el cliente A recibe 429 tras agotar su cupo ($n429 de 45)"; else falla "limitador: el cliente A nunca recibió 429 en 46 intentos"; fi
 case "$del_otro" in 401|422) ok "limitador por IP real: el cliente B (otra IP) sigue pasando ($del_otro)" ;; *) falla "limitador por IP real: el cliente B respondió '$del_otro' (¿Nginx cuenta a Caddy?)" ;; esac
-echo "  omitida: cookie de refresh con Secure por HTTPS (llega con el login real, E1)"
+if preparar_login; then
+  post_tls() { # Origin -> cabeceras y __CODE__<código>; el cuerpo (token) se descarta
+    docker exec "$B" sh -c "curl -s -D - -o /dev/null -w '\n__CODE__%{http_code}' --cacert /ca/root.crt --resolve $HOST:$PORT:$CIP --tlsv1.3 --max-time 15 -X POST -H 'Origin: $1' -H 'Content-Type: application/json' --data @/ca/login.json https://$HOST$SUF/api/v1/auth/login" 2> /dev/null || true
+  }
+  comprobar_cookie_y_cors "https://$HOST$SUF" "http://$HOST$SUF" 1 post_tls
+else
+  echo "  omitida: cookie y CORS (sin TLS_SMOKE_ADMIN_*)"
+fi
 
 if [ "$fallas" -ne 0 ]; then echo "tls-smoke: $fallas fallas" >&2; exit 1; fi
 echo "tls-smoke: todo en verde"

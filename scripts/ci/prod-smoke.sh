@@ -394,7 +394,10 @@ fi
 
 # --- TLS híbrido con la CA interna de Caddy (S6-D63, P-TLS) ------------------------------------------------------
 if [ "$TLS" -eq 1 ]; then
-  if bash scripts/ci/tls-smoke.sh --dc "${DC[*]}"; then ok "tls-smoke.sh (X25519MLKEM768, HSTS, 308, salud de Caddy)"; else falla "tls-smoke.sh"; fi
+  # S6-E1: cookie y CORS con el login real (la clave ya cambiada por S6-D117) vía un archivo 600 temporal.
+  pw_tls="$(mktemp)"; chmod 600 "$pw_tls"; printf '%s\n' "$clave" > "$pw_tls"
+  if TLS_SMOKE_ADMIN_EMAIL="$ADMIN_EMAIL" TLS_SMOKE_ADMIN_PASSWORD_FILE="$pw_tls" bash scripts/ci/tls-smoke.sh --dc "${DC[*]}"; then ok "tls-smoke.sh (X25519MLKEM768, HSTS, 308, salud de Caddy, cookie Secure y CORS)"; else falla "tls-smoke.sh"; fi
+  rm -f "$pw_tls"; unset pw_tls
 fi
 
 if [ "$fallas" -ne 0 ]; then

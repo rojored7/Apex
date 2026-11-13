@@ -22,7 +22,7 @@ Que el dueño pueda responder "quién hizo qué, cuándo y sobre qué registro" 
 - La verificación queda registrada como acción `verify`.
 - Endpoints solo admin: `GET /audit`, `POST /audit/verify`. Historial por registro: `GET /members/{id}/audit` (admin y coach).
 - `cli verify-audit`.
-- Suscripción a `SensitiveFieldRevealed`, `UserLocked` y `SessionsRevoked` (y, desde v0.2, a los eventos de avisos).
+- Suscripción a `UserLocked` y `SessionsRevoked` (y, desde v0.2, a los eventos de avisos); la revelación de campos no emite evento, `reveal` escribe su fila directamente. *(T-DOC, Sprint 6 V1: el evento `SensitiveFieldRevealed` no existe; `reveal` deja una fila `reveal` en `audit_log` en la misma transacción, D19/S3-C3.)*
 
 ### Front
 - Pantalla de auditoría con filtros, tabla, detalle con antes y después (los campos cifrados se muestran como blob, nunca en claro) y botón "Verificar cadena" con el resultado.

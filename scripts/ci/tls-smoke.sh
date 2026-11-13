@@ -131,8 +131,8 @@ preparar_login() { # 0 si hay credenciales y dejó $TMP/login.json; 1 si se omit
   local clave esc_c esc_e
   clave="$(head -1 "$ADMIN_PW_FILE" | tr -d '\r\n')"
   [ -n "$clave" ] || muere "TLS_SMOKE_ADMIN_PASSWORD_FILE está vacío"
-  esc_c="$(printf '%s' "$clave" | sed 's/\/\\/g; s/"/\\"/g')"
-  esc_e="$(printf '%s' "$ADMIN_EMAIL" | sed 's/\/\\/g; s/"/\\"/g')"
+  esc_c="$(printf '%s' "$clave" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  esc_e="$(printf '%s' "$ADMIN_EMAIL" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   ( umask 077; printf '{"email":"%s","password":"%s"}' "$esc_e" "$esc_c" > "$TMP/login.json" )
   chmod 644 "$TMP/login.json"  # el cliente alpine (root) lo lee por el montaje ro; vive solo en $TMP
   return 0
@@ -179,7 +179,7 @@ if [ "$LAN" -eq 1 ]; then
   base="http://127.0.0.1:$puerto"
   cod="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$base/" || true)"
   if [ "$cod" = "200" ]; then ok "GET / por HTTP responde 200"; else falla "GET / por HTTP respondió '$cod'"; fi
-  cod="$(curl -s -o "$TMP/health.body" -w '%{http_code}' --max-time 10 "$base/api/v1/health" || true)"
+  cod="$(curl -s -o "$(nativa "$TMP")/health.body" -w '%{http_code}' --max-time 10 "$base/api/v1/health" || true)"
   if [ "$cod" = "200" ]; then ok "/api/v1/health por HTTP responde 200"
   elif [ "$cod" = "503" ] && [ "$ALLOW_SEALED" = "1" ] && grep -q '"crypto" *: *"sealed"' "$TMP/health.body"; then echo "  aviso: custodio sellado (/api/v1/health 503 aceptado con TLS_SMOKE_ALLOW_SEALED=1)"
   else falla "/api/v1/health respondió '$cod'"; fi

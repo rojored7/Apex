@@ -23,7 +23,7 @@ Que cada atleta tenga su historia: sus récords personales, sus mejores tiempos 
 - RN-12: suscripción a `WodResultValidated`; un resultado validado con `load_kg` mayor al RM vigente del movimiento crea un récord derivado.
 - Comparación de benchmarks: historial de un socio en un mismo WOD benchmark.
 - Lectura del catálogo de movimientos por `wods.service`.
-- Mostrar en claro una medida pasa por el bus y se audita (`SensitiveFieldRevealed`).
+- Mostrar en claro una medida pasa por el bus y se audita con una fila `reveal` en `audit_log` (sin evento). *(T-DOC, Sprint 6 V1: el evento `SensitiveFieldRevealed` no existe; `reveal` deja una fila `reveal` en `audit_log` en la misma transacción, D19/S3-C3.)*
 - Evento `PersonalRecordSet`.
 - Endpoints (un RM es un récord con `kind = rm`, `BRECHAS.md` sección 3): `GET /athletes/{id}/metrics`, `POST /athletes/{id}/metrics`, `GET /athletes/{id}/records?kind=`, `POST /athletes/{id}/records` (manual), `GET /athletes/{id}/benchmarks?wod=`.
 

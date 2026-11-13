@@ -41,7 +41,7 @@ Cada aggregate lista su raíz, sus entidades internas, sus value objects, sus in
 - **Entidad interna `PushSubscription`** (v1.0, Q14): endpoint, llaves, `channel_enabled`.
 - **Entidad interna `MemberChannelPreference`** (v0.2): canal, activo.
 - **Invariantes:** documento único entre socios no borrados (por índice ciego); `first_name` y `last_name` no vacíos; `data_consent_at` obligatorio para crear desde v0.3 (cuando exista el adjunto de autorización; antes es opcional con aviso).
-- **Eventos:** `MemberCreated`, `MemberUpdated`, `MemberDeactivated`, `SensitiveFieldRevealed(member_id, field, user_id)`.
+- **Eventos:** `MemberCreated`, `MemberUpdated`, `MemberDeactivated`; la revelación de un campo cifrado no emite evento: deja una fila `reveal` en `audit_log` en la misma transacción. *(T-DOC, Sprint 6 V1: el evento `SensitiveFieldRevealed` no existe; `reveal` deja una fila `reveal` en `audit_log` en la misma transacción, D19/S3-C3.)*
 - **Consulta derivada (no persistida):** `membership_status` del socio = estado de su última membresía no cancelada, o `none` si no tiene. Lo calcula el service de memberships; el service de members lo pide para la lista.
 
 ### 2.2 Plan (raíz: Plan)
@@ -154,7 +154,7 @@ Cada aggregate lista su raíz, sus entidades internas, sus value objects, sus in
 | Evento | Emisor | Suscriptores |
 |---|---|---|
 | `MemberCreated` | members | ninguno hasta v1.0 (Q13); auth (activación de portal, v1.0) |
-| `SensitiveFieldRevealed` | members, athletes | audit |
+| *(fila `reveal` de `audit_log`, sin evento; T-DOC Sprint 6 V1)* | members, athletes | audit |
 | `MembershipSold` | memberships | payments (si trae `first_payment`, en la misma transacción) |
 | `PaymentRegistered` | payments | memberships (RN-03) |
 | `PaymentVoided` | payments | memberships (revertir activación) |

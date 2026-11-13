@@ -22,7 +22,7 @@ Tener a todos los socios en un solo lugar, buscables por nombre, documento o tel
 - Invariantes: documento único entre socios no borrados (por índice ciego); nombre y apellido no vacíos; `data_consent_at` opcional con aviso hasta v0.3.
 - `list` con búsqueda `q` normalizada contra `document_idx`, `phone_idx` y `email_idx`, o `ILIKE` en nombre; filtros de estado, `membership_status` y `plan_id` resueltos vía `memberships.service.status_for(ids)`; paginado y ordenable.
 - `create` devuelve `existing_id` en el error de documento duplicado, para que el front enlace al registro existente.
-- `get` con campos cifrados enmascarados por defecto; `reveal(id, field)` descifra un solo campo y audita `reveal` (evento `SensitiveFieldRevealed`).
+- `get` con campos cifrados enmascarados por defecto; `reveal(id, field)` descifra un solo campo y audita `reveal` (fila de `audit_log` en la misma transacción, sin evento). *(T-DOC, Sprint 6 V1: el evento `SensitiveFieldRevealed` no existe; `reveal` deja una fila `reveal` en `audit_log` en la misma transacción, D19/S3-C3.)*
 - `update`; `deactivate` solo admin (baja lógica, RN-14, `BRECHAS.md` sección 5).
 - `contact_for_notification(id, purpose)`, que audita el descifrado con propósito (lo consume EP-14).
 - Eventos `MemberCreated`, `MemberUpdated`, `MemberDeactivated`.

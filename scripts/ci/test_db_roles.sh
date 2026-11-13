@@ -76,6 +76,16 @@ prohibida() { # rol descripción sql
   fi
 }
 
+guardada() { # rol descripción sql mensaje: falla por la guarda (23514), no por privilegios
+  if psql_como "$1" "$(transaccion "$3")"; then
+    falla "$1 NO debía poder: $2"
+  elif grep -q '23514' <<< "$SALIDA" && grep -q "$4" <<< "$SALIDA"; then
+    ok "$1 no puede (guarda 23514): $2"
+  else
+    falla "$1 falló, pero no por la guarda (23514 '$4'): $2 (${SALIDA:0:160})"
+  fi
+}
+
 SYS='00000000-0000-0000-0000-000000000001'
 AUDIT_INSERT="INSERT INTO audit.audit_log (id, seq, at, user_id, action, table_name, prev_hash, hash, created_at, updated_at, created_by) VALUES (gen_random_uuid(), (SELECT coalesce(max(seq), 0) + 1 FROM audit.audit_log), now(), '$SYS', 'login', 'auth.users', repeat('ab', 32), repeat('ab', 32), now(), now(), '$SYS')"
 OPS_INSERT="INSERT INTO crypto.crypto_ops (id, created_by, user_id, verb, result) VALUES (gen_random_uuid(), '$SYS', '$SYS', 'encrypt', 'ok')"
@@ -110,7 +120,9 @@ prohibida apex_api "SET session_replication_role = replica" "SET session_replica
 prohibida apex_api "TRUNCATE audit.audit_log" "TRUNCATE audit.audit_log"
 prohibida apex_api "DELETE FROM payments.payments" "DELETE FROM payments.payments"
 prohibida apex_api "UPDATE audit.audit_log" "UPDATE audit.audit_log SET action = 'x'"
-prohibida apex_api "UPDATE crypto.crypto_keys SET state" "UPDATE crypto.crypto_keys SET state = 'retired'"
+# S6-R1 (0024): el api tiene UPDATE (state, ...) y lo frena la guarda; el resto de columnas, el privilegio.
+guardada apex_api "UPDATE crypto.crypto_keys SET state = 'retired' (guarda 0024)" "UPDATE crypto.crypto_keys SET state = 'retired' WHERE id = (SELECT id FROM crypto.crypto_keys WHERE state = 'active' LIMIT 1)" "el api solo pasa una llave encrypt de active a decrypt_only"
+prohibida apex_api "UPDATE crypto.crypto_keys SET wrapped_material" "UPDATE crypto.crypto_keys SET wrapped_material = wrapped_material"
 prohibida apex_api "UPDATE payments.payments SET amount_cop" "UPDATE payments.payments SET amount_cop = 1"
 prohibida apex_api "UPDATE auth.users SET is_active (S5-D203)" "UPDATE auth.users SET is_active = is_active WHERE false"
 permitida apex_api "UPDATE auth.users SET password_hash (S5-D203)" "UPDATE auth.users SET password_hash = password_hash WHERE false"

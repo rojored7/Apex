@@ -172,6 +172,24 @@ def test_verify_wrapped_sin_filas_y_con_archivo_igual_es_ok(kek_tmp: Path) -> No
     assert resultado.total == 0 and resultado.ok and resultado.file_checked
 
 
+async def test_load_wrapped_no_cuenta_ni_abre_las_filas_sign(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    """Defecto heredado de A3: la fila `sign` (referencia, no DEK envuelta) nació después de
+    `kek_backup.py` y hacía fallar `verify-kek-backup` (bloqueaba `retire-key`)."""
+    from tests.crypto.conftest import fila_sign
+
+    with actor_scope(SYSTEM_USER_ID):
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+        await sin_llaves.flush()
+        antes = await load_wrapped(sin_llaves)
+        await fila_sign(sin_llaves, proveedor_local)
+
+    despues = await load_wrapped(sin_llaves)
+
+    assert [d.key_id for d in despues] == [d.key_id for d in antes]
+
+
 async def test_load_wrapped_solo_trae_las_filas_local(migracion_lista: Entorno) -> None:
     e = migracion_lista
     async with e.fabrica() as sesion:

@@ -75,11 +75,13 @@ def verify_wrapped(
 async def load_wrapped(session: AsyncSession) -> list[WrappedDek]:
     """Lee las filas `local` de `crypto_keys` (solo lectura, una consulta `SELECT`).
 
-    Solo las `local`: las de OpenBao no se abren con la KEK local (S5-D187).
+    Solo las `local`: las de OpenBao no se abren con la KEK local (S5-D187). Solo `encrypt` e
+    `index`: la fila `sign` (S6-D81) guarda una referencia a la semilla, no una DEK envuelta, y
+    no se abre con `AESGCM`.
     """
     filas = await session.execute(
         select(CryptoKey.id, CryptoKey.version, CryptoKey.state, CryptoKey.wrapped_material)
-        .where(CryptoKey.provider == "local")
+        .where(CryptoKey.provider == "local", CryptoKey.purpose.in_(("encrypt", "index")))
         .order_by(CryptoKey.purpose, CryptoKey.data_class, CryptoKey.version)
     )
     return [WrappedDek(str(i), int(v), str(s), bytes(m)) for i, v, s, m in filas.all()]

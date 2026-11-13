@@ -33,10 +33,12 @@ _SENSITIVE: Final = frozenset({"consent", "other"})
 
 @dataclass(frozen=True)
 class OrphanReport:
-    """Ids de filas sin objeto y nombres (hex) de objetos sin fila, ordenados."""
+    """Ids de filas sin objeto, nombres (hex) de objetos sin fila e ids de sensibles con `key_id`
+    distinto del blob, ordenados."""
 
     rows_without_object: tuple[UUID, ...]
     objects_without_row: tuple[str, ...]
+    key_mismatch: tuple[UUID, ...] = ()  # sensibles cuyo `key_id` difiere del blob (V9 M1)
 
 
 def detect_mime(head: bytes) -> str | None:

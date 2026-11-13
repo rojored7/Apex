@@ -53,6 +53,8 @@ $DC --profile tools run --rm tools retire-key <key_id> --as <correo de un admin>
 
 Para ver los conteos, corre primero con `--confirm-audit-blobs 0`: el comando imprime `retire-key: filas_negocio=F` y `retire-key: audit_blobs=A` y se niega si `N` no coincide con `A`. Copia `A` y repite con `--confirm-audit-blobs A`.
 
+Antes de `retire-key` corre `attachments-check --as <correo>` y exige que salga 0: `attachments.key_id` aún no tiene llave foránea (va en `0025`, Sprint 7) y el comando es la única comprobación de que cada `key_id` coincide con la cabecera de su blob (`docs/operacion/llaves.md`, residual V9).
+
 `retire-key` exige tres cosas y se niega (salida 2) si falta alguna:
 
 - **Cero filas de negocio** con esa llave (`filas_negocio=0`), contadas en el momento bajo bloqueo de la llave.

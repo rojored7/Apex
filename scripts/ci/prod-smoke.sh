@@ -25,6 +25,8 @@
 # humo, fuera de su ip_range) y el snippet real-ip.conf se renderiza desde real-ip.conf.in en SMOKE_DIR (nunca
 # en el árbol). Al final corre scripts/ci/tls-smoke.sh con el mismo stack. deploy_e2e.sh no corre con --tls
 # (su despliegue publica WEB_PORT en web y chocaría con Caddy): lo cubren test_deploy_script.sh y el ensayo.
+# El cambio de clave del admin (S6-D117) y la sección 5 de restore_e2e.sh sí corren con --tls: entran por
+# https://apex.localhost con la raíz de la CA interna de Caddy (S6-D127 bis).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -336,37 +338,58 @@ fi
 # --- primer inicio de sesión del admin: cambio obligatorio de contraseña (US-046, S6-D117) -------------------------
 # El seed deja al admin con must_change_password: las escrituras con rol (las subidas de adjuntos de restore_e2e.sh)
 # responden 403 password_change_required hasta que la cambie. El smoke lo hace una sola vez, como una persona en su
-# primer acceso, y la clave nueva viaja a las pruebas siguientes (restore_e2e.sh, openbao-smoke.sh). Con --tls web no
-# publica WEB_PORT (como deploy_e2e.sh): se omite y restore_e2e.sh lo anota.
+# primer acceso, y la clave nueva viaja a las pruebas siguientes (restore_e2e.sh, openbao-smoke.sh). En modo LAN entra
+# por http://127.0.0.1:WEB_PORT; con --tls web no publica puertos: entra por Caddy (https://apex.localhost, puerto 443
+# publicado) con la raíz de la CA interna copiada del contenedor y Origin https://apex.localhost (S6-D127 bis).
+API_BASE="http://127.0.0.1:$WEB_PORT"
+API_ORIGIN="http://localhost:$WEB_PORT"
+CA_FILE=""
+CURL_CA=()
 if [ "$TLS" -eq 1 ]; then
-  echo "  omitida: cambio de contraseña del admin con --tls (web no publica WEB_PORT; la sección 5 de restore_e2e.sh tampoco)"
-else
-  nueva="$(aleatorio 16)"
-  mascara "$nueva"
-  cuerpo_login="$SMOKE_DIR/login.json"
-  ( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN_EMAIL" "$clave" > "$cuerpo_login" )
-  token_pendiente="$(curl -sS --max-time 30 -X POST -H "Origin: http://localhost:$WEB_PORT" -H 'Content-Type: application/json' \
-    --data-binary "@$cuerpo_login" "http://127.0.0.1:$WEB_PORT/api/v1/auth/login" | tr -d '\r' \
-    | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')" || true
-  rm -f "$cuerpo_login"
-  if [ -z "$token_pendiente" ]; then
-    falla "login del admin recién sembrado (sin access_token)"
-  else
-    ( umask 077; printf '{"current_password":"%s","new_password":"%s"}' "$clave" "$nueva" > "$cuerpo_login" )
-    respuesta_clave="$(printf 'Authorization: Bearer %s\n' "$token_pendiente" | curl -sS --max-time 30 -X POST -H @- \
-      -H "Origin: http://localhost:$WEB_PORT" -H 'Content-Type: application/json' --data-binary "@$cuerpo_login" \
-      "http://127.0.0.1:$WEB_PORT/api/v1/auth/me/password" | tr -d '\r')" || true
-    rm -f "$cuerpo_login"
-    case "$respuesta_clave" in
-      *'"access_token"'*) clave="$nueva"; ok "primer inicio de sesión del admin: contraseña cambiada (must_change_password en falso)" ;;
-      *) falla "cambio de contraseña del admin: $(printf '%s' "$respuesta_clave" | cut -c1-160)" ;;
-    esac
-  fi
-  unset nueva token_pendiente respuesta_clave
+  TLS_HOST_PORT=443
+  API_BASE="https://apex.localhost"
+  API_ORIGIN="https://apex.localhost"
+  if [ "$TLS_HOST_PORT" != "443" ]; then API_BASE="$API_BASE:$TLS_HOST_PORT"; API_ORIGIN="$API_ORIGIN:$TLS_HOST_PORT"; fi
+  CA_FILE="$SMOKE_DIR/caddy-root.crt"
+  CADDY_CID="$("${DC[@]}" ps -q caddy | head -1 | tr -d '\r')"
+  [ -n "$CADDY_CID" ] || { falla "caddy no está en marcha: sin la CA interna no hay login por HTTPS"; exit 1; }
+  rm -f "$CA_FILE"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    MSYS_NO_PATHCONV=1 docker cp "$CADDY_CID:/data/caddy/pki/authorities/local/root.crt" "$(nativa "$CA_FILE")" > /dev/null 2>&1 && break
+    sleep 2
+  done
+  if [ ! -s "$CA_FILE" ]; then falla "no se pudo copiar la raíz de la CA interna de Caddy"; exit 1; fi
+  chmod 644 "$CA_FILE"
+  CURL_CA=(--cacert "$(nativa "$CA_FILE")")
 fi
+nueva="$(aleatorio 16)"
+mascara "$nueva"
+cuerpo_login="$SMOKE_DIR/login.json"
+( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN_EMAIL" "$clave" > "$cuerpo_login" )
+token_pendiente="$(curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -X POST -H "Origin: $API_ORIGIN" -H 'Content-Type: application/json' \
+  --data-binary "@$cuerpo_login" "$API_BASE/api/v1/auth/login" | tr -d '\r' \
+  | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')" || true
+rm -f "$cuerpo_login"
+if [ -z "$token_pendiente" ]; then
+  falla "login del admin recién sembrado (sin access_token)"
+else
+  ( umask 077; printf '{"current_password":"%s","new_password":"%s"}' "$clave" "$nueva" > "$cuerpo_login" )
+  respuesta_clave="$(printf 'Authorization: Bearer %s\n' "$token_pendiente" | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -X POST -H @- \
+    -H "Origin: $API_ORIGIN" -H 'Content-Type: application/json' --data-binary "@$cuerpo_login" \
+    "$API_BASE/api/v1/auth/me/password" | tr -d '\r')" || true
+  rm -f "$cuerpo_login"
+  case "$respuesta_clave" in
+    *'"access_token"'*) clave="$nueva"; ok "primer inicio de sesión del admin: contraseña cambiada (must_change_password en falso)" ;;
+    *) falla "cambio de contraseña del admin: $(printf '%s' "$respuesta_clave" | cut -c1-160)" ;;
+  esac
+fi
+unset nueva token_pendiente respuesta_clave
 
 # --- restauración en una segunda base del mismo db (restore.sh con firma e inspección) ------------------------------
-if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$clave" E2E_WEB_PORT="$WEB_PORT" bash infra/tests/restore_e2e.sh; then
+# Con --tls la sección 5 entra por Caddy: E2E_BASE_URL, E2E_ORIGIN y E2E_CA_FILE (en LAN quedan vacías y manda el valor por omisión).
+if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$clave" E2E_WEB_PORT="$WEB_PORT" \
+  E2E_BASE_URL="$( [ "$TLS" -eq 1 ] && printf '%s' "$API_BASE" || true )" E2E_ORIGIN="$( [ "$TLS" -eq 1 ] && printf '%s' "$API_ORIGIN" || true )" \
+  E2E_CA_FILE="$CA_FILE" bash infra/tests/restore_e2e.sh; then
   ok "restore_e2e.sh (restore.sh en la base apex_restore)"
 else
   falla "restore_e2e.sh"

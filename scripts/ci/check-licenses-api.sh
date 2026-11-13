@@ -84,7 +84,7 @@ for nombre in $PROHIBIDOS_POR_NOMBRE; do
     exit 1
   fi
 done
-uv run --quiet pip-licenses \
+uv run --quiet python -m piplicenses \
   --python "$PY" \
   --from=mixed \
   --partial-match \

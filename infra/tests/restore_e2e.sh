@@ -21,6 +21,9 @@
 # Variables: E2E_DC (comando compose completo; por omisión .env/.env.ops + compose.yml + dev),
 # E2E_ENV_DIR (carpeta de .env/.env.ops/.env.seed; por omisión la raíz; en el ensayo
 # docs/scratch/ensayo), E2E_ADMIN_EMAIL (por omisión el de .env.seed o admin@smoke.apex.local),
+# E2E_BASE_URL (sección 5: URL base del api; por omisión http://127.0.0.1:$E2E_WEB_PORT), E2E_ORIGIN (cabecera
+# Origin del login y las subidas; por omisión FRONT_BASE_URL de .env) y E2E_CA_FILE (si está, todos los curl de la
+# sección 5 llevan --cacert con ese archivo: prod-smoke.sh --tls entra por Caddy con la CA interna),
 # BACKUP_IMG (por omisión apex-backup:local), API_IMG (por omisión apex-api:local), KEEP_WORK=1
 # (no borra la carpeta de trabajo). Solo corre sobre los proyectos apex-smoke, apex-ensayo y
 # apex-e2e (o, en la CI, sobre el que indique E2E_ALLOW_PROJECT); rechaza ENV=production salvo
@@ -338,8 +341,10 @@ case "$SALIDA_KEK" in *"sin-documento"*) ok "con otra KEK no se ve el documento 
 #   restaurar_adjuntos      borra los dos objetos del volumen, recrea apex_restore vacía y restaura con restore.sh.
 #   comparar_adjuntos       filas en apex_restore, dueño/modo de los objetos y descarga por el api con `cmp`.
 WEB_PORT_E2E="${E2E_WEB_PORT:-$(valor WEB_PORT)}"
-BASE_URL="http://127.0.0.1:$WEB_PORT_E2E"
-ORIGEN="$(valor FRONT_BASE_URL)"; ORIGEN="${ORIGEN:-http://localhost:$WEB_PORT_E2E}"
+BASE_URL="${E2E_BASE_URL:-http://127.0.0.1:$WEB_PORT_E2E}"
+ORIGEN="${E2E_ORIGIN:-$(valor FRONT_BASE_URL)}"; ORIGEN="${ORIGEN:-http://localhost:$WEB_PORT_E2E}"
+CURL_CA=()
+if [ -n "${E2E_CA_FILE:-}" ]; then CURL_CA=(--cacert "$(nativa "$E2E_CA_FILE")"); fi
 ADJ="$WORK/adjuntos"; mkdir -p "$ADJ"
 FOTO_ID=""; CONSENT_ID=""; CONSENT_EN_REPOSO=""; CMP_FOTO=1; CMP_CONSENT=1
 OBJ_FOTO=""; OBJ_CONSENT=""; TOKEN=""
@@ -354,7 +359,7 @@ iniciar_sesion() { # deja TOKEN; se repite antes de las descargas porque el acce
   [ -n "$clave" ] || muere "falta E2E_ADMIN_PASSWORD (prod-smoke.sh la entrega) para subir adjuntos por la API"
   cuerpo="$ADJ/login.json"
   ( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN" "$clave" > "$cuerpo" )
-  respuesta="$(curl -sS --max-time 30 -X POST -H "Origin: $ORIGEN" -H 'Content-Type: application/json' \
+  respuesta="$(curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -X POST -H "Origin: $ORIGEN" -H 'Content-Type: application/json' \
     --data-binary "@$cuerpo" "$BASE_URL/api/v1/auth/login" | tr -d '\r')" || muere "el login por curl falló"
   rm -f "$cuerpo"
   TOKEN="$(printf '%s' "$respuesta" | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')"
@@ -369,7 +374,7 @@ subir_adjuntos() {
   iniciar_sesion
   for tipo in photo consent; do
     archivo="$ADJ/foto.bin"; if [ "$tipo" = consent ]; then archivo="$ADJ/consent.bin"; fi
-    respuesta="$(cabecera_auth | curl -sS --max-time 60 -X POST -H @- -H 'Content-Type: application/octet-stream' \
+    respuesta="$(cabecera_auth | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 60 -X POST -H @- -H 'Content-Type: application/octet-stream' \
       --data-binary "@$archivo" "$BASE_URL/api/v1/members/$MEMBER_ID/attachments?kind=$tipo" | tr -d '\r')" \
       || muere "la subida de $tipo falló"
     id="$(printf '%s' "$respuesta" | sed -n 's/^{"id" *: *"\([0-9a-f-]*\)".*/\1/p')"
@@ -411,8 +416,8 @@ comparar_adjuntos() {
   # Descarga por el api (volumen restaurado, base principal): cabeceras en -D, cuerpo en -o. Sesión nueva: el
   # access de la subida puede haber caducado durante run.sh y restore.sh.
   iniciar_sesion
-  cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/foto.hdr" -o "$ADJ/foto.out" "$BASE_URL/api/v1/attachments/$FOTO_ID" || true
-  cabecera_auth | curl -sS --max-time 60 -H @- -D "$ADJ/consent.hdr" -o "$ADJ/consent.out" "$BASE_URL/api/v1/attachments/$CONSENT_ID" || true
+  cabecera_auth | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 60 -H @- -D "$ADJ/foto.hdr" -o "$ADJ/foto.out" "$BASE_URL/api/v1/attachments/$FOTO_ID" || true
+  cabecera_auth | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 60 -H @- -D "$ADJ/consent.hdr" -o "$ADJ/consent.out" "$BASE_URL/api/v1/attachments/$CONSENT_ID" || true
   if grep -q '^HTTP/[0-9.]* 200' "$ADJ/foto.hdr" 2> /dev/null; then ok "GET de la foto: 200"; else falla "GET de la foto no dio 200"; fi
   if grep -q '^HTTP/[0-9.]* 200' "$ADJ/consent.hdr" 2> /dev/null; then ok "GET del consent: 200"; else falla "GET del consent no dio 200"; fi
   CMP_FOTO=0; cmp -s "$ADJ/foto.bin" "$ADJ/foto.out" || CMP_FOTO=1

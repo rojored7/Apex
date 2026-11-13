@@ -54,15 +54,24 @@ async def list_rows(
 async def sensitive_rows_not_with_key(
     session: AsyncSession, active_key_id: UUID, limit: int
 ) -> list[Attachment]:
-    """Sensibles con otra llave que la activa, con `FOR UPDATE SKIP LOCKED` (recifrado)."""
+    """Sensibles con otra llave que la activa, con `FOR UPDATE SKIP LOCKED` (recifrado).
+
+    Sin `ORDER BY`: con SKIP LOCKED el orden no aporta (cada lote toma lo que quede libre)."""
     consulta = (
         select(Attachment)
         .where(Attachment.sensitive.is_(True), Attachment.key_id != active_key_id)
-        .order_by(Attachment.created_at, Attachment.id)
         .limit(limit)
         .with_for_update(skip_locked=True)
     )
     return list((await session.scalars(consulta)).all())
+
+
+async def sensitive_row_keys(session: AsyncSession) -> list[tuple[UUID, str, UUID | None]]:
+    """`(id, filename_random, key_id)` de las filas sensibles (solo para `attachments-check`)."""
+    consulta = select(Attachment.id, Attachment.filename_random, Attachment.key_id).where(
+        Attachment.sensitive.is_(True)
+    )
+    return [(i, n, k) for i, n, k in (await session.execute(consulta)).all()]
 
 
 async def row_keys(session: AsyncSession) -> dict[UUID, str]:

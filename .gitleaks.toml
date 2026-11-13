@@ -30,6 +30,14 @@ paths = [
   '''scripts/ci/test_api_image\.sh''',
 ]
 regexes = [
+  '''secreto\-de\-prueba\-0123456789\-abcdefgh''',
+  '''AKIAPRUEBA0123456789''',
+  # Sprint 6 (V10): valor histórico del mismo fixture (commit 4f22c6fd9).
+  '''secreto\-de\-prueba\-0123456789\-abcdefgh''',
+  # Sprint 6 (V10): secreto S3 ficticio del apoyo de pruebas de adjuntos (api/tests/attachments/_apoyo_s3.py)
+  # y contraseña ficticia del entorno falso de caddy en test_deploy_script.sh. Por valor exacto.
+  '''secreto\-de\-prueba\-0123456789\-abcdefgh''',
+  '''valor\-secreto\-caddy\-123''',
   '''cambiar-esto''',
   '''apex-test''',
   '''apex-ci''',

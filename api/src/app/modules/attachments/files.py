@@ -44,6 +44,17 @@ def blob_key_id(blob: bytes) -> UUID:
     return UUID(blob.split(b".", 2)[1].decode("ascii"))
 
 
+def peek_key_id(head: bytes) -> UUID | None:
+    """`key_id` de los primeros bytes de un blob en reposo; `None` si no es una cabecera `apx1`."""
+    partes = head.split(b".", 2)
+    if len(partes) < 3 or partes[0] != b"apx1":
+        return None
+    try:
+        return UUID(partes[1].decode("ascii"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
 @contextmanager
 def batch() -> Iterator[Any]:
     """Un lote de `crypto_ops`: todo el recifrado comparte el mismo `batch_id`."""

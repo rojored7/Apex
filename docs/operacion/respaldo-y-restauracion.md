@@ -135,6 +135,8 @@ Escribe la frase. `kek.bin` debe pesar exactamente 32 bytes. Con `umask 077` que
 
 `infra/tests/restore_e2e.sh` (sección 5) comprueba que los adjuntos sobreviven al respaldo y a la restauración. En el smoke de producción (`scripts/ci/prod-smoke.sh`, que antes cambia la contraseña inicial del admin, porque el seed la deja con cambio obligatorio y las subidas responderían 403, y le pasa `E2E_ADMIN_PASSWORD` y `E2E_WEB_PORT`) hace esto, sobre `apex-smoke`:
 
+Con `--tls` la sección 5 entra por Caddy (`https://apex.localhost`) con la CA interna de Caddy: `prod-smoke.sh` pasa `E2E_BASE_URL`, `E2E_ORIGIN` y `E2E_CA_FILE` (y el cambio de clave del admin también se hace por ahí); en LAN siguen valiendo el Nginx en `127.0.0.1:$E2E_WEB_PORT` y `FRONT_BASE_URL`.
+
 1. Entra como admin por `curl` contra el Nginx y sube, con cuerpo crudo, una foto (`?kind=photo`) y una autorización (`?kind=consent`, sensible).
 2. Comprueba que el objeto sensible en reposo empieza por `apx1.` (nunca el PDF en claro).
 3. Corre `run.sh` y exige que el tar de `uploads` del manifiesto firmado traiga los dos objetos.

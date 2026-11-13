@@ -40,11 +40,11 @@ EOF
   echo
   echo "== api (Python, dependencias directas de runtime) =="
   echo
-  (cd "$API" && uv run --quiet pip-licenses --python "$PY" --from=mixed --format=plain-vertical --order=name --packages "${DIRECTAS[@]}")
+  (cd "$API" && uv run --quiet python -m piplicenses --python "$PY" --from=mixed --format=plain-vertical --order=name --packages "${DIRECTAS[@]}")
   echo
   echo "== api (opcional, grupo s3: adaptador S3 apagado; la imagen del api no lo instala) =="
   echo
-  (cd "$API" && uv run --quiet pip-licenses --python "$PY_S3" --from=mixed --format=plain-vertical --order=name --packages boto3 botocore s3transfer jmespath python-dateutil six urllib3)
+  (cd "$API" && uv run --quiet python -m piplicenses --python "$PY_S3" --from=mixed --format=plain-vertical --order=name --packages boto3 botocore s3transfer jmespath python-dateutil six urllib3)
   echo
   echo "== web (dependencias directas de producción) =="
   echo

@@ -67,8 +67,19 @@ async def _fila(
     async with fabrica() as sesion, sesion.begin():
         id_ = await insertar(sesion, owner=uuid4(), kind=kind, nombre=nombre)
     if con_objeto:
-        (volumen / nombre).write_bytes(b"x" * 10)
+        (volumen / nombre).write_bytes(await _contenido(fabrica, id_, kind))
     return id_, nombre
+
+
+async def _contenido(fabrica: Fabrica, id_: UUID, kind: str) -> bytes:
+    """Un sensible lleva una cabecera `apx1.<su key_id>.…`; la foto, bytes cualquiera."""
+    if kind == "photo":
+        return b"x" * 10
+    async with fabrica() as sesion:
+        llave = await sesion.scalar(
+            text("SELECT key_id FROM attachments.attachments WHERE id = :i"), {"i": id_}
+        )
+    return f"apx1.{llave}.A256GCM.bm9uY2U.Y2lwaGVy".encode("ascii")
 
 
 def _check(
@@ -154,6 +165,61 @@ async def test_solo_filas_sin_objeto_o_solo_objetos_sin_fila_tambien_salen_1(
     segunda = _check(ajustes, monkeypatch, "--as", admin.email)
     assert segunda.exit_code == 1 and "objetos sin fila: 1" in segunda.output
     assert "filas sin objeto: 0" in segunda.output
+
+
+# `key_id` contra la cabecera del blob (V9 M1) -----------------------------------------------------
+
+
+async def test_un_sensible_con_key_id_distinto_del_blob_se_lista_y_sale_1(
+    fabrica: Fabrica,
+    volumen: Path,
+    ajustes: Settings,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bueno, _ = await _fila(fabrica, con_objeto=True, volumen=volumen, kind="consent")
+    manipulado, _ = await _fila(fabrica, con_objeto=True, volumen=volumen, kind="other")
+    async with fabrica() as sesion, sesion.begin():
+        await sesion.execute(
+            text("UPDATE attachments.attachments SET key_id = :k WHERE id = :i"),
+            {"k": uuid4(), "i": manipulado},
+        )
+
+    resultado = _check(ajustes, monkeypatch, "--as", admin.email)
+
+    assert resultado.exit_code == 1, resultado.output
+    assert "filas sin objeto: 0" in resultado.output
+    assert "objetos sin fila: 0" in resultado.output
+    assert "key_id distinto del blob: 1" in resultado.output
+    assert f"  key_id distinto del blob: {manipulado}" in resultado.output
+    assert str(bueno) not in resultado.output
+
+
+async def test_un_objeto_sensible_que_no_es_un_blob_apx1_cuenta_como_discrepancia(
+    fabrica: Fabrica,
+    volumen: Path,
+    ajustes: Settings,
+    admin: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    id_, nombre = await _fila(fabrica, con_objeto=True, volumen=volumen, kind="consent")
+    (volumen / nombre).write_bytes(b"no es un blob")
+
+    resultado = _check(ajustes, monkeypatch, "--as", admin.email)
+
+    assert resultado.exit_code == 1, resultado.output
+    assert f"  key_id distinto del blob: {id_}" in resultado.output
+
+
+async def test_la_foto_no_se_compara_con_ningun_blob(
+    fabrica: Fabrica, volumen: Path, ajustes: Settings, admin: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _fila(fabrica, con_objeto=True, volumen=volumen)
+
+    resultado = _check(ajustes, monkeypatch, "--as", admin.email)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "key_id distinto" not in resultado.output
 
 
 # Solo lectura -------------------------------------------------------------------------------------

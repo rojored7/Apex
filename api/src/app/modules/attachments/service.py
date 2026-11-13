@@ -21,9 +21,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Final
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import aclosing, asynccontextmanager
+from dataclasses import replace
+from typing import Final, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,7 @@ SENSITIVE_SLOTS: Final = 4
 DATA_CLASS: Final = files.DATA_CLASS
 AUDIT_TABLE: Final = "attachments.attachments"
 HEAD_BYTES: Final = 16
+_HEAD_BYTES: Final = 64  # cubre `apx1.<uuid>.` (41 bytes) para leer la cabecera sin descifrar
 
 _slots = asyncio.Semaphore(SENSITIVE_SLOTS)
 
@@ -283,5 +285,28 @@ async def list_for_owner(
 
 async def orphan_report(session: AsyncSession) -> rules.OrphanReport:
     """Filas sin objeto y objetos sin fila (`attachments-check`, S6-D22): solo lectura."""
-    claves = [clave async for clave in current_storage().list_keys()]
-    return rules.find_orphans(await queries.row_keys(session), claves)
+    almacen = current_storage()
+    claves = [clave async for clave in almacen.list_keys()]
+    informe = rules.find_orphans(await queries.row_keys(session), claves)
+    presentes = set(claves)
+    distintos: list[UUID] = []
+    for id_, nombre, key_id in await queries.sensitive_row_keys(session):
+        if nombre in presentes and await _head_key_id(almacen, nombre) != key_id:
+            distintos.append(id_)
+    return replace(informe, key_mismatch=tuple(sorted(distintos)))
+
+
+async def _head_key_id(almacen: StorageProvider, nombre: str) -> UUID | None:
+    """`key_id` de la cabecera del objeto: lee solo los primeros bytes, sin descifrar."""
+    cabecera = b""
+    try:
+        async with aclosing(
+            cast("AsyncGenerator[bytes, None]", almacen.stream(nombre, _HEAD_BYTES))
+        ) as trozos:
+            async for trozo in trozos:
+                cabecera += trozo
+                if len(cabecera) >= _HEAD_BYTES:
+                    break
+    except FileNotFoundError:  # desapareció entre el listado y la lectura
+        return None
+    return files.peek_key_id(cabecera[:_HEAD_BYTES])

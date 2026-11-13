@@ -59,7 +59,16 @@ attachments-check: objetos sin fila: N
   objeto sin fila: <nombre hexadecimal>
 ```
 
-Sale 0 sin huérfanos y 1 con ellos. Nunca imprime el `filename_random` de una fila (con S3 es la clave del objeto) ni borra, repara o crea nada, ni siquiera la carpeta del volumen. Las causas habituales: una subida cortada entre guardar el objeto y confirmar la fila (el servicio borra el objeto al fallar el `flush`, pero un corte del proceso puede dejarlo), una restauración parcial del volumen, o el `downgrade` de `0023` (RUNBOOK §6). Qué hacer con cada huérfano es decisión de la persona; no hay comando de reparación.
+Además compara, por cada fila sensible cuyo objeto existe, el `key_id` de la fila con el de la cabecera del blob en reposo (`apx1.<key_id>.…`; lee solo los primeros 64 bytes del objeto y no descifra nada). Si alguna difiere (o el objeto no empieza como un blob `apx1`), agrega una tercera categoría, solo cuando hay casos:
+
+```
+attachments-check: key_id distinto del blob: N
+  key_id distinto del blob: <id de la fila>
+```
+
+Sin discrepancias la salida no cambia. El motivo de la comprobación: `attachments.key_id` no tiene llave foránea a `crypto.crypto_keys` y `apex_api` puede fijarlo; `count_pending`, `finish_rotation` y `retire-key` confían en esa columna, y una fila manipulada ocultaría un blob cifrado con la llave que se va a retirar. Repararlo es decisión de la persona (la columna solo admite `UPDATE` de `key_id` y `updated_at`).
+
+Sale 0 sin hallazgos y 1 con alguno (huérfanos o `key_id` distinto del blob). Nunca imprime el `filename_random` de una fila (con S3 es la clave del objeto) ni borra, repara o crea nada, ni siquiera la carpeta del volumen. Las causas habituales: una subida cortada entre guardar el objeto y confirmar la fila (el servicio borra el objeto al fallar el `flush`, pero un corte del proceso puede dejarlo), una restauración parcial del volumen, o el `downgrade` de `0023` (RUNBOOK §6). Qué hacer con cada huérfano es decisión de la persona; no hay comando de reparación.
 
 ## S3 (apagado en v0.3)
 

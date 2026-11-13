@@ -83,3 +83,5 @@ Lo que sí podría hacer un api comprometido: insertar llaves `decrypt_only` fal
 - La condición «existe otra `active` de versión mayor» la satisface también una fila que el propio `apex_api` inserte (`ensure_keys` ya tiene `INSERT`): la guarda prueba la forma de la rotación, no el origen de la llave.
 
 Residual D61: la guarda del trabajo `running` solo ve lo confirmado y lo propio de la transacción; un trabajo `running` de OTRA transacción la satisface, pero `uq_crypto_jobs_in_progress` impide dos en curso de la misma clase.
+
+Residual V9 (M1): `attachments.key_id` no tiene llave foránea a `crypto.crypto_keys` y `apex_api` puede fijarlo a cualquier UUID; `count_pending`, `finish_rotation` y `retire-key` confían en esa columna. La FK `fk_attachments_key_id` (`ON DELETE RESTRICT`, creada `NOT VALID` y luego `VALIDATE`) va en la migración `0025`, al inicio del Sprint 7. Hasta entonces la detección es `tools attachments-check`, que compara `key_id` con la cabecera del blob en reposo y sale 1 si difieren; `retire-key` debe correrse solo después de un `attachments-check` limpio.

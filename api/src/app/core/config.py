@@ -41,6 +41,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from app.core import config_origin as _origin
 from app.core.config_storage import S3_REQUIRED, domain_problems, s3_problems
 
 # Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
@@ -542,6 +543,12 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _origenes_coherentes(self) -> Settings:
+        """S6-E1 (US-153): con `APEX_DOMAIN` el front, CORS y la cookie son del dominio https."""
+        _origin.validate_origins(self)
+        return self
+
+    @model_validator(mode="after")
     def _sin_secretos_de_operacion_en_produccion(self) -> Settings:
         """M2 (S4B-D56): un `.env` mezclado con `.env.ops` no arranca en producción."""
         if self.ENV == "production":
@@ -784,3 +791,9 @@ def check_secrets_or_exit(settings: Settings) -> None:
     faltan = missing_secrets(settings)
     if faltan:
         raise StartupError("Faltan secretos: " + ", ".join(faltan))
+
+
+# S6-E1: puerta del origen público; la implementación vive en config_origin (como config_storage).
+public_origin = _origin.public_origin
+validate_origins = _origin.validate_origins
+cookie_secure = _origin.cookie_secure

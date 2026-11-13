@@ -2,7 +2,9 @@
 S2-D4, privado del módulo auth).
 
 - `apex_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Max-Age` de
-  `REFRESH_TOKEN_TTL_DAYS` y `Secure` según `COOKIE_SECURE`; se borra con los mismos atributos
+  `REFRESH_TOKEN_TTL_DAYS` y `Secure` según `cookie_secure(settings)` (devuelve `COOKIE_SECURE`;
+  con dominio `validate_origins` garantiza `true` al cargar, S6-E1); se borra con los mismos
+  atributos
   (`Max-Age=0`).
 - `no_store` se movió a `core/http.py` (revisión Python M6): lo usan todas las rutas con rol.
 - `require_same_origin`: `Origin` (o `Referer`) contra `AUTH_ALLOWED_ORIGINS` o el origen de
@@ -20,7 +22,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Request, Response
 
-from app.core.config import Settings
+from app.core.config import Settings, cookie_secure
 from app.core.errors import ForbiddenError
 from app.modules.auth.rules import AuthPolicy
 
@@ -36,7 +38,7 @@ def set_refresh_cookie(response: Response, token: str, settings: Settings) -> No
         token,
         max_age=settings.REFRESH_TOKEN_TTL_DAYS * SECONDS_PER_DAY,
         path=REFRESH_COOKIE_PATH,
-        secure=settings.COOKIE_SECURE,
+        secure=cookie_secure(settings),
         httponly=True,
         samesite="strict",
     )
@@ -46,7 +48,7 @@ def clear_refresh_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
         REFRESH_COOKIE,
         path=REFRESH_COOKIE_PATH,
-        secure=settings.COOKIE_SECURE,
+        secure=cookie_secure(settings),
         httponly=True,
         samesite="strict",
     )

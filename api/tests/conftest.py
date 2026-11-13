@@ -178,6 +178,71 @@ def settings_prueba(tmp_path: Path, migrated_database: str, claves_prueba: Path)
     return load_settings(env_file=env)
 
 
+# S6-E1 (US-153): los dos modos de despliegue. `settings_lan()` y `settings_dominio()` devuelven una
+# `Settings` ya coherente con su modo a partir de una base (por omisión una sin base de datos); se
+# arman con `model_copy(update=...)`, que no valida: sirven también para probar los valores malos.
+DOMINIO_PRUEBA = "apex.example.com"
+ORIGEN_DOMINIO_PRUEBA = f"https://{DOMINIO_PRUEBA}"
+
+
+@pytest.fixture
+def settings_sin_base(tmp_path: Path, claves_prueba: Path) -> Settings:
+    """`Settings` de desarrollo que no toca la base de datos (para pruebas puras de origen)."""
+    rutas = key_paths_in(claves_prueba)
+    env = tmp_path / ".env.origen"
+    env.write_text(
+        "DATABASE_URL=postgresql+asyncpg://apex:clave-secreta@db:5432/apex\n"
+        f"JWT_PRIVATE_KEY_PATH={rutas.jwt_private}\nCRYPTO_PROVIDER=local\n"
+        f"CRYPTO_LOCAL_KEK_PATH={rutas.kek}\nCRYPTO_LOCAL_SIGNING_KEY_PATH={rutas.signing_key}\n"
+        'UPLOADS_DIR=/data/uploads\nCORS_ORIGINS=["http://localhost"]\nENV=dev\n',
+        encoding="utf-8",
+    )
+    return load_settings(env_file=env)
+
+
+SettingsDeModo = Callable[..., Settings]
+
+
+@pytest.fixture
+def settings_lan(settings_sin_base: Settings) -> SettingsDeModo:
+    """`settings_lan(base=None, **cambios)`: sin `APEX_DOMAIN`, `FRONT_BASE_URL` en http, la
+    cookie sin `Secure` y `CORS_ORIGINS` con el origen del front."""
+
+    def crear(base: Settings | None = None, **cambios: Any) -> Settings:
+        valores: dict[str, Any] = {
+            "APEX_DOMAIN": None,
+            "ALLOW_DOMAIN_PORT": False,
+            "FRONT_BASE_URL": "http://localhost",
+            "CORS_ORIGINS": ["http://localhost"],
+            "COOKIE_SECURE": False,
+            "ALLOW_INSECURE_COOKIE": False,
+            **cambios,
+        }
+        return (base or settings_sin_base).model_copy(update=valores)
+
+    return crear
+
+
+@pytest.fixture
+def settings_dominio(settings_sin_base: Settings) -> SettingsDeModo:
+    """`settings_dominio(base=None, **cambios)`: `APEX_DOMAIN=apex.example.com`, front en https,
+    cookie `Secure`, sin `CORS_ORIGINS` ni `ALLOW_INSECURE_COOKIE`."""
+
+    def crear(base: Settings | None = None, **cambios: Any) -> Settings:
+        valores: dict[str, Any] = {
+            "APEX_DOMAIN": DOMINIO_PRUEBA,
+            "ALLOW_DOMAIN_PORT": False,
+            "FRONT_BASE_URL": ORIGEN_DOMINIO_PRUEBA,
+            "CORS_ORIGINS": [],
+            "COOKIE_SECURE": True,
+            "ALLOW_INSECURE_COOKIE": False,
+            **cambios,
+        }
+        return (base or settings_sin_base).model_copy(update=valores)
+
+    return crear
+
+
 @pytest.fixture(scope="session")
 def alembic_config(test_database_url: str) -> Config:
     return alembic_config_for(test_database_url)

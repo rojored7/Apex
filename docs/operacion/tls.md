@@ -26,6 +26,17 @@ perfil, APEX sirve por HTTP en la LAN como hasta ahora. Los pasos de instalació
   - `TLS_PORT` (`443`): puerto HTTPS de Caddy, el mismo dentro y fuera del contenedor (`TLS_PORT:TLS_PORT`, S6-D96). **Debe ser el puerto de `APEX_DOMAIN`** (8443 con `apex.localhost:8443`) o 443 si `APEX_DOMAIN` no lleva puerto; `deploy.sh` sale con 2 si no coinciden.
   - `APEX_REAL_IP_CONF` (vacío): ruta del snippet `real-ip.conf` que monta `web`; ver «IP de Caddy distinta».
 
+
+## Los dos modos y la coherencia de origen (S6-E1, US-153)
+
+El api decide su origen público de `APEX_DOMAIN` (S6-D65); no hay variables nuevas.
+
+- **Modo LAN (sin `APEX_DOMAIN`).** El origen público es `FRONT_BASE_URL` (puede ser `http:`). CORS acepta solo `CORS_ORIGINS` (vacío = sin CORS). `COOKIE_SECURE` puede ser `false`; con `ENV=production` el api exige `COOKIE_SECURE=true` salvo `ALLOW_INSECURE_COOKIE=true` (riesgo aceptado P7, S4B-D154).
+- **Modo dominio (con `APEX_DOMAIN`).** El origen público es `https://<APEX_DOMAIN>` (con el puerto si lo lleva, por ejemplo `https://apex.localhost:8443`). CORS acepta ese origen además de `CORS_ORIGINS`. La cookie del refresh lleva `Secure` y `SameSite=Strict` (en LAN solo `SameSite=Strict`).
+- **Qué valida el arranque con dominio.** El api no arranca si: `CORS_ORIGINS` contiene un origen `http:` (otros orígenes `https:` siguen válidos); `FRONT_BASE_URL` no es exactamente el origen público; `COOKIE_SECURE=false`; o `ALLOW_INSECURE_COOKIE=true` (con dominio no hay excepción P7); o `AUTH_ALLOWED_ORIGINS` lleva un origen `http:` o, si no está vacía, no contiene el origen público. Vale en `ENV=dev` y en `production`.
+- **Mensajes de arranque.** `Configuración inválida (inválidas o desconocidas: ALLOW_INSECURE_COOKIE, AUTH_ALLOWED_ORIGINS, COOKIE_SECURE, CORS_ORIGINS, FRONT_BASE_URL). Revisa .env y .env.example.` Lista solo los nombres de las variables incoherentes, nunca sus valores; corrige esas variables en `.env` y reinicia.
+- **IP real del cliente.** `TRUSTED_PROXIES` sigue siendo solo la IP de Nginx (S6-D82): Caddy no entra. Nginx restaura la IP real con `real_ip` y el api salta una sola vez, así el limitador no cuenta a Caddy.
+
 ## De LAN a dominio, paso a paso
 
 Requisitos: un nombre DNS que apunte a la IP pública del servidor y los puertos 80 y 443 de esa IP reenviados al servidor (el 80 lo exige el desafío HTTP-01 de ACME).

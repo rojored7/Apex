@@ -40,7 +40,7 @@ from app.core.alerts_telegram import register_from_settings as register_telegram
 from app.core.alerts_telegram import set_enabled_gate as set_telegram_gate
 from app.core.audit import install_audit_listeners, record
 from app.core.backup_status import PUBLIC_BACKUP, backup_health
-from app.core.config import Settings, check_secrets_or_exit, get_settings
+from app.core.config import Settings, check_secrets_or_exit, get_settings, public_origin
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import rotate_job
 from app.core.crypto import router as crypto_router
@@ -289,16 +289,20 @@ def _install_middleware(app: FastAPI, settings: Settings) -> None:
     app.state.user_limits = user_limits_from(settings)  # topes por usuario (E10, E15)
     configure_store_limits(dict.fromkeys(KEY_KINDS, settings.RATE_LIMIT_MAX_KEYS))  # L-11
     # US-037: CORS cerrado; solo si hay orígenes, exactos y sin credenciales.
-    if settings.CORS_ORIGINS:
+    # S6-E1 (US-153): con `APEX_DOMAIN` se suma el origen público https (sin duplicados).
+    origenes = list(settings.CORS_ORIGINS)
+    if settings.APEX_DOMAIN and public_origin(settings) not in origenes:
+        origenes.append(public_origin(settings))
+    if origenes:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.CORS_ORIGINS,
+            allow_origins=origenes,
             allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
             allow_headers=["Authorization", "Content-Type"],
             allow_credentials=False,
             max_age=600,
         )
-        logger.info("CORS habilitado para: %s", ", ".join(settings.CORS_ORIGINS))
+        logger.info("CORS habilitado para: %s", ", ".join(origenes))
 
 
 def _should_migrate(settings: Settings, explicito: bool | None) -> bool:

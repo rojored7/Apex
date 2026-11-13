@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.cli import key_paths_in
 from app.core.config import ConfigError, Settings, load_settings, parse_origins
 from app.main import create_app
+from tests.conftest import SettingsDeModo
 
 
 @pytest.mark.parametrize(
@@ -88,3 +89,82 @@ def test_asterisco_hace_fallar_la_configuracion(
     with pytest.raises(ConfigError) as excinfo:
         _settings(tmp_path, settings_prueba, claves_prueba, "*")
     assert "CORS_ORIGINS" in str(excinfo.value)
+
+
+# S6-E1 (US-153 criterio 5, D65): con `APEX_DOMAIN`, CORS acepta `public_origin` además de
+# `CORS_ORIGINS`; sin dominio rige solo `CORS_ORIGINS`, como hoy.
+
+
+async def test_con_dominio_el_origen_publico_https_se_acepta(
+    settings_dominio: SettingsDeModo,
+) -> None:
+    app = create_app(settings_dominio(), run_migrations_on_startup=False)
+    cabeceras = await _preflight(app, "https://apex.example.com")
+    assert cabeceras["access-control-allow-origin"] == "https://apex.example.com"
+    assert "access-control-allow-credentials" not in cabeceras
+
+
+async def test_con_dominio_el_mismo_host_en_http_se_rechaza(
+    settings_dominio: SettingsDeModo,
+) -> None:
+    app = create_app(settings_dominio(), run_migrations_on_startup=False)
+    assert "access-control-allow-origin" not in await _preflight(app, "http://apex.example.com")
+
+
+@pytest.mark.parametrize(
+    "origen",
+    [
+        "https://evil.example",
+        "https://apex.example.com.evil.example",
+        "https://sub.apex.example.com",
+    ],
+)
+async def test_con_dominio_otro_origen_se_rechaza(
+    settings_dominio: SettingsDeModo, origen: str
+) -> None:
+    app = create_app(settings_dominio(), run_migrations_on_startup=False)
+    assert "access-control-allow-origin" not in await _preflight(app, origen)
+
+
+async def test_con_dominio_cors_origins_se_suma_al_origen_publico(
+    settings_dominio: SettingsDeModo,
+) -> None:
+    app = create_app(
+        settings_dominio(CORS_ORIGINS=["https://extra.example.com"]),
+        run_migrations_on_startup=False,
+    )
+    publico = await _preflight(app, "https://apex.example.com")
+    extra = await _preflight(app, "https://extra.example.com")
+    assert publico["access-control-allow-origin"] == "https://apex.example.com"
+    assert extra["access-control-allow-origin"] == "https://extra.example.com"
+
+
+async def test_con_dominio_y_puerto_el_origen_publico_lleva_el_puerto(
+    settings_dominio: SettingsDeModo,
+) -> None:
+    app = create_app(
+        settings_dominio(
+            APEX_DOMAIN="apex.localhost:8443",
+            ALLOW_DOMAIN_PORT=True,
+            FRONT_BASE_URL="https://apex.localhost:8443",
+        ),
+        run_migrations_on_startup=False,
+    )
+    con_puerto = await _preflight(app, "https://apex.localhost:8443")
+    assert con_puerto["access-control-allow-origin"] == "https://apex.localhost:8443"
+    assert "access-control-allow-origin" not in await _preflight(app, "https://apex.localhost")
+
+
+async def test_sin_dominio_solo_cors_origins_decide(settings_lan: SettingsDeModo) -> None:
+    app = create_app(
+        settings_lan(CORS_ORIGINS=["http://apex.local"], FRONT_BASE_URL="http://localhost"),
+        run_migrations_on_startup=False,
+    )
+    permitido = await _preflight(app, "http://apex.local")
+    assert permitido["access-control-allow-origin"] == "http://apex.local"
+    assert "access-control-allow-origin" not in await _preflight(app, "http://localhost")
+
+
+async def test_sin_dominio_y_sin_cors_origins_no_hay_cors(settings_lan: SettingsDeModo) -> None:
+    app = create_app(settings_lan(CORS_ORIGINS=[]), run_migrations_on_startup=False)
+    assert "access-control-allow-origin" not in await _preflight(app, "http://localhost")

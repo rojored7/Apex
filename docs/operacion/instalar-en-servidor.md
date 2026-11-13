@@ -11,7 +11,8 @@ publicarlo en Internet. Con un dominio público (o `apex.localhost` para ensayar
 `tls` de Compose (`-f infra/compose.tls.yml --profile tls`): Caddy 2.11.3 termina TLS 1.3 con el grupo
 híbrido `x25519mlkem768`, redirige el puerto 80 con un 308 y envía HSTS (escalonado, empezando en
 `max-age=300`). Con el perfil se fijan `APEX_DOMAIN`, `COOKIE_SECURE=true`, `ALLOW_INSECURE_COOKIE=false`
-y `FRONT_BASE_URL=https://<dominio>`. Los pasos, el modo LAN, el escalonamiento de HSTS y las
+y `FRONT_BASE_URL=https://<dominio>`; el api no arranca si alguno es incoherente con el dominio (S6-E1,
+sección «Los dos modos» de `tls.md`). Los pasos, el modo LAN, el escalonamiento de HSTS y las
 comprobaciones humanas (renovación ACME real, SSL Labs) están en `tls.md`. Sin el perfil la decisión
 de LAN queda escrita en el `.env` con `ALLOW_INSECURE_COOKIE=true` (paso 4). Caddy no cifra la red
 interna `custody` de OpenBao: eso queda como residual de v0.4 a cargo del operador.

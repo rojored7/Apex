@@ -1128,7 +1128,12 @@ def test_la_bandera_s3_en_produccion_con_almacen_local_no_hace_nada(tmp_path: Pa
 
 @pytest.mark.parametrize("dominio", ["apex.example.com", "gym.apex.example.com", "localhost"])
 def test_apex_domain_acepta_un_host_sin_puerto(tmp_path: Path, dominio: str) -> None:
-    assert _cargar(tmp_path, APEX_DOMAIN=dominio).APEX_DOMAIN == dominio
+    en_dominio = {
+        "FRONT_BASE_URL": f"https://{dominio}",
+        "COOKIE_SECURE": "true",
+        "CORS_ORIGINS": None,
+    }
+    assert _cargar(tmp_path, APEX_DOMAIN=dominio, **en_dominio).APEX_DOMAIN == dominio
 
 
 @pytest.mark.parametrize(
@@ -1165,7 +1170,15 @@ def test_apex_domain_con_forma_invalida_falla_nombrando_la_variable(
 def test_puerto_en_apex_domain_pasa_con_la_bandera_y_host_localhost(
     tmp_path: Path, entorno: str
 ) -> None:
-    s = _cargar(tmp_path, ENV=entorno, APEX_DOMAIN="apex.localhost:8443", ALLOW_DOMAIN_PORT="true")
+    s = _cargar(
+        tmp_path,
+        ENV=entorno,
+        APEX_DOMAIN="apex.localhost:8443",
+        ALLOW_DOMAIN_PORT="true",
+        FRONT_BASE_URL="https://apex.localhost:8443",
+        COOKIE_SECURE="true",
+        CORS_ORIGINS=None,
+    )
     assert s.APEX_DOMAIN == "apex.localhost:8443"
     assert s.ALLOW_DOMAIN_PORT is True
 
@@ -1295,3 +1308,92 @@ def test_la_ruta_por_defecto_de_la_llave_de_firma_es_la_de_custody() -> None:
     por_defecto = Settings.model_fields["CRYPTO_LOCAL_SIGNING_KEY_PATH"].default
 
     assert Path(por_defecto) == Path(RUTAS_LAYOUT_NUEVO["CRYPTO_LOCAL_SIGNING_KEY_PATH"])
+
+
+# S6-E1 (US-153): `validate_origins` en el validador final de `Settings`; sin variables nuevas ---
+
+VARIABLES_DE_ORIGEN: frozenset[str] = frozenset(
+    {
+        "CORS_ORIGINS",
+        "AUTH_ALLOWED_ORIGINS",
+        "FRONT_BASE_URL",
+        "COOKIE_SECURE",
+        "ALLOW_INSECURE_COOKIE",
+        "APEX_DOMAIN",
+        "ALLOW_DOMAIN_PORT",
+    }
+)
+EN_DOMINIO: dict[str, str | None] = {
+    "APEX_DOMAIN": "apex.example.com",
+    "FRONT_BASE_URL": "https://apex.example.com",
+    "COOKIE_SECURE": "true",
+    "CORS_ORIGINS": None,
+}
+
+
+def test_s6_e1_no_agrega_variables_de_origen() -> None:
+    """El origen público se deriva de `APEX_DOMAIN` y `FRONT_BASE_URL`: ningún campo nuevo."""
+    candidatas = {
+        nombre
+        for nombre in Settings.model_fields
+        if any(trozo in nombre for trozo in ("ORIGIN", "DOMAIN", "COOKIE", "FRONT", "PUBLIC_URL"))
+    }
+    assert candidatas == VARIABLES_DE_ORIGEN
+
+
+def test_con_dominio_coherente_la_configuracion_carga(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, **EN_DOMINIO)
+    assert s.APEX_DOMAIN == "apex.example.com"
+    assert s.COOKIE_SECURE is True and s.CORS_ORIGINS == []
+
+
+def test_sin_dominio_la_configuracion_lan_carga_como_hoy(tmp_path: Path) -> None:
+    s = _cargar(tmp_path, ENV="dev", COOKIE_SECURE="false")
+    assert s.APEX_DOMAIN is None and s.COOKIE_SECURE is False
+
+
+def test_con_dominio_cors_origins_con_http_falla_al_cargar(tmp_path: Path) -> None:
+    _rechaza(
+        tmp_path,
+        "CORS_ORIGINS",
+        **{**EN_DOMINIO, "CORS_ORIGINS": '["http://otro.example.com"]'},
+    )
+
+
+def test_con_dominio_front_base_url_distinta_falla_al_cargar(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "FRONT_BASE_URL", **{**EN_DOMINIO, "FRONT_BASE_URL": "http://localhost"})
+
+
+def test_con_dominio_cookie_secure_false_falla_al_cargar_en_dev(tmp_path: Path) -> None:
+    _rechaza(tmp_path, "COOKIE_SECURE", **{**EN_DOMINIO, "ENV": "dev", "COOKIE_SECURE": "false"})
+
+
+def test_con_dominio_allow_insecure_cookie_falla_al_cargar(tmp_path: Path) -> None:
+    _rechaza(
+        tmp_path,
+        "ALLOW_INSECURE_COOKIE",
+        **{**EN_DOMINIO, "ALLOW_INSECURE_COOKIE": "true"},
+    )
+
+
+def test_con_dominio_y_puerto_localhost_el_front_lleva_el_puerto(tmp_path: Path) -> None:
+    s = _cargar(
+        tmp_path,
+        **{
+            **EN_DOMINIO,
+            "APEX_DOMAIN": "apex.localhost:8443",
+            "ALLOW_DOMAIN_PORT": "true",
+            "FRONT_BASE_URL": "https://apex.localhost:8443",
+        },
+    )
+    assert s.FRONT_BASE_URL == "https://apex.localhost:8443"
+    _rechaza(
+        tmp_path,
+        "FRONT_BASE_URL",
+        **{
+            **EN_DOMINIO,
+            "APEX_DOMAIN": "apex.localhost:8443",
+            "ALLOW_DOMAIN_PORT": "true",
+            "FRONT_BASE_URL": "https://apex.localhost",
+        },
+    )

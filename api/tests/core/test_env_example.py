@@ -619,3 +619,37 @@ def test_las_siete_user_de_s6_son_campos_de_settings_con_el_tope_de_su_cubeta() 
     assert faltan == [], f"aún no son campos de Settings: {faltan}"
     por_defecto = [Settings.model_fields[n].default for n in SIETE_USER_S6]
     assert por_defecto == [10, 600, 30, 200, 3, 10, 2]
+
+
+# S6-E1 (US-153): sin variables nuevas; los comentarios explican los dos modos -----------------
+
+
+def _comentario_previo(nombre: str, lineas_previas: int = 8) -> str:
+    lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
+    indices = [i for i, linea in enumerate(lineas) if linea.startswith(f"{nombre}=")]
+    assert len(indices) == 1, f"{nombre} debe ir una vez como línea activa"
+    previas = lineas[max(0, indices[0] - lineas_previas) : indices[0]]
+    return " ".join(linea for linea in previas if linea.startswith("#"))
+
+
+def test_s6_e1_no_agrega_variables_al_ejemplo() -> None:
+    claves = _claves()
+    for nombre in ("PUBLIC_ORIGIN", "APEX_PUBLIC_ORIGIN", "PUBLIC_URL", "LAN_ORIGIN"):
+        assert nombre not in claves
+    for nombre in ("APEX_DOMAIN", "FRONT_BASE_URL", "COOKIE_SECURE", "ALLOW_INSECURE_COOKIE"):
+        assert nombre in claves
+
+
+def test_el_comentario_de_cookie_secure_explica_el_modo_dominio() -> None:
+    comentario = _comentario_previo("COOKIE_SECURE")
+    assert "APEX_DOMAIN" in comentario
+
+
+def test_el_comentario_de_front_base_url_explica_que_con_dominio_es_https_del_dominio() -> None:
+    comentario = _comentario_previo("FRONT_BASE_URL")
+    assert "APEX_DOMAIN" in comentario and "https" in comentario
+
+
+def test_el_comentario_de_apex_domain_cita_cookie_y_cors() -> None:
+    comentario = _comentario_previo("APEX_DOMAIN", 6)
+    assert "COOKIE_SECURE" in comentario and "CORS_ORIGINS" in comentario

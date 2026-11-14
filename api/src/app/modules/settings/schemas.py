@@ -97,7 +97,9 @@ class SectionValue(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
 
-HHMM_PATTERN: Final[str] = r"^([01]\d|2[0-3]):[0-5]\d$"
+# Solo dígitos ASCII (`[0-9]`, no `\d`): `\d` acepta dígitos Unicode (U+0665 en "0?:00") y las
+# comparaciones de `open < close` y de solapes son de texto (revisión de S7-A1, MEDIUM).
+HHMM_PATTERN: Final[str] = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
 HOURS_MAX_RANGES: Final[int] = 2
 
 

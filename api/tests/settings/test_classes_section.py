@@ -56,7 +56,7 @@ def test_ventana_0_a_240() -> None:
         assert campo == "value.checkin_window_min"
 
 
-@pytest.mark.parametrize("valor", ["15", 15.5], ids=["texto", "decimal"])
+@pytest.mark.parametrize("valor", ["15", 15.5, True], ids=["texto", "decimal", "booleano"])
 def test_no_enteros_dan_422(valor: object) -> None:
     assert _campo_invalido({**CLASSES_OK, "default_capacity": valor}) == "value.default_capacity"
 

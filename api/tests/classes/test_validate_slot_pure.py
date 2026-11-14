@@ -33,7 +33,20 @@ def test_dias_vacios_repetidos_o_fuera_de_rango(dias: list[int]) -> None:
     assert _campo(weekdays=dias) == "weekdays"
 
 
-@pytest.mark.parametrize("hora", ["", "6:00", "24:00", "12:60", "06:00:00", "ab:cd"])
+@pytest.mark.parametrize(
+    "hora",
+    [
+        "",
+        "6:00",
+        "24:00",
+        "12:60",
+        "06:00:00",
+        "ab:cd",
+        f"0{chr(0x0665)}:00",
+        f"{chr(0xFF10)}6:00",
+        "06:00\n",
+    ],
+)
 def test_hora_invalida(hora: str) -> None:
     assert _campo(start_time=hora) == "start_time"
 

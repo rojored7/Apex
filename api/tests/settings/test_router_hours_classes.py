@@ -94,6 +94,15 @@ async def test_patch_audita_y_sube_version(
     auditoria = await filas_de_auditoria(session)
     assert [f["action"] for f in auditoria] == ["insert", "update"]
     assert all(f["user_id"] == admin.id for f in auditoria)
+    antes, despues = auditoria[1]["before"], auditoria[1]["after"]
+    assert antes is not None and despues is not None
+    if seccion == "classes":  # criterio 5 de US-154: 18 pasa a 20
+        assert antes["value"]["default_capacity"] == 18
+        assert despues["value"]["default_capacity"] == 20
+    else:
+        assert antes["value"]["saturday"] == valido["saturday"]
+        assert despues["value"]["saturday"] == []
+    assert antes["version"] == 1 and despues["version"] == 2
 
 
 @pytest.mark.parametrize("seccion", list(SECCIONES))
@@ -116,7 +125,7 @@ async def test_hours_invalida_da_422_con_field_y_no_guarda(
     )
     assert r.status_code == 422
     error = r.json()["error"]
-    assert error["code"] == "validation_error" and "monday" in error["field"]
+    assert error["code"] == "validation_error" and error["field"] == "value.monday"
     assert await fila(session, "hours") is None
 
 

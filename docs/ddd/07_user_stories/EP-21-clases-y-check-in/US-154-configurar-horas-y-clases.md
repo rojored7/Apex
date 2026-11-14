@@ -52,7 +52,7 @@ Característica: Horas y parámetros de clases
   Escenario: Horario incoherente
     Dado que inicié sesión como administrador
     Cuando pongo el lunes con apertura 21:00 y cierre 05:00
-    Entonces recibo 422 con field "hours.monday"
+    Entonces recibo 422 con field "value.monday"
 ```
 
 ## Endpoints
@@ -79,7 +79,7 @@ Característica: Horas y parámetros de clases
 
 ## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
 
-- `hours` toma la forma de N-18 (S7-D8): `monday..sunday` con 0 a 2 rangos `{open, close}` `HH:MM` de Bogotá, ordenados y sin solaparse; lista vacía = cerrado. Reemplaza la forma `{ closed, opens_at, closes_at }` del supuesto y el criterio 3; el 422 lleva `field = "hours.monday"`.
+- `hours` toma la forma de N-18 (S7-D8): `monday..sunday` con 0 a 2 rangos `{open, close}` `HH:MM` de Bogotá, ordenados y sin solaparse; lista vacía = cerrado. Reemplaza la forma `{ closed, opens_at, closes_at }` del supuesto y el criterio 3; el 422 lleva `field = "value.monday"` (convención del módulo `settings`, `value.<campo>`; corrección de la revisión de S7-A1) y el patrón `HH:MM` solo admite dígitos ASCII.
 - La sección `classes` tiene dos campos, `default_capacity` (1 a 100, por defecto 15) y `checkin_window_min` (0 a 240, por defecto 30), sin `allow_over_capacity` (N-38). La historia y la pantalla hablan de tres: son dos.
 - Las secciones se habilitan en `ENABLED_SECTIONS`; la fila nace al primer `PATCH` (sin siembra). `settings.service.classes(session)` lo lee `classes` (S7-A1).
 

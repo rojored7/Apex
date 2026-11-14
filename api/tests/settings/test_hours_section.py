@@ -55,11 +55,42 @@ def test_lista_vacia_es_cerrado() -> None:
 )
 def test_open_no_menor_que_close_da_422_hours_monday(rango: dict[str, str]) -> None:
     error = _error({**HOURS_OK, "monday": [rango]})
-    assert error.field is not None and error.field.endswith("monday")
+    assert error.field == "value.monday"
     assert "21:00" not in error.message
 
 
-@pytest.mark.parametrize("hora", ["5:00", "24:00", "12:60", "0500", "ab:cd", ""])
+# Dígitos no ASCII que `\d` aceptaba: árabe-índicos (U+0665), de ancho completo (U+FF10) y
+# devanagari (U+0966); y un salto de línea final. Se construyen con chr() (sin invisibles).
+_ARABE_5 = chr(0x0665)
+_ANCHO_0 = chr(0xFF10)
+_DEVA_0 = chr(0x0966)
+
+
+@pytest.mark.parametrize(
+    "hora",
+    [
+        "5:00",
+        "24:00",
+        "12:60",
+        "0500",
+        "ab:cd",
+        "",
+        f"0{_ARABE_5}:00",
+        f"{_ANCHO_0}5:00",
+        f"05:{_DEVA_0}0",
+    ],
+    ids=[
+        "una_cifra",
+        "24",
+        "60_min",
+        "sin_dos_puntos",
+        "letras",
+        "vacio",
+        "arabe",
+        "ancho_completo",
+        "devanagari",
+    ],
+)
 def test_formato_hhmm_invalido_da_422(hora: str) -> None:
     error = _error({**HOURS_OK, "tuesday": [{"open": hora, "close": "23:00"}]})
     assert error.field is not None and "tuesday" in error.field

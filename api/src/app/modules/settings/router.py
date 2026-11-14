@@ -5,8 +5,8 @@ Las tipadas (`gym`, `privacy`, `memberships` y, desde S3-B3, `payment_methods`) 
 que la genérica `/settings/{section}` para ganar el emparejamiento; `section` es `str` (no enum)
 para que una clave desconocida dé 404 `section_not_available` y no 422.
 
-El coach recibe 403 en las diez (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
-Los cinco `PATCH` consumen `admin-write` (30 por minuto por usuario, la cubeta de las demás
+El coach recibe 403 en las catorce (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
+Los siete `PATCH` consumen `admin-write` (30 por minuto por usuario, la cubeta de las demás
 escrituras de solo admin; M-A de V10, S3-D100) y declaran 429; los `GET` no tienen tope.
 Las rutas no hacen `select`: validan el cuerpo, llaman al service y devuelven.
 """

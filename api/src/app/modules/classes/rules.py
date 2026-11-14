@@ -23,7 +23,8 @@ DURATION_MAX: Final = 240
 CAPACITY_MIN: Final = 1
 CAPACITY_MAX: Final = 100
 NAME_MAX_LENGTH: Final = 40
-TIME_PATTERN: Final = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# `[0-9]` y no `\d`: `\d` acepta dígitos Unicode (misma corrección que HHMM_PATTERN de settings).
+TIME_PATTERN: Final = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 
 _MENSAJES: Final = {
     "weekdays": "Elige de 1 a 7 días distintos, de lunes (0) a domingo (6).",

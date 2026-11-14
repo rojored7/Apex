@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Final
 from uuid import UUID
 
@@ -24,9 +24,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import events
 from app.core.clock import current_clock
 from app.core.context import get_actor
-from app.modules.classes.events import SessionGenerated
+from app.modules.auth import service as auth_service
+from app.modules.classes.events import SessionCancelled, SessionGenerated
+from app.modules.classes.exceptions import (
+    CoachInvalid,
+    SessionAlreadyCancelled,
+    SessionFinished,
+    SessionNotFound,
+)
 from app.modules.classes.models import ClassSession, ClassSlot
-from app.modules.classes.rules import PlannedSession, planned_sessions
+from app.modules.classes.queries import session_out
+from app.modules.classes.rules import (
+    PlannedSession,
+    local_date,
+    planned_sessions,
+    validate_extra_start,
+)
+from app.modules.classes.schemas import SessionCancel, SessionCreate, SessionOut
+from app.modules.settings import service as settings_service
 
 logger = logging.getLogger("app.classes")
 
@@ -128,3 +143,73 @@ async def generate_sessions(
         extra={"creadas": len(nuevas), "franjas": len(franjas), "dias": days},
     )
     return GenerateResult(created=len(nuevas), slots=len(franjas))
+
+
+async def create_extra(
+    session: AsyncSession, data: SessionCreate, *, by: UUID, role: str
+) -> SessionOut:
+    """Sesión extra (`slot_id` nulo; US-157 CA4). `session_date` la calcula el servidor desde
+    `starts_at` en Bogotá (S7-D37). Un coach solo se asigna a sí mismo o a nadie (L-3); el admin
+    elige cualquier usuario activo con rol coach o admin (`coach_invalid`)."""
+    ahora = current_clock().now_utc()
+    validate_extra_start(data.starts_at, ahora)
+    coach = data.coach_id
+    if coach is not None and role != "admin" and coach != by:
+        raise CoachInvalid()
+    if coach is not None and coach != by and not await auth_service.is_active_staff(session, coach):
+        raise CoachInvalid()
+    capacidad = data.capacity
+    if capacidad is None:
+        capacidad = (await settings_service.classes(session)).default_capacity
+    inicio = data.starts_at.astimezone(UTC)
+    fila = ClassSession(
+        slot_id=None,
+        session_date=local_date(inicio),
+        starts_at=inicio,
+        duration_min=data.duration_min,
+        capacity=capacidad,
+        coach_id=coach,
+        name=data.name,
+        status="scheduled",
+        created_by=by,
+    )
+    session.add(fila)
+    await session.flush()
+    logger.info("classes: sesión extra creada", extra={"session_id": str(fila.id)})
+    return await _one_out(session, fila, ahora)
+
+
+async def _one_out(session: AsyncSession, fila: ClassSession, ahora: datetime) -> SessionOut:
+    nombres = await auth_service.user_names_for(session, [fila.coach_id]) if fila.coach_id else {}
+    return session_out(fila, nombres, ahora)
+
+
+async def cancel_session(
+    session: AsyncSession, session_id: UUID, data: SessionCancel, *, by: UUID
+) -> SessionOut:
+    """Cancela una sesión con motivo (US-157 CA5, CA6). No borra nada ni toca asistencias.
+
+    Una sesión que ya terminó da siempre 409 `session_finished` (S7-D32, L-5), incluso si ya
+    estaba cancelada; una cancelada que no ha terminado, 409 `session_already_cancelled`.
+    `SessionCancelled` no lleva el motivo (L-2); el motivo tampoco va al log."""
+    fila = await session.scalar(
+        select(ClassSession).where(ClassSession.id == session_id).with_for_update()
+    )
+    if fila is None:
+        raise SessionNotFound()
+    ahora = current_clock().now_utc()
+    if ahora >= fila.starts_at + timedelta(minutes=fila.duration_min):
+        raise SessionFinished()
+    if fila.status == "cancelled":
+        raise SessionAlreadyCancelled()
+    fila.status = "cancelled"
+    fila.cancel_reason = data.reason
+    fila.cancelled_by = by
+    fila.cancelled_at = ahora
+    await session.flush()
+    await events.emit(
+        SessionCancelled(session_id=fila.id, slot_id=fila.slot_id, starts_at=fila.starts_at),
+        session,
+    )
+    logger.info("classes: sesión cancelada", extra={"session_id": str(fila.id)})
+    return await _one_out(session, fila, ahora)

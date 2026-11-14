@@ -49,3 +49,38 @@ class SlotNotFound(ClassError):
     status = 404
     code = "slot_not_found"
     default_message = "No se encontró la franja."
+
+
+class SessionNotFound(ClassError):
+    """La sesión no existe."""
+
+    status = 404
+    code = "session_not_found"
+    default_message = "No se encontró la sesión."
+
+
+class SessionAlreadyCancelled(ClassError):
+    """La sesión ya estaba cancelada (US-157 CA5): 409."""
+
+    status = 409
+    code = "session_already_cancelled"
+    default_message = "La sesión ya está cancelada."
+
+
+class SessionFinished(ClassError):
+    """La sesión ya terminó: no se cancela (S7-D32, L-5): 409."""
+
+    status = 409
+    code = "session_finished"
+    default_message = "La sesión ya terminó y no se puede cancelar."
+
+
+class RangeTooLong(ClassError):
+    """El rango `from`/`to` supera los 62 días (S7-D20): 422."""
+
+    status = 422
+    code = "range_too_long"
+    default_message = "El rango no puede pasar de 62 días."
+
+    def __init__(self) -> None:
+        super().__init__(field="to")

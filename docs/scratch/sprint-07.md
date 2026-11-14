@@ -210,3 +210,14 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 ## Demostración viva de B1 (tarea 4)
 - Franja ficticia `POST /api/v1/class-slots` «Prueba S7 CrossFit» (lunes a viernes 06:00, cupo 15, sin coach), id `5b7c8006-dc42-45cb-bbf2-4b395a861e9a`: 201 y `count(*) classes.class_sessions` 0 → 10 (16 al 27 de noviembre; hoy sábado no hay clase).
 - `--run-once generate_sessions` dos veces: 10 y 10 (ok, sin duplicar); `tools generate-sessions --as admin@ejemplo.local`: «creadas 0, franjas 1», conteo 10. Token borrado. La franja y sus 10 sesiones quedan en la base de desarrollo.
+
+## S7-B2 · Semana, sesión extra y cancelar (US-157, S7-D11, L-1, L-2, L-3, L-5)
+
+### Rojo
+- Stubs (`parse_week`, `week_range`, `week_of`, `date_range_utc`, `local_date`, `session_status`, `validate_extra_start`, `list_sessions`, `get_session`, `create_extra`, `cancel_session`) y router/schemas/excepciones reales: 56 failed, todos `NotImplementedError` (27 puras, 23 de service, 6 de router); 96 passed de arquitectura (rutas con límite, helpers privados, eventos sin datos personales).
+
+### Verde
+- Sin migración. `rules.py`: semana ISO validada con `[0-9]` y años 2020 a 2100 (`9999-W52` ya no desborda), `week_range` lunes a lunes de Bogotá en UTC, `session_status` (`done` calculado), `validate_extra_start` (de ayer a 90 días). `queries.py` (nuevo, privado): lista por semana o `from`/`to` (máximo 62 días, `range_too_long`), por omisión la semana actual; filtros `coach_id` y `status` (`done` por SQL con `make_interval`); detalle con `attendees: []`. `sessions.py`: `create_extra` (coach solo a sí mismo o nulo, L-3; `session_date` desde `starts_at`, S7-D37) y `cancel_session` (`FOR UPDATE`, 409 `session_finished` primero, luego `session_already_cancelled`, L-5; el evento `SessionCancelled(session_id, slot_id, starts_at)` y el log no llevan el motivo, L-2).
+- Router: `GET/POST /class-sessions`, `GET /class-sessions/{id}`, `POST /class-sessions/{id}/cancel` con `StaffDep` (socio 403), `staff-read` y `classes-write`. `PRIVATE_HELPERS["classes"]` suma `queries`.
+- [ASUNCIÓN] `attendance_count` es 0 y `attendees` va vacía hasta C1 (la tabla de asistencia no existe).
+- P-API: `docs/openapi.json` (dos exportaciones idénticas; 75 → 78 rutas; además cambian `SlotCreate`, `SlotPatch` y `TimeRange` por el patrón ASCII de A1b, que no se había regenerado) y `web/src/core/api/types.ts`; `types.contract.test.ts` 6 passed.

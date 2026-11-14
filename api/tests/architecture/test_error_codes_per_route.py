@@ -141,6 +141,12 @@ CON_LIMITE = {
     ("post", "/api/v1/class-slots"),
     ("get", "/api/v1/class-slots"),
     ("patch", "/api/v1/class-slots/{slot_id}"),
+    # S7-B2 (US-157, S7-D19): sesiones; las lecturas consumen `staff-read` y las escrituras
+    # `classes-write`.
+    ("get", "/api/v1/class-sessions"),
+    ("post", "/api/v1/class-sessions"),
+    ("get", "/api/v1/class-sessions/{session_id}"),
+    ("post", "/api/v1/class-sessions/{session_id}/cancel"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

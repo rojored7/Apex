@@ -37,6 +37,9 @@ _MENSAJES: Final = {
     "start_time": "La hora de inicio debe ser HH:MM entre 00:00 y 23:59.",
     "duration_min": "La duración debe estar entre 15 y 240 minutos.",
     "capacity": "El cupo debe estar entre 1 y 100.",
+    "week": "La semana debe ser AAAA-Www, de 2020 a 2100, y existir en el calendario ISO.",
+    "starts_at": "La sesión debe empezar entre ayer y los próximos 90 días.",
+    "from": "Indica `from` y `to` juntos, y no los mezcles con `week`.",
 }
 
 
@@ -166,3 +169,73 @@ def planned_sessions(
             dia += timedelta(days=1)
     salida.sort(key=lambda p: (p.starts_at, str(p.slot_id)))
     return salida
+
+
+WEEK_YEAR_MIN: Final = 2020
+WEEK_YEAR_MAX: Final = 2100
+MAX_RANGE_DAYS: Final = 62
+EXTRA_MAX_AHEAD_DAYS: Final = 90
+SESSION_STATUSES_OUT: Final = ("scheduled", "cancelled", "done")
+
+
+WEEK_PATTERN: Final = re.compile(r"([0-9]{4})-W([0-9]{2})")
+
+
+def parse_week(week: str) -> tuple[int, int]:
+    r"""`"2026-W43"` -> `(2026, 43)`; 422 `field = "week"` si no existe esa semana ISO.
+
+    Solo dígitos ASCII (no `\d`) y años de 2020 a 2100: con `9999-W52` el cálculo del lunes
+    siguiente desbordaría (`OverflowError`, un 500; S7-D32 L-1)."""
+    encontrado = WEEK_PATTERN.fullmatch(week)
+    if encontrado is None:
+        raise _invalido("week")
+    anio, semana = int(encontrado.group(1)), int(encontrado.group(2))
+    if not WEEK_YEAR_MIN <= anio <= WEEK_YEAR_MAX:
+        raise _invalido("week")
+    try:
+        date.fromisocalendar(anio, semana, 1)
+    except ValueError:
+        raise _invalido("week") from None
+    return anio, semana
+
+
+def _midnight_utc(day: date) -> datetime:
+    return datetime.combine(day, time(0, 0), tzinfo=BOGOTA).astimezone(UTC)
+
+
+def week_range(year: int, week: int) -> tuple[datetime, datetime]:
+    """Lunes 00:00 al lunes siguiente 00:00 de Bogotá, en UTC (`[desde, hasta)`)."""
+    lunes = date.fromisocalendar(year, week, 1)
+    return _midnight_utc(lunes), _midnight_utc(lunes + timedelta(days=7))
+
+
+def week_of(day: date) -> str:
+    """La semana ISO de una fecha civil, como `"2026-W43"`."""
+    iso = day.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}"
+
+
+def date_range_utc(from_date: date, to_date: date) -> tuple[datetime, datetime]:
+    """`from` a `to` (ambos días incluidos, de Bogotá) como `[desde, hasta)` en UTC."""
+    return _midnight_utc(from_date), _midnight_utc(to_date + timedelta(days=1))
+
+
+def local_date(starts_at: datetime) -> date:
+    """La fecha civil de Bogotá de un instante."""
+    return starts_at.astimezone(BOGOTA).date()
+
+
+def session_status(status: str, starts_at: datetime, duration_min: int, now: datetime) -> str:
+    """`cancelled`, `done` (programada cuya hora de fin ya pasó) o `scheduled`."""
+    if status == "cancelled":
+        return "cancelled"
+    if now >= starts_at + timedelta(minutes=duration_min):
+        return "done"
+    return "scheduled"
+
+
+def validate_extra_start(starts_at: datetime, now: datetime) -> None:
+    """Una sesión extra empieza entre el inicio de ayer (Bogotá) y 90 días adelante."""
+    ayer = _midnight_utc(local_date(now) - timedelta(days=1))
+    if starts_at < ayer or starts_at > now + timedelta(days=EXTRA_MAX_AHEAD_DAYS):
+        raise _invalido("starts_at")

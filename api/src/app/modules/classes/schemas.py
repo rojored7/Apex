@@ -13,10 +13,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from app.core.validators import SafeText
 from app.modules.classes.rules import (
@@ -93,3 +93,72 @@ class SlotListQuery(BaseModel):
 
     is_active: bool | None = None
     weekday: Annotated[int, Field(ge=WEEKDAY_MIN, le=WEEKDAY_MAX)] | None = None
+
+
+SessionStatus = Literal["scheduled", "cancelled", "done"]
+SessionName = SlotName
+CancelReason = Annotated[SafeText, Field(min_length=1, max_length=200)]
+
+
+class SessionCreate(BaseModel):
+    """`POST /class-sessions` (sesión extra, `slot_id` nulo; S7-D11, L-1)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    starts_at: AwareDatetime
+    duration_min: DurationMin
+    capacity: Capacity | None = None
+    coach_id: UUID | None = None
+    name: SessionName | None = None
+
+
+class SessionCancel(BaseModel):
+    """`POST /class-sessions/{id}/cancel`: el motivo es obligatorio."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: CancelReason
+
+
+class AttendeeOut(BaseModel):
+    """Un asistente de la sesión (llega con C1; hoy la lista va vacía)."""
+
+    id: UUID
+    member_id: UUID
+    first_name: str
+    last_name: str
+    flagged: bool
+    flags: list[str]
+    checked_in_at: datetime
+
+
+class SessionOut(BaseModel):
+    id: UUID
+    slot_id: UUID | None
+    session_date: date
+    starts_at: datetime
+    duration_min: int
+    capacity: int
+    coach_id: UUID | None
+    coach_name: str | None
+    name: str | None
+    status: SessionStatus
+    attendance_count: int
+    cancel_reason: str | None
+    cancelled_at: datetime | None
+
+
+class SessionDetail(SessionOut):
+    attendees: list[AttendeeOut]
+
+
+class SessionListQuery(BaseModel):
+    """Filtros de la lista: `week` o `from`/`to` (no ambos), `coach_id` y `status`."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    week: str | None = None
+    from_date: date | None = None
+    to_date: date | None = None
+    coach_id: UUID | None = None
+    status: SessionStatus | None = None

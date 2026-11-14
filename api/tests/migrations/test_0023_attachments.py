@@ -36,6 +36,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 from tests.conftest import LIMPIAR_ATTACHMENTS
+from tests.factories.triggers import disable_user_sql, rearm_always_sql
 from tests.migrations._apoyo_notificaciones import (
     CHECK_VIOLATION,
     UNIQUE_VIOLATION,
@@ -45,7 +46,7 @@ from tests.migrations._apoyo_notificaciones import (
     resultados,
 )
 from tests.migrations.conftest import RolesDb
-from tests.migrations.test_db_grants import como, intentar
+from tests.migrations.test_db_grants import como, intentar, propietario
 
 REVISION = "0023_attachments"
 PADRE = "0022_verify_signatures"
@@ -53,6 +54,8 @@ TABLA = "attachments.attachments"
 INMUTABLE = "P0001"
 SYSTEM_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 LLAVE = UUID("00000000-0000-0000-0000-0000000000c1")
+LLAVE_2 = UUID("00000000-0000-0000-0000-0000000000c2")
+CLASE_LLAVES = "prueba.cero_veintitres"  # `0025` exige una llave real para `key_id` (FK)
 AHORA = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 TRIGGERS = ("attachments_guard_update", "attachments_forbid_delete", "attachments_forbid_truncate")
 INDICE_OPS = "ix_crypto_ops_user_id_at"
@@ -89,6 +92,29 @@ def _ejecutar(url: str, *sentencias: str) -> None:
             await conexion.close()
 
     asyncio.run(correr())
+
+
+def _sql_llave(id_: UUID) -> str:
+    """Una llave `retired` con ese id (versión única por id), para cumplir la FK de `0025`."""
+    return (
+        "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "
+        f"provider, version, state, wrapped_material) VALUES ('{id_}', '{SYSTEM_USER_ID}', "
+        f"'encrypt', '{CLASE_LLAVES}', 'A256GCM', 'local', {int(id_.int % 2_000_000_000) + 1}, "
+        "'retired', decode('01', 'hex')) ON CONFLICT (id) DO NOTHING"
+    )
+
+
+def _llave_real(url: str, *ids: UUID) -> None:
+    _ejecutar(url, *[_sql_llave(i) for i in ids])
+
+
+def _borrar_llaves(url: str) -> None:
+    _ejecutar(
+        url,
+        disable_user_sql("crypto.crypto_keys"),
+        f"DELETE FROM crypto.crypto_keys WHERE data_class = '{CLASE_LLAVES}'",
+        rearm_always_sql("crypto.crypto_keys"),
+    )
 
 
 def _sqlstate(url: str, *sentencias: str) -> str | None:
@@ -161,11 +187,13 @@ def _revision_existe(alembic_config: Config) -> None:
 def base(alembic_config: Config, migrated_database: str) -> Iterator[str]:
     """La base migrada con `0023`; borra los adjuntos que la prueba deje."""
     _revision_existe(alembic_config)
+    _llave_real(migrated_database, LLAVE)
     try:
         yield migrated_database
     finally:
         if existe(migrated_database, TABLA):
             _ejecutar(migrated_database, LIMPIAR_ATTACHMENTS)
+        _borrar_llaves(migrated_database)
 
 
 # Revisión ---------------------------------------------------------------------------------------
@@ -329,6 +357,7 @@ def test_update_de_sensitive_se_rechaza_con_el_trigger_no_solo_con_el_check(base
 def test_el_recifrado_puede_cambiar_key_id_y_updated_at(base: str) -> None:
     id_ = _insertar(base, _sensible())
     nueva = uuid4()
+    _llave_real(base, nueva)
     assert _sqlstate(base, f"UPDATE {TABLA} SET key_id = '{nueva}' WHERE id = '{id_}'") is None
     assert _sqlstate(base, f"UPDATE {TABLA} SET updated_at = now() WHERE id = '{id_}'") is None
     fila = consultar(base, f"SELECT key_id FROM {TABLA} WHERE id = $1", id_)[0]
@@ -396,13 +425,13 @@ def test_las_funciones_del_esquema_son_security_invoker_con_search_path_fijo(bas
 
 
 def test_no_hay_llave_foranea_hacia_otros_esquemas(base: str) -> None:
-    """`owner_id` y `key_id` son referencias lógicas: sin FK entre esquemas (CLAUDE.md, módulos)."""
+    """`owner_id` es una referencia lógica (sin FK); `key_id` la reforzó `0025` hacia `crypto`."""
     filas = consultar(
         base,
         "SELECT conname FROM pg_constraint "
         "WHERE conrelid = 'attachments.attachments'::regclass AND contype = 'f'",
     )
-    assert filas == []
+    assert [f["conname"] for f in filas] == ["fk_attachments_key_id"]
 
 
 # S6-D108: índice de la bitácora de operaciones ---------------------------------------------------
@@ -489,14 +518,21 @@ FILA_SQL = (
     "INSERT INTO attachments.attachments (id, owner_table, owner_id, kind, filename_random, mime, "
     "size_bytes, sensitive, key_id, storage_provider, uploaded_by, created_by) VALUES "
     "('{id}', 'members', gen_random_uuid(), 'consent', '{nombre}', 'application/pdf', 10, true, "
-    "gen_random_uuid(), 'local', '{u}', '{u}')"
+    "'{llave}', 'local', '{u}', '{u}')"
 )
 
 
+@pytest.fixture(scope="module")
+def llaves_roles(apex_roles: RolesDb) -> None:
+    """Dos llaves reales en `apex_roles`: el api inserta y recifra con `key_id` válido (FK)."""
+    propietario(apex_roles, _sql_llave(LLAVE), _sql_llave(LLAVE_2))
+
+
 def _insert_sql() -> str:
-    return FILA_SQL.format(id=uuid4(), nombre=uuid4().hex, u=SYSTEM_USER_ID)
+    return FILA_SQL.format(id=uuid4(), nombre=uuid4().hex, u=SYSTEM_USER_ID, llave=LLAVE)
 
 
+@pytest.mark.usefixtures("llaves_roles")
 def test_apex_api_inserta_y_actualiza_key_id_pero_no_borra_ni_cambia_kind(
     apex_roles: RolesDb,
 ) -> None:
@@ -506,7 +542,7 @@ def test_apex_api_inserta_y_actualiza_key_id_pero_no_borra_ni_cambia_kind(
         intentar(
             dsn,
             _insert_sql(),
-            f"UPDATE {TABLA} SET key_id = gen_random_uuid(), updated_at = now()",
+            f"UPDATE {TABLA} SET key_id = '{LLAVE_2}', updated_at = now()",
         )
         is None
     )

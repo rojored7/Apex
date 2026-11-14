@@ -42,7 +42,7 @@ from tests.factories.triggers import disable_user_sql, rearm_always_sql
 __all__ = ["admin", "custodia", "settings_custodia", "sin_fila_sign"]
 
 pytestmark = pytest.mark.usefixtures("reloj")
-CK = "ck_crypto_keys_sign_public_key"
+CK = "ck_crypto_keys_sign_iff_public_key"
 OTRA_PUBLICA = "A" * 43 + "="  # 32 bytes en base64; no es la del proveedor
 
 
@@ -171,7 +171,7 @@ async def _fila_sin_publica(engine: AsyncEngine, fabrica: Fabrica, publica: str 
         await conexion.execute(
             text(
                 f"ALTER TABLE crypto.crypto_keys ADD CONSTRAINT {CK} "
-                "CHECK ((purpose <> 'sign') OR (public_key IS NOT NULL)) NOT VALID"
+                "CHECK ((purpose = 'sign') = (public_key IS NOT NULL)) NOT VALID"
             )
         )
 

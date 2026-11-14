@@ -93,6 +93,25 @@ async def subir_real(
             )
 
 
+async def llave_retirada(session: AsyncSession) -> UUID:
+    """Una llave `retired` propia de la fila (la FK `fk_attachments_key_id` de `0025` la exige)."""
+    llave = uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "
+            "provider, version, state, wrapped_material) VALUES (:id, :por, 'encrypt', "
+            "'prueba.adjunto', 'A256GCM', 'local', :version, 'retired', :material)"
+        ),
+        {
+            "id": llave,
+            "por": uuid4(),
+            "material": bytes([1]),
+            "version": int(llave.int % 2_000_000_000) + 1,
+        },
+    )
+    return llave
+
+
 async def insertar(
     session: AsyncSession,
     *,
@@ -106,6 +125,7 @@ async def insertar(
     """Una fila cruda válida (CHECKs de D25) con `created_at` e `id` a gusto de la prueba."""
     identificador = id_ or uuid4()
     sensible = kind != "photo"
+    llave = await llave_retirada(session) if sensible else None
     await session.execute(
         text(
             "INSERT INTO attachments.attachments (id, owner_table, owner_id, kind, "
@@ -122,7 +142,7 @@ async def insertar(
             "nombre": nombre or uuid4().hex,
             "mime": "application/pdf" if sensible else "image/jpeg",
             "sensible": sensible,
-            "llave": uuid4() if sensible else None,
+            "llave": llave,
             "por": por or uuid4(),
             "creada": created_at,
         },

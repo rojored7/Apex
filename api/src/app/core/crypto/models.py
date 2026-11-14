@@ -85,7 +85,9 @@ class CryptoKey(CommonColumnsMixin, Base):
             name="purpose_algorithm",
         ),
         CheckConstraint(f"provider IN ({_in(PROVIDERS)})", name="provider"),
-        CheckConstraint("(purpose <> 'sign') OR (public_key IS NOT NULL)", name="sign_public_key"),
+        CheckConstraint(
+            "(purpose = 'sign') = (public_key IS NOT NULL)", name="sign_iff_public_key"
+        ),
         CheckConstraint("version > 0", name="version"),
         CheckConstraint(f"state IN ({_in(KEY_STATES)})", name="state"),
         UniqueConstraint("purpose", "data_class", "version", name="uq_crypto_keys_version"),

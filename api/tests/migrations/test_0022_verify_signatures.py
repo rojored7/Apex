@@ -42,7 +42,9 @@ HASH = "0123456789abcdef" * 4
 INICIO = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 FIN = INICIO + timedelta(seconds=2)
 TABLA = "audit.verifications"
-CONSTRAINT = "ck_crypto_keys_sign_public_key"
+CONSTRAINT = (
+    "ck_crypto_keys_sign_iff_public_key"  # `0025` reemplazó `ck_crypto_keys_sign_public_key`
+)
 TRIGGERS_VERIFICACIONES = ("verifications_forbid_mutation", "verifications_forbid_truncate")
 TRIGGERS_FIRMAS = ("signatures_forbid_mutation", "signatures_forbid_truncate")
 

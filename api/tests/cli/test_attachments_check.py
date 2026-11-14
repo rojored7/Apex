@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.cli import app
 from app.core.config import Settings
-from tests.attachments._apoyo import insertar
+from tests.attachments._apoyo import insertar, llave_retirada
 from tests.cli._apoyo import conteos_de_tablas, correr
 from tests.cli._apoyo_firma import Fabrica, admin
 from tests.conftest import LIMPIAR_ATTACHMENTS
@@ -180,9 +180,10 @@ async def test_un_sensible_con_key_id_distinto_del_blob_se_lista_y_sale_1(
     bueno, _ = await _fila(fabrica, con_objeto=True, volumen=volumen, kind="consent")
     manipulado, _ = await _fila(fabrica, con_objeto=True, volumen=volumen, kind="other")
     async with fabrica() as sesion, sesion.begin():
+        otra = await llave_retirada(sesion)  # con la FK de `0025` el id falso ya no entra
         await sesion.execute(
             text("UPDATE attachments.attachments SET key_id = :k WHERE id = :i"),
-            {"k": uuid4(), "i": manipulado},
+            {"k": otra, "i": manipulado},
         )
 
     resultado = _check(ajustes, monkeypatch, "--as", admin.email)

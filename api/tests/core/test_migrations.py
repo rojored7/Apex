@@ -109,3 +109,13 @@ def test_alembic_con_solo_database_url_en_el_entorno(
     assert resultado.returncode == 0, salida
     assert _head(alembic_config) in salida
     assert "ConfigError" not in salida
+
+
+def test_todos_los_ids_de_revision_caben_en_varchar_32(alembic_config: Config) -> None:
+    """`alembic_version.version_num` es varchar(32): un id más largo rompe `upgrade` (S7-D2)."""
+    largos = [
+        r.revision
+        for r in ScriptDirectory.from_config(alembic_config).walk_revisions()
+        if len(r.revision) > 32
+    ]
+    assert largos == []

@@ -391,7 +391,8 @@ def test_sign_sin_clave_publica_se_rechaza_y_el_resto_pasa(base: str) -> None:
             [_paso_llave(cifrado_con)],
         ],
     )
-    assert [e for e, _ in estados] == [CHECK_VIOLATION, "", "", ""]
+    # `0025` volvió bidireccional el CHECK: una llave de cifrado con `public_key` tampoco pasa.
+    assert [e for e, _ in estados] == [CHECK_VIOLATION, "", "", CHECK_VIOLATION]
 
 
 def test_las_filas_existentes_de_crypto_keys_quedan_intactas_al_migrar(

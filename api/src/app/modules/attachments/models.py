@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import ClassVar
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, Text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, CommonColumnsMixin
@@ -13,7 +13,11 @@ from app.core.db import Base, CommonColumnsMixin
 
 class Attachment(CommonColumnsMixin, Base):
     __tablename__ = "attachments"
-    __table_args__ = {"schema": "attachments"}  # noqa: RUF012
+    # La FK `fk_attachments_key_id` (0025) vive solo en la migración (E2: sin resolver `crypto`).
+    __table_args__ = (
+        CheckConstraint("kind <> 'photo' OR NOT sensitive", name="photo_not_sensitive"),
+        {"schema": "attachments"},
+    )
     __audited__: ClassVar[bool] = True
     __audit_subject__: ClassVar[str] = "owner_id"
     # L-1 (S6-D75): con S3 `filename_random` es la clave del objeto y `key_id` identifica la llave.

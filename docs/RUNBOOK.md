@@ -1005,6 +1005,22 @@ Desde la v0.3 el volumen `keys` tiene dos subcarpetas: `custody/` (`kek.bin`, `s
 - **Comprobación:** `scripts/ci/check-key-files.sh --layout <carpeta> [--provider local|openbao] [--only custody|all]` (modo 600, dueño 10001; sin imprimir contenido).
 - **Versiones mínimas (S6-D78):** Docker Engine 26 (API 1.45) y Compose 2.26. `deploy.sh` las consulta con `docker version --format '{{.Server.APIVersion}}'` y `docker compose version --short` y sale con 2 si faltan, antes de tocar git o el stack.
 
+### Consultas previas de `0025_s6_hardening` (S7-D3, L-6)
+
+La migración `0025` endurece `attachments.key_id` (FK a `crypto.crypto_keys`), el CHECK de `crypto_keys.public_key`, la foto nunca sensible y dos guardas de `crypto`. Cada paso aborta la migración nombrando la regla y el conteo si hay filas que la violan; conviene correr las tres consultas **antes** de desplegar, en solo lectura, con el api y el worker aún en la versión anterior. Se espera `0` en cada una (solo conteos, nunca valores):
+
+```
+docker compose exec -T db psql -U <propietario> -d apex -c "SELECT count(*) FROM attachments.attachments a WHERE a.key_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM crypto.crypto_keys k WHERE k.id = a.key_id)"   # regla fk_attachments_key_id
+docker compose exec -T db psql -U <propietario> -d apex -c "SELECT count(*) FROM crypto.crypto_keys WHERE (purpose = 'sign') <> (public_key IS NOT NULL)"   # regla sign_iff_public_key
+docker compose exec -T db psql -U <propietario> -d apex -c "SELECT count(*) FROM attachments.attachments WHERE kind = 'photo' AND sensitive"   # regla photo_not_sensitive
+```
+
+- **`fk_attachments_key_id` > 0:** hay adjuntos cuyo `key_id` no es una llave. Correr `tools attachments-check` (categoría «`key_id` distinto del blob») para ver los ids; no se borran filas (los adjuntos no se borran). Si el objeto sí es un blob `apx1` con una llave real, el remedio es el `UPDATE key_id` del propietario con la llave que nombra el blob; si no, se detiene el despliegue y se consulta al titular.
+- **`sign_iff_public_key` > 0:** una fila `sign` sin `public_key` o una `encrypt`/`index` con ella. Nunca debió existir (el CHECK anterior ya exigía la clave a las `sign`): se detiene el despliegue y se revisa `crypto_ops` de esa llave antes de tocar nada.
+- **`photo_not_sensitive` > 0:** una foto marcada sensible. La foto no se cifra (ADR-007); se detiene el despliegue y se revisa cómo se subió.
+
+Si la migración aborta, Alembic es transaccional: la base queda en `0024` y la versión anterior sigue sirviendo. Con la `0025` aplicada, `alembic downgrade -1` devuelve los cuerpos de `0024` y quita la FK y los dos CHECK nuevos (reponiendo el unidireccional).
+
 ### Pendiente de completar por slice
 
 - Ensayo en la misma máquina de `deploy.sh` y `prod-smoke.sh` (B4.10, evidencia en el cuaderno).

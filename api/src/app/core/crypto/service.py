@@ -324,7 +324,9 @@ async def start_rotation(
     require_rotatable(data_class)
     await _no_custody_job(session)
     async with _rotation_lock(session, data_class):
-        llaves = (await _run(session, _key_stmt("encrypt", data_class).with_for_update())).scalars()
+        llaves = (
+            await _run(session, _key_stmt("encrypt", data_class).with_for_update(key_share=True))
+        ).scalars()
         activa = _single_active(list(llaves), "encrypt")
         abierto = (await _run(session, _open_job_stmt(data_class).with_for_update())).scalar()
         if abierto is not None:
@@ -409,7 +411,7 @@ async def finish_rotation(session: AsyncSession, job: CryptoJob) -> bool:
     """Recuenta bajo `FOR UPDATE` de la llave activa; con cero filas anteriores cierra en `done`."""
     clase = _class_of(job)
     consulta = _key_stmt("encrypt", clase).where(CryptoKey.state == "active")
-    activa = (await _run(session, consulta.with_for_update())).scalar()
+    activa = (await _run(session, consulta.with_for_update(key_share=True))).scalar()
     if activa is None:
         raise CryptoError("key_missing", f"no hay llave activa para {clase}")
     if await pending_total(session, clase, activa.id):
@@ -506,7 +508,9 @@ async def _lock_key(session: AsyncSession, key_id: UUID) -> CryptoKey:
     consulta = (
         select(CryptoKey).where(CryptoKey.id == key_id).execution_options(populate_existing=True)
     )
-    llave: CryptoKey | None = (await _run(session, consulta.with_for_update())).scalar()
+    llave: CryptoKey | None = (
+        await _run(session, consulta.with_for_update(key_share=True))
+    ).scalar()
     if llave is None:
         raise ValueError("la llave indicada no existe")
     return llave

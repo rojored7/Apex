@@ -17,9 +17,9 @@ def test_dsn_invalido_no_filtra_la_contrasena(
     env = tmp_path / ".env"
     env.write_text(
         "DATABASE_URL=postgresql+asyncpg://apex:super-secreto-123@db:puerto-malo/apex\n"
-        "JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt_ed25519.pem\n"
+        "JWT_PRIVATE_KEY_PATH=/run/apex/keys/jwt/jwt_ed25519.pem\n"
         "CRYPTO_PROVIDER=local\n"
-        "CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/kek.bin\n"
+        "CRYPTO_LOCAL_KEK_PATH=/run/apex/keys/custody/kek.bin\n"
         "UPLOADS_DIR=/data/uploads\n"
         'CORS_ORIGINS=["http://localhost"]\n',
         encoding="utf-8",
@@ -40,9 +40,9 @@ def test_dsn_invalido_no_filtra_la_contrasena(
 def _env_con_dominio(tmp_path: Path, **cambios: str) -> Path:
     valores = {
         "DATABASE_URL": "postgresql+asyncpg://apex:clave-secreta@db:5432/apex",
-        "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt_ed25519.pem",
+        "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pem",
         "CRYPTO_PROVIDER": "local",
-        "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/kek.bin",
+        "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/custody/kek.bin",
         "UPLOADS_DIR": "/data/uploads",
         "APEX_DOMAIN": "apex.example.com",
         "FRONT_BASE_URL": "https://apex.example.com",

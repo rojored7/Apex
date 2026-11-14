@@ -52,7 +52,9 @@ async def admin(limpiar_demo: Fabrica, argon2_rapido: None) -> Any:
 
 def con_proveedor(monkeypatch: pytest.MonkeyPatch, proveedor: Any) -> None:
     """`get_provider_named` (de `crypto_runtime`) devuelve `proveedor` con cualquier nombre."""
-    monkeypatch.setattr(provider_mod, "get_provider_named", lambda settings, nombre: proveedor)
+    monkeypatch.setattr(
+        provider_mod, "get_provider_named", lambda settings, nombre, **_kw: proveedor
+    )
 
 
 async def llaves_sign(fabrica: Fabrica) -> list[CryptoKey]:

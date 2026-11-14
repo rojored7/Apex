@@ -44,6 +44,7 @@ from app.core.config import Settings, check_secrets_or_exit, get_settings, publi
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import rotate_job
 from app.core.crypto import router as crypto_router
+from app.core.crypto.exposure import signing_key_exposed
 from app.core.crypto.keyring import configure_keyring
 from app.core.crypto.oplog import install_oplog_listeners
 from app.core.crypto.provider import configure_provider, current_provider, get_provider_named
@@ -59,7 +60,7 @@ from app.core.ratelimit import (
     rate_limits_from,
     user_limits_from,
 )
-from app.core.security import configure_security, get_principal_loader
+from app.core.security import StartupError, configure_security, get_principal_loader
 
 # Módulos de v0.1 en orden de carga; cada historia de módulo agrega el suyo.
 MODULES: Final[tuple[str, ...]] = (
@@ -171,6 +172,13 @@ async def _run_startup_steps(settings: Settings) -> None:
             await paso(settings)
 
 
+def _forbid_exposed_signing_key() -> None:
+    """S7-D23 (2): el api no arranca si ve la semilla de firma (sin ruta ni contenido en el log)."""
+    if signing_key_exposed():
+        logger.error("signing_key_exposed")
+        raise StartupError("signing_key_exposed")
+
+
 async def _startup(
     settings: Settings, *, run_migrations_on_startup: bool, migrations_script_location: str | None
 ) -> CryptoState:
@@ -192,6 +200,7 @@ async def _startup(
     # (o con permisos abiertos) o sin llave JWT el proceso termina y el log nunca lleva material.
     try:
         check_secrets_or_exit(settings)  # US-039: nombres de variable, nunca valores
+        _forbid_exposed_signing_key()  # S7-D23 (2)
         configure_security(settings)
         configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER))
     except Exception:

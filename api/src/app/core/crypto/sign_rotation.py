@@ -64,9 +64,9 @@ def provider_rejection(settings: Settings, target: str) -> str | None:
     return None
 
 
-def _destination(settings: Settings, name: str) -> provider_mod.KeyProvider:
+def _destination(settings: Settings, name: str, *, with_signing: bool) -> provider_mod.KeyProvider:
     try:
-        return provider_mod.get_provider_named(settings, name)
+        return provider_mod.get_provider_named(settings, name, with_signing=with_signing)
     except CryptoError as error:
         detalle = error.message if _VARIABLE.fullmatch(error.message) else error.code
         raise SignRotationError(f"el proveedor {name} no está disponible: {detalle}") from None
@@ -92,12 +92,19 @@ async def switch_provider(
     target: str,
     reason: str,
     actor: UUID,
+    *,
+    with_signing: bool = False,
 ) -> CryptoKey:
-    """Crea la versión siguiente en `target` y deja la activa en `decrypt_only` (1 transacción)."""
+    """Crea la versión siguiente en `target` y deja la activa en `decrypt_only` (1 transacción).
+
+    `with_signing` lo pasa solo el CLI (`tools` ve la llave de firma local); por omisión un destino
+    `local` no abre la semilla y su `sign_public_key` falla con `sign_unavailable` (S7-D4)."""
     if (rechazo := provider_rejection(settings, target)) is not None:
         raise SignRotationError(rechazo)
     async with session.begin():
-        return await _rotate(session, settings, data_class, target, reason, actor)
+        return await _rotate(
+            session, settings, data_class, target, reason, actor, with_signing=with_signing
+        )
 
 
 async def _insert_next(
@@ -140,12 +147,14 @@ async def _rotate(
     target: str,
     reason: str,
     actor: UUID,
+    *,
+    with_signing: bool,
 ) -> CryptoKey:
     await lock_class_in_transaction(session, data_class)
     anterior = await _active(session, data_class)
     if anterior.provider == target:
         raise SignRotationError(f"purpose_not_rotatable: la firma ya usa el proveedor {target}")
-    destino = _destination(settings, target)
+    destino = _destination(settings, target, with_signing=with_signing)
     try:
         referencia, publica = destino.sign_key_ref(), await destino.sign_public_key()
     except CryptoError as error:

@@ -43,7 +43,7 @@ async def test_acceso_sin_query_ni_cabeceras_y_request_id(
     env = tmp_path / ".env"
     env.write_text(
         "DATABASE_URL=postgresql+asyncpg://apex:x@db:5432/apex\n"
-        "JWT_PRIVATE_KEY_PATH=/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/kek\n"
+        "JWT_PRIVATE_KEY_PATH=/keys/jwt/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/keys/custody/kek\n"
         'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\n'
         "COOKIE_SECURE=true\n",  # sin ENV es producción: M-9 (E3)
         encoding="utf-8",

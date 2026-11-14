@@ -96,9 +96,10 @@ async def _load(
     *,
     create_missing: bool,
     classes: frozenset[str] | None,
+    with_signing: bool,
 ) -> None:
     proveedor = current_provider()
-    resolver = make_resolver(settings, creation=proveedor)
+    resolver = make_resolver(settings, creation=proveedor, with_signing=with_signing)
     if create_missing:
         await ensure_keys(session, proveedor, resolver)
         return
@@ -114,6 +115,7 @@ async def try_load(
     create_missing: bool,
     classes: frozenset[str] | None = None,
     on_loaded: OnLoaded | None = None,
+    with_signing: bool = False,
 ) -> CryptoState:
     """Intenta cargar el keyring del proceso (api: `ensure_keys`; worker: solo `load_all`).
 
@@ -134,7 +136,13 @@ async def try_load(
             return _state
         with actor_scope(SYSTEM_USER_ID):
             async with session_factory() as session, session.begin():
-                await _load(session, settings, create_missing=create_missing, classes=classes)
+                await _load(
+                    session,
+                    settings,
+                    create_missing=create_missing,
+                    classes=classes,
+                    with_signing=with_signing,
+                )
         current_keyring()  # guarda ante un `_load` que no dejó keyring (cuenta como sellado)
     except CryptoUnavailable as error:
         if error.reason in ("sealed", "not_loaded"):
@@ -176,6 +184,7 @@ async def poll_forever(
     sleep: Sleep = asyncio.sleep,
     jitter: Callable[[], float] = lambda: random.uniform(0.0, JITTER_MAX_S),  # noqa: S311
     on_loaded: OnLoaded | None = None,
+    with_signing: bool = False,
 ) -> None:
     """Tarea del `lifespan`: cada `CRYPTO_RECOVERY_POLL_S` (más un jitter de 0 a 2 s) reintenta
     mientras no haya `ok` con keyring (S5-D198); con el keyring cargado solo duerme. Un fallo ajeno
@@ -195,6 +204,7 @@ async def poll_forever(
                 create_missing=create_missing,
                 classes=classes,
                 on_loaded=on_loaded,
+                with_signing=with_signing,
             )
         except Exception as error:
             if not _alertar_racha(error) and traza_pendiente:

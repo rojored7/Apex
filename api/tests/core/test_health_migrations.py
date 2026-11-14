@@ -96,7 +96,7 @@ async def test_con_la_base_caida_es_degraded_y_migrations_unknown(
     env = tmp_path / "caida.env"
     env.write_text(
         "DATABASE_URL=postgresql+asyncpg://apex:x@127.0.0.1:1/apex\n"
-        "JWT_PRIVATE_KEY_PATH=/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/kek\n"
+        "JWT_PRIVATE_KEY_PATH=/keys/jwt/k.pem\nCRYPTO_PROVIDER=local\nCRYPTO_LOCAL_KEK_PATH=/keys/custody/kek\n"
         'UPLOADS_DIR=/data\nCORS_ORIGINS=["http://localhost"]\nENV=dev\n',
         encoding="utf-8",
     )

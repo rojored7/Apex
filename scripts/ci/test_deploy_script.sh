@@ -311,6 +311,29 @@ for k in JWT_PRIVATE_KEY_PATH:/run/apex/keys/jwt_ed25519.pem JWT_PUBLIC_KEY_PATH
 done
 mk_repo; set_var .env JWT_PRIVATE_KEY_PATH /run/apex/keys/jwt/jwt_ed25519.pem; set_var .env CRYPTO_LOCAL_KEK_PATH /run/apex/keys/custody/kek.bin; d -- $(buenos)
 assert_eq ".env con rutas del layout nuevo: sale con 0" 0 "$RC"
+# S7-D23 (3), H-1: la llave de firma vive en sign/ (v0.4). La única forma buena es .env SIN la línea
+# (o con una ruta bajo sign/); vacía o bajo custody/ aborta antes de --migrate-layout y de construir.
+mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH /run/apex/keys/custody/sign-ed25519.key
+caso_2 "test_firma_en_custody_aborta_pidiendo_borrar_la_linea" -- $(buenos)
+assert_contains "nombra la variable y pide borrar la línea" "$OUT" "CRYPTO_LOCAL_SIGNING_KEY_PATH"
+assert_contains "pide borrar la línea" "$OUT" "borre la línea"
+assert_lacks "no llega a migrate-layout" "$(cat "$LOGD")" "migrate-layout"
+mk_repo; drop_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH; d -- $(buenos)
+assert_eq "test_firma_sin_linea_pasa" 0 "$RC"
+mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH ""
+caso_2 "test_firma_con_linea_vacia_aborta" -- $(buenos)
+assert_contains "la línea vacía pide borrarla" "$OUT" "está vacía"
+mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH /run/apex/keys/sign/sign-ed25519.key; d -- $(buenos)
+assert_eq "test_firma_en_sign_pasa" 0 "$RC"
+# La preverificación de v0.3 sobre el mismo .env sin la línea (deploy.sh de la etiqueta, con los falsos).
+if git cat-file -e v0.3.0:infra/deploy.sh 2> /dev/null; then
+  mk_repo; git show v0.3.0:infra/deploy.sh > "$R/infra/deploy.sh"; drop_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH
+  set_var .env JWT_PRIVATE_KEY_PATH /run/apex/keys/jwt/jwt_ed25519.pem; set_var .env CRYPTO_LOCAL_KEK_PATH /run/apex/keys/custody/kek.bin
+  d -- $(buenos)
+  assert_lacks "test_deploy_v030_acepta_env_sin_linea_de_firma: no rechaza el .env" "$OUT" "CRYPTO_LOCAL_SIGNING_KEY_PATH"
+else
+  echo "  (sin la etiqueta v0.3.0 en este clon: se omite la preverificación de v0.3)"
+fi
 mk_repo; set_var .env.ops POSTGRES_PASSWORD cambiar-esto
 caso_2 ".env.ops con cambiar-esto" -- $(buenos)
 mk_repo; set_var .env.ops APEX_API_DB_PASSWORD cambiar-esto

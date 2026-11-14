@@ -31,9 +31,25 @@ def test_el_ejemplo_existe() -> None:
     assert EJEMPLO.is_file()
 
 
+# S7-D23: la ruta de la llave de firma NO lleva línea en `.env` (vacía vale `Path(".")` y una ruta
+# bajo `custody/` reabre el residual de ADR-006); se documenta solo en un comentario.
+SIN_LINEA: frozenset[str] = frozenset({"CRYPTO_LOCAL_SIGNING_KEY_PATH"})
+
+
+def test_firma_sin_linea_documentada_en_comentario() -> None:
+    texto = EJEMPLO.read_text(encoding="utf-8")
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" not in _claves()
+    assert "# CRYPTO_LOCAL_SIGNING_KEY_PATH" in texto
+    assert "/run/apex/keys/sign/sign-ed25519.key" in texto
+
+
 def test_toda_variable_de_settings_esta_documentada() -> None:
     claves = {**_claves(), **_claves(EJEMPLO_OPS)}  # S4B-D79: DATABASE_URL vive en el de operacion
-    faltan = [nombre for nombre in Settings.model_fields if nombre not in claves]
+    faltan = [
+        nombre
+        for nombre in Settings.model_fields
+        if nombre not in claves and nombre not in SIN_LINEA
+    ]
     assert faltan == [], f"faltan en .env.example y .env.ops.example: {faltan}"
 
 

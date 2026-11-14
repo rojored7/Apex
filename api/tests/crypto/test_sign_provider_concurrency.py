@@ -32,7 +32,9 @@ CLASE = "audit.signature"
 def destinos(migracion_lista: Entorno, monkeypatch: pytest.MonkeyPatch) -> Entorno:
     e = migracion_lista
     por_nombre: dict[str, Any] = {"local": e.local, "openbao": e.openbao}
-    monkeypatch.setattr(provider_mod, "get_provider_named", lambda _s, nombre: por_nombre[nombre])
+    monkeypatch.setattr(
+        provider_mod, "get_provider_named", lambda _s, nombre, **_kw: por_nombre[nombre]
+    )
     provider_mod.configure_provider(e.local)
     yield e  # type: ignore[misc]
     provider_mod.configure_provider(None)

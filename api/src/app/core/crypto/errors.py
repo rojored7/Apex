@@ -27,6 +27,7 @@ CryptoCode = Literal[
     "bad_key_ref",
     "signature_unverifiable",
     "rotation_not_supported",
+    "sign_unavailable",
 ]
 
 

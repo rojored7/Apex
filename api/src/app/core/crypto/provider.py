@@ -60,15 +60,19 @@ class KeyProvider(Protocol):
     async def sign_public_key(self) -> str: ...
 
 
-def get_key_provider(settings: Settings) -> KeyProvider:
-    """Instancia el proveedor de `CRYPTO_PROVIDER`, comprobando los archivos de llave."""
+def get_key_provider(settings: Settings, *, with_signing: bool = False) -> KeyProvider:
+    """Instancia el proveedor de `CRYPTO_PROVIDER`, comprobando los archivos de llave.
+
+    `with_signing` carga también la semilla de firma; solo el worker y las herramientas lo piden
+    (S7-D4, M-4): por omisión el proveedor no la abre y el api nunca la ve."""
     if settings.CRYPTO_PROVIDER == "local":
         from app.core.crypto.local_provider import LocalFileProvider  # evita el ciclo al importar
 
         if settings.CRYPTO_LOCAL_KEK_PATH is None:
             raise CryptoError("kek_missing", "CRYPTO_LOCAL_KEK_PATH no está definida")
         return LocalFileProvider(
-            settings.CRYPTO_LOCAL_KEK_PATH, settings.CRYPTO_LOCAL_SIGNING_KEY_PATH
+            settings.CRYPTO_LOCAL_KEK_PATH,
+            settings.CRYPTO_LOCAL_SIGNING_KEY_PATH if with_signing else None,
         )
     raise CryptoError(
         "unknown_provider",
@@ -95,7 +99,7 @@ ProviderResolver = Callable[[str], KeyProvider]
 """Nombre de proveedor (`crypto_keys.provider`) -> proveedor que abre esa fila (S5-D3)."""
 
 
-def get_provider_named(settings: Settings, name: str) -> KeyProvider:
+def get_provider_named(settings: Settings, name: str, *, with_signing: bool = False) -> KeyProvider:
     """Proveedor de una fila (`crypto_keys.provider`); se construye al pedirlo (S5-D3, D131).
 
     `get_key_provider` es la fábrica del proveedor de arranque (solo `local`); `openbao` valida su
@@ -105,13 +109,15 @@ def get_provider_named(settings: Settings, name: str) -> KeyProvider:
     """
     if name == "local":
         if settings.CRYPTO_PROVIDER == "local":
-            return get_key_provider(settings)
+            return get_key_provider(settings, with_signing=with_signing)
         from app.core.crypto.local_provider import LocalFileProvider  # evita el ciclo al importar
 
         if settings.CRYPTO_LOCAL_KEK_PATH is None:
             raise CryptoError("kek_missing", "CRYPTO_LOCAL_KEK_PATH no está definida")
         return LocalFileProvider(
-            settings.CRYPTO_LOCAL_KEK_PATH, settings.CRYPTO_LOCAL_SIGNING_KEY_PATH, lazy_kek=True
+            settings.CRYPTO_LOCAL_KEK_PATH,
+            settings.CRYPTO_LOCAL_SIGNING_KEY_PATH if with_signing else None,
+            lazy_kek=True,
         )
     if name == "openbao":
         from app.core.crypto.openbao_provider import OpenBaoProvider  # confinado a core/crypto
@@ -126,7 +132,9 @@ def get_provider_named(settings: Settings, name: str) -> KeyProvider:
     raise CryptoError("unknown_provider", f"proveedor de llaves desconocido: {name}")
 
 
-def make_resolver(settings: Settings, *, creation: KeyProvider | None = None) -> ProviderResolver:
+def make_resolver(
+    settings: Settings, *, creation: KeyProvider | None = None, with_signing: bool = False
+) -> ProviderResolver:
     """Resolver con caché por nombre: un solo proveedor por proceso y nombre."""
     cache: dict[str, KeyProvider] = {}
     if creation is not None:
@@ -134,7 +142,7 @@ def make_resolver(settings: Settings, *, creation: KeyProvider | None = None) ->
 
     def resolver(name: str) -> KeyProvider:
         if name not in cache:
-            cache[name] = get_provider_named(settings, name)
+            cache[name] = get_provider_named(settings, name, with_signing=with_signing)
         return cache[name]
 
     return resolver

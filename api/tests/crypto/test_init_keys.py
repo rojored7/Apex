@@ -42,11 +42,10 @@ def test_crea_los_cuatro_archivos(tmp_path: Path) -> None:
     # S6-W0-2 (S6-D58): custody/ (KEK y firma) y jwt/ (el par JWT) bajo la raíz del volumen.
     assert rutas.kek == directorio / "custody" / "kek.bin"
     assert rutas.jwt_private == directorio / "jwt" / "jwt_ed25519.pem"
-    assert sorted(p.name for p in directorio.iterdir()) == ["custody", "jwt"]
-    assert sorted(p.name for p in (directorio / "custody").iterdir()) == [
-        "kek.bin",
-        "sign-ed25519.key",
-    ]
+    assert rutas.signing_key == directorio / "sign" / "sign-ed25519.key"  # S7-D4
+    assert sorted(p.name for p in directorio.iterdir()) == ["custody", "jwt", "sign"]
+    assert sorted(p.name for p in (directorio / "custody").iterdir()) == ["kek.bin"]
+    assert sorted(p.name for p in (directorio / "sign").iterdir()) == ["sign-ed25519.key"]
     assert sorted(p.name for p in (directorio / "jwt").iterdir()) == [
         "jwt_ed25519.pem",
         "jwt_ed25519.pub",

@@ -58,7 +58,7 @@ from app.cli_ops.keys import (
 )
 from app.cli_ops.keys_data_class import data_class_error
 from app.cli_ops.keys_data_class import run as ensure_data_class_run
-from app.cli_ops.keys_layout import migrate_layout
+from app.cli_ops.keys_layout import migrate_layout, reverse_layout
 from app.cli_ops.openapi import (
     build_openapi_document,
     export_settings,
@@ -139,6 +139,7 @@ def init_keys(
     actor: Annotated[str | None, typer.Option("--as")] = None,
     data_class: Annotated[str | None, typer.Option("--data-class")] = None,
     migrate_layout_flag: Annotated[bool, typer.Option("--migrate-layout")] = False,
+    reverse: Annotated[bool, typer.Option("--reverse")] = False,
 ) -> None:
     """Crea la KEK, la llave de firma del bus y el par JWT Ed25519 (modo 600), sin sobrescribir.
 
@@ -146,8 +147,10 @@ def init_keys(
     arrancar (`ensure_keys`, US-025). `--as` solo se anota en el log porque no escribe en
     la base. `--data-class <clase>` (S6-A2) crea o completa la fila de firma de esa clase.
     """
+    if reverse and not migrate_layout_flag:
+        raise typer.BadParameter("--reverse solo va con --migrate-layout", param_hint="--reverse")
     if migrate_layout_flag:
-        _migrate_layout_command(directory)
+        _migrate_layout_command(directory, reverse=reverse)
         return
     if data_class is not None:
         _data_class_command(ctx, data_class, actor)
@@ -197,7 +200,7 @@ def _jwt_path_para_migrar() -> Path:
         return ruta
 
 
-def _migrate_layout_command(directory: Path | None) -> None:
+def _migrate_layout_command(directory: Path | None, *, reverse: bool = False) -> None:
     """Cuerpo de `init-keys --migrate-layout` (S6-D58): delega en `cli_ops/keys_layout.py`.
 
     Sin `--dir`, la raíz del volumen sale de `JWT_PRIVATE_KEY_PATH` (con OpenBao no hay KEK local):
@@ -209,12 +212,13 @@ def _migrate_layout_command(directory: Path | None) -> None:
         jwt_path = _jwt_path_para_migrar()
         env_plano = jwt_path.parent.name != "jwt"
         directory = jwt_path.parent if env_plano else jwt_path.parent.parent
-    informe = migrate_layout(directory)
+    informe = reverse_layout(directory) if reverse else migrate_layout(directory)
     if env_plano:
         typer.echo(
             "init-keys --migrate-layout: AVISO: las rutas de llaves de .env siguen en el layout "
-            "plano; actualiza JWT_PRIVATE_KEY_PATH, JWT_PUBLIC_KEY_PATH, CRYPTO_LOCAL_KEK_PATH y "
-            "CRYPTO_LOCAL_SIGNING_KEY_PATH como en .env.example antes de levantar el api",
+            "plano; actualiza JWT_PRIVATE_KEY_PATH, JWT_PUBLIC_KEY_PATH y CRYPTO_LOCAL_KEK_PATH "
+            "como en .env.example y borra la línea CRYPTO_LOCAL_SIGNING_KEY_PATH antes de "
+            "levantar el api",
             err=True,
         )
     if informe.conflicts:

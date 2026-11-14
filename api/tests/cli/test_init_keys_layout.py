@@ -26,7 +26,7 @@ SOLO_POSIX = pytest.mark.skipif(os.name == "nt", reason="NTFS no conserva el mod
 # nombre -> (subcarpeta del layout nuevo, contenido de prueba; nunca material real)
 NUEVO: dict[str, tuple[str, bytes]] = {
     "kek.bin": ("custody", b"kek-de-prueba-" + b"k" * 18),
-    "sign-ed25519.key": ("custody", b"firma-de-prueba-" + b"s" * 16),
+    "sign-ed25519.key": ("sign", b"firma-de-prueba-" + b"s" * 16),
     "jwt_ed25519.pem": ("jwt", b"jwt-privada-de-prueba"),
     "jwt_ed25519.pub": ("jwt", b"jwt-publica-de-prueba"),
 }
@@ -66,7 +66,7 @@ def test_key_paths_in_apunta_a_custody_y_a_jwt(tmp_path: Path) -> None:
     rutas = key_paths_in(tmp_path)
 
     assert rutas.kek == tmp_path / "custody" / "kek.bin"
-    assert rutas.signing_key == tmp_path / "custody" / "sign-ed25519.key"
+    assert rutas.signing_key == tmp_path / "sign" / "sign-ed25519.key"
     assert rutas.jwt_private == tmp_path / "jwt" / "jwt_ed25519.pem"
     assert rutas.jwt_public == tmp_path / "jwt" / "jwt_ed25519.pub"
 
@@ -77,8 +77,9 @@ def test_init_keys_crea_custody_y_jwt_y_deja_la_raiz_sin_archivos(tmp_path: Path
     resultado = correr(app, ["init-keys", "--dir", str(raiz)])
 
     assert resultado.exit_code == 0, resultado.output
-    assert sorted(p.name for p in raiz.iterdir()) == ["custody", "jwt"]
-    assert sorted(p.name for p in (raiz / "custody").iterdir()) == ["kek.bin", "sign-ed25519.key"]
+    assert sorted(p.name for p in raiz.iterdir()) == ["custody", "jwt", "sign"]
+    assert sorted(p.name for p in (raiz / "custody").iterdir()) == ["kek.bin"]
+    assert sorted(p.name for p in (raiz / "sign").iterdir()) == ["sign-ed25519.key"]
     assert sorted(p.name for p in (raiz / "jwt").iterdir()) == [
         "jwt_ed25519.pem",
         "jwt_ed25519.pub",
@@ -91,7 +92,7 @@ def test_init_keys_deja_los_archivos_en_600_y_las_subcarpetas_en_700(tmp_path: P
 
     assert correr(app, ["init-keys", "--dir", str(raiz)]).exit_code == 0
 
-    for subcarpeta in (raiz / "custody", raiz / "jwt"):
+    for subcarpeta in (raiz / "custody", raiz / "jwt", raiz / "sign"):
         assert _modo(subcarpeta) == 0o700, subcarpeta
         for archivo in subcarpeta.iterdir():
             assert _modo(archivo) == 0o600, archivo
@@ -151,9 +152,9 @@ def test_migrate_layout_funcion_crea_custody_y_jwt_aunque_no_haya_nada_que_migra
     informe = migrate_layout(raiz)
 
     assert informe.nothing_to_migrate
-    assert (raiz / "custody").is_dir() and (raiz / "jwt").is_dir()
+    assert (raiz / "custody").is_dir() and (raiz / "jwt").is_dir() and (raiz / "sign").is_dir()
     if os.name != "nt":
-        assert _modo(raiz / "custody") == 0o700 and _modo(raiz / "jwt") == 0o700
+        assert _modo(raiz / "custody") == _modo(raiz / "jwt") == _modo(raiz / "sign") == 0o700
 
 
 def test_migrate_layout_funcion_un_enlace_simbolico_en_la_raiz_es_conflicto(tmp_path: Path) -> None:

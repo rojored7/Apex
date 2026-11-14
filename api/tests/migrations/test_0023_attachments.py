@@ -95,12 +95,18 @@ def _ejecutar(url: str, *sentencias: str) -> None:
 
 
 def _sql_llave(id_: UUID) -> str:
-    """Una llave `retired` con ese id (versión única por id), para cumplir la FK de `0025`."""
+    """Una llave `retired` con ese id (versión única por id), para cumplir la FK de `0025`.
+
+    Es de firma (`sign`, con su pública): una `encrypt` con material de relleno que quedara en la
+    base compartida haría fallar `ensure_keys` de otras pruebas (`unwrap_failed`), y estas filas
+    no se pueden borrar mientras un adjunto las nombre (FK `RESTRICT`)."""
     return (
         "INSERT INTO crypto.crypto_keys (id, created_by, purpose, data_class, algorithm, "
-        f"provider, version, state, wrapped_material) VALUES ('{id_}', '{SYSTEM_USER_ID}', "
-        f"'encrypt', '{CLASE_LLAVES}', 'A256GCM', 'local', {int(id_.int % 2_000_000_000) + 1}, "
-        "'retired', decode('01', 'hex')) ON CONFLICT (id) DO NOTHING"
+        "provider, version, state, wrapped_material, public_key) "
+        f"VALUES ('{id_}', '{SYSTEM_USER_ID}', "
+        f"'sign', '{CLASE_LLAVES}', 'Ed25519', 'local', {int(id_.int % 2_000_000_000) + 1}, "
+        "'retired', convert_to('local:sign-ed25519', 'UTF8'), "
+        "'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=') ON CONFLICT (id) DO NOTHING"
     )
 
 

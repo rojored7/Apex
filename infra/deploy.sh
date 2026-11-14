@@ -185,10 +185,19 @@ main() {
     v="$(valor "$ENV_FILE" "$k")"
     [ -z "$v" ] || [[ "$v" == */jwt/* ]] || die2 "$k en $ENV_FILE sigue en el layout plano ($v): debe apuntar a .../keys/jwt/... (docs/operacion/actualizar.md, paso 6)"
   done
-  for k in CRYPTO_LOCAL_KEK_PATH CRYPTO_LOCAL_SIGNING_KEY_PATH; do
-    v="$(valor "$ENV_FILE" "$k")"
-    [ -z "$v" ] || [[ "$v" == */custody/* ]] || die2 "$k en $ENV_FILE sigue en el layout plano ($v): debe apuntar a .../keys/custody/... (docs/operacion/actualizar.md, paso 6)"
-  done
+  v="$(valor "$ENV_FILE" CRYPTO_LOCAL_KEK_PATH)"
+  [ -z "$v" ] || [[ "$v" == */custody/* ]] || die2 "CRYPTO_LOCAL_KEK_PATH en $ENV_FILE sigue en el layout plano ($v): debe apuntar a .../keys/custody/... (docs/operacion/actualizar.md, paso 6)"
+  # S7-D23 (3), H-1 (v0.4): la llave de firma vive en sign/, que el api no monta. La única forma
+  # de dejarlo bien es `.env` SIN la línea (el valor por omisión de Settings es sign/): vacía vale
+  # Path(".") y una ruta bajo custody/ reabre el residual de ADR-006. Se aborta antes de
+  # --migrate-layout y de construir.
+  if grep -qE '^CRYPTO_LOCAL_SIGNING_KEY_PATH=[[:space:]]*$' "$ENV_FILE"; then
+    die2 "CRYPTO_LOCAL_SIGNING_KEY_PATH en $ENV_FILE está vacía: borre la línea (docs/operacion/actualizar.md, paso 6)"
+  fi
+  v="$(valor "$ENV_FILE" CRYPTO_LOCAL_SIGNING_KEY_PATH)"
+  if [ -n "$v" ] && [[ "$v" != */sign/* ]]; then
+    die2 "CRYPTO_LOCAL_SIGNING_KEY_PATH en $ENV_FILE apunta fuera de sign/ ($v): borre la línea (docs/operacion/actualizar.md, paso 6)"
+  fi
   local k
   local -a pw_names=(POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD)
   # S5-W0-4 (S5-D89, D142): con MIGRATE_DB_USER=apex_owner (pila nueva) su contraseña también se exige,

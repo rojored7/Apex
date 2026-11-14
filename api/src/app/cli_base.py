@@ -171,9 +171,9 @@ async def crypto_runtime(
     from app.core.crypto.provider import configure_provider, get_provider_named, make_resolver
 
     try:
-        creacion = get_provider_named(settings, settings.CRYPTO_PROVIDER)
+        creacion = get_provider_named(settings, settings.CRYPTO_PROVIDER, with_signing=True)
         configure_provider(creacion)
-        resolver = make_resolver(settings, creation=creacion)
+        resolver = make_resolver(settings, creation=creacion, with_signing=True)
     except CryptoError:
         typer.echo("proveedor de llaves no disponible: revise CRYPTO_PROVIDER y la KEK", err=True)
         raise typer.Exit(code=2) from None

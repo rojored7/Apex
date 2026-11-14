@@ -96,7 +96,7 @@ class ProveedorControlable:
 def inyectar_proveedor(monkeypatch: pytest.MonkeyPatch, proveedor: ProveedorControlable) -> None:
     """Proveedor del proceso y resultado de `get_provider_named` (donde exista ese nombre)."""
 
-    def fabrica(settings: object, name: str) -> ProveedorControlable:
+    def fabrica(settings: object, name: str, **_kw: object) -> ProveedorControlable:
         return proveedor
 
     for sitio in SITIOS_DE_LA_FABRICA:

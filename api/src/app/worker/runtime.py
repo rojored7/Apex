@@ -104,14 +104,18 @@ async def _open_crypto(settings: Settings) -> asyncio.Task[None] | None:
     """Proveedor del proceso y primer intento de cargar las clases de los jobs. Sin `INSERT`
     en `crypto_keys` (`create_missing=False`). Un custodio sellado no aborta: el estado queda
     `sealed` y una tarea de sondeo lo recupera; `unwrap_failed` y `forbidden` sí suben."""
-    configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER))
+    configure_provider(get_provider_named(settings, settings.CRYPTO_PROVIDER, with_signing=True))
     session_factory = db.get_sessionmaker()
     clases = worker_crypto_classes()
-    estado = await try_load(session_factory, settings, create_missing=False, classes=clases)
+    estado = await try_load(
+        session_factory, settings, create_missing=False, classes=clases, with_signing=True
+    )
     if estado == "ok":
         return None
     return asyncio.create_task(
-        poll_forever(session_factory, settings, create_missing=False, classes=clases),
+        poll_forever(
+            session_factory, settings, create_missing=False, classes=clases, with_signing=True
+        ),
         name="poll_forever",
     )
 

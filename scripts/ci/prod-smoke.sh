@@ -252,16 +252,22 @@ done
 # Las versiones quedan en el log del smoke (el mínimo es Engine 26 / API 1.45 / Compose 2.26).
 paso "versiones: Docker API $(docker version --format '{{.Server.APIVersion}}' 2> /dev/null | tr -d '\r' || echo ilegible), Compose $(docker compose version --short 2> /dev/null | tr -d '\r' || echo ilegible)"
 # check-key-files.sh no va en la imagen: se pasa por stdin al bash del contenedor (solo lee modos y nombres).
-if "${DC[@]}" exec -T api bash -s -- --layout /run/apex/keys --provider "$PROVIDER" < scripts/ci/check-key-files.sh; then
-  ok "api: volumen keys con custody/ y jwt/ (modo 600, dueño 10001)"
+if "${DC[@]}" exec -T api bash -s -- --layout /run/apex/keys --provider "$PROVIDER" --only api < scripts/ci/check-key-files.sh; then
+  ok "api: volumen keys con custody/ y jwt/ (modo 600, dueño 10001), sin sign/ (S7-D4)"
 else
-  falla "api: layout del volumen keys incorrecto (/run/apex/keys/custody y /run/apex/keys/jwt)"
+  falla "api: layout del volumen keys incorrecto (/run/apex/keys/custody y /run/apex/keys/jwt, sin sign/)"
+fi
+# S7-D4, M-4: la llave de firma no está al alcance del api (ni en sign/, ni en custody/, ni plana).
+if "${DC[@]}" exec -T api sh -c 'test ! -e /run/apex/keys/sign && test ! -e /run/apex/keys/custody/sign-ed25519.key && test ! -e /run/apex/keys/sign-ed25519.key' > /dev/null; then
+  ok "api: no ve sign/ ni sign-ed25519.key"
+else
+  falla "api: ve la llave de firma bajo /run/apex/keys (S7-D4)"
 fi
 if [ "$PROVIDER" = "local" ]; then
   if "${DC[@]}" exec -T worker bash -s -- --layout /run/apex/keys --only custody < scripts/ci/check-key-files.sh; then
-    ok "worker: solo ve /run/apex/keys/custody (sin jwt/)"
+    ok "worker: solo ve /run/apex/keys/custody y /run/apex/keys/sign (sin jwt/)"
   else
-    falla "worker: el volumen keys no es solo custody (subpath) o tiene un modo o dueño incorrecto"
+    falla "worker: el volumen keys no es custody+sign (subpaths) o tiene un modo o dueño incorrecto"
   fi
 fi
 # Migración desde un volumen plano (un volumen de prueba aparte; nunca el real): coloca los cuatro
@@ -276,12 +282,16 @@ if "${DC[@]}" --profile tools run --rm -T --no-deps -v "$PROJECT-flat-keys:/flat
   set -e
   for f in kek.bin sign-ed25519.key jwt_ed25519.pem jwt_ed25519.pub; do printf x > /flat/$f; chmod 600 /flat/$f; done
   python -m app.cli init-keys --migrate-layout --dir /flat
-  test -f /flat/custody/kek.bin && test -f /flat/custody/sign-ed25519.key
+  test -f /flat/custody/kek.bin && test -f /flat/sign/sign-ed25519.key
   test -f /flat/jwt/jwt_ed25519.pem && test -f /flat/jwt/jwt_ed25519.pub
-  test ! -e /flat/kek.bin && test ! -e /flat/jwt_ed25519.pem
+  test ! -e /flat/kek.bin && test ! -e /flat/jwt_ed25519.pem && test ! -e /flat/custody/sign-ed25519.key
   python -m app.cli init-keys --migrate-layout --dir /flat | grep -q "nada que migrar"
+  python -m app.cli init-keys --migrate-layout --reverse --dir /flat
+  test -f /flat/custody/sign-ed25519.key && test ! -e /flat/sign/sign-ed25519.key
+  python -m app.cli init-keys --migrate-layout --dir /flat
+  test -f /flat/sign/sign-ed25519.key
 ' > /dev/null; then
-  ok "init-keys --migrate-layout: volumen plano -> custody/ y jwt/, y la segunda corrida no hace nada"
+  ok "init-keys --migrate-layout: plano -> custody/, sign/ y jwt/; segunda corrida sin cambios; --reverse y de vuelta"
 else
   falla "init-keys --migrate-layout sobre un volumen plano"
 fi
@@ -306,6 +316,16 @@ worker_cli() { "${DC[@]}" run --rm -T worker python -m app.worker.main "$@"; }
 worker_cli --run-once backup_check > /dev/null && ok "--run-once backup_check sale con 0" || falla "--run-once backup_check no salió con 0"
 estado_bc="$(worker_cli --status backup_check 2> /dev/null | tr -d '\r' | grep '^{"details": ' | tail -1 || true)"
 case "$estado_bc" in *'"result": "ok"'*) ok "backup_check result ok" ;; *) falla "backup_check no dio ok: $(printf '%s' "$estado_bc" | cut -c1-200)" ;; esac
+
+# --- el worker firma la cadena sin que el api vea la llave (S7-D4) --------------------------------------------
+if "${DC[@]}" --profile tools run --rm -T tools init-keys --data-class audit.signature --as "$ADMIN_EMAIL" > /dev/null; then
+  ok "init-keys --data-class audit.signature (fila de firma)"
+else
+  falla "init-keys --data-class audit.signature falló"
+fi
+worker_cli --run-once sign_audit > /dev/null && ok "--run-once sign_audit sale con 0" || falla "--run-once sign_audit no salió con 0"
+estado_sa="$(worker_cli --status sign_audit 2> /dev/null | tr -d '\r' | grep '^{"details": ' | tail -1 || true)"
+case "$estado_sa" in *'"result": "ok"'*) ok "sign_audit result ok (el worker firma con la llave de sign/)" ;; *) falla "sign_audit no dio ok: $(printf '%s' "$estado_sa" | cut -c1-200)" ;; esac
 
 # --- /health: backup y migrations en ok (el caché de backup dura 30 s) ---------------------------------------
 cuerpo=""

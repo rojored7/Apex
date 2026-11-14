@@ -32,7 +32,7 @@ async def test_local_con_openbao_se_construye_sin_la_kek_y_firma(tmp_path: Path)
     rutas.kek.unlink()  # tras retire-local-kek
     ajustes = _ajustes(rutas.kek, rutas.signing_key, "openbao")
 
-    proveedor = provider_mod.get_provider_named(ajustes, "local")
+    proveedor = provider_mod.get_provider_named(ajustes, "local", with_signing=True)
 
     assert isinstance(proveedor, LocalFileProvider)
     firma = await proveedor.sign(SIGNING_KEY_REF, b"datos")
@@ -82,7 +82,9 @@ def test_local_con_openbao_sin_la_llave_de_firma_falla_con_kek_missing(tmp_path:
     init_keys_files(rutas)
     rutas.signing_key.unlink()
     with pytest.raises(CryptoError) as error:
-        provider_mod.get_provider_named(_ajustes(rutas.kek, rutas.signing_key, "openbao"), "local")
+        provider_mod.get_provider_named(
+            _ajustes(rutas.kek, rutas.signing_key, "openbao"), "local", with_signing=True
+        )
     assert error.value.code == "kek_missing"
 
 

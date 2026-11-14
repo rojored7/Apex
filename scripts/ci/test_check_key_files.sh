@@ -52,10 +52,16 @@ nuevo_layout() { # <custody|jwt|ambos|plano|mixto>: arma un volumen de prueba y 
   V="$LAYOUT_TMP/v$n_layout"
   mkdir -p "$V"
   case "$1" in
-    ambos | custody) mkdir -p "$V/custody"; : > "$V/custody/kek.bin"; : > "$V/custody/sign-ed25519.key" ;;
+    ambos | custody | api) mkdir -p "$V/custody"; : > "$V/custody/kek.bin" ;;
   esac
   case "$1" in
-    ambos | jwt) mkdir -p "$V/jwt"; : > "$V/jwt/jwt_ed25519.pem"; : > "$V/jwt/jwt_ed25519.pub" ;;
+    ambos | custody) mkdir -p "$V/sign"; : > "$V/sign/sign-ed25519.key" ;;
+  esac
+  case "$1" in
+    viejo) mkdir -p "$V/custody" "$V/jwt"; : > "$V/custody/kek.bin"; : > "$V/custody/sign-ed25519.key"; : > "$V/jwt/jwt_ed25519.pem"; : > "$V/jwt/jwt_ed25519.pub" ;;
+  esac
+  case "$1" in
+    ambos | jwt | api) mkdir -p "$V/jwt"; : > "$V/jwt/jwt_ed25519.pem"; : > "$V/jwt/jwt_ed25519.pub" ;;
   esac
   case "$1" in
     plano | mixto) : > "$V/kek.bin"; : > "$V/sign-ed25519.key"; : > "$V/jwt_ed25519.pem"; : > "$V/jwt_ed25519.pub" ;;
@@ -85,6 +91,10 @@ nuevo_layout plano;   layout "con --provider openbao el plano sigue siendo error
 nuevo_layout custody; layout "vista del worker (--only custody) pasa con solo custody/" 0 "" -- --layout "$V" --only custody
 nuevo_layout ambos;   layout "vista del worker con jwt/ visible es error" 1 "jwt" -- --layout "$V" --only custody
 nuevo_layout jwt;     layout "vista del worker sin custody es error" 1 "kek.bin" -- --layout "$V" --only custody
+nuevo_layout viejo;   layout "la llave de firma en custody/ (v0.3) es error y pide migrar" 1 "init-keys --migrate-layout" -- --layout "$V"
+nuevo_layout api;     layout "vista del api (--only api) pasa con custody/ y jwt/" 0 "" -- --layout "$V" --only api
+nuevo_layout ambos;   layout "vista del api con sign/ visible es error" 1 "sign/" -- --layout "$V" --only api
+nuevo_layout api;     layout "sin sign/ el layout completo falla nombrando la llave de firma" 1 "sign-ed25519.key" -- --layout "$V"
 nuevo_layout ambos;   layout "--only desconocido sale con 2" 2 "" -- --layout "$V" --only otra
 layout "--layout de una carpeta inexistente es error y lo dice" 1 "no existe" -- --layout "$LAYOUT_TMP/no-existe"
 # El modo por nombre sigue vivo: material de llave versionado se bloquea también en las subcarpetas.

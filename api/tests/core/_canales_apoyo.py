@@ -38,9 +38,9 @@ CHAT_ID = "-1001234567890"
 def settings_canales(**cambios: Any) -> Settings:
     base: dict[str, Any] = {
         "DATABASE_URL": "postgresql+asyncpg://apex:clave@db:5432/apex",
-        "JWT_PRIVATE_KEY_PATH": Path("/run/apex/keys/jwt_ed25519.pem"),
+        "JWT_PRIVATE_KEY_PATH": Path("/run/apex/keys/jwt/jwt_ed25519.pem"),
         "CRYPTO_PROVIDER": "local",
-        "CRYPTO_LOCAL_KEK_PATH": Path("/run/apex/keys/kek.bin"),
+        "CRYPTO_LOCAL_KEK_PATH": Path("/run/apex/keys/custody/kek.bin"),
         "UPLOADS_DIR": Path("/data/uploads"),
         "CORS_ORIGINS": ["http://localhost"],
         "ENV": "dev",

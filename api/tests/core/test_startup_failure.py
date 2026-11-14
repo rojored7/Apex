@@ -83,9 +83,9 @@ def test_uvicorn_termina_con_codigo_distinto_de_cero(
     entorno = {
         **os.environ,
         "DATABASE_URL": settings_prueba.DATABASE_URL.get_secret_value(),
-        "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt_ed25519.pem",
+        "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pem",
         "CRYPTO_PROVIDER": "local",
-        "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/kek.bin",
+        "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/custody/kek.bin",
         "UPLOADS_DIR": "/data/uploads",
         "CORS_ORIGINS": '["http://localhost"]',
         # M-9 (E3): sin ENV es producción, y producción exige la cookie Secure.

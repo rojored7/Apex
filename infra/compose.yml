@@ -136,7 +136,20 @@ services:
       # S5-D107: ruta del token de OpenBao (volumen openbao-token-api); inerte con CRYPTO_PROVIDER=local.
       OPENBAO_TOKEN_FILE: /run/apex/openbao/token
     volumes:
-      - keys:/run/apex/keys:ro
+      # S7-D4: el api monta solo custody/ (KEK) y jwt/ (par JWT), nunca sign/ (llave de firma);
+      # jamás el volumen entero. El worker monta custody/ y sign/; tools el volumen entero.
+      - type: volume
+        source: keys
+        target: /run/apex/keys/custody
+        read_only: true
+        volume:
+          subpath: custody
+      - type: volume
+        source: keys
+        target: /run/apex/keys/jwt
+        read_only: true
+        volume:
+          subpath: jwt
       - uploads:/data/uploads
       # Token propio de OpenBao (S5-D11): archivo 600 de uid 10001 que escribe openbao-bootstrap.
       # Inerte con CRYPTO_PROVIDER=local; compose.openbao.yml quita keys y fija OPENBAO_TOKEN_FILE.
@@ -205,14 +218,20 @@ services:
       BACKUP_SIGN_PUBKEY: ${BACKUP_SIGN_PUBKEY:-}
     volumes:
       - backups:/data/backups:ro
-      # S6-D58: el worker solo ve custody/ (KEK y llave de firma); jamás el par JWT (jwt/).
-      # Mismo volumen `keys`, subruta custody; en el worker la ruta es /run/apex/keys/custody.
+      # S6-D58, S7-D4: el worker ve custody/ (KEK) y sign/ (llave de firma); jamás el par JWT (jwt/).
+      # Mismo volumen `keys`, subrutas custody y sign.
       - type: volume
         source: keys
         target: /run/apex/keys/custody
         read_only: true
         volume:
           subpath: custody
+      - type: volume
+        source: keys
+        target: /run/apex/keys/sign
+        read_only: true
+        volume:
+          subpath: sign
       # Token propio de OpenBao (S5-D11): solo descifra y renueva. Inerte con CRYPTO_PROVIDER=local.
       - openbao-token-worker:/run/apex/openbao:ro
     read_only: true

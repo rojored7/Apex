@@ -22,9 +22,13 @@ quedó sana. No usa registro de imágenes: construye desde el código de la etiq
 5. **Docker al día (S6-D78).** Docker Engine 26 (API 1.45) o superior y Compose 2.26 o superior: el
    worker monta solo `custody/` del volumen `keys` y eso exige `volume.subpath`. `deploy.sh` lo
    comprueba al empezar y sale con 2 si no se cumple.
-6. **Rutas de llaves en `.env` (v0.3).** `CRYPTO_LOCAL_KEK_PATH` y `CRYPTO_LOCAL_SIGNING_KEY_PATH`
-   pasan a `/run/apex/keys/custody/...`; `JWT_PRIVATE_KEY_PATH` y `JWT_PUBLIC_KEY_PATH` a
-   `/run/apex/keys/jwt/...` (mira `.env.example`). Actualiza las cuatro ANTES de desplegar:
+6. **Rutas de llaves en `.env` (v0.3 y v0.4).** `CRYPTO_LOCAL_KEK_PATH`
+   pasa a `/run/apex/keys/custody/...`; **desde v0.4 borra del `.env` la línea
+   `CRYPTO_LOCAL_SIGNING_KEY_PATH`** (no la dejes vacía: vale `.` y el api no arranca; el valor por
+   omisión es `/run/apex/keys/sign/sign-ed25519.key`, carpeta que el api no monta, S7-D23);
+   `deploy.sh` sale con 2 antes de construir si la línea está vacía o apunta fuera de `sign/`.
+   `JWT_PRIVATE_KEY_PATH` y `JWT_PUBLIC_KEY_PATH` pasan a
+   `/run/apex/keys/jwt/...` (mira `.env.example`). Actualiza las tres ANTES de desplegar:
    `deploy.sh` sale con 2 sin construir si alguna sigue plana (S6-D91), porque tras mover los
    archivos el api no los encontraría. `deploy.sh` mueve los archivos del volumen
    (`tools init-keys --migrate-layout`, después de construir y antes de `up -d`); si un archivo está

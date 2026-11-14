@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
@@ -42,34 +42,13 @@ from pydantic_settings import (
 )
 
 from app.core import config_origin as _origin
+from app.core.config_ops import ops_secret_names
+from app.core.config_signing import DEFAULT_SIGNING_KEY_PATH, signing_path_problems
 from app.core.config_storage import S3_REQUIRED, domain_problems, s3_problems
 
 # Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
 # pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041: vive en `.env.seed`
 # y solo lo lee `SeedSettings` en el servicio tools; M-8).
-# H-1 / M2 (S4B-D56): con ENV=production el entorno de un servicio que lee Settings no puede traer
-# secretos de operación (`.env.ops` mezclado en `.env`). Nombres exactos y prefijos; nunca valores.
-OPS_SECRET_NAMES: Final[frozenset[str]] = frozenset({"POSTGRES_PASSWORD"})
-OPS_SECRET_PREFIXES: Final[tuple[str, ...]] = ("RCLONE_", "BACKUP_SIGN_", "BACKUP_VERIFY_")
-# S5-W0-3: la llave PÚBLICA de minisign no es secreta y pasa a `Settings` (S5-D44, D72); la privada
-# (`BACKUP_SIGN_KEY_FILE`) sigue siendo secreto de operación.
-OPS_SECRET_EXEMPT: Final[frozenset[str]] = frozenset({"BACKUP_SIGN_PUBKEY"})
-
-
-def ops_secret_names(environ: Mapping[str, str]) -> list[str]:
-    """Nombres (jamás valores) de las variables de operación secretas presentes en `environ`."""
-    return sorted(
-        nombre
-        for nombre in environ
-        if nombre not in OPS_SECRET_EXEMPT
-        and (
-            nombre in OPS_SECRET_NAMES
-            or nombre.startswith(OPS_SECRET_PREFIXES)
-            or (nombre.startswith("APEX_") and nombre.endswith("_DB_PASSWORD"))
-        )
-    )
-
-
 NON_API_ENV_VARS: frozenset[str] = frozenset(
     {
         "ADMIN_EMAIL",
@@ -206,8 +185,9 @@ class Settings(BaseSettings):
     JWT_PUBLIC_KEY_PATH: Path | None = None
     CRYPTO_PROVIDER: Literal["local", "openbao"]
     CRYPTO_LOCAL_KEK_PATH: Path | None = None
-    # Llave Ed25519 de firma del bus (semilla cruda de 32 bytes); la crea `init-keys`.
-    CRYPTO_LOCAL_SIGNING_KEY_PATH: Path = Path("/run/apex/keys/custody/sign-ed25519.key")
+    # Llave Ed25519 de firma del bus (semilla cruda de 32 bytes); la crea `init-keys`. Vive en
+    # `sign/`, que solo montan el worker y tools; `.env` NO lleva la línea (S7-D23, ver validador).
+    CRYPTO_LOCAL_SIGNING_KEY_PATH: Path = DEFAULT_SIGNING_KEY_PATH
 
     # Aplicación.
     ENV: Literal["dev", "production"] = "production"  # falla cerrado: /docs solo con ENV=dev
@@ -505,6 +485,18 @@ class Settings(BaseSettings):
         return valor.rstrip("/")
 
     @model_validator(mode="after")
+    def _firma_fuera_del_alcance_del_api(self) -> Settings:
+        """S7-D23 (1): la ruta de la semilla de firma no cuelga de `custody/` ni de `jwt/`."""
+        invalidas = signing_path_problems(
+            self.CRYPTO_LOCAL_SIGNING_KEY_PATH,
+            self.CRYPTO_LOCAL_KEK_PATH,
+            self.JWT_PRIVATE_KEY_PATH,
+        )
+        if invalidas:
+            raise ConfigError(missing=[], invalid=invalidas)
+        return self
+
+    @model_validator(mode="after")
     def _smtp_todo_o_nada(self) -> Settings:
         """S5-D44: o no hay ningún dato de correo, o están los cuatro (puerto y modo tienen
         defecto). Nombra lo que falta; nunca valores."""
@@ -760,8 +752,14 @@ def parse_origins(value: str) -> list[str]:
 # US-039: secretos obligatorios al arrancar ------------------------------------------
 
 
-def missing_secrets(settings: Settings, exists: Callable[[Path], bool] = Path.is_file) -> list[str]:
-    """Nombres de variable cuyo secreto o archivo falta (nunca valores), ordenados."""
+def missing_secrets(
+    settings: Settings,
+    exists: Callable[[Path], bool] = Path.is_file,
+    *,
+    signing_key: bool = False,
+) -> list[str]:
+    """Nombres de variable cuyo secreto o archivo falta (nunca valores), ordenados. La llave de
+    firma solo se exige con `signing_key=True` (worker y tools; el api no la ve, S7-D23 (5))."""
     faltan: list[str] = []
     dsn = settings.DATABASE_URL.get_secret_value()
     if "@" not in dsn or ":" not in dsn.split("@", 1)[0].split("://", 1)[-1]:
@@ -771,7 +769,7 @@ def missing_secrets(settings: Settings, exists: Callable[[Path], bool] = Path.is
     if settings.CRYPTO_PROVIDER == "local":
         if settings.CRYPTO_LOCAL_KEK_PATH is None or not exists(settings.CRYPTO_LOCAL_KEK_PATH):
             faltan.append("CRYPTO_LOCAL_KEK_PATH")
-        if not exists(settings.CRYPTO_LOCAL_SIGNING_KEY_PATH):
+        if signing_key and not exists(settings.CRYPTO_LOCAL_SIGNING_KEY_PATH):
             faltan.append("CRYPTO_LOCAL_SIGNING_KEY_PATH")
     if settings.CRYPTO_PROVIDER == "openbao":
         # S5-D17: con OpenBao no hay KEK ni llave de firma locales; el token es el secreto.

@@ -9,10 +9,12 @@
 # que el nombre es la única señal. Casos en scripts/ci/test_check_key_files.sh.
 set -euo pipefail
 
-# --- Modo `--layout <dir> [--provider local|openbao] [--only custody|all]` (S6-D58, S5-D201) -----
-# Comprueba el volumen `keys` (nunca imprime contenido): custody/kek.bin, custody/sign-ed25519.key
-# y jwt/jwt_ed25519.{pem,pub}, modo 600 y dueño 10001. Plano o mixto: error con la orden de
-# migración. `--only custody` es la vista del worker (si ve jwt/ es un error).
+# --- Modo `--layout <dir> [--provider local|openbao] [--only custody|api|all]` (S6-D58, S7-D4) ---
+# Comprueba el volumen `keys` (nunca imprime contenido): custody/kek.bin, sign/sign-ed25519.key y
+# jwt/jwt_ed25519.{pem,pub}, modo 600 y dueño 10001. Plano, mixto o la llave de firma aún en
+# custody/ (layout de v0.3): error con la orden de migración. `--only custody` es la vista del
+# worker (custody/ y sign/; si ve jwt/ es un error); `--only api` la del api (custody/ y jwt/; si
+# ve sign/ o custody/sign-ed25519.key es un error, S7-D4).
 check_layout() {
   local dir="" provider="local" only="all"
   while [ "$#" -gt 0 ]; do
@@ -23,7 +25,7 @@ check_layout() {
       *) echo "check-key-files: argumento desconocido con --layout: $1" >&2; exit 2 ;;
     esac
   done
-  case "$only" in custody | all) ;; *) echo "check-key-files: --only admite custody|all" >&2; exit 2 ;; esac
+  case "$only" in custody | api | all) ;; *) echo "check-key-files: --only admite custody|api|all" >&2; exit 2 ;; esac
   case "$provider" in local | openbao) ;; *) echo "check-key-files: --provider admite local|openbao" >&2; exit 2 ;; esac
   if [ ! -d "$dir" ]; then echo "check-key-files: la carpeta $dir no existe" >&2; exit 1; fi
   local errores=() f
@@ -32,11 +34,18 @@ check_layout() {
       errores+=("$f sigue en la raíz del volumen (layout plano o mixto): corra init-keys --migrate-layout")
     fi
   done
+  if [ -e "$dir/custody/sign-ed25519.key" ]; then
+    errores+=("sign-ed25519.key sigue en custody/ (layout de v0.3): corra init-keys --migrate-layout")
+  fi
   local requeridos=()
-  if [ "$provider" = "local" ]; then requeridos+=(custody/kek.bin custody/sign-ed25519.key); fi
-  if [ "$only" = "all" ]; then requeridos+=(jwt/jwt_ed25519.pem jwt/jwt_ed25519.pub); fi
+  if [ "$provider" = "local" ]; then requeridos+=(custody/kek.bin); fi
+  if [ "$provider" = "local" ] && [ "$only" != "api" ]; then requeridos+=(sign/sign-ed25519.key); fi
+  if [ "$only" != "custody" ]; then requeridos+=(jwt/jwt_ed25519.pem jwt/jwt_ed25519.pub); fi
   if [ "$only" = "custody" ] && [ -e "$dir/jwt" ]; then
     errores+=("jwt/ es visible en la vista del worker: nada del JWT debe montarse ahí")
+  fi
+  if [ "$only" = "api" ] && [ -e "$dir/sign" ]; then
+    errores+=("sign/ es visible en la vista del api: la llave de firma no debe montarse ahí")
   fi
   for f in "${requeridos[@]}"; do
     if [ ! -f "$dir/$f" ]; then errores+=("falta ${f##*/} ($f)"); continue; fi

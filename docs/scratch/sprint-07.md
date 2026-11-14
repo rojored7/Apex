@@ -53,3 +53,24 @@ Rama `feat/sprint-07-clases-horario-checkin`, HEAD de partida `8e751eb` (sobre `
 - Sello `slice-gate.sh attachments` con las cinco pruebas del plan: exit 0, 1.195 passed.
 - P-MIG: `$DC start api` -> healthy, `alembic current` = `0025_s6_hardening (head)`; `$DC start worker` healthy; `downgrade -1` y `upgrade head` sin error, `current` = 0025 (head). `/health`: status ok, migrations ok, crypto ok.
 - Esquema en `apex-db-1`: FK `fk_attachments_key_id` validada, `ON DELETE RESTRICT`; `ck_crypto_keys_sign_iff_public_key` y `ck_attachments_photo_not_sensitive` validados; `ck_crypto_keys_sign_public_key` ya no existe. Todos los triggers de `crypto_keys`, `crypto_jobs` y `attachments` con `tgenabled = A` (10 filas).
+
+## W0-3 · volumen `keys` con `sign/` y el api sin la llave de firma (2026-11-14)
+
+### Rojo
+
+- Nuevas: `tests/crypto/test_local_provider_without_signing.py` (5), `tests/core/test_missing_secrets_signing.py` (2), `tests/core/test_settings_signing_path.py` (6), `tests/core/test_signing_key_exposure.py` (6), `tests/cli/test_keys_layout_sign.py` (12), `tests/architecture/test_api_never_loads_signing_key.py` (4); `test_env_example.py::test_firma_sin_linea_documentada_en_comentario`; en Bash `test_compose_config.sh`, `test_deploy_script.sh` (cuatro casos de firma y el de `deploy.sh` de v0.3.0), `test_check_key_files.sh`, `test_env_isolation.sh`.
+- Honestidad del Rojo: el agente escribió las pruebas primero pero el código quedó antes de la primera corrida de esa tanda; el rojo no se midió por separado (la corrida inicial ya mezcló pruebas y Verde). Lo que sí falló antes de ajustar fixtures fue: 15 de `tests/core` + `tests/crypto` y 40 de `tests/cli` por la ruta de firma nueva (`sign/`), la firma de `get_provider_named(..., with_signing=)` en falsos de prueba y rutas planas en `.env` de prueba.
+
+### Verde
+
+- `core/crypto/local_provider.py` (`signing_key_path: Path | None`, `sign_unavailable`), `provider.py`, `recovery.py` (`with_signing=False` por omisión), `sign_rotation.py` (`switch_provider(..., with_signing=)`, solo el CLI pasa `True`), `errors.py`, `core/config.py` + `config_signing.py` (ruta por omisión `sign/`, validador S7-D23 (1), vacía = error) y `config_ops.py` (extraído para no pasar de 800 líneas), `core/crypto/exposure.py` + `main.py` (`signing_key_exposed`, el arranque falla sin ruta ni contenido), `worker/runtime.py`, `worker/jobs/sign_audit.py`, `cli_base.py`, `cli_ops/rotate_key.py` (`True`), `cli_ops/keys.py` (`key_paths_in` -> `sign/`), `cli_ops/keys_layout.py` (`sign/`, desde `custody/` o plano, `reverse_layout`), `cli.py` (`--reverse`).
+- Compose: api con subpaths `custody` y `jwt` (también en `compose.openbao.yml`), worker `custody` y `sign`, tools entero; `compose.dev.yml` no los redefine. `.env.example` solo comenta la ruta. `deploy.sh` (aborta con 2 si la línea está vacía o fuera de `sign/`), `check-key-files.sh` (`--only api`), `prod-smoke.sh` (ausencia en el api, `--reverse`, `sign_audit` del worker), `test_env_isolation.sh`.
+- Docs: ADR-006 (párrafo autorizado, S7-D28), adenda a S6-D142 en DECISIONES, RUNBOOK §12 (layout y rollback paso a paso), `actualizar.md` paso 6, `infra/README.md`, `llaves.md`.
+- Residuo de W0-2 corregido de paso: `tests/migrations/test_0023_attachments.py::_sql_llave` insertaba llaves `encrypt` de relleno que quedaban en la base de roles y hacían fallar `test_api_role_paths` (`unwrap_failed`) al correr juntas; ahora son llaves `sign` con su pública (no cuentan para `ensure_keys`).
+
+### Evidencia
+
+- Suite del api completa en dos tandas: 6.821 passed (resto) y 2.787 passed (cli, core, crypto), 0 fallos tras corregir el residuo de `test_0023`; `mypy src` y `ruff` limpios.
+- Docker (desarrollo): `$DC stop api worker` antes de escribir código; `.env` sin la línea de firma (borrada por patrón, sin imprimir); buildx del api; antes: `custody/` con `kek.bin` y `sign-ed25519.key`; `init-keys --migrate-layout` 1.ª «movido sign-ed25519.key», 2.ª «nada que migrar»; después: `custody/kek.bin`, `sign/sign-ed25519.key`, `jwt/` (modos 600/700 conservados). `up -d --no-build --force-recreate api worker`: api healthy. Ausencia en el api: `ls /run/apex/keys` = `custody jwt`; `test ! -e` de `sign`, `custody/sign-ed25519.key` y `sign-ed25519.key` plano, los tres rc 0. El worker ve `custody` y `sign`. `--run-once sign_audit`: `result: ok`. `/health` 8181: status ok, db ok, migrations ok, crypto ok.
+- `test_env_isolation.sh` contra desarrollo: la parte de llaves 0 fallas (api no ve sign/ ni la llave; worker ve sign/ y no jwt/); 11 fallas de la parte de variables (el `.env` de desarrollo es la suma de `.env` y `.env.ops`: contraseñas y `BACKUP_*` en api y worker), que ese script solo prueba bien contra ensayo/smoke (así quedó anotado en S6).
+- Bash: `test_compose_config.sh` 0 fallas, `test_deploy_script.sh` 497 ok / 0 fallas, `test_check_key_files.sh` 0 fallas.

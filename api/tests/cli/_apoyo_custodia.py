@@ -94,12 +94,12 @@ def custodia(
     migracion_lista: Entorno, settings_custodia: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> Entorno:
     """El entorno de custodia con `get_provider_named` parchado (`openbao` = Transit falso)."""
-    original: Callable[[Settings, str], Any] = provider_mod.get_provider_named
+    original: Callable[..., Any] = provider_mod.get_provider_named
 
-    def falso(settings: Settings, nombre: str) -> Any:
+    def falso(settings: Settings, nombre: str, **kwargs: Any) -> Any:
         if nombre == "openbao":
             return migracion_lista.openbao  # se lee al pedir: una prueba puede cambiarlo
-        return original(settings, nombre)
+        return original(settings, nombre, **kwargs)
 
     monkeypatch.setattr(provider_mod, "get_provider_named", falso)
     return migracion_lista

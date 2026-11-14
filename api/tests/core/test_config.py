@@ -67,9 +67,9 @@ NUEVAS_S6: tuple[str, ...] = (
 
 BASE: dict[str, str] = {
     "DATABASE_URL": "postgresql+asyncpg://apex:clave-secreta@db:5432/apex",
-    "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt_ed25519.pem",
+    "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pem",
     "CRYPTO_PROVIDER": "local",
-    "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/kek.bin",
+    "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/custody/kek.bin",
     "UPLOADS_DIR": "/data/uploads",
     "CORS_ORIGINS": '["http://localhost"]',
     # M-9 (E3): sin ENV es producción, y producción exige la cookie Secure.
@@ -203,7 +203,7 @@ def test_non_api_env_vars_cubre_compose_cli_y_puertos() -> None:
 def test_validate_crypto_provider_es_pura() -> None:
     with pytest.raises(ValueError, match="CRYPTO_LOCAL_KEK_PATH"):
         validate_crypto_provider("local", None)
-    validate_crypto_provider("local", Path("/run/apex/keys/kek.bin"))
+    validate_crypto_provider("local", Path("/run/apex/keys/custody/kek.bin"))
     validate_crypto_provider("openbao", None)
 
 
@@ -657,7 +657,7 @@ def test_import_dir_no_es_una_variable_ajena_al_api() -> None:
         "/data/uploads/importar",
         "/data",
         "/run/apex/keys",
-        "/run/apex/keys/importar",
+        "/run/apex/keys/custody/importar",
         "/run/apex",
         "/data/uploads/../uploads",
     ],
@@ -704,7 +704,7 @@ def test_backup_dir_es_campo_de_settings_y_no_una_variable_ajena() -> None:
         "/data/uploads/respaldos",
         "/data",
         "/run/apex/keys",
-        "/run/apex/keys/respaldos",
+        "/run/apex/keys/custody/respaldos",
         "/run/apex",
         "/data/imports",
         "/data/imports/respaldos",
@@ -1285,7 +1285,7 @@ def test_missing_secrets_con_almacen_local_no_pide_la_clave_de_s3(tmp_path: Path
 # Rojo S6-W0-2 (S6-D58, S5-D201): rutas por defecto del layout nuevo del volumen `keys`.
 RUTAS_LAYOUT_NUEVO: dict[str, str] = {
     "CRYPTO_LOCAL_KEK_PATH": "/run/apex/keys/custody/kek.bin",
-    "CRYPTO_LOCAL_SIGNING_KEY_PATH": "/run/apex/keys/custody/sign-ed25519.key",
+    "CRYPTO_LOCAL_SIGNING_KEY_PATH": "/run/apex/keys/sign/sign-ed25519.key",
     "JWT_PRIVATE_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pem",
     "JWT_PUBLIC_KEY_PATH": "/run/apex/keys/jwt/jwt_ed25519.pub",
 }
@@ -1299,12 +1299,17 @@ def test_env_example_apunta_las_cuatro_rutas_de_llaves_al_layout_nuevo() -> None
             nombre, valor = linea.split("=", 1)
             claves[nombre.strip()] = valor.strip()
 
-    distintas = {n: claves.get(n) for n, v in RUTAS_LAYOUT_NUEVO.items() if claves.get(n) != v}
+    # la ruta de firma no lleva línea en `.env.example` (S7-D23): se prueba por su valor por omisión
+    distintas = {
+        n: claves.get(n)
+        for n, v in RUTAS_LAYOUT_NUEVO.items()
+        if n != "CRYPTO_LOCAL_SIGNING_KEY_PATH" and claves.get(n) != v
+    }
 
     assert distintas == {}, f"rutas de .env.example fuera del layout custody/jwt: {distintas}"
 
 
-def test_la_ruta_por_defecto_de_la_llave_de_firma_es_la_de_custody() -> None:
+def test_la_ruta_por_defecto_de_la_llave_de_firma_es_la_de_sign() -> None:
     por_defecto = Settings.model_fields["CRYPTO_LOCAL_SIGNING_KEY_PATH"].default
 
     assert Path(por_defecto) == Path(RUTAS_LAYOUT_NUEVO["CRYPTO_LOCAL_SIGNING_KEY_PATH"])

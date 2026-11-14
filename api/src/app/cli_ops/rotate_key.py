@@ -157,7 +157,9 @@ async def _rotate(
             actor_id = await resolve_admin_actor(session, actor, required=True)
         with unit_of_work(actor_id):
             if provider:
-                await switch_provider(session, settings, data_class, provider, reason, actor_id)
+                await switch_provider(
+                    session, settings, data_class, provider, reason, actor_id, with_signing=True
+                )
             elif index:
                 await _rotate_index(session, data_class, reason, actor_id)
             else:

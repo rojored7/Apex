@@ -4,7 +4,9 @@
 - Envoltura de una DEK: `b"apxw1" || nonce(12) || AES-256-GCM(kek, nonce, dek, aad)` con
   `aad = b"apx-dek-wrap"`. El prefijo autodescribe la envoltura (ADR-002); `algorithm` en
   `crypto_keys` describe la llave envuelta, no la envoltura.
-- Firma del bus: Ed25519 con semilla cruda de 32 bytes en `CRYPTO_LOCAL_SIGNING_KEY_PATH`.
+- Firma del bus: Ed25519 con semilla cruda de 32 bytes en `CRYPTO_LOCAL_SIGNING_KEY_PATH`. Solo la
+  cargan el worker y las herramientas (`signing_key_path`); el api construye el proveedor con
+  `None` y nunca ve la semilla (S7-D4, M-4): firmar o pedir la pública lanza `sign_unavailable`.
 - `rotate` de la KEK local no existe en v0.1 (la rotación de DEK es US-030).
 - La KEK nunca sale de esta clase: no hay accesor público y ni `repr` ni las excepciones
   llevan bytes. En Windows (NTFS) no hay modo POSIX, así que la comprobación de permisos
@@ -85,16 +87,27 @@ def check_key_file(path: Path, *, size: int, name: str) -> None:
 class LocalFileProvider:
     """`KeyProvider` de v0.1. Carga la KEK y la semilla de firma en memoria al construirse."""
 
-    def __init__(self, kek_path: Path, signing_key_path: Path, *, lazy_kek: bool = False) -> None:
+    def __init__(
+        self, kek_path: Path, signing_key_path: Path | None, *, lazy_kek: bool = False
+    ) -> None:
         """Con `lazy_kek` la KEK se exige al primer `wrap`/`unwrap`, no al construir: es el modo de
         una fila `sign` `local` con `CRYPTO_PROVIDER=openbao`, donde `retire-local-kek` pudo
         borrarla (S5-D50). El proveedor de arranque `local` no lo usa: su KEK se comprueba al
-        construir."""
+        construir. Con `signing_key_path=None` (el api) no se abre la semilla (S7-D4)."""
         self._kek_path = kek_path
         self._aead_cache: AESGCM | None = None if lazy_kek else self._load_kek()
-        check_key_file(signing_key_path, size=SEED_LEN, name="llave de firma")
-        self._signing = Ed25519PrivateKey.from_private_bytes(signing_key_path.read_bytes())
-        self._signing_created_at = datetime.fromtimestamp(signing_key_path.stat().st_mtime, UTC)
+        self._signing: Ed25519PrivateKey | None = None
+        self._signing_created_at: datetime | None = None
+        if signing_key_path is not None:
+            check_key_file(signing_key_path, size=SEED_LEN, name="llave de firma")
+            self._signing = Ed25519PrivateKey.from_private_bytes(signing_key_path.read_bytes())
+            self._signing_created_at = datetime.fromtimestamp(signing_key_path.stat().st_mtime, UTC)
+
+    def _seed(self) -> Ed25519PrivateKey:
+        """La llave de firma cargada; sin ella (proveedor del api) `sign_unavailable`."""
+        if self._signing is None:
+            raise CryptoError("sign_unavailable", "este proceso no carga la llave de firma")
+        return self._signing
 
     name = PROVIDER_NAME
 
@@ -135,12 +148,12 @@ class LocalFileProvider:
 
     async def sign(self, key_ref: str, data: bytes) -> bytes:
         self._require_signing_ref(key_ref)
-        return self._signing.sign(data)
+        return self._seed().sign(data)
 
     async def verify(self, key_ref: str, data: bytes, signature: bytes) -> bool:
         self._require_signing_ref(key_ref)
         try:
-            self._signing.public_key().verify(signature, data)
+            self._seed().public_key().verify(signature, data)
         except InvalidSignature:
             return False
         return True
@@ -150,18 +163,21 @@ class LocalFileProvider:
 
     async def key_info(self, key_ref: str) -> KeyInfo:
         self._require_signing_ref(key_ref)
+        llave = self._seed()
+        assert self._signing_created_at is not None  # noqa: S101  (se fija junto a la semilla)
         return KeyInfo(
             key_ref=SIGNING_KEY_REF,
             algorithm="Ed25519",
             provider=PROVIDER_NAME,
             version=1,
             created_at=self._signing_created_at,
-            public_key=self._public_key_b64(),
+            public_key=self._public_key_b64(llave),
         )
 
-    def _public_key_b64(self) -> str:
+    @staticmethod
+    def _public_key_b64(llave: Ed25519PrivateKey) -> str:
         """Base64 estándar de los 32 bytes crudos de la pública, derivada de la semilla cargada."""
-        cruda = self._signing.public_key().public_bytes(
+        cruda = llave.public_key().public_bytes(
             serialization.Encoding.Raw, serialization.PublicFormat.Raw
         )
         return base64.b64encode(cruda).decode("ascii")
@@ -170,4 +186,4 @@ class LocalFileProvider:
         return SIGNING_KEY_REF
 
     async def sign_public_key(self) -> str:
-        return self._public_key_b64()
+        return self._public_key_b64(self._seed())

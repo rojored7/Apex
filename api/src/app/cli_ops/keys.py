@@ -27,10 +27,10 @@ SEED_LEN = 32
 
 
 def key_paths_in(directory: Path) -> KeyPaths:
-    """Rutas estándar dentro de un directorio (volumen `keys`): `custody/` y `jwt/` (S6-D58)."""
+    """Rutas estándar del volumen `keys`: `custody/`, `sign/` y `jwt/` (S6-D58, S7-D4)."""
     return KeyPaths(
         kek=directory / "custody" / "kek.bin",
-        signing_key=directory / "custody" / "sign-ed25519.key",
+        signing_key=directory / "sign" / "sign-ed25519.key",
         jwt_private=directory / "jwt" / "jwt_ed25519.pem",
         jwt_public=directory / "jwt" / "jwt_ed25519.pub",
     )

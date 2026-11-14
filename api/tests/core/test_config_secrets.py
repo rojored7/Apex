@@ -34,7 +34,9 @@ def _settings(tmp_path: Path, test_database_url: str, *, provider: str = "local"
 
 def test_missing_secrets(tmp_path: Path, test_database_url: str) -> None:
     settings = _settings(tmp_path, test_database_url)
-    assert missing_secrets(settings) == sorted(
+    # S7-D23 (5): la llave de firma solo se exige a quien firma (worker y tools).
+    assert missing_secrets(settings) == ["CRYPTO_LOCAL_KEK_PATH", "JWT_PRIVATE_KEY_PATH"]
+    assert missing_secrets(settings, signing_key=True) == sorted(
         ["CRYPTO_LOCAL_KEK_PATH", "CRYPTO_LOCAL_SIGNING_KEY_PATH", "JWT_PRIVATE_KEY_PATH"]
     )
     init_keys_files(key_paths_in(tmp_path / "keys"))
@@ -67,7 +69,8 @@ def test_check_secrets_or_exit_nombra_sin_valores(tmp_path: Path, test_database_
         check_secrets_or_exit(settings)
     mensaje = str(excinfo.value)
     assert mensaje.startswith("Faltan secretos: ")
-    assert "CRYPTO_LOCAL_KEK_PATH, CRYPTO_LOCAL_SIGNING_KEY_PATH, JWT_PRIVATE_KEY_PATH" in mensaje
+    assert "CRYPTO_LOCAL_KEK_PATH, JWT_PRIVATE_KEY_PATH" in mensaje
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" not in mensaje  # el api no exige la llave de firma
     assert CLAVE_DB not in mensaje and str(tmp_path) not in mensaje
 
 

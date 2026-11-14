@@ -59,7 +59,11 @@ class _Retryable(Exception):
 
 async def _attempt(ctx: JobContext) -> SignOutcome:
     estado = await recovery.try_load(
-        ctx.session_factory, get_settings(), create_missing=False, classes=_classes()
+        ctx.session_factory,
+        get_settings(),
+        create_missing=False,
+        classes=_classes(),
+        with_signing=True,
     )
     if estado != "ok":
         raise _Retryable(UNAVAILABLE, sealed=True)

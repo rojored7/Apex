@@ -31,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
+from itertools import pairwise
 from typing import Annotated, Any, Final
 from uuid import UUID
 
@@ -68,6 +69,8 @@ ENABLED_SECTIONS: frozenset[SectionKey] = frozenset(
         SectionKey.memberships,
         SectionKey.payment_methods,
         SectionKey.channels,  # S5-B4 (US-122, S5-D30)
+        SectionKey.hours,  # S7-A1 (US-154, S7-D8)
+        SectionKey.classes,
     }
 )
 
@@ -92,6 +95,52 @@ class SectionValue(BaseModel):
     """Base de todo esquema de sección: sin campos extra e inmutable (Q12, US-054 T5)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
+HHMM_PATTERN: Final[str] = r"^([01]\d|2[0-3]):[0-5]\d$"
+HOURS_MAX_RANGES: Final[int] = 2
+
+
+class TimeRange(SectionValue):
+    """Rango de atención `HH:MM` en hora de Bogotá (N-18); `open < close`: el día."""
+
+    open: str = Field(pattern=HHMM_PATTERN)
+    close: str = Field(pattern=HHMM_PATTERN)
+
+
+DayRanges = Annotated[list[TimeRange], Field(max_length=HOURS_MAX_RANGES)]
+
+
+class HoursSettings(SectionValue):
+    """Horas de atención (US-154, S7-D8, N-18): de 0 a 2 rangos por día, ordenados y sin
+    solaparse; lista vacía = cerrado. Solo informan: no restringen las franjas."""
+
+    monday: DayRanges = Field(default_factory=list)
+    tuesday: DayRanges = Field(default_factory=list)
+    wednesday: DayRanges = Field(default_factory=list)
+    thursday: DayRanges = Field(default_factory=list)
+    friday: DayRanges = Field(default_factory=list)
+    saturday: DayRanges = Field(default_factory=list)
+    sunday: DayRanges = Field(default_factory=list)
+
+    @field_validator("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    @classmethod
+    def _ordenados_sin_solapar(cls, rangos: list[TimeRange]) -> list[TimeRange]:
+        """`open < close` en cada rango y cada uno empieza donde o después de donde termina el
+        anterior. Se valida por día (no por rango) para que el `field` sea `value.<día>`."""
+        if any(rango.open >= rango.close for rango in rangos):
+            raise ValueError("open debe ser menor que close")
+        for previo, siguiente in pairwise(rangos):
+            if siguiente.open < previo.close:
+                raise ValueError("los rangos deben estar ordenados y sin solaparse")
+        return rangos
+
+
+class ClassesSettings(SectionValue):
+    """Valores por defecto de las clases (US-154, S7-D8, N-18). Sin `allow_over_capacity` (N-38)."""
+
+    default_capacity: StrictInt = Field(default=15, ge=1, le=100)
+    checkin_window_min: StrictInt = Field(default=30, ge=0, le=240)
 
 
 class GymSettings(SectionValue):
@@ -244,6 +293,8 @@ SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.memberships: MembershipsSettings,
     SectionKey.payment_methods: PaymentMethodsSettings,
     SectionKey.channels: ChannelsSettings,
+    SectionKey.hours: HoursSettings,
+    SectionKey.classes: ClassesSettings,
 }
 
 # Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`, y ninguna
@@ -287,6 +338,11 @@ SECTION_DEFAULTS: dict[SectionKey, dict[str, Any]] = {
         "whatsapp": {"enabled": False, "country_code": "57"},
         "telegram": {"enabled": False},
     },
+    SectionKey.hours: {
+        dia: []
+        for dia in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    },
+    SectionKey.classes: {"default_capacity": 15, "checkin_window_min": 30},
 }
 
 
@@ -336,6 +392,14 @@ class PaymentMethodsSectionOut(_SectionMeta):
     value: PaymentMethodsSettings
 
 
+class HoursSectionOut(_SectionMeta):
+    value: HoursSettings
+
+
+class ClassesSectionOut(_SectionMeta):
+    value: ClassesSettings
+
+
 class SectionPatchIn(BaseModel):
     """`PATCH` reemplaza la sección completa con la versión que se leyó (N-17, S2-D15)."""
 
@@ -370,4 +434,18 @@ class PaymentMethodsPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     value: PaymentMethodsSettings
+    version: int = Field(ge=0)
+
+
+class HoursPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: HoursSettings
+    version: int = Field(ge=0)
+
+
+class ClassesPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: ClassesSettings
     version: int = Field(ge=0)

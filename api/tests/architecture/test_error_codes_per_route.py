@@ -68,6 +68,8 @@ CON_LIMITE = {
     ("patch", "/api/v1/settings/privacy"),
     ("patch", "/api/v1/settings/memberships"),
     ("patch", "/api/v1/settings/payment_methods"),
+    ("patch", "/api/v1/settings/hours"),  # S7-A1 (US-154)
+    ("patch", "/api/v1/settings/classes"),
     ("patch", "/api/v1/settings/{section}"),
     ("post", "/api/v1/users"),
     ("post", "/api/v1/users/{user_id}/resend-link"),

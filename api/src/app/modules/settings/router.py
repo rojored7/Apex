@@ -1,6 +1,6 @@
 """Router de settings (US-054; blueprint del Sprint 2, B1; S2-D3 y S2-D15).
 
-Plano, con la ruta completa en cada decorador y `require_role("admin")` en las diez rutas.
+Plano, con la ruta completa en cada decorador y `require_role("admin")` en las catorce rutas.
 Las tipadas (`gym`, `privacy`, `memberships` y, desde S3-B3, `payment_methods`) se declaran ANTES
 que la genérica `/settings/{section}` para ganar el emparejamiento; `section` es `str` (no enum)
 para que una clave desconocida dé 404 `section_not_available` y no 422.
@@ -24,9 +24,13 @@ from app.core.ratelimit import enforce_user_limit
 from app.core.security import Principal, require_role
 from app.modules.settings import service
 from app.modules.settings.schemas import (
+    ClassesPatchIn,
+    ClassesSectionOut,
     CredentialsPresent,
     GymPatchIn,
     GymSectionOut,
+    HoursPatchIn,
+    HoursSectionOut,
     MembershipsPatchIn,
     MembershipsSectionOut,
     PaymentMethodsPatchIn,
@@ -116,6 +120,44 @@ async def patch_payment_methods(
     return await service.update_section(
         session,
         SectionKey.payment_methods,
+        body.value.model_dump(mode="json"),
+        body.version,
+        principal.user_id,
+    )
+
+
+@router.get("/settings/hours", response_model=HoursSectionOut)
+async def get_hours(principal: Admin, session: Session) -> SectionOut:
+    return await service.get_section(session, SectionKey.hours)
+
+
+@router.patch("/settings/hours", response_model=HoursSectionOut, responses=_PATCH)
+async def patch_hours(
+    request: Request, body: HoursPatchIn, principal: Admin, session: Session
+) -> SectionOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.update_section(
+        session,
+        SectionKey.hours,
+        body.value.model_dump(mode="json"),
+        body.version,
+        principal.user_id,
+    )
+
+
+@router.get("/settings/classes", response_model=ClassesSectionOut)
+async def get_classes(principal: Admin, session: Session) -> SectionOut:
+    return await service.get_section(session, SectionKey.classes)
+
+
+@router.patch("/settings/classes", response_model=ClassesSectionOut, responses=_PATCH)
+async def patch_classes(
+    request: Request, body: ClassesPatchIn, principal: Admin, session: Session
+) -> SectionOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.update_section(
+        session,
+        SectionKey.classes,
         body.value.model_dump(mode="json"),
         body.version,
         principal.user_id,

@@ -55,6 +55,7 @@ from app.modules.settings.schemas import (
     SECTION_REGISTRY,
     SECTION_VIEWS,
     ChannelsSettings,
+    ClassesSettings,
     GymView,
     MembershipsPolicy,
     MembershipsSettings,
@@ -212,6 +213,18 @@ async def memberships_policy(session: AsyncSession) -> MembershipsPolicy:
         max_freezes_per_membership=valor.max_freezes_per_membership,
         max_retroactive_days=valor.max_retroactive_days,
     )
+
+
+async def classes(session: AsyncSession) -> ClassesSettings:
+    """Contrato para `classes` (S7-D8): cupo y ventana por defecto, tolerante a lo guardado."""
+    try:
+        return await _read_as(session, SectionKey.classes, ClassesSettings)
+    except ValidationError:
+        logger.warning(
+            "settings: la sección guardada no valida",
+            extra={"settings_key": SectionKey.classes.value},
+        )
+        return ClassesSettings.model_validate(defaults_for(SectionKey.classes))
 
 
 async def current_privacy_version(session: AsyncSession) -> str | None:

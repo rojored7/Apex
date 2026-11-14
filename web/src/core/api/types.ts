@@ -1051,6 +1051,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Classes */
+        get: operations["get_classes_api_v1_settings_classes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Classes */
+        patch: operations["patch_classes_api_v1_settings_classes_patch"];
+        trace?: never;
+    };
     "/api/v1/settings/gym": {
         parameters: {
             query?: never;
@@ -1067,6 +1085,24 @@ export interface paths {
         head?: never;
         /** Patch Gym */
         patch: operations["patch_gym_api_v1_settings_gym_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hours */
+        get: operations["get_hours_api_v1_settings_hours_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Hours */
+        patch: operations["patch_hours_api_v1_settings_hours_patch"];
         trace?: never;
     };
     "/api/v1/settings/memberships": {
@@ -1460,6 +1496,39 @@ export interface components {
         ChannelsPatch: {
             /** Items */
             items: components["schemas"]["ChannelItem"][];
+        };
+        /** ClassesPatchIn */
+        ClassesPatchIn: {
+            value: components["schemas"]["ClassesSettings"];
+            /** Version */
+            version: number;
+        };
+        /** ClassesSectionOut */
+        ClassesSectionOut: {
+            key: components["schemas"]["SectionKey"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            value: components["schemas"]["ClassesSettings"];
+            /** Version */
+            version: number;
+        };
+        /**
+         * ClassesSettings
+         * @description Valores por defecto de las clases (US-154, S7-D8, N-18). Sin `allow_over_capacity` (N-38).
+         */
+        ClassesSettings: {
+            /**
+             * Checkin Window Min
+             * @default 30
+             */
+            checkin_window_min: number;
+            /**
+             * Default Capacity
+             * @default 15
+             */
+            default_capacity: number;
         };
         /** CreateUserIn */
         CreateUserIn: {
@@ -1877,6 +1946,44 @@ export interface components {
             version: string;
         } & {
             [key: string]: unknown;
+        };
+        /** HoursPatchIn */
+        HoursPatchIn: {
+            value: components["schemas"]["HoursSettings"];
+            /** Version */
+            version: number;
+        };
+        /** HoursSectionOut */
+        HoursSectionOut: {
+            key: components["schemas"]["SectionKey"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            value: components["schemas"]["HoursSettings"];
+            /** Version */
+            version: number;
+        };
+        /**
+         * HoursSettings
+         * @description Horas de atención (US-154, S7-D8, N-18): de 0 a 2 rangos por día, ordenados y sin
+         *     solaparse; lista vacía = cerrado. Solo informan: no restringen las franjas.
+         */
+        HoursSettings: {
+            /** Friday */
+            friday?: components["schemas"]["TimeRange"][];
+            /** Monday */
+            monday?: components["schemas"]["TimeRange"][];
+            /** Saturday */
+            saturday?: components["schemas"]["TimeRange"][];
+            /** Sunday */
+            sunday?: components["schemas"]["TimeRange"][];
+            /** Thursday */
+            thursday?: components["schemas"]["TimeRange"][];
+            /** Tuesday */
+            tuesday?: components["schemas"]["TimeRange"][];
+            /** Wednesday */
+            wednesday?: components["schemas"]["TimeRange"][];
         };
         /**
          * IssuedLinkOut
@@ -3391,6 +3498,16 @@ export interface components {
             name?: string | null;
             /** Subject */
             subject?: string | null;
+        };
+        /**
+         * TimeRange
+         * @description Rango de atención `HH:MM` en hora de Bogotá (N-18); `open < close`: el día.
+         */
+        TimeRange: {
+            /** Close */
+            close: string;
+            /** Open */
+            open: string;
         };
         /**
          * UpdateUserIn
@@ -9453,6 +9570,149 @@ export interface operations {
             };
         };
     };
+    get_classes_api_v1_settings_classes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassesSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_classes_api_v1_settings_classes_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassesPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassesSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_gym_api_v1_settings_gym_get: {
         parameters: {
             query?: never;
@@ -9529,6 +9789,149 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GymSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_hours_api_v1_settings_hours_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoursSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_hours_api_v1_settings_hours_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoursPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoursSectionOut"];
                 };
             };
             /** @description Sin sesión válida */

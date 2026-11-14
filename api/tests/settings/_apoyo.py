@@ -75,7 +75,7 @@ PAYMENT_METHODS_DEFAULTS: dict[str, Any] = {
 
 # Secciones que existen en el CHECK pero no están habilitadas (S2-D15; S3-B3 habilita
 # `payment_methods` y S5-B4 `channels`: quedan tres), más una clave inexistente y una en mayúscula.
-NO_HABILITADAS = ("tv", "hours", "classes")  # S5-B4 (US-122) habilita `channels`
+NO_HABILITADAS = ("tv",)  # S5-B4 habilita `channels`; S7-A1 (US-154) `hours` y `classes`
 DESCONOCIDAS = ("inexistente", "GYM")
 
 # Las diez rutas del router (S2-D15; S3-B3 suma las dos tipadas de `payment_methods`): tipadas y
@@ -132,3 +132,14 @@ CHANNELS_OK: dict[str, Any] = {
     "whatsapp": {"enabled": True, "country_code": "57"},
     "telegram": {"enabled": False},
 }
+
+# S7-A1 (US-154, S7-D8): `hours` (N-18, forma monday..sunday con 0 a 2 rangos) y `classes`.
+DIAS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+HOURS_DEFAULTS: dict[str, Any] = {dia: [] for dia in DIAS}
+HOURS_OK: dict[str, Any] = {
+    **HOURS_DEFAULTS,
+    "monday": [{"open": "05:00", "close": "10:00"}, {"open": "16:00", "close": "21:00"}],
+    "saturday": [{"open": "08:00", "close": "12:00"}],
+}
+CLASSES_DEFAULTS: dict[str, Any] = {"default_capacity": 15, "checkin_window_min": 30}
+CLASSES_OK: dict[str, Any] = {"default_capacity": 18, "checkin_window_min": 45}

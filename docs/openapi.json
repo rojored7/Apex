@@ -454,6 +454,96 @@
         "title": "ChannelsPatch",
         "type": "object"
       },
+      "ClassesPatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/ClassesSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "ClassesPatchIn",
+        "type": "object"
+      },
+      "ClassesSectionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SectionKey"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ClassesSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "updated_at",
+          "updated_by",
+          "value"
+        ],
+        "title": "ClassesSectionOut",
+        "type": "object"
+      },
+      "ClassesSettings": {
+        "additionalProperties": false,
+        "description": "Valores por defecto de las clases (US-154, S7-D8, N-18). Sin `allow_over_capacity` (N-38).",
+        "properties": {
+          "checkin_window_min": {
+            "default": 30,
+            "maximum": 240.0,
+            "minimum": 0.0,
+            "title": "Checkin Window Min",
+            "type": "integer"
+          },
+          "default_capacity": {
+            "default": 15,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Default Capacity",
+            "type": "integer"
+          }
+        },
+        "title": "ClassesSettings",
+        "type": "object"
+      },
       "CreateUserIn": {
         "additionalProperties": false,
         "properties": {
@@ -1505,6 +1595,138 @@
           "version"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "HoursPatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/HoursSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "HoursPatchIn",
+        "type": "object"
+      },
+      "HoursSectionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SectionKey"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "$ref": "#/components/schemas/HoursSettings"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "updated_at",
+          "updated_by",
+          "value"
+        ],
+        "title": "HoursSectionOut",
+        "type": "object"
+      },
+      "HoursSettings": {
+        "additionalProperties": false,
+        "description": "Horas de atención (US-154, S7-D8, N-18): de 0 a 2 rangos por día, ordenados y sin\nsolaparse; lista vacía = cerrado. Solo informan: no restringen las franjas.",
+        "properties": {
+          "friday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Friday",
+            "type": "array"
+          },
+          "monday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Monday",
+            "type": "array"
+          },
+          "saturday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Saturday",
+            "type": "array"
+          },
+          "sunday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Sunday",
+            "type": "array"
+          },
+          "thursday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Thursday",
+            "type": "array"
+          },
+          "tuesday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Tuesday",
+            "type": "array"
+          },
+          "wednesday": {
+            "items": {
+              "$ref": "#/components/schemas/TimeRange"
+            },
+            "maxItems": 2,
+            "title": "Wednesday",
+            "type": "array"
+          }
+        },
+        "title": "HoursSettings",
         "type": "object"
       },
       "IssuedLinkOut": {
@@ -5437,6 +5659,28 @@
           }
         },
         "title": "TemplatePatch",
+        "type": "object"
+      },
+      "TimeRange": {
+        "additionalProperties": false,
+        "description": "Rango de atención `HH:MM` en hora de Bogotá (N-18); `open < close`: el día.",
+        "properties": {
+          "close": {
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Close",
+            "type": "string"
+          },
+          "open": {
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Open",
+            "type": "string"
+          }
+        },
+        "required": [
+          "open",
+          "close"
+        ],
+        "title": "TimeRange",
         "type": "object"
       },
       "UpdateUserIn": {
@@ -14524,6 +14768,166 @@
         ]
       }
     },
+    "/api/v1/settings/classes": {
+      "get": {
+        "operationId": "get_classes_api_v1_settings_classes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassesSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Classes",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_classes_api_v1_settings_classes_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassesPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassesSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Patch Classes",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/v1/settings/gym": {
       "get": {
         "operationId": "get_gym_api_v1_settings_gym_get",
@@ -14679,6 +15083,166 @@
           }
         },
         "summary": "Patch Gym",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/hours": {
+      "get": {
+        "operationId": "get_hours_api_v1_settings_hours_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoursSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Hours",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_hours_api_v1_settings_hours_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoursPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoursSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Patch Hours",
         "tags": [
           "settings"
         ]

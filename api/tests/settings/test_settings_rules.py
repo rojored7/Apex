@@ -115,7 +115,7 @@ def test_defaults_for_devuelve_una_copia() -> None:
     assert defaults_for(SectionKey.gym)["name"] == "APEX"
 
 
-def test_las_habilitadas_son_exactamente_cinco() -> None:
+def test_las_habilitadas_son_exactamente_siete() -> None:
     assert (
         frozenset(
             {
@@ -124,6 +124,8 @@ def test_las_habilitadas_son_exactamente_cinco() -> None:
                 SectionKey.memberships,
                 SectionKey.payment_methods,
                 SectionKey.channels,
+                SectionKey.hours,
+                SectionKey.classes,
             }
         )
         == ENABLED_SECTIONS

@@ -135,3 +135,17 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - `bash scripts/workflow/tests/run.sh`: 6 de 6 archivos en verde (36 ok en `test_run_gates`).
 - `slice-gate.sh architecture test_user_limits_catalog test_no_cross_schema_sql`: 815 passed, exit 0.
 - Sello `slice-gate.sh core/ratelimit test_ratelimit test_config test_env_example`: 1.140 passed, exit 0.
+
+## S7-A1 · Horas y clases en Configuración (US-154, S7-D8)
+
+### Rojo
+- Stubs (`HoursSettings`/`ClassesSettings` vacías, `service.classes` con `NotImplementedError`, secciones sin habilitar): 3 archivos nuevos, 33 failed y 8 passed (los 8 son los 403 de coach y socio, que llegan antes del 404). Motivo: `section_not_available` 404 y `KeyError` de `SECTION_REGISTRY`.
+
+### Verde
+- `settings/schemas.py`: `TimeRange`, `HoursSettings` (siete días, 0 a 2 rangos, `open < close`, ordenados y sin solaparse, validado por día para que el `field` sea `value.<día>`), `ClassesSettings` (`StrictInt`, 1 a 100 y 0 a 240, sin `allow_over_capacity`), habilitadas en `ENABLED_SECTIONS`, `SECTION_REGISTRY`, `SECTION_VIEWS` (hereda) y `SECTION_DEFAULTS`; salidas y entradas tipadas.
+- `settings/service.py`: `classes(session)` (tolerante a lo guardado). `settings/router.py`: cuatro rutas tipadas (`admin`, `admin-write` en los PATCH).
+- Pruebas ajustadas: `NO_HABILITADAS = ("tv",)`, `test_settings_rules` (siete habilitadas), catálogos `CON_LIMITE` y `test_writes_have_user_limit` suman los dos PATCH.
+- P-API: `docs/openapi.json` (dos exportaciones idénticas) y `web/src/core/api/types.ts`; `types.contract.test.ts` 6 passed.
+
+### Evidencia
+- `slice-gate.sh settings test_hours_section test_classes_section test_router_hours_classes`: 856 passed, exit 0.

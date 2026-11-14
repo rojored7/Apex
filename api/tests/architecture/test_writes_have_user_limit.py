@@ -87,6 +87,8 @@ def test_las_escrituras_de_admin_de_v10_estan_en_con_limite() -> None:
         ("patch", f"{API_PREFIX}/settings/privacy"),
         ("patch", f"{API_PREFIX}/settings/memberships"),
         ("patch", f"{API_PREFIX}/settings/payment_methods"),
+        ("patch", f"{API_PREFIX}/settings/hours"),  # S7-A1 (US-154)
+        ("patch", f"{API_PREFIX}/settings/classes"),
         ("patch", f"{API_PREFIX}/settings/{{section}}"),
         ("post", f"{API_PREFIX}/users"),
         ("post", f"{API_PREFIX}/users/{{user_id}}/resend-link"),

@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.audit_sign import latest_signature
+from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import bus
 from app.core.crypto.models import CryptoKey, CryptoOp
@@ -128,3 +129,51 @@ async def test_retirar_una_llave_sign_sin_firmas_sigue_como_hoy(migracion_lista:
             await retire_key(sesion, vieja_id, confirmed_audit_blobs=0, actor=SYSTEM_USER_ID)
 
     assert await _estados(e) == [(1, "retired", "local"), (2, "active", "openbao")]
+
+
+# S5-D50: con CRYPTO_PROVIDER=openbao el worker no monta `keys` -----------------------------------
+
+SIN_VOLUMEN = "el worker no monta el volumen keys"
+
+
+async def test_switch_provider_a_local_con_openbao_se_rechaza_antes_de_tocar_la_base(
+    migracion_lista: Entorno, settings_prueba: Settings
+) -> None:
+    from app.core.crypto.sign_rotation import SignRotationError, switch_provider
+
+    e = migracion_lista
+    await sembrar_firmas(e)
+    v2 = await rotar_a_mano(e, (await _estados_ids(e))[0])
+    antes = await _estados(e)
+    ajustes = settings_prueba.model_copy(update={"CRYPTO_PROVIDER": "openbao"})
+
+    with actor_scope(SYSTEM_USER_ID):
+        async with e.fabrica() as sesion:
+            with pytest.raises(SignRotationError, match=SIN_VOLUMEN):
+                await switch_provider(
+                    sesion, ajustes, "audit.signature", "local", "x", SYSTEM_USER_ID
+                )
+
+    assert await _estados(e) == antes
+    assert v2 is not None
+
+
+async def _estados_ids(e: Entorno) -> list[UUID]:
+    async with e.fabrica() as sesion:
+        return list(
+            await sesion.scalars(
+                select(CryptoKey.id).where(CryptoKey.purpose == "sign").order_by(CryptoKey.version)
+            )
+        )
+
+
+def test_provider_rejection_solo_rechaza_local_con_openbao(settings_prueba: Settings) -> None:
+    from app.core.crypto.sign_rotation import provider_rejection
+
+    openbao = settings_prueba.model_copy(update={"CRYPTO_PROVIDER": "openbao"})
+
+    assert provider_rejection(openbao, "local") is not None
+    assert SIN_VOLUMEN in (provider_rejection(openbao, "local") or "")
+    assert provider_rejection(openbao, "openbao") is None
+    assert provider_rejection(settings_prueba, "local") is None
+    assert provider_rejection(settings_prueba, "openbao") is None

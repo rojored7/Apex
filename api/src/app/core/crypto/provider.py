@@ -98,11 +98,21 @@ ProviderResolver = Callable[[str], KeyProvider]
 def get_provider_named(settings: Settings, name: str) -> KeyProvider:
     """Proveedor de una fila (`crypto_keys.provider`); se construye al pedirlo (S5-D3, D131).
 
-    `get_key_provider` sigue siendo la fábrica solo de `local`; `openbao` valida su token al primer
-    uso, así que construirlo no toca la red ni el archivo.
+    `get_key_provider` es la fábrica del proveedor de arranque (solo `local`); `openbao` valida su
+    token al primer uso, así que construirlo no toca la red ni el archivo. `local` se construye
+    aunque `CRYPTO_PROVIDER` sea `openbao` (una fila `sign` local, S5-D50 punto 3): entonces la
+    KEK, que `retire-local-kek` pudo borrar, se exige al primer `wrap`/`unwrap`.
     """
     if name == "local":
-        return get_key_provider(settings)
+        if settings.CRYPTO_PROVIDER == "local":
+            return get_key_provider(settings)
+        from app.core.crypto.local_provider import LocalFileProvider  # evita el ciclo al importar
+
+        if settings.CRYPTO_LOCAL_KEK_PATH is None:
+            raise CryptoError("kek_missing", "CRYPTO_LOCAL_KEK_PATH no está definida")
+        return LocalFileProvider(
+            settings.CRYPTO_LOCAL_KEK_PATH, settings.CRYPTO_LOCAL_SIGNING_KEY_PATH, lazy_kek=True
+        )
     if name == "openbao":
         from app.core.crypto.openbao_provider import OpenBaoProvider  # confinado a core/crypto
 

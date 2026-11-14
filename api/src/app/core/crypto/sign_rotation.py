@@ -50,6 +50,20 @@ def not_rotatable(data_class: str, *, with_provider: bool) -> str | None:
     return None
 
 
+LOCAL_WITH_OPENBAO: Final = (
+    "con CRYPTO_PROVIDER=openbao el worker no monta el volumen keys (S5-D50): "
+    "la llave de firma solo puede ir a openbao"
+)
+
+
+def provider_rejection(settings: Settings, target: str) -> str | None:
+    """Rechazo por configuración (puro): con `CRYPTO_PROVIDER=openbao` el overlay del worker no
+    monta `keys`, así que una llave de firma `local` nueva no podría firmar (S5-D50)."""
+    if target == "local" and settings.CRYPTO_PROVIDER == "openbao":
+        return LOCAL_WITH_OPENBAO
+    return None
+
+
 def _destination(settings: Settings, name: str) -> provider_mod.KeyProvider:
     try:
         return provider_mod.get_provider_named(settings, name)
@@ -80,6 +94,8 @@ async def switch_provider(
     actor: UUID,
 ) -> CryptoKey:
     """Crea la versión siguiente en `target` y deja la activa en `decrypt_only` (1 transacción)."""
+    if (rechazo := provider_rejection(settings, target)) is not None:
+        raise SignRotationError(rechazo)
     async with session.begin():
         return await _rotate(session, settings, data_class, target, reason, actor)
 

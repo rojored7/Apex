@@ -40,7 +40,7 @@ Una clase que se cifra pero cuyos datos no están en columnas del registro (los 
 
 ## La llave de firma de la auditoría
 
-La llave `audit.signature` no se rota en sitio ni se recifra en v0.3 (S6-D69): solo se cambia de proveedor con `rotate-key audit.signature --provider <local|openbao> --reason "..." --as <correo>` (llave nueva; la anterior queda `decrypt_only` y sus firmas siguen verificando por su `key_id`). Detalle y casos de error en `rotar-llave.md` («La llave de firma de la auditoría») y `openbao.md` §12.
+La llave `audit.signature` no se rota en sitio ni se recifra en v0.3 (S6-D69): solo se cambia de proveedor con `rotate-key audit.signature --provider <local|openbao> --reason "..." --as <correo>` (llave nueva; la anterior queda `decrypt_only` y sus firmas siguen verificando por su `key_id`). Con `CRYPTO_PROVIDER=openbao`, `--provider local` no aplica (el worker no monta `keys`, S5-D50) y sale 2. Detalle y casos de error en `rotar-llave.md` («La llave de firma de la auditoría») y `openbao.md` §12.
 
 ## El CBOM: `GET /api/v1/crypto/cbom`
 
@@ -70,7 +70,7 @@ Los 409 de la ruta: `key_not_active`, `purpose_not_rotatable` (`index` y `sign` 
 
 ### Retirar sigue siendo del CLI
 
-`retire-key` no está en el api (el rol `apex_api` no puede dejar una llave en `retired`: lo frena el trigger). Además de las exigencias de siempre, el manifiesto de respaldo firmado debe ser POSTERIOR al `finished_at` de la rotación (S6-D74): si no, sale 2 con `backup_older_than_rotation` (un respaldo anterior no contiene lo recifrado). Corre `backup` y repite.
+`retire-key` no está en el api (el rol `apex_api` no puede dejar una llave en `retired`: lo frena el trigger). Antes y después de `retire-local-kek` la prueba de custodia difiere: con KEK local se pide el `verify-kek-backup` reciente; sin ella (son las TRES condiciones juntas: cero filas `encrypt|index` con proveedor `local` (en cualquier estado), el archivo `kek.bin` ausente y la entrada de auditoría que deja `retire-local-kek` (`{kek_local: retirada}` sobre `crypto.crypto_keys`). Una ausencia sola (ruta `CRYPTO_LOCAL_KEK_PATH` sin definir o distinta, volumen `keys` sin montar) no basta y el verify se sigue exigiendo; si el sistema de archivos no deja comprobar el archivo, cuenta como presente. `retire-key` repite la comprobación dentro de la transacción del retiro.) se pide el manifiesto con la instantánea de OpenBao verificada y presente en disco, y no el `verify-kek-backup` (que ya no puede dar `ok`). Además de las exigencias de siempre, el manifiesto de respaldo firmado debe ser POSTERIOR al `finished_at` de la rotación (S6-D74): si no, sale 2 con `backup_older_than_rotation` (un respaldo anterior no contiene lo recifrado). Corre `backup` y repite.
 
 ### Residuales de E6 y D61 (lo que un api comprometido podría hacer)
 

@@ -41,6 +41,7 @@ from tests.cli._apoyo_custodia import (
     TRIM_NO_LISTO,
     VERIFY_MALOS,
     base_ocupada,
+    con_retiro_de_la_kek,
     con_verify,
     ejecutar,
     manifiesto_bueno,
@@ -485,3 +486,97 @@ async def test_rotate_kek_con_el_candado_de_la_kek_tomado_sale_2(
     assert resultado.exit_code == 2, resultado.output
     assert OTRA_OPERACION in resultado.output
     assert custodia.transit.latest_version(KEK_REF) == 1
+
+
+# Tras retire-local-kek: sin KEK local la prueba es el manifiesto con instantánea ---------------
+
+
+async def _retirar_la_kek_local(settings: Settings, custodia: Entorno) -> None:
+    """El estado posterior a `retire-local-kek`: sin `kek.bin` y con su entrada de auditoría."""
+    assert settings.CRYPTO_LOCAL_KEK_PATH is not None
+    settings.CRYPTO_LOCAL_KEK_PATH.unlink()
+    await con_retiro_de_la_kek(custodia.fabrica)
+
+
+async def test_sin_kek_local_rota_con_el_manifiesto_con_instantanea_y_sin_verify(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await migrar_a_mano(custodia)
+    await _retirar_la_kek_local(settings_custodia, custodia)
+
+    resultado = _rotar(settings_custodia, monkeypatch, admin_custodia, manifiesto_bueno(tmp_path))
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "rotate-kek: llaves re-envueltas" in resultado.output
+    assert set(await _versiones(custodia)) == {2}
+
+
+@pytest.mark.parametrize("caso", list(MANIFIESTOS_MALOS.values()), ids=list(MANIFIESTOS_MALOS))
+async def test_sin_kek_local_un_manifiesto_sin_instantanea_valida_sale_2_y_no_rota(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caso: dict[str, Any],
+) -> None:
+    await migrar_a_mano(custodia)
+    await _retirar_la_kek_local(settings_custodia, custodia)
+
+    resultado = _rotar(
+        settings_custodia, monkeypatch, admin_custodia, manifiesto_bueno(tmp_path, **caso)
+    )
+
+    assert resultado.exit_code == 2, resultado.output
+    assert SIN_MANIFIESTO in resultado.output
+    assert custodia.transit.latest_version(KEK_REF) == 1
+
+
+async def test_con_el_archivo_de_la_kek_sin_verify_sigue_saliendo_2(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await migrar_a_mano(custodia)  # todas las filas en OpenBao, pero kek.bin sigue en disco
+
+    resultado = _rotar(settings_custodia, monkeypatch, admin_custodia, manifiesto_bueno(tmp_path))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output
+
+
+async def test_sin_archivo_ni_filas_locales_pero_sin_la_auditoria_del_retiro_exige_el_verify(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await migrar_a_mano(custodia)
+    assert settings_custodia.CRYPTO_LOCAL_KEK_PATH is not None
+    settings_custodia.CRYPTO_LOCAL_KEK_PATH.unlink()
+
+    resultado = _rotar(settings_custodia, monkeypatch, admin_custodia, manifiesto_bueno(tmp_path))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output
+    assert custodia.transit.latest_version(KEK_REF) == 1
+
+
+async def test_la_ruta_de_la_kek_en_none_sin_la_auditoria_exige_el_verify(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await migrar_a_mano(custodia)
+    ajustes = settings_custodia.model_copy(update={"CRYPTO_LOCAL_KEK_PATH": None})
+
+    resultado = _rotar(ajustes, monkeypatch, admin_custodia, manifiesto_bueno(tmp_path))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output

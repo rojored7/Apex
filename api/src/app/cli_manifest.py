@@ -2,7 +2,8 @@
 
 Capa de aplicación (como `cli_keyring.py`): la usan `retire-key`, `migrate-provider`, `rotate-kek` y
 `retire-local-kek`; desde S5-B2 también reúne las pruebas de custodia de esos tres (S5-D186):
-`custody_proofs` (verify-kek-backup reciente + manifiesto firmado con instantánea de OpenBao) y
+`custody_proofs` (verify-kek-backup reciente mientras haya KEK local + manifiesto firmado con
+instantánea de OpenBao) y
 `confirmation_error` (palabra escrita). Verifica la firma `minisign` por
 `bus.verified_manifest_bytes`,
 nunca con un binario. Solo la importan los archivos de `cli_ops/`.
@@ -20,13 +21,17 @@ from pathlib import Path
 from typing import Any, Final, Literal, NoReturn
 
 import typer
+from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import AuditEntry
 from app.core.config import Settings
 from app.core.crypto import service
 from app.core.crypto.bus import verified_manifest_bytes
 from app.core.crypto.file_digest import digest_file
+from app.core.crypto.kek_backup import local_kek_present
+from app.core.crypto.local_provider import kek_file_present
 from app.core.crypto.migration import MigrationInProgress, MigrationResult
 from app.core.crypto.service import RotationInProgress
 from app.core.db import DatabaseBusy, translate_busy
@@ -164,16 +169,65 @@ class CustodyRejected(Exception):
     """Falta una prueba de custodia; el mensaje es fijo y nunca trae texto del proveedor."""
 
 
-async def custody_proofs(
-    session: AsyncSession, settings: Settings, manifest: Path, *, now: datetime
-) -> ManifestCheck:
-    """H-1: un `verify-kek-backup` `ok` de una persona de menos de 24 h y, en este orden, un
-    manifiesto firmado, reciente, con la instantánea de OpenBao verificada y presente en disco.
-    Devuelve la revisión del manifiesto (el `--trim` usa su `created_at`)."""
+async def kek_local_retired(session: AsyncSession) -> bool:
+    """Existe la entrada de auditoría que deja `retire-local-kek` (`{kek_local: retirada}` sobre
+    `crypto.crypto_keys`); solo lectura."""
+    consulta = (
+        select(func.count())
+        .select_from(AuditEntry)
+        .where(
+            AuditEntry.action == "update",
+            AuditEntry.table_name == "crypto.crypto_keys",
+            AuditEntry.after["kek_local"].astext == "retirada",
+        )
+    )
+    return int(await session.scalar(consulta) or 0) > 0
+
+
+async def verify_required_in_transaction(
+    session: AsyncSession, settings: Settings, *, always: bool = False
+) -> bool:
+    """Como `verify_required`, dentro de una transacción ya abierta (la repite quien retira)."""
+    if always:
+        return True
+    if await local_kek_present(session, file_present=kek_file_present(settings)):
+        return True
+    return not await kek_local_retired(session)  # la ausencia sola no prueba que se retiró
+
+
+async def verify_required(
+    session: AsyncSession, settings: Settings, *, always: bool = False
+) -> bool:
+    """El único sitio que decide si la prueba de custodia incluye un `verify-kek-backup` reciente.
+
+    El verify solo deja de pedirse si se cumplen las TRES condiciones: cero filas `local`
+    `encrypt|index` (cualquier estado), sin archivo de KEK y con la auditoría que deja
+    `retire-local-kek`. Una ausencia sin esa auditoría (ruta `None`, otra ruta, volumen `keys` sin
+    montar) no basta. Entonces la KEK vive solo en OpenBao y la prueba es el manifiesto con
+    instantánea. `always` es el punto sin retorno (`retire-local-kek`): siempre se exige."""
+    if always:
+        return True
     async with session.begin():
-        verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
-    if not verificado:
-        raise CustodyRejected(NO_VERIFY)
+        return await verify_required_in_transaction(session, settings)
+
+
+async def custody_proofs(
+    session: AsyncSession,
+    settings: Settings,
+    manifest: Path,
+    *,
+    now: datetime,
+    always_verify: bool = False,
+) -> ManifestCheck:
+    """H-1: un `verify-kek-backup` `ok` de una persona de menos de 24 h (solo mientras exista una
+    KEK local o con `always_verify`; ver `verify_required`) y, en este orden, un manifiesto firmado,
+    reciente, con la instantánea de OpenBao verificada y presente en disco.
+    Devuelve la revisión del manifiesto (el `--trim` usa su `created_at`)."""
+    if await verify_required(session, settings, always=always_verify):
+        async with session.begin():
+            verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
+        if not verificado:
+            raise CustodyRejected(NO_VERIFY)
     pubkey = settings.BACKUP_SIGN_PUBKEY
     if pubkey is None:
         raise CustodyRejected(NO_SNAPSHOT_MANIFEST)

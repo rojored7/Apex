@@ -226,6 +226,44 @@ async def test_la_reversa_openbao_a_local_pasa_por_las_mismas_exigencias(
     assert {f.provider for f in await llaves_envueltas(custodia.fabrica)} == {"local"}
 
 
+async def test_sin_kek_local_y_con_la_auditoria_del_retiro_no_pide_el_verify(
+    settings_custodia: Settings,
+    custodia: Entorno,
+    admin_custodia: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hereda la excepción de `custody_proofs`: tras `retire-local-kek` basta el manifiesto con
+    instantánea. La reversa a `local` no tiene KEK con que envolver: falla por el proveedor, no por
+    `SIN_VERIFY`, y no escribe nada."""
+    from tests.cli._apoyo_custodia import SIN_VERIFY, con_retiro_de_la_kek
+
+    await migrar_a_mano(custodia)
+    assert settings_custodia.CRYPTO_LOCAL_KEK_PATH is not None
+    settings_custodia.CRYPTO_LOCAL_KEK_PATH.unlink()
+    await con_retiro_de_la_kek(custodia.fabrica)
+    antes = [f.provider for f in await llaves_envueltas(custodia.fabrica)]
+
+    resultado = ejecutar(
+        settings_custodia,
+        monkeypatch,
+        "migrate-provider",
+        "--from",
+        "openbao",
+        "--to",
+        "local",
+        "--as",
+        admin_custodia.email,
+        "--manifest",
+        str(manifiesto_bueno(tmp_path)),
+        "--yes",
+    )
+
+    assert SIN_VERIFY not in resultado.output
+    assert resultado.exit_code != 0, resultado.output
+    assert [f.provider for f in await llaves_envueltas(custodia.fabrica)] == antes
+
+
 # Argumentos ------------------------------------------------------------------------------------
 
 

@@ -172,3 +172,21 @@ async def candado_kek_tomado(engine: Any) -> Any:
             yield
         finally:
             await conexion.execute(text("SELECT pg_advisory_unlock(hashtext(:c))"), clave)
+
+
+async def con_retiro_de_la_kek(fabrica: Any) -> None:
+    """Deja la entrada de auditoría que escribe `retire-local-kek` al retirar la KEK local."""
+    from app.cli_base import unit_of_work
+    from app.core import audit
+
+    with unit_of_work(SYSTEM_USER_ID):
+        async with fabrica() as sesion, sesion.begin():
+            await audit.record(
+                sesion,
+                action="update",
+                table_name="crypto.crypto_keys",
+                record_id=None,
+                before=None,
+                after={"kek_local": "retirada"},
+                user_id=SYSTEM_USER_ID,
+            )

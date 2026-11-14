@@ -25,6 +25,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from app.core.config import Settings
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.provider import KeyInfo, ProviderStatus
 
@@ -46,6 +47,19 @@ def parse_wrapped(wrapped: bytes) -> tuple[bytes, bytes]:
     if len(cuerpo) < NONCE_LEN + TAG_LEN:
         raise CryptoError("unwrap_failed", "la envoltura es demasiado corta")
     return cuerpo[:NONCE_LEN], cuerpo[NONCE_LEN:]
+
+
+def kek_file_present(settings: Settings) -> bool:
+    """Hay un archivo en `CRYPTO_LOCAL_KEK_PATH`; no lo abre ni lee su contenido. Sin ruta
+    configurada es `False` (quien decide, `cli_manifest.verify_required`, no lo toma como prueba de
+    ausencia); si el sistema de archivos no deja comprobarlo (`OSError`) falla cerrado: `True`."""
+    ruta = settings.CRYPTO_LOCAL_KEK_PATH
+    if ruta is None:
+        return False
+    try:
+        return ruta.exists()
+    except OSError:
+        return True
 
 
 def check_key_file(path: Path, *, size: int, name: str) -> None:
@@ -71,14 +85,28 @@ def check_key_file(path: Path, *, size: int, name: str) -> None:
 class LocalFileProvider:
     """`KeyProvider` de v0.1. Carga la KEK y la semilla de firma en memoria al construirse."""
 
-    def __init__(self, kek_path: Path, signing_key_path: Path) -> None:
-        check_key_file(kek_path, size=KEK_LEN, name="KEK")
+    def __init__(self, kek_path: Path, signing_key_path: Path, *, lazy_kek: bool = False) -> None:
+        """Con `lazy_kek` la KEK se exige al primer `wrap`/`unwrap`, no al construir: es el modo de
+        una fila `sign` `local` con `CRYPTO_PROVIDER=openbao`, donde `retire-local-kek` pudo
+        borrarla (S5-D50). El proveedor de arranque `local` no lo usa: su KEK se comprueba al
+        construir."""
+        self._kek_path = kek_path
+        self._aead_cache: AESGCM | None = None if lazy_kek else self._load_kek()
         check_key_file(signing_key_path, size=SEED_LEN, name="llave de firma")
-        self._aead = AESGCM(kek_path.read_bytes())
         self._signing = Ed25519PrivateKey.from_private_bytes(signing_key_path.read_bytes())
         self._signing_created_at = datetime.fromtimestamp(signing_key_path.stat().st_mtime, UTC)
 
     name = PROVIDER_NAME
+
+    def _load_kek(self) -> AESGCM:
+        check_key_file(self._kek_path, size=KEK_LEN, name="KEK")
+        return AESGCM(self._kek_path.read_bytes())
+
+    @property
+    def _aead(self) -> AESGCM:
+        if self._aead_cache is None:
+            self._aead_cache = self._load_kek()
+        return self._aead_cache
 
     def __repr__(self) -> str:
         return "LocalFileProvider()"

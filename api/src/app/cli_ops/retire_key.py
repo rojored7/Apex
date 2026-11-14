@@ -1,7 +1,9 @@
 """`retire-key <key_id> --as <correo> --confirm-audit-blobs N [--manifest RUTA]` (S4B-B3b).
 
 `retired` es irreversible (S4B-D38, D63, D86). Antes de cambiar nada exige, en este orden:
-- un `verify-kek-backup` `ok` de una persona de menos de 24 h (`crypto_ops`);
+- con KEK local (`cli_manifest.verify_required`, que define «sin KEK local»), un
+  `verify-kek-backup` `ok` de una persona de menos de 24 h; sin ella el manifiesto debe traer la
+  instantánea de OpenBao verificada y en disco (`NO_SNAPSHOT_MANIFEST`), y se repite en el retiro;
 - un `latest.json` bajo `BACKUP_DIR` (sin enlaces) cuya firma `minisign` VERIFICA con
   `BACKUP_SIGN_PUBKEY` (por el bus, S5-D72; sin esa llave no se confía en ningún manifiesto),
   `verify == "ok"` y menos de 24 h: ausente, viejo, ilegible, sin firma, con firma mala o con
@@ -28,7 +30,7 @@ import typer
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import cli_base
+from app import cli_base, cli_manifest
 from app.cli_base import (
     RuntimeOptions,
     _run,
@@ -39,7 +41,7 @@ from app.cli_base import (
     runtime_options,
     unit_of_work,
 )
-from app.cli_manifest import recent_signed_manifest
+from app.cli_manifest import NO_SNAPSHOT_MANIFEST, recent_signed_manifest, verify_required
 from app.core import audit
 from app.core.clock import current_clock
 from app.core.config import Settings
@@ -78,22 +80,32 @@ async def _rotation_finished_at(session: AsyncSession, key_id: UUID) -> datetime
 
 async def _require_recent(
     session: AsyncSession, manifest: Path, settings: Settings, key_id: UUID
-) -> None:
-    async with session.begin():
-        verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
-    if not verificado:
-        reject(NO_VERIFY, COMMAND)
+) -> bool:
+    """Revisa las pruebas de custodia; devuelve si pidió el verify (`False` = sin KEK local)."""
+    # Sin KEK local la prueba es el manifiesto con instantánea, no el verify (ADR-005 punto 5).
+    con_verify = await verify_required(session, settings)
+    if con_verify:
+        async with session.begin():
+            verificado = await service.recent_kek_verify(session, within=service.KEK_VERIFY_WINDOW)
+        if not verificado:
+            reject(NO_VERIFY, COMMAND)
+    fallo = NO_MANIFEST if con_verify else NO_SNAPSHOT_MANIFEST
     pubkey = settings.BACKUP_SIGN_PUBKEY
     if pubkey is None:
-        reject(NO_MANIFEST, COMMAND)
+        reject(fallo, COMMAND)
     revision = recent_signed_manifest(
-        manifest, pubkey, now=current_clock().now_utc(), base=settings.BACKUP_DIR
+        manifest,
+        pubkey,
+        now=current_clock().now_utc(),
+        base=settings.BACKUP_DIR,
+        require_openbao_snapshot=not con_verify,
     )
     if not revision.ok:
-        reject(NO_MANIFEST, COMMAND)
+        reject(fallo, COMMAND)
     terminada = await _rotation_finished_at(session, key_id)
     if terminada is not None and (revision.created_at is None or revision.created_at <= terminada):
         reject(OLDER_BACKUP, COMMAND)
+    return con_verify
 
 
 async def _count(session: AsyncSession, key_id: UUID) -> tuple[int, int]:
@@ -107,9 +119,20 @@ async def _count(session: AsyncSession, key_id: UUID) -> tuple[int, int]:
     return filas, blobs
 
 
-async def _retire(session: AsyncSession, key_id: UUID, confirmed: int, actor_id: UUID) -> None:
+async def _retire(
+    session: AsyncSession,
+    key_id: UUID,
+    confirmed: int,
+    actor_id: UUID,
+    settings: Settings,
+    sin_verify: bool,
+) -> None:
     try:
         async with session.begin():
+            # Se repite DENTRO de la transacción del retiro: si la KEK local reapareció desde la
+            # revisión (restore-kek, una migración inversa), el verify vuelve a ser obligatorio.
+            if sin_verify and await cli_manifest.verify_required_in_transaction(session, settings):
+                reject(NO_VERIFY, COMMAND)
             blobs = await service.retire_key(
                 session, key_id, confirmed_audit_blobs=confirmed, actor=actor_id
             )
@@ -138,14 +161,14 @@ async def _retire_flow(
     async with crypto_runtime(settings, options) as session:
         async with session.begin():
             actor_id = await resolve_admin_actor(session, actor, required=True)
-        await _require_recent(session, manifest, settings, key_id)
+        con_verify = await _require_recent(session, manifest, settings, key_id)
         filas, blobs = await _count(session, key_id)
         if filas:
             reject("quedan filas de negocio con esa llave; termine la rotación antes", COMMAND)
         if confirmed != blobs:
             reject("--confirm-audit-blobs no coincide con audit_blobs", COMMAND)
         with unit_of_work(actor_id):
-            await _retire(session, key_id, confirmed, actor_id)
+            await _retire(session, key_id, confirmed, actor_id, settings, not con_verify)
 
 
 def register(app: typer.Typer) -> None:

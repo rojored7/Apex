@@ -25,6 +25,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core import db
+from app.core.audit import AuditEntry
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import oplog
@@ -35,7 +36,7 @@ from app.core.crypto.models import CryptoKey, CryptoOp
 from app.core.crypto.registry import REGISTRY, DataClassSpec, override_registry
 from app.core.crypto.secret import Secret
 from app.core.crypto.types import install_crypto_type_listeners
-from tests.conftest import LIMPIAR_LLAVES
+from tests.conftest import LIMPIAR_LLAVES, LIMPIAR_VERIFICATIONS
 from tests.crypto.models_fixture import SCHEMA, CryptoTestPerson
 from tests.factories.backup import make_backup_dir
 from tests.factories.minisign_signer import make_signing_key, write_signature
@@ -61,6 +62,25 @@ def registro_de_rotacion() -> dict[str, DataClassSpec]:
     }
 
 
+async def _ultima_seq(engine: AsyncEngine) -> int:
+    async with engine.connect() as conn:
+        return int(await conn.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0))) or 0)
+
+
+async def _limpiar_auditoria_desde(engine: AsyncEngine, ultima_seq: int) -> None:
+    """Las filas de `audit_log` que la prueba confirmó (por ejemplo la `update` de
+    `switch_provider`): sin esto la siguiente prueba que espera una cadena vacía
+    (`tests/worker/test_sign_audit_job.py`) firma lo que quedó (S6-D138). Las firmas ya caen
+    con `LIMPIAR_LLAVES`; las verificaciones, antes que la cadena."""
+    async with engine.begin() as conn:
+        await conn.execute(text(LIMPIAR_VERIFICATIONS))
+        await conn.execute(text(disable_user_sql("audit.audit_log")))
+        await conn.execute(
+            text("DELETE FROM audit.audit_log WHERE seq > :seq"), {"seq": ultima_seq}
+        )
+        await conn.execute(text(rearm_always_sql("audit.audit_log")))
+
+
 async def _limpiar_rotacion(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.execute(text(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE"))
@@ -81,6 +101,7 @@ async def rotacion_lista(
     oplog.install_oplog_listeners()
     configure_keyring(None)
     await _limpiar_rotacion(engine)
+    ultima_seq = await _ultima_seq(engine)
     async with engine.begin() as conn:
         await conn.execute(text(f"CREATE SCHEMA {SCHEMA}"))
         await conn.run_sync(lambda c: CryptoTestPerson.__table__.create(c))
@@ -100,6 +121,7 @@ async def rotacion_lista(
         oplog.reset_buffer()
         configure_keyring(None)
         await _limpiar_rotacion(engine)
+        await _limpiar_auditoria_desde(engine, ultima_seq)
 
 
 async def filas_rotacion(session: AsyncSession, n: int = FILAS_ROTACION) -> list[UUID]:

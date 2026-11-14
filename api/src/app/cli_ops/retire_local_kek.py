@@ -92,7 +92,7 @@ async def _retire(settings: Settings, opciones: RuntimeOptions, p: Pedido) -> No
                     return
                 try:
                     now = current_clock().now_utc()
-                    await custody_proofs(session, settings, p.manifest, now=now)
+                    await custody_proofs(session, settings, p.manifest, now=now, always_verify=True)
                 except CustodyRejected as error:
                     reject(str(error), COMMAND)
                 if (rechazo := confirmation_error("RETIRAR", yes=p.yes)) is not None:

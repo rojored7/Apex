@@ -39,8 +39,14 @@ from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID
 from app.core.crypto.models import CryptoKey
 from tests.cli._apoyo import correr
+from tests.cli._apoyo_custodia import con_retiro_de_la_kek
 from tests.conftest import CLAVE_PRUEBA
-from tests.crypto._migracion import migracion_lista  # noqa: F401
+from tests.crypto._migracion import (
+    Entorno,
+    manifiesto_con_snapshot,
+    migracion_lista,  # noqa: F401
+    migrar_a_mano,
+)
 from tests.crypto._rotacion import (
     LLAVE_RETIRO,
     Fabrica,
@@ -716,3 +722,140 @@ async def test_el_orden_de_las_exigencias_pone_el_manifiesto_posterior_despues_d
     assert resultado.exit_code == 2, resultado.output
     assert SIN_MANIFIESTO in resultado.output
     assert "backup_older_than_rotation" not in resultado.output
+
+
+# Tras retire-local-kek: la prueba de custodia es el manifiesto con instantánea ------------------
+
+SIN_INSTANTANEA = (
+    "no hay un latest.json reciente con firma e instantánea de OpenBao verificada en "
+    "/data/backups (verify: ok)"
+)
+
+
+async def _solo_openbao(custodia: Entorno, settings: Settings, *, borrar_kek: bool) -> Settings:
+    """Todas las DEK `encrypt|index` en OpenBao y `CRYPTO_PROVIDER=openbao`; con `borrar_kek`, sin
+    `kek.bin` (el estado posterior a `retire-local-kek`)."""
+    await migrar_a_mano(custodia)
+    if borrar_kek:
+        assert settings.CRYPTO_LOCAL_KEK_PATH is not None
+        settings.CRYPTO_LOCAL_KEK_PATH.unlink()
+        await con_retiro_de_la_kek(custodia.fabrica)
+    return settings.model_copy(
+        update={"CRYPTO_PROVIDER": "openbao", "OPENBAO_TOKEN_FILE": custodia.token_file}
+    )
+
+
+async def test_sin_kek_local_y_con_instantanea_retira_sin_un_verify(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=True)
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2")
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "retire-key: llave retirada" in resultado.output
+    assert await _estado(custodia.fabrica) == [(1, "retired"), (2, "active")]
+
+
+async def test_sin_kek_local_y_sin_instantanea_rechaza_y_no_retira(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=True)
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2", snapshot=False)
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 2, resultado.output
+    assert SIN_INSTANTANEA in resultado.output
+    await _sin_retirar(custodia.fabrica)
+
+
+async def test_sin_kek_local_con_un_manifiesto_anterior_a_la_rotacion_sigue_rechazando(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=True)
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2", antiguedad=timedelta(hours=8))
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 2 and "backup_older_than_rotation" in resultado.output
+    await _sin_retirar(custodia.fabrica)
+
+
+async def test_con_el_archivo_de_la_kek_aunque_las_filas_esten_en_openbao_exige_el_verify(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=False)
+    assert ajustes.CRYPTO_LOCAL_KEK_PATH is not None and ajustes.CRYPTO_LOCAL_KEK_PATH.is_file()
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2")
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output
+    await _sin_retirar(custodia.fabrica)
+
+
+async def test_sin_kek_local_pero_sin_la_auditoria_del_retiro_exige_el_verify(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El archivo ausente solo (volumen sin montar, otra ruta) no prueba que se retiró la KEK."""
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=False)
+    assert ajustes.CRYPTO_LOCAL_KEK_PATH is not None
+    ajustes.CRYPTO_LOCAL_KEK_PATH.unlink()
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2")
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output
+    await _sin_retirar(custodia.fabrica)
+
+
+async def test_si_la_kek_local_reaparece_antes_de_retirar_se_rechaza_dentro_de_la_transaccion(
+    custodia: Entorno,
+    settings_custodia: Settings,
+    rotada: dict[str, Any],
+    admin: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """La comprobación se repite en la transacción del retiro (carrera con otra operación)."""
+    from app.cli_ops import retire_key as retire_key_mod
+
+    ajustes = await _solo_openbao(custodia, settings_custodia, borrar_kek=True)
+    manifiesto = manifiesto_con_snapshot(tmp_path / "respaldos-b2")
+
+    async def reaparecio(*_a: object, **_k: object) -> bool:
+        return True
+
+    monkeypatch.setattr(retire_key_mod.cli_manifest, "verify_required_in_transaction", reaparecio)
+
+    resultado = _retirar(ajustes, monkeypatch, *_todo_en_orden(rotada["v1"], admin, manifiesto))
+
+    assert resultado.exit_code == 2 and SIN_VERIFY in resultado.output
+    await _sin_retirar(custodia.fabrica)

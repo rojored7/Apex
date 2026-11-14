@@ -303,3 +303,24 @@ async def test_en_produccion_sin_as_sale_2(
 def test_rotate_key_py_sigue_bajo_260_lineas() -> None:
     ruta = Path(__file__).resolve().parents[2] / "src" / "app" / "cli_ops" / "rotate_key.py"
     assert len(ruta.read_text(encoding="utf-8").splitlines()) < 260
+
+
+async def test_provider_local_con_openbao_sale_2_con_el_mensaje_fijo_y_no_toca_nada(
+    custodia: Entorno, settings_custodia: Settings, admin: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S5-D50: con el overlay openbao el worker no monta `keys`: la firma solo va a openbao."""
+    await sembrar_firmas(custodia)
+    assert _rotar(settings_custodia, monkeypatch, *_a("openbao", admin)).exit_code == 0
+    antes = [(k.version, k.state, k.provider) for k in await llaves_sign(custodia.fabrica)]
+    firmas = await instantanea_firmas(custodia.fabrica)
+    ajustes = settings_custodia.model_copy(
+        update={"CRYPTO_PROVIDER": "openbao", "OPENBAO_TOKEN_FILE": Path("token-de-prueba")}
+    )
+
+    resultado = _rotar(ajustes, monkeypatch, *_a("local", admin))
+
+    assert resultado.exit_code == 2, resultado.output
+    assert "el worker no monta el volumen keys" in resultado.output
+    assert "solo puede ir a openbao" in resultado.output
+    assert [(k.version, k.state, k.provider) for k in await llaves_sign(custodia.fabrica)] == antes
+    assert await instantanea_firmas(custodia.fabrica) == firmas

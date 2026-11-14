@@ -16,7 +16,7 @@ from typing import Final
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto.archive import VerifyKekResult
@@ -70,6 +70,21 @@ def verify_wrapped(
         kek[:] = bytes(len(kek))
         if current is not None:
             current[:] = bytes(len(current))
+
+
+async def local_kek_present(session: AsyncSession, *, file_present: bool) -> bool:
+    """Existe una KEK local: el archivo `kek.bin` (`file_present`) o alguna fila `encrypt|index`
+    con `provider = 'local'` (cualquier estado, como `load_wrapped`). Las filas `sign` locales
+    guardan una referencia a la semilla y no se envuelven con la KEK: no cuentan. Sin KEK local la
+    KEK vive solo en OpenBao (ADR-005) y la prueba de custodia es la instantánea del respaldo."""
+    if file_present:
+        return True
+    consulta = (
+        select(func.count())
+        .select_from(CryptoKey)
+        .where(CryptoKey.provider == "local", CryptoKey.purpose.in_(("encrypt", "index")))
+    )
+    return int(await session.scalar(consulta) or 0) > 0
 
 
 async def load_wrapped(session: AsyncSession) -> list[WrappedDek]:

@@ -41,7 +41,12 @@ from app.core.crypto import rotate_job, service
 from app.core.crypto.errors import CryptoError
 from app.core.crypto.models import CryptoJob
 from app.core.crypto.registry import get_spec
-from app.core.crypto.sign_rotation import SignRotationError, not_rotatable, switch_provider
+from app.core.crypto.sign_rotation import (
+    SignRotationError,
+    not_rotatable,
+    provider_rejection,
+    switch_provider,
+)
 
 COMMAND = "rotate-key"
 AUDIT_TABLE = "crypto.crypto_keys"
@@ -200,6 +205,8 @@ def register(app: typer.Typer) -> None:
         if (rechazo := production_guard_error(settings, opciones, actor)) is not None:
             reject(rechazo, COMMAND)
         limpio = _check_arguments(data_class, reason, index, batch_size, provider)
+        if provider and (rechazo := provider_rejection(settings, provider)) is not None:
+            reject(rechazo, COMMAND)  # antes de abrir la base (S5-D50)
         try:
             _run(
                 _rotate(settings, opciones, data_class, limpio, actor, index, batch_size, provider)

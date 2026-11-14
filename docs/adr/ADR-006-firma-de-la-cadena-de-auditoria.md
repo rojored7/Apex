@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptado el 2026-11-11 (Sprint 6, v0.3; S6-D4, S6-D34, S6-D49, S6-D51, S6-D62, S6-D69 y S6-D81). El formato del payload firmado es irreversible con datos reales: cambiar un solo byte invalida todas las firmas ya guardadas en `audit.signatures`. Cambiarlo, o cambiar el algoritmo, la clave que firma o la forma de verificar, exige detenerse y preguntar.
+Aceptado el 2026-11-11 (Sprint 6, v0.3; S6-D4, S6-D34, S6-D49, S6-D51, S6-D62, S6-D69 y S6-D81). Precisado el 2026-11-14 con autorización del usuario (S6-D142): `--provider local` solo con `CRYPTO_PROVIDER=local` y el residual del volumen `keys` en el api; ninguna regla de firma ni de verificación cambia. El formato del payload firmado es irreversible con datos reales: cambiar un solo byte invalida todas las firmas ya guardadas en `audit.signatures`. Cambiarlo, o cambiar el algoritmo, la clave que firma o la forma de verificar, exige detenerse y preguntar.
 
 ## Contexto
 
@@ -40,7 +40,7 @@ Vector de referencia (la fila es la de ADR-004; la prueba reconstruye el payload
 
 **Algoritmo y llave.** Ed25519 es el único algoritmo de firma en v0.3. La clase `audit.signature` tiene llave propia (propósito `sign`, nunca compartida con una clase `encrypt`). Con el proveedor `openbao` la firma la hace Transit (`apex-sign-audit`, no exportable); con `local` la hace el archivo `custody/sign-ed25519.key`. `audit.signatures` guarda `algorithm` por fila, de modo que `SIGNATURE_ALGS` conserva `ML-DSA-65` para EP-26 sin migración.
 
-**Quién firma y cuándo.** Solo el worker (política de Transit `sign`), en el job nocturno `sign_audit`. El api solo tiene `verify`.
+**Quién firma y cuándo.** Solo el worker (política de Transit `sign`), en el job nocturno `sign_audit`. El api solo tiene `verify` en la política de Transit. Residual con `CRYPTO_PROVIDER=local`: el api monta el volumen `keys` entero en solo lectura, incluida `custody/sign-ed25519.key`, y la barrera real es el grant (ningún llamador de `sign_latest` fuera del worker y el CLI, `tests/architecture/test_audit_sign_callers.py`); montar en el api solo `custody/kek.bin` y `jwt/` queda para el Sprint 7 (S6-D133).
 
 **Verificación incremental antes de firmar (H-1).** Firmar el hash de la última fila a ciegas daría fe de una cadena que quizá ya fue reescrita. Antes de firmar, `sign_audit` toma como ancla la última fila firmada (`last_signed_seq`) y recorre el tramo sin firmar recalculando `prev_hash` y `hash` con el serializador canónico (solo lectura; `core/audit.py` no cambia). Si el tramo no cuadra no firma: termina con `JobResult(ok=False)` y la alerta `audit_chain_broken` con `through_seq`.
 
@@ -48,7 +48,7 @@ Vector de referencia (la fila es la de ADR-004; la prueba reconstruye el payload
 
 **Qué prueba una firma válida.** Que, al momento de firmar, la cadena de hashes hasta `through_seq` coincidía con la firmada por la llave de firma, y que desde entonces ninguna fila hasta `through_seq` cambió. **Qué no prueba:** (1) `signed_at` es informativa; no hay sello de tiempo externo, así que no demuestra cuándo se hizo una acción, solo que existía antes de la firma; (2) no protege filas posteriores a la última firma (el tramo entre firmas queda cubierto solo por la cadena); (3) no resiste a quien obtenga la llave de firma, ni al operador que controle el worker y la custodia a la vez; (4) no prueba que el contenido de cada acción fuera legítimo, solo que no se alteró.
 
-**Rotación de la llave de firma.** En v0.3 la llave no se rota «en sitio» ni se recifra: una firma es inmutable. Cambiar de proveedor es una llave nueva: `rotate-key audit.signature --provider <local|openbao>` inserta la fila `version + 1` `active` con la referencia y la clave pública del proveedor destino y deja la anterior en `decrypt_only`. `migrate-provider` excluye las filas `sign` (sale 2 `signatures_reference_key`) porque la llave no viaja entre proveedores. `retire-key` rechaza una llave `sign` mientras existan firmas que la referencien. Pasar a ML-DSA-65 u otro algoritmo, y la rotación dentro del mismo proveedor (otra llave Transit con otro nombre), llegan con EP-26 con el mismo mecanismo (fila nueva, `payload_version` y `alg` por firma) y no tienen fecha en v0.3.
+**Rotación de la llave de firma.** En v0.3 la llave no se rota «en sitio» ni se recifra: una firma es inmutable. Cambiar de proveedor es una llave nueva: `rotate-key audit.signature --provider <local|openbao>` (`local` solo con `CRYPTO_PROVIDER=local`: con `compose.openbao.yml` el worker no monta `keys`, S5-D50, y el comando sale 2 antes de abrir la base, S6-D136) inserta la fila `version + 1` `active` con la referencia y la clave pública del proveedor destino y deja la anterior en `decrypt_only`. `migrate-provider` excluye las filas `sign` (sale 2 `signatures_reference_key`) porque la llave no viaja entre proveedores. `retire-key` rechaza una llave `sign` mientras existan firmas que la referencien. Pasar a ML-DSA-65 u otro algoritmo, y la rotación dentro del mismo proveedor (otra llave Transit con otro nombre), llegan con EP-26 con el mismo mecanismo (fila nueva, `payload_version` y `alg` por firma) y no tienen fecha en v0.3.
 
 ## Alternativas descartadas
 

@@ -14,6 +14,7 @@ Tercera versión desplegable: cadena de auditoría firmada cada noche, pantalla 
 ### Sprint 6 · Auditoría firmada (EP-17)
 - Firma Ed25519 de la cadena de auditoría por el worker a las 07:00 (`audit.signatures`, append-only, migraciones 0021 y 0022), con verificación incremental antes de firmar (H-1) y anti-retroceso; el api solo verifica, con la clave pública guardada en `crypto_keys` (funciona con el custodio sellado, S6-D81).
 - `sign-audit` y `--run-once sign_audit`; alerta `audit_sign_late` por firma atrasada; `rotate-key audit.signature --provider local|openbao` cambia de proveedor creando una llave nueva.
+- ADR-006 precisado (S6-D142): `--provider local` solo con `CRYPTO_PROVIDER=local` y residual del volumen `keys` en el api declarado.
 - Front: estado de la firma en Auditoría («Íntegra», «Alterada», «Firma atrasada», «Sin firmas») y verificación con firmas.
 
 ### Sprint 6 · Administración de llaves (EP-18)
@@ -40,7 +41,6 @@ Tercera versión desplegable: cadena de auditoría firmada cada noche, pantalla 
 - Montar en el api solo `custody/kek.bin` y `jwt/` (hoy ve la llave privada de firma local en solo lectura; la barrera es el grant).
 - Brechas de contrato del front: `uploaded_by_name`, versión de la política legible para el coach, plazo de rotación para «Rotación vencida» (BRECHAS §14.10, 14.12, 14.15).
 - Demo en vivo de la ida y vuelta de la llave de firma entre proveedores (local → openbao → local): hoy solo por pruebas con `FakeTransit` y `openbao-smoke` (S6-D139).
-- Cambiar ADR-006 para decir que `--provider local` solo aplica con `CRYPTO_PROVIDER=local` (propuesto en S6-D136, pendiente de autorización del usuario).
 
 ## [0.2.0]
 

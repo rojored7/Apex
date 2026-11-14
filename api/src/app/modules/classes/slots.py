@@ -165,10 +165,11 @@ async def update_slot(session: AsyncSession, slot_id: UUID, patch: SlotPatch, by
     await _lock(session)
     slot = await _locked_slot(session, slot_id)
     valores = _merged(slot, patch)
-    valores["weekdays"] = normalize_weekdays(valores["weekdays"])
+    # Mismo criterio que el alta: se valida lo recibido (días repetidos dan 422) y luego se ordena.
     validate_slot(
         valores["weekdays"], valores["start_time"], valores["duration_min"], valores["capacity"]
     )
+    valores["weekdays"] = normalize_weekdays(valores["weekdays"])
     if "default_coach_id" in patch.model_fields_set:
         await _ensure_coach(session, valores["default_coach_id"])
     cambios = {c: v for c, v in valores.items() if getattr(slot, c) != v}

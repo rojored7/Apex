@@ -174,7 +174,12 @@ async def _run_startup_steps(settings: Settings) -> None:
 
 def _forbid_exposed_signing_key() -> None:
     """S7-D23 (2): el api no arranca si ve la semilla de firma (sin ruta ni contenido en el log)."""
-    if signing_key_exposed():
+    try:
+        expuesta = signing_key_exposed()
+    except OSError as error:  # falla cerrado (S7-W0-3b, M-1): no se puede probar que no está
+        logger.error("signing_key_exposure_unverifiable: %s", type(error).__name__)
+        raise StartupError("signing_key_exposure_unverifiable") from error
+    if expuesta:
         logger.error("signing_key_exposed")
         raise StartupError("signing_key_exposed")
 

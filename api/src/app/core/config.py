@@ -491,6 +491,7 @@ class Settings(BaseSettings):
             self.CRYPTO_LOCAL_SIGNING_KEY_PATH,
             self.CRYPTO_LOCAL_KEK_PATH,
             self.JWT_PRIVATE_KEY_PATH,
+            self.JWT_PUBLIC_KEY_PATH,
         )
         if invalidas:
             raise ConfigError(missing=[], invalid=invalidas)
@@ -759,7 +760,9 @@ def missing_secrets(
     signing_key: bool = False,
 ) -> list[str]:
     """Nombres de variable cuyo secreto o archivo falta (nunca valores), ordenados. La llave de
-    firma solo se exige con `signing_key=True` (worker y tools; el api no la ve, S7-D23 (5))."""
+    firma solo se exige con `signing_key=True`: el api nunca lo pide (no la ve, S7-D23 (5)). Hoy
+    nadie lo pasa en producción: worker y tools fallan al abrir el proveedor con
+    `with_signing=True` si falta la semilla (S7-W0-3b, L-2)."""
     faltan: list[str] = []
     dsn = settings.DATABASE_URL.get_secret_value()
     if "@" not in dsn or ":" not in dsn.split("@", 1)[0].split("://", 1)[-1]:

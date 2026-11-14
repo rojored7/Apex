@@ -195,8 +195,9 @@ main() {
     die2 "CRYPTO_LOCAL_SIGNING_KEY_PATH en $ENV_FILE está vacía: borre la línea (docs/operacion/actualizar.md, paso 6)"
   fi
   v="$(valor "$ENV_FILE" CRYPTO_LOCAL_SIGNING_KEY_PATH)"
-  if [ -n "$v" ] && [[ "$v" != */sign/* ]]; then
-    die2 "CRYPTO_LOCAL_SIGNING_KEY_PATH en $ENV_FILE apunta fuera de sign/ ($v): borre la línea (docs/operacion/actualizar.md, paso 6)"
+  if [ -n "$v" ] && { [[ "$v" != /* ]] || [[ "$v" == */../* || "$v" == */.. || "$v" == */./* ]] || [[ "$v" != */sign/* ]]; }; then
+    # S7-W0-3b (L-3): también se rechazan las relativas y `..` (`/run/apex/keys/sign/../custody/x` pasaba `*/sign/*`).
+    die2 "CRYPTO_LOCAL_SIGNING_KEY_PATH en $ENV_FILE no es una ruta absoluta bajo sign/ sin '..' ($v): borre la línea (docs/operacion/actualizar.md, paso 6)"
   fi
   local k
   local -a pw_names=(POSTGRES_PASSWORD APEX_API_DB_PASSWORD APEX_WORKER_DB_PASSWORD APEX_BACKUP_DB_PASSWORD)

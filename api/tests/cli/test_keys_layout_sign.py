@@ -189,3 +189,61 @@ def test_sign_queda_en_700_y_la_llave_en_600(tmp_path: Path) -> None:
 
     assert stat.S_IMODE((raiz / "sign").stat().st_mode) == 0o700
     assert stat.S_IMODE((raiz / "sign" / "sign-ed25519.key").stat().st_mode) == 0o600
+
+
+# S7-W0-3b (L-1): la comprobación y el movimiento son una sola operación ----------------------
+
+
+def test_un_destino_que_aparece_tras_la_comprobacion_no_se_pisa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Carrera entre dos `tools`: el conflicto se decidió antes y el destino aparece después."""
+    from app.cli_ops import keys_layout
+
+    raiz = _escribir(
+        tmp_path / "keys",
+        {"custody/sign-ed25519.key": SEMILLA, "sign/sign-ed25519.key": b"otra-semilla"},
+    )
+    monkeypatch.setattr(keys_layout, "_es_conflicto", lambda *_a: False)
+
+    informe = migrate_layout(raiz)
+
+    assert (raiz / "sign" / "sign-ed25519.key").read_bytes() == b"otra-semilla"
+    assert (raiz / "custody" / "sign-ed25519.key").read_bytes() == SEMILLA
+    assert informe.conflicts == ("sign-ed25519.key",)
+
+
+def test_una_subcarpeta_enlace_es_conflicto_y_no_se_mueve_nada(tmp_path: Path) -> None:
+    raiz = _escribir(tmp_path / "keys", {"custody/sign-ed25519.key": SEMILLA})
+    fuera = tmp_path / "fuera"
+    fuera.mkdir()
+    try:
+        (raiz / "sign").symlink_to(fuera, target_is_directory=True)
+    except OSError:
+        pytest.skip("sin permiso para crear enlaces simbólicos")
+
+    informe = migrate_layout(raiz)
+
+    assert informe.conflicts and not informe.moved
+    assert list(fuera.iterdir()) == []
+    assert (raiz / "custody" / "sign-ed25519.key").read_bytes() == SEMILLA
+
+
+def test_las_subcarpetas_existentes_se_reponen_en_700(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`mkdir(exist_ok=True)` no cambia el modo de una carpeta que ya existía."""
+    raiz = _escribir(tmp_path / "keys", {"custody/sign-ed25519.key": SEMILLA})
+    (raiz / "sign").mkdir()
+    llamadas: list[tuple[str, int]] = []
+    real = os.chmod
+
+    def espia(ruta: object, modo: int, *a: object, **k: object) -> None:
+        llamadas.append((Path(str(ruta)).name, modo))
+        real(ruta, modo, *a, **k)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "chmod", espia)
+
+    migrate_layout(raiz)
+
+    assert ("sign", 0o700) in llamadas

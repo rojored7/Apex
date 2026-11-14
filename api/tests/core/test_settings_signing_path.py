@@ -81,3 +81,58 @@ def test_firma_en_sign_es_valida(tmp_path: Path) -> None:
     )
 
     assert ajustes.CRYPTO_LOCAL_SIGNING_KEY_PATH.parent.name == "sign"
+
+
+# S7-W0-3b (M-2): solo rutas absolutas, sin `..`, fuera de las carpetas que monta el api ----
+
+
+@pytest.mark.parametrize(
+    "ruta",
+    [
+        "sign/sign-ed25519.key",  # relativa
+        "/run/apex/keys/sign/../custody/sign-ed25519.key",  # `..` que sale de sign/
+        "/run/apex/keys/sign/../jwt/sign-ed25519.key",
+    ],
+)
+def test_rutas_relativas_o_con_punto_punto_fallan(tmp_path: Path, ruta: str) -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        _cargar(
+            tmp_path,
+            CRYPTO_LOCAL_KEK_PATH=KEK,
+            JWT_PRIVATE_KEY_PATH=JWT,
+            CRYPTO_LOCAL_SIGNING_KEY_PATH=ruta,
+        )
+
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" in excinfo.value.invalid
+
+
+@pytest.mark.parametrize("carpeta", ["custody", "jwt"])
+def test_con_openbao_las_carpetas_fijas_del_api_siguen_prohibidas(
+    tmp_path: Path, carpeta: str
+) -> None:
+    """Con `CRYPTO_LOCAL_KEK_PATH=None` el validador no miraba `custody/`, que `compose.openbao.yml`
+    monta en el api."""
+    with pytest.raises(ConfigError) as excinfo:
+        _cargar(
+            tmp_path,
+            CRYPTO_PROVIDER="openbao",
+            CRYPTO_LOCAL_KEK_PATH=None,
+            JWT_PRIVATE_KEY_PATH=JWT,
+            OPENBAO_TOKEN_FILE="/run/apex/openbao/token",  # noqa: S106
+            CRYPTO_LOCAL_SIGNING_KEY_PATH=f"/run/apex/keys/{carpeta}/sign-ed25519.key",
+        )
+
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" in excinfo.value.invalid
+
+
+def test_la_carpeta_de_la_llave_publica_jwt_tambien_esta_prohibida(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        _cargar(
+            tmp_path,
+            CRYPTO_LOCAL_KEK_PATH=KEK,
+            JWT_PRIVATE_KEY_PATH=JWT,
+            JWT_PUBLIC_KEY_PATH="/otra/carpeta-jwt/jwt.pub",
+            CRYPTO_LOCAL_SIGNING_KEY_PATH="/otra/carpeta-jwt/sign-ed25519.key",
+        )
+
+    assert "CRYPTO_LOCAL_SIGNING_KEY_PATH" in excinfo.value.invalid

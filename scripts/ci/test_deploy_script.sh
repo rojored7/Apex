@@ -325,6 +325,13 @@ caso_2 "test_firma_con_linea_vacia_aborta" -- $(buenos)
 assert_contains "la línea vacía pide borrarla" "$OUT" "está vacía"
 mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH /run/apex/keys/sign/sign-ed25519.key; d -- $(buenos)
 assert_eq "test_firma_en_sign_pasa" 0 "$RC"
+# S7-W0-3b (L-3): `..` y las rutas relativas se rechazan aunque contengan `/sign/`.
+mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH /run/apex/keys/sign/../custody/sign-ed25519.key
+caso_2 "test_firma_con_punto_punto_aborta" -- $(buenos)
+assert_contains "el punto punto nombra la variable" "$OUT" "CRYPTO_LOCAL_SIGNING_KEY_PATH"
+mk_repo; set_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH keys/sign/sign-ed25519.key
+caso_2 "test_firma_relativa_aborta" -- $(buenos)
+assert_contains "la relativa nombra la variable" "$OUT" "CRYPTO_LOCAL_SIGNING_KEY_PATH"
 # La preverificación de v0.3 sobre el mismo .env sin la línea (deploy.sh de la etiqueta, con los falsos).
 if git cat-file -e v0.3.0:infra/deploy.sh 2> /dev/null; then
   mk_repo; git show v0.3.0:infra/deploy.sh > "$R/infra/deploy.sh"; drop_var .env CRYPTO_LOCAL_SIGNING_KEY_PATH

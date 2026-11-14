@@ -92,3 +92,26 @@ Seis hallazgos de la revisión (0 CRITICAL, 0 HIGH, 2 MEDIUM, 4 LOW).
 - L5 docstring de `0023_attachments.py` revertido al de `6481d43^` (la explicación queda en el docstring de `0025`).
 - L6 `tests/conftest.py`: `LIMPIAR_LLAVES_DE_ADJUNTO` (borra `prueba.adjunto` con triggers apagados y rearmados en ALWAYS) dentro de `limpiar_tras_dos_sesiones`, tras los adjuntos.
 - `test_env_isolation.sh` (11 fallas de variables contra desarrollo): NO es defecto del Sprint 7. `sprint-05.md` (gates, línea base): «11 fallas, las mismas 11 de la línea base (parte dinámica sobre un `.env` de desarrollo, suma de los dos ejemplos)»; `sprint-06.md` solo lo corre vivo contra el ensayo (0 fallas). Script sin cambios.
+
+## Revisión W0-3 (S7-W0-3b, 2026-11-14)
+
+Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero en todos.
+
+### Rojo
+- Python: 9 fallas nuevas sobre el código de W0-3 (`test_signing_key_exposure` 3, `test_settings_signing_path` 3, `test_keys_layout_sign` 2, arquitectura 1 por la lista de lectores). Los 3 casos con enlaces simbólicos se saltan en Windows: se probaron en Linux (`python:3.12-alpine`, módulos viejos de `HEAD` vs nuevos): viejo = enlace `sign` no expuesto, carpeta ilegible `False`, `sign/` enlace movió la llave a `fuera/`, `sign/` en 755; nuevo = `True`, `OSError`, conflicto sin mover nada, 700.
+- `test_deploy_script.sh`: 6 FALLA (`..` y relativa, 3 asserts cada una) antes de tocar `deploy.sh`.
+
+### Verde
+- M-1 `core/crypto/exposure.py`: `os.walk(..., followlinks=False, onerror=<relanzar>)`, un enlace `sign` o una carpeta `sign-ed25519.key` cuentan; `main._forbid_exposed_signing_key` convierte `OSError` en `StartupError("signing_key_exposure_unverifiable")`.
+- M-2 `core/config_signing.py`: forma MÍNIMA, no la estricta. Rechaza vacía, relativa, con `..`, y SIEMPRE `/run/apex/keys/custody` y `/jwt` (con KEK `None`/OpenBao también) más la carpeta de `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` y KEK. Motivo de no usar la estricta («solo bajo `/run/apex/keys/sign/`»): las fixtures de pruebas y del CLI usan rutas `tmp_path` para la semilla (~20 sitios) y las rompería; la estricta para producción ya la hace `deploy.sh`.
+- M-3 `tests/architecture/test_api_never_loads_signing_key.py` reescrito: cualquier valor distinto de `False` (o del reenvío del mismo parámetro) y todo `**` hacia funciones con flag; prueba del propio detector; cierre de `main.py` con `importlib` (también el f-string de módulos) sin alcanzar `cli*` ni `worker/`; `core/` y `modules/` nunca importan `app.cli*`; `LocalFileProvider(` solo en `provider.py`; `DEFAULT_SIGNING_KEY_PATH` solo en `config*`; lectores por Attribute/Name/keyword/string; valores por omisión revisados en todo `src/app` (incluye `switch_provider`).
+- L-1 `cli_ops/keys_layout.py`: `os.link` + `os.unlink` (falla con `FileExistsError` en vez de pisar), subcarpetas enlace = conflicto, `chmod 700` al crear y al reponer; `reverse_layout` igual.
+- L-2 `missing_secrets`: solo se corrigió el docstring (nadie pasa `signing_key=True`; worker y tools fallan al abrir el proveedor con `with_signing=True`). Sin cambio de comportamiento, por eso sin rojo.
+- L-3 `infra/deploy.sh`: la ruta debe ser absoluta, sin `..`, y bajo `sign/`; 2 casos nuevos en `test_deploy_script.sh`.
+- L-4 documentos: ADR-006 (líneas 41 y 70, solo la ruta), RUNBOOK §residuales (1151 cerrado en v0.4, 1152 ruta; el §12 de rollback conserva `custody/` a propósito), `llaves.md`, `openbao.md`, `rotar-llave.md`.
+
+### Evidencia
+- `$DC restart api`: `/health` 8181 `status ok`, `migrations ok`, `crypto ok`; `ls /run/apex/keys` en el api = `custody jwt`.
+- `slice-gate.sh main` (4 archivos): 850 passed, 3 skipped (enlaces y modo POSIX en NTFS). `ruff` y `mypy src` limpios.
+- `bash scripts/ci/test_deploy_script.sh`: 0 fallas, 503 ok, EXIT=0 (tarda más de 9 minutos: correrlo sin `timeout` corto; con 560 s salió 124 en el rojo).
+- Suites ampliadas por el cambio del validador (rutas `tmp_path` de la semilla): `tests/core tests/crypto tests/architecture` 2.985 passed, 65 skipped; `tests/cli` 628 passed, 33 skipped.

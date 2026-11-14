@@ -403,6 +403,9 @@ CATALOGO = {
     "keys-rotate": (3, 60),
     "keys-rotate-hour": (10, 3600),
     "cbom-export": (2, 60),
+    # S7-D19 (S7-W0-4): dos cubetas más, 25 en total.
+    "classes-write": (30, 60),
+    "attendance-write": (60, 60),
 }
 
 
@@ -468,6 +471,8 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_KEYS_ROTATE_LIMIT_PER_MIN": 30,
             "USER_KEYS_ROTATE_LIMIT_PER_HOUR": 31,
             "USER_CBOM_EXPORT_LIMIT_PER_MIN": 32,
+            "USER_CLASSES_WRITE_LIMIT_PER_MIN": 33,
+            "USER_ATTENDANCE_WRITE_LIMIT_PER_MIN": 34,
         }
     )
     assert user_limits_from(ajustes) == {
@@ -496,6 +501,9 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         "keys-rotate": (30, 60),
         "keys-rotate-hour": (31, 3600),
         "cbom-export": (32, 60),
+        # S7-D19 (S7-W0-4): dos cubetas más, 25 en total.
+        "classes-write": (33, 60),
+        "attendance-write": (34, 60),
     }
 
 
@@ -509,10 +517,19 @@ def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventan
     topes = user_limits_from(
         export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
     )
-    assert len(topes) == 23  # 12 de S4A, 4 de S5 (S5-D81) y 7 de S6 (S6-D57)
+    assert len(topes) == 25  # 12 de S4A, 4 de S5 (S5-D81), 7 de S6 (S6-D57) y 2 de S7 (S7-D19)
     assert topes["audit-verify-hour"] == (7, 3600)
     assert topes["audit-verify"][1] == 60
     assert topes["staff-read"][1] == 60
+
+
+def test_hay_25_cubetas() -> None:
+    """S7-D19: `classes-write` (30/min) y `attendance-write` (60/min) suman 25 cubetas."""
+    from app.core.ratelimit import USER_LIMITS
+
+    assert len(USER_LIMITS) == 25
+    assert USER_LIMITS["classes-write"] == (30, 60)
+    assert USER_LIMITS["attendance-write"] == (60, 60)
 
 
 async def test_la_cuarta_verificacion_del_minuto_da_429_y_las_lecturas_no_la_consumen(

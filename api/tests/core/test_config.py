@@ -1040,6 +1040,19 @@ def _rechaza_alguna(tmp_path: Path, nombres: tuple[str, ...], **cambios: str | N
     return excinfo.value
 
 
+def test_limites_de_clases_y_asistencia(tmp_path: Path) -> None:
+    """S7-D19: topes por defecto 30 y 60 por minuto; cero o negativo se rechaza."""
+    s = _cargar(tmp_path)
+    assert s.USER_CLASSES_WRITE_LIMIT_PER_MIN == 30
+    assert s.USER_ATTENDANCE_WRITE_LIMIT_PER_MIN == 60
+    _rechaza_alguna(
+        tmp_path, ("USER_CLASSES_WRITE_LIMIT_PER_MIN",), USER_CLASSES_WRITE_LIMIT_PER_MIN="0"
+    )
+    _rechaza_alguna(
+        tmp_path, ("USER_ATTENDANCE_WRITE_LIMIT_PER_MIN",), USER_ATTENDANCE_WRITE_LIMIT_PER_MIN="-1"
+    )
+
+
 def test_storage_provider_por_defecto_es_local_y_s3_queda_apagado(tmp_path: Path) -> None:
     s = _cargar(tmp_path)
     assert s.STORAGE_PROVIDER == "local"

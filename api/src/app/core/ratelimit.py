@@ -332,8 +332,7 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "export": (2, 60),
     "export-hour": (6, 3600),
     "export-day": (20, 86400),
-    # S6-D57: adjuntos, rotación de llaves y CBOM (rutas en C2, C4, B3 y R1). 23 cubetas, 22
-    # variables `USER_*`.
+    # S6-D57: adjuntos, rotación de llaves y CBOM (rutas en C2, C4, B3 y R1).
     "attachments-upload": (10, 60),
     "attachments-photo": (600, 60),
     "attachments-download": (30, 60),
@@ -341,6 +340,10 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "keys-rotate": (3, 60),
     "keys-rotate-hour": (10, 3600),
     "cbom-export": (2, 60),
+    # S7-D19: escrituras de clases (franjas, sesiones) y de asistencia (rutas en A2/B2 y C3).
+    # 25 cubetas, 24 variables `USER_*`.
+    "classes-write": (30, 60),
+    "attendance-write": (60, 60),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -376,6 +379,8 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "keys-rotate": settings.USER_KEYS_ROTATE_LIMIT_PER_MIN,
         "keys-rotate-hour": settings.USER_KEYS_ROTATE_LIMIT_PER_HOUR,
         "cbom-export": settings.USER_CBOM_EXPORT_LIMIT_PER_MIN,
+        "classes-write": settings.USER_CLASSES_WRITE_LIMIT_PER_MIN,
+        "attendance-write": settings.USER_ATTENDANCE_WRITE_LIMIT_PER_MIN,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

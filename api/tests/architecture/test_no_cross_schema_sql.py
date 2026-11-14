@@ -19,7 +19,18 @@ import re
 from pathlib import Path
 
 MODULES = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
-ESQUEMAS = ("members", "plans", "memberships", "payments", "auth", "settings", "notifications")
+# S7-D19 (S7-W0-4): `classes` entra ya; su módulo llega en A2 (`MODULOS_PENDIENTES`).
+ESQUEMAS = (
+    "members",
+    "plans",
+    "memberships",
+    "payments",
+    "auth",
+    "settings",
+    "notifications",
+    "classes",
+)
+MODULOS_PENDIENTES = frozenset({"classes"})
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b")
@@ -71,7 +82,7 @@ def _modulos() -> list[Path]:
 
 def test_hay_modulos_que_revisar() -> None:
     nombres = {d.name for d in _modulos()}
-    assert set(ESQUEMAS) <= nombres
+    assert set(ESQUEMAS) - MODULOS_PENDIENTES <= nombres
     assert "audit" in nombres
 
 

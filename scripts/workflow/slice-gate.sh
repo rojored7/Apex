@@ -227,7 +227,7 @@ gate_web() {
     echo "slice-gate: eslint sin archivos que revisar"
   fi
   echo "slice-gate: tsc --noEmit -p $slice_tsconfig";    npx tsc --noEmit -p "$slice_tsconfig"
-  echo "slice-gate: vitest run ${pruebas[*]}";           npx vitest run "${pruebas[@]}"
+  echo "slice-gate: vitest run ${pruebas[*]}";           npx vitest run "${pruebas[@]}" --maxWorkers="${VITEST_MAX_WORKERS:-2}"
   rm -f "$slice_tsconfig"
 }
 

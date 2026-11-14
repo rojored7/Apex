@@ -42,7 +42,8 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S6-B3 sacó `cbom-export` con `GET /crypto/cbom` (Rojo B3); quedan seis sin ruta.
 # S6-R1 (US-145): `POST /crypto/keys/{key_id}/rotate` saca `keys-rotate` y `keys-rotate-hour`; el
 # catálogo entero vuelve a tener ruta.
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
+# S7-D19 (S7-W0-4): `classes-write` y `attendance-write` se registran sin ruta; la dan B1/B2 y C3.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"classes-write", "attendance-write"})
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -446,9 +447,16 @@ def test_las_siete_cubetas_de_s6_estan_en_el_catalogo_con_sus_ventanas() -> None
     }
     # Con ruta: `cbom-export` (B3), `attachments-upload` (C2), las tres de la descarga (C4) y las
     # dos de la rotación (R1).
-    assert set(esperadas) - CON_RUTA_S6 == CLAVES_SIN_RUTA_TODAVIA
+    assert set(esperadas) - CON_RUTA_S6 == set()
     assert "cbom-export" not in CLAVES_SIN_RUTA_TODAVIA
-    assert len(USER_LIMITS) == 23
+    assert len(USER_LIMITS) == 25
+
+
+def test_las_dos_cubetas_de_s7_estan_en_el_catalogo_con_sus_ventanas() -> None:
+    """S7-D19: 30 por minuto para clases y 60 por minuto para asistencia, sin ruta todavía."""
+    assert USER_LIMITS["classes-write"] == (30, 60)
+    assert USER_LIMITS["attendance-write"] == (60, 60)
+    assert {"classes-write", "attendance-write"} == CLAVES_SIN_RUTA_TODAVIA
 
 
 def test_el_cbom_consume_solo_la_cubeta_cbom_export() -> None:

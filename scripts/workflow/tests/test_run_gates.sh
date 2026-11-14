@@ -88,6 +88,14 @@ assert_exit 0 "api y front en verde" bash "$RUN"
 assert_log_has "npm run lint"
 assert_log_has "npx tsc --noEmit"
 assert_log_has "npm test -- --run --coverage"
+# S7-D33: vitest con 2 hilos (S6-D141), por omisión y con VITEST_MAX_WORKERS.
+test_vitest_recibe_max_workers_2() {
+  assert_log_has "npm test -- --run --coverage --maxWorkers=2"
+}
+test_vitest_recibe_max_workers_2
+clear_log
+VITEST_MAX_WORKERS=3 assert_exit 0 "api y front con VITEST_MAX_WORKERS=3" bash "$RUN"
+assert_log_has "--maxWorkers=3"
 assert_log_has "npm run build"
 
 stub_tool_fail_on npm "build" 1

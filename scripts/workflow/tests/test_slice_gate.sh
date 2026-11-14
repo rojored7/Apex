@@ -97,6 +97,14 @@ assert_log_has "eslint"
 assert_log_has "src/shared/shared.test.ts"
 assert_log_has "tsc --noEmit -p tsconfig.slice.json"
 assert_log_has "vitest run src/shared/shared.test.ts"
+# S7-D33: vitest con 2 hilos (S6-D141), por omisión y con VITEST_MAX_WORKERS.
+test_vitest_recibe_max_workers_2() {
+  assert_log_has "vitest run src/shared/shared.test.ts --maxWorkers=2"
+}
+test_vitest_recibe_max_workers_2
+clear_log
+VITEST_MAX_WORKERS=3 assert_exit 0 "web/shared con VITEST_MAX_WORKERS=3" bash "$GATE" web/shared src/shared/shared.test.ts
+assert_log_has "--maxWorkers=3"
 assert_file_missing "$REPO/web/tsconfig.slice.json"
 # S4B-V9: el tsconfig temporal incluye los archivos de soporte de las pruebas (jest-dom, vitest-axe),
 # si existen, para que tsc vea los matchers; un stub de npx copia el tsconfig antes de que el gate lo borre.

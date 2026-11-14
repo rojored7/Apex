@@ -322,12 +322,10 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY_ID: str | None = None
     S3_SECRET_ACCESS_KEY: SecretStr | None = None
     S3_ENABLE_PRODUCTION: bool = False
-    # S6-D65, D77 final: dominio público `host[:puerto]`; el puerto solo con `ALLOW_DOMAIN_PORT` y
-    # un host `*.localhost`. El api no lee `APEX_TLS_ISSUER`.
+    # S6-D65, D77: dominio público `host[:puerto]` (puerto solo con ALLOW_DOMAIN_PORT y `*.localhost`).
     APEX_DOMAIN: str | None = None
     ALLOW_DOMAIN_PORT: bool = False
-    # S6-D57: siete cubetas nuevas de `USER_LIMITS` (23 cubetas, 22 variables; rutas en B3, C2,
-    # C4 y R1).
+    # S6-D57 (siete cubetas, rutas en B3, C2, C4 y R1) y S7-D19 (dos más: 25 cubetas, 24 variables).
     USER_ATTACHMENTS_UPLOAD_LIMIT_PER_MIN: int = Field(default=10, gt=0)
     USER_ATTACHMENTS_PHOTO_LIMIT_PER_MIN: int = Field(default=600, gt=0)
     USER_ATTACHMENTS_DOWNLOAD_LIMIT_PER_MIN: int = Field(default=30, gt=0)
@@ -335,6 +333,8 @@ class Settings(BaseSettings):
     USER_KEYS_ROTATE_LIMIT_PER_MIN: int = Field(default=3, gt=0)
     USER_KEYS_ROTATE_LIMIT_PER_HOUR: int = Field(default=10, gt=0)
     USER_CBOM_EXPORT_LIMIT_PER_MIN: int = Field(default=2, gt=0)
+    USER_CLASSES_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_ATTENDANCE_WRITE_LIMIT_PER_MIN: int = Field(default=60, gt=0)
 
     @field_validator(
         "OPENBAO_TOKEN_FILE",

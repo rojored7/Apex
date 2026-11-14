@@ -26,7 +26,7 @@ scripts (raíz, los que existan; necesitan Docker):
                    scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh ; scripts/ci/test_openbao_infra.sh ; scripts/ci/test_deploy_script.sh ; scripts/ci/test_infra_scripts.sh ;
                    infra/caddy/tests/test_caddyfile.sh
 front (si existe web/package.json, desde web/):
-                   npm run lint ; npx tsc --noEmit ; npm test -- --run --coverage ; npm run build
+                   npm run lint ; npx tsc --noEmit ; npm test -- --run --coverage --maxWorkers=2 ; npm run build
 EOF
 }
 
@@ -76,7 +76,7 @@ if [ -f "$ROOT/web/package.json" ]; then
   cd "$ROOT/web"
   gate "web lint"     npm run lint
   gate "web tipos"    npx tsc --noEmit
-  gate "web pruebas"  npm test -- --run --coverage
+  gate "web pruebas"  npm test -- --run --coverage --maxWorkers="${VITEST_MAX_WORKERS:-2}"
   gate "web build"    npm run build
 else
   echo "run-gates: sin web/package.json; se omite el front"

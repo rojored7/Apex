@@ -115,3 +115,23 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - `slice-gate.sh main` (4 archivos): 850 passed, 3 skipped (enlaces y modo POSIX en NTFS). `ruff` y `mypy src` limpios.
 - `bash scripts/ci/test_deploy_script.sh`: 0 fallas, 503 ok, EXIT=0 (tarda más de 9 minutos: correrlo sin `timeout` corto; con 560 s salió 124 en el rojo).
 - Suites ampliadas por el cambio del validador (rutas `tmp_path` de la semilla): `tests/core tests/crypto tests/architecture` 2.985 passed, 65 skipped; `tests/cli` 628 passed, 33 skipped.
+
+## S7-W0-4 · Línea base, cubetas y gates del entorno (2026-11-14, HEAD 4297a26)
+
+### Línea base (antes del Verde)
+- `tests/architecture`: 814 passed, 0 skipped, 0 failed (93 s).
+- Suite completa del api (un solo pytest, `-m "not perf"`): 9.624 passed, 103 skipped, 1 failed, 38 deselected (24 min 34 s). Skips: 34 `cmd.exe` no arranca con `env={}` (age falso, corre en CI/Linux), 23 OpenBao real (contenedor Linux), 8 + 2 + 2 enlaces simbólicos sin privilegios, 6 NTFS sin modo POSIX, 5 age real y pty solo en Linux, 3 `mkfifo`, 2 solo proveedor local. El fallo: `tests/notifications/test_sending.py::test_dos_pasadas_en_paralelo_no_envian_el_mismo_aviso_dos_veces` (`3 + 2 == 4`, una pasada con `pendientes=1`): carrera entre las dos pasadas bajo la carga de la suite; el archivo entero, dos veces aislado, da 43 passed. Intermitente de la línea base, ajeno a W0-4.
+- `uv run mypy src`: 227 archivos, sin errores.
+- Vitest (`npm test -- --run --pool=forks --maxWorkers=2`): 212 archivos, 3.930 passed, 0 skipped, 0 failed.
+
+### Rojo
+- 13 fallas pytest (`test_ratelimit` 4: catálogo del plan, `user_limits_from` x2 y `test_hay_25_cubetas`; `test_user_limits_catalog` 3; `test_env_example` 5 incluido `test_24_variables_user` y los dos renombres; `test_config::test_limites_de_clases_y_asistencia` AttributeError) y 4 FALLA de shell (`test_vitest_recibe_max_workers_2` y `VITEST_MAX_WORKERS=3` en `test_slice_gate.sh` y `test_run_gates.sh`). Motivo: el catálogo tenía 23 cubetas y 22 variables y los gates no pasaban `--maxWorkers`.
+- `test_no_cross_schema_sql`: `ESQUEMAS` suma `classes`; `test_hay_modulos_que_revisar` excluye `MODULOS_PENDIENTES={"classes"}` hasta A2 (el módulo aún no existe). `CLAVES_SIN_RUTA_TODAVIA` = las dos cubetas nuevas hasta B2/C3.
+
+### Verde
+- `ratelimit.py`: `classes-write` (30/min) y `attendance-write` (60/min); `config.py` (`USER_CLASSES_WRITE_LIMIT_PER_MIN`, `USER_ATTENDANCE_WRITE_LIMIT_PER_MIN`, `gt=0`; se compactaron dos comentarios para quedar en 800 líneas, límite de `test_file_and_function_size`); `.env.example` (25 cubetas, 24 variables); `compose.yml` (api); `ci.yml` (dos `-e`, regex y conteo 24); `slice-gate.sh` y `run-gates.sh` con `--maxWorkers="${VITEST_MAX_WORKERS:-2}"`.
+
+### Evidencia
+- `bash scripts/workflow/tests/run.sh`: 6 de 6 archivos en verde (36 ok en `test_run_gates`).
+- `slice-gate.sh architecture test_user_limits_catalog test_no_cross_schema_sql`: 815 passed, exit 0.
+- Sello `slice-gate.sh core/ratelimit test_ratelimit test_config test_env_example`: 1.140 passed, exit 0.

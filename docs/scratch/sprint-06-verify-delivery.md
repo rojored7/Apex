@@ -321,6 +321,28 @@ Referencia: la evidencia más reciente es `v2-imagenes-antes-smoke.txt` y `v2-sm
 
 ---
 
+## Actualización del 2026-11-14 (V3 a V8, S6-D134 a D140; HEAD `af23e51`, imágenes `29cbe00b8c5f`)
+
+Lo que la sección anterior daba por pendiente o bloqueado, ya ejecutado contra el sistema real:
+
+- **Ensayo desellado** con autorización del usuario (2026-11-13), sin imprimir llaves; imágenes de api, web, worker y backup reconstruidas (`2c85c3e4813a` y luego `29cbe00b8c5f`) y `/health` 8280 con esa versión y `crypto ok`. La imagen vieja del ensayo queda resuelta.
+- **V3 (demo 1)**: `sign_audit` ×2 (`ok` y `nada_nuevo`), verificación con 3 de 3 firmas, sellado → 4 intentos y alertas, verificación completa con el custodio sellado, desello y firma (S6-D135).
+- **V4 (demo 2)**: inventario sin material con `records_count` = `count(*)`, bitácora y trabajos, rotación de `member.phone` desde la API con lectura del socio durante el proceso, CBOM sin material; **V4.5 `retire-key` → `retired`** tras corregir la prueba de custodia (S6-D136, D139).
+- **V5 (demo 3)** y **V6 (demo 4)** completas en el ensayo, sin defectos (S6-D137): bordes de 5 MiB por Nginx, autorización cifrada en reposo, descarga auditada con `cmp`, coach 403, foto sin fila, KPI = filtro, TLS híbrido desellado con `/health` 200, cookie `Secure`, CORS, CSP (cierra el «pendiente de la próxima corrida» de US-153.5), CBOM `tls.declared true`, vuelta a LAN.
+- **V7**: E2E `stack` dos corridas 53 passed, 1 skipped, 0 flaky (incluye `audit-signature`, `keys-rotate`, `members-attachments`, `members-photo`, `home`); `preview` 219 passed con capturas (S6-D140). Cierra los cuatro «E2E … no corrido» de la DoD.
+- **V8**: pruebas `perf` del sprint escritas y corridas dos veces, todas bajo tope (S6-D134).
+- **V11 formal**: `security-reviewer` sobre el árbol fusionado hecho (S6-D133) y otra revisión de seguridad sobre la corrección D136 (0C/0H, M1 y L2-L4 corregidos).
+- **Defectos que destapó el sistema real y se corrigieron con pruebas**: proveedor `local` por fila con OpenBao; `rotate-key` de la firma a `local` rechazado con OpenBao; prueba de custodia sin KEK local (S6-D136); fuga de auditoría en `rotacion_lista` (S6-D138); tres pruebas del menú sin «Llaves» (D133).
+
+Criterios que cambian:
+- US-145.6 (lectura durante el recifrado): `P` → `E`. V4.3 leyó el socio por API durante la rotación en el ensayo y `stack/keys-rotate.spec.ts` lo hace desde la pantalla, dos veces en verde.
+- US-142.4 (rotación de la llave de firma): sigue `P`. La ida y vuelta entre proveedores en vivo no se puede hacer en el ensayo (con OpenBao el worker no monta `keys`, S5-D50) ni en desarrollo sin conectar tokens de OpenBao; queda por pruebas con `FakeTransit` y `openbao-smoke` (S6-D139).
+- US-152.5 (renovación ACME contra staging): sigue `P`, paso humano.
+- **Conteo: E + D = 99 de 102 (97 %)**; `P` 2, `N` 1 (SSL Labs, humano).
+- Gates completos sobre `af23e51` (cierre, tras D136): api 9544 pasan, 100 saltadas, 38 `perf` fuera, cobertura sobre 80 %; ruff, formato y mypy en verde; los guiones de `scripts/ci`, `infra` y Caddy con 0 fallas; web: lint, tipos, 3930 de 3930 pruebas (98,37 % de líneas, con 2 hilos: la corrida con todos los hilos la cortó el equipo por falta de memoria) y build en verde.
+
+Sigue abierto: V2.5 y el `down -v` del ensayo de V12 (sin autorización del usuario: el ensayo queda parado con `stop`), los pasos humanos (PR y merge del Sprint 5, push y PR del Sprint 6, dominio con ACME, SSL Labs, `consent_required_from` en producción, rotar la clave del admin de desarrollo y la contraseña del propietario de la base del ensayo, impresas en salidas de herramientas), el backlog `0025` (D130, D133) y el cambio propuesto a ADR-006 (S6-D136, exige preguntar).
+
 ## Veredicto
 
 **READY_WITH_WARNINGS** para el cierre técnico del sprint en esta máquina. Condición: los cambios de código sin commit se confirman y pasan la cuarta `run-gates.sh`. Si no la pasan, el veredicto baja a `NOT_READY`.

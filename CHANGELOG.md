@@ -5,6 +5,43 @@ compara la etiqueta con el encabezado de la primera sección, con `api/pyproject
 `web/package.json`. El SHA de cierre vive en el cuerpo de la sección (no lo exige ningún script) y
 es el que se pasa a `infra/deploy.sh --expect-sha`.
 
+## [0.3.0]
+
+Fecha de cierre: 2026-11-14. SHA de cierre: el del commit etiquetado `v0.3.0` (`git rev-parse v0.3.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta es local: el push, el PR, el merge y el Release los hace una persona (después de fusionar el Sprint 5).
+
+Tercera versión desplegable: cadena de auditoría firmada cada noche, pantalla Llaves con rotación desde el panel y CBOM, foto y autorización de datos del socio como adjuntos cifrados, y TLS 1.3 híbrido post-cuántico con Caddy. Cierra el riesgo aceptado P7 (sin TLS) para quien configure un dominio.
+
+### Sprint 6 · Auditoría firmada (EP-17)
+- Firma Ed25519 de la cadena de auditoría por el worker a las 07:00 (`audit.signatures`, append-only, migraciones 0021 y 0022), con verificación incremental antes de firmar (H-1) y anti-retroceso; el api solo verifica, con la clave pública guardada en `crypto_keys` (funciona con el custodio sellado, S6-D81).
+- `sign-audit` y `--run-once sign_audit`; alerta `audit_sign_late` por firma atrasada; `rotate-key audit.signature --provider local|openbao` cambia de proveedor creando una llave nueva.
+- Front: estado de la firma en Auditoría («Íntegra», «Alterada», «Firma atrasada», «Sin firmas») y verificación con firmas.
+
+### Sprint 6 · Administración de llaves (EP-18)
+- Inventario de llaves sin material, bitácora `crypto_ops`, trabajos con progreso y exportación del CBOM (sin material ni referencias de llaves `sign`).
+- Rotación desde la pantalla (`POST /crypto/keys/{id}/rotate`, confirmación `ROTAR` exacta) con migración 0024: guarda de `crypto_keys` en dos triggers (H-2), `guard_jobs_*`, grants por columna para `apex_api`, un rotador en vuelo con conexión dedicada, reanudación tras reinicio; `retire-key` exige un manifiesto firmado posterior a la rotación.
+- Front: pantalla Llaves con Inventario, Bitácora, Trabajos, modal de rotación y botón «Exportar CBOM».
+
+### Sprint 6 · Adjuntos y autorización de datos (EP-19)
+- Módulo `attachments` (migración 0023): subida como cuerpo crudo con tope exacto de 5 MiB y bytes mágicos, almacenamiento local (S3 opcional y apagado), adjuntos sensibles cifrados con `attachment.sensitive`, descarga auditada solo por el api con `no-store`, `nosniff` y CSP `sandbox`; la foto se sirve por streaming sin fila de auditoría (ADR-007).
+- Autorización de datos con versión de la política copiada al registrar; filtro `consent=missing` compartido con el KPI y la exportación; `attachments-check` (huérfanos y `key_id` distinto del blob).
+- Front: foto en la ficha y la lista, pestaña Adjuntos, foto y autorización en el alta y la edición, tarjeta «Sin autorización» con enlace al filtro.
+
+### Sprint 6 · Validación (V1 a V12)
+- Demos 1 a 4 en el ensayo de producción con OpenBao desellado, E2E `stack` dos veces (53 pasan, 0 fallan) y `preview` (219), pruebas `perf` del sprint (S6-D134).
+- Correcciones que destapó el ensayo (S6-D136): el proveedor `local` se resuelve por fila también con `CRYPTO_PROVIDER=openbao` (`lazy_kek`); `rotate-key audit.signature --provider local` se rechaza con OpenBao (el worker no monta `keys`); tras `retire-local-kek`, `retire-key`, `rotate-kek` y `migrate-provider` aceptan como prueba de custodia el manifiesto firmado con la instantánea de OpenBao verificada (antes exigían un `verify-kek-backup` imposible).
+
+### Sprint 6 · TLS híbrido (EP-20)
+- Caddy 2.11.3 bajo el perfil `tls`: TLS 1.3 con `x25519mlkem768`, redirección 308, HSTS escalonado solo con dominio, `admin off`; Nginx restaura la IP real solo desde Caddy.
+- `public_origin`/`validate_origins`: CORS, `AUTH_ALLOWED_ORIGINS` y cookie `Secure` coherentes con `APEX_DOMAIN`; el api no arranca con una configuración incoherente y nombra la variable.
+- `tls-smoke.sh` (dominio y LAN) con login real, cookie, CORS y CSP; `prod-smoke.sh --tls` en la CI.
+
+### Deuda aceptada con dueño (v0.4, Sprint 7)
+- Migración `0025`: FK `attachments.key_id → crypto_keys`, `guard_jobs_update` solo sobre jobs `rotate`, `public_key` inmutable también para el propietario (S6-D81 punto 2), `CHECK` bidireccional de `public_key` y foto nunca sensible (S6-D130, D133).
+- Montar en el api solo `custody/kek.bin` y `jwt/` (hoy ve la llave privada de firma local en solo lectura; la barrera es el grant).
+- Brechas de contrato del front: `uploaded_by_name`, versión de la política legible para el coach, plazo de rotación para «Rotación vencida» (BRECHAS §14.10, 14.12, 14.15).
+- Demo en vivo de la ida y vuelta de la llave de firma entre proveedores (local → openbao → local): hoy solo por pruebas con `FakeTransit` y `openbao-smoke` (S6-D139).
+- Cambiar ADR-006 para decir que `--provider local` solo aplica con `CRYPTO_PROVIDER=local` (propuesto en S6-D136, pendiente de autorización del usuario).
+
 ## [0.2.0]
 
 Fecha de cierre: 2026-11-05. SHA de cierre: el del commit etiquetado `v0.2.0` (`git rev-parse v0.2.0^{commit}`), publicado en el Release en borrador; es el valor que se pasa a `infra/deploy.sh --expect-sha`.

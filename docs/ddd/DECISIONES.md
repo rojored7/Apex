@@ -3055,3 +3055,23 @@ Todas aceptadas tal como las propone `sprint-06-seguridad-diseno.md`:
   - Spec corregida: `web/tests/e2e/stack/keys-rotate.spec.ts` suponía la primera rotación de `member.phone` (v1 → v2); en el ensayo ya iba por v2 tras V4.3. Ahora lee la versión activa antes de rotar y espera `previa + 1` «Activa» y `previa` «Solo descifrar». La rotación del producto funcionó (v3 activa).
   - Preview: 219 passed (3,6 min), incluido `csp.spec.ts` con `img-src blob:`, y 199 PNG en 320/768/1024/1440 claro y oscuro (ignorados por git).
   - Restauración: `.env` del ensayo con `cmp` idéntico; api, worker y web sin `compose.e2e.yml`; 6 logins fallidos → `401 ×5, 429` (topes reales); sin procesos de Playwright ni de Vite.
+
+### S6-V12 · Limpieza y release v0.3.0
+
+- **S6-D141 · Cierre del Sprint 6 (2026-11-14).** Versiones a `0.3.0` en `api/pyproject.toml`, `api/uv.lock`, `web/package.json`, `web/package-lock.json` y `docs/openapi.json` (`info.version`, regenerado con `export-openapi`; `web/src/core/api/types.ts` no cambia con `gen:api`); `CHANGELOG.md` `## [0.3.0]`; `check-release-version.sh --check v0.3.0` y `test_check_release_version.sh` en verde. Gates completos sobre `af23e51` en verde (api 9544 pasan; web 3930 de 3930 con 2 hilos, 98,37 % de líneas; la corrida de vitest con todos los hilos la cortó el equipo por falta de memoria, riesgo 8 del plan). Etiqueta `v0.3.0` local y anotada sobre el commit del release; las imágenes se reconstruyen con ese SHA (evidencia en `docs/scratch/sprint-06.md`, bloque V12).
+  - **Limpieza hecha:** `docs/scratch/sprint-06-antes-0024.dump`, `sprint-06-antes-v2.dump` y `docs/scratch/ensayo/sprint-06-antes-002{1,2,3}.dump` borrados; `keys-dev-antes-layout.tgz` ya no existía; sin `apex_sim` ni `apex-smoke`; OpenBao y Caddy de desarrollo parados.
+  - **Desviación del plan, no hecha por falta de autorización:** el `down -v` de `apex-ensayo` y el borrado de `docs/scratch/ensayo/` (llaves de desello, CA interna, adjuntos y evidencia de prueba). El usuario autorizó desellar el ensayo para las pruebas, no destruirlo; el ensayo queda parado con `stop`, con sus volúmenes y solo datos ficticios. V2.5 tampoco se hizo por la misma razón. Dueño: el usuario (autorizar el `down -v` y el borrado, o reutilizar el ensayo en el Sprint 7 rotando antes la contraseña del propietario de su base).
+  - **Estado al cierre y dueños:**
+    - `consent_required_from` en producción (M-11): `null` en el repositorio y en el ensayo. Quien despliegue v0.3.0 publica la versión de la política y fija la fecha del despliegue (hora de Bogotá) en `PATCH /settings/privacy`. Antes de esa fecha los socios existentes no cuentan en «Sin autorización». Dueño: el titular, al desplegar.
+    - Fusión del Sprint 5 (S6-D55): PR y merge de `v0.2.0` en `main` antes del PR del Sprint 6. Dueño: el titular (paso humano).
+    - ML-DSA y ML-KEM propios (`liboqs-python`): EP-26. La firma de v0.3 es Ed25519 (S6-D51).
+    - Retención y supresión de adjuntos: v0.4 (en v0.3 no se borran adjuntos).
+    - TLS en la red `custody` (la DEK viaja por HTTP interno entre api, worker y OpenBao): v0.4, titular.
+    - AppRole de OpenBao en lugar de tokens periódicos: v0.4, operador.
+    - `display_name`: sigue fuera; el nombre visible es la parte local del correo (S4A-D108). Dueño: titular, v0.4.
+    - Logo del recibo PDF (S5-D65) y «Exportar rango» de Auditoría (BRECHAS, `// DESIGN-GAP:`): v0.4, titular.
+    - Migración `0025` y endurecimientos de S6-D130 y D133 (FK de `attachments.key_id`, `guard_jobs_update` solo para `rotate`, `public_key` inmutable también para el propietario, `CHECK` de `public_key`, foto nunca sensible) y montar en el api solo `custody/kek.bin` y `jwt/`: Sprint 7.
+    - Demo en vivo de D81 (S6-D139): Sprint 7, si se conecta OpenBao al worker de desarrollo.
+    - Cambio de ADR-006 propuesto en S6-D136 (L5: `--provider local` solo con `CRYPTO_PROVIDER=local`): pendiente de que el usuario lo apruebe (S4B-D47).
+    - Secretos impresos en salidas de herramientas de agentes durante la validación (nunca en evidencia ni en el repositorio): la clave del admin de desarrollo (V3.4) y la contraseña del propietario de la base del ensayo (V5/V6). Dueño: el usuario; rotarlas antes de reutilizar esos entornos.
+  - **Pasos humanos:** PR del Sprint 5 fusionado; push de la rama y de la etiqueta; PR del Sprint 6 con la CI en verde (`api` con 0 saltos de `openbao`, `images` con `tls-smoke` y `restore_e2e`, `prod-smoke` con `--tls`); merge; Release; firma de la etiqueta si el titular la hace; dominio con ACME real y SSL Labs (`tls.md`).

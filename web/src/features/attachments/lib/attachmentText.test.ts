@@ -1,6 +1,6 @@
 // S6-F3 · US-150: textos de la tabla de adjuntos: tamaño legible con coma decimal (Colombia), tipo y
 // quien subió (nombre si el contrato lo trae; si no, el id corto).
-import { formatBytes, kindLabel, uploaderText } from "./attachmentText";
+import { fallbackFileName, formatBytes, kindLabel, uploaderText } from "./attachmentText";
 
 describe("formatBytes", () => {
   it.each([
@@ -37,5 +37,18 @@ describe("uploaderText", () => {
     expect(uploaderText({ uploaded_by: "a0a0a0a0-0000-4000-8000-000000000001" })).toBe("Usuario a0a0a0a0");
     expect(uploaderText({ uploaded_by: "a0a0a0a0-0000-4000-8000-000000000001", uploaded_by_name: "ana" })).toBe("ana");
     expect(uploaderText({ uploaded_by: "a0a0a0a0-0000-4000-8000-000000000001", uploaded_by_name: "  " })).toBe("Usuario a0a0a0a0");
+  });
+});
+
+describe("fallbackFileName (revisión V11, LOW 9)", () => {
+  const id = "bbbb0002-0000-4000-8000-000000000002";
+
+  it.each([
+    ["image/jpeg", "adjunto-bbbb0002.jpg"],
+    ["image/png", "adjunto-bbbb0002.png"],
+    ["application/pdf", "adjunto-bbbb0002.pdf"],
+    ["image/webp", "adjunto-bbbb0002"],
+  ])("%s -> %s", (mime, expected) => {
+    expect(fallbackFileName({ id, mime })).toBe(expected);
   });
 });

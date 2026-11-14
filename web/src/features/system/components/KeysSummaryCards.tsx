@@ -6,7 +6,8 @@
 // DESIGN-GAP: «Rotación vencida o próxima (30 días)». Nada en el api define el plazo de rotación (no hay
 // «Límite»; solo `age_days`), así que no se puede contar qué está vencido: la tarjeta lleva el nombre acordado,
 // «Rotación vencida (30 días)», y muestra la antigüedad (`age_days`) de la llave activa más antigua, sin afirmar
-// que algo venció (BRECHAS 14.7). Cuando el api publique la política se cambia por el conteo.
+// que algo venció (BRECHAS 14.15). Cuando el api publique la política se cambia por el conteo.
+import { HTTP_FORBIDDEN, HTTP_TOO_MANY } from "../../../core/api/status";
 import { useKeysSummary } from "../api";
 import { providerNames, PROVIDER_STATE_LABELS } from "../cryptoLabels";
 import { keysListError } from "../keysErrors";
@@ -37,6 +38,9 @@ export function KeysSummaryCards() {
   };
   const loading = query.isLoading;
   const error = failed !== null && page === undefined;
+  // Con 403 o 429 reintentar no sirve (falta permiso o hay que esperar): el mensaje lo dice y no se ofrece el botón.
+  const retryable = failed !== null && failed.status !== HTTP_FORBIDDEN && failed.status !== HTTP_TOO_MANY;
+  const onRetry = retryable ? retry : undefined;
   const alertText = page ? custodyAlert(page.summary.provider.state) : null;
 
   return (
@@ -46,13 +50,18 @@ export function KeysSummaryCards() {
           {`Proveedor activo: ${providerNames(page.summary.provider.names)} · ${PROVIDER_STATE_LABELS[page.summary.provider.state]}`}
         </p>
       ) : null}
+      {error ? (
+        <p role="alert" className={styles.alert}>
+          {failed.message}
+        </p>
+      ) : null}
       {alertText ? (
         <p role="alert" className={styles.alert}>
           {alertText}
         </p>
       ) : null}
       <div className={styles.grid}>
-        <KpiCard label="Llaves activas" kind="count" value={page?.summary.active_count} isLoading={loading} error={error} onRetry={retry} />
+        <KpiCard label="Llaves activas" kind="count" value={page?.summary.active_count} isLoading={loading} error={error} {...(onRetry ? { onRetry } : {})} />
         <KpiCard
           label={ROTATION_LABEL}
           kind="count"
@@ -60,10 +69,10 @@ export function KeysSummaryCards() {
           note="días la llave activa más antigua"
           isLoading={loading}
           error={error}
-          onRetry={retry}
+          {...(onRetry ? { onRetry } : {})}
         />
-        <KpiCard label="Recifrados en curso" kind="count" value={page?.summary.running_jobs} isLoading={loading} error={error} onRetry={retry} />
-        <KpiCard label="Operaciones hoy" kind="count" value={page?.summary.operations_today} isLoading={loading} error={error} onRetry={retry} />
+        <KpiCard label="Recifrados en curso" kind="count" value={page?.summary.running_jobs} isLoading={loading} error={error} {...(onRetry ? { onRetry } : {})} />
+        <KpiCard label="Operaciones hoy" kind="count" value={page?.summary.operations_today} isLoading={loading} error={error} {...(onRetry ? { onRetry } : {})} />
       </div>
     </section>
   );

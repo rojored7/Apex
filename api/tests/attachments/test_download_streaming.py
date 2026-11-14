@@ -36,7 +36,7 @@ from tests.factories import files
 RUTA = "/api/v1/attachments"
 JPG = files.jpeg(200_000)  # 4 trozos de 64 KiB
 MIB: Final = 1024 * 1024
-TOPE_MEMORIA: Final = 35.5 * MIB  # medido en service.open: 33.42 MiB + 2 MiB
+TOPE_MEMORIA: Final = 35.5 * MIB  # medido en service.open_attachment: 33.42 MiB + 2 MiB
 # Descarga HTTP completa (incluye las copias del cliente de prueba): 34.26 MiB + 2 MiB, medida con
 # una implementación desechable de la ruta.
 TOPE_MEMORIA_HTTP: Final = 36.5 * MIB
@@ -145,7 +145,7 @@ async def test_una_foto_sin_objeto_falla_en_el_service_antes_de_devolver_el_cuer
 
     async with real() as sesion:
         with pytest.raises(AttachmentNotFound) as error:
-            await service.open(sesion, foto.id, by=por, audit=False)
+            await service.open_attachment(sesion, foto.id, by=por, audit=False)
 
     assert (error.value.status, error.value.code) == (404, "attachment_not_found")
 
@@ -201,7 +201,7 @@ async def test_un_fallo_a_mitad_del_stream_corta_la_respuesta_sin_excepcion_ni_t
 async def test_el_pico_de_memoria_del_service_al_abrir_un_sensible_de_5_mib_queda_acotado(
     real: Fabrica, almacen: LocalDiskStorage, por: UUID
 ) -> None:
-    """Se sube fuera de la medida; el pico es solo el de `service.open` (blob, descifrado
+    """Se sube fuera de la medida; el pico es solo el de `service.open_attachment` (blob, descifrado
     y fila `download`) con el cuerpo de 5 MiB exactos."""
 
     datos = files.pdf(rules.ATTACHMENT_MAX_BYTES)
@@ -211,12 +211,12 @@ async def test_el_pico_de_memoria_del_service_al_abrir_un_sensible_de_5_mib_qued
         try:
             tracemalloc.reset_peak()
             base = tracemalloc.get_traced_memory()[0]
-            cuerpo = await service.open(sesion, adjunto.id, by=por)
+            cuerpo = await service.open_attachment(sesion, adjunto.id, by=por)
             pico = tracemalloc.get_traced_memory()[1] - base
         finally:
             tracemalloc.stop()
     assert cuerpo.data == datos
-    print(f"MEDIDA service.open sensible 5 MiB: pico {pico / MIB:.2f} MiB")
+    print(f"MEDIDA service.open_attachment sensible 5 MiB: pico {pico / MIB:.2f} MiB")
     assert pico < TOPE_MEMORIA, f"{pico / MIB:.2f} MiB"
 
 

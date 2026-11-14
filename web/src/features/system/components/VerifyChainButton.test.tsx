@@ -7,9 +7,9 @@ import { act, render, renderHook, screen, waitFor } from "@testing-library/react
 import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { signedVerifyResult, verifyResult, verifyStarted } from "../../../test/audit";
+import { signaturesLatest, signedVerifyResult, verifyResult, verifyStarted } from "../../../test/audit";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
-import { VERIFY_MAX_MS, VERIFY_MAX_POLLS, VERIFY_POLL_MS, lastVerificationPollLimit, useLastVerification } from "../api";
+import { VERIFY_MAX_MS, VERIFY_MAX_POLLS, VERIFY_POLL_MS, lastVerificationPollLimit, useLastVerification, useLatestSignature } from "../api";
 import { VERIFY_POLL_FAILED_MESSAGE, VerifyChainButton } from "./VerifyChainButton";
 
 const OLD = verifyResult();
@@ -328,6 +328,26 @@ describe("VerifyChainButton · firmas (S6-F1)", () => {
     renderButton({ "GET /audit/verify/last": { status: 200, body: signedVerifyResult() } });
 
     expect(await screen.findByText("Última verificación: 21 oct 2026, 10:00 a. m. · íntegra, 3.418 filas · firmas 365 de 365")).toBeInTheDocument();
+  });
+
+  it("una verificación síncrona relee el estado de la firma una sola vez (revisión V11, LOW 3)", async () => {
+    const queryClient = testQueryClient();
+    const { mock, user } = renderButton({ "POST /audit/verify": { status: 200, body: NEW }, "GET /audit/signatures/latest": { status: 200, body: signaturesLatest() } }, { queryClient });
+    renderHook(() => useLatestSignature(), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> });
+    await waitFor(() => {
+      expect(mock.callsTo("GET /audit/signatures/latest")).toHaveLength(1);
+    });
+
+    await user.click(verifyButton());
+    await screen.findByText(/Cadena íntegra/);
+
+    await waitFor(() => {
+      expect(mock.callsTo("GET /audit/signatures/latest")).toHaveLength(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(mock.callsTo("GET /audit/signatures/latest")).toHaveLength(2);
   });
 
   it("el DESIGN-GAP de ML-DSA se cerró: el código dice Ed25519", () => {

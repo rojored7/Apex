@@ -9,6 +9,7 @@ siguiente lote lo recifra otra vez. Procesa de a un objeto (cada uno ocupa hasta
 
 from __future__ import annotations
 
+import asyncio
 from typing import Final
 from uuid import UUID
 
@@ -54,7 +55,8 @@ class AttachmentReencryptor:
         almacen = current_storage()
         with files.batch():
             for fila in filas:
-                nuevo = files._reencrypt_blob(await almacen.get(fila.filename_random), fila.id)
+                blob = await almacen.get(fila.filename_random)
+                nuevo = await asyncio.to_thread(files._reencrypt_blob, blob, fila.id)
                 await almacen.put(fila.filename_random, nuevo)
                 await session.execute(
                     update(Attachment)

@@ -107,41 +107,41 @@ def test_needs_signature(last_seq: int, last_signed_seq: int, esperado: bool) ->
 
 
 def test_sin_filas_nuevas_no_esta_atrasada_aunque_la_firma_sea_vieja() -> None:
-    assert is_signature_late(horas(500), 5, 5, None, AHORA) is False
+    assert is_signature_late(5, 5, None, AHORA) is False
 
 
 def test_gimnasio_sin_actividad_no_esta_atrasado() -> None:
-    assert is_signature_late(None, 0, 0, None, AHORA) is False
-    assert is_signature_late(horas(2000), 7, 7, None, AHORA) is False
+    assert is_signature_late(0, 0, None, AHORA) is False
+    assert is_signature_late(7, 7, None, AHORA) is False
 
 
 def test_nunca_firmada_con_filas_de_hace_49_h_esta_atrasada() -> None:
-    assert is_signature_late(None, 5, 0, horas(49), AHORA) is True
+    assert is_signature_late(5, 0, horas(49), AHORA) is True
 
 
 def test_nunca_firmada_con_filas_de_hace_47_h_no_esta_atrasada() -> None:
-    assert is_signature_late(None, 5, 0, horas(47), AHORA) is False
+    assert is_signature_late(5, 0, horas(47), AHORA) is False
 
 
 def test_firmada_con_filas_sin_firmar_de_hace_49_h_esta_atrasada() -> None:
-    assert is_signature_late(horas(100), 9, 5, horas(49), AHORA) is True
+    assert is_signature_late(9, 5, horas(49), AHORA) is True
 
 
 def test_firmada_con_filas_sin_firmar_de_hace_47_h_no_esta_atrasada() -> None:
-    assert is_signature_late(horas(100), 9, 5, horas(47), AHORA) is False
+    assert is_signature_late(9, 5, horas(47), AHORA) is False
 
 
 def test_el_umbral_exacto_de_48_h_no_cuenta_como_atrasado() -> None:
     """«A las 48 h» se alerta pasadas las 48 h (estrictamente mayor)."""
-    assert is_signature_late(None, 5, 0, horas(48), AHORA) is False
-    assert is_signature_late(None, 5, 0, horas(48) - timedelta(seconds=1), AHORA) is True
+    assert is_signature_late(5, 0, horas(48), AHORA) is False
+    assert is_signature_late(5, 0, horas(48) - timedelta(seconds=1), AHORA) is True
 
 
 def test_el_umbral_es_configurable() -> None:
-    assert is_signature_late(None, 5, 0, horas(13), AHORA, threshold_h=12) is True
-    assert is_signature_late(None, 5, 0, horas(11), AHORA, threshold_h=12) is False
+    assert is_signature_late(5, 0, horas(13), AHORA, threshold_h=12) is True
+    assert is_signature_late(5, 0, horas(11), AHORA, threshold_h=12) is False
 
 
 def test_filas_sin_firmar_sin_fecha_de_la_primera_no_se_pueden_dar_por_atrasadas() -> None:
     """Sin `first_unsigned_at` (dato ausente) no hay edad que medir: no se alerta."""
-    assert is_signature_late(horas(100), 9, 5, None, AHORA) is False
+    assert is_signature_late(9, 5, None, AHORA) is False

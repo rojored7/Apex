@@ -114,6 +114,22 @@ describe("PhotoField", () => {
     expect(input()).toBeEnabled();
   });
 
+  it("un archivo rechazado se borra del control para que no siga mostrando su nombre (revisión V11, LOW 10)", () => {
+    setup();
+    const writes: string[] = [];
+    Object.defineProperty(input(), "value", {
+      configurable: true,
+      get: () => "",
+      set: (next: string) => {
+        writes.push(next);
+      },
+    });
+
+    fireEvent.change(input(), { target: { files: [fileOf("image/gif")] } });
+
+    expect(writes).toEqual([""]);
+  });
+
   it("5.242.880 bytes pasa", () => {
     const { onChange } = setup();
     const file = fileOf("image/jpeg", OK);

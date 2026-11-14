@@ -297,7 +297,7 @@ export function useMemberHistoryPreview(id: string): UseQueryResult<Page<MemberH
 // - subirAdjunto(memberId, kind, file): cuerpo crudo por api.upload (nunca FormData); el 201 se valida.
 // - useSubirAdjunto(): useSensitiveMutation (el archivo es un dato personal y no se queda en la
 //   caché de mutaciones). Al salir bien relee ["members"] (la ficha trae photo_attachment_id) y
-//   ["attachments"] (la pestaña Adjuntos); la foto anterior queda con otro id, así que su blob no se reusa.
+//   ["attachments","member",id] (la pestaña Adjuntos) y, si es foto, ["attachments","photo"]; la foto anterior queda con otro id, así que su blob no se reusa.
 export interface SubirAdjuntoVariables {
   memberId: string;
   kind: UploadKind;
@@ -312,9 +312,10 @@ export function useSubirAdjunto(): UseMutationResult<UploadedAttachment, Error, 
   const queryClient = useQueryClient();
   return useSensitiveMutation<UploadedAttachment, Error, SubirAdjuntoVariables>({
     mutationFn: ({ memberId, kind, file }) => subirAdjunto(memberId, kind, file),
-    onSuccess: () => {
+    onSuccess: (_created, { memberId, kind }) => {
       void queryClient.invalidateQueries({ queryKey: MEMBERS_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["attachments"] });
+      void queryClient.invalidateQueries({ queryKey: ["attachments", "member", memberId] });
+      if (kind === "photo") void queryClient.invalidateQueries({ queryKey: ["attachments", "photo"] });
     },
   });
 }

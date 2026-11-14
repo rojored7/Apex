@@ -24,8 +24,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import asynccontextmanager, contextmanager, suppress
-from typing import Any, Final
+from contextlib import asynccontextmanager, contextmanager
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy import URL, select, update
@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from starlette.datastructures import State
 
 from app.core.clock import current_clock
 from app.core.config import Settings, get_settings
@@ -93,7 +94,7 @@ def release_slot() -> None:
     _slots_used = max(0, _slots_used - 1)
 
 
-def track(state: Any, tarea: asyncio.Task[None]) -> None:
+def track(state: State, tarea: asyncio.Task[None]) -> None:
     """Guarda la tarea en `state.rotation_tasks` (se quita sola al terminar) y como
     `state.rotation_task` (la última); el `finally` del lifespan las cancela todas."""
     tareas: set[asyncio.Task[None]] = getattr(state, "rotation_tasks", None) or set()
@@ -179,7 +180,7 @@ async def _in_job[T](
 async def _fail(factory: async_sessionmaker[AsyncSession], job_id: UUID, code: str) -> None:
     """Marca `failed` el job en curso (su propia transacción); `code` es un código, no texto."""
     cambio = update(CryptoJob).where(CryptoJob.id == job_id, CryptoJob.status.in_(OPEN_STATES))
-    with suppress(Exception):  # el job queda como estaba; el aviso sale igual
+    try:
         async with factory() as session, session.begin():
             await session.execute(
                 cambio.values(
@@ -188,6 +189,11 @@ async def _fail(factory: async_sessionmaker[AsyncSession], job_id: UUID, code: s
                     finished_at=current_clock().now_utc(),
                 )
             )
+    except Exception as e:  # el job queda como estaba; el aviso sale igual
+        logger.warning(
+            "rotación: no se pudo marcar el job como failed",
+            extra={"job_id": str(job_id), "error": type(e).__name__},
+        )
 
 
 async def _reload_keyring(factory: async_sessionmaker[AsyncSession]) -> None:
@@ -199,37 +205,37 @@ async def _reload_keyring(factory: async_sessionmaker[AsyncSession]) -> None:
 
 
 def _batch_size(data_class: str, pedido: int | None) -> int:
-    if pedido is not None:
-        return pedido
-    return BATCH_FILES if get_reencryptor(data_class) is not None else BATCH_ROWS
+    """Con puerto `Reencryptor` el lote nunca pasa de `BATCH_FILES`: el puerto recorta y un pedido
+    mayor haría que `migradas < size` pareciera una pasada vacía (V11)."""
+    if get_reencryptor(data_class) is not None:
+        return BATCH_FILES if pedido is None else min(pedido, BATCH_FILES)
+    return BATCH_ROWS if pedido is None else pedido
+
+
+async def _guarded[T](
+    factory: async_sessionmaker[AsyncSession],
+    job_id: UUID,
+    work: Callable[[AsyncSession, CryptoJob], Awaitable[T]],
+) -> tuple[T, int, int]:
+    """`_in_job` con reintentos; un error con código deja el job `failed` (`RotationFailed`)."""
+    try:
+        return await retry(lambda: _in_job(factory, job_id, work))
+    except (RotationBusy, RotationFailed):
+        raise
+    except Exception as error:
+        codigo = str(getattr(error, "code", None) or type(error).__name__)
+        await _fail(factory, job_id, codigo)
+        raise RotationFailed(codigo) from None
 
 
 async def _batch(
     factory: async_sessionmaker[AsyncSession], job_id: UUID, size: int
 ) -> tuple[int, int, int]:
-    try:
-        return await retry(
-            lambda: _in_job(factory, job_id, lambda s, j: service.reencrypt_batch(s, j, size))
-        )
-    except (RotationBusy, RotationFailed):
-        raise
-    except Exception as error:
-        codigo = str(getattr(error, "code", None) or type(error).__name__)
-        await _fail(factory, job_id, codigo)
-        raise RotationFailed(codigo) from None
+    return await _guarded(factory, job_id, lambda s, j: service.reencrypt_batch(s, j, size))
 
 
 async def _finish(factory: async_sessionmaker[AsyncSession], job_id: UUID) -> bool:
-    try:
-        cerrada, _, _ = await retry(
-            lambda: _in_job(factory, job_id, lambda s, j: service.finish_rotation(s, j))
-        )
-    except (RotationBusy, RotationFailed):
-        raise
-    except Exception as error:
-        codigo = str(getattr(error, "code", None) or type(error).__name__)
-        await _fail(factory, job_id, codigo)
-        raise RotationFailed(codigo) from None
+    cerrada, _, _ = await _guarded(factory, job_id, lambda s, j: service.finish_rotation(s, j))
     return cerrada
 
 
@@ -248,6 +254,8 @@ async def _loop(
         migradas, hecho, total = await _batch(factory, job_id, size)
         if migradas and on_progress is not None:
             on_progress(hecho, total)
+        if migradas:
+            vacias = 0  # hubo avance: las pasadas vacías cuentan solo si son seguidas
         if migradas >= size:
             continue
         if await _finish(factory, job_id):
@@ -344,7 +352,7 @@ async def resume_running_jobs(session_factory: async_sessionmaker[AsyncSession])
             .where(CryptoJob.kind == "rotate", CryptoJob.status == "running")
             .order_by(CryptoJob.created_at)
         )
-        pendientes: list[Any] = list(filas)
+        pendientes: list[UUID] = list(filas)
     if not pendientes:
         return
     if not recovery.is_loaded():

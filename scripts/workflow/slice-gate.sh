@@ -145,7 +145,7 @@ gate_api() {
     echo "slice-gate: ruff format --check $codigo";   uv run ruff format --check $codigo
     echo "slice-gate: mypy $codigo";                  uv run mypy $codigo
   fi
-  echo "slice-gate: pytest ${pruebas[*]}";            uv run pytest "${pruebas[@]}" -q
+  echo "slice-gate: pytest ${pruebas[*]}";            uv run python -m pytest "${pruebas[@]}" -q
 }
 
 # ---------------------------------------------------------------- front

@@ -72,6 +72,11 @@ def can_download(role: str, sensitive: bool) -> bool:
     return role == "admin" or (role == "coach" and not sensitive)
 
 
+def can_upload(role: str, kind: str) -> bool:
+    """Subida (S6-C2): cualquier personal sube la foto; `consent` y `other` solo el admin."""
+    return kind == "photo" or role == "admin"
+
+
 _EXTENSION: Final = {JPEG: "jpg", PNG: "png", PDF: "pdf"}
 
 

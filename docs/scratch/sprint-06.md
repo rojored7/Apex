@@ -532,3 +532,23 @@ alembic_version = 0021_audit_signatures
 
 - **V9 · Base de datos (correcciones aplicadas; backlog `0025`).** M1 hecho: `attachments-check` compara `key_id` con la cabecera del blob y sale 1 si difieren; L5 hecho: `sensitive_rows_not_with_key` sin `ORDER BY` (SKIP LOCKED). Backlog `0025` (Sprint 7, sin implementar): (1) FK `fk_attachments_key_id` `attachments.key_id → crypto.crypto_keys(id)` `ON DELETE RESTRICT`, `NOT VALID` + `VALIDATE`; (2) en `guard_jobs_update` la rama de `apex_api` debe exigir `OLD.kind = 'rotate'` (hoy el api podría reabrir o cerrar un job `migrate_provider`/`rewrap` del CLI); (3) `CHECK ((purpose = 'sign') = (public_key IS NOT NULL))` en `crypto_keys`; (4) `CHECK (kind <> 'photo' OR NOT sensitive)` en `attachments`.
 - **V3.4 · «Firma atrasada» (hecha, S6-D132).** `apex_sim` en `db_test`: `sign_audit` firma (6105), `nada_nuevo`, filas nuevas sin firmar, `--date hoy+3 --simulate` → `atrasada=1`, alerta `audit_sign_late age_h=61`; api efímero con reloj congelado → `is_late=true` (`state` `none` → `ok` tras verificar). Evidencia `v3-4-sim.txt`, `v3-4-atrasada.txt`, `v3-4-pantalla.json`. V3.1 a V3.3 y V3.5: pendientes del desello del ensayo.
+- **V11 · Correcciones de la revisión Python.**
+  - 1 HIGH hecho: `_batch_size` limita a `BATCH_FILES` con puerto `Reencryptor` y `vacias = 0` si el lote migró algo; `rotate-key attachment.sensitive` con 60 objetos sale 0. Defecto que las pruebas no cubrían: la del CLI sembraba 25 y la de 120 llamaba `run_rotation` con `batch_size=None`; ahora la del CLI se parametriza con 25 y 60.
+  - 2 `_fail` ya no traga el error: `logger.warning` con `job_id` y tipo.
+  - 3 `_batch` y `_finish` comparten `_guarded`.
+  - 4 `_encrypt_file`, `_decrypt_file` y `_reencrypt_blob` corren en `asyncio.to_thread` (el buffer de `crypto_ops` lo crea el middleware de logging y `to_thread` copia el contexto; `tests/attachments` sigue verde).
+  - 5 `attachments.rules.can_upload` (+ `attachments.service.can_upload` y `members.service.ensure_can_upload`); el router de `members` ya no repite la regla; mismo 403.
+  - 6 `attachments.service.open` pasa a `open_attachment`.
+  - 7 `StorageProvider.name: ClassVar[str]` (`local`/`s3`); `_provider_name` lo usa.
+  - 8 `CryptoKey.state` es `Mapped[KeyState]`; sin `type: ignore` en `sign_rotation.py` ni `service.py`.
+  - 9 `sign_audit` informa `attempts = reintentos + 1` (4); pruebas ajustadas.
+  - 10 `is_signature_late` pierde `last_signed_at`.
+  - 11 `VerificationView.chain_broken` (no se guarda): `_only_signatures_broke` ya no oculta «Cadena rota» si coincide el seq.
+  - 12 Docstring de `core/crypto/router.py` con todas las rutas; `quien` pasa a `despues`.
+  - 13 `track(state: State)` y `pendientes: list[UUID]`.
+  - 14 `MAGIC_BYTES` y `_BLOB_HEADER_BYTES`.
+  - 15 `config_origin` compara `AUTH_ALLOWED_ORIGINS` en minúsculas y sin barra final.
+  - 16 Docstring de `attach_to_member` unido.
+  - 17 `tests/architecture/test_audit_sign_callers.py`: solo el worker y el CLI llaman `sign_latest` y el `sign` del bus; residual documentado en `llaves.md` y RUNBOOK §14 (mitigación al Sprint 7).
+  - 18 RUNBOOK §912 corregido (`state` sí cambia desde `0024`, con guardas).
+  - 19 Viñetas de `sign-ed25519.key` fuera de la copia `age` (L4) y del `public_key` modificable por el propietario (M1, va en `0025`) en `llaves.md`; L4 también en RUNBOOK §14.

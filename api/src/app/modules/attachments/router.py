@@ -44,7 +44,9 @@ async def download_attachment(
         await enforce_user_limit(request, "attachments-download-hour", principal.user_id)
     else:
         await enforce_user_limit(request, "attachments-photo", principal.user_id)
-    cuerpo = await service.open(session, attachment_id, by=principal.user_id, audit=meta.sensitive)
+    cuerpo = await service.open_attachment(
+        session, attachment_id, by=principal.user_id, audit=meta.sensitive
+    )
     nombre = rules.download_filename(meta.id, meta.mime)
     if cuerpo.data is not None:
         return file_download(cuerpo.data, filename=nombre, media_type=meta.mime)

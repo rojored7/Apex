@@ -114,7 +114,6 @@ def needs_signature(last_seq: int, last_signed_seq: int) -> bool:
 
 
 def is_signature_late(
-    last_signed_at: datetime | None,
     last_seq: int,
     last_signed_seq: int,
     first_unsigned_at: datetime | None,
@@ -123,10 +122,9 @@ def is_signature_late(
 ) -> bool:
     """«Firma atrasada»: hay filas sin firmar y la más antigua pasa el umbral (estricto).
 
-    `last_signed_at` no entra en la decisión (una firma vieja sin filas nuevas no atrasa); sin
-    `first_unsigned_at` no hay edad que medir y no se alerta (S6-D40).
+    Una firma vieja sin filas nuevas no atrasa; sin `first_unsigned_at` no hay edad que medir y
+    no se alerta (S6-D40).
     """
-    del last_signed_at
     if not needs_signature(last_seq, last_signed_seq) or first_unsigned_at is None:
         return False
     return now - first_unsigned_at > timedelta(hours=threshold_h)
@@ -237,8 +235,6 @@ async def late_hours(session: AsyncSession, now: datetime) -> int | None:
     previa = await latest_signature(session)
     signed_seq = 0 if previa is None else previa.through_seq
     primera = await session.scalar(select(func.min(_LOG.c.at)).where(_LOG.c.seq > signed_seq))
-    if not is_signature_late(
-        None if previa is None else previa.signed_at, last_seq, signed_seq, primera, now
-    ):
+    if not is_signature_late(last_seq, signed_seq, primera, now):
         return None
     return int((now - cast("datetime", primera)).total_seconds() // 3600)

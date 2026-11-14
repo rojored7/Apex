@@ -60,7 +60,7 @@ def esperando(tmp_path: Path) -> Iterator[Esperando]:
 
 async def _abrir(real: Fabrica, adjunto_id: UUID, por: UUID) -> AttachmentBody:
     async with real() as sesion:
-        return await service.open(sesion, adjunto_id, by=por)
+        return await service.open_attachment(sesion, adjunto_id, by=por)
 
 
 async def _liberador(almacen: Esperando, cupos: int) -> None:

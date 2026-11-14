@@ -429,8 +429,7 @@ export interface paths {
         /**
          * Attach To Member
          * @description S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, 409 (S6-C3),
-         *     `Content-Length`,
-         *     cubeta y recién entonces se lee el cuerpo.
+         *     `Content-Length`, cubeta y recién entonces se lee el cuerpo.
          */
         post: operations["attach_to_member_api_v1_members__member_id__attachments_post"];
         delete?: never;

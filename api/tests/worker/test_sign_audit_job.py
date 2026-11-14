@@ -6,7 +6,7 @@ fila `sign` `local` ya en la base y keyring del proceso vacío). Contrato que fi
   `atrasada`, `cadena_rota`; sin novedades `nada_nuevo = 1` y nada que alertar;
 - custodio sellado: `RETRY_WAITS_S = (2, 4, 8)` por `sign_audit.sleep`, `JobResult(ok=False)`,
   `reintentos = 3`, `sellado = 1` y una `alert("audit_sign_failed", job, result, error_type,
-  attempts=3)`; nunca firma a medias;
+  attempts=4)`; nunca firma a medias;
 - `signature_unverifiable` (S6-D100): un fallo sin reintento útil (sin esperas, `attempts = 1`);
 - «atrasada» (más de 48 h con filas sin firmar, contra `current_clock()`): una sola
   `alert("audit_sign_late", job, age_h)` por corrida;
@@ -227,7 +227,7 @@ async def test_con_el_custodio_sellado_reintenta_2_4_8_y_falla_sin_firmar(
     assert (detalles["reintentos"], detalles["sellado"]) == (3, 1)
     assert detalles.get("firmadas", 0) == 0 and await firmas(base) == []
     (fallo,) = [x for c, x in alertas.enviadas if c == "audit_sign_failed"]
-    assert fallo["job"] == "sign_audit" and fallo["result"] == "error" and fallo["attempts"] == 3
+    assert fallo["job"] == "sign_audit" and fallo["result"] == "error" and fallo["attempts"] == 4
     assert isinstance(fallo["error_type"], str) and fallo["error_type"].isidentifier()
     assert set(fallo) == {"job", "result", "error_type", "attempts"}
 
@@ -410,6 +410,6 @@ async def test_un_error_de_base_en_el_intento_se_reintenta_y_alerta_db_timeout(
     assert salida.result == "error" and salida.error_type is None
     assert espera_falsa.esperas == [2, 4, 8]
     (fallo,) = [x for c, x in alertas.enviadas if c == "audit_sign_failed"]
-    assert fallo["error_type"] == "db_timeout" and fallo["attempts"] == 3
+    assert fallo["error_type"] == "db_timeout" and fallo["attempts"] == 4
     assert (await _detalles(base))["reintentos"] == 3
     assert await firmas(base) == []

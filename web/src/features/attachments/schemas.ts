@@ -7,6 +7,8 @@ import { z } from "zod";
 import { pageSchema } from "../../core/api/page";
 import { ATTACHMENT_KINDS, attachmentRefSchema, type AttachmentKind } from "../../shared/data/attachments";
 
+const instant = z.iso.datetime({ offset: true });
+
 export { ATTACHMENT_KINDS, type AttachmentKind };
 
 export const attachmentSchema = attachmentRefSchema.extend({
@@ -18,7 +20,7 @@ export const attachmentSchema = attachmentRefSchema.extend({
   sensitive: z.boolean(),
   uploaded_by: z.uuid(),
   uploaded_by_name: z.string().nullish(),
-  created_at: z.string(),
+  created_at: instant,
 });
 export type AttachmentView = z.infer<typeof attachmentSchema>;
 

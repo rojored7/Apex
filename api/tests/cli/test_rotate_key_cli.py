@@ -582,7 +582,9 @@ async def test_un_puerto_que_nunca_vacia_agota_las_pasadas_marca_failed_y_sale_1
     assert await _llaves(rotacion_lista) == [(1, "decrypt_only"), (2, "active")]
 
 
+@pytest.mark.parametrize("cantidad", [25, 60])
 async def test_rotate_key_de_attachment_sensitive_sale_0_con_el_puerto_real(
+    cantidad: int,
     settings_prueba: Settings,
     rotacion_lista: Fabrica,
     engine: Any,
@@ -592,7 +594,8 @@ async def test_rotate_key_de_attachment_sensitive_sale_0_con_el_puerto_real(
 ) -> None:
     """S6-R1 (S6-D26, E5): con el puerto `Reencryptor` real registrado por `cli_runtime`, el CLI y
     la pantalla comparten `run_rotation`; rotar `attachment.sensitive` sale 0 y recifra los
-    objetos (antes de C1 salía 2 `rotation_not_supported`)."""
+    objetos (antes de C1 salía 2 `rotation_not_supported`). Con 60 (> 50) cubre el defecto de V11:
+    el CLI pedía lotes de 500, el puerto migraba 10 y cada lote contaba como pasada vacía."""
     from uuid import uuid4
 
     from sqlalchemy import text
@@ -609,7 +612,7 @@ async def test_rotate_key_de_attachment_sensitive_sale_0_con_el_puerto_real(
     ajustes = settings_prueba.model_copy(update={"UPLOADS_DIR": uploads})
     adjuntos.configure_storage(LocalDiskStorage(raiz))
     try:
-        for _ in range(25):
+        for _ in range(cantidad):
             await subir_real(rotacion_lista, uuid4(), "consent", files.pdf(2000))
 
         resultado = _rotar(
@@ -617,7 +620,7 @@ async def test_rotate_key_de_attachment_sensitive_sale_0_con_el_puerto_real(
         )
 
         assert resultado.exit_code == 0, resultado.output
-        assert "rotate-key: total=25" in resultado.output
+        assert f"rotate-key: total={cantidad}" in resultado.output
         assert FINAL in resultado.output
         async with rotacion_lista() as sesion:
             llaves = await llaves_de(sesion, "encrypt", "attachment.sensitive")

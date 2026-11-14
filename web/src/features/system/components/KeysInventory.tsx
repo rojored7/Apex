@@ -9,7 +9,7 @@
 // DESIGN-GAP: Llaves.html tiene las columnas «Dónde vive» y «Límite» y los enlaces «Ver tarea» y «Ver»; el api
 // no publica el límite de rotación (solo `age_days`, que se muestra como «Antigüedad») ni se necesita la
 // ubicación del material (siempre «envuelta» en crypto_keys): «Dónde vive» pasa a «Proveedor» y «Ver tarea»
-// vive en la pestaña Trabajos (BRECHAS 14.7).
+// vive en la pestaña Trabajos (BRECHAS 14.16).
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { formatCount, formatDateTime } from "../../../core/i18n/format";

@@ -54,6 +54,8 @@ export function PhotoField({ value, onChange, error, currentPhotoId = null }: Ph
     }
     const problem = fileError("photo", file);
     setLocalError(problem);
+    // Un archivo rechazado no debe seguir mostrándose en el control.
+    if (problem !== null && inputRef.current) inputRef.current.value = "";
     onChange(problem === null ? file : null);
   };
 

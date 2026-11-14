@@ -269,7 +269,7 @@ async def _swap_key(
     """`old` pasa a `decrypt_only` y nace la versión siguiente `active`; devuelve (nueva, DEK).
 
     Quien llama deja la DEK en ceros al terminar (S5-D151)."""
-    next_key_state(old.state, "rotate", old.purpose)  # type: ignore[arg-type]
+    next_key_state(old.state, "rotate", old.purpose)
     old.state = "decrypt_only"
     old.rotated_at = current_clock().now_utc()
     old.rotated_by = actor
@@ -555,7 +555,7 @@ async def retire_key(
     llave = await _lock_key(session, key_id)
     if llave.purpose == "sign" and await _signatures_reference(session, key_id):
         raise ValueError("signatures_reference_key: hay firmas con esa llave; no se retira")
-    nuevo = next_key_state(llave.state, "retire", llave.purpose)  # type: ignore[arg-type]
+    nuevo = next_key_state(llave.state, "retire", llave.purpose)
     pendientes = sum((await count_rows_by_key(session, key_id)).values())
     if pendientes:
         raise ValueError(f"quedan {pendientes} filas de negocio con esa llave; no se retira")

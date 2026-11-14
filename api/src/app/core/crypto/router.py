@@ -1,6 +1,8 @@
 """Router de llaves (EP-18; S6-D12, S6-D44, S6-D52, S6-B1).
 
-`GET /crypto/keys`, `/crypto/ops` y `/crypto/jobs` (admin, `staff-read`; S6-B2, US-144).
+Rutas (todas admin): `GET /crypto/keys`, `/crypto/ops` y `/crypto/jobs` (`staff-read`; S6-B2,
+US-144), `GET /crypto/cbom` (descarga, S6-B3, US-146) y `POST /crypto/keys/{id}/rotate`
+(rotación en segundo plano, S6-R1). El resumen (`summary`) viaja dentro de `/crypto/keys`.
 `main.py` lo registra bajo `/api/v1` y cablea la puerta de auditoría con
 `set_audit_writer`; el router nunca importa `core.audit` ni `app.modules`.
 """
@@ -199,17 +201,17 @@ async def rotate_crypto_key(
             session, key_id, reason=motivo, by=principal.user_id
         )
         if inicio.resumed:  # la llave no cambia: el rastro es el evento y el job (sin material)
-            registro, quien = inicio.new_key_id, {"event": "resume", "job_id": str(inicio.job_id)}
+            registro, despues = inicio.new_key_id, {"event": "resume", "job_id": str(inicio.job_id)}
         else:
             registro = inicio.previous_key_id
-            quien = {"reason": motivo, "data_class": inicio.data_class, "state": "decrypt_only"}
+            despues = {"reason": motivo, "data_class": inicio.data_class, "state": "decrypt_only"}
         await escritor(
             session,
             action="update",
             table_name="crypto.crypto_keys",
             record_id=registro,
             before=None,
-            after=quien,
+            after=despues,
             user_id=principal.user_id,
         )
         await session.commit()

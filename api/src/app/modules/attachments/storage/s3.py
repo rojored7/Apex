@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, ClassVar
 
 from app.core.config import Settings
 from app.modules.attachments.exceptions import StorageUnavailable
@@ -20,6 +20,8 @@ _AUSENTE = frozenset({"404", "NoSuchKey", "NotFound"})
 
 
 class S3CompatibleStorage:
+    name: ClassVar[str] = "s3"
+
     def __init__(self, settings: Settings) -> None:
         try:  # `import_module`: sin stubs de tipos y sin romper si el extra `s3` no está instalado
             boto3 = importlib.import_module("boto3")

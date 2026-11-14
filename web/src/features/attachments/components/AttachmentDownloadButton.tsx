@@ -6,7 +6,7 @@ import { ApiError } from "../../../core/api/errors";
 import { HTTP_FORBIDDEN, HTTP_NOT_FOUND } from "../../../core/api/status";
 import { useBlobDownload } from "../../../shared/data/download";
 import { ATTACHMENT_MESSAGES } from "../attachmentErrors";
-import { kindLabel } from "../lib/attachmentText";
+import { fallbackFileName, kindLabel } from "../lib/attachmentText";
 import type { AttachmentView } from "../schemas";
 import { formatDate } from "../../../core/i18n/format";
 import { Button } from "../../../shared/ui/Button";
@@ -15,7 +15,7 @@ import styles from "./AttachmentDownloadButton.module.css";
 export const DOWNLOAD_BUSY = "Preparando la descarga…";
 
 export interface AttachmentDownloadButtonProps {
-  attachment: Pick<AttachmentView, "id" | "kind" | "created_at">;
+  attachment: Pick<AttachmentView, "id" | "kind" | "created_at" | "mime">;
   /** Recibe el mensaje del fallo (o null al empezar otra descarga). */
   onError: (message: string | null) => void;
 }
@@ -31,7 +31,7 @@ export function AttachmentDownloadButton({ attachment, onError }: AttachmentDown
   const label = `Descargar ${kindLabel(attachment.kind)} subido el ${formatDate(attachment.created_at)}`;
   const run = (): void => {
     onError(null);
-    download({ path: `/attachments/${encodeURIComponent(attachment.id)}`, fallbackName: `adjunto-${attachment.id.slice(0, 8)}` }).catch((failure: unknown) => {
+    download({ path: `/attachments/${encodeURIComponent(attachment.id)}`, fallbackName: fallbackFileName(attachment) }).catch((failure: unknown) => {
       onError(failure instanceof ApiError ? failureText(failure.status, failure.message) : ATTACHMENT_MESSAGES.listFailed);
     });
   };

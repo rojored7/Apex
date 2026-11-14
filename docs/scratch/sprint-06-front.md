@@ -124,3 +124,16 @@
   - L1: el 503 `crypto_unavailable` de la rotación muestra el texto del api (como `downloadErrors.ts`); se quitó `rotateCustody` y el `CustodyNotice` global explica el sellado.
   - L2: comentarios de `api.ts`, `KeysInventory.tsx` y `CryptoOpsLog.tsx`: `q` viaja al api y no queda en la URL ni en la caché (`gcTime: 0`).
   - L3: `cryptoOpSchema.user_id` con forma de UUID (admite el usuario técnico fijo, rechaza texto libre); prueba en `CryptoOpsLog.test.tsx`.
+
+## V11 · Correcciones de la revisión final
+
+- MEDIUM 1: `file` sale de `RequestOptions` y vive en un `SendOptions` interno de `client.ts`; `api.get/post/delete/blob` ya no lo aceptan (prueba de tipos con `@ts-expect-error` en `client.test.ts`).
+- LOW 2: el JSDoc de S5-F4 («GET de un archivo») va sobre `blob`.
+- LOW 3: `useVerifyChain` ya no invalida la firma; lo hace solo `VerifyChainButton` al llegar a «done» (200 y sondeo del 202). Prueba: una sola relectura de `GET /audit/signatures/latest`.
+- LOW 4: `useSubirAdjunto` invalida `["attachments","member",id]` y `["attachments","photo"]` solo si `kind === "photo"`.
+- LOW 5: `KeysSummaryCards` muestra `failed.message` en un `role="alert"` y oculta «Reintentar» con 403 y 429.
+- LOW 6: la hora de aceptación del consentimiento se toma en el `onChange` de la casilla (estado), no en un `useMemo`.
+- LOW 7: `attachmentSchema.created_at` usa `z.iso.datetime({ offset: true })`.
+- LOW 8: comentarios corregidos (14.17, 14.16, 14.15) y BRECHAS 14.11 dice 35 s (S6-D123).
+- LOW 9: `fallbackFileName(row)` en `attachmentText.ts`: constante con nombre y extensión según `mime`.
+- LOW 10: `PhotoField` y `ConsentSection` vacían el `<input type=file>` al rechazar un archivo.

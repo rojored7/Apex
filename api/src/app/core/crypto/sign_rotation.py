@@ -98,7 +98,7 @@ async def _insert_next(
             CryptoKey.purpose == "sign", CryptoKey.data_class == anterior.data_class
         )
     )
-    anterior.state = next_key_state(anterior.state, "rotate", "sign")  # type: ignore[arg-type]
+    anterior.state = next_key_state(anterior.state, "rotate", "sign")
     anterior.rotated_at, anterior.rotated_by = current_clock().now_utc(), actor
     await session.flush()  # libera `uq_crypto_keys_active` antes de insertar la nueva
     nueva = CryptoKey(

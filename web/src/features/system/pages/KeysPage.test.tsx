@@ -140,6 +140,26 @@ describe("KeysPage · tarjetas de resumen", () => {
     expect(screen.queryByText(/Proveedor activo/)).not.toBeInTheDocument();
   });
 
+  it("403 y 429 en el resumen: dicen el motivo y no ofrecen Reintentar (revisión V11, LOW 5)", async () => {
+    renderPage("/sistema/llaves", { handlers: { "GET /crypto/keys": apiError(403, "forbidden", "x") } });
+    const summary = await screen.findByRole("region", { name: "Resumen de llaves" });
+
+    await waitFor(() => {
+      expect(within(summary).getByRole("alert")).toHaveTextContent(/Solo un administrador puede consultarlas/);
+    });
+    expect(within(summary).queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+  });
+
+  it("429 en el resumen: dice cuánto esperar y no ofrece Reintentar", async () => {
+    renderPage("/sistema/llaves", { handlers: { "GET /crypto/keys": apiError(429, "too_many_requests", "x") } });
+    const summary = await screen.findByRole("region", { name: "Resumen de llaves" });
+
+    await waitFor(() => {
+      expect(within(summary).getByRole("alert")).toHaveTextContent(/Demasiadas consultas seguidas/);
+    });
+    expect(within(summary).queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+  });
+
   it("403: dice que solo un administrador ve las llaves", async () => {
     renderPage("/sistema/llaves", { handlers: { "GET /crypto/keys": apiError(403, "forbidden", "x") } });
 

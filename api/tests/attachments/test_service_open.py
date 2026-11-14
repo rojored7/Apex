@@ -1,4 +1,4 @@
-"""`attachments.service.open` (S6-C1, US-147/US-150; S6-D24, S6-D45, S6-D53, M-3, ADR-007).
+"""`attachments.service.open_attachment` (S6-C1, US-147/US-150; S6-D24, S6-D45, S6-D53, M-3).
 
 Orden fijado por M-3: DESCIFRAR -> `audit.record("download", ...)` -> COMMIT -> cuerpo. Un 503 por
 custodio sellado no deja una fila `download` falsa. La foto no se audita por vista (`audit=False`) y
@@ -96,7 +96,7 @@ async def test_un_sensible_se_devuelve_descifrado_en_memoria_con_su_metadato(
     adjunto = await subir_real(real, por, "consent", PDF, dueno=dueno)
 
     async with real() as sesion:
-        cuerpo = await service.open(sesion, adjunto.id, by=por)
+        cuerpo = await service.open_attachment(sesion, adjunto.id, by=por)
 
     assert cuerpo.data == PDF and cuerpo.stream is None
     assert (cuerpo.meta.id, cuerpo.meta.kind, cuerpo.meta.mime) == (
@@ -130,7 +130,7 @@ async def test_el_orden_es_descifrar_luego_fila_download_luego_cuerpo(
     monkeypatch.setattr(files, "_decrypt_file", espia)
 
     async with real() as sesion:
-        cuerpo = await service.open(sesion, adjunto.id, by=por)
+        cuerpo = await service.open_attachment(sesion, adjunto.id, by=por)
         secuencia.append("cuerpo")
         # Otra sesión ya ve la fila: `open` la confirmó antes de devolver el cuerpo (M-3).
         assert len(await _bajadas(real)) == 1
@@ -144,7 +144,7 @@ async def test_la_fila_download_lleva_id_sujeto_actor_y_exactamente_kind_sensiti
     dueno = uuid4()
     adjunto = await subir_real(real, por, "consent", PDF, dueno=dueno)
     async with real() as sesion:
-        await service.open(sesion, adjunto.id, by=por)
+        await service.open_attachment(sesion, adjunto.id, by=por)
 
     (bajada,) = await _bajadas(real)
     assert bajada["record_id"] == adjunto.id
@@ -160,11 +160,11 @@ async def test_cada_open_deja_una_sola_fila_download_y_un_solo_crypto_ops_decryp
 ) -> None:
     adjunto = await subir_real(real, por, "consent", PDF)
     async with real() as sesion:
-        await service.open(sesion, adjunto.id, by=por)
+        await service.open_attachment(sesion, adjunto.id, by=por)
     assert len(await _bajadas(real)) == 1
     async with real() as sesion:
         assert len(await ops_de(sesion, "decrypt", adjunto.id)) == 1
-        await service.open(sesion, adjunto.id, by=por)
+        await service.open_attachment(sesion, adjunto.id, by=por)
     assert len(await _bajadas(real)) == 2
     async with real() as sesion:
         assert len(await ops_de(sesion, "decrypt", adjunto.id)) == 2
@@ -178,7 +178,7 @@ async def test_con_el_custodio_sellado_da_crypto_unavailable_y_ninguna_fila_down
 
     async with real() as sesion:
         with pytest.raises(CryptoUnavailable):
-            await service.open(sesion, adjunto.id, by=por)
+            await service.open_attachment(sesion, adjunto.id, by=por)
         await sesion.rollback()
 
     assert await _bajadas(real) == []
@@ -198,7 +198,7 @@ async def test_un_objeto_corrupto_no_ascii_falla_con_crypto_error_y_no_audita(
 
     async with real() as sesion:
         with pytest.raises(CryptoError) as exc:
-            await service.open(sesion, a.id, by=por)
+            await service.open_attachment(sesion, a.id, by=por)
         await sesion.rollback()
 
     assert exc.value.code == "blob_invalid"
@@ -218,7 +218,7 @@ async def test_un_blob_que_no_es_de_esa_fila_falla_al_descifrar_y_no_audita(
 
     async with real() as sesion:
         with pytest.raises(CryptoError):
-            await service.open(sesion, a.id, by=por)
+            await service.open_attachment(sesion, a.id, by=por)
         await sesion.rollback()
 
     assert await _bajadas(real) == []
@@ -229,7 +229,7 @@ async def test_audit_false_no_desactiva_la_auditoria_de_un_sensible(
 ) -> None:
     adjunto = await subir_real(real, por, "other", PDF)
     async with real() as sesion:
-        await service.open(sesion, adjunto.id, by=por, audit=False)
+        await service.open_attachment(sesion, adjunto.id, by=por, audit=False)
 
     assert len(await _bajadas(real)) == 1
 
@@ -243,7 +243,7 @@ async def test_la_foto_con_audit_false_se_sirve_por_stream_sin_fila_ni_crypto_op
     adjunto = await subir_real(real, por, "photo", JPG)
 
     async with real() as sesion:
-        cuerpo = await service.open(sesion, adjunto.id, by=por, audit=False)
+        cuerpo = await service.open_attachment(sesion, adjunto.id, by=por, audit=False)
         assert cuerpo.data is None and cuerpo.stream is not None
         recibido = b"".join([t async for t in cuerpo.stream])
 
@@ -261,7 +261,7 @@ async def test_la_foto_se_sirve_aunque_el_custodio_este_sellado(
     configure_keyring(None)
 
     async with real() as sesion:
-        cuerpo = await service.open(sesion, adjunto.id, by=por, audit=False)
+        cuerpo = await service.open_attachment(sesion, adjunto.id, by=por, audit=False)
         assert cuerpo.stream is not None
         assert b"".join([t async for t in cuerpo.stream]) == JPG
 
@@ -271,7 +271,7 @@ async def test_el_stream_de_la_foto_entrega_trozos_de_a_lo_sumo_64_kib(
 ) -> None:
     adjunto = await subir_real(real, por, "photo", JPG)
     async with real() as sesion:
-        cuerpo = await service.open(sesion, adjunto.id, by=por, audit=False)
+        cuerpo = await service.open_attachment(sesion, adjunto.id, by=por, audit=False)
         assert cuerpo.stream is not None
         trozos = [t async for t in cuerpo.stream]
     assert [len(t) for t in trozos] == [65536, len(JPG) - 65536]
@@ -285,6 +285,6 @@ async def test_un_id_inexistente_es_404_attachment_not_found(
 ) -> None:
     async with real() as sesion:
         with pytest.raises(AttachmentNotFound) as error:
-            await service.open(sesion, uuid4(), by=por)
+            await service.open_attachment(sesion, uuid4(), by=por)
     assert (error.value.status, error.value.code) == (404, "attachment_not_found")
     assert await _bajadas(real) == []

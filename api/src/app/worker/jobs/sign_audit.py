@@ -113,8 +113,10 @@ async def run(ctx: JobContext) -> JobResult:
         except _Retryable as fallo:
             details["sellado"] = int(fallo.sealed or bool(details["sellado"]))
             if reintentos >= len(RETRY_WAITS_S):
-                logger.warning("sign_audit: agotó los reintentos", extra={"attempts": reintentos})
-                return _failed(details, fallo.code, reintentos)
+                logger.warning(
+                    "sign_audit: agotó los reintentos", extra={"attempts": reintentos + 1}
+                )
+                return _failed(details, fallo.code, reintentos + 1)  # + el primer intento
             await sleep(RETRY_WAITS_S[reintentos])
             reintentos += 1
             details["reintentos"] = reintentos

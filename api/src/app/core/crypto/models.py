@@ -104,7 +104,7 @@ class CryptoKey(CommonColumnsMixin, Base):
     algorithm: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    state: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[KeyState] = mapped_column(Text, nullable=False)
     wrapped_material: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     rotated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     rotated_by: Mapped[UUID | None] = mapped_column(nullable=True)

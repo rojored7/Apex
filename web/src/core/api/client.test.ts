@@ -831,3 +831,21 @@ describe("api.upload: subida cruda de un archivo (S6-F4, E1)", () => {
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(file);
   });
 });
+
+describe("tipos públicos: el cuerpo crudo solo lo usa api.upload (revisión V11, MEDIUM 1)", () => {
+  it("api.get, api.post, api.delete y api.blob no aceptan { file }", () => {
+    const file = new File(["x"], "a.png", { type: "image/png" });
+    // Solo se comprueba en compilación: la función nunca se ejecuta.
+    const compileOnly = (): void => {
+      // @ts-expect-error file no es una opción pública de api.get
+      void api.get("/x", { file });
+      // @ts-expect-error file no es una opción pública de api.post
+      void api.post("/x", { body: {}, file });
+      // @ts-expect-error file no es una opción pública de api.delete
+      void api.delete("/x", { file });
+      // @ts-expect-error file no es una opción pública de api.blob
+      void api.blob("/x", { file });
+    };
+    expect(typeof compileOnly).toBe("function");
+  });
+});

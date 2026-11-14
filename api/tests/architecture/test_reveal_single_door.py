@@ -109,7 +109,8 @@ def test_la_exportacion_es_la_segunda_puerta_de_reveal_y_solo_una_vez() -> None:
 
 # S6-C1 (S6-D53, S6-D60): la TERCERA puerta de descifrado es la de los adjuntos. No es `reveal` (los
 # adjuntos no son campos del socio) sino `bus.decrypt` dentro de `_decrypt_file`; la fila `download`
-# de `audit_log` la escribe `attachments.service.open` (no hay evento `SensitiveFieldRevealed`).
+# de `audit_log` la escribe `attachments.service.open_attachment` (no hay evento
+# `SensitiveFieldRevealed`).
 PUERTA_ADJUNTOS = ("modules/attachments/files.py", "_decrypt_file")
 CIFRADO_ADJUNTOS = ("modules/attachments/files.py", "_encrypt_file")
 

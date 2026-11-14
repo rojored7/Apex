@@ -7,7 +7,7 @@
 // - Pagination por offset (25/50/100).
 // DESIGN-GAP: el diseño filtra también por usuario, llave y resultado, y la fila dice el nombre del usuario y el
 // socio afectado. El api devuelve el id del usuario (sin correo) y el registro es un UUID de dato personal que no
-// se muestra: el usuario se ve como «Usuario <8 hex>» y la bitácora filtra por operación y fechas (BRECHAS 14.7).
+// se muestra: el usuario se ve como «Usuario <8 hex>» y la bitácora filtra por operación y fechas (BRECHAS 14.17).
 import { useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { formatCount, formatDateTime } from "../../../core/i18n/format";

@@ -27,7 +27,9 @@ def _problemas_con_dominio(settings: Settings, origen: str) -> list[str]:
     if settings.FRONT_BASE_URL.rstrip("/").lower() != origen:
         invalidas.append("FRONT_BASE_URL")
     sesion = settings.AUTH_ALLOWED_ORIGINS
-    if any(o.lower().startswith("http:") for o in sesion) or (sesion and origen not in sesion):
+    if any(o.lower().startswith("http:") for o in sesion) or (
+        sesion and origen not in {o.lower().rstrip("/") for o in sesion}
+    ):
         invalidas.append("AUTH_ALLOWED_ORIGINS")
     if not settings.COOKIE_SECURE:
         invalidas.append("COOKIE_SECURE")

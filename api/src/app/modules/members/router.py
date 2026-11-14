@@ -48,7 +48,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
-from app.core.errors import ForbiddenError, responses_for
+from app.core.errors import responses_for
 from app.core.export import ExportStream, begin_export
 from app.core.http import csv_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
@@ -219,11 +219,9 @@ async def attach_to_member(
     session: Session,
 ) -> AttachmentOut:
     """S6-C2 (US-148, S6-D59): cuerpo crudo. Orden: socio, rol por `kind`, 409 (S6-C3),
-    `Content-Length`,
-    cubeta y recién entonces se lee el cuerpo."""
+    `Content-Length`, cubeta y recién entonces se lee el cuerpo."""
     await service.ensure_exists(session, member_id)
-    if kind != "photo" and principal.role != "admin":
-        raise ForbiddenError
+    service.ensure_can_upload(principal.role, kind)
     # S6-C3: la política se consulta antes de soltar la conexión y antes de leer el cuerpo.
     await service.ensure_consent_upload(session, member_id, kind)
     # S6-D114 (revisión de seguridad de C2): el socio ya se validó; se suelta la conexión para

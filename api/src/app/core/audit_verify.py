@@ -129,6 +129,7 @@ class VerificationView:
     source: str
     anchor_seq: int | None = None
     anchor_broken: bool = False
+    chain_broken: bool = False  # la ruptura la dio la cadena o el ancla, no solo las firmas
     signatures_checked: int | None = None
     signatures_valid: int | None = None
     first_invalid_signature_seq: int | None = None
@@ -334,6 +335,7 @@ async def run_verification(
     firmas = await _with_anti_rollback(
         session, await verify_signatures(session, through_seq=through_seq), through_seq
     )
+    chain_broken = broken_at_seq is not None
     if broken_at_seq is None and firmas.state == "invalid":
         broken_at_seq = firmas.first_invalid_seq  # cadena sana: manda la primera firma inválida
     through_hash = _verified_through_hash(scan, through_seq)
@@ -353,7 +355,12 @@ async def run_verification(
             "audit anchor", extra={"through_seq": through_seq, "through_hash": through_hash}
         )
     anchor_seq = None if anchor is None else anchor.through_seq
-    return replace(view_of(row), anchor_seq=anchor_seq, anchor_broken=anchor_broken)
+    return replace(
+        view_of(row),
+        anchor_seq=anchor_seq,
+        anchor_broken=anchor_broken,
+        chain_broken=chain_broken,
+    )
 
 
 def format_verify_message(result: VerificationView) -> tuple[str, int]:
@@ -382,9 +389,10 @@ def format_verify_message(result: VerificationView) -> tuple[str, int]:
 
 
 def _only_signatures_broke(result: VerificationView) -> bool:
-    """La verificación falló solo por las firmas: `broken_at_seq` es la primera firma inválida."""
+    """La verificación falló solo por las firmas: la cadena y el ancla cuadran y `broken_at_seq` es
+    la primera firma inválida."""
     checked, valid = result.signatures_checked, result.signatures_valid
-    if checked is None or valid is None or result.anchor_broken:
+    if checked is None or valid is None or result.anchor_broken or result.chain_broken:
         return False
     estado = signature_state(checked, valid, result.first_invalid_signature_seq)
     return estado == "invalid" and result.broken_at_seq == result.first_invalid_signature_seq

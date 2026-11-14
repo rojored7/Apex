@@ -29,7 +29,7 @@ $DC --profile tools run --rm tools rotate-key member.document --reason "rotació
 - El api no necesita reinicio: aprende la llave nueva en la siguiente petición autenticada (`keyring.refresh_current`).
 - Termina con `rotate-key: llave anterior en decrypt_only; retirar con retire-key`. La llave anterior sigue sirviendo para descifrar: aún no está retirada.
 - `--index` rota la llave del índice ciego (la que sirve para buscar por documento, teléfono o correo) y recalcula todos los índices en una sola transacción. Se niega con más de 50.000 filas. La búsqueda sigue funcionando al terminar.
-- `--batch-size N` cambia el tamaño del lote (1 a 5000).
+- `--batch-size N` cambia el tamaño del lote (1 a 5000). Con `attachment.sensitive` el lote nunca pasa de 10 objetos aunque pidas más (el puerto `Reencryptor` recorta); desde V11 `rotate-key attachment.sensitive` termina con salida 0 con cualquier cantidad de adjuntos (antes, con más de 50 salía 1 con `quedan filas con la llave anterior` aunque recifraba bien, porque cada lote de 10 contaba como pasada vacía). Si falla escribir el estado `failed` del trabajo, el log lo anota (`rotación: no se pudo marcar el job como failed`, sin mensaje ni material).
 
 ## Si se interrumpe o falla
 

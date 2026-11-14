@@ -13,6 +13,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import ClassVar
 
 from app.modules.attachments.storage.base import CHUNK_SIZE, check_key, is_key
 
@@ -20,6 +21,8 @@ _TMP_PREFIX = ".tmp-"
 
 
 class LocalDiskStorage:
+    name: ClassVar[str] = "local"
+
     def __init__(self, root: Path) -> None:
         self.root = root
 

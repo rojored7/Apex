@@ -6,7 +6,7 @@
 //   no registrada» si no hay política, o un texto neutro si no se puede leer (coach).
 // - Documento firmado opcional (PDF, JPEG o PNG, 5 MB): el formulario lo sube como kind=consent tras guardar.
 // - Con la autorización ya registrada (edición) muestra su texto en lugar de la casilla.
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { UseFormRegisterReturn } from "react-hook-form";
 import { formatDateTime } from "../../../core/i18n/format";
 import { usePrivacyVersion } from "../../../shared/data/privacyVersion";
@@ -48,8 +48,12 @@ export function ConsentSection({ checkbox, accepted, registeredText, checkboxLab
   useEffect(() => {
     if (checkboxError) checkRef.current?.focus();
   }, [checkboxError]);
-  // «Ahora» se toma al marcar la casilla y queda fijo mientras siga marcada (no corre un reloj).
-  const acceptedAt = useMemo(() => (accepted ? formatDateTime(new Date().toISOString()) : ""), [accepted]);
+  // «Ahora» se toma al marcar la casilla (en el manejador, no en el render) y queda fijo mientras siga marcada (no corre un reloj).
+  const [acceptedAt, setAcceptedAt] = useState("");
+  const handleCheck = (event: ChangeEvent<HTMLInputElement>): void => {
+    if (event.target.checked) setAcceptedAt(formatDateTime(new Date().toISOString()));
+    void checkbox.onChange(event);
+  };
 
   const versionText = privacy.status === "ready" ? (privacy.version ?? VERSION_NOT_REGISTERED) : privacy.status === "unavailable" ? VERSION_ON_SAVE : "Consultando…";
 
@@ -62,6 +66,8 @@ export function ConsentSection({ checkbox, accepted, registeredText, checkboxLab
     }
     const problem = fileError("consent", picked);
     setLocalError(problem);
+    // Un archivo rechazado no debe seguir mostrándose en el control.
+    if (problem !== null && inputRef.current) inputRef.current.value = "";
     onFileChange(problem === null ? picked : null);
   };
 
@@ -81,6 +87,7 @@ export function ConsentSection({ checkbox, accepted, registeredText, checkboxLab
         <>
           <label className={styles.check}>
             <input type="checkbox" className={styles.checkbox} aria-describedby={describedBy} aria-invalid={checkboxError ? true : undefined} {...checkbox}
+              onChange={handleCheck}
               ref={(element) => {
                 checkRef.current = element;
                 checkbox.ref(element);

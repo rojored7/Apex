@@ -8,6 +8,8 @@ import type { AttachmentKind, AttachmentView } from "../schemas";
 const KB = 1024;
 const MB = KB * KB;
 const SHORT_ID_LENGTH = 8;
+const FALLBACK_NAME_PREFIX = "adjunto-";
+const MIME_EXTENSIONS: Readonly<Record<string, string>> = { "image/jpeg": ".jpg", "image/png": ".png", "application/pdf": ".pdf" };
 
 function oneDecimal(value: number): string {
   return (Math.round(value * 10) / 10).toString().replace(".", ",");
@@ -32,4 +34,9 @@ export function kindLabel(kind: AttachmentKind): string {
 export function uploaderText(row: Pick<AttachmentView, "uploaded_by" | "uploaded_by_name">): string {
   const name = row.uploaded_by_name?.trim();
   return name ? name : `Usuario ${row.uploaded_by.slice(0, SHORT_ID_LENGTH)}`;
+}
+
+/** Nombre de respaldo de una descarga si el api no propone uno: adjunto-<8 hex> con la extensión del mime (sin extensión si no se conoce). */
+export function fallbackFileName(row: Pick<AttachmentView, "id" | "mime">): string {
+  return `${FALLBACK_NAME_PREFIX}${row.id.slice(0, SHORT_ID_LENGTH)}${MIME_EXTENSIONS[row.mime.trim().toLowerCase()] ?? ""}`;
 }

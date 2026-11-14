@@ -17,6 +17,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ForbiddenError
 from app.core.pagination import Page, PageParams
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.schemas import AttachmentOut
@@ -29,11 +30,19 @@ OWNER_TABLE = "members"
 
 ensure_declared_size = attachments_service.ensure_declared_size
 
+
+def ensure_can_upload(role: str, kind: str) -> None:
+    """403 si el rol no puede subir ese `kind` (regla de `attachments.rules`, S6-C2)."""
+    if not attachments_service.can_upload(role, kind):
+        raise ForbiddenError
+
+
 __all__ = [
     "OWNER_TABLE",
     "attach",
     "attachments_service",
     "current_photo",
+    "ensure_can_upload",
     "ensure_consent_upload",
     "ensure_declared_size",
     "list_attachments",

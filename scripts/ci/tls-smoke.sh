@@ -272,6 +272,12 @@ elif [ "$sc" = "503" ] && [ "$ALLOW_SEALED" = "1" ] && grep -q '"crypto" *: *"se
 else falla "https /api/v1/health responde '$sc'"; fi
 if grep -qi "^strict-transport-security: max-age=$HSTS_AGE\$" /tmp/h.h2; then ok "Strict-Transport-Security: max-age=$HSTS_AGE por HTTPS"; else falla "HSTS distinto de max-age=$HSTS_AGE: $(grep -i '^strict-transport-security:' /tmp/h.h2)"; fi
 if grep -qiE '^strict-transport-security:.*(includeSubDomains|preload)' /tmp/h.h2; then falla "HSTS con includeSubDomains o preload"; else ok "HSTS sin includeSubDomains ni preload"; fi
+# US-153.5 (V11): la CSP que se sirve con dominio no contiene orígenes http:.
+cs="$(curl -s -D /tmp/s.hdr -o /dev/null -w '%{http_code}' "${CURL_TLS[@]}" "https://$HOST$SUF/")"
+tr -d '\r' < /tmp/s.hdr > /tmp/s.h2
+if ! grep -qi '^content-security-policy:' /tmp/s.h2; then falla "GET / por HTTPS sin Content-Security-Policy (código $cs)"
+elif grep -i '^content-security-policy:' /tmp/s.h2 | grep -q 'http:'; then falla "la CSP servida por HTTPS contiene un origen http: (US-153.5)"
+else ok "CSP servida por HTTPS sin orígenes http: (US-153.5)"; fi
 CLIENTE
 
 # Un cliente desechable con openssl y curl; dos de ellos (IP distinta) para el limitador.

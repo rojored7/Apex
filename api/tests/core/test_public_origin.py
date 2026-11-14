@@ -230,6 +230,13 @@ def test_auth_allowed_origins_con_el_origen_publico_o_vacia_no_falla(
     )
 
 
+def test_auth_allowed_origins_ignora_mayusculas_y_barra_final(
+    settings_dominio: SettingsDeModo,
+) -> None:
+    """V11: el origen público va en minúsculas; la lista admite `HTTPS://Apex.Example.com/`."""
+    validate_origins(settings_dominio(AUTH_ALLOWED_ORIGINS=["HTTPS://Apex.Example.com/"]))
+
+
 def test_sin_dominio_auth_allowed_origins_con_http_sigue_valido(
     settings_lan: SettingsDeModo,
 ) -> None:

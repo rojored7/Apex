@@ -11,6 +11,11 @@ describe("attachmentSchema", () => {
     expect(attachmentSchema.safeParse({ ...attachment(), [field]: "no-es-uuid" }).success).toBe(false);
   });
 
+  it("rechaza un created_at que no es un instante ISO (revisión V11, LOW 7)", () => {
+    expect(attachmentSchema.safeParse({ ...attachment(), created_at: "ayer" }).success).toBe(false);
+    expect(attachmentSchema.safeParse({ ...attachment(), created_at: "2026-10-21" }).success).toBe(false);
+  });
+
   it("un mime nuevo del api no tumba la fila", () => {
     expect(attachmentSchema.safeParse({ ...attachment(), mime: "image/webp" }).success).toBe(true);
   });

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncIterator
-from typing import Final, Protocol
+from typing import ClassVar, Final, Protocol
 
 KEY_PATTERN: Final = r"^[0-9a-f]{32}$"
 CHUNK_SIZE: Final = 65536
@@ -23,6 +23,8 @@ def is_key(name: str) -> bool:
 
 
 class StorageProvider(Protocol):
+    name: ClassVar[str]  # `"local"` o `"s3"`: lo que se guarda en `storage_provider`
+
     async def put(self, key: str, data: bytes) -> None: ...
 
     async def get(self, key: str) -> bytes: ...

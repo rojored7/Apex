@@ -282,7 +282,7 @@ describe("useVerifyChain con firmas (S6-F1)", () => {
     expect(result.current.isSuccess || result.current.isIdle).toBe(true);
   });
 
-  it("al terminar relee el estado de la firma", async () => {
+  it("no invalida la firma por su cuenta: lo hace VerifyChainButton al terminar (también tras un sondeo)", async () => {
     const client = testQueryClient();
     client.setQueryData(SIGNATURE_LATEST_KEY, signaturesLatest());
     mockApi({ "POST /audit/verify": { status: 200, body: signedVerifyResult() } });
@@ -292,6 +292,6 @@ describe("useVerifyChain con firmas (S6-F1)", () => {
       await result.current.mutateAsync();
     });
 
-    expect(client.getQueryState(SIGNATURE_LATEST_KEY)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(SIGNATURE_LATEST_KEY)?.isInvalidated).toBe(false);
   });
 });

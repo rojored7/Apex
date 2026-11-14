@@ -47,7 +47,10 @@ export interface RequestOptions {
    * sí mismo o que un 401 de credenciales malas dispare un refresh inútil.
    */
   skipAuthRetry?: boolean;
-  /** S6-F4: cuerpo crudo de una subida; excluye al cuerpo JSON. */
+}
+
+/** Interno (S6-F4): además de lo público, el cuerpo crudo de una subida; solo lo usa requestUpload. */
+interface SendOptions extends RequestOptions {
   file?: File;
 }
 
@@ -216,7 +219,7 @@ function waitFor(seconds: number, signal: AbortSignal | undefined): Promise<void
 }
 
 /** Envía la petición con sus reintentos (401 una vez, 503 busy en lecturas JSON) y devuelve la respuesta correcta. */
-async function send(method: Method, path: string, options: RequestOptions, settings: FetchSettings, retries: Retries = FRESH): Promise<RawResponse> {
+async function send(method: Method, path: string, options: SendOptions, settings: FetchSettings, retries: Retries = FRESH): Promise<RawResponse> {
   const { file } = options;
   const hasBody = options.body !== undefined;
   const token = accessTokenGetter?.() ?? null;
@@ -282,8 +285,8 @@ export const api = {
   put: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PUT", path, options),
   patch: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("PATCH", path, options),
   delete: <T>(path: string, options: RequestOptions = {}): Promise<T> => request<T>("DELETE", path, options),
-  /** S5-F4: GET de un archivo (PDF, CSV). No se guarda en ninguna caché. */
   /** S6-F4: sube un archivo como cuerpo crudo (foto, autorización); el tipo (kind) va en la URL. */
   upload: <T>(path: string, file: File, options: UploadOptions): Promise<T> => requestUpload<T>(path, file, options),
+  /** S5-F4: GET de un archivo (PDF, CSV). No se guarda en ninguna caché. */
   blob: (path: string, options: BlobOptions = {}): Promise<BlobResult> => requestBlob(path, options),
 };

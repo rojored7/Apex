@@ -55,8 +55,10 @@ logger = logging.getLogger("app.attachments")
 SENSITIVE_SLOTS: Final = 4
 DATA_CLASS: Final = files.DATA_CLASS
 AUDIT_TABLE: Final = "attachments.attachments"
-HEAD_BYTES: Final = 16
-_HEAD_BYTES: Final = 64  # cubre `apx1.<uuid>.` (41 bytes) para leer la cabecera sin descifrar
+MAGIC_BYTES: Final = 16
+_BLOB_HEADER_BYTES: Final = (
+    64  # cubre `apx1.<uuid>.` (41 bytes) para leer la cabecera sin descifrar
+)
 
 _slots = asyncio.Semaphore(SENSITIVE_SLOTS)
 
@@ -144,7 +146,7 @@ async def store(
 ) -> Attachment:
     sensitive = rules.kind_is_sensitive(kind)
     datos = await _read_body(chunks)
-    mime = rules.detect_mime(datos[:HEAD_BYTES])
+    mime = rules.detect_mime(datos[:MAGIC_BYTES])
     if mime is None:
         raise UnsupportedType
     rules.validate_upload(len(datos), mime, kind)
@@ -168,7 +170,8 @@ async def _save(
     key_id: UUID | None = None
     payload = datos
     if sensitive:
-        payload = files._encrypt_file(datos, adjunto_id)
+        # hasta 5 MiB: fuera del event loop; `to_thread` copia el actor y el buffer de `crypto_ops`
+        payload = await asyncio.to_thread(files._encrypt_file, datos, adjunto_id)
         key_id = files.blob_key_id(payload)
     del datos
     storage = current_storage()
@@ -197,7 +200,11 @@ async def _save(
 
 
 def _provider_name(storage: StorageProvider) -> str:
-    return "s3" if type(storage).__name__ == "S3CompatibleStorage" else "local"
+    return storage.name
+
+
+def can_upload(role: str, kind: str) -> bool:
+    return rules.can_upload(role, kind)
 
 
 async def authorize(session: AsyncSession, attachment_id: UUID, *, role: str) -> AttachmentOut:
@@ -211,7 +218,7 @@ async def authorize(session: AsyncSession, attachment_id: UUID, *, role: str) ->
     return AttachmentOut.model_validate(fila)
 
 
-async def open(
+async def open_attachment(
     session: AsyncSession, attachment_id: UUID, *, by: UUID, audit: bool = True
 ) -> AttachmentBody:
     fila = await queries.get_row(session, attachment_id)
@@ -235,7 +242,7 @@ async def open(
             logger.warning("adjunto %s sin objeto en el almacenamiento", attachment_id)
             raise AttachmentNotFound from None
         with actor_scope(by):  # el `decrypt` de `crypto_ops` y la fila `download` llevan al actor
-            datos = files._decrypt_file(blob, fila.id)
+            datos = await asyncio.to_thread(files._decrypt_file, blob, fila.id)
             del blob
             await _record_download(session, fila, by)
     return AttachmentBody(meta=meta, data=datos)
@@ -301,12 +308,12 @@ async def _head_key_id(almacen: StorageProvider, nombre: str) -> UUID | None:
     cabecera = b""
     try:
         async with aclosing(
-            cast("AsyncGenerator[bytes, None]", almacen.stream(nombre, _HEAD_BYTES))
+            cast("AsyncGenerator[bytes, None]", almacen.stream(nombre, _BLOB_HEADER_BYTES))
         ) as trozos:
             async for trozo in trozos:
                 cabecera += trozo
-                if len(cabecera) >= _HEAD_BYTES:
+                if len(cabecera) >= _BLOB_HEADER_BYTES:
                     break
     except FileNotFoundError:  # desapareció entre el listado y la lectura
         return None
-    return files.peek_key_id(cabecera[:_HEAD_BYTES])
+    return files.peek_key_id(cabecera[:_BLOB_HEADER_BYTES])

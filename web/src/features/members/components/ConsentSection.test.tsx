@@ -109,6 +109,34 @@ describe("ConsentSection", () => {
     expect(date).toHaveAttribute("readonly");
   });
 
+  it("la fecha queda fija mientras siga marcada y se toma de nuevo al volver a marcar (revisión V11, LOW 6)", () => {
+    setup();
+
+    fireEvent.click(checkbox());
+    vi.setSystemTime(new Date("2026-10-22T04:00:00Z"));
+    expect(screen.getByLabelText("Fecha de aceptación")).toHaveValue("21 oct 2026, 10:30 p. m.");
+
+    fireEvent.click(checkbox());
+    fireEvent.click(checkbox());
+    expect(screen.getByLabelText("Fecha de aceptación")).toHaveValue("21 oct 2026, 11:00 p. m.");
+  });
+
+  it("un archivo rechazado se borra del control (revisión V11, LOW 10)", () => {
+    setup();
+    const writes: string[] = [];
+    Object.defineProperty(fileInput(), "value", {
+      configurable: true,
+      get: () => "",
+      set: (next: string) => {
+        writes.push(next);
+      },
+    });
+
+    fireEvent.change(fileInput(), { target: { files: [fileOf("image/gif")] } });
+
+    expect(writes).toEqual([""]);
+  });
+
   it("muestra la versión vigente de la política de solo lectura", async () => {
     setup();
 

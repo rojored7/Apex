@@ -95,4 +95,3 @@ Caddy no cifra el tráfico de la red interna `custody` (api, worker y tools haci
 - `compose.dev.yml` y `compose.tls.yml` no se combinan: cada uno publica los puertos de Caddy a su manera (desarrollo `127.0.0.1:8443:8443`; producción `${TLS_PORT}:${TLS_PORT}` y `${WEB_PORT}:80`) y Compose concatenaría las listas. En desarrollo se usa `-f infra/compose.yml -f infra/compose.dev.yml --profile tls`; en producción y en el ensayo, `-f infra/compose.yml [-f infra/compose.openbao.yml] -f infra/compose.tls.yml --profile tls`.
 - `deploy.sh` con el perfil `tls` sale con 2, sin construir nada, si `APEX_TLS_ISSUER=internal` acompaña a un dominio que no termina en `.localhost`, si `APEX_DOMAIN` lleva puerto y `TLS_PORT` no coincide, si `APEX_DOMAIN` no lleva puerto y `TLS_PORT` no es 443, o si `APEX_CADDY_IP` no es una IPv4 limpia (sin máscara ni ceros a la izquierda).
 - `tls-smoke.sh` solo confía en la CA interna para el host exacto `apex.localhost`.
-

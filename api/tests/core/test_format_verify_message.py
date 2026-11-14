@@ -166,3 +166,23 @@ def test_las_verificaciones_rotas_sin_firmas_conservan_el_texto_de_antes() -> No
     rota = replace(INTEGRA, ok=False, rows_checked=42, broken_at_seq=42)
     texto, codigo = format_verify_message(rota)
     assert (texto, codigo) == ("Cadena rota en el registro seq 42.", 1)
+
+
+def test_cadena_rota_en_el_mismo_seq_de_la_primera_firma_invalida_sigue_diciendo_cadena_rota() -> (
+    None
+):
+    """V11: `broken_at_seq` fusiona cadena y firma; con `chain_broken` el aviso de la cadena no se
+    oculta aunque coincida con `first_invalid_signature_seq`."""
+    ambas = replace(
+        CON_FIRMAS,
+        ok=False,
+        rows_checked=100,
+        broken_at_seq=100,
+        chain_broken=True,
+        signatures_valid=2,
+        first_invalid_signature_seq=100,
+    )
+    texto, codigo = format_verify_message(ambas)
+    assert codigo == 1
+    assert "Cadena rota en el registro seq 100" in texto
+    assert "Firma inválida" in texto

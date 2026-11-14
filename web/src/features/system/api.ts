@@ -487,8 +487,7 @@ export function useVerifyChain(): UseMutationResult<VerifyOutcome, Error, void> 
     // la referencia del sondeo (así una copia vieja de la caché no se toma por el resultado nuevo).
     onSuccess: (outcome) => {
       queryClient.setQueryData(LAST_VERIFICATION_KEY, outcome.kind === "done" ? outcome.result : outcome.last);
-      // S6-F1: una verificación nueva puede cambiar el estado de la firma (Alterada, Íntegra).
-      void queryClient.invalidateQueries({ queryKey: SIGNATURE_LATEST_KEY });
+      // La relectura del estado de la firma (S6-F1) la hace VerifyChainButton al llegar a «done»: cubre el 200 y el sondeo del 202 con una sola petición.
     },
   });
 }

@@ -116,7 +116,7 @@ describe("subirAdjunto y useSubirAdjunto (S6-F4)", () => {
     await expect(subirAdjunto(MEMBER_ID, "photo", new File(["a"], "f.png", { type: "image/png" }))).rejects.toMatchObject({ code: "invalid_response" });
   });
 
-  it("el hook relee ['members'] y ['attachments'] al salir bien y no guarda el archivo en la caché de mutaciones", async () => {
+  it("el hook relee ['members'] y solo los adjuntos del socio (más la foto si es foto) al salir bien y no guarda el archivo en la caché de mutaciones", async () => {
     mockApi({ [`POST ${PATH}`]: { status: 201, body: created } });
     const queryClient = testQueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
@@ -128,9 +128,26 @@ describe("subirAdjunto y useSubirAdjunto (S6-F4)", () => {
 
     const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(keys).toContainEqual(["members"]);
-    expect(keys).toContainEqual(["attachments"]);
+    expect(keys).toContainEqual(["attachments", "member", MEMBER_ID]);
+    expect(keys).toContainEqual(["attachments", "photo"]);
+    expect(keys).not.toContainEqual(["attachments"]);
     await waitFor(() => {
       expect(queryClient.getMutationCache().getAll().every((m) => m.state.variables === undefined)).toBe(true);
     });
+  });
+
+  it("una autorización no relee las fotos montadas (revisión V11, LOW 4)", async () => {
+    mockApi({ [`POST ${PATH}`]: { status: 201, body: { ...created, kind: "consent", mime: "application/pdf", sensitive: true } } });
+    const queryClient = testQueryClient();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useSubirAdjunto(), { wrapper: wrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ memberId: MEMBER_ID, kind: "consent", file: new File(["a"], "a.pdf", { type: "application/pdf" }) });
+    });
+
+    const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(keys).toContainEqual(["attachments", "member", MEMBER_ID]);
+    expect(keys).not.toContainEqual(["attachments", "photo"]);
   });
 });

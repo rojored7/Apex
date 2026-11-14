@@ -96,6 +96,7 @@ from app.modules.members import exports
 from app.modules.members.attachments import (
     attach,
     current_photo,
+    ensure_can_upload,
     ensure_consent_upload,
     ensure_declared_size,
     list_attachments,
@@ -190,6 +191,7 @@ __all__ = [
     "deactivate",
     "diff_fields",
     "ensure_can_change",
+    "ensure_can_upload",
     "ensure_consent_upload",
     "ensure_declared_size",
     "ensure_exists",

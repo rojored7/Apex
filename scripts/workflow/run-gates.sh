@@ -12,7 +12,7 @@
 #
 # Política `perf` (S2-D27, revisión de Fase 4 del Sprint 2): las pruebas marcadas `perf`
 # miden con reloj y no son gate; aquí corren con `-m "not perf"`. Se corren a mano con
-# `cd api && uv run pytest -m perf -q` y en CI en un paso informativo.
+# `cd api && uv run python -m pytest -m perf -q` y en CI en un paso informativo.
 set -euo pipefail
 
 usage() {
@@ -20,7 +20,7 @@ usage() {
 Uso: run-gates.sh [wave]
 
 api (desde api/):  uv run ruff check . ; uv run ruff format --check . ; uv run mypy src ;
-                   uv run pytest --cov=app --cov-fail-under=80 -q -m "not perf"
+                   uv run python -m pytest --cov=app --cov-fail-under=80 -q -m "not perf"
 scripts (raíz, los que existan; necesitan Docker):
                    scripts/ci/test_check_key_files.sh ; scripts/ci/test_images_pinned.sh ;
                    scripts/ci/test_nginx_conf.sh ; scripts/ci/test_compose_config.sh ; scripts/ci/test_openbao_infra.sh ; scripts/ci/test_deploy_script.sh ; scripts/ci/test_infra_scripts.sh ;
@@ -50,7 +50,7 @@ cd "$ROOT/api"
 gate "api lint"       uv run ruff check .
 gate "api formato"    uv run ruff format --check .
 gate "api tipos"      uv run mypy src
-gate "api pruebas"    uv run pytest --cov=app --cov-fail-under=80 -q -m "not perf"
+gate "api pruebas"    uv run python -m pytest --cov=app --cov-fail-under=80 -q -m "not perf"
 
 # Scripts de infraestructura (M1 de la revisión de Fase 4): los mismos que la CI corre en
 # los jobs `secrets-scan`, `scripts` e `images`. Un script ausente se omite (repos de prueba).

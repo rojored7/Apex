@@ -3,7 +3,8 @@
 - `create_slot(session, data, by) -> SlotOut`: valida (`rules.validate_slot`), exige coach activo
   con rol `coach` o `admin` si viene (422 `coach_invalid`, `auth.service.is_active_staff`), toma el
   cupo por defecto de `settings.classes` si falta, y comprueba bajo `CLASS_SLOTS_LOCK_KEY` que no
-  haya otra franja activa con un día y la hora de inicio en común (409 `slot_conflict`).
+  haya otra franja activa con un día y la hora de inicio en común (409 `slot_conflict`); al
+  final genera sus sesiones de los próximos 14 días (B1, `sessions.generate_sessions`).
 - `update_slot(session, slot_id, patch, by) -> SlotOut`: `FOR UPDATE` de la franja, aplica solo lo
   enviado (`model_fields_set`), vuelve a validar y a comprobar el choque si queda activa. Nunca
   toca sesiones ya generadas (Q23). Sin cambios no hay `flush` ni auditoría.
@@ -33,6 +34,7 @@ from app.modules.classes.exceptions import (
 from app.modules.classes.models import ClassSlot
 from app.modules.classes.rules import normalize_weekdays, slots_overlap, validate_slot
 from app.modules.classes.schemas import SlotCreate, SlotListQuery, SlotOut, SlotPatch
+from app.modules.classes.sessions import generate_sessions
 from app.modules.settings import service as settings_service
 
 logger = logging.getLogger("app.classes")
@@ -131,6 +133,11 @@ async def create_slot(session: AsyncSession, data: SlotCreate, by: UUID) -> Slot
     )
     session.add(slot)
     await session.flush()  # `eager_defaults`: fechas ya cargadas
+    # S7-D9/D10: la semana no queda vacía hasta las 07:00 del día siguiente; el candado de
+    # generación (4_270_006) se toma DESPUÉS del de franjas (4_270_005): nadie los toma al revés.
+    await generate_sessions(
+        session, today=current_clock().today_bogota(), slot_ids=[slot.id], by=by
+    )
     logger.info("classes: franja creada", extra={"slot_id": str(slot.id)})
     return (await _outs(session, [slot]))[0]
 

@@ -35,6 +35,8 @@ MODELOS = (
     "Notification",  # S5-B7 (RN-14): los avisos se envían u omiten, no se borran
     "NotificationRule",  # S5-B7: las reglas se desactivan
     "NotificationTemplate",  # S5-B7: las plantillas no se borran
+    "ClassSlot",  # S7-B1: las franjas se pausan
+    "ClassSession",  # S7-B1: las sesiones se cancelan
     "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
 )
 TABLAS = (
@@ -52,6 +54,8 @@ TABLAS = (
     "notifications.notification_rules",  # S5-B7
     "notifications.notification_templates",  # S5-B7
     "attachments.attachments",  # S6-C1
+    "classes.class_slots",  # S7-B1
+    "classes.class_sessions",  # S7-B1
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -140,3 +144,14 @@ def test_el_patron_detecta_el_borrado_de_adjuntos() -> None:
     )
     assert len(violaciones_en(fuente)) == 4
     assert violaciones_en("await storage.delete_object(clave)\n") == []
+
+
+def test_el_patron_detecta_el_borrado_de_franjas_y_sesiones() -> None:
+    """S7-B1 (S7-D10, RN-14): franjas y sesiones no se borran; se pausan y se cancelan."""
+    fuente = (
+        "stmt = delete(ClassSession)\n"
+        "stmt = delete(ClassSlot)\n"
+        "SQL = 'DELETE FROM classes.class_sessions'\n"
+        "SQL = 'TRUNCATE classes.class_slots'\n"
+    )
+    assert len(violaciones_en(fuente)) == 4

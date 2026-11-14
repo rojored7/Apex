@@ -55,12 +55,18 @@ TRIGGERS_QUE_CAMBIAN = (
 )
 # `audit.signatures` nace en `0021` (S6-A1): sus triggers no existen en `0013` ni en `0014`.
 # `attachments.attachments` nace en `0023` (S6-C1): tampoco existe en `0014`.
-# `classes.class_slots` nace en `0026` (S7-A2): tampoco.
+# `classes.class_slots` (`0026`, S7-A2) y `classes.class_sessions` (`0027`, S7-B1): tampoco.
 # Los de `0024` (S6-R1) tampoco: `ALWAYS_DE_0014` son los nombres que existen desde `0014`.
 ALWAYS_DE_0014 = {
     t: tuple(x for x in n if x not in ROTACION_TRIGGERS.get(t, ()))
     for t, n in ALWAYS_TRIGGERS.items()
-    if t not in {"audit.signatures", "attachments.attachments", "classes.class_slots"}
+    if t
+    not in {
+        "audit.signatures",
+        "attachments.attachments",
+        "classes.class_slots",
+        "classes.class_sessions",
+    }
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)
 

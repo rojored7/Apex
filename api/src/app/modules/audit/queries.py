@@ -71,6 +71,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "members.member_channel_preferences",
         "attachments.attachments",
         "classes.class_slots",  # S7-A2
+        "classes.class_sessions",  # S7-B1
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -92,6 +93,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "members.member_channel_preferences": "preferencia de aviso, no es negocio ni configuración",
     "attachments.attachments": "adjuntos y foto: ruido para el tablero",
     "classes.class_slots": "configuración del horario; se ve en Horario (S7-D17)",
+    "classes.class_sessions": "las crea el job cada día; se ven en Sesiones (S7-D17)",
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",
     "notifications.notifications": "un aviso por socio y regla al día: ruido para el tablero",

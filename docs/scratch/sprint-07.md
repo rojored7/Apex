@@ -176,3 +176,22 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - `slice-gate.sh auth tests/auth/test_is_active_staff.py` (no sellante): 827 passed, exit 0.
 - Sello `slice-gate.sh classes` (puras, service, router, migración, grants, no_cross_models): 1.125 passed, exit 0.
 - Incidente repetido: el `--reload` del api aplicó 0026 en `apex-db-1` durante la espera (el orquestador ya lo revirtió).
+
+## S7-A1b · Correcciones de la revisión de A1 (HH:MM, contrato, auditoría)
+
+### Rojo
+- 3 failed, 72 passed: `0٥:00` (dígito árabe-índico) validaba en `hours` y en `validate_slot` (`\d` acepta dígitos Unicode); un salto final en `hours` se recorta por `str_strip_whitespace` (no es defecto: se quitó el caso). Las pruebas de `field == "value.monday"`, antes/después de la auditoría (18 → 20), `default_capacity: true` y `settings.service.classes` (sin fila, válida, corrupta) nacieron verdes: cubren lo que la revisión halló sin prueba.
+
+### Verde
+- `HHMM_PATTERN` (settings) y `TIME_PATTERN` (classes) con `[0-9]`; docstring de `settings/router.py` (catorce rutas, siete `PATCH`); DECISIONES S7-D8 y US-154 documentan `field = "value.<día>"`. Gate `slice-gate.sh settings` (5 archivos): 894 passed, exit 0. Checkpoint `0a9bbf1`.
+
+## S7-B1 · Sesiones, generación, job y CLI (US-156, S7-D10, M-3)
+
+### Rojo
+- Stubs con `NotImplementedError` (`planned_sessions`, `generate_sessions`, job, comando) y modelo `ClassSession`; 61 failed + 25 errors: `NotImplementedError` (27), «no existe la revisión 0027_class_sessions» (26), `relation classes.class_sessions does not exist` (grants y rutas de rol, 42P01 en lugar de 42501).
+- Desvío: `planned_sessions`, `PlannedSession` y `SlotSpec` viven en `rules.py` (puras, sin ORM) y no en `sessions.py`; `sessions.py` tiene la generación y el candado.
+
+### Verde
+- `0027_class_sessions.py`: tabla, 6 CHECK (el trío `cancel_*` va junto y ya rechaza `done`), FK `RESTRICT` a franjas, índice único parcial `(slot_id, starts_at)`, índices por `starts_at` y `session_date`, guarda `classes.guard_sessions_update()` (solo `scheduled → cancelled`, `cancel_*` una vez, identidad inmutable; `wod_id` queda libre para EP-22) y triggers `forbid_delete`/`forbid_truncate`, todos `ENABLE ALWAYS`.
+- `classes/{models,rules,events,sessions,slots,service}.py`: `generate_sessions` bajo `pg_advisory_xact_lock(4_270_006)`, crea las que faltan (cualquier estado cuenta como existente), `SessionGenerated` por sesión; `create_slot` genera su ventana tras el candado 4_270_005 (orden único 005 → 006). Job `worker/jobs/generate_sessions.py` (300 s, entre `expirations` y `notify`), `DETAIL_KEYS` `creadas` y `franjas`, CLI `generate-sessions --days 1..28 --as` (sin `job_runs`).
+- Grants (`grants.sql`, tres listas): api `S I U(status, cancel_*, updated_at)`, worker `S I`. `AUDITABLE_TABLES` suma la tabla (excluida de «recientes» con motivo) y `PENDING_AUDITED` pasa a `results.results`. `conftest.py`: `LIMPIAR_CLASS_SESSIONS` antes de `LIMPIAR_CLASS_SLOTS` en las dos limpiezas (hallazgo 6).

@@ -460,6 +460,28 @@ LIMPIAR_CLASS_SLOTS = (
     + " END IF; END $$"
 )
 
+# S7-B1 (S7-D10, hallazgo 6): las sesiones que una prueba con commit real, la CLI, el job o una
+# corrida cortada hayan dejado en `classes.class_sessions`. La tabla nace en `0027_class_sessions`:
+# mientras no exista no se toca. Hace FK a `class_slots` (RESTRICT): se borra ANTES. Su guarda
+# (UPDATE) y sus dos triggers de borrado se apagan, se borra y se vuelven a encender UNO POR UNO
+# con `ENABLE ALWAYS` (S3-D49). Nunca `ENABLE TRIGGER USER`.
+TRIGGERS_DE_CLASS_SESSIONS = (
+    "class_sessions_guard_update",
+    "class_sessions_forbid_delete",
+    "class_sessions_forbid_truncate",
+)
+LIMPIAR_CLASS_SESSIONS = (
+    "DO $$ BEGIN IF to_regclass('classes.class_sessions') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE classes.class_sessions DISABLE TRIGGER USER; "
+    "DELETE FROM classes.class_sessions; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE classes.class_sessions ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_CLASS_SESSIONS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -473,6 +495,7 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
+    LIMPIAR_CLASS_SESSIONS,  # S7-B1: sesiones, antes que las franjas (FK RESTRICT)
     LIMPIAR_CLASS_SLOTS,  # S7-A2: franjas, antes que auth (sin FK)
     *LIMPIAR_AUTH,
     *LIMPIAR_NOTIFICATIONS,  # S5-B6: antes que pagos y membresías (FK de B7)
@@ -881,6 +904,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_CLASS_SESSIONS))  # S7-B1: antes que las franjas
         await conexion.execute(text(LIMPIAR_CLASS_SLOTS))  # S7-A2
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))

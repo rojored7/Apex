@@ -17,6 +17,9 @@
 --                                     deleted_at, locked_at, last_login_at,
 --                                     must_change_password, failed_login_count,
 --                                     tokens_valid_after, updated_at)
+--   classes.class_sessions          S I U(status, cancel_reason,      S I
+--                                     cancelled_by, cancelled_at,
+--                                     updated_at)
 --   classes.class_slots             S I U(weekdays, start_time,       S
 --                                     duration_min, capacity,
 --                                     default_coach_id, name, valid_from,
@@ -55,6 +58,7 @@
 -- clasificada: auth.one_time_tokens
 -- clasificada: auth.refresh_tokens
 -- clasificada: auth.users
+-- clasificada: classes.class_sessions
 -- clasificada: classes.class_slots
 -- clasificada: crypto.crypto_jobs
 -- clasificada: crypto.crypto_keys
@@ -107,6 +111,10 @@ GRANT SELECT, INSERT ON audit.audit_log, audit.verifications TO apex_api;
 -- S7-A2 (S7-D18, US-155): franjas del horario; el api inserta y edita por columna (el admin las
 -- pausa con is_active); sin DELETE ni TRUNCATE (los triggers tambien los prohiben); worker solo lee.
 GRANT SELECT, INSERT ON classes.class_slots TO apex_api;
+-- S7-B1 (S7-D18, US-156): sesiones; el api crea extras (INSERT) y las cancela por columna; sin DELETE
+-- ni TRUNCATE (los triggers tambien los prohiben) y la guarda impide des-cancelar o reescribir.
+GRANT SELECT, INSERT ON classes.class_sessions TO apex_api;
+GRANT UPDATE (status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
 GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, name, valid_from, is_active, updated_at) ON classes.class_slots TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
@@ -157,6 +165,8 @@ GRANT SELECT ON auth.users, classes.class_slots, crypto.crypto_jobs, crypto.cryp
 -- document_idx, birth_date ni emergency_contact. sex entra por names_for (S5-D121).
 GRANT SELECT (id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at) ON members.members TO apex_worker;
 GRANT SELECT ON memberships.memberships TO apex_worker;
+-- S7-B1 (S7-D18): el job generate_sessions crea las sesiones; no las actualiza ni las borra.
+GRANT SELECT, INSERT ON classes.class_sessions TO apex_worker;
 -- S5-B5: el job notify lee los canales efectivos (members.service.channels_for).
 GRANT SELECT ON members.member_channel_preferences TO apex_worker;
 -- S5-B6 (S5-D34): el job notify lee plantillas y reglas; no siembra ni edita.
@@ -176,7 +186,7 @@ DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
         'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
-        'auth.users', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
+        'auth.users', 'classes.class_sessions', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
         'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',

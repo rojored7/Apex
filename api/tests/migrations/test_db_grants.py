@@ -117,6 +117,13 @@ COLUMNAS_API_CLASS_SLOTS_UPDATE: tuple[str, ...] = (
     "is_active",
     "updated_at",
 )
+COLUMNAS_API_CLASS_SESSIONS_UPDATE: tuple[str, ...] = (
+    "status",
+    "cancel_reason",
+    "cancelled_by",
+    "cancelled_at",
+    "updated_at",
+)
 COLUMNAS_API_PAYMENTS_INSERT: tuple[str, ...] = (
     "id",
     "created_at",
@@ -169,6 +176,15 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     "classes.class_slots": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_CLASS_SLOTS_UPDATE)),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
+    },
+    # S7-B1 (S7-D18, US-156): el api crea sesiones extra y las cancela por columna; el worker las
+    # genera (INSERT) y nunca las actualiza; sin DELETE ni TRUNCATE para nadie.
+    "classes.class_sessions": {
+        "apex_api": (
+            frozenset({"SELECT", "INSERT"}),
+            frozenset(COLUMNAS_API_CLASS_SESSIONS_UPDATE),
+        ),
+        "apex_worker": (frozenset({"SELECT", "INSERT"}), frozenset()),
     },
     "crypto.crypto_jobs": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_JOBS_UPDATE)),
@@ -725,6 +741,10 @@ PROHIBIDAS_API = [
     "DELETE FROM classes.class_slots",  # S7-A2: las franjas se pausan
     "TRUNCATE classes.class_slots",  # S7-A2
     "UPDATE classes.class_slots SET created_by = created_by",  # S7-A2: columna sin UPDATE
+    "DELETE FROM classes.class_sessions",  # S7-B1: las sesiones se cancelan
+    "TRUNCATE classes.class_sessions",  # S7-B1
+    "UPDATE classes.class_sessions SET starts_at = starts_at",  # S7-B1: columna sin UPDATE
+    "UPDATE classes.class_sessions SET capacity = 1",  # S7-B1
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -801,6 +821,8 @@ PROHIBIDAS_WORKER = [
     "SELECT count(*) FROM attachments.attachments",  # S6-C1: el worker no lee adjuntos
     "INSERT INTO classes.class_slots (id) VALUES (gen_random_uuid())",  # S7-A2: solo lee
     "UPDATE classes.class_slots SET is_active = false",  # S7-A2
+    "UPDATE classes.class_sessions SET status = 'cancelled'",  # S7-B1: el worker solo inserta
+    "DELETE FROM classes.class_sessions",  # S7-B1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

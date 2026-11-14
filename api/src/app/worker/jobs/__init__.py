@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
-from app.worker.jobs import backup_check, expirations, notify, sign_audit
+from app.worker.jobs import backup_check, expirations, generate_sessions, notify, sign_audit
 from app.worker.registry import JobSpec
 from app.worker.schedule import DAILY_HOUR, DAILY_MINUTE
 
 JOBS: tuple[JobSpec, ...] = (
     JobSpec(name=expirations.NAME, run=expirations.run, hour=DAILY_HOUR, minute=DAILY_MINUTE),
+    # S7-B1 (S7-D10): después de `expirations` y antes de `notify`, para que `sign_audit` firme las
+    # filas que crea el mismo día.
+    JobSpec(
+        name=generate_sessions.NAME,
+        run=generate_sessions.run,
+        hour=DAILY_HOUR,
+        minute=DAILY_MINUTE,
+        timeout_s=300,
+    ),
     # S5-B8 (S5-D35): después de `expirations` (los estados ya recalculados), antes del chequeo.
     JobSpec(
         name=notify.NAME,

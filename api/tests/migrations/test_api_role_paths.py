@@ -237,10 +237,11 @@ def test_crear_y_editar_una_franja_como_apex_api_usa_el_update_por_columna(
     apex_roles: RolesDb,
 ) -> None:
     """S7-A2 (S7-D18): `classes.service.create_slot` y `update_slot` con los privilegios reales de
-    `apex_api` (INSERT y UPDATE por columna sobre `classes.class_slots`, sin DELETE)."""
+    `apex_api` (INSERT y UPDATE por columna sobre `classes.class_slots`, sin DELETE). Desde B1 el
+    alta de una franja activa también inserta sus sesiones (INSERT en `class_sessions`)."""
     from app.modules.classes import service as classes_service
     from app.modules.classes.schemas import SlotCreate, SlotPatch
-    from tests.conftest import LIMPIAR_CLASS_SLOTS
+    from tests.conftest import LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
 
     async def crear(sesion: AsyncSession) -> UUID:
         data = SlotCreate.model_validate(
@@ -259,4 +260,4 @@ def test_crear_y_editar_una_franja_como_apex_api_usa_el_update_por_columna(
     try:
         assert _como_api(apex_roles, editar) == (9, False)
     finally:
-        propietario(apex_roles, LIMPIAR_CLASS_SLOTS)
+        propietario(apex_roles, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)

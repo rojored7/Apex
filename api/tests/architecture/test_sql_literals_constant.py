@@ -290,3 +290,23 @@ def test_s6_r1_rotate_job_no_define_candados_nuevos_ni_sql_propio() -> None:
     fuente = ruta.read_text(encoding="utf-8")
     assert "advisory" not in fuente.lower()
     assert "pg_try_advisory_lock" not in fuente
+
+
+def test_los_candados_de_clases_son_el_quinto_y_el_sexto_y_distintos() -> None:
+    """S7-A2 y S7-B1 (S7-D9, S7-D10): franjas `4_270_005`, generación `4_270_006`; la llave viaja
+    ligada (`:k`) y el SQL del candado es una constante del módulo."""
+    from app.modules.classes.sessions import GENERATE_SESSIONS_LOCK_KEY
+    from app.modules.classes.slots import CLASS_SLOTS_LOCK_KEY
+
+    assert CLASS_SLOTS_LOCK_KEY == 4_270_005 and GENERATE_SESSIONS_LOCK_KEY == 4_270_006
+    otras = {
+        AUDIT_CHAIN_LOCK_KEY,
+        AUDIT_VERIFY_LOCK_KEY,
+        MIGRATION_LOCK_KEY,
+        MAIN_LOCK_KEY,
+        4_270_004,
+    }
+    assert not {CLASS_SLOTS_LOCK_KEY, GENERATE_SESSIONS_LOCK_KEY} & otras
+    fuente = (SRC / "app" / "modules" / "classes" / "sessions.py").read_text(encoding="utf-8")
+    assert "pg_advisory_xact_lock(:k)" in fuente
+    assert hallazgos(fuente, "app/modules/classes/sessions.py") == []

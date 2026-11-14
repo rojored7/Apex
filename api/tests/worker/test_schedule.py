@@ -182,11 +182,13 @@ def test_register_rechaza_un_nombre_repetido() -> None:
         register(base, JobSpec(name=base[0].name, run=base[0].run, hour=8, minute=0))
 
 
-def test_el_registro_del_proceso_son_cuatro_jobs_en_orden() -> None:
-    """S6-A2 (S6-D8): `sign_audit` va después de `notify` y antes de `backup_check`."""
+def test_el_registro_del_proceso_son_cinco_jobs_en_orden() -> None:
+    """S6-A2 (S6-D8): `sign_audit` va después de `notify` y antes de `backup_check`; S7-B1
+    (S7-D10): `generate_sessions` va después de `expirations` y antes de `notify`."""
     assert get_registry() is JOBS
     assert [(s.name, s.hour, s.minute, s.timeout_s) for s in JOBS] == [
         ("expirations", 7, 0, 900),
+        ("generate_sessions", 7, 0, 300),
         ("notify", 7, 0, 600),
         ("sign_audit", 7, 0, 300),
         ("backup_check", 7, 0, 600),
@@ -198,6 +200,7 @@ def test_cada_job_declara_sus_clases_de_cifrado() -> None:
     por_nombre = {s.name: s.crypto_classes for s in JOBS}
     assert por_nombre == {
         "expirations": frozenset(),
+        "generate_sessions": frozenset(),
         "notify": frozenset({"member.phone", "member.email"}),
         "sign_audit": frozenset({"audit.signature"}),
         "backup_check": frozenset(),

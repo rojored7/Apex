@@ -16,7 +16,7 @@ con `members` en `MODULES`; S2-B9: `plans.plans`, con `plans` en `MODULES`). S3-
 `memberships.membership_freezes` (sin `__audit_subject__`: la tabla no tiene `member_id`; la fila
 `update` de la membresía lleva el socio; anotado para US-106) y S3-B3 mueve `payments.payments`
 (con `__audit_subject__ = "member_id"`, G-05).
-`PENDING_AUDITED` conserva entradas futuras (`classes.class_sessions`) para no dejar vacía la
+`PENDING_AUDITED` conserva entradas futuras (`results.results`) para no dejar vacía la
 parametrización; S5-B7 mueve `notifications.notifications` a las requeridas (con sujeto de socio).
 
 S4A-B8 (S4A-D61 b, L-10): todo modelo con `__audited__ = True` está en la constante única
@@ -62,6 +62,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "members.member_channel_preferences",
         "attachments.attachments",  # S6-C1 (S6-D25)
         "classes.class_slots",  # S7-A2 (US-155)
+        "classes.class_sessions",  # S7-B1 (US-156)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -72,7 +73,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
     }
 )
 PENDING_AUDITED: dict[str, str] = {
-    "classes.class_sessions": "Sprint 7",
+    "results.results": "v0.5",  # S7-D17: mantiene viva la parametrización
 }
 
 
@@ -164,7 +165,7 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    tablas = {**_requeridas_auditadas(), "classes.class_sessions": _Auditada}
+    tablas = {**_requeridas_auditadas(), "results.results": _Auditada}
     assert _incumplidas(tablas) == []
 
 
@@ -306,6 +307,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "members.member_channel_preferences",  # S5-B5
         "attachments.attachments",  # S6-C1: adjuntos y foto no son actividad reciente
         "classes.class_slots",  # S7-A2: configuración del horario (S7-D17)
+        "classes.class_sessions",  # S7-B1: las crea el job cada día (S7-D17)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

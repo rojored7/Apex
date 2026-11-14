@@ -61,7 +61,7 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "attachments": frozenset({"files", "rules", "queries", "reencrypt", "storage"}),
     # S7-A2 (hallazgo 12): `classes` nace partido tras la fachada `service.py`; cada slice suma el
     # suyo (`sessions`, `attendance`, `queries`, `reports`) cuando crea el archivo.
-    "classes": frozenset({"rules", "slots", "events"}),
+    "classes": frozenset({"rules", "slots", "sessions", "events"}),
 }
 
 Rule = Literal[

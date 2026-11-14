@@ -22,6 +22,7 @@ VERIFICATIONS_TABLE: Final = "audit.verifications"
 SIGNATURES_TABLE: Final = "audit.signatures"
 ATTACHMENTS_TABLE: Final = "attachments.attachments"
 CLASS_SLOTS_TABLE: Final = "classes.class_slots"
+CLASS_SESSIONS_TABLE: Final = "classes.class_sessions"
 
 AUDIT_LOG_TRIGGERS: Final = ("audit_log_forbid_mutation", "audit_log_forbid_truncate")
 VERIFICATIONS_TRIGGERS: Final = ("verifications_forbid_mutation", "verifications_forbid_truncate")
@@ -32,6 +33,11 @@ ATTACHMENTS_TRIGGERS: Final = (
     "attachments_forbid_truncate",
 )
 CLASS_SLOTS_TRIGGERS: Final = ("class_slots_forbid_delete", "class_slots_forbid_truncate")
+CLASS_SESSIONS_TRIGGERS: Final = (
+    "class_sessions_guard_update",
+    "class_sessions_forbid_delete",
+    "class_sessions_forbid_truncate",
+)
 CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     "crypto.crypto_ops": ("crypto_ops_forbid_mutation", "crypto_ops_forbid_truncate"),
     "crypto.crypto_keys": ("crypto_keys_guard", "crypto_keys_forbid_truncate"),
@@ -49,6 +55,7 @@ ALWAYS_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     SIGNATURES_TABLE: SIGNATURES_TRIGGERS,  # S6-A1 (0021)
     ATTACHMENTS_TABLE: ATTACHMENTS_TRIGGERS,  # S6-C1 (0023)
     CLASS_SLOTS_TABLE: CLASS_SLOTS_TRIGGERS,  # S7-A2 (0026)
+    CLASS_SESSIONS_TABLE: CLASS_SESSIONS_TRIGGERS,  # S7-B1 (0027)
     **{t: (*n, *ROTACION_TRIGGERS.get(t, ())) for t, n in CRYPTO_TRIGGERS.items()},
 }
 """Los quince triggers inmutables por tabla (`tgenabled = 'A'`; S6-A1 suma `audit.signatures`, S6-C1

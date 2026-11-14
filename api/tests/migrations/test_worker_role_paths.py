@@ -232,3 +232,31 @@ def test_worker_descifra_sin_update(apex_roles: RolesDb, claves_prueba: Path) ->
         apex_roles,
         *(sql for sql in LIMPIAR_LLAVES),
     )
+
+
+def test_apex_worker_inserta_sesiones(apex_roles: RolesDb) -> None:
+    """S7-B1 (S7-D18): `classes.service.generate_sessions` con los privilegios reales de
+    `apex_worker`: lee franjas (SELECT), inserta sesiones (INSERT) y su auditoría; no actualiza."""
+    from app.modules.classes import service as classes_service
+    from tests.conftest import LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
+
+    franja = str(uuid4())
+    hoy = date(2026, 10, 21)
+    propietario(
+        apex_roles,
+        "INSERT INTO classes.class_slots (id, created_by, weekdays, start_time, duration_min, "  # noqa: S608
+        f"capacity, valid_from) VALUES ('{franja}', '{SYSTEM}', '{{0}}', '06:00', 60, 15, "
+        f"'{hoy}')",
+    )
+
+    async def trabajo(fabrica: async_sessionmaker[AsyncSession]) -> int:
+        async with fabrica() as sesion:
+            resultado = await classes_service.generate_sessions(sesion, today=hoy)
+            await sesion.commit()
+            return resultado.created
+
+    try:
+        assert _como_worker(apex_roles, trabajo) == 2
+        assert _como_worker(apex_roles, trabajo) == 0
+    finally:
+        propietario(apex_roles, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)

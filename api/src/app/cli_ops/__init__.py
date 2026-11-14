@@ -12,6 +12,7 @@ import typer
 
 from app.cli_ops import (
     attachments_check,
+    generate_sessions,
     import_members,
     kek,
     migrate_provider,
@@ -38,3 +39,4 @@ def register_ops(app: typer.Typer) -> None:
     notify.register(app)  # S5-B7 (provisional: --generate-only)
     sign_audit.register(app)  # S6-A2
     attachments_check.register(app)  # S6-C1
+    generate_sessions.register(app)  # S7-B1 (S7-D10)

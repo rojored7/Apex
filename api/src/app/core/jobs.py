@@ -83,6 +83,9 @@ DETAIL_KEYS: Final[frozenset[str]] = frozenset(
         "omitidos",
         "pendientes",
         "sellado",
+        # S7-B1 (S7-D10): `generate_sessions`; enteros.
+        "creadas",
+        "franjas",
         # S6-A2 (S6-D60): `sign_audit`; todos enteros.
         "firmadas",
         "nada_nuevo",

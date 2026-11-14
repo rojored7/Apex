@@ -106,3 +106,17 @@ def test_attachments_esta_barrido_y_no_apaga_triggers() -> None:
         for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
     ]
     assert encontrados == [], "\n".join(encontrados)
+
+
+def test_classes_esta_barrido_y_no_apaga_triggers() -> None:
+    """S7-B1: el módulo de clases (tablas con `class_*_forbid_*` y `class_sessions_guard_update`)
+    existe, está dentro del barrido de `app/` y ninguna de sus cadenas apaga o salta triggers."""
+    carpeta = APP / "modules" / "classes"
+    archivos = sorted(carpeta.rglob("*.py"))
+    assert (carpeta / "sessions.py").is_file() and archivos
+    encontrados = [
+        h
+        for path in archivos
+        for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
+    ]
+    assert encontrados == [], "\n".join(encontrados)

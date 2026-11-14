@@ -17,6 +17,10 @@
 --                                     deleted_at, locked_at, last_login_at,
 --                                     must_change_password, failed_login_count,
 --                                     tokens_valid_after, updated_at)
+--   classes.class_slots             S I U(weekdays, start_time,       S
+--                                     duration_min, capacity,
+--                                     default_coach_id, name, valid_from,
+--                                     is_active, updated_at)
 --   crypto.crypto_jobs              S I U(done, status, error,        S
 --                                     started_at, finished_at,
 --                                     updated_at)
@@ -51,6 +55,7 @@
 -- clasificada: auth.one_time_tokens
 -- clasificada: auth.refresh_tokens
 -- clasificada: auth.users
+-- clasificada: classes.class_slots
 -- clasificada: crypto.crypto_jobs
 -- clasificada: crypto.crypto_keys
 -- clasificada: crypto.crypto_ops
@@ -77,17 +82,17 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
-GRANT USAGE ON SCHEMA attachments, audit, auth, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
+GRANT USAGE ON SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
@@ -99,6 +104,10 @@ GRANT pg_read_all_data TO apex_backup WITH INHERIT TRUE;
 GRANT SELECT, INSERT ON attachments.attachments TO apex_api;
 GRANT UPDATE (key_id, updated_at) ON attachments.attachments TO apex_api;
 GRANT SELECT, INSERT ON audit.audit_log, audit.verifications TO apex_api;
+-- S7-A2 (S7-D18, US-155): franjas del horario; el api inserta y edita por columna (el admin las
+-- pausa con is_active); sin DELETE ni TRUNCATE (los triggers tambien los prohiben); worker solo lee.
+GRANT SELECT, INSERT ON classes.class_slots TO apex_api;
+GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, name, valid_from, is_active, updated_at) ON classes.class_slots TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -143,7 +152,7 @@ GRANT SELECT ON worker.job_runs TO apex_api;
 GRANT SELECT, INSERT ON audit.audit_log, crypto.crypto_ops TO apex_worker;
 -- S6-A1 (S6-D3): el worker firma la cadena (sign_audit); append-only, sin UPDATE ni DELETE.
 GRANT SELECT, INSERT ON audit.signatures TO apex_worker;
-GRANT SELECT ON auth.users, crypto.crypto_jobs, crypto.crypto_keys, memberships.membership_freezes, plans.plans, settings.settings_sections TO apex_worker;
+GRANT SELECT ON auth.users, classes.class_slots, crypto.crypto_jobs, crypto.crypto_keys, memberships.membership_freezes, plans.plans, settings.settings_sections TO apex_worker;
 -- S5-D34, D204: el worker descifra avisos (crypto_keys) y lee del socio solo lo minimo; sin document,
 -- document_idx, birth_date ni emergency_contact. sex entra por names_for (S5-D121).
 GRANT SELECT (id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at) ON members.members TO apex_worker;
@@ -167,7 +176,8 @@ DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
         'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
-        'auth.users', 'crypto.crypto_jobs', 'crypto.crypto_keys', 'crypto.crypto_ops',
+        'auth.users', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
+        'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',
         'notifications.notification_rules', 'notifications.notification_templates',

@@ -35,6 +35,7 @@ from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 # Models de cada módulo (se agregan en su historia):
 from app.modules.attachments import models as _attachments  # noqa: F401  (US-147, 0023, S6-D25)
 from app.modules.auth import models as _auth  # noqa: F401  (US-041 0004_auth, S2-B2 0005b)
+from app.modules.classes import models as _classes  # noqa: F401  (US-155, 0026)
 from app.modules.members import models as _members  # noqa: F401  (US-069, 0006_members)
 from app.modules.memberships import models as _memberships  # noqa: F401  (US-084, 0008)
 from app.modules.notifications import models as _notifications  # noqa: F401  (US-120, 0017 y 0018)

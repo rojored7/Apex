@@ -248,7 +248,8 @@ def alembic_config(test_database_url: str) -> Config:
     return alembic_config_for(test_database_url)
 
 
-# Llaves `retired` que crea `tests/attachments/_apoyo.py::llave_retirada` (la FK de `0025` las exige);
+# Llaves `retired` que crea `tests/attachments/_apoyo.py::llave_retirada` (la FK de `0025` las
+# exige);
 # van después de los adjuntos (FK RESTRICT). Solo la clase de prueba: no toca las llaves del bus.
 LIMPIAR_LLAVES_DE_ADJUNTO = (
     disable_user_sql("crypto.crypto_keys"),
@@ -442,6 +443,23 @@ LIMPIAR_ATTACHMENTS = (
     + " END IF; END $$"
 )
 
+# S7-A2 (S7-D9): las franjas que una prueba con commit real (`dos_sesiones`), la CLI o una corrida
+# cortada hayan dejado en `classes.class_slots`. La tabla nace en `0026_class_slots`: mientras no
+# exista no se toca. Sus triggers rechazan `DELETE` y `TRUNCATE`: se apagan, se borra y se vuelven a
+# encender UNO POR UNO con `ENABLE ALWAYS` (S3-D49). Nunca `ENABLE TRIGGER USER`.
+TRIGGERS_DE_CLASS_SLOTS = ("class_slots_forbid_delete", "class_slots_forbid_truncate")
+LIMPIAR_CLASS_SLOTS = (
+    "DO $$ BEGIN IF to_regclass('classes.class_slots') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE classes.class_slots DISABLE TRIGGER USER; "
+    "DELETE FROM classes.class_slots; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE classes.class_slots ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_CLASS_SLOTS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -455,6 +473,7 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
+    LIMPIAR_CLASS_SLOTS,  # S7-A2: franjas, antes que auth (sin FK)
     *LIMPIAR_AUTH,
     *LIMPIAR_NOTIFICATIONS,  # S5-B6: antes que pagos y membresías (FK de B7)
     LIMPIAR_PAYMENTS,  # S3-B3 (sección 0 del plan del Sprint 3): antes que las membresías
@@ -862,6 +881,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_CLASS_SLOTS))  # S7-A2
         for sql in LIMPIAR_AUTH:
             await conexion.execute(text(sql))
         await conexion.execute(text(LIMPIAR_SIGNATURES))  # S6-A1: antes que audit_log

@@ -137,6 +137,10 @@ CON_LIMITE = {
     # S6-C4 (US-150, S6-D57): descargar un adjunto consume `attachments-download` (y `-hour`) o
     # `attachments-photo` según la fila.
     ("get", "/api/v1/attachments/{attachment_id}"),
+    # S7-A2 (US-155, S7-D19): las franjas consumen `classes-write` (escrituras) y `staff-read`.
+    ("post", "/api/v1/class-slots"),
+    ("get", "/api/v1/class-slots"),
+    ("patch", "/api/v1/class-slots/{slot_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

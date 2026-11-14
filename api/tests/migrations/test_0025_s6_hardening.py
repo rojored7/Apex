@@ -54,13 +54,14 @@ def _revision_existe(alembic_config: Config) -> None:
         pytest.fail(f"no existe la revisión {REVISION}")
 
 
-def test_cuelga_de_0024_tiene_id_corto_y_es_head(alembic_config: Config) -> None:
+def test_cuelga_de_0024_tiene_id_corto_y_esta_en_la_cadena_de_head(alembic_config: Config) -> None:
     _revision_existe(alembic_config)
     assert len(REVISION) <= 32  # `alembic_version.version_num` es varchar(32)
     scripts = ScriptDirectory.from_config(alembic_config)
     revision = scripts.get_revision(REVISION)
     assert revision is not None and revision.down_revision == PADRE
-    assert scripts.get_heads() == [REVISION]
+    (head,) = scripts.get_heads()  # S7-A2 (P-MIG 8): ya no es la cabeza; está en su cadena
+    assert REVISION in {r.revision for r in scripts.iterate_revisions(head, "base")}
 
 
 @pytest.fixture

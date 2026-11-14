@@ -61,6 +61,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "members.members",
         "members.member_channel_preferences",
         "attachments.attachments",  # S6-C1 (S6-D25)
+        "classes.class_slots",  # S7-A2 (US-155)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -304,6 +305,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "audit.verifications",
         "members.member_channel_preferences",  # S5-B5
         "attachments.attachments",  # S6-C1: adjuntos y foto no son actividad reciente
+        "classes.class_slots",  # S7-A2: configuración del horario (S7-D17)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

@@ -149,3 +149,30 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 
 ### Evidencia
 - `slice-gate.sh settings test_hours_section test_classes_section test_router_hours_classes`: 856 passed, exit 0.
+
+## Cierre de la Wave 0 (orquestador, 2026-11-14)
+
+- `run-gates.sh` (tercera corrida, sin otros procesos; los `dian-*` parados por memoria con orden del usuario): RC 0. api 9629 passed, 103 skipped, cobertura 94,72 %; scripts de infraestructura 0 fallas; web 212 archivos, 3930 pruebas, 98,37 % de líneas; build OK. Las dos corridas anteriores: la primera cayó en lint (dos E501, corregidas) y la segunda la mató el sistema por memoria (quedó un pytest huérfano de 1,2 GB que se mató a mano).
+- Incidente: con api y worker arriba, el `--reload` del api aplicó a `apex-db-1` la `0026_class_slots` a medio escribir de A2 (riesgo previsto en P-MIG 2). Corregido: `stop api worker` y `alembic downgrade 0025_s6_hardening` (esquema `classes` ausente). Lección: un slice con migración no puede escribir mientras el api de desarrollo corre, aunque espere para las pruebas.
+- La reconstrucción de la imagen y el smoke de cierre se hacen en P-MIG 5 de A2 (api y worker quedaron parados para A2).
+
+## S7-A2 · Franjas (US-155, S7-D7, S7-D9, M-3)
+
+### Rojo
+- Desvío: el código se escribió durante la espera de W0 (sin stubs previos), así que el rojo con stubs no se pudo confirmar; las pruebas nacieron con el código y la primera corrida dio 67 passed y 1 failed (límite por omisión 25, no 50, error de la prueba). Pruebas nuevas: `tests/classes/{test_validate_slot_pure,test_slots_service,test_router_slots}.py`, `tests/auth/test_is_active_staff.py`, `tests/migrations/test_0026_class_slots.py` y un camino con rol real `apex_api` en `test_api_role_paths.py`.
+- La lista de otras pruebas ajustadas (corrida amplia dio 6 fallos de arquitectura por la regla «toda lista acepta `q`» y 3 de migraciones): `GET /class-slots` suma `q` (nombre); `test_audit_module` (MODULES con `classes`), `test_db_apply` (esquema `classes`), `test_0025` (ya no es head), `test_0014` (inventario y triggers), `test_audited_tables`, `test_service_import_graph` (aristas `classes -> auth` y `classes -> settings`), `test_no_cross_schema_sql`, `test_user_limits_catalog`, `test_error_codes_per_route`, `test_db_grants` (23 tablas).
+
+### Verde
+- `migrations/versions/0026_class_slots.py`: esquema `classes`, `class_slots` (CHECK de días, duración, cupo y nombre), índice `ix_class_slots_is_active`, triggers `forbid_delete`/`forbid_truncate` `ENABLE ALWAYS` sobre `classes.forbid_mutation()`.
+- `modules/classes/{__init__,models,schemas,exceptions,events,rules,slots,service,router}.py`; `auth.service.is_active_staff`; `main.MODULES` (tras `notifications`, antes de `dashboard`); `migrations/env.py`; `audit/queries.py` (`AUDITABLE_TABLES`, excluida de recientes con motivo); `infra/db/grants.sql` (esquema, matriz, clasificada, GRANT api por columna y SELECT worker); `tests/conftest.py` (`LIMPIAR_CLASS_SLOTS` en las dos limpiezas), `tests/factories/{classes,triggers}.py`.
+- [DECISIÓN DE DISEÑO] `start_time` es `time` en la base y `str` `HH:MM` en el ORM (`LocalTime`): el serializador canónico de la auditoría (ADR-004) no admite `datetime.time` y no se toca.
+- Desvíos del plan: no se genera sesiones al crear la franja (no hay `class_sessions` hasta B1); aristas del grafo solo las usadas (`classes -> members` llega en C1); `PRIVATE_HELPERS["classes"]` = `rules`, `slots`, `events`.
+- Incluye en este checkpoint los dos cambios de línea larga pendientes de W0 en `core/config.py` y `tests/conftest.py` (los pidió el orquestador; ruff los exige).
+- P-API: `docs/openapi.json` (dos exportaciones idénticas) y `web/src/core/api/types.ts`; `types.contract.test.ts` 6 passed.
+
+### Evidencia
+- P-MIG 5: `$DC start api` migró 0025 -> 0026 (`alembic current` = `0026_class_slots (head)`), health `ok` con `migrations: ok`; `$DC start worker`; `ls /run/apex/keys` en el api = `custody jwt` (smoke de cierre de W0). P-MIG 6: `downgrade -1` y `upgrade head` sin error, head otra vez 0026.
+- P-MIG 7: `\d classes.class_slots` con 4 CHECK, PK e índice; triggers `class_slots_forbid_delete` y `_forbid_truncate` en `tgenabled = A`; `classes.forbid_mutation()` `SECURITY INVOKER`. `GET /class-slots` sin token da 401.
+- `slice-gate.sh auth tests/auth/test_is_active_staff.py` (no sellante): 827 passed, exit 0.
+- Sello `slice-gate.sh classes` (puras, service, router, migración, grants, no_cross_models): 1.125 passed, exit 0.
+- Incidente repetido: el `--reload` del api aplicó 0026 en `apex-db-1` durante la espera (el orquestador ya lo revirtió).

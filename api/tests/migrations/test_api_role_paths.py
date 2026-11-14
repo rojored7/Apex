@@ -231,3 +231,32 @@ def test_start_from_screen_y_run_rotation_como_apex_api_pasan_las_guardas_de_002
         )
     assert (estado, hechas) == ("done", 1 + len(otros))
     assert llaves == ["decrypt_only", "active"]
+
+
+def test_crear_y_editar_una_franja_como_apex_api_usa_el_update_por_columna(
+    apex_roles: RolesDb,
+) -> None:
+    """S7-A2 (S7-D18): `classes.service.create_slot` y `update_slot` con los privilegios reales de
+    `apex_api` (INSERT y UPDATE por columna sobre `classes.class_slots`, sin DELETE)."""
+    from app.modules.classes import service as classes_service
+    from app.modules.classes.schemas import SlotCreate, SlotPatch
+    from tests.conftest import LIMPIAR_CLASS_SLOTS
+
+    async def crear(sesion: AsyncSession) -> UUID:
+        data = SlotCreate.model_validate(
+            {"weekdays": [1, 3], "start_time": "18:30", "duration_min": 60, "capacity": 12}
+        )
+        franja = await classes_service.create_slot(sesion, data, SYSTEM_USER_ID)
+        return franja.id
+
+    slot_id = _como_api(apex_roles, crear)
+
+    async def editar(sesion: AsyncSession) -> tuple[int, bool]:
+        parche = SlotPatch.model_validate({"capacity": 9, "is_active": False})
+        franja = await classes_service.update_slot(sesion, slot_id, parche, SYSTEM_USER_ID)
+        return franja.capacity, franja.is_active
+
+    try:
+        assert _como_api(apex_roles, editar) == (9, False)
+    finally:
+        propietario(apex_roles, LIMPIAR_CLASS_SLOTS)

@@ -322,7 +322,7 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY_ID: str | None = None
     S3_SECRET_ACCESS_KEY: SecretStr | None = None
     S3_ENABLE_PRODUCTION: bool = False
-    # S6-D65, D77: dominio público `host[:puerto]` (puerto solo con ALLOW_DOMAIN_PORT y `*.localhost`).
+    # S6-D65, D77: dominio público `host[:puerto]` (puerto solo con ALLOW_DOMAIN_PORT y .localhost).
     APEX_DOMAIN: str | None = None
     ALLOW_DOMAIN_PORT: bool = False
     # S6-D57 (siete cubetas, rutas en B3, C2, C4 y R1) y S7-D19 (dos más: 25 cubetas, 24 variables).

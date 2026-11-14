@@ -240,6 +240,15 @@ async def active_admin_id_by_email(session: AsyncSession, email: str) -> UUID | 
     )
 
 
+async def is_active_staff(session: AsyncSession, user_id: UUID) -> bool:
+    """S7-D7: ¿es una persona `active` (nunca `SYSTEM_USER_ID`) con rol `admin` o `coach`?
+    La usa `classes` para validar el coach de una franja o de una sesión; falso si no existe."""
+    encontrado = await session.scalar(
+        select(User.id).where(User.id == user_id, User.role.in_(("admin", "coach")), AUTH_FILTER)
+    )
+    return encontrado is not None
+
+
 # Seed ----------------------------------------------------------------------------------------
 
 

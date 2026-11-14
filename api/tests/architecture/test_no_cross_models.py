@@ -365,3 +365,16 @@ def _importados_de_modulos(archivo: Path) -> list[tuple[int, str]]:
         elif isinstance(nodo, ast.ImportFrom) and nodo.level >= 2:
             salida.append((nodo.lineno, "app.modules." + (nodo.module or "")))
     return salida
+
+
+def test_los_privados_de_classes_son_los_de_a2() -> None:
+    """S7-A2 (hallazgo 12): `rules`, `slots` y `events` existen y son privados de `classes`; los
+    demás (`sessions`, `attendance`, `queries`, `reports`) se suman en su slice."""
+    assert frozenset({"rules", "slots", "events"}) == PRIVATE_HELPERS.get("classes")
+    for archivo in PRIVATE_HELPERS["classes"]:
+        assert (MODULES_DIR / "classes" / f"{archivo}.py").is_file(), archivo
+    falso = MODULES_DIR / "members" / "service.py"
+    fuente = "from app.modules.classes.slots import create_slot\n"
+    assert [
+        (v.imported, v.rule) for v in find_forbidden_imports(falso, module="members", source=fuente)
+    ] == [("app.modules.classes.slots", "private_helper")]

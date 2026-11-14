@@ -55,11 +55,12 @@ TRIGGERS_QUE_CAMBIAN = (
 )
 # `audit.signatures` nace en `0021` (S6-A1): sus triggers no existen en `0013` ni en `0014`.
 # `attachments.attachments` nace en `0023` (S6-C1): tampoco existe en `0014`.
+# `classes.class_slots` nace en `0026` (S7-A2): tampoco.
 # Los de `0024` (S6-R1) tampoco: `ALWAYS_DE_0014` son los nombres que existen desde `0014`.
 ALWAYS_DE_0014 = {
     t: tuple(x for x in n if x not in ROTACION_TRIGGERS.get(t, ()))
     for t, n in ALWAYS_TRIGGERS.items()
-    if t not in {"audit.signatures", "attachments.attachments"}
+    if t not in {"audit.signatures", "attachments.attachments", "classes.class_slots"}
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)
 
@@ -476,6 +477,7 @@ POSTERIORES_A_0014 = (
     "payments.ix_payments_paid_at_id",  # S5-V8 (0020)
     "signatures",  # S6-A1 (0021): audit.signatures y sus índices
     "attachments.",  # S6-C1 (0023): tabla, índices y esquema de adjuntos
+    "classes.",  # S7-A2 (0026): tabla e índice de franjas
     "ix_crypto_ops_user_id_at",  # S6-C1 (0023, S6-D108)
 )
 

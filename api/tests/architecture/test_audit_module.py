@@ -62,6 +62,7 @@ def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
         "memberships",
         "payments",
         "notifications",
+        "classes",  # S7-A2 (S7-D20): después de `notifications`, antes de `dashboard`
         "dashboard",
     )
 

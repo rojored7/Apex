@@ -41,6 +41,7 @@ PRIVACION = "42501"  # insufficient_privilege
 
 ESQUEMAS = (
     "attachments",  # S6-C1 (0023)
+    "classes",  # S7-A2 (0026)
     "audit",
     "auth",
     "crypto",
@@ -104,6 +105,18 @@ COLUMNAS_API_JOBS_UPDATE: tuple[str, ...] = (
     "updated_at",
 )
 COLUMNAS_API_KEYS_UPDATE: tuple[str, ...] = ("state", "rotated_at", "rotated_by", "updated_at")
+# S7-A2 (S7-D18): lo que el api puede cambiar de una franja; `id`, `created_*` quedan fijos.
+COLUMNAS_API_CLASS_SLOTS_UPDATE: tuple[str, ...] = (
+    "weekdays",
+    "start_time",
+    "duration_min",
+    "capacity",
+    "default_coach_id",
+    "name",
+    "valid_from",
+    "is_active",
+    "updated_at",
+)
 COLUMNAS_API_PAYMENTS_INSERT: tuple[str, ...] = (
     "id",
     "created_at",
@@ -149,6 +162,12 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "auth.users": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_USERS_UPDATE)),
+        "apex_worker": (frozenset({"SELECT"}), frozenset()),
+    },
+    # S7-A2 (S7-D18, US-155): el api inserta franjas y las edita por columna (sin DELETE); el
+    # worker solo lee (genera sesiones en B1).
+    "classes.class_slots": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_CLASS_SLOTS_UPDATE)),
         "apex_worker": (frozenset({"SELECT"}), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -703,6 +722,9 @@ PROHIBIDAS_API = [
     "UPDATE attachments.attachments SET kind = 'photo'",  # S6-C1: solo key_id y updated_at
     "UPDATE attachments.attachments SET filename_random = filename_random",  # S6-C1
     "UPDATE attachments.attachments SET sensitive = sensitive",  # S6-C1
+    "DELETE FROM classes.class_slots",  # S7-A2: las franjas se pausan
+    "TRUNCATE classes.class_slots",  # S7-A2
+    "UPDATE classes.class_slots SET created_by = created_by",  # S7-A2: columna sin UPDATE
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -777,6 +799,8 @@ PROHIBIDAS_WORKER = [
     "UPDATE memberships.memberships SET end_date = end_date",
     "UPDATE memberships.memberships SET classes_remaining = 0",
     "SELECT count(*) FROM attachments.attachments",  # S6-C1: el worker no lee adjuntos
+    "INSERT INTO classes.class_slots (id) VALUES (gen_random_uuid())",  # S7-A2: solo lee
+    "UPDATE classes.class_slots SET is_active = false",  # S7-A2
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

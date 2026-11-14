@@ -73,6 +73,7 @@ MODULES: Final[tuple[str, ...]] = (
     "memberships",
     "payments",
     "notifications",  # S5-B6 (S5-D23): plantillas y reglas de aviso
+    "classes",  # S7-A2 (S7-D20): franjas del horario; tras memberships y antes de dashboard
     "dashboard",  # S4A-B8 (S4A-D27): lectura; nadie lo importa, importa a los demás
 )
 API_PREFIX = "/api/v1"

@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 MODULES = Path(__file__).resolve().parents[2] / "src" / "app" / "modules"
-# S7-D19 (S7-W0-4): `classes` entra ya; su módulo llega en A2 (`MODULOS_PENDIENTES`).
+# S7-D19 (S7-W0-4): `classes` entra ya; su módulo llega en A2 (S7-A2).
 ESQUEMAS = (
     "members",
     "plans",
@@ -30,7 +30,7 @@ ESQUEMAS = (
     "notifications",
     "classes",
 )
-MODULOS_PENDIENTES = frozenset({"classes"})
+MODULOS_PENDIENTES: frozenset[str] = frozenset()  # `classes` ya existe desde S7-A2
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b")

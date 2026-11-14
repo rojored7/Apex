@@ -58,6 +58,11 @@ test.describe("rotación de member.phone desde la pantalla de llaves contra el s
     await capture(page, "llaves-stack", "dark", 1440);
     await page.emulateMedia({ colorScheme: "light" });
 
+    // V7: la versión activa de cifrado de member.phone depende de las rotaciones previas del ensayo; se lee antes de rotar.
+    const activa = (await inventario.getByRole("row", { name: /member\.phone Cifrado.*Activa/ }).first().innerText()).replace(/\s+/g, " ");
+    const previa = Number(/ v(\d+) /.exec(activa)?.[1] ?? Number.NaN);
+    expect(Number.isInteger(previa)).toBe(true);
+
     await page.getByRole("button", { name: "Rotar member.phone" }).click();
     const dialog = page.getByRole("dialog", { name: "¿Rotar la llave de member.phone?" });
     await dialog.getByLabel(/^Motivo/).fill("Rotación de ensayo V4");
@@ -79,9 +84,9 @@ test.describe("rotación de member.phone desde la pantalla de llaves contra el s
     expect(await axeViolations(page)).toEqual([]);
 
     await page.getByRole("tab", { name: "Inventario" }).click();
-    const fila = (version: string, estado: string) => inventario.getByRole("row", { name: new RegExp(`member\\.phone.*${version}.*${estado}`) });
-    await expect(fila("v2", "Activa")).toBeVisible();
-    await expect(fila("v1", "Solo descifrar")).toBeVisible();
+    const fila = (version: number, estado: string) => inventario.getByRole("row", { name: new RegExp(`member\\.phone Cifrado.* v${String(version)} .*${estado}`) });
+    await expect(fila(previa + 1, "Activa")).toBeVisible();
+    await expect(fila(previa, "Solo descifrar")).toBeVisible();
 
     const descarga = page.waitForEvent("download");
     await page.getByRole("button", { name: "Exportar CBOM" }).click();

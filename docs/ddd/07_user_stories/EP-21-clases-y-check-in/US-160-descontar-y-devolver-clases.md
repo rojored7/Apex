@@ -81,6 +81,12 @@ Característica: Descuento de clases por asistencia
 - Supuesto: la membresía que se descuenta es la vigente en el momento del check-in, no una futura (Q1); si el socio tiene una vigente por días y una futura por clases, no se descuenta nada.
 - Supuesto: devolver una clase a una membresía `expired` por clases la reactiva si su fecha de fin no ha pasado; no hay regla explícita sobre reactivar.
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- No hay migración de CHECK de `classes_remaining`: `classes_remaining_non_negative`, `classes_pair` y `classes_remaining_le_total` existen desde `0008`; `test_0029` comprueba que siguen (S7-D2).
+- Al agotar la tiquetera, `end_date = min(end_date, max(start_date, hoy))` y `original_end_date` guarda el fin anterior solo si cambió (S7-D29); así se respeta `start_date <= end_date` y `ex_memberships_member_dates`. Migración `0029_memberships_orig_end_date`.
+- El descuento y la devolución usan solo membresías con `start_date <= session_date` según S7-D25 (`on_date = min(session_date, hoy)`); devolver sobre una membresía `cancelled` no hace nada. Filas heredadas con `classes_remaining = 0` y fin futuro: V2 las cuenta, no hay comando de corrección (S7-D30).
+
 ## Dependencias
 
 - US-159 · Check-in en tablet (evento `MemberCheckedIn`)

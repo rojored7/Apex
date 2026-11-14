@@ -77,6 +77,12 @@ Característica: Horas y parámetros de clases
 - Supuesto: la sección `hours` tiene la forma `{ monday..sunday: { closed: bool, opens_at: "HH:MM", closes_at: "HH:MM" } }` en hora de Bogotá; ningún documento fija su contenido. Las horas no restringen la creación de franjas (solo informan) salvo que el gate decida otra cosa.
 - Supuesto: límites fijados por N-18 (cupo 1 a 100, ventana 0 a 240 minutos).
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- `hours` toma la forma de N-18 (S7-D8): `monday..sunday` con 0 a 2 rangos `{open, close}` `HH:MM` de Bogotá, ordenados y sin solaparse; lista vacía = cerrado. Reemplaza la forma `{ closed, opens_at, closes_at }` del supuesto y el criterio 3; el 422 lleva `field = "hours.monday"`.
+- La sección `classes` tiene dos campos, `default_capacity` (1 a 100, por defecto 15) y `checkin_window_min` (0 a 240, por defecto 30), sin `allow_over_capacity` (N-38). La historia y la pantalla hablan de tres: son dos.
+- Las secciones se habilitan en `ENABLED_SECTIONS`; la fila nace al primer `PATCH` (sin siembra). `settings.service.classes(session)` lo lee `classes` (S7-A1).
+
 ## Dependencias
 
 - US-054 · Secciones de configuración validadas

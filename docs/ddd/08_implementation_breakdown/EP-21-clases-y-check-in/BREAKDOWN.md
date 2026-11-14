@@ -76,6 +76,8 @@ El check-in solo responde error por dos cosas: asistencia duplicada (RN-10) y se
 
 ## Tablas y migraciones
 
+> Numeración real del Sprint 7 (S7-D2): `0025_s6_hardening` (deuda S6), `0026_class_slots`, `0027_class_sessions`, `0028_attendance` y `0029_memberships_orig_end_date`. Los números `0060` a `0064` de abajo son los del desglose original y no se usan; no hay migración de CHECK de `classes_remaining` (existen desde `0008`).
+
 - `0060_classes_slots` (US-155): `CREATE SCHEMA classes`; tabla `classes.class_slots`:
   - `id` UUID;
   - `weekday` smallint con CHECK 0 a 6;

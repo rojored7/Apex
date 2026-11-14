@@ -97,6 +97,13 @@ Característica: Check-in en la tablet
 - Supuesto: fuera de la ventana `checkin_window_min` (antes de `starts_at - window` o después de `starts_at + window`) el check-in se registra con 201 y `flags` incluye `out_of_window` (N-39: nunca 422 por hora).
 - Supuesto: `pending_payment` y `frozen` se marcan `flagged` (el modelo solo nombra vencido y sin plan como ejemplos de marca roja).
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- `pending_payment` tiene bandera propia (CA2; precisión de N-38, S7-D12) y `other_day` es la séptima bandera (S7-D27): siete banderas en total (`expired`, `no_membership`, `frozen`, `pending_payment`, `over_capacity`, `out_of_window`, `other_day`). Una sesión cuyo `session_date` no es hoy ni ayer en Bogotá registra con 201 y `other_day`, sin 409.
+- Manda `flags`: `flagged = len(flags) > 0` se deriva y no se guarda; `MemberCheckedIn` lleva `flags`, no `flagged`.
+- El check-in solo considera membresías con `start_date <= on_date`, con `on_date = min(session_date, hoy_bogota())` (S7-D25). Los únicos 409 son `already_checked_in` y `session_cancelled`.
+- Modo tablet (S7-D24): sin enlaces al panel ni acciones de revelar, sin llamadas a `/members/{id}`, `/members/{id}/reveal` ni a adjuntos salvo la foto, cierre a los 10 minutos de inactividad y contraseña para salir del modo. Migración `0028_attendance`.
+
 ## Dependencias
 
 - US-157 · Sesiones de la semana (sesión y detalle)

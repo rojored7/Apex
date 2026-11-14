@@ -74,6 +74,11 @@ Característica: Filtro por última asistencia
 
 - Supuesto: los valores del filtro son `7d`, `14d`, `30d`, `60d` y `never`; `ROUTES.md` solo nombra `last_attendance` sin semántica.
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- `GET /members` suma `last_attendance_at` y `membership_classes_remaining` (aditivo, en `MemberRowOut` y `MemberMembership`) para la columna de última asistencia y el texto «12 clases · quedan 2» (S7-D15).
+- La arista `members` -> `classes` va por import perezoso `# lazy: G-03` y el par `(members, classes)` entra en `LAZY_IMPORT_WHITELIST` en el slice R2 (S7-D6). Valores del filtro: `7d`, `14d`, `30d`, `60d` y `never`; otro valor, 422 con `field = "last_attendance"`.
+
 ## Dependencias
 
 - US-162 · Reportes de asistencia (consultas de asistencia)

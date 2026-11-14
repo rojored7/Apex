@@ -81,6 +81,13 @@ Característica: Horario semanal
 - Supuesto: `start_time` se guarda como hora local de Bogotá (tipo `TIME` sin zona) porque es una plantilla semanal; la conversión a `starts_at` UTC ocurre al generar la sesión (Colombia no tiene horario de verano).
 - Supuesto: rango de `duration_min` de 15 a 240 minutos.
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- Una franja es UNA fila con varios días, como `Horario.html` (S7-D9): `weekdays smallint[]`, `start_time` local (N-40), `duration_min`, `capacity`, `name` (1 a 40), `valid_from` («Vigente desde») e `is_active`. Reemplaza el modelo de una franja por día.
+- `default_coach_id` es opcional (nulo = «Open box · sin coach»); si viene, debe pasar `auth.service.is_active_staff` (422 `coach_invalid`, S7-D7).
+- La unicidad «mismo día y hora entre activas» (CA3) la comprueba el service bajo `pg_advisory_xact_lock` y responde 409 `slot_conflict`; no hay índice único sobre el arreglo.
+- Crear una franja activa genera sus sesiones de la ventana en la misma transacción; un `PATCH` nunca toca sesiones (Q23). Migración `0026_class_slots`.
+
 ## Dependencias
 
 - US-154 · Configurar horas y clases (cupo por defecto)

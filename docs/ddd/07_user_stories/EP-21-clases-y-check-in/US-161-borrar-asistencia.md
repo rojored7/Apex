@@ -77,6 +77,12 @@ Característica: Borrar una asistencia
 - Supuesto: el borrado es físico con rastro completo en la auditoría (`before`); `CLAUDE.md` solo prohíbe el borrado físico en pagos, resultados, auditoría y llaves, y no exige borrado lógico en asistencias.
 - Supuesto: el motivo es opcional (Q8 no lo exige).
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- La fila de auditoría es `update` con `removed_at`, `removed_by` y `removed_reason` en `after`, no `delete` (S7-D13): en `core/audit.py` un borrado lógico es `update`.
+- El motivo viaja en el cuerpo JSON opcional de `DELETE /attendance/{id}` (`{reason}`, de 1 a 200 caracteres), no en la consulta, para que no quede en los logs de Nginx.
+- El coach quita asistencias de sesiones de hoy o de ayer (Bogotá); fuera de eso, 403 `attendance_locked`; el admin, cualquiera (S7-D27).
+
 ## Dependencias
 
 - US-159 · Check-in en tablet

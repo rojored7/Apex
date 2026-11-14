@@ -46,8 +46,9 @@ Notación: `A → B` significa que A depende de B. Patrón entre paréntesis.
 
 ### Entrenamiento (v0.4 a v0.6)
 
-- Classes → Members (**Conformist**): lee nombre y estado de membresía para el check-in (vía `memberships.service.status_for(member_id)`).
+- Classes → Members (**Conformist**): lee nombre y estado de membresía para el check-in (vía el puerto `MembershipPort.checkin_view`, que registra memberships: S7-D6).
 - Memberships ← Classes (**eventos**): `MemberCheckedIn` y `AttendanceRemoved` descuentan o devuelven clases.
+- Aristas de nivel de módulo que fija el Sprint 7 (S7-D6; se suman a `ALLOWED_EDGES` en el slice que crea cada una): `classes -> members` (`ensure_exists`, `get_ref`, `names_for`), `classes -> auth` (`user_names_for`, `is_active_staff`), `classes -> settings` (`classes(session)`), `memberships -> classes` (suscripción a `MemberCheckedIn` y `AttendanceRemoved`, tipos exportados por `classes/service.py`) y `dashboard -> classes` (`week_attendance`, `today_sessions`). El sentido `classes -> memberships` no es una arista: `classes` lee la membresía por un puerto que registra memberships (`MembershipPort`, `checkin_view` y `lock`; `set_membership_port`, como `payments.set_membership_gate`). `LAZY_IMPORT_WHITELIST` suma `(members, classes)` (US-163: `attended_member_ids` y `last_attendance_for`, con `# lazy: G-03`).
 - Training → Classes (**Conformist**): un resultado puede referir una sesión; un WOD se asigna a sesiones del día.
 - Training → Members (**Conformist**): nombre y sexo para el leaderboard. Training nunca lee campos cifrados.
 - Athletes ← Training (**eventos**): `WodResultValidated` deriva récords. Athletes lee el catálogo de movimientos por `wods.service`.

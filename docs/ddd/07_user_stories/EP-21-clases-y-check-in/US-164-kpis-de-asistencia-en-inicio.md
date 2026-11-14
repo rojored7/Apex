@@ -76,6 +76,11 @@ Característica: KPIs de asistencia en Inicio
 
 - Supuesto: la forma exacta de `attendance_week` y `sessions_today` se fija aquí si US-108 solo los dejó como `null` sin tipo; si US-108 ya fijó el tipo, manda US-108.
 
+## Correcciones del Sprint 7 (T-DOC, 2026-11-14)
+
+- Es un cambio de tipo y no solo «dejar de ser `null`» (S7-D16): `attendance_week` (`count`, `flagged_count`) y `sessions_today` (lista, `[]` sin clases, máximo 50) pasan a obligatorios y no nulos. Api, `docs/openapi.json`, `types.ts`, `schemas.ts` y `FutureKpis.tsx` cambian en el mismo checkpoint (slice R3), con la prueba de contrato admitiendo cambio solo en esos dos campos.
+- `attendance_week` va del lunes 00:00 de Bogotá a ahora; el CA3 original, que daba por buena la forma `null`, queda corregido por este párrafo.
+
 ## Dependencias
 
 - US-159 · Check-in en tablet

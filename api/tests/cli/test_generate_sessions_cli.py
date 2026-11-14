@@ -168,3 +168,16 @@ def test_el_comando_esta_registrado() -> None:
 
     salida = CliRunner().invoke(app, ["--help"]).output
     assert "generate-sessions" in salida
+
+
+@pytest.mark.parametrize("rol", ["coach", "member"])
+async def test_as_de_un_usuario_que_no_es_admin_sale_con_2_y_no_escribe(
+    fabrica: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch, rol: str
+) -> None:
+    """S7-B1b: `--as` exige un admin activo (como `notify`), no cualquier usuario."""
+    await _con_franja(fabrica)
+    async with fabrica() as sesion:
+        otro = await make_user(sesion, role=rol, password=CLAVE_PRUEBA)
+    r = _correr(settings_prueba, monkeypatch, "--as", otro.email)
+    assert r.exit_code == 2, r.output
+    assert await _contar(fabrica) == 0

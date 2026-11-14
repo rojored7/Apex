@@ -128,13 +128,19 @@ class PlannedSession:
 
 
 def planned_sessions(
-    slots: Sequence[SlotLike], from_date: date, to_date: date
+    slots: Sequence[SlotLike],
+    from_date: date,
+    to_date: date,
+    *,
+    not_before: datetime | None = None,
 ) -> list[PlannedSession]:
     """Sesiones de las franjas activas entre `from_date` y `to_date` (ambas incluidas).
 
     Por cada franja activa y cada fecha del rango cuyo día de la semana está en `weekdays` y es
     `>= valid_from`: `starts_at` es la fecha con `start_time` en Bogotá pasada a UTC (Colombia no
-    tiene horario de verano). Orden: `starts_at` y luego el id de la franja."""
+    tiene horario de verano). Con `not_before` se descartan las que empiezan antes de ese instante
+    (una clase de hoy cuya hora ya pasó; la que empieza justo en `not_before` se queda). Orden:
+    `starts_at` y luego el id de la franja."""
     desde = from_date
     salida: list[PlannedSession] = []
     for franja in slots:
@@ -144,8 +150,8 @@ def planned_sessions(
         dias = set(franja.weekdays)
         dia = max(desde, franja.valid_from)
         while dia <= to_date:
-            if dia.weekday() in dias:
-                inicio = datetime.combine(dia, hora, tzinfo=BOGOTA).astimezone(UTC)
+            inicio = datetime.combine(dia, hora, tzinfo=BOGOTA).astimezone(UTC)
+            if dia.weekday() in dias and (not_before is None or inicio >= not_before):
                 salida.append(
                     PlannedSession(
                         slot_id=franja.id,

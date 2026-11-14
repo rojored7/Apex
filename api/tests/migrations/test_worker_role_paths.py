@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import load_only
 
 from app.cli import key_paths_in
+from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto import bus, oplog
 from app.core.crypto.bootstrap import ensure_keys
@@ -241,22 +242,23 @@ def test_apex_worker_inserta_sesiones(apex_roles: RolesDb) -> None:
     from tests.conftest import LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
 
     franja = str(uuid4())
-    hoy = date(2026, 10, 21)
+    hoy = current_clock().today_bogota()  # el job descarta lo que ya pasó: se usa el reloj real
     propietario(
         apex_roles,
         "INSERT INTO classes.class_slots (id, created_by, weekdays, start_time, duration_min, "  # noqa: S608
-        f"capacity, valid_from) VALUES ('{franja}', '{SYSTEM}', '{{0}}', '06:00', 60, 15, "
+        f"capacity, valid_from) VALUES ('{franja}', '{SYSTEM}', '{{0,1,2,3,4,5,6}}', '06:00', "
+        "60, 15, "
         f"'{hoy}')",
     )
 
     async def trabajo(fabrica: async_sessionmaker[AsyncSession]) -> int:
         async with fabrica() as sesion:
-            resultado = await classes_service.generate_sessions(sesion, today=hoy)
+            resultado = await classes_service.generate_sessions(sesion, today=hoy, days=3)
             await sesion.commit()
             return resultado.created
 
     try:
-        assert _como_worker(apex_roles, trabajo) == 2
+        assert _como_worker(apex_roles, trabajo) >= 2  # mañana y pasado a las 06:00 (hoy ya pasó)
         assert _como_worker(apex_roles, trabajo) == 0
     finally:
         propietario(apex_roles, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)

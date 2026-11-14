@@ -106,3 +106,20 @@ def test_cada_dia_de_la_semana_cae_en_su_fecha(dia: int) -> None:
     franja = _franja(weekdays=[dia])
     (p,) = planned_sessions([franja], date(2026, 10, 26), date(2026, 11, 1))
     assert p.session_date == date(2026, 10, 26) + timedelta(days=dia)
+
+
+def test_not_before_descarta_las_sesiones_cuya_hora_ya_paso() -> None:
+    """S7-B1b: hoy a las 10:00 de Bogotá (15:00Z) la clase de las 06:00 (11:00Z) ya pasó."""
+    franja = _franja(weekdays=[2], start_time="06:00")  # miércoles
+    ahora = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
+    todas = planned_sessions([franja], HOY, HOY + timedelta(days=7))
+    futuras = planned_sessions([franja], HOY, HOY + timedelta(days=7), not_before=ahora)
+    assert [p.session_date for p in todas] == [date(2026, 10, 21), date(2026, 10, 28)]
+    assert [p.session_date for p in futuras] == [date(2026, 10, 28)]
+
+
+def test_not_before_deja_la_sesion_que_empieza_justo_ahora() -> None:
+    franja = _franja(weekdays=[2], start_time="06:00")
+    justo = datetime(2026, 10, 21, 11, 0, tzinfo=UTC)
+    (p,) = planned_sessions([franja], HOY, HOY, not_before=justo)
+    assert p.starts_at == justo

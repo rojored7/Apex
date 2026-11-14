@@ -34,7 +34,7 @@ from app.modules.classes.exceptions import (
 from app.modules.classes.models import ClassSlot
 from app.modules.classes.rules import normalize_weekdays, slots_overlap, validate_slot
 from app.modules.classes.schemas import SlotCreate, SlotListQuery, SlotOut, SlotPatch
-from app.modules.classes.sessions import generate_sessions
+from app.modules.classes.sessions import generate_sessions, take_generate_lock
 from app.modules.settings import service as settings_service
 
 logger = logging.getLogger("app.classes")
@@ -119,6 +119,9 @@ async def create_slot(session: AsyncSession, data: SlotCreate, by: UUID) -> Slot
     validate_slot(data.weekdays, data.start_time, data.duration_min, capacidad)
     await _ensure_coach(session, data.default_coach_id)
     await _lock(session)
+    # Orden 005 -> 006 -> 002 (S7-B1b): la generación se bloquea ya, antes del primer `flush`
+    # auditado, igual que el job y el comando (006 y luego la cadena).
+    await take_generate_lock(session)
     await _ensure_no_conflict(session, weekdays=dias, start_time=data.start_time, exclude=None)
     slot = ClassSlot(
         weekdays=dias,
@@ -133,8 +136,7 @@ async def create_slot(session: AsyncSession, data: SlotCreate, by: UUID) -> Slot
     )
     session.add(slot)
     await session.flush()  # `eager_defaults`: fechas ya cargadas
-    # S7-D9/D10: la semana no queda vacía hasta las 07:00 del día siguiente; el candado de
-    # generación (4_270_006) se toma DESPUÉS del de franjas (4_270_005): nadie los toma al revés.
+    # S7-D9/D10: la semana no queda vacía hasta las 07:00 del día siguiente (candado 006 ya tomado).
     await generate_sessions(
         session, today=current_clock().today_bogota(), slot_ids=[slot.id], by=by
     )

@@ -2,7 +2,8 @@
 
 Hoy (reloj de las pruebas) es el miércoles 21 de octubre de 2026 en Bogotá: los lunes de los
 próximos 14 días son el 26 de octubre y el 2 de noviembre. La franja de fábrica es lunes y
-miércoles a las 06:00 (los miércoles 21 y 28, y los lunes 26 y 2: cuatro sesiones).
+miércoles a las 06:00: el 21 ya pasó (son las 10:00), así que quedan el lunes 26, el miércoles 28
+y el lunes 2 (tres sesiones).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.core import events
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.modules.classes import service
 from app.modules.classes.schemas import SlotCreate, SlotPatch
+from app.modules.classes.sessions import GENERATE_SESSIONS_LOCK_KEY
 from tests.conftest import CrearUsuario
 from tests.factories.classes import make_slot
 
@@ -64,16 +66,16 @@ async def test_dos_corridas_no_duplican(session: AsyncSession) -> None:
     await make_slot(session)
     primera = await _generar(session)
     segunda = await _generar(session)
-    assert primera.created == 4 and segunda.created == 0
-    assert len(await _filas(session)) == 4
+    assert primera.created == 3 and segunda.created == 0
+    assert len(await _filas(session)) == 3
 
 
 async def test_dias_acota_la_ventana(session: AsyncSession) -> None:
     await make_slot(session, weekdays=[0, 1, 2, 3, 4, 5, 6])
     resultado = await _generar(session, days=3)
-    assert resultado.created == 3
+    # El 21 a las 06:00 (11:00Z) ya pasó: el reloj de la prueba marca las 15:00Z.
+    assert resultado.created == 2
     assert [f["session_date"] for f in await _filas(session)] == [
-        date(2026, 10, 21),
         date(2026, 10, 22),
         date(2026, 10, 23),
     ]
@@ -222,3 +224,53 @@ async def test_patch_de_la_franja_no_toca_las_sesiones_ya_generadas(
         )
         await session.commit()
     assert await _filas(session) == antes
+
+
+async def test_no_crea_sesiones_de_hoy_cuya_hora_ya_paso(session: AsyncSession) -> None:
+    """S7-B1b: el miércoles 21 a las 10:00 de Bogotá la clase de las 06:00 ya pasó; la de las
+    18:00 de hoy sí se crea."""
+    await make_slot(session, weekdays=[2], start_time="06:00")
+    await make_slot(session, weekdays=[2], start_time="18:00")
+    await _generar(session, days=1)
+    horas = [f["starts_at"] for f in await _filas(session)]
+    assert horas == [datetime(2026, 10, 21, 23, 0, tzinfo=UTC)]
+
+
+async def test_crear_franja_y_el_job_a_la_vez_no_se_interbloquean(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S7-B1b (HIGH): el orden de candados es 4_270_005, 4_270_006 y luego la cadena de auditoría
+    (4_270_002), el mismo del job y del CLI (006, luego 002). Antes `create_slot` tomaba 002 en el
+    flush y pedía 006 después: con el job ya sosteniendo 006 era un interbloqueo (40P01).
+    El job espera 1,5 s con el candado en la mano para forzar el cruce."""
+    from tests.factories.users import make_user
+
+    del_job, de_la_alta = dos_sesiones
+    admin = await make_user(de_la_alta, role="admin")
+    await make_slot(del_job, weekdays=[1], start_time="07:00")  # el job tiene algo que crear
+
+    async def job() -> int:
+        with actor_scope(SYSTEM_USER_ID):
+            await del_job.execute(
+                text("SELECT pg_advisory_xact_lock(:k)"), {"k": GENERATE_SESSIONS_LOCK_KEY}
+            )
+            await asyncio.sleep(1.5)
+            resultado = await service.generate_sessions(del_job, today=HOY)
+            await del_job.commit()
+        return resultado.created
+
+    async def alta() -> None:
+        await asyncio.sleep(0.3)
+        with actor_scope(admin.id):
+            await service.create_slot(
+                de_la_alta, SlotCreate.model_validate(_cuerpo_alta()), admin.id
+            )
+            await de_la_alta.commit()
+
+    creadas, _ = await asyncio.wait_for(asyncio.gather(job(), alta()), timeout=30)
+    assert creadas == 2  # el job vio la franja de fábrica; la nueva la creó el alta con su ventana
+    assert len(await _filas(del_job)) >= 2
+
+
+def _cuerpo_alta() -> dict[str, Any]:
+    return {"weekdays": [0], "start_time": "06:00", "duration_min": 60}

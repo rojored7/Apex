@@ -137,3 +137,18 @@ async def test_classes_con_allow_over_capacity_da_422(
         f"{API}/settings/classes", headers=cabeceras(admin), json={"value": valor, "version": 0}
     )
     assert r.status_code == 422 and "allow_over_capacity" in r.json()["error"]["field"]
+
+
+@pytest.mark.parametrize(
+    "hora", [f"0{chr(0x0665)}:00", f"05:0{chr(0x0660)}"], ids=["hora", "minuto"]
+)
+async def test_hours_con_digitos_unicode_da_422(
+    app_http: AsyncClient, admin: UsuarioPrueba, cabeceras: Cabeceras, hora: str
+) -> None:
+    """S7-B1b: el patrón `HH:MM` es ASCII también por HTTP (dígitos árabe-índicos, 422)."""
+    valor = {**HOURS_DEFAULTS, "tuesday": [{"open": hora, "close": "23:00"}]}
+    r = await app_http.patch(
+        f"{API}/settings/hours", headers=cabeceras(admin), json={"value": valor, "version": 0}
+    )
+    assert r.status_code == 422
+    assert "tuesday" in r.json()["error"]["field"]

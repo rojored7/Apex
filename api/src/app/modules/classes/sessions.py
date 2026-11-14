@@ -22,10 +22,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
+from app.core.clock import current_clock
 from app.core.context import get_actor
 from app.modules.classes.events import SessionGenerated
 from app.modules.classes.models import ClassSession, ClassSlot
-from app.modules.classes.rules import planned_sessions
+from app.modules.classes.rules import PlannedSession, planned_sessions
 
 logger = logging.getLogger("app.classes")
 
@@ -45,6 +46,15 @@ class GenerateResult:
     slots: int
 
 
+async def take_generate_lock(session: AsyncSession) -> None:
+    """Toma el candado de generación (4_270_006). Lo reentra quien ya lo tiene (misma conexión).
+
+    Orden único de candados de `classes`: 4_270_005 (franjas), 4_270_006 (generación) y, al primer
+    `flush` auditado, 4_270_002 (cadena de auditoría). El job y el comando toman 006 y luego 002;
+    `create_slot` toma 005 y 006 ANTES de escribir (S7-B1b): nadie pide 006 con 002 en la mano."""
+    await session.execute(text(GENERATE_LOCK_SQL), {"k": GENERATE_SESSIONS_LOCK_KEY})
+
+
 async def _existing(
     session: AsyncSession, franjas: Sequence[ClassSlot], desde: date, hasta: date
 ) -> set[tuple[UUID | None, datetime]]:
@@ -58,29 +68,13 @@ async def _existing(
     return {(slot, inicio) for slot, inicio in filas.all()}
 
 
-async def generate_sessions(
-    session: AsyncSession,
-    *,
-    today: date,
-    days: int = DEFAULT_DAYS,
-    slot_ids: Sequence[UUID] | None = None,
-    by: UUID | None = None,
-) -> GenerateResult:
-    """Crea las sesiones que faltan de `today` a `today + days - 1` (docstring del módulo)."""
-    if not 1 <= days <= MAX_DAYS:
-        raise ValueError("days debe estar entre 1 y 28")
-    await session.execute(text(GENERATE_LOCK_SQL), {"k": GENERATE_SESSIONS_LOCK_KEY})
-    consulta = select(ClassSlot).where(ClassSlot.is_active.is_(True))
-    if slot_ids is not None:
-        consulta = consulta.where(ClassSlot.id.in_(list(slot_ids)))
-    franjas = list((await session.scalars(consulta.order_by(ClassSlot.id))).all())
-    hasta = today + timedelta(days=days - 1)
-    planeadas = planned_sessions(franjas, today, hasta) if franjas else []
-    if not planeadas:
-        return GenerateResult(created=0, slots=len(franjas))
-    existentes = await _existing(session, franjas, today, hasta)
-    autor = by if by is not None else get_actor()
-    nuevas = [
+def _missing(
+    planeadas: Sequence[PlannedSession],
+    existentes: set[tuple[UUID | None, datetime]],
+    autor: UUID,
+) -> list[ClassSession]:
+    """Las filas por insertar: las planeadas que no existen (en ningún estado)."""
+    return [
         ClassSession(
             slot_id=p.slot_id,
             session_date=p.session_date,
@@ -95,13 +89,40 @@ async def generate_sessions(
         for p in planeadas
         if (p.slot_id, p.starts_at) not in existentes
     ]
+
+
+async def generate_sessions(
+    session: AsyncSession,
+    *,
+    today: date,
+    days: int = DEFAULT_DAYS,
+    slot_ids: Sequence[UUID] | None = None,
+    by: UUID | None = None,
+) -> GenerateResult:
+    """Crea las sesiones que faltan de `today` a `today + days - 1` (docstring del módulo)."""
+    if not 1 <= days <= MAX_DAYS:
+        raise ValueError("days debe estar entre 1 y 28")
+    await take_generate_lock(session)
+    consulta = select(ClassSlot).where(ClassSlot.is_active.is_(True))
+    if slot_ids is not None:
+        consulta = consulta.where(ClassSlot.id.in_(list(slot_ids)))
+    franjas = list((await session.scalars(consulta.order_by(ClassSlot.id))).all())
+    hasta = today + timedelta(days=days - 1)
+    ahora = current_clock().now_utc()
+    planeadas = planned_sessions(franjas, today, hasta, not_before=ahora) if franjas else []
+    if not planeadas:
+        return GenerateResult(created=0, slots=len(franjas))
+    existentes = await _existing(session, franjas, today, hasta)
+    nuevas = _missing(planeadas, existentes, by if by is not None else get_actor())
     session.add_all(nuevas)
     await session.flush()
     for sesion in nuevas:
-        evento = SessionGenerated(
-            session_id=sesion.id, slot_id=sesion.slot_id, starts_at=sesion.starts_at
+        await events.emit(
+            SessionGenerated(
+                session_id=sesion.id, slot_id=sesion.slot_id, starts_at=sesion.starts_at
+            ),
+            session,
         )
-        await events.emit(evento, session)
     logger.info(
         "classes: sesiones generadas",
         extra={"creadas": len(nuevas), "franjas": len(franjas), "dias": days},

@@ -552,3 +552,11 @@ alembic_version = 0021_audit_signatures
   - 17 `tests/architecture/test_audit_sign_callers.py`: solo el worker y el CLI llaman `sign_latest` y el `sign` del bus; residual documentado en `llaves.md` y RUNBOOK §14 (mitigación al Sprint 7).
   - 18 RUNBOOK §912 corregido (`state` sí cambia desde `0024`, con guardas).
   - 19 Viñetas de `sign-ed25519.key` fuera de la copia `age` (L4) y del `public_key` modificable por el propietario (M1, va en `0025`) en `llaves.md`; L4 también en RUNBOOK §14.
+
+## V12 · Limpieza y release (2026-11-14)
+
+- Gates completos sobre `af23e51`: api 9544 pasan, 100 saltadas, 38 `perf` fuera; ruff, formato, mypy, guiones de `scripts/ci`, `infra` y Caddy con 0 fallas; web lint, tipos, 3930 de 3930 (98,37 % de líneas, `--pool=forks --maxWorkers=2`) y build. La primera corrida de vitest, con todos los hilos, la cortó el equipo por falta de memoria; se repitió solo esa etapa.
+- Limpieza: borrados los cinco `.dump` de `docs/scratch/` y `docs/scratch/ensayo/`; sin `apex_sim` ni `apex-smoke`. El ensayo queda parado con `stop` y `docs/scratch/ensayo/` se conserva (su `down -v` y su borrado no están autorizados, S6-D141).
+- Release `66b884c`: versiones a 0.3.0 (pyproject, uv.lock, package.json, package-lock.json, openapi), `CHANGELOG.md` `## [0.3.0]`, `gen:api` sin cambios, `check-release-version.sh --check v0.3.0` y `test_check_release_version.sh` en verde. Etiqueta anotada local `v0.3.0` → `66b884ce54e2`.
+- Imágenes `apex-api:local`, `apex-web:local` y `apex-backup:local` reconstruidas con `GIT_SHA=66b884ce54e2`; api, worker, web y backup de desarrollo recreados: `/health` 8181 `{"status":"ok","db":"ok","version":"66b884ce54e2","backup":"ok","migrations":"ok","crypto":"ok"}`.
+- `--run-once sign_audit` en desarrollo con la imagen de cierre: con la cadena ya firmada hasta la seq 6105 sale `ok` sin firma nueva; tras una fila nueva (un login fallido del admin de desarrollo, seq 6106) la primera corrida firma hasta la 6106 (Ed25519) y la segunda no repite. `tools verify-audit` → «Cadena íntegra: 6106 registros … Firmas: 2 de 2 válidas, la última hasta el seq 6106», exit 0.

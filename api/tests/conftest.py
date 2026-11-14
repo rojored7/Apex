@@ -248,6 +248,14 @@ def alembic_config(test_database_url: str) -> Config:
     return alembic_config_for(test_database_url)
 
 
+# Llaves `retired` que crea `tests/attachments/_apoyo.py::llave_retirada` (la FK de `0025` las exige);
+# van después de los adjuntos (FK RESTRICT). Solo la clase de prueba: no toca las llaves del bus.
+LIMPIAR_LLAVES_DE_ADJUNTO = (
+    disable_user_sql("crypto.crypto_keys"),
+    "DELETE FROM crypto.crypto_keys WHERE data_class = 'prueba.adjunto'",
+    rearm_always_sql("crypto.crypto_keys"),
+)
+
 LIMPIAR_LLAVES = (
     disable_user_sql("crypto.crypto_keys"),
     "DELETE FROM crypto.crypto_keys",
@@ -849,6 +857,8 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERSHIPS))
         await conexion.execute(text(LIMPIAR_CHANNEL_PREFS))
         await conexion.execute(text(LIMPIAR_ATTACHMENTS))  # S6-C1
+        for sql in LIMPIAR_LLAVES_DE_ADJUNTO:  # S7-W0-2b: las de `llave_retirada`
+            await conexion.execute(text(sql))
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70

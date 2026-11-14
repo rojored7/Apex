@@ -80,3 +80,15 @@ Rama `feat/sprint-07-clases-horario-checkin`, HEAD de partida `8e751eb` (sobre `
 - Gates: `crypto` (827 passed), `core/config` (1.095), `cli` layout (839, 4 skipped), `cli` init-keys y rotate-sign (verde), `crypto` init-keys (815, 1 skipped), `test_compose_config.sh`, `test_deploy_script.sh` (497 ok) y `test_check_key_files.sh` con 0 fallas; sello `slice-gate.sh main ...` exit 0 (826 passed). Checkpoint `0d65e8b`.
 - `prod-smoke.sh` (`SMOKE_DOWN=1 SMOKE_WEB_PORT=8380`, auxiliar `docker:cli` con el árbol de `0d65e8b` en el volumen `apex-b4-work`, imagen api `4ba399a5fbf8`): `--no-build` EXIT=0, 233 ok, 0 FALLA; `--no-build --provider openbao` EXIT=0, 252 ok, 0 FALLA. Ambos comprueban api con custody+jwt sin `sign/`, worker (local) con custody+sign sin jwt, `--migrate-layout` plano -> nuevo, segunda corrida, `--reverse` y de vuelta, `init-keys --data-class audit.signature` y `sign_audit` ok del worker; `test_env_isolation` 0 fallas. Sin `apex-smoke` residual.
 - Incidente de proceso: un `TaskStop` no mató los hijos de un script de gates y dos tandas corrieron a la vez sobre `db_test` (8 fallos espurios); se mataron ambas y se repitió una sola, limpia.
+
+## Revisión W0-1/W0-2 (S7-W0-2b, 2026-11-14)
+
+Seis hallazgos de la revisión (0 CRITICAL, 0 HIGH, 2 MEDIUM, 4 LOW).
+
+- M1 `CLAUDE.md`: `generate_sessions` (jobs, `cli_ops`, `cli.py`) marcado «desde S7-B1»; lo de W0-3 (api solo con `custody/` y `jwt/`, `signing_key_exposed`, `--reverse`) ya existe y queda en presente.
+- M2 prueba nueva `test_count_rows_by_key_espera_una_subida_de_adjunto_sin_confirmar` (otra conexión deja sin confirmar un `INSERT` en `attachments.attachments` con `key_id` = v1; el recuento vence con `DatabaseBusy`). Con `FOR UPDATE`: 1 passed. Mutación temporal de `count_rows_by_key` a `with_for_update(key_share=True)`: 1 FAILED (no espera); revertida (`git diff src/` vacío).
+- L3 `test_0025_s6_hardening.py`: `assert "violan 1 fila" in mensaje`.
+- L4 residual de `finish_rotation` documentado: DECISIONES S7-D36 y `docs/operacion/llaves.md`.
+- L5 docstring de `0023_attachments.py` revertido al de `6481d43^` (la explicación queda en el docstring de `0025`).
+- L6 `tests/conftest.py`: `LIMPIAR_LLAVES_DE_ADJUNTO` (borra `prueba.adjunto` con triggers apagados y rearmados en ALWAYS) dentro de `limpiar_tras_dos_sesiones`, tras los adjuntos.
+- `test_env_isolation.sh` (11 fallas de variables contra desarrollo): NO es defecto del Sprint 7. `sprint-05.md` (gates, línea base): «11 fallas, las mismas 11 de la línea base (parte dinámica sobre un `.env` de desarrollo, suma de los dos ejemplos)»; `sprint-06.md` solo lo corre vivo contra el ensayo (0 fallas). Script sin cambios.

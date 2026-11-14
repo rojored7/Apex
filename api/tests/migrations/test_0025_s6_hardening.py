@@ -356,7 +356,7 @@ def test_consulta_previa_aborta_con_regla_y_conteo_sin_valores(
             command.upgrade(alembic_config, "head")
         mensaje = str(excepcion.value)
         assert regla in mensaje, mensaje
-        assert "1" in mensaje, mensaje  # el conteo
+        assert "violan 1 fila" in mensaje, mensaje  # el conteo
         assert valor not in mensaje and centinela not in mensaje, (
             "la consulta previa filtró un valor"
         )

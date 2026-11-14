@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select, text
@@ -130,6 +130,39 @@ async def test_count_rows_by_key_toma_for_update_de_la_llave(rotacion_lista: Fab
     finally:
         await bloqueadora.rollback()
         await bloqueadora.close()
+        await contadora.close()
+
+
+async def test_count_rows_by_key_espera_una_subida_de_adjunto_sin_confirmar(
+    rotacion_lista: Fabrica,
+) -> None:
+    """Red del retiro (S6-D107, S7-D3): `_lock_key` ya solo toma `FOR KEY SHARE`, así que el
+    `FOR UPDATE` del recuento es lo único que espera un `INSERT` de adjunto sin confirmar (la FK
+    `fk_attachments_key_id` toma `FOR KEY SHARE` sobre la llave). Si el recuento usara
+    `key_share`, no esperaría y esta prueba fallaría."""
+    async with rotacion_lista() as sesion:
+        v1 = (await llaves_de(sesion))[0]
+    subida = rotacion_lista()
+    contadora = rotacion_lista()
+    try:
+        await subida.begin()
+        await subida.execute(
+            text(
+                "INSERT INTO attachments.attachments (id, owner_table, owner_id, kind, "
+                "filename_random, mime, size_bytes, sensitive, key_id, storage_provider, "
+                "uploaded_by, created_by) VALUES (gen_random_uuid(), 'members', "
+                "gen_random_uuid(), 'consent', :nombre, 'application/pdf', 10, true, :k, "
+                "'local', :u, :u)"
+            ),
+            {"nombre": uuid4().hex, "k": v1.id, "u": SYSTEM_USER_ID},
+        )  # sin confirmar: sostiene FOR KEY SHARE sobre la llave
+        with pytest.raises(DatabaseBusy):
+            async with contadora.begin():
+                await contadora.execute(text("SET LOCAL lock_timeout = '300ms'"))
+                await count_rows_by_key(contadora, v1.id)
+    finally:
+        await subida.rollback()
+        await subida.close()
         await contadora.close()
 
 

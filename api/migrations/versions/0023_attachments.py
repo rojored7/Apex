@@ -6,8 +6,7 @@ Create Date: 2026-11-12
 
 Crea el esquema `attachments` y la tabla `attachments.attachments` (S6-D25): metadatos de cada
 archivo subido; el contenido vive en el almacenamiento de objetos, nunca en la base. Sin llaves
-foráneas hacia otros esquemas (`owner_id` es una referencia lógica; `key_id` la reforzó `0025`
-con la FK `fk_attachments_key_id` hacia `crypto.crypto_keys`, S7-D3).
+foráneas hacia otros esquemas (`owner_id` y `key_id` son referencias lógicas).
 - `owner_table` solo `members` (v0.3); `kind` `photo|consent|other`; `filename_random` único de 32
   hexadecimales en minúscula (es la clave del objeto); `mime` de tres tipos; `size_bytes` entre 1
   y 5.242.880; `storage_provider` `local|s3`.

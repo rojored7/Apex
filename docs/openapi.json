@@ -3310,7 +3310,8 @@
           "status": {
             "enum": [
               "validated",
-              "pending"
+              "pending",
+              "voided"
             ],
             "title": "Status",
             "type": "string"
@@ -6348,7 +6349,8 @@
           "status": {
             "enum": [
               "validated",
-              "pending"
+              "pending",
+              "voided"
             ],
             "title": "Status",
             "type": "string"
@@ -6394,6 +6396,41 @@
             ],
             "title": "Validated By"
           },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "voided_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided By"
+          },
           "wod_date": {
             "format": "date",
             "title": "Wod Date",
@@ -6426,6 +6463,9 @@
           "supersedes_id",
           "is_current",
           "source",
+          "voided_by",
+          "voided_at",
+          "void_reason",
           "created_at",
           "updated_at"
         ],
@@ -8513,6 +8553,23 @@
         "title": "VerifyStartedOut",
         "type": "object"
       },
+      "VoidIn": {
+        "additionalProperties": false,
+        "description": "`POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, sin controles).",
+        "properties": {
+          "reason": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "VoidIn",
+        "type": "object"
+      },
       "VoidPaymentIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).",
@@ -9124,7 +9181,8 @@
           "status": {
             "enum": [
               "validated",
-              "pending"
+              "pending",
+              "voided"
             ],
             "title": "Status",
             "type": "string"
@@ -21186,6 +21244,129 @@
           }
         },
         "summary": "Put Result",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/v1/results/{result_id}/void": {
+      "post": {
+        "operationId": "void_result_api_v1_results__result_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Result Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Void Result",
         "tags": [
           "results"
         ]

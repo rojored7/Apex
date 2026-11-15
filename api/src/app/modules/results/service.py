@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes import service as classes_service
 from app.modules.results.attendance import session_attendance
-from app.modules.results.events import WodResultRecorded, WodResultValidated
+from app.modules.results.events import WodResultRecorded, WodResultValidated, WodResultVoided
 from app.modules.results.models import WodResult
 from app.modules.results.reads import leaderboard, member_results, wod_results
 from app.modules.results.record import (
@@ -26,6 +26,7 @@ from app.modules.results.record import (
     record_result,
     session_has_current_results,
 )
+from app.modules.results.void import void_result
 from app.modules.wods import service as wods_service
 
 
@@ -78,6 +79,7 @@ list_member_results = member_results
 __all__ = [
     "WodResultRecorded",
     "WodResultValidated",
+    "WodResultVoided",
     "leaderboard",
     "list_member_results",
     "list_wod_results",
@@ -85,4 +87,5 @@ __all__ = [
     "results_probe",
     "session_attendance",
     "session_has_current_results",
+    "void_result",
 ]

@@ -58,6 +58,9 @@ COLUMNAS = {
     "supersedes_id": ("uuid", "YES"),
     "is_current": ("boolean", "NO"),
     "source": ("text", "NO"),
+    "voided_by": ("uuid", "YES"),
+    "voided_at": ("timestamp with time zone", "YES"),
+    "void_reason": ("text", "YES"),
 }
 
 WOD = uuid4()

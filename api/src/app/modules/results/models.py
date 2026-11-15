@@ -3,7 +3,9 @@
 El resultado de un socio en un WOD. `wod_id`, `member_id` y `session_id` van sin FK entre esquemas.
 Las cargas son gramos enteros (`load_g`, S8-D41). `source` (`desk|kiosk`) y las marcas no cambian
 nunca; solo `status` (`pending` a `validated`), `is_current` (`true` a `false`) y `updated_at`, y la
-base lo hace cumplir (`0037`). Auditada con sujeto `member_id`. No se borra.
+base lo hace cumplir (`0037`). Un admin puede anular un resultado vigente y validado (S8-D46 b,
+`0040`): `status = voided`, `is_current = false`, con `voided_by`, `voided_at` y `void_reason`, sin
+sucesor; un anulado es terminal. Auditada con sujeto `member_id`. No se borra.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ class WodResult(CommonColumnsMixin, Base):
             name="fk_wod_results_supersedes",
         ),
         CheckConstraint("level IN ('rx', 'rx_plus', 'scaled')", name="level"),
-        CheckConstraint("status IN ('validated', 'pending')", name="status"),
+        CheckConstraint("status IN ('validated', 'pending', 'voided')", name="status"),
         CheckConstraint("source IN ('desk', 'kiosk')", name="source"),
         CheckConstraint("seconds IS NULL OR seconds BETWEEN 1 AND 86400", name="seconds"),
         CheckConstraint("rounds IS NULL OR rounds BETWEEN 0 AND 1000", name="rounds"),
@@ -60,9 +62,20 @@ class WodResult(CommonColumnsMixin, Base):
             "NOT capped OR (seconds IS NOT NULL AND reps IS NOT NULL)", name="capped_shape"
         ),
         CheckConstraint(
-            "(status = 'validated') = (validated_by IS NOT NULL AND validated_at IS NOT NULL)",
+            "(status IN ('validated', 'voided')) = "
+            "(validated_by IS NOT NULL AND validated_at IS NOT NULL)",
             name="validated_pair",
         ),
+        CheckConstraint(
+            "(status = 'voided') = "
+            "(voided_by IS NOT NULL AND voided_at IS NOT NULL AND void_reason IS NOT NULL)",
+            name="voided_shape",
+        ),
+        CheckConstraint(
+            "void_reason IS NULL OR char_length(void_reason) BETWEEN 1 AND 200",
+            name="void_reason_length",
+        ),
+        CheckConstraint("status <> 'voided' OR NOT is_current", name="voided_not_current"),
         CheckConstraint("supersedes_id <> id", name="supersedes_not_self"),
         CheckConstraint("cardinality(scaled_movement_ids) <= 30", name="scaled_ids_max"),
         CheckConstraint("scaled_movement_ids = '{}' OR level = 'scaled'", name="scaled_ids_level"),
@@ -117,3 +130,6 @@ class WodResult(CommonColumnsMixin, Base):
     source: Mapped[str] = mapped_column(
         Text, nullable=False, default="desk", server_default=text("'desk'")
     )
+    voided_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

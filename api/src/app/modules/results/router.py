@@ -24,7 +24,7 @@ from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams
 from app.core.ratelimit import enforce_user_limit
-from app.core.security import StaffDep
+from app.core.security import AdminDep, StaffDep
 from app.modules.results import service
 from app.modules.results.schemas import (
     LeaderboardRow,
@@ -33,6 +33,7 @@ from app.modules.results.schemas import (
     ResultLevel,
     ResultOut,
     SessionAttendanceOut,
+    VoidIn,
     WodResultRow,
 )
 
@@ -126,3 +127,15 @@ async def list_member_results(
 ) -> Page[MemberResultRow]:
     await enforce_user_limit(request, "staff-read", principal.user_id)
     return await service.list_member_results(session, member_id, page, benchmark=benchmark)
+
+
+@router.post(
+    "/results/{result_id}/void",
+    response_model=ResultOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def void_result(
+    request: Request, result_id: UUID, body: VoidIn, principal: AdminDep, session: Session
+) -> ResultOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.void_result(session, result_id, body, by=principal.user_id)

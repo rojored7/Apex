@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
@@ -13,6 +12,7 @@ from app.core.errors import DomainError
 from app.modules.results import record
 from app.modules.results.models import WodResult
 from tests.results._apoyo import Escena, escena, registrar
+from tests.results.test_locked_by_results import Pausa, _otra_espera_y_falla, _registrar_pausado
 
 pytestmark = pytest.mark.usefixtures("reloj", "bus_confirmado")
 
@@ -28,22 +28,21 @@ async def _registrar_y_confirmar(session: AsyncSession, e: Escena, **cambios: An
 
 
 async def test_dos_coaches_a_la_vez_uno_gana_otro_409(
-    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    dos_sesiones: tuple[AsyncSession, AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """L-3 (revisión de B3): la primera corrección se PAUSA con el candado del socio tomado; la
+    segunda espera (no termina), y al seguir recibe 409 `invalid_supersedes`."""
     una, otra = dos_sesiones
     e = await escena(una)
     primero = await _registrar_y_confirmar(una, e, seconds=300)
-    resultados = await asyncio.wait_for(
-        asyncio.gather(
-            _registrar_y_confirmar(una, e, seconds=280, supersedes_id=primero.id),
-            _registrar_y_confirmar(otra, e, seconds=270, supersedes_id=primero.id),
-            return_exceptions=True,
-        ),
-        timeout=30,
-    )
-    errores = [r for r in resultados if isinstance(r, DomainError)]
-    assert len(errores) == 1 and (errores[0].status, errores[0].code) == (409, "invalid_supersedes")
-    assert sum(1 for r in resultados if not isinstance(r, BaseException)) == 1
+    pausa = Pausa(monkeypatch)
+    registro = await _registrar_pausado(una, e, pausa, seconds=280, supersedes_id=primero.id)
+
+    async def segunda(sesion: AsyncSession) -> None:
+        await registrar(sesion, e, seconds=270, supersedes_id=primero.id)
+
+    error = await _otra_espera_y_falla(otra, segunda, pausa, registro)
+    assert (error.status, error.code) == (409, "invalid_supersedes")
     cuenta = await una.scalar(
         text("SELECT count(*) FROM results.wod_results WHERE wod_id = :w"), {"w": e.wod_id}
     )

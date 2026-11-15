@@ -28,3 +28,12 @@ class WodResultValidated(DomainEvent):
     result_id: UUID
     member_id: UUID
     wod_id: UUID
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WodResultVoided(DomainEvent):
+    """Un admin anuló un resultado (S8-D46 b). Sin el motivo (texto libre, S3-D70)."""
+
+    result_id: UUID
+    member_id: UUID
+    wod_id: UUID

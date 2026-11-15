@@ -1380,6 +1380,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/results/{result_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void Result */
+        post: operations["void_result_api_v1_results__result_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/classes": {
         parameters: {
             query?: never;
@@ -3041,7 +3058,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "validated" | "pending";
+            status: "validated" | "pending" | "voided";
             /**
              * Wod Date
              * Format: date
@@ -4204,7 +4221,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "validated" | "pending";
+            status: "validated" | "pending" | "voided";
             /** Supersedes Id */
             supersedes_id: string | null;
             /**
@@ -4216,6 +4233,12 @@ export interface components {
             validated_at: string | null;
             /** Validated By */
             validated_by: string | null;
+            /** Void Reason */
+            void_reason: string | null;
+            /** Voided At */
+            voided_at: string | null;
+            /** Voided By */
+            voided_by: string | null;
             /**
              * Wod Date
              * Format: date
@@ -4986,6 +5009,14 @@ export interface components {
             status: "running";
         };
         /**
+         * VoidIn
+         * @description `POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, sin controles).
+         */
+        VoidIn: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * VoidPaymentIn
          * @description Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).
          */
@@ -5233,7 +5264,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "validated" | "pending";
+            status: "validated" | "pending" | "voided";
             /** Supersedes Id */
             supersedes_id: string | null;
         };
@@ -13312,6 +13343,104 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    void_result_api_v1_results__result_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                result_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

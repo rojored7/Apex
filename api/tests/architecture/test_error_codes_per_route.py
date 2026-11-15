@@ -172,6 +172,8 @@ CON_LIMITE = {
     ("patch", "/api/v1/class-sessions/{session_id}"),
     # S8-B1 (US-169): `PUT /results` consume `results-write`.
     ("put", "/api/v1/results"),
+    # S8-B3b (S8-D46 b): la anulación de un resultado (solo admin, `admin-write`).
+    ("post", "/api/v1/results/{result_id}/void"),
     # S8-B3 (US-169): la asistencia con resultados (`staff-read`).
     ("get", "/api/v1/class-sessions/{session_id}/attendance"),
     # S8-B4 (US-171 a US-173): leaderboard y resultados del WOD y del socio (`staff-read`).

@@ -66,3 +66,27 @@ class LeaderboardTooLarge(ResultsError):
     status = 422
     code = "leaderboard_too_large"
     default_message = "El WOD tiene demasiados resultados para armar el leaderboard."
+
+
+class ResultNotFound(ResultsError):
+    """El resultado no existe (S8-D46 b): 404."""
+
+    status = 404
+    code = "result_not_found"
+    default_message = "No se encontró el resultado."
+
+
+class ResultAlreadyVoided(ResultsError):
+    """El resultado ya estaba anulado (S8-D46 b): 409."""
+
+    status = 409
+    code = "result_already_voided"
+    default_message = "El resultado ya está anulado."
+
+
+class ResultNotVoidable(ResultsError):
+    """Solo se anula un resultado vigente y validado; uno corregido o pendiente no (S8-D46 b)."""
+
+    status = 409
+    code = "result_not_voidable"
+    default_message = "Solo se puede anular el resultado vigente y validado."

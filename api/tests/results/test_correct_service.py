@@ -28,7 +28,7 @@ async def _auditoria(session: AsyncSession, record_id: Any) -> list[tuple[Any, .
         text(
             "SELECT action, before->>'is_current', after->>'is_current', "
             "subject_member_id::text FROM audit.audit_log "
-            "WHERE table_name = 'results.wod_results' AND record_id = :i ORDER BY id"
+            "WHERE table_name = 'results.wod_results' AND record_id = :i ORDER BY seq"
         ),
         {"i": record_id},
     )

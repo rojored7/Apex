@@ -135,3 +135,17 @@ async def test_corregir_el_propio_de_la_misma_sesion_pasa(
     dos = await _poner(app_http, cab, e, seconds=250, supersedes_id=uno.json()["id"])
     assert dos.status_code == 201, dos.text
     assert dos.json()["source"] == "kiosk" and dos.json()["supersedes_id"] == uno.json()["id"]
+
+
+async def test_asistencia_en_quiosco_solo_de_hoy_o_ayer(
+    app_http: AsyncClient, usuario_real: CrearUsuario, reloj: FrozenClock, session: AsyncSession
+) -> None:
+    """L-2 (revisión de B3): `GET /class-sessions/{id}/attendance` con la marca de quiosco da
+    200 para una clase de hoy y 403 `kiosk_mode` para una de anteayer."""
+    e = await escena(session)
+    anteayer = await make_session(session, starts_at=datetime(2026, 10, 19, 15, 0, tzinfo=UTC))
+    cab = await _quiosco(usuario_real, reloj)
+    de_hoy = await app_http.get(f"/api/v1/class-sessions/{e.clase_id}/attendance", headers=cab)
+    assert de_hoy.status_code == 200, de_hoy.text
+    vieja = await app_http.get(f"/api/v1/class-sessions/{anteayer.id}/attendance", headers=cab)
+    assert vieja.status_code == 403 and vieja.json()["error"]["code"] == "kiosk_mode", vieja.text

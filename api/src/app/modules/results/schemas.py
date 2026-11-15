@@ -6,18 +6,19 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import date as date_type
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from app.modules.classes.schemas import SessionOut
 from app.modules.wods.schemas import WodOut
 
 ResultLevel = Literal["rx", "rx_plus", "scaled"]
-ResultStatus = Literal["validated", "pending"]
+ResultStatus = Literal["validated", "pending", "voided"]
 ResultSource = Literal["desk", "kiosk"]
 Seconds = Annotated[int, Field(strict=True, ge=1, le=86_400)]
 Rounds = Annotated[int, Field(strict=True, ge=0, le=1_000)]
@@ -39,6 +40,21 @@ class ResultIn(BaseModel):
     capped: StrictBool = False
     scaled_movement_ids: Annotated[list[UUID], Field(max_length=30)] = Field(default_factory=list)
     supersedes_id: UUID | None = None
+
+
+class VoidIn(BaseModel):
+    """`POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, sin controles)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: Annotated[str, Field(min_length=1, max_length=200)]
+
+    @field_validator("reason")
+    @classmethod
+    def _sin_controles(cls, valor: str) -> str:
+        if any(unicodedata.category(c) == "Cc" for c in valor):
+            raise ValueError("El motivo no admite caracteres de control.")
+        return valor
 
 
 class ResultOut(BaseModel):
@@ -64,6 +80,9 @@ class ResultOut(BaseModel):
     supersedes_id: UUID | None
     is_current: bool
     source: ResultSource
+    voided_by: UUID | None
+    voided_at: datetime | None
+    void_reason: str | None
     created_at: datetime
     updated_at: datetime
 

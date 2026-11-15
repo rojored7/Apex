@@ -18,7 +18,7 @@ CAMPOS = {
     "id", "wod_id", "member_id", "session_id", "wod_date", "benchmark_id", "level", "seconds",
     "rounds", "reps", "load_g", "capped", "scaled_movement_ids", "status", "recorded_by",
     "validated_by", "validated_at", "supersedes_id", "is_current", "source", "created_at",
-    "updated_at",
+    "updated_at", "voided_by", "voided_at", "void_reason",
 }  # fmt: skip
 
 pytestmark = pytest.mark.usefixtures("reloj", "bus_listo")

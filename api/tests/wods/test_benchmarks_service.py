@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest import mock
 from uuid import UUID, uuid4
@@ -13,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.context import actor_scope
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.pagination import PageParams
 from app.modules.wods import benchmarks as benchmarks_module
 from app.modules.wods import service
@@ -225,3 +226,28 @@ async def test_la_carrera_23505_da_409_con_existing_id_y_la_sesion_sigue_viva(
     lista = await service.list_benchmarks(session, SIN_FILTROS, PAGINA)
     assert lista.total == 2
     assert (await _cambio(session, admin.id, otro.id, description="ok")).description == "ok"
+
+
+async def test_dos_altas_del_mismo_nombre_a_la_vez_dejan_una_y_la_otra_recibe_409(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S8-A2b (L4): dos sesiones reales y `asyncio.gather`; decide `uq_benchmarks_name_norm`."""
+    primera, segunda = dos_sesiones
+
+    async def alta(sesion: AsyncSession, nombre: str) -> BenchmarkOut | BenchmarkExists:
+        with actor_scope(SYSTEM_USER_ID):
+            try:
+                salida = await service.create_benchmark(sesion, _crear(name=nombre), SYSTEM_USER_ID)
+                await sesion.commit()
+                return salida
+            except BenchmarkExists as error:
+                await sesion.rollback()
+                return error
+
+    resultados = await asyncio.gather(alta(primera, "Fran"), alta(segunda, " FRAN "))
+    creadas = [r for r in resultados if isinstance(r, BenchmarkOut)]
+    perdedoras = [r for r in resultados if isinstance(r, BenchmarkExists)]
+    assert len(creadas) == 1 and len(perdedoras) == 1
+    assert perdedoras[0].existing_id == creadas[0].id
+    total = await primera.scalar(text("SELECT count(*) FROM wods.benchmarks"))
+    assert total == 1

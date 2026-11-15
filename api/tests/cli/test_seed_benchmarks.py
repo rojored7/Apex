@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from typer.testing import CliRunner
 
 from app.cli import app
-from app.core.audit import AuditEntry
+from app.core.audit import TECHNICAL_COLUMNS, AuditEntry
 from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID
 from app.modules.wods import seed as seed_module
@@ -250,3 +250,31 @@ async def test_una_transaccion(
     assert r.exit_code != 0, r.output
     assert await _filas(fabrica) == []
     assert await _auditoria(fabrica) == []
+
+
+async def test_la_auditoria_de_la_siembra_trae_la_fila_completa(
+    fabrica: Fabrica, settings_prueba: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S8-A2b (L3): el `after` de cada alta lleva TODAS las columnas de la fila (como el del hook
+    del ORM; solo se omiten las técnicas), no solo las que escribió la siembra."""
+    admin = await _admin(fabrica)
+    correr(
+        app,
+        ["seed-benchmarks", "--as", admin.email],
+        "dev",
+        base=settings_prueba,
+        monkeypatch=monkeypatch,
+    )
+    async with fabrica() as sesion:
+        filas = (
+            await sesion.execute(
+                text("SELECT a.after FROM audit.audit_log a WHERE a.table_name = 'wods.benchmarks'")
+            )
+        ).all()
+        real = (
+            (await sesion.execute(text("SELECT * FROM wods.benchmarks LIMIT 1"))).mappings().one()
+        )
+    assert len(filas) == 12
+    esperadas = set(real.keys()) - TECHNICAL_COLUMNS
+    for (after,) in filas:
+        assert set(after) == esperadas and after["id"] and after["created_by"]

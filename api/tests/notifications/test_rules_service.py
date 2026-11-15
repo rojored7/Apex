@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FrozenClock
@@ -403,3 +404,40 @@ async def test_list_rules_pagina(session: AsyncSession, admin: UsuarioPrueba) ->
     pagina = await service.list_rules(session, RuleFilters(), PageParams(limit=2, offset=1))
     assert (pagina.total, pagina.limit, pagina.offset) == (4, 2, 1)
     assert [r.offset_days for r in pagina.items] == [0, 1]
+
+
+async def test_carrera_del_update_de_regla_da_409_y_la_sesion_sigue_usable(
+    session: AsyncSession, admin: UsuarioPrueba
+) -> None:
+    """S8-A2b (M-1): activar una regla que choca con otra activa cuando la comprobación previa no
+    ve a la ganadora; el único parcial decide, dentro del savepoint: 409, no un 500.
+    """
+    from unittest import mock
+
+    from app.modules.notifications import rules_crud as rules_module
+
+    plantilla = await make_template(session)
+    ganadora = await make_rule(session, plantilla, name="Activa")
+    inactiva = await make_rule(session, plantilla, name="Inactiva", is_active=False)
+    original = rules_module._active_id
+    llamadas: list[int] = []
+
+    async def parcheada(s: AsyncSession, trigger: str, offset: int, canal: str, **kw: Any) -> Any:
+        llamadas.append(1)
+        return None if len(llamadas) == 1 else await original(s, trigger, offset, canal, **kw)
+
+    with mock.patch.object(rules_module, "_active_id", parcheada):
+        with pytest.raises(DuplicateActiveRule) as capturado:
+            await en_peticion(
+                session,
+                admin.id,
+                lambda: service.update_rule(session, inactiva.id, RulePatch(is_active=True)),
+            )
+    assert capturado.value.existing_id == ganadora.id
+    assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+    ok = await en_peticion(
+        session,
+        admin.id,
+        lambda: service.update_rule(session, inactiva.id, RulePatch(name="Sigue")),
+    )
+    assert ok.name == "Sigue" and ok.is_active is False

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import unicodedata
+from collections.abc import Callable
 from typing import Final
 from uuid import UUID
 
@@ -70,13 +71,18 @@ async def _active_id(
     return resultado
 
 
-async def _flush_unique(session: AsyncSession, rule: NotificationRule) -> None:
-    """`flush` en un savepoint; el choque del único parcial se traduce a 409 con el ganador."""
-    clave = (rule.trigger, rule.offset_days, rule.channel)  # el rollback expira la fila
-    regla_id = rule.id
+async def _flush_unique(
+    session: AsyncSession,
+    clave: tuple[str, int, str],
+    regla_id: UUID,
+    aplicar: Callable[[], None],
+) -> None:
+    """Aplica el cambio y hace `flush` DENTRO de un savepoint (`begin_nested()` vacía lo pendiente
+    antes de abrirlo: un `setattr` previo fallaría fuera y dejaría la sesión inservible, S8-A1b).
+    El choque del único parcial se traduce a 409 con el ganador."""
     try:
         async with session.begin_nested():
-            session.add(rule)
+            aplicar()
             await session.flush()
     except IntegrityError as error:
         if violated_constraint(error) != RULE_ACTIVE_KEY_INDEX:
@@ -136,7 +142,8 @@ async def create_rule(session: AsyncSession, data: RuleCreate) -> RuleOut:
         is_active=data.is_active,
         created_by=get_actor(),
     )
-    await _flush_unique(session, regla)
+    clave = (data.trigger, data.offset_days, data.channel)
+    await _flush_unique(session, clave, regla.id, lambda: session.add(regla))
     logger.info("notifications: regla creada", extra={"rule_id": str(regla.id)})
     return RuleOut.model_validate(regla)
 
@@ -163,9 +170,13 @@ async def update_rule(session: AsyncSession, rule_id: UUID, data: RulePatch) -> 
         )
         if ocupante is not None:
             raise DuplicateActiveRule(ocupante)
-    for campo, valor in cambios.items():
-        setattr(regla, campo, valor)
-    await _flush_unique(session, regla)
+
+    def aplicar() -> None:
+        for campo, valor in cambios.items():
+            setattr(regla, campo, valor)
+
+    clave = (final["trigger"], final["offset_days"], final["channel"])
+    await _flush_unique(session, clave, rule_id, aplicar)
     logger.info(
         "notifications: regla editada",
         extra={"rule_id": str(rule_id), "rule_fields": sorted(cambios)},

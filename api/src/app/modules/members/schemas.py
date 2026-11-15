@@ -164,6 +164,7 @@ class MemberListQuery(BaseModel):
     plan_id: UUID | None = None
     consent: Literal["missing"] | None = None  # S6-C5 (US-151): solo los sin autorización
     last_attendance: LastAttendanceFilter | None = None  # S7-R2 (US-163, S7-D15)
+    name_only: bool = False  # quiosco (S7-D41): `q` busca solo por nombre
 
 
 class MemberExportQuery(BaseModel):

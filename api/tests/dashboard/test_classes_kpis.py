@@ -16,6 +16,7 @@ from app.modules.classes import service as classes_service
 from tests.dashboard.conftest import dashboard_service
 from tests.factories.classes import make_attendance, make_session
 from tests.factories.members import make_members
+from tests.factories.users import make_user
 
 MARTES = datetime(2026, 10, 20, 15, 0, tzinfo=UTC)
 SEIS, DOCE, DIECIOCHO = (datetime(2026, 10, 20, h, 0, tzinfo=UTC) for h in (11, 17, 23))
@@ -81,3 +82,44 @@ async def test_la_cancelada_sale_con_su_estado(session: AsyncSession) -> None:
     )
     tablero = await dashboard_service.summary(session, with_finances=False)
     assert [s.status for s in tablero.sessions_today] == ["cancelled"]
+
+
+# S7-C4d (L-4, L-5) -------------------------------------------------------------------------------
+
+
+def test_el_tope_del_tablero_es_el_de_classes() -> None:
+    """L-4: `dashboard.schemas` no importa `classes`; las dos constantes no pueden divergir."""
+    from app.modules.dashboard.schemas import SESSIONS_TODAY_LIMIT
+
+    assert SESSIONS_TODAY_LIMIT == classes_service.TODAY_SESSIONS_LIMIT
+
+
+async def test_el_nombre_del_coach_sale_por_lote_y_distinto_en_cada_sesion(
+    session: AsyncSession,
+) -> None:
+    ana = await make_user(session, role="coach", email="ana.coach@test.apex")
+    luis = await make_user(session, role="coach", email="luis.coach@test.apex")
+    await make_session(session, starts_at=SEIS, coach_id=ana.id)
+    await make_session(session, starts_at=DOCE, coach_id=luis.id)
+    await make_session(session, starts_at=DIECIOCHO)
+    tablero = await dashboard_service.summary(session, with_finances=False)
+    assert [s.coach_name for s in tablero.sessions_today] == [
+        "ana.coach",
+        "luis.coach",
+        None,
+    ]
+
+
+async def test_el_domingo_23_30_de_bogota_no_cuenta_en_la_semana_nueva(
+    session: AsyncSession,
+) -> None:
+    """Lunes 19 00:00 Bogotá = 05:00Z. 04:30Z del lunes es domingo 23:30 en Bogotá: semana vieja."""
+    socios = await make_members(session, 3)
+    domingo_noche = datetime(2026, 10, 19, 4, 30, tzinfo=UTC)
+    lunes_cero = datetime(2026, 10, 19, 5, 0, tzinfo=UTC)
+    clase = await make_session(session, starts_at=SEIS)
+    await make_attendance(session, clase, socios[0].id, checked_in_at=domingo_noche)
+    await make_attendance(session, clase, socios[1].id, checked_in_at=lunes_cero)
+    await make_attendance(session, clase, socios[2].id, checked_in_at=LLEGADA)
+    tablero = await dashboard_service.summary(session, with_finances=False)
+    assert tablero.attendance_week.count == 2

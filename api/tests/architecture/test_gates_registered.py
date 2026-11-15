@@ -32,6 +32,8 @@ from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.keyring import Keyring
 from app.main import create_app
+from app.modules.auth import kiosk as auth_kiosk
+from app.modules.classes import service as classes_service
 from app.modules.memberships import service as memberships_service
 from app.modules.payments import service as payments_service
 from app.modules.payments.exceptions import MembershipGateNotRegistered
@@ -50,6 +52,38 @@ def test_tras_create_app_el_gate_es_el_de_memberships(settings_prueba: Settings)
 def test_tras_cargar_los_services_del_cli_el_gate_es_el_de_memberships() -> None:
     _load_module_services()
     assert payments_service.membership_gate() is memberships_service.membership_payability
+
+
+def test_tras_create_app_y_tras_el_cli_el_puerto_del_quiosco_es_el_de_classes(
+    settings_prueba: Settings,
+) -> None:
+    """S7-C4d (L-2): `auth` no importa `classes`; el puerto lo registra `classes` al importarse."""
+    create_app(settings_prueba, run_migrations_on_startup=False)
+    assert auth_kiosk.kiosk_session_info_port() is classes_service.kiosk_session_info
+    _load_module_services()
+    assert auth_kiosk.kiosk_session_info_port() is classes_service.kiosk_session_info
+
+
+_KIOSCO_LIMPIO = (
+    "from app.modules.auth import kiosk as k\n"
+    "assert k.kiosk_session_info_port() is None, 'auth no registra el puerto solo'\n"
+    "from app import main\n"
+    "main.load_module_services()\n"
+    "from app.modules.classes import service as c\n"
+    "assert k.kiosk_session_info_port() is c.kiosk_session_info\n"
+)
+
+
+def test_en_un_proceso_limpio_el_puerto_del_quiosco_lo_registra_la_carga_de_modulos() -> None:
+    resultado = subprocess.run(  # noqa: S603 - programa fijo de la prueba
+        [sys.executable, "-I", "-c", _KIOSCO_LIMPIO],
+        cwd=API_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
 
 
 _SOLO_PAYMENTS = (

@@ -116,6 +116,20 @@ def test_set_membership_gate_solo_desde_la_fachada_de_memberships() -> None:
     assert argumentos == ["membership_payability"]
 
 
+def test_set_kiosk_session_info_solo_desde_la_fachada_de_classes() -> None:
+    """S7-C4d (L-2): el puerto de sesión del quiosco lo registra solo `classes/service.py`, una
+    vez y al importarse, con `kiosk_session_info` (como `set_membership_gate`)."""
+    llamadas = {
+        _relativo(path): encontradas
+        for path in _archivos()
+        if (encontradas := llamadas_a(path.read_text(encoding="utf-8"), "set_kiosk_session_info"))
+    }
+    assert set(llamadas) == {"modules/classes/service.py"}, llamadas
+    [(_, al_nivel_del_modulo, argumentos)] = llamadas["modules/classes/service.py"]
+    assert al_nivel_del_modulo
+    assert argumentos == ["kiosk_session_info"]
+
+
 LLAMADORES_DEL_LIMITE: Final = frozenset({"cli.py", "seed/apply.py"})
 """S4B-D33: lista exacta (ruta relativa a `src/app`) de quién pasa `enforce_retroactive_limit=`."""
 

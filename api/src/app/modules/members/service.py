@@ -58,7 +58,7 @@ import builtins
 import logging
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
@@ -572,6 +572,7 @@ async def _consulta(
     plan_id: UUID | None,
     consent: str | None = None,
     last_attendance: str | None = None,
+    name_only: bool = False,
 ) -> Select[Member] | None:
     """Los socios que cumplen los filtros (sin columnas, orden ni página); la comparten la lista y
     la exportación CSV (S5-B12). `None` si el resultado es vacío por construcción: sin membresía
@@ -583,6 +584,8 @@ async def _consulta(
     if consent == "missing":  # S6-C5 (US-151): la misma condición del KPI, sin reimplementarla
         consulta = consulta.where(CONSENT_MISSING_CONDITION)
     plan = classify_query(q)
+    if name_only:  # quiosco (S7-D41): sin documento, teléfono ni correo, que serían un oráculo
+        plan = replace(plan, by_document=None, by_phone=None, by_email=None)
     if plan.q is not None:
         consulta = consulta.where(Member.id.in_(_ids_que_coinciden(plan, estado[0])))
     por_membresia = await _por_membresia(session, membership_status, plan_id)
@@ -606,6 +609,7 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
         plan_id=filters.plan_id,
         consent=filters.consent,
         last_attendance=filters.last_attendance,
+        name_only=filters.name_only,
     )
     if consulta is None:
         return to_page([], 0, page)

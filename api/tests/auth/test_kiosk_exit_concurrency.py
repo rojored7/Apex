@@ -75,7 +75,7 @@ async def test_diez_salidas_erradas_en_paralelo_llegan_como_mucho_cinco_a_argon2
             return "200"
 
     resultados = await asyncio.gather(*(_salir() for _ in range(PARALELAS)))
-    assert len(llamadas) <= kiosk.EXIT_LIMIT
+    assert len(llamadas) == kiosk.EXIT_LIMIT
     assert resultados.count("401") == len(llamadas)
     assert resultados.count("429") == PARALELAS - len(llamadas) >= PARALELAS - kiosk.EXIT_LIMIT
     async with fabrica() as lectura:

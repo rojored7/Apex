@@ -272,3 +272,41 @@ async def test_en_quiosco_la_pagina_se_acota_a_veinte_y_fuera_no_cambia(
     assert por_defecto.json()["limit"] == 20
     fuera = await app_http.get(f"{SOCIOS}?q=a&limit=200&sort=-created_at", headers=cabeceras(coach))
     assert fuera.status_code == 200 and fuera.json()["limit"] == 200, fuera.text
+
+
+# S7-C4d · M-1: en quiosco `q` busca SOLO por nombre (sin oráculo de documento, teléfono, correo) ---
+
+
+@pytest.mark.parametrize("termino", ["7319582046", "3007654321", "lucia.gomez@correo.co"])
+async def test_en_quiosco_un_documento_telefono_o_correo_exacto_no_devuelve_al_socio(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    reloj: FrozenClock,
+    termino: str,
+) -> None:
+    coach = await usuario_real("coach")
+    await socio(
+        session,
+        nombre="Zoe",
+        apellido="Quiroga",
+        document="7319582046",
+        phone="+57 300 765 4321",
+        email="Lucia.Gomez@Correo.co",
+    )
+    en_quiosco = await app_http.get(f"{SOCIOS}?q={termino}", headers=_quiosco(coach, "coach", reloj))
+    assert en_quiosco.status_code == 200 and en_quiosco.json()["items"] == [], en_quiosco.text
+    fuera = await app_http.get(f"{SOCIOS}?q={termino}", headers=cabeceras(coach))
+    assert fuera.status_code == 200 and len(fuera.json()["items"]) == 1, fuera.text
+    por_nombre = await app_http.get(f"{SOCIOS}?q=Quiroga", headers=_quiosco(coach, "coach", reloj))
+    assert len(por_nombre.json()["items"]) == 1, por_nombre.text
+
+
+async def test_en_quiosco_dos_letras_separadas_por_un_espacio_no_alcanzan_las_tres(
+    app_http: AsyncClient, usuario_real: CrearUsuario, reloj: FrozenClock
+) -> None:
+    """L-1: «a b» mide 3 con el espacio, pero son 2 letras."""
+    coach = await usuario_real("coach")
+    r = await app_http.get(f"{SOCIOS}?q=a%20b", headers=_quiosco(coach, "coach", reloj))
+    assert r.status_code == 422 and r.json()["error"]["field"] == "q", r.text

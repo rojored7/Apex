@@ -61,6 +61,7 @@ from app.core.ratelimit import (
     enforce_user_limit,
     usage,
 )
+from app.core.search import clean_query
 from app.core.security import AdminDep, StaffDep
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.audit.schemas import MemberHistoryItem
@@ -127,7 +128,7 @@ def _check_kiosk_list(q: str | None, sort: str, **filtros: object) -> None:
             )
     if sort != DEFAULT_MEMBER_SORT:
         raise MemberValidationError(message="En modo quiosco no se ordena.", field="sort")
-    if q is None or len(q.strip()) < KIOSK_MIN_QUERY:
+    if q is None or len(clean_query(q).replace(" ", "")) < KIOSK_MIN_QUERY:
         raise MemberValidationError(
             message=f"En modo quiosco escribe al menos {KIOSK_MIN_QUERY} letras.", field="q"
         )
@@ -147,6 +148,7 @@ async def list_members(
     consent: Literal["missing"] | None = None,
     last_attendance: LastAttendanceFilter | None = None,
 ) -> Page[MemberRowOut]:
+    solo_nombre = principal.kiosk
     if principal.kiosk:  # el quiosco solo busca por nombre; nada de recorrer la situación (M-3)
         _check_kiosk_list(
             q,
@@ -170,6 +172,7 @@ async def list_members(
         plan_id=plan_id,
         consent=consent,
         last_attendance=last_attendance,
+        name_only=solo_nombre,
     )
     return await service.list(session, filtros, page)
 

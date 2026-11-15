@@ -31,12 +31,15 @@ ESQUEMAS = (
     "settings",
     "notifications",
     "classes",
+    "attachments",
 )
 MODULOS_PENDIENTES: frozenset[str] = frozenset()  # `classes` ya existe desde S7-A2
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
-_SQL = re.compile(r"\b(FROM|JOIN)\b")
-_TABLA = re.compile(r"(?<![\w.])(" + "|".join(ESQUEMAS) + r")\.([a-z_][a-z0-9_]*)")
+_SQL = re.compile(r"\b(FROM|JOIN)\b", re.IGNORECASE)
+_TABLA = re.compile(
+    r"(?<![\w.])(" + "|".join(ESQUEMAS) + r")\.([a-z_][a-z0-9_]*)", re.IGNORECASE
+)
 
 
 def _nombre_llamado(nodo: ast.Call) -> str | None:
@@ -47,21 +50,56 @@ def _nombre_llamado(nodo: ast.Call) -> str | None:
     return None
 
 
+def _constantes(arbol: ast.AST) -> dict[str, ast.Constant]:
+    """`NOMBRE = "texto"` a nivel de módulo (S7-C4d, L-3): `text(NOMBRE)` y `schema=NOMBRE`."""
+    salida: dict[str, ast.Constant] = {}
+    for nodo in getattr(arbol, "body", []):
+        if (
+            isinstance(nodo, ast.Assign)
+            and len(nodo.targets) == 1
+            and isinstance(nodo.targets[0], ast.Name)
+            and isinstance(nodo.value, ast.Constant)
+            and isinstance(nodo.value.value, str)
+        ):
+            salida[nodo.targets[0].id] = nodo.value
+    return salida
+
+
+def _docstrings(arbol: ast.AST) -> set[int]:
+    """Ids de las constantes que son docstring (prosa, no SQL)."""
+    salida: set[int] = set()
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            primero = nodo.body[0] if nodo.body else None
+            if isinstance(primero, ast.Expr) and isinstance(primero.value, ast.Constant):
+                salida.add(id(primero.value))
+    return salida
+
+
 def _cadenas_sql(arbol: ast.AST) -> list[tuple[int, str]]:
-    """`(línea, texto)` de cada cadena pasada a una función SQL y de cada literal con FROM/JOIN."""
+    """`(línea, texto)` de cada cadena pasada a una función SQL (literal o constante del módulo)
+    y de cada literal con FROM/JOIN (sin docstrings)."""
     salida: list[tuple[int, str]] = []
     vistos: set[int] = set()
+    constantes = _constantes(arbol)
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.Call) and _nombre_llamado(nodo) in FUNCIONES_SQL:
             for argumento in nodo.args[:1]:
                 if isinstance(argumento, ast.Constant) and isinstance(argumento.value, str):
                     salida.append((argumento.lineno, argumento.value))
                     vistos.add(id(argumento))
+                elif isinstance(argumento, ast.Name) and argumento.id in constantes:
+                    definicion = constantes[argumento.id]  # se informa en la línea de la constante
+                    if id(definicion) not in vistos:
+                        salida.append((definicion.lineno, str(definicion.value)))
+                        vistos.add(id(definicion))
+    docstrings = _docstrings(arbol)
     for nodo in ast.walk(arbol):
         if (
             isinstance(nodo, ast.Constant)
             and isinstance(nodo.value, str)
             and id(nodo) not in vistos
+            and id(nodo) not in docstrings
             and _SQL.search(nodo.value)
         ):
             salida.append((nodo.lineno, nodo.value))
@@ -69,18 +107,25 @@ def _cadenas_sql(arbol: ast.AST) -> list[tuple[int, str]]:
 
 
 def _esquemas_declarados(arbol: ast.AST) -> list[tuple[int, str]]:
-    """`(línea, esquema)` de cada llamada con `schema="<esquema de módulo>"` (`table`, `Table`)."""
+    """`(línea, esquema)` de cada llamada con `schema="<esquema de módulo>"` o `schema=<constante
+    del módulo>` (`table`, `Table`)."""
     salida: list[tuple[int, str]] = []
+    constantes = _constantes(arbol)
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.Call):
             for palabra in nodo.keywords:
                 valor = palabra.value
-                if (
-                    palabra.arg == "schema"
-                    and isinstance(valor, ast.Constant)
-                    and valor.value in ESQUEMAS
-                ):
-                    salida.append((nodo.lineno, str(valor.value)))
+                if palabra.arg != "schema":
+                    continue
+                if isinstance(valor, ast.Name):
+                    definicion = constantes.get(valor.id)
+                    texto = None if definicion is None else str(definicion.value)
+                elif isinstance(valor, ast.Constant) and isinstance(valor.value, str):
+                    texto = valor.value
+                else:
+                    texto = None
+                if texto is not None and texto.lower() in ESQUEMAS:
+                    salida.append((nodo.lineno, texto.lower()))
     return salida
 
 
@@ -94,8 +139,8 @@ def hallazgos(fuente: str, modulo: str, archivo: str) -> list[str]:
             salida.append(f"{archivo}:{linea}: {esquema}.*")
     for linea, cadena in _cadenas_sql(arbol):
         for esquema, tabla in _TABLA.findall(cadena):
-            if esquema != modulo:
-                salida.append(f"{archivo}:{linea}: {esquema}.{tabla}")
+            if esquema.lower() != modulo:
+                salida.append(f"{archivo}:{linea}: {esquema.lower()}.{tabla.lower()}")
     return salida
 
 
@@ -179,3 +224,34 @@ def test_una_tabla_declarada_con_schema_ajeno_es_un_hallazgo() -> None:
         "kiosk.py:4: members.*",
     ]
     assert hallazgos(DECLARADA, "classes", "q.py") == ["q.py:4: members.*"]
+
+
+# S7-C4d (L-3): attachments, mayúsculas, constantes del módulo y `schema=<constante>` --------------
+
+CONSTANTES = '''
+"""Docstring: lee from members.members en prosa; no es SQL."""
+ACTUALIZA = "UPDATE members.members SET first_name = :n"
+BORRA = "DELETE   FROM   attachments.attachments"
+ESQUEMA = "classes"
+def f(session):
+    session.execute(text(ACTUALIZA))
+    session.execute(text(BORRA))
+    session.execute(text("select id from Plans.plans"))
+    return table("class_sessions", schema=ESQUEMA)
+'''
+
+
+def test_las_constantes_las_mayusculas_y_attachments_son_hallazgos() -> None:
+    assert sorted(hallazgos(CONSTANTES, "memberships", "c.py")) == sorted(
+        [
+            "c.py:3: members.members",
+            "c.py:4: attachments.attachments",
+            "c.py:9: plans.plans",
+            "c.py:10: classes.*",
+        ]
+    )
+
+
+def test_attachments_es_un_esquema_de_modulo() -> None:
+    assert "attachments" in ESQUEMAS
+    assert hallazgos('X = "SELECT 1 FROM attachments.attachments"\n', "attachments", "a.py") == []

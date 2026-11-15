@@ -221,3 +221,32 @@ async def test_member_sigue_recibiendo_403_con_los_kpi_nuevos(
     r = await _get(app_http, cabeceras, socio_usuario)
     assert r.status_code == 403, r.text
     assert "notifications_today" not in r.text and "members_without_consent" not in r.text
+
+
+async def test_el_coach_ve_las_sesiones_de_hoy_y_la_asistencia_de_la_semana(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    bus_listo: Keyring,
+    reloj: FrozenClock,
+    juan: UsuarioPrueba,
+    cabeceras: Cabeceras,
+) -> None:
+    """S7-C4d (L-5): `GET /dashboard` con rol coach trae `sessions_today` y `attendance_week`."""
+    from datetime import UTC, datetime
+
+    from tests.factories.classes import make_attendance, make_session
+    from tests.factories.members import make_members
+
+    ahora = reloj.now_utc()  # miércoles 21 de octubre de 2026, 10:00 de Bogotá
+    clase = await make_session(
+        session, starts_at=datetime(2026, 10, 21, 11, 0, tzinfo=UTC), coach_id=juan.id
+    )
+    for socio in await make_members(session, 2):
+        await make_attendance(session, clase, socio.id, checked_in_at=ahora)
+    r = await _get(app_http, cabeceras, juan)
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+    assert cuerpo["attendance_week"] == {"count": 2, "flagged_count": 0}
+    [sesion] = cuerpo["sessions_today"]
+    assert sesion["attendance_count"] == 2 and sesion["status"] == "done"
+    assert sesion["coach_name"] == juan.email.split("@")[0]

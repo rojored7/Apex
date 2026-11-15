@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from ipaddress import IPv4Network, IPv6Network
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -109,16 +109,28 @@ async def create_member(
     return await service.create(session, body)
 
 
-def _check_kiosk_list(q: str | None, **filtros: object) -> None:
-    """Revisión de C4 (M-3): con la marca de quiosco `GET /members` exige `q` y rechaza los
-    filtros de estado, plan, consentimiento y última asistencia (422 con `field`)."""
+KIOSK_MIN_QUERY: Final = 3
+"""Letras mínimas de la búsqueda en quiosco (S7-C4c, M-2): con una letra se recorre el padrón."""
+KIOSK_MAX_LIMIT: Final = 20
+"""Filas máximas por página en quiosco: `limit` se acota, no se rechaza (S7-C4c, M-2)."""
+
+
+def _check_kiosk_list(q: str | None, sort: str, **filtros: object) -> None:
+    """Revisión de C4 (M-3) y de R2/C4b (M-2): con la marca de quiosco `GET /members` exige `q` de
+    al menos `KIOSK_MIN_QUERY` letras (sin contar espacios), no admite orden distinto del de
+    siempre y rechaza los filtros de estado, plan, consentimiento y última asistencia (422 con
+    `field`)."""
     for campo, valor in filtros.items():
         if valor is not None:
             raise MemberValidationError(
                 message="En modo quiosco solo se busca por nombre.", field=campo
             )
-    if not q:
-        raise MemberValidationError(message="En modo quiosco indica la búsqueda.", field="q")
+    if sort != DEFAULT_MEMBER_SORT:
+        raise MemberValidationError(message="En modo quiosco no se ordena.", field="sort")
+    if q is None or len(q.strip()) < KIOSK_MIN_QUERY:
+        raise MemberValidationError(
+            message=f"En modo quiosco escribe al menos {KIOSK_MIN_QUERY} letras.", field="q"
+        )
 
 
 @router.get("/members", response_model=Page[MemberRowOut], responses=responses_for(429))
@@ -138,12 +150,14 @@ async def list_members(
     if principal.kiosk:  # el quiosco solo busca por nombre; nada de recorrer la situación (M-3)
         _check_kiosk_list(
             q,
+            sort,
             status=member_status,
             membership_status=membership_status,
             plan_id=plan_id,
             consent=consent,
             last_attendance=last_attendance,
         )
+        page = PageParams(limit=min(page.limit, KIOSK_MAX_LIMIT), offset=page.offset)
     if q:
         await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
     if last_attendance:  # S7-R2 (US-163, S7-D15): consulta a `classes`, cubeta de lecturas caras
@@ -177,6 +191,7 @@ async def export_members(
     membership_status: MembershipFilterStatus | None = None,
     plan_id: UUID | None = None,
     consent: Literal["missing"] | None = None,
+    last_attendance: LastAttendanceFilter | None = None,
 ) -> StreamingResponse:
     """US-138 (S5-D41, S5-D60): CSV de socios en streaming, solo admin; va antes de `/{id}`."""
 
@@ -191,6 +206,7 @@ async def export_members(
             membership_status=membership_status,
             plan_id=plan_id,
             consent=consent,
+            last_attendance=last_attendance,
         )
         return await service.export_members(
             session,

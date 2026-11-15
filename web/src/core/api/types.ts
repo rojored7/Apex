@@ -7124,6 +7124,7 @@ export interface operations {
                 membership_status?: ("active" | "expiring" | "expired" | "frozen" | "pending_payment" | "none") | null;
                 plan_id?: string | null;
                 consent?: "missing" | null;
+                last_attendance?: ("7d" | "14d" | "30d" | "60d" | "never") | null;
             };
             header?: never;
             path?: never;

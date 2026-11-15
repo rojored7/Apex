@@ -128,3 +128,8 @@ class NotLocked(DomainError):
     status = 409
     code = "not_locked"
     default_message = "La cuenta no está bloqueada."
+
+
+class KioskSessionInfoNotRegistered(RuntimeError):
+    """Nadie registró el puerto de sesiones del quiosco (S7-C4c, M-1): el cambio de clase dentro
+    del quiosco falla cerrado y no cambia la marca. Lo registra `classes` al importarse."""

@@ -31,7 +31,10 @@ con «atrás», la barra de direcciones o una recarga, el confinamiento lo impon
   de estado, plan, consentimiento ni última asistencia). Cerrar sesión con la marca queda
   auditado (`KioskExited`, `via = logout`).
 - Cambiar de clase dentro del quiosco (S7-D42): con la marca puesta, `POST /auth/kiosk` solo
-  acepta el check-in de una clase de hoy o de ayer; otra da 403 `kiosk_mode`.
+  acepta el check-in de una clase programada de hoy o de ayer; otra (o una cancelada) da 403
+  `kiosk_mode`. En quiosco `GET /attendance?session_id=` solo ve clases de hoy o de ayer y
+  `GET /members` pide `q` de al menos 3 letras, sin orden y con páginas de hasta 20.
+- `GET /members/export` acepta `last_attendance` igual que la lista.
 - Aceptado: el tope de la salida vive en la memoria del proceso (varios workers lo multiplican,
   como el del login); la tablet no queda atada a una sola clase; el quiosco ve la foto de
   cualquier socio.

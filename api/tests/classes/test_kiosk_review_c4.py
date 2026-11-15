@@ -182,3 +182,93 @@ async def test_en_quiosco_la_lista_de_socios_con_q_funciona_y_fuera_no_exige_q(
     assert ok.status_code == 200 and len(ok.json()["items"]) == 1, ok.text
     fuera = await app_http.get(f"{SOCIOS}?status=inactive", headers=cabeceras(coach))
     assert fuera.status_code == 200, fuera.text
+
+
+# S7-C4c · L-2: en quiosco la lista de asistencias solo ve sesiones de hoy o de ayer ---------------
+
+
+@pytest.mark.parametrize(
+    ("cuando", "permitida"),
+    [(HOY, True), (datetime(2026, 10, 20, 11, 0, tzinfo=UTC), True), (HACE_3_DIAS, False)],
+)
+async def test_en_quiosco_la_lista_de_asistencias_solo_ve_hoy_y_ayer(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    reloj: FrozenClock,
+    cuando: datetime,
+    permitida: bool,
+) -> None:
+    coach = await usuario_real("coach")
+    clase, _, _ = await _asistencia(session, cuando)
+    clase_id = clase.id
+    r = await app_http.get(
+        f"{ASISTENCIAS}?session_id={clase_id}", headers=_quiosco(coach, "coach", reloj)
+    )
+    if permitida:
+        assert r.status_code == 200 and len(r.json()["items"]) == 1, r.text
+    else:
+        assert r.status_code == 403 and r.json()["error"]["code"] == "kiosk_mode", r.text
+
+
+async def test_en_quiosco_una_sesion_inexistente_es_403_y_fuera_del_quiosco_la_vieja_se_ve(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    reloj: FrozenClock,
+) -> None:
+    coach = await usuario_real("coach")
+    vieja, _, _ = await _asistencia(session, HACE_3_DIAS)
+    vieja_id = vieja.id
+    ghost = "00000000-0000-4000-8000-000000000999"
+    r = await app_http.get(
+        f"{ASISTENCIAS}?session_id={ghost}", headers=_quiosco(coach, "coach", reloj)
+    )
+    assert r.status_code == 403 and r.json()["error"]["code"] == "kiosk_mode", r.text
+    normal = await app_http.get(f"{ASISTENCIAS}?session_id={vieja_id}", headers=cabeceras(coach))
+    assert normal.status_code == 200 and len(normal.json()["items"]) == 1, normal.text
+
+
+# S7-C4c · M-2: la búsqueda del quiosco no recorre el padrón ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("consulta", "campo"),
+    [
+        ("q=a", "q"),
+        ("q=an", "q"),
+        ("q=%20a%20", "q"),
+        ("q=ana&sort=-created_at", "sort"),
+    ],
+)
+async def test_en_quiosco_la_busqueda_exige_tres_letras_y_no_admite_orden(
+    app_http: AsyncClient,
+    usuario_real: CrearUsuario,
+    reloj: FrozenClock,
+    consulta: str,
+    campo: str,
+) -> None:
+    coach = await usuario_real("coach")
+    r = await app_http.get(f"{SOCIOS}?{consulta}", headers=_quiosco(coach, "coach", reloj))
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["field"] == campo
+
+
+async def test_en_quiosco_la_pagina_se_acota_a_veinte_y_fuera_no_cambia(
+    app_http: AsyncClient,
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    reloj: FrozenClock,
+) -> None:
+    coach = await usuario_real("coach")
+    await socio(session, nombre="Ana", apellido="Prueba")
+    quiosco = _quiosco(coach, "coach", reloj)
+    ok = await app_http.get(f"{SOCIOS}?q=Ana&limit=200", headers=quiosco)
+    assert ok.status_code == 200 and len(ok.json()["items"]) == 1, ok.text
+    assert ok.json()["limit"] == 20  # `limit` se acota, no se rechaza
+    por_defecto = await app_http.get(f"{SOCIOS}?q=Ana", headers=quiosco)
+    assert por_defecto.json()["limit"] == 20
+    fuera = await app_http.get(f"{SOCIOS}?q=a&limit=200&sort=-created_at", headers=cabeceras(coach))
+    assert fuera.status_code == 200 and fuera.json()["limit"] == 200, fuera.text

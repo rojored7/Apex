@@ -17,6 +17,7 @@ import perezoso (`# lazy: G-03`) para el filtro y la columna de última asistenc
 
 from __future__ import annotations
 
+from app.modules.auth import service as auth_service
 from app.modules.classes.attendance import (
     MembershipPort,
     check_in,
@@ -36,7 +37,9 @@ from app.modules.classes.queries import (
     TODAY_SESSIONS_LIMIT,
     WeekAttendance,
     attended_member_ids,
+    ensure_kiosk_session,
     get_session,
+    kiosk_session_info,
     last_attendance_for,
     list_sessions,
     today_sessions,
@@ -61,6 +64,10 @@ from app.modules.classes.sessions import (
 )
 from app.modules.classes.slots import create_slot, get_slot, list_slots, update_slot
 
+# S7-C4c (M-1): `auth` no lee tablas de `classes`; pide la fecha y el estado de la sesión por este
+# puerto, que `classes` registra al importarse (como `memberships` con `set_membership_port`).
+auth_service.set_kiosk_session_info(kiosk_session_info)
+
 __all__ = [
     "TODAY_SESSIONS_LIMIT",
     "AttendanceRemoved",
@@ -80,9 +87,11 @@ __all__ = [
     "check_in",
     "create_extra",
     "create_slot",
+    "ensure_kiosk_session",
     "generate_sessions",
     "get_session",
     "get_slot",
+    "kiosk_session_info",
     "last_attendance_for",
     "list_attendance",
     "list_sessions",

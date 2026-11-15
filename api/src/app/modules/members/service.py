@@ -18,8 +18,8 @@ Otros módulos (`memberships`, `payments`), el router y las pruebas solo importa
 
 S3-B9b (US-071; D22, G-03, G-04): `list` acepta `membership_status` y `plan_id`; el conjunto de
 ids lo pide a `memberships.service.member_ids_by_status` con import perezoso (`# lazy: G-03
-(members -> memberships)`) y lo aplica con `Member.id == any_(...)` (o `!= all_(...)` para
-`none`) en la consulta externa; cada página se decora con UNA llamada a
+(members -> memberships)`) y lo aplica con `Member.id == any_(...)` (o el anti-join de
+`_ausente_de` para `none`) en la consulta externa; cada página se decora con UNA llamada a
 `memberships.service.status_for(ids)` (`membership_status`, `plan_name`,
 `membership_end_date`; sin entrada, `none`).
 
@@ -68,9 +68,10 @@ from sqlalchemy import (
     CompoundSelect,
     Select,
     Text,
-    all_,
+    exists,
     func,
     literal,
+    literal_column,
     select,
     union,
 )
@@ -518,6 +519,14 @@ async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.li
     return [_fila(s, estados.get(s.id), fotos.get(s.id), asistencias.get(s.id)) for s in socios]
 
 
+def _ausente_de(ids: Iterable[UUID]) -> ColumnElement[bool]:
+    """El socio NO está en `ids` (S7-C4c, L-1): `NOT EXISTS (SELECT 1 FROM unnest(:ids) u WHERE u
+    = id)`, un anti-join con UN parámetro `uuid[]`. `!= ALL(:ids)` es lineal por fila con el plan
+    genérico de asyncpg (de la sexta ejecución del mismo statement en adelante)."""
+    ids_sql = func.unnest(uuid_array(ids)).column_valued("u")
+    return ~exists(select(literal_column("1")).where(ids_sql == Member.id))
+
+
 async def _por_asistencia(
     session: AsyncSession, last_attendance: str | None
 ) -> ColumnElement[bool] | None:
@@ -531,7 +540,7 @@ async def _por_asistencia(
 
     desde = attendance_cutoff(last_attendance, current_clock().today_bogota())
     con_asistencia = await classes_service.attended_member_ids(session, desde)
-    return Member.id != all_(uuid_array(con_asistencia))
+    return _ausente_de(con_asistencia)
 
 
 async def _por_membresia(
@@ -548,7 +557,7 @@ async def _por_membresia(
     if membership_status == SIN_MEMBRESIA:
         con = await memberships_service.member_ids_by_status(session, _CON_MEMBRESIA)
         # Un solo parámetro `uuid[]` (D22, S3-D71): 5.000 ids no expanden un `IN`.
-        return Member.id != all_(uuid_array(con))
+        return _ausente_de(con)
     estados = _CON_MEMBRESIA if membership_status is None else (membership_status,)
     ids = await memberships_service.member_ids_by_status(session, estados, plan_id)
     return Member.id == any_uuids(ids)
@@ -658,6 +667,7 @@ async def export_members(
         membership_status=filters.membership_status,
         plan_id=filters.plan_id,
         consent=filters.consent,
+        last_attendance=filters.last_attendance,
     )
     # lazy: G-03 (members -> memberships); la exportación recibe `status_for` en vez de importarlo
     from app.modules.memberships import service as memberships_service

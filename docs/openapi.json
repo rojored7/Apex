@@ -11649,6 +11649,29 @@
               ],
               "title": "Consent"
             }
+          },
+          {
+            "in": "query",
+            "name": "last_attendance",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "7d",
+                    "14d",
+                    "30d",
+                    "60d",
+                    "never"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Attendance"
+            }
           }
         ],
         "responses": {

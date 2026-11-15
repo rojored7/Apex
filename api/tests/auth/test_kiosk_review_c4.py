@@ -234,3 +234,50 @@ async def test_sin_marca_previa_entra_a_cualquier_ruta_como_antes(
     access, refresh = await _entrar(app_http, coach)
     r = await _poner(app_http, access, refresh, _ruta(await _clase(session, 18)))
     assert r.status_code == 200, r.text
+
+
+# S7-C4c · M-1: `auth` no lee tablas de `classes`; L-3: solo sesiones programadas ---------------
+
+
+async def test_sin_el_puerto_de_sesiones_el_cambio_de_clase_falla_explicito(
+    app_http: AsyncClient,
+    usuario_real: CrearUsuario,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M-1: sin el puerto que registra `classes` no se adivina nada: error explícito, y la marca
+    no cambia."""
+    coach = await usuario_real("coach")
+    access, refresh = await _entrar(app_http, coach)
+    primera = await _poner(app_http, access, refresh, _ruta(await _clase(session, 21)))
+    destino = _ruta(await _clase(session, 21))
+    monkeypatch.setattr(kiosk, "_session_info", None)
+    with pytest.raises(kiosk.KioskSessionInfoNotRegistered):
+        await _poner(app_http, primera.json()["access_token"], refresh, destino)
+
+
+async def test_el_puerto_lo_registra_classes_al_importarse() -> None:
+    from app.modules.auth import service as auth_service
+    from app.modules.classes import service as classes_service
+
+    assert kiosk.kiosk_session_info_port() is classes_service.kiosk_session_info
+    assert auth_service.set_kiosk_session_info is kiosk.set_kiosk_session_info
+
+
+async def test_con_la_marca_una_sesion_cancelada_de_hoy_es_403(
+    app_http: AsyncClient, usuario_real: CrearUsuario, session: AsyncSession
+) -> None:
+    """L-3: la clase destino debe estar programada; una cancelada de hoy no vale."""
+    coach = await usuario_real("coach")
+    access, refresh = await _entrar(app_http, coach)
+    primera = await _poner(app_http, access, refresh, _ruta(await _clase(session, 21)))
+    cancelada = await make_session(
+        session,
+        starts_at=datetime(2026, 10, 21, 17, 0, tzinfo=UTC),
+        status="cancelled",
+        cancel_reason="lluvia",
+        cancelled_by=coach.id,
+        cancelled_at=datetime(2026, 10, 21, 12, 0, tzinfo=UTC),
+    )
+    r = await _poner(app_http, primera.json()["access_token"], refresh, _ruta(cancelada.id))
+    assert r.status_code == 403 and r.json()["error"]["code"] == "kiosk_mode", r.text

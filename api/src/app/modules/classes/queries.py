@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Final
 from uuid import UUID
 
@@ -20,6 +20,7 @@ from sqlalchemy import Integer, Text, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
+from app.core.errors import ForbiddenError
 from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.auth import service as auth_service
@@ -211,6 +212,8 @@ async def get_session(session: AsyncSession, session_id: UUID) -> SessionDetail:
     return SessionDetail(**salida.model_dump(), attendees=asistentes)
 
 
+KIOSK_SESSION_MESSAGE: Final = "En modo quiosco solo ves las clases de hoy o de ayer."
+
 TODAY_SESSIONS_LIMIT: Final = 50
 """Tope de `today_sessions` (US-164): el tablero nunca pinta más de 50 sesiones de un día."""
 
@@ -253,3 +256,26 @@ async def today_sessions(session: AsyncSession, today: date) -> list[SessionOut]
         .limit(TODAY_SESSIONS_LIMIT)
     )
     return await _outs(session, list(filas))
+
+
+async def kiosk_session_info(session: AsyncSession, session_id: UUID) -> tuple[date, str] | None:
+    """`(session_date, status)` de una sesión, o `None` si no existe (S7-C4c, M-1): el puerto que
+    `classes` registra en `auth` para la regla de cambio de clase del quiosco (S7-D42). `status`
+    es el guardado (`scheduled` o `cancelled`), no el calculado."""
+    fila = (
+        await session.execute(
+            select(ClassSession.session_date, ClassSession.status).where(
+                ClassSession.id == session_id
+            )
+        )
+    ).first()
+    return None if fila is None else (fila[0], fila[1])
+
+
+async def ensure_kiosk_session(session: AsyncSession, session_id: UUID) -> None:
+    """S7-D42 (L-2): en quiosco solo se ve la lista de una sesión de hoy o de ayer en Bogotá; otra
+    o inexistente da 403 `kiosk_mode`."""
+    info = await kiosk_session_info(session, session_id)
+    hoy = current_clock().today_bogota()
+    if info is None or info[0] not in (hoy, hoy - timedelta(days=1)):
+        raise ForbiddenError("kiosk_mode", KIOSK_SESSION_MESSAGE)

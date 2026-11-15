@@ -4,9 +4,10 @@
 # la prueba de resistencia de 12 horas de la pantalla de TV (con reloj acelerado) vive aquí y no en
 # ci.yml. Sin permisos de escritura, sin secretos y sin imágenes propias del registro.
 #
-# `tv-soak`: en W0-2 solo deja el flujo cableado y en verde; el slice F6 pone la spec real
-# (Playwright con `page.clock`, respuestas fijas por `page.route` y el heap por CDP del último cuarto
-# frente al primero, con un margen del 20 %). Lo vigila scripts/ci/test_nightly_workflow.sh.
+# `tv-soak` (S8-F6): la spec real, web/tests/soak/tv.soak.spec.ts (Playwright con `page.clock` que acelera
+# 12 horas, respuestas fijas por `page.route` y el heap por CDP del último cuarto frente al primero, con un
+# margen del 20 %). Sirve el build con `vite preview`: no necesita el stack. Lo vigila
+# scripts/ci/test_nightly_workflow.sh.
 #
 # Toda acción va fijada por el SHA de su commit (versión en el comentario; mismas que ci.yml).
 name: nightly
@@ -36,5 +37,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - name: spec de resistencia de la TV (la real llega en S8-F6)
-        run: echo "tv-soak: sin spec todavía; el slice S8-F6 la agrega"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: dependencias
+        working-directory: web
+        run: npm ci
+      - name: navegador
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: spec de resistencia de la TV (12 horas con reloj acelerado)
+        working-directory: web
+        run: npm run soak

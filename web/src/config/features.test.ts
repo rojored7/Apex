@@ -8,9 +8,10 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("habilita catorce: las trece anteriores y results (S8-F4)", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "classes", "crypto", "dashboard", "members", "memberships", "notifications", "payments", "plans", "results", "settings", "users", "wods"]);
-    expect(ENABLED_FEATURES.size).toBe(14);
+  it("habilita quince: las catorce anteriores y tv (S8-F6)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "classes", "crypto", "dashboard", "members", "memberships", "notifications", "payments", "plans", "results", "settings", "tv", "users", "wods"]);
+    expect(ENABLED_FEATURES.size).toBe(15);
+    expect(ENABLED_FEATURES.has("tv")).toBe(true);
     expect(ENABLED_FEATURES.has("wods")).toBe(true);
     expect(ENABLED_FEATURES.has("results")).toBe(true);
   });

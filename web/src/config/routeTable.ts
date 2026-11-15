@@ -94,7 +94,7 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/login", "Iniciar sesión", "auth", "public", "access", { load: () => import("../features/auth/pages/LoginPage") }),
   route("/recuperar", "Olvidé mi contraseña", "auth", "public", "access", { load: () => import("../features/auth/pages/ForgotPage") }),
   route("/restablecer/:token", "Nueva contraseña", "auth", "public", "access", { load: () => import("../features/auth/pages/ResetPage") }),
-  route("/tv", "Pantalla del gimnasio", "tv", "public", "tv"),
+  route("/tv", "Pantalla del gimnasio", "tv", "public", "tv", { load: () => import("../features/tv/pages/TvPage") }),
   // DESIGN-GAP (S2-D18, S2-F4a): cambio de contraseña obligatorio con la tarjeta de ResetPage; no está
   // en las pantallas de docs/design/screens/.
   route("/cambiar-clave", "Cambiar contraseña", "auth", "session", "access", { load: () => import("../features/auth/pages/ChangePasswordPage") }),

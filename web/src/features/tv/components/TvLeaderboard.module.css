@@ -1,0 +1,80 @@
+/* S8-F6: el ranking «Todos» de la TV (TV.html, columna derecha). Letras de 28 px o más; solo variables de tokens.css. */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-5);
+}
+
+.title {
+  margin: 0;
+  color: var(--apex-blue);
+  font: var(--text-section-title);
+  font-size: 28px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.page {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 28px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 30px;
+  line-height: 34px;
+}
+
+.table th {
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.pos {
+  width: 72px;
+  font-weight: 700;
+}
+
+.name {
+  overflow-wrap: anywhere;
+}
+
+.mark {
+  width: 280px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.level {
+  width: 180px;
+  color: var(--muted);
+  font-size: 28px;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-8) 0;
+  color: var(--muted);
+  font-size: 36px;
+  line-height: 44px;
+}

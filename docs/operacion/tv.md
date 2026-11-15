@@ -10,8 +10,12 @@ Guía para quien instala y cuida la pantalla de la pared del box. El contrato ex
   cookies se ignoran, y el api responde 401 `unauthorized` igual para token ausente, inventado,
   rotado o revocado.
 - El token vive en el fragmento de la URL (después de `#`): el navegador nunca lo manda al
-  servidor ni lo deja en el registro de Nginx. La pantalla lo guarda en memoria y limpia la URL
-  antes de la primera petición.
+  servidor ni lo deja en el registro de Nginx. La pantalla lo lee una vez, lo guarda en el navegador de la TV
+  (`localStorage`, clave `apex.tv.token`; decisión S8-D32) y deja la URL en `/tv` antes de la primera petición.
+  Se guarda para que un reinicio de la TV o un corte de luz no la dejen sin pantalla (no tiene teclado). Si lo
+  prefieres solo en memoria, borra ese dato del navegador de la TV y vuelve a abrir el enlace tras cada reinicio.
+  La pantalla llama `POST /auth/logout` al abrir: no deja una sesión de panel abierta en ese navegador (si la
+  abres en el mismo equipo donde usas el panel, te cierra la sesión).
 - El tablero trae el WOD de hoy (hora de Bogotá), sus movimientos con las cargas Rx en gramos y,
   si la sección lo permite, el ranking «Todos» con un máximo de 50 filas.
 
@@ -57,3 +61,12 @@ docker compose logs web api | grep -c -F -f token.txt                           
 
 `token.txt` debe tener permisos 600 y se borra al terminar. `scripts/ci/prod-smoke.sh` hace estas
 tres comprobaciones sobre el stack de producción desechable.
+
+## Qué ve la pantalla cuando algo falla
+
+- **«Token inválido. Pide un enlace nuevo en Configuración»**: el token se rotó o se revocó. La TV reintenta cada
+  5 minutos; abre el enlace nuevo (`/tv#token=...`) para que el token nuevo reemplace al guardado.
+- **«Sin conexión»** (pastilla junto a la fecha): falló la red, el api respondió 429 o 5xx. Conserva el último tablero
+  y se recupera sola en la siguiente lectura.
+- **«Sin WOD publicado»**: hoy no hay WOD. Publícalo desde el panel (`/wods/nuevo`).
+- **«Falta el enlace de la pantalla»**: no hay token en la URL ni guardado.

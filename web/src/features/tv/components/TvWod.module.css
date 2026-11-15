@@ -1,0 +1,66 @@
+/* S8-F6: el WOD del día en la TV (TV.html, columna izquierda). Solo variables de tokens.css; letras de 28 px o más. */
+.wod {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  padding-right: calc(var(--space-8) * 1.5);
+  border-right: 2px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--apex-blue);
+  font: var(--text-section-title);
+  font-size: 28px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: var(--text-tv-title);
+  text-transform: uppercase;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pill {
+  padding: var(--space-1) var(--space-4);
+  border: 2px solid var(--apex-blue);
+  border-radius: var(--radius-pill);
+  color: var(--apex-blue);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 36px;
+}
+
+.description {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 44px;
+}
+
+.movements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  font-size: 36px;
+  line-height: 46px;
+  list-style: none;
+}
+
+.load {
+  font-weight: 700;
+}

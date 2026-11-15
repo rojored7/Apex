@@ -107,3 +107,23 @@ Verde:
 - E2E ESCRITOS, sin correr (stack roto): `member-results.spec.ts`, `settings-tv.spec.ts` y una prueba nueva en `stack/home.spec.ts`.
 Cierre F5: lint 0, tsc 0, vitest completo 252 archivos / 4482 pruebas (2 fallas de lint arquitectónico corregidas: una constante `HTTP_*` fuera de
 core/api y un orden de propiedades CSS), build 0. Gates verdes: `web/dashboard` (8), `web/system` (15), sello `web/results` (47, con MemberDetailPage).
+
+## S8-F6 · Pantalla de TV (US-177, S8-D19, S8-D20, S8-D32, L-4)
+Rojo medido (antes del código): 5 archivos fallidos: `TvWod.test`, `TvLeaderboard.test` y `TvPage.test` sin resolver el import (0 pruebas) y 2 pruebas
+rojas: `features.test` (falta `tv`) y `routes.test` (falta `/tv` con `load`).
+Verde:
+- `core/api/tvClient.ts` (`fetchTvToday`): el ÚNICO `fetch` fuera del cliente del api que existe, dentro de `core/api` porque el lint solo permite `fetch`
+  ahí (sin tocar la configuración protegida). Solo `X-Device-Token`, `credentials: "omit"`, `cache: "no-store"`, sin `Authorization`, sin token en la URL;
+  401 = «token inválido»; red, 429, 5xx, tiempo (15 s) o JSON malo = «no disponible».
+- `features/tv/`: `schemas.ts` (TvBoard en gramos, Zod), `api.ts` (`useTvBoard`: clave `["tv","today"]` sin token, intervalo `refresh_seconds`, 5 min con
+  401, sin reintentos propios), `tvToken.ts` (`consumeTvToken`), `components/{TvWod,TvLeaderboard}.tsx`, `pages/TvPage.tsx` (+ CSS con tokens; letras de 28 px
+  o más). `/tv` carga con `load` en `routeTable.ts`, `tv` entra a `ENABLED_FEATURES`.
+- DECISIÓN del token (pedida por el encargo): el lint solo prohíbe `sessionStorage` (S4B-D51); `localStorage` no está prohibido y S8-D32 pide guardarlo en
+  `apex.tv.token`. Se guarda en localStorage del navegador de la TV (una TV sin teclado no puede volver a pegar el enlace tras un corte de luz). Si el
+  almacenamiento falla, queda en memoria y el enlace se vuelve a abrir. `tv.md` decía «en memoria»: se corrigió. No se guarda ninguna respuesta.
+- `POST /auth/logout` al montar con `logout()` de core/auth: cierra también las demás pestañas del mismo navegador; el aviso va en `TV_HANDOFF` y en `tv.md`.
+- Soak: `web/tests/soak/tv.soak.spec.ts` + `web/playwright.soak.config.ts` (`npm run soak`, puerto 4174, `vite preview`; `page.clock` acelera 12 h en cuatro
+  tramos de 3 h, `page.route` con 20 filas, heap por CDP tras GC en cada cuarto; pasa si el último ≤ 1,2 × el primero) y job `tv-soak` real en `nightly.yml`
+  (`test_nightly_workflow.sh`: 0 fallas). ESCRITO, SIN CORRER (regla de no correr E2E en esta ronda).
+- E2E de stack ESCRITO, sin correr: `web/tests/e2e/stack/tv.spec.ts`.
+Cierre F6: lint 0, tsc 0, vitest completo 255 passed (255) ; 4511 passed (4511), build 0; sello web/tv con TvPage.

@@ -20,7 +20,7 @@ import tvStyles from "./TvSettingsForm.module.css";
 import { useSectionForm } from "./useSectionForm";
 
 export const TV_HANDOFF =
-  "Genera el enlace en otro equipo y pégalo en la TV: así no queda en el historial de este navegador. Se ve una sola vez; al pulsar «Listo» ya no se puede volver a ver (para eso se genera otro). Usa HTTPS (perfil tls) para que no viaje en claro por la red del box.";
+  "Genera el enlace en otro equipo y pégalo en la TV: así no queda en el historial de este navegador. Se ve una sola vez; al pulsar «Listo» ya no se puede volver a ver (para eso se genera otro). Usa HTTPS (perfil tls) para que no viaje en claro por la red del box. La TV cierra la sesión del panel del navegador donde se abre: no la abras en este equipo si sigues trabajando aquí.";
 
 const SHOWN =
   "Qué muestra: nombre e inicial del apellido (Ana P.), nivel y marca del ranking «Todos» (hasta 50 filas) y el WOD de hoy con sus cargas. Nunca documento, teléfono, correo, sexo ni notas. No aparecen socios dados de baja ni sin autorización de datos vigente.";

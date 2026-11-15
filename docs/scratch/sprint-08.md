@@ -321,3 +321,22 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - P-MIG de `0040` (con `0036` a `0039` y las anteriores): volcado `sprint-08-antes-0040.dump`, `$DC start api`, `alembic current` = `0040_results_void (head)`, `downgrade -1` y `upgrade head`, `\d results.wod_results` (columnas y CHECK), `\df+ results.guard_wod_results_update` y `tgenabled = 'A'` de los cinco triggers.
 - P-ROL: `grants.sql` cambió otra vez: el `dbsetup` debe volver a correr (`\dp results.wod_results`: `UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)`).
 - Smoke con rol: `POST /results/<id>/void` con el admin (200 y 409 al repetir) y con el coach (403), sobre un resultado ficticio propio del smoke.
+
+## S8-B5 · Tablero e Inicio, api y web juntos (US-174, S8-D16, S8-D25, C4) · sin migración
+
+### Rojo (medido)
+- Con el esquema `WodTodayOut` ya declarado pero sin llenar y `today_sessions` sin reordenar: api 5 failed (3 de `test_wod_today` porque `wod_today` sale `null`; 2 de `test_today_sessions_order`) y 1 passed (`test_null_sin_wod`, correcto por construcción). `test_solo_cambia_wod_today` falló al principio por una expectativa mía (`title` ausente con `$ref`); corregida.
+- Web (`FutureKpis.tsx` y `schemas.ts` en su versión anterior, pruebas nuevas): 6 failed (`FutureKpis` con valor, `schemas.test` de `wod_today`, y cuatro de `ClassesKpis`: tres filas y el plegado «N canceladas») y 28 passed.
+
+### Verde
+- api: `dashboard/schemas.py` (`WodTodayOut`, `extra=forbid`), `dashboard/service.py` (`wods.service.today_card` -> `WodTodayOut`), `classes/queries.today_sessions` con `ORDER BY (status = 'cancelled'), starts_at, id`, arista `(dashboard, wods)` en `test_service_import_graph`. P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, contract 6 passed, `tsc` limpio.
+- web: `schemas.ts` (`wodTodaySchema` estricto), `FutureKpis` (muestra el título), `ClassesKpis` (vivas en la lista y botón plegable «1 cancelada»/«N canceladas»), `test/dashboard.tsx`.
+- [DECISIÓN DE DISEÑO] «N canceladas» en singular con 1 («1 cancelada»). La tarjeta completa «WOD de hoy» con Ver/Registrar llega en F5.
+
+### Evidencia
+- Gate web `slice-gate.sh web/dashboard <3 pruebas>`: 34 passed, exit 0 (tras corregir 4 errores de eslint propios). `npx vitest src/features/dashboard`: 9 archivos, 97 passed.
+- Gate sellante `slice-gate.sh dashboard <4 pruebas + tests/architecture>`: exit 0 (primer intento falló por E501 en docstrings; el segundo por una prueba mía con `time_cap_s` en un WOD de `reps`, corregida; `tests/architecture` completo 874 passed). Checkpoint `bb6e4da`.
+- Desviación: en el primer gate lancé dos pytest a la vez por error (un fallo espurio en `tests/architecture`); repetido en solitario, verde.
+
+### Pendiente
+- Smoke con rol (api de desarrollo roto): `GET /dashboard` con el admin de desarrollo, solo el código HTTP y la forma de `wod_today`. P-REBUILD 2 y 3 (reiniciar worker y reconstruir `web`) quedan para cuando el usuario repare el api.

@@ -6,7 +6,7 @@
 //   hoy, `from` no posterior a `to` y a lo sumo 366 días. Un rango inválido no viaja y se explica.
 // - `offset` es múltiplo de `limit` (nunca se pide una página a medias). La búsqueda `q` vive en memoria.
 import { clampLimit } from "../../core/api/query";
-import { addDaysCivil, bogotaInputToUtc, civilDaysBetween, todayBogota } from "../../core/i18n/format";
+import { addDaysCivil, bogotaDayEndUtc, bogotaDayStartUtc, civilDaysBetween, todayBogota } from "../../core/i18n/format";
 import { CRYPTO_VERBS, KEY_PROVIDERS, KEY_PURPOSES, KEY_STATES, type CryptoVerb, type KeyProvider, type KeyPurpose, type KeyState } from "./schemas";
 
 export const KEYS_FILTERS = ["purpose", "state", "provider"] as const;
@@ -85,13 +85,6 @@ export function opsRangeProblem(filters: Pick<OpsUrlFilters, "from" | "to">, tod
   return null;
 }
 
-const dayStartUtc = (day: string): string | null => bogotaInputToUtc(`${day}T00:00`);
-
-function dayEndUtc(day: string): string | null {
-  const next = addDaysCivil(day, 1);
-  return next === null ? null : dayStartUtc(next);
-}
-
 /** Los parámetros de GET /crypto/ops; un rango inválido (opsRangeProblem) no viaja. */
 export function toOpsApiParams(search: string | URLSearchParams, q = "", today: string = todayBogota()): URLSearchParams {
   const url = asParams(search);
@@ -99,8 +92,8 @@ export function toOpsApiParams(search: string | URLSearchParams, q = "", today: 
   const out = pageParams(url, q);
   if (filters.verb) out.set("verb", filters.verb);
   if (opsRangeProblem(filters, today) !== null) return out;
-  const from = filters.from ? dayStartUtc(filters.from) : null;
-  const to = filters.to ? dayEndUtc(filters.to) : null;
+  const from = filters.from ? bogotaDayStartUtc(filters.from) : null;
+  const to = filters.to ? bogotaDayEndUtc(filters.to) : null;
   if (from) out.set("from", from);
   if (to) out.set("to", to);
   return out;

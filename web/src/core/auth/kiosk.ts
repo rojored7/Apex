@@ -15,6 +15,7 @@ export const KIOSK_MESSAGES = {
   generic: "No pudimos verificar la contraseña. Intenta de nuevo en un momento.",
   enterFailed: "No pudimos activar el modo tablet. Intenta de nuevo en un momento.",
   notToday: "Esa clase no es de hoy. Elige otra clase.",
+  sessionEnded: "La sesión de esta tablet terminó. Vuelve a entrar con tu correo y contraseña.",
 } as const;
 
 /** KioskSessionOut del contrato. */
@@ -50,7 +51,12 @@ export async function exitKiosk(password: string, renewed = false): Promise<stri
     if (!isApiError(error)) return KIOSK_MESSAGES.generic;
     // El access de 15 min venció con la tablet quieta: se renueva una vez y se repite.
     if (error.status === HTTP_UNAUTHORIZED && error.code === API_ERROR_CODES.tokenExpired && !renewed && (await refreshAccessToken())) return exitKiosk(password, true);
-    if (error.status === HTTP_UNAUTHORIZED) return KIOSK_MESSAGES.wrong;
+    if (error.status === HTTP_UNAUTHORIZED) {
+      if (error.code === API_ERROR_CODES.invalidPassword) return KIOSK_MESSAGES.wrong;
+      // S7-V7f (M-4): cualquier otro 401 es una sesión revocada o vencida: la tablet no se queda atrapada en «Contraseña incorrecta».
+      void logoutDevice();
+      return KIOSK_MESSAGES.sessionEnded;
+    }
     if (error.status === HTTP_TOO_MANY) return KIOSK_MESSAGES.tooMany(waitText(error.retryAfterS));
     return connectionMessage(error) ?? KIOSK_MESSAGES.generic;
   }

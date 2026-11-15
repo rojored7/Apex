@@ -34,7 +34,7 @@ const FIELDS: readonly IntegerField[] = [
     min: 0,
     max: 240,
     fallback: 30,
-    explanation: "Minutos antes del inicio de la clase en que se puede registrar la asistencia.",
+    explanation: "Minutos antes y después del inicio de la clase en que se puede registrar la asistencia sin marcarla como fuera de horario.",
   },
 ];
 

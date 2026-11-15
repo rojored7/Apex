@@ -62,6 +62,31 @@ describe("enterKiosk · errores", () => {
   });
 });
 
+describe("exitKiosk · 401 que no es la contraseña (M-4)", () => {
+  it("un 401 unauthorized (sesión revocada) no dice «Contraseña incorrecta»: cierra la sesión del dispositivo y lo explica", async () => {
+    signInAs("coach", { kioskPath: PATH });
+    const mock = mockApi({
+      "POST /auth/kiosk/exit": { status: 401, body: apiErrorBody("unauthorized") },
+      "POST /auth/logout": { status: 204 },
+    });
+
+    await expect(exitKiosk("buena")).resolves.toBe(KIOSK_MESSAGES.sessionEnded);
+
+    await vi.waitFor(() => {
+      expect(mock.callsTo("POST /auth/logout")).toHaveLength(1);
+    });
+  });
+
+  it("invalid_password sigue diciendo «Contraseña incorrecta» y no cierra la sesión", async () => {
+    signInAs("coach", { kioskPath: PATH });
+    const mock = mockApi({ "POST /auth/kiosk/exit": { status: 401, body: apiErrorBody("invalid_password") }, "POST /auth/logout": { status: 204 } });
+
+    await expect(exitKiosk("mala")).resolves.toBe(KIOSK_MESSAGES.wrong);
+
+    expect(mock.callsTo("POST /auth/logout")).toHaveLength(0);
+  });
+});
+
 describe("exitKiosk", () => {
   it("contraseña correcta: POST /auth/kiosk/exit (nunca /auth/login), access nuevo y sin marca", async () => {
     signInAs("coach", { kioskPath: PATH });

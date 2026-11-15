@@ -187,4 +187,29 @@ describe("GymLayout · modo tablet", () => {
 
     expect(screen.getByLabelText("Llegaron 3 de 12")).toHaveTextContent("3 / 12 llegaron");
   });
+
+  it("L-13: el contador se anuncia como región de estado cortés (las llegadas se leen sin quitar el foco)", () => {
+    render(
+      <MemoryRouter>
+        <GymLayout title="Check-in" exitTo="/clases" counter={{ value: 3, of: 12, label: "llegaron" }} />
+      </MemoryRouter>,
+    );
+
+    const counter = screen.getByRole("status", { name: "Llegaron 3 de 12" });
+    expect(counter).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("M-8: enviar la contraseña vacía lo dice bajo el campo y no llama a verifyPassword", async () => {
+    const user = userEvent.setup();
+    const verifyPassword = vi.fn(() => Promise.resolve<string | null>(null));
+    renderTablet({ verifyPassword });
+
+    await user.click(screen.getByRole("button", { name: "Clases" }));
+    const dialog = screen.getByRole("dialog", { name: "¿Salir del modo tablet?" });
+    await user.click(within(dialog).getByRole("button", { name: "Salir del modo tablet" }));
+
+    expect(await within(dialog).findByText("Escribe la contraseña.")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Contraseña/)).toHaveAttribute("aria-invalid", "true");
+    expect(verifyPassword).not.toHaveBeenCalled();
+  });
 });

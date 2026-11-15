@@ -7,6 +7,7 @@ import {
   accountLabel,
   accountTone,
   isMembershipStatusView,
+  flagTone,
   statusLabel,
   statusTone,
   type AccountStatusView,
@@ -34,6 +35,16 @@ describe("statusLabel", () => {
   it("cubre exactamente los siete estados", () => {
     expect(Object.keys(STATUS_LABELS).sort()).toEqual([...STATUSES].sort());
     expect(Object.keys(STATUS_TONES).sort()).toEqual([...STATUSES].sort());
+  });
+});
+
+describe("FLAG_TONES (M-6)", () => {
+  it("congelado y pendiente de pago llevan el tono del estado de membresía; vencido y sin plan siguen en rojo", () => {
+    expect(flagTone("frozen")).toBe(statusTone("frozen"));
+    expect(flagTone("pending_payment")).toBe(statusTone("pending_payment"));
+    expect(flagTone("expired")).toBe("danger");
+    expect(flagTone("no_membership")).toBe("danger");
+    for (const flag of ["over_capacity", "out_of_window", "other_day"] as const) expect(flagTone(flag)).toBe("warning");
   });
 });
 

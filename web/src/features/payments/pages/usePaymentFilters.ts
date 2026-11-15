@@ -10,7 +10,7 @@
 //   un retroactivo que no es "true" ni "false" y una fecha que no es real se descartan. Un rango
 //   invertido tampoco viaja (el api daría 422); la pantalla lo explica (`rangeInverted`).
 import { useMemo } from "react";
-import { addDaysCivil, bogotaInputToUtc } from "../../../core/i18n/format";
+import { addDaysCivil, bogotaDayEndUtc, bogotaDayStartUtc } from "../../../core/i18n/format";
 import { PAYMENT_METHOD_CODES, type PaymentMethodCode } from "../../../shared/data/schemas/payment";
 import { useListParams, type ListParamsApi } from "../../../shared/hooks/useListParams";
 import { isUuid } from "../../../shared/lib/ids";
@@ -30,17 +30,6 @@ const isMethod = (value: string): value is PaymentMethodCode => (PAYMENT_METHOD_
 const civilOrEmpty = (value: string | undefined): string => (value !== undefined && addDaysCivil(value, 0) === value ? value : "");
 
 const booleanOf = (value: string | undefined): BooleanFilter => (value === "true" || value === "false" ? value : "");
-
-/** El inicio (UTC) de un día civil de Bogotá; null si el día no es real. */
-export function bogotaDayStartUtc(day: string): string | null {
-  return civilOrEmpty(day) === "" ? null : bogotaInputToUtc(`${day}T00:00`);
-}
-
-/** El fin exclusivo (UTC) de un día civil de Bogotá: el inicio del día siguiente. */
-export function bogotaDayEndUtc(day: string): string | null {
-  const next = civilOrEmpty(day) === "" ? null : addDaysCivil(day, 1);
-  return next === null ? null : bogotaInputToUtc(`${next}T00:00`);
-}
 
 export interface PaymentFiltersApi {
   list: ListParamsApi<PaymentFilter>;

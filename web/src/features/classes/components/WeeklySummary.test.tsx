@@ -8,7 +8,13 @@ import { WEEK_BUCKETS } from "../../../test/attendance";
 import type { WeekBucketView } from "../attendanceApi";
 import { WeeklySummary } from "./WeeklySummary";
 
-const weeks = WEEK_BUCKETS as unknown as WeekBucketView[];
+const weeks = WEEK_BUCKETS;
+
+function bucket(index: number): WeekBucketView {
+  const found = WEEK_BUCKETS[index];
+  if (!found) throw new Error(`falta la semana ${String(index)}`);
+  return found;
+}
 
 afterEach(cleanup);
 
@@ -29,7 +35,7 @@ describe("WeeklySummary", () => {
   });
 
   it("singular: «1 asistencia · 1 con marca»", () => {
-    render(<WeeklySummary weeks={[{ ...WEEK_BUCKETS[1], total: 1, flagged: 1 }] as unknown as WeekBucketView[]} />);
+    render(<WeeklySummary weeks={[{ ...bucket(1), total: 1, flagged: 1 }]} />);
 
     expect(screen.getByText("1 asistencia · 1 con marca")).toBeInTheDocument();
   });
@@ -62,7 +68,7 @@ describe("WeeklySummary", () => {
   });
 
   it("una semana con asistencias pero sin franjas no rompe", () => {
-    render(<WeeklySummary weeks={[{ ...WEEK_BUCKETS[0], total: 3, slots: [] }] as unknown as WeekBucketView[]} />);
+    render(<WeeklySummary weeks={[{ ...bucket(0), total: 3, slots: [] }]} />);
 
     expect(screen.getByText("3 asistencias · 0 con marca")).toBeInTheDocument();
   });

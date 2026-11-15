@@ -10,14 +10,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { addDaysCivil, formatCount, formatDateTime, formatRelativeTime, formatTime, todayBogota } from "../../../core/i18n/format";
+import { addDaysCivil, bogotaDayStartUtc, formatCount, formatDateTime, formatRelativeTime, formatTime, todayBogota } from "../../../core/i18n/format";
 import { useMemberTab } from "../../../shared/data/members";
 import { useListParams } from "../../../shared/hooks/useListParams";
 import { Button } from "../../../shared/ui/Button";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { useMemberAttendance, useMemberAttendanceStats, type AttendanceRowView } from "../attendanceApi";
-import { bogotaDayStartUtc } from "../attendanceFilters";
 import { memberAttendanceError } from "../classErrors";
 import { MarksCell, MembershipAtCheckin } from "../components/AttendanceCells";
 import styles from "./MemberAttendanceTab.module.css";

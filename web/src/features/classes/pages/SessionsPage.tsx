@@ -20,7 +20,7 @@ import { ClassesTabs } from "../components/ClassesTabs";
 import { ExtraSessionPanel } from "../components/ExtraSessionPanel";
 import { checkInHref, SessionDetail } from "../components/SessionDetail";
 import { WeekGrid } from "../components/WeekGrid";
-import { currentWeek, parseWeek, shiftWeek, weekDates, weekLabel } from "../weeks";
+import { currentWeek, parseWeek, shiftWeek, weekDates, weekLabel } from "../../../shared/data/weeks";
 import styles from "./SessionsPage.module.css";
 
 export const WEEK_PARAM = "semana";

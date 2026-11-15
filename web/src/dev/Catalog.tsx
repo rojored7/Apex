@@ -27,6 +27,7 @@ import { SideNav } from "../shared/ui/SideNav";
 import { SidePanel } from "../shared/ui/SidePanel";
 import { ACCOUNT_LABELS, STATUS_LABELS, type AccountStatusView, type MembershipStatusView } from "../shared/ui/statusLabel";
 import { StatusTag } from "../shared/ui/StatusTag";
+import { Segmented } from "../shared/ui/Segmented";
 import { Tabs } from "../shared/ui/Tabs";
 import { TopBar } from "../shared/ui/TopBar";
 import { LayoutsPreview, readPreviewParams } from "./LayoutsPreview";
@@ -42,6 +43,7 @@ export const KIT_COMPONENTS = [
   "DataTable",
   "Pagination",
   "Chips",
+  "Segmented",
   "Tabs",
   "KpiCard",
   "SidePanel",
@@ -142,6 +144,7 @@ function Dialogs() {
 function ListSamples() {
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<string[]>(["all"]);
+  const [level, setLevel] = useState("rx");
   return (
     <>
       <Section name="FilterBar">
@@ -175,6 +178,18 @@ function ListSamples() {
             { value: "all", label: "Todos", count: 342 },
             { value: "expiring", label: "Por vencer", count: 18, tone: "warning" },
             { value: "expired", label: "Vencidos", count: 41, tone: "danger" },
+          ]}
+        />
+      </Section>
+      <Section name="Segmented">
+        <Segmented
+          label="Nivel"
+          value={level}
+          onChange={setLevel}
+          options={[
+            { value: "rx", label: "RX" },
+            { value: "rx_plus", label: "RX+" },
+            { value: "scaled", label: "Escalado" },
           ]}
         />
       </Section>

@@ -5,7 +5,7 @@
 // - Las sesiones extra llegan juntas como «Extra». Una semana sin asistencias lo dice y no pinta tabla.
 // DESIGN-GAP: Sesiones.html solo nombra la pestaña «Asistencia por socio»; el resumen no tiene pantalla de diseño (S7-D15).
 import type { WeekBucketView } from "../attendanceApi";
-import { weekLabel } from "../weeks";
+import { weekLabel } from "../../../shared/data/weeks";
 import styles from "./WeeklySummary.module.css";
 
 export interface WeeklySummaryProps {

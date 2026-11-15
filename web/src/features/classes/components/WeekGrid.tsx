@@ -8,7 +8,7 @@
 import { cx } from "../../../shared/ui/cx";
 import type { SessionView } from "../api";
 import { formatTime24 } from "../../../core/i18n/format";
-import { dayHeader } from "../weeks";
+import { dayHeader } from "../../../shared/data/weeks";
 import styles from "./WeekGrid.module.css";
 
 export interface WeekGridProps {

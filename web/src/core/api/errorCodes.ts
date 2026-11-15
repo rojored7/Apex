@@ -108,6 +108,11 @@ export const API_ERROR_CODES = {
   benchmarkExists: "benchmark_exists",
   benchmarkNotFound: "benchmark_not_found",
   scoreTypeLocked: "score_type_locked",
+  // S8-F2: WODs (wods/exceptions.py).
+  wodNotFound: "wod_not_found",
+  wodDateTaken: "wod_date_taken",
+  scoreTypeMismatch: "score_type_mismatch",
+  lockedByResults: "locked_by_results",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

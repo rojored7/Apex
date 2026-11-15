@@ -23,3 +23,12 @@ Tropiezo del entorno: un heredoc de Git Bash con comillas falló en bloque; los 
 
 Cierre F1: corrida completa lint 0, tsc 0, vitest 238 archivos / 4327 pruebas verdes, build 0; gate `web/wods` verde (53 pruebas).
 E2E `movements.spec.ts` ESCRITO, sin correr (stack de desarrollo roto; instrucción del usuario: no `up`, ni E2E, ni banderas).
+
+## S8-F2 · Lista y formulario de WOD (US-166, US-167, S8-D7, S8-D8)
+
+Merge de `feat/sprint-08-wods-resultados-tv` (c007e3e) sin conflictos (6d00629). `types.ts` ya traía WodOut, ResultIn, TvBoard.
+Rojo: `score.test.ts` (import sin resolver), `Segmented.test.tsx` (import sin resolver), `WodListPage.test.tsx` y `WodFormPage.test.tsx` (import sin resolver, 0 pruebas), `routes.test.ts` (1 failed: faltaban las tres rutas con `load`).
+Verde: `shared/data/score.ts` (gramos <-> kg, `formatScore`), `shared/data/weeks.ts` (movido desde classes para que dos features lo usen), `shared/ui/Segmented`, `features/wods/{wodSchemas,wodsApi,wodFormErrors}.ts`,
+`components/{WeekCalendar,MovementPicker,WodPreview}`, `pages/{WodListPage,WodFormPage}`, rutas `/wods`, `/wods/nuevo`, `/wods/:id/editar` con `load`.
+Corrida completa: lint 0, tsc 0, vitest 242 archivos / 4372 pruebas, build 0. E2E `wods.spec.ts` ESCRITO, sin correr.
+DESIGN-GAP: «AMRAP/For time», plantillas, «2 sesiones faltan» (S8-D7). Heredocs de Git Bash con ciertos caracteres fallan: archivos con Write.

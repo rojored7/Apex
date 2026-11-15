@@ -164,10 +164,10 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/clases/:id/resultados", "Registro de resultados", "results", "results.record", "gym"),
   // S8-F1 (US-165, US-166): catálogo de movimientos y, en ?tab=benchmarks, de benchmarks.
   route("/movimientos", "Movimientos", "wods", "movements.view", "panel", { load: () => import("../features/wods/pages/MovementsPage") }),
-  route("/wods", "WODs", "wods", "wods.view", "panel"),
-  route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel"),
+  route("/wods", "WODs", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodListPage") }),
+  route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodFormPage") }),
   route("/wods/:id", "WOD", "wods", "wods.view", "panel"),
-  route("/wods/:id/editar", "Editar WOD", "wods", "wods.view", "panel"),
+  route("/wods/:id/editar", "Editar WOD", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodFormPage") }),
   // S5-F1: por avisar hoy, abrir WhatsApp y omitir con motivo (US-127 a US-129).
   route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/TodayPage") }),
   // S5-F2: reglas y plantillas (US-120, US-121; el coach las lee) e historial de envíos (US-130).

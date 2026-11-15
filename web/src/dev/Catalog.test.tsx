@@ -1,4 +1,4 @@
-// US-068 T5: el catálogo (catalog.html) muestra los 16 componentes en sus estados, cada
+// US-068 T5: el catálogo (catalog.html) muestra los 17 componentes en sus estados, cada
 // StatusTag con texto, y elige tema y vista por la URL.
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,10 +14,10 @@ afterEach(() => {
 });
 
 describe("Catalog", () => {
-  it("tiene una sección con título por cada uno de los 16 componentes", () => {
+  it("tiene una sección con título por cada uno de los 17 componentes", () => {
     render(<CatalogApp search="" />);
 
-    expect(KIT_COMPONENTS).toHaveLength(16);
+    expect(KIT_COMPONENTS).toHaveLength(17);
     for (const name of KIT_COMPONENTS) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }

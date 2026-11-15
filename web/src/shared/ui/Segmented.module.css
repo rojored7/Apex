@@ -1,0 +1,43 @@
+/* S8-F2: Segmented. Solo variables de tokens.css. */
+.group {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.option {
+  min-height: var(--control);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.option + .option {
+  border-left: 1px solid var(--line);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--apex-blue);
+  outline-offset: -2px;
+}
+
+.option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.on {
+  background: var(--ink);
+  color: var(--card);
+}
+
+.large .option {
+  min-height: var(--control-gym);
+  padding: 0 var(--space-5);
+}

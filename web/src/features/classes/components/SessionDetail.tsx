@@ -10,7 +10,7 @@ import { Button } from "../../../shared/ui/Button";
 import { cx } from "../../../shared/ui/cx";
 import type { SessionView } from "../api";
 import { formatTime24 } from "../../../core/i18n/format";
-import { shortDate } from "../weeks";
+import { shortDate } from "../../../shared/data/weeks";
 import styles from "./SessionDetail.module.css";
 import { OPEN_BOX } from "./WeekGrid";
 

@@ -37,3 +37,5 @@ export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { CustodyNotice } from "./CustodyNotice";
 export type { CustodyNoticeProps } from "./CustodyNotice";
+export { Segmented } from "./Segmented";
+export type { SegmentedOption, SegmentedProps } from "./Segmented";

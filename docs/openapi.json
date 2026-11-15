@@ -8210,6 +8210,10 @@
             "title": "Refresh Seconds",
             "type": "integer"
           },
+          "show_leaderboard": {
+            "title": "Show Leaderboard",
+            "type": "boolean"
+          },
           "wod": {
             "anyOf": [
               {
@@ -8224,6 +8228,7 @@
         "required": [
           "date",
           "refresh_seconds",
+          "show_leaderboard",
           "wod",
           "leaderboard"
         ],

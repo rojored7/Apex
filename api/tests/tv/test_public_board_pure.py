@@ -80,7 +80,7 @@ def test_sin_apellido_solo_el_nombre(apellido: str) -> None:
 def test_claves_exactas_en_cada_nivel() -> None:
     tablero = rules.to_public_board(DIA, config(), _wod(), [_fila()])
     cuerpo = tablero.model_dump(mode="json")
-    assert set(cuerpo) == {"date", "refresh_seconds", "wod", "leaderboard"}
+    assert set(cuerpo) == {"date", "refresh_seconds", "show_leaderboard", "wod", "leaderboard"}
     assert set(cuerpo["wod"]) == {
         "title",
         "score_type",

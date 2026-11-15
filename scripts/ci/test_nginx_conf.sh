@@ -452,5 +452,15 @@ if grep -q '"uri":"/index.html"' <<< "$sal_tv"; then ok "funcional: /tv queda en
 if grep -Eq "token=|$TOKEN_TV" <<< "$(grep '^{' <<< "$sal_tv" || true)"; then falla "funcional: el token de /tv aparece en el log"; else ok "funcional: el token de /tv no aparece en el log (0 coincidencias de token=)"; fi
 if grep -q '^TVCODE 200$' <<< "$sal_tv"; then ok "funcional: /tv sin consulta responde 200"; else falla "funcional: /tv sin consulta no respondió 200"; fi
 
+
+# --- Rojo S8-C2b (L-2 de la revisión de C2): tope por IP en el borde para /api/v1/tv/ ---
+# Cada petición con token inválido hace un SELECT de la sección `tv`, aun la que acaba en 429; el tope
+# del api cuenta por IP pero ya llegó a la base. Holgado (120r/m, burst 60): una TV válida pide cada 15 s.
+directiva '^\s*limit_req_zone\s+\$binary_remote_addr\s+zone=apex_tv:1m\s+rate=120r/m;' "limit_req_zone apex_tv a 120r/m por IP"
+tv_loc="$(bloque /api/v1/tv/)"
+if grep -Eq '^\s*limit_req\s+zone=apex_tv\s+burst=60\s+nodelay;' <<< "$tv_loc"; then ok "/api/v1/tv/: limit_req burst=60 nodelay"; else falla "/api/v1/tv/ sin limit_req zone=apex_tv burst=60 nodelay"; fi
+if grep -Eq '^\s*error_page\s+429\s+=\s+@rate_limited;' <<< "$tv_loc"; then ok "/api/v1/tv/: error_page 429 = @rate_limited"; else falla "/api/v1/tv/ sin error_page 429 = @rate_limited"; fi
+if grep -Eq '^\s*include\s+snippets/tv-zone\.conf;' "$CONF"; then ok "default.conf incluye snippets/tv-zone.conf"; else falla "default.conf no incluye snippets/tv-zone.conf"; fi
+
 echo "test_nginx_conf: $fallas fallas"
 [ "$fallas" -eq 0 ]

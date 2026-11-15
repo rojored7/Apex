@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
 from app.modules.results import service as results_service
+from app.modules.results.exceptions import LeaderboardTooLarge
 from app.modules.settings import service as settings_service
 from app.modules.settings.schemas import TvConfig
 from app.modules.tv import rules
 from app.modules.tv.schemas import TvBoard
 from app.modules.wods import service as wods_service
+
+logger = logging.getLogger("app.tv")
 
 TV_MAX_ROWS = 50
 
@@ -26,7 +31,11 @@ async def today(session: AsyncSession, config: TvConfig) -> TvBoard:
     wod = await wods_service.today_card(session, day)
     filas = []
     if wod is not None and config.show_leaderboard:
-        filas = await results_service.public_leaderboard(session, wod.id, TV_MAX_ROWS)
+        try:
+            filas = await results_service.public_leaderboard(session, wod.id, TV_MAX_ROWS)
+        except LeaderboardTooLarge:
+            # L-1 de la revisión de C2: la TV no declara 422; sin ranking, pero con el WOD.
+            logger.warning("tv: ranking omitido, el WOD supera el tope de resultados")
     return rules.to_public_board(day, config, wod, filas)
 
 

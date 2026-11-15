@@ -50,5 +50,6 @@ class TvRow(_Strict):
 class TvBoard(_Strict):
     date: date_type
     refresh_seconds: int
+    show_leaderboard: bool
     wod: TvWod | None
     leaderboard: list[TvRow]

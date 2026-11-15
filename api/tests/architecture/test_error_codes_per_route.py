@@ -174,6 +174,10 @@ CON_LIMITE = {
     ("put", "/api/v1/results"),
     # S8-B3 (US-169): la asistencia con resultados (`staff-read`).
     ("get", "/api/v1/class-sessions/{session_id}/attendance"),
+    # S8-B4 (US-171 a US-173): leaderboard y resultados del WOD y del socio (`staff-read`).
+    ("get", "/api/v1/wods/{wod_id}/leaderboard"),
+    ("get", "/api/v1/wods/{wod_id}/results"),
+    ("get", "/api/v1/members/{member_id}/results"),
     ("get", "/api/v1/wods"),
     ("post", "/api/v1/wods"),
     ("get", "/api/v1/wods/{wod_id}"),

@@ -20,6 +20,7 @@ from app.modules.classes import service as classes_service
 from app.modules.results.attendance import session_attendance
 from app.modules.results.events import WodResultRecorded, WodResultValidated
 from app.modules.results.models import WodResult
+from app.modules.results.reads import leaderboard, member_results, wod_results
 from app.modules.results.record import (
     member_has_current_result_in_session,
     record_result,
@@ -70,9 +71,16 @@ results_probe = _Probe()
 wods_service.set_results_probe(results_probe)
 classes_service.set_results_port(_SessionPort())
 
+# Nombres públicos de las dos listas de lectura (S8-B4).
+list_wod_results = wod_results
+list_member_results = member_results
+
 __all__ = [
     "WodResultRecorded",
     "WodResultValidated",
+    "leaderboard",
+    "list_member_results",
+    "list_wod_results",
     "record_result",
     "results_probe",
     "session_attendance",

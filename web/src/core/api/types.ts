@@ -822,6 +822,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/members/{member_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Member Results */
+        get: operations["list_member_results_api_v1_members__member_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members/{member_id}/reveal": {
         parameters: {
             query?: never;
@@ -1645,6 +1662,40 @@ export interface paths {
         head?: never;
         /** Update Wod */
         patch: operations["update_wod_api_v1_wods__wod_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Leaderboard */
+        get: operations["get_leaderboard_api_v1_wods__wod_id__leaderboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Wod Results */
+        get: operations["list_wod_results_api_v1_wods__wod_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {
@@ -2697,6 +2748,44 @@ export interface components {
              */
             token_type: "bearer";
         };
+        /**
+         * LeaderboardRow
+         * @description Una fila del leaderboard (S8-B4, US-171, S8-D13). Solo nombre y inicial del apellido: ningún
+         *     campo cifrado. La carga va en gramos (`load_g`, S8-D41).
+         */
+        LeaderboardRow: {
+            /** Capped */
+            capped: boolean;
+            /** First Name */
+            first_name: string;
+            /** Last Initial */
+            last_initial: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Position */
+            position: number;
+            /** Reps */
+            reps: number | null;
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -2904,6 +2993,67 @@ export interface components {
             phone?: string | null;
             /** Sex */
             sex?: ("f" | "m" | "x") | null;
+        };
+        /**
+         * MemberResultRow
+         * @description Una fila de `GET /members/{id}/results` (S8-B4, US-173): el WOD copiado y la marca.
+         */
+        MemberResultRow: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Score Type */
+            score_type: string;
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending";
+            /**
+             * Wod Date
+             * Format: date
+             */
+            wod_date: string;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+            /** Wod Title */
+            wod_title: string;
         };
         /**
          * MemberRowOut
@@ -3311,10 +3461,32 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[LeaderboardRow] */
+        Page_LeaderboardRow_: {
+            /** Items */
+            items: components["schemas"]["LeaderboardRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[MemberHistoryItem] */
         Page_MemberHistoryItem_: {
             /** Items */
             items: components["schemas"]["MemberHistoryItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[MemberResultRow] */
+        Page_MemberResultRow_: {
+            /** Items */
+            items: components["schemas"]["MemberResultRow"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -3436,6 +3608,17 @@ export interface components {
         Page_UserRow_: {
             /** Items */
             items: components["schemas"]["UserRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[WodResultRow] */
+        Page_WodResultRow_: {
+            /** Items */
+            items: components["schemas"]["WodResultRow"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -4990,6 +5173,69 @@ export interface components {
             time_cap_s?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * WodResultRow
+         * @description Una fila de `GET /wods/{id}/results` (S8-B4, US-172): socio, marca, quién y cuándo.
+         */
+        WodResultRow: {
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** First Name */
+            first_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
+            /** Last Name */
+            last_name: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Recorded By Name */
+            recorded_by_name: string | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending";
+            /** Supersedes Id */
+            supersedes_id: string | null;
         };
         /**
          * WodRowOut
@@ -9668,6 +9914,95 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_member_results_api_v1_members__member_id__results_get: {
+        parameters: {
+            query?: {
+                benchmark?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MemberResultRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15226,6 +15561,185 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_leaderboard_api_v1_wods__wod_id__leaderboard_get: {
+        parameters: {
+            query?: {
+                level?: ("rx" | "rx_plus" | "scaled") | null;
+                sex?: ("f" | "m") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_LeaderboardRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_wod_results_api_v1_wods__wod_id__results_get: {
+        parameters: {
+            query?: {
+                include_superseded?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WodResultRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

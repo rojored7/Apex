@@ -90,3 +90,65 @@ class SessionAttendanceOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class LeaderboardRow(BaseModel):
+    """Una fila del leaderboard (S8-B4, US-171, S8-D13). Solo nombre y inicial del apellido: ningún
+    campo cifrado. La carga va en gramos (`load_g`, S8-D41)."""
+
+    position: int
+    result_id: UUID
+    member_id: UUID
+    first_name: str
+    last_initial: str
+    level: ResultLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+
+
+class WodResultRow(BaseModel):
+    """Una fila de `GET /wods/{id}/results` (S8-B4, US-172): socio, marca, quién y cuándo."""
+
+    id: UUID
+    member_id: UUID
+    first_name: str
+    last_name: str
+    level: ResultLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    status: ResultStatus
+    source: ResultSource
+    is_current: bool
+    supersedes_id: UUID | None
+    session_id: UUID | None
+    recorded_by: UUID
+    recorded_by_name: str | None
+    created_at: datetime
+
+
+class MemberResultRow(BaseModel):
+    """Una fila de `GET /members/{id}/results` (S8-B4, US-173): el WOD copiado y la marca."""
+
+    id: UUID
+    wod_id: UUID
+    wod_date: date_type
+    wod_title: str
+    score_type: str
+    benchmark_id: UUID | None
+    is_benchmark: bool
+    level: ResultLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    status: ResultStatus
+    source: ResultSource
+    session_id: UUID | None
+    created_at: datetime

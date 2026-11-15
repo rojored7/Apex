@@ -57,3 +57,12 @@ class InvalidSupersedes(ResultsError):
 
     def __init__(self) -> None:
         super().__init__(field="supersedes_id")
+
+
+class LeaderboardTooLarge(ResultsError):
+    """El WOD tiene más resultados vigentes que `LEADERBOARD_MAX_ROWS` (S8-D13, L-6): un ranking
+    nunca se trunca, se rechaza."""
+
+    status = 422
+    code = "leaderboard_too_large"
+    default_message = "El WOD tiene demasiados resultados para armar el leaderboard."

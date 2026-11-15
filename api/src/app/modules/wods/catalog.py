@@ -101,3 +101,26 @@ async def scoring_for(session: AsyncSession, wod_id: UUID) -> WodScoring:
         movement_ids=frozenset(m for m, _ in pares),
         primary_movement_id=next((m for m, principal in pares if principal), None),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class WodTitle:
+    """Lo que las lecturas de `results` piden de un WOD (S8-B4): título, fecha y tipo de marca."""
+
+    wod_id: UUID
+    title: str
+    date: date
+    score_type: str
+    benchmark_id: UUID | None
+
+
+async def titles_for(session: AsyncSession, wod_ids: Collection[UUID]) -> dict[UUID, WodTitle]:
+    """El título de cada WOD existente, en UNA consulta y sin candados (lectura)."""
+    if not wod_ids:
+        return {}
+    filas = await session.execute(
+        select(Wod.id, Wod.title, Wod.date, Wod.score_type, Wod.benchmark_id).where(
+            Wod.id.in_(set(wod_ids))
+        )
+    )
+    return {f.id: WodTitle(f.id, f.title, f.date, f.score_type, f.benchmark_id) for f in filas}

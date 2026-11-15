@@ -9,7 +9,8 @@ Reexporta lo público de los archivos privados del módulo:
 - `programming.py` (S8-A3, US-166, US-167): `create_wod`, `update_wod`, `get_wod` y `list_wods`.
 - `probe.py` (S8-A3): el puerto `ResultsProbe` (`set_results_probe`, `results_probe`); `results`
   lo registra al importarse (B1). Sin puerto, lo que depende de resultados falla cerrado.
-- `catalog.py` (S8-B1): `scoring_for` (el WOD `FOR SHARE` y lo que `results` valida).
+- `catalog.py` (S8-B1): `scoring_for` (el WOD `FOR SHARE` y lo que `results` valida) y, desde
+  S8-B4, `titles_for` (título, fecha y tipo de marca por WOD, sin candados).
 - `events.py`: `WodPublished`. `rules.py`: `normalize_movement_name`.
 """
 
@@ -21,7 +22,15 @@ from app.modules.wods.benchmarks import (
     list_benchmarks,
     update_benchmark,
 )
-from app.modules.wods.catalog import WodScoring, day_wod_ids, ensure_wod, scoring_for, wod_date
+from app.modules.wods.catalog import (
+    WodScoring,
+    WodTitle,
+    day_wod_ids,
+    ensure_wod,
+    scoring_for,
+    titles_for,
+    wod_date,
+)
 from app.modules.wods.events import WodPublished
 from app.modules.wods.movements import (
     create_movement,
@@ -43,6 +52,7 @@ __all__ = [
     "ResultsProbe",
     "WodPublished",
     "WodScoring",
+    "WodTitle",
     "create_benchmark",
     "create_movement",
     "create_wod",
@@ -60,6 +70,7 @@ __all__ = [
     "scoring_for",
     "seed_benchmarks",
     "set_results_probe",
+    "titles_for",
     "today_card",
     "update_benchmark",
     "update_movement",

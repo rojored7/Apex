@@ -6,12 +6,15 @@
   `kiosk` con la marca del quiosco (S8-D31).
 - `GET /class-sessions/{session_id}/attendance`: los asistentes vivos con su resultado vigente en
   el WOD efectivo; `staff-read`, paginada. En quiosco, solo clases de hoy o de ayer (S8-D15).
+- `GET /wods/{wod_id}/leaderboard?level&sex` (S8-B4, US-171), `GET /wods/{wod_id}/results?
+  include_superseded` (US-172) y `GET /members/{member_id}/results?benchmark` (US-173): lecturas de
+  `staff-read`, paginadas con `PageParams` y `no-store`; 404 si el WOD o el socio no existen.
 La ruta no hace `select`: valida, llama al service y devuelve.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -19,11 +22,19 @@ from fastapi import APIRouter, Depends, Request
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
-from app.core.pagination import PageParams
+from app.core.pagination import Page, PageParams
 from app.core.ratelimit import enforce_user_limit
 from app.core.security import StaffDep
 from app.modules.results import service
-from app.modules.results.schemas import ResultIn, ResultOut, SessionAttendanceOut
+from app.modules.results.schemas import (
+    LeaderboardRow,
+    MemberResultRow,
+    ResultIn,
+    ResultLevel,
+    ResultOut,
+    SessionAttendanceOut,
+    WodResultRow,
+)
 
 router = APIRouter(
     tags=["results"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
@@ -61,3 +72,57 @@ async def session_attendance(
 ) -> SessionAttendanceOut:
     await enforce_user_limit(request, "staff-read", principal.user_id)
     return await service.session_attendance(session, session_id, page, kiosk=principal.kiosk)
+
+
+@router.get(
+    "/wods/{wod_id}/leaderboard",
+    response_model=Page[LeaderboardRow],
+    responses=responses_for(404, 422, 429),
+)
+async def get_leaderboard(
+    request: Request,
+    wod_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    level: ResultLevel | None = None,
+    sex: Literal["f", "m"] | None = None,
+) -> Page[LeaderboardRow]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.leaderboard(session, wod_id, page, level=level, sex=sex)
+
+
+@router.get(
+    "/wods/{wod_id}/results",
+    response_model=Page[WodResultRow],
+    responses=responses_for(404, 422, 429),
+)
+async def list_wod_results(
+    request: Request,
+    wod_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    include_superseded: bool = False,
+) -> Page[WodResultRow]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_wod_results(
+        session, wod_id, page, include_superseded=include_superseded
+    )
+
+
+@router.get(
+    "/members/{member_id}/results",
+    response_model=Page[MemberResultRow],
+    responses=responses_for(404, 422, 429),
+)
+async def list_member_results(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    benchmark: bool | None = None,
+) -> Page[MemberResultRow]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_member_results(session, member_id, page, benchmark=benchmark)

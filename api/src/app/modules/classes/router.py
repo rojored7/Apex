@@ -164,6 +164,8 @@ async def get_session(
     request: Request, session_id: UUID, principal: StaffDep, session: Session
 ) -> SessionDetail:
     await enforce_user_limit(request, "staff-read", principal.user_id)
+    if principal.kiosk:  # solo hoy o ayer (S7-D42, V7 M-1)
+        await service.ensure_kiosk_session(session, session_id)
     return await service.get_session(session, session_id)
 
 
@@ -193,6 +195,8 @@ async def check_in(
     request: Request, body: AttendanceCreate, principal: StaffDep, session: Session
 ) -> CheckinOut:
     await enforce_user_limit(request, "attendance-write", principal.user_id)
+    if principal.kiosk:  # solo hoy o ayer (S7-D42, V7 M-1): una sesión vieja no gasta clases
+        await service.ensure_kiosk_session(session, body.session_id)
     return await service.check_in(session, body, by=principal.user_id)
 
 
@@ -225,6 +229,7 @@ async def list_attendance(
         from_at=from_,
         to_at=to,
         q=q,
+        name_only=principal.kiosk,
     )
     return await service.list_attendance(session, filters, page)
 

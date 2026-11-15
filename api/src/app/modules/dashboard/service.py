@@ -269,6 +269,7 @@ async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut
             SessionTodayOut(
                 id=s.id,
                 starts_at=s.starts_at,
+                duration_min=s.duration_min,
                 coach_name=s.coach_name,
                 capacity=s.capacity,
                 attendance_count=s.attendance_count,

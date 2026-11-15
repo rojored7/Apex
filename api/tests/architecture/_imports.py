@@ -30,7 +30,17 @@ FOREIGN_ALLOWED: Final[frozenset[str]] = frozenset({"service", "schemas", "excep
 PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     # S5-B9 (D37): `mail_texts` (el texto fijo de los correos de cuenta) también es privado.
     "auth": frozenset(
-        {"rules", "tokens", "cookies", "events", "sessions", "users", "links", "mail_texts"}
+        {
+            "rules",
+            "tokens",
+            "cookies",
+            "events",
+            "sessions",
+            "users",
+            "links",
+            "mail_texts",
+            "kiosk",
+        }
     ),
     # S3-B1 (D7): `memberships` nace partido tras la fachada `service.py`.
     # Fase 4 del Sprint 3 (S3-D90): `summary` sale de `queries` (el resumen y su caché).
@@ -60,8 +70,10 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     # paquete (`storage/`), el resto son archivos.
     "attachments": frozenset({"files", "rules", "queries", "reencrypt", "storage"}),
     # S7-A2 (hallazgo 12): `classes` nace partido tras la fachada `service.py`; cada slice suma el
-    # suyo (`sessions`, `attendance`, `queries`, `reports`) cuando crea el archivo.
-    "classes": frozenset({"rules", "slots", "sessions", "queries", "events", "attendance"}),
+    # suyo (`sessions`, `attendance`, `queries`, `reports`) cuando crea el archivo (V7, L-1).
+    "classes": frozenset(
+        {"rules", "slots", "sessions", "queries", "events", "attendance", "reports"}
+    ),
 }
 
 Rule = Literal[

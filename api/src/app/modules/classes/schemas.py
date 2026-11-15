@@ -231,6 +231,7 @@ class AttendanceListQuery(BaseModel):
     from_at: AwareDatetime | None = None
     to_at: AwareDatetime | None = None
     q: str | None = None
+    name_only: bool = False  # quiosco (S7-D41, V7 M-2): `q` busca solo por nombre
 
 
 @dataclass(frozen=True, slots=True)

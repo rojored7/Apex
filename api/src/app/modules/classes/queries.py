@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Final
 from uuid import UUID
 
@@ -31,6 +31,7 @@ from app.modules.classes.rules import (
     WEEK_YEAR_MAX,
     WEEK_YEAR_MIN,
     date_range_utc,
+    is_kiosk_day,
     local_date,
     parse_week,
     session_status,
@@ -258,10 +259,11 @@ async def today_sessions(session: AsyncSession, today: date) -> list[SessionOut]
     return await _outs(session, list(filas))
 
 
-async def kiosk_session_info(session: AsyncSession, session_id: UUID) -> tuple[date, str] | None:
-    """`(session_date, status)` de una sesión, o `None` si no existe (S7-C4c, M-1): el puerto que
-    `classes` registra en `auth` para la regla de cambio de clase del quiosco (S7-D42). `status`
-    es el guardado (`scheduled` o `cancelled`), no el calculado."""
+async def kiosk_session_info(session: AsyncSession, session_id: UUID) -> tuple[bool, str] | None:
+    """`(en_ventana, status)` de una sesión, o `None` si no existe (S7-C4c, M-1): el puerto que
+    `classes` registra en `auth` para la regla de cambio de clase del quiosco (S7-D42).
+    `en_ventana` es `rules.is_kiosk_day` con el día de hoy de Bogotá (V7, L-2); `status` es el
+    guardado (`scheduled` o `cancelled`), no el calculado."""
     fila = (
         await session.execute(
             select(ClassSession.session_date, ClassSession.status).where(
@@ -269,13 +271,14 @@ async def kiosk_session_info(session: AsyncSession, session_id: UUID) -> tuple[d
             )
         )
     ).first()
-    return None if fila is None else (fila[0], fila[1])
+    if fila is None:
+        return None
+    return is_kiosk_day(fila[0], current_clock().today_bogota()), fila[1]
 
 
 async def ensure_kiosk_session(session: AsyncSession, session_id: UUID) -> None:
     """S7-D42 (L-2): en quiosco solo se ve la lista de una sesión de hoy o de ayer en Bogotá; otra
     o inexistente da 403 `kiosk_mode`."""
     info = await kiosk_session_info(session, session_id)
-    hoy = current_clock().today_bogota()
-    if info is None or info[0] not in (hoy, hoy - timedelta(days=1)):
+    if info is None or not info[0]:
         raise ForbiddenError("kiosk_mode", KIOSK_SESSION_MESSAGE)

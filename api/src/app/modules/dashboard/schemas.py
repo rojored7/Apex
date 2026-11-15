@@ -63,6 +63,7 @@ class SessionTodayOut(BaseModel):
 
     id: UUID
     starts_at: datetime
+    duration_min: int
     coach_name: str | None
     capacity: int
     attendance_count: int

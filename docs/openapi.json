@@ -6272,6 +6272,10 @@
             ],
             "title": "Coach Name"
           },
+          "duration_min": {
+            "title": "Duration Min",
+            "type": "integer"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6295,6 +6299,7 @@
         "required": [
           "id",
           "starts_at",
+          "duration_min",
           "coach_name",
           "capacity",
           "attendance_count",

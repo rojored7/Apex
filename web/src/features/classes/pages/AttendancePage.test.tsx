@@ -127,6 +127,15 @@ describe("AttendancePage · filtros", () => {
     expect(mock.callsTo("GET /attendance/summary")).toHaveLength(0);
   });
 
+  it("L5: un año fuera de 2020 a 2100 no viaja (el api daría 422) y lo explica", async () => {
+    const { mock } = renderPageAt("/clases/asistencia?from=1999-12-20&to=1999-12-31");
+
+    expect(await screen.findByText("Las fechas deben estar entre 2020 y 2100. Corrige el rango.")).toBeInTheDocument();
+    expect(screen.queryByText(/No pudimos cargar/)).not.toBeInTheDocument();
+    expect(mock.callsTo("GET /attendance")).toHaveLength(0);
+    expect(mock.callsTo("GET /attendance/summary")).toHaveLength(0);
+  });
+
   it("exactamente 26 semanas (182 días) sí viaja", async () => {
     const { mock } = renderPageAt("/clases/asistencia?from=2026-04-22&to=2026-10-20");
 

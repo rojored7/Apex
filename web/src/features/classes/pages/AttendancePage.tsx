@@ -17,7 +17,7 @@ import { PageHeader } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { useAttendance, useAttendanceSummary, type AttendanceRowView } from "../attendanceApi";
 import { useAttendanceFilters } from "../attendanceFilters";
-import { ATTENDANCE_LIST_MESSAGES, attendanceListError, attendanceSummaryError, RANGE_INVERTED_MESSAGE, RANGE_TOO_LONG_MESSAGE } from "../classErrors";
+import { ATTENDANCE_LIST_MESSAGES, attendanceListError, attendanceSummaryError, RANGE_INVERTED_MESSAGE, RANGE_OUT_OF_RANGE_MESSAGE, RANGE_TOO_LONG_MESSAGE } from "../classErrors";
 import { attendanceMemberName, MarksCell, MembershipAtCheckin } from "../components/AttendanceCells";
 import { ClassesTabs } from "../components/ClassesTabs";
 import { WeeklySummary } from "../components/WeeklySummary";
@@ -51,7 +51,8 @@ export default function AttendancePage() {
   const isPastEnd = page !== undefined && page.total > 0 && page.items.length === 0;
   const listError = attendanceListError(attendance.error);
   const summaryError = attendanceSummaryError(summary.error);
-  const rangeMessage = filters.rangeError === "inverted" ? RANGE_INVERTED_MESSAGE : filters.rangeError === "too_long" ? RANGE_TOO_LONG_MESSAGE : null;
+  const RANGE_MESSAGES = { inverted: RANGE_INVERTED_MESSAGE, too_long: RANGE_TOO_LONG_MESSAGE, out_of_range: RANGE_OUT_OF_RANGE_MESSAGE } as const;
+  const rangeMessage = filters.rangeError === null ? null : RANGE_MESSAGES[filters.rangeError];
   const emptyMessage = isPastEnd ? ATTENDANCE_PAST_END : filters.isFiltered ? ATTENDANCE_EMPTY_FILTERED : ATTENDANCE_EMPTY;
 
   return (

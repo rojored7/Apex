@@ -1,5 +1,5 @@
 // S7-F4 · US-159 (front): /clases/:id/checkin (CheckIn.html), tablet del box, admin y coach (`classes.view`).
-// - Contador «N / cupo llegaron», búsqueda de 2+ caracteres, «Llegó» (al día) o «Llegó igual» (vencida, sin plan...), «Vender» sin plan.
+// - Contador «N / cupo llegaron», búsqueda de 3+ letras, «Llegó» (al día) o «Llegó igual» (vencida, sin plan...), «Vender» sin plan.
 // - Las siete banderas salen con texto; `other_day` y `over_capacity` son advertencias (201), nunca error. 409 `already_checked_in` y `session_cancelled`.
 // - S7-D24: la pantalla nunca llama GET /members/{id}, /reveal ni /attachments salvo la foto.
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { apiError, ATTENDEES, MEMBER_ROWS, membersPage, memberRow, SESSIONS, ses
 import { mockApi, testQueryClient, type MockHandler, type MockReply } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import { GymLayout } from "../../../layouts/GymLayout";
+import { KIOSK_MESSAGES } from "../../../core/auth/kiosk";
 import CheckInPage from "./CheckInPage";
 
 const ID = SESSIONS.hoy17.id;
@@ -24,10 +25,10 @@ const searchReply: MockHandler = (call) => {
   return membersPage(rows);
 };
 
-function renderPage(handlers: Record<string, MockHandler> = {}) {
+function renderPage(handlers: Record<string, MockHandler> = {}, client = testQueryClient()) {
   const mock = mockApi({ [DETAIL]: { status: 200, body: sessionDetail() }, "GET /members": searchReply, "POST /attendance": { status: 201, body: CREATED }, ...handlers });
   const view = render(
-    <QueryClientProvider client={testQueryClient()}>
+    <QueryClientProvider client={client}>
       <SessionRoleProvider>
         <MemoryRouter initialEntries={[`/clases/${ID}/checkin`]}>
           <Routes>
@@ -147,6 +148,18 @@ describe("CheckInPage · registrar la llegada", () => {
     await waitFor(() => { expect(mock.callsTo(DETAIL).length).toBeGreaterThan(1); });
   });
 
+  it("L4: «Llegó» invalida [\"attendance\"] (Asistencia y la pestaña del socio se releen; la lista de socios y el historial lo hacen por staleTime)", async () => {
+    const client = testQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { user } = renderPage({}, client);
+    await search(user, "Laura");
+
+    await user.click(within(row("Laura Gómez")).getByRole("button", { name: "Llegó" }));
+
+    await screen.findByRole("status", { name: "Resultado del check-in" });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["attendance"] });
+  });
+
   it("LOW a: tras «Llegó» el foco vuelve al buscador (la tablet sigue lista para el siguiente)", async () => {
     const { user } = renderPage();
     await search(user, "Laura");
@@ -167,7 +180,7 @@ describe("CheckInPage · registrar la llegada", () => {
 
   it("sin plan: «Llegó igual» y «Vender»; por vencer sigue siendo «Llegó»", async () => {
     const { user } = renderPage({ "GET /members": membersPage([MEMBER_ROWS.elena, MEMBER_ROWS.andres]) });
-    await search(user, "el");
+    await search(user, "ele");
 
     const elena = row("Elena Vargas");
     expect(within(elena).getByText("Sin plan")).toBeInTheDocument();
@@ -245,6 +258,11 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
       "GET /members": searchReply,
       "GET /class-sessions": sessionsPage([SESSIONS.hoy17, OTRA]),
     });
+    renderTabletWith(switchSession);
+    return mock;
+  }
+
+  function renderTabletWith(switchSession: (path: string) => Promise<string | null>) {
     render(
       <QueryClientProvider client={testQueryClient()}>
         <SessionRoleProvider>
@@ -258,7 +276,6 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
         </SessionRoleProvider>
       </QueryClientProvider>,
     );
-    return mock;
   }
 
   it("lista las sesiones programadas de hoy y al elegir otra pide cambiar de sesión por la ruta de su check-in", async () => {
@@ -278,12 +295,35 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
   });
 
   it("si el servidor no deja cambiar, lo dice y la sesión actual sigue", async () => {
-    renderTablet(() => Promise.resolve("No pudimos cambiar de clase. Intenta de nuevo."));
+    renderTablet(() => Promise.resolve(KIOSK_MESSAGES.notToday));
     const user = userEvent.setup();
 
     await user.selectOptions(await screen.findByRole("combobox", { name: "Clases de hoy" }), OTRA.id);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cambiar de clase");
+    expect(await screen.findByRole("alert")).toHaveTextContent(KIOSK_MESSAGES.notToday);
+  });
+
+  it("si la sesión actual no está entre las de hoy, muestra «Elige otra clase» y deja pasar a cualquiera", async () => {
+    const lejana = { ...SESSIONS.hoy17, id: "e1e1e1e1-0000-4000-8000-0000000000bb", starts_at: "2026-10-20T11:00:00Z" };
+    const switchSession = vi.fn(() => Promise.resolve<string | null>(null));
+    mockApi({ [DETAIL]: { status: 200, body: sessionDetail() }, "GET /members": searchReply, "GET /class-sessions": sessionsPage([lejana]) });
+    renderTabletWith(switchSession);
+    const user = userEvent.setup();
+
+    const select = await screen.findByRole("combobox", { name: "Clases de hoy" });
+    expect(within(select).getByRole("option", { name: "Elige otra clase" })).toBeInTheDocument();
+    expect(select).toHaveValue("");
+    await user.selectOptions(select, lejana.id);
+
+    expect(switchSession).toHaveBeenCalledWith(`/clases/${lejana.id}/checkin`);
+  });
+
+  it("con una sola clase hoy y es la actual no hay selector", async () => {
+    mockApi({ [DETAIL]: { status: 200, body: sessionDetail() }, "GET /members": searchReply, "GET /class-sessions": sessionsPage([SESSIONS.hoy17]) });
+    renderTabletWith(() => Promise.resolve(null));
+    await screen.findByText("Ya llegaron (3)");
+
+    expect(screen.queryByRole("combobox", { name: "Clases de hoy" })).not.toBeInTheDocument();
   });
 
   it("fuera del modo tablet no hay selector", async () => {

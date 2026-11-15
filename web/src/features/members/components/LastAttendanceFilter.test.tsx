@@ -2,7 +2,7 @@
 // - Un <select> dentro de FilterBar: Cualquiera, «Hace más de 7/14/30/60 días» y «Nunca» (`last_attendance=7d|14d|30d|60d|never`).
 // - El valor vive en la URL, cambiarlo vuelve a la primera página y viaja al api; un valor desconocido de la URL no viaja.
 // - La columna «Última asistencia» dice «hoy 07:02», «ayer 18:05», una fecha con año o «Nunca»; «Plan vigente» suma «quedan N».
-// - La exportación no admite este filtro: con él activo no se ofrece «Exportar» y se explica.
+// - La exportación lo acepta (C4c): con el filtro activo «Exportar» lo envía.
 // - En quiosco el api rechaza los filtros; esta pantalla no se usa ahí.
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { listCalls, MEMBERS, memberPage, renderMembers, type MemberRowFixture } from "../../../test/members";
@@ -108,12 +108,23 @@ describe("LastAttendanceFilter · select", () => {
 });
 
 describe("LastAttendanceFilter · exportar", () => {
-  it("con el filtro activo no se ofrece «Exportar» y se explica por qué; la exportación no lo recibe", async () => {
-    renderMembers("/socios?last_attendance=30d");
+  it("con el filtro activo «Exportar» sigue y la exportación recibe last_attendance (el api lo acepta desde C4c)", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apex/1"), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const { mock, user } = renderMembers("/socios?last_attendance=30d&sort=-created_at&limit=50", {
+      handlers: { "GET /members/export": { status: 200, file: { content: "nombre\r\n", contentType: "text/csv", filename: "socios-20261120.csv" } } },
+    });
 
     await screen.findByRole("link", { name: "Laura Gómez" });
-    expect(screen.queryByRole("button", { name: "Exportar" })).toBeNull();
-    expect(screen.getByText("La exportación no admite el filtro de última asistencia. Quítalo para exportar.")).toBeInTheDocument();
+    expect(screen.queryByText(/La exportación no admite/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    await user.click(within(screen.getByRole("dialog", { name: "¿Exportar la lista de socios?" })).getByRole("button", { name: "Descargar CSV" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo("GET /members/export")).toHaveLength(1);
+    });
+    const params = new URL(mock.callsTo("GET /members/export")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(Object.fromEntries(params)).toEqual({ last_attendance: "30d" });
   });
 
   it("sin el filtro «Exportar» sigue estando para el admin", async () => {
@@ -121,7 +132,6 @@ describe("LastAttendanceFilter · exportar", () => {
 
     await screen.findByRole("link", { name: "Laura Gómez" });
     expect(screen.getByRole("button", { name: "Exportar" })).toBeInTheDocument();
-    expect(screen.queryByText(/La exportación no admite/)).toBeNull();
   });
 });
 

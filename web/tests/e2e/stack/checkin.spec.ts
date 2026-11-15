@@ -48,10 +48,11 @@ async function crearSesion(
   token: string,
   dias: number,
   capacity: number,
+  marca = "",
 ): Promise<SesionCreada> {
   const headers = { Authorization: `Bearer ${token}`, ...sameOriginHeaders() };
   const dia = fechaBogota(dias);
-  const name = `E2E ${String(Date.now())}-${String(dias)}`;
+  const name = `E2E ${String(Date.now())}-${String(dias)}${marca}`;
   const response = await page.request.post(`${API}/class-sessions`, {
     headers,
     data: {
@@ -179,6 +180,8 @@ test.describe("check-in en modo tablet contra el stack", () => {
     const hoy = await crearSesion(page, adminToken, 0, 3);
     const ayer = await crearSesion(page, adminToken, -1, 12);
     const otroDia = await crearSesion(page, adminToken, 7, 12);
+    // Otra clase de hoy para el selector «Clases de hoy» (S7-D42).
+    const hoyOtra = await crearSesion(page, adminToken, 0, 12, "-b");
 
     // La tablet usa una cuenta de coach propia.
     const coach: CoachCreado = await crearCoach(page);
@@ -262,6 +265,21 @@ test.describe("check-in en modo tablet contra el stack", () => {
         .click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
       expect(await clasesQuedan(page, adminToken, tiquetera.id)).toBe(10);
+
+      // S7-D42: el selector «Clases de hoy» pasa a otra clase de hoy sin contraseña y deja volver; el servidor mantiene la marca.
+      const selector = page.getByRole("combobox", { name: "Clases de hoy" });
+      await selector.selectOption({ label: `17:00 · ${hoyOtra.name}` });
+      await expect(page).toHaveURL(`/clases/${hoyOtra.id}/checkin`);
+      await expect(page.getByRole("link")).toHaveCount(0);
+      await selector.selectOption({ label: `17:00 · ${hoy.name}` });
+      await expect(page).toHaveURL(CHECKIN);
+      // La clase de dentro de 7 días no es de hoy: POST /auth/kiosk responde 403 kiosk_mode y la marca sigue.
+      const rechazo = await page.request.post(`${API}/auth/kiosk`, {
+        headers: { Authorization: `Bearer ${coachToken}`, ...sameOriginHeaders() },
+        data: { path: `/clases/${otroDia.id}/checkin` },
+      });
+      expect(rechazo.status()).toBe(403);
+      expect(((await rechazo.json()) as { error: { code: string } }).error.code).toBe("kiosk_mode");
 
       // La marca es de esta sesión de clase: las de ayer y de dentro de 7 días se prueban por el api (otra sesión exige salir del modo).
       for (const [sesion, bandera] of [

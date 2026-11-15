@@ -154,3 +154,15 @@ Verde:
 - `sessionsToday.ts`: `nextCheckInSession` (programada, hasta 60 min después de empezar). `InicioPage`: acción «Check-in» hacia esa sesión, oculta si no queda ninguna.
 - `shared/lib/routes.ts` suma `checkInPath` (la feature classes lo reexporta como `checkInHref`). `FutureKpis` queda solo con el WOD.
 DESIGN-GAP: gráfico por día, promedio por clase y socios distintos; la duración no viene en `sessions_today` (ventana fija de 60 min).
+
+## S7-F5b · Correcciones de la revisión de F4c y F5 y búsqueda de 3 letras en quiosco
+
+Rojo medido: 12 failed sobre 353 pruebas de 17 archivos (kiosk 3, shells 1, format 2, exportar 1, CheckInSearch 2, AttendancePage 1, CheckInPage 2). Las aserciones de L4 (invalidar `["attendance"]`) ya pasaban: el código lo hacía, solo faltaba fijarlo.
+Verde:
+- M: `enterKiosk` distingue 403 `kiosk_mode` («Esa clase no es de hoy. Elige otra clase.»), 429 con la espera y la conexión; `enterFailed` ya no dice «Reintentar» (el selector no tiene el botón). Prueba en shells: no navega y la marca sigue; la prueba de CheckInPage usa `KIOSK_MESSAGES.notToday`.
+- L1: `TodaySessionPicker` muestra «Elige otra clase» si la actual no es de hoy y aparece con al menos una sesión distinta. L2: la marca de salida se pone en `onLeave`, justo antes de `proceed()`/`navigate()`.
+- L3: `bogotaDayOf` en `core/i18n/format.ts` (lo usa `memberRow`); `MembersListPage` lee `Date.now()` una vez por tabla (`useState`, no por celda: la regla de pureza prohíbe leerlo en el render).
+- L4: aserciones de `["attendance"]` en check-in y quitar; E2E suma el selector (cambiar de clase y volver) y el 403 `kiosk_mode` con la sesión de +7 días. La lista de socios y el historial se refrescan por staleTime.
+- L5: `rangeErrorOf` suma `out_of_range` (años fuera de 2020 a 2100) con su mensaje. L6: ROUTES.md, BRECHAS fila 43 y `clases.md` (S7-D42 una sola vez, con la regla del servidor).
+- Exportar: sin `delete filters.last_attendance` ni nota; `ExportButton` envía `last_attendance` (types.ts ya lo traía). Prueba: el filtro llega.
+- Quiosco (C4c): `CHECKIN_MIN_CHARS = 3` contando sin espacios; `useMemberSearch` igual; `limit=10` (tope 20) y sin `sort`.

@@ -86,12 +86,11 @@ export function GymShell() {
   const tablet = useMemo<TabletOptions>(
     () => ({
       verifyPassword: async (password) => {
-        setLeaving(true);
-        const failure = await exitKiosk(password);
-        if (failure !== null) setLeaving(false);
-        return failure;
+        // S7-F5b (L2): la marca de salida se pone justo antes de proceder (en onLeave), no mientras viaja la petición.
+        return exitKiosk(password);
       },
       onLeave: (to) => {
+        setLeaving(true);
         if (blocker.state === "blocked") blocker.proceed();
         else void navigate(to);
       },

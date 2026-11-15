@@ -27,7 +27,7 @@ El confinamiento lo impone el servidor (decisión S7-D41), no solo la pantalla:
   rota el refresh, y una contraseña errada NO cuenta para el bloqueo de la cuenta. Tras 5 fallos
   en 15 minutos para ese usuario, el servidor responde 429 (espera el `Retry-After`). La respuesta
   trae un access sin la marca. «Vender» (socio sin plan) también la pide, porque lleva al panel.
-- **Cambiar de clase sin salir** (S7-D42): arriba del check-in aparece el selector «Clases de hoy» con las sesiones programadas de hoy. Elegir otra llama `POST /auth/kiosk` con la ruta nueva, sin contraseña; el servidor solo la acepta si es de hoy o de ayer (si no, 403 `kiosk_mode`).
+- **Cambiar de clase sin salir** (S7-D42): arriba del check-in aparece el selector «Clases de hoy» con las sesiones programadas de hoy. Elegir otra llama `POST /auth/kiosk` con la ruta nueva, sin contraseña (las reglas del servidor están en «Cambiar de clase dentro del quiosco», más abajo). Si la clase abierta no es de hoy, el selector dice «Elige otra clase»; si el servidor la rechaza (403 `kiosk_mode`) la pantalla dice «Esa clase no es de hoy. Elige otra clase.» y la marca sigue.
 - A los **10 minutos sin tocar la pantalla** la sesión se cierra (`POST /auth/logout`, la marca
   muere con ella) y la tablet vuelve al inicio de sesión.
 - Un access emitido antes de entrar al quiosco puede vivir hasta 15 minutos sin la marca; el
@@ -43,8 +43,8 @@ El confinamiento lo impone el servidor (decisión S7-D41), no solo la pantalla:
 - Cambiar de clase dentro del quiosco (S7-D42): con la marca puesta, `POST /auth/kiosk` solo
   acepta el check-in de una clase programada de hoy o de ayer; otra (o una cancelada) da 403
   `kiosk_mode`. En quiosco `GET /attendance?session_id=` solo ve clases de hoy o de ayer y
-  `GET /members` pide `q` de al menos 3 letras, sin orden y con páginas de hasta 20.
-- `GET /members/export` acepta `last_attendance` igual que la lista.
+  `GET /members` pide `q` de al menos 3 letras (sin contar espacios), sin orden y con páginas de hasta 20; el buscador de la tablet pide 3 letras y `limit=10`.
+- `GET /members/export` acepta `last_attendance` igual que la lista; «Exportar» de la lista de socios lo envía (S7-F5b).
 - Aceptado: el tope de la salida vive en la memoria del proceso (varios workers lo multiplican,
   como el del login); la tablet no queda atada a una sola clase; el quiosco ve la foto de
   cualquier socio.

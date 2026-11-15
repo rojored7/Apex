@@ -20,7 +20,11 @@ export const DEFAULT_RANGE_DAYS = 28;
 export const MAX_RANGE_DAYS = 26 * 7;
 
 export type FlaggedFilter = "" | "true" | "false";
-export type RangeError = "inverted" | "too_long" | null;
+export type RangeError = "inverted" | "too_long" | "out_of_range" | null;
+
+/** Los años que acepta el api en un rango (fuera de ellos responde 422). */
+export const MIN_YEAR = 2020;
+export const MAX_YEAR = 2100;
 
 const civilOrEmpty = (value: string | undefined): string => (value !== undefined && addDaysCivil(value, 0) === value ? value : "");
 const flaggedOf = (value: string | undefined): FlaggedFilter => (value === "true" || value === "false" ? value : "");
@@ -36,7 +40,10 @@ export function bogotaDayEndUtc(day: string): string | null {
   return next === null ? null : bogotaInputToUtc(`${next}T00:00`);
 }
 
+const yearOf = (day: string): number => Number(day.slice(0, 4));
+
 export function rangeErrorOf(from: string, to: string): RangeError {
+  if ([from, to].some((day) => yearOf(day) < MIN_YEAR || yearOf(day) > MAX_YEAR)) return "out_of_range";
   if (to < from) return "inverted";
   const days = civilDaysBetween(from, to);
   return days !== null && days + 1 > MAX_RANGE_DAYS ? "too_long" : null;

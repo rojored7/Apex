@@ -56,17 +56,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("CheckInSearch", () => {
-  it("con un solo carácter no pide nada y dice cuántos escribir", async () => {
+describe("CheckInSearch · mínimo del servidor (S7-C4c)", () => {
+  it("los espacios no cuentan: «l a» no pide nada", async () => {
     const { mock, user } = renderSearch();
-    await user.type(box(), "l");
+    await user.type(box(), "l a ");
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     expect(mock.callsTo("GET /members")).toHaveLength(0);
-    expect(screen.getByText("Escribe al menos 2 letras para buscar.")).toBeInTheDocument();
+    expect(screen.getByText("Escribe al menos 3 letras para buscar.")).toBeInTheDocument();
   });
 
-  it("con 2 caracteres espera 300 ms de calma y hace una sola petición con q", async () => {
+  it("pide como máximo 20 resultados y nunca manda sort", async () => {
+    const { mock, user } = renderSearch();
+    await user.type(box(), "lau");
+    await screen.findByRole("list", { name: "Socios encontrados" });
+
+    const params = new URL(mock.callsTo("GET /members")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(Number(params.get("limit"))).toBeLessThanOrEqual(20);
+    expect(params.has("sort")).toBe(false);
+  });
+});
+
+describe("CheckInSearch", () => {
+  it("con menos de 3 letras no pide nada y dice cuántas escribir", async () => {
+    const { mock, user } = renderSearch();
+    await user.type(box(), "la");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(mock.callsTo("GET /members")).toHaveLength(0);
+    expect(screen.getByText("Escribe al menos 3 letras para buscar.")).toBeInTheDocument();
+  });
+
+  it("con 3 letras espera 300 ms de calma y hace una sola petición con q", async () => {
     const { mock, user } = renderSearch();
     await user.type(box(), "lau");
 
@@ -78,13 +99,13 @@ describe("CheckInSearch", () => {
 
   it("sin resultados guía al coach; cada fila trae nombre, nota y estado", async () => {
     const { user } = renderSearch({ "GET /members": membersPage([]) });
-    await user.type(box(), "zz");
+    await user.type(box(), "zzz");
     expect(await screen.findByText("No encontramos a nadie con ese nombre. Revisa cómo está escrito.")).toBeInTheDocument();
   });
 
   it("«Llegó» y «Vender» avisan al padre con el socio elegido", async () => {
     const { user, onArrive, onSell } = renderSearch();
-    await user.type(box(), "el");
+    await user.type(box(), "ele");
     const list = await screen.findByRole("list", { name: "Socios encontrados" });
 
     await user.click(within(list).getAllByRole("button", { name: "Llegó" })[0] as HTMLElement);
@@ -95,7 +116,7 @@ describe("CheckInSearch", () => {
 
   it("mientras se registra una llegada los botones quedan deshabilitados", async () => {
     const { user } = renderSearch({}, true);
-    await user.type(box(), "la");
+    await user.type(box(), "lau");
     const list = await screen.findByRole("list", { name: "Socios encontrados" });
 
     for (const button of within(list).getAllByRole("button")) expect(button).toBeDisabled();
@@ -103,12 +124,12 @@ describe("CheckInSearch", () => {
 
   it("429: «Espera un momento»; otro error: dice que no se pudo buscar", async () => {
     const { user } = renderSearch({ "GET /members": apiError(429, "rate_limited") });
-    await user.type(box(), "la");
+    await user.type(box(), "lau");
     expect(await screen.findByText("Espera un momento y vuelve a buscar.")).toBeInTheDocument();
     cleanup();
 
     const second = renderSearch({ "GET /members": apiError(500, "internal_error") });
-    await second.user.type(box(), "la");
+    await second.user.type(box(), "lau");
     expect(await screen.findByText("No pudimos buscar. Intenta de nuevo en un momento.")).toBeInTheDocument();
   });
 });

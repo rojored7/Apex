@@ -157,6 +157,13 @@ export function formatTime24(isoUtc: string): string {
   return `${String(instant.hour).padStart(2, "0")}:${String(instant.minute).padStart(2, "0")}`;
 }
 
+/** El día civil de Bogotá ("AAAA-MM-DD") de un instante en milisegundos o en texto ISO UTC; null si no es un instante válido. */
+export function bogotaDayOf(instant: number | string): string | null {
+  const ms = typeof instant === "number" ? instant : Date.parse(instant);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms - BOGOTA_OFFSET_HOURS * 3_600_000).toISOString().slice(0, 10);
+}
+
 /** "octubre 2026" a partir de "AAAA-MM", "AAAA-MM-DD" o un instante UTC (en Bogotá). */
 export function formatMonth(value: string): string {
   const monthMatch = CIVIL_MONTH.exec(value);

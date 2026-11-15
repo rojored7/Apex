@@ -240,6 +240,7 @@ export const MEMBER_ATTENDANCE_MESSAGES = {
 } as const;
 
 export const RANGE_INVERTED_MESSAGE = "La fecha inicial no puede ser posterior a la final. Corrige el rango.";
+export const RANGE_OUT_OF_RANGE_MESSAGE = "Las fechas deben estar entre 2020 y 2100. Corrige el rango.";
 export const RANGE_TOO_LONG_MESSAGE = "El rango no puede pasar de 26 semanas. Acórtalo y vuelve a intentar.";
 
 interface ReadMessages {

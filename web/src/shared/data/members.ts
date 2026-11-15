@@ -62,11 +62,12 @@ export interface MemberSearchResult {
   error: unknown;
 }
 
-/** La búsqueda del buscador de socio: espera `delayMs` sin cambios y pide; con menos de `minChars` letras, `idle`. */
+/** La búsqueda del buscador de socio: espera `delayMs` sin cambios y pide; con menos de `minChars` letras (sin contar espacios; el quiosco del servidor exige 3, S7-C4c), `idle`. Pide `limit=10`, nunca más de 20. */
 export function useMemberSearch(text: string, delayMs: number = MEMBER_SEARCH_DELAY_MS, minChars = 1): MemberSearchResult {
   const query = useDebouncedValue(text, delayMs);
-  const search = useMembersSearch(query.trim().length < minChars ? "" : query);
-  if (query.trim().length < minChars) return { status: "idle", options: [], error: null };
+  const tooShort = query.replace(/\s/g, "").length < minChars;
+  const search = useMembersSearch(tooShort ? "" : query);
+  if (tooShort) return { status: "idle", options: [], error: null };
   if (search.isError) return { status: "error", options: [], error: search.error };
   if (!search.isSuccess) return { status: "pending", options: [], error: null };
   return { status: "done", options: search.data.items.filter((option) => option.deleted_at === null), error: null };

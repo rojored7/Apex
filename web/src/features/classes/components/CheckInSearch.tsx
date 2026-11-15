@@ -15,7 +15,7 @@ import { StatusTag } from "../../../shared/ui/StatusTag";
 import { memberSearchFailedText } from "../classErrors";
 import styles from "./CheckInSearch.module.css";
 
-export const CHECKIN_MIN_CHARS = 2;
+export const CHECKIN_MIN_CHARS = 3;
 export const CHECKIN_SEARCH_DELAY_MS = 300;
 
 export interface CheckInSearchProps {
@@ -97,9 +97,12 @@ function Row({ member, arrived, pending, onArrive, onSell }: RowProps) {
   );
 }
 
+/** Los caracteres que cuenta el servidor en modo quiosco: sin espacios (S7-C4c). */
+const lettersOf = (text: string): number => text.replace(/\s/g, "").length;
+
 export function CheckInSearch({ text, onTextChange, arrived, pending, onArrive, onSell, inputRef }: CheckInSearchProps) {
   const search = useMemberSearch(text, CHECKIN_SEARCH_DELAY_MS, CHECKIN_MIN_CHARS);
-  const length = text.trim().length;
+  const length = lettersOf(text);
   let status: MemberSearchStatus = search.status;
   if (length === 0) status = "idle";
   else if (length < CHECKIN_MIN_CHARS) status = "short";

@@ -63,6 +63,8 @@ describe("AttendeeList", () => {
     expect(mock.callsTo(KEY)[0]?.rawBody).toBeUndefined();
     await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["class-session"] });
+    // L4: la lista de Asistencia, el resumen y la pestaña del socio se releen (clave ["attendance"]).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["attendance"] });
   });
 
   it("con motivo lo manda en el cuerpo, no en la URL", async () => {

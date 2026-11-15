@@ -37,6 +37,31 @@ describe("enterKiosk", () => {
   });
 });
 
+describe("enterKiosk · errores", () => {
+  it.each([
+    [403, "kiosk_mode", KIOSK_MESSAGES.notToday],
+    [429, "rate_limited", KIOSK_MESSAGES.tooMany("un momento")],
+    [500, "internal_error", KIOSK_MESSAGES.enterFailed],
+  ])("%i %s dice qué hacer y la sesión no cambia", async (status, code, message) => {
+    signInAs("coach");
+    mockApi({ "POST /auth/kiosk": { status, body: apiErrorBody(code) } });
+
+    await expect(enterKiosk(PATH)).resolves.toBe(message);
+
+    expect(getSession().user?.kioskPath).toBeNull();
+  });
+
+  it("sin conexión dice que revise la conexión", async () => {
+    signInAs("coach");
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("net"))));
+
+    const message = await enterKiosk(PATH);
+
+    expect(message).not.toBeNull();
+    expect(message).not.toBe(KIOSK_MESSAGES.enterFailed);
+  });
+});
+
 describe("exitKiosk", () => {
   it("contraseña correcta: POST /auth/kiosk/exit (nunca /auth/login), access nuevo y sin marca", async () => {
     signInAs("coach", { kioskPath: PATH });

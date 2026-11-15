@@ -23,6 +23,7 @@ vi.mock("../features/payments/components/RegisterPaymentPanelHost", () => {
 });
 import { GymShell, PortalShell, TvShell } from "./ZoneShells";
 import { getSession } from "../core/auth";
+import { KIOSK_MESSAGES } from "../core/auth/kiosk";
 import { useGym } from "../shared/hooks/gymContext";
 
 afterEach(() => {
@@ -188,6 +189,43 @@ describe("PortalShell, GymShell y TvShell", () => {
     expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: otra });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(getSession().user?.kioskPath).toBe(otra);
+  });
+
+  it("S7-D42: si el servidor rechaza la clase (403 kiosk_mode) no navega, la marca sigue y dice qué hacer", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const otra = "/clases/2/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": { status: 403, body: { error: { code: "kiosk_mode", message: "x" } } } });
+    let result: string | null = null;
+    function Probe() {
+      const { switchSession } = useGym();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            void switchSession(otra).then((message) => {
+              result = message;
+            });
+          }}
+        >
+          Cambiar
+        </button>
+      );
+    }
+    const router = createMemoryRouter([{ element: <GymShell />, children: [{ path: "*", element: <Probe />, handle: { title: "Check-in" } }] }], { initialEntries: [CHECKIN] });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cambiar" }));
+
+    await waitFor(() => {
+      expect(result).toBe(KIOSK_MESSAGES.notToday);
+    });
+    expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(1);
+    expect(router.state.location.pathname).toBe(CHECKIN);
+    expect(getSession().user?.kioskPath).toBe(CHECKIN);
   });
 
   it("el modo tablet se deriva de la sesión: con kioskPath sigue en otra pantalla y no vuelve a llamar al api", () => {

@@ -16,6 +16,7 @@ import {
   todayBogota,
   addDaysCivil,
   civilDaysBetween,
+  bogotaDayOf,
   bogotaInputToUtc,
   nowBogotaInput,
   formatLongDate,
@@ -299,5 +300,17 @@ describe("formatRelativeTime (S4A-F3)", () => {
 
   it.each(["", "ayer", "2026-10-20", "2026-13-20T19:00:00Z"])("%j no es un instante: raya", (iso) => {
     expect(formatRelativeTime(iso, now)).toBe("—");
+  });
+});
+
+describe("bogotaDayOf (L3)", () => {
+  it("el día civil de Bogotá de un instante en ms o en texto ISO", () => {
+    expect(bogotaDayOf(Date.parse("2026-10-21T04:59:00Z"))).toBe("2026-10-20");
+    expect(bogotaDayOf("2026-10-21T05:00:00Z")).toBe("2026-10-21");
+    expect(bogotaDayOf("2027-01-01T04:59:59Z")).toBe("2026-12-31");
+  });
+
+  it("un texto que no es un instante da null", () => {
+    expect(bogotaDayOf("hoy")).toBeNull();
   });
 });

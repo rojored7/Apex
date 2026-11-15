@@ -1,7 +1,7 @@
 // S5-F4 · US-138 (front): "Exportar" de /socios (Socios_Lista.html), solo admin (`members.export`).
 // - Abre un ConfirmModal con el texto fijo de la exportación ("La descarga contiene datos personales y
 //   queda registrada en la auditoría") y, al confirmar, pide GET /members/export con los filtros
-//   vigentes de la URL (búsqueda, estado, estado de la membresía y plan; sin paginar ni ordenar).
+//   vigentes de la URL (búsqueda, estado, estado de la membresía, plan, autorización y última asistencia; sin paginar ni ordenar).
 // - La descarga va por api.blob: el CSV (con documento, teléfono y correo descifrados) no se guarda
 //   en ninguna caché ni almacenamiento del navegador (L-8).
 // - Errores dentro del modal, con el mensaje del api: 403, 409 `export_in_progress`, 422
@@ -24,6 +24,8 @@ export interface MembersExportFilters {
   plan_id?: string;
   /** S6-F5: `missing` exporta solo los socios sin autorización de datos (GET /members/export?consent=missing). */
   consent?: ConsentFilter;
+  /** S7-F5b: la exportación acepta el filtro de última asistencia (C4c): `7d`, `14d`, `30d`, `60d` o `never`. */
+  last_attendance?: string;
 }
 
 export interface ExportButtonProps {

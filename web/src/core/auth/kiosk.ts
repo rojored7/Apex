@@ -5,7 +5,7 @@ import { z } from "zod";
 import { api } from "../api/client";
 import { API_ERROR_CODES } from "../api/errorCodes";
 import { isApiError } from "../api/errors";
-import { HTTP_TOO_MANY, HTTP_UNAUTHORIZED } from "../api/status";
+import { HTTP_FORBIDDEN, HTTP_TOO_MANY, HTTP_UNAUTHORIZED } from "../api/status";
 import { connectionMessage, waitText } from "../../shared/lib/apiMessages";
 import { applyKioskAccess, getSession, logout, refreshAccessToken, type LogoutResult } from "./session";
 
@@ -13,7 +13,8 @@ export const KIOSK_MESSAGES = {
   wrong: "Contraseña incorrecta. Escríbela de nuevo.",
   tooMany: (wait: string): string => `Hiciste muchos intentos. Espera ${wait} e intenta de nuevo.`,
   generic: "No pudimos verificar la contraseña. Intenta de nuevo en un momento.",
-  enterFailed: "No pudimos activar el modo tablet. Revisa la conexión y toca Reintentar.",
+  enterFailed: "No pudimos activar el modo tablet. Intenta de nuevo en un momento.",
+  notToday: "Esa clase no es de hoy. Elige otra clase.",
 } as const;
 
 /** KioskSessionOut del contrato. */
@@ -29,8 +30,12 @@ export async function enterKiosk(path: string): Promise<string | null> {
     const out = kioskOutSchema.parse(await api.post<unknown>("/auth/kiosk", { body: { path } }));
     applyKioskAccess(out.access_token, out.expires_in, out.kiosk_path);
     return null;
-  } catch {
-    return KIOSK_MESSAGES.enterFailed;
+  } catch (error) {
+    // S7-F5b (M): cada fallo dice qué hacer; el selector no tiene «Reintentar», así que ningún texto lo pide.
+    if (!isApiError(error)) return KIOSK_MESSAGES.enterFailed;
+    if (error.status === HTTP_FORBIDDEN && error.code === API_ERROR_CODES.kioskMode) return KIOSK_MESSAGES.notToday;
+    if (error.status === HTTP_TOO_MANY) return KIOSK_MESSAGES.tooMany(waitText(error.retryAfterS));
+    return connectionMessage(error) ?? KIOSK_MESSAGES.enterFailed;
   }
 }
 

@@ -24,8 +24,8 @@
 // DESIGN-GAP: Socios_Lista.html no dibuja el chip "Sin autorización"; va como un grupo de Chips propio
 //   ("Autorización") entre los chips de estado y la FilterBar, solo mientras el filtro está activo.
 // S7-F5 (US-163, S7-D15): filtro "Última asistencia" (`last_attendance`, en la URL) y la columna del mismo nombre ("hoy 07:02",
-//   "ayer 18:05", fecha con año o "Nunca"); "Plan vigente" dice "12 clases · quedan 2" en una tiquetera. La exportación no admite
-//   ese filtro: con él activo no se ofrece "Exportar" y se explica. DESIGN-GAP: el diseño ofrece "Esta semana" y "Hace más de 10
+//   "ayer 18:05", fecha con año o "Nunca"); "Plan vigente" dice "12 clases · quedan 2" en una tiquetera. La exportación lo envía (S7-F5b).
+//   DESIGN-GAP: el diseño ofrece "Esta semana" y "Hace más de 10
 //   días"; el api filtra por 7, 14, 30 y 60 días o nunca. Sin la columna "Acción" ni el teléfono (N-01).
 // - S5-F4: "Exportar" (solo admin) con los filtros vigentes. El encabezado no
 //   dice "· 269 con membresía": el número está en los chips.
@@ -66,12 +66,13 @@ type MemberFilter = (typeof FILTERS)[number];
 export const MEMBERS_EMPTY_SEARCH = "No hay socios que coincidan con la búsqueda";
 export const MEMBERS_EMPTY = "Todavía no hay socios registrados.";
 export const MEMBERS_PAST_END = "Esta página ya no tiene socios.";
-export const EXPORT_NO_LAST_ATTENDANCE = "La exportación no admite el filtro de última asistencia. Quítalo para exportar.";
 export const CONSENT_MISSING_NOTICE = "Falta la autorización de tratamiento de datos. Pídesela al socio.";
 
 const SORT_OPTIONS = MEMBER_SORTS.map((value) => ({ value, label: MEMBER_SORT_LABELS[value] }));
 
-const COLUMNS: Column<MemberRowView>[] = [
+/** `nowMs` se lee una vez por tabla (L3), no por celda: toda la columna «Última asistencia» usa el mismo instante. */
+function buildColumns(nowMs: number): Column<MemberRowView>[] {
+  return [
   {
     key: "name",
     header: "Socio",
@@ -93,8 +94,9 @@ const COLUMNS: Column<MemberRowView>[] = [
     },
   },
   { key: "status", header: "Estado", render: (row) => <StatusTag account={accountStatusOf(row)} /> },
-  { key: "last_attendance", header: "Última asistencia", render: (row) => <span className={styles.nowrap}>{lastAttendanceText(row.last_attendance_at, Date.now())}</span> },
-];
+  { key: "last_attendance", header: "Última asistencia", render: (row) => <span className={styles.nowrap}>{lastAttendanceText(row.last_attendance_at, nowMs)}</span> },
+  ];
+}
 
 /** El aviso del alta; la región existe siempre para que se anuncie. */
 function CreatedNotice({ notice, onDismiss }: { notice: MemberCreatedNotice | null; onDismiss: () => void }) {
@@ -174,6 +176,8 @@ interface MembersTableProps extends EmptyProps {
 /** Escritorio: tabla paginada en el servidor (offset en la URL). */
 function MembersTable({ params, offset, onPageChange, onLimitChange, ...empty }: MembersTableProps) {
   const query = useMemo(() => ({ ...params, offset }), [params, offset]);
+  const [nowMs] = useState(() => Date.now());
+  const columns = useMemo(() => buildColumns(nowMs), [nowMs]);
   const members = useMembers(query);
   const page = members.data;
   // Un offset viejo (marcador, o el total bajó): hay socios, pero esta página quedó vacía.
@@ -183,7 +187,7 @@ function MembersTable({ params, offset, onPageChange, onLimitChange, ...empty }:
     <>
       <DataTable
         caption="Socios"
-        columns={COLUMNS}
+        columns={columns}
         rows={page?.items}
         total={page?.total}
         limit={params.limit}
@@ -254,7 +258,6 @@ export default function MembersListPage() {
     const filters: Partial<MembersInfiniteParams> = { ...params };
     delete filters.limit;
     delete filters.sort;
-    delete filters.last_attendance;
     return filters;
   }, [params]);
   const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "" || consent !== undefined || lastAttendance !== "", canCreate, onClear: list.clear };
@@ -267,7 +270,7 @@ export default function MembersListPage() {
       <PageHeader title="Socios" {...(total === undefined ? {} : { total: `${formatCount(total)} en total` })} actions={actions} />
       <CreatedNotice notice={notice} onDismiss={dismissNotice} />
       <div className={styles.tools}>
-        {lastAttendance ? <p className={styles.note}>{EXPORT_NO_LAST_ATTENDANCE}</p> : <ExportButton filters={exportFilters} />}
+        <ExportButton filters={exportFilters} />
       </div>
       <MemberStatusChips
         value={chip}

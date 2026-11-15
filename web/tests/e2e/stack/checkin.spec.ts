@@ -12,6 +12,7 @@ import {
   crearCoach,
   crearPlan,
   crearSocio,
+  datosDeBase,
   darDeBajaSocio,
   esperarTransiciones,
   fechaBogota,
@@ -148,6 +149,8 @@ test.describe("check-in en modo tablet contra el stack", () => {
       diaBogota(ahoraMas(150)) !== fechaBogota(0),
       "después de las 21:00 de Bogotá las clases de hoy no caben en el día",
     );
+    // Test largo (siete banderas, cupo, tiquetera, salida y limpieza): 30 s no alcanzan con el stack real.
+    test.setTimeout(120_000);
     await page.setViewportSize({ width: 1024, height: 768 });
     const adminToken = await loginComo(page);
     const llamadas: string[] = [];
@@ -168,7 +171,9 @@ test.describe("check-in en modo tablet contra el stack", () => {
       amount_cop: plan.precio,
       method: "cash",
     });
-    await venderMembresiaDesde(page, vencido.id, plan.id, fechaBogota(-60), {
+    // El tope de inicio retroactivo es de 7 días (settings por defecto): un plan de 3 días iniciado hace 7 vence hace 4.
+    const planCorto = await crearPlan(page, plan.precio, datosDeBase(), 3);
+    await venderMembresiaDesde(page, vencido.id, planCorto.id, fechaBogota(-7), {
       amount_cop: plan.precio,
       method: "cash",
     });
@@ -219,7 +224,8 @@ test.describe("check-in en modo tablet contra el stack", () => {
 
       // Se entra por la pantalla (con clic) para que «atrás» pase por el router: Clases de hoy → sesión → Abrir check-in.
       await page.goto("/clases?dia=hoy");
-      await page.getByText(hoy.name).first().click();
+      // La rejilla rotula «HH:MM Open box · 0/3» (coach y cupo), no el nombre de la sesión: se toca por su hora.
+      await page.getByRole("button", { name: new RegExp(`^${hoy.hora} Open box · 0/3`) }).click();
       const kioskRespuesta = page.waitForResponse(
         (r) =>
           r.request().method() === "POST" &&

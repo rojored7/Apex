@@ -208,10 +208,10 @@ export function nombrePlanE2E(ahora: number = Date.now()): string {
 }
 
 /** S3-F3: crea un plan activo por días con nombre único (POST /plans, solo admin). */
-export async function crearPlan(page: Page, precio = 120_000, admin: Credentials = datosDeBase()): Promise<PlanCreado> {
+export async function crearPlan(page: Page, precio = 120_000, admin: Credentials = datosDeBase(), duracionDias = 30): Promise<PlanCreado> {
   const headers = await accessDe(page, admin);
   const nombre = nombrePlanE2E();
-  const created = await page.request.post(`${API}/plans`, { headers, data: { name: nombre, price_cop: precio, kind: "days", duration_days: 30 } });
+  const created = await page.request.post(`${API}/plans`, { headers, data: { name: nombre, price_cop: precio, kind: "days", duration_days: duracionDias } });
   if (!created.ok()) throw new Error(`POST /plans respondió ${String(created.status())}.`);
   const body = (await created.json()) as { id: string };
   return { id: body.id, nombre, precio };

@@ -35,8 +35,10 @@ const COACH_DASHBOARD = {
   members_pending_payment: 3,
   income_month: "2026-10",
   income_month_cop: null,
-  attendance_week: null,
-  sessions_today: null,
+  attendance_week: { count: 18, flagged_count: 2 },
+  sessions_today: [
+    { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", starts_at: "2026-10-20T22:00:00Z", coach_name: "Carlos", capacity: 12, attendance_count: 8, duration_min: 60, status: "scheduled" },
+  ],
   notifications_today: 9,
   members_without_consent: 2,
   wod_today: null,
@@ -92,7 +94,8 @@ test.describe("Inicio (preview)", () => {
     const income = page.getByRole("group", { name: "Ingresos de octubre 2026" });
     await expect(income.getByText("Solo administración")).toBeVisible();
     await expect(page.getByText("$ 0")).toHaveCount(0);
-    await expect(page.getByRole("group", { name: "Hoy en el box" }).getByText("Disponible en v0.4")).toBeVisible();
+    // S7-R3: «Hoy en el box» ya trae sus sesiones de hoy; cada programada lleva a su check-in.
+    await expect(page.getByRole("list", { name: "Clases de hoy" }).getByRole("link", { name: "Check-in de las 17:00" })).toHaveAttribute("href", "/clases/cccccccc-cccc-4ccc-8ccc-cccccccccccc/checkin");
     // S5-F3 (US-132): los avisos ya tienen dato: enlace a /avisos/hoy. S6-F5 (US-151): "Sin autorización" lleva al filtro.
     await expect(page.getByRole("link", { name: "Por avisar hoy: 9" })).toHaveAttribute("href", "/avisos/hoy");
     const withoutConsent = page.getByRole("link", { name: "Sin autorización: 2" });

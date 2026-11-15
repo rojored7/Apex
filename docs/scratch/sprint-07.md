@@ -474,3 +474,13 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Igual con `--provider openbao`: EXIT 0, 252 ok, «todo en verde» (08:05 a 08:10 UTC), con `openbao-smoke.sh` y `openbao_restore_e2e` en verde.
 - Cubre: el api no ve `sign/` ni `sign-ed25519.key`; el worker ve `custody` y `sign` (sin `jwt/`); `--run-once sign_audit` firma con la llave de `sign/`; roles `apex_api` y `apex_worker` sin privilegios de superusuario y con sus permisos por tabla; migración de layout y `--reverse`; respaldo y restauración. Las escrituras por rol real de `original_end_date`, `removed_*` y el INSERT de sesiones del worker las prueban `tests/migrations/test_api_role_paths.py` y `test_worker_role_paths.py` (gate V1 en verde).
 - Limpieza: `apex-smoke` bajado por el propio guion (`SMOKE_DOWN=1`), auxiliar borrado, ningún contenedor `*smoke*` vivo.
+
+## V5 · E2E (2026-11-15)
+
+- Entorno: stack `apex` de desarrollo, `E2E_BASE_URL=http://localhost:8180` (el api exige Origin = FRONT_BASE_URL; con 127.0.0.1 el login da 403). Perfil E2E: sed de `ci.yml` con las 24 cubetas (las que el `.env` de desarrollo no traía se añaden), overlay `compose.e2e.yml`, `--force-recreate api web`.
+- Corrida 1 y 2 del proyecto `stack` (workers=1): 51 passed, 1 failed, 3 skipped, 0 flaky; 3,3-3,4 min cada una. Skipped: avisos (WhatsApp, sin datos), home (psql del ensayo) y home (member).
+- Fallo constante: `checkin.spec.ts` «siete banderas...». DEFECTO DE PRODUCTO: `web/src/config/routeTable.ts:162` declara `/clases/:id/checkin` sin `load`, la ruta no se monta y la pantalla da «No encontrada» (no hay POST /auth/kiosk). `CheckInPage` nunca se enlazó en la tabla (git -S). No se tocó `src/`; la spec queda como guarda de regresión.
+- Specs corregidas (defectos de preparación): checkin.spec.ts (vencido con plan de 3 días y inicio -7 por el tope retroactivo de 7; botón de la rejilla por hora; setTimeout 120 s), helpers/stack.ts (`crearPlan` con duración), home.spec.ts (fixture S7-R3), role-guards.spec.ts (ruta futura = /wods).
+- Preview (`npm run e2e`): 219 passed, 0 failed; 199 PNG en `web/test-results/`. No existe captura de check-in en preview (solo hay spec de stack, bloqueada por el defecto).
+- Incidente propio: el `trap` restauraba `.env` desde `web/` (cwd) y escribió `web/.env`; la raíz quedó con el perfil E2E. Se reconstruyó: se quitaron las 21 líneas añadidas y las 11 `USER_*` previas volvieron a los valores de `.env.example` (confirmados con el entorno del worker, creado antes de V5). `web/.env` borrado; api y web recreados sin overlay (USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN=30, sin LOGIN_*).
+- Residuo: sesiones extra `E2E ...` de corridas fallidas, canceladas por api (las pasadas no se pueden cancelar).

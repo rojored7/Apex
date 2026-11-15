@@ -519,3 +519,12 @@ export type CryptoOpsPageView = z.infer<typeof cryptoOpsPageSchema>;
 export type CryptoJobView = z.infer<typeof cryptoJobSchema>;
 export type CryptoJobsPageView = z.infer<typeof cryptoJobsPageSchema>;
 export type RotationStartedView = z.infer<typeof rotationStartedSchema>;
+
+// S8-F5 · US-175: pestaña «Pantalla de TV». Refresco de 15 a 300 s (S8-D33) y si muestra el ranking; el token no se edita aquí.
+export const TV_REFRESH_MIN = 15;
+export const TV_REFRESH_MAX = 300;
+export const tvSettingsSchema = z.object({
+  refresh_seconds: integerText(TV_REFRESH_MIN, TV_REFRESH_MAX),
+  show_leaderboard: z.boolean(),
+});
+export type TvSettingsForm = z.infer<typeof tvSettingsSchema>;

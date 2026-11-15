@@ -125,3 +125,47 @@ export function attendanceResults(rows: AttendeeResultFixture[] = ATTENDEE_ROWS,
     },
   };
 }
+
+// S8-F5: una fila de GET /members/{id}/results (MemberResultRow del contrato, S8-B4).
+export interface MemberResultRowFixture {
+  id: string;
+  wod_id: string;
+  wod_title: string;
+  wod_date: string;
+  benchmark_id: string | null;
+  is_benchmark: boolean;
+  score_type: string;
+  level: "rx" | "rx_plus" | "scaled";
+  seconds: number | null;
+  rounds: number | null;
+  reps: number | null;
+  load_g: number | null;
+  capped: boolean;
+  status: "validated" | "pending" | "voided";
+  source: "desk" | "kiosk";
+  session_id: string | null;
+  created_at: string;
+}
+
+export function memberResultRow(n: number, overrides: Partial<MemberResultRowFixture> = {}): MemberResultRowFixture {
+  return {
+    id: mid(900 + n),
+    wod_id: WOD_ID,
+    wod_title: "Helen",
+    wod_date: "2026-10-20",
+    benchmark_id: null,
+    is_benchmark: false,
+    score_type: "time",
+    level: "rx",
+    seconds: 702,
+    rounds: null,
+    reps: null,
+    load_g: null,
+    capped: false,
+    status: "validated",
+    source: "kiosk",
+    session_id: SESSION_ID,
+    created_at: "2026-10-20T22:00:00Z",
+    ...overrides,
+  };
+}

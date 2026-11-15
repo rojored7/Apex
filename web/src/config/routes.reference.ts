@@ -44,6 +44,8 @@ export const REFERENCE_ROUTES: readonly ReferenceRoute[] = [
   { path: "/socios/:id/adjuntos", feature: "members", access: "members.view", layout: "panel", parent: "/socios/:id" },
   // S7-F5 (US-162): la pestaña Asistencia, hija de la feature classes (admin y coach).
   { path: "/socios/:id/asistencia", feature: "classes", access: "classes.view", layout: "panel", parent: "/socios/:id" },
+  // S8-F5 (US-173): la pestaña Resultados, hija de la feature results (admin y coach).
+  { path: "/socios/:id/resultados", feature: "results", access: "results.record", layout: "panel", parent: "/socios/:id" },
   r("/socios/:id/editar", "members", "members.update", "panel"),
   // Planes (solo admin)
   r("/planes", "plans", "plans.view", "panel"),

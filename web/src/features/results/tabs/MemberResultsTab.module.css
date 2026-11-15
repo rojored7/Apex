@@ -1,0 +1,45 @@
+/* S8-F5: pestaña Resultados de la ficha (US-173). Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  font: var(--text-body);
+}
+
+.link {
+  color: var(--blue-deep);
+  font: var(--text-body);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.mark {
+  font: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* El texto dice el estado; el borde lo refuerza. */
+.pending {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: var(--text-label);
+  white-space: nowrap;
+}

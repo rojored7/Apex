@@ -76,3 +76,12 @@ export function formatScore(scoreType: ScoreKind, values: ScoreValues): string {
       return PLACEHOLDER;
   }
 }
+
+/** El tipo de marca de un WOD en palabras de la pantalla. */
+export const SCORE_TYPE_LABELS: Readonly<Record<ScoreKind, string>> = {
+  time: "Por tiempo",
+  rounds_reps: "Rondas + repeticiones",
+  reps: "Repeticiones",
+  load: "Carga",
+  none: "Sin marca",
+};

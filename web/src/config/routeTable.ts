@@ -144,6 +144,12 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "classes.view",
     load: () => import("../features/classes/tabs/MemberAttendanceTab"),
   }),
+  // S8-F5 (US-173, S3-D65): Resultados es hija de la ficha y de la feature results (admin y coach).
+  childRoute(MEMBER_DETAIL, "/socios/:id/resultados", "Resultados del socio", {
+    feature: "results",
+    access: "results.record",
+    load: () => import("../features/results/tabs/MemberResultsTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).

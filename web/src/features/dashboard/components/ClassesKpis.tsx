@@ -5,7 +5,7 @@
 // - «Asistencia de la semana»: el conteo y, si hay, cuántas llevan alguna bandera; lleva a /clases/asistencia.
 // DESIGN-GAP: gráfico de barras por día, «Promedio por clase» y «Socios distintos esta semana» de «Asistencia de la semana»: GET /dashboard
 // solo manda `count` y `flagged_count`, así que es una tarjeta con el conteo (el detalle está en /clases/asistencia).
-// DESIGN-GAP: Inicio.html dibuja el WOD de hoy dentro de «Hoy en el box»; llega en v0.5 y vive en FutureKpis.
+// DESIGN-GAP: Inicio.html dibuja el WOD de hoy dentro de «Hoy en el box»; vive en WodTodayCard (S8-F5).
 // S8-D25: el api manda las canceladas al final; «Hoy en el box» lista las vivas y pliega las canceladas en «N canceladas».
 // DESIGN-GAP: «Hoy en el box» no muestra saldo ni banderas por sesión (el tablero no las trae).
 import { formatCount, formatTime24 } from "../../../core/i18n/format";

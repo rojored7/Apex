@@ -1,0 +1,40 @@
+/* S8-F5: la tarjeta del token de la TV (Config.html, «7 · Pantalla TV»). Solo variables de tokens.css. */
+.token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.heading {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.state {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.issued {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.open {
+  align-self: flex-start;
+}

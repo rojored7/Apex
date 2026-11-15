@@ -52,7 +52,8 @@ import {
 // S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
 // S5-F2 (US-122, S5-D30): `channels` suma los canales de aviso y trae `credentials_present` (S5-D204).
 // S7-F1 (US-154, S7-D8): `hours` y `classes`.
-export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels" | "hours" | "classes";
+// S8-F5 (US-175, S8-D30): `tv` (la vista sin el hash; el token se genera y se revoca por rutas propias).
+export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels" | "hours" | "classes" | "tv";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
@@ -120,6 +121,15 @@ const hoursValueSchema = z.object({
 
 const classesValueSchema = z.object({ default_capacity: integer, checkin_window_min: integer });
 
+// S8-F5 (US-175): `has_token` dice si hay token; `token_last4` y `rotated_at` son null sin token. Nunca el token ni el hash.
+const tvValueSchema = z.object({
+  has_token: z.boolean(),
+  refresh_seconds: integer,
+  rotated_at: z.string().nullable(),
+  show_leaderboard: z.boolean(),
+  token_last4: z.string().nullable(),
+});
+
 const credentialsPresentSchema = z.object({ email: z.boolean(), telegram: z.boolean() });
 
 function sectionSchema<K extends SettingsKey, V extends z.ZodType>(key: K, value: V) {
@@ -140,6 +150,7 @@ const SECTION_SCHEMAS = {
   channels: sectionSchema("channels", channelsValueSchema).extend({ credentials_present: credentialsPresentSchema }),
   hours: sectionSchema("hours", hoursValueSchema),
   classes: sectionSchema("classes", classesValueSchema),
+  tv: sectionSchema("tv", tvValueSchema),
 } as const;
 
 export type GymSettings = z.infer<typeof gymValueSchema>;
@@ -150,6 +161,12 @@ export type PaymentMethodsSettings = z.infer<typeof paymentMethodsValueSchema>;
 export type ChannelsSettings = z.infer<typeof channelsValueSchema>;
 export type HoursSettings = z.infer<typeof hoursValueSchema>;
 export type ClassesSettings = z.infer<typeof classesValueSchema>;
+export type TvView = z.infer<typeof tvValueSchema>;
+/** Lo único que el admin edita de la TV (S8-D30): el refresco y si muestra el ranking. */
+export interface TvInput {
+  refresh_seconds: number;
+  show_leaderboard: boolean;
+}
 export type CredentialsPresent = z.infer<typeof credentialsPresentSchema>;
 
 /** Lo que se escribe en `privacy`: publicar exige versión y texto. */
@@ -168,6 +185,7 @@ interface SectionInputs {
   channels: ChannelsSettings;
   hours: HoursSettings;
   classes: ClassesSettings;
+  tv: TvInput;
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;
@@ -240,6 +258,54 @@ export function useSettingsSection<K extends SettingsKey>(key: K): SettingsSecti
   };
 
   return { query, save, isSaving: mutation.isPending, isConflict: isVersionConflict(mutation.error), reload };
+}
+
+// ---------------------------------------------------------------------------------------
+// S8-F5 · US-175 (S8-D30, S8-D32, L-4): el token de la TV.
+// - useRegenerateTvToken(): POST /settings/tv/regenerate-token → { token, url, token_last4, rotated_at, version }. El token y el enlace se
+//   ven UNA vez: la mutación pasa por useSensitiveMutation (gcTime 0, reset al terminar) y solo entrega el enlace a quien la llama; nada
+//   de la respuesta se escribe en la caché de consultas. Al terminar se relee ["settings", "tv"] (la vista, que nunca trae el token).
+// - useRevokeTvToken(): POST /settings/tv/revoke-token → la vista nueva (has_token = false), que sí se guarda en la caché de la sección.
+const tvTokenSchema = z.object({
+  token: z.string().min(1),
+  url: z.string().min(1),
+  token_last4: z.string(),
+  rotated_at: z.string(),
+  version: integer,
+});
+
+export interface IssuedTvLink {
+  /** El enlace con el token en el fragmento (`/tv#token=...`). Solo http(s). */
+  url: string;
+  tokenLast4: string;
+  rotatedAt: string;
+}
+
+const WEB_URL_PATTERN = /^https?:\/\//i;
+
+export function useRegenerateTvToken() {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<IssuedTvLink>({
+    mutationFn: async () => {
+      try {
+        const { url, token_last4, rotated_at } = parseResponse(tvTokenSchema, await api.post<unknown>("/settings/tv/regenerate-token"));
+        if (!WEB_URL_PATTERN.test(url)) throw new ApiError({ status: 0, code: CLIENT_ERROR_CODES.invalidResponse, message: "El servidor devolvió un enlace que no se puede usar." });
+        return { url, tokenLast4: token_last4, rotatedAt: rotated_at };
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: settingsQueryKey("tv") });
+      }
+    },
+  });
+}
+
+export function useRevokeTvToken() {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<SettingsSection<"tv">>({
+    mutationFn: async () => parseSection("tv", await api.post<unknown>("/settings/tv/revoke-token")),
+    onSuccess: (view) => {
+      queryClient.setQueryData(settingsQueryKey("tv"), view);
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------------------

@@ -84,3 +84,24 @@ export function addAttendanceMessage(error: unknown): string {
 export function searchFailedText(error: unknown): string {
   return isApiError(error) && error.status === HTTP_TOO_MANY ? WALKIN_MESSAGES.searchTooMany : WALKIN_MESSAGES.search;
 }
+
+// S8-F5 · US-173: la pestaña Resultados de la ficha.
+export const MEMBER_RESULTS_MESSAGES = {
+  forbidden: "No tienes permiso para ver los resultados de este socio. Si lo necesitas, pídeselo a un administrador.",
+  notFound: "Este socio ya no existe. Vuelve a Socios y búscalo de nuevo.",
+  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  failed: "No pudimos cargar los resultados del socio. Intenta de nuevo en un momento.",
+} as const;
+
+export function memberResultsError(error: unknown): ApiError | null {
+  return toScreenError(
+    error,
+    (e) => {
+      if (e.status === HTTP_FORBIDDEN) return MEMBER_RESULTS_MESSAGES.forbidden;
+      if (e.status === HTTP_NOT_FOUND) return MEMBER_RESULTS_MESSAGES.notFound;
+      if (e.status === HTTP_TOO_MANY) return MEMBER_RESULTS_MESSAGES.tooMany(waitText(e.retryAfterS));
+      return MEMBER_RESULTS_MESSAGES.failed;
+    },
+    MEMBER_RESULTS_MESSAGES.failed,
+  );
+}

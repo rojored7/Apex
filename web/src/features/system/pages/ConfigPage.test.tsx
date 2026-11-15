@@ -11,7 +11,7 @@ import { RoleProvider } from "../../../core/auth";
 import { clearSession } from "../../../core/auth/session";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { channelsSection, classesSection, gymSection, hoursSection, membershipsSection, paymentMethodsSection, privacySection } from "../../../test/settings";
+import { channelsSection, classesSection, gymSection, hoursSection, membershipsSection, paymentMethodsSection, privacySection, tvSection } from "../../../test/settings";
 import ConfigPage from "./ConfigPage";
 
 const PATH = "/sistema/configuracion";
@@ -25,6 +25,7 @@ function defaultHandlers(): Record<string, MockHandler> {
     "GET /settings/channels": { status: 200, body: channelsSection() },
     "GET /settings/hours": { status: 200, body: hoursSection() },
     "GET /settings/classes": { status: 200, body: classesSection() },
+    "GET /settings/tv": { status: 200, body: tvSection() },
   };
 }
 
@@ -84,7 +85,7 @@ describe("ConfigPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Configuración del gimnasio" })).toBeInTheDocument();
     expect(screen.getByText("Cada sección se guarda por separado y queda en auditoría.")).toBeInTheDocument();
     const list = screen.getByRole("tablist", { name: "Secciones de la configuración" });
-    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Horario", "Privacidad", "Membresías", "Clases", "Medios de pago", "Canales"]);
+    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Horario", "Privacidad", "Membresías", "Clases", "Medios de pago", "Canales", "Pantalla de TV"]);
     expect(tab("Gimnasio")).toHaveAttribute("aria-selected", "true");
     await nameInput();
   });
@@ -109,6 +110,7 @@ describe("ConfigPage", () => {
     ["canales", "Canales", /Nombre del remitente/],
     ["horario", "Horario", /Lunes: cerrado/],
     ["clases", "Clases", /Cupo por defecto/],
+    ["tv", "Pantalla de TV", /Refresco/],
   ])("?tab=%s abre la pestaña %s", async (id, label, field) => {
     renderPage(`${PATH}?tab=${id}`);
 

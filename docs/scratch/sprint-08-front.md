@@ -80,3 +80,30 @@ una corrección, tiempo total medido y anotado como `tiempo-15-resultados` (tope
 ninguna petición a `/reveal` ni a `/members/{id}`. El valor medido queda pendiente de la primera corrida real.
 Cierre F4: vitest completo 249 archivos / 4451 pruebas (una falla: `errorCodes.test` prohíbe `code: "..."` suelto; el `"custom"` de Zod pasó a la constante
 `ISSUE_CODE`, verde después); lint 0, tsc 0, build 0; `slice-gate web/layouts` y `web/results` verdes (239 pruebas con las vecinas).
+
+## S8-F5a · Limpieza de F4: una sola copia de POST /attendance
+`useCheckIn` (con `checkinSchema`) pasó a `shared/data/attendance.ts`; `classes/api.ts` ya no lo define, `CheckInPage` y `AddWalkIn` (results) usan
+la misma copia y `useAddAttendance` desapareció de `results/api.ts`. Invalida `class-session`, `class-sessions`, `attendance` y `session-results`
+(literales: shared no importa de features). Las «semanas» ya estaban compartidas desde F2 (`shared/data/weeks.ts`; classes y wods lo importan de ahí).
+Rojo: `attendance.test.ts` sin resolver el import (1 archivo fallido, 0 pruebas). Verde: 2 pruebas; 339 pruebas de shared/classes/results verdes.
+Gate `web/shared` verde; checkpoint 1430a81.
+
+## S8-F5 · Ficha, Inicio y Configuración (US-173, US-174, US-175, S8-D30, S8-D32, L-4)
+Rojo medido (antes del código): 7 archivos fallidos: `MemberResultsTab.test`, `WodTodayCard.test` y `TvSettingsForm.test` sin resolver el import
+(0 pruebas) y 8 pruebas rojas en `MemberDetailPage.test` (pestaña Resultados habilitada), `InicioPage.test` (región «WOD de hoy»), `ConfigPage.test`
+(2: pestañas y `?tab=tv`) y `routes.test` (4: hija `/socios/:id/resultados`).
+Verde:
+- `features/results/tabs/MemberResultsTab.tsx` (+ `useMemberResults`, `memberResultRowSchema`, `memberResultsError`), ruta hija `/socios/:id/resultados`
+  (feature `results`, acceso `results.record`: no hay permiso `results.view`; el api abre la lectura a admin y coach) en `routeTable.ts` y
+  `routes.reference.ts`; la ficha quita `disabledUntil` y la suma a `CHILD_TABS`.
+- `features/dashboard/components/WodTodayCard.tsx` reemplaza a `FutureKpis` (borrado con su prueba; su CSS se queda para NotificationKpis).
+  «Registrar resultados» va a la próxima sesión viva de hoy (`nextCheckInSession`); `shared/lib/routes.resultsPath` y `shared/data/score.SCORE_TYPE_LABELS`.
+- `features/system/components/TvSettingsForm.tsx`: la sección `tv` entra al hook genérico (`SettingsKey`), más `useRegenerateTvToken` y `useRevokeTvToken`
+  (`useSensitiveMutation`, gcTime 0; la respuesta de regenerate-token NO se escribe en la caché: se relee la vista). El enlace con `#token=` vive solo
+  en el estado del componente y se borra con «Listo». Prueba `no_persiste_el_token_en_la_cache` (consultas, mutaciones, localStorage y sessionStorage).
+- Desviación: «Abrir pantalla TV» del menú (`nav.ts`) NO se agregó: sin token no hay a dónde abrir y el token no se puede volver a ver; el «Abrir la TV»
+  vive en el enlace recién generado. «WOD de hoy» ya estaba en el menú desde F1.
+- Docs: `ROUTES.md` y `docs/operacion/wods.md`.
+- E2E ESCRITOS, sin correr (stack roto): `member-results.spec.ts`, `settings-tv.spec.ts` y una prueba nueva en `stack/home.spec.ts`.
+Cierre F5: lint 0, tsc 0, vitest completo 252 archivos / 4482 pruebas (2 fallas de lint arquitectónico corregidas: una constante `HTTP_*` fuera de
+core/api y un orden de propiedades CSS), build 0. Gates verdes: `web/dashboard` (8), `web/system` (15), sello `web/results` (47, con MemberDetailPage).

@@ -3,12 +3,13 @@
 // - useSaveResult(): PUT /results. Un resultado nuevo o una corrección (`supersedes_id` y el MISMO `session_id`, S8-B1d M-3).
 // - «Alguien que no hizo check-in» usa useCheckIn de shared/data/attendance (una sola copia con classes).
 // Las escrituras pasan por useSensitiveMutation. Nada de esto toca /reveal ni /members/{id} (S8-D24).
-import { useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { api } from "../../core/api/client";
+import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
-import { resultSchema, sessionAttendanceSchema, type ResultView, type ScoreValues, type SessionAttendanceView } from "./schemas";
+import { memberResultRowSchema, resultSchema, sessionAttendanceSchema, type MemberResultRowView, type ResultView, type ScoreValues, type SessionAttendanceView } from "./schemas";
 
 export const SESSION_RESULTS_QUERY_KEY = ["session-results"] as const;
 /** Una clase cabe en una página (el api topa en 200). */
@@ -68,5 +69,24 @@ export function useSaveResult(): UseMutationResult<ResultView, Error, SaveResult
     onSuccess: () => {
       for (const key of [["wod-leaderboard"], ["wod-results"], ["wods"], ["wod"]]) void queryClient.invalidateQueries({ queryKey: key });
     },
+  });
+}
+
+// S8-F5 · US-173: la pestaña Resultados de la ficha. GET /members/{id}/results?benchmark&limit&offset (admin y coach), paginada en el servidor.
+export interface MemberResultsParams {
+  limit: number;
+  offset: number;
+  benchmark?: boolean;
+}
+
+export const MEMBER_RESULTS_QUERY_KEY = ["member-results"] as const;
+
+export function useMemberResults(memberId: string, params: MemberResultsParams): UseQueryResult<Page<MemberResultRowView>> {
+  return useQuery({
+    queryKey: [...MEMBER_RESULTS_QUERY_KEY, memberId, params],
+    queryFn: async ({ signal }) =>
+      parseResponse(pageSchema(memberResultRowSchema), await api.get<unknown>(`/members/${encodeURIComponent(memberId)}/results`, { query: listParams({ ...params }), signal })),
+    placeholderData: keepPreviousData,
+    enabled: memberId !== "",
   });
 }

@@ -35,3 +35,8 @@ export function renewHref(memberId: string): string {
 export function checkInPath(sessionId: string): string {
   return `/clases/${encodeURIComponent(sessionId)}/checkin`;
 }
+
+/** /clases/:id/resultados: el registro de resultados de una sesión en la tablet (S8-F4; lo usa también Inicio, S8-F5). */
+export function resultsPath(sessionId: string): string {
+  return `/clases/${encodeURIComponent(sessionId)}/resultados`;
+}

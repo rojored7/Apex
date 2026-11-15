@@ -198,3 +198,25 @@ export function markText(result: ResultView, scoreType: ScoringType): string {
       return `${result.load_g === null ? "—" : `${String(Number((result.load_g / 1000).toFixed(2))).replace(".", ",")} kg`} ${level}`;
   }
 }
+
+// S8-F5 · US-173: una fila de GET /members/{id}/results (MemberResultRow): el WOD copiado (título y fecha) y la marca.
+export const memberResultRowSchema = z.object({
+  id: z.string().min(1),
+  wod_id: z.string().min(1),
+  wod_title: z.string(),
+  wod_date: z.string(),
+  benchmark_id: z.string().nullable(),
+  is_benchmark: z.boolean(),
+  score_type: z.enum(["time", "rounds_reps", "reps", "load", "none"]),
+  level: z.enum(RESULT_LEVELS),
+  seconds: z.number().int().nullable(),
+  rounds: z.number().int().nullable(),
+  reps: z.number().int().nullable(),
+  load_g: z.number().int().nullable(),
+  capped: z.boolean(),
+  status: z.enum(["validated", "pending", "voided"]),
+  source: z.enum(["desk", "kiosk"]),
+  session_id: z.string().nullable(),
+  created_at: z.string(),
+});
+export type MemberResultRowView = z.infer<typeof memberResultRowSchema>;

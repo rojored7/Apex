@@ -167,4 +167,15 @@ test.describe("Inicio contra el stack", () => {
       }
     }
   });
+  // S8-F5 (US-174): la tarjeta «WOD de hoy» siempre está; con WOD ofrece «Ver», sin WOD guía a crearlo. ESCRITO, SIN CORRER.
+  test("la tarjeta «WOD de hoy» está en Inicio y guía al detalle o a crear el WOD", async ({ page }) => {
+    exigirStackLocal(process.env.E2E_BASE_URL);
+    await loginComo(page, datosDeBase());
+    await page.goto("/");
+
+    const tarjeta = page.getByRole("group", { name: "WOD de hoy" });
+    await expect(tarjeta).toBeVisible();
+    await expect(tarjeta.getByRole("link", { name: /^(Ver|Crear el WOD de hoy)$/ })).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+  });
 });

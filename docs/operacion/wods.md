@@ -27,3 +27,9 @@ resultado quedó en el socio o en la clase equivocada, lo anula un administrador
 
 No hay forma de revertir una anulación: si fue un error, se registra de nuevo el resultado.
 El motivo es texto libre: no escribas en él datos personales del socio.
+
+## Dónde se ven los resultados y la TV desde el panel
+
+- Ficha del socio, pestaña «Resultados»: sus marcas con el WOD, la fecha, el nivel y dónde se registró («En tablet» o «En recepción»). Un resultado pendiente dice «Por validar».
+- Inicio, tarjeta «WOD de hoy»: «Ver» abre el detalle y «Registrar resultados» abre la tablet en la próxima clase de hoy que no ha terminado. Sin WOD, la tarjeta ofrece crearlo con la fecha de hoy.
+- Configuración, pestaña «Pantalla de TV»: refresco, mostrar el ranking, generar un enlace nuevo y revocar el token (guía completa en `docs/operacion/tv.md`).

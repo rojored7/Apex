@@ -105,8 +105,8 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of ["Membresías", "Pagos", "Asistencia", "Avisos", "Adjuntos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
-    for (const name of [/^Resultados/, /^Atleta/]) {
+    for (const name of ["Membresías", "Pagos", "Asistencia", "Resultados", "Avisos", "Adjuntos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    for (const name of [/^Atleta/]) {
       expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
     }
     expect(within(tablist).getByRole("tab", { name: "Asistencia" })).not.toHaveTextContent("Disponible en");

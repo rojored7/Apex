@@ -1,6 +1,6 @@
 // Datos de prueba de las secciones de configuración (S2-F5). Imitan las respuestas de
 // GET /settings/{gym|privacy|memberships}: defaults con version 0 y updated_* nulos.
-import type { ChannelsSettings, ClassesSettings, GymSettings, HoursSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
+import type { ChannelsSettings, ClassesSettings, GymSettings, HoursSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection, TvView } from "../features/system/api";
 import type { MockReply } from "./server";
 
 export const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -111,6 +111,17 @@ export function classesSection(value: Partial<ClassesSettings> = {}, version = 0
   return {
     key: "classes",
     value: { default_capacity: 15, checkin_window_min: 30, ...value },
+    version,
+    updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
+    updated_by: version === 0 ? null : ADMIN_ID,
+  };
+}
+
+/** S8-F5 · US-175: GET /settings/tv (TvSectionOut): la vista sin el hash; `has_token` dice si hay token. */
+export function tvSection(value: Partial<TvView> = {}, version = 0): SettingsSection<"tv"> {
+  return {
+    key: "tv",
+    value: { has_token: false, refresh_seconds: 30, rotated_at: null, show_leaderboard: true, token_last4: null, ...value },
     version,
     updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
     updated_by: version === 0 ? null : ADMIN_ID,

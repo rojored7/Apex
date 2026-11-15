@@ -11,7 +11,7 @@
 // lateral; el blueprint F5 las pasa a pestañas y el Sprint 2 solo habilita Gimnasio,
 // Privacidad y Membresías (S2-D15: horario, medios de pago, canales, clases y TV llegan en
 // sus versiones y no se muestran). S3-F4 (US-056) suma "Medios de pago" (`?tab=medios`) y S5-F2
-// (US-122) "Canales" (`?tab=canales`). S7-F1 (US-154, S7-D8) suma "Horario" (`?tab=horario`) y "Clases" (`?tab=clases`).
+// (US-122) "Canales" (`?tab=canales`). S7-F1 (US-154, S7-D8) suma "Horario" (`?tab=horario`) y "Clases" (`?tab=clases`). S8-F5 (US-175) suma "Pantalla de TV" (`?tab=tv`).
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useBeforeUnload, useBlocker, type BlockerFunction } from "react-router";
 import { useSession } from "../../../core/auth/session";
@@ -25,6 +25,7 @@ import { HoursSettingsForm } from "../components/HoursSettingsForm";
 import { MembershipsSettingsForm } from "../components/MembershipsSettingsForm";
 import { PaymentMethodsForm } from "../components/PaymentMethodsForm";
 import { PrivacySettingsForm } from "../components/PrivacySettingsForm";
+import { TvSettingsForm } from "../components/TvSettingsForm";
 import styles from "./ConfigPage.module.css";
 
 const TABS: TabItem[] = [
@@ -35,6 +36,7 @@ const TABS: TabItem[] = [
   { id: "clases", label: "Clases" },
   { id: "medios", label: "Medios de pago" },
   { id: "canales", label: "Canales" },
+  { id: "tv", label: "Pantalla de TV" },
 ];
 
 type DirtyHandler = (dirty: boolean) => void;
@@ -46,6 +48,7 @@ function sectionFor(id: string, onDirtyChange: DirtyHandler): ReactNode {
   if (id === "membresias") return <MembershipsSettingsForm onDirtyChange={onDirtyChange} />;
   if (id === "medios") return <PaymentMethodsForm onDirtyChange={onDirtyChange} />;
   if (id === "canales") return <ChannelsSettingsForm onDirtyChange={onDirtyChange} />;
+  if (id === "tv") return <TvSettingsForm onDirtyChange={onDirtyChange} />;
   return <GymSettingsForm onDirtyChange={onDirtyChange} />;
 }
 

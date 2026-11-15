@@ -51,7 +51,7 @@ describe("InicioPage", () => {
 
     expect(await screen.findByRole("link", { name: "Socios al día: 120" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Membresías e ingresos" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Próximamente en Inicio" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "WOD de hoy" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Clases" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Avisos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Por avisar hoy: 9" })).toHaveAttribute("href", "/avisos/hoy");

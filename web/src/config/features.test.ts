@@ -8,10 +8,11 @@ describe("features", () => {
     expect(new Set(FEATURES).size).toBe(17);
   });
 
-  it("habilita doce: las once anteriores y classes (S7-F2)", () => {
-    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "classes", "crypto", "dashboard", "members", "memberships", "notifications", "payments", "plans", "settings", "users"]);
-    expect(ENABLED_FEATURES.size).toBe(12);
-    expect(ENABLED_FEATURES.has("wods")).toBe(false);
+  it("habilita trece: las doce anteriores y wods (S8-F1)", () => {
+    expect([...ENABLED_FEATURES].sort()).toEqual(["audit", "auth", "classes", "crypto", "dashboard", "members", "memberships", "notifications", "payments", "plans", "settings", "users", "wods"]);
+    expect(ENABLED_FEATURES.size).toBe(13);
+    expect(ENABLED_FEATURES.has("wods")).toBe(true);
+    expect(ENABLED_FEATURES.has("results")).toBe(false);
   });
 
   it("/sistema/llaves tiene pantalla (load) y solo el admin la ve en el menú Sistema", () => {
@@ -25,8 +26,8 @@ describe("features", () => {
     expect(isRouteEnabled({ feature: "members" }, ENABLED_FEATURES)).toBe(true);
   });
 
-  it("una ruta de una feature futura (wods) está deshabilitada", () => {
-    expect(isRouteEnabled({ feature: "wods" }, ENABLED_FEATURES)).toBe(false);
+  it("una ruta de una feature futura (results) está deshabilitada", () => {
+    expect(isRouteEnabled({ feature: "results" }, ENABLED_FEATURES)).toBe(false);
   });
 
   it("una ruta sin feature siempre está habilitada", () => {

@@ -162,7 +162,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // S7-F4 (US-159, US-161): check-in en modo tablet (S7-D24, S7-D41); faltaba la página, lo detectó el E2E de V5.
   route("/clases/:id/checkin", "Check-in", "classes", "classes.view", "gym", { load: () => import("../features/classes/pages/CheckInPage") }),
   route("/clases/:id/resultados", "Registro de resultados", "results", "results.record", "gym"),
-  route("/movimientos", "Movimientos", "wods", "movements.view", "panel"),
+  // S8-F1 (US-165, US-166): catálogo de movimientos y, en ?tab=benchmarks, de benchmarks.
+  route("/movimientos", "Movimientos", "wods", "movements.view", "panel", { load: () => import("../features/wods/pages/MovementsPage") }),
   route("/wods", "WODs", "wods", "wods.view", "panel"),
   route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel"),
   route("/wods/:id", "WOD", "wods", "wods.view", "panel"),

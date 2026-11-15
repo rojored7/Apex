@@ -61,7 +61,7 @@ describe("PanelShell", () => {
     inRouter(<PanelShell />);
 
     const nav = screen.getByRole("navigation", { name: "Menú principal" });
-    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inicio", "Clases de hoy", "Por avisar hoy", "Socios", "Membresías", "Pagos", "Clases", "Reglas y plantillas", "Historial de envíos"]);
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inicio", "Clases de hoy", "WOD de hoy", "Por avisar hoy", "Socios", "Membresías", "Pagos", "Clases", "WODs", "Movimientos", "Reglas y plantillas", "Historial de envíos"]);
   });
 
   it("lleva el conmutador de tema (US-068) y aplica el claro por defecto del panel", async () => {

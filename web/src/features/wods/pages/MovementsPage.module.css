@@ -1,0 +1,7 @@
+/* S8-F1: Movimientos.html. Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}

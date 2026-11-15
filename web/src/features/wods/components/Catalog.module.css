@@ -1,0 +1,56 @@
+/* S8-F1: listas de Movimientos y Benchmarks (Movimientos.html). Solo variables de tokens.css. */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.count {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.number {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.description {
+  display: block;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

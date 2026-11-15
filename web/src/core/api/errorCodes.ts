@@ -102,6 +102,12 @@ export const API_ERROR_CODES = {
   sessionCancelled: "session_cancelled",
   attendanceNotFound: "attendance_not_found",
   attendanceLocked: "attendance_locked",
+  // S8-F1: catálogo de movimientos y benchmarks (wods/exceptions.py).
+  movementExists: "movement_exists",
+  movementNotFound: "movement_not_found",
+  benchmarkExists: "benchmark_exists",
+  benchmarkNotFound: "benchmark_not_found",
+  scoreTypeLocked: "score_type_locked",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

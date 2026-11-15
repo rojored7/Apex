@@ -14,12 +14,15 @@ describe("buildNavItems", () => {
     expect(labels(groups)).toEqual([
       "Inicio",
       "Clases de hoy",
+      "WOD de hoy",
       "Por avisar hoy",
       "Socios",
       "Membresías",
       "Pagos",
       "Planes",
       "Clases",
+      "WODs",
+      "Movimientos",
       "Reglas y plantillas",
       "Historial de envíos",
       "Usuarios y roles",
@@ -73,19 +76,27 @@ describe("buildNavItems", () => {
     ]);
   });
 
-  it("S7-F1 (S7-D21, BRECHAS 13.17): cada entrada de Hoy depende de su propia feature; sin classes ni wods ya se ve «Por avisar hoy»", () => {
+  it("S7-F1 (S7-D21, BRECHAS 13.17): cada entrada de Hoy depende de su propia feature; sin classes ya se ven «WOD de hoy» y «Por avisar hoy» (S8-F1: wods habilitada)", () => {
     const sinClasesSet = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "classes"));
     const sinClases = buildNavItems("admin", sinClasesSet).find((g) => g.id === "hoy");
-    expect(sinClases?.items.map((i) => i.label)).toEqual(["Por avisar hoy"]);
-    expect(buildNavItems("coach", sinClasesSet).find((g) => g.id === "hoy")?.items.map((i) => i.label)).toEqual(["Por avisar hoy"]);
+    expect(sinClases?.items.map((i) => i.label)).toEqual(["WOD de hoy", "Por avisar hoy"]);
+    expect(buildNavItems("coach", sinClasesSet).find((g) => g.id === "hoy")?.items.map((i) => i.label)).toEqual(["WOD de hoy", "Por avisar hoy"]);
 
-    const conClases = new Set<Feature>([...ENABLED_FEATURES, "classes"]);
+    const conClases = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "wods"));
     expect(labels(buildNavItems("admin", conClases))).toEqual(expect.arrayContaining(["Clases", "Clases de hoy", "Por avisar hoy"]));
     expect(labels(buildNavItems("admin", conClases))).not.toContain("WOD de hoy");
 
-    const sinAvisos = new Set<Feature>(([...ENABLED_FEATURES, "classes"] as Feature[]).filter((f) => f !== "notifications"));
+    const sinAvisos = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "notifications"));
     expect(labels(buildNavItems("admin", sinAvisos))).not.toContain("Por avisar hoy");
     expect(labels(buildNavItems("admin", sinAvisos))).toContain("Clases de hoy");
+  });
+
+  it("S8-F1: con wods habilitada admin y coach ven «WOD de hoy», «WODs» y «Movimientos»; el socio ninguno", () => {
+    for (const role of ["admin", "coach"] as const) {
+      const all = labels(buildNavItems(role, ENABLED_FEATURES));
+      expect(all, role).toEqual(expect.arrayContaining(["WOD de hoy", "WODs", "Movimientos"]));
+    }
+    expect(buildNavItems("member", ENABLED_FEATURES)).toEqual([]);
   });
 
   it("el grupo Hoy son tres enlaces a pantallas existentes y no hay ninguna ruta /hoy (Q25)", () => {
@@ -124,7 +135,7 @@ describe("buildNavItems", () => {
 
 describe("menú y rutas hijas (S3-F3, E14)", () => {
   it("el coach también ve Membresías y Pagos con las features habilitadas (memberships.view y payments.view son de admin y coach)", () => {
-    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Clases de hoy", "Por avisar hoy", "Socios", "Membresías", "Pagos", "Clases", "Reglas y plantillas", "Historial de envíos"]);
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Clases de hoy", "WOD de hoy", "Por avisar hoy", "Socios", "Membresías", "Pagos", "Clases", "WODs", "Movimientos", "Reglas y plantillas", "Historial de envíos"]);
   });
 
   it("S3-F4: Pagos lleva a /pagos con la feature payments", () => {

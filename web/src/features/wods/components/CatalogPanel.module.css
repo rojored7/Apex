@@ -1,0 +1,37 @@
+/* S8-F1: paneles de movimiento y benchmark de Movimientos.html. Solo variables de tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.check input {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

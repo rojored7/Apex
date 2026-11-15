@@ -32,3 +32,13 @@ Verde: `shared/data/score.ts` (gramos <-> kg, `formatScore`), `shared/data/weeks
 `components/{WeekCalendar,MovementPicker,WodPreview}`, `pages/{WodListPage,WodFormPage}`, rutas `/wods`, `/wods/nuevo`, `/wods/:id/editar` con `load`.
 Corrida completa: lint 0, tsc 0, vitest 242 archivos / 4372 pruebas, build 0. E2E `wods.spec.ts` ESCRITO, sin correr.
 DESIGN-GAP: «AMRAP/For time», plantillas, «2 sesiones faltan» (S8-D7). Heredocs de Git Bash con ciertos caracteres fallan: archivos con Write.
+
+F2 checkpoint c96f937. Rama al día con el backend (merge 6d00629).
+
+## Pendiente (F3 a F6) y notas para quien siga
+- F3 (`/wods/:id`): `shared/data/results.ts` (hooks de GET /wods/{id}/leaderboard?level&sex&limit&offset y GET /wods/{id}/results?include_superseded), `features/wods/components/{Leaderboard,WodSessions}.tsx`, `pages/WodDetailPage.tsx`, Historial con `HistoryAside` sobre GET /audit?table=wods.wods&record_id= solo con `audit.view` (E5). `formatScore` ya existe en `shared/data/score.ts` con prueba; falta la de empates 1-2-2-4.
+  Hueco del contrato: no hay PATCH de resultados; «asignar a otra sesión» solo puede hacerse como corrección `PUT /results` con `supersedes_id` y `session_id` nuevo. Las sesiones del día salen de `/class-sessions` (clases): una feature no importa de otra, así que el hook va a `shared/data/`. Enlazar el formulario de WOD (`navigate("/wods/:id")`) ya apunta a esta ruta.
+- F4: `/clases/:id/resultados` (GymLayout, `routeTable` ya trae la ruta sin `load`), `layouts/tabletMode.ts` (`TABLET_PATH` con las dos rutas), `ZoneShells.tsx`, `CheckInPage` («Registrar resultados» con POST /auth/kiosk y ruta `/resultados`), `ResultsEntryPage`, `ScoreForm` (kg a gramos con `kgInputToGrams`; `capped` solo con `time`; Zod 0..1.000 kg), `ScaledChips` (`scaled_movement_ids`), `AddWalkIn`; E2E de 15 resultados con tiempo medido (S8-D40).
+- F5: pestaña `/socios/:id/resultados` (quitar `disabledUntil`), `WodTodayCard` (`wod_today` ya llega en GET /dashboard como objeto), `TvSettingsForm` en `?tab=tv` (`gcTime: 0`, sin persistir la respuesta de regenerate-token).
+- F6: `/tv` con `TvLayout`, `fetch` propio con `credentials: "omit"` y solo `X-Device-Token`; token del fragmento `#token=` limpiado con `replaceState` antes de la primera petición; `POST /auth/logout` al montar; claves `_g` del contrato (`load_rx_m_g`, `load_rx_f_g`, `score.load_g`); soak `web/tests/soak/tv.soak.spec.ts` y `.github/workflows/nightly.yml`.
+- Los E2E de stack de F1 y F2 (`movements.spec.ts`, `wods.spec.ts`) siguen sin correr: stack roto, sin banderas, por indicación del usuario.

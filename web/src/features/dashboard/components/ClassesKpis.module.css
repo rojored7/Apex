@@ -1,0 +1,115 @@
+/* S7-F6: «Hoy en el box» y «Asistencia de la semana». Solo variables de tokens.css. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font: var(--text-section-title);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.label {
+  font: var(--text-label);
+  color: var(--muted);
+}
+
+.more {
+  font: var(--text-caption);
+  color: var(--blue-deep);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.time {
+  font: var(--text-h2);
+  font-variant-numeric: tabular-nums;
+}
+
+.coach {
+  flex: 1 1 6rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.occupancy {
+  font-variant-numeric: tabular-nums;
+}
+
+.full {
+  font: var(--text-caption);
+  color: var(--blue-deep);
+}
+
+.state {
+  font: var(--text-caption);
+  color: var(--muted);
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.errorText {
+  color: var(--muted);
+}
+
+.skeleton {
+  display: block;
+  height: var(--space-6);
+  background: var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

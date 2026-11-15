@@ -1,7 +1,7 @@
 // S2-F2: contenedores que leen la sesión y entregan sus datos a los layouts presentacionales
 // (PanelShell, PortalShell, TvShell) y el marco de las pantallas de acceso.
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import userEvent from "@testing-library/user-event";
@@ -22,6 +22,9 @@ vi.mock("../features/payments/components/RegisterPaymentPanelHost", () => {
   return { RegisterPaymentPanelHost: () => <p>Panel de pagos montado</p> };
 });
 import { GymShell, PortalShell, TvShell } from "./ZoneShells";
+import { getSession } from "../core/auth";
+import { KIOSK_MESSAGES } from "../core/auth/kiosk";
+import { useGym } from "../shared/hooks/gymContext";
 
 afterEach(() => {
   signOutForTests();
@@ -34,11 +37,12 @@ function inRouter(element: ReactNode, path = "/") {
     initialEntries: [path],
   });
   // S2-F4a: PanelShell monta el panel "Mi cuenta", que usa TanStack Query.
-  return render(
+  const view = render(
     <QueryClientProvider client={testQueryClient()}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return { ...view, router };
 }
 
 describe("PanelShell", () => {
@@ -110,12 +114,233 @@ describe("PortalShell, GymShell y TvShell", () => {
     expect(screen.getByRole("navigation", { name: "Menú del portal" })).toBeInTheDocument();
   });
 
-  it("GymShell toma el título del handle de la ruta y sale al panel", () => {
+  it("GymShell fuera del check-in toma el título del handle de la ruta y sale al panel", () => {
     signInAs("coach");
-    inRouter(<GymShell />, "/clases/1/checkin");
+    inRouter(<GymShell />, "/clases/1/resultados");
 
     expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "Check-in" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Salir" })).toHaveAttribute("href", "/");
+  });
+
+  const KIOSK_OUT = (kioskPath: string | null) => ({ status: 200, body: { access_token: "access-quiosco", token_type: "bearer", expires_in: 900, kiosk_path: kioskPath } });
+  const CHECKIN = "/clases/1/checkin";
+
+  it("GymShell en el check-in activa el quiosco en el servidor (POST /auth/kiosk), sin enlaces y con la salida «Clases»", async () => {
+    signInAs("coach");
+    const mock = mockApi({ "POST /auth/kiosk": KIOSK_OUT(CHECKIN) });
+    inRouter(<GymShell />, CHECKIN);
+
+    await waitFor(() => { expect(getSession().user?.kioskPath).toBe(CHECKIN); });
+    expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: CHECKIN });
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Clases" })).toBeInTheDocument();
+  });
+
+  it("si el servidor no activa el quiosco lo dice y deja reintentar", async () => {
+    signInAs("coach");
+    let calls = 0;
+    const mock = mockApi({ "POST /auth/kiosk": () => (++calls === 1 ? { status: 500, body: { error: { code: "internal_error", message: "x" } } } : KIOSK_OUT(CHECKIN)) });
+    inRouter(<GymShell />, CHECKIN);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos activar el modo tablet");
+    // MEDIUM-1: sin la marca del servidor el check-in no se muestra.
+    expect(screen.queryByRole("heading", { name: "Contenido" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => { expect(getSession().user?.kioskPath).toBe(CHECKIN); });
+    expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+  });
+
+  it("MEDIUM-1: normaliza la ruta (minúsculas, sin barra final) antes del POST y no muestra el check-in hasta tener la marca", async () => {
+    signInAs("coach");
+    const normal = "/clases/abc-def/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": () => KIOSK_OUT(normal) });
+    inRouter(<GymShell />, "/clases/ABC-DEF/checkin/");
+
+    expect(screen.queryByRole("heading", { name: "Contenido" })).not.toBeInTheDocument();
+    await waitFor(() => { expect(getSession().user?.kioskPath).toBe(normal); });
+    expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: normal });
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+  });
+
+  it("S7-D42: cambiar de sesión desde el quiosco llama POST /auth/kiosk con la ruta nueva y navega sin contraseña", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const otra = "/clases/2/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": KIOSK_OUT(otra) });
+    function Probe() {
+      const { switchSession } = useGym();
+      return (
+        <button type="button" onClick={() => void switchSession(otra)}>
+          Cambiar
+        </button>
+      );
+    }
+    const router = createMemoryRouter([{ element: <GymShell />, children: [{ path: "*", element: <Probe />, handle: { title: "Check-in" } }] }], { initialEntries: [CHECKIN] });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cambiar" }));
+
+    await waitFor(() => { expect(router.state.location.pathname).toBe(otra); });
+    expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: otra });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getSession().user?.kioskPath).toBe(otra);
+  });
+
+  it("S7-D42: si el servidor rechaza la clase (403 kiosk_mode) no navega, la marca sigue y dice qué hacer", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const otra = "/clases/2/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": { status: 403, body: { error: { code: "kiosk_mode", message: "x" } } } });
+    let result: string | null = null;
+    function Probe() {
+      const { switchSession } = useGym();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            void switchSession(otra).then((message) => {
+              result = message;
+            });
+          }}
+        >
+          Cambiar
+        </button>
+      );
+    }
+    const router = createMemoryRouter([{ element: <GymShell />, children: [{ path: "*", element: <Probe />, handle: { title: "Check-in" } }] }], { initialEntries: [CHECKIN] });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cambiar" }));
+
+    await waitFor(() => {
+      expect(result).toBe(KIOSK_MESSAGES.notToday);
+    });
+    expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(1);
+    expect(router.state.location.pathname).toBe(CHECKIN);
+    expect(getSession().user?.kioskPath).toBe(CHECKIN);
+  });
+
+  it("el modo tablet se deriva de la sesión: con kioskPath sigue en otra pantalla y no vuelve a llamar al api", () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const mock = mockApi({});
+    inRouter(<GymShell />, "/clases/1/resultados");
+
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(mock.calls).toHaveLength(0);
+  });
+
+  it("sin marca fuera del check-in no hay modo tablet", () => {
+    signInAs("coach");
+    inRouter(<GymShell />, "/clases/1/resultados");
+
+    expect(screen.getByRole("link", { name: "Salir" })).toBeInTheDocument();
+  });
+
+  it("salir: contraseña incorrecta no sale; la correcta usa POST /auth/kiosk/exit (nunca /auth/login) y quita la marca", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const user = userEvent.setup();
+    const mock = mockApi({
+      "POST /auth/kiosk/exit": (call) => ((call.body as { password?: string } | undefined)?.password === "buena" ? KIOSK_OUT(null) : { status: 401, body: { error: { code: "invalid_password", message: "No." } } }),
+    });
+    const { router } = inRouter(<GymShell />, CHECKIN);
+
+    await user.click(screen.getByRole("button", { name: "Clases" }));
+    await user.type(screen.getByLabelText(/Contraseña/), "mala");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Contraseña incorrecta. Escríbela de nuevo.");
+    expect(getSession().user?.kioskPath).toBe(CHECKIN);
+
+    await user.clear(screen.getByLabelText(/Contraseña/));
+    await user.type(screen.getByLabelText(/Contraseña/), "buena");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    await waitFor(() => { expect(router.state.location.pathname).toBe("/clases"); });
+    expect(getSession().user?.kioskPath).toBeNull();
+    expect(mock.callsTo("POST /auth/login")).toHaveLength(0);
+    // HIGH-1 (revisión de F4b): salir no reactiva el quiosco aunque el pathname sea el del check-in un instante.
+    expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(0);
+  });
+
+  it("LOW-2: tras una contraseña incorrecta y cerrar el diálogo, otra navegación vuelve a quedar retenida", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const user = userEvent.setup();
+    mockApi({ "POST /auth/kiosk/exit": { status: 401, body: { error: { code: "invalid_password", message: "No." } } } });
+    const { router } = inRouter(<GymShell />, CHECKIN);
+
+    await user.click(screen.getByRole("button", { name: "Clases" }));
+    await user.type(screen.getByLabelText(/Contraseña/), "mala");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "Volver" }));
+    await act(async () => {
+      await router.navigate("/socios");
+    });
+
+    expect(await screen.findByRole("dialog", { name: "¿Salir del modo tablet?" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CHECKIN);
+  });
+
+  it("«atrás» o cualquier navegación fuera del check-in abre el diálogo de salida y se queda; con la contraseña pasa", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const user = userEvent.setup();
+    mockApi({ "POST /auth/kiosk/exit": KIOSK_OUT(null) });
+    const { router } = inRouter(<GymShell />, CHECKIN);
+
+    await act(async () => {
+      await router.navigate("/socios");
+    });
+    expect(await screen.findByRole("dialog", { name: "¿Salir del modo tablet?" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CHECKIN);
+
+    await user.click(screen.getByRole("button", { name: "Volver" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CHECKIN);
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.pathname).toBe(CHECKIN);
+
+    await act(async () => {
+      await router.navigate("/socios");
+    });
+    await user.type(await screen.findByLabelText(/Contraseña/), "buena");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    await waitFor(() => { expect(router.state.location.pathname).toBe("/socios"); });
+  });
+
+  it("un cambio de query en el mismo check-in no abre el diálogo", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const { router } = inRouter(<GymShell />, CHECKIN);
+
+    await act(async () => {
+      await router.navigate(`${CHECKIN}?x=1`);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("a los 10 minutos sin actividad cierra la sesión (POST /auth/logout) y la marca muere con ella", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const mock = mockApi({ "POST /auth/logout": { status: 204 } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      inRouter(<GymShell />, CHECKIN);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mock.callsTo("POST /auth/logout")).toHaveLength(1);
+    expect(getSession().user).toBeNull();
   });
 
   it("TvShell monta el escenario de la TV", () => {

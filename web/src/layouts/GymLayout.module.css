@@ -63,6 +63,43 @@
   font: var(--text-label);
 }
 
+/* S7-F4: contador de llegadas de la barra y diálogo de salida del modo tablet. */
+.counter {
+  text-align: right;
+}
+
+.counterValue {
+  margin: 0;
+  font: var(--text-kpi);
+}
+
+.counterOf {
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.counterLabel {
+  display: block;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+button.exit {
+  background: transparent;
+  cursor: pointer;
+}
+
+.dialogText {
+  margin: 0 0 var(--space-4);
+  font: var(--text-body);
+}
+
+.dialogError {
+  margin: var(--space-2) 0 0;
+  color: var(--danger);
+  font: var(--text-label);
+}
+
 .content {
   flex: 1 1 auto;
   box-sizing: border-box;

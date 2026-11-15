@@ -34,6 +34,7 @@ describe("sessionFromLogin", () => {
         role: "coach",
         memberId: null,
         gymName: "APEX",
+        kioskPath: null,
         mustChangePassword: false,
       },
     });

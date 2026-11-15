@@ -13,6 +13,9 @@ export const API_ERROR_CODES = {
   notFound: "not_found",
   validationError: "validation_error",
   rateLimited: "rate_limited",
+  // S7-D41: el modo quiosco del servidor niega la ruta (403).
+  kioskMode: "kiosk_mode",
+  invalidPassword: "invalid_password",
   internalError: "internal_error",
   passwordChangeRequired: "password_change_required",
   tooLong: "too_long",
@@ -94,6 +97,11 @@ export const API_ERROR_CODES = {
   sessionAlreadyCancelled: "session_already_cancelled",
   sessionFinished: "session_finished",
   sessionDuplicate: "session_duplicate",
+  // S7-F4: check-in y quitar asistencia (classes/exceptions.py).
+  alreadyCheckedIn: "already_checked_in",
+  sessionCancelled: "session_cancelled",
+  attendanceNotFound: "attendance_not_found",
+  attendanceLocked: "attendance_locked",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

@@ -185,3 +185,42 @@ export function slotLabel(state: SlotStateView): string {
 export function slotTone(state: SlotStateView): StatusTone {
   return SLOT_TONES[state];
 }
+
+/**
+ * S7-F4 (BRECHAS 15.6): las siete banderas de un check-in (`CHECKIN_FLAGS` del api). Las cuatro de membresía
+ * se pintan en rojo (el coach habla con el socio después); cupo lleno, fuera de horario y otro día son
+ * advertencias: la llegada se registró y nunca es un error (N-38, N-39, S7-D27).
+ */
+export type FlagView = "expired" | "no_membership" | "frozen" | "pending_payment" | "over_capacity" | "out_of_window" | "other_day";
+
+export const FLAG_LABELS = Object.freeze({
+  expired: "Vencido",
+  no_membership: "Sin plan",
+  frozen: "Congelado",
+  pending_payment: "Pendiente de pago",
+  over_capacity: "Cupo lleno",
+  out_of_window: "Fuera de horario",
+  other_day: "Otro día",
+} as const satisfies Record<FlagView, string>);
+
+export const FLAG_TONES = Object.freeze({
+  expired: "danger",
+  no_membership: "danger",
+  frozen: "danger",
+  pending_payment: "danger",
+  over_capacity: "warning",
+  out_of_window: "warning",
+  other_day: "warning",
+} as const satisfies Record<FlagView, StatusTone>);
+
+export function isFlagView(value: string): value is FlagView {
+  return Object.hasOwn(FLAG_LABELS, value);
+}
+
+export function flagLabel(flag: FlagView): string {
+  return FLAG_LABELS[flag];
+}
+
+export function flagTone(flag: FlagView): StatusTone {
+  return FLAG_TONES[flag];
+}

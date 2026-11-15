@@ -4,12 +4,16 @@
 // - Sin sesión va a /login?next=<ruta y query>; LoginPage (F3) valida `next` con safeNext.
 //   Tras un cierre de sesión (S2-F3) va a /login sin next.
 // - Con must_change_password va a /cambiar-clave (S2-D18), salvo que ya esté ahí.
+// - S7-D41: con kioskPath (modo quiosco del servidor) redirige a esa ruta desde cualquier otra.
 // No hace peticiones con la sesión ya cargada: el rol sale de login o de me.
 import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
 import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from "./routeAccess";
 import { restoreSession, useSession } from "./session";
 import styles from "./RequireAuth.module.css";
+
+const trimSlash = (path: string): string => path.replace(/\/+$/, "");
+const samePath = (a: string, b: string): boolean => trimSlash(a) === trimSlash(b);
 
 export function RequireAuth() {
   const { status, user, reason } = useSession();
@@ -35,5 +39,7 @@ export function RequireAuth() {
   if (user.mustChangePassword && location.pathname !== CHANGE_PASSWORD_PATH) {
     return <Navigate to={CHANGE_PASSWORD_PATH} replace />;
   }
+  // S7-D41: la sesión confinada al check-in no sale de él (recarga, barra de direcciones o «atrás» incluidos).
+  if (user.kioskPath !== null && !samePath(location.pathname, user.kioskPath)) return <Navigate to={user.kioskPath} replace />;
   return <Outlet />;
 }

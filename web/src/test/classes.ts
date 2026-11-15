@@ -144,3 +144,59 @@ export const SESSIONS = {
 export const SESSION_ROWS: SessionFixture[] = [SESSIONS.llena, SESSIONS.lunes7, SESSIONS.hoy17, SESSIONS.cancelada, SESSIONS.open];
 
 export const sessionsPage = (rows: SessionFixture[] = SESSION_ROWS): MockReply => ({ status: 200, body: { items: rows, total: rows.length, limit: 200, offset: 0 } });
+
+// S7-F4 · check-in: detalle de sesión con asistentes (SessionDetail, AttendeeOut) y filas de GET /members (MemberRowOut).
+export interface AttendeeFixture {
+  id: string;
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  flagged: boolean;
+  flags: string[];
+  checked_in_at: string;
+}
+
+export function attendee(id: string, first: string, last: string, checkedInAt: string, flags: string[] = []): AttendeeFixture {
+  return { id, member_id: `m-${id}`, first_name: first, last_name: last, flagged: flags.length > 0, flags, checked_in_at: checkedInAt };
+}
+
+export const ATTENDEES = [
+  attendee("t1", "Diego", "Mora", "2026-10-20T21:48:00Z"),
+  attendee("t2", "Sofía", "Pardo", "2026-10-20T21:52:00Z", ["pending_payment"]),
+  attendee("t3", "Juan", "Pérez", "2026-10-20T21:55:00Z", ["expired", "other_day"]),
+];
+
+export const sessionDetail = (overrides: Record<string, unknown> = {}, attendees: AttendeeFixture[] = ATTENDEES) => ({
+  ...SESSIONS.hoy17,
+  attendance_count: attendees.length,
+  attendees,
+  ...overrides,
+});
+
+export function memberRow(id: string, first: string, last: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    first_name: first,
+    last_name: last,
+    sex: null,
+    status: "active",
+    deleted_at: null,
+    photo_attachment_id: null,
+    plan_name: "Mensual",
+    membership_status: "active",
+    membership_end_date: "2026-10-28",
+    ...overrides,
+  };
+}
+
+export const MEMBER_ROWS = {
+  laura: memberRow("mem-laura", "Laura", "Gómez"),
+  camila: memberRow("mem-camila", "Camila", "Torres", { membership_status: "expired", membership_end_date: "2026-10-15" }),
+  andres: memberRow("mem-andres", "Andrés", "Ruiz", { membership_status: "expiring", plan_name: "12 clases" }),
+  elena: memberRow("mem-elena", "Elena", "Vargas", { membership_status: "none", plan_name: null, membership_end_date: null }),
+};
+
+export const membersPage = (rows: unknown[]) => ({ status: 200, body: { items: rows, total: rows.length, limit: 10, offset: 0 } });
+
+/** Cuerpo del envelope de error del api (para un `MockReply` propio). */
+export const apiErrorBody = (code: string): { error: { code: string; message: string } } => ({ error: { code, message: "Mensaje del api." } });

@@ -31,6 +31,7 @@ const USER = {
   memberId: null,
   gymName: "Box Norte",
   mustChangePassword: false,
+  kioskPath: null,
 };
 
 afterEach(() => {
@@ -99,7 +100,7 @@ describe("restoreSession", () => {
     expect(me[0]?.headers.get("Authorization")).toBe("Bearer nuevo-access");
     expect(getSession()).toEqual({
       status: "authenticated",
-      user: { id: ME.id, email: ME.email, role: "admin", memberId: null, gymName: "Box Norte", mustChangePassword: false },
+      user: { id: ME.id, email: ME.email, role: "admin", memberId: null, gymName: "Box Norte", mustChangePassword: false, kioskPath: null },
     });
     expect(getAccessToken()).toBe("nuevo-access");
   });

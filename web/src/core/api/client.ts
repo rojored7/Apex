@@ -24,7 +24,7 @@ import { ApiError, GENERIC_MESSAGES, parseApiError } from "./errors";
 import { filenameFromDisposition } from "./disposition";
 import { toQueryString, type QueryParams } from "./query";
 import { reportCustodyUnavailable } from "../custody/custodyNotice";
-import { HTTP_PAYLOAD_TOO_LARGE, HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
+import { HTTP_FORBIDDEN, HTTP_PAYLOAD_TOO_LARGE, HTTP_SERVICE_UNAVAILABLE, HTTP_UNAUTHORIZED } from "./status";
 
 export const API_BASE = "/api/v1";
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -90,6 +90,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 let accessTokenGetter: (() => string | null) | null = null;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
+let kioskModeHandler: (() => void) | null = null;
 
 /** La sesión en memoria (US-042, US-043) entrega aquí el access token vigente. */
 export function setAccessTokenGetter(getter: (() => string | null) | null): void {
@@ -99,6 +100,11 @@ export function setAccessTokenGetter(getter: (() => string | null) | null): void
 /** Gancho para el 401; `null` lo quita. */
 export function registerOnUnauthorized(handler: UnauthorizedHandler | null): void {
   unauthorizedHandler = handler;
+}
+
+/** S7-D41: gancho del 403 `kiosk_mode` (la sesión está confinada al check-in); `null` lo quita. */
+export function registerOnKioskMode(handler: (() => void) | null): void {
+  kioskModeHandler = handler;
 }
 
 function buildUrl(path: string, query: QueryParams | undefined): string {
@@ -237,6 +243,7 @@ async function send(method: Method, path: string, options: SendOptions, settings
     const outcome = await unauthorizedHandler(error, { accessToken: token });
     if (outcome === "retry") return send(method, path, options, settings, { ...retries, auth: true });
   }
+  if (error.status === HTTP_FORBIDDEN && error.code === API_ERROR_CODES.kioskMode) kioskModeHandler?.();
   // S5-F5 (US-136, S5-D14): custodio sellado o inalcanzable. Aviso global y nada de reintentos:
   // la espera la respeta quien llama (Retry-After, 30 s por defecto).
   if (error.status === HTTP_SERVICE_UNAVAILABLE && error.code === API_ERROR_CODES.cryptoUnavailable) reportCustodyUnavailable(error.retryAfterS);

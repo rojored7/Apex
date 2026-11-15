@@ -188,7 +188,7 @@ describe("useMemberSearch", () => {
       const mock = mockApi({ "GET /members": (call) => memberPage(call, [MEMBERS.laura, MEMBERS.andres, MEMBERS.elena]) });
       const { result, rerender } = renderHook(({ text }) => useMemberSearch(text), { wrapper: wrapper(testQueryClient(), []), initialProps: { text: "" } });
 
-      expect(result.current).toEqual({ status: "idle", options: [] });
+      expect(result.current).toEqual({ status: "idle", options: [], error: null });
       rerender({ text: "a" });
       expect(MEMBER_SEARCH_DELAY_MS).toBe(300);
       expect(mock.calls).toHaveLength(0);

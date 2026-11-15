@@ -5,7 +5,7 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { EXTRA_MESSAGES, SLOT_MESSAGES, type ExtraSessionFormValues, type SlotFormValues } from "./schemas";
 
@@ -157,3 +157,115 @@ export function slotsListError(error: unknown): ApiError | null {
     SLOTS_LIST_MESSAGES.failed,
   );
 }
+
+// S7-F4 · US-159 y US-161: check-in en la tablet y quitar una asistencia.
+export const CHECKIN_MESSAGES = {
+  alreadyCheckedIn: "Ya registró asistencia en esta clase.",
+  sessionCancelled: "Esta sesión fue cancelada. Ya no se puede registrar la llegada.",
+  notFound: "Ese socio ya no existe. Búscalo de nuevo.",
+  forbidden: "No tienes permiso para registrar asistencia. Pídele ayuda a un administrador.",
+  tooMany: (wait: string): string => `Hiciste muchas llegadas seguidas. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos registrar la llegada. Intenta de nuevo.",
+  generic: "No pudimos registrar la llegada. Intenta de nuevo.",
+} as const;
+
+export const REMOVE_ATTENDANCE_MESSAGES = {
+  locked: "Esta asistencia ya no se puede quitar desde la tablet. Pídele a un administrador que la quite.",
+  notFound: "Esa asistencia ya no existe. Cierra este aviso; actualizamos la lista.",
+  tooMany,
+  server: "No pudimos quitar la asistencia. Intenta de nuevo en un momento.",
+  generic: "No pudimos quitar la asistencia. Intenta de nuevo en un momento.",
+} as const;
+
+export const SESSION_LOAD_MESSAGES = {
+  notFound: "Esta sesión ya no existe. Vuelve a Clases y elige otra.",
+  forbidden: "No tienes permiso para registrar asistencia en esta clase.",
+  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  server: "No pudimos cargar la sesión. Intenta de nuevo en un momento.",
+  generic: "No pudimos cargar la sesión. Intenta de nuevo en un momento.",
+} as const;
+
+export const MEMBER_SEARCH_MESSAGES = {
+  tooMany: "Espera un momento y vuelve a buscar.",
+  failed: "No pudimos buscar. Intenta de nuevo en un momento.",
+} as const;
+
+/** El mensaje de un check-in que no se registró (409 duplicado o cancelada, 404, 403, 429, 5xx, red). */
+export function checkInMessage(error: unknown): string {
+  if (!isApiError(error)) return CHECKIN_MESSAGES.generic;
+  const connection = connectionMessage(error);
+  if (connection !== null) return connection;
+  if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.alreadyCheckedIn) return CHECKIN_MESSAGES.alreadyCheckedIn;
+  if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.sessionCancelled) return CHECKIN_MESSAGES.sessionCancelled;
+  return statusMessage(error, CHECKIN_MESSAGES);
+}
+
+/** Quitar una asistencia: 403 `attendance_locked` (el coach solo quita hoy o ayer), 404, 429, 5xx (ConfirmModal). */
+export function removeAttendanceError(error: unknown): ApiError {
+  return toFormError(
+    error,
+    (e) => (e.status === HTTP_FORBIDDEN ? REMOVE_ATTENDANCE_MESSAGES.locked : statusMessage(e, REMOVE_ATTENDANCE_MESSAGES)),
+    REMOVE_ATTENDANCE_MESSAGES.generic,
+  );
+}
+
+/** El error de leer la sesión del check-in con el mensaje de la pantalla. */
+export function sessionLoadError(error: unknown): ApiError | null {
+  return toScreenError(error, (e) => statusMessage(e, SESSION_LOAD_MESSAGES), SESSION_LOAD_MESSAGES.generic);
+}
+
+/** La búsqueda de socios falló: el 429 pide esperar, lo demás pide reintentar. */
+export function memberSearchFailedText(error: unknown): string {
+  return isApiError(error) && error.status === HTTP_TOO_MANY ? MEMBER_SEARCH_MESSAGES.tooMany : MEMBER_SEARCH_MESSAGES.failed;
+}
+
+// S7-F5 · US-162: leer la asistencia (lista, resumen semanal y pestaña de la ficha).
+export const ATTENDANCE_LIST_MESSAGES = {
+  forbidden: "No tienes permiso para ver la asistencia. Si lo necesitas, pídeselo a un administrador.",
+  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  failed: "No pudimos cargar las asistencias. Intenta de nuevo en un momento.",
+} as const;
+
+export const ATTENDANCE_SUMMARY_MESSAGES = {
+  forbidden: ATTENDANCE_LIST_MESSAGES.forbidden,
+  tooMany: ATTENDANCE_LIST_MESSAGES.tooMany,
+  failed: "No pudimos cargar el resumen por semana. Intenta de nuevo en un momento.",
+} as const;
+
+export const MEMBER_ATTENDANCE_MESSAGES = {
+  notFound: "Este socio ya no existe. Vuelve a Socios y búscalo de nuevo.",
+  forbidden: ATTENDANCE_LIST_MESSAGES.forbidden,
+  tooMany: ATTENDANCE_LIST_MESSAGES.tooMany,
+  failed: "No pudimos cargar la asistencia del socio. Intenta de nuevo en un momento.",
+} as const;
+
+export const RANGE_INVERTED_MESSAGE = "La fecha inicial no puede ser posterior a la final. Corrige el rango.";
+export const RANGE_OUT_OF_RANGE_MESSAGE = "Las fechas deben estar entre 2020 y 2100. Corrige el rango.";
+export const RANGE_TOO_LONG_MESSAGE = "El rango no puede pasar de 26 semanas. Acórtalo y vuelve a intentar.";
+
+interface ReadMessages {
+  forbidden: string;
+  tooMany: (wait: string) => string;
+  failed: string;
+  notFound?: string;
+}
+
+function readError(error: unknown, messages: ReadMessages): ApiError | null {
+  return toScreenError(
+    error,
+    (e) => {
+      if (e.status === HTTP_FORBIDDEN) return messages.forbidden;
+      if (e.status === HTTP_TOO_MANY) return messages.tooMany(waitText(e.retryAfterS));
+      if (e.status === HTTP_NOT_FOUND && messages.notFound !== undefined) return messages.notFound;
+      return messages.failed;
+    },
+    messages.failed,
+  );
+}
+
+/** El error de la lista de asistencias como ApiError con el mensaje de la pantalla (lo pinta DataTable). */
+export const attendanceListError = (error: unknown): ApiError | null => readError(error, ATTENDANCE_LIST_MESSAGES);
+/** El error del resumen semanal. */
+export const attendanceSummaryError = (error: unknown): ApiError | null => readError(error, ATTENDANCE_SUMMARY_MESSAGES);
+/** El error de la pestaña de la ficha (404: el socio ya no existe). */
+export const memberAttendanceError = (error: unknown): ApiError | null => readError(error, MEMBER_ATTENDANCE_MESSAGES);

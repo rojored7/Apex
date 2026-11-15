@@ -14,6 +14,7 @@ export function testUser(role: Role, overrides: Partial<SessionUser> = {}): Sess
     memberId: null,
     gymName: "Box de prueba",
     mustChangePassword: false,
+    kioskPath: null,
     ...overrides,
   };
 }

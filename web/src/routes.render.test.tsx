@@ -7,7 +7,7 @@ import { ENABLED_FEATURES, type Feature } from "./config/features";
 import { childRoute, type RouteDef } from "./config/routeTable";
 import { SessionRoleProvider } from "./core/auth/SessionRole";
 import { createAppRouter, type AppRouterOptions } from "./routes";
-import { testQueryClient } from "./test/server";
+import { mockApi, testQueryClient } from "./test/server";
 import { signInAs, signOutForTests } from "./test/session";
 import { reloadPage } from "./pages/reload";
 
@@ -63,6 +63,7 @@ beforeEach(() => {
 
 afterEach(() => {
   signOutForTests();
+  vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
 });
 
@@ -131,6 +132,8 @@ describe("router de la app", () => {
 
   it("la tablet del box monta GymLayout con el título de la ruta", async () => {
     signInAs("coach");
+    // S7-D41: el check-in solo se muestra con la marca del servidor.
+    mockApi({ "POST /auth/kiosk": { status: 200, body: { access_token: "access-quiosco", token_type: "bearer", expires_in: 900, kiosk_path: "/clases/7/checkin" } } });
     renderAt("/clases/7/checkin", { enabled: WITH_FUTURE });
 
     expect(await screen.findByRole("heading", { name: "Lista de llegada" })).toBeInTheDocument();

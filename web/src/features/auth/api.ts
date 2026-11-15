@@ -58,6 +58,7 @@ export function sessionFromLogin(out: unknown): SessionPayload {
       memberId: null,
       gymName: DEFAULT_GYM_NAME,
       mustChangePassword: login.must_change_password,
+      kioskPath: null,
     },
   };
 }

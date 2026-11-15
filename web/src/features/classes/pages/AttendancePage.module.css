@@ -1,0 +1,57 @@
+/* S7-F5: asistencia por socio y por semana (US-162). Solo variables de tokens.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.rangeError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-label);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}
+
+.link {
+  color: var(--blue-deep);
+  font: var(--text-body);
+}
+
+.nowrap {
+  white-space: nowrap;
+}

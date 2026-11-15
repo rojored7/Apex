@@ -64,7 +64,11 @@ export interface MembersParams {
   plan_id?: string;
   /** S6-F5 (S6-C5): `missing` = socios sin la autorización de datos (la condición del KPI members_without_consent). */
   consent?: ConsentFilter;
+  /** S7-F5 (US-163): no asistió en los últimos N días o nunca (`never`). */
+  last_attendance?: LastAttendanceFilterValue;
 }
+
+export type LastAttendanceFilterValue = NonNullable<NonNullable<operations["list_members_api_v1_members_get"]["parameters"]["query"]>["last_attendance"]>;
 
 export type ConsentFilter = NonNullable<NonNullable<operations["list_members_api_v1_members_get"]["parameters"]["query"]>["consent"]>;
 

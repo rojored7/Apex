@@ -309,6 +309,9 @@ export const memberRowSchema = z
     membership_end_date: z.string().nullable().optional().default(null),
     // S6-F3 (US-148): el adjunto kind=photo vigente; null si el socio no tiene foto.
     photo_attachment_id: z.uuid().nullable().optional().default(null),
+    // S7-F5 (US-163, S7-R2): la última asistencia (instante UTC, null si nunca asistió) y las clases que le quedan a una tiquetera.
+    last_attendance_at: z.string().nullable().optional().default(null),
+    membership_classes_remaining: z.number().int().nullable().optional().default(null),
   })
   .strict();
 

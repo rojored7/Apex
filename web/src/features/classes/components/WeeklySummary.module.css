@@ -1,0 +1,85 @@
+/* S7-F5: resumen semanal de asistencia (US-162). Solo variables de tokens.css. */
+.weeks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.week {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.title {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.total {
+  margin: 0;
+  font: var(--text-label);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--text-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.table thead th {
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.table tbody th {
+  font-weight: 700;
+}
+
+.occupancy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bar {
+  display: inline-block;
+  inline-size: 72px;
+  block-size: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  block-size: 100%;
+  background: var(--blue-deep);
+}

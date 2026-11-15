@@ -9,9 +9,11 @@ import { keepPreviousData, useQuery, useQueryClient, type UseMutationResult, typ
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
+import { todayBogota } from "../../core/i18n/format";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import { ATTENDANCE_QUERY_KEY } from "./attendanceApi";
 import { hhmm, type SessionCreateBody, type SlotCreateBody, type SlotPatchBody } from "./schemas";
 
 export const slotSchema = z.object({
@@ -183,5 +185,102 @@ export function useCancelSession(): UseMutationResult<SessionView, Error, Cancel
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
     },
+  });
+}
+
+// S7-F4 · US-159 y US-161: la sesión con sus asistentes (GET /class-sessions/{id}), el check-in (POST /attendance) y quitar una
+// asistencia (DELETE /attendance/{id}, motivo opcional en el cuerpo, E4). La tablet solo lee nombre y apellido: nada cifrado.
+export const attendeeSchema = z.object({
+  id: z.string().min(1),
+  member_id: z.string().min(1),
+  first_name: z.string(),
+  last_name: z.string(),
+  flagged: z.boolean(),
+  flags: z.array(z.string()),
+  checked_in_at: z.string(),
+});
+export type AttendeeView = z.infer<typeof attendeeSchema>;
+
+export const sessionDetailSchema = sessionSchema.extend({ attendees: z.array(attendeeSchema) });
+export type SessionDetailView = z.infer<typeof sessionDetailSchema>;
+
+export const checkinSchema = z.object({
+  id: z.string().min(1),
+  flags: z.array(z.string()),
+  flagged: z.boolean(),
+  membership_status_at_checkin: z.string(),
+  attendance_count: z.number().int().nonnegative(),
+  capacity: z.number().int(),
+});
+export type CheckinResult = z.infer<typeof checkinSchema>;
+
+export const CLASS_SESSION_QUERY_KEY = ["class-session"] as const;
+
+export function classSessionKey(id: string): readonly ["class-session", string] {
+  return ["class-session", id];
+}
+
+export function useClassSession(id: string): UseQueryResult<SessionDetailView> {
+  return useQuery({
+    queryKey: classSessionKey(id),
+    queryFn: async ({ signal }) => parseResponse(sessionDetailSchema, await api.get<unknown>(`/class-sessions/${encodeURIComponent(id)}`, { signal })),
+    enabled: id !== "",
+    refetchOnWindowFocus: false,
+  });
+}
+
+export interface CheckInVariables {
+  sessionId: string;
+  memberId: string;
+}
+
+/** POST /attendance: solo la sesión y el socio; las banderas las decide el servidor (L-1). */
+export function useCheckIn(): UseMutationResult<CheckinResult, Error, CheckInVariables> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<CheckinResult, Error, CheckInVariables>({
+    mutationFn: async ({ sessionId, memberId }) => {
+      try {
+        return parseResponse(checkinSchema, await api.post<unknown>("/attendance", { body: { session_id: sessionId, member_id: memberId } }));
+      } finally {
+        // Con éxito, el duplicado (409) o la sesión cambiada, la lista de la tablet se relee.
+        void queryClient.invalidateQueries({ queryKey: CLASS_SESSION_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: ATTENDANCE_QUERY_KEY });
+      }
+    },
+  });
+}
+
+export interface RemoveAttendanceVariables {
+  id: string;
+  reason?: string | undefined;
+}
+
+/** DELETE /attendance/{id}: el motivo (opcional) va en el cuerpo, no en la URL, para que no llegue a los logs de Nginx. */
+export function useRemoveAttendance(): UseMutationResult<null, Error, RemoveAttendanceVariables> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<null, Error, RemoveAttendanceVariables>({
+    mutationFn: async ({ id, reason }) => {
+      const path = `/attendance/${encodeURIComponent(id)}`;
+      try {
+        await (reason === undefined ? api.delete<unknown>(path) : api.delete<unknown>(path, { body: { reason } }));
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: CLASS_SESSION_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: ATTENDANCE_QUERY_KEY });
+      }
+      return null;
+    },
+  });
+}
+
+// S7-F4c · S7-D42: las sesiones programadas de HOY (GET /class-sessions?from=&to=&status=scheduled) para el selector del quiosco.
+export function useTodaySessions(enabled: boolean): UseQueryResult<Page<SessionView>> {
+  const today = todayBogota();
+  return useQuery({
+    queryKey: ["class-sessions", { today }] as const,
+    queryFn: async ({ signal }) =>
+      parseResponse(sessionsPageSchema, await api.get<unknown>("/class-sessions", { query: listParams({ limit: WEEK_SESSIONS_LIMIT, offset: 0, from: today, to: today, status: "scheduled" }), signal })),
+    enabled,
   });
 }

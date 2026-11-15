@@ -57,7 +57,7 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
       "Más reciente",
       "Más antiguo",
     ]);
-    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado"]);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado", "Última asistencia"]);
   });
 
   it("cada fila trae el nombre como enlace a la ficha y, sin membresía, plan y vencimiento vacíos", async () => {
@@ -66,8 +66,8 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
     const link = await screen.findByRole("link", { name: "Laura Gómez" });
     expect(link).toHaveAttribute("href", `/socios/${MEMBERS.laura.id}`);
     const [, laura, andres, elena] = within(table()).getAllByRole("row");
-    expect(within(laura as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "—", "—", "—", "Activo"]);
-    expect(within(andres as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Andrés Ruiz", "—", "—", "—", "Inactivo"]);
+    expect(within(laura as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "—", "—", "—", "Activo", "Nunca"]);
+    expect(within(andres as HTMLElement).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Andrés Ruiz", "—", "—", "—", "Inactivo", "Nunca"]);
     expect(within(elena as HTMLElement).getByText("Dado de baja")).toHaveAttribute("data-account", "deleted");
     expect(within(laura as HTMLElement).getByText("Activo")).toHaveAttribute("data-account", "active");
   });
@@ -77,7 +77,7 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
 
     const link = await screen.findByRole("link", { name: "Laura Gómez" });
     const tr = link.closest("tr") as HTMLElement;
-    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "Mensual", "27 nov 2026", "Al día", "Activo"]);
+    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "Mensual", "27 nov 2026", "Al día", "Activo", "Nunca"]);
     expect(within(tr).getByText("Al día")).toHaveAttribute("data-status", "active");
   });
 
@@ -86,7 +86,7 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
 
     const link = await screen.findByRole("link", { name: "Laura Gómez" });
     const tr = link.closest("tr") as HTMLElement;
-    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "12 clases", "—", "—", "Activo"]);
+    expect(within(tr).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Laura Gómez", "12 clases", "—", "—", "Activo", "Nunca"]);
   });
 
   it("S3-F2: en escritorio 'Nuevo socio' va en el encabezado y no hay tarjetas ni botón flotante", async () => {
@@ -133,7 +133,7 @@ describe("MembersListPage · estructura (Socios_Lista.html)", () => {
     expect(image).toHaveAttribute("src", "blob:apex/foto");
     expect(within(table()).getAllByTestId("member-photo-placeholder")).toHaveLength(1);
     expect(mock.callsTo(`GET /attachments/${PHOTO_ID}`)).toHaveLength(1);
-    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado"]);
+    expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Socio", "Plan vigente", "Vence", "Membresía", "Estado", "Última asistencia"]);
   });
 
   it("la primera petición pide la primera página de 25 sin búsqueda, filtro ni orden", async () => {

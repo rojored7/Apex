@@ -1,18 +1,21 @@
 // S4A-F3 · US-108 a US-110 (front; reemplaza la Inicio mínima de S2-D25): Inicio.html con GET
 // /dashboard. Saludo con el día de Bogotá, accesos del encabezado según el rol, los KPI de v0.1
-// (KpiGrid), las tarjetas futuras (FutureKpis), los avisos (NotificationKpis, S5-F3) y los últimos movimientos (LastMovements). Las tres
+// (KpiGrid), las clases (ClassesKpis, S7-F6), las tarjetas futuras (FutureKpis), los avisos (NotificationKpis, S5-F3) y los últimos movimientos (LastMovements). Las tres
 // piezas comparten la consulta ["dashboard"]: una sola petición. El member nunca llega aquí: RequireRole
 // lo manda a /mi antes de pintar el panel.
 // DESIGN-GAP: "Hola, Ana": el saludo usa la parte local del correo; `display_name` llega en v0.2 con
 // EP-04 (S4A-D19).
-// DESIGN-GAP: "Registrar pago" y "Check-in" del encabezado: el registro de pagos se abre desde /pagos
-// (sin enlace directo al panel) y Check-in llega con clases en v0.4.
+// DESIGN-GAP: "Registrar pago" del encabezado: el registro de pagos se abre desde /pagos (sin enlace directo
+// al panel). S7-F6: "Check-in" lleva a la próxima clase de hoy (sessions_today) y no aparece si no queda ninguna.
 import { useSession } from "../../../core/auth";
 import { can } from "../../../core/auth/permissions";
 import { formatLongDate, todayBogota } from "../../../core/i18n/format";
 import { NEW_MEMBER_PATH, SELL_PATH } from "../../../shared/lib/routes";
 import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
+import { checkInPath } from "../../../shared/lib/routes";
 import { useDashboard } from "../api";
+import { nextCheckInSession } from "../sessionsToday";
+import { ClassesKpis } from "../components/ClassesKpis";
 import { FutureKpis } from "../components/FutureKpis";
 import { KpiGrid } from "../components/KpiGrid";
 import { NotificationKpis } from "../components/NotificationKpis";
@@ -27,19 +30,22 @@ function localPart(email: string): string {
 
 export default function InicioPage() {
   const { user } = useSession();
-  const { data } = useDashboard();
+  const { data, dataUpdatedAt } = useDashboard();
   const day = formatLongDate(data?.today ?? todayBogota());
   const title = user ? `Hola, ${localPart(user.email)} · ${day}` : "Inicio";
   const role = user?.role ?? null;
+  const nextClass = can(role, "classes.view") && data ? nextCheckInSession(data.sessions_today, dataUpdatedAt) : null;
   const actions: PageAction[] = [
     ...(can(role, "members.create") ? [{ id: "nuevo-socio", label: "+ Nuevo socio", href: NEW_MEMBER_PATH, variant: "primary" as const }] : []),
     ...(can(role, "memberships.sell") ? [{ id: "vender", label: "Vender membresía", href: SELL_PATH }] : []),
+    ...(nextClass ? [{ id: "checkin", label: "Check-in", href: checkInPath(nextClass.id) }] : []),
   ];
 
   return (
     <div className={styles.page}>
       <PageHeader title={title} actions={actions} />
       <KpiGrid />
+      <ClassesKpis />
       <FutureKpis />
       <NotificationKpis />
       <LastMovements />

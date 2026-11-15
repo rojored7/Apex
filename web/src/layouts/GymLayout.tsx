@@ -31,6 +31,8 @@ export interface TabletOptions {
   blockedTo?: string | null;
   /** Se cerró el diálogo de una navegación retenida sin salir. */
   onCancelLeave?: () => void;
+  /** S7-D42: cambia de sesión de clase sin contraseña (el servidor solo acepta hoy y ayer). Devuelve el error o null. */
+  switchSession?: (path: string) => Promise<string | null>;
 }
 
 export interface GymLayoutProps {
@@ -76,7 +78,11 @@ export function GymLayout({ title, subtitle, exitTo, exitLabel = "Salir", counte
     },
     [isTablet, navigate],
   );
-  const context = useMemo<GymContextValue>(() => ({ tablet: isTablet, requestLeave, setHeader: setOverride }), [isTablet, requestLeave]);
+  const switchSession = tablet?.switchSession;
+  const context = useMemo<GymContextValue>(
+    () => ({ tablet: isTablet, requestLeave, switchSession: switchSession ?? (() => Promise.resolve(null)), setHeader: setOverride }),
+    [isTablet, requestLeave, switchSession],
+  );
 
   const shownTitle = override?.title ?? title;
   const shownSubtitle = override ? override.subtitle : subtitle;

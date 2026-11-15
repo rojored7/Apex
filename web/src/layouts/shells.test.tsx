@@ -23,6 +23,7 @@ vi.mock("../features/payments/components/RegisterPaymentPanelHost", () => {
 });
 import { GymShell, PortalShell, TvShell } from "./ZoneShells";
 import { getSession } from "../core/auth";
+import { useGym } from "../shared/hooks/gymContext";
 
 afterEach(() => {
   signOutForTests();
@@ -141,10 +142,52 @@ describe("PortalShell, GymShell y TvShell", () => {
     inRouter(<GymShell />, CHECKIN);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos activar el modo tablet");
+    // MEDIUM-1: sin la marca del servidor el check-in no se muestra.
+    expect(screen.queryByRole("heading", { name: "Contenido" })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
     await waitFor(() => { expect(getSession().user?.kioskPath).toBe(CHECKIN); });
     expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+  });
+
+  it("MEDIUM-1: normaliza la ruta (minúsculas, sin barra final) antes del POST y no muestra el check-in hasta tener la marca", async () => {
+    signInAs("coach");
+    const normal = "/clases/abc-def/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": () => KIOSK_OUT(normal) });
+    inRouter(<GymShell />, "/clases/ABC-DEF/checkin/");
+
+    expect(screen.queryByRole("heading", { name: "Contenido" })).not.toBeInTheDocument();
+    await waitFor(() => { expect(getSession().user?.kioskPath).toBe(normal); });
+    expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: normal });
+    expect(await screen.findByRole("heading", { name: "Contenido" })).toBeInTheDocument();
+  });
+
+  it("S7-D42: cambiar de sesión desde el quiosco llama POST /auth/kiosk con la ruta nueva y navega sin contraseña", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const otra = "/clases/2/checkin";
+    const mock = mockApi({ "POST /auth/kiosk": KIOSK_OUT(otra) });
+    function Probe() {
+      const { switchSession } = useGym();
+      return (
+        <button type="button" onClick={() => void switchSession(otra)}>
+          Cambiar
+        </button>
+      );
+    }
+    const router = createMemoryRouter([{ element: <GymShell />, children: [{ path: "*", element: <Probe />, handle: { title: "Check-in" } }] }], { initialEntries: [CHECKIN] });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cambiar" }));
+
+    await waitFor(() => { expect(router.state.location.pathname).toBe(otra); });
+    expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: otra });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getSession().user?.kioskPath).toBe(otra);
   });
 
   it("el modo tablet se deriva de la sesión: con kioskPath sigue en otra pantalla y no vuelve a llamar al api", () => {
@@ -183,6 +226,27 @@ describe("PortalShell, GymShell y TvShell", () => {
     await waitFor(() => { expect(router.state.location.pathname).toBe("/clases"); });
     expect(getSession().user?.kioskPath).toBeNull();
     expect(mock.callsTo("POST /auth/login")).toHaveLength(0);
+    // HIGH-1 (revisión de F4b): salir no reactiva el quiosco aunque el pathname sea el del check-in un instante.
+    expect(mock.callsTo("POST /auth/kiosk")).toHaveLength(0);
+  });
+
+  it("LOW-2: tras una contraseña incorrecta y cerrar el diálogo, otra navegación vuelve a quedar retenida", async () => {
+    signInAs("coach", { kioskPath: CHECKIN });
+    const user = userEvent.setup();
+    mockApi({ "POST /auth/kiosk/exit": { status: 401, body: { error: { code: "invalid_password", message: "No." } } } });
+    const { router } = inRouter(<GymShell />, CHECKIN);
+
+    await user.click(screen.getByRole("button", { name: "Clases" }));
+    await user.type(screen.getByLabelText(/Contraseña/), "mala");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "Volver" }));
+    await act(async () => {
+      await router.navigate("/socios");
+    });
+
+    expect(await screen.findByRole("dialog", { name: "¿Salir del modo tablet?" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CHECKIN);
   });
 
   it("«atrás» o cualquier navegación fuera del check-in abre el diálogo de salida y se queda; con la contraseña pasa", async () => {

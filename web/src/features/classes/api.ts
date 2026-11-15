@@ -9,6 +9,7 @@ import { keepPreviousData, useQuery, useQueryClient, type UseMutationResult, typ
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
+import { todayBogota } from "../../core/i18n/format";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
@@ -267,5 +268,16 @@ export function useRemoveAttendance(): UseMutationResult<null, Error, RemoveAtte
       }
       return null;
     },
+  });
+}
+
+// S7-F4c · S7-D42: las sesiones programadas de HOY (GET /class-sessions?from=&to=&status=scheduled) para el selector del quiosco.
+export function useTodaySessions(enabled: boolean): UseQueryResult<Page<SessionView>> {
+  const today = todayBogota();
+  return useQuery({
+    queryKey: ["class-sessions", { today }] as const,
+    queryFn: async ({ signal }) =>
+      parseResponse(sessionsPageSchema, await api.get<unknown>("/class-sessions", { query: listParams({ limit: WEEK_SESSIONS_LIMIT, offset: 0, from: today, to: today, status: "scheduled" }), signal })),
+    enabled,
   });
 }

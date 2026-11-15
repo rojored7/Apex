@@ -18,6 +18,7 @@ import { useCheckIn, useClassSession, type SessionDetailView } from "../api";
 import { checkInMessage, sessionLoadError } from "../classErrors";
 import { AttendeeList } from "../components/AttendeeList";
 import { CheckInSearch } from "../components/CheckInSearch";
+import { TodaySessionPicker } from "../components/TodaySessionPicker";
 import { OPEN_BOX } from "../components/WeekGrid";
 import { knownFlags } from "../flags";
 import styles from "./CheckInPage.module.css";
@@ -137,5 +138,10 @@ export default function CheckInPage() {
       </div>
     );
   }
-  return <CheckInContent session={session} />;
+  return (
+    <>
+      <TodaySessionPicker currentId={session.id} />
+      <CheckInContent session={session} />
+    </>
+  );
 }

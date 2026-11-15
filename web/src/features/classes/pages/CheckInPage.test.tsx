@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { axe } from "vitest-axe";
 import { SessionRoleProvider } from "../../../core/auth";
-import { apiError, ATTENDEES, MEMBER_ROWS, membersPage, memberRow, SESSIONS, sessionDetail } from "../../../test/classes";
+import { apiError, ATTENDEES, MEMBER_ROWS, membersPage, memberRow, SESSIONS, sessionDetail, sessionsPage } from "../../../test/classes";
 import { mockApi, testQueryClient, type MockHandler, type MockReply } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import { GymLayout } from "../../../layouts/GymLayout";
@@ -233,5 +233,63 @@ describe("CheckInPage · registrar la llegada", () => {
     expect(paths.filter((p) => /^\/members\/[^/]+/.test(p))).toEqual([]);
     expect(paths.filter((p) => p.includes("reveal"))).toEqual([]);
     expect(paths.filter((p) => p.startsWith("/attachments"))).toEqual(["/attachments/ph1"]);
+  });
+});
+
+describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
+  const OTRA = { ...SESSIONS.hoy17, id: "e1e1e1e1-0000-4000-8000-0000000000aa", starts_at: "2026-10-20T23:00:00Z", name: "WOD noche" };
+
+  function renderTablet(switchSession: (path: string) => Promise<string | null>) {
+    const mock = mockApi({
+      [DETAIL]: { status: 200, body: sessionDetail() },
+      "GET /members": searchReply,
+      "GET /class-sessions": sessionsPage([SESSIONS.hoy17, OTRA]),
+    });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <SessionRoleProvider>
+          <MemoryRouter initialEntries={[`/clases/${ID}/checkin`]}>
+            <Routes>
+              <Route element={<GymLayout title="Check-in" exitTo="/clases" exitLabel="Clases" tablet={{ verifyPassword: () => Promise.resolve(null), onLeave: () => undefined, onIdle: () => undefined, switchSession }} />}>
+                <Route path="/clases/:id/checkin" element={<CheckInPage />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </SessionRoleProvider>
+      </QueryClientProvider>,
+    );
+    return mock;
+  }
+
+  it("lista las sesiones programadas de hoy y al elegir otra pide cambiar de sesión por la ruta de su check-in", async () => {
+    const switchSession = vi.fn(() => Promise.resolve<string | null>(null));
+    const mock = renderTablet(switchSession);
+    const user = userEvent.setup();
+
+    const select = await screen.findByRole("combobox", { name: "Clases de hoy" });
+    const query = new URL(mock.callsTo("GET /class-sessions")[0]?.url ?? "", "http://apex.test").searchParams;
+    expect(query.get("status")).toBe("scheduled");
+    expect(query.get("from")).toBe(query.get("to"));
+    expect(within(select).getAllByRole("option")).toHaveLength(2);
+
+    await user.selectOptions(select, OTRA.id);
+
+    expect(switchSession).toHaveBeenCalledWith(`/clases/${OTRA.id}/checkin`);
+  });
+
+  it("si el servidor no deja cambiar, lo dice y la sesión actual sigue", async () => {
+    renderTablet(() => Promise.resolve("No pudimos cambiar de clase. Intenta de nuevo."));
+    const user = userEvent.setup();
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Clases de hoy" }), OTRA.id);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cambiar de clase");
+  });
+
+  it("fuera del modo tablet no hay selector", async () => {
+    renderPage();
+    await screen.findByText("Ya llegaron (3)");
+
+    expect(screen.queryByRole("combobox", { name: "Clases de hoy" })).not.toBeInTheDocument();
   });
 });

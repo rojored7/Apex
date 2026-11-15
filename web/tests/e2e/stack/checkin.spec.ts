@@ -39,6 +39,7 @@ async function axeViolations(page: Page): Promise<string[]> {
 
 interface SesionCreada {
   id: string;
+  name: string;
 }
 
 /** Sesión extra por el api (POST /class-sessions, S7-D11) a las 17:00 de Bogotá; `dias` la mueve respecto de hoy. */
@@ -50,20 +51,21 @@ async function crearSesion(
 ): Promise<SesionCreada> {
   const headers = { Authorization: `Bearer ${token}`, ...sameOriginHeaders() };
   const dia = fechaBogota(dias);
+  const name = `E2E ${String(Date.now())}-${String(dias)}`;
   const response = await page.request.post(`${API}/class-sessions`, {
     headers,
     data: {
       starts_at: `${dia}T17:00:00-05:00`,
       duration_min: 60,
       capacity,
-      name: `E2E ${String(Date.now())}`,
+      name,
     },
   });
   if (!response.ok())
     throw new Error(
       `POST /class-sessions respondió ${String(response.status())}.`,
     );
-  return (await response.json()) as SesionCreada;
+  return { ...((await response.json()) as { id: string }), name };
 }
 
 async function clasesQuedan(
@@ -150,7 +152,7 @@ test.describe("check-in en modo tablet contra el stack", () => {
       { amount_cop: plan.precio, method: "cash" },
     );
     expect(
-      await congelarPorApi(page, aCongelar.id, fechaBogota(-1), fechaBogota(5)),
+      await congelarPorApi(page, aCongelar.id, fechaBogota(0), fechaBogota(5)),
     ).toBe(200);
     expect((await venderMembresia(page, pendiente.id, plan.id)).status).toBe(
       "pending_payment",
@@ -180,10 +182,23 @@ test.describe("check-in en modo tablet contra el stack", () => {
 
     // La tablet usa una cuenta de coach propia.
     const coach: CoachCreado = await crearCoach(page);
+    const asistenciasExtra: string[] = [];
     try {
       const coachToken = await loginComo(page, coach);
 
-      await page.goto(`/clases/${hoy.id}/checkin`);
+      // Se entra por la pantalla (con clic) para que «atrás» pase por el router: Clases de hoy → sesión → Abrir check-in.
+      await page.goto("/clases?dia=hoy");
+      await page.getByText(hoy.name).first().click();
+      const kioskRespuesta = page.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === `${API}/auth/kiosk`,
+      );
+      await page.getByRole("link", { name: "Abrir check-in" }).click();
+      await expect(page).toHaveURL(CHECKIN);
+      const kioskAccess = (
+        (await (await kioskRespuesta).json()) as { access_token: string }
+      ).access_token;
       await expect(page.getByRole("heading", { level: 1 })).toContainText(
         "Check-in",
       );
@@ -235,9 +250,9 @@ test.describe("check-in en modo tablet contra el stack", () => {
       ).toBeDisabled();
 
       // Tiquetera: 10 → 9 al registrar → 10 al quitar.
-      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(10);
+      expect(await clasesQuedan(page, adminToken, tiquetera.id)).toBe(10);
       await llegar(page, tiquetera);
-      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(9);
+      expect(await clasesQuedan(page, adminToken, tiquetera.id)).toBe(9);
       await page
         .getByRole("button", { name: `Quitar a ${tiquetera.nombre}` })
         .click();
@@ -246,7 +261,7 @@ test.describe("check-in en modo tablet contra el stack", () => {
         .getByRole("button", { name: "Quitar asistencia" })
         .click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(10);
+      expect(await clasesQuedan(page, adminToken, tiquetera.id)).toBe(10);
 
       // La marca es de esta sesión de clase: las de ayer y de dentro de 7 días se prueban por el api (otra sesión exige salir del modo).
       for (const [sesion, bandera] of [
@@ -258,14 +273,39 @@ test.describe("check-in en modo tablet contra el stack", () => {
           data: { session_id: sesion.id, member_id: alDia.id },
         });
         expect(respuesta.status()).toBe(201);
-        expect(
-          ((await respuesta.json()) as { flags: string[] }).flags,
-        ).toContain(bandera);
+        const creada = (await respuesta.json()) as {
+          id: string;
+          flags: string[];
+        };
+        asistenciasExtra.push(creada.id);
+        expect(creada.flags).toContain(bandera);
       }
 
-      // «Atrás», la barra de direcciones y la recarga no sacan de la tablet (el servidor tiene la marca).
+      // Defensa real: con el access del quiosco el servidor niega revelar datos (403 kiosk_mode), aunque se pida a mano.
+      const reveal = await page.request.post(
+        `${API}/members/${alDia.id}/reveal`,
+        {
+          headers: {
+            Authorization: `Bearer ${kioskAccess}`,
+            ...sameOriginHeaders(),
+          },
+          data: {},
+        },
+      );
+      expect(reveal.status()).toBe(403);
+      expect(
+        ((await reveal.json()) as { error: { code: string } }).error.code,
+      ).toBe("kiosk_mode");
+
+      // «Atrás» pasa por el router: abre el diálogo de salida y el check-in sigue en pantalla; la barra de direcciones y la recarga también vuelven.
       await page.goBack();
+      const salida = page.getByRole("dialog", {
+        name: "¿Salir del modo tablet?",
+      });
+      await expect(salida).toBeVisible();
       await expect(page).toHaveURL(CHECKIN);
+      await salida.getByRole("button", { name: "Volver" }).click();
+      await expect(salida).toHaveCount(0);
       await expect(page.getByRole("link")).toHaveCount(0);
       await page.goto("/socios");
       await expect(page).toHaveURL(CHECKIN);
@@ -297,6 +337,15 @@ test.describe("check-in en modo tablet contra el stack", () => {
       await expect(page).toHaveURL(/\/socios$/);
     } finally {
       await borrarUsuario(page, coach.id);
+      // LOW-3: las asistencias de ayer y de +7 días se quitan con el admin; el coach solo puede quitar las de hoy o ayer.
+      for (const id of asistenciasExtra)
+        await page.request.delete(`${API}/attendance/${id}`, {
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+            ...sameOriginHeaders(),
+          },
+          data: { reason: "limpieza E2E" },
+        });
     }
   });
 });

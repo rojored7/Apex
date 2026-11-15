@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useBlocker, useLocation, useMatches, useNavigate } from "react-router";
 import { CustodyNoticeHost } from "../core/custody/CustodyNoticeHost";
 import { useSession } from "../core/auth";
-import { enterKiosk, exitKiosk, logoutDevice } from "../core/auth/kiosk";
+import { enterKiosk, exitKiosk, logoutDevice, normalizeKioskPath } from "../core/auth/kiosk";
 import { Button } from "../shared/ui/Button";
 import { GymLayout, type TabletOptions } from "./GymLayout";
 import { PortalLayout } from "./PortalLayout";
@@ -28,22 +28,40 @@ function titleOf(handle: unknown): string | null {
 }
 
 /**
- * La tablet del box toma el título de la ruta (handle.title). S7-D41: el modo tablet lo manda el servidor. Al entrar a
- * /clases/:id/checkin llama POST /auth/kiosk (la sesión queda confinada y trae un access nuevo); mientras la sesión tenga
- * `kioskPath` la barra no lleva enlaces, «atrás» y toda navegación fuera abren el diálogo de salida con contraseña
- * (POST /auth/kiosk/exit) y 10 minutos sin actividad cierran la sesión. Recargar o escribir otra dirección lo resuelve
- * RequireAuth con el kiosk_path de /auth/me.
+ * La tablet del box toma el título de la ruta (handle.title). S7-D41: el modo tablet lo manda el servidor. Al llegar a
+ * /clases/:id/checkin llama POST /auth/kiosk (la sesión queda confinada y trae un access nuevo); el check-in solo se muestra
+ * con la marca puesta (`kioskPath` igual a la ruta). Con la marca, «atrás» y toda navegación fuera abren el diálogo de salida
+ * con contraseña (POST /auth/kiosk/exit) y 10 minutos sin actividad cierran la sesión. Recargar o escribir otra dirección lo
+ * resuelve RequireAuth con el kiosk_path de /auth/me. S7-D42: `switchSession` pasa a otra clase de hoy sin contraseña.
  */
 export function GymShell() {
   const matches = useMatches();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useSession();
+  const hasUser = user !== null;
   const onCheckIn = CHECKIN_PATH.test(pathname);
+  const wanted = normalizeKioskPath(pathname);
   const kioskPath = user?.kioskPath ?? null;
   const [enterError, setEnterError] = useState<string | null>(null);
+  // La salida en curso vale solo para la ruta en que empezó: al cambiar de ruta se apaga sola (LOW-2).
+  const [leavingAt, setLeavingAt] = useState<string | null>(null);
+  const leavingRef = useRef<string | null>(null);
+  const kioskRef = useRef(kioskPath);
   const entering = useRef(false);
-  const leaving = useRef(false);
+
+  const setLeaving = useCallback(
+    (on: boolean): void => {
+      const at = on ? pathname : null;
+      leavingRef.current = at;
+      setLeavingAt(at);
+    },
+    [pathname],
+  );
+
+  useEffect(() => {
+    kioskRef.current = kioskPath;
+  }, [kioskPath]);
 
   const enter = useCallback((path: string): void => {
     if (entering.current) return;
@@ -55,21 +73,25 @@ export function GymShell() {
         entering.current = false;
       });
   }, []);
-  const needsEntry = onCheckIn && user !== null && kioskPath === null;
+  // HIGH-1: se entra al LLEGAR a la ruta del check-in, no cuando la marca pasa a null (eso es la salida con contraseña).
   useEffect(() => {
-    if (needsEntry) enter(pathname);
-  }, [needsEntry, pathname, enter]);
+    if (onCheckIn && hasUser && kioskRef.current !== wanted) enter(wanted);
+  }, [onCheckIn, hasUser, wanted, enter]);
 
   // Optimista en el check-in: sin esperar al servidor la barra ya no trae enlaces.
-  const isTablet = kioskPath !== null || (onCheckIn && user !== null);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => isTablet && !leaving.current && nextLocation.pathname !== currentLocation.pathname);
+  const isTablet = kioskPath !== null || (onCheckIn && hasUser);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => isTablet && leavingRef.current !== currentLocation.pathname && nextLocation.pathname !== currentLocation.pathname);
   const title = matches.map((m) => titleOf(m.handle)).findLast((t): t is string => t !== null) ?? "APEX";
 
   const tablet = useMemo<TabletOptions>(
     () => ({
-      verifyPassword: exitKiosk,
+      verifyPassword: async (password) => {
+        setLeaving(true);
+        const failure = await exitKiosk(password);
+        if (failure !== null) setLeaving(false);
+        return failure;
+      },
       onLeave: (to) => {
-        leaving.current = true;
         if (blocker.state === "blocked") blocker.proceed();
         else void navigate(to);
       },
@@ -78,29 +100,46 @@ export function GymShell() {
       },
       blockedTo: blocker.state === "blocked" ? `${blocker.location.pathname}${blocker.location.search}` : null,
       onCancelLeave: () => {
+        setLeaving(false);
         if (blocker.state === "blocked") blocker.reset();
       },
+      switchSession: async (path) => {
+        const target = normalizeKioskPath(path);
+        setLeaving(true);
+        const failure = await enterKiosk(target);
+        if (failure !== null) {
+          setLeaving(false);
+          return failure;
+        }
+        await navigate(target);
+        return null;
+      },
     }),
-    [blocker, navigate],
+    [blocker, navigate, setLeaving],
   );
+  // MEDIUM-1: el check-in solo se ve con la marca del servidor (o mientras se sale con la contraseña / se cambia de clase).
+  const confined = !onCheckIn || !hasUser || leavingAt === pathname || kioskPath === wanted;
   // DESIGN-GAP: cada pantalla de tablet fijará su salida cuando exista; el check-in sale a «‹ Clases» y las demás, por ahora, al inicio del panel.
   return (
     <GymLayout title={title} exitTo={onCheckIn ? "/clases" : "/"} exitLabel={onCheckIn ? "Clases" : "Salir"} tablet={isTablet ? tablet : undefined}>
-      {enterError !== null ? (
+      {confined ? (
+        <Outlet />
+      ) : enterError !== null ? (
         <div role="alert">
           <p>{enterError}</p>
           <Button
             size="lg"
             variant="secondary"
             onClick={() => {
-              enter(pathname);
+              enter(wanted);
             }}
           >
             Reintentar
           </Button>
         </div>
-      ) : null}
-      <Outlet />
+      ) : (
+        <p role="status">Activando el modo tablet…</p>
+      )}
     </GymLayout>
   );
 }

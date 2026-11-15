@@ -61,3 +61,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* S7-F4c (S7-D42): selector «Clases de hoy» sobre las dos columnas. */
+.picker {
+  margin-block-end: var(--space-4);
+}

@@ -104,6 +104,21 @@ describe("logoutDevice (LOW c)", () => {
     expect(getSession().reason).toBe("logout");
   });
 
+  it("LOW-1: si en la espera entró otra sesión no la revoca con el reintento", async () => {
+    vi.useFakeTimers();
+    signInAs("coach", { kioskPath: PATH });
+    const mock = mockApi({ "POST /auth/logout": { status: 500, body: apiErrorBody("internal_error") } });
+
+    const pending = logoutDevice();
+    await vi.advanceTimersByTimeAsync(100);
+    signInAs("admin");
+    await vi.advanceTimersByTimeAsync(60_000);
+    await pending;
+
+    expect(mock.callsTo("POST /auth/logout")).toHaveLength(1);
+    expect(getSession().status).toBe("authenticated");
+  });
+
   it("agotados los intentos queda logout_unconfirmed (el login lo avisa)", async () => {
     vi.useFakeTimers();
     signInAs("coach");

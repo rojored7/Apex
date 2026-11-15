@@ -7,7 +7,7 @@ import { API_ERROR_CODES } from "../api/errorCodes";
 import { isApiError } from "../api/errors";
 import { HTTP_TOO_MANY, HTTP_UNAUTHORIZED } from "../api/status";
 import { connectionMessage, waitText } from "../../shared/lib/apiMessages";
-import { applyKioskAccess, logout, refreshAccessToken, type LogoutResult } from "./session";
+import { applyKioskAccess, getSession, logout, refreshAccessToken, type LogoutResult } from "./session";
 
 export const KIOSK_MESSAGES = {
   wrong: "Contraseña incorrecta. Escríbela de nuevo.",
@@ -51,6 +51,11 @@ export async function exitKiosk(password: string, renewed = false): Promise<stri
   }
 }
 
+/** La ruta tal como la acepta el api (S7-D41): minúsculas y sin barra final. */
+export function normalizeKioskPath(path: string): string {
+  return path.toLowerCase().replace(/\/+$/, "");
+}
+
 const LOGOUT_ATTEMPTS = 3;
 const LOGOUT_RETRY_MS = 5000;
 
@@ -61,6 +66,8 @@ export async function logoutDevice(): Promise<LogoutResult> {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LOGOUT_RETRY_MS);
     });
+    // LOW-1: si en la espera entró otra persona, el reintento no revoca su sesión nueva.
+    if (getSession().status !== "anonymous") break;
     result = await logout();
   }
   return result;

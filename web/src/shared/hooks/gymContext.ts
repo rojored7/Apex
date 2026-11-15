@@ -20,12 +20,14 @@ export interface GymHeader {
 export interface GymContextValue {
   tablet: boolean;
   requestLeave: (to: string) => void;
+  /** S7-D42: pasa a otra sesión de clase sin salir del modo tablet (POST /auth/kiosk con la ruta nueva). Devuelve el error o null. */
+  switchSession: (path: string) => Promise<string | null>;
   setHeader: (header: GymHeader | null) => void;
 }
 
 const NOOP = (): void => undefined;
 
-export const GymContext = createContext<GymContextValue>({ tablet: false, requestLeave: NOOP, setHeader: NOOP });
+export const GymContext = createContext<GymContextValue>({ tablet: false, requestLeave: NOOP, switchSession: () => Promise.resolve(null), setHeader: NOOP });
 
 export function useGym(): GymContextValue {
   return useContext(GymContext);

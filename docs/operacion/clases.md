@@ -27,6 +27,7 @@ El confinamiento lo impone el servidor (decisión S7-D41), no solo la pantalla:
   rota el refresh, y una contraseña errada NO cuenta para el bloqueo de la cuenta. Tras 5 fallos
   en 15 minutos para ese usuario, el servidor responde 429 (espera el `Retry-After`). La respuesta
   trae un access sin la marca. «Vender» (socio sin plan) también la pide, porque lleva al panel.
+- **Cambiar de clase sin salir** (S7-D42): arriba del check-in aparece el selector «Clases de hoy» con las sesiones programadas de hoy. Elegir otra llama `POST /auth/kiosk` con la ruta nueva, sin contraseña; el servidor solo la acepta si es de hoy o de ayer (si no, 403 `kiosk_mode`).
 - A los **10 minutos sin tocar la pantalla** la sesión se cierra (`POST /auth/logout`, la marca
   muere con ella) y la tablet vuelve al inicio de sesión.
 - Un access emitido antes de entrar al quiosco puede vivir hasta 15 minutos sin la marca; el

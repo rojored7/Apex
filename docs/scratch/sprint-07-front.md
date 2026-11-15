@@ -118,3 +118,13 @@ Verde:
 - LOW a foco al buscador tras «Llegó»; b `useIdleTimeout` con instante límite y `visibilitychange`; c reintento del cierre por inactividad; d `MemberSearch` vuelve al formato original (solo líneas del slice); e `onSelect` muerto fuera de `CheckInSearch` (opcional en `MemberSearch`).
 - MEDIUM-3: `web/tests/e2e/stack/checkin.spec.ts` reescrito con cuenta coach (siete banderas, 409 por api, atrás/recarga/barra, salida con contraseña, tiquetera 10-9-10, sin /reveal). Sin correr (V5).
 Nota: el quiosco confina a UNA sesión de clase; otra sesión exige salir con la contraseña (las banderas de ayer y +7 días se prueban por el api).
+
+## S7-F4c · Correcciones de la revisión de F4b (HIGH-1, MEDIUM-1 a 3, LOW-1 a 3) y selector «Clases de hoy» (S7-D42, front)
+
+Rojo medido: 7 failed (shells 4, kiosk 1, CheckInPage selector 2) sobre 60 pruebas de los 3 archivos tocados.
+Verde: 641 passed en layouts, core/auth y features/classes.
+- HIGH-1: GymShell entra al quiosco al LLEGAR a la ruta (efecto atado a pathname y a una ref de la marca), no cuando kioskPath pasa a null; la salida marca `leaving` antes de exitKiosk (se apaga si falla). Prueba: tras salir, 0 llamadas a POST /auth/kiosk.
+- MEDIUM-1: el Outlet solo con `kioskPath === ruta` (o saliendo / cambiando de clase); si no, «Activando…» o error con Reintentar. `normalizeKioskPath` (minúsculas, sin barra final) antes del POST.
+- LOW-1: el reintento del logout se corta si la sesión ya no es anónima. LOW-2: la salida vale solo para la ruta en que empezó (estado `leavingAt`).
+- S7-D42: `switchSession` en el contexto de la tablet, `TodaySessionPicker` («Clases de hoy», `useTodaySessions`: from=to=hoy, status=scheduled).
+- E2E (sin correr, V5): entra por clics para que «atrás» pase por el router y abra el diálogo; lecturas de membresías con el token del admin; prueba de la defensa real (POST /members/{id}/reveal con el access de POST /auth/kiosk da 403 kiosk_mode); congela desde hoy; limpia las asistencias de ayer y +7 días con el admin.

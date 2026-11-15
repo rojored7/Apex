@@ -89,6 +89,8 @@ class WodResult(CommonColumnsMixin, Base):
             unique=True,
             postgresql_where=text("supersedes_id IS NOT NULL"),
         ),
+        # 0040 (L-3, revisión de B4): el historial del WOD no filtra `is_current`.
+        Index("ix_wod_results_wod_created", "wod_id", text("created_at DESC"), "id"),
         Index(
             "ix_wod_results_member_date",
             "member_id",

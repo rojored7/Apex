@@ -122,22 +122,29 @@ INSERT_0037: Final = (
     "USING ERRCODE = 'P0001'; END IF; RETURN NEW; END; $$"
 )
 INSERT_0040: Final = (
-    INSERT_HEAD + "BEGIN IF NEW.is_current IS NOT TRUE OR NEW.status = 'voided' THEN "
+    "CREATE OR REPLACE FUNCTION results.guard_wod_results_insert() RETURNS trigger "
+    "LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$ "
+    "BEGIN IF NEW.is_current IS NOT TRUE OR NEW.status = 'voided' THEN "
     "RAISE EXCEPTION 'results.wod_results: un resultado nuevo nace vigente y no anulado' "
+    "USING ERRCODE = 'P0001'; END IF; "
+    "IF NEW.supersedes_id IS NOT NULL AND EXISTS "
+    "(SELECT 1 FROM results.wod_results p WHERE p.id = NEW.supersedes_id "
+    "AND p.status = 'voided') THEN "
+    "RAISE EXCEPTION 'results.wod_results: un resultado anulado no tiene sucesor' "
     "USING ERRCODE = 'P0001'; END IF; RETURN NEW; END; $$"
 )
-SUCCESSOR_HEAD: Final = (
+SUCCESSOR_0037: Final = (
     "CREATE OR REPLACE FUNCTION results.require_successor() RETURNS trigger LANGUAGE plpgsql "
     "SECURITY INVOKER SET search_path = pg_catalog AS $$ "
-)
-SUCCESSOR_0037: Final = (
-    SUCCESSOR_HEAD + "BEGIN IF NEW.is_current IS FALSE AND NOT EXISTS "
+    "BEGIN IF NEW.is_current IS FALSE AND NOT EXISTS "
     "(SELECT 1 FROM results.wod_results s WHERE s.supersedes_id = NEW.id) THEN "
     "RAISE EXCEPTION 'results.wod_results: un resultado apagado exige su sucesor' "
     "USING ERRCODE = 'P0001'; END IF; RETURN NULL; END; $$"
 )
 SUCCESSOR_0040: Final = (
-    SUCCESSOR_HEAD + "BEGIN IF NEW.is_current IS FALSE AND NEW.status <> 'voided' AND NOT EXISTS "
+    "CREATE OR REPLACE FUNCTION results.require_successor() RETURNS trigger LANGUAGE plpgsql "
+    "SECURITY INVOKER SET search_path = pg_catalog AS $$ "
+    "BEGIN IF NEW.is_current IS FALSE AND NEW.status <> 'voided' AND NOT EXISTS "
     "(SELECT 1 FROM results.wod_results s WHERE s.supersedes_id = NEW.id) THEN "
     "RAISE EXCEPTION 'results.wod_results: un resultado apagado exige su sucesor' "
     "USING ERRCODE = 'P0001'; END IF; RETURN NULL; END; $$"
@@ -184,14 +191,22 @@ DROP_COLUMNS: Final[tuple[str, ...]] = (
 )
 
 
+INDEX_HISTORY: Final = (
+    "CREATE INDEX ix_wod_results_wod_created ON results.wod_results (wod_id, created_at DESC, id)"
+)
+DROP_INDEX_HISTORY: Final = "DROP INDEX results.ix_wod_results_wod_created"
+
+
 def upgrade() -> None:
     for sentencia in (*ADD_COLUMNS, *DROP_CHECKS, *ADD_CHECKS_0040):
         op.execute(sentencia)
     for sentencia in (UPDATE_0040, INSERT_0040, SUCCESSOR_0040):
         op.execute(sentencia)
+    op.execute(INDEX_HISTORY)  # L-3 (revisión de B4, S8-D47): `include_superseded` sin `is_current`
 
 
 def downgrade() -> None:
+    op.execute(DROP_INDEX_HISTORY)
     for sentencia in (UPDATE_0039, INSERT_0037, SUCCESSOR_0037):
         op.execute(sentencia)
     op.execute(DROP_NEW_CHECKS[0])

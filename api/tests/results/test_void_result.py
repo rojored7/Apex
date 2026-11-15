@@ -106,7 +106,22 @@ async def test_evento_sin_motivo_ni_log_con_el_motivo(
     assert "motivo-secreto-123" not in caplog.text
 
 
-@pytest.mark.parametrize("motivo", ["", "   ", "x" * 201, "con\x00nulo"])
+ANCHO_CERO = chr(0x200B)
+BIDI_DERECHA_A_IZQUIERDA = chr(0x202E)
+
+
+@pytest.mark.parametrize(
+    "motivo",
+    [
+        "",
+        "   ",
+        "x" * 201,
+        "con\x00nulo",
+        ANCHO_CERO,
+        "a" + BIDI_DERECHA_A_IZQUIERDA + "b",
+        "con" + ANCHO_CERO + "invisible",
+    ],
+)
 def test_motivo_invalido_422(motivo: str) -> None:
     with pytest.raises(ValueError):
         VoidIn(reason=motivo)

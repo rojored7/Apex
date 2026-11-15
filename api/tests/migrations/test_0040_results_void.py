@@ -10,6 +10,7 @@ llevan validación).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from typing import Any
 from uuid import uuid4
@@ -162,6 +163,15 @@ def test_el_anulado_no_exige_sucesor_al_confirmar(base: str) -> None:
     assert _confirmar(base, [fila(id=b), _upd(b, "is_current = false")]) == GUARDA
 
 
+def test_no_se_inserta_un_sucesor_de_una_fila_anulada(base: str) -> None:
+    """L-1 (revisión de B4): `apex_api` podía insertar una fila vigente que apuntara a un anulado
+    con `supersedes_id`; la guarda de INSERT lo rechaza."""
+    a, b, c = uuid4(), uuid4(), uuid4()
+    assert resultados(base, [[fila(id=a), _anular(a), fila(id=b, sup=a)]]) == [(GUARDA, None)]
+    # Un sucesor legítimo de una fila vigente sigue pasando (se apaga y hay sucesor).
+    assert _confirmar(base, [fila(id=c), _upd(c, "is_current = false"), fila(id=b, sup=c)]) == ""
+
+
 def test_anulado_libera_el_unico_vigente_del_socio_en_el_wod(base: str) -> None:
     a, b = uuid4(), uuid4()
     assert _confirmar(base, [fila(id=a), _anular(a), fila(id=b)]) == ""
@@ -175,6 +185,48 @@ def test_la_guarda_sigue_siempre_activa_y_la_de_updated_at_se_conserva(base: str
     rid = uuid4()
     atras = _upd(rid, "updated_at = now() - interval '1 day'")
     assert resultados(base, [[fila(id=rid), atras]]) == [(GUARDA, None)]  # `0039` sigue en pie
+
+
+def test_indice_de_historial_del_wod(base: str) -> None:
+    """L-3 (revisión de B4): `include_superseded` filtra por `wod_id` sin `is_current`."""
+    (ix,) = consultar(
+        base,
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = 'results' "
+        "AND tablename = 'wod_results' AND indexname = 'ix_wod_results_wod_created'",
+    )
+    definicion = ix["indexdef"]
+    assert "(wod_id, created_at DESC, id)" in definicion
+    assert "WHERE" not in definicion  # cubre también las filas apagadas y anuladas
+
+
+def test_downgrade_aborta_con_anulados(alembic_config: Config, base: str) -> None:
+    """L-2: con una fila anulada el `downgrade` falla entero (DDL transaccional): `alembic
+    current` sigue en 0040 y la fila queda intacta; las filas no se reescriben."""
+    rid = uuid4()
+    insertar, args_ins = fila(id=rid)
+    anular, args_anular = _anular(rid)
+
+    async def sembrar() -> None:
+        import asyncpg
+
+        from tests.migrations._apoyo_notificaciones import _dsn
+
+        conexion = await asyncpg.connect(_dsn(base))
+        try:
+            await conexion.execute(insertar, *args_ins)
+            await conexion.execute(anular, *args_anular)
+        finally:
+            await conexion.close()
+
+    asyncio.run(sembrar())
+    with pytest.raises(Exception):  # noqa: B017 - el tipo lo decide el driver
+        command.downgrade(alembic_config, PADRE)
+    revision = consultar(base, "SELECT version_num FROM public.alembic_version")
+    assert [r["version_num"] for r in revision] == [REVISION]
+    (anulado,) = consultar(
+        base, "SELECT status, is_current FROM results.wod_results WHERE id = $1", rid
+    )
+    assert (anulado["status"], anulado["is_current"]) == ("voided", False)
 
 
 def test_ciclo_downgrade_upgrade_sin_anulados(alembic_config: Config, base: str) -> None:

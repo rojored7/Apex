@@ -80,23 +80,34 @@ async def test_anular_espera_a_una_correccion_en_vuelo_y_da_409(
 async def test_dos_admins_anulan_a_la_vez_uno_gana_otro_409(
     dos_sesiones: tuple[AsyncSession, AsyncSession],
 ) -> None:
+    """La primera anulación toma el candado del socio y NO confirma; la segunda debe esperar
+    (`not done()`) y, al confirmar la primera, ve el resultado ya anulado: 409."""
     una, otra = dos_sesiones
     e = await escena(una)
     uno = await registrar(una, e)
     await una.commit()
 
-    async def anular(sesion: AsyncSession) -> Any:
-        try:
-            salida = await _anular(sesion, e, uno.id)
-            await sesion.commit()
-            return salida
-        except BaseException:
-            await sesion.rollback()
-            raise
+    primera = await _anular(una, e, uno.id)  # candado tomado, sin confirmar
+    assert primera is not None
 
-    resultados = await asyncio.wait_for(
-        asyncio.gather(anular(una), anular(otra), return_exceptions=True), timeout=30
+    async def segunda() -> Any:
+        try:
+            return await _anular(otra, e, uno.id)
+        finally:
+            await otra.rollback()
+
+    contraria = asyncio.create_task(segunda())
+    try:
+        await asyncio.sleep(0.5)
+        assert not contraria.done(), "la segunda anulación debe esperar a la primera"
+    finally:
+        await una.commit()  # nunca dejar el candado tomado
+        resultado = (await asyncio.wait_for(asyncio.gather(contraria, return_exceptions=True), 30))[
+            0
+        ]
+    assert isinstance(resultado, DomainError)
+    assert (resultado.status, resultado.code) == (409, "result_already_voided")
+    anulados = await una.scalar(
+        text("SELECT count(*) FROM results.wod_results WHERE status = 'voided'")
     )
-    errores = [r for r in resultados if isinstance(r, DomainError)]
-    assert len(errores) == 1 and errores[0].code == "result_already_voided"
-    assert sum(1 for r in resultados if not isinstance(r, BaseException)) == 1
+    assert anulados == 1

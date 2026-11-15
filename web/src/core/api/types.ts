@@ -5142,7 +5142,8 @@ export interface components {
         };
         /**
          * VoidIn
-         * @description `POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, sin controles).
+         * @description `POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, `SafeText`: sin
+         *     controles, invisibles ni bidireccionales; revisión de B4, M-1).
          */
         VoidIn: {
             /** Reason */

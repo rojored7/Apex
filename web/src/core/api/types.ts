@@ -888,6 +888,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Movements */
+        get: operations["list_movements_api_v1_movements_get"];
+        put?: never;
+        /** Create Movement */
+        post: operations["create_movement_api_v1_movements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movements/{movement_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Movement */
+        patch: operations["update_movement_api_v1_movements__movement_id__patch"];
+        trace?: never;
+    };
     "/api/v1/notification-rules": {
         parameters: {
             query?: never;
@@ -1779,6 +1814,40 @@ export interface components {
         CancelMembershipIn: {
             /** Reason */
             reason: string;
+        };
+        /** CatalogMovementOut */
+        CatalogMovementOut: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "weightlifting" | "gymnastics" | "monostructural" | "other";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "kg" | "reps" | "m" | "cal" | "s";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Wod Count */
+            wod_count: number;
         };
         /** ChangePasswordIn */
         ChangePasswordIn: {
@@ -2842,6 +2911,21 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** MovementCreate */
+        MovementCreate: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "weightlifting" | "gymnastics" | "monostructural" | "other";
+            /** Name */
+            name: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "kg" | "reps" | "m" | "cal" | "s";
+        };
         /**
          * MovementOut
          * @description Una frase de los últimos movimientos (S4A-D28).
@@ -2865,6 +2949,20 @@ export interface components {
              * @enum {string}
              */
             table_name: "members.members" | "memberships.memberships" | "payments.payments";
+        };
+        /**
+         * MovementPatch
+         * @description `PATCH /movements/{id}`: un campo ausente no es un cambio (`model_fields_set`).
+         */
+        MovementPatch: {
+            /** Category */
+            category?: ("weightlifting" | "gymnastics" | "monostructural" | "other") | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Unit */
+            unit?: ("kg" | "reps" | "m" | "cal" | "s") | null;
         };
         /**
          * NotificationOut
@@ -2959,6 +3057,17 @@ export interface components {
         Page_AuditRow_: {
             /** Items */
             items: components["schemas"]["AuditRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[CatalogMovementOut] */
+        Page_CatalogMovementOut_: {
+            /** Items */
+            items: components["schemas"]["CatalogMovementOut"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -9103,6 +9212,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_movements_api_v1_movements_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+                category?: ("weightlifting" | "gymnastics" | "monostructural" | "other") | null;
+                active?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CatalogMovementOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_movement_api_v1_movements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogMovementOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_movement_api_v1_movements__movement_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovementPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogMovementOut"];
                 };
             };
             /** @description Sin sesión válida */

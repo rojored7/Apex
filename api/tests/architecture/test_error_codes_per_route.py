@@ -158,6 +158,10 @@ CON_LIMITE = {
     # S7-R1 (US-162): el resumen y la asistencia de la ficha consumen `staff-read`.
     ("get", "/api/v1/attendance/summary"),
     ("get", "/api/v1/members/{member_id}/attendance"),
+    # S8-A1 (US-165, S8-D22): movimientos; `wods-write` en las escrituras, `staff-read` en la lista.
+    ("get", "/api/v1/movements"),
+    ("post", "/api/v1/movements"),
+    ("patch", "/api/v1/movements/{movement_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

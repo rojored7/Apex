@@ -51,6 +51,7 @@ ESQUEMAS = (
     "payments",
     "plans",
     "settings",
+    "wods",  # S8-A1 (0032)
     "worker",
     "public",
 )
@@ -114,6 +115,15 @@ COLUMNAS_API_CLASS_SLOTS_UPDATE: tuple[str, ...] = (
     "default_coach_id",
     "name",
     "valid_from",
+    "is_active",
+    "updated_at",
+)
+# S8-A1 (S8-D21): lo que el api puede cambiar de un movimiento; `id`, `created_*` quedan fijos.
+COLUMNAS_API_MOVEMENTS_UPDATE: tuple[str, ...] = (
+    "name",
+    "name_norm",
+    "category",
+    "unit",
     "is_active",
     "updated_at",
 )
@@ -199,6 +209,12 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
             frozenset(COLUMNAS_API_CLASS_SESSIONS_UPDATE),
         ),
         "apex_worker": (frozenset({"SELECT", "INSERT"}), frozenset()),
+    },
+    # S8-A1 (S8-D21, P-ROL): el api inserta movimientos y los edita por columna (sin DELETE); el
+    # worker no ve el esquema.
+    "wods.movements": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_MOVEMENTS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_JOBS_UPDATE)),
@@ -764,6 +780,9 @@ PROHIBIDAS_API = [
     "TRUNCATE classes.class_sessions",  # S7-B1
     "UPDATE classes.class_sessions SET starts_at = starts_at",  # S7-B1: columna sin UPDATE
     "UPDATE classes.class_sessions SET capacity = 1",  # S7-B1
+    "DELETE FROM wods.movements",  # S8-A1: se desactivan
+    "TRUNCATE wods.movements",  # S8-A1
+    "UPDATE wods.movements SET created_by = created_by",  # S8-A1: columna sin UPDATE
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -844,6 +863,8 @@ PROHIBIDAS_WORKER = [
     "SELECT count(*) FROM classes.attendance",  # S7-C1: el worker no lee asistencia
     "INSERT INTO classes.attendance (id) VALUES (gen_random_uuid())",  # S7-C1
     "DELETE FROM classes.class_sessions",  # S7-B1
+    "SELECT count(*) FROM wods.movements",  # S8-A1: el worker no ve el esquema `wods`
+    "INSERT INTO wods.movements (id) VALUES (gen_random_uuid())",  # S8-A1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

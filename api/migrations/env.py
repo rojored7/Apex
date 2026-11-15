@@ -42,6 +42,7 @@ from app.modules.notifications import models as _notifications  # noqa: F401  (U
 from app.modules.payments import models as _payments  # noqa: F401  (US-095, 0010_payments)
 from app.modules.plans import models as _plans  # noqa: F401  (US-078, 0007_plans)
 from app.modules.settings import models as _settings  # noqa: F401  (US-054, 0005_settings)
+from app.modules.wods import models as _wods  # noqa: F401  (US-165, 0032, S8-D5)
 
 config = context.config
 # Solo si nadie configuró el logging (CLI en el host): en el api ya está el JSON de US-018

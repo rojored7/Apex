@@ -504,6 +504,26 @@ LIMPIAR_CLASS_SESSIONS = (
     + " END IF; END $$"
 )
 
+# S8-A1 (S8-D5): los movimientos que una prueba con commit real (`dos_sesiones`), la CLI o una
+# corrida cortada hayan dejado en `wods.movements`. La tabla nace en `0032_wods_movements`: mientras
+# no exista no se toca. Sin FK: va ANTES que `classes.*`, que auth y que los socios (orden de FK de
+# las tablas de `wods` y `results` que llegan en A2 a B1: `results.wod_results` primero, luego
+# `wods.wod_movements`, `wods.wods`, `wods.benchmarks` y por último `wods.movements`). Sus triggers
+# rechazan `DELETE` y `TRUNCATE`: se apagan, se borra y se vuelven a encender UNO POR UNO con
+# `ENABLE ALWAYS` (S3-D49). Nunca `ENABLE TRIGGER USER`.
+TRIGGERS_DE_MOVEMENTS = ("movements_forbid_delete", "movements_forbid_truncate")
+LIMPIAR_MOVEMENTS = (
+    "DO $$ BEGIN IF to_regclass('wods.movements') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE wods.movements DISABLE TRIGGER USER; "
+    "DELETE FROM wods.movements; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE wods.movements ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_MOVEMENTS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -517,6 +537,7 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
+    LIMPIAR_MOVEMENTS,  # S8-A1: catálogo de movimientos (sin FK), antes que `classes.*`
     LIMPIAR_CLASS_SESSIONS,  # S7-B1: sesiones, antes que las franjas (FK RESTRICT)
     LIMPIAR_CLASS_SLOTS,  # S7-A2: franjas, antes que auth (sin FK)
     *LIMPIAR_AUTH,
@@ -926,6 +947,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_MOVEMENTS))  # S8-A1: catálogo, sin FK
         await conexion.execute(text(LIMPIAR_CLASS_SESSIONS))  # S7-B1: antes que las franjas
         await conexion.execute(text(LIMPIAR_CLASS_SLOTS))  # S7-A2
         for sql in LIMPIAR_AUTH:

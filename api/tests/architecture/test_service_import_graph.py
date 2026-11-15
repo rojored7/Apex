@@ -664,3 +664,11 @@ def test_attachments_no_tiene_aristas_salientes_a_otros_modulos() -> None:
     assert {par for par in ALLOWED_EDGES if "attachments" in par} == {("members", "attachments")}
     assert not any("attachments" in par for par in LAZY_IMPORT_WHITELIST)
     assert ("members", "attachments") in _aristas(arriba)
+
+
+def test_wods_no_tiene_aristas_salientes_en_a1() -> None:
+    """S8-A1 (S8-D5): `wods` no importa el `service.py` de ningun otro modulo; la arista
+    `classes -> wods` llega en A4 y nunca `wods -> classes`."""
+    arriba, perezosas = _grafo_real()
+    assert arriba["wods"] == set()
+    assert perezosas["wods"] == set()

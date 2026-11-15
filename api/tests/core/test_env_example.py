@@ -520,7 +520,7 @@ def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() ->
         == frozenset(SIETE_BUCKETS_S6) - con_ruta
     )
     # S8-D22: las dos de S8 se registran sin ruta; A1 y B1 les dan la suya.
-    assert CLAVES_SIN_RUTA_TODAVIA == frozenset({"wods-write", "results-write"})
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset({"results-write"})  # S8-A1: wods-write con ruta
     from app.core.ratelimit import USER_LIMITS
 
     assert {"classes-write", "attendance-write"} <= set(USER_LIMITS)

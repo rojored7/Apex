@@ -48,7 +48,7 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S7-C3 (US-161): `DELETE /attendance/{id}` también la consume.
 # S8-D22 (S8-W0-3): `wods-write` y `results-write` se registran sin ruta; A1 saca la primera
 # (`POST /movements`) y B1 la segunda (`PUT /results`).
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"wods-write", "results-write"})
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"results-write"})
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -461,7 +461,9 @@ def test_las_dos_cubetas_de_s7_estan_en_el_catalogo_con_sus_ventanas() -> None:
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (sin ruta)."""
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (ruta desde C1)."""
     assert USER_LIMITS["attendance-write"] == (60, 60)
-    assert frozenset({"wods-write", "results-write"}) == CLAVES_SIN_RUTA_TODAVIA
+    assert (
+        frozenset({"results-write"}) == CLAVES_SIN_RUTA_TODAVIA
+    )  # S8-A1: wods-write ya tiene ruta
 
 
 def test_las_dos_cubetas_de_s8_estan_en_el_catalogo_con_sus_ventanas() -> None:

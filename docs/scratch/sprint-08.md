@@ -103,3 +103,11 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - P-MIG 5-7: `$DC start api` healthy, `alembic current` = `0032_wods_movements (head)`; `$DC start worker`; `downgrade -1` + `upgrade head` + `current` = 0032 (head); `\d wods.movements` con sus índices, CHECK y los dos triggers `tgenabled = A`; `wods.forbid_mutation` invoker.
 - Smoke por curl a 8181: `/health` ok/ok/ok/ok; `GET`, `POST` y `PATCH /api/v1/movements` sin token = 401; `/openapi.json` publica `/api/v1/movements` y `/api/v1/movements/{movement_id}`. Smoke con rol NO hecho: el arnés denegó acuñar un token de admin fuera del login y el dev no tiene contraseña conocida; los 41 casos con rol corrieron contra la base real en las pruebas.
 - Volcado previo: `docs/scratch/sprint-08-antes-0032.dump` (ignorado por git; se borra en V9).
+
+## S8-W0b · Correcciones de la revisión de la Wave 0 (5 LOW)
+
+- L1 (rojo medido: 11 failed en `tests/core/test_logging_redact.py`): `core/logging.py` suma `device_token` y `x_device_token` a `SENSITIVE_KEYS`, `_VAULT_HEADER` acepta `-` o `_`, la coma de la tupla ASGI `(b'x-device-token', b'...')` y el prefijo `b`, y `_TOKEN_PARAM` limpia `?token=`, `&token=` y `#token=` en texto libre. Control sin falsos positivos.
+- L4 (rojo medido: 2 failed con el stub): `tests/architecture/test_tv_bucket_not_by_ip.py` (control con una ruta falsa que lleva `rate_limit("tv")` y barrido de las rutas reales); comentario en `rate_limits_from` (C2 usa `enforce(..., kind="account")`).
+- L5 (rojo medido: un workflow con `packages: write` y otro con `workflow_run` daban exit 0): `scripts/ci/test_nightly_workflow.sh` rechaza cualquier `: write` y `workflow_run`; los dos falsos dan exit 1 y el real 0 fallas.
+- L2: `ci.yml` exige `grep -c ... = 2` de `TV_IP_LIMIT` y `TV_TOKEN_LIMIT`. L3: `DECISIONES.md` (f) suma S8-D32 a las correcciones de S8-D18 (W0-2 no añade `location = /tv`).
+- Gate sellante `slice-gate.sh core/logging` + los 4 archivos de prueba: 1 016 passed en 117 s, exit 0; `ruff` y `mypy src` limpios.

@@ -123,3 +123,13 @@ async def test_el_domingo_23_30_de_bogota_no_cuenta_en_la_semana_nueva(
     await make_attendance(session, clase, socios[2].id, checked_in_at=LLEGADA)
     tablero = await dashboard_service.summary(session, with_finances=False)
     assert tablero.attendance_week.count == 2
+
+
+async def test_cada_sesion_del_tablero_trae_duration_min_de_la_sesion(
+    session: AsyncSession,
+) -> None:
+    """V7 (L-12 del front): `duration_min` es el dato de la sesión, no un valor fijo."""
+    await make_session(session, starts_at=SEIS, duration_min=45)
+    await make_session(session, starts_at=DOCE, duration_min=90)
+    tablero = await dashboard_service.summary(session, with_finances=False)
+    assert [s.duration_min for s in tablero.sessions_today] == [45, 90]

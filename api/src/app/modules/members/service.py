@@ -620,9 +620,14 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
     return to_page(await _filas(session, socios), total, page)
 
 
-async def search_ids(session: AsyncSession, q: str, *, include_deleted: bool = False) -> set[UUID]:
-    """Ids de los socios que coinciden con `q`, en una sentencia; `q` en blanco da `set()`."""
+async def search_ids(
+    session: AsyncSession, q: str, *, include_deleted: bool = False, name_only: bool = False
+) -> set[UUID]:
+    """Ids de los socios que coinciden con `q`, en una sentencia; `q` en blanco da `set()`.
+    `name_only` (quiosco, S7-D41, V7 M-2): sin documento, teléfono ni correo (oráculo)."""
     plan = classify_query(q)
+    if name_only:
+        plan = replace(plan, by_document=None, by_phone=None, by_email=None)
     if plan.q is None:
         return set()
     condicion = None if include_deleted else _vivo_o_baja(deleted=False)

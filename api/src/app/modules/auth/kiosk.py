@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Final
 from uuid import UUID
 
@@ -55,8 +55,9 @@ EXIT_LIMIT: Final = 5
 EXIT_WINDOW_S: Final = 900
 SWITCH_MESSAGE: Final = "Solo puedes pasar al check-in de una clase de hoy o de ayer."
 
-SessionInfo = Callable[[AsyncSession, UUID], Awaitable[tuple[date, str] | None]]
-"""`(session_date, status)` de una sesión de clase, o `None` si no existe."""
+SessionInfo = Callable[[AsyncSession, UUID], Awaitable[tuple[bool, str] | None]]
+"""`(en_ventana, status)` de una sesión de clase (`en_ventana`: de hoy o de ayer, regla única de
+`classes`), o `None` si no existe."""
 _session_info: SessionInfo | None = None
 
 
@@ -110,8 +111,7 @@ async def _ensure_switchable(session: AsyncSession, path: str) -> None:
     if _session_info is None:
         raise KioskSessionInfoNotRegistered
     info = await _session_info(session, _session_id_of(path))
-    hoy: date = current_clock().today_bogota()
-    if info is None or info[1] != "scheduled" or info[0] not in (hoy, hoy - timedelta(days=1)):
+    if info is None or info[1] != "scheduled" or not info[0]:
         raise ForbiddenError("kiosk_mode", SWITCH_MESSAGE)
 
 

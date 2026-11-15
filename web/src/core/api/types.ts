@@ -3966,6 +3966,8 @@ export interface components {
             capacity: number;
             /** Coach Name */
             coach_name: string | null;
+            /** Duration Min */
+            duration_min: number;
             /**
              * Id
              * Format: uuid

@@ -433,3 +433,15 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C4c)
 - 71 passed en las pruebas nuevas y las vecinas (`test_filter_last_attendance`). Perf: `never` con 1.000 socios y 20.000 asistencias, 8 ejecuciones, 21 a 86 ms (primera); tablero de R3 20 ms.
+
+## S7-V7b · Correcciones de la revisión final del backend (M-1, M-2, L-1, L-2, L-3, `duration_min`)
+
+### Rojo
+- Sin migración. Pruebas nuevas: `tests/classes/test_kiosk_review_v7.py` (regla única `is_kiosk_day`; M-1: `GET /class-sessions/{id}` y `POST /attendance` en quiosco con sesión de hace 3 días o inexistente dan 403 `kiosk_mode`, de hoy y ayer pasan; M-2: `q` por correo en quiosco no encuentra y sin quiosco sí), `tests/dashboard/test_classes_kpis.py` (`duration_min` de cada sesión del tablero) y el contrato del tablero. L-1 y L-3 son de vigilancia y documentos.
+- Sin el código: 6 failed, 59 passed (`is_kiosk_day` inexistente, 200 en vez de 403, correo encontrado, `duration_min` ausente del esquema).
+
+### Verde
+- `classes/rules.py` (`is_kiosk_day`; `is_other_day` es su negación), `classes/queries.py` y `auth/kiosk.py` (el puerto devuelve `(en_ventana, status)`: una sola regla), `classes/router.py` (ventana en el detalle y en el check-in), `members/service.search_ids(name_only)` y `classes/{schemas,attendance,router}.py`, `dashboard/{schemas,service}.py` (`duration_min`). Arquitectura: `PRIVATE_HELPERS` suma `reports` y `kiosk`; `test_kiosk_routes` reconoce el 403 de ventana. Docs: `CLAUDE.md` (privados de auth) y `docs/operacion/llaves.md` (FK y guarda de `public_key` cerradas en v0.4). P-API: `docs/openapi.json` (dos exportaciones idénticas) y `types.ts`: solo `duration_min`.
+
+### Evidencia (V7b)
+- classes, dashboard, members, kiosk de auth y architecture: 2.236 passed tras el ajuste de `test_kiosk_routes`. `ruff check .`, `ruff format --check .` y `mypy src` de todo el api en verde; `types.contract.test.ts` 6 passed.

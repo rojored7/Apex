@@ -85,6 +85,11 @@ def test_la_lista_blanca_es_la_del_checkin() -> None:
     )
 
 
+CON_VENTANA = frozenset(
+    {("GET", f"{API}/class-sessions/{{session_id}}"), ("POST", f"{API}/attendance")}
+)
+
+
 def _concreta(plantilla: str) -> str:
     return re.sub(r"\{[^}]+\}", lambda _: str(uuid4()), plantilla)
 
@@ -114,6 +119,10 @@ async def test_las_rutas_de_la_lista_no_dan_kiosk_mode(
     for metodo, plantilla in sorted(KIOSK_ALLOWED_ROUTES):
         r = await app_http.request(metodo, _concreta(plantilla), headers=cabeceras, json={})
         if r.status_code == 403 and r.json().get("error", {}).get("code") == "kiosk_mode":
+            # V7 (M-1): con una sesión inexistente la ventana hoy/ayer da 403 `kiosk_mode` con su
+            # propio texto; no es el filtro general de la lista blanca.
+            if (metodo, plantilla) in CON_VENTANA and "hoy o de ayer" in r.text:
+                continue
             bloqueadas.append(f"{metodo} {plantilla}")
     assert bloqueadas == []
 

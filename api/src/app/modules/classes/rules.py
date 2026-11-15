@@ -295,9 +295,15 @@ def within_checkin_window(starts_at: datetime, now: datetime, window_min: int) -
     return starts_at - margen <= now <= starts_at + margen
 
 
+def is_kiosk_day(session_date: date, today: date) -> bool:
+    """La fecha de la sesión es hoy o ayer (fechas civiles de Bogotá; S7-D27, S7-D42): la única
+    definición de la ventana, de la que cuelgan la bandera, el coach, el quiosco y su puerto."""
+    return session_date in (today, today - timedelta(days=1))
+
+
 def is_other_day(session_date: date, today: date) -> bool:
     """La fecha de la sesión no es hoy ni ayer (fechas civiles de Bogotá; S7-D27)."""
-    return session_date not in (today, today - timedelta(days=1))
+    return not is_kiosk_day(session_date, today)
 
 
 def checkin_on_date(session_date: date, today: date) -> date:

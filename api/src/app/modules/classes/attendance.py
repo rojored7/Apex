@@ -281,7 +281,9 @@ async def _filtered(
     if termino:
         # R1b L2: en la ficha de un socio la búsqueda incluye a los dados de baja (N-20); la
         # lista general nunca (revisión de C4, M-3: `include_deleted` solo lo pide la ficha).
-        ids = await members_service.search_ids(session, termino, include_deleted=include_deleted)
+        ids = await members_service.search_ids(
+            session, termino, include_deleted=include_deleted, name_only=query.name_only
+        )
         if not ids:
             return None
         consulta = consulta.where(Attendance.member_id.in_(ids))

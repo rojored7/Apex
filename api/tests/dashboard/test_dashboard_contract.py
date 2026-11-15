@@ -61,6 +61,7 @@ def test_solo_cambian_attendance_week_y_sessions_today(settings_prueba: Settings
     assert set(abierto["SessionTodayOut"]["properties"]) == {
         "id",
         "starts_at",
+        "duration_min",
         "coach_name",
         "capacity",
         "attendance_count",

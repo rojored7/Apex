@@ -312,8 +312,12 @@ def test_apex_api_escribe_original_end_date(apex_roles: RolesDb) -> None:
     from app.modules.classes.schemas import AttendanceCreate
     from tests.conftest import LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
 
+    # Ids únicos por corrida: la base `apex_roles` es de toda la sesión y otras pruebas del módulo
+    # (`filas_base`) siembran sus propias filas; esta prueba limpia SOLO las suyas, por id (L7).
     socio, plan, membresia, sesion_id = uuid4(), uuid4(), uuid4(), uuid4()
-    hoy = date.today()
+    hoy = consultar(apex_roles.dsn(), "SELECT (now() AT TIME ZONE 'America/Bogota')::date AS hoy")[
+        0
+    ]["hoy"]
     propietario(
         apex_roles,
         "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
@@ -346,8 +350,30 @@ def test_apex_api_escribe_original_end_date(apex_roles: RolesDb) -> None:
         )[0]
         assert fila["classes_remaining"] == 0 and fila["status"] == "expired"
         assert fila["original_end_date"] == hoy + timedelta(days=50)
-        assert (
-            fila["end_date"] <= hoy
-        )  # recortado al día del consumo (Bogotá puede ir un día atrás)
+        # recortado al día del consumo, en la fecha de Bogotá que calcula la base (L7)
+        assert fila["end_date"] == hoy
     finally:
-        propietario(apex_roles, LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)
+        propietario(
+            apex_roles,
+            LIMPIAR_ATTENDANCE,
+            LIMPIAR_CLASS_SESSIONS,
+            LIMPIAR_CLASS_SLOTS,
+            # por id: la guarda rechaza el DELETE; se apaga y se rearma `ALWAYS` (S3-D49)
+            "ALTER TABLE memberships.memberships DISABLE TRIGGER USER",
+            f"DELETE FROM memberships.memberships WHERE id = '{membresia}'",
+            "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_guard_identity",
+            "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_forbid_delete",
+            "ALTER TABLE memberships.memberships ENABLE ALWAYS TRIGGER memberships_forbid_truncate",
+            f"DELETE FROM plans.plans WHERE id = '{plan}'",
+            f"DELETE FROM members.members WHERE id = '{socio}'",
+        )
+    residuos = consultar(
+        apex_roles.dsn(),
+        "SELECT (SELECT count(*) FROM memberships.memberships WHERE id = $1) "
+        "+ (SELECT count(*) FROM members.members WHERE id = $2) "
+        "+ (SELECT count(*) FROM plans.plans WHERE id = $3) AS n",
+        membresia,
+        socio,
+        plan,
+    )
+    assert residuos[0]["n"] == 0  # la prueba no deja socio, plan ni membresía (L7)

@@ -3,7 +3,9 @@ S4A-D57). Privado (D7): los demás módulos, el worker y el CLI lo ven por `memb
 
 La columna `status` es un espejo persistido del estado efectivo (S4A-D1): las lecturas siguen
 derivadas (`compute_status` y `status_expr`); este recálculo alinea la columna para las filas que
-el tiempo movió y es la única fuente de `MembershipExpiring` y `MembershipExpired`.
+el tiempo movió y es la fuente de `MembershipExpiring` y de `MembershipExpired` por fecha; la
+última clase de una tiquetera (`lifecycle.on_member_checked_in`, S7-C2) también emite
+`MembershipExpired`, pero solo si la fila aún no estaba vencida.
 
 `recompute_statuses(session_factory, *, today, page_size=RECOMPUTE_PAGE)`:
 1. `expiring_days` de `settings_service.memberships_policy`, una vez por corrida;

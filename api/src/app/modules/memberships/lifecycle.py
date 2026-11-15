@@ -339,11 +339,15 @@ async def cancel(session: AsyncSession, *, membership_id: UUID, reason: str) -> 
     return await membership_out(session, membresia, filas)
 
 
-def _usable_class_row(membresia: Membership | None, status_at_checkin: str) -> Membership | None:
+def _usable_class_row(
+    membresia: Membership | None, member_id: UUID, status_at_checkin: str
+) -> Membership | None:
     """La tiquetera del evento (ya bloqueada por el handler con `lock_membership`) si descuenta o
-    devuelve una clase: existe, no está anulada (L-5), es por clases y su estado del check-in era
-    `active` o `expiring` (CA4)."""
-    if membresia is None or membresia.status == MembershipStatus.cancelled.value:
+    devuelve una clase: existe, es del socio del evento (L5 de la revisión de C2), no está
+    anulada (L-5), es por clases y su estado del check-in era `active` o `expiring` (CA4)."""
+    if membresia is None or membresia.member_id != member_id:
+        return None
+    if membresia.status == MembershipStatus.cancelled.value:
         return None
     if membresia.classes_remaining is None or membresia.classes_total is None:
         return None
@@ -390,15 +394,17 @@ async def on_member_checked_in(
 
     Sin fila utilizable no hace nada (por días, congelada, vencida, `pending_payment`, anulada o
     sin membresía). Al llegar a 0 recorta el fin (`rules.consume_class`, S7-D29) y emite
-    `MembershipExpired(on_date=hoy)`. Un fallo revierte el check-in completo (CA5)."""
+    `MembershipExpired(on_date=hoy)` (salvo que la fila ya estuviera `expired`: el job diario ya lo
+    emitió, L4 de la revisión de C2). Un fallo revierte el check-in completo (CA5)."""
     if event.membership_id is None:
         return
     fila = await lock_membership(session, event.membership_id)
-    membresia = _usable_class_row(fila, event.membership_status)
+    membresia = _usable_class_row(fila, event.member_id, event.membership_status)
     if membresia is None or membresia.classes_remaining == 0:
         return
     hoy = current_clock().today_bogota()
     uso = consume_class(_balance(membresia), hoy)
+    ya_vencida = membresia.status == MembershipStatus.expired.value
     estado = await _store_usage(session, membresia, uso, hoy)
     consumida = ClassConsumed(
         membership_id=membresia.id,
@@ -406,7 +412,7 @@ async def on_member_checked_in(
         classes_remaining=uso.classes_remaining,
     )
     await emit(consumida, session)
-    if uso.classes_remaining == 0 and estado is MembershipStatus.expired:
+    if uso.classes_remaining == 0 and estado is MembershipStatus.expired and not ya_vencida:
         vencida = MembershipExpired(
             membership_id=membresia.id,
             member_id=membresia.member_id,
@@ -426,7 +432,7 @@ async def on_attendance_removed(
     if event.membership_id is None:
         return
     fila = await lock_membership(session, event.membership_id)
-    membresia = _usable_class_row(fila, event.membership_status)
+    membresia = _usable_class_row(fila, event.member_id, event.membership_status)
     if membresia is None or membresia.classes_remaining == membresia.classes_total:
         return
     hoy = current_clock().today_bogota()

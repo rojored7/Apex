@@ -309,3 +309,17 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 ### Evidencia (C3)
 - Sello `slice-gate.sh classes` (4 archivos + `tests/architecture`): 866 passed, exit 0.
 - Checkpoint `840a7e1`. Prueba viva (admin de desarrollo, token en `$TMPDIR` con `umask 077`, borrado al terminar): `DELETE /api/v1/attendance/15b833c9-9865-4daa-9f32-476e643394af` con `{"reason":"Prueba viva C3"}` dio 204; un segundo `DELETE` dio 404 `attendance_not_found`. En la base: `classes_remaining` de la membresía `04be2fc3-c805-46b9-aede-8f994ee63b39` pasó de 9 a 10 (`active`); la asistencia tiene `removed_at`, `removed_by` y `removed_reason` no nulos; `audit.audit_log` para esa asistencia: `6150 insert` y `6153 update`, ambas con `subject_member_id` del socio; la membresía suma 3 `update` y 1 `insert`. Quedan en la base de desarrollo las otras dos asistencias `none` del socio.
+
+## S7-C2b · Correcciones de la revisión de C2 (M1, L2, L3, L4, L5, L7; S7-D40 (12) a (16))
+
+### Rojo
+- `$DC stop api worker` antes de escribir (hay migración). Volcado `docs/scratch/sprint-07-antes-0030.dump` (2,2 MB, ignorado por git; se borra en V9); consulta previa en desarrollo: 0 filas con `original_end_date` no posterior a `end_date`.
+- Pruebas nuevas: `tests/memberships/test_review_c2_points.py` (M1: renovar y vista previa sobre una heredada agotada, vista previa tras agotar hoy; L4: ya vencida no emite, activa sí; L5: descontar y devolver con la membresía de otro socio, y el mismo socio sí), `tests/migrations/test_0030_memberships_end_guard.py` (revisión y cadena, CHECK igual/anterior/posterior/nulo, CHECK de `0029` sigue, guarda de anuladas, downgrade, aborto con conteo, ciclo) y el reforzamiento de `test_apex_api_escribe_original_end_date` (residuos y fecha de Bogotá en SQL). Sin código: 7 failed + 6 errors (la revisión `0030` no existía) y 3 passed (los casos positivos); el de L7 falla con `assert 3 == 0` (3 filas residuales: membresía, socio y plan).
+- Dos errores míos de la prueba, corregidos antes del Verde: `make_member` dos veces repite el documento (se usa `make_members(session, 2)`) y se había clavado `ruff format` sobre `0029` (revertido con `git checkout`: una migración aplicada no se toca).
+
+### Verde
+- `sell.py` (`m.end_date == ctx.today`), `lifecycle.py` (`_usable_class_row(..., member_id, ...)`, `ya_vencida` antes de `_store_usage`), `expirations.py` (docstring), `migrations/versions/0030_memberships_end_guard.py`, y la limpieza por id de L7.
+- Sello `slice-gate.sh memberships` (11 archivos + `tests/architecture`): 1248 passed, exit 0.
+
+### Evidencia (C2b)
+- P-MIG: `$DC start api` migró `0029` a `0030` (`alembic current` = `0030_memberships_end_guard (head)`, api `healthy`); `downgrade -1` deja `0029_memberships_orig_end_date` y quita el CHECK (0 filas en `pg_constraint`); `upgrade head` vuelve a `0030 (head)`. `pg_get_constraintdef`: `CHECK (((original_end_date IS NULL) OR (original_end_date > end_date)))`. Triggers de `memberships.memberships`: los tres en `tgenabled = A`; `guard_identity()` contiene `original_end_date`. Sin cambio de grants (P-ROL no aplica).

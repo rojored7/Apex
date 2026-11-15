@@ -276,10 +276,12 @@ async def _renewal_for(
     clasificadas = classify_open(abiertas, ctx.today)
     if clasificadas.future is not None:
         raise FutureMembershipExists(existing_id=clasificadas.future.id)
+    # M1 (revisión de C2): solo la que agotó la última clase hoy (un recorte nunca deja el fin
+    # después de hoy). Una heredada agotada con fin futuro no es un recorte y sigue bloqueando.
     agotadas = [
         m.end_date
         for m in abiertas
-        if m.status is MembershipStatus.expired and m.end_date >= ctx.today
+        if m.status is MembershipStatus.expired and m.end_date == ctx.today
     ]
     renovacion = plan_renewal(
         clasificadas.current,

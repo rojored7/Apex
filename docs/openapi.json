@@ -383,6 +383,20 @@
         "title": "AuditRow",
         "type": "object"
       },
+      "CancelFutureOut": {
+        "description": "`POST /class-slots/{id}/cancel-future-sessions`: cuántas sesiones se cancelaron.",
+        "properties": {
+          "cancelled_count": {
+            "title": "Cancelled Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cancelled_count"
+        ],
+        "title": "CancelFutureOut",
+        "type": "object"
+      },
       "CancelMembershipIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /memberships/{membership_id}/cancel` (S3-B6).",
@@ -8213,6 +8227,16 @@
             },
             "description": "Sin permiso"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8864,6 +8888,119 @@
           }
         },
         "summary": "Update Slot",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/class-slots/{slot_id}/cancel-future-sessions": {
+      "post": {
+        "operationId": "cancel_future_sessions_api_v1_class_slots__slot_id__cancel_future_sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Slot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCancel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelFutureOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Cancel Future Sessions",
         "tags": [
           "classes"
         ]

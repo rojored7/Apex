@@ -29,8 +29,10 @@ from app.modules.classes.events import SessionCancelled, SessionGenerated
 from app.modules.classes.exceptions import (
     CoachInvalid,
     SessionAlreadyCancelled,
+    SessionDuplicate,
     SessionFinished,
     SessionNotFound,
+    SlotNotFound,
 )
 from app.modules.classes.models import ClassSession, ClassSlot
 from app.modules.classes.queries import session_out
@@ -40,7 +42,12 @@ from app.modules.classes.rules import (
     planned_sessions,
     validate_extra_start,
 )
-from app.modules.classes.schemas import SessionCancel, SessionCreate, SessionOut
+from app.modules.classes.schemas import (
+    CancelFutureOut,
+    SessionCancel,
+    SessionCreate,
+    SessionOut,
+)
 from app.modules.settings import service as settings_service
 
 logger = logging.getLogger("app.classes")
@@ -158,10 +165,23 @@ async def create_extra(
         raise CoachInvalid()
     if coach is not None and coach != by and not await auth_service.is_active_staff(session, coach):
         raise CoachInvalid()
+    await take_generate_lock(session)  # S7-D38: serializa dos altas iguales antes de comprobar
+    inicio = data.starts_at.astimezone(UTC)
+    repetida = await session.scalar(
+        select(ClassSession.id)
+        .where(
+            ClassSession.slot_id.is_(None),
+            ClassSession.status == "scheduled",
+            ClassSession.starts_at == inicio,
+            ClassSession.coach_id.is_(None) if coach is None else ClassSession.coach_id == coach,
+        )
+        .limit(1)
+    )
+    if repetida is not None:
+        raise SessionDuplicate()
     capacidad = data.capacity
     if capacidad is None:
         capacidad = (await settings_service.classes(session)).default_capacity
-    inicio = data.starts_at.astimezone(UTC)
     fila = ClassSession(
         slot_id=None,
         session_date=local_date(inicio),
@@ -213,3 +233,49 @@ async def cancel_session(
     )
     logger.info("classes: sesión cancelada", extra={"session_id": str(fila.id)})
     return await _one_out(session, fila, ahora)
+
+
+async def cancel_future_sessions(
+    session: AsyncSession, slot_id: UUID, data: SessionCancel, *, by: UUID
+) -> CancelFutureOut:
+    """Cancela las sesiones `scheduled` de la franja que aún no empiezan (US-158, S7-D26, M-1).
+
+    Orden de candados (S7-D37): primero 4_270_006 (el job puede estar generando), luego un único
+    `SELECT ... FOR UPDATE ORDER BY starts_at, id` y recién después el primer `flush` auditado
+    (4_270_002). Atómica: un fallo, incluido el de un suscriptor, revierte todas (la transacción
+    es la del request). Las pasadas, las ya canceladas y las extras no se tocan. Emite un
+    `SessionCancelled` por sesión, sin el motivo (L-2). Sin futuras responde 0."""
+    await take_generate_lock(session)
+    if await session.scalar(select(ClassSlot.id).where(ClassSlot.id == slot_id)) is None:
+        raise SlotNotFound()
+    ahora = current_clock().now_utc()
+    filas = list(
+        (
+            await session.scalars(
+                select(ClassSession)
+                .where(
+                    ClassSession.slot_id == slot_id,
+                    ClassSession.status == "scheduled",
+                    ClassSession.starts_at > ahora,
+                )
+                .order_by(ClassSession.starts_at, ClassSession.id)
+                .with_for_update()
+            )
+        ).all()
+    )
+    for fila in filas:
+        fila.status = "cancelled"
+        fila.cancel_reason = data.reason
+        fila.cancelled_by = by
+        fila.cancelled_at = ahora
+    await session.flush()
+    for fila in filas:
+        await events.emit(
+            SessionCancelled(session_id=fila.id, slot_id=fila.slot_id, starts_at=fila.starts_at),
+            session,
+        )
+    logger.info(
+        "classes: sesiones futuras canceladas",
+        extra={"slot_id": str(slot_id), "canceladas": len(filas)},
+    )
+    return CancelFutureOut(cancelled_count=len(filas))

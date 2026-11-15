@@ -84,3 +84,11 @@ class RangeTooLong(ClassError):
 
     def __init__(self) -> None:
         super().__init__(field="to")
+
+
+class SessionDuplicate(ClassError):
+    """Ya existe una sesión extra no cancelada con ese inicio y ese coach (S7-D38): 409."""
+
+    status = 409
+    code = "session_duplicate"
+    default_message = "Ya existe una sesión extra con ese horario y ese coach."

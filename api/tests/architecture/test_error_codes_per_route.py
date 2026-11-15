@@ -147,6 +147,7 @@ CON_LIMITE = {
     ("post", "/api/v1/class-sessions"),
     ("get", "/api/v1/class-sessions/{session_id}"),
     ("post", "/api/v1/class-sessions/{session_id}/cancel"),
+    ("post", "/api/v1/class-slots/{slot_id}/cancel-future-sessions"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

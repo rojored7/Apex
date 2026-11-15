@@ -34,6 +34,7 @@ from app.core.ratelimit import enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.classes import service
 from app.modules.classes.schemas import (
+    CancelFutureOut,
     SessionCancel,
     SessionCreate,
     SessionDetail,
@@ -88,6 +89,18 @@ async def update_slot(
     return await service.update_slot(session, slot_id, body, principal.user_id)
 
 
+@router.post(
+    "/class-slots/{slot_id}/cancel-future-sessions",
+    response_model=CancelFutureOut,
+    responses=responses_for(404, 422, 429),
+)
+async def cancel_future_sessions(
+    request: Request, slot_id: UUID, body: SessionCancel, principal: AdminDep, session: Session
+) -> CancelFutureOut:
+    await enforce_user_limit(request, "classes-write", principal.user_id)
+    return await service.cancel_future_sessions(session, slot_id, body, by=principal.user_id)
+
+
 @router.get("/class-sessions", response_model=Page[SessionOut], responses=responses_for(422, 429))
 async def list_sessions(
     request: Request,
@@ -112,7 +125,7 @@ async def list_sessions(
     "/class-sessions",
     status_code=201,
     response_model=SessionOut,
-    responses=responses_for(422, 429),
+    responses=responses_for(409, 422, 429),
 )
 async def create_session(
     request: Request, body: SessionCreate, principal: StaffDep, session: Session

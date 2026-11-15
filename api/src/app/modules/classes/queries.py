@@ -26,6 +26,8 @@ from app.modules.classes.exceptions import ClassValidationError, RangeTooLong, S
 from app.modules.classes.models import ClassSession
 from app.modules.classes.rules import (
     MAX_RANGE_DAYS,
+    WEEK_YEAR_MAX,
+    WEEK_YEAR_MIN,
     date_range_utc,
     parse_week,
     session_status,
@@ -80,6 +82,9 @@ def _window(query: SessionListQuery, today: date) -> tuple[datetime, datetime]:
     if query.from_date is None or query.to_date is None:
         campo = "to" if query.to_date is None else "from"
         raise _range_error(campo, "Indica `from` y `to` juntos.")
+    for campo, valor in (("from", query.from_date), ("to", query.to_date)):
+        if not WEEK_YEAR_MIN <= valor.year <= WEEK_YEAR_MAX:  # S7-B2b: evita el desborde de fechas
+            raise _range_error(campo, "Las fechas deben estar entre 2020 y 2100.")
     if query.to_date < query.from_date:
         raise _range_error("to", "`to` no puede ser anterior a `from`.")
     if (query.to_date - query.from_date).days + 1 > MAX_RANGE_DAYS:

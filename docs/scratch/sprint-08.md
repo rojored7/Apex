@@ -340,3 +340,33 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### Pendiente
 - Smoke con rol (api de desarrollo roto): `GET /dashboard` con el admin de desarrollo, solo el código HTTP y la forma de `wod_today`. P-REBUILD 2 y 3 (reiniciar worker y reconstruir `web`) quedan para cuando el usuario repare el api.
+
+## S8-C1 · Token de TV (US-175, S8-D17, S8-D30, S8-D32, S8-D33, H-1, L-1, L-7, C5) · sin migración
+
+### Rojo (medido)
+- Con `settings/service.py` (`get_tv`, `update_tv`, `regenerate_tv_token`, `revoke_tv_token`, `verify_tv_token`) y `opaque_token_matches` en stub (`NotImplementedError`), esquemas y rutas cableados: 24 failed y 2 errors, 79 passed. 22 fallos por `NotImplementedError`/sección sin las funciones (11 de `test_tv_token`, 5 de `test_opaque_token_matches`, 4 de `test_router_tv_settings`, 2 de `test_tv_section` con 200 esperado y 2 más por la genérica y `get`), y 2 errors de `test_tv_token_concurrency` (faltaba la fixture `bus_confirmado` en `tests/settings`: se agregó `tests/settings/conftest.py`). `test_respuesta_de_regenerate_redacta_token_y_url` pasa en rojo (la redacción por clave ya existía desde W0-2); una variante sobre el `repr` de un dict en texto libre no se cubre y se quitó (no hay ningún log que imprima la respuesta).
+
+### Verde
+- `settings/schemas.py` (`TvEditable`, `TvStored`, `TvView`, `TvSectionOut`, `TvTokenOut`, `TvConfig`, `TvPatchIn` `extra=forbid`; `tv` en `ENABLED_SECTIONS` (8), `SECTION_REGISTRY`, `SECTION_VIEWS`, `SECTION_DEFAULTS`; refresco 15 a 300), `settings/service.py` (`_tv_locked` toma `FOR UPDATE` y crea la fila en versión 0 si falta; `update_tv` copia hash, `token_last4` y `rotated_at` de la fila bloqueada; regenerar y revocar suben `version`; `verify_tv_token` devuelve `None` sin fila, sin hash, vacío o fila que no valida; `get_section` y `update_section` genéricos dan 404 `section_not_available` para `tv`), `settings/router.py` (`GET/PATCH /settings/tv`, `POST /settings/tv/regenerate-token` y `/revoke-token`, todas admin y las tres escrituras con `admin-write`; antes de la genérica), `core/security.opaque_token_matches` (`hmac.compare_digest` sobre bytes ASCII, tope 128).
+- P-CAT: `CON_LIMITE` (+3), excepción documentada `TV_CAMPOS_PERMITIDOS` (`device_token_hash`, `token_last4`) en `test_settings_no_secrets` más una prueba nueva de que ninguna vista que cruza el api lleva el hash; `NO_HABILITADAS = ()`, `RUTAS` y `CUERPOS` de `tests/settings/_apoyo.py`; las habilitadas pasan de siete a ocho. P-API: `openapi.json` idéntico en dos corridas, `device_token_hash` ausente del contrato, `types.ts` regenerado, contract 6 passed, `tsc` limpio.
+- [DECISIÓN DE DISEÑO] La fila `tv` se crea con `version = 0` (insert) y el primer guardado real la sube a 1: la auditoría de una regeneración sin fila previa es `insert` y `update`. Revocar sin fila también la crea.
+- No se hizo prueba de mutación del candado (H-1); la prueba de concurrencia deja el `PATCH` esperando con `not done()` y comprueba que el hash final es el nuevo.
+
+### Evidencia
+- Gate `slice-gate.sh settings <7 archivos>` (incluye `tests/architecture` completo): 980 passed, exit 0. Un intento previo de `tests/architecture` dio 4 failed (catálogos: 429 por ruta, `token` en secciones, `CON_LIMITE` x2), corregidos. Checkpoint `1c4d107`.
+
+### Pendiente
+- `database-reviewer` del candado de la fila de sección y smoke con rol (api de desarrollo roto): `regenerate-token`, `GET /tv/today` es C2. `docs/operacion/tv.md` llega en C2.
+
+## S8-B4b · Correcciones de la revisión de B4 y B3b (M-1, L-1 a L-3, prueba débil; S8-D47) · `0040` editada
+
+### Rojo (medido)
+- Pruebas nuevas contra el código anterior: 5 failed y 37 passed: `test_motivo_invalido_422` con U+200B, U+202E y un invisible entre letras (3), `test_no_se_inserta_un_sucesor_de_una_fila_anulada` (insertaba) y `test_indice_de_historial_del_wod` (no existía). Pasaban en rojo por ya estar bien: `test_downgrade_aborta_con_anulados` (L-2) y el `test_dos_admins` reforzado.
+
+### Verde
+- M-1 `VoidIn.reason` como `SafeText`; L-1 guarda de INSERT de `0040` rechaza `supersedes_id` hacia un `voided`; L-3 `ix_wod_results_wod_created (wod_id, created_at DESC, id)` en `0040` (su `DROP` va primero en el `downgrade`) y en `models.py`; las funciones de `0040` y `0037` pasaron a literales (se acabaron los dos S608 de ruff que dejó B3b). `db_test` se volvió a aplicar con `downgrade -1` y `upgrade head` (index creado a mano antes porque el `downgrade` nuevo lo borra). S8-D47 en DECISIONES.
+- EXPLAIN (`db_test`, `enable_seqscan = off` porque la tabla es diminuta): `Index Scan using ix_wod_results_wod_created`, `Index Cond: (wod_id = ...)`, orden `created_at DESC, id` sin `Sort`. Con datos reales se repite en V6.
+
+### Evidencia
+- Gate `slice-gate.sh results <tests/results/*, test_0036/37/39/40, test_migrations>`: 1074 passed en 205 s, exit 0. `ruff check .`, `ruff format --check .` y `mypy src` (274) limpios. Checkpoint `a5128e5`.
+- P-MIG en `apex-db-1` pendiente: `0036` a `0040` siguen sin aplicarse (api roto); al aplicarse, el cuaderno de B3b y este bloque cuentan como su evidencia de esquema.

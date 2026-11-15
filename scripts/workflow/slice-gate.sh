@@ -145,7 +145,11 @@ gate_api() {
     echo "slice-gate: ruff format --check $codigo";   uv run ruff format --check $codigo
     echo "slice-gate: mypy $codigo";                  uv run mypy $codigo
   fi
-  echo "slice-gate: pytest ${pruebas[*]}";            uv run python -m pytest "${pruebas[@]}" -q
+  # Las pruebas `perf` miden con reloj y no son gate (CLAUDE.md, S2-D27): sin lista explícita
+  # se excluyen; con lista, quien nombra el archivo pide correrlo.
+  local extra=()
+  [ "${#ARCHIVOS[@]}" -eq 0 ] && extra=(-m "not perf")
+  echo "slice-gate: pytest ${pruebas[*]}";            uv run python -m pytest "${pruebas[@]}" -q "${extra[@]}"
 }
 
 # ---------------------------------------------------------------- front

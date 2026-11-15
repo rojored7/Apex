@@ -10,6 +10,7 @@ import time
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes import service
@@ -19,6 +20,14 @@ from tests.factories.members import make_members
 pytestmark = [pytest.mark.perf, pytest.mark.usefixtures("reloj", "bus_listo")]
 
 LUNES = date(2026, 4, 27)
+
+
+async def _analizar(session: AsyncSession) -> None:
+    """ANALYZE tras sembrar: la siembra queda en una transaccion sin confirmar, autovacuum no
+    la ve y PG planea con tablas vacias (bucle anidado por sesion, ~9 s con 4680 asistencias;
+    con ANALYZE, ~1 ms). En produccion las estadisticas existen."""
+    await session.execute(text("ANALYZE classes.attendance"))
+    await session.execute(text("ANALYZE classes.class_sessions"))
 
 
 async def test_resumen_de_26_semanas_bajo_500_ms(session: AsyncSession) -> None:
@@ -32,6 +41,7 @@ async def test_resumen_de_26_semanas_bajo_500_ms(session: AsyncSession) -> None:
             for socio in socios[: 5 + franja * 3]:
                 await make_attendance(session, clase, socio.id)
     hasta = LUNES + timedelta(days=7 * 26 - 1)
+    await _analizar(session)
     await service.attendance_summary(session, LUNES, hasta)  # calentamiento
     t0 = time.perf_counter()
     resumen = await service.attendance_summary(session, LUNES, hasta)
@@ -54,6 +64,7 @@ async def test_resumen_con_dos_anios_de_historia_fuera_del_rango_sigue_bajo_500_
             for socio in socios:
                 await make_attendance(session, clase, socio.id)
     hasta = LUNES + timedelta(days=7 * 26 - 1)
+    await _analizar(session)
     await service.attendance_summary(session, LUNES, hasta)  # calentamiento
     t0 = time.perf_counter()
     resumen = await service.attendance_summary(session, LUNES, hasta)

@@ -15,6 +15,10 @@ Sesiones (S7-B2, US-157), admin y coach (`StaffDep`; el socio recibe 403):
   sí mismo o a nadie (L-3).
 - `GET /class-sessions/{session_id}`: `SessionDetail` con asistentes (vacía hasta C1). `staff-read`.
 - `POST /class-sessions/{session_id}/cancel`: `SessionOut`; motivo obligatorio; `classes-write`.
+- `PATCH /class-sessions/{session_id}` (S8-A4, US-168, N-41): `{wod_id}`; asigna un WOD a la sesión
+  o, con `null`, vuelve a heredar el del día; `classes-write`. Códigos 200, 401, 403, 404, 409
+  (`session_cancelled`), 422 (`field = "wod_id"`) y 429. `GET /class-sessions?wod_id=` filtra por el
+  WOD efectivo.
 Asistencia (S7-C1, US-159), admin y coach:
 - `POST /attendance`: 201 `CheckinOut`; `attendance-write`. Siempre registra y devuelve `flags`
   (nunca 409 ni 422 por cupo, hora, día o membresía, N-38/N-39); los únicos 409 son
@@ -61,6 +65,7 @@ from app.modules.classes.schemas import (
     SessionDetail,
     SessionListQuery,
     SessionOut,
+    SessionPatch,
     SessionStatus,
     SlotCreate,
     SlotListQuery,
@@ -133,11 +138,17 @@ async def list_sessions(
     date_to: Annotated[date | None, Query(alias="to")] = None,
     coach_id: UUID | None = None,
     status: SessionStatus | None = None,
+    wod_id: UUID | None = None,
     q: SearchQuery = None,
 ) -> Page[SessionOut]:
     await enforce_user_limit(request, "staff-read", principal.user_id)
     filters = SessionListQuery(
-        week=week, from_date=date_from, to_date=date_to, coach_id=coach_id, status=status
+        week=week,
+        from_date=date_from,
+        to_date=date_to,
+        coach_id=coach_id,
+        status=status,
+        wod_id=wod_id,
     )
     return await service.list_sessions(session, filters, page, q=q)
 
@@ -167,6 +178,22 @@ async def get_session(
     if principal.kiosk:  # solo hoy o ayer (S7-D42, V7 M-1)
         await service.ensure_kiosk_session(session, session_id)
     return await service.get_session(session, session_id)
+
+
+@router.patch(
+    "/class-sessions/{session_id}",
+    response_model=SessionOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def assign_session_wod(
+    request: Request,
+    session_id: UUID,
+    body: SessionPatch,
+    principal: StaffDep,
+    session: Session,
+) -> SessionOut:
+    await enforce_user_limit(request, "classes-write", principal.user_id)
+    return await service.assign_wod(session, session_id, body, by=principal.user_id)
 
 
 @router.post(

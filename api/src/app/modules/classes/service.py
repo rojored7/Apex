@@ -57,6 +57,7 @@ from app.modules.classes.rules import (
 )
 from app.modules.classes.sessions import (
     GenerateResult,
+    assign_wod,
     cancel_future_sessions,
     cancel_session,
     create_extra,
@@ -80,6 +81,7 @@ __all__ = [
     "SessionGenerated",
     "SlotSpec",
     "WeekAttendance",
+    "assign_wod",
     "attendance_summary",
     "attended_member_ids",
     "cancel_future_sessions",

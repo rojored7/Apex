@@ -27,6 +27,7 @@ from app.core.context import get_actor
 from app.modules.auth import service as auth_service
 from app.modules.classes.events import SessionCancelled, SessionGenerated
 from app.modules.classes.exceptions import (
+    CheckinSessionCancelled,
     CoachInvalid,
     SessionAlreadyCancelled,
     SessionDuplicate,
@@ -47,8 +48,10 @@ from app.modules.classes.schemas import (
     SessionCancel,
     SessionCreate,
     SessionOut,
+    SessionPatch,
 )
 from app.modules.settings import service as settings_service
+from app.modules.wods import service as wods_service
 
 logger = logging.getLogger("app.classes")
 
@@ -202,7 +205,8 @@ async def create_extra(
 async def _one_out(session: AsyncSession, fila: ClassSession, ahora: datetime) -> SessionOut:
     nombres = await auth_service.user_names_for(session, [fila.coach_id]) if fila.coach_id else {}
     cuentas = await attendance_counts(session, [fila.id])
-    return session_out(fila, nombres, ahora, cuentas.get(fila.id, 0))
+    por_dia = await wods_service.day_wod_ids(session, {fila.session_date})
+    return session_out(fila, nombres, ahora, cuentas.get(fila.id, 0), por_dia)
 
 
 async def cancel_session(
@@ -280,3 +284,32 @@ async def cancel_future_sessions(
         extra={"slot_id": str(slot_id), "canceladas": len(filas)},
     )
     return CancelFutureOut(cancelled_count=len(filas))
+
+
+async def assign_wod(
+    session: AsyncSession, session_id: UUID, data: SessionPatch, *, by: UUID
+) -> SessionOut:
+    """`PATCH /class-sessions/{id}` (S8-D9, S8-D36): asigna un WOD a la sesión o, con `null`, vuelve
+    a heredar el del día.
+
+    Orden de candados (M-6): la sesión `FOR UPDATE` ANTES de leer el WOD y de escribir, el mismo
+    candado que toman las cancelaciones, el check-in y el registro de resultados. Una sesión
+    cancelada da 409 `session_cancelled`; un `wod_id` inexistente, 422 `field = "wod_id"`. Sin
+    cambio no hay `flush` ni fila de auditoría."""
+    fila = await session.scalar(
+        select(ClassSession)
+        .where(ClassSession.id == session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if fila is None:
+        raise SessionNotFound()
+    if fila.status == "cancelled":
+        raise CheckinSessionCancelled()
+    if data.wod_id is not None:
+        await wods_service.ensure_wod(session, data.wod_id)
+    if fila.wod_id != data.wod_id:
+        fila.wod_id = data.wod_id
+        await session.flush()
+        logger.info("classes: wod de la sesión asignado", extra={"session_id": str(fila.id)})
+    return await _one_out(session, fila, current_clock().now_utc())

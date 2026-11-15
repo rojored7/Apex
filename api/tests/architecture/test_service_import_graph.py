@@ -60,6 +60,9 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("classes", "auth"),
         ("classes", "members"),
         ("classes", "settings"),
+        # S8-A4 (S8-D4, US-168): `classes` valida el WOD asignado (`ensure_wod`), pide el WOD de
+        # cada día (`day_wod_ids`) y la fecha de un WOD (`wod_date`). Nunca `wods -> classes`.
+        ("classes", "wods"),
         ("auth", "settings"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
         ("dashboard", "audit"),
@@ -668,7 +671,7 @@ def test_attachments_no_tiene_aristas_salientes_a_otros_modulos() -> None:
 
 def test_wods_no_tiene_aristas_salientes_en_a1() -> None:
     """S8-A1 (S8-D5): `wods` no importa el `service.py` de ningun otro modulo; la arista
-    `classes -> wods` llega en A4 y nunca `wods -> classes`."""
+    `classes -> wods` llega en A4 (S8-D4) y nunca `wods -> classes`."""
     arriba, perezosas = _grafo_real()
     assert arriba["wods"] == set()
     assert perezosas["wods"] == set()

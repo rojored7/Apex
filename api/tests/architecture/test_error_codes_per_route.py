@@ -166,7 +166,10 @@ CON_LIMITE = {
     ("get", "/api/v1/benchmarks"),
     ("post", "/api/v1/benchmarks"),
     ("patch", "/api/v1/benchmarks/{benchmark_id}"),
-    # S8-A3 (US-166, US-167): WODs; `GET /wods/today` llega en A4.
+    # S8-A3 (US-166, US-167): WODs; A4 (US-168) suma `GET /wods/today` (`staff-read`) y el
+    # `PATCH /class-sessions/{session_id}` (`classes-write`).
+    ("get", "/api/v1/wods/today"),
+    ("patch", "/api/v1/class-sessions/{session_id}"),
     ("get", "/api/v1/wods"),
     ("post", "/api/v1/wods"),
     ("get", "/api/v1/wods/{wod_id}"),

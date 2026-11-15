@@ -461,3 +461,15 @@ async def list_wods(
         consulta = consulta.where(Wod.benchmark_id.is_(None))
     wods, total = await paginate(session, consulta.order_by(Wod.date.desc(), Wod.id), page)
     return to_page(await _rows(session, wods), total, page)
+
+
+async def today_card(session: AsyncSession, day: date) -> WodOut | None:
+    """El WOD cuya fecha es `day` con sus movimientos, o `None` (S8-D9, US-168 CA1)."""
+    probe = results_probe()
+    wod = await session.scalar(
+        select(Wod).where(Wod.date == day).execution_options(populate_existing=True)
+    )
+    if wod is None:
+        return None
+    cuentas = await probe.result_counts(session, [wod.id])
+    return await _full_out(session, wod, cuentas.get(wod.id, 0))

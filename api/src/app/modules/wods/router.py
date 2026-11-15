@@ -14,7 +14,9 @@ Benchmarks (S8-A2, US-166, S8-D6), mismo reparto de roles y cubetas:
 - `PATCH /benchmarks/{benchmark_id}`: `BenchmarkOut`; `wods-write`. Códigos 200, 401, 403, 404, 409,
   422 (incluye `score_type_locked`) y 429. Tampoco existe `DELETE`.
 WODs (S8-A3, US-166, US-167): `GET /wods` (`week` o `q`/`benchmark`), `POST /wods`,
-`GET /wods/{id}` y `PATCH /wods/{id}`; `wods-write` y `staff-read`. `/wods/today` llega en A4.
+`GET /wods/{id}` y `PATCH /wods/{id}`; `wods-write` y `staff-read`.
+`GET /wods/today` (S8-A4, US-168, S8-D9): el WOD de hoy en Bogotá con sus movimientos, o 200 con
+`null`; `staff-read`; declarada antes de `/wods/{wod_id}`.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
 """
 
@@ -25,6 +27,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.clock import current_clock
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
@@ -162,6 +165,12 @@ async def create_wod(
 ) -> WodOut:
     await enforce_user_limit(request, "wods-write", principal.user_id)
     return await service.create_wod(session, body, principal.user_id)
+
+
+@router.get("/wods/today", response_model=WodOut | None, responses=responses_for(429))
+async def get_today_wod(request: Request, principal: StaffDep, session: Session) -> WodOut | None:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.today_card(session, current_clock().today_bogota())
 
 
 @router.get("/wods/{wod_id}", response_model=WodOut, responses=responses_for(404, 422, 429))

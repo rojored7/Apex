@@ -169,3 +169,18 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - L3, premisa no cierta: `created_at` y `updated_at` son `TECHNICAL_COLUMNS` (`core/audit.py:72`): el hook del ORM tampoco los guarda, así que el `after` de la siembra ya tenía las mismas claves. No se cambia `seed.py`; la prueba `test_la_auditoria_de_la_siembra_trae_la_fila_completa` fija que el `after` de cada alta lleva todas las columnas menos las técnicas (el rojo de esa prueba fue mi expectativa errónea, no un defecto).
 - L2: aceptado y documentado en `DECISIONES.md` (S8-D6, ajuste de A2b); `docs/operacion/wods.md` lo dirá cuando exista (slice de documentos).
 - Gate sellante `slice-gate.sh notifications <5 archivos>`: 1 016 passed en 184 s, exit 0; `ruff check .`, `ruff format --check .` (993) y `mypy src` (259) limpios. Sin migración ni cambio de contrato.
+
+## S8-A4 · WOD del día y asignación a sesiones (US-168, N-41, S8-D3, S8-D9, C2) · sin migración
+
+### Rojo
+- Con stubs `NotImplementedError` (`effective_wod_id`, `ensure_wod`, `day_wod_ids`, `wod_date`, `today_card`, `assign_wod`), rutas y esquemas ya cableados: 18 failed y 132 passed de los 8 archivos del slice (3 puras, 3 de `today`, 7 de `PATCH`, 3 del filtro, `test_apex_api_escribe_wod_id` por `permission denied for table class_sessions` y la arista `classes -> wods` declarada sin import). Un fallo era de mi prueba (`sesion.id` tras un 422 expira la fila): se corrigió antes del verde.
+
+### Verde
+- `wods`: `catalog.{ensure_wod, day_wod_ids, wod_date}`, `programming.today_card`, `GET /wods/today` (antes de `/wods/{id}`, `staff-read`, 200 con `null`). `classes`: `rules.effective_wod_id`, `sessions.assign_wod` (sesión `FOR UPDATE` -> 409 `session_cancelled` -> `ensure_wod` -> `UPDATE`; sin cambio no hay flush), `PATCH /class-sessions/{id}` (`classes-write`), `SessionOut.wod_id` y `effective_wod_id` (UNA llamada `day_wod_ids` por página), filtro `wod_id` efectivo (`wod_date`; inexistente da página vacía).
+- P-ROL: `grants.sql` (`wod_id` en el `GRANT UPDATE` y en la matriz de cabecera), `COLUMNAS_API_CLASS_SESSIONS_UPDATE`, `test_apex_api_escribe_wod_id` (rol real). P-CAT: `CON_LIMITE` (+2 rutas) y arista `("classes","wods")`.
+- Desviaciones: `today_card` devuelve `WodOut` completo (la proyección de 4 campos del tablero, S8-D16, es de B5). La sesión cancelada reutiliza `CheckinSessionCancelled` (409 `session_cancelled`). Una sesión terminada (`done`) SÍ admite asignar WOD (solo `cancelled` da 409).
+
+### Evidencia
+- `ruff check .`, `ruff format --check .` (997) y `mypy src` (259) limpios.
+- Gate `slice-gate.sh wods` (2 archivos): 862 passed; sello `slice-gate.sh classes <6 archivos>`: 1 162 passed en 155 s, exit 0. `tests/dashboard tests/architecture tests/core/test_migrations.py`: 960 passed.
+- P-API: `openapi.json` idéntico en dos corridas (+293 líneas, 1 borrada), `types.ts` regenerado, `types.contract.test.ts` 6 passed, `tsc --noEmit` limpio.

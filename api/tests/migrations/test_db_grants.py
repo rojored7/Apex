@@ -152,6 +152,7 @@ COLUMNAS_API_ATTENDANCE_UPDATE: tuple[str, ...] = (
     "updated_at",
 )
 COLUMNAS_API_CLASS_SESSIONS_UPDATE: tuple[str, ...] = (
+    "wod_id",  # S8-A4 (S8-D3, C2): sin FK entre esquemas; el api la asigna con UPDATE por columna
     "status",
     "cancel_reason",
     "cancelled_by",

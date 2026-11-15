@@ -20,6 +20,7 @@ from app.modules.wods.benchmarks import (
     list_benchmarks,
     update_benchmark,
 )
+from app.modules.wods.catalog import day_wod_ids, ensure_wod, wod_date
 from app.modules.wods.events import WodPublished
 from app.modules.wods.movements import (
     create_movement,
@@ -34,7 +35,7 @@ from app.modules.wods.probe import (
     results_probe,
     set_results_probe,
 )
-from app.modules.wods.programming import create_wod, get_wod, list_wods, update_wod
+from app.modules.wods.programming import create_wod, get_wod, list_wods, today_card, update_wod
 from app.modules.wods.rules import normalize_movement_name
 from app.modules.wods.seed import seed_benchmarks
 
@@ -49,6 +50,8 @@ __all__ = [
     "create_movement",
     "create_wod",
     "current_results_probe",
+    "day_wod_ids",
+    "ensure_wod",
     "get_benchmark",
     "get_movement",
     "get_wod",
@@ -59,7 +62,9 @@ __all__ = [
     "results_probe",
     "seed_benchmarks",
     "set_results_probe",
+    "today_card",
     "update_benchmark",
     "update_movement",
     "update_wod",
+    "wod_date",
 ]

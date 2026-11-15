@@ -19,9 +19,9 @@
 --                                     tokens_valid_after, updated_at)
 --   classes.attendance              S I U(removed_at, removed_by,     -
 --                                     removed_reason, updated_at)
---   classes.class_sessions          S I U(status, cancel_reason,      S I
---                                     cancelled_by, cancelled_at,
---                                     updated_at)
+--   classes.class_sessions          S I U(wod_id, status,             S I
+--                                     cancel_reason, cancelled_by,
+--                                     cancelled_at, updated_at)
 --   classes.class_slots             S I U(weekdays, start_time,       S
 --                                     duration_min, capacity,
 --                                     default_coach_id, name, valid_from,
@@ -138,7 +138,8 @@ GRANT SELECT, INSERT ON classes.class_sessions TO apex_api;
 -- reescribir lo registrado o des-quitar. El worker no la toca.
 GRANT SELECT, INSERT ON classes.attendance TO apex_api;
 GRANT UPDATE (removed_at, removed_by, removed_reason, updated_at) ON classes.attendance TO apex_api;
-GRANT UPDATE (status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
+-- S8-A4 (S8-D3, C2): `wod_id` no tiene FK entre esquemas; el api lo asigna (PATCH /class-sessions/{id}).
+GRANT UPDATE (wod_id, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
 GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, name, valid_from, is_active, updated_at) ON classes.class_slots TO apex_api;
 -- S8-A1 (S8-D5, S8-D21, US-165): catalogo de movimientos; el api inserta y edita por columna (se
 -- desactivan con is_active); sin DELETE ni TRUNCATE (los triggers tambien los prohiben); el worker no

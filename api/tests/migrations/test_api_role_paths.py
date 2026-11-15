@@ -377,3 +377,42 @@ def test_apex_api_escribe_original_end_date(apex_roles: RolesDb) -> None:
         plan,
     )
     assert residuos[0]["n"] == 0  # la prueba no deja socio, plan ni membresía (L7)
+
+
+def test_apex_api_escribe_wod_id(apex_roles: RolesDb) -> None:
+    """S8-A4 (S8-D3, C2): `classes.service.assign_wod` con los privilegios reales de `apex_api`:
+    `SELECT ... FOR UPDATE` de la sesión, `SELECT` de `wods.wods` y `UPDATE (wod_id)` por columna.
+    Sin FK entre esquemas: el WOD se valida en el service."""
+    from app.modules.classes import service as classes_service
+    from app.modules.classes.schemas import SessionPatch
+    from tests.conftest import LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS, LIMPIAR_WODS
+
+    sesion_id, wod_id = uuid4(), uuid4()
+    propietario(
+        apex_roles,
+        "INSERT INTO wods.wods (id, created_by, date, title, score_type) "
+        f"VALUES ('{wod_id}', '{SYSTEM}', '2031-01-05', 'Fran', 'none')",
+        "INSERT INTO classes.class_sessions (id, created_by, session_date, starts_at, "
+        f"duration_min, capacity) VALUES ('{sesion_id}', '{SYSTEM}', "
+        "(now() AT TIME ZONE 'America/Bogota')::date, now(), 60, 15)",
+    )
+
+    async def asignar(sesion: AsyncSession) -> UUID | None:
+        datos = SessionPatch.model_validate({"wod_id": wod_id})
+        with actor_scope(SYSTEM_USER_ID):
+            salida = await classes_service.assign_wod(sesion, sesion_id, datos, by=SYSTEM_USER_ID)
+        return salida.wod_id
+
+    try:
+        assert _como_api(apex_roles, asignar) == wod_id
+        fila = consultar(
+            apex_roles.dsn(), "SELECT wod_id FROM classes.class_sessions WHERE id = $1", sesion_id
+        )
+        assert fila[0]["wod_id"] == wod_id
+    finally:
+        propietario(
+            apex_roles,
+            LIMPIAR_CLASS_SESSIONS,
+            LIMPIAR_CLASS_SLOTS,
+            LIMPIAR_WODS,
+        )

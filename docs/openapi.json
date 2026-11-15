@@ -6458,6 +6458,18 @@
             "title": "Duration Min",
             "type": "integer"
           },
+          "effective_wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Wod Id"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6504,6 +6516,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
           }
         },
         "required": [
@@ -6520,6 +6544,8 @@
           "attendance_count",
           "cancel_reason",
           "cancelled_at",
+          "wod_id",
+          "effective_wod_id",
           "attendees"
         ],
         "title": "SessionDetail",
@@ -6585,6 +6611,18 @@
             "title": "Duration Min",
             "type": "integer"
           },
+          "effective_wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Wod Id"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6631,6 +6669,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
           }
         },
         "required": [
@@ -6646,9 +6696,34 @@
           "status",
           "attendance_count",
           "cancel_reason",
-          "cancelled_at"
+          "cancelled_at",
+          "wod_id",
+          "effective_wod_id"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SessionPatch": {
+        "additionalProperties": false,
+        "description": "`PATCH /class-sessions/{id}` (S8-D9, N-41): `wod_id` es obligatorio; `null` vuelve a heredar\nel WOD del día. `extra=\"forbid\"`: nada más se edita por aquí.",
+        "properties": {
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
+          }
+        },
+        "required": [
+          "wod_id"
+        ],
+        "title": "SessionPatch",
         "type": "object"
       },
       "SessionTodayOut": {
@@ -10568,6 +10643,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "wod_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wod Id"
+            }
+          },
+          {
             "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
             "in": "query",
             "name": "q",
@@ -10887,6 +10979,127 @@
           }
         },
         "summary": "Get Session",
+        "tags": [
+          "classes"
+        ]
+      },
+      "patch": {
+        "operationId": "assign_session_wod_api_v1_class_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Assign Session Wod",
         "tags": [
           "classes"
         ]
@@ -22064,6 +22277,85 @@
           }
         },
         "summary": "Create Wod",
+        "tags": [
+          "wods"
+        ]
+      }
+    },
+    "/api/v1/wods/today": {
+      "get": {
+        "operationId": "get_today_wod_api_v1_wods_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WodOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Today Wod Api V1 Wods Today Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Today Wod",
         "tags": [
           "wods"
         ]

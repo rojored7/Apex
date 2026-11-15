@@ -381,7 +381,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Assign Session Wod */
+        patch: operations["assign_session_wod_api_v1_class_sessions__session_id__patch"];
         trace?: never;
     };
     "/api/v1/class-sessions/{session_id}/cancel": {
@@ -1571,6 +1572,23 @@ export interface paths {
         put?: never;
         /** Create Wod */
         post: operations["create_wod_api_v1_wods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Today Wod */
+        get: operations["get_today_wod_api_v1_wods_today_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4150,6 +4168,8 @@ export interface components {
             coach_name: string | null;
             /** Duration Min */
             duration_min: number;
+            /** Effective Wod Id */
+            effective_wod_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -4174,6 +4194,8 @@ export interface components {
              * @enum {string}
              */
             status: "scheduled" | "cancelled" | "done";
+            /** Wod Id */
+            wod_id: string | null;
         };
         /** SessionOut */
         SessionOut: {
@@ -4191,6 +4213,8 @@ export interface components {
             coach_name: string | null;
             /** Duration Min */
             duration_min: number;
+            /** Effective Wod Id */
+            effective_wod_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -4215,6 +4239,17 @@ export interface components {
              * @enum {string}
              */
             status: "scheduled" | "cancelled" | "done";
+            /** Wod Id */
+            wod_id: string | null;
+        };
+        /**
+         * SessionPatch
+         * @description `PATCH /class-sessions/{id}` (S8-D9, N-41): `wod_id` es obligatorio; `null` vuelve a heredar
+         *     el WOD del día. `extra="forbid"`: nada más se edita por aquí.
+         */
+        SessionPatch: {
+            /** Wod Id */
+            wod_id: string | null;
         };
         /**
          * SessionTodayOut
@@ -6443,6 +6478,7 @@ export interface operations {
                 to?: string | null;
                 coach_id?: string | null;
                 status?: ("scheduled" | "cancelled" | "done") | null;
+                wod_id?: string | null;
                 /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
                 q?: string | null;
                 limit?: number;
@@ -6654,6 +6690,104 @@ export interface operations {
                 };
             };
             /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    assign_session_wod_api_v1_class_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -14475,6 +14609,71 @@ export interface operations {
             };
             /** @description Petición inválida */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_today_wod_api_v1_wods_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"] | null;
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

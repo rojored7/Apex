@@ -4,6 +4,7 @@
   rango de fechas de Bogotá (`from`/`to`, hasta 62 días), por hora de inicio; sin fechas, la
   semana actual. Filtra por `q` (nombre, sin tildes), `coach_id` y `status` (`done` se calcula:
   programada cuya hora de fin ya pasó).
+  `wod_id` filtra por el WOD efectivo (S8-A4): el asignado o, sin asignar, el del día de ese WOD.
 - `get_session(session, session_id)`: una sesión con sus asistentes vivos (C1, US-159).
 - `session_out(...)`: arma `SessionOut` con el estado calculado y el nombre del coach.
 `attendance_count` cuenta las asistencias vivas (`removed_at` nulo) de cada sesión.
@@ -11,12 +12,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import Integer, Text, and_, func, literal, select
+from sqlalchemy import Integer, Text, and_, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
@@ -31,6 +33,7 @@ from app.modules.classes.rules import (
     WEEK_YEAR_MAX,
     WEEK_YEAR_MIN,
     date_range_utc,
+    effective_wod_id,
     is_kiosk_day,
     local_date,
     parse_week,
@@ -45,6 +48,7 @@ from app.modules.classes.schemas import (
     SessionOut,
 )
 from app.modules.members import service as members_service
+from app.modules.wods import service as wods_service
 
 
 async def attended_member_ids(session: AsyncSession, since_day: date | None) -> set[UUID]:
@@ -73,9 +77,14 @@ async def last_attendance_for(
 
 
 def session_out(
-    row: ClassSession, names: dict[UUID, str], now: datetime, attendance_count: int = 0
+    row: ClassSession,
+    names: dict[UUID, str],
+    now: datetime,
+    attendance_count: int = 0,
+    day_wods: Mapping[date, UUID] | None = None,
 ) -> SessionOut:
-    """`SessionOut` de una fila; `status` es el calculado (`done` incluido)."""
+    """`SessionOut` de una fila; `status` es el calculado (`done` incluido). `day_wods` es el WOD de
+    cada día de Bogotá (una llamada por página, S8-D9): el efectivo es el asignado o el del día."""
     coach = row.coach_id
     return SessionOut.model_validate(
         {
@@ -92,6 +101,10 @@ def session_out(
             "attendance_count": attendance_count,
             "cancel_reason": row.cancel_reason,
             "cancelled_at": row.cancelled_at,
+            "wod_id": row.wod_id,
+            "effective_wod_id": effective_wod_id(
+                row.wod_id, (day_wods or {}).get(row.session_date)
+            ),
         }
     )
 
@@ -113,7 +126,8 @@ async def _outs(session: AsyncSession, rows: list[ClassSession]) -> list[Session
     nombres = await auth_service.user_names_for(session, ids) if ids else {}
     ahora = current_clock().now_utc()
     cuentas = await attendance_counts(session, [r.id for r in rows])
-    return [session_out(r, nombres, ahora, cuentas.get(r.id, 0)) for r in rows]
+    por_dia = await wods_service.day_wod_ids(session, {r.session_date for r in rows})
+    return [session_out(r, nombres, ahora, cuentas.get(r.id, 0), por_dia) for r in rows]
 
 
 def _range_error(field: str, message: str) -> ClassValidationError:
@@ -176,6 +190,16 @@ async def list_sessions(
         consulta = consulta.where(ClassSession.coach_id == query.coach_id)
     if query.status is not None:
         consulta = consulta.where(_status_filter(query.status, reloj.now_utc()))
+    if query.wod_id is not None:  # semántica efectiva (S8-D9): asignado, o heredado del día de X
+        fecha = await wods_service.wod_date(session, query.wod_id)
+        if fecha is None:
+            return to_page([], 0, page)
+        consulta = consulta.where(
+            or_(
+                ClassSession.wod_id == query.wod_id,
+                and_(ClassSession.wod_id.is_(None), ClassSession.session_date == fecha),
+            )
+        )
     filas, total = await paginate(
         session, consulta.order_by(ClassSession.starts_at, ClassSession.id), page
     )

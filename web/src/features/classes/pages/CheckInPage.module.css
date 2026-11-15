@@ -1,0 +1,63 @@
+/* S7-F4: CheckIn.html (tablet 1024 x 768, tema oscuro): buscar a la izquierda, «Ya llegaron» a la derecha. Solo tokens.css. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+  font: var(--text-body);
+}
+
+.outcome {
+  min-height: var(--space-6);
+}
+
+.ok {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}
+
+.warn {
+  margin: 0;
+  color: var(--warning);
+  font: var(--text-label);
+}
+
+.cancelled {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  font: var(--text-body);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+@media (width < 720px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

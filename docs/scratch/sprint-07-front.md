@@ -79,3 +79,26 @@ Verde:
 - L7: `formatTime24` en `core/i18n/format.ts` sobre `toBogota`; `weeks.bogotaTime` se eliminó.
 - L8: el panel de sesión extra se reinicia al abrir; «Cancelar sesiones futuras» queda deshabilitado con cambios sin guardar y lo explica.
 - L9: `// DESIGN-GAP:` del coach por correo en `SlotPanel` y `ExtraSessionPanel`; nombre de prueba corregido.
+
+## S7-F4 · Check-in en modo tablet (US-159, US-161, S7-D24, L-7, E4)
+
+Rojo medido (antes del código): `GymLayout.test.tsx` 1 archivo sin resolver `shared/hooks/gymContext`; `CheckInPage.test.tsx`, `CheckInSearch.test.tsx`
+y `AttendeeList.test.tsx` sin resolver su import (4 archivos, 0 pruebas); `MemberSearch.test.tsx` 2 failed (variante gym: `short`, `renderOption`);
+`shells.test.tsx` 4 failed (marca del modo tablet, salir con contraseña, cierre por inactividad). `client.test.ts` ya pasaba: `api.delete` con cuerpo
+(E4) existía; solo se agregaron 2 pruebas que lo fijan.
+
+Verde:
+- `shared/hooks/gymContext.ts` (`useGym`, `useGymHeader`) y `useIdleTimeout.ts`; `layouts/GymLayout.tsx` con `tablet` (sin enlaces, salida con
+  contraseña, 10 min), `counter` y `LeaveTabletDialog.tsx`; `layouts/tabletMode.ts` (en memoria); `GymShell` entra al modo en
+  `/clases/:id/checkin`, verifica con `core/auth/confirmPassword.ts` (POST /auth/login sin tocar la sesión) y cierra por inactividad con `logout()`.
+- `shared/ui`: `MemberSearch` (size gym, estado `short`, `renderOption`, `placeholder`), `StatusTag flag` + `FLAG_LABELS` (siete banderas).
+- `shared/data/members.ts`: `photo_attachment_id`, `useMemberSearch(text, delay, minChars)` y `error`.
+- `features/classes`: `api.ts` (`useClassSession`, `useCheckIn`, `useRemoveAttendance`; invalidan `["class-session"]` y `["class-sessions"]`),
+  `classErrors.ts`, `flags.ts`, `components/{CheckInSearch,AttendeeList,RemoveAttendanceModal}`, `pages/CheckInPage` (default export).
+- `docs/operacion/clases.md`, BRECHAS 15.6 y 15.7 resueltas, ROUTES.md; E2E `web/tests/e2e/stack/checkin.spec.ts` (sin correr, V5).
+
+DESIGN-GAP anotados: búsqueda por «últimos 4 del documento» (N-02), WOD del encabezado (v0.5), «Ver asistencia completa» y «registrar resultados»
+(no hay enlaces al panel en modo tablet), «saldo pendiente / vence hoy» junto a la hora (AttendeeOut solo trae banderas).
+Desviación: la marca del modo vive en memoria del módulo, no en sessionStorage (la regla de lint S4B-D51 lo reserva a RouteError.tsx; no se tocó la configuración). Un F5 en el check-in la restablece por la ruta.
+Decisiones: «Vender» (sin plan) sale del modo con la contraseña; etiquetas de bandera «Vencido» y «Congelado» (igual que el estado de membresía).
+Tropiezos del entorno: los heredocs de Git Bash con comillas fallaron en bloque otra vez (se usó Write); no hay Python en el PATH.

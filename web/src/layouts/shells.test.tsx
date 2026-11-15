@@ -1,7 +1,7 @@
 // S2-F2: contenedores que leen la sesión y entregan sus datos a los layouts presentacionales
 // (PanelShell, PortalShell, TvShell) y el marco de las pantallas de acceso.
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import userEvent from "@testing-library/user-event";
@@ -22,11 +22,13 @@ vi.mock("../features/payments/components/RegisterPaymentPanelHost", () => {
   return { RegisterPaymentPanelHost: () => <p>Panel de pagos montado</p> };
 });
 import { GymShell, PortalShell, TvShell } from "./ZoneShells";
+import { enterTabletMode, isTabletMode, leaveTabletMode } from "./tabletMode";
 
 afterEach(() => {
   signOutForTests();
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
+  leaveTabletMode();
 });
 
 function inRouter(element: ReactNode, path = "/") {
@@ -110,12 +112,65 @@ describe("PortalShell, GymShell y TvShell", () => {
     expect(screen.getByRole("navigation", { name: "Menú del portal" })).toBeInTheDocument();
   });
 
-  it("GymShell toma el título del handle de la ruta y sale al panel", () => {
+  it("GymShell fuera del check-in toma el título del handle de la ruta y sale al panel", () => {
     signInAs("coach");
-    inRouter(<GymShell />, "/clases/1/checkin");
+    inRouter(<GymShell />, "/clases/1/resultados");
 
     expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "Check-in" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Salir" })).toHaveAttribute("href", "/");
+  });
+
+  it("GymShell en el check-in entra al modo tablet: marca la pestaña, sin enlaces y la salida es un botón «Clases»", () => {
+    signInAs("coach");
+    inRouter(<GymShell />, "/clases/1/checkin");
+
+    expect(isTabletMode()).toBe(true);
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Clases" })).toBeInTheDocument();
+  });
+
+  it("el modo tablet sigue en otra pantalla de la tablet mientras la marca exista", () => {
+    signInAs("coach");
+    enterTabletMode();
+    inRouter(<GymShell />, "/clases/1/resultados");
+
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("salir con la contraseña correcta quita la marca; con una incorrecta no", async () => {
+    signInAs("coach");
+    const user = userEvent.setup();
+    const mock = mockApi({ "POST /auth/login": (call) => ((call.body as { password?: string } | undefined)?.password === "buena" ? { status: 200, body: {} } : { status: 401, body: { error: { code: "unauthorized", message: "No." } } }) });
+    inRouter(<GymShell />, "/clases/1/checkin");
+
+    await user.click(screen.getByRole("button", { name: "Clases" }));
+    await user.type(screen.getByLabelText(/Contraseña/), "mala");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Contraseña incorrecta. Escríbela de nuevo.");
+    expect(isTabletMode()).toBe(true);
+
+    await user.clear(screen.getByLabelText(/Contraseña/));
+    await user.type(screen.getByLabelText(/Contraseña/), "buena");
+    await user.click(screen.getByRole("button", { name: "Salir del modo tablet" }));
+    await waitFor(() => { expect(isTabletMode()).toBe(false); });
+    expect(mock.callsTo("POST /auth/login")[0]?.body).toEqual({ email: "coach@apex.test", password: "mala" });
+  });
+
+  it("a los 10 minutos sin actividad cierra la sesión (POST /auth/logout) y quita la marca", async () => {
+    signInAs("coach");
+    const mock = mockApi({ "POST /auth/logout": { status: 204 } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      inRouter(<GymShell />, "/clases/1/checkin");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mock.callsTo("POST /auth/logout")).toHaveLength(1);
+    expect(isTabletMode()).toBe(false);
   });
 
   it("TvShell monta el escenario de la TV", () => {

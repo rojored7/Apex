@@ -105,6 +105,28 @@ describe("cliente HTTP", () => {
     expect(lastCall().init.method).toBe("DELETE");
   });
 
+  it("DELETE con cuerpo JSON y 204 (S7-F4, E4: quitar una asistencia con motivo)", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(api.delete("/attendance/a1", { body: { reason: "Entró a otra clase" } })).resolves.toBeUndefined();
+
+    const { url, init } = lastCall();
+    expect(init.method).toBe("DELETE");
+    expect(url).toBe(`${API_BASE}/attendance/a1`);
+    expect(init.body).toBe(JSON.stringify({ reason: "Entró a otra clase" }));
+    expect(headersOf(init).get("Content-Type")).toBe("application/json");
+  });
+
+  it("DELETE sin cuerpo no manda Content-Type ni cuerpo (S7-F4, E4)", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await api.delete("/attendance/a1");
+
+    const { init } = lastCall();
+    expect(init.body).toBeUndefined();
+    expect(headersOf(init).has("Content-Type")).toBe(false);
+  });
+
   it("una respuesta 200 sin cuerpo devuelve undefined", async () => {
     fetchMock.mockResolvedValue(new Response("", { status: 200 }));
 

@@ -90,3 +90,20 @@ describe("MemberSearch", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+// S7-F4 · variante `gym` (tablet): control de 56 px, estado `short` (menos de 2 letras) y fila propia con `renderOption`.
+describe("MemberSearch · variante gym", () => {
+  it("el buscador mide 56 px (size lg) y anuncia que faltan letras en estado short", () => {
+    setup({ size: "gym", status: "short", options: [], shortText: "Escribe al menos 2 letras para buscar." });
+
+    expect(screen.getByRole("searchbox", { name: "Buscar socio" }).className).toMatch(/lg/);
+    expect(region()).toHaveTextContent("Escribe al menos 2 letras para buscar.");
+  });
+
+  it("renderOption reemplaza la fila por defecto", () => {
+    setup({ size: "gym", renderOption: (option) => <span>{`Fila de ${option.name}`}</span> });
+
+    expect(screen.getByText("Fila de Laura Gómez")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Laura Gómez/ })).toBeNull();
+  });
+});

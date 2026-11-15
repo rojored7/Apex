@@ -32,6 +32,8 @@ export const memberOptionSchema = z.object({
   membership_status: z.string().nullish(),
   plan_name: z.string().nullish(),
   membership_end_date: z.string().nullish(),
+  // S7-F4: la tablet del box muestra la foto (el único adjunto que pide, S7-D24).
+  photo_attachment_id: z.string().nullish(),
 });
 export type MemberOption = z.infer<typeof memberOptionSchema>;
 
@@ -56,16 +58,18 @@ export interface MemberSearchResult {
   status: "idle" | "pending" | "error" | "done";
   /** Los resultados sin los dados de baja (no se ofrecen en ningún buscador). */
   options: MemberOption[];
+  /** El error de la consulta cuando `status` es `error` (la tablet distingue el 429). */
+  error: unknown;
 }
 
-/** La búsqueda del buscador de socio: espera `delayMs` sin cambios y pide; sin texto, `idle`. */
-export function useMemberSearch(text: string, delayMs: number = MEMBER_SEARCH_DELAY_MS): MemberSearchResult {
+/** La búsqueda del buscador de socio: espera `delayMs` sin cambios y pide; con menos de `minChars` letras, `idle`. */
+export function useMemberSearch(text: string, delayMs: number = MEMBER_SEARCH_DELAY_MS, minChars = 1): MemberSearchResult {
   const query = useDebouncedValue(text, delayMs);
-  const search = useMembersSearch(query);
-  if (query.trim() === "") return { status: "idle", options: [] };
-  if (search.isError) return { status: "error", options: [] };
-  if (!search.isSuccess) return { status: "pending", options: [] };
-  return { status: "done", options: search.data.items.filter((option) => option.deleted_at === null) };
+  const search = useMembersSearch(query.trim().length < minChars ? "" : query);
+  if (query.trim().length < minChars) return { status: "idle", options: [], error: null };
+  if (search.isError) return { status: "error", options: [], error: search.error };
+  if (!search.isSuccess) return { status: "pending", options: [], error: null };
+  return { status: "done", options: search.data.items.filter((option) => option.deleted_at === null), error: null };
 }
 
 /** "Mensual · Al día · hasta el 28 oct 2026", "Por vencer" o "Sin membresía". */

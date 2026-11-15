@@ -1,0 +1,46 @@
+/* S7-F4: filas de resultados de la tablet (CheckIn.html). Solo variables de tokens.css. */
+.search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  box-sizing: border-box;
+  min-height: calc(var(--control-gym) + var(--space-4));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.photo {
+  flex: 0 0 auto;
+  width: calc(var(--space-6) * 2);
+  height: calc(var(--space-6) * 2);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  object-fit: cover;
+}
+
+.text {
+  display: flex;
+  flex: 1 1 8rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  font: var(--text-h2);
+}
+
+.note {
+  color: var(--muted);
+  font: var(--text-caption);
+}

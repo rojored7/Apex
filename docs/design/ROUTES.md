@@ -63,7 +63,7 @@ Pagos (módulo 4)
 Clases (módulo 5)
 - `/clases` → `Sesiones.html`. GET `/class-sessions?week`. Sesión extra: POST. Cancelar: POST `/class-sessions/:id/cancel`.
 - `/clases/horario` → `Horario.html`. GET/POST/PATCH `/class-slots`. Solo admin.
-- `/clases/:id/checkin` → `CheckIn.html` (tema oscuro, tablet). GET `/class-sessions/:id`, GET `/members?q` (búsqueda rápida), POST `/attendance` {session, member}, DELETE `/attendance/:id`.
+- `/clases/:id/checkin` → `CheckIn.html` (tema oscuro, tablet). GET `/class-sessions/:id`, GET `/members?q` (búsqueda rápida), POST `/attendance` {session, member}, DELETE `/attendance/:id`. Implementación S7-F4 (US-159, US-161; `features/classes/pages/CheckInPage.tsx`): modo tablet de S7-D24 (sin enlaces al panel, salida con contraseña, cierre a los 10 minutos); DESIGN-GAP: búsqueda por últimos 4 del documento, WOD del encabezado, «Ver asistencia completa» y «registrar resultados».
 - `/clases/asistencia` → pestaña de `Sesiones.html`. GET `/attendance?member&from&to`.
 
 Movimientos (módulo 6)

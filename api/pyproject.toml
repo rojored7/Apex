@@ -54,6 +54,10 @@ target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 
+[tool.ruff.format]
+# 0029 ya está aplicada y no se edita (CLAUDE.md, regla de datos 7): queda tal como se aplicó.
+exclude = ["migrations/versions/0029_memberships_orig_end_date.py"]
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "TID", "ASYNC", "RUF"]
 
@@ -71,6 +75,8 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "TID", "ASYNC", "RUF"]
 "src/app/core/crypto/**" = ["TID251"]
 "src/app/core/security.py" = ["TID251"]
 "tests/**" = ["S101"]
+# 0029 ya está aplicada y no se edita (CLAUDE.md, regla de datos 7): su mensaje de aborto mide 101 columnas.
+"migrations/versions/0029_memberships_orig_end_date.py" = ["E501"]
 
 [tool.mypy]
 strict = true

@@ -274,7 +274,7 @@ async def test_en_quiosco_la_pagina_se_acota_a_veinte_y_fuera_no_cambia(
     assert fuera.status_code == 200 and fuera.json()["limit"] == 200, fuera.text
 
 
-# S7-C4d · M-1: en quiosco `q` busca SOLO por nombre (sin oráculo de documento, teléfono, correo) ---
+# S7-C4d · M-1: en quiosco `q` busca SOLO por nombre (sin oráculo de documento, teléfono, correo)
 
 
 @pytest.mark.parametrize("termino", ["7319582046", "3007654321", "lucia.gomez@correo.co"])
@@ -295,7 +295,9 @@ async def test_en_quiosco_un_documento_telefono_o_correo_exacto_no_devuelve_al_s
         phone="+57 300 765 4321",
         email="Lucia.Gomez@Correo.co",
     )
-    en_quiosco = await app_http.get(f"{SOCIOS}?q={termino}", headers=_quiosco(coach, "coach", reloj))
+    en_quiosco = await app_http.get(
+        f"{SOCIOS}?q={termino}", headers=_quiosco(coach, "coach", reloj)
+    )
     assert en_quiosco.status_code == 200 and en_quiosco.json()["items"] == [], en_quiosco.text
     fuera = await app_http.get(f"{SOCIOS}?q={termino}", headers=cabeceras(coach))
     assert fuera.status_code == 200 and len(fuera.json()["items"]) == 1, fuera.text

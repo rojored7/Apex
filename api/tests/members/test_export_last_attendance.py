@@ -1,7 +1,8 @@
 """`GET /members/export` acepta `last_attendance` como la lista (S7-C4c, M-3 de la revisión de R2).
 
 FastAPI ignora los parámetros desconocidos: antes el filtro se perdía y se exportaba todo en
-silencio. Hoy es el 21 de octubre de 2026 (`reloj`). Con el escenario de `test_filter_last_attendance`
+silencio. Hoy es el 21 de octubre de 2026 (`reloj`). Con el escenario de
+`test_filter_last_attendance`
 (Pedro asistió hace 40 días, Juan ayer, Mara hace 10, Lola nunca, Sara hace 45, los dos bordes, y
 Tomás, dado de baja), el CSV con `last_attendance=30d` trae a los que NO asistieron en 30 días y
 `never` solo a Lola; un valor inválido da 422 con `field`.
@@ -11,7 +12,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 

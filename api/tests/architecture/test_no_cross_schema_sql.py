@@ -37,9 +37,7 @@ MODULOS_PENDIENTES: frozenset[str] = frozenset()  # `classes` ya existe desde S7
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b", re.IGNORECASE)
-_TABLA = re.compile(
-    r"(?<![\w.])(" + "|".join(ESQUEMAS) + r")\.([a-z_][a-z0-9_]*)", re.IGNORECASE
-)
+_TABLA = re.compile(r"(?<![\w.])(" + "|".join(ESQUEMAS) + r")\.([a-z_][a-z0-9_]*)", re.IGNORECASE)
 
 
 def _nombre_llamado(nodo: ast.Call) -> str | None:

@@ -51,7 +51,7 @@ afterEach(() => {
 
 describe("SlotPanel · crear", () => {
   it("pide los datos de la franja y ofrece los coaches y admins activos más «Sin coach (open box)»", async () => {
-    renderPanel();
+    const { mock } = renderPanel();
 
     expect(screen.getByRole("dialog", { name: "Nueva franja" })).toBeInTheDocument();
     const coach = (await coachesLoaded()).closest("select");
@@ -60,6 +60,10 @@ describe("SlotPanel · crear", () => {
       .getAllByRole("option")
       .map((o) => o.textContent);
     expect(options).toEqual(["Sin coach (open box)", "carlos@apex.test", "maria@apex.test"]);
+    // L5: el servidor filtra por rol y estado; el socio ni siquiera se descarga.
+    const queries = mock.callsTo("GET /users").map((c) => new URL(c.url, "http://apex.test").searchParams);
+    expect(queries.map((q) => q.get("role")).sort()).toEqual(["admin", "coach"]);
+    for (const q of queries) expect(q.get("status")).toBe("active");
     expect(screen.getByText(/Los cambios valen para las sesiones que aún no se generaron/)).toBeInTheDocument();
   });
 
@@ -246,6 +250,20 @@ describe("SlotPanel · editar", () => {
     await user.click(save());
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Esta franja ya no existe. Cierra el panel y actualiza la lista.");
+  });
+
+  it("con cambios sin guardar «Cancelar sesiones futuras» queda deshabilitado y dice por qué (L8)", async () => {
+    const { user, onCancelFuture } = renderPanel({}, target);
+    await coachesLoaded();
+    expect(screen.getByRole("button", { name: "Cancelar sesiones futuras" })).toBeEnabled();
+
+    change(/^Cupo/, "15");
+
+    const button = screen.getByRole("button", { name: "Cancelar sesiones futuras" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Guarda o descarta los cambios para cancelar sesiones futuras.")).toBeInTheDocument();
+    await user.click(button);
+    expect(onCancelFuture).not.toHaveBeenCalled();
   });
 
   it("ofrece «Cancelar sesiones futuras» y avisa al padre", async () => {

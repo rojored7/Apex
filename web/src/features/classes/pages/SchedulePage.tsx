@@ -15,6 +15,7 @@ import { useListParams } from "../../../shared/hooks/useListParams";
 import { Button } from "../../../shared/ui/Button";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
 import { MessagePage } from "../../../shared/ui/MessagePage";
+import { StatusTag } from "../../../shared/ui/StatusTag";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { useSlots, type SlotView } from "../api";
@@ -101,7 +102,7 @@ export default function SchedulePage() {
     { key: "coach", header: "Coach", render: (row) => row.coach_name ?? OPEN_BOX },
     { key: "capacity", header: "Cupo", render: (row) => <span className={styles.number}>{formatCount(row.capacity)}</span> },
     { key: "duration_min", header: "Duración", render: (row) => <span className={styles.number}>{`${String(row.duration_min)} min`}</span> },
-    { key: "is_active", header: "Estado", render: (row) => (row.is_active ? "Activa" : "Pausada") },
+    { key: "is_active", header: "Estado", render: (row) => <StatusTag slot={row.is_active ? "active" : "paused"} /> },
     {
       key: "actions",
       header: "Acción",

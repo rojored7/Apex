@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useCan } from "../../../core/auth/useCan";
-import { todayBogota } from "../../../core/i18n/format";
+import { formatLongDate, formatTime24, todayBogota } from "../../../core/i18n/format";
 import { Button } from "../../../shared/ui/Button";
 import { PageHeader, type PageAction } from "../../../shared/ui/PageHeader";
 import { useSessions, type SessionView } from "../api";
@@ -20,7 +20,7 @@ import { ClassesTabs } from "../components/ClassesTabs";
 import { ExtraSessionPanel } from "../components/ExtraSessionPanel";
 import { checkInHref, SessionDetail } from "../components/SessionDetail";
 import { WeekGrid } from "../components/WeekGrid";
-import { bogotaTime, currentWeek, parseWeek, shiftWeek, weekDates, weekLabel } from "../weeks";
+import { currentWeek, parseWeek, shiftWeek, weekDates, weekLabel } from "../weeks";
 import styles from "./SessionsPage.module.css";
 
 export const WEEK_PARAM = "semana";
@@ -33,17 +33,21 @@ export const HOW_THEY_ARE_BORN =
   "Cada mañana a las 7:00 el sistema crea las sesiones de los próximos 14 días a partir del horario semanal. Lo que ya existe no se toca si cambias el horario. Una sesión extra o una cancelación se hace aquí, sesión por sesión.";
 
 export const truncatedNote = (shown: number, total: number): string =>
-  `Se muestran ${String(shown)} de ${String(total)} sesiones de esta semana. Filtra por coach o cambia de semana para ver las demás.`;
+  `Se muestran ${String(shown)} de ${String(total)} sesiones de esta semana. Las demás no caben en la pantalla.`;
 
-/** La semana que pide la URL: la de hoy con `?dia=hoy`, la de `?semana=` si es válida, o la de hoy. */
-function useWeek(): [string, (week: string | null) => void] {
+/**
+ * La semana que pide la URL: la de hoy con `?dia=hoy`, la de `?semana=` si es válida, o la de hoy. Con `?dia=hoy` la
+ * vista se limita al día de hoy (Q25, US-157: «Clases de hoy»); «Ver toda la semana» vuelve a la rejilla.
+ */
+function useWeek(): [string, (week: string | null) => void, boolean] {
   const [searchParams, setSearchParams] = useSearchParams();
-  const week = searchParams.get(DAY_PARAM) === "hoy" ? currentWeek() : (parseWeek(searchParams.get(WEEK_PARAM)) ?? currentWeek());
+  const onlyToday = searchParams.get(DAY_PARAM) === "hoy";
+  const week = onlyToday ? currentWeek() : (parseWeek(searchParams.get(WEEK_PARAM)) ?? currentWeek());
   const go = (next: string | null): void => {
     if (next === null) return;
     setSearchParams({ [WEEK_PARAM]: next });
   };
-  return [week, go];
+  return [week, go, onlyToday];
 }
 
 /** Opciones del filtro de coach: los de las sesiones cargadas y «Sin coach» si alguna no tiene. */
@@ -70,7 +74,7 @@ function nextSession(sessions: readonly SessionView[], today: string): SessionVi
 
 export default function SessionsPage() {
   const canView = useCan("classes.view");
-  const [week, goToWeek] = useWeek();
+  const [week, goToWeek, onlyToday] = useWeek();
   const sessions = useSessions(week, canView);
   const [coach, setCoach] = useState(ALL_COACHES);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -78,7 +82,7 @@ export default function SessionsPage() {
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const today = todayBogota();
-  const dates = useMemo(() => weekDates(week), [week]);
+  const dates = useMemo(() => (onlyToday ? [today] : weekDates(week)), [onlyToday, today, week]);
   const loaded = sessions.isPlaceholderData ? undefined : sessions.data;
   const all = useMemo(() => loaded?.items ?? [], [loaded]);
   const visible = useMemo(() => all.filter((s) => coach === ALL_COACHES || (coach === NO_COACH ? s.coach_id === null : s.coach_id === coach)), [all, coach]);
@@ -100,26 +104,37 @@ export default function SessionsPage() {
       <ClassesTabs>
         <div className={styles.content}>
           <div className={styles.weekBar}>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                goToWeek(shiftWeek(week, -1));
-              }}
-            >
-              ‹ Semana anterior
-            </Button>
-            <b className={styles.label}>{weekLabel(week)}</b>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                goToWeek(shiftWeek(week, 1));
-              }}
-            >
-              Semana siguiente ›
-            </Button>
-            <Link className={styles.today} to={`?${WEEK_PARAM}=${currentWeek()}`}>
-              Hoy
-            </Link>
+            {onlyToday ? (
+              <>
+                <b className={styles.label}>{`Hoy, ${formatLongDate(today)}`}</b>
+                <Link className={styles.today} to={`?${WEEK_PARAM}=${week}`}>
+                  Ver toda la semana
+                </Link>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    goToWeek(shiftWeek(week, -1));
+                  }}
+                >
+                  ‹ Semana anterior
+                </Button>
+                <b className={styles.label}>{weekLabel(week)}</b>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    goToWeek(shiftWeek(week, 1));
+                  }}
+                >
+                  Semana siguiente ›
+                </Button>
+                <Link className={styles.today} to={`?${WEEK_PARAM}=${currentWeek()}`}>
+                  Hoy
+                </Link>
+              </>
+            )}
             <span className={styles.spacer} />
             <label className={styles.coach}>
               <span className={styles.visually}>Coach</span>
@@ -177,7 +192,7 @@ export default function SessionsPage() {
           setCreating(false);
         }}
         onCreated={(session) => {
-          setNotice(`Sesión extra de las ${bogotaTime(session.starts_at)} creada.`);
+          setNotice(`Sesión extra de las ${formatTime24(session.starts_at)} creada.`);
         }}
       />
       <CancelSessionModal
@@ -186,7 +201,7 @@ export default function SessionsPage() {
           setCancelling(null);
         }}
         onDone={(session) => {
-          setNotice(`Sesión de las ${bogotaTime(session.starts_at)} cancelada.`);
+          setNotice(`Sesión de las ${formatTime24(session.starts_at)} cancelada.`);
         }}
       />
     </div>

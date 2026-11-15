@@ -2,13 +2,16 @@
 // - ConfirmModal con motivo obligatorio de 3 a 200 caracteres (el api lo guarda en la sesión) y el aviso M-7.
 // - 409 `session_finished` (la sesión ya terminó) y `session_already_cancelled` (otra persona se adelantó), 404, 403,
 //   429 y 5xx dentro del modal. La mutación lleva el motivo: `gcTime: 0` y `reset()` (S3-D52).
+import { useQueryClient } from "@tanstack/react-query";
+import { isApiError } from "../../../core/api/errors";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "../../../core/api/status";
 import { useCan } from "../../../core/auth/useCan";
 import { SENSITIVE_TEXT_WARNING } from "../../../shared/data/schemas/payment";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
-import { useCancelSession, type SessionView } from "../api";
+import { SESSIONS_QUERY_KEY, useCancelSession, type SessionView } from "../api";
 import { cancelSessionError } from "../classErrors";
 import { CANCEL_REASON_MAX, CANCEL_REASON_MIN, cancelReasonSchema } from "../schemas";
-import { bogotaTime } from "../weeks";
+import { formatTime24 } from "../../../core/i18n/format";
 
 export interface CancelSessionModalProps {
   /** La sesión a cancelar; null cierra el modal. */
@@ -25,12 +28,13 @@ export const cancelSessionTitle = (time: string): string => `¿Cancelar la sesi�
 export function CancelSessionModal({ session, onClose, onDone }: CancelSessionModalProps) {
   const canView = useCan("classes.view");
   const cancel = useCancelSession();
+  const queryClient = useQueryClient();
   if (!canView || session === null) return null;
   const target = session;
   return (
     <ConfirmModal
       open
-      title={cancelSessionTitle(bogotaTime(target.starts_at))}
+      title={cancelSessionTitle(formatTime24(target.starts_at))}
       consequence={CANCEL_SESSION_CONSEQUENCE}
       confirmLabel="Sí, cancelar sesión"
       reasonRequired
@@ -44,6 +48,8 @@ export function CancelSessionModal({ session, onClose, onDone }: CancelSessionMo
         try {
           await cancel.mutateAsync({ id: target.id, reason: parsed.data.reason });
         } catch (error) {
+          // 409 (ya cancelada o terminada) y 404: otra persona cambió la sesión; el aviso dice «Actualizamos la semana», así que se relee.
+          if (isApiError(error) && (error.status === HTTP_CONFLICT || error.status === HTTP_NOT_FOUND)) void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
           throw cancelSessionError(error);
         }
         onDone(target);

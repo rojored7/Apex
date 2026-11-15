@@ -58,14 +58,14 @@ describe("SchedulePage · estructura (Horario.html)", () => {
     expect(within(manana).getByText("L M X J V")).toBeInTheDocument();
     expect(within(manana).getByText("Carlos")).toBeInTheDocument();
     expect(within(manana).getByText("60 min")).toBeInTheDocument();
-    expect(within(manana).getByText("Activa")).toBeInTheDocument();
+    expect(within(manana).getByText("Activa")).toHaveAttribute("data-slot", "active");
     const open = rowOf("09:30");
     expect(within(open).getByText("Open box · sin coach")).toBeInTheDocument();
     expect(within(open).getByText("S")).toBeInTheDocument();
     expect(within(open).getByText("90 min")).toBeInTheDocument();
     const pausada = rowOf("12:00");
     expect(within(pausada).getByText("L X V")).toBeInTheDocument();
-    expect(within(pausada).getByText("Pausada")).toBeInTheDocument();
+    expect(within(pausada).getByText("Pausada")).toHaveAttribute("data-slot", "paused");
   });
 
   it("pide las franjas paginadas al servidor", async () => {

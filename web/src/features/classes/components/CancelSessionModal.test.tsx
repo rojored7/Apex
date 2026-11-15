@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 describe("CancelSessionModal", () => {
-  it("pregunta por la sesión, dice que se avisa a los socios con check-in y pide un motivo obligatorio", () => {
+  it("pregunta por la sesión, dice que queda cancelada con el motivo y pide un motivo obligatorio", () => {
     renderModal();
 
     expect(dialog()).toHaveAccessibleDescription(expect.stringContaining("La sesión queda cancelada con el motivo") as string);
@@ -132,6 +132,32 @@ describe("CancelSessionModal", () => {
 
     expect(await within(dialog()).findByRole("alert")).toHaveTextContent(message);
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [409, "session_already_cancelled"],
+    [409, "session_finished"],
+    [404, "session_not_found"],
+  ])("%i %s relee la semana: el aviso dice «Actualizamos la semana» y de verdad se invalida", async (status, code) => {
+    const { user, queryClient } = renderModal({ [KEY]: apiError(status, code) });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await user.type(reasonField(), REASON);
+
+    await user.click(confirmButton());
+
+    await within(dialog()).findByRole("alert");
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["class-sessions"] });
+  });
+
+  it("un 500 no invalida las sesiones", async () => {
+    const { user, queryClient } = renderModal({ [KEY]: apiError(500, "internal_error") });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await user.type(reasonField(), REASON);
+
+    await user.click(confirmButton());
+
+    await within(dialog()).findByRole("alert");
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("422 field=reason va bajo el motivo", async () => {

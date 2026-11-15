@@ -150,6 +150,13 @@ export function formatTime(isoUtc: string): string {
   return instant ? timeText(instant) : EMPTY_VALUE;
 }
 
+/** "06:00" (24 horas, con ceros) en hora de Bogotá; "—" si el instante no es válido. S7-F3b: lo usa la rejilla de clases. */
+export function formatTime24(isoUtc: string): string {
+  const instant = toBogota(isoUtc);
+  if (!instant) return EMPTY_VALUE;
+  return `${String(instant.hour).padStart(2, "0")}:${String(instant.minute).padStart(2, "0")}`;
+}
+
 /** "octubre 2026" a partir de "AAAA-MM", "AAAA-MM-DD" o un instante UTC (en Bogotá). */
 export function formatMonth(value: string): string {
   const monthMatch = CIVIL_MONTH.exec(value);

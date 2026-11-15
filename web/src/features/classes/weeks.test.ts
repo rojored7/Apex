@@ -1,5 +1,5 @@
 // S7-F3 · US-157 (front): semanas ISO de la pantalla Sesiones (funciones puras).
-import { bogotaTime, dayHeader, isoWeekOf, parseWeek, shiftWeek, shortDate, weekDates, weekLabel } from "./weeks";
+import { dayHeader, isoWeekOf, parseWeek, shiftWeek, shortDate, weekDates, weekLabel } from "./weeks";
 
 describe("weeks", () => {
   it("parseWeek acepta AAAA-Www válidas y rechaza el resto", () => {
@@ -39,13 +39,10 @@ describe("weeks", () => {
     expect(weekLabel("x")).toBe("");
   });
 
-  it("dayHeader y bogotaTime", () => {
+  it("dayHeader y shortDate", () => {
     expect(dayHeader("2026-10-19")).toBe("Lun 19");
     expect(dayHeader("2026-10-25")).toBe("Dom 25");
     expect(dayHeader("no")).toBe("");
-    expect(bogotaTime("2026-10-19T11:00:00Z")).toBe("06:00");
-    expect(bogotaTime("2026-10-20T03:30:00Z")).toBe("22:30");
-    expect(bogotaTime("basura")).toBe("");
     expect(shortDate("2026-10-20")).toBe("mar 20 oct");
     expect(shortDate("no")).toBe("");
   });

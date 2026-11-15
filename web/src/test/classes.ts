@@ -1,5 +1,5 @@
 // S7-F2 y S7-F3: datos y montaje de prueba de Clases. Imitan SlotOut, SessionOut y UserRow del contrato (A2, B1 a B3).
-import type { MockReply } from "./server";
+import type { MockHandler, MockReply, RecordedCall } from "./server";
 
 export const CARLOS_ID = "c0c0c0c0-0000-4000-8000-0000000000c1";
 export const MARIA_ID = "c0c0c0c0-0000-4000-8000-0000000000c2";
@@ -70,7 +70,13 @@ export const USER_ROWS = [
   user("c0c0c0c0-0000-4000-8000-0000000000c3", "socio@apex.test", "member"),
 ];
 
-export const usersPage: MockReply = { status: 200, body: { items: USER_ROWS, total: USER_ROWS.length, limit: 200, offset: 0 } };
+/** GET /users como el api: filtra por `role` y `status` si vienen en la consulta. */
+export const usersPage: MockHandler = (call: RecordedCall): MockReply => {
+  const params = new URL(call.url, "http://apex.test").searchParams;
+  const role = params.get("role");
+  const items = USER_ROWS.filter((row) => (role === null || row.role === role) && (params.get("status") === null || row.status === params.get("status")));
+  return { status: 200, body: { items, total: items.length, limit: 200, offset: 0 } };
+};
 
 export interface SessionFixture {
   id: string;

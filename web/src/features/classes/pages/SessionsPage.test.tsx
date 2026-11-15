@@ -108,11 +108,27 @@ describe("SessionsPage · semana en la URL", () => {
     expect(weekCalls(second.mock)).toEqual([WEEK]);
   });
 
-  it("`?dia=hoy` muestra la semana de hoy aunque la URL traiga otra", async () => {
+  it("`?dia=hoy` pide la semana de hoy aunque la URL traiga otra y muestra solo el día de hoy (Q25)", async () => {
     const { mock } = renderPage("/clases?dia=hoy&semana=2026-W30");
 
-    await screen.findByText("Semana del 19 al 25 de octubre de 2026");
+    expect(await screen.findByText("Hoy, martes 20 de octubre")).toBeInTheDocument();
+    await screen.findByText("María · 3/12");
     expect(weekCalls(mock)).toEqual([WEEK]);
+    expect(screen.getAllByRole("group")).toHaveLength(1);
+    expect(day(/^Mar 20/)).toBeInTheDocument();
+    expect(screen.queryByText("Carlos · 9/12")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Semana siguiente ›" })).toBeNull();
+  });
+
+  it("`?dia=hoy` ofrece «Ver toda la semana», que vuelve a la rejilla de la semana", async () => {
+    const { user } = renderPage("/clases?dia=hoy");
+    await screen.findByText("Hoy, martes 20 de octubre");
+
+    await user.click(screen.getByRole("link", { name: "Ver toda la semana" }));
+
+    expect(await screen.findByText("Semana del 19 al 25 de octubre de 2026")).toBeInTheDocument();
+    expect(where()).toBe(`/clases?semana=${WEEK}`);
+    expect(screen.getAllByRole("group")).toHaveLength(7);
   });
 
   it("«Semana siguiente» y «Semana anterior» cambian la semana de la URL y piden la nueva", async () => {
@@ -260,6 +276,6 @@ describe("SessionsPage · estados", () => {
   it("una semana con más sesiones de las que caben avisa cuántas se ven", async () => {
     renderPage(`/clases?semana=${WEEK}`, { "GET /class-sessions": { status: 200, body: { items: [SESSIONS.llena], total: 250, limit: 200, offset: 0 } } });
 
-    expect(await screen.findByText("Se muestran 1 de 250 sesiones de esta semana. Filtra por coach o cambia de semana para ver las demás.")).toBeInTheDocument();
+    expect(await screen.findByText("Se muestran 1 de 250 sesiones de esta semana. Las demás no caben en la pantalla.")).toBeInTheDocument();
   });
 });

@@ -8,7 +8,8 @@ import buttonStyles from "../../../shared/ui/Button.module.css";
 import { Button } from "../../../shared/ui/Button";
 import { cx } from "../../../shared/ui/cx";
 import type { SessionView } from "../api";
-import { bogotaTime, shortDate } from "../weeks";
+import { formatTime24 } from "../../../core/i18n/format";
+import { shortDate } from "../weeks";
 import styles from "./SessionDetail.module.css";
 import { OPEN_BOX } from "./WeekGrid";
 
@@ -18,7 +19,7 @@ export interface SessionDetailProps {
 }
 
 export const detailTitle = (session: SessionView): string =>
-  `Sesión · ${shortDate(session.session_date)} · ${bogotaTime(session.starts_at)} · ${session.coach_name ?? OPEN_BOX}`;
+  `Sesión · ${shortDate(session.session_date)} · ${formatTime24(session.starts_at)} · ${session.coach_name ?? OPEN_BOX}`;
 
 export const checkInHref = (id: string): string => `/clases/${encodeURIComponent(id)}/checkin`;
 

@@ -63,3 +63,19 @@ DESIGN-GAP anotados: resultados y WOD (v0.5), editar sesión (el api no tiene en
 cada sesión es un botón que abre su detalle (no un enlace directo al check-in) para separar abrir check-in de cancelar.
 
 Tropiezo del entorno: dos heredocs de Git Bash con comillas y acentos fallaron enteros (sin escribir nada); se aplicaron con Edit.
+
+## S7-F3b · correcciones de la revisión de F1-F3 (M1 a M4, L5 a L9)
+
+Rojo medido (15 pruebas fallidas antes del código): 3 de M1 (409 `session_already_cancelled`, 409 `session_finished` y 404 no invalidaban), 2 de M2
+(`?dia=hoy` mostraba la semana entera), 3 de M3 (`StatusTag slot` y `data-slot` en la tabla), 1 de L5 (una sola consulta sin `role`), 3 de L7
+(`formatTime24`, una por zona), 1 de L8 (hora inicial al abrir), 1 de L8 (cancelar sesiones futuras con cambios sucios), 1 del texto de truncado.
+
+Verde:
+- M1: `CancelSessionModal` invalida `["class-sessions"]` ante 409 o 404 (un 500 no).
+- M2: `?dia=hoy` filtra la vista al día de hoy («Hoy, martes 20 de octubre», sin navegación de semanas) con «Ver toda la semana».
+- M3: `StatusTag slot` (`Activa` ok, `Pausada` neutral) en `shared/ui` y en la tabla del Horario.
+- M4: el texto de Configuración dice que el cupo por defecto se usa en una sesión extra sin cupo (el api también lo usa si se crea una franja sin cupo, pero el panel siempre lo pide).
+- L5: `useCoachCandidates` pide `role=admin` y `role=coach` con `status=active` y une sin repetir; ya no filtra en el cliente. L6: se quitó «Filtra por coach» del aviso de truncado.
+- L7: `formatTime24` en `core/i18n/format.ts` sobre `toBogota`; `weeks.bogotaTime` se eliminó.
+- L8: el panel de sesión extra se reinicia al abrir; «Cancelar sesiones futuras» queda deshabilitado con cambios sin guardar y lo explica.
+- L9: `// DESIGN-GAP:` del coach por correo en `SlotPanel` y `ExtraSessionPanel`; nombre de prueba corregido.

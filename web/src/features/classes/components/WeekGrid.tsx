@@ -7,7 +7,8 @@
 // para que cancelar y abrir el check-in sean dos acciones distintas y no un solo clic ambiguo.
 import { cx } from "../../../shared/ui/cx";
 import type { SessionView } from "../api";
-import { bogotaTime, dayHeader } from "../weeks";
+import { formatTime24 } from "../../../core/i18n/format";
+import { dayHeader } from "../weeks";
 import styles from "./WeekGrid.module.css";
 
 export interface WeekGridProps {
@@ -50,7 +51,7 @@ function SessionButton({ session, selected, onSelect }: { session: SessionView; 
         onSelect(session);
       }}
     >
-      <b>{bogotaTime(session.starts_at)}</b>
+      <b>{formatTime24(session.starts_at)}</b>
       {cancelled ? null : <span>{sessionSummary(session)}</span>}
       {notes.map((note) => (
         <span key={note} className={styles.note}>

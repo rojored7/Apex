@@ -107,15 +107,6 @@ export function dayHeader(date: string): string {
   return `${DAY_SHORT[isoWeekday(civil) - 1] ?? ""} ${String(civil.day)}`;
 }
 
-const BOGOTA_OFFSET_MS = 5 * 3_600_000;
-
-/** «06:00» de un instante UTC, en hora de Bogotá (UTC-5 todo el año). */
-export function bogotaTime(isoUtc: string): string {
-  const ms = new Date(isoUtc).getTime();
-  if (!Number.isFinite(ms)) return "";
-  const local = new Date(ms - BOGOTA_OFFSET_MS);
-  return `${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}`;
-}
 
 const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"] as const;
 

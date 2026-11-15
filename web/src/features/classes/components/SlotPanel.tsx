@@ -7,6 +7,7 @@
 // - 409 `slot_conflict` bajo los días; 422 con `field` y `coach_invalid` bajo su campo; 403, 404, 429, 5xx y red como
 //   aviso general.
 // - Al editar ofrece «Cancelar sesiones futuras» (US-158), que abre el modal desde el padre.
+// DESIGN-GAP: el coach se muestra por correo: GET /users no trae nombre (la franja guardada sí lo trae como `coach_name`).
 // DESIGN-GAP: Horario.html dice «Al guardar se regeneran las sesiones futuras de esta franja»; contradice Q23 (un
 // PATCH nunca toca sesiones, BRECHAS 15.5): el aviso dice que los cambios valen para las sesiones aún no generadas.
 import { useId, useRef, useState } from "react";
@@ -225,6 +226,7 @@ export function SlotPanel({ open, slot, onClose, onSaved, onCancelFuture }: Slot
         {slot && onCancelFuture ? (
           <Button
             variant="secondary"
+            disabled={isDirty}
             onClick={() => {
               onCancelFuture(slot);
             }}
@@ -232,6 +234,7 @@ export function SlotPanel({ open, slot, onClose, onSaved, onCancelFuture }: Slot
             Cancelar sesiones futuras
           </Button>
         ) : null}
+        {slot && onCancelFuture && isDirty ? <p className={styles.note}>Guarda o descarta los cambios para cancelar sesiones futuras.</p> : null}
       </form>
     </SidePanel>
   );

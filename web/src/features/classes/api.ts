@@ -12,7 +12,6 @@ import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
-import { can } from "../../core/auth";
 import { hhmm, type SessionCreateBody, type SlotCreateBody, type SlotPatchBody } from "./schemas";
 
 export const slotSchema = z.object({
@@ -98,21 +97,26 @@ export function useCancelFutureSessions(): UseMutationResult<number, Error, Canc
 const coachUserSchema = z.object({
   id: z.string().min(1),
   email: z.string().min(1),
-  role: z.enum(["admin", "coach", "member"]),
   status: z.string(),
 });
 export type CoachCandidate = Pick<z.infer<typeof coachUserSchema>, "id" | "email">;
 
 const COACH_CANDIDATES_LIMIT = 200;
+const COACH_ROLES = ["admin", "coach"] as const;
 
 /** Admins y coaches activos, por correo (la lista de usuarios no trae nombre). Solo el admin puede leerla. */
 export function useCoachCandidates(enabled: boolean): UseQueryResult<CoachCandidate[]> {
   return useQuery({
     queryKey: ["class-coaches"],
     queryFn: async ({ signal }) => {
-      const page = parseResponse(pageSchema(coachUserSchema), await api.get<unknown>("/users", { query: listParams({ limit: COACH_CANDIDATES_LIMIT, offset: 0, status: "active" }), signal }));
-      // Quien puede ver las clases es personal del gimnasio (admin o coach): el socio nunca es coach.
-      return page.items.filter((user) => can(user.role, "classes.view")).map(({ id, email }) => ({ id, email }));
+      // El servidor filtra por rol y estado: una consulta por cada rol que el api acepta como coach de clases (S7-D7).
+      const byRole = await Promise.all(
+        COACH_ROLES.map(async (role) =>
+          parseResponse(pageSchema(coachUserSchema), await api.get<unknown>("/users", { query: listParams({ limit: COACH_CANDIDATES_LIMIT, offset: 0, status: "active", role }), signal })),
+        ),
+      );
+      const unique = new Map(byRole.flatMap((page) => page.items).map(({ id, email }) => [id, { id, email }] as const));
+      return [...unique.values()].sort((x, y) => x.email.localeCompare(y.email, "es"));
     },
     enabled,
   });

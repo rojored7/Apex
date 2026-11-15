@@ -4,8 +4,9 @@
 // - Coach: el admin elige entre los coaches y admins activos (GET /users) o nadie; el coach solo puede ponerse a sí mismo o
 //   a nadie (el api lo exige, L-3) y no lee la lista de usuarios.
 // - 409 `session_duplicate` y 422 `starts_at` bajo la fecha; `coach_invalid` bajo el coach; 403, 429, 5xx y red como aviso.
+// DESIGN-GAP: el coach se muestra por correo: GET /users no trae nombre.
 // - 201: avisa al padre y cierra; useCreateSession ya invalidó las semanas.
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useSession } from "../../../core/auth/session";
 import { useCan } from "../../../core/auth/useCan";
@@ -46,6 +47,12 @@ export function ExtraSessionPanel({ open, onClose, onCreated }: ExtraSessionPane
   const inFlight = useRef(false);
   const isPending = create.isPending;
   const myUser = session.user;
+
+  // La hora inicial es la de abrir el panel, no la de montarlo (el padre lo deja montado entre aperturas).
+  const { reset } = form;
+  useEffect(() => {
+    if (open) reset(emptyExtraSessionForm());
+  }, [open, reset]);
 
   const resetAll = (): void => {
     create.reset();

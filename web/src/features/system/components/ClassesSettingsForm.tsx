@@ -26,7 +26,7 @@ const FIELDS: readonly IntegerField[] = [
     min: 1,
     max: 100,
     fallback: 15,
-    explanation: "Se usa al crear una franja sin cupo propio.",
+    explanation: "Se usa en una sesión extra que se crea sin cupo.",
   },
   {
     name: "checkin_window_min",

@@ -186,6 +186,31 @@ describe("ExtraSessionPanel · admin", () => {
   });
 });
 
+describe("ExtraSessionPanel · hora inicial al abrir (L8)", () => {
+  it("cada vez que se abre vuelve a la hora de ahora, no a la de cuando se montó", async () => {
+    signInAs("admin");
+    mockApi({ "GET /users": usersPage });
+    const props = { onClose: vi.fn(), onCreated: vi.fn() };
+    const tree = (open: boolean) => (
+      <QueryClientProvider client={testQueryClient()}>
+        <SessionRoleProvider>
+          <MemoryRouter>
+            <ExtraSessionPanel open={open} {...props} />
+          </MemoryRouter>
+        </SessionRoleProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree(false));
+    vi.setSystemTime(new Date("2026-10-20T20:30:00Z"));
+
+    view.rerender(tree(true));
+
+    await waitFor(() => {
+      expect(field(/^Fecha y hora/)).toHaveValue("2026-10-20T15:30");
+    });
+  });
+});
+
 describe("ExtraSessionPanel · coach", () => {
   it("solo puede ponerse a sí mismo o a nadie y no lee la lista de usuarios", async () => {
     const me = signInAs("coach");

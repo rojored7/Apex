@@ -114,6 +114,21 @@ class WodTitle:
     benchmark_id: UUID | None
 
 
+async def today_title(session: AsyncSession, day: date) -> WodTitle | None:
+    """El WOD de `day` en cinco columnas (S8-C1b, rendimiento de B5): sin movimientos, benchmark
+    ni conteo de resultados. Lo usa la tarjeta del tablero."""
+    fila = (
+        await session.execute(
+            select(Wod.id, Wod.title, Wod.date, Wod.score_type, Wod.benchmark_id).where(
+                Wod.date == day
+            )
+        )
+    ).first()
+    if fila is None:
+        return None
+    return WodTitle(fila.id, fila.title, fila.date, fila.score_type, fila.benchmark_id)
+
+
 async def titles_for(session: AsyncSession, wod_ids: Collection[UUID]) -> dict[UUID, WodTitle]:
     """El título de cada WOD existente, en UNA consulta y sin candados (lectura)."""
     if not wod_ids:

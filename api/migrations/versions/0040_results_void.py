@@ -124,14 +124,17 @@ INSERT_0037: Final = (
 INSERT_0040: Final = (
     "CREATE OR REPLACE FUNCTION results.guard_wod_results_insert() RETURNS trigger "
     "LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$ "
+    "DECLARE anterior text; "
     "BEGIN IF NEW.is_current IS NOT TRUE OR NEW.status = 'voided' THEN "
     "RAISE EXCEPTION 'results.wod_results: un resultado nuevo nace vigente y no anulado' "
     "USING ERRCODE = 'P0001'; END IF; "
-    "IF NEW.supersedes_id IS NOT NULL AND EXISTS "
-    "(SELECT 1 FROM results.wod_results p WHERE p.id = NEW.supersedes_id "
-    "AND p.status = 'voided') THEN "
+    # S8-C1b (L-4): FOR SHARE espera a una anulación en vuelo del anterior y la ve al seguir.
+    "IF NEW.supersedes_id IS NOT NULL THEN "
+    "SELECT p.status INTO anterior FROM results.wod_results p "
+    "WHERE p.id = NEW.supersedes_id FOR SHARE; "
+    "IF anterior = 'voided' THEN "
     "RAISE EXCEPTION 'results.wod_results: un resultado anulado no tiene sucesor' "
-    "USING ERRCODE = 'P0001'; END IF; RETURN NEW; END; $$"
+    "USING ERRCODE = 'P0001'; END IF; END IF; RETURN NEW; END; $$"
 )
 SUCCESSOR_0037: Final = (
     "CREATE OR REPLACE FUNCTION results.require_successor() RETURNS trigger LANGUAGE plpgsql "

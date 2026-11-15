@@ -251,7 +251,7 @@ async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut
     semana = await classes_service.week_attendance(session, reloj.now_utc())
     sesiones = await classes_service.today_sessions(session, hoy)
     membresias = await memberships_service.summary(session, today=hoy)
-    wod = await wods_service.today_card(session, hoy)
+    wod = await wods_service.today_title(session, hoy)  # cinco columnas, sin movimientos
     mes = month_of(hoy)
     ingresos = None
     if with_finances:
@@ -284,6 +284,9 @@ async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut
         wod_today=None
         if wod is None
         else WodTodayOut(
-            id=wod.id, title=wod.title, score_type=wod.score_type, is_benchmark=wod.is_benchmark
+            id=wod.wod_id,
+            title=wod.title,
+            score_type=wod.score_type,
+            is_benchmark=wod.benchmark_id is not None,
         ),
     )

@@ -386,3 +386,14 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### Pendiente
 - Smoke con rol y curl (api de desarrollo roto): `regenerate-token`, `GET /tv/today` 200, rotar y 401 (C5), revocar y 401, `grep -c` del token en logs = 0; P-REBUILD 2 (`restart worker`: `members` lo importa `notify`). Corre el usuario o el cierre de wave.
+
+## S8-C1b · Correcciones de la revisión de C1 (L-1 a L-5, rendimiento de B5; S8-D48) · `0040` editada en su sitio
+
+### Rojo (medido)
+- Pruebas nuevas (`tests/settings/test_tv_hardening.py`, `tests/migrations/test_0040_guard_lock.py`, `test_tarjeta_liviana_sin_movimientos_ni_resultados`) contra el código anterior: 6 failed y 6 passed. Fallos: L-2 (`get(tv)` no lanza), L-3 (2: `ValidationError` sin controlar en `PATCH` y en regenerar/revocar), L-4 (2: la función no tiene `FOR SHARE` y el sucesor concurrente con la anulación pasaba), rendimiento (la tarjeta tocaba `wod_movements`). Pasaban ya (refuerzo de L-5): primer guardado sin fila en carrera y revocar contra un `PATCH` en vuelo.
+
+### Verde
+- `settings/service.py` (`get` por `_generic`; `_tv_stored(fila, repair=)`), `0040` (`INSERT_0040` con `FOR SHARE`), `wods/catalog.today_title` + `service`, `dashboard/service` (tarjeta liviana), DECISIONES S8-D48 (L-1 aceptado con motivo).
+
+### Evidencia
+- `tests/settings tests/dashboard tests/migrations/test_0040_guard_lock.py`: 506 passed. `ruff`, `ruff format`, `mypy src` limpios. Gate: ver el bloque de abajo.

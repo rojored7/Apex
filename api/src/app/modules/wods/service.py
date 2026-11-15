@@ -29,6 +29,7 @@ from app.modules.wods.catalog import (
     ensure_wod,
     scoring_for,
     titles_for,
+    today_title,
     wod_date,
 )
 from app.modules.wods.events import WodPublished
@@ -72,6 +73,7 @@ __all__ = [
     "set_results_probe",
     "titles_for",
     "today_card",
+    "today_title",
     "update_benchmark",
     "update_movement",
     "update_wod",

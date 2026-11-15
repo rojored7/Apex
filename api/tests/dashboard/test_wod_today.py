@@ -80,3 +80,33 @@ async def test_01_00_utc_es_el_wod_de_bogota(session: AsyncSession, reloj: Froze
     tablero = await dashboard_service.summary(session, with_finances=False)
     assert tablero.wod_today is not None
     assert tablero.wod_today.title == "Ayer UTC"
+
+
+async def test_tarjeta_liviana_sin_movimientos_ni_resultados(
+    session: AsyncSession, reloj: FrozenClock
+) -> None:
+    """Rendimiento (revisión de B5, S8-C1b): la tarjeta lee solo cuatro columnas de `wods.wods`;
+    ni `wod_movements`, ni `benchmarks`, ni `results` entran en el tablero."""
+    from sqlalchemy import event
+
+    reloj.set(MARTES)
+    admin = await make_user(session, role="admin", email="wod.admin5@test.apex")
+    mov = await make_movement(session, admin.id)
+    await make_wod(session, admin.id, [mov.id], date="2026-10-20", title="Liviano")
+    sobre_wods: list[str] = []
+
+    def _anota(conn: object, cursor: object, statement: str, *args: object) -> None:
+        texto = statement.lower()
+        if "wods.wods" in texto or "wods.wod_movements" in texto or "results." in texto:
+            sobre_wods.append(texto)
+
+    motor = session.get_bind()
+    event.listen(motor, "before_cursor_execute", _anota)
+    try:
+        tablero = await dashboard_service.summary(session, with_finances=False)
+    finally:
+        event.remove(motor, "before_cursor_execute", _anota)
+    assert tablero.wod_today is not None and tablero.wod_today.title == "Liviano"
+    assert len(sobre_wods) == 1, sobre_wods
+    assert "wod_movements" not in sobre_wods[0] and "benchmarks" not in sobre_wods[0]
+    assert "wods.wods.description" not in sobre_wods[0]

@@ -212,14 +212,26 @@ async def update_section(
 _TV: Final = SectionKey.tv
 
 
+def _tv_stored(fila: SettingsSection, *, repair: bool) -> TvStored:
+    """Lo guardado en la fila. Si ya no valida (L-3): con `repair` parte de los defaults (sin
+    token), para que el admin pueda leer, regenerar o revocar y reparar la fila; sin él, 422."""
+    try:
+        return TvStored.model_validate(dict(fila.value))
+    except ValidationError:
+        logger.warning("settings: la sección guardada no valida", extra={"settings_key": "tv"})
+        if repair:
+            return TvStored.model_validate(defaults_for(_TV))
+        raise SettingsValidationError(
+            message="La sección guardada no es válida; regenera el token para repararla."
+        ) from None
+
+
 def _tv_view(fila: SettingsSection | None) -> TvSectionOut:
     """La vista (sin hash) de la fila, o de los defaults con `version = 0`."""
     if fila is None:
         guardado = TvStored.model_validate(defaults_for(_TV))
         return _tv_out(guardado, 0, None, None)
-    return _tv_out(
-        TvStored.model_validate(dict(fila.value)), fila.version, fila.updated_at, fila.updated_by
-    )
+    return _tv_out(_tv_stored(fila, repair=True), fila.version, fila.updated_at, fila.updated_by)
 
 
 def _tv_out(
@@ -283,7 +295,7 @@ async def update_tv(
     BLOQUEADA (H-1); solo cambian `refresh_seconds` y `show_leaderboard`."""
     fila = await _tv_locked(session, by)
     check_version(fila.version, version)
-    actual = TvStored.model_validate(dict(fila.value))
+    actual = _tv_stored(fila, repair=False)
     nuevo = actual.model_copy(
         update={
             "refresh_seconds": patch.refresh_seconds,
@@ -300,7 +312,7 @@ async def regenerate_tv_token(session: AsyncSession, by: UUID, *, origin: str) -
     token = new_opaque_token()
     ahora = current_clock().now_utc()
     ultimos = token[-TV_TOKEN_LAST_CHARS:]
-    nuevo = TvStored.model_validate(dict(fila.value)).model_copy(
+    nuevo = _tv_stored(fila, repair=True).model_copy(
         update={
             "device_token_hash": hash_opaque_token(token),
             "token_last4": ultimos,
@@ -320,7 +332,7 @@ async def regenerate_tv_token(session: AsyncSession, by: UUID, *, origin: str) -
 async def revoke_tv_token(session: AsyncSession, by: UUID) -> TvSectionOut:
     """Deja `device_token_hash = None` (L-7), bajo el mismo candado, y sube `version`."""
     fila = await _tv_locked(session, by)
-    nuevo = TvStored.model_validate(dict(fila.value)).model_copy(
+    nuevo = _tv_stored(fila, repair=True).model_copy(
         update={"device_token_hash": None, "token_last4": None, "rotated_at": None}
     )
     return _tv_view(await _tv_save(session, fila, nuevo, by))
@@ -360,7 +372,7 @@ async def _read_as[ModeloT: SectionValue](
 
 async def get(session: AsyncSession, key: SectionKey) -> SectionValue:
     """Modelo validado de la sección (lo guardado o los defaults), para consumidores."""
-    seccion = ensure_enabled(key)
+    seccion = _generic(key)  # S8-C1b (L-2): `tv` (con su hash) solo sale por `verify_tv_token`
     return await _read_as(session, seccion, SECTION_VIEWS[seccion])
 
 

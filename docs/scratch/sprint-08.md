@@ -396,4 +396,4 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - `settings/service.py` (`get` por `_generic`; `_tv_stored(fila, repair=)`), `0040` (`INSERT_0040` con `FOR SHARE`), `wods/catalog.today_title` + `service`, `dashboard/service` (tarjeta liviana), DECISIONES S8-D48 (L-1 aceptado con motivo).
 
 ### Evidencia
-- `tests/settings tests/dashboard tests/migrations/test_0040_guard_lock.py`: 506 passed. `ruff`, `ruff format`, `mypy src` limpios. Gate: ver el bloque de abajo.
+- `tests/settings tests/dashboard tests/migrations/test_0040_guard_lock.py`: 506 passed. `ruff`, `ruff format`, `mypy src` limpios. Gate `slice-gate.sh settings <settings, dashboard, wods, tv, migraciones 0036/0037/0040 y guard_lock, core/test_migrations, board_names>` (con `tests/architecture`): 1627 passed en 304 s, exit 0. Checkpoint `2e967ee` (C2: `5960e8f`). Smoke y P-REBUILD pendientes (api roto).

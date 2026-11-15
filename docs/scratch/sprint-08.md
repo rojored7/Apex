@@ -111,3 +111,23 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - L5 (rojo medido: un workflow con `packages: write` y otro con `workflow_run` daban exit 0): `scripts/ci/test_nightly_workflow.sh` rechaza cualquier `: write` y `workflow_run`; los dos falsos dan exit 1 y el real 0 fallas.
 - L2: `ci.yml` exige `grep -c ... = 2` de `TV_IP_LIMIT` y `TV_TOKEN_LIMIT`. L3: `DECISIONES.md` (f) suma S8-D32 a las correcciones de S8-D18 (W0-2 no añade `location = /tv`).
 - Gate sellante `slice-gate.sh core/logging` + los 4 archivos de prueba: 1 016 passed en 117 s, exit 0; `ruff` y `mypy src` limpios.
+
+## S8-A2 · Benchmarks y `seed-benchmarks` (US-166, N-46, S8-D6, L-6) · 0033
+
+### Rojo
+- Con stubs `NotImplementedError` (`benchmarks.py`, `seed.py`), comando registrado como no-op y sin la migración: 25 failed + 8 errors + 12 passed (los 12 son 403/401/422 del router y movimientos que no dependen del stub). Motivos: service y seed `NotImplementedError`; comando ausente (exit 2); `no existe la revisión 0033_wods_benchmarks` (1 failed + 8 errors); `test_ci_siembra_benchmarks_tras_el_admin` sin el paso en `ci.yml`.
+
+### Verde
+- Migración `0033_wods_benchmarks` (tabla, `uq_benchmarks_name_norm`, 4 CHECK, 2 triggers `ENABLE ALWAYS` sobre `wods.forbid_mutation()` de 0032; el `downgrade` no la borra), `wods/{benchmarks,seed}.py`, `cli_ops/seed_benchmarks.py` + `register_ops`, 3 rutas en el router plano de `wods`, `ci.yml` (paso tras el seed del admin), P-ROL (las tres listas de `grants.sql` + `test_db_grants`), P-CAT (`AUDITABLE_TABLES`, excluida de recientes, `test_audited_tables`, `test_no_physical_delete`, `triggers.py`, `test_0014`, `CON_LIMITE`, `conftest` con `LIMPIAR_BENCHMARKS`, `tests/audit/test_filters.py`, que A1 había dejado sin `wods.movements`).
+- Desviaciones: (1) `score_type_locked` se prueba con un doble de `benchmarks.wod_counts` (misma costura que `usage_counts` de A1), no de `ResultsProbe`: en A2 no hay WODs; A3 la reemplaza. (2) `description` usa `check_multiline_text` (vacía vale; admite saltos de línea) en vez de `SafeText`, que rechaza el vacío. (3) La prueba A1 `test_el_router_publica_tres_rutas_...` pasó a seis rutas (router plano único). (4) El `INSERT ... ON CONFLICT` de Core no pasa por el hook del ORM: `seed.py` escribe una fila `insert` por benchmark creado con `core.audit.record`.
+- Normalización de nombres: la misma `normalize_movement_name` (pliega mayúsculas y espacios, NO tildes).
+
+### Evidencia
+- 120 passed de los archivos nuevos y `test_env_example`; `tests/migrations tests/architecture tests/core/test_migrations.py tests/core/test_db.py tests/audit`: 2 380 passed, 1 failed (`test_filters`, corregido) y `alembic heads` = una sola cabeza.
+- `ruff check .`, `ruff format` y `mypy src` (255 archivos) limpios.
+- Gate sellante `slice-gate.sh wods <12 archivos>`: 1 362 passed en 151 s, exit 0.
+- P-API: `openapi.json` idéntico en dos corridas (+539 líneas), `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- P-MIG: `$DC start api` healthy, `alembic current` = `0033_wods_benchmarks (head)`; `downgrade -1` + `upgrade head` OK; `\d wods.benchmarks` con índices, 4 CHECK y los dos triggers `tgenabled = A`.
+- `seed-benchmarks --as admin@ejemplo.local` dos veces: «creados 12» y «creados 0»; `count(*) wods.benchmarks` = 12 y 12; filas `audit_log` de `wods.benchmarks` = 12 y 12.
+- Smoke con rol (admin de desarrollo): `GET /api/v1/benchmarks?q=fra` = 200 (total 1, Fran, time, wod_count 0); sin token = 401.
+- Checkpoint `31850e9`.

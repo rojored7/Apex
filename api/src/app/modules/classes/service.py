@@ -10,7 +10,7 @@ Reexporta lo público de los archivos privados del módulo:
   (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`;
   `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba) y
   `remove_attendance` (C3, US-161), que lo emite.
-Los reportes llegan con R1.
+`reports.py` (S7-R1, US-162): `attendance_summary`, `member_attendance` y la pura `weekly_summary`.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from app.modules.classes.events import (
 )
 from app.modules.classes.exceptions import MembershipPortNotRegistered
 from app.modules.classes.queries import get_session, list_sessions
+from app.modules.classes.reports import attendance_summary, member_attendance, weekly_summary
 from app.modules.classes.rules import (
     PlannedSession,
     SlotSpec,
@@ -59,6 +60,7 @@ __all__ = [
     "SessionCancelled",
     "SessionGenerated",
     "SlotSpec",
+    "attendance_summary",
     "cancel_future_sessions",
     "cancel_session",
     "check_in",
@@ -70,6 +72,7 @@ __all__ = [
     "list_attendance",
     "list_sessions",
     "list_slots",
+    "member_attendance",
     "membership_port",
     "parse_week",
     "planned_sessions",
@@ -79,4 +82,5 @@ __all__ = [
     "update_slot",
     "week_of",
     "week_range",
+    "weekly_summary",
 ]

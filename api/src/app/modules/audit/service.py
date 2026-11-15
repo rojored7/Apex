@@ -35,6 +35,7 @@ en el api y en el CLI); `events.subscribe` es idempotente, así que cada uno que
 from __future__ import annotations
 
 from typing import Final
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,6 +66,9 @@ from app.modules.audit.verify import (
     verify,
 )
 from app.modules.auth.service import (
+    KioskEntered,
+    KioskExited,
+    KioskExitFailed,
     LoginAttempted,
     PasswordChanged,
     SessionsRevoked,
@@ -87,6 +91,9 @@ __all__ = [
     "last_verification",
     "list_entries",
     "member_history",
+    "on_kiosk_entered",
+    "on_kiosk_exit_failed",
+    "on_kiosk_exited",
     "on_login_attempted",
     "on_password_changed",
     "on_sessions_revoked",
@@ -178,7 +185,36 @@ async def on_password_changed(event: PasswordChanged, session: AsyncSession) -> 
     )
 
 
+async def _record_kiosk(session: AsyncSession, user_id: UUID, after: dict[str, object]) -> None:
+    await record(
+        session,
+        action="update",
+        table_name=USERS_TABLE,
+        record_id=user_id,
+        before=None,
+        after=after,
+        user_id=user_id,
+    )
+
+
+async def on_kiosk_entered(event: KioskEntered, session: AsyncSession) -> None:
+    """S7-D41: `after = {"event": "KioskEntered", "path": ...}` (la ruta no es un dato personal)."""
+    await _record_kiosk(session, event.user_id, {"event": "KioskEntered", "path": event.path})
+
+
+async def on_kiosk_exited(event: KioskExited, session: AsyncSession) -> None:
+    await _record_kiosk(session, event.user_id, {"event": "KioskExited"})
+
+
+async def on_kiosk_exit_failed(event: KioskExitFailed, session: AsyncSession) -> None:
+    """Contraseña errada al salir del quiosco: queda la fila, nunca la contraseña."""
+    await _record_kiosk(session, event.user_id, {"event": "KioskExitFailed"})
+
+
 events.subscribe(LoginAttempted, on_login_attempted)
+events.subscribe(KioskEntered, on_kiosk_entered)
+events.subscribe(KioskExited, on_kiosk_exited)
+events.subscribe(KioskExitFailed, on_kiosk_exit_failed)
 events.subscribe(UserLocked, on_user_locked)
 events.subscribe(SessionsRevoked, on_sessions_revoked)
 events.subscribe(PasswordChanged, on_password_changed)

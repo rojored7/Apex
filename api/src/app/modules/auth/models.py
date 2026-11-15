@@ -74,7 +74,15 @@ class User(CommonColumnsMixin, SoftDeleteMixin, Base):
 
 class RefreshToken(CommonColumnsMixin, Base):
     __tablename__ = "refresh_tokens"
-    __table_args__ = (Index("ix_refresh_tokens_user_id", "user_id"), {"schema": "auth"})
+    __table_args__ = (
+        Index("ix_refresh_tokens_user_id", "user_id"),
+        CheckConstraint(
+            "kiosk_path IS NULL OR kiosk_path ~ "
+            "'^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$'",
+            name="kiosk_path_shape",
+        ),
+        {"schema": "auth"},
+    )
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("auth.users.id"), nullable=False)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
@@ -87,6 +95,9 @@ class RefreshToken(CommonColumnsMixin, Base):
     family_started_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )
+    # S7-D41: la ruta del check-in a la que queda confinada la sesión de la tablet; se copia al
+    # rotar y se borra con el logout o la salida con contraseña.
+    kiosk_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class OneTimeToken(CommonColumnsMixin, Base):

@@ -208,6 +208,7 @@ class FreezeOutcome:
 
     window: FreezeWindow
     new_end_date: date
+    new_original_end_date: date | None = None
 
 
 class FreezeError(Exception):
@@ -343,8 +344,13 @@ def apply_freeze(
     limits: FreezeLimits,
     today: date,
     expiring_days: int,
+    *,
+    original_end_date: date | None = None,
 ) -> FreezeOutcome:
-    """Valida la congelación en el orden de D14 y corre el fin (S3-B2). Pura; no muta nada."""
+    """Valida la congelación en el orden de D14 y corre el fin (S3-B2). Pura; no muta nada.
+
+    `original_end_date` (S7-C3b): el fin heredado de una tiquetera recortada por su última clase;
+    se corre los mismos días que el fin, o el CHECK `original_end_date > end_date` saltaría."""
     if compute_status(m, today, expiring_days, freezes) not in _CONGELABLES:
         raise FreezeError("membership_not_freezable")
     if frozen_from > frozen_to:
@@ -359,7 +365,14 @@ def apply_freeze(
         raise FreezeError("freeze_limit_reached")
     _check_freeze_days(freezes, frozen_from, frozen_to, limits.max_days)
     ventana = FreezeWindow(frozen_from, frozen_to)
-    return FreezeOutcome(window=ventana, new_end_date=m.end_date + timedelta(days=ventana.days))
+    corrimiento = timedelta(days=ventana.days)
+    return FreezeOutcome(
+        window=ventana,
+        new_end_date=m.end_date + corrimiento,
+        new_original_end_date=(
+            original_end_date + corrimiento if original_end_date is not None else None
+        ),
+    )
 
 
 def _check_freeze_days(

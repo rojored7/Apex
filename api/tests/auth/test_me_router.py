@@ -71,6 +71,7 @@ async def test_me_del_coach_trae_sus_datos_y_el_nombre_por_defecto(
         "member_id": None,
         "gym_name": "APEX",
         "must_change_password": False,
+        "kiosk_path": None,
     }
     assert r.headers["cache-control"] == "no-store"
 

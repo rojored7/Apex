@@ -93,6 +93,10 @@ class Membership(CommonColumnsMixin, Base):
             name="original_end_date_needs_classes",
         ),
         CheckConstraint(
+            "original_end_date IS NULL OR original_end_date > end_date",
+            name="original_end_date_after_end",
+        ),
+        CheckConstraint(
             "cancel_reason IS NULL OR char_length(cancel_reason) BETWEEN 5 AND 500",
             name="cancel_reason_length",
         ),

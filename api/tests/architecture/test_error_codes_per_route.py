@@ -30,6 +30,9 @@ CON_LIMITE = {
     ("post", "/api/v1/auth/forgot"),
     ("post", "/api/v1/auth/reset"),
     ("post", "/api/v1/auth/me/password"),
+    # S7-C4 (S7-D41): entrar al quiosco (por IP) y salir con la contraseña (tope por usuario).
+    ("post", "/api/v1/auth/kiosk"),
+    ("post", "/api/v1/auth/kiosk/exit"),
     ("post", "/api/v1/members"),
     ("get", "/api/v1/members"),
     # S3-B1 (E2, H-2): vender consume `memberships-write`.
@@ -152,6 +155,9 @@ CON_LIMITE = {
     ("post", "/api/v1/attendance"),
     ("delete", "/api/v1/attendance/{attendance_id}"),
     ("get", "/api/v1/attendance"),
+    # S7-R1 (US-162): el resumen y la asistencia de la ficha consumen `staff-read`.
+    ("get", "/api/v1/attendance/summary"),
+    ("get", "/api/v1/members/{member_id}/attendance"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

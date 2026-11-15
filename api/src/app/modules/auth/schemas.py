@@ -85,6 +85,7 @@ class MeOut(BaseModel):
     member_id: UUID | None
     gym_name: str
     must_change_password: bool
+    kiosk_path: str | None = None  # S7-D41: la ruta del quiosco de la sesión, si la hay
 
 
 class ChangePasswordIn(BaseModel):
@@ -103,6 +104,33 @@ class AccessTokenOut(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"  # noqa: S105 - tipo de token, no un secreto
     expires_in: int
+
+
+KIOSK_PATH_PATTERN = (
+    r"^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$"
+)
+
+
+class KioskIn(BaseModel):
+    """`POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(pattern=KIOSK_PATH_PATTERN, max_length=80)
+
+
+class KioskExitIn(BaseModel):
+    """`POST /auth/kiosk/exit`: la contraseña del usuario de la sesión (nunca se registra)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+class KioskSessionOut(AccessTokenOut):
+    """Access nuevo (con la marca al entrar, sin ella al salir) y la ruta vigente o `null`."""
+
+    kiosk_path: str | None
 
 
 class UserRow(BaseModel):

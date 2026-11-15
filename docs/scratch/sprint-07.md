@@ -323,3 +323,59 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C2b)
 - P-MIG: `$DC start api` migró `0029` a `0030` (`alembic current` = `0030_memberships_end_guard (head)`, api `healthy`); `downgrade -1` deja `0029_memberships_orig_end_date` y quita el CHECK (0 filas en `pg_constraint`); `upgrade head` vuelve a `0030 (head)`. `pg_get_constraintdef`: `CHECK (((original_end_date IS NULL) OR (original_end_date > end_date)))`. Triggers de `memberships.memberships`: los tres en `tgenabled = A`; `guard_identity()` contiene `original_end_date`. Sin cambio de grants (P-ROL no aplica).
+
+## S7-R1 · Reportes de asistencia (US-162, S7-D15, M-5, L-1)
+
+### Rojo
+- Stubs: `classes/reports.py` (`check_summary_range`, `week_starts`, `weekly_summary`, `summary_rows`, `attendance_summary`, `member_attendance` con `NotImplementedError`), schemas `SlotBucket`, `WeekBucket`, `AttendanceSummary` y las dos rutas. Pruebas nuevas: `test_weekly_summary_pure.py`, `test_attendance_list.py` (la lista ya existía desde C1), `test_attendance_summary.py`, `test_member_attendance.py` y `test_perf_summary.py` (`perf`): 45 failed (todas `NotImplementedError`) y 10 passed (lista existente, 401/403) de 55.
+
+### Verde
+- `reports.py`: el resumen se agrega en UNA consulta SQL (subconsulta de asistencias vivas por sesión, `date_trunc('week')` sobre `session_date` de Bogotá, `GROUP BY` semana y franja); `weekly_summary` pura solo arma grupos y rellena semanas vacías; `occupancy_pct` entero con cupo 0 = 0; extras bajo «Extra». Rango: `from > to`, año fuera de 2020 a 2100 o más de 26 semanas (182 días) dan 422 `field = "from"`. `GET /members/{id}/attendance` por `members.service.get_ref` (baja visible, 404 si no existe), con `q` por el contrato de listas (lo exigió `test_list_routes_use_page_params`). Ambas rutas consumen `staff-read`; `test_error_codes_per_route` las suma.
+- [ASUNCIÓN] El resumen cuenta solo sesiones `scheduled` que ya empezaron (`starts_at <= ahora`): las futuras o canceladas diluirían la ocupación.
+- Desvío: `list_attendance` sigue en `attendance.py` (C1); `reports.member_attendance` lo reutiliza. Un `summary_rows` de más de 50 líneas rompió `test_ninguna_funcion_supera_50_lineas`: se extrajo `_live_by_session`.
+
+### Evidencia (R1)
+- Pruebas nuevas: 55 passed (+1 perf: 26 semanas con 1.170 asistencias, bajo 500 ms). Sello `slice-gate.sh classes` (4 archivos + `tests/architecture`): 886 passed, exit 0 (primer intento falló por `q` ausente y por la lista de `staff-read`; segundo, 2 pasos corregidos). Nota: el gate necesita `TEST_DATABASE_URL` exportada (sin ella 118 errores de fixture).
+- P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- Prueba viva (admin de desarrollo, token en `$TMPDIR` con `umask 077`, borrado): `GET /attendance/summary` 200 (semana 2026-W46: total 1, marcadas 1), 422 con `from > to` y con más de 26 semanas, 401 sin token; `GET /members/{id}/attendance` del socio «Prueba S7 Tiquetera» 200 con `total` 2, 404 con un id inexistente.
+
+## S7-C3b · Correcciones de la revisión de C3 (S7-D40 (17) a (20))
+
+### Rojo
+- `tests/memberships/test_review_c3_freeze.py` (4): con el camino real resumido (tiquetera `active`, fin = hoy, `original_end_date` 4 días después, 3 clases) congelar 10 días da `IntegrityError` por `ck_memberships_original_end_date_after_end` (el 500); la regla pura no acepta `original_end_date` ni devuelve `new_original_end_date`. Sin código: 3 failed (el `IntegrityError` y 2 `TypeError`) y 1 passed (sin original, igual que antes).
+- Borde de las 04:30Z en `test_remove_attendance.py` y comparación de `pg_get_functiondef` en `test_0030`: pasan de entrada (la implementación ya era correcta; son pruebas de borde, sin rojo).
+
+### Verde
+- `rules.apply_freeze(..., original_end_date=)` y `FreezeOutcome.new_original_end_date`; `lifecycle._apply` lo pasa y `_store_freeze` lo guarda; CHECK `original_end_date_after_end` en `memberships/models.py`; `test_0030` compara la función de `0029` con la que deja el `downgrade`. DECISIONES (17) a (20) y la nota de R1.
+
+### Evidencia (C3b)
+- Sello `slice-gate.sh memberships` (todos los `tests/memberships` + `test_remove_attendance` + `test_0030` + `tests/architecture`): 1594 passed, exit 0. Checkpoint `65991d5`. El api de desarrollo recarga solo (sin migración).
+
+## S7-C4 · Modo quiosco del lado del servidor (S7-D41; revisión de F4: HIGH-1, MEDIUM-1, MEDIUM-2)
+
+### Rojo
+- `$DC stop api worker` antes de escribir (hay migración); volcado `docs/scratch/sprint-07-antes-0031.dump` (2,2 MB, ignorado por git; se borra en V9). `alembic_version` en desarrollo: `0030_memberships_end_guard`.
+- Pruebas nuevas: `tests/auth/test_kiosk.py` (17 casos: marca en la sesión y access con la marca; ruta fuera de `/clases/<uuid>/checkin` 422 ×6; sin cookie 401, origen ajeno 403, socio 403; la marca sobrevive a la rotación del refresh; sin marca el refresh no inventa una; la salida no crea sesión ni rota ni toca la cookie; los fallos de salida no suman a `failed_login_count` ni bloquean; 429 propio tras 5 fallos y por usuario; la salida exige cookie, origen y cuerpo; el logout borra la marca; `reveal` 403 `kiosk_mode` con la marca y 404 sin ella; `/auth/me` con la marca abierto), `tests/architecture/test_kiosk_routes.py` (la lista blanca exacta, existe y exige rol, no abre nada sensible; toda ruta con rol fuera de la lista da 403 `kiosk_mode`; las de la lista no; prefijo de core igual al de main) y `tests/migrations/test_0031_refresh_kiosk_path.py`. Con un stub vacío de `KIOSK_ALLOWED_ROUTES` y sin código: 20 failed, 1 passed (`TypeError: create_access_token() got an unexpected keyword argument 'kiosk'`, `AttributeError` de la columna, 404 de las rutas nuevas, la lista vacía).
+
+### Verde
+- `core/security.py` (claim `kiosk`, `Principal.kiosk`, `KIOSK_ALLOWED_ROUTES`, guardia en `current_user` antes de leer la base), `auth/{kiosk,exceptions,events,models,schemas,service,router,sessions,users}.py`, `audit/service.py` (tres suscriptores), `attachments/router.py` (solo la foto en quiosco), migración `0031_refresh_kiosk_path`. Desvío: la salida responde 200 con un access sin la marca en lugar de 204 (S7-D41 punto 4). `docs/operacion/clases.md` nace aquí (en la rama del front existe una versión de F4; al unir hay que fundirlas).
+- Primera corrida: la ruta de `scope["route"]` no lleva el prefijo `/api/v1` (router incluido de forma perezosa); `API_V1_PREFIX` en `core/security.py` y su prueba contra `main.API_PREFIX`. Tras la corrida amplia fallaron dos pruebas esperadas: `test_me_router` (clave nueva `kiosk_path`) y `test_openapi_export` (P-API).
+
+### Evidencia (C4)
+- Corrida amplia (`tests/architecture tests/core tests/auth` + 0030): 2829 passed, 2 failed (las dos esperadas, corregidas), 2 skipped.
+- P-MIG: `$DC start api` migró `0030` a `0031` (`alembic current` = `0031_refresh_kiosk_path (head)`, api `healthy`); `downgrade -1` deja `0030` y `upgrade head` vuelve a `0031 (head)`; `\d auth.refresh_tokens`: `kiosk_path text` y `ck_refresh_tokens_kiosk_path_shape`. Sin cambio de grants (P-ROL: `apex_api` ya tiene los cuatro permisos de tabla; `test_db_grants` y `test_api_role_paths` en verde).
+- P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- Sello `slice-gate.sh auth` (todos los `tests/auth` + `test_openapi_export` + `test_jwt` + `test_require_role` + `test_0031` + `test_db_grants` + `test_api_role_paths` + `test_router_reveal` + `tests/architecture`): 1846 passed, 1 skipped, exit 0. ruff y mypy limpios.
+- Prueba viva (8181; sin la contraseña del admin de desarrollo se acuñaron dos access desde el contenedor del api, con y sin `kiosk`, en archivos con `umask 077`, borrados; nunca impresos): `POST /members/{id}/reveal` 404 sin la marca (llega al service) y 403 con ella; `GET /members/export` 403; `GET /members?q=` 200; `GET /auth/me` 200; `POST /auth/kiosk` con ruta mala 422, sin cookie 401; `POST /auth/kiosk/exit` sin cookie 401; sin token 401. El flujo con cookie (entrar, rotar, salir, 429) lo cubren las 17 pruebas de `test_kiosk.py`.
+
+## S7-R1b · Correcciones de la revisión de R1 (M1, L1, L2, L3)
+
+### Rojo
+- Sin migración (no hubo `$DC stop`). Pruebas nuevas: `test_attendance_summary.py` (la subconsulta compilada de asistencias debe contener `class_sessions`, `session_date`, `status` y `starts_at`; dos años de historia fuera del rango no cambian el resultado), `test_perf_summary.py` (104 semanas previas con miles de asistencias, bajo 500 ms; `perf`), `test_member_attendance.py` (`q` sobre un socio dado de baja; `q` de otro socio no trae sus asistencias). Sin el arreglo: 2 failed (la subconsulta no estaba acotada: sin `class_sessions` dentro del `SELECT ... FROM classes.attendance ... GROUP BY`; y `assert 0 == 1` por la baja con `q`) y 33 passed (las pruebas de resultado y de tiempo pasan de entrada: con la base de prueba pequeña el plan no se degrada; el rojo del MEDIUM es el SQL compilado).
+
+### Verde
+- `reports._sessions_in_range` y `_live_by_session(from_day, to_day, now)` (`IN` con los mismos predicados de `summary_rows`); `attendance._filtered`: `include_deleted` con `member_id`. DECISIONES (d) a (g) y US-162.
+
+### Evidencia (R1b)
+- Las cuatro suites de `tests/classes` tocadas: 41 passed (incluye `perf`). ruff y mypy limpios.
+- Sello `slice-gate.sh classes` (todos los `tests/classes` salvo perf + `tests/architecture`): 1193 passed, exit 0. El api de desarrollo recarga solo (sin migración).

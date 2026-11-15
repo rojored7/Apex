@@ -20,12 +20,16 @@ from __future__ import annotations
 
 from app.core.security import register_principal_loader
 from app.modules.auth.events import (
+    KioskEntered,
+    KioskExited,
+    KioskExitFailed,
     LoginAttempted,
     PasswordChanged,
     SessionsRevoked,
     UserCreated,
     UserLocked,
 )
+from app.modules.auth.kiosk import enter_kiosk, exit_kiosk, kiosk_path_of
 from app.modules.auth.links import (
     FORGOT_ACCOUNT_BUCKET,
     FORGOT_ACCOUNT_LIMIT,
@@ -83,6 +87,9 @@ __all__ = [
     "FORGOT_ACCOUNT_BUCKET",
     "FORGOT_ACCOUNT_LIMIT",
     "FORGOT_ACCOUNT_WINDOW_S",
+    "KioskEntered",
+    "KioskExitFailed",
+    "KioskExited",
     "LoginAttempted",
     "LoginResult",
     "PasswordChanged",
@@ -97,6 +104,8 @@ __all__ = [
     "configure_sleeper",
     "create_user",
     "delete_user",
+    "enter_kiosk",
+    "exit_kiosk",
     "forgot",
     "forgot_deliver",
     "get_user",
@@ -104,6 +113,7 @@ __all__ = [
     "is_active_admin",
     "is_active_staff",
     "issue_link",
+    "kiosk_path_of",
     "list_users",
     "load_active_principal",
     "lock",

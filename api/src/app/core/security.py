@@ -26,7 +26,7 @@ import hashlib
 import os
 import secrets
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -92,6 +92,7 @@ class AccessClaims:
     iat: int
     exp: int
     jti: str
+    kiosk: bool = False
 
 
 # Llaves JWT -----------------------------------------------------------------------------
@@ -192,11 +193,18 @@ def _keys() -> tuple[JwtKeys, Ed25519PrivateKey]:
 
 
 def access_claims(
-    user_id: UUID, role: Role, member_id: UUID | None, now: datetime, *, ttl_s: int = 900
+    user_id: UUID,
+    role: Role,
+    member_id: UUID | None,
+    now: datetime,
+    *,
+    ttl_s: int = 900,
+    kiosk: bool = False,
 ) -> dict[str, object]:
-    """Claims del access token (pura): `sub`, `role`, `member_id`, `iat`, `exp`, `jti`."""
+    """Claims del access token (pura): `sub`, `role`, `member_id`, `iat`, `exp`, `jti` y, solo en
+    una sesión de quiosco (S7-D41), `kiosk: true`."""
     iat = int(now.timestamp())
-    return {
+    claims: dict[str, object] = {
         "sub": str(user_id),
         "role": role,
         "member_id": str(member_id) if member_id is not None else None,
@@ -204,11 +212,16 @@ def access_claims(
         "exp": iat + ttl_s,
         "jti": str(uuid4()),
     }
+    if kiosk:
+        claims["kiosk"] = True
+    return claims
 
 
-def create_access_token(user_id: UUID, role: Role, member_id: UUID | None, clock: Clock) -> str:
+def create_access_token(
+    user_id: UUID, role: Role, member_id: UUID | None, clock: Clock, *, kiosk: bool = False
+) -> str:
     _, privada = _keys()
-    claims = access_claims(user_id, role, member_id, clock.now_utc(), ttl_s=_ttl_s)
+    claims = access_claims(user_id, role, member_id, clock.now_utc(), ttl_s=_ttl_s, kiosk=kiosk)
     return jwt.encode(claims, privada, algorithm=JWT_ALGORITHM, headers={"typ": "JWT"})
 
 
@@ -250,6 +263,7 @@ def decode_access_token(token: str, clock: Clock) -> AccessClaims:
         iat=int(datos["iat"]),
         exp=int(datos["exp"]),
         jti=str(datos["jti"]),
+        kiosk=datos.get("kiosk") is True,
     )
 
 
@@ -388,6 +402,8 @@ from app.core.db import SessionDep  # noqa: E402
 from app.core.errors import ForbiddenError, UnauthorizedError  # noqa: E402
 
 SESSION_INVALID_MESSAGE: Final = "Sesión no válida."
+API_V1_PREFIX: Final = "/api/v1"  # igual a `main.API_PREFIX` (lo comprueba test_kiosk_routes)
+KIOSK_MODE_MESSAGE: Final = "Esta pantalla está en modo quiosco: sal con tu contraseña."
 PASSWORD_CHANGE_REQUIRED_MESSAGE: Final = "Debes cambiar tu contraseña para continuar."  # noqa: S105
 
 
@@ -404,6 +420,7 @@ class Principal:
     member_id: UUID | None
     must_change_password: bool = False
     tokens_valid_after: datetime | None = None
+    kiosk: bool = False  # S7-D41: el access lleva la marca del quiosco (la pone `current_user`)
 
 
 class PrincipalLoader(Protocol):
@@ -449,6 +466,18 @@ def _bearer_token(request: Request) -> str:
     return partes[1]
 
 
+def _kiosk_route_allowed(request: Request) -> bool:
+    """S7-D41: con la marca solo pasan las rutas de `KIOSK_ALLOWED_ROUTES`. Se compara la
+    plantilla de la ruta (nunca la URL concreta); sin ruta resuelta se niega."""
+    ruta = request.scope.get("route")
+    plantilla = getattr(ruta, "path", None)
+    if not isinstance(plantilla, str):
+        return False
+    if not plantilla.startswith(API_V1_PREFIX):  # el router incluido guarda la ruta sin prefijo
+        plantilla = API_V1_PREFIX + plantilla
+    return (request.method, plantilla) in KIOSK_ALLOWED_ROUTES
+
+
 async def current_user(
     request: Request,
     session: SessionDep,
@@ -462,9 +491,13 @@ async def current_user(
         raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE) from None
     if claims.sub == SYSTEM_USER_ID:
         raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    if claims.kiosk and not _kiosk_route_allowed(request):
+        raise ForbiddenError("kiosk_mode", KIOSK_MODE_MESSAGE)
     principal = await get_principal_loader()(session, claims.sub)
     if principal is None or issued_before_cutoff(claims.iat, principal.tokens_valid_after):
         raise UnauthorizedError("unauthorized", SESSION_INVALID_MESSAGE)
+    if claims.kiosk:
+        principal = replace(principal, kiosk=True)
     await refresh_current(session)
     current_actor.set(principal.user_id)
     return principal
@@ -515,6 +548,24 @@ PUBLIC_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("POST", "/api/v1/auth/forgot"),  # pedir enlace de restablecimiento (US-048)
         ("POST", "/api/v1/auth/reset"),  # restablecer con token de un solo uso (US-048)
         ("GET", "/api/v1/tv/today"),  # pantalla de TV con X-Device-Token (N-44, US-175)
+    }
+)
+# S7-D41 (punto 5): lista blanca del modo quiosco. Con `kiosk: true` en el access, `current_user`
+# responde 403 `kiosk_mode` a TODA ruta que no esté aquí (defecto: negar; una ruta nueva queda
+# cerrada). `GET /attachments/{id}` solo sirve la foto (el service rechaza el sensible en quiosco).
+# `tests/architecture/test_kiosk_routes.py` recorre las rutas reales.
+KIOSK_ALLOWED_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        ("GET", "/api/v1/auth/me"),
+        ("POST", "/api/v1/auth/kiosk"),
+        ("POST", "/api/v1/auth/kiosk/exit"),
+        ("GET", "/api/v1/class-sessions"),
+        ("GET", "/api/v1/class-sessions/{session_id}"),
+        ("GET", "/api/v1/attendance"),
+        ("POST", "/api/v1/attendance"),
+        ("DELETE", "/api/v1/attendance/{attendance_id}"),
+        ("GET", "/api/v1/members"),
+        ("GET", "/api/v1/attachments/{attachment_id}"),
     }
 )
 DEVICE_TOKEN_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset({("GET", "/api/v1/tv/today")})

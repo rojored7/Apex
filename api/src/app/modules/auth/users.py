@@ -53,7 +53,7 @@ from app.core.security import (
     hash_opaque_token,
     hash_password,
 )
-from app.modules.auth import links, mail_texts, rules, tokens
+from app.modules.auth import kiosk, links, mail_texts, rules, tokens
 from app.modules.auth.events import (
     PasswordChanged,
     SessionsRevoked,
@@ -289,7 +289,9 @@ async def _fresh_user(
     return await session.scalar(consulta.execution_options(populate_existing=True))
 
 
-async def me(session: AsyncSession, principal: Principal) -> MeOut:
+async def me(
+    session: AsyncSession, principal: Principal, refresh_token: str | None = None
+) -> MeOut:
     """S2-D14: el usuario vigente (el cargador ya lo validó) y el nombre del gimnasio."""
     usuario = await _fresh_user(session, principal.user_id)
     if usuario is None:  # el cargador lo acaba de leer; solo una carrera llega aquí
@@ -301,6 +303,7 @@ async def me(session: AsyncSession, principal: Principal) -> MeOut:
         member_id=usuario.member_id,
         gym_name=await settings_service.gym_name(session),
         must_change_password=usuario.must_change_password,
+        kiosk_path=await kiosk.kiosk_path_of(session, usuario.id, refresh_token),
     )
 
 

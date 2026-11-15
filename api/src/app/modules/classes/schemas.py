@@ -245,3 +245,37 @@ class CheckinMembership:
     plan_name: str | None
     end_date: date | None
     classes_remaining: int | None
+
+
+# Reportes de asistencia (S7-R1, US-162; S7-D15, M-5) ----------------------------------------
+
+
+class SlotBucket(BaseModel):
+    """Una franja dentro de una semana del resumen. Las sesiones extra (`slot_id` nulo) se juntan
+    en una sola con `label = "Extra"`. `occupancy_pct` es entero (asistencias / cupo, redondeo
+    al más cercano) y vale 0 con cupo 0."""
+
+    slot_id: UUID | None
+    label: str
+    start_time: str | None
+    sessions: int
+    attendance: int
+    flagged: int
+    capacity_sum: int
+    occupancy_pct: int
+
+
+class WeekBucket(BaseModel):
+    """Una semana ISO de Bogotá (lunes a domingo): total de asistencias, marcadas y franjas."""
+
+    week: str
+    week_start: date
+    total: int
+    flagged: int
+    slots: list[SlotBucket]
+
+
+class AttendanceSummary(BaseModel):
+    """`GET /attendance/summary`: una entrada por semana del rango, también las vacías."""
+
+    weeks: list[WeekBucket]

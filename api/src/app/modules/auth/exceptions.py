@@ -58,6 +58,15 @@ class InvalidCurrentPassword(DomainError):
     default_message = "La contraseña actual no es correcta."
 
 
+class InvalidPassword(DomainError):
+    """`POST /auth/kiosk/exit` con la contraseña errada (S7-D41): no suma al bloqueo de la
+    cuenta; el tope propio da 429."""
+
+    status = 401
+    code = "invalid_password"
+    default_message = "La contraseña no es correcta."
+
+
 INVALID_TOKEN_MESSAGE = "El enlace ya no es válido. Pide uno nuevo al administrador."  # noqa: S105
 
 

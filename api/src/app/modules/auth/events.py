@@ -76,7 +76,33 @@ class PasswordChanged(DomainEvent):
     via_link_issued_by: UUID | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class KioskEntered(DomainEvent):
+    """La sesión del usuario quedó confinada a `path` (S7-D41; la ruta no es un dato personal)."""
+
+    user_id: UUID
+    path: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class KioskExited(DomainEvent):
+    """Salida del quiosco con la contraseña (S7-D41)."""
+
+    user_id: UUID
+
+
+@dataclass(frozen=True, kw_only=True)
+class KioskExitFailed(DomainEvent):
+    """Contraseña errada al salir del quiosco: no suma al bloqueo de la cuenta (S7-D41). Nunca
+    lleva la contraseña tecleada."""
+
+    user_id: UUID
+
+
 __all__ = [
+    "KioskEntered",
+    "KioskExitFailed",
+    "KioskExited",
     "LoginAttempted",
     "LoginFailureReason",
     "PasswordChangeVia",

@@ -277,7 +277,11 @@ async def _filtered(session: AsyncSession, query: AttendanceListQuery) -> Select
     consulta = select(Attendance).where(Attendance.removed_at.is_(None))
     termino = clean_query(query.q)
     if termino:
-        ids = await members_service.search_ids(session, termino)
+        # R1b L2: en la ficha de un socio (`member_id`) la búsqueda incluye a los dados de baja
+        # (N-20); en la lista general sigue sin ellos.
+        ids = await members_service.search_ids(
+            session, termino, include_deleted=query.member_id is not None
+        )
         if not ids:
             return None
         consulta = consulta.where(Attendance.member_id.in_(ids))

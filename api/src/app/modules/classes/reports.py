@@ -16,10 +16,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Subquery, cast, func, select
+from sqlalchemy import Date, DateTime, Select, Subquery, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
@@ -140,15 +140,32 @@ def weekly_summary(rows: Iterable[SummaryRow], weeks: Sequence[date] = ()) -> li
     return salida
 
 
-def _live_by_session() -> Subquery:
-    """Asistencias vivas y marcadas por sesión (subconsulta; la base las suma por semana)."""
+def _sessions_in_range(from_day: date, to_day: date, now: datetime) -> Select[Any]:
+    """Ids de las sesiones que el resumen cuenta: programadas, ya empezadas y con
+    `session_date` en `[from_day, to_day]` (los mismos predicados de `summary_rows`)."""
+    return select(ClassSession.id).where(
+        ClassSession.status == "scheduled",
+        ClassSession.session_date >= from_day,
+        ClassSession.session_date <= to_day,
+        ClassSession.starts_at <= now,
+    )
+
+
+def _live_by_session(from_day: date, to_day: date, now: datetime) -> Subquery:
+    """Asistencias vivas y marcadas por sesión (subconsulta; la base las suma por semana).
+
+    Acotada a las sesiones del rango (R1b, M1): PG16 no empuja el filtro del `LEFT JOIN` dentro
+    del `GROUP BY`, y sin este `IN` la subconsulta agrupaba toda la historia de asistencias."""
     return (
         select(
             Attendance.session_id.label("session_id"),
             func.count().label("n"),
             func.count().filter(func.cardinality(Attendance.flags) > 0).label("marcadas"),
         )
-        .where(Attendance.removed_at.is_(None))
+        .where(
+            Attendance.removed_at.is_(None),
+            Attendance.session_id.in_(_sessions_in_range(from_day, to_day, now)),
+        )
         .group_by(Attendance.session_id)
         .subquery()
     )
@@ -160,7 +177,7 @@ async def summary_rows(
     """Una consulta: sesiones programadas que ya empezaron en `[from_day, to_day]` (días de
     Bogotá, `session_date`), con sus asistencias vivas contadas por sesión y sumadas por semana
     ISO y franja. Todo valor va ligado."""
-    vivas = _live_by_session()
+    vivas = _live_by_session(from_day, to_day, now)
     semana = cast(func.date_trunc("week", cast(ClassSession.session_date, DateTime)), Date)
     consulta = (
         select(

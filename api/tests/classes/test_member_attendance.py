@@ -128,3 +128,32 @@ async def test_acepta_q_como_toda_lista(session: AsyncSession) -> None:
     await make_attendance(session, clase, socio.id)
     assert (await service.member_attendance(session, socio.id, PageParams(), q="Lucía")).total == 1
     assert (await service.member_attendance(session, socio.id, PageParams(), q="Zzzzz")).total == 0
+
+
+async def test_q_sobre_un_socio_dado_de_baja_encuentra_sus_asistencias(
+    session: AsyncSession,
+) -> None:
+    """R1b L2: la ficha de un socio dado de baja (N-20) también filtra por `q`; antes
+    `search_ids` excluía las bajas y daba 0 filas con cualquier `q`."""
+    baja = await make_member(
+        session,
+        document=unique_document(),
+        phone=None,
+        email=None,
+        deleted_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    clase = await make_session(session, starts_at=BASE)
+    await make_attendance(session, clase, baja.id)
+    pagina = await service.member_attendance(session, baja.id, PageParams(), q=baja.first_name)
+    assert pagina.total == 1
+    otra = await service.member_attendance(session, baja.id, PageParams(), q="zzzninguno")
+    assert otra.total == 0
+
+
+async def test_q_de_la_ficha_no_trae_asistencias_de_otro_socio(session: AsyncSession) -> None:
+    uno, otro = await make_members(session, 2)
+    clase = await make_session(session, starts_at=BASE)
+    await make_attendance(session, clase, uno.id)
+    await make_attendance(session, clase, otro.id)
+    pagina = await service.member_attendance(session, uno.id, PageParams(), q=otro.first_name)
+    assert all(i.member_id == uno.id for i in pagina.items)

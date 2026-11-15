@@ -38,3 +38,25 @@ async def test_resumen_de_26_semanas_bajo_500_ms(session: AsyncSession) -> None:
     ms = (time.perf_counter() - t0) * 1000
     assert len(resumen.weeks) == 26 and resumen.weeks[0].total > 0
     assert ms < 500, f"{ms:.0f} ms"
+
+
+async def test_resumen_con_dos_anios_de_historia_fuera_del_rango_sigue_bajo_500_ms(
+    session: AsyncSession,
+) -> None:
+    """R1b L1: 104 semanas previas con miles de asistencias; el resumen del rango no las lee."""
+    socios = await make_members(session, 12)
+    inicio = datetime(2026, 4, 27, 11, 0, tzinfo=UTC)
+    for semana in range(-104, 26):
+        for franja in range(3):
+            clase = await make_session(
+                session, starts_at=inicio + timedelta(weeks=semana, hours=franja * 3)
+            )
+            for socio in socios:
+                await make_attendance(session, clase, socio.id)
+    hasta = LUNES + timedelta(days=7 * 26 - 1)
+    await service.attendance_summary(session, LUNES, hasta)  # calentamiento
+    t0 = time.perf_counter()
+    resumen = await service.attendance_summary(session, LUNES, hasta)
+    ms = (time.perf_counter() - t0) * 1000
+    assert len(resumen.weeks) == 26
+    assert ms < 500, f"{ms:.0f} ms"

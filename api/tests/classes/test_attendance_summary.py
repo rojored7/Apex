@@ -234,3 +234,50 @@ async def test_consume_la_cubeta_staff_read(
     for _ in range(tope):
         assert (await app_http.get(RUTA, params=params, headers=h)).status_code == 200
     assert (await app_http.get(RUTA, params=params, headers=h)).status_code == 429
+
+
+async def _consulta_del_resumen(session: AsyncSession) -> str:
+    motor = session.get_bind()
+    consultas: list[str] = []
+
+    def _anota(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            consultas.append(statement)
+
+    event.listen(motor, "before_cursor_execute", _anota)
+    try:
+        await service.attendance_summary(session, DESDE, HASTA)
+    finally:
+        event.remove(motor, "before_cursor_execute", _anota)
+    assert len(consultas) == 1, consultas
+    return consultas[0].lower()
+
+
+async def test_la_subconsulta_de_asistencias_queda_acotada_al_rango(session: AsyncSession) -> None:
+    """R1b M1/L1: la subconsulta que cuenta asistencias vivas solo lee las sesiones del rango
+    (`session_date`, `scheduled`, ya empezadas); sin eso agrupa toda la historia (PG16 no empuja
+    el filtro del `LEFT JOIN` dentro del `GROUP BY`) y el costo crece con los años."""
+    texto = await _consulta_del_resumen(session)
+    sub = texto.split("from classes.attendance", 1)[1].split("group by", 1)[0]
+    assert "classes.class_sessions" in sub and "session_date" in sub, sub
+    assert "status" in sub and "starts_at" in sub, sub
+
+
+async def test_la_historia_fuera_del_rango_no_cambia_el_resultado(session: AsyncSession) -> None:
+    """R1b L1: dos años de historia fuera del rango (y sesiones futuras con asistencias) no
+    cuentan, y el resumen del rango sale igual que sin ellas."""
+    franja = await make_slot(session, name="WOD")
+    socios = await make_members(session, 6)
+    clase = await make_session(session, slot_id=franja.id, starts_at=LUNES_43, capacity=20)
+    for socio in socios[:3]:
+        await make_attendance(session, clase, socio.id)
+    antes = await service.attendance_summary(session, DESDE, HASTA)
+    for semana in range(1, 105):
+        vieja = await make_session(
+            session, slot_id=franja.id, starts_at=LUNES_42 - timedelta(weeks=semana), capacity=20
+        )
+        for socio in socios:
+            await make_attendance(session, vieja, socio.id)
+    despues = await service.attendance_summary(session, DESDE, HASTA)
+    assert despues == antes
+    assert despues.weeks[1].total == 3

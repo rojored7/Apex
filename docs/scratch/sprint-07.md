@@ -367,3 +367,15 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
 - Sello `slice-gate.sh auth` (todos los `tests/auth` + `test_openapi_export` + `test_jwt` + `test_require_role` + `test_0031` + `test_db_grants` + `test_api_role_paths` + `test_router_reveal` + `tests/architecture`): 1846 passed, 1 skipped, exit 0. ruff y mypy limpios.
 - Prueba viva (8181; sin la contraseña del admin de desarrollo se acuñaron dos access desde el contenedor del api, con y sin `kiosk`, en archivos con `umask 077`, borrados; nunca impresos): `POST /members/{id}/reveal` 404 sin la marca (llega al service) y 403 con ella; `GET /members/export` 403; `GET /members?q=` 200; `GET /auth/me` 200; `POST /auth/kiosk` con ruta mala 422, sin cookie 401; `POST /auth/kiosk/exit` sin cookie 401; sin token 401. El flujo con cookie (entrar, rotar, salir, 429) lo cubren las 17 pruebas de `test_kiosk.py`.
+
+## S7-R1b · Correcciones de la revisión de R1 (M1, L1, L2, L3)
+
+### Rojo
+- Sin migración (no hubo `$DC stop`). Pruebas nuevas: `test_attendance_summary.py` (la subconsulta compilada de asistencias debe contener `class_sessions`, `session_date`, `status` y `starts_at`; dos años de historia fuera del rango no cambian el resultado), `test_perf_summary.py` (104 semanas previas con miles de asistencias, bajo 500 ms; `perf`), `test_member_attendance.py` (`q` sobre un socio dado de baja; `q` de otro socio no trae sus asistencias). Sin el arreglo: 2 failed (la subconsulta no estaba acotada: sin `class_sessions` dentro del `SELECT ... FROM classes.attendance ... GROUP BY`; y `assert 0 == 1` por la baja con `q`) y 33 passed (las pruebas de resultado y de tiempo pasan de entrada: con la base de prueba pequeña el plan no se degrada; el rojo del MEDIUM es el SQL compilado).
+
+### Verde
+- `reports._sessions_in_range` y `_live_by_session(from_day, to_day, now)` (`IN` con los mismos predicados de `summary_rows`); `attendance._filtered`: `include_deleted` con `member_id`. DECISIONES (d) a (g) y US-162.
+
+### Evidencia (R1b)
+- Las cuatro suites de `tests/classes` tocadas: 41 passed (incluye `perf`). ruff y mypy limpios.
+- Sello `slice-gate.sh classes` (todos los `tests/classes` salvo perf + `tests/architecture`): 1193 passed, exit 0. El api de desarrollo recarga solo (sin migración).

@@ -76,6 +76,7 @@ Característica: Reportes de asistencia
 
 - Supuesto: el resumen semanal es `GET /attendance/summary`; ningún documento nombra el endpoint del reporte por semana.
 - Supuesto: límite de 26 semanas por consulta de resumen.
+- Supuesto (S7-R1b): el resumen cuenta solo sesiones `scheduled` que ya empezaron dentro del rango; no es el total de asistencias del periodo (las de una sesión cancelada después del check-in, por ejemplo, no suman). La lista `GET /attendance` sí las muestra mientras estén vivas.
 
 ## Dependencias
 

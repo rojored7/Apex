@@ -8,7 +8,8 @@ Reexporta lo público de los archivos privados del módulo:
   `cancel_session`; `rules.py`: `parse_week`, `week_range`, `week_of`, `session_status`.
 - `attendance.py` (S7-C1, US-159): `check_in`, `list_attendance`, el puerto de membresías
   (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`;
-  `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba; lo emite C3).
+  `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba) y
+  `remove_attendance` (C3, US-161), que lo emite.
 Los reportes llegan con R1.
 """
 
@@ -19,6 +20,7 @@ from app.modules.classes.attendance import (
     check_in,
     list_attendance,
     membership_port,
+    remove_attendance,
     set_membership_port,
 )
 from app.modules.classes.events import (
@@ -71,6 +73,7 @@ __all__ = [
     "membership_port",
     "parse_week",
     "planned_sessions",
+    "remove_attendance",
     "session_status",
     "set_membership_port",
     "update_slot",

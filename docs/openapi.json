@@ -117,6 +117,27 @@
         "title": "AttendanceCreate",
         "type": "object"
       },
+      "AttendanceRemove": {
+        "additionalProperties": false,
+        "description": "Cuerpo opcional de `DELETE /attendance/{id}` (S7-D13): el motivo, de 1 a 200. Va en el\ncuerpo y no en la consulta para que no quede en los logs de Nginx.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "AttendanceRemove",
+        "type": "object"
+      },
       "AttendanceRowOut": {
         "description": "Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados.",
         "properties": {
@@ -7440,6 +7461,119 @@
           }
         },
         "summary": "Check In",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/attendance/{attendance_id}": {
+      "delete": {
+        "operationId": "remove_attendance_api_v1_attendance__attendance_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attendance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attendance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AttendanceRemove"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Remove Attendance",
         "tags": [
           "classes"
         ]

@@ -45,6 +45,7 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S7-D19 (S7-W0-4): `classes-write` y `attendance-write` se registran sin ruta; la dan B1/B2 y C3.
 # S7-A2 (US-155): `classes-write` ya tiene ruta (`POST` y `PATCH /class-slots`).
 # S7-C1 (US-159): `attendance-write` tiene ruta (`POST /attendance`).
+# S7-C3 (US-161): `DELETE /attendance/{id}` también la consume.
 CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
 
 

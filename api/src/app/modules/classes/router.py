@@ -19,6 +19,8 @@ Asistencia (S7-C1, US-159), admin y coach:
 - `POST /attendance`: 201 `CheckinOut`; `attendance-write`. Siempre registra y devuelve `flags`
   (nunca 409 ni 422 por cupo, hora, día o membresía, N-38/N-39); los únicos 409 son
   `already_checked_in` y `session_cancelled`. Códigos 201, 401, 403, 404, 409, 422 y 429.
+- `DELETE /attendance/{id}`: 204; cuerpo JSON opcional `{reason}`; `attendance-write`. Borrado
+  lógico auditado como `update`; el coach solo de hoy o ayer (403 `attendance_locked`). S7-C3.
 - `GET /attendance`: `Page[AttendanceRowOut]` (`member_id`, `session_id`, `flagged`, `from`, `to`
   sobre `checked_in_at`); `staff-read`. Códigos 200, 401, 403, 422 y 429.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
@@ -30,7 +32,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query, Request
 from pydantic import AwareDatetime
 
 from app.core.db import SessionDep
@@ -43,6 +45,7 @@ from app.modules.classes import service
 from app.modules.classes.schemas import (
     AttendanceCreate,
     AttendanceListQuery,
+    AttendanceRemove,
     AttendanceRowOut,
     CancelFutureOut,
     CheckinOut,
@@ -209,3 +212,19 @@ async def list_attendance(
         q=q,
     )
     return await service.list_attendance(session, filters, page)
+
+
+@router.delete(
+    "/attendance/{attendance_id}", status_code=204, responses=responses_for(404, 422, 429)
+)
+async def remove_attendance(
+    request: Request,
+    attendance_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    body: Annotated[AttendanceRemove | None, Body()] = None,
+) -> None:
+    await enforce_user_limit(request, "attendance-write", principal.user_id)
+    await service.remove_attendance(
+        session, attendance_id, body, by=principal.user_id, role=principal.role
+    )

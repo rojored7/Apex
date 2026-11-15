@@ -150,6 +150,7 @@ CON_LIMITE = {
     ("post", "/api/v1/class-slots/{slot_id}/cancel-future-sessions"),
     # S7-C1 (US-159, S7-D12): el check-in consume `attendance-write`; la lista, `staff-read`.
     ("post", "/api/v1/attendance"),
+    ("delete", "/api/v1/attendance/{attendance_id}"),
     ("get", "/api/v1/attendance"),
 }
 PLANES_B7 = {

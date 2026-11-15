@@ -110,5 +110,21 @@ class CheckinSessionCancelled(ClassError):
     default_message = "La sesión está cancelada."
 
 
+class AttendanceNotFound(ClassError):
+    """No hay asistencia viva con ese id (nunca existió o ya se quitó; US-161 CA3): 404."""
+
+    status = 404
+    code = "attendance_not_found"
+    default_message = "No existe esa asistencia."
+
+
+class AttendanceLocked(ClassError):
+    """El coach solo quita asistencias de sesiones de hoy o de ayer en Bogotá (S7-D27 b): 403."""
+
+    status = 403
+    code = "attendance_locked"
+    default_message = "Solo un administrador puede quitar la asistencia de una clase de otro día."
+
+
 class MembershipPortNotRegistered(RuntimeError):
     """Nadie registró el puerto de membresías (S7-D6): el check-in falla cerrado y no escribe."""

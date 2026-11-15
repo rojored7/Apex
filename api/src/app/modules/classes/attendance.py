@@ -39,19 +39,22 @@ from app.core.locks import lock_member
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import clean_query
 from app.core.validators import check_instant_range
-from app.modules.classes.events import MemberCheckedIn
+from app.modules.classes.events import AttendanceRemoved, MemberCheckedIn
 from app.modules.classes.exceptions import (
     AlreadyCheckedIn,
+    AttendanceLocked,
+    AttendanceNotFound,
     CheckinSessionCancelled,
     ClassValidationError,
     MembershipPortNotRegistered,
     SessionNotFound,
 )
 from app.modules.classes.models import ATTENDANCE_UNIQUE_ALIVE, Attendance, ClassSession
-from app.modules.classes.rules import checkin_flags, checkin_on_date
+from app.modules.classes.rules import checkin_flags, checkin_on_date, is_other_day
 from app.modules.classes.schemas import (
     AttendanceCreate,
     AttendanceListQuery,
+    AttendanceRemove,
     AttendanceRowOut,
     CheckinMembership,
     CheckinOut,
@@ -187,6 +190,71 @@ async def check_in(session: AsyncSession, data: AttendanceCreate, *, by: UUID) -
         attendance_count=presentes + 1,
         capacity=clase.capacity,
     )
+
+
+async def _lock_alive_attendance(session: AsyncSession, attendance_id: UUID) -> Attendance:
+    """La asistencia viva bloqueada `FOR UPDATE` (404 si no existe o ya se quitó).
+    `populate_existing`: el estado que dejó un borrado concurrente manda."""
+    fila = await session.scalar(
+        select(Attendance)
+        .where(Attendance.id == attendance_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if fila is None or fila.removed_at is not None:
+        raise AttendanceNotFound()
+    return fila
+
+
+async def remove_attendance(
+    session: AsyncSession,
+    attendance_id: UUID,
+    data: AttendanceRemove | None,
+    *,
+    by: UUID,
+    role: str,
+) -> None:
+    """Quita una asistencia: borrado lógico auditado como `update` (US-161, S7-D13, S7-D27 b).
+
+    Una transacción, en este orden de candados (S7-D40, revisión de C2): socio (`lock_member`,
+    para que el handler de memberships no corra su `find_overlap` contra una venta paralela del
+    mismo socio), asistencia (`FOR UPDATE`; 404 si no existe o ya se quitó), membresía (el
+    puerto la bloquea antes de emitir) y recién entonces el `UPDATE` auditado, que toma la
+    cadena. El coach solo quita de sesiones de hoy o de ayer en Bogotá (403 `attendance_locked`);
+    el admin, de cualquiera, también de una `cancelled`. El motivo (opcional) no viaja en el
+    evento: es texto libre (S3-D70)."""
+    previa = await session.scalar(
+        select(Attendance.member_id).where(Attendance.id == attendance_id)
+    )
+    if previa is None:
+        raise AttendanceNotFound()
+    await lock_member(session, previa)
+    fila = await _lock_alive_attendance(session, attendance_id)
+    reloj = current_clock()
+    if role != "admin":
+        dia = await session.scalar(
+            select(ClassSession.session_date).where(ClassSession.id == fila.session_id)
+        )
+        if dia is None or is_other_day(dia, reloj.today_bogota()):
+            raise AttendanceLocked()
+    if fila.membership_id is not None:
+        port = membership_port()
+        if port is None:
+            raise MembershipPortNotRegistered("classes: MembershipPort sin registrar")
+        await port.lock(session, fila.membership_id)
+    fila.removed_at = reloj.now_utc()
+    fila.removed_by = by
+    fila.removed_reason = data.reason if data is not None else None
+    await session.flush()
+    evento = AttendanceRemoved(
+        attendance_id=fila.id,
+        session_id=fila.session_id,
+        member_id=fila.member_id,
+        membership_id=fila.membership_id,
+        membership_status=fila.membership_status_at_checkin,
+    )
+    await events.emit(evento, session)
+    logger.info("classes: asistencia quitada", extra={"session_id": str(fila.session_id)})
 
 
 def _check_range(query: AttendanceListQuery) -> None:

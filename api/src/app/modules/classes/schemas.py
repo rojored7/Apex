@@ -184,6 +184,15 @@ class AttendanceCreate(BaseModel):
     member_id: UUID
 
 
+class AttendanceRemove(BaseModel):
+    """Cuerpo opcional de `DELETE /attendance/{id}` (S7-D13): el motivo, de 1 a 200. Va en el
+    cuerpo y no en la consulta para que no quede en los logs de Nginx."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: Annotated[SafeText, Field(min_length=1, max_length=200)] | None = None
+
+
 class CheckinOut(BaseModel):
     """201 del check-in. `flagged` se deriva de `flags` (`len(flags) > 0`)."""
 

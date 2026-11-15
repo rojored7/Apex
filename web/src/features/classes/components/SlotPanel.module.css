@@ -1,0 +1,110 @@
+/* S7-F2: panel de franja de Horario.html. Solo variables de tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.days {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.dayRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* El texto «L M X…» es la marca visible; el estado marcado se ve por color y por borde grueso. */
+.day {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--control);
+  height: var(--control);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-label);
+  cursor: pointer;
+}
+
+.dayOn {
+  border-color: var(--apex-blue);
+  border-width: 2px;
+  background: var(--apex-blue);
+  color: var(--black);
+}
+
+.dayInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.day:focus-within {
+  outline: 2px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-caption);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+.check input {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}

@@ -148,7 +148,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel", { load: () => import("../features/memberships/pages/SellPage") }),
   route("/pagos", "Pagos", "payments", "payments.view", "panel", { load: () => import("../features/payments/pages/PaymentsPage") }),
   route("/clases", "Clases", "classes", "classes.view", "panel"),
-  route("/clases/horario", "Horario", "classes", "classes.schedule", "panel"),
+  // S7-F2 (US-155, US-158): horario semanal, solo admin.
+  route("/clases/horario", "Horario", "classes", "classes.schedule", "panel", { load: () => import("../features/classes/pages/SchedulePage") }),
   route("/clases/asistencia", "Asistencia", "classes", "classes.view", "panel"),
   route("/clases/:id/checkin", "Check-in", "classes", "classes.view", "gym"),
   route("/clases/:id/resultados", "Registro de resultados", "results", "results.record", "gym"),

@@ -78,12 +78,12 @@ describe("router de la app", () => {
     expect(loadSocios).toHaveBeenCalledTimes(1);
   });
 
-  it("/clases con classes deshabilitada da No encontrada y su import no se ejecuta", async () => {
+  it("/mi con portal deshabilitada da No encontrada y su import no se ejecuta", async () => {
     signInAs("admin");
-    renderAt("/clases");
+    renderAt("/mi");
 
     expect(await screen.findByRole("heading", { level: 1, name: "No encontrada" })).toBeInTheDocument();
-    expect(loadClases).not.toHaveBeenCalled();
+    expect(loadMi).not.toHaveBeenCalled();
   });
 
   it("/hoy da No encontrada", async () => {

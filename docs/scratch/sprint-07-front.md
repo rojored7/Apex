@@ -22,3 +22,25 @@ y el rojo de 6 pruebas lo delató. Corregido con Edit.
 Evidencia:
 - `slice-gate.sh web/system` (22 pruebas nuevas): exit 0. Sello `web/layouts` con `nav.test.ts`: exit 0.
 - Suite completa (214 archivos), lint, tsc y build: verdes. Dos pruebas dependientes (`PanelLayout`, `shells`) se actualizaron por la entrada «Por avisar hoy» del coach.
+
+## S7-F2 · Horario: franjas y cancelar sesiones futuras (US-155, US-158, S7-D9, BRECHAS 15.5)
+
+Rojo (antes del código): `SchedulePage.test.tsx`, `SlotPanel.test.tsx` y `CancelFutureModal.test.tsx` no resolvían el import
+(3 archivos fallidos, 0 pruebas ejecutadas).
+
+Verde:
+- `features/classes/`: `api.ts` (`useSlots`, `useCreateSlot`, `useUpdateSlot`, `useCancelFutureSessions`, `useCoachCandidates`; Zod en cada respuesta),
+  `schemas.ts` (días 0 a 6, `HH:MM`, duración 15 a 240, cupo 1 a 100; PATCH solo con lo cambiado), `classErrors.ts` (409 `slot_conflict` bajo los días,
+  `coach_invalid` bajo el coach, 404/403/429/5xx).
+- `components/{ClassesTabs,SlotPanel,CancelFutureModal}.tsx`, `pages/SchedulePage.tsx` (tabla paginada en el servidor, «L M X J V», «Open box · sin coach»,
+  «Pausada»; el coach ve «No tienes permiso para ver el horario» y no pide nada).
+- `config/features.ts` habilita `classes`; `routeTable.ts` carga `/clases/horario`; códigos de error nuevos en `errorCodes.ts`.
+- Pruebas dependientes actualizadas por habilitar `classes` (aparecen «Clases de hoy» y «Clases» en el menú): `features.test`, `routes.test`,
+  `routes.render.test` (la prueba de ruta deshabilitada pasa a `/mi`), `nav.test`, `shells.test`, `PanelLayout.test` (13 paradas de tabulación).
+
+DESIGN-GAP anotados: «cuántas sesiones se cancelarán» antes de confirmar (el api solo responde el conteo al cancelar; el aviso lo da después);
+aviso «Al guardar se regeneran las sesiones futuras» reemplazado por el de Q23 (BRECHAS 15.5 queda cerrada). El coach de la franja se muestra por
+correo (GET /users no trae nombre).
+
+Tropiezo: la regla de lint `no-role-literals` frenó `user.role !== "member"` en `useCoachCandidates`; ahora filtra con `can(role, "classes.view")`.
+Tropiezo del entorno: los heredocs de Git Bash con comillas fallaron en bloque; los archivos se escribieron con la herramienta Write.

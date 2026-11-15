@@ -466,3 +466,11 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Cancelar una sesión (`POST /class-sessions/{id}/cancel`): `status = cancelled`. `POST /class-slots/{id}/cancel-future-sessions` de la franja del sábado: 200, `cancelled_count = 2`. Estado final de las dos franjas nuevas: 3 `cancelled`, 1 `scheduled`; otra corrida del job: `creadas = 0` (no recrea las canceladas); total con franja 14.
 - `GET /class-sessions?week=2026-W47&limit=100`: 200, total 7 (5 `scheduled`, 2 `cancelled`). `week=bad`: 422 `validation_error` en el campo `week`.
 - Hallazgos de uso: el login por curl exige la cabecera `Origin: http://localhost:8180` (sin ella, 403); el coach válido necesita `password_hash` (3 coaches vivos, 1 sin activar da `coach_invalid`).
+
+## V3 · Stack de producción en Linux (prod-smoke, 2026-11-15)
+
+- Árbol de `ea68d80` por `git archive` en el volumen `apex-b4-work`, auxiliar `docker:cli` con el socket y `--network host`; imágenes `apex-api:local` y `apex-web:local` con `GIT_SHA=ea68d80…` (`--no-build`).
+- `SMOKE_DOWN=1 SMOKE_WEB_PORT=8380 prod-smoke.sh --no-build`: EXIT 0, 233 ok, «prod-smoke: todo en verde» (08:00 a 08:05 UTC).
+- Igual con `--provider openbao`: EXIT 0, 252 ok, «todo en verde» (08:05 a 08:10 UTC), con `openbao-smoke.sh` y `openbao_restore_e2e` en verde.
+- Cubre: el api no ve `sign/` ni `sign-ed25519.key`; el worker ve `custody` y `sign` (sin `jwt/`); `--run-once sign_audit` firma con la llave de `sign/`; roles `apex_api` y `apex_worker` sin privilegios de superusuario y con sus permisos por tabla; migración de layout y `--reverse`; respaldo y restauración. Las escrituras por rol real de `original_end_date`, `removed_*` y el INSERT de sesiones del worker las prueban `tests/migrations/test_api_role_paths.py` y `test_worker_role_paths.py` (gate V1 en verde).
+- Limpieza: `apex-smoke` bajado por el propio guion (`SMOKE_DOWN=1`), auxiliar borrado, ningún contenedor `*smoke*` vivo.

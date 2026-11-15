@@ -81,3 +81,25 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - Gate no sellante `slice-gate.sh architecture` + `test_user_limits_catalog`, `test_no_cross_schema_sql`, `test_audited_tables`: 853 passed en 109,4 s (el primer intento dio 1 failed por el límite de 800 líneas).
 - P-REBUILD 1: `$DC up -d --no-build api worker` (el compose cambió, hace falta recrear): api healthy, `/health` = `status ok, db ok, migrations ok, crypto ok`, `alembic current` = `0031_refresh_kiosk_path (head)` (el slice no lleva migración), y el entorno del api trae `USER_WODS_WRITE_LIMIT_PER_MIN=30`, `USER_RESULTS_WRITE_LIMIT_PER_MIN=60`, `TV_IP_LIMIT=12` y `TV_TOKEN_LIMIT=30`. `apex-migracion.flag` tomada al empezar y borrada tras el reinicio.
 - Sello: `slice-gate.sh core/ratelimit tests/core/test_ratelimit.py tests/core/test_config.py tests/core/test_env_example.py tests/core/test_db.py tests/core/test_migrations.py` (ruff, mypy y pruebas; ver el reporte).
+
+## S8-A1 · Movimientos (US-165, S8-D5) · 0032
+
+### Rojo
+- `tests/migrations/test_0032_wods_movements.py` sin la revisión: 1 failed + 8 errors (`no existe la revisión 0032_wods_movements`).
+- Tras la migración y con stubs `NotImplementedError` (rules, movements) y router vacío: 31 failed (9 de `test_normalize_pure`, 12 de `test_movements_service` por `NotImplementedError`, 10 de `test_router_movements`: rutas ausentes) y 95 passed (la migración, ya escrita, 9 de 9).
+- Un primer rojo falso (29 errors) fue un `$$` mal escapado por mi script de edición en `LIMPIAR_MOVEMENTS` (`syntax error at or near "$"`); corregido antes de medir.
+
+### Verde
+- Migración `0032_wods_movements` (esquema `wods`, `wods.movements`, `uq_movements_name_norm`, 4 CHECK, `wods.forbid_mutation()` y 2 triggers `ENABLE ALWAYS`), módulo `wods` (`rules`, `movements`, `models`, `schemas`, `exceptions`, `service`, `router`), `main.MODULES`, `APP_SCHEMAS`, `env.py`, `audit/queries.py`, P-ROL (las tres listas, REVOKE/USAGE por esquema: el worker sin USAGE sobre `wods`), P-CAT (`MODULOS_PENDIENTES`, `CLAVES_SIN_RUTA_TODAVIA`, `CON_LIMITE`, `MODULES`, `PRIVATE_HELPERS`, `PENDING_AUDITED`, conftest, `ALWAYS_TRIGGERS`, `test_no_physical_delete`, `test_0014` y `test_db_apply` fijaban listas de esquemas/tablas).
+- Desviaciones: (1) `wod_count` es 0 en A1 (`wod_movements` nace en A3) detrás de la costura `usage_counts`, una llamada por página (probado con un espía); `test_desactivar_no_cambia_wods` prueba solo `is_active` y A3 suma la parte de WODs. (2) El esquema se llama `CatalogMovementOut`: `MovementOut` ya existe en `dashboard` y el OpenAPI lo renombraba a `app__modules__dashboard__schemas__MovementOut`. (3) `name` se guarda con espacios internos colapsados (`clean_movement_name`). (4) No hay `events.py` (A1 no emite eventos).
+- grep de conftest propios que borran socios/usuarios/clases (`LIMPIAR_MEMBERS|DELETE FROM members|DELETE FROM classes|TRUNCATE` en `api/tests/*/conftest.py`): sin coincidencias; `wods.movements` no tiene FK.
+
+### Evidencia
+- Pruebas nuevas: 41 (10 puras, 12 de service, 10 de router, 9 de migración) y `test_wods_no_tiene_aristas_salientes_en_a1`.
+- `tests/core/test_migrations.py tests/migrations tests/core/test_db.py`: 2 failed al primer intento (`test_0014` inventario y `test_db_apply` conteo de tablas) por listas fijas; corregidas, 56 passed.
+- `ruff check .` y `ruff format --check .` de todo el api limpios (971 archivos); `mypy src` sin errores en 252 archivos.
+- Gate sellante `slice-gate.sh wods <10 archivos del plan>`: 1 169 passed en 143 s, exit 0.
+- P-API: `openapi.json` idéntico en dos corridas (+589 líneas, ninguna borrada), `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- P-MIG 5-7: `$DC start api` healthy, `alembic current` = `0032_wods_movements (head)`; `$DC start worker`; `downgrade -1` + `upgrade head` + `current` = 0032 (head); `\d wods.movements` con sus índices, CHECK y los dos triggers `tgenabled = A`; `wods.forbid_mutation` invoker.
+- Smoke por curl a 8181: `/health` ok/ok/ok/ok; `GET`, `POST` y `PATCH /api/v1/movements` sin token = 401; `/openapi.json` publica `/api/v1/movements` y `/api/v1/movements/{movement_id}`. Smoke con rol NO hecho: el arnés denegó acuñar un token de admin fuera del login y el dev no tiene contraseña conocida; los 41 casos con rol corrieron contra la base real en las pruebas.
+- Volcado previo: `docs/scratch/sprint-08-antes-0032.dump` (ignorado por git; se borra en V9).

@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes import service as classes_service
+from app.modules.results.attendance import session_attendance
 from app.modules.results.events import WodResultRecorded, WodResultValidated
 from app.modules.results.models import WodResult
 from app.modules.results.record import record_result, session_has_current_results
@@ -55,5 +56,6 @@ __all__ = [
     "WodResultValidated",
     "record_result",
     "results_probe",
+    "session_attendance",
     "session_has_current_results",
 ]

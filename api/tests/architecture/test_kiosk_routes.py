@@ -68,7 +68,7 @@ async def test_la_lista_blanca_existe_exige_rol_y_no_abre_nada_sensible(
     assert SENSIBLES <= rutas, sorted(SENSIBLES - rutas)
 
 
-def test_la_lista_blanca_es_la_del_checkin() -> None:
+def test_la_lista_blanca_es_la_del_checkin_y_los_resultados() -> None:
     assert KIOSK_ALLOWED_ROUTES == frozenset(
         {
             ("GET", f"{API}/auth/me"),
@@ -81,12 +81,18 @@ def test_la_lista_blanca_es_la_del_checkin() -> None:
             ("DELETE", f"{API}/attendance/{{attendance_id}}"),
             ("GET", f"{API}/members"),
             ("GET", f"{API}/attachments/{{attachment_id}}"),
+            ("GET", f"{API}/class-sessions/{{session_id}}/attendance"),
+            ("PUT", f"{API}/results"),
         }
     )
 
 
 CON_VENTANA = frozenset(
-    {("GET", f"{API}/class-sessions/{{session_id}}"), ("POST", f"{API}/attendance")}
+    {
+        ("GET", f"{API}/class-sessions/{{session_id}}"),
+        ("POST", f"{API}/attendance"),
+        ("GET", f"{API}/class-sessions/{{session_id}}/attendance"),
+    }
 )
 
 

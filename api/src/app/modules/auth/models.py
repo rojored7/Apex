@@ -78,7 +78,8 @@ class RefreshToken(CommonColumnsMixin, Base):
         Index("ix_refresh_tokens_user_id", "user_id"),
         CheckConstraint(
             "kiosk_path IS NULL OR kiosk_path ~ "
-            "'^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$'",
+            "'^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/"
+            "(checkin|resultados)$'",
             name="kiosk_path_shape",
         ),
         {"schema": "auth"},

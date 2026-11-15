@@ -385,6 +385,23 @@ export interface paths {
         patch: operations["assign_session_wod_api_v1_class_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/class-sessions/{session_id}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Attendance */
+        get: operations["session_attendance_api_v1_class_sessions__session_id__attendance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/class-sessions/{session_id}/cancel": {
         parameters: {
             query?: never;
@@ -1733,6 +1750,27 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * AttendanceResultRow
+         * @description Un asistente vivo de la clase y su resultado vigente en el WOD efectivo (S8-D14).
+         *
+         *     Solo nombre y apellido: ningún campo cifrado. `result` prellena la tablet y da el
+         *     `supersedes_id` de una corrección.
+         */
+        AttendanceResultRow: {
+            /** First Name */
+            first_name: string;
+            /** Has Result */
+            has_result: boolean;
+            /** Last Name */
+            last_name: string;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            result: components["schemas"]["ResultOut"] | null;
+        };
+        /**
          * AttendanceRowOut
          * @description Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados.
          */
@@ -2635,7 +2673,7 @@ export interface components {
         };
         /**
          * KioskIn
-         * @description `POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase.
+         * @description `POST /auth/kiosk` (S7-D41, S8-D15): la ruta del check-in o de los resultados.
          */
         KioskIn: {
             /** Path */
@@ -4253,6 +4291,22 @@ export interface components {
              */
             start_date: string;
             status: components["schemas"]["MembershipStatus"];
+        };
+        /**
+         * SessionAttendanceOut
+         * @description `GET /class-sessions/{session_id}/attendance` (S8-B3, US-169 CA1).
+         */
+        SessionAttendanceOut: {
+            /** Items */
+            items: components["schemas"]["AttendanceResultRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            session: components["schemas"]["SessionOut"];
+            /** Total */
+            total: number;
+            wod: components["schemas"]["WodOut"] | null;
         };
         /**
          * SessionCancel
@@ -6911,6 +6965,94 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    session_attendance_api_v1_class_sessions__session_id__attendance_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAttendanceOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

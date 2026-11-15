@@ -138,6 +138,47 @@
         "title": "AttendanceRemove",
         "type": "object"
       },
+      "AttendanceResultRow": {
+        "description": "Un asistente vivo de la clase y su resultado vigente en el WOD efectivo (S8-D14).\n\nSolo nombre y apellido: ningún campo cifrado. `result` prellena la tablet y da el\n`supersedes_id` de una corrección.",
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "has_result": {
+            "title": "Has Result",
+            "type": "boolean"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "member_id",
+          "first_name",
+          "last_name",
+          "has_result",
+          "result"
+        ],
+        "title": "AttendanceResultRow",
+        "type": "object"
+      },
       "AttendanceRowOut": {
         "description": "Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados.",
         "properties": {
@@ -2315,11 +2356,11 @@
       },
       "KioskIn": {
         "additionalProperties": false,
-        "description": "`POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase.",
+        "description": "`POST /auth/kiosk` (S7-D41, S8-D15): la ruta del check-in o de los resultados.",
         "properties": {
           "path": {
             "maxLength": 80,
-            "pattern": "^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$",
+            "pattern": "^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(checkin|resultados)$",
             "title": "Path",
             "type": "string"
           }
@@ -6642,6 +6683,53 @@
           "first_payment_id"
         ],
         "title": "SellMembershipOut",
+        "type": "object"
+      },
+      "SessionAttendanceOut": {
+        "description": "`GET /class-sessions/{session_id}/attendance` (S8-B3, US-169 CA1).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceResultRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "wod": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "session",
+          "wod",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SessionAttendanceOut",
         "type": "object"
       },
       "SessionCancel": {
@@ -11435,6 +11523,133 @@
         "summary": "Assign Session Wod",
         "tags": [
           "classes"
+        ]
+      }
+    },
+    "/api/v1/class-sessions/{session_id}/attendance": {
+      "get": {
+        "operationId": "session_attendance_api_v1_class_sessions__session_id__attendance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAttendanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Session Attendance",
+        "tags": [
+          "results"
         ]
       }
     },

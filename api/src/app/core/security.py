@@ -566,6 +566,8 @@ KIOSK_ALLOWED_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("DELETE", "/api/v1/attendance/{attendance_id}"),
         ("GET", "/api/v1/members"),
         ("GET", "/api/v1/attachments/{attachment_id}"),
+        ("GET", "/api/v1/class-sessions/{session_id}/attendance"),  # S8-D15: resultados
+        ("PUT", "/api/v1/results"),  # S8-D15, S8-D31: origen `kiosk`, misma sesión
     }
 )
 DEVICE_TOKEN_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset({("GET", "/api/v1/tv/today")})

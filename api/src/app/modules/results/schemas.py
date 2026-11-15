@@ -13,6 +13,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from app.modules.classes.schemas import SessionOut
+from app.modules.wods.schemas import WodOut
+
 ResultLevel = Literal["rx", "rx_plus", "scaled"]
 ResultStatus = Literal["validated", "pending"]
 ResultSource = Literal["desk", "kiosk"]
@@ -63,3 +66,27 @@ class ResultOut(BaseModel):
     source: ResultSource
     created_at: datetime
     updated_at: datetime
+
+
+class AttendanceResultRow(BaseModel):
+    """Un asistente vivo de la clase y su resultado vigente en el WOD efectivo (S8-D14).
+
+    Solo nombre y apellido: ningún campo cifrado. `result` prellena la tablet y da el
+    `supersedes_id` de una corrección."""
+
+    member_id: UUID
+    first_name: str
+    last_name: str
+    has_result: bool
+    result: ResultOut | None
+
+
+class SessionAttendanceOut(BaseModel):
+    """`GET /class-sessions/{session_id}/attendance` (S8-B3, US-169 CA1)."""
+
+    session: SessionOut
+    wod: WodOut | None
+    items: list[AttendanceResultRow]
+    total: int
+    limit: int
+    offset: int

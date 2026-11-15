@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import events
 from app.core.clock import current_clock
 from app.core.db import violated_constraint
+from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.modules.classes import service as classes_service
 from app.modules.members import service as members_service
@@ -49,6 +50,10 @@ from app.modules.wods import service as wods_service
 logger = logging.getLogger("app.results")
 
 SOURCES: Final = ("desk", "kiosk")
+KIOSK_SESSION_REQUIRED: Final = "En modo quiosco indica la clase (`session_id`)."
+KIOSK_CORRECTION_MESSAGE: Final = (
+    "En modo quiosco solo corriges los resultados que registraste en esta clase."
+)
 
 
 async def _current(session: AsyncSession, wod_id: UUID, member_id: UUID) -> WodResult | None:
@@ -87,9 +92,14 @@ async def _insert(session: AsyncSession, fila: WodResult) -> None:
 
 
 async def _checked_targets(
-    session: AsyncSession, data: ResultIn
+    session: AsyncSession, data: ResultIn, source: str
 ) -> tuple[classes_service.ResultSession | None, wods_service.WodScoring]:
-    """Pasos 1 a 5 del orden de candados: socio, sesión y WOD, con sus reglas."""
+    """Pasos 1 a 5 del orden de candados: socio, sesión y WOD, con sus reglas. En quiosco (S8-D31)
+    la clase es obligatoria y de hoy o de ayer."""
+    if source == "kiosk":
+        if data.session_id is None:
+            raise ResultValidationError(message=KIOSK_SESSION_REQUIRED, field="session_id")
+        await classes_service.ensure_kiosk_session(session, data.session_id)
     await members_service.ensure_exists(session, data.member_id)
     await lock_member(session, data.member_id)
     await members_service.ensure_exists(session, data.member_id)  # L-3
@@ -113,7 +123,7 @@ async def _checked_targets(
     return clase, wod
 
 
-async def _turn_off_previous(session: AsyncSession, data: ResultIn) -> None:
+async def _turn_off_previous(session: AsyncSession, data: ResultIn, source: str) -> None:
     """Paso 7 y 8 (primera mitad): el vigente `FOR UPDATE`; sin `supersedes_id` no puede haberlo
     (409 `result_exists`); con él, debe ser ese y se apaga antes del `INSERT`."""
     vigente = await _current(session, data.wod_id, data.member_id)
@@ -123,6 +133,8 @@ async def _turn_off_previous(session: AsyncSession, data: ResultIn) -> None:
         return
     if vigente is None or vigente.id != data.supersedes_id:
         raise InvalidSupersedes()
+    if source == "kiosk" and (vigente.source != "kiosk" or vigente.session_id != data.session_id):
+        raise ForbiddenError("kiosk_mode", KIOSK_CORRECTION_MESSAGE)  # S8-D31
     vigente.is_current = False
     await session.flush()
 
@@ -158,7 +170,7 @@ def _new_row(
 async def record_result(
     session: AsyncSession, data: ResultIn, *, by: UUID, source: str = "desk"
 ) -> ResultOut:
-    _clase, wod = await _checked_targets(session, data)
+    _clase, wod = await _checked_targets(session, data, source)
     score = validate_score(
         score_type=wod.score_type,
         time_cap_s=wod.time_cap_s,
@@ -171,7 +183,7 @@ async def record_result(
         scaled_movement_ids=data.scaled_movement_ids,
         wod_movement_ids=wod.movement_ids,
     )
-    await _turn_off_previous(session, data)
+    await _turn_off_previous(session, data, source)
     fila = _new_row(data, wod, score, by=by, source=source)
     await _insert(session, fila)
     recorded = WodResultRecorded(

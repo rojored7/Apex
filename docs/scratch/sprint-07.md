@@ -308,3 +308,4 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C3)
 - Sello `slice-gate.sh classes` (4 archivos + `tests/architecture`): 866 passed, exit 0.
+- Checkpoint `840a7e1`. Prueba viva (admin de desarrollo, token en `$TMPDIR` con `umask 077`, borrado al terminar): `DELETE /api/v1/attendance/15b833c9-9865-4daa-9f32-476e643394af` con `{"reason":"Prueba viva C3"}` dio 204; un segundo `DELETE` dio 404 `attendance_not_found`. En la base: `classes_remaining` de la membresía `04be2fc3-c805-46b9-aede-8f994ee63b39` pasó de 9 a 10 (`active`); la asistencia tiene `removed_at`, `removed_by` y `removed_reason` no nulos; `audit.audit_log` para esa asistencia: `6150 insert` y `6153 update`, ambas con `subject_member_id` del socio; la membresía suma 3 `update` y 1 `insert`. Quedan en la base de desarrollo las otras dos asistencias `none` del socio.

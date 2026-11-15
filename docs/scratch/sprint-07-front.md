@@ -128,3 +128,20 @@ Verde: 641 passed en layouts, core/auth y features/classes.
 - LOW-1: el reintento del logout se corta si la sesión ya no es anónima. LOW-2: la salida vale solo para la ruta en que empezó (estado `leavingAt`).
 - S7-D42: `switchSession` en el contexto de la tablet, `TodaySessionPicker` («Clases de hoy», `useTodaySessions`: from=to=hoy, status=scheduled).
 - E2E (sin correr, V5): entra por clics para que «atrás» pase por el router y abra el diálogo; lecturas de membresías con el token del admin; prueba de la defensa real (POST /members/{id}/reveal con el access de POST /auth/kiosk da 403 kiosk_mode); congela desde hoy; limpia las asistencias de ayer y +7 días con el admin.
+
+## S7-F5 · Asistencia, pestaña del socio, filtro «Última asistencia» y frases del historial (US-162, US-163, E5)
+
+Merge previo: backend hasta e5716da (R2 y C4b); un conflicto en `docs/operacion/clases.md`, se fundieron las dos guías (manda el servidor en S7-D41 y S7-D42; se conservó lo del front).
+
+Rojo medido (stubs con NotImplementedError): 7 archivos, 73 failed / 71 passed (AttendancePage, WeeklySummary, MemberAttendanceTab, LastAttendanceFilter, memberRow, historyPhrase, MembersListPage con la columna nueva).
+
+Verde:
+- `features/classes`: `attendanceApi.ts` (useAttendance, useAttendanceSummary, useMemberAttendance, useMemberAttendanceStats; clave `["attendance", ...]`, invalidada por check-in y quitar), `attendanceFilters.ts` (rango en la URL, 28 días por omisión, UTC `[from, to)`, tope 182 días), `pages/AttendancePage`, `components/{WeeklySummary,AttendanceCells}`, `tabs/MemberAttendanceTab`, errores en `classErrors.ts`; la pestaña «Asistencia por socio» ya no está deshabilitada.
+- Rutas: `/clases/asistencia` con página y `/socios/:id/asistencia` hija de la ficha (feature classes); `MEMBER_TABS` sin `disabledUntil`; routes.reference, routes.test y ROUTES.md al día.
+- `features/members`: filtro `last_attendance` (`LastAttendanceFilter`), columna «Última asistencia» (`lastAttendanceText`), «12 clases · quedan 2» (`planWithClasses`), `memberRowSchema` con los dos campos nuevos; la exportación no admite el filtro (se oculta «Exportar» y se explica).
+- `historyPhrase.ts`: «registró una asistencia» y «quitó una asistencia»; `ENTITY_LABELS["classes.attendance"] = "Asistencia"`.
+- BRECHAS 15.8 resuelta y fila 45 (asistencia) cerrada.
+
+DESIGN-GAP: la pantalla de Asistencia no tiene diseño (se arma con FilterBar, DataTable y Pagination); «racha»; «Esta semana» y «Hace más de 10 días» del select (el api filtra 7/14/30/60 días o nunca).
+Decisión: la pestaña de la ficha lee la última asistencia y el conteo de 30 días con `GET /attendance?member_id` (`limit=1`, el `total` es el conteo) porque `/members/{id}/attendance` no filtra por fecha.
+Tropiezos del entorno: heredocs de Git Bash con comillas fallaron otra vez (se usó Write); sin Python en el PATH.

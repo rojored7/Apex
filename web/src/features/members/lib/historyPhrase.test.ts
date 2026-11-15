@@ -1,6 +1,7 @@
 // S4A-F2 · US-106 (front), S4A-D32: frases del historial por acción y tabla, con el nombre de quien
 // actuó ("Sistema" para el usuario técnico) y sin valores; y el paso de MemberHistoryItem a la
 // AuditEntryView de HistoryAside (historyEntries).
+import { entityLabel } from "../../../shared/lib/audit-labels";
 import { DOCUMENT_VALUE, historyItem, PHONE_VALUE, SYSTEM_USER_ID } from "../../../test/history";
 import { toAuditEntryView } from "./historyEntries";
 import { historyPhrase } from "./historyPhrase";
@@ -118,5 +119,33 @@ describe("toAuditEntryView (historyEntries)", () => {
 
     expect(view.fields).toEqual(["phone"]);
     expect(view.fields).not.toBe(item.fields);
+  });
+});
+
+// S7-F5 · E5 (S7-D17): el check-in y quitar una asistencia llegan como filas de `classes.attendance` con `subject_member_id`
+// y solo nombres de campo (el motivo de quitar es texto libre y nunca viaja).
+describe("historyPhrase · asistencia (classes.attendance)", () => {
+  it("el check-in (insert) dice 'registró una asistencia'", () => {
+    expect(historyPhrase(historyItem({ action: "insert", table_name: "classes.attendance" }))).toBe("ana registró una asistencia");
+  });
+
+  it("quitarla (update de borrado lógico) dice 'quitó una asistencia', con o sin campos", () => {
+    expect(historyPhrase(historyItem({ table_name: "classes.attendance", fields: ["removed_at", "removed_by", "removed_reason"] }))).toBe("ana quitó una asistencia");
+    expect(historyPhrase(historyItem({ table_name: "classes.attendance", fields: [] }))).toBe("ana quitó una asistencia");
+  });
+
+  it("nunca incluye valores: ni el motivo ni nombres de campo", () => {
+    const phrase = historyPhrase(historyItem({ table_name: "classes.attendance", fields: ["removed_reason"] }));
+    expect(phrase).not.toContain("removed");
+    expect(phrase).not.toContain("motivo");
+  });
+
+  it("la entidad se llama 'Asistencia' en la entrada del historial", () => {
+    const entry = toAuditEntryView(historyItem({ action: "insert", table_name: "classes.attendance" }));
+    expect(entityLabel(entry.entity)).toBe("Asistencia");
+  });
+
+  it("el sistema (o un usuario sin nombre) no cambia la frase", () => {
+    expect(historyPhrase(historyItem({ ...SYSTEM, action: "insert", table_name: "classes.attendance" }))).toBe("Sistema registró una asistencia");
   });
 });

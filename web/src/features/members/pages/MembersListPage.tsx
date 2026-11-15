@@ -15,15 +15,19 @@
 // - Bajo MOBILE_QUERY la lista es MemberCardList ("Cargar más", botón flotante "Nuevo socio");
 //   en escritorio, DataTable con Pagination. Solo se monta una de las dos (una sola petición).
 // DESIGN-GAP:
-// - Sin columnas de teléfono, última asistencia ni "Acción" (Ver, Renovar, Vender): la lista no
-//   trae datos cifrados (N-01) y la asistencia llega con v0.4; sin el documento enmascarado bajo el
+// - Sin columnas de teléfono ni "Acción" (Ver, Renovar, Vender): la lista no
+//   trae datos cifrados (N-01); sin el documento enmascarado bajo el
 //   nombre (N-01). "Vence" muestra la fecha de fin con año; no "Vencido · 5 días", "reanuda 1 nov"
-//   ni "12 clases · quedan 2" (la fila no trae días ni clases restantes).
+//   (la fila no trae los días de atraso).
 // S6-F5 (US-151): `?consent=missing` (enlace de la tarjeta "Sin autorización" de Inicio) filtra la lista y la
 //   exportación; se muestra como el chip "Sin autorización" y quitarlo limpia la URL.
 // DESIGN-GAP: Socios_Lista.html no dibuja el chip "Sin autorización"; va como un grupo de Chips propio
 //   ("Autorización") entre los chips de estado y la FilterBar, solo mientras el filtro está activo.
-// - Sin filtro de última asistencia (v0.4). S5-F4: "Exportar" (solo admin) con los filtros vigentes. El encabezado no
+// S7-F5 (US-163, S7-D15): filtro "Última asistencia" (`last_attendance`, en la URL) y la columna del mismo nombre ("hoy 07:02",
+//   "ayer 18:05", fecha con año o "Nunca"); "Plan vigente" dice "12 clases · quedan 2" en una tiquetera. La exportación no admite
+//   ese filtro: con él activo no se ofrece "Exportar" y se explica. DESIGN-GAP: el diseño ofrece "Esta semana" y "Hace más de 10
+//   días"; el api filtra por 7, 14, 30 y 60 días o nunca. Sin la columna "Acción" ni el teléfono (N-01).
+// - S5-F4: "Exportar" (solo admin) con los filtros vigentes. El encabezado no
 //   dice "· 269 con membresía": el número está en los chips.
 // - Sin la nota de la búsqueda por valor exacto: va como ayuda corta bajo la lista.
 // - "Ordenar por" no ofrece "Vencimiento más próximo" (GET /members no ordena por fin de membresía).
@@ -45,15 +49,16 @@ import { useMembers, useMembersTotal, type MembersInfiniteParams } from "../api"
 import { ExportButton } from "../components/ExportButton";
 import { MemberCardList } from "../components/MemberCardList";
 import { MemberPhoto } from "../components/MemberPhoto";
+import { LAST_ATTENDANCE_FILTER_NAME, lastAttendanceFilter, readLastAttendance } from "../components/LastAttendanceFilter";
 import { MemberStatusChips } from "../components/MemberStatusChips";
 import { PLAN_FILTER_NAME, readPlanId, usePlanFilter } from "../components/PlanFilter";
-import { accountStatusOf, membershipStatusOf } from "../lib/memberRow";
+import { accountStatusOf, lastAttendanceText, membershipStatusOf, planWithClasses } from "../lib/memberRow";
 import { listError } from "../memberErrors";
 import { memberHref, NEW_MEMBER_PATH, readCreatedNotice, type MemberCreatedNotice } from "../memberLinks";
 import { chipFromFilters, chipToFilter, DEFAULT_MEMBER_SORT, DELETED_STATUS, MEMBER_SORT_FIELDS, MEMBER_SORT_LABELS, MEMBER_SORTS, type MemberChip, type MemberRowView } from "../schemas";
 import styles from "./MembersListPage.module.css";
 
-const FILTERS = ["status", "membership_status", "plan_id", "consent"] as const;
+const FILTERS = ["status", "membership_status", "plan_id", "consent", "last_attendance"] as const;
 const CONSENT_MISSING = "missing";
 const CONSENT_CHIP_OPTIONS = [{ value: CONSENT_MISSING, label: "Sin autorización" }];
 type MemberFilter = (typeof FILTERS)[number];
@@ -61,6 +66,7 @@ type MemberFilter = (typeof FILTERS)[number];
 export const MEMBERS_EMPTY_SEARCH = "No hay socios que coincidan con la búsqueda";
 export const MEMBERS_EMPTY = "Todavía no hay socios registrados.";
 export const MEMBERS_PAST_END = "Esta página ya no tiene socios.";
+export const EXPORT_NO_LAST_ATTENDANCE = "La exportación no admite el filtro de última asistencia. Quítalo para exportar.";
 export const CONSENT_MISSING_NOTICE = "Falta la autorización de tratamiento de datos. Pídesela al socio.";
 
 const SORT_OPTIONS = MEMBER_SORTS.map((value) => ({ value, label: MEMBER_SORT_LABELS[value] }));
@@ -76,7 +82,7 @@ const COLUMNS: Column<MemberRowView>[] = [
       </span>
     ),
   },
-  { key: "plan", header: "Plan vigente", render: (row) => row.plan_name ?? EMPTY_VALUE },
+  { key: "plan", header: "Plan vigente", render: (row) => planWithClasses(row) ?? EMPTY_VALUE },
   { key: "end", header: "Vence", render: (row) => (row.membership_end_date ? <span className={styles.nowrap}>{formatDate(row.membership_end_date)}</span> : EMPTY_VALUE) },
   {
     key: "membership",
@@ -87,6 +93,7 @@ const COLUMNS: Column<MemberRowView>[] = [
     },
   },
   { key: "status", header: "Estado", render: (row) => <StatusTag account={accountStatusOf(row)} /> },
+  { key: "last_attendance", header: "Última asistencia", render: (row) => <span className={styles.nowrap}>{lastAttendanceText(row.last_attendance_at, Date.now())}</span> },
 ];
 
 /** El aviso del alta; la región existe siempre para que se anuncie. */
@@ -225,6 +232,7 @@ export default function MembersListPage() {
   const { limit, offset, sort } = list.params;
   const { q } = list;
   const { status, membership_status } = chipToFilter(chip);
+  const lastAttendance = readLastAttendance(list.filters.last_attendance);
   // S6-F5 (US-151): `?consent=missing` es el único valor; cualquier otro se ignora y no viaja.
   const consent = list.filters.consent.includes(CONSENT_MISSING) ? CONSENT_MISSING : undefined;
 
@@ -236,18 +244,20 @@ export default function MembersListPage() {
       ...(membership_status ? { membership_status } : {}),
       ...(planId ? { plan_id: planId } : {}),
       ...(consent ? { consent } : {}),
+      ...(lastAttendance ? { last_attendance: lastAttendance } : {}),
       ...(sort ? { sort } : {}),
     }),
-    [limit, q, status, membership_status, planId, consent, sort],
+    [limit, q, status, membership_status, planId, consent, lastAttendance, sort],
   );
   // Los filtros de la exportación son los de la lista sin paginar ni ordenar.
   const exportFilters = useMemo(() => {
     const filters: Partial<MembersInfiniteParams> = { ...params };
     delete filters.limit;
     delete filters.sort;
+    delete filters.last_attendance;
     return filters;
   }, [params]);
-  const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "" || consent !== undefined, canCreate, onClear: list.clear };
+  const empty: EmptyProps = { isFiltered: Boolean(q) || chip !== null || planId !== "" || consent !== undefined || lastAttendance !== "", canCreate, onClear: list.clear };
 
   // En el celular "Nuevo socio" es el botón flotante de MemberCardList.
   const actions: PageAction[] = canCreate && !isMobile ? [{ id: "new-member", label: "Nuevo socio", href: NEW_MEMBER_PATH, variant: "primary" }] : [];
@@ -257,7 +267,7 @@ export default function MembersListPage() {
       <PageHeader title="Socios" {...(total === undefined ? {} : { total: `${formatCount(total)} en total` })} actions={actions} />
       <CreatedNotice notice={notice} onDismiss={dismissNotice} />
       <div className={styles.tools}>
-        <ExportButton filters={exportFilters} />
+        {lastAttendance ? <p className={styles.note}>{EXPORT_NO_LAST_ATTENDANCE}</p> : <ExportButton filters={exportFilters} />}
       </div>
       <MemberStatusChips
         value={chip}
@@ -282,9 +292,10 @@ export default function MembersListPage() {
         onQueryChange={list.setQuery}
         onClear={list.clear}
         searchPlaceholder="Nombre, documento o teléfono"
-        selects={[planFilter]}
+        selects={[planFilter, lastAttendanceFilter(lastAttendance)]}
         onSelectChange={(name, value) => {
           if (name === PLAN_FILTER_NAME) list.setFilter("plan_id", value || undefined);
+          if (name === LAST_ATTENDANCE_FILTER_NAME) list.setFilter("last_attendance", value || undefined);
         }}
         sort={{
           value: sort ?? DEFAULT_MEMBER_SORT,

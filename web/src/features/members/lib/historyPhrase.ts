@@ -6,6 +6,8 @@
 //   nombre, "Usuario" (actorLabel de shared/lib/audit-labels.ts).
 // - El job de vencimientos (S4A-B2) solo cambia `status` de la membresía y el historial no trae el
 //   valor nuevo: la frase dice "como vencida o por vencer" (puede ser cualquiera de los dos).
+// - S7-F5 (E5, S7-D17): `classes.attendance` llega con `subject_member_id`: el insert es el check-in («registró una asistencia») y
+//   el update es quitarla, un borrado lógico («quitó una asistencia»); el motivo es texto libre y nunca viaja.
 // - Una tabla o acción sin frase propia da "<quien> <acción> (<entidad>)" sin lanzar.
 import { actionLabel, actorLabel, entityLabel, fieldNameLabel, SYSTEM_USER_ID } from "../../../shared/lib/audit-labels";
 import type { MemberHistoryItemView } from "../schemas";
@@ -13,6 +15,7 @@ import type { MemberHistoryItemView } from "../schemas";
 const MEMBERS_TABLE = "members.members";
 const MEMBERSHIPS_TABLE = "memberships.memberships";
 const PAYMENTS_TABLE = "payments.payments";
+const ATTENDANCE_TABLE = "classes.attendance";
 
 /** El campo revelado con su artículo (los cinco cifrados de v0.1). */
 const REVEALED_FIELDS: Readonly<Record<string, string>> = Object.freeze({
@@ -67,6 +70,11 @@ function paymentWhat(item: MemberHistoryItemView): string | null {
   return item.fields.length > 0 ? `modificó un pago: ${fieldWords(item.fields)}` : "modificó un pago";
 }
 
+function attendanceWhat(item: MemberHistoryItemView): string | null {
+  if (item.action === "insert") return "registró una asistencia";
+  return item.action === "update" ? "quitó una asistencia" : null;
+}
+
 function revealWhat(item: MemberHistoryItemView): string {
   const field = item.fields[0];
   return `mostró ${(field !== undefined ? REVEALED_FIELDS[field] : undefined) ?? "un dato"}`;
@@ -75,7 +83,7 @@ function revealWhat(item: MemberHistoryItemView): string {
 function what(item: MemberHistoryItemView): string {
   if (item.action === "reveal") return revealWhat(item);
   const byTable =
-    item.table_name === MEMBERS_TABLE ? memberWhat(item) : item.table_name === MEMBERSHIPS_TABLE ? membershipWhat(item) : item.table_name === PAYMENTS_TABLE ? paymentWhat(item) : null;
+    item.table_name === MEMBERS_TABLE ? memberWhat(item) : item.table_name === MEMBERSHIPS_TABLE ? membershipWhat(item) : item.table_name === PAYMENTS_TABLE ? paymentWhat(item) : item.table_name === ATTENDANCE_TABLE ? attendanceWhat(item) : null;
   return byTable ?? `${actionLabel(item.action)} (${entityLabel(item.table_name)})`;
 }
 

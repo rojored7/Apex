@@ -1,0 +1,6 @@
+/* S7-F5: celdas de la lista de asistencias. Solo variables de tokens.css. */
+.marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

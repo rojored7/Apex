@@ -1,0 +1,48 @@
+/* S7-F5: pestaña Asistencia de la ficha (US-162). Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font: var(--text-h2);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.stat {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.statLabel {
+  color: var(--muted);
+  font: var(--text-label);
+}
+
+.statValue {
+  font: var(--text-h2);
+}
+
+.link {
+  color: var(--blue-deep);
+  font: var(--text-body);
+}
+
+.nowrap {
+  white-space: nowrap;
+}

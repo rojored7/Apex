@@ -60,6 +60,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = Object.freeze({
   "members.members": "Socio",
   "memberships.memberships": "Membresía",
   "payments.payments": "Pago",
+  // S7-F5 (E5): el check-in y quitar una asistencia aparecen en el historial del socio.
+  "classes.attendance": "Asistencia",
 });
 
 export const FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({

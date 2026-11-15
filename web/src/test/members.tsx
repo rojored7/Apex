@@ -28,6 +28,10 @@ export interface MemberRowFixture {
   membership_end_date: string | null;
   /** S6-F3: la foto del socio; ausente en las filas sin foto. */
   photo_attachment_id?: string | null;
+  /** S7-F5 (US-163): el instante de la última asistencia; ausente o null si nunca asistió. */
+  last_attendance_at?: string | null;
+  /** S7-F5: clases que le quedan a una tiquetera; null en los demás planes. */
+  membership_classes_remaining?: number | null;
 }
 
 const row = (id: string, first_name: string, last_name: string, overrides: Partial<MemberRowFixture> = {}): MemberRowFixture => ({

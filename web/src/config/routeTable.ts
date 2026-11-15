@@ -138,6 +138,12 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "members.view",
     load: () => import("../features/attachments/pages/AttachmentsTab"),
   }),
+  // S7-F5 (US-162, S3-D65): Asistencia es hija de la ficha y de la feature classes (admin y coach).
+  childRoute(MEMBER_DETAIL, "/socios/:id/asistencia", "Asistencia del socio", {
+    feature: "classes",
+    access: "classes.view",
+    load: () => import("../features/classes/tabs/MemberAttendanceTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
   route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
@@ -151,7 +157,8 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/clases", "Clases", "classes", "classes.view", "panel", { load: () => import("../features/classes/pages/SessionsPage") }),
   // S7-F2 (US-155, US-158): horario semanal, solo admin.
   route("/clases/horario", "Horario", "classes", "classes.schedule", "panel", { load: () => import("../features/classes/pages/SchedulePage") }),
-  route("/clases/asistencia", "Asistencia", "classes", "classes.view", "panel"),
+  // S7-F5 (US-162): asistencia por socio y resumen por semana, admin y coach.
+  route("/clases/asistencia", "Asistencia", "classes", "classes.view", "panel", { load: () => import("../features/classes/pages/AttendancePage") }),
   route("/clases/:id/checkin", "Check-in", "classes", "classes.view", "gym"),
   route("/clases/:id/resultados", "Registro de resultados", "results", "results.record", "gym"),
   route("/movimientos", "Movimientos", "wods", "movements.view", "panel"),

@@ -5,7 +5,7 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
 import { EXTRA_MESSAGES, SLOT_MESSAGES, type ExtraSessionFormValues, type SlotFormValues } from "./schemas";
 
@@ -218,3 +218,53 @@ export function sessionLoadError(error: unknown): ApiError | null {
 export function memberSearchFailedText(error: unknown): string {
   return isApiError(error) && error.status === HTTP_TOO_MANY ? MEMBER_SEARCH_MESSAGES.tooMany : MEMBER_SEARCH_MESSAGES.failed;
 }
+
+// S7-F5 · US-162: leer la asistencia (lista, resumen semanal y pestaña de la ficha).
+export const ATTENDANCE_LIST_MESSAGES = {
+  forbidden: "No tienes permiso para ver la asistencia. Si lo necesitas, pídeselo a un administrador.",
+  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  failed: "No pudimos cargar las asistencias. Intenta de nuevo en un momento.",
+} as const;
+
+export const ATTENDANCE_SUMMARY_MESSAGES = {
+  forbidden: ATTENDANCE_LIST_MESSAGES.forbidden,
+  tooMany: ATTENDANCE_LIST_MESSAGES.tooMany,
+  failed: "No pudimos cargar el resumen por semana. Intenta de nuevo en un momento.",
+} as const;
+
+export const MEMBER_ATTENDANCE_MESSAGES = {
+  notFound: "Este socio ya no existe. Vuelve a Socios y búscalo de nuevo.",
+  forbidden: ATTENDANCE_LIST_MESSAGES.forbidden,
+  tooMany: ATTENDANCE_LIST_MESSAGES.tooMany,
+  failed: "No pudimos cargar la asistencia del socio. Intenta de nuevo en un momento.",
+} as const;
+
+export const RANGE_INVERTED_MESSAGE = "La fecha inicial no puede ser posterior a la final. Corrige el rango.";
+export const RANGE_TOO_LONG_MESSAGE = "El rango no puede pasar de 26 semanas. Acórtalo y vuelve a intentar.";
+
+interface ReadMessages {
+  forbidden: string;
+  tooMany: (wait: string) => string;
+  failed: string;
+  notFound?: string;
+}
+
+function readError(error: unknown, messages: ReadMessages): ApiError | null {
+  return toScreenError(
+    error,
+    (e) => {
+      if (e.status === HTTP_FORBIDDEN) return messages.forbidden;
+      if (e.status === HTTP_TOO_MANY) return messages.tooMany(waitText(e.retryAfterS));
+      if (e.status === HTTP_NOT_FOUND && messages.notFound !== undefined) return messages.notFound;
+      return messages.failed;
+    },
+    messages.failed,
+  );
+}
+
+/** El error de la lista de asistencias como ApiError con el mensaje de la pantalla (lo pinta DataTable). */
+export const attendanceListError = (error: unknown): ApiError | null => readError(error, ATTENDANCE_LIST_MESSAGES);
+/** El error del resumen semanal. */
+export const attendanceSummaryError = (error: unknown): ApiError | null => readError(error, ATTENDANCE_SUMMARY_MESSAGES);
+/** El error de la pestaña de la ficha (404: el socio ya no existe). */
+export const memberAttendanceError = (error: unknown): ApiError | null => readError(error, MEMBER_ATTENDANCE_MESSAGES);

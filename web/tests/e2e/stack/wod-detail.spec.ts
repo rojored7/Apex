@@ -3,14 +3,11 @@
 // Sin E2E_BASE_URL se omite. Crea su propio WOD (fecha única por corrida, un día de 2032); el api no tiene DELETE de WODs.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { esperarTransiciones, loginComo } from "../helpers/stack";
+import { diaLibreDeWod, esperarTransiciones, loginComo } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
-const DAY_MS = 86_400_000;
 const FIRST_DAY = Date.UTC(2032, 0, 1);
-const SPAN_DAYS = 360;
-const DATE = new Date(FIRST_DAY + (Math.floor(Date.now() / 1000) % SPAN_DAYS) * DAY_MS).toISOString().slice(0, 10);
 
 async function axeViolations(page: Page): Promise<string[]> {
   await esperarTransiciones(page);
@@ -24,6 +21,7 @@ test.describe("Detalle de WOD contra el stack", () => {
   test("/wods/:id muestra el título, el leaderboard y el historial", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await loginComo(page);
+    const DATE = await diaLibreDeWod(page, FIRST_DAY);
     await page.goto(`/wods/nuevo?date=${DATE}`);
     await page.getByLabel(/Título/).fill("Detalle E2E");
     await page.getByRole("combobox", { name: "Agregar movimiento" }).selectOption({ index: 1 });

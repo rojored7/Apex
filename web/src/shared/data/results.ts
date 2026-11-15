@@ -3,7 +3,7 @@
 // - useWodResults: GET /wods/{id}/results?include_superseded (todos los resultados, con quién y cuándo).
 // - useWodSessions: GET /class-sessions?wod_id (las sesiones que usan el WOD).
 // - useVoidResult: POST /results/{id}/void (solo admin, S8-D46 b); el motivo no queda en la caché de mutaciones.
-import { keepPreviousData, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient, type QueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
@@ -68,6 +68,14 @@ export type WodSessionView = z.infer<typeof wodSessionSchema>;
 
 export const LEADERBOARD_QUERY_KEY = ["wod-leaderboard"] as const;
 export const WOD_RESULTS_QUERY_KEY = ["wod-results"] as const;
+
+/** Todo lo que muestra un resultado: ranking, lista, WODs, ficha del socio, tablet de la clase y el WOD de hoy de Inicio (M-5). */
+const RESULT_VIEW_KEYS = [["wod-leaderboard"], ["wod-results"], ["wods"], ["wod"], ["member-results"], ["session-results"], ["dashboard"]] as const;
+
+/** Guardar o anular un resultado relee todas las vistas que lo muestran. */
+export function invalidateResultViews(queryClient: QueryClient): void {
+  for (const queryKey of RESULT_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey });
+}
 export const WOD_SESSIONS_QUERY_KEY = ["wod-sessions"] as const;
 
 export interface LeaderboardParams {
@@ -136,10 +144,7 @@ export function useVoidResult(): UseMutationResult<null, Error, VoidResultVariab
       return null;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: LEADERBOARD_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: WOD_RESULTS_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["wods"] });
-      void queryClient.invalidateQueries({ queryKey: ["wod"] });
+      invalidateResultViews(queryClient);
     },
   });
 }

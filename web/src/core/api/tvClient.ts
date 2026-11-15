@@ -32,6 +32,7 @@ export async function fetchTvToday(token: string, signal?: AbortSignal): Promise
     controller.abort();
   };
   signal?.addEventListener("abort", onAbort);
+  if (signal?.aborted === true) controller.abort();
   try {
     const response = await fetch(`${API_BASE}/tv/today`, {
       method: "GET",

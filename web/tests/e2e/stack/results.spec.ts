@@ -6,7 +6,7 @@
 // ESCRITO, SIN CORRER: el stack de desarrollo está roto y su reparación espera al usuario (Sprint 8, F4).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { borrarUsuario, crearCoach, crearSocio, darDeBajaSocio, esperarTransiciones, loginComo, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
+import { borrarUsuario, crearCoach, crearSocio, darDeBajaSocio, diaLibreDeWod, esperarTransiciones, loginComo, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
@@ -16,10 +16,7 @@ const MAX_MS = 5 * 60_000;
 const TYPING_PAUSE_MS = 120;
 const MS_MINUTO = 60_000;
 const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1_000;
-const DAY_MS = 86_400_000;
 const FIRST_DAY = Date.UTC(2033, 0, 1);
-const SPAN_DAYS = 360;
-const WOD_DATE = new Date(FIRST_DAY + (Math.floor(Date.now() / 1000) % SPAN_DAYS) * DAY_MS).toISOString().slice(0, 10);
 
 const diaBogota = (instante: Date): string => new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
 
@@ -44,6 +41,7 @@ test.describe("registro de resultados en la tablet contra el stack", () => {
     test.setTimeout(10 * MS_MINUTO);
     await page.setViewportSize({ width: 1024, height: 768 });
     const adminToken = await loginComo(page);
+    const WOD_DATE = await diaLibreDeWod(page, FIRST_DAY);
     const headers = { Authorization: `Bearer ${adminToken}`, ...sameOriginHeaders() };
 
     // Datos: clase de hoy, WOD por tiempo con time cap, 15 asistentes.

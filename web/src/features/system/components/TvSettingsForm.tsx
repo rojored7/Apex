@@ -4,7 +4,7 @@
 //   confirmación. El enlace con `#token=` (S8-D32) se ve UNA vez: vive solo en el estado de este componente, la mutación tiene
 //   gcTime 0 y la caché de la sección se relee (no se escribe con la respuesta); al pulsar «Listo» o salir, desaparece.
 // DESIGN-GAP: Config.html dibuja el enlace «con token» visible y editable desde el principio; aquí el token no se puede volver a ver
-// (el api solo guarda su hash), así que se muestra una vez, al generarlo. Tampoco hay «Abrir» sin token vigente.
+// (el api solo guarda su hash), así que se muestra una vez, al generarlo. Tampoco hay «Abrir»: abrir la TV en este navegador cerraría tu sesión (L-4).
 import { useState } from "react";
 import { formatDateTime } from "../../../core/i18n/format";
 import { Button } from "../../../shared/ui/Button";
@@ -20,7 +20,7 @@ import tvStyles from "./TvSettingsForm.module.css";
 import { useSectionForm } from "./useSectionForm";
 
 export const TV_HANDOFF =
-  "Genera el enlace en otro equipo y pégalo en la TV: así no queda en el historial de este navegador. Se ve una sola vez; al pulsar «Listo» ya no se puede volver a ver (para eso se genera otro). Usa HTTPS (perfil tls) para que no viaje en claro por la red del box. La TV cierra la sesión del panel del navegador donde se abre: no la abras en este equipo si sigues trabajando aquí.";
+  "Genera el enlace en otro equipo y pégalo en la TV: así no queda en el historial de este navegador. Se ve una sola vez; al pulsar «Listo» ya no se puede volver a ver (para eso se genera otro). Usa HTTPS (perfil tls) para que no viaje en claro por la red del box. La TV cierra la sesión del panel del navegador donde se abre: por eso aquí no hay «Abrir»; copia el enlace y ábrelo solo en la TV.";
 
 const SHOWN =
   "Qué muestra: nombre e inicial del apellido (Ana P.), nivel y marca del ranking «Todos» (hasta 50 filas) y el WOD de hoy con sus cargas. Nunca documento, teléfono, correo, sexo ni notas. No aparecen socios dados de baja ni sin autorización de datos vigente.";
@@ -73,9 +73,6 @@ function TokenCard({ view }: { view: TvView }) {
       {issued ? (
         <div className={tvStyles.issued} role="group" aria-label="Enlace nuevo de la TV">
           <LinkField label="Enlace de la TV" name="tv_link" url={issued.url} handoff={TV_HANDOFF} />
-          <a className={tvStyles.open} href={issued.url} target="_blank" rel="noopener noreferrer">
-            Abrir la TV
-          </a>
           <div className={tvStyles.actions}>
             <Button
               onClick={() => {

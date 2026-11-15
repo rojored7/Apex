@@ -1,8 +1,7 @@
 // S8-F4: errores del api de la tablet de resultados en palabras de la pantalla («qué pasó y qué hacer»).
-// - resultsLoadMessage: leer la clase (403 `kiosk_mode`: solo hoy o ayer; 404; 429; 5xx).
+// - attendeesLoadError: leer la clase (403 `kiosk_mode`: solo hoy o ayer; 404; 429; 5xx).
 // - saveMessage: PUT /results (403 `kiosk_mode` al corregir uno de escritorio, 409 `result_exists`, `invalid_supersedes` y
 //   `session_cancelled`, 422 con campo, 429, 5xx y red).
-// - shouldReload: el 409 dice que otra persona cambió la lista; la pantalla la relee.
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
 import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
@@ -39,7 +38,7 @@ export const WALKIN_MESSAGES = {
   searchTooMany: "Demasiadas búsquedas. Espera un momento.",
 } as const;
 
-export function resultsLoadError(error: unknown): ApiError | null {
+export function attendeesLoadError(error: unknown): ApiError | null {
   return toScreenError(
     error,
     (e) => {
@@ -65,11 +64,6 @@ export function saveMessage(error: unknown): string {
   if (error.status === HTTP_UNPROCESSABLE) return error.code === API_ERROR_CODES.wodNotScored ? SAVE_MESSAGES.notScored : error.message.trim() !== "" ? `${SAVE_MESSAGES.invalid} (${error.message})` : SAVE_MESSAGES.invalid;
   if (error.status === HTTP_TOO_MANY) return SAVE_MESSAGES.tooMany(waitText(error.retryAfterS));
   return SAVE_MESSAGES.failed;
-}
-
-/** El 409 de resultado repetido o corregido por otra persona: la lista de la clase se relee. */
-export function shouldReload(error: unknown): boolean {
-  return isApiError(error) && error.status === HTTP_CONFLICT;
 }
 
 export function addAttendanceMessage(error: unknown): string {

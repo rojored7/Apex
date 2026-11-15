@@ -99,7 +99,7 @@ describe("TvSettingsForm", () => {
     expect(mock.callsTo("POST /settings/tv/regenerate-token")).toHaveLength(0);
   });
 
-  it("al confirmar muestra el enlace con #token= una vez, con «Copiar» y «Abrir», y al cerrarlo ya no está", async () => {
+  it("al confirmar muestra el enlace con #token= una vez, con «Copiar», SIN «Abrir» (abrir la TV aquí cerraría la sesión del admin), y al cerrarlo ya no está", async () => {
     const { mock, user } = await renderLoaded({ "POST /settings/tv/regenerate-token": REGENERATED });
 
     await user.click(screen.getByRole("button", { name: "Generar enlace nuevo" }));
@@ -108,8 +108,8 @@ describe("TvSettingsForm", () => {
     const link = await screen.findByRole("textbox", { name: "Enlace de la TV" });
     expect(link).toHaveValue(URL_TV);
     expect(screen.getByRole("button", { name: "Copiar" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Abrir la TV" })).toHaveAttribute("href", URL_TV);
-    expect(screen.getByRole("link", { name: "Abrir la TV" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.queryByRole("link", { name: /Abrir/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Abrir la TV")).not.toBeInTheDocument();
     expect(screen.getByText(/Genera el enlace en otro equipo/)).toBeInTheDocument();
     expect(mock.callsTo("POST /settings/tv/regenerate-token")).toHaveLength(1);
 

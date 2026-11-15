@@ -15,7 +15,7 @@ import { useSaveResult, useSessionAttendance } from "../api";
 import { AddWalkIn } from "../components/AddWalkIn";
 import { AttendeeResults } from "../components/AttendeeResults";
 import { ScoreForm } from "../components/ScoreForm";
-import { resultsLoadError, saveMessage } from "../resultErrors";
+import { attendeesLoadError, saveMessage } from "../resultErrors";
 import { attendeeName, type AttendeeResultView, type ScoreValues, type ScoringType } from "../schemas";
 import styles from "./ResultsEntryPage.module.css";
 
@@ -66,7 +66,7 @@ export default function ResultsEntryPage() {
     return (
       <div className={styles.state}>
         <p role="alert" className={styles.error}>
-          {resultsLoadError(query.error)?.message}
+          {attendeesLoadError(query.error)?.message}
         </p>
         <Button
           size="lg"

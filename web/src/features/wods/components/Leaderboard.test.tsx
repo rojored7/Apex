@@ -50,6 +50,9 @@ describe("Leaderboard", () => {
     cleanup();
     renderBoard("load", boardPage([boardRow(1, "Ana", null, { load_g: 102500 })]));
     expect(await screen.findByText("102,5 kg")).toBeInTheDocument();
+    cleanup();
+    renderBoard("reps", boardPage([boardRow(1, "Ana", null, { reps: 87 })]));
+    expect(await screen.findByText("87 reps")).toBeInTheDocument();
   });
 
   it("un leaderboard demasiado grande se explica y no se trunca", async () => {

@@ -22,6 +22,7 @@ export interface TvBoardFixture {
   date: string;
   refresh_seconds: number;
   wod: TvWodFixture | null;
+  show_leaderboard: boolean;
   leaderboard: TvRowFixture[];
 }
 
@@ -50,6 +51,7 @@ export function tvBoard(overrides: Partial<TvBoardFixture> = {}): TvBoardFixture
     date: "2026-10-20",
     refresh_seconds: 30,
     wod: tvWod(),
+    show_leaderboard: true,
     leaderboard: [tvRow(1, "Ana P.", 598), tvRow(2, "Luis M.", 644), tvRow(3, "Sara N.", null, { level: "scaled", score: { capped: true, load_g: null, reps: 15, rounds: 2, seconds: null } })],
     ...overrides,
   };

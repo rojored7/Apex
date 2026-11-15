@@ -73,22 +73,16 @@ describe("TvPage · el token", () => {
     expect(mock.callsTo(TODAY)[0]?.headers.get("x-device-token")).toBe(TV_TOKEN);
   });
 
-  it("compatibilidad_con_query: un ?token= también se usa y se limpia", async () => {
+  it("sin_query_token: un ?token= NO se acepta (viajaría al servidor), se limpia la URL y dice «Falta el enlace»", async () => {
     openWith(`?token=${TV_TOKEN}`);
-    let urlWhenAsked = "";
-    const mock = mockApi({
-      [TODAY]: () => {
-        urlWhenAsked = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        return ok();
-      },
-      "POST /auth/logout": { status: 204 },
-    });
+    const mock = mockApi({ [TODAY]: ok(), "POST /auth/logout": { status: 204 } });
 
     renderTv();
 
-    await screen.findByRole("heading", { name: "Helen" });
-    expect(urlWhenAsked).toBe("/tv");
-    expect(mock.callsTo(TODAY)[0]?.headers.get("x-device-token")).toBe(TV_TOKEN);
+    expect(await screen.findByText(/Falta el enlace de la pantalla/)).toBeInTheDocument();
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe("/tv");
+    expect(window.localStorage.getItem("apex.tv.token")).toBeNull();
+    expect(mock.callsTo(TODAY)).toHaveLength(0);
   });
 
   it("no_envia_authorization_ni_cookies: solo X-Device-Token y credentials omit", async () => {
@@ -181,6 +175,17 @@ describe("TvPage · el tablero", () => {
     await waitFor(() => {
       expect(mock.callsTo(TODAY)).toHaveLength(2);
     });
+  });
+
+  it("show_leaderboard=false: muestra el WOD y NO pinta el panel del ranking (ni el aviso de «Registra tu resultado»)", async () => {
+    openWith(`#token=${TV_TOKEN}`);
+    mockApi(withLogout(ok(tvBoard({ show_leaderboard: false, leaderboard: [] }))));
+
+    renderTv();
+
+    await screen.findByRole("heading", { name: "Helen" });
+    expect(screen.queryByRole("region", { name: "Ranking" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Registra tu resultado/)).not.toBeInTheDocument();
   });
 
   it("wod_null: logo y «Sin WOD publicado», sin ranking", async () => {

@@ -89,15 +89,22 @@ describe("WodDetailPage", () => {
   it("el admin anula un resultado con motivo y no hay «mover a otra sesión»", async () => {
     const { user, mock } = renderPage({ "POST /results/c1c1c1c1-0000-4000-8000-000000000001/void": { status: 200, body: { id: "c1c1c1c1-0000-4000-8000-000000000001" } } }, `/wods/${WOD_ID}?tab=todos`);
     const buttons = await screen.findAllByRole("button", { name: "Anular" });
-    expect(screen.queryByText(/otra sesión/i)).not.toBeInTheDocument();
+    expect(buttons.length).toBeGreaterThan(0);
     await user.click(buttons[0] as HTMLElement);
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Motivo/)).toBeInTheDocument();
+    expect(screen.queryByText(/otra sesión/i)).not.toBeInTheDocument();
+    const listCalls = mock.callsTo(`GET /wods/${WOD_ID}/results`).length;
     await user.type(within(dialog).getByLabelText(/Motivo/), "Socio equivocado");
     await user.click(within(dialog).getByRole("button", { name: "Anular resultado" }));
     await vi.waitFor(() => {
       expect(mock.callsTo("POST /results/c1c1c1c1-0000-4000-8000-000000000001/void")).toHaveLength(1);
     });
     expect(mock.callsTo("POST /results/c1c1c1c1-0000-4000-8000-000000000001/void")[0]?.body).toEqual({ reason: "Socio equivocado" });
+    // M-5: tras anular se relee la lista de resultados (el ranking, que no está en esta pestaña, lo cubre resultsInvalidation.test).
+    await vi.waitFor(() => {
+      expect(mock.callsTo(`GET /wods/${WOD_ID}/results`).length).toBeGreaterThan(listCalls);
+    });
   });
 
   it("un 409 al anular se explica dentro del modal", async () => {

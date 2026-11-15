@@ -5,7 +5,7 @@
 // - toScoreValues: los valores ya validados como los espera `PUT /results`.
 // DESIGN-GAP: «Nota (opcional)» y «anterior en Helen» no están en el contrato (EP-24); el récord automático llega con EP-24.
 import { z } from "zod";
-import { formatSeconds, kgInputToGrams } from "../../shared/data/score";
+import { formatLoadKg, formatSeconds, gramsToKgInput, kgInputToGrams } from "../../shared/data/score";
 import type { components } from "../../core/api/types";
 
 export const RESULT_LEVELS = ["rx", "rx_plus", "scaled"] as const;
@@ -127,7 +127,7 @@ export function scoreFormFrom(result: ResultView | null): ScoreFormValues {
     time: result.capped || result.seconds === null ? "" : formatClock(result.seconds),
     rounds: result.rounds === null ? "" : String(result.rounds),
     reps: result.reps === null ? "" : String(result.reps),
-    load: result.load_g === null ? "" : String(Number((result.load_g / 1000).toFixed(2))).replace(".", ","),
+    load: gramsToKgInput(result.load_g),
     capped: result.capped,
     level: result.level,
     scaled: result.scaled_movement_ids,
@@ -195,7 +195,7 @@ export function markText(result: ResultView, scoreType: ScoringType): string {
     case "reps":
       return `${String(result.reps ?? 0)} reps ${level}`;
     case "load":
-      return `${result.load_g === null ? "—" : `${String(Number((result.load_g / 1000).toFixed(2))).replace(".", ",")} kg`} ${level}`;
+      return `${result.load_g === null ? "—" : formatLoadKg(result.load_g)} ${level}`;
   }
 }
 

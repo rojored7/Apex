@@ -311,3 +311,82 @@ export async function habilitarWhatsapp(page: Page, admin: Credentials = datosDe
   if (!guardada.ok()) throw new Error(`PATCH /settings/channels respondió ${String(guardada.status())}.`);
   return true;
 }
+
+const WOD_DAY_MS = 86_400_000;
+const WOD_SPAN_DAYS = 360;
+const WOD_PAGE_LIMIT = 200;
+
+/** La semana ISO (AAAA-Www) de una fecha civil «AAAA-MM-DD»: el `week` de GET /wods. */
+export function semanaIso(fecha: string): string {
+  const d = new Date(`${fecha}T00:00:00Z`);
+  const day = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+  const week = Math.floor((d.getTime() - yearStart) / WOD_DAY_MS / 7) + 1;
+  return `${String(d.getUTCFullYear())}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * S8-F6b (M-6): un día SIN WOD dentro de los 360 días que empiezan en `primerDia` (uq_wods_date: un WOD por día; el api no borra
+ * WODs). Parte de un desplazamiento por la hora de la corrida y recorre los días con GET /wods?week= hasta hallar uno libre: así
+ * una segunda corrida (V4 corre las specs dos veces) o dos specs a la vez no chocan con un 409.
+ */
+export async function diaLibreDeWod(page: Page, primerDia: number, admin: Credentials = datosDeBase()): Promise<string> {
+  const headers = await accessDe(page, admin);
+  const inicio = Math.floor(Date.now() / 1000) % WOD_SPAN_DAYS;
+  const semanas = new Map<string, Set<string>>();
+  for (let paso = 0; paso < WOD_SPAN_DAYS; paso += 1) {
+    const dia = new Date(primerDia + ((inicio + paso) % WOD_SPAN_DAYS) * WOD_DAY_MS).toISOString().slice(0, 10);
+    const semana = semanaIso(dia);
+    let ocupados = semanas.get(semana);
+    if (ocupados === undefined) {
+      const respuesta = await page.request.get(`${API}/wods?week=${semana}&limit=${String(WOD_PAGE_LIMIT)}&offset=0`, { headers });
+      if (!respuesta.ok()) throw new Error(`GET /wods?week=${semana} respondió ${String(respuesta.status())}.`);
+      const cuerpo = (await respuesta.json()) as { items?: { date: string }[] } | { date: string }[];
+      const filas = Array.isArray(cuerpo) ? cuerpo : (cuerpo.items ?? []);
+      ocupados = new Set(filas.map((fila) => fila.date));
+      semanas.set(semana, ocupados);
+    }
+    if (!ocupados.has(dia)) return dia;
+  }
+  throw new Error("No hay un día libre para el WOD de la prueba en el rango de 360 días.");
+}
+
+export interface EstadoTv {
+  refresh_seconds: number;
+  show_leaderboard: boolean;
+  has_token: boolean;
+}
+
+interface SeccionTv {
+  value: EstadoTv;
+  version: number;
+}
+
+async function leerSeccionTv(page: Page, headers: Record<string, string>): Promise<SeccionTv> {
+  const respuesta = await page.request.get(`${API}/settings/tv`, { headers });
+  if (!respuesta.ok()) throw new Error(`GET /settings/tv respondió ${String(respuesta.status())}.`);
+  return (await respuesta.json()) as SeccionTv;
+}
+
+/** S8-F6b (M-6): lo que la prueba cambia de la TV (refresco, ranking y token), para dejarlo como estaba. */
+export async function leerEstadoTv(page: Page, headers: Record<string, string>): Promise<EstadoTv> {
+  return (await leerSeccionTv(page, headers)).value;
+}
+
+/** PATCH /settings/tv con solo refresco y ranking (la versión se lee justo antes). */
+export async function fijarTv(page: Page, headers: Record<string, string>, ajustes: Pick<EstadoTv, "refresh_seconds" | "show_leaderboard">): Promise<void> {
+  const { version } = await leerSeccionTv(page, headers);
+  const respuesta = await page.request.patch(`${API}/settings/tv`, { headers, data: { value: ajustes, version } });
+  if (!respuesta.ok()) throw new Error(`PATCH /settings/tv respondió ${String(respuesta.status())}.`);
+}
+
+/**
+ * Deja la TV como estaba: devuelve refresco y ranking y REVOCA el token que generó la prueba (del anterior solo se guardó el hash:
+ * no se puede restaurar, y un token vivo de una corrida no debe quedar). Úsese en un `finally`.
+ */
+export async function restaurarTv(page: Page, headers: Record<string, string>, antes: EstadoTv): Promise<void> {
+  await fijarTv(page, headers, { refresh_seconds: antes.refresh_seconds, show_leaderboard: antes.show_leaderboard });
+  const respuesta = await page.request.post(`${API}/settings/tv/revoke-token`, { headers });
+  if (!respuesta.ok()) throw new Error(`POST /settings/tv/revoke-token respondió ${String(respuesta.status())}.`);
+}

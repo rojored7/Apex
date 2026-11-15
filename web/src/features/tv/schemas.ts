@@ -44,6 +44,8 @@ export const tvBoardSchema = z.object({
   date: z.string(),
   refresh_seconds: z.number().int().min(15).max(300),
   wod: tvWodSchema.nullable(),
+  /** M-3: con false el api manda el ranking vacío y la TV oculta el panel (no pinta «Registra tu resultado»). */
+  show_leaderboard: z.boolean(),
   leaderboard: z.array(tvRowSchema),
 });
 

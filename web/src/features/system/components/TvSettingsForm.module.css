@@ -34,7 +34,3 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
-
-.open {
-  align-self: flex-start;
-}

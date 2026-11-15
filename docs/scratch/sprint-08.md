@@ -415,3 +415,8 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### C2b · `TvBoard.show_leaderboard` (M-3 de la revisión del front)
 - Rojo: 2 failed (`test_show_leaderboard_false`, `test_show_leaderboard_true_viaja_en_el_tablero`: sin el campo). Verde: `tv/schemas.TvBoard` y `rules.to_public_board` (del config); claves exactas de dos pruebas actualizadas; `openapi.json` idéntico en dos corridas y `types.ts` regenerado; contrato web y `tsc` ver evidencia del checkpoint.
+
+## S8-F6b correcciones de la revisión del front
+- Rojo medido: resultsInvalidation 2 failed (faltaban member-results, session-results, dashboard); TvPage sin_query_token, aislamiento (cliente global), TvSettingsForm sin «Abrir», tvClient señal abortada: 4 failed; show_leaderboard=false: 1 failed.
+- Verde: lint, tsc exit 0; vitest 258 archivos / 4516 pruebas; build ok. E2E corregidos sin correr (stack roto, esperan al usuario). Fusión de feat/sprint-08-wods-resultados-tv (S8-C2b, show_leaderboard) hecha.
+- Decisiones en DECISIONES.md (S8-F6b): sin ?token=, rotación de 12 s (S8-D19).

@@ -9,6 +9,7 @@ import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import { invalidateResultViews } from "../../shared/data/results";
 import { memberResultRowSchema, resultSchema, sessionAttendanceSchema, type MemberResultRowView, type ResultView, type ScoreValues, type SessionAttendanceView } from "./schemas";
 
 export const SESSION_RESULTS_QUERY_KEY = ["session-results"] as const;
@@ -67,7 +68,7 @@ export function useSaveResult(): UseMutationResult<ResultView, Error, SaveResult
       }
     },
     onSuccess: () => {
-      for (const key of [["wod-leaderboard"], ["wod-results"], ["wods"], ["wod"]]) void queryClient.invalidateQueries({ queryKey: key });
+      invalidateResultViews(queryClient);
     },
   });
 }

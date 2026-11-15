@@ -15,7 +15,7 @@ Guía para quien instala y cuida la pantalla de la pared del box. El contrato ex
   Se guarda para que un reinicio de la TV o un corte de luz no la dejen sin pantalla (no tiene teclado). Si lo
   prefieres solo en memoria, borra ese dato del navegador de la TV y vuelve a abrir el enlace tras cada reinicio.
   La pantalla llama `POST /auth/logout` al abrir: no deja una sesión de panel abierta en ese navegador (si la
-  abres en el mismo equipo donde usas el panel, te cierra la sesión).
+  abres en el mismo equipo donde usas el panel, te cierra la sesión en TODAS las pestañas): por eso Configuración ya no tiene «Abrir la TV»; solo copia el enlace. Un `?token=` en la URL de la TV no se acepta: se descarta, se limpia la URL y la pantalla dice «Falta el enlace».
 - El tablero trae el WOD de hoy (hora de Bogotá), sus movimientos con las cargas Rx en gramos y,
   si la sección lo permite, el ranking «Todos» con un máximo de 50 filas.
 
@@ -29,7 +29,7 @@ Guía para quien instala y cuida la pantalla de la pared del box. El contrato ex
 4. «Revocar» (`POST /api/v1/settings/tv/revoke-token`) deja la TV sin acceso hasta que generes otro.
 5. Si el enlace se filtró (foto de la pantalla, chat), rota el token de inmediato.
 
-Recomendaciones: genera el enlace desde otro equipo y pégalo en la TV; cierra la sesión del
+Recomendaciones: copia el enlace de Configuración y ábrelo solo en la TV (escríbelo o pégalo allí); cierra la sesión del
 panel en la TV; usa el perfil `tls` (HTTPS) para que el token no viaje en claro por la red del box.
 
 ## Privacidad (Ley 1581 de 2012)

@@ -1,6 +1,6 @@
 // S8-F6 · US-177 (S8-D19, S8-D20, S8-D32, L-4): /tv, la pantalla de la pared del box (TV.html), dentro de TvLayout (1920 × 1080, oscura,
 // sin cursor ni interacción). Sin usuario: abre con el enlace `/tv#token=<token>` que da Configuración.
-// - Al montar: lee el token (consumeTvToken: fragmento o ?token=, guardado en el navegador de la TV) y deja la URL en /tv ANTES de la
+// - Al montar: lee el token (consumeTvToken: solo el fragmento #token=, guardado en el navegador de la TV; un ?token= se descarta) y deja la URL en /tv ANTES de la
 //   primera petición; y llama POST /auth/logout (L-4) para que la TV no quede con una sesión de panel abierta.
 // - Pide GET /tv/today solo con X-Device-Token (core/api/tvClient) y refresca cada `refresh_seconds`.
 // - Estados: cargando, WOD + ranking, `wod: null` (logo y «Sin WOD publicado»), 401 («Token inválido. Pide un enlace nuevo en
@@ -8,7 +8,9 @@
 // DESIGN-GAP (S8-D19): TV.html agrupa el ranking por sexo y nivel, rota entre tres grupos y muestra la diferencia con la vez anterior,
 // «PR» y el escalado sugerido; aquí hay UN solo ranking «Todos» sin sexo, 15 filas por página que rotan (el contrato de la TV no trae
 // sexo ni historial, EP-24). El pie «Próxima clase 18:00 · Coach María · 0 / 12» tampoco: el tablero no trae clases.
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { createQueryClient } from "../../../core/api/queryClient";
 import { logout } from "../../../core/auth";
 import { formatLongDate, formatTime24 } from "../../../core/i18n/format";
 import { TvRequestError } from "../../../core/api/tvClient";
@@ -55,7 +57,7 @@ function Message({ text, role }: { text: string; role: "alert" | "status" }) {
   );
 }
 
-export default function TvPage() {
+function TvScreen() {
   const [token] = useState(consumeTvToken);
   const clock = useClock();
   const board = useTvBoard(token);
@@ -93,12 +95,25 @@ export default function TvPage() {
       ) : (
         <div className={styles.body}>
           <TvWod wod={data.wod} />
-          <TvLeaderboard rows={data.leaderboard} scoreType={data.wod.score_type} />
+          {data.show_leaderboard ? <TvLeaderboard rows={data.leaderboard} scoreType={data.wod.score_type} /> : null}
         </div>
       )}
       <footer className={styles.footer}>
         <span>{TV_MESSAGES.privacy}</span>
       </footer>
     </div>
+  );
+}
+
+/**
+ * La TV tiene su PROPIO QueryClient (S8-F6b, M-1): al montar cierra la sesión del panel (L-4) y clearSession vacía el cliente global;
+ * con el global, el GET /tv/today en vuelo se perdía y la pantalla quedaba en «Cargando…».
+ */
+export default function TvPage() {
+  const [tvQueryClient] = useState(createQueryClient);
+  return (
+    <QueryClientProvider client={tvQueryClient}>
+      <TvScreen />
+    </QueryClientProvider>
   );
 }

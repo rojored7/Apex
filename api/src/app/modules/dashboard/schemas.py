@@ -8,7 +8,8 @@
   `members_without_consent` (enteros desde S5-B10, US-132; S5-D39, S5-D80), `attendance_week`
   (`AttendanceWeekOut`) y `sessions_today` (lista de `SessionTodayOut`, `[]` sin clases, maximo
   `SESSIONS_TODAY_LIMIT`), obligatorios y no nulos desde S7-R3 (US-164, S7-D16: cambio de tipo,
-  antes `null`), y `wod_today`, siempre presente y `null` hasta v0.5 (nunca `exclude_none`).
+  antes `null`), y `wod_today` (`WodTodayOut` o `null` sin WOD de hoy desde S8-B5; siempre
+  presente, nunca `exclude_none`).
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ INCOME_MONTH_COP_DESCRIPTION: Final = (
 )
 
 SessionStatus = Literal["scheduled", "done", "cancelled"]
+WodTodayScoreType = Literal["time", "rounds_reps", "reps", "load", "none"]
 MovementTable = Literal["members.members", "memberships.memberships", "payments.payments"]
 
 
@@ -70,9 +72,20 @@ class SessionTodayOut(BaseModel):
     status: SessionStatus
 
 
+class WodTodayOut(BaseModel):
+    """El WOD de hoy (Bogota) en el tablero (US-174; S8-D16): solo lo que pinta la tarjeta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    title: str
+    score_type: WodTodayScoreType
+    is_benchmark: bool
+
+
 class DashboardOut(BaseModel):
     """`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;
-    solo `wod_today` sigue en `null` hasta v0.5."""
+    `wod_today` es un objeto `WodTodayOut` o `null` sin WOD hoy (S8-D16)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -89,4 +102,4 @@ class DashboardOut(BaseModel):
     members_without_consent: int
     attendance_week: AttendanceWeekOut
     sessions_today: list[SessionTodayOut] = Field(max_length=SESSIONS_TODAY_LIMIT)
-    wod_today: str | None = None
+    wod_today: WodTodayOut | None = None

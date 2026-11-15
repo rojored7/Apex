@@ -32,7 +32,7 @@ describe("FutureKpis", () => {
   });
 
   it("con valor, lo muestra", async () => {
-    mockDashboard(ok(dashboardBody({ wod_today: "Helen" })));
+    mockDashboard(ok(dashboardBody({ wod_today: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01", title: "Helen", score_type: "time", is_benchmark: true } })));
     renderDashboard(<FutureKpis />);
 
     await screen.findByText("Helen");

@@ -2388,7 +2388,7 @@ export interface components {
         /**
          * DashboardOut
          * @description `GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;
-         *     solo `wod_today` sigue en `null` hasta v0.5.
+         *     `wod_today` es un objeto `WodTodayOut` o `null` sin WOD hoy (S8-D16).
          */
         DashboardOut: {
             attendance_week: components["schemas"]["AttendanceWeekOut"];
@@ -2422,8 +2422,7 @@ export interface components {
              * Format: date
              */
             today: string;
-            /** Wod Today */
-            wod_today?: string | null;
+            wod_today?: components["schemas"]["WodTodayOut"] | null;
         };
         /** EmergencyContactIn */
         EmergencyContactIn: {
@@ -5302,6 +5301,26 @@ export interface components {
             score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
             /** Time Cap S */
             time_cap_s: number | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WodTodayOut
+         * @description El WOD de hoy (Bogota) en el tablero (US-174; S8-D16): solo lo que pinta la tarjeta.
+         */
+        WodTodayOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
             /** Title */
             title: string;
         };

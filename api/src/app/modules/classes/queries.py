@@ -279,12 +279,13 @@ async def week_attendance(session: AsyncSession, now: datetime) -> WeekAttendanc
 
 async def today_sessions(session: AsyncSession, today: date) -> list[SessionOut]:
     """Las sesiones del día civil de Bogotá `today`, por hora (máximo `TODAY_SESSIONS_LIMIT`),
-    con coach, ocupación y estado calculado, incluidas las canceladas (US-164)."""
+    con coach, ocupación y estado calculado, incluidas las canceladas (US-164). Las canceladas van
+    al final (S8-D25): así el tope nunca deja fuera una clase viva."""
     desde, hasta = date_range_utc(today, today)
     filas = await session.scalars(
         select(ClassSession)
         .where(ClassSession.starts_at >= desde, ClassSession.starts_at < hasta)
-        .order_by(ClassSession.starts_at, ClassSession.id)
+        .order_by(ClassSession.status == "cancelled", ClassSession.starts_at, ClassSession.id)
         .limit(TODAY_SESSIONS_LIMIT)
     )
     return await _outs(session, list(filas))

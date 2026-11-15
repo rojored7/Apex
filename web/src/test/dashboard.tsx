@@ -85,7 +85,7 @@ export interface DashboardFixture {
   sessions_today: SessionTodayFixture[];
   notifications_today: number | null;
   members_without_consent: number | null;
-  wod_today: string | null;
+  wod_today: { id: string; title: string; score_type: "time" | "rounds_reps" | "reps" | "load" | "none"; is_benchmark: boolean } | null;
   last_movements: MovementFixture[];
 }
 

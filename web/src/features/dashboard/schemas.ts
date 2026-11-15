@@ -58,6 +58,17 @@ export const sessionTodaySchema = z
   })
   .strict();
 
+// S8-B5 (US-174, S8-D16): el WOD de hoy del tablero; `null` sin WOD.
+const WOD_SCORE_TYPES = ["time", "rounds_reps", "reps", "load", "none"] as const;
+const wodTodaySchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string(),
+    score_type: z.enum(WOD_SCORE_TYPES),
+    is_benchmark: z.boolean(),
+  })
+  .strict();
+
 export const dashboardSchema = z
   .object({
     today: z.string().regex(CIVIL_DATE),
@@ -72,12 +83,13 @@ export const dashboardSchema = z
     sessions_today: z.array(sessionTodaySchema).max(SESSIONS_TODAY_LIMIT),
     notifications_today: futureCount,
     members_without_consent: futureCount,
-    wod_today: z.string().nullable(),
+    wod_today: wodTodaySchema.nullable(),
     last_movements: z.array(movementSchema).max(LAST_MOVEMENTS_LIMIT),
   })
   .strict();
 
 export type MovementView = z.infer<typeof movementSchema>;
 export type AttendanceWeekView = z.infer<typeof attendanceWeekSchema>;
+export type WodTodayView = z.infer<typeof wodTodaySchema>;
 export type SessionTodayView = z.infer<typeof sessionTodaySchema>;
 export type DashboardView = z.infer<typeof dashboardSchema>;

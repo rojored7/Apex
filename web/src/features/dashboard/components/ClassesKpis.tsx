@@ -6,9 +6,11 @@
 // DESIGN-GAP: gráfico de barras por día, «Promedio por clase» y «Socios distintos esta semana» de «Asistencia de la semana»: GET /dashboard
 // solo manda `count` y `flagged_count`, así que es una tarjeta con el conteo (el detalle está en /clases/asistencia).
 // DESIGN-GAP: Inicio.html dibuja el WOD de hoy dentro de «Hoy en el box»; llega en v0.5 y vive en FutureKpis.
+// S8-D25: el api manda las canceladas al final; «Hoy en el box» lista las vivas y pliega las canceladas en «N canceladas».
 // DESIGN-GAP: «Hoy en el box» no muestra saldo ni banderas por sesión (el tablero no las trae).
 import { formatCount, formatTime24 } from "../../../core/i18n/format";
 import { checkInPath } from "../../../shared/lib/routes";
+import { useState } from "react";
 import { Link } from "react-router";
 import buttonStyles from "../../../shared/ui/Button.module.css";
 import { cx } from "../../../shared/ui/cx";
@@ -45,6 +47,31 @@ function SessionRow({ session }: { session: SessionTodayView }) {
   );
 }
 
+function cancelledLabel(count: number): string {
+  return count === 1 ? "1 cancelada" : `${formatCount(count)} canceladas`;
+}
+
+function CancelledFold({ sessions }: { sessions: readonly SessionTodayView[] }) {
+  const [open, setOpen] = useState(false);
+  if (sessions.length === 0) return null;
+  return (
+    <div className={styles.cancelled}>
+      <button type="button" className={styles.more} aria-expanded={open} aria-controls="inicio-canceladas" onClick={() => {
+          setOpen((v) => !v);
+        }}>
+        {cancelledLabel(sessions.length)}
+      </button>
+      {open ? (
+        <ul id="inicio-canceladas" aria-label="Clases canceladas de hoy" className={styles.list}>
+          {sessions.map((session) => (
+            <SessionRow key={session.id} session={session} />
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function BoxCard() {
   const { data, isPending } = useDashboard();
 
@@ -65,6 +92,8 @@ function BoxCard() {
       </div>
     );
   }
+  const live = data.sessions_today.filter((s) => s.status !== "cancelled");
+  const cancelled = data.sessions_today.filter((s) => s.status === "cancelled");
   return (
     <div role="group" aria-label={BOX_LABEL} className={styles.card}>
       <div className={styles.head}>
@@ -73,15 +102,16 @@ function BoxCard() {
           Ver sesiones
         </Link>
       </div>
-      {data.sessions_today.length === 0 ? (
+      {live.length === 0 ? (
         <p className={styles.empty}>Hoy no hay clases programadas</p>
       ) : (
         <ul aria-label="Clases de hoy" className={styles.list}>
-          {data.sessions_today.map((session) => (
+          {live.map((session) => (
             <SessionRow key={session.id} session={session} />
           ))}
         </ul>
       )}
+      <CancelledFold sessions={cancelled} />
     </div>
   );
 }

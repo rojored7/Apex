@@ -1459,7 +1459,7 @@
       },
       "DashboardOut": {
         "additionalProperties": false,
-        "description": "`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;\nsolo `wod_today` sigue en `null` hasta v0.5.",
+        "description": "`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;\n`wod_today` es un objeto `WodTodayOut` o `null` sin WOD hoy (S8-D16).",
         "properties": {
           "attendance_week": {
             "$ref": "#/components/schemas/AttendanceWeekOut"
@@ -1533,13 +1533,12 @@
           "wod_today": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/WodTodayOut"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Wod Today"
+            ]
           }
         },
         "required": [
@@ -9319,6 +9318,44 @@
           "result_count"
         ],
         "title": "WodRowOut",
+        "type": "object"
+      },
+      "WodTodayOut": {
+        "additionalProperties": false,
+        "description": "El WOD de hoy (Bogota) en el tablero (US-174; S8-D16): solo lo que pinta la tarjeta.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "score_type",
+          "is_benchmark"
+        ],
+        "title": "WodTodayOut",
         "type": "object"
       }
     }

@@ -1,10 +1,9 @@
 // S8-F4 · US-169 y US-170 (front): datos de la tablet de resultados.
 // - useSessionAttendance(id): GET /class-sessions/{id}/attendance (asistentes con su resultado vigente y el WOD de la clase).
 // - useSaveResult(): PUT /results. Un resultado nuevo o una corrección (`supersedes_id` y el MISMO `session_id`, S8-B1d M-3).
-// - useAddAttendance(): POST /attendance para «Alguien que no hizo check-in» (con sus banderas y su descuento, S8-D15).
+// - «Alguien que no hizo check-in» usa useCheckIn de shared/data/attendance (una sola copia con classes).
 // Las escrituras pasan por useSensitiveMutation. Nada de esto toca /reveal ni /members/{id} (S8-D24).
 import { useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
-import { z } from "zod";
 import { api } from "../../core/api/client";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
@@ -68,30 +67,6 @@ export function useSaveResult(): UseMutationResult<ResultView, Error, SaveResult
     },
     onSuccess: () => {
       for (const key of [["wod-leaderboard"], ["wod-results"], ["wods"], ["wod"]]) void queryClient.invalidateQueries({ queryKey: key });
-    },
-  });
-}
-
-export interface AddAttendanceVariables {
-  sessionId: string;
-  memberId: string;
-}
-
-const attendanceCreatedSchema = z.object({ id: z.string().min(1) });
-
-export function useAddAttendance(): UseMutationResult<null, Error, AddAttendanceVariables> {
-  const queryClient = useQueryClient();
-  return useSensitiveMutation<null, Error, AddAttendanceVariables>({
-    mutationFn: async ({ sessionId, memberId }) => {
-      try {
-        parseResponse(attendanceCreatedSchema, await api.post<unknown>("/attendance", { body: { session_id: sessionId, member_id: memberId } }));
-        return null;
-      } finally {
-        void queryClient.invalidateQueries({ queryKey: SESSION_RESULTS_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: ["class-session"] });
-        void queryClient.invalidateQueries({ queryKey: ["class-sessions"] });
-        void queryClient.invalidateQueries({ queryKey: ["attendance"] });
-      }
     },
   });
 }

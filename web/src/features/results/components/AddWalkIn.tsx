@@ -2,10 +2,10 @@
 // del servidor solo busca por nombre, S7-D41), registra la llegada con POST /attendance (con sus banderas y su descuento, S8-D15) y
 // deja al socio listo para registrar su resultado. Si ya está en la lista, solo lo elige. Nunca llama /members/{id} ni /reveal.
 import { useRef, useState } from "react";
+import { useCheckIn } from "../../../shared/data/attendance";
 import { memberFullName, memberSearchNote, useMemberSearch } from "../../../shared/data/members";
 import { Button } from "../../../shared/ui/Button";
 import { MemberSearch, type MemberSearchOption, type MemberSearchStatus } from "../../../shared/ui/MemberSearch";
-import { useAddAttendance } from "../api";
 import { addAttendanceMessage, searchFailedText } from "../resultErrors";
 import styles from "./AddWalkIn.module.css";
 
@@ -26,7 +26,7 @@ export function AddWalkIn({ sessionId, presentIds, onReady }: AddWalkInProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const add = useAddAttendance();
+  const add = useCheckIn();
   const busy = useRef(false);
   const search = useMemberSearch(text, WALKIN_SEARCH_DELAY_MS, WALKIN_MIN_CHARS);
   const length = lettersOf(text);

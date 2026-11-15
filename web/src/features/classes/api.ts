@@ -204,16 +204,6 @@ export type AttendeeView = z.infer<typeof attendeeSchema>;
 export const sessionDetailSchema = sessionSchema.extend({ attendees: z.array(attendeeSchema) });
 export type SessionDetailView = z.infer<typeof sessionDetailSchema>;
 
-export const checkinSchema = z.object({
-  id: z.string().min(1),
-  flags: z.array(z.string()),
-  flagged: z.boolean(),
-  membership_status_at_checkin: z.string(),
-  attendance_count: z.number().int().nonnegative(),
-  capacity: z.number().int(),
-});
-export type CheckinResult = z.infer<typeof checkinSchema>;
-
 export const CLASS_SESSION_QUERY_KEY = ["class-session"] as const;
 
 export function classSessionKey(id: string): readonly ["class-session", string] {
@@ -226,28 +216,6 @@ export function useClassSession(id: string): UseQueryResult<SessionDetailView> {
     queryFn: async ({ signal }) => parseResponse(sessionDetailSchema, await api.get<unknown>(`/class-sessions/${encodeURIComponent(id)}`, { signal })),
     enabled: id !== "",
     refetchOnWindowFocus: false,
-  });
-}
-
-export interface CheckInVariables {
-  sessionId: string;
-  memberId: string;
-}
-
-/** POST /attendance: solo la sesión y el socio; las banderas las decide el servidor (L-1). */
-export function useCheckIn(): UseMutationResult<CheckinResult, Error, CheckInVariables> {
-  const queryClient = useQueryClient();
-  return useSensitiveMutation<CheckinResult, Error, CheckInVariables>({
-    mutationFn: async ({ sessionId, memberId }) => {
-      try {
-        return parseResponse(checkinSchema, await api.post<unknown>("/attendance", { body: { session_id: sessionId, member_id: memberId } }));
-      } finally {
-        // Con éxito, el duplicado (409) o la sesión cambiada, la lista de la tablet se relee.
-        void queryClient.invalidateQueries({ queryKey: CLASS_SESSION_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: ATTENDANCE_QUERY_KEY });
-      }
-    },
   });
 }
 

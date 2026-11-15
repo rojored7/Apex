@@ -281,3 +281,43 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - P-MIG de `0038` y `0039` (y las de `0036`/`0037`): volcado previo, `$DC start api`, `alembic current` = `0039_results_updated_guard (head)`, `downgrade -1`/`upgrade head`, `\df+ results.guard_wod_results_update` y `tgenabled = 'A'`.
 - P-ROL: `grants.sql` cambió (L-8): el `dbsetup` debe volver a correr sobre `apex-db-1` (`\dp results.wod_results`: solo `UPDATE (is_current, updated_at)`).
 - Smoke con rol (admin de desarrollo): `POST /auth/kiosk` con `/clases/<id>/resultados`, `GET /class-sessions/<id>/attendance`, `PUT /results` en quiosco y su corrección, y `DELETE /attendance/<id>` de un socio con resultado (espera 409).
+
+## S8-B4 · Leaderboard y lecturas (US-171 a US-173, S8-D13, S8-D14, L-6) · sin migración
+
+### Rojo
+- Con `leaderboard.py` y `reads.py` en stub (`NotImplementedError`), ruta, esquemas y P-CAT cableados: 32 failed y 128 passed de las pruebas nuevas y los tres archivos de arquitectura. 31 por `NotImplementedError` (9 puras, 10 de `test_leaderboard_service`, 4 de `test_wod_results`, 7 de `test_member_results`) y `test_cada_arista_permitida_existe` (la arista `results -> auth` aún no existía en el código). `test_baja_visible` falló por un `AttributeError` de la propia prueba (`reloj.now`; el reloj es `now_utc`), corregido.
+- Pasaban en rojo por no depender del stub: `test_tope_por_defecto_es_mil`.
+
+### Verde
+- `results/leaderboard.py` (puro: `Mark`, `leaderboard_order`, `rank_rows`; grupo rx+rx_plus / scaled, `time` con terminados antes que `capped`, posición de competencia sobre la lista completa, desempate por apellido, nombre sin tildes e id), `results/reads.py` (`leaderboard`, `wod_results`, `member_results`; `LEADERBOARD_MAX_ROWS = 1.000` con 422 `leaderboard_too_large`; una llamada a `members.service.names_for` y una a `auth.service.user_names_for`), `wods.service.titles_for`, tres rutas `staff-read` y `no-store` en `results/router.py`, `LeaderboardRow`/`WodResultRow`/`MemberResultRow`, `LeaderboardTooLarge`. P-CAT: `CON_LIMITE` (+3), `test_service_import_graph` (`results -> auth`), `RUTAS_SIN_Q_S8` en `test_list_routes_use_page_params` (las tres listas paginan sin `q`: filtran por parámetros tipados).
+- [DECISIÓN DE DISEÑO] `last_initial` es la letra mayúscula del apellido sin punto (el front agrega «.»). La posición sigue la lista completa: el primer escalado va después del último RX; solo empatan filas del mismo grupo con la misma marca. El tope de 1.000 se aplica a los resultados vigentes y validados del WOD (antes del filtro de sexo, que cruza esquemas): nunca trunca.
+- Índices: ya existen `ix_wod_results_leaderboard (wod_id, status) WHERE is_current` e `ix_wod_results_member_date (member_id, wod_date DESC) WHERE is_current` (0036); no hace falta migración.
+- Corrección propia: el gate encontró `leaderboard` con más de 50 líneas; se extrajo `_marks`.
+
+### Evidencia
+- Prueba `perf` (`test_leaderboard_perf.py`, con `ANALYZE results.wod_results` tras sembrar): 60 resultados 3,9 ms y 400 resultados 10,3 ms (tope 300 ms), 2 passed. `EXPLAIN (ANALYZE, BUFFERS)`: `Seq Scan` de 0,04 y 0,24 ms (la tabla es tan pequeña que el planificador no usa el índice; en V6 se repite con la base de desarrollo).
+- Gate `slice-gate.sh results <8 archivos>`: 904 passed en 147 s, exit 0 (segundo intento: el primero falló `test_ninguna_funcion_supera_50_lineas`). `ruff`, `mypy src` limpios. P-API: `openapi.json` idéntico en dos corridas, `types.ts` regenerado, contract 6 passed, `tsc` limpio. Checkpoint `cd9e756`.
+
+### Pendiente
+- Smoke con rol (api de desarrollo roto): login del admin de desarrollo y GET de `/wods/<id>/leaderboard`, `/wods/<id>/results` y `/members/<id>/results` (solo códigos HTTP), junto con la tanda de B3.
+
+## S8-B3b · Anulación de resultados por admin y correcciones de la revisión de B3 (M-1, L-1 a L-4; S8-D46 b) · migración 0040
+
+### Rojo (medido)
+- `test_void_result.py`, `test_void_concurrency.py` y `test_0040_results_void.py` con `void_result` en stub y sin revisión 0040: 14 failed y 15 errors (los 15 de `test_0040`: «no existe la revisión»; los 14: 11 de `test_void_result` por `NotImplementedError`, 2 de concurrencia y `test_cuelga_de_0039`), 19 passed. Pasaban en rojo por motivos ajenos al stub: la validación de `VoidIn`, los 403 de coach/member y de quiosco (`AdminDep` y la lista blanca ya los dan), y L-2/L-3 (código ya correcto).
+- L-2 y L-3 por mutación: sin `ensure_kiosk_session` en `attendance.py`, `test_asistencia_en_quiosco_solo_de_hoy_o_ayer` falla (1 failed); sin `lock_member` en `record.py`, `test_dos_coaches_a_la_vez_uno_gana_otro_409` (reescrita con `Pausa`: la segunda espera, `not done()`, y luego 409) falla (1 failed). Archivos restaurados (`git diff` vacío).
+- Lección: una prueba de dos conexiones bajo `bus_listo` (savepoint) y no `bus_confirmado` deja la sesión en un candado y cuelga; los tests de concurrencia van en un archivo con `bus_confirmado` (`test_void_concurrency.py`). Un fallo a medias con la tarea pausada también cuelga el cierre: `finally` libera `pausa.seguir`.
+
+### Verde
+- `0040_results_void` (columnas `voided_by|voided_at|void_reason`; CHECK `status` de tres estados, `validated_pair` para `validated` y `voided`, `voided_shape`, `void_reason_length`, `voided_not_current`; `CREATE OR REPLACE` de `guard_wod_results_update` (`validated -> voided` solo de una fila vigente que se apaga, campos de NULL a valor, anulado terminal), `guard_wod_results_insert` (no nace anulado) y `require_successor` (el anulado no exige sucesor); downgrade aborta con filas anuladas), `results/void.py` (candado de socio y luego `FOR UPDATE`; 404/409), `POST /results/{id}/void` (`AdminDep`, `admin-write`, `VoidIn` 1-200 sin controles), `WodResultVoided` (sin motivo), modelo y `ResultOut` con los tres campos, `infra/db/grants.sql` (`UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)`), `docs/operacion/wods.md` (procedimiento), S8-D46 completa en DECISIONES y L-1/L-4 alineados (S8-D15: `downgrade` de 0038 reescribe; S8-D31: `after.source = kiosk`; L-4 aceptado).
+- Pruebas ajustadas por el cambio de esquema: `COLUMNAS` de `test_0036`, matriz de grants (`status` ya no es denegado) y `CAMPOS` de `test_router_record`. Corregido un flake previo de B2: `test_dos_filas_de_auditoria_insert_y_update` ordenaba la auditoría por `id` (uuid); ahora por `seq`.
+- El leaderboard de B4 ya excluye anulados (`status = 'validated'` e `is_current`), con prueba (`test_leaderboard_ficha_y_resultados_excluyen_al_anulado`); la TV (C2) usará la misma condición.
+- [DECISIÓN DE DISEÑO] Solo se anula un resultado vigente y `validated`: uno ya corregido o `pending` da 409 `result_not_voidable` (un `pending` se rechaza en EP-25); así `validated_pair` no necesita un caso de anulación sin validación.
+
+### Evidencia
+- Gate `slice-gate.sh results <results, migrations, architecture completos + test_kiosk_results_path + test_migrations>`: 2 194 passed en 305 s, exit 0 (antes, una corrida de 2 745 con classes y wods: 2 742 passed y 3 failed por el flake de auditoría y `CAMPOS`, corregidos). `ruff` y `mypy src` (274) limpios. P-API: `openapi.json` idéntico en dos corridas, `types.ts` regenerado, contract 6 passed, `tsc` limpio. Checkpoint `9bc8e96`.
+
+### Pendiente en desarrollo (api roto; nada tocado, sin banderas)
+- P-MIG de `0040` (con `0036` a `0039` y las anteriores): volcado `sprint-08-antes-0040.dump`, `$DC start api`, `alembic current` = `0040_results_void (head)`, `downgrade -1` y `upgrade head`, `\d results.wod_results` (columnas y CHECK), `\df+ results.guard_wod_results_update` y `tgenabled = 'A'` de los cinco triggers.
+- P-ROL: `grants.sql` cambió otra vez: el `dbsetup` debe volver a correr (`\dp results.wod_results`: `UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)`).
+- Smoke con rol: `POST /results/<id>/void` con el admin (200 y 409 al repetir) y con el coach (403), sobre un resultado ficticio propio del smoke.

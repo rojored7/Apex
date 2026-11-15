@@ -46,10 +46,12 @@ from app.modules.classes.exceptions import (
     AttendanceNotFound,
     CheckinSessionCancelled,
     ClassValidationError,
+    LockedByResults,
     MembershipPortNotRegistered,
     SessionNotFound,
 )
 from app.modules.classes.models import ATTENDANCE_UNIQUE_ALIVE, Attendance, ClassSession
+from app.modules.classes.results_port import results_port
 from app.modules.classes.rules import checkin_flags, checkin_on_date, is_other_day
 from app.modules.classes.schemas import (
     AttendanceCreate,
@@ -89,7 +91,7 @@ def membership_port() -> MembershipPort | None:
     return _port
 
 
-async def _alive_attendance_id(
+async def alive_attendance_id(
     session: AsyncSession, session_id: UUID, member_id: UUID
 ) -> UUID | None:
     """La asistencia viva del socio en la sesión, si la hay."""
@@ -154,7 +156,7 @@ async def check_in(session: AsyncSession, data: AttendanceCreate, *, by: UUID) -
     ahora = reloj.now_utc()
     on_date = checkin_on_date(clase.session_date, reloj.today_bogota())
     vista = await port.checkin_view(session, data.member_id, on_date=on_date)
-    if await _alive_attendance_id(session, clase.id, data.member_id) is not None:
+    if await alive_attendance_id(session, clase.id, data.member_id) is not None:
         raise AlreadyCheckedIn()
     presentes = await _alive_count(session, clase.id)
     ventana = (await settings_service.classes(session)).checkin_window_min
@@ -206,6 +208,17 @@ async def _lock_alive_attendance(session: AsyncSession, attendance_id: UUID) -> 
     return fila
 
 
+async def _ensure_no_result(session: AsyncSession, fila: Attendance) -> None:
+    """S8-D46: con un resultado vigente de esa clase la asistencia no se quita (409)."""
+    if await results_port().member_has_current_result_in_session(
+        session, fila.session_id, fila.member_id
+    ):
+        raise LockedByResults(
+            "El socio ya tiene un resultado en esta clase: su asistencia no se puede quitar.",
+            field=None,
+        )
+
+
 async def remove_attendance(
     session: AsyncSession,
     attendance_id: UUID,
@@ -230,6 +243,7 @@ async def remove_attendance(
         raise AttendanceNotFound()
     await lock_member(session, previa)
     fila = await _lock_alive_attendance(session, attendance_id)
+    await _ensure_no_result(session, fila)  # S8-D46
     reloj = current_clock()
     if role != "admin":  # con la marca de quiosco el router pasa `coach` (revisión de C4, M-2)
         dia = await session.scalar(

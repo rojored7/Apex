@@ -13,6 +13,10 @@ Benchmarks (S8-A2, US-166, S8-D6), mismo reparto de roles y cubetas:
 - `POST /benchmarks`: 201 `BenchmarkOut`; `wods-write`. Códigos 201, 401, 403, 409, 422 y 429.
 - `PATCH /benchmarks/{benchmark_id}`: `BenchmarkOut`; `wods-write`. Códigos 200, 401, 403, 404, 409,
   422 (incluye `score_type_locked`) y 429. Tampoco existe `DELETE`.
+WODs (S8-A3, US-166, US-167): `GET /wods` (`week` o `q`/`benchmark`), `POST /wods`,
+`GET /wods/{id}` y `PATCH /wods/{id}`; `wods-write` y `staff-read`.
+`GET /wods/today` (S8-A4, US-168, S8-D9): el WOD de hoy en Bogotá con sus movimientos, o 200 con
+`null`; `staff-read`; declarada antes de `/wods/{wod_id}`.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
 """
 
@@ -23,6 +27,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.clock import current_clock
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
@@ -39,6 +44,11 @@ from app.modules.wods.schemas import (
     MovementCreate,
     MovementListQuery,
     MovementPatch,
+    WodCreate,
+    WodListQuery,
+    WodOut,
+    WodPatch,
+    WodRowOut,
 )
 
 router = APIRouter(
@@ -132,3 +142,46 @@ async def update_benchmark(
 ) -> BenchmarkOut:
     await enforce_user_limit(request, "wods-write", principal.user_id)
     return await service.update_benchmark(session, benchmark_id, body, principal.user_id)
+
+
+@router.get("/wods", response_model=Page[WodRowOut], responses=responses_for(422, 429))
+async def list_wods(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    filters: Annotated[WodListQuery, Depends()],
+    q: SearchQuery = None,
+) -> Page[WodRowOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_wods(session, filters, page, q=q)
+
+
+@router.post(
+    "/wods", status_code=201, response_model=WodOut, responses=responses_for(409, 422, 429)
+)
+async def create_wod(
+    request: Request, body: WodCreate, principal: StaffDep, session: Session
+) -> WodOut:
+    await enforce_user_limit(request, "wods-write", principal.user_id)
+    return await service.create_wod(session, body, principal.user_id)
+
+
+@router.get("/wods/today", response_model=WodOut | None, responses=responses_for(429))
+async def get_today_wod(request: Request, principal: StaffDep, session: Session) -> WodOut | None:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.today_card(session, current_clock().today_bogota())
+
+
+@router.get("/wods/{wod_id}", response_model=WodOut, responses=responses_for(404, 422, 429))
+async def get_wod(request: Request, wod_id: UUID, principal: StaffDep, session: Session) -> WodOut:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.get_wod(session, wod_id)
+
+
+@router.patch("/wods/{wod_id}", response_model=WodOut, responses=responses_for(404, 409, 422, 429))
+async def update_wod(
+    request: Request, wod_id: UUID, body: WodPatch, principal: StaffDep, session: Session
+) -> WodOut:
+    await enforce_user_limit(request, "wods-write", principal.user_id)
+    return await service.update_wod(session, wod_id, body, principal.user_id)

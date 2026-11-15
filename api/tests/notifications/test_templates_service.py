@@ -14,9 +14,10 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FrozenClock
@@ -294,3 +295,67 @@ async def test_preview_no_escribe_nada(session: AsyncSession, admin: UsuarioPrue
     service.preview("Hola {nombre}", "Plan {plan}")
     assert await contar(session, T_PLANTILLAS) == 0
     assert await filas_de_auditoria(session, T_PLANTILLAS) == []
+
+
+async def test_carrera_del_update_de_nombre_da_409_y_la_sesion_sigue_usable(
+    session: AsyncSession, admin: UsuarioPrueba
+) -> None:
+    """S8-A2b (M-1): la comprobación previa no ve al otro alta (aún sin confirmar); el índice
+    único decide. El cambio se aplica DENTRO del savepoint: 409 con el id del ganador, no un
+    `PendingRollbackError` (500)."""
+    from unittest import mock
+
+    from app.modules.notifications import templates as templates_module
+
+    otra = await make_template(session, name="Venció")
+    base = await make_template(session, name="Vence pronto")
+    original = templates_module._id_by_name
+    llamadas: list[int] = []
+
+    async def parcheada(
+        s: AsyncSession, nombre: str, *, exclude: UUID | None = None
+    ) -> UUID | None:
+        llamadas.append(1)
+        return None if len(llamadas) == 1 else await original(s, nombre, exclude=exclude)
+
+    with mock.patch.object(templates_module, "_id_by_name", parcheada):
+        with pytest.raises(TemplateNameTaken) as capturado:
+            await en_peticion(
+                session,
+                admin.id,
+                lambda: service.update_template(session, base.id, TemplatePatch(name="Venció")),
+            )
+    assert capturado.value.existing_id == otra.id
+    assert (await session.execute(text("SELECT 1"))).scalar_one() == 1  # sesión usable
+    ok = await en_peticion(
+        session,
+        admin.id,
+        lambda: service.update_template(session, base.id, TemplatePatch(name="Otra")),
+    )
+    assert ok.name == "Otra"
+
+
+async def test_carrera_del_alta_de_plantilla_da_409_y_la_sesion_sigue_usable(
+    session: AsyncSession, admin: UsuarioPrueba
+) -> None:
+    from unittest import mock
+
+    from app.modules.notifications import templates as templates_module
+    from app.modules.notifications.schemas import TemplateCreate
+
+    otra = await make_template(session, name="Venció")
+    original = templates_module._id_by_name
+    llamadas: list[int] = []
+
+    async def parcheada(
+        s: AsyncSession, nombre: str, *, exclude: UUID | None = None
+    ) -> UUID | None:
+        llamadas.append(1)
+        return None if len(llamadas) == 1 else await original(s, nombre, exclude=exclude)
+
+    datos = TemplateCreate(name="Venció", subject="Hola {nombre}", body="Cuerpo {nombre}")
+    with mock.patch.object(templates_module, "_id_by_name", parcheada):
+        with pytest.raises(TemplateNameTaken) as capturado:
+            await en_peticion(session, admin.id, lambda: service.create_template(session, datos))
+    assert capturado.value.existing_id == otra.id
+    assert (await session.execute(text("SELECT 1"))).scalar_one() == 1

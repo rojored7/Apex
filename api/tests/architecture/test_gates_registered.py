@@ -148,3 +148,92 @@ async def test_sin_gate_register_falla_cerrado_no_escribe_y_se_restaura(
     )
     assert (pagos, auditoria) == (0, 0)
     assert issubclass(MembershipGateNotRegistered, RuntimeError)
+
+
+def test_tras_create_app_el_puerto_de_resultados_de_wods_es_el_de_results(
+    settings_prueba: Settings,
+) -> None:
+    """S8-B1 (M-1 de la revisión de A3): no existe la clase provisional `NoResultsYet`; tras
+    `create_app` el puerto es el de `results` y, sin puerto, `results_probe()` falla cerrado."""
+    from app.modules.results import service as results_service
+    from app.modules.wods import probe as wods_probe
+    from app.modules.wods import service as wods_service
+    from app.modules.wods.exceptions import ResultsProbeNotRegistered
+
+    assert not hasattr(wods_service, "NoResultsYet") and not hasattr(wods_probe, "NoResultsYet")
+    create_app(settings_prueba, run_migrations_on_startup=False)
+    anterior = wods_service.current_results_probe()
+    assert anterior is results_service.results_probe
+    assert classes_service.results_port is not None
+    wods_service.set_results_probe(None)
+    try:
+        with pytest.raises(ResultsProbeNotRegistered):
+            wods_service.results_probe()
+    finally:
+        wods_service.set_results_probe(anterior)
+
+
+def test_tras_cargar_los_services_del_cli_el_puerto_de_wods_es_el_de_results() -> None:
+    from app.modules.results import service as results_service
+    from app.modules.wods import service as wods_service
+
+    _load_module_services()
+    assert wods_service.current_results_probe() is results_service.results_probe
+
+
+def test_la_clase_provisional_no_existe_en_el_codigo() -> None:
+    """S8-B1: ningún archivo de `src` define ni nombra `NoResultsYet`."""
+    nombrados = [
+        p.relative_to(API_ROOT).as_posix()
+        for p in (API_ROOT / "src").rglob("*.py")
+        if "NoResultsYet" in p.read_text(encoding="utf-8")
+    ]
+    assert nombrados == []
+
+
+_SOLO_WODS = chr(10).join(
+    [
+        "from app.modules.wods import service as w",
+        "assert w.current_results_probe() is None, 'wods no registra puerto solo'",
+    ]
+)
+_PUERTO_RESULTS = chr(10).join(
+    [
+        "from app.modules.results import service as r",
+        "assert w.current_results_probe() is r.results_probe",
+    ]
+)
+_PUERTOS_CON_MAIN = chr(10).join(
+    [_SOLO_WODS, "from app import main", "main.load_module_services()", _PUERTO_RESULTS]
+)
+_PUERTOS_CON_CLI = chr(10).join(
+    [_SOLO_WODS, "from app import cli", "cli._load_module_services()", _PUERTO_RESULTS]
+)
+_PUERTOS_CON_WORKER = chr(10).join(
+    [
+        _SOLO_WODS,
+        "from app.worker import runtime",
+        "runtime._install_listeners()",
+        _PUERTO_RESULTS,
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "programa",
+    [_PUERTOS_CON_MAIN, _PUERTOS_CON_CLI, _PUERTOS_CON_WORKER],
+    ids=["main", "cli", "worker"],
+)
+def test_en_un_proceso_limpio_el_puerto_de_wods_lo_registra_la_carga_de_modulos(
+    programa: str,
+) -> None:
+    """S8-B1: el puerto de `results` queda registrado en el api, el CLI y el worker."""
+    resultado = subprocess.run(  # noqa: S603 - programa fijo de la prueba
+        [sys.executable, "-I", "-c", programa],
+        cwd=API_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]

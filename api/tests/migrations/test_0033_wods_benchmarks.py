@@ -130,7 +130,9 @@ def test_delete_y_truncate_prohibidos(base: str) -> None:
             [paso, ("TRUNCATE wods.benchmarks", [])],
         ],
     )
-    assert [s for s, _ in salidas] == [INMUTABLE, INMUTABLE]
+    # Desde A3 otra tabla apunta a esta (FK): PostgreSQL rechaza el TRUNCATE (0A000) antes del
+    # trigger; el trigger de TRUNCATE sigue en `A` (prueba de los triggers).
+    assert salidas[0][0] == INMUTABLE and salidas[1][0] in {INMUTABLE, "0A000"}
 
 
 def test_los_dos_triggers_estan_en_always(base: str) -> None:

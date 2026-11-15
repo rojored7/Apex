@@ -23,6 +23,8 @@ from tests.factories.classes import make_session
 SESIONES = "/api/v1/class-sessions"
 CAMPOS = {
     "id",
+    "wod_id",
+    "effective_wod_id",
     "slot_id",
     "session_date",
     "starts_at",

@@ -524,6 +524,25 @@ LIMPIAR_MOVEMENTS = (
     + " END IF; END $$"
 )
 
+# S8-A3 (S8-D7): los WODs y sus movimientos que una prueba con commit real haya dejado. Nacen en
+# `0034` y `0035`. `wod_movements` (sin triggers de guarda) va primero; `wods.wods` apaga sus
+# triggers y los rearma UNO POR UNO con `ENABLE ALWAYS` (S3-D49). Ambos, antes que benchmarks,
+# movimientos y `classes.*` (las FK apuntan a ellos).
+TRIGGERS_DE_WODS = ("wods_forbid_delete", "wods_forbid_truncate")
+LIMPIAR_WODS = (
+    "DO $$ BEGIN IF to_regclass('wods.wod_movements') IS NOT NULL THEN "  # noqa: S608
+    "DELETE FROM wods.wod_movements; END IF; "
+    "IF to_regclass('wods.wods') IS NOT NULL THEN "
+    "ALTER TABLE wods.wods DISABLE TRIGGER USER; "
+    "DELETE FROM wods.wods; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE wods.wods ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_WODS
+    )
+    + " END IF; END $$"
+)
+
 # S8-A2 (S8-D6): los benchmarks que una prueba con commit real o la CLI (`seed-benchmarks`) hayan
 # dejado en `wods.benchmarks`. La tabla nace en `0033_wods_benchmarks`. Sin FK todavía (A3 la
 # referencia desde `wods.wods`, que se limpia ANTES): va antes que `wods.movements` y que
@@ -542,6 +561,29 @@ LIMPIAR_BENCHMARKS = (
     + " END IF; END $$"
 )
 
+# S8-B1 (US-169, S8-D35): los resultados que una prueba con commit real haya dejado en
+# `results.wod_results`. La tabla nace en `0036` y sus guardas en `0037`. Sin FK entre esquemas: va
+# ANTES que los WODs, las sesiones, los socios y `auth`. Sus cinco triggers (incluido el diferido)
+# se apagan, se borra y se rearman UNO POR UNO con `ENABLE ALWAYS` (S3-D49).
+TRIGGERS_DE_WOD_RESULTS = (
+    "wod_results_guard_insert",
+    "wod_results_guard_update",
+    "wod_results_forbid_delete",
+    "wod_results_forbid_truncate",
+    "wod_results_require_successor",
+)
+LIMPIAR_WOD_RESULTS = (
+    "DO $$ BEGIN IF to_regclass('results.wod_results') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE results.wod_results DISABLE TRIGGER USER; "
+    "DELETE FROM results.wod_results; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE results.wod_results ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_WOD_RESULTS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -555,7 +597,9 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
-    LIMPIAR_BENCHMARKS,  # S8-A2: catálogo de benchmarks (A3: tras `wods.wods`)
+    LIMPIAR_WOD_RESULTS,  # S8-B1: resultados, antes que los WODs y las sesiones
+    LIMPIAR_WODS,  # S8-A3: WODs y sus movimientos, antes que los catálogos a los que apuntan
+    LIMPIAR_BENCHMARKS,  # S8-A2: catálogo de benchmarks (tras `wods.wods`)
     LIMPIAR_MOVEMENTS,  # S8-A1: catálogo de movimientos (sin FK), antes que `classes.*`
     LIMPIAR_CLASS_SESSIONS,  # S7-B1: sesiones, antes que las franjas (FK RESTRICT)
     LIMPIAR_CLASS_SLOTS,  # S7-A2: franjas, antes que auth (sin FK)
@@ -966,6 +1010,8 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_WOD_RESULTS))  # S8-B1: antes que los WODs
+        await conexion.execute(text(LIMPIAR_WODS))  # S8-A3: antes que los catálogos
         await conexion.execute(text(LIMPIAR_BENCHMARKS))  # S8-A2: catálogo, sin FK
         await conexion.execute(text(LIMPIAR_MOVEMENTS))  # S8-A1: catálogo, sin FK
         await conexion.execute(text(LIMPIAR_CLASS_SESSIONS))  # S7-B1: antes que las franjas

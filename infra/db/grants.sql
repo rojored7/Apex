@@ -19,9 +19,9 @@
 --                                     tokens_valid_after, updated_at)
 --   classes.attendance              S I U(removed_at, removed_by,     -
 --                                     removed_reason, updated_at)
---   classes.class_sessions          S I U(status, cancel_reason,      S I
---                                     cancelled_by, cancelled_at,
---                                     updated_at)
+--   classes.class_sessions          S I U(wod_id, status,             S I
+--                                     cancel_reason, cancelled_by,
+--                                     cancelled_at, updated_at)
 --   classes.class_slots             S I U(weekdays, start_time,       S
 --                                     duration_min, capacity,
 --                                     default_coach_id, name, valid_from,
@@ -58,6 +58,12 @@
 --   wods.benchmarks                 S I U(name, name_norm,            -
 --                                     description, score_type,
 --                                     updated_at)
+--   wods.wods                       S I U(date, title, score_type,    -
+--                                     time_cap_s, benchmark_id,
+--                                     description, updated_at)
+--   wods.wod_movements              S I D                             -
+--   results.wod_results             S I U(is_current, status, void_*, -
+--                                     updated_at)
 --   worker.job_runs                 S                                 S I U
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
@@ -82,9 +88,12 @@
 -- clasificada: payments.payments
 -- clasificada: plans.plans
 -- clasificada: public.alembic_version
+-- clasificada: results.wod_results
 -- clasificada: settings.settings_sections
 -- clasificada: wods.benchmarks
 -- clasificada: wods.movements
+-- clasificada: wods.wod_movements
+-- clasificada: wods.wods
 -- clasificada: worker.job_runs
 --
 -- Residuales aceptados (S4B-D61): apex_api puede INSERT en crypto.crypto_keys (ensure_keys) y en
@@ -97,19 +106,19 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
 GRANT USAGE ON SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
--- S8-A1 (P-ROL): el worker no ve el esquema `wods` (ni `results`): sin USAGE.
-GRANT USAGE ON SCHEMA wods TO apex_api, apex_backup;
+-- S8-A1/B1 (P-ROL): el worker no ve los esquemas `wods` ni `results`: sin USAGE.
+GRANT USAGE ON SCHEMA wods, results TO apex_api, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
@@ -132,7 +141,8 @@ GRANT SELECT, INSERT ON classes.class_sessions TO apex_api;
 -- reescribir lo registrado o des-quitar. El worker no la toca.
 GRANT SELECT, INSERT ON classes.attendance TO apex_api;
 GRANT UPDATE (removed_at, removed_by, removed_reason, updated_at) ON classes.attendance TO apex_api;
-GRANT UPDATE (status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
+-- S8-A4 (S8-D3, C2): `wod_id` no tiene FK entre esquemas; el api lo asigna (PATCH /class-sessions/{id}).
+GRANT UPDATE (wod_id, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
 GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, name, valid_from, is_active, updated_at) ON classes.class_slots TO apex_api;
 -- S8-A1 (S8-D5, S8-D21, US-165): catalogo de movimientos; el api inserta y edita por columna (se
 -- desactivan con is_active); sin DELETE ni TRUNCATE (los triggers tambien los prohiben); el worker no
@@ -142,6 +152,17 @@ GRANT UPDATE (name, name_norm, category, unit, is_active, updated_at) ON wods.mo
 -- S8-A2 (S8-D6, US-166): catalogo de benchmarks; mismo reparto que los movimientos.
 GRANT SELECT, INSERT ON wods.benchmarks TO apex_api;
 GRANT UPDATE (name, name_norm, description, score_type, updated_at) ON wods.benchmarks TO apex_api;
+-- S8-A3 (S8-D7, US-166): WODs (sin DELETE) y sus movimientos (reemplazo de lista: S I D, E6).
+GRANT SELECT, INSERT ON wods.wods TO apex_api;
+GRANT UPDATE (date, title, score_type, time_cap_s, benchmark_id, description, updated_at) ON wods.wods TO apex_api;
+GRANT SELECT, INSERT, DELETE ON wods.wod_movements TO apex_api;
+-- S8-B1 (US-169, S8-D35): el api inserta resultados y solo los valida o los apaga; sin DELETE.
+GRANT SELECT, INSERT ON results.wod_results TO apex_api;
+-- S8-B3b (S8-D46 b): el admin anula un resultado (`status` y `voided_*`); la guarda de `0040`
+-- deja `status` solo en `validated -> voided` (y `pending -> validated`, que exige `validated_*`,
+-- que el api no puede escribir).
+GRANT UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)
+  ON results.wod_results TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -220,7 +241,8 @@ DECLARE
         'notifications.notification_rules', 'notifications.notification_templates',
         'notifications.notifications',
         'payments.payments', 'plans.plans', 'public.alembic_version',
-        'settings.settings_sections', 'wods.benchmarks', 'wods.movements', 'worker.job_runs'];
+        'results.wod_results', 'settings.settings_sections', 'wods.benchmarks', 'wods.movements', 'wods.wod_movements',
+        'wods.wods', 'worker.job_runs'];
     sin_clasificar text;
 BEGIN
     SELECT string_agg(n.nspname || '.' || c.relname, ', ' ORDER BY n.nspname, c.relname)

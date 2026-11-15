@@ -138,6 +138,47 @@
         "title": "AttendanceRemove",
         "type": "object"
       },
+      "AttendanceResultRow": {
+        "description": "Un asistente vivo de la clase y su resultado vigente en el WOD efectivo (S8-D14).\n\nSolo nombre y apellido: ningún campo cifrado. `result` prellena la tablet y da el\n`supersedes_id` de una corrección.",
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "has_result": {
+            "title": "Has Result",
+            "type": "boolean"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "member_id",
+          "first_name",
+          "last_name",
+          "has_result",
+          "result"
+        ],
+        "title": "AttendanceResultRow",
+        "type": "object"
+      },
       "AttendanceRowOut": {
         "description": "Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados.",
         "properties": {
@@ -1418,7 +1459,7 @@
       },
       "DashboardOut": {
         "additionalProperties": false,
-        "description": "`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;\nsolo `wod_today` sigue en `null` hasta v0.5.",
+        "description": "`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;\n`wod_today` es un objeto `WodTodayOut` o `null` sin WOD hoy (S8-D16).",
         "properties": {
           "attendance_week": {
             "$ref": "#/components/schemas/AttendanceWeekOut"
@@ -1492,13 +1533,12 @@
           "wod_today": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/WodTodayOut"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Wod Today"
+            ]
           }
         },
         "required": [
@@ -2315,11 +2355,11 @@
       },
       "KioskIn": {
         "additionalProperties": false,
-        "description": "`POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase.",
+        "description": "`POST /auth/kiosk` (S7-D41, S8-D15): la ruta del check-in o de los resultados.",
         "properties": {
           "path": {
             "maxLength": 80,
-            "pattern": "^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$",
+            "pattern": "^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(checkin|resultados)$",
             "title": "Path",
             "type": "string"
           }
@@ -2366,6 +2406,105 @@
           "kiosk_path"
         ],
         "title": "KioskSessionOut",
+        "type": "object"
+      },
+      "LeaderboardRow": {
+        "description": "Una fila del leaderboard (S8-B4, US-171, S8-D13). Solo nombre y inicial del apellido: ningún\ncampo cifrado. La carga va en gramos (`load_g`, S8-D41).",
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "last_initial": {
+            "title": "Last Initial",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "required": [
+          "position",
+          "result_id",
+          "member_id",
+          "first_name",
+          "last_initial",
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped"
+        ],
+        "title": "LeaderboardRow",
         "type": "object"
       },
       "LoginIn": {
@@ -3055,6 +3194,162 @@
           }
         },
         "title": "MemberPatch",
+        "type": "object"
+      },
+      "MemberResultRow": {
+        "description": "Una fila de `GET /members/{id}/results` (S8-B4, US-173): el WOD copiado y la marca.",
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "score_type": {
+            "title": "Score Type",
+            "type": "string"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "source": {
+            "enum": [
+              "desk",
+              "kiosk"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "validated",
+              "pending",
+              "voided"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "wod_date": {
+            "format": "date",
+            "title": "Wod Date",
+            "type": "string"
+          },
+          "wod_id": {
+            "format": "uuid",
+            "title": "Wod Id",
+            "type": "string"
+          },
+          "wod_title": {
+            "title": "Wod Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wod_id",
+          "wod_date",
+          "wod_title",
+          "score_type",
+          "benchmark_id",
+          "is_benchmark",
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped",
+          "status",
+          "source",
+          "session_id",
+          "created_at"
+        ],
+        "title": "MemberResultRow",
         "type": "object"
       },
       "MemberRowOut": {
@@ -4109,6 +4404,38 @@
         "title": "Page[CryptoOpOut]",
         "type": "object"
       },
+      "Page_LeaderboardRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[LeaderboardRow]",
+        "type": "object"
+      },
       "Page_MemberHistoryItem_": {
         "additionalProperties": false,
         "properties": {
@@ -4139,6 +4466,38 @@
           "offset"
         ],
         "title": "Page[MemberHistoryItem]",
+        "type": "object"
+      },
+      "Page_MemberResultRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberResultRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[MemberResultRow]",
         "type": "object"
       },
       "Page_MemberRowOut_": {
@@ -4491,6 +4850,70 @@
           "offset"
         ],
         "title": "Page[UserRow]",
+        "type": "object"
+      },
+      "Page_WodResultRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WodResultRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[WodResultRow]",
+        "type": "object"
+      },
+      "Page_WodRowOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WodRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[WodRowOut]",
         "type": "object"
       },
       "PaymentDetail": {
@@ -5678,6 +6101,376 @@
         "title": "ResetIn",
         "type": "object"
       },
+      "ResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "capped": {
+            "default": false,
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "scaled_movement_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Scaled Movement Ids",
+            "type": "array"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "wod_id": {
+            "format": "uuid",
+            "title": "Wod Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wod_id",
+          "member_id",
+          "level"
+        ],
+        "title": "ResultIn",
+        "type": "object"
+      },
+      "ResultOut": {
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "recorded_by": {
+            "format": "uuid",
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "scaled_movement_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Scaled Movement Ids",
+            "type": "array"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "source": {
+            "enum": [
+              "desk",
+              "kiosk"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "validated",
+              "pending",
+              "voided"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At"
+          },
+          "validated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated By"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "voided_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided By"
+          },
+          "wod_date": {
+            "format": "date",
+            "title": "Wod Date",
+            "type": "string"
+          },
+          "wod_id": {
+            "format": "uuid",
+            "title": "Wod Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wod_id",
+          "member_id",
+          "session_id",
+          "wod_date",
+          "benchmark_id",
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped",
+          "scaled_movement_ids",
+          "status",
+          "recorded_by",
+          "validated_by",
+          "validated_at",
+          "supersedes_id",
+          "is_current",
+          "source",
+          "voided_by",
+          "voided_at",
+          "void_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResultOut",
+        "type": "object"
+      },
       "RevealIn": {
         "additionalProperties": false,
         "properties": {
@@ -6281,6 +7074,53 @@
         "title": "SellMembershipOut",
         "type": "object"
       },
+      "SessionAttendanceOut": {
+        "description": "`GET /class-sessions/{session_id}/attendance` (S8-B3, US-169 CA1).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceResultRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "wod": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "session",
+          "wod",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SessionAttendanceOut",
+        "type": "object"
+      },
       "SessionCancel": {
         "additionalProperties": false,
         "description": "`POST /class-sessions/{id}/cancel`: el motivo es obligatorio.",
@@ -6426,6 +7266,18 @@
             "title": "Duration Min",
             "type": "integer"
           },
+          "effective_wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Wod Id"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6472,6 +7324,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
           }
         },
         "required": [
@@ -6488,6 +7352,8 @@
           "attendance_count",
           "cancel_reason",
           "cancelled_at",
+          "wod_id",
+          "effective_wod_id",
           "attendees"
         ],
         "title": "SessionDetail",
@@ -6553,6 +7419,18 @@
             "title": "Duration Min",
             "type": "integer"
           },
+          "effective_wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Wod Id"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6599,6 +7477,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
           }
         },
         "required": [
@@ -6614,9 +7504,34 @@
           "status",
           "attendance_count",
           "cancel_reason",
-          "cancelled_at"
+          "cancelled_at",
+          "wod_id",
+          "effective_wod_id"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SessionPatch": {
+        "additionalProperties": false,
+        "description": "`PATCH /class-sessions/{id}` (S8-D9, N-41): `wod_id` es obligatorio; `null` vuelve a heredar\nel WOD del día. `extra=\"forbid\"`: nada más se edita por aquí.",
+        "properties": {
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
+          }
+        },
+        "required": [
+          "wod_id"
+        ],
+        "title": "SessionPatch",
         "type": "object"
       },
       "SessionTodayOut": {
@@ -7276,6 +8191,417 @@
         "title": "TimeRange",
         "type": "object"
       },
+      "TvBoard": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "leaderboard": {
+            "items": {
+              "$ref": "#/components/schemas/TvRow"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "refresh_seconds": {
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "wod": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TvWod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "refresh_seconds",
+          "wod",
+          "leaderboard"
+        ],
+        "title": "TvBoard",
+        "type": "object"
+      },
+      "TvEditable": {
+        "additionalProperties": false,
+        "description": "Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard.",
+        "properties": {
+          "refresh_seconds": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 15.0,
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "show_leaderboard": {
+            "default": true,
+            "title": "Show Leaderboard",
+            "type": "boolean"
+          }
+        },
+        "title": "TvEditable",
+        "type": "object"
+      },
+      "TvMovement": {
+        "additionalProperties": false,
+        "properties": {
+          "load_rx_f_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx F G"
+          },
+          "load_rx_m_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx M G"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reps": {
+            "title": "Reps",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "reps",
+          "load_rx_m_g",
+          "load_rx_f_g"
+        ],
+        "title": "TvMovement",
+        "type": "object"
+      },
+      "TvPatchIn": {
+        "additionalProperties": false,
+        "description": "`PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en\n`value` es 422 (S8-D30).",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/TvEditable"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "TvPatchIn",
+        "type": "object"
+      },
+      "TvRow": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "score": {
+            "$ref": "#/components/schemas/TvScore"
+          }
+        },
+        "required": [
+          "position",
+          "display_name",
+          "level",
+          "score"
+        ],
+        "title": "TvRow",
+        "type": "object"
+      },
+      "TvScore": {
+        "additionalProperties": false,
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "required": [
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped"
+        ],
+        "title": "TvScore",
+        "type": "object"
+      },
+      "TvSectionOut": {
+        "additionalProperties": false,
+        "description": "`GET/PATCH /settings/tv`: la vista, nunca el hash (S8-D30).",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SectionKey"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TvView"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "updated_at",
+          "updated_by",
+          "value"
+        ],
+        "title": "TvSectionOut",
+        "type": "object"
+      },
+      "TvTokenOut": {
+        "additionalProperties": false,
+        "description": "`POST /settings/tv/regenerate-token` (S8-D32): el token y el enlace se ven UNA vez.",
+        "properties": {
+          "rotated_at": {
+            "format": "date-time",
+            "title": "Rotated At",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "token_last4": {
+            "title": "Token Last4",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "token",
+          "url",
+          "token_last4",
+          "rotated_at",
+          "version"
+        ],
+        "title": "TvTokenOut",
+        "type": "object"
+      },
+      "TvView": {
+        "additionalProperties": false,
+        "description": "La vista de la TV para el panel (S8-D30): sin el hash; `has_token` dice si hay token.",
+        "properties": {
+          "has_token": {
+            "title": "Has Token",
+            "type": "boolean"
+          },
+          "refresh_seconds": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 15.0,
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "rotated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated At"
+          },
+          "show_leaderboard": {
+            "default": true,
+            "title": "Show Leaderboard",
+            "type": "boolean"
+          },
+          "token_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Last4"
+          }
+        },
+        "required": [
+          "has_token",
+          "token_last4",
+          "rotated_at"
+        ],
+        "title": "TvView",
+        "type": "object"
+      },
+      "TvWod": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/TvMovement"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "score_type",
+          "time_cap_s",
+          "is_benchmark",
+          "description",
+          "movements"
+        ],
+        "title": "TvWod",
+        "type": "object"
+      },
       "UpdateUserIn": {
         "additionalProperties": false,
         "description": "`PATCH /users/{user_id}`: correo y rol; un campo ausente o nulo no cambia (US-049).",
@@ -7637,6 +8963,23 @@
         "title": "VerifyStartedOut",
         "type": "object"
       },
+      "VoidIn": {
+        "additionalProperties": false,
+        "description": "`POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, `SafeText`: sin\ncontroles, invisibles ni bidireccionales; revisión de B4, M-1).",
+        "properties": {
+          "reason": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "VoidIn",
+        "type": "object"
+      },
       "VoidPaymentIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).",
@@ -7704,6 +9047,726 @@
           "slots"
         ],
         "title": "WeekBucket",
+        "type": "object"
+      },
+      "WodCreate": {
+        "additionalProperties": false,
+        "description": "`POST /wods`. `time_cap_s` y `movements` se validan en `validate_wod` (422 con `field`).",
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/WodMovementIn"
+            },
+            "maxItems": 30,
+            "title": "Movements",
+            "type": "array"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "title",
+          "score_type",
+          "movements"
+        ],
+        "title": "WodCreate",
+        "type": "object"
+      },
+      "WodMovementIn": {
+        "additionalProperties": false,
+        "description": "Un movimiento del WOD. `position` de 1 a n (lo comprueba `validate_wod`); las cargas son\ngramos enteros de 0 a 1.000.000 (S8-D41).",
+        "properties": {
+          "is_primary": {
+            "default": false,
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "load_rx_f_g": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx F G"
+          },
+          "load_rx_m_g": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx M G"
+          },
+          "movement_id": {
+            "format": "uuid",
+            "title": "Movement Id",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Notes",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "reps": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Reps",
+            "type": "string"
+          }
+        },
+        "required": [
+          "movement_id",
+          "position"
+        ],
+        "title": "WodMovementIn",
+        "type": "object"
+      },
+      "WodMovementOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "load_rx_f_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx F G"
+          },
+          "load_rx_m_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx M G"
+          },
+          "movement_id": {
+            "format": "uuid",
+            "title": "Movement Id",
+            "type": "string"
+          },
+          "movement_name": {
+            "title": "Movement Name",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "reps": {
+            "title": "Reps",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "movement_id",
+          "movement_name",
+          "position",
+          "reps",
+          "load_rx_m_g",
+          "load_rx_f_g",
+          "notes",
+          "is_primary"
+        ],
+        "title": "WodMovementOut",
+        "type": "object"
+      },
+      "WodOut": {
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "benchmark_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/WodMovementOut"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "title",
+          "score_type",
+          "time_cap_s",
+          "benchmark_id",
+          "benchmark_name",
+          "is_benchmark",
+          "description",
+          "movements",
+          "result_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WodOut",
+        "type": "object"
+      },
+      "WodPatch": {
+        "additionalProperties": false,
+        "description": "`PATCH /wods/{id}`: un campo ausente no es un cambio. `time_cap_s` y `benchmark_id`\nadmiten `null` (quitarlos); los demás no.",
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "movements": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WodMovementIn"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movements"
+          },
+          "score_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "time",
+                  "rounds_reps",
+                  "reps",
+                  "load",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Type"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "WodPatch",
+        "type": "object"
+      },
+      "WodResultRow": {
+        "description": "Una fila de `GET /wods/{id}/results` (S8-B4, US-172): socio, marca, quién y cuándo.",
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "member_id": {
+            "format": "uuid",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "recorded_by": {
+            "format": "uuid",
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "source": {
+            "enum": [
+              "desk",
+              "kiosk"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "validated",
+              "pending",
+              "voided"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          }
+        },
+        "required": [
+          "id",
+          "member_id",
+          "first_name",
+          "last_name",
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped",
+          "status",
+          "source",
+          "is_current",
+          "supersedes_id",
+          "session_id",
+          "recorded_by",
+          "recorded_by_name",
+          "created_at"
+        ],
+        "title": "WodResultRow",
+        "type": "object"
+      },
+      "WodRowOut": {
+        "description": "Fila de la lista y del calendario: sin la lista de movimientos.",
+        "properties": {
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "benchmark_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Name"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "movement_count": {
+            "title": "Movement Count",
+            "type": "integer"
+          },
+          "movement_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Movement Names",
+            "type": "array"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "title",
+          "score_type",
+          "time_cap_s",
+          "benchmark_id",
+          "benchmark_name",
+          "is_benchmark",
+          "movement_count",
+          "movement_names",
+          "result_count"
+        ],
+        "title": "WodRowOut",
+        "type": "object"
+      },
+      "WodTodayOut": {
+        "additionalProperties": false,
+        "description": "El WOD de hoy (Bogota) en el tablero (US-174; S8-D16): solo lo que pinta la tarjeta.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "score_type",
+          "is_benchmark"
+        ],
+        "title": "WodTodayOut",
         "type": "object"
       }
     }
@@ -8301,6 +10364,16 @@
               }
             },
             "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
           },
           "422": {
             "content": {
@@ -10024,6 +12097,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "wod_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wod Id"
+            }
+          },
+          {
             "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
             "in": "query",
             "name": "q",
@@ -10345,6 +12435,254 @@
         "summary": "Get Session",
         "tags": [
           "classes"
+        ]
+      },
+      "patch": {
+        "operationId": "assign_session_wod_api_v1_class_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Assign Session Wod",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/class-sessions/{session_id}/attendance": {
+      "get": {
+        "operationId": "session_attendance_api_v1_class_sessions__session_id__attendance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAttendanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Session Attendance",
+        "tags": [
+          "results"
         ]
       }
     },
@@ -14409,6 +16747,149 @@
         "summary": "Reactivate Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/results": {
+      "get": {
+        "operationId": "list_member_results_api_v1_members__member_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "benchmark",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Benchmark"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MemberResultRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Member Results",
+        "tags": [
+          "results"
         ]
       }
     },
@@ -19105,6 +21586,240 @@
         ]
       }
     },
+    "/api/v1/results": {
+      "put": {
+        "operationId": "put_result_api_v1_results_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Put Result",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/v1/results/{result_id}/void": {
+      "post": {
+        "operationId": "void_result_api_v1_results__result_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Result Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Void Result",
+        "tags": [
+          "results"
+        ]
+      }
+    },
     "/api/v1/settings/classes": {
       "get": {
         "operationId": "get_classes_api_v1_settings_classes_get",
@@ -20065,6 +22780,308 @@
         ]
       }
     },
+    "/api/v1/settings/tv": {
+      "get": {
+        "operationId": "get_tv_api_v1_settings_tv_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Tv",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_tv_api_v1_settings_tv_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Patch Tv",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/tv/regenerate-token": {
+      "post": {
+        "operationId": "regenerate_tv_token_api_v1_settings_tv_regenerate_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Regenerate Tv Token",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/tv/revoke-token": {
+      "post": {
+        "operationId": "revoke_tv_token_api_v1_settings_tv_revoke_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Revoke Tv Token",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/v1/settings/{section}": {
       "get": {
         "operationId": "get_section_api_v1_settings__section__get",
@@ -20274,6 +23291,57 @@
         "summary": "Patch Section",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/v1/tv/today": {
+      "get": {
+        "operationId": "tv_today_api_v1_tv_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          }
+        },
+        "summary": "Tv Today",
+        "tags": [
+          "tv"
         ]
       }
     },
@@ -21264,6 +24332,872 @@
         "summary": "Unlock User",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/wods": {
+      "get": {
+        "operationId": "list_wods_api_v1_wods_get",
+        "parameters": [
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          },
+          {
+            "in": "query",
+            "name": "benchmark",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Benchmark"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WodRowOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Wods",
+        "tags": [
+          "wods"
+        ]
+      },
+      "post": {
+        "operationId": "create_wod_api_v1_wods_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WodCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WodOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Create Wod",
+        "tags": [
+          "wods"
+        ]
+      }
+    },
+    "/api/v1/wods/today": {
+      "get": {
+        "operationId": "get_today_wod_api_v1_wods_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WodOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Today Wod Api V1 Wods Today Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Today Wod",
+        "tags": [
+          "wods"
+        ]
+      }
+    },
+    "/api/v1/wods/{wod_id}": {
+      "get": {
+        "operationId": "get_wod_api_v1_wods__wod_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wod_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wod Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WodOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Wod",
+        "tags": [
+          "wods"
+        ]
+      },
+      "patch": {
+        "operationId": "update_wod_api_v1_wods__wod_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wod_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wod Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WodPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WodOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Update Wod",
+        "tags": [
+          "wods"
+        ]
+      }
+    },
+    "/api/v1/wods/{wod_id}/leaderboard": {
+      "get": {
+        "operationId": "get_leaderboard_api_v1_wods__wod_id__leaderboard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wod_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wod Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "rx",
+                    "rx_plus",
+                    "scaled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sex",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "f",
+                    "m"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sex"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_LeaderboardRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Leaderboard",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/v1/wods/{wod_id}/results": {
+      "get": {
+        "operationId": "list_wod_results_api_v1_wods__wod_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wod_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wod Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_superseded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WodResultRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Wod Results",
+        "tags": [
+          "results"
         ]
       }
     },

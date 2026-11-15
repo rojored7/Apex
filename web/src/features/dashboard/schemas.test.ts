@@ -56,6 +56,15 @@ describe("dashboardSchema y movementSchema (revisión de seguridad de F3)", () =
     expect(parseResponse(dashboardSchema, dashboardBody({ sessions_today: [sesion] })).sessions_today).toHaveLength(1);
   });
 
+  it("S8-B5: wod_today es un objeto estricto o null; un string o una clave de más es invalid_response", () => {
+    const wod = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01", title: "Fran", score_type: "time" as const, is_benchmark: true };
+    expect(parseResponse(dashboardSchema, dashboardBody({ wod_today: wod })).wod_today).toEqual(wod);
+    expect(parseResponse(dashboardSchema, dashboardBody({ wod_today: null })).wod_today).toBeNull();
+    expect(invalid(() => parseResponse(dashboardSchema, { ...dashboardBody(), wod_today: "Fran" })).code).toBe(CLIENT_ERROR_CODES.invalidResponse);
+    expect(invalid(() => parseResponse(dashboardSchema, { ...dashboardBody(), wod_today: { ...wod, x: 1 } })).code).toBe(CLIENT_ERROR_CODES.invalidResponse);
+    expect(invalid(() => parseResponse(dashboardSchema, { ...dashboardBody(), wod_today: { ...wod, id: "../x" } })).code).toBe(CLIENT_ERROR_CODES.invalidResponse);
+  });
+
   it("un futuro ausente es invalid_response (nullable, no optional)", () => {
     const rest: Record<string, unknown> = { ...dashboardBody() };
     delete rest.sessions_today;

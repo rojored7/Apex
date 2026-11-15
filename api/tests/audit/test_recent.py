@@ -67,7 +67,7 @@ SOCIOS: Final = "members.members"
 MEMBRESIAS: Final = "memberships.memberships"
 PAGOS: Final = "payments.payments"
 NEGOCIO: Final = (SOCIOS, MEMBRESIAS, PAGOS)
-SEIS: Final = (*NEGOCIO, "plans.plans", "auth.users", "settings.settings_sections")
+SEIS: Final = (*NEGOCIO, "plans.plans", "auth.users", "settings.settings_sections", "wods.wods")
 
 
 @pytest.fixture

@@ -107,12 +107,12 @@ class AccessTokenOut(BaseModel):
 
 
 KIOSK_PATH_PATTERN = (
-    r"^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/checkin$"
+    r"^/clases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(checkin|resultados)$"
 )
 
 
 class KioskIn(BaseModel):
-    """`POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase."""
+    """`POST /auth/kiosk` (S7-D41, S8-D15): la ruta del check-in o de los resultados."""
 
     model_config = ConfigDict(extra="forbid")
 

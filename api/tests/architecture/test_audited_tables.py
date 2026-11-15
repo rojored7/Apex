@@ -66,6 +66,9 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "classes.attendance",  # S7-C1 (US-159)
         "wods.movements",  # S8-A1 (US-165)
         "wods.benchmarks",  # S8-A2 (US-166)
+        "wods.wods",  # S8-A3 (US-166)
+        "wods.wod_movements",  # S8-A3 (US-166)
+        "results.wod_results",  # S8-B1 (US-169)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -78,9 +81,6 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
 PENDING_AUDITED: dict[str, str] = {
     # S8-W0-3 (E3): las cinco tablas de v0.5 se declaran antes de existir; cada slice la mueve a
     # las requeridas. `athletes.personal_records` (EP-24, US-180) mantiene viva la lista.
-    "wods.wods": "v0.5",
-    "wods.wod_movements": "v0.5",
-    "results.wod_results": "v0.5",
     "athletes.personal_records": "v0.6",
 }
 
@@ -265,9 +265,11 @@ RECIENTES_ESPERADAS: frozenset[str] = frozenset(
         "plans.plans",
         "auth.users",
         "settings.settings_sections",
+        "wods.wods",  # S8-A3 (S8-D23): el WOD programado entra en lo reciente
     }
 )
-"""S4A-D28: la lista blanca de `recent` (nombres reales `esquema.tabla`, como mucho seis)."""
+"""S4A-D28: la lista blanca de `recent` (nombres reales `esquema.tabla`): seis y, desde S8-A3,
+`wods.wods`."""
 
 
 def auditadas_fuera_de_la_lista(tablas: Mapping[str, type], lista: frozenset[str]) -> list[str]:
@@ -307,7 +309,7 @@ def test_toda_tabla_auditable_va_a_recent_o_esta_excluida_con_motivo() -> None:
 
 def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -> None:
     assert RECENT_TABLES_ALLOWED == RECIENTES_ESPERADAS
-    assert len(RECENT_TABLES_ALLOWED) <= 6
+    assert len(RECENT_TABLES_ALLOWED) <= 7  # seis de S4A-D28 y `wods.wods` (S8-D23)
     assert set(AUDIT_TABLES_EXCLUDED_FROM_RECENT) == {
         "memberships.membership_freezes",
         "auth.one_time_tokens",
@@ -319,6 +321,8 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "classes.attendance",  # S7-C1: ruido para el tablero; la ve la ficha (S7-D17)
         "wods.movements",  # S8-A1: catálogo (S8-D23)
         "wods.benchmarks",  # S8-A2: catálogo (S8-D23)
+        "wods.wod_movements",  # S8-A3: detalle del WOD (S8-D23)
+        "results.wod_results",  # S8-B1: volumen de la clase (S8-D23)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

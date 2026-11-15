@@ -39,6 +39,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StringConstraints,
     ValidationError,
@@ -71,8 +72,15 @@ ENABLED_SECTIONS: frozenset[SectionKey] = frozenset(
         SectionKey.channels,  # S5-B4 (US-122, S5-D30)
         SectionKey.hours,  # S7-A1 (US-154, S7-D8)
         SectionKey.classes,
+        SectionKey.tv,  # S8-C1 (US-175, S8-D17, S8-D30): solo por sus rutas propias
     }
 )
+
+# S8-D33: la TV refresca cada 15 a 300 segundos (30 por defecto).
+TV_REFRESH_MIN: Final[int] = 15
+TV_REFRESH_MAX: Final[int] = 300
+TV_REFRESH_DEFAULT: Final[int] = 30
+TV_TOKEN_LAST_CHARS: Final[int] = 4
 
 # D24: códigos fijos de los medios de pago, en el orden en que se muestran. Los mismos en
 # `payments.schemas.PaymentMethod`, `payments.models.PAYMENT_METHODS`, el CHECK del modelo y la
@@ -288,6 +296,32 @@ class PaymentMethodInfo:
     hint: str
 
 
+class TvEditable(SectionValue):
+    """Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard."""
+
+    refresh_seconds: Annotated[StrictInt, Field(ge=TV_REFRESH_MIN, le=TV_REFRESH_MAX)] = (
+        TV_REFRESH_DEFAULT
+    )
+    show_leaderboard: StrictBool = True
+
+
+class TvStored(TvEditable):
+    """Lo guardado de la sección `tv` (S8-D17, S8-D30): el SHA-256 del token, nunca el token.
+    Solo lo leen y escriben las funciones propias del service; ninguna respuesta lo devuelve."""
+
+    device_token_hash: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    token_last4: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{4}$")] | None = None
+    rotated_at: datetime | None = None
+
+
+class TvView(TvEditable):
+    """La vista de la TV para el panel (S8-D30): sin el hash; `has_token` dice si hay token."""
+
+    has_token: bool
+    token_last4: str | None
+    rotated_at: datetime | None
+
+
 # Esquemas de escritura de las secciones habilitadas (S2-D15; S3-B3 suma `payment_methods`).
 SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.gym: GymSettings,
@@ -297,6 +331,7 @@ SECTION_REGISTRY: dict[SectionKey, type[SectionValue]] = {
     SectionKey.channels: ChannelsSettings,
     SectionKey.hours: HoursSettings,
     SectionKey.classes: ClassesSettings,
+    SectionKey.tv: TvStored,
 }
 
 # Esquemas de lectura: `privacy` sin publicar no valida contra `PrivacySettings`, y ninguna
@@ -345,6 +380,13 @@ SECTION_DEFAULTS: dict[SectionKey, dict[str, Any]] = {
         for dia in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
     },
     SectionKey.classes: {"default_capacity": 15, "checkin_window_min": 30},
+    SectionKey.tv: {
+        "refresh_seconds": TV_REFRESH_DEFAULT,
+        "show_leaderboard": True,
+        "device_token_hash": None,
+        "token_last4": None,
+        "rotated_at": None,
+    },
 }
 
 
@@ -400,6 +442,43 @@ class HoursSectionOut(_SectionMeta):
 
 class ClassesSectionOut(_SectionMeta):
     value: ClassesSettings
+
+
+class TvSectionOut(_SectionMeta):
+    """`GET/PATCH /settings/tv`: la vista, nunca el hash (S8-D30)."""
+
+    value: TvView
+
+
+class TvTokenOut(BaseModel):
+    """`POST /settings/tv/regenerate-token` (S8-D32): el token y el enlace se ven UNA vez."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str
+    url: str
+    token_last4: str
+    rotated_at: datetime
+    version: int
+
+
+class TvConfig(BaseModel):
+    """Lo que la TV necesita de la sección tras validar el token (C2): sin el hash."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    refresh_seconds: int
+    show_leaderboard: bool
+
+
+class TvPatchIn(BaseModel):
+    """`PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en
+    `value` es 422 (S8-D30)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: TvEditable
+    version: int = Field(ge=0)
 
 
 class SectionPatchIn(BaseModel):

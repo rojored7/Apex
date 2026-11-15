@@ -182,6 +182,7 @@ __all__ = [
     "QueryPlan",
     "active_ids",
     "attach",
+    "board_names",
     "channels_for",
     "chip_to_filter",
     "classify_query",
@@ -641,6 +642,23 @@ async def names_for(session: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, Me
         return {}
     consulta = select(Member.id, Member.first_name, Member.last_name, Member.sex).where(
         Member.id.in_(buscados)
+    )
+    return {
+        fila.id: MemberName(
+            id=fila.id, first_name=fila.first_name, last_name=fila.last_name, sex=fila.sex
+        )
+        for fila in await session.execute(consulta)
+    }
+
+
+async def board_names(session: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, MemberName]:
+    """Nombres para la TV (S8-D34, M-4): como `names_for` pero sin dados de baja y solo con
+    autorización vigente (`NOT CONSENT_MISSING_CONDITION`, como `count_without_consent`)."""
+    buscados = builtins.list(dict.fromkeys(ids))
+    if not buscados:
+        return {}
+    consulta = select(Member.id, Member.first_name, Member.last_name, Member.sex).where(
+        Member.id.in_(buscados), Member.deleted_at.is_(None), ~CONSENT_MISSING_CONDITION
     )
     return {
         fila.id: MemberName(

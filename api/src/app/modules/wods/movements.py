@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import Text, literal, select
+from sqlalchemy import Text, distinct, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,7 @@ from app.core.db import violated_constraint
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.wods.exceptions import MovementExists, MovementNotFound, WodsValidationError
-from app.modules.wods.models import Movement
+from app.modules.wods.models import Movement, WodMovement
 from app.modules.wods.rules import clean_movement_name, normalize_movement_name
 from app.modules.wods.schemas import (
     CatalogMovementOut,
@@ -43,9 +43,16 @@ _MENSAJE_NULO: Final = "Este campo no puede quedar vacío."
 
 
 async def usage_counts(session: AsyncSession, ids: list[UUID]) -> dict[UUID, int]:
-    """WODs que usan cada movimiento. En A1 no hay WODs: todos en 0 (A3 la reemplaza por la
-    consulta agrupada sobre `wod_movements`, una por página)."""
-    return dict.fromkeys(ids, 0)
+    """WODs distintos que usan cada movimiento: una consulta agrupada sobre `wod_movements`."""
+    if not ids:
+        return {}
+    filas = await session.execute(
+        select(WodMovement.movement_id, func.count(distinct(WodMovement.wod_id)))
+        .where(WodMovement.movement_id.in_(ids))
+        .group_by(WodMovement.movement_id)
+    )
+    cuentas = {fila[0]: int(fila[1]) for fila in filas}
+    return {i: cuentas.get(i, 0) for i in ids}
 
 
 def _out(mov: Movement, usos: dict[UUID, int]) -> CatalogMovementOut:
@@ -141,6 +148,11 @@ async def update_movement(
     cambios = {c: v for c, v in valores.items() if getattr(mov, c) != v}
     if not cambios:
         return (await _outs(session, [mov]))[0]
+    if "unit" in cambios and (await usage_counts(session, [mov.id]))[mov.id] > 0:
+        raise WodsValidationError(  # revisión de A4, M-1
+            message="La unidad no se puede cambiar: hay WODs que usan este movimiento.",
+            field="unit",
+        )
     norm = mov.name_norm
     if "name" in cambios:
         norm = normalize_movement_name(cambios["name"])

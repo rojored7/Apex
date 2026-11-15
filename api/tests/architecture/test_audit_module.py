@@ -64,6 +64,8 @@ def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
         "notifications",
         "classes",  # S7-A2 (S7-D20): después de `notifications`, antes de `dashboard`
         "wods",  # S8-A1 (S8-D5): después de `classes`
+        "results",  # S8-B1 (US-169): después de `wods`
+        "tv",  # S8-C2 (US-176): después de `results`
         "dashboard",
     )
 

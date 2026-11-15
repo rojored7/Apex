@@ -36,7 +36,7 @@ ESQUEMAS = (
     "results",
 )
 # `classes` ya existe desde S7-A2; `wods` llega en S8-A1 y `results` en S8-B1 (cada slice lo saca).
-MODULOS_PENDIENTES: frozenset[str] = frozenset({"results"})
+MODULOS_PENDIENTES: frozenset[str] = frozenset()
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b", re.IGNORECASE)

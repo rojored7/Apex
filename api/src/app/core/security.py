@@ -23,6 +23,7 @@ Es, junto con `core/crypto`, el único lugar que importa `cryptography`, `jwt`, 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import secrets
 import stat
@@ -53,6 +54,7 @@ PASSWORD_MIN_LENGTH: Final = PASSWORD_MIN_LENGTH_FLOOR
 JWT_ALGORITHM: Final = "EdDSA"
 REQUIRED_CLAIMS: Final[tuple[str, ...]] = ("exp", "iat", "sub", "role", "jti")
 OPAQUE_TOKEN_BYTES: Final = 32
+OPAQUE_TOKEN_MAX_LENGTH: Final = 128
 
 
 class StartupError(RuntimeError):
@@ -278,6 +280,19 @@ def hash_opaque_token(token: str) -> str:
         return hashlib.sha256(token.encode("ascii")).hexdigest()
     except UnicodeEncodeError:
         raise TokenInvalid from None
+
+
+def opaque_token_matches(token: str, stored_hash: str) -> bool:
+    """`True` si el SHA-256 de `token` es `stored_hash` (S8-D30, L-1): comparación en tiempo
+    constante, tope `OPAQUE_TOKEN_MAX_LENGTH` y solo ASCII; nunca lanza (falso en todo lo demás)."""
+    if not token or len(token) > OPAQUE_TOKEN_MAX_LENGTH:
+        return False
+    try:
+        calculado = hashlib.sha256(token.encode("ascii")).hexdigest().encode("ascii")
+        guardado = stored_hash.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return hmac.compare_digest(calculado, guardado)
 
 
 def new_refresh_token() -> tuple[str, str]:
@@ -566,6 +581,8 @@ KIOSK_ALLOWED_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("DELETE", "/api/v1/attendance/{attendance_id}"),
         ("GET", "/api/v1/members"),
         ("GET", "/api/v1/attachments/{attachment_id}"),
+        ("GET", "/api/v1/class-sessions/{session_id}/attendance"),  # S8-D15: resultados
+        ("PUT", "/api/v1/results"),  # S8-D15, S8-D31: origen `kiosk`, misma sesión
     }
 )
 DEVICE_TOKEN_ROUTES: Final[frozenset[tuple[str, str]]] = frozenset({("GET", "/api/v1/tv/today")})

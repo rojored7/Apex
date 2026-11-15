@@ -1,12 +1,13 @@
 """Router de settings (US-054; blueprint del Sprint 2, B1; S2-D3 y S2-D15).
 
-Plano, con la ruta completa en cada decorador y `require_role("admin")` en las catorce rutas.
+Plano, con la ruta completa en cada decorador y `require_role("admin")` en las dieciocho rutas.
 Las tipadas (`gym`, `privacy`, `memberships` y, desde S3-B3, `payment_methods`) se declaran ANTES
 que la genérica `/settings/{section}` para ganar el emparejamiento; `section` es `str` (no enum)
 para que una clave desconocida dé 404 `section_not_available` y no 422.
 
-El coach recibe 403 en las catorce (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
-Los siete `PATCH` consumen `admin-write` (30 por minuto por usuario, la cubeta de las demás
+El coach recibe 403 en las dieciocho (S2-D14): lee el nombre del gimnasio por `GET /auth/me`.
+Los `PATCH` (y los dos `POST` de `tv`, S8-C1) consumen `admin-write` (30 por minuto por usuario,
+la cubeta de las demás
 escrituras de solo admin; M-A de V10, S3-D100) y declaran 429; los `GET` no tienen tope.
 Las rutas no hacen `select`: validan el cuerpo, llaman al service y devuelven.
 """
@@ -17,6 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.config_origin import public_origin
 from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
@@ -40,12 +42,16 @@ from app.modules.settings.schemas import (
     SectionKey,
     SectionOut,
     SectionPatchIn,
+    TvPatchIn,
+    TvSectionOut,
+    TvTokenOut,
 )
 
 router = APIRouter(  # M6 y M7
     tags=["settings"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
 )
 _PATCH = responses_for(409, 429)  # `VersionConflict` y el tope `admin-write`
+_ACCION = responses_for(429)  # solo el tope `admin-write`
 _GENERICA = responses_for(404)  # `SectionNotAvailable`
 
 Admin = Annotated[Principal, Depends(require_role("admin"))]
@@ -162,6 +168,37 @@ async def patch_classes(
         body.version,
         principal.user_id,
     )
+
+
+# Sección `tv` (S8-C1; S8-D30): rutas propias, antes de las genéricas, que la rechazan con 404.
+# `regenerate-token` responde el token UNA vez: `no-store` (router) y su cuerpo se redacta en logs.
+
+
+@router.get("/settings/tv", response_model=TvSectionOut)
+async def get_tv(principal: Admin, session: Session) -> TvSectionOut:
+    return await service.get_tv(session)
+
+
+@router.patch("/settings/tv", response_model=TvSectionOut, responses=_PATCH)
+async def patch_tv(
+    request: Request, body: TvPatchIn, principal: Admin, session: Session
+) -> TvSectionOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.update_tv(session, body.value, body.version, principal.user_id)
+
+
+@router.post("/settings/tv/regenerate-token", response_model=TvTokenOut, responses=_ACCION)
+async def regenerate_tv_token(request: Request, principal: Admin, session: Session) -> TvTokenOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.regenerate_tv_token(
+        session, principal.user_id, origin=public_origin(request.app.state.settings)
+    )
+
+
+@router.post("/settings/tv/revoke-token", response_model=TvSectionOut, responses=_ACCION)
+async def revoke_tv_token(request: Request, principal: Admin, session: Session) -> TvSectionOut:
+    await enforce_user_limit(request, "admin-write", principal.user_id)
+    return await service.revoke_tv_token(session, principal.user_id)
 
 
 def _con_credenciales(request: Request, salida: SectionOut) -> SectionOut:

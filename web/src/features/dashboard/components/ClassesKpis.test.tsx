@@ -1,6 +1,7 @@
 // S7-F6 · US-164 (front): «Hoy en el box» y «Asistencia de la semana» de Inicio (Inicio.html). Salen de
 // GET /dashboard (`sessions_today` y `attendance_week`, S7-R3). Cada sesión de hoy lleva a su check-in.
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { dashboardBody, mockDashboard, ok, renderDashboard, serverError } from "../../../test/dashboard";
 import { signOutForTests } from "../../../test/session";
@@ -25,6 +26,12 @@ const SESIONES = [
   { id: ID_4, starts_at: "2026-10-20T23:00:00Z", coach_name: "María", capacity: 12, attendance_count: 0, duration_min: 60, status: "cancelled" as const },
 ];
 
+function cancelada(): (typeof SESIONES)[number] {
+  const s = SESIONES[3];
+  if (!s) throw new Error("falta la sesión cancelada");
+  return s;
+}
+
 function rowAt(rows: readonly HTMLElement[], index: number): HTMLElement {
   const row = rows[index];
   if (!row) throw new Error(`falta la fila ${String(index)}`);
@@ -48,7 +55,7 @@ describe("ClassesKpis", () => {
 
     const list = await screen.findByRole("list", { name: "Clases de hoy" });
     const rows = within(list).getAllByRole("listitem");
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(3); // las canceladas se pliegan (S8-D25)
     expect(within(rowAt(rows, 0)).getByText("06:00")).toBeInTheDocument();
     expect(within(rowAt(rows, 0)).getByText("Carlos")).toBeInTheDocument();
     expect(within(rowAt(rows, 0)).getByText("8 / 12")).toBeInTheDocument();
@@ -75,15 +82,50 @@ describe("ClassesKpis", () => {
     expect(screen.getByRole("link", { name: "Check-in de las 17:00" })).toHaveAttribute("href", `/clases/${ID_3}/checkin`);
   });
 
-  it("una sesión cancelada o terminada no ofrece Check-in y lo dice", async () => {
+  it("una sesión terminada no ofrece Check-in y lo dice", async () => {
     mockDashboard(ok(dashboardBody({ sessions_today: SESIONES })));
     renderDashboard(<ClassesKpis />);
 
     const rows = within(await screen.findByRole("list", { name: "Clases de hoy" })).getAllByRole("listitem");
     expect(within(rowAt(rows, 0)).getByText("Terminó")).toBeInTheDocument();
     expect(within(rowAt(rows, 0)).queryByRole("link")).not.toBeInTheDocument();
-    expect(within(rowAt(rows, 3)).getByText("Cancelada")).toBeInTheDocument();
-    expect(within(rowAt(rows, 3)).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("S8-D25: las canceladas se pliegan en «1 cancelada» y se despliegan sin check-in", async () => {
+    mockDashboard(ok(dashboardBody({ sessions_today: SESIONES })));
+    renderDashboard(<ClassesKpis />);
+
+    const list = await screen.findByRole("list", { name: "Clases de hoy" });
+    expect(within(list).queryByText("Cancelada")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "1 cancelada" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const cancelled = within(screen.getByRole("list", { name: "Clases canceladas de hoy" })).getAllByRole("listitem");
+    expect(cancelled).toHaveLength(1);
+    expect(within(rowAt(cancelled, 0)).getByText("Cancelada")).toBeInTheDocument();
+    expect(within(rowAt(cancelled, 0)).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("S8-D25: con varias, dice «N canceladas»; sin canceladas no hay botón", async () => {
+    const dos = [...SESIONES, { ...cancelada(), id: ID_1.replace("01", "09"), starts_at: "2026-10-20T21:00:00Z" }];
+    mockDashboard(ok(dashboardBody({ sessions_today: dos })));
+    const { unmount } = renderDashboard(<ClassesKpis />);
+    expect(await screen.findByRole("button", { name: "2 canceladas" })).toBeInTheDocument();
+    unmount();
+
+    mockDashboard(ok(dashboardBody({ sessions_today: SESIONES.slice(0, 3) })));
+    renderDashboard(<ClassesKpis />);
+    await screen.findByRole("list", { name: "Clases de hoy" });
+    expect(screen.queryByRole("button", { name: /cancelada/ })).not.toBeInTheDocument();
+  });
+
+  it("S8-D25: si todas están canceladas, no dice que no hay clases y deja ver las canceladas", async () => {
+    mockDashboard(ok(dashboardBody({ sessions_today: [cancelada()] })));
+    renderDashboard(<ClassesKpis />);
+
+    expect(await screen.findByRole("button", { name: "1 cancelada" })).toBeInTheDocument();
+    expect(screen.getByText("Hoy no hay clases programadas")).toBeInTheDocument();
   });
 
   it("Asistencia de la semana muestra el conteo y las marcadas, con enlace a /clases/asistencia", async () => {

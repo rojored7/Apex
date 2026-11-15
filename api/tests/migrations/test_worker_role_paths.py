@@ -262,3 +262,25 @@ def test_apex_worker_inserta_sesiones(apex_roles: RolesDb) -> None:
         assert _como_worker(apex_roles, trabajo) == 0
     finally:
         propietario(apex_roles, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)
+
+
+def test_apex_worker_sin_acceso_a_wods_ni_results(apex_roles: RolesDb) -> None:
+    """S8-B1 (P-ROL): el worker no tiene `USAGE` en los esquemas `wods` ni `results`."""
+    import asyncpg
+
+    from tests.migrations.test_db_grants import _correr
+
+    async def leer(c: asyncpg.Connection) -> list[str]:
+        negadas: list[str] = []
+        for tabla in ("results.wod_results", "wods.wods", "wods.wod_movements"):
+            try:
+                await c.fetchval(f"SELECT count(*) FROM {tabla}")  # noqa: S608
+            except asyncpg.InsufficientPrivilegeError:
+                negadas.append(tabla)
+        return negadas
+
+    assert _correr(apex_roles.dsn("apex_worker"), leer) == [
+        "results.wod_results",
+        "wods.wods",
+        "wods.wod_movements",
+    ]

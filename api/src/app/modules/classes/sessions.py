@@ -28,7 +28,9 @@ from app.modules.auth import service as auth_service
 from app.modules.classes.events import SessionCancelled, SessionGenerated
 from app.modules.classes.exceptions import (
     CoachInvalid,
+    LockedByResults,
     SessionAlreadyCancelled,
+    SessionCancelledError,
     SessionDuplicate,
     SessionFinished,
     SessionNotFound,
@@ -36,6 +38,7 @@ from app.modules.classes.exceptions import (
 )
 from app.modules.classes.models import ClassSession, ClassSlot
 from app.modules.classes.queries import attendance_counts, session_out
+from app.modules.classes.result_link import results_port
 from app.modules.classes.rules import (
     PlannedSession,
     local_date,
@@ -47,8 +50,10 @@ from app.modules.classes.schemas import (
     SessionCancel,
     SessionCreate,
     SessionOut,
+    SessionPatch,
 )
 from app.modules.settings import service as settings_service
+from app.modules.wods import service as wods_service
 
 logger = logging.getLogger("app.classes")
 
@@ -202,7 +207,8 @@ async def create_extra(
 async def _one_out(session: AsyncSession, fila: ClassSession, ahora: datetime) -> SessionOut:
     nombres = await auth_service.user_names_for(session, [fila.coach_id]) if fila.coach_id else {}
     cuentas = await attendance_counts(session, [fila.id])
-    return session_out(fila, nombres, ahora, cuentas.get(fila.id, 0))
+    por_dia = await wods_service.day_wod_ids(session, {fila.session_date})
+    return session_out(fila, nombres, ahora, cuentas.get(fila.id, 0), por_dia)
 
 
 async def cancel_session(
@@ -223,6 +229,10 @@ async def cancel_session(
         raise SessionFinished()
     if fila.status == "cancelled":
         raise SessionAlreadyCancelled()
+    if await results_port().session_has_current_results(session, fila.id):  # S8-D46
+        raise LockedByResults(
+            "La clase ya tiene resultados registrados: no se puede cancelar.", field=None
+        )
     fila.status = "cancelled"
     fila.cancel_reason = data.reason
     fila.cancelled_by = by
@@ -280,3 +290,44 @@ async def cancel_future_sessions(
         extra={"slot_id": str(slot_id), "canceladas": len(filas)},
     )
     return CancelFutureOut(cancelled_count=len(filas))
+
+
+async def assign_wod(
+    session: AsyncSession, session_id: UUID, data: SessionPatch, *, by: UUID
+) -> SessionOut:
+    """`PATCH /class-sessions/{id}` (S8-D9, S8-D36): asigna un WOD a la sesión o, con `null`, vuelve
+    a heredar el del día.
+
+    Orden de candados (M-6): la sesión `FOR UPDATE` ANTES de leer el WOD y de escribir, el mismo
+    candado que toman las cancelaciones, el check-in y el registro de resultados. Una sesión
+    cancelada da 409 `session_cancelled`; un `wod_id` inexistente, 422 `field = "wod_id"`. Sin
+    cambio no hay `flush` ni fila de auditoría. Con resultados vigentes de la sesión, cambiar el WOD
+    efectivo da 409 `locked_by_results` (M-2 de la revisión de A4); asignar en una sesión ya
+    terminada (`done`) sí se permite mientras no tenga resultados."""
+    fila = await session.scalar(
+        select(ClassSession)
+        .where(ClassSession.id == session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if fila is None:
+        raise SessionNotFound()
+    if fila.status == "cancelled":
+        raise SessionCancelledError()
+    if data.wod_id is not None:
+        await wods_service.ensure_wod(session, data.wod_id)
+    if fila.wod_id != data.wod_id:
+        del_dia = (await wods_service.day_wod_ids(session, {fila.session_date})).get(
+            fila.session_date
+        )
+        if (fila.wod_id or del_dia) != (
+            data.wod_id or del_dia
+        ) and await results_port().session_has_current_results(session, fila.id):
+            raise LockedByResults()
+        fila.wod_id = data.wod_id
+        await session.flush()
+        logger.info(
+            "classes: wod de la sesión asignado",
+            extra={"session_id": str(fila.id), "actor": str(by)},
+        )
+    return await _one_out(session, fila, current_clock().now_utc())

@@ -1,11 +1,10 @@
 """`wods.service` de benchmarks con base real (S8-A2, US-166, N-46; S8-D6). Rojo A2.
 
-`score_type_locked` usa un doble de `wod_counts` (la tabla de WODs llega en A3, que lo reemplaza
-por la consulta real sobre `wods.wods`).
-"""
+`score_type_locked` se prueba con WODs reales desde A3."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest import mock
 from uuid import UUID, uuid4
@@ -15,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.context import actor_scope
+from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.pagination import PageParams
 from app.modules.wods import benchmarks as benchmarks_module
 from app.modules.wods import service
@@ -32,6 +31,7 @@ from app.modules.wods.schemas import (
     BenchmarkPatch,
 )
 from tests.conftest import CrearUsuario
+from tests.factories.wods import make_movement, make_wod
 
 PAGINA = PageParams(limit=50, offset=0)
 SIN_FILTROS = BenchmarkListQuery()
@@ -139,21 +139,27 @@ async def test_404_de_inexistente(session: AsyncSession, usuario_real: CrearUsua
 async def test_patch_score_type_con_wods_da_422_score_type_locked(
     session: AsyncSession, usuario_real: CrearUsuario
 ) -> None:
+    """Con WODs REALES (A3 reemplazó el doble de A2): `wod_count` sale de `wods.wods`."""
     admin = await usuario_real("admin")
     b = await _alta(session, admin.id)
+    thruster = await make_movement(session, admin.id)
+    await make_wod(session, admin.id, [thruster.id], benchmark_id=str(b.id))
+    await make_wod(session, admin.id, [thruster.id], date="2026-10-23", benchmark_id=str(b.id))
+    with pytest.raises(ScoreTypeLocked) as error:
+        await _cambio(session, admin.id, b.id, score_type="reps")
+    assert error.value.status == 422 and error.value.field == "score_type"
+    # El mismo valor no es un cambio; y lo demás sí se edita aunque haya WODs.
+    igual = await _cambio(session, admin.id, b.id, score_type="time", description="nueva")
+    assert igual.description == "nueva" and igual.wod_count == 2
 
-    async def con_wods(_s: AsyncSession, ids: list[UUID]) -> dict[UUID, int]:
-        return dict.fromkeys(ids, 2)
 
-    with mock.patch.object(benchmarks_module, "wod_counts", con_wods):
-        with pytest.raises(ScoreTypeLocked) as error:
-            await _cambio(session, admin.id, b.id, score_type="reps")
-        assert error.value.status == 422 and error.value.field == "score_type"
-        # El mismo valor no es un cambio; y lo demás sí se edita aunque haya WODs.
-        igual = await _cambio(session, admin.id, b.id, score_type="time", description="nueva")
-        assert igual.description == "nueva" and igual.wod_count == 2
+async def test_sin_wods_el_score_type_cambia(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    admin = await usuario_real("admin")
+    b = await _alta(session, admin.id)
     libre = await _cambio(session, admin.id, b.id, score_type="reps")
-    assert libre.score_type == "reps"
+    assert libre.score_type == "reps" and libre.wod_count == 0
 
 
 async def test_lista_filtra_busca_pagina_y_ordena_por_nombre_normalizado(
@@ -220,3 +226,28 @@ async def test_la_carrera_23505_da_409_con_existing_id_y_la_sesion_sigue_viva(
     lista = await service.list_benchmarks(session, SIN_FILTROS, PAGINA)
     assert lista.total == 2
     assert (await _cambio(session, admin.id, otro.id, description="ok")).description == "ok"
+
+
+async def test_dos_altas_del_mismo_nombre_a_la_vez_dejan_una_y_la_otra_recibe_409(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S8-A2b (L4): dos sesiones reales y `asyncio.gather`; decide `uq_benchmarks_name_norm`."""
+    primera, segunda = dos_sesiones
+
+    async def alta(sesion: AsyncSession, nombre: str) -> BenchmarkOut | BenchmarkExists:
+        with actor_scope(SYSTEM_USER_ID):
+            try:
+                salida = await service.create_benchmark(sesion, _crear(name=nombre), SYSTEM_USER_ID)
+                await sesion.commit()
+                return salida
+            except BenchmarkExists as error:
+                await sesion.rollback()
+                return error
+
+    resultados = await asyncio.gather(alta(primera, "Fran"), alta(segunda, " FRAN "))
+    creadas = [r for r in resultados if isinstance(r, BenchmarkOut)]
+    perdedoras = [r for r in resultados if isinstance(r, BenchmarkExists)]
+    assert len(creadas) == 1 and len(perdedoras) == 1
+    assert perdedoras[0].existing_id == creadas[0].id
+    total = await primera.scalar(text("SELECT count(*) FROM wods.benchmarks"))
+    assert total == 1

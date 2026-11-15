@@ -73,6 +73,10 @@ CON_LIMITE = {
     ("patch", "/api/v1/settings/payment_methods"),
     ("patch", "/api/v1/settings/hours"),  # S7-A1 (US-154)
     ("patch", "/api/v1/settings/classes"),
+    # S8-C1 (US-175, S8-D30): la TV, con `admin-write` (token y revocación incluidos).
+    ("patch", "/api/v1/settings/tv"),
+    ("post", "/api/v1/settings/tv/regenerate-token"),
+    ("post", "/api/v1/settings/tv/revoke-token"),
     ("patch", "/api/v1/settings/{section}"),
     ("post", "/api/v1/users"),
     ("post", "/api/v1/users/{user_id}/resend-link"),
@@ -166,6 +170,26 @@ CON_LIMITE = {
     ("get", "/api/v1/benchmarks"),
     ("post", "/api/v1/benchmarks"),
     ("patch", "/api/v1/benchmarks/{benchmark_id}"),
+    # S8-A3 (US-166, US-167): WODs; A4 (US-168) suma `GET /wods/today` (`staff-read`) y el
+    # `PATCH /class-sessions/{session_id}` (`classes-write`).
+    ("get", "/api/v1/wods/today"),
+    # S8-C2 (US-176): la TV cuenta `tv` por hash del token y `tv-fail` por IP, no por usuario.
+    ("get", "/api/v1/tv/today"),
+    ("patch", "/api/v1/class-sessions/{session_id}"),
+    # S8-B1 (US-169): `PUT /results` consume `results-write`.
+    ("put", "/api/v1/results"),
+    # S8-B3b (S8-D46 b): la anulación de un resultado (solo admin, `admin-write`).
+    ("post", "/api/v1/results/{result_id}/void"),
+    # S8-B3 (US-169): la asistencia con resultados (`staff-read`).
+    ("get", "/api/v1/class-sessions/{session_id}/attendance"),
+    # S8-B4 (US-171 a US-173): leaderboard y resultados del WOD y del socio (`staff-read`).
+    ("get", "/api/v1/wods/{wod_id}/leaderboard"),
+    ("get", "/api/v1/wods/{wod_id}/results"),
+    ("get", "/api/v1/members/{member_id}/results"),
+    ("get", "/api/v1/wods"),
+    ("post", "/api/v1/wods"),
+    ("get", "/api/v1/wods/{wod_id}"),
+    ("patch", "/api/v1/wods/{wod_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

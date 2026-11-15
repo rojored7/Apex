@@ -140,6 +140,9 @@ permitida apex_worker "SELECT ... FOR UPDATE en memberships.memberships" "SELECT
 permitida apex_worker "INSERT en worker.job_runs" "$JOB_INSERT"
 permitida apex_worker "INSERT en audit.audit_log" "$AUDIT_INSERT"
 prohibida apex_worker "SELECT en payments.payments" "SELECT count(*) FROM payments.payments"
+# S8-C2 (V3): el worker no lee WODs ni resultados (la TV y el panel los sirven desde el api).
+prohibida apex_worker "SELECT en wods.wods" "SELECT count(*) FROM wods.wods"
+prohibida apex_worker "SELECT en results.wod_results" "SELECT count(*) FROM results.wod_results"
 permitida apex_worker "SELECT en crypto.crypto_keys (S5-D34)" "SELECT count(*) FROM crypto.crypto_keys"
 prohibida apex_worker "UPDATE crypto.crypto_keys SET updated_at" "UPDATE crypto.crypto_keys SET updated_at = now() WHERE false"
 permitida apex_worker "SELECT por columna en members.members (S5-D204)" "SELECT id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at FROM members.members"

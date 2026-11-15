@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import unicodedata
+from collections.abc import Callable
 from typing import Final
 from uuid import UUID
 
@@ -62,13 +63,19 @@ async def _id_by_name(
 
 
 async def _flush_unique(
-    session: AsyncSession, template: NotificationTemplate, *, exclude: UUID | None = None
+    session: AsyncSession,
+    nombre: str,
+    plantilla_id: UUID,
+    aplicar: Callable[[], None],
+    *,
+    exclude: UUID | None = None,
 ) -> None:
-    """`flush` en un savepoint; el choque de nombre se traduce a 409 con el id del ganador."""
-    nombre, plantilla_id = template.name, template.id  # el rollback del savepoint expira la fila
+    """Aplica el cambio y hace `flush` DENTRO de un savepoint (`begin_nested()` vacía lo pendiente
+    antes de abrirlo: un `setattr` previo fallaría fuera y dejaría la sesión inservible, S8-A1b).
+    El choque de nombre se traduce a 409 con el id del ganador."""
     try:
         async with session.begin_nested():
-            session.add(template)
+            aplicar()
             await session.flush()
     except IntegrityError as error:
         if violated_constraint(error) != TEMPLATE_NAME_UNIQUE:
@@ -118,7 +125,7 @@ async def create_template(session: AsyncSession, data: TemplateCreate) -> Templa
     plantilla = NotificationTemplate(
         name=nombre, subject=data.subject, body=data.body, created_by=get_actor()
     )
-    await _flush_unique(session, plantilla)
+    await _flush_unique(session, nombre, plantilla.id, lambda: session.add(plantilla))
     logger.info("notifications: plantilla creada", extra={"template_id": str(plantilla.id)})
     return TemplateOut.model_validate(plantilla)
 
@@ -142,9 +149,14 @@ async def update_template(
         existente = await _id_by_name(session, cambios["name"], exclude=template_id)
         if existente is not None:
             raise TemplateNameTaken(existente)
-    for campo, valor in cambios.items():
-        setattr(plantilla, campo, valor)
-    await _flush_unique(session, plantilla, exclude=template_id)
+
+    def aplicar() -> None:
+        for campo, valor in cambios.items():
+            setattr(plantilla, campo, valor)
+
+    await _flush_unique(
+        session, cambios.get("name", plantilla.name), template_id, aplicar, exclude=template_id
+    )
     logger.info(
         "notifications: plantilla editada",
         extra={"template_id": str(template_id), "template_fields": sorted(cambios)},

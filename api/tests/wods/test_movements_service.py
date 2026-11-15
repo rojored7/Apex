@@ -22,6 +22,7 @@ from app.modules.wods.schemas import (
     MovementPatch,
 )
 from tests.conftest import CrearUsuario
+from tests.factories.wods import make_wod
 
 PAGINA = PageParams(limit=50, offset=0)
 SIN_FILTROS = MovementListQuery()
@@ -154,11 +155,11 @@ async def test_patch_de_inexistente_da_404(
 
 
 async def test_desactivar_no_cambia_wods(session: AsyncSession, usuario_real: CrearUsuario) -> None:
-    """A1: desactivar solo cambia `is_active` (nombre, categoria y unidad quedan; el movimiento
-    sigue existiendo y se lista con `active=false`). La parte "no toca ningun WOD" se prueba en A3,
-    cuando existe `wod_movements`."""
+    """Desactivar solo cambia `is_active`: nombre, categoría y unidad quedan, el movimiento se
+    lista con `active=false` y los WODs que lo usan no cambian (A3: con un WOD real)."""
     admin = await usuario_real("admin")
     mov = await _alta(session, admin.id)
+    wod = await make_wod(session, admin.id, [mov.id])
     apagado = await _cambio(session, admin.id, mov.id, is_active=False)
     assert apagado.is_active is False
     assert (apagado.name, apagado.category, apagado.unit) == (mov.name, mov.category, mov.unit)
@@ -168,6 +169,9 @@ async def test_desactivar_no_cambia_wods(session: AsyncSession, usuario_real: Cr
     assert activos.total == 0
     vuelta = await _cambio(session, admin.id, mov.id, is_active=True)
     assert vuelta.is_active is True
+    despues = await service.get_wod(session, wod.id)
+    assert despues.movements[0].movement_name == mov.name and despues.updated_at == wod.updated_at
+    assert apagado.wod_count == 1 and vuelta.wod_count == 1
 
 
 async def test_lista_filtra_busca_pagina_y_ordena_por_nombre(

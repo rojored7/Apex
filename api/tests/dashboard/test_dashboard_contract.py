@@ -1,7 +1,9 @@
 """Contrato de `GET /dashboard` (S7-R3, US-164 criterio 3). Rojo R3.
 
 Foto de `DashboardOut` del `openapi.json` del Sprint 6: salvo `attendance_week` y `sessions_today`
-(que pasan de `integer|null` a objeto y lista, obligatorios), nada cambia.
+(que pasan de `integer|null` a objeto y lista, obligatorios), nada cambia. S8-B5 (US-174 CA2,
+S8-D16): `wod_today` pasa de `string|null` a `WodTodayOut|null` y es lo unico que cambia desde
+entonces.
 """
 
 from __future__ import annotations
@@ -37,12 +39,11 @@ ANTERIOR: Final[dict[str, Any]] = {
     "members_without_consent": {"title": "Members Without Consent", "type": "integer"},
     "notifications_today": {"title": "Notifications Today", "type": "integer"},
     "today": {"format": "date", "title": "Today", "type": "string"},
-    "wod_today": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Wod Today"},
 }
-CAMBIAN: Final = {"attendance_week", "sessions_today"}
+CAMBIAN: Final = {"attendance_week", "sessions_today", "wod_today"}
 
 
-def test_solo_cambian_attendance_week_y_sessions_today(settings_prueba: Settings) -> None:
+def test_solo_cambia_wod_today(settings_prueba: Settings) -> None:
     abierto = create_app(settings_prueba, run_migrations_on_startup=False).openapi()["components"][
         "schemas"
     ]
@@ -55,8 +56,18 @@ def test_solo_cambian_attendance_week_y_sessions_today(settings_prueba: Settings
     assert props["sessions_today"]["type"] == "array"
     assert props["sessions_today"]["maxItems"] == 50
     assert props["sessions_today"]["items"] == {"$ref": "#/components/schemas/SessionTodayOut"}
-    assert CAMBIAN <= set(esquema["required"])
+    assert {"attendance_week", "sessions_today"} <= set(esquema["required"])
     assert "wod_today" not in esquema["required"]
+    assert props["wod_today"] == {
+        "anyOf": [{"$ref": "#/components/schemas/WodTodayOut"}, {"type": "null"}],
+    }
+    assert set(abierto["WodTodayOut"]["properties"]) == {
+        "id",
+        "title",
+        "score_type",
+        "is_benchmark",
+    }
+    assert abierto["WodTodayOut"]["additionalProperties"] is False
     assert set(abierto["AttendanceWeekOut"]["properties"]) == {"count", "flagged_count"}
     assert set(abierto["SessionTodayOut"]["properties"]) == {
         "id",

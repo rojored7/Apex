@@ -60,7 +60,23 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("classes", "auth"),
         ("classes", "members"),
         ("classes", "settings"),
+        # S8-A4 (S8-D4, US-168): `classes` valida el WOD asignado (`ensure_wod`), pide el WOD de
+        # cada día (`day_wod_ids`) y la fecha de un WOD (`wod_date`). Nunca `wods -> classes`.
+        ("classes", "wods"),
         ("auth", "settings"),
+        # S8-B1 (US-169, S8-D36): `results` valida contra el WOD, el socio y la sesion; los puertos
+        # inversos (`ResultsProbe`, `ResultsPort`) los registra `results`: nunca
+        # `wods`/`classes -> results`.
+        ("results", "classes"),
+        ("results", "members"),
+        ("results", "wods"),
+        # S8-B4 (US-172): `recorded_by_name` por `auth.service.user_names_for`.
+        ("results", "auth"),
+        # S8-C2 (US-176, S8-D18): la TV valida el token (`settings`), pide el WOD de hoy (`wods`)
+        # y el ranking público (`results`).
+        ("tv", "settings"),
+        ("tv", "wods"),
+        ("tv", "results"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
         ("dashboard", "audit"),
         # S7-R3 (US-164, G-04): el tablero lee `week_attendance` y `today_sessions` de classes.
@@ -71,6 +87,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         # S5-B10 (S5-D47): `notifications_today` sale de `notifications.service.today_count`.
         ("dashboard", "notifications"),
         ("dashboard", "payments"),
+        # S8-B5 (US-174, S8-D16): `wod_today` sale de `wods.service.today_card`.
+        ("dashboard", "wods"),
         # S4A-B5 (S4A-D20, C6): `members.service.history` delega en `audit.service.member_history`.
         ("members", "audit"),
         # S6-C2 (S6-D18): la foto y los adjuntos del socio viven en `attachments`.
@@ -382,10 +400,11 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
     assert importadores == {"memberships"}
 
 
-def test_dashboard_importa_siete_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
+def test_dashboard_importa_ocho_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
     """S4A-B8 (S4A-D27, C9), S5-B10 (S5-D47) y S7-R3 (US-164): `dashboard` importa
-    arriba exactamente `audit`, `auth`, `classes`, `members`, `memberships`, `notifications` y
-    `payments` (nunca `plans`, ni perezosas), y ningún módulo lo importa (va al final de
+    arriba exactamente `audit`, `auth`, `classes`, `members`, `memberships`, `notifications`,
+    `payments` y `wods` (S8-B5; nunca `plans`, ni perezosas), y ningún módulo lo importa (va al
+    final de
     `MODULES`); `plans` sigue importado solo por `memberships`."""
     arriba, perezosas = _grafo_real()
     assert arriba["dashboard"] == {
@@ -396,6 +415,7 @@ def test_dashboard_importa_siete_services_a_nivel_de_modulo_y_nadie_lo_importa()
         "memberships",
         "notifications",
         "payments",
+        "wods",
     }
     assert perezosas["dashboard"] == set()
     assert "plans" not in arriba["dashboard"]
@@ -668,7 +688,7 @@ def test_attachments_no_tiene_aristas_salientes_a_otros_modulos() -> None:
 
 def test_wods_no_tiene_aristas_salientes_en_a1() -> None:
     """S8-A1 (S8-D5): `wods` no importa el `service.py` de ningun otro modulo; la arista
-    `classes -> wods` llega en A4 y nunca `wods -> classes`."""
+    `classes -> wods` llega en A4 (S8-D4) y nunca `wods -> classes`."""
     arriba, perezosas = _grafo_real()
     assert arriba["wods"] == set()
     assert perezosas["wods"] == set()

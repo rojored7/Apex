@@ -153,6 +153,17 @@ class SessionOut(BaseModel):
     attendance_count: int
     cancel_reason: str | None
     cancelled_at: datetime | None
+    wod_id: UUID | None
+    effective_wod_id: UUID | None
+
+
+class SessionPatch(BaseModel):
+    """`PATCH /class-sessions/{id}` (S8-D9, N-41): `wod_id` es obligatorio; `null` vuelve a heredar
+    el WOD del día. `extra="forbid"`: nada más se edita por aquí."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    wod_id: UUID | None
 
 
 class SessionDetail(SessionOut):
@@ -169,6 +180,7 @@ class SessionListQuery(BaseModel):
     to_date: date | None = None
     coach_id: UUID | None = None
     status: SessionStatus | None = None
+    wod_id: UUID | None = None
 
 
 # Check-in (S7-C1, US-159; S7-D6, S7-D12, L-1) -----------------------------------------------

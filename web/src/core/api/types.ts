@@ -381,6 +381,24 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Assign Session Wod */
+        patch: operations["assign_session_wod_api_v1_class_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{session_id}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Attendance */
+        get: operations["session_attendance_api_v1_class_sessions__session_id__attendance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -798,6 +816,23 @@ export interface paths {
         put?: never;
         /** Reactivate Member */
         post: operations["reactivate_member_api_v1_members__member_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{member_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Member Results */
+        get: operations["list_member_results_api_v1_members__member_id__results_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1328,6 +1363,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Result */
+        put: operations["put_result_api_v1_results_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/results/{result_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void Result */
+        post: operations["void_result_api_v1_results__result_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/classes": {
         parameters: {
             query?: never;
@@ -1436,6 +1505,58 @@ export interface paths {
         patch: operations["patch_privacy_api_v1_settings_privacy_patch"];
         trace?: never;
     };
+    "/api/v1/settings/tv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tv */
+        get: operations["get_tv_api_v1_settings_tv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Tv */
+        patch: operations["patch_tv_api_v1_settings_tv_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/tv/regenerate-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Regenerate Tv Token */
+        post: operations["regenerate_tv_token_api_v1_settings_tv_regenerate_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/tv/revoke-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Tv Token */
+        post: operations["revoke_tv_token_api_v1_settings_tv_revoke_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/{section}": {
         parameters: {
             query?: never;
@@ -1452,6 +1573,23 @@ export interface paths {
         head?: never;
         /** Patch Section */
         patch: operations["patch_section_api_v1_settings__section__patch"];
+        trace?: never;
+    };
+    "/api/v1/tv/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tv Today */
+        get: operations["tv_today_api_v1_tv_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/users": {
@@ -1559,6 +1697,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Wods */
+        get: operations["list_wods_api_v1_wods_get"];
+        put?: never;
+        /** Create Wod */
+        post: operations["create_wod_api_v1_wods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Today Wod */
+        get: operations["get_today_wod_api_v1_wods_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wod */
+        get: operations["get_wod_api_v1_wods__wod_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Wod */
+        patch: operations["update_wod_api_v1_wods__wod_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Leaderboard */
+        get: operations["get_leaderboard_api_v1_wods__wod_id__leaderboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Wod Results */
+        get: operations["list_wod_results_api_v1_wods__wod_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1660,6 +1885,27 @@ export interface components {
         AttendanceRemove: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * AttendanceResultRow
+         * @description Un asistente vivo de la clase y su resultado vigente en el WOD efectivo (S8-D14).
+         *
+         *     Solo nombre y apellido: ningún campo cifrado. `result` prellena la tablet y da el
+         *     `supersedes_id` de una corrección.
+         */
+        AttendanceResultRow: {
+            /** First Name */
+            first_name: string;
+            /** Has Result */
+            has_result: boolean;
+            /** Last Name */
+            last_name: string;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            result: components["schemas"]["ResultOut"] | null;
         };
         /**
          * AttendanceRowOut
@@ -2211,7 +2457,7 @@ export interface components {
         /**
          * DashboardOut
          * @description `GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;
-         *     solo `wod_today` sigue en `null` hasta v0.5.
+         *     `wod_today` es un objeto `WodTodayOut` o `null` sin WOD hoy (S8-D16).
          */
         DashboardOut: {
             attendance_week: components["schemas"]["AttendanceWeekOut"];
@@ -2245,8 +2491,7 @@ export interface components {
              * Format: date
              */
             today: string;
-            /** Wod Today */
-            wod_today?: string | null;
+            wod_today?: components["schemas"]["WodTodayOut"] | null;
         };
         /** EmergencyContactIn */
         EmergencyContactIn: {
@@ -2564,7 +2809,7 @@ export interface components {
         };
         /**
          * KioskIn
-         * @description `POST /auth/kiosk` (S7-D41): solo la ruta del check-in de una sesión de clase.
+         * @description `POST /auth/kiosk` (S7-D41, S8-D15): la ruta del check-in o de los resultados.
          */
         KioskIn: {
             /** Path */
@@ -2587,6 +2832,44 @@ export interface components {
              * @constant
              */
             token_type: "bearer";
+        };
+        /**
+         * LeaderboardRow
+         * @description Una fila del leaderboard (S8-B4, US-171, S8-D13). Solo nombre y inicial del apellido: ningún
+         *     campo cifrado. La carga va en gramos (`load_g`, S8-D41).
+         */
+        LeaderboardRow: {
+            /** Capped */
+            capped: boolean;
+            /** First Name */
+            first_name: string;
+            /** Last Initial */
+            last_initial: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Position */
+            position: number;
+            /** Reps */
+            reps: number | null;
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
         };
         /** LoginIn */
         LoginIn: {
@@ -2795,6 +3078,67 @@ export interface components {
             phone?: string | null;
             /** Sex */
             sex?: ("f" | "m" | "x") | null;
+        };
+        /**
+         * MemberResultRow
+         * @description Una fila de `GET /members/{id}/results` (S8-B4, US-173): el WOD copiado y la marca.
+         */
+        MemberResultRow: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Score Type */
+            score_type: string;
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending" | "voided";
+            /**
+             * Wod Date
+             * Format: date
+             */
+            wod_date: string;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+            /** Wod Title */
+            wod_title: string;
         };
         /**
          * MemberRowOut
@@ -3202,10 +3546,32 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[LeaderboardRow] */
+        Page_LeaderboardRow_: {
+            /** Items */
+            items: components["schemas"]["LeaderboardRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[MemberHistoryItem] */
         Page_MemberHistoryItem_: {
             /** Items */
             items: components["schemas"]["MemberHistoryItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[MemberResultRow] */
+        Page_MemberResultRow_: {
+            /** Items */
+            items: components["schemas"]["MemberResultRow"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -3327,6 +3693,28 @@ export interface components {
         Page_UserRow_: {
             /** Items */
             items: components["schemas"]["UserRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[WodResultRow] */
+        Page_WodResultRow_: {
+            /** Items */
+            items: components["schemas"]["WodResultRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[WodRowOut] */
+        Page_WodRowOut_: {
+            /** Items */
+            items: components["schemas"]["WodRowOut"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -3810,6 +4198,126 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** ResultIn */
+        ResultIn: {
+            /**
+             * Capped
+             * @default false
+             */
+            capped: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g?: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Reps */
+            reps?: number | null;
+            /** Rounds */
+            rounds?: number | null;
+            /** Scaled Movement Ids */
+            scaled_movement_ids?: string[];
+            /** Seconds */
+            seconds?: number | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+        };
+        /** ResultOut */
+        ResultOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Scaled Movement Ids */
+            scaled_movement_ids: string[];
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending" | "voided";
+            /** Supersedes Id */
+            supersedes_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Validated At */
+            validated_at: string | null;
+            /** Validated By */
+            validated_by: string | null;
+            /** Void Reason */
+            void_reason: string | null;
+            /** Voided At */
+            voided_at: string | null;
+            /** Voided By */
+            voided_by: string | null;
+            /**
+             * Wod Date
+             * Format: date
+             */
+            wod_date: string;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+        };
         /** RevealIn */
         RevealIn: {
             /**
@@ -4059,6 +4567,22 @@ export interface components {
             status: components["schemas"]["MembershipStatus"];
         };
         /**
+         * SessionAttendanceOut
+         * @description `GET /class-sessions/{session_id}/attendance` (S8-B3, US-169 CA1).
+         */
+        SessionAttendanceOut: {
+            /** Items */
+            items: components["schemas"]["AttendanceResultRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            session: components["schemas"]["SessionOut"];
+            /** Total */
+            total: number;
+            wod: components["schemas"]["WodOut"] | null;
+        };
+        /**
          * SessionCancel
          * @description `POST /class-sessions/{id}/cancel`: el motivo es obligatorio.
          */
@@ -4103,6 +4627,8 @@ export interface components {
             coach_name: string | null;
             /** Duration Min */
             duration_min: number;
+            /** Effective Wod Id */
+            effective_wod_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -4127,6 +4653,8 @@ export interface components {
              * @enum {string}
              */
             status: "scheduled" | "cancelled" | "done";
+            /** Wod Id */
+            wod_id: string | null;
         };
         /** SessionOut */
         SessionOut: {
@@ -4144,6 +4672,8 @@ export interface components {
             coach_name: string | null;
             /** Duration Min */
             duration_min: number;
+            /** Effective Wod Id */
+            effective_wod_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -4168,6 +4698,17 @@ export interface components {
              * @enum {string}
              */
             status: "scheduled" | "cancelled" | "done";
+            /** Wod Id */
+            wod_id: string | null;
+        };
+        /**
+         * SessionPatch
+         * @description `PATCH /class-sessions/{id}` (S8-D9, N-41): `wod_id` es obligatorio; `null` vuelve a heredar
+         *     el WOD del día. `extra="forbid"`: nada más se edita por aquí.
+         */
+        SessionPatch: {
+            /** Wod Id */
+            wod_id: string | null;
         };
         /**
          * SessionTodayOut
@@ -4396,6 +4937,155 @@ export interface components {
             /** Open */
             open: string;
         };
+        /** TvBoard */
+        TvBoard: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Leaderboard */
+            leaderboard: components["schemas"]["TvRow"][];
+            /** Refresh Seconds */
+            refresh_seconds: number;
+            wod: components["schemas"]["TvWod"] | null;
+        };
+        /**
+         * TvEditable
+         * @description Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard.
+         */
+        TvEditable: {
+            /**
+             * Refresh Seconds
+             * @default 30
+             */
+            refresh_seconds: number;
+            /**
+             * Show Leaderboard
+             * @default true
+             */
+            show_leaderboard: boolean;
+        };
+        /** TvMovement */
+        TvMovement: {
+            /** Load Rx F G */
+            load_rx_f_g: number | null;
+            /** Load Rx M G */
+            load_rx_m_g: number | null;
+            /** Name */
+            name: string;
+            /** Reps */
+            reps: string;
+        };
+        /**
+         * TvPatchIn
+         * @description `PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en
+         *     `value` es 422 (S8-D30).
+         */
+        TvPatchIn: {
+            value: components["schemas"]["TvEditable"];
+            /** Version */
+            version: number;
+        };
+        /** TvRow */
+        TvRow: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Position */
+            position: number;
+            score: components["schemas"]["TvScore"];
+        };
+        /** TvScore */
+        TvScore: {
+            /** Capped */
+            capped: boolean;
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
+        };
+        /**
+         * TvSectionOut
+         * @description `GET/PATCH /settings/tv`: la vista, nunca el hash (S8-D30).
+         */
+        TvSectionOut: {
+            key: components["schemas"]["SectionKey"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            value: components["schemas"]["TvView"];
+            /** Version */
+            version: number;
+        };
+        /**
+         * TvTokenOut
+         * @description `POST /settings/tv/regenerate-token` (S8-D32): el token y el enlace se ven UNA vez.
+         */
+        TvTokenOut: {
+            /**
+             * Rotated At
+             * Format: date-time
+             */
+            rotated_at: string;
+            /** Token */
+            token: string;
+            /** Token Last4 */
+            token_last4: string;
+            /** Url */
+            url: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * TvView
+         * @description La vista de la TV para el panel (S8-D30): sin el hash; `has_token` dice si hay token.
+         */
+        TvView: {
+            /** Has Token */
+            has_token: boolean;
+            /**
+             * Refresh Seconds
+             * @default 30
+             */
+            refresh_seconds: number;
+            /** Rotated At */
+            rotated_at: string | null;
+            /**
+             * Show Leaderboard
+             * @default true
+             */
+            show_leaderboard: boolean;
+            /** Token Last4 */
+            token_last4: string | null;
+        };
+        /** TvWod */
+        TvWod: {
+            /** Description */
+            description: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movements */
+            movements: components["schemas"]["TvMovement"][];
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
+        };
         /**
          * UpdateUserIn
          * @description `PATCH /users/{user_id}`: correo y rol; un campo ausente o nulo no cambia (US-049).
@@ -4536,6 +5226,15 @@ export interface components {
             status: "running";
         };
         /**
+         * VoidIn
+         * @description `POST /results/{id}/void` (S8-D46 b): el motivo es obligatorio (1 a 200, `SafeText`: sin
+         *     controles, invisibles ni bidireccionales; revisión de B4, M-1).
+         */
+        VoidIn: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * VoidPaymentIn
          * @description Cuerpo de `POST /payments/{payment_id}/void` (S3-B5).
          */
@@ -4569,6 +5268,280 @@ export interface components {
              * Format: date
              */
             week_start: string;
+        };
+        /**
+         * WodCreate
+         * @description `POST /wods`. `time_cap_s` y `movements` se validan en `validate_wod` (422 con `field`).
+         */
+        WodCreate: {
+            /** Benchmark Id */
+            benchmark_id?: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Movements */
+            movements: components["schemas"]["WodMovementIn"][];
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s?: number | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WodMovementIn
+         * @description Un movimiento del WOD. `position` de 1 a n (lo comprueba `validate_wod`); las cargas son
+         *     gramos enteros de 0 a 1.000.000 (S8-D41).
+         */
+        WodMovementIn: {
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /** Load Rx F G */
+            load_rx_f_g?: number | null;
+            /** Load Rx M G */
+            load_rx_m_g?: number | null;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Position */
+            position: number;
+            /**
+             * Reps
+             * @default
+             */
+            reps: string;
+        };
+        /** WodMovementOut */
+        WodMovementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Load Rx F G */
+            load_rx_f_g: number | null;
+            /** Load Rx M G */
+            load_rx_m_g: number | null;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /** Movement Name */
+            movement_name: string;
+            /** Notes */
+            notes: string;
+            /** Position */
+            position: number;
+            /** Reps */
+            reps: string;
+        };
+        /** WodOut */
+        WodOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movements */
+            movements: components["schemas"]["WodMovementOut"][];
+            /** Result Count */
+            result_count: number;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WodPatch
+         * @description `PATCH /wods/{id}`: un campo ausente no es un cambio. `time_cap_s` y `benchmark_id`
+         *     admiten `null` (quitarlos); los demás no.
+         */
+        WodPatch: {
+            /** Benchmark Id */
+            benchmark_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Movements */
+            movements?: components["schemas"]["WodMovementIn"][] | null;
+            /** Score Type */
+            score_type?: ("time" | "rounds_reps" | "reps" | "load" | "none") | null;
+            /** Time Cap S */
+            time_cap_s?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * WodResultRow
+         * @description Una fila de `GET /wods/{id}/results` (S8-B4, US-172): socio, marca, quién y cuándo.
+         */
+        WodResultRow: {
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** First Name */
+            first_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
+            /** Last Name */
+            last_name: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Recorded By Name */
+            recorded_by_name: string | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending" | "voided";
+            /** Supersedes Id */
+            supersedes_id: string | null;
+        };
+        /**
+         * WodRowOut
+         * @description Fila de la lista y del calendario: sin la lista de movimientos.
+         */
+        WodRowOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movement Count */
+            movement_count: number;
+            /** Movement Names */
+            movement_names: string[];
+            /** Result Count */
+            result_count: number;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WodTodayOut
+         * @description El WOD de hoy (Bogota) en el tablero (US-174; S8-D16): solo lo que pinta la tarjeta.
+         */
+        WodTodayOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Title */
+            title: string;
         };
     };
     responses: never;
@@ -4963,6 +5936,15 @@ export interface operations {
             };
             /** @description No encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6205,6 +7187,7 @@ export interface operations {
                 to?: string | null;
                 coach_id?: string | null;
                 status?: ("scheduled" | "cancelled" | "done") | null;
+                wod_id?: string | null;
                 /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
                 q?: string | null;
                 limit?: number;
@@ -6416,6 +7399,192 @@ export interface operations {
                 };
             };
             /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    assign_session_wod_api_v1_class_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    session_attendance_api_v1_class_sessions__session_id__attendance_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAttendanceOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -9014,6 +10183,95 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_member_results_api_v1_members__member_id__results_get: {
+        parameters: {
+            query?: {
+                benchmark?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MemberResultRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12308,6 +13566,200 @@ export interface operations {
             };
         };
     };
+    put_result_api_v1_results_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    void_result_api_v1_results__result_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                result_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_classes_api_v1_settings_classes_get: {
         parameters: {
             query?: never;
@@ -13166,6 +14618,279 @@ export interface operations {
             };
         };
     };
+    get_tv_api_v1_settings_tv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_tv_api_v1_settings_tv_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TvPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    regenerate_tv_token_api_v1_settings_tv_regenerate_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvTokenOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_tv_token_api_v1_settings_tv_revoke_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvSectionOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_section_api_v1_settings__section__get: {
         parameters: {
             query?: never;
@@ -13331,6 +15056,53 @@ export interface operations {
             };
             /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    tv_today_api_v1_tv_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvBoard"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14078,6 +15850,601 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_wods_api_v1_wods_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+                week?: string | null;
+                benchmark?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WodRowOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_wod_api_v1_wods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_today_wod_api_v1_wods_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"] | null;
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_wod_api_v1_wods__wod_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_wod_api_v1_wods__wod_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WodPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_leaderboard_api_v1_wods__wod_id__leaderboard_get: {
+        parameters: {
+            query?: {
+                level?: ("rx" | "rx_plus" | "scaled") | null;
+                sex?: ("f" | "m") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_LeaderboardRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_wod_results_api_v1_wods__wod_id__results_get: {
+        parameters: {
+            query?: {
+                include_superseded?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WodResultRow_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

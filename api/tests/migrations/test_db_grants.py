@@ -52,6 +52,7 @@ ESQUEMAS = (
     "plans",
     "settings",
     "wods",  # S8-A1 (0032)
+    "results",  # S8-B1 (0036)
     "worker",
     "public",
 )
@@ -126,6 +127,29 @@ COLUMNAS_API_BENCHMARKS_UPDATE: tuple[str, ...] = (
     "score_type",
     "updated_at",
 )
+# S8-A3 (S8-D21): lo que el api puede cambiar de un WOD; `id`, `created_*` quedan fijos.
+COLUMNAS_API_WODS_UPDATE: tuple[str, ...] = (
+    "date",
+    "title",
+    "score_type",
+    "time_cap_s",
+    "benchmark_id",
+    "description",
+    "updated_at",
+)
+# S8-B1 (S8-D35): lo único que el api puede cambiar de un resultado (la guarda de `0037` lo limita
+# aún más: `pending` a `validated`, `is_current` de `true` a `false`).
+# S8-B1d (L-8): el api solo apaga el vigente; validar un `pending` llega con EP-25.
+# S8-B3b (S8-D46 b): suma la anulación por un admin (`status` y `voided_*`); `validated_*` sigue
+# sin UPDATE: `pending -> validated` no es posible desde el api hasta EP-25.
+COLUMNAS_API_WOD_RESULTS_UPDATE: tuple[str, ...] = (
+    "is_current",
+    "status",
+    "void_reason",
+    "voided_at",
+    "voided_by",
+    "updated_at",
+)
 # S8-A1 (S8-D21): lo que el api puede cambiar de un movimiento; `id`, `created_*` quedan fijos.
 COLUMNAS_API_MOVEMENTS_UPDATE: tuple[str, ...] = (
     "name",
@@ -142,6 +166,7 @@ COLUMNAS_API_ATTENDANCE_UPDATE: tuple[str, ...] = (
     "updated_at",
 )
 COLUMNAS_API_CLASS_SESSIONS_UPDATE: tuple[str, ...] = (
+    "wod_id",  # S8-A4 (S8-D3, C2): sin FK entre esquemas; el api la asigna con UPDATE por columna
     "status",
     "cancel_reason",
     "cancelled_by",
@@ -224,8 +249,21 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_MOVEMENTS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
+    "wods.wods": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_WODS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    "wods.wod_movements": {
+        "apex_api": (frozenset({"SELECT", "INSERT", "DELETE"}), frozenset()),
+        "apex_worker": (frozenset(), frozenset()),
+    },
     "wods.benchmarks": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_BENCHMARKS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    # S8-B1 (S8-D35, P-ROL): el api inserta y solo valida o apaga; nadie borra; el worker no ve.
+    "results.wod_results": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_WOD_RESULTS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -588,7 +626,8 @@ def test_delete_solo_existe_para_apex_api_en_refresh_tokens(apex_roles: RolesDb)
             apex_roles.dsn(), "SELECT has_table_privilege($1, $2, 'DELETE') AS v", rol, tabla
         )[0]["v"]
     ]
-    assert con_delete == [("apex_api", "auth.refresh_tokens")]
+    # S8-A3 (E6): `wods.wod_movements` también (reemplazo de la lista de un WOD, regla de datos 4).
+    assert con_delete == [("apex_api", "auth.refresh_tokens"), ("apex_api", "wods.wod_movements")]
 
 
 def test_ningun_rol_tiene_ddl_ni_create_en_los_esquemas(apex_roles: RolesDb) -> None:
@@ -798,6 +837,18 @@ PROHIBIDAS_API = [
     "DELETE FROM wods.benchmarks",  # S8-A2
     "TRUNCATE wods.benchmarks",  # S8-A2
     "UPDATE wods.benchmarks SET created_by = created_by",  # S8-A2: columna sin UPDATE
+    "DELETE FROM wods.wods",  # S8-A3: los WODs no se borran
+    "TRUNCATE wods.wods",  # S8-A3
+    "UPDATE wods.wods SET created_by = created_by",  # S8-A3: columna sin UPDATE
+    "TRUNCATE wods.wod_movements",  # S8-A3: solo DELETE por fila
+    "UPDATE wods.wod_movements SET reps = reps",  # S8-A3: se reemplaza, no se edita
+    "DELETE FROM results.wod_results",  # S8-B1: los resultados no se borran
+    "TRUNCATE results.wod_results",  # S8-B1
+    "UPDATE results.wod_results SET source = source",  # S8-B1: columna sin UPDATE
+    "UPDATE results.wod_results SET load_g = load_g",  # S8-B1
+    "UPDATE results.wod_results SET supersedes_id = supersedes_id",  # S8-B1
+    "UPDATE results.wod_results SET validated_by = validated_by",  # S8-B1d
+    "UPDATE results.wod_results SET validated_at = validated_at",  # S8-B1d
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -881,6 +932,10 @@ PROHIBIDAS_WORKER = [
     "SELECT count(*) FROM wods.movements",  # S8-A1: el worker no ve el esquema `wods`
     "INSERT INTO wods.movements (id) VALUES (gen_random_uuid())",  # S8-A1
     "SELECT count(*) FROM wods.benchmarks",  # S8-A2: el worker no ve el esquema `wods`
+    "SELECT count(*) FROM wods.wods",  # S8-A3: el worker no ve el esquema `wods`
+    "SELECT count(*) FROM wods.wod_movements",  # S8-A3
+    "SELECT count(*) FROM results.wod_results",  # S8-B1: el worker no ve `results`
+    "INSERT INTO results.wod_results (id) VALUES (gen_random_uuid())",  # S8-B1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

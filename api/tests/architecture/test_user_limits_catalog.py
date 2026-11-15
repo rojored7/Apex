@@ -48,7 +48,7 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S7-C3 (US-161): `DELETE /attendance/{id}` también la consume.
 # S8-D22 (S8-W0-3): `wods-write` y `results-write` se registran sin ruta; A1 saca la primera
 # (`POST /movements`) y B1 la segunda (`PUT /results`).
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"results-write"})
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()  # S8-B1: results-write con ruta
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -274,8 +274,13 @@ def test_cada_bucket_de_enforce_user_limit_es_del_catalogo() -> None:
 
 
 def test_las_rutas_con_enforce_user_limit_son_con_limite_menos_auth() -> None:
+    # S8-C2 (S8-D33): `GET /tv/today` declara 429 pero lo da `core.ratelimit.enforce` por hash del
+    # token (`tv`) y por IP (`tv-fail`), nunca una cubeta por usuario: no hay usuario.
+    sin_usuario = {("get", f"{API_PREFIX}/tv/today")}
     esperadas = {
-        (metodo, ruta) for metodo, ruta in CON_LIMITE if not ruta.startswith(f"{API_PREFIX}/auth/")
+        (metodo, ruta)
+        for metodo, ruta in CON_LIMITE
+        if not ruta.startswith(f"{API_PREFIX}/auth/") and (metodo, ruta) not in sin_usuario
     }
     assert _routers().rutas == esperadas
 
@@ -461,9 +466,7 @@ def test_las_dos_cubetas_de_s7_estan_en_el_catalogo_con_sus_ventanas() -> None:
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (sin ruta)."""
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (ruta desde C1)."""
     assert USER_LIMITS["attendance-write"] == (60, 60)
-    assert (
-        frozenset({"results-write"}) == CLAVES_SIN_RUTA_TODAVIA
-    )  # S8-A1: wods-write ya tiene ruta
+    assert frozenset() == CLAVES_SIN_RUTA_TODAVIA  # S8-B1: wods-write y results-write con ruta
 
 
 def test_las_dos_cubetas_de_s8_estan_en_el_catalogo_con_sus_ventanas() -> None:

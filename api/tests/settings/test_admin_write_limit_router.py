@@ -25,7 +25,7 @@ PATCHES = (
     "/settings/privacy",
     "/settings/memberships",
     "/settings/payment_methods",
-    "/settings/tv",  # genérica `/settings/{section}`: 404 `section_not_available`
+    "/settings/tv",  # S8-C1: ruta propia con `TvPatchIn`
 )
 
 
@@ -42,7 +42,7 @@ async def test_las_cinco_comparten_admin_write_y_la_31_da_429(
     guardada = await fila(session, "gym")
     assert guardada is not None and guardada["version"] == 1
     for ruta in PATCHES:
-        cuerpo = {**CUERPOS[ruta], "version": 1} if ruta != "/settings/tv" else CUERPOS[ruta]
+        cuerpo = {**CUERPOS[ruta], "version": 1}
         r = await app_http.patch(f"{API}{ruta}", json=cuerpo, headers=cabeceras(admin))
         assert r.status_code == 429, (ruta, r.text)
         assert r.json()["error"]["code"] == "rate_limited"

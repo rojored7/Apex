@@ -101,7 +101,7 @@ def _out(principal: Principal, policy: AuthPolicy, path: str | None) -> KioskSes
 
 
 def _session_id_of(path: str) -> UUID:
-    """El id de la ruta `/clases/<uuid>/checkin` (ya validada por `KIOSK_PATH_PATTERN`)."""
+    """El id de la ruta `/clases/<uuid>/(checkin|resultados)` (ya validada)."""
     return UUID(path.split("/")[2])
 
 

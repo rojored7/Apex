@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import Text, literal, select
+from sqlalchemy import Text, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +31,7 @@ from app.modules.wods.exceptions import (
     ScoreTypeLocked,
     WodsValidationError,
 )
-from app.modules.wods.models import Benchmark
+from app.modules.wods.models import Benchmark, Wod
 from app.modules.wods.rules import clean_movement_name, normalize_movement_name
 from app.modules.wods.schemas import (
     BenchmarkCreate,
@@ -48,9 +48,16 @@ _MENSAJE_NULO: Final = "Este campo no puede quedar vacío."
 
 
 async def wod_counts(session: AsyncSession, ids: list[UUID]) -> dict[UUID, int]:
-    """WODs que usan cada benchmark. En A2 no hay WODs: todos en 0 (A3 la reemplaza por la
-    consulta agrupada sobre `wods.wods`, una por página)."""
-    return dict.fromkeys(ids, 0)
+    """WODs que usan cada benchmark: una consulta agrupada sobre `wods.wods`."""
+    if not ids:
+        return {}
+    filas = await session.execute(
+        select(Wod.benchmark_id, func.count())
+        .where(Wod.benchmark_id.in_(ids))
+        .group_by(Wod.benchmark_id)
+    )
+    cuentas = {fila[0]: int(fila[1]) for fila in filas}
+    return {i: cuentas.get(i, 0) for i in ids}
 
 
 def _out(bench: Benchmark, usos: dict[UUID, int]) -> BenchmarkOut:

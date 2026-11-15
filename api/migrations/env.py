@@ -41,6 +41,7 @@ from app.modules.memberships import models as _memberships  # noqa: F401  (US-08
 from app.modules.notifications import models as _notifications  # noqa: F401  (US-120, 0017 y 0018)
 from app.modules.payments import models as _payments  # noqa: F401  (US-095, 0010_payments)
 from app.modules.plans import models as _plans  # noqa: F401  (US-078, 0007_plans)
+from app.modules.results import models as _results  # noqa: F401  (US-169, 0036, S8-D10)
 from app.modules.settings import models as _settings  # noqa: F401  (US-054, 0005_settings)
 from app.modules.wods import models as _wods  # noqa: F401  (US-165, 0032, S8-D5)
 

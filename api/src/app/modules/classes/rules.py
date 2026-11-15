@@ -332,3 +332,8 @@ def checkin_flags(
     if is_other_day(session_date, local_date(now)):
         flags.append("other_day")
     return tuple(flags)
+
+
+def effective_wod_id(assigned: UUID | None, day_wod: UUID | None) -> UUID | None:
+    """El WOD efectivo de una sesión (S8-D9, US-168 CA2): el asignado y, si es nulo, el del día."""
+    return assigned if assigned is not None else day_wod

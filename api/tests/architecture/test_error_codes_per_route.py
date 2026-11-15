@@ -173,6 +173,8 @@ CON_LIMITE = {
     # S8-A3 (US-166, US-167): WODs; A4 (US-168) suma `GET /wods/today` (`staff-read`) y el
     # `PATCH /class-sessions/{session_id}` (`classes-write`).
     ("get", "/api/v1/wods/today"),
+    # S8-C2 (US-176): la TV cuenta `tv` por hash del token y `tv-fail` por IP, no por usuario.
+    ("get", "/api/v1/tv/today"),
     ("patch", "/api/v1/class-sessions/{session_id}"),
     # S8-B1 (US-169): `PUT /results` consume `results-write`.
     ("put", "/api/v1/results"),

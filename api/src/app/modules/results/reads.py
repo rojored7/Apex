@@ -27,7 +27,7 @@ from app.modules.members.schemas import MemberName
 from app.modules.results.exceptions import LeaderboardTooLarge
 from app.modules.results.leaderboard import Mark, rank_rows
 from app.modules.results.models import WodResult
-from app.modules.results.schemas import LeaderboardRow, MemberResultRow, WodResultRow
+from app.modules.results.schemas import LeaderboardRow, MemberResultRow, PublicRow, WodResultRow
 from app.modules.wods import service as wods_service
 from app.modules.wods.exceptions import WodNotFound
 
@@ -117,6 +117,42 @@ async def leaderboard(
         for r in pagina
     ]
     return to_page(items, len(ordenadas), page)
+
+
+async def public_leaderboard(session: AsyncSession, wod_id: UUID, limit: int) -> list[PublicRow]:
+    """Ranking «Todos» de la TV (S8-C2, S8-D34, M-4). Excluye primero las bajas y a quien no tiene
+    autorización de datos vigente (`board_names`) y calcula las posiciones después. Sin `member_id`
+    ni sexo en la salida; un WOD sin marca (`none`) no tiene ranking."""
+    score_type = await _score_type(session, wod_id)
+    if score_type == "none":
+        return []
+    consulta = select(WodResult).where(
+        WodResult.wod_id == wod_id,
+        WodResult.is_current.is_(True),
+        WodResult.status == "validated",
+    )
+    filas = list(
+        await session.scalars(consulta.order_by(WodResult.id).limit(LEADERBOARD_MAX_ROWS + 1))
+    )
+    if len(filas) > LEADERBOARD_MAX_ROWS:
+        raise LeaderboardTooLarge()
+    nombres = await members_service.board_names(session, [f.member_id for f in filas])
+    por_resultado, marcas = _marks(filas, nombres, None)
+    ordenadas = rank_rows(score_type, marcas)[: max(limit, 0)]
+    return [
+        PublicRow(
+            position=r.position,
+            first_name=r.mark.first_name,
+            last_name=r.mark.last_name,
+            level=por_resultado[r.mark.result_id].level,
+            seconds=r.mark.seconds,
+            rounds=r.mark.rounds,
+            reps=r.mark.reps,
+            load_g=r.mark.load_g,
+            capped=r.mark.capped,
+        )
+        for r in ordenadas
+    ]
 
 
 async def wod_results(

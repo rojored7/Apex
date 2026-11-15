@@ -274,8 +274,13 @@ def test_cada_bucket_de_enforce_user_limit_es_del_catalogo() -> None:
 
 
 def test_las_rutas_con_enforce_user_limit_son_con_limite_menos_auth() -> None:
+    # S8-C2 (S8-D33): `GET /tv/today` declara 429 pero lo da `core.ratelimit.enforce` por hash del
+    # token (`tv`) y por IP (`tv-fail`), nunca una cubeta por usuario: no hay usuario.
+    sin_usuario = {("get", f"{API_PREFIX}/tv/today")}
     esperadas = {
-        (metodo, ruta) for metodo, ruta in CON_LIMITE if not ruta.startswith(f"{API_PREFIX}/auth/")
+        (metodo, ruta)
+        for metodo, ruta in CON_LIMITE
+        if not ruta.startswith(f"{API_PREFIX}/auth/") and (metodo, ruta) not in sin_usuario
     }
     assert _routers().rutas == esperadas
 

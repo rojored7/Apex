@@ -72,6 +72,11 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("results", "wods"),
         # S8-B4 (US-172): `recorded_by_name` por `auth.service.user_names_for`.
         ("results", "auth"),
+        # S8-C2 (US-176, S8-D18): la TV valida el token (`settings`), pide el WOD de hoy (`wods`)
+        # y el ranking público (`results`).
+        ("tv", "settings"),
+        ("tv", "wods"),
+        ("tv", "results"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
         ("dashboard", "audit"),
         # S7-R3 (US-164, G-04): el tablero lee `week_attendance` y `today_sessions` de classes.

@@ -1575,6 +1575,23 @@ export interface paths {
         patch: operations["patch_section_api_v1_settings__section__patch"];
         trace?: never;
     };
+    "/api/v1/tv/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tv Today */
+        get: operations["tv_today_api_v1_tv_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -4920,6 +4937,19 @@ export interface components {
             /** Open */
             open: string;
         };
+        /** TvBoard */
+        TvBoard: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Leaderboard */
+            leaderboard: components["schemas"]["TvRow"][];
+            /** Refresh Seconds */
+            refresh_seconds: number;
+            wod: components["schemas"]["TvWod"] | null;
+        };
         /**
          * TvEditable
          * @description Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard.
@@ -4936,6 +4966,17 @@ export interface components {
              */
             show_leaderboard: boolean;
         };
+        /** TvMovement */
+        TvMovement: {
+            /** Load Rx F G */
+            load_rx_f_g: number | null;
+            /** Load Rx M G */
+            load_rx_m_g: number | null;
+            /** Name */
+            name: string;
+            /** Reps */
+            reps: string;
+        };
         /**
          * TvPatchIn
          * @description `PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en
@@ -4945,6 +4986,32 @@ export interface components {
             value: components["schemas"]["TvEditable"];
             /** Version */
             version: number;
+        };
+        /** TvRow */
+        TvRow: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Position */
+            position: number;
+            score: components["schemas"]["TvScore"];
+        };
+        /** TvScore */
+        TvScore: {
+            /** Capped */
+            capped: boolean;
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
         };
         /**
          * TvSectionOut
@@ -5000,6 +5067,24 @@ export interface components {
             show_leaderboard: boolean;
             /** Token Last4 */
             token_last4: string | null;
+        };
+        /** TvWod */
+        TvWod: {
+            /** Description */
+            description: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movements */
+            movements: components["schemas"]["TvMovement"][];
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
         };
         /**
          * UpdateUserIn
@@ -14971,6 +15056,53 @@ export interface operations {
             };
             /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    tv_today_api_v1_tv_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvBoard"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

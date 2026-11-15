@@ -122,6 +122,23 @@ class LeaderboardRow(BaseModel):
     capped: bool
 
 
+class PublicRow(BaseModel):
+    """Fila del ranking público de la TV (S8-C2, S8-D34): sin `member_id`, sexo ni notas. Solo lo
+    necesita `tv.rules.to_public_board`; `first_name` y `last_name` en claro, nunca cifrados."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    position: int
+    first_name: str
+    last_name: str
+    level: ResultLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+
+
 class WodResultRow(BaseModel):
     """Una fila de `GET /wods/{id}/results` (S8-B4, US-172): socio, marca, quién y cuándo."""
 

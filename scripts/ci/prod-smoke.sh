@@ -405,6 +405,35 @@ else
 fi
 unset nueva token_pendiente respuesta_clave
 
+# --- TV por token de dispositivo (S8-C2, V3): 200 con token, 401 sin él y el token nunca en el log de Nginx --------
+# El token viaja por un archivo 600 y por `-H @-`: nunca en la línea de comandos ni en la salida.
+login_tv="$SMOKE_DIR/login-tv.json"
+( umask 077; printf '{"email":"%s","password":"%s"}' "$ADMIN_EMAIL" "$clave" > "$login_tv" )
+acceso_tv="$(curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -X POST -H "Origin: $API_ORIGIN" -H 'Content-Type: application/json' \
+  --data-binary "@$login_tv" "$API_BASE/api/v1/auth/login" | tr -d '\r' | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')" || true
+rm -f "$login_tv"
+archivo_tv="$SMOKE_DIR/tv-token.txt"
+if [ -z "$acceso_tv" ]; then
+  falla "TV: login del admin sin access_token"
+else
+  ( umask 077
+    printf 'Authorization: Bearer %s\n' "$acceso_tv" | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -X POST -H @- \
+      -H "Origin: $API_ORIGIN" "$API_BASE/api/v1/settings/tv/regenerate-token" | tr -d '\r' \
+      | sed -n 's/.*"token" *: *"\([^"]*\)".*/\1/p' > "$archivo_tv" ) || true
+  if [ -s "$archivo_tv" ]; then
+    mascara "$(cat "$archivo_tv")"
+    codigo_tv="$(printf 'X-Device-Token: %s\n' "$(cat "$archivo_tv")" | curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -o /dev/null -w '%{http_code}' -H @- "$API_BASE/api/v1/tv/today")" || true
+    [ "$codigo_tv" = "200" ] && ok "GET /tv/today con X-Device-Token responde 200" || falla "GET /tv/today con token respondió '$codigo_tv'"
+    sin_tv="$(curl -sS ${CURL_CA[@]+"${CURL_CA[@]}"} --max-time 30 -o /dev/null -w '%{http_code}' "$API_BASE/api/v1/tv/today")" || true
+    [ "$sin_tv" = "401" ] && ok "GET /tv/today sin token responde 401" || falla "GET /tv/today sin token respondió '$sin_tv'"
+    en_log="$("${DC[@]}" logs web api 2>&1 | grep -c -F -f "$archivo_tv" || true)"
+    [ "$en_log" = "0" ] && ok "el token de la TV no aparece en los logs de web ni api" || falla "el token de la TV aparece $en_log veces en los logs"
+  else
+    falla "TV: regenerate-token no devolvió token"
+  fi
+fi
+rm -f "$archivo_tv"; unset acceso_tv codigo_tv sin_tv en_log
+
 # --- restauración en una segunda base del mismo db (restore.sh con firma e inspección) ------------------------------
 # Con --tls la sección 5 entra por Caddy: E2E_BASE_URL, E2E_ORIGIN y E2E_CA_FILE (en LAN quedan vacías y manda el valor por omisión).
 if E2E_DC="${DC[*]}" E2E_ENV_DIR="$SMOKE_DIR" E2E_ALLOW_PROJECT="$PROJECT" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$clave" E2E_WEB_PORT="$WEB_PORT" \

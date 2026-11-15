@@ -370,3 +370,19 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 ### Evidencia
 - Gate `slice-gate.sh results <tests/results/*, test_0036/37/39/40, test_migrations>`: 1074 passed en 205 s, exit 0. `ruff check .`, `ruff format --check .` y `mypy src` (274) limpios. Checkpoint `a5128e5`.
 - P-MIG en `apex-db-1` pendiente: `0036` a `0040` siguen sin aplicarse (api roto); al aplicarse, el cuaderno de B3b y este bloque cuentan como su evidencia de esquema.
+
+## S8-C2 · `GET /tv/today` por X-Device-Token (US-176, S8-D18, S8-D19, S8-D33, S8-D34, M-3, M-4, C5) · sin migración
+
+### Rojo (medido)
+- Con `tv/{rules,service,router}`, `members.board_names` y `results.public_leaderboard` en stub (`NotImplementedError`) y las pruebas nuevas (`tests/tv/*`, `tests/members/test_board_names.py`) más `test_tv_bucket_not_by_ip`: 33 failed y 4 passed. 29 fallos por `NotImplementedError`; 4 (`test_board_names`) por el keyring no cargado (faltaba `bus_listo` en la prueba, corregido: pasaron a `NotImplementedError`).
+
+### Verde
+- `members/service.board_names` (una consulta, sin bajas y con `NOT CONSENT_MISSING_CONDITION`), `results/reads.public_leaderboard` + `PublicRow` (excluye primero y numera después; sin `member_id` ni sexo), `modules/tv/{schemas,rules,service,router}.py` (dependencia `device_token` con `__apex_device_token__`: valida el token primero; válido = solo `tv` por `hash[:16]` `account`; inválido = `tv-fail` por IP `ip`; lee solo la cabecera, sin parámetro declarado, 401 `unauthorized` uniforme), `main.MODULES` (`tv` tras `results`), P-CAT (`CON_LIMITE` ya con la ruta, excepción documentada en `test_user_limits_catalog`, `tv` en `test_audit_module`, `_imports.PRIVATE_HELPERS`, aristas `(tv, settings|wods|results)`, `test_results_never_decrypt` suma `tv`), `prod-smoke.sh` (TV con token por archivo 600, 401 sin token, token fuera de los logs), `test_db_roles.sh` (`apex_worker` sin `wods` ni `results`), `docs/operacion/tv.md`, P-API (`openapi.json` idéntico en dos corridas, `types.ts`, contrato 6 passed).
+- [DECISIÓN DE DISEÑO] La cabecera se lee de `request.headers` (sin `Header()`): así la ruta no declara 422 ni parámetros que el OpenAPI de `test_error_codes_per_route` rechazaría.
+- Nota: `public_leaderboard` hereda `LeaderboardTooLarge` (422) con más de 1.000 resultados vigentes en un WOD; en la TV no está declarado. Irreal en un box; anotado.
+
+### Evidencia
+- `tests/tv` + `test_board_names` + `test_tv_bucket_not_by_ip`: 37 passed. `ruff check`, `ruff format` y `mypy src` (279) limpios. Gate `slice-gate.sh tv <9 archivos>` (con `tests/architecture`): 916 passed en 157 s, exit 0 (un primer intento sin `TEST_DATABASE_URL` en el entorno dio 117 errors por eso, no por código).
+
+### Pendiente
+- Smoke con rol y curl (api de desarrollo roto): `regenerate-token`, `GET /tv/today` 200, rotar y 401 (C5), revocar y 401, `grep -c` del token en logs = 0; P-REBUILD 2 (`restart worker`: `members` lo importa `notify`). Corre el usuario o el cierre de wave.

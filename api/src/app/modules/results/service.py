@@ -20,7 +20,12 @@ from app.modules.classes import service as classes_service
 from app.modules.results.attendance import session_attendance
 from app.modules.results.events import WodResultRecorded, WodResultValidated, WodResultVoided
 from app.modules.results.models import WodResult
-from app.modules.results.reads import leaderboard, member_results, wod_results
+from app.modules.results.reads import (
+    leaderboard,
+    member_results,
+    public_leaderboard,
+    wod_results,
+)
 from app.modules.results.record import (
     member_has_current_result_in_session,
     record_result,
@@ -83,6 +88,7 @@ __all__ = [
     "leaderboard",
     "list_member_results",
     "list_wod_results",
+    "public_leaderboard",
     "record_result",
     "results_probe",
     "session_attendance",

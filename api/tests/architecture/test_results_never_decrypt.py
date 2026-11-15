@@ -14,6 +14,7 @@ from pathlib import Path
 import app
 
 RESULTS = Path(app.__file__).resolve().parent / "modules" / "results"
+TV = Path(app.__file__).resolve().parent / "modules" / "tv"  # S8-C2: la TV tampoco descifra
 PROHIBIDOS = frozenset({"reveal", "decrypt", "Encrypted", "blind_index", "encrypt"})
 
 
@@ -59,8 +60,8 @@ def _hallazgos(fuente: str, nombre: str) -> list[str]:
 
 
 def test_results_no_importa_ni_nombra_el_bus_de_cifrado() -> None:
-    archivos = sorted(RESULTS.rglob("*.py"))
-    assert (RESULTS / "record.py").is_file() and archivos
+    archivos = sorted([*RESULTS.rglob("*.py"), *TV.rglob("*.py")])
+    assert (RESULTS / "record.py").is_file() and (TV / "rules.py").is_file() and archivos
     encontrados = [h for p in archivos for h in _hallazgos(p.read_text(encoding="utf-8"), p.name)]
     assert encontrados == [], "\n".join(encontrados)
 

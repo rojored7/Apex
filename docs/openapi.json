@@ -8191,6 +8191,45 @@
         "title": "TimeRange",
         "type": "object"
       },
+      "TvBoard": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "leaderboard": {
+            "items": {
+              "$ref": "#/components/schemas/TvRow"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "refresh_seconds": {
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "wod": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TvWod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "refresh_seconds",
+          "wod",
+          "leaderboard"
+        ],
+        "title": "TvBoard",
+        "type": "object"
+      },
       "TvEditable": {
         "additionalProperties": false,
         "description": "Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard.",
@@ -8211,6 +8250,49 @@
         "title": "TvEditable",
         "type": "object"
       },
+      "TvMovement": {
+        "additionalProperties": false,
+        "properties": {
+          "load_rx_f_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx F G"
+          },
+          "load_rx_m_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Rx M G"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reps": {
+            "title": "Reps",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "reps",
+          "load_rx_m_g",
+          "load_rx_f_g"
+        ],
+        "title": "TvMovement",
+        "type": "object"
+      },
       "TvPatchIn": {
         "additionalProperties": false,
         "description": "`PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en\n`value` es 422 (S8-D30).",
@@ -8229,6 +8311,101 @@
           "version"
         ],
         "title": "TvPatchIn",
+        "type": "object"
+      },
+      "TvRow": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "score": {
+            "$ref": "#/components/schemas/TvScore"
+          }
+        },
+        "required": [
+          "position",
+          "display_name",
+          "level",
+          "score"
+        ],
+        "title": "TvRow",
+        "type": "object"
+      },
+      "TvScore": {
+        "additionalProperties": false,
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "required": [
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped"
+        ],
+        "title": "TvScore",
         "type": "object"
       },
       "TvSectionOut": {
@@ -8367,6 +8544,62 @@
           "rotated_at"
         ],
         "title": "TvView",
+        "type": "object"
+      },
+      "TvWod": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_benchmark": {
+            "title": "Is Benchmark",
+            "type": "boolean"
+          },
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/TvMovement"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "score_type": {
+            "enum": [
+              "time",
+              "rounds_reps",
+              "reps",
+              "load",
+              "none"
+            ],
+            "title": "Score Type",
+            "type": "string"
+          },
+          "time_cap_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Cap S"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "score_type",
+          "time_cap_s",
+          "is_benchmark",
+          "description",
+          "movements"
+        ],
+        "title": "TvWod",
         "type": "object"
       },
       "UpdateUserIn": {
@@ -23058,6 +23291,57 @@
         "summary": "Patch Section",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/v1/tv/today": {
+      "get": {
+        "operationId": "tv_today_api_v1_tv_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          }
+        },
+        "summary": "Tv Today",
+        "tags": [
+          "tv"
         ]
       }
     },

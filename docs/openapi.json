@@ -7844,6 +7844,7 @@
             "items": {
               "$ref": "#/components/schemas/WodMovementIn"
             },
+            "maxItems": 30,
             "title": "Movements",
             "type": "array"
           },
@@ -8173,6 +8174,7 @@
                 "items": {
                   "$ref": "#/components/schemas/WodMovementIn"
                 },
+                "maxItems": 30,
                 "type": "array"
               },
               {

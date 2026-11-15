@@ -75,15 +75,23 @@ PATRONES = (
 )
 
 
-def violaciones_en(fuente: str) -> list[str]:
-    return [m.group(0) for patron in PATRONES for m in patron.finditer(fuente)]
+def violaciones_en(fuente: str, relativa: str = "") -> list[str]:
+    """Los borrados de `fuente`; `relativa` es su ruta bajo `src/app` (excepciones exactas)."""
+    exenta = EXENTO_SESSION_DELETE.get(relativa)
+    salida: list[str] = []
+    for patron in PATRONES:
+        for m in patron.finditer(fuente):
+            if patron is PATRONES[0] and exenta and fuente.startswith(exenta, m.start()):
+                continue
+            salida.append(m.group(0))
+    return salida
 
 
 # S8-A3 (E6, regla de datos 4): `wods.wod_movements` no es una tabla de borrado prohibido; `POST` y
 # `PATCH /wods` reemplazan la lista completa y el reemplazo se audita fila a fila, por eso se borra
 # por la sesión (el hook `after_flush` ve `session.deleted`; un `DELETE` de Core no se auditaría).
-# Es la única excepción a `session.delete(`, por archivo.
-EXENTO_SESSION_DELETE: Final = frozenset({"modules/wods/programming.py"})
+# Es la única excepción a `session.delete(`: por archivo Y por expresión exacta (S8-A3b, L-1).
+EXENTO_SESSION_DELETE: Final = {"modules/wods/programming.py": "session.delete(vieja)"}
 
 
 def _violaciones() -> list[str]:
@@ -91,12 +99,13 @@ def _violaciones() -> list[str]:
     for path in sorted(SRC.rglob("*.py")):
         texto = path.read_text(encoding="utf-8")
         relativa = path.relative_to(SRC).as_posix()
+        exenta = EXENTO_SESSION_DELETE.get(relativa)
         for patron in PATRONES:
-            if patron is PATRONES[0] and relativa in EXENTO_SESSION_DELETE:
-                continue
             for m in patron.finditer(texto):
+                if patron is PATRONES[0] and exenta and texto.startswith(exenta, m.start()):
+                    continue
                 linea = texto.count("\n", 0, m.start()) + 1
-                salida.append(f"{path.relative_to(SRC).as_posix()}:{linea}: {m.group(0)}")
+                salida.append(f"{relativa}:{linea}: {m.group(0)}")
     return salida
 
 
@@ -184,3 +193,14 @@ def test_el_patron_detecta_el_borrado_de_asistencias() -> None:
         "SQL = 'TRUNCATE classes.attendance'\n"
     )
     assert len(violaciones_en(fuente)) == 3
+
+
+def test_la_excepcion_de_wods_solo_cubre_session_delete_vieja_de_programming() -> None:
+    """S8-A3b (L-1): el reemplazo de la lista de un WOD borra con `session.delete(vieja)`; cualquier
+    otro `session.delete(` de ese archivo, o ese mismo texto en otro archivo, sigue prohibido."""
+    ruta = "modules/wods/programming.py"
+    exacto = "for vieja in actuales:" + chr(10) + "    await session.delete(vieja)" + chr(10)
+    assert violaciones_en(exacto, ruta) == []
+    assert violaciones_en("await session.delete(wod)" + chr(10), ruta) == ["session.delete("]
+    assert violaciones_en("await session.delete(vieja)" + chr(10), "modules/wods/movements.py")
+    assert violaciones_en("await session.delete(vieja)" + chr(10))

@@ -184,3 +184,14 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - `ruff check .`, `ruff format --check .` (997) y `mypy src` (259) limpios.
 - Gate `slice-gate.sh wods` (2 archivos): 862 passed; sello `slice-gate.sh classes <6 archivos>`: 1 162 passed en 155 s, exit 0. `tests/dashboard tests/architecture tests/core/test_migrations.py`: 960 passed.
 - P-API: `openapi.json` idéntico en dos corridas (+293 líneas, 1 borrada), `types.ts` regenerado, `types.contract.test.ts` 6 passed, `tsc --noEmit` limpio.
+
+## S8-A3b · Correcciones de la revisión de A3 (M-2, L-1 a L-4, pruebas débiles)
+
+### Rojo
+- 8 failed (de 64 en los archivos tocados): M-2 `test_con_resultados_el_movimiento_principal_no_cambia` (el `PATCH` con otro principal pasaba), L-4 `test_load_exige_principal_medido_en_kg`, L-2 `test_treinta_movimientos_valen_y_treinta_y_uno_no`, L-3 `test_las_fechas_fuera_de_2020_a_2100_dan_422` (4 fechas) y L-1 `test_la_excepcion_de_wods_solo_cubre_session_delete_vieja_de_programming` (la excepción eximía todo el archivo).
+- Pruebas débiles: las tres con dos sesiones reales (alta contra alta del mismo día con `gather`; dos `PATCH` del mismo WOD, el `before` del segundo es el `after` del primero; `PATCH` del WOD con `benchmark_id` retenido contra `PATCH` del `score_type` del benchmark, que espera y luego da `score_type_locked`) pasaron a la primera: la implementación de A3 ya era correcta, ahora está probada.
+
+### Verde
+- `rules.validate_wod` (L-4), `schemas.py` (`WodDate` 2020-2100 y `max_length = 30`), `programming._primary_id` y la comprobación de M-2 tras leer los movimientos, y la excepción exacta `session.delete(vieja)` en `test_no_physical_delete.py`. DECISIONES: S8-D7 (ajustes de A3b). M-1 queda para B1.
+- Hallazgo de A4: `tests/wods/test_router_movements.py` fija el conjunto de rutas del router y no estaba en el gate de A4 (`GET /wods/today` lo rompía); se corrige aquí.
+- P-API: `openapi.json` idéntico en dos corridas (+2 líneas: `maxItems`), `types.ts` regenerado, contract 6 passed, `tsc` limpio.

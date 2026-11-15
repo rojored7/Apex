@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator, Sequence
 from datetime import date
 from typing import Any
@@ -18,6 +19,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.db import DatabaseBusy
 from app.core.pagination import PageParams
 from app.modules.wods import programming as programming_module
 from app.modules.wods import service
@@ -484,3 +486,137 @@ async def test_alta_con_benchmark_toma_for_share_y_un_update_concurrente_espera(
         await otra.rollback()
         await otra.close()
         await segunda.rollback()
+
+
+async def test_con_resultados_el_movimiento_principal_no_cambia(
+    session: AsyncSession, usuario_real: CrearUsuario, sonda: _Sonda
+) -> None:
+    """S8-A3b (M-2): reemplazar la lista con resultados no puede mover el principal (los RM de
+    Q19 y RN-12 quedarían atribuidos a otro movimiento). Sin resultados, sí se puede."""
+    admin = await usuario_real("admin")
+    thr, pul = await _movs(session, admin.id, "Thruster", "Pull-up")
+    wod = await make_wod(session, admin.id, [thr, pul])  # Thruster es el principal
+    cambia = cuerpo_wod([pul, thr])["movements"]  # ahora el principal es Pull-up
+    sin_principal = [dict(m, is_primary=False) for m in cuerpo_wod([thr, pul])["movements"]]
+    otra_lista = [*cuerpo_wod([thr, pul])["movements"]]
+    otra_lista[0] = dict(otra_lista[0], reps="5")
+    otra_lista[1] = dict(otra_lista[1], reps="7")
+    sonda.cuentas[wod.id] = 2
+    for cuerpo in (cambia, sin_principal):
+        with pytest.raises(LockedByResults) as error:
+            await _patch(session, admin.id, wod.id, movements=cuerpo)
+        assert error.value.field == "movements"
+    quieto = await service.get_wod(session, wod.id)
+    assert [(m.movement_name, m.is_primary) for m in quieto.movements] == [
+        ("Thruster", True),
+        ("Pull-up", False),
+    ]
+    # el mismo principal con otras repeticiones sí se edita
+    ok = await _patch(session, admin.id, wod.id, movements=otra_lista)
+    assert [m.reps for m in ok.movements] == ["5", "7"] and ok.movements[0].is_primary
+    # sin resultados el principal se puede mover
+    sonda.cuentas[wod.id] = 0
+    movido = await _patch(session, admin.id, wod.id, movements=cambia)
+    assert [(m.movement_name, m.is_primary) for m in movido.movements] == [
+        ("Pull-up", True),
+        ("Thruster", False),
+    ]
+
+
+async def test_carrera_real_de_dos_altas_con_la_misma_fecha_en_dos_sesiones(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S8-A3b: dos conexiones reales dan de alta el WOD del mismo día a la vez; gana una y la otra
+    recibe 409 `wod_date_taken` con el id del ganador. Las dos sesiones siguen usables."""
+    una, otra = dos_sesiones
+    actor = SYSTEM_USER_ID
+    with actor_scope(actor):
+        mov = await service.create_movement(
+            una, MovementCreate(name="Thruster", category="weightlifting", unit="kg"), actor
+        )
+        await una.commit()
+
+    async def alta(sesion: AsyncSession, titulo: str) -> WodOut | WodDateTaken:
+        with actor_scope(actor):
+            try:
+                cuerpo = WodCreate.model_validate(cuerpo_wod([mov.id], title=titulo))
+                salida = await service.create_wod(sesion, cuerpo, actor)
+                await sesion.commit()
+                return salida
+            except WodDateTaken as error:
+                await sesion.rollback()
+                return error
+
+    resultados = await asyncio.gather(alta(una, "Uno"), alta(otra, "Dos"))
+    ganadores = [r for r in resultados if isinstance(r, WodOut)]
+    perdedores = [r for r in resultados if isinstance(r, WodDateTaken)]
+    assert len(ganadores) == 1 and len(perdedores) == 1
+    assert perdedores[0].existing_id == ganadores[0].id
+    for sesion in (una, otra):
+        assert (await sesion.execute(text("SELECT count(*) FROM wods.wods"))).scalar_one() == 1
+
+
+async def test_dos_patch_del_mismo_wod_se_serializan_con_for_update(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S8-A3b: dos `PATCH` a la vez del mismo WOD: el segundo espera el `FOR UPDATE` y parte de lo
+    que dejó el primero (el `before` del segundo es el `after` del primero)."""
+    una, otra = dos_sesiones
+    actor = SYSTEM_USER_ID
+    with actor_scope(actor):
+        mov = await service.create_movement(
+            una, MovementCreate(name="Thruster", category="weightlifting", unit="kg"), actor
+        )
+        wod = await service.create_wod(una, WodCreate.model_validate(cuerpo_wod([mov.id])), actor)
+        await una.commit()
+
+    async def parchar(sesion: AsyncSession, titulo: str) -> None:
+        with actor_scope(actor):
+            await service.update_wod(sesion, wod.id, WodPatch(title=titulo), actor)
+            await sesion.commit()
+
+    await asyncio.gather(parchar(una, "Uno"), parchar(otra, "Dos"))
+    filas = (
+        await una.execute(
+            text(
+                "SELECT before->>'title', after->>'title' FROM audit.audit_log "
+                "WHERE table_name = 'wods.wods' AND action = 'update' AND record_id = :i "
+                "ORDER BY seq"
+            ),
+            {"i": wod.id},
+        )
+    ).all()
+    assert len(filas) == 2
+    assert filas[0][0] == "Fran" and filas[1][0] == filas[0][1]
+    assert {filas[0][1], filas[1][1]} == {"Uno", "Dos"}
+
+
+async def test_patch_del_wod_con_benchmark_y_patch_del_score_type_del_benchmark_a_la_vez(
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+) -> None:
+    """S8-A3b: mientras un `PATCH /wods` que fija `benchmark_id` no confirma (retiene el `FOR SHARE`
+    del benchmark), el `PATCH /benchmarks` del `score_type` espera y no se cuela; al confirmar el
+    WOD, el cambio ya no procede (422 `score_type_locked`)."""
+    una, otra = dos_sesiones
+    actor = SYSTEM_USER_ID
+    with actor_scope(actor):
+        mov = await service.create_movement(
+            una, MovementCreate(name="Thruster", category="weightlifting", unit="kg"), actor
+        )
+        bench = await service.create_benchmark(
+            una, BenchmarkCreate(name="Fran", description="", score_type="time"), actor
+        )
+        wod = await service.create_wod(una, WodCreate.model_validate(cuerpo_wod([mov.id])), actor)
+        await una.commit()
+        await service.update_wod(una, wod.id, WodPatch(benchmark_id=bench.id), actor)
+    # `una` no confirma: retiene el FOR SHARE del benchmark
+    await otra.execute(text("SET LOCAL lock_timeout = '300ms'"))
+    with actor_scope(actor):
+        with pytest.raises((DatabaseBusy, DBAPIError)):
+            await service.update_benchmark(otra, bench.id, BenchmarkPatch(score_type="reps"), actor)
+    await otra.rollback()
+    await una.commit()
+    with actor_scope(actor):
+        with pytest.raises(ScoreTypeLocked):
+            await service.update_benchmark(otra, bench.id, BenchmarkPatch(score_type="reps"), actor)
+    await otra.rollback()

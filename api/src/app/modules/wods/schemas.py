@@ -17,7 +17,13 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool
 
 from app.core.validators import SafeText, check_multiline_text, check_visible_text
-from app.modules.wods.rules import DESCRIPTION_MAX_LENGTH, NAME_MAX_LENGTH
+from app.modules.wods.rules import (
+    DESCRIPTION_MAX_LENGTH,
+    MAX_MOVEMENTS,
+    NAME_MAX_LENGTH,
+    WEEK_MAX_YEAR,
+    WEEK_MIN_YEAR,
+)
 
 MovementCategory = Literal["weightlifting", "gymnastics", "monostructural", "other"]
 MovementUnit = Literal["kg", "reps", "m", "cal", "s"]
@@ -123,6 +129,16 @@ LoadGrams = Annotated[int, Field(strict=True, ge=0, le=1_000_000)]
 WodTitle = Annotated[SafeText, Field(min_length=1, max_length=80)]
 
 
+def _check_wod_year(value: date_type) -> date_type:
+    """La fecha de un WOD cae entre 2020 y 2100, como la semana de `GET /wods?week=` (L-3)."""
+    if not WEEK_MIN_YEAR <= value.year <= WEEK_MAX_YEAR:
+        raise ValueError("La fecha debe estar entre 2020 y 2100.")
+    return value
+
+
+WodDate = Annotated[date_type, AfterValidator(_check_wod_year)]
+
+
 def _check_short(value: str) -> str:
     """Texto corto de una línea (reps, notas): vacío vale; si trae algo, `SafeText`."""
     return check_visible_text(value) if value.strip() else ""
@@ -152,13 +168,13 @@ class WodCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    date: date_type
+    date: WodDate
     title: WodTitle
     score_type: WodScoreType
     time_cap_s: Annotated[int, Field(strict=True)] | None = None
     benchmark_id: UUID | None = None
     description: BenchmarkDescription = ""
-    movements: list[WodMovementIn]
+    movements: Annotated[list[WodMovementIn], Field(max_length=MAX_MOVEMENTS)]
 
 
 class WodPatch(BaseModel):
@@ -167,13 +183,13 @@ class WodPatch(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    date: date_type | None = None
+    date: WodDate | None = None
     title: WodTitle | None = None
     score_type: WodScoreType | None = None
     time_cap_s: Annotated[int, Field(strict=True)] | None = None
     benchmark_id: UUID | None = None
     description: BenchmarkDescription | None = None
-    movements: list[WodMovementIn] | None = None
+    movements: Annotated[list[WodMovementIn], Field(max_length=MAX_MOVEMENTS)] | None = None
 
 
 class WodMovementOut(BaseModel):

@@ -271,6 +271,12 @@ def _changes(wod: Wod, patch: WodPatch) -> dict[str, Any]:
     }
 
 
+def _primary_id(items: Sequence[WodMovement] | Sequence[WodMovementIn]) -> UUID | None:
+    """El movimiento del catálogo que es el principal (o `None` si no hay): los RM de Q19 y RN-12
+    se atribuyen a él, así que con resultados no cambia (M-2)."""
+    return next((m.movement_id for m in items if m.is_primary), None)
+
+
 def _same_list(actuales: Sequence[WodMovement], nuevos: Sequence[WodMovementIn]) -> bool:
     def clave_actual(m: WodMovement) -> tuple[Any, ...]:
         return (
@@ -355,11 +361,16 @@ async def _validate_update(
 
 
 async def update_wod(session: AsyncSession, wod_id: UUID, patch: WodPatch, by: UUID) -> WodOut:
-    """`PATCH` de un WOD: solo lo enviado; `movements` reemplaza la lista completa."""
+    """`PATCH` de un WOD: solo lo enviado; `movements` reemplaza la lista completa. Con resultados
+    la lista se puede reemplazar, pero el principal no cambia (422 `locked_by_results`,
+    `field = "movements"`, S8-A3b M-2)."""
     wod = await _locked(session, wod_id)
     cambios = _changes(wod, patch)
     resultados = await _check_locks(session, wod, cambios)
     actuales = await _movement_rows(session, [wod.id])
+    if resultados > 0 and patch.movements is not None:  # S8-A3b (M-2)
+        if _primary_id(actuales) != _primary_id(patch.movements):
+            raise LockedByResults("movements")
     catalogo = await _validate_update(session, wod, cambios, patch, actuales)
     nueva_lista = patch.movements if patch.movements is not None else None
     reemplaza = nueva_lista is not None and not _same_list(actuales, nueva_lista)

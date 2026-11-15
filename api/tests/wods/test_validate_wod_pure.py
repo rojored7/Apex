@@ -82,3 +82,12 @@ def test_posiciones_1_a_n(posiciones: list[int]) -> None:
 
 def test_las_posiciones_valen_en_cualquier_orden_de_la_lista() -> None:
     validate_wod("reps", None, [_mov(2), _mov(1), _mov(3)])
+
+
+def test_load_exige_principal_medido_en_kg() -> None:
+    """S8-A3b (L-4): un WOD `load` con principal que no se mide en kg no tiene qué ordenar."""
+    ok = [_mov(1, is_primary=True, unit="kg"), _mov(2)]
+    validate_wod("load", None, ok)
+    malo = [_mov(1, unit="kg"), _mov(2, is_primary=True, unit="reps")]
+    assert _campo(score_type="load", time_cap_s=None, movements=malo) == "movements.1.is_primary"
+    validate_wod("reps", None, malo)  # otros tipos no lo exigen

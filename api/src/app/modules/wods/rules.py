@@ -67,7 +67,8 @@ def validate_wod(
 
     1 a 30 movimientos con posiciones 1..n (en cualquier orden de la lista), a lo sumo un
     principal, `time_cap_s` de 1 a 14.400 y solo con `time|rounds_reps`, y cargas RX solo en
-    movimientos cuya unidad es `kg`. Las cargas ya llegan acotadas (0 a 1.000.000 g) por el esquema.
+    movimientos cuya unidad es `kg`; un WOD `load` exige que su principal (si lo hay) mida en kg.
+    Las cargas ya llegan acotadas (0 a 1.000.000 g) por el esquema.
     """
     if score_type in CAPPED_SCORE_TYPES:
         if time_cap_s is not None and not 1 <= time_cap_s <= TIME_CAP_MAX_S:
@@ -92,6 +93,13 @@ def validate_wod(
         raise WodsValidationError(
             message="Solo puede haber un movimiento principal.", field="movements"
         )
+    if score_type == "load":  # S8-A3b (L-4): sin principal en kg no hay carga que ordenar
+        for indice, movimiento in enumerate(movements):
+            if movimiento.is_primary and movimiento.unit != "kg":
+                raise WodsValidationError(
+                    message="En un WOD de carga el movimiento principal debe medirse en kg.",
+                    field=f"movements.{indice}.is_primary",
+                )
     for indice, movimiento in enumerate(movements):
         for lado, carga in (("m", movimiento.load_rx_m_g), ("f", movimiento.load_rx_f_g)):
             if carga is not None and movimiento.unit != "kg":

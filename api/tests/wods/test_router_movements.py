@@ -55,6 +55,7 @@ def test_el_router_publica_las_rutas_de_movimientos_y_ningun_delete() -> None:
         ("POST", "/benchmarks"),
         ("PATCH", "/benchmarks/{benchmark_id}"),
         ("GET", "/wods"),
+        ("GET", "/wods/today"),  # S8-A4
         ("POST", "/wods"),
         ("GET", "/wods/{wod_id}"),
         ("PATCH", "/wods/{wod_id}"),

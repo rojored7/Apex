@@ -4,8 +4,9 @@
 //   ruta (canAccessRoute, que usa la matriz de US-040 y config/routeTable.ts): el menú y las
 //   guardas deciden con la misma regla. Sin listas de roles (RN-15: el front oculta, el API
 //   verifica).
-// - "Hoy" son tres enlaces a pantallas que ya existen (Q25), sin ruta propia, y solo se
-//   muestra cuando sus tres épicas están habilitadas.
+// - "Hoy" son tres enlaces a pantallas que ya existen (Q25), sin ruta propia. Desde S7-F1
+//   (S7-D21, BRECHAS 13.17) cada enlace depende solo de su propia feature: "Por avisar hoy" se ve
+//   sin esperar a classes ni wods.
 // - Los grupos vacíos se omiten; para el socio el resultado es vacío porque ninguna ruta del
 //   panel es suya (usa PortalLayout).
 // DESIGN-GAP: Inicio.html trae un grupo "Pantalla" con "Abrir pantalla TV ↗"; la TV se abre
@@ -59,9 +60,6 @@ const GROUPS: readonly { id: NavGroupId; title: string | null }[] = [
   { id: "sistema", title: "Sistema" },
 ];
 
-/** El grupo "Hoy" necesita sus tres épicas a la vez (Q25). */
-const HOY_FEATURES: readonly Feature[] = ["classes", "wods", "notifications"];
-
 const item = (group: NavGroupId, label: string, to: string, feature: Feature, icon: LucideIcon): NavItem =>
   Object.freeze({ group, label, to, feature, icon });
 
@@ -86,8 +84,7 @@ export const NAV_CATALOG: readonly NavItem[] = Object.freeze([
 ]);
 
 function isVisible(entry: NavItem, role: Role | null, enabled: ReadonlySet<Feature>): boolean {
-  if (!isRouteEnabled(entry, enabled) || !canAccessRoute(role, entry.to)) return false;
-  return entry.group !== "hoy" || HOY_FEATURES.every((f) => enabled.has(f));
+  return isRouteEnabled(entry, enabled) && canAccessRoute(role, entry.to);
 }
 
 /** Menú del panel para un rol y las features habilitadas, agrupado y sin grupos vacíos. */

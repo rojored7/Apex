@@ -11,7 +11,7 @@ import { RoleProvider } from "../../../core/auth";
 import { clearSession } from "../../../core/auth/session";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
-import { channelsSection, gymSection, membershipsSection, paymentMethodsSection, privacySection } from "../../../test/settings";
+import { channelsSection, classesSection, gymSection, hoursSection, membershipsSection, paymentMethodsSection, privacySection } from "../../../test/settings";
 import ConfigPage from "./ConfigPage";
 
 const PATH = "/sistema/configuracion";
@@ -23,6 +23,8 @@ function defaultHandlers(): Record<string, MockHandler> {
     "GET /settings/memberships": { status: 200, body: membershipsSection() },
     "GET /settings/payment_methods": { status: 200, body: paymentMethodsSection() },
     "GET /settings/channels": { status: 200, body: channelsSection() },
+    "GET /settings/hours": { status: 200, body: hoursSection() },
+    "GET /settings/classes": { status: 200, body: classesSection() },
   };
 }
 
@@ -76,13 +78,13 @@ afterEach(() => {
 });
 
 describe("ConfigPage", () => {
-  it("muestra el título, la nota de auditoría y las cinco pestañas en orden (S3-F4: Medios de pago; S5-F2: Canales)", async () => {
+  it("muestra el título, la nota de auditoría y las siete pestañas en orden (S3-F4: Medios de pago; S5-F2: Canales; S7-F1: Horario y Clases)", async () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Configuración del gimnasio" })).toBeInTheDocument();
     expect(screen.getByText("Cada sección se guarda por separado y queda en auditoría.")).toBeInTheDocument();
     const list = screen.getByRole("tablist", { name: "Secciones de la configuración" });
-    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Privacidad", "Membresías", "Medios de pago", "Canales"]);
+    expect(within(list).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Gimnasio", "Horario", "Privacidad", "Membresías", "Clases", "Medios de pago", "Canales"]);
     expect(tab("Gimnasio")).toHaveAttribute("aria-selected", "true");
     await nameInput();
   });
@@ -96,6 +98,8 @@ describe("ConfigPage", () => {
     expect(mock.callsTo("GET /settings/memberships")).toHaveLength(0);
     expect(mock.callsTo("GET /settings/payment_methods")).toHaveLength(0);
     expect(mock.callsTo("GET /settings/channels")).toHaveLength(0);
+    expect(mock.callsTo("GET /settings/hours")).toHaveLength(0);
+    expect(mock.callsTo("GET /settings/classes")).toHaveLength(0);
   });
 
   it.each([
@@ -103,6 +107,8 @@ describe("ConfigPage", () => {
     ["membresias", "Membresías", /Por vencer/],
     ["medios", "Medios de pago", /Nombre que se muestra/],
     ["canales", "Canales", /Nombre del remitente/],
+    ["horario", "Horario", /Lunes: cerrado/],
+    ["clases", "Clases", /Cupo por defecto/],
   ])("?tab=%s abre la pestaña %s", async (id, label, field) => {
     renderPage(`${PATH}?tab=${id}`);
 

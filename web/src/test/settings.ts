@@ -1,6 +1,6 @@
 // Datos de prueba de las secciones de configuración (S2-F5). Imitan las respuestas de
 // GET /settings/{gym|privacy|memberships}: defaults con version 0 y updated_* nulos.
-import type { ChannelsSettings, GymSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
+import type { ChannelsSettings, ClassesSettings, GymSettings, HoursSettings, MembershipsSettings, PaymentMethodsSettings, PrivacyView, SettingsSection } from "../features/system/api";
 import type { MockReply } from "./server";
 
 export const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
@@ -92,5 +92,27 @@ export function channelsSection(
     updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
     updated_by: version === 0 ? null : ADMIN_ID,
     credentials_present: credentials,
+  };
+}
+
+/** S7-F1 · US-154: GET /settings/hours; sin configurar los siete días llegan vacíos (= cerrado). */
+export function hoursSection(value: Partial<HoursSettings> = {}, version = 0): SettingsSection<"hours"> {
+  return {
+    key: "hours",
+    value: { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [], ...value },
+    version,
+    updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
+    updated_by: version === 0 ? null : ADMIN_ID,
+  };
+}
+
+/** S7-F1 · US-154: GET /settings/classes con los valores por omisión (15 y 30). */
+export function classesSection(value: Partial<ClassesSettings> = {}, version = 0): SettingsSection<"classes"> {
+  return {
+    key: "classes",
+    value: { default_capacity: 15, checkin_window_min: 30, ...value },
+    version,
+    updated_at: version === 0 ? null : "2026-10-21T15:00:00Z",
+    updated_by: version === 0 ? null : ADMIN_ID,
   };
 }

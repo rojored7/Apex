@@ -1,8 +1,6 @@
 """`wods.service` de benchmarks con base real (S8-A2, US-166, N-46; S8-D6). Rojo A2.
 
-`score_type_locked` usa un doble de `wod_counts` (la tabla de WODs llega en A3, que lo reemplaza
-por la consulta real sobre `wods.wods`).
-"""
+`score_type_locked` se prueba con WODs reales desde A3."""
 
 from __future__ import annotations
 
@@ -32,6 +30,7 @@ from app.modules.wods.schemas import (
     BenchmarkPatch,
 )
 from tests.conftest import CrearUsuario
+from tests.factories.wods import make_movement, make_wod
 
 PAGINA = PageParams(limit=50, offset=0)
 SIN_FILTROS = BenchmarkListQuery()
@@ -139,21 +138,27 @@ async def test_404_de_inexistente(session: AsyncSession, usuario_real: CrearUsua
 async def test_patch_score_type_con_wods_da_422_score_type_locked(
     session: AsyncSession, usuario_real: CrearUsuario
 ) -> None:
+    """Con WODs REALES (A3 reemplazó el doble de A2): `wod_count` sale de `wods.wods`."""
     admin = await usuario_real("admin")
     b = await _alta(session, admin.id)
+    thruster = await make_movement(session, admin.id)
+    await make_wod(session, admin.id, [thruster.id], benchmark_id=str(b.id))
+    await make_wod(session, admin.id, [thruster.id], date="2026-10-23", benchmark_id=str(b.id))
+    with pytest.raises(ScoreTypeLocked) as error:
+        await _cambio(session, admin.id, b.id, score_type="reps")
+    assert error.value.status == 422 and error.value.field == "score_type"
+    # El mismo valor no es un cambio; y lo demás sí se edita aunque haya WODs.
+    igual = await _cambio(session, admin.id, b.id, score_type="time", description="nueva")
+    assert igual.description == "nueva" and igual.wod_count == 2
 
-    async def con_wods(_s: AsyncSession, ids: list[UUID]) -> dict[UUID, int]:
-        return dict.fromkeys(ids, 2)
 
-    with mock.patch.object(benchmarks_module, "wod_counts", con_wods):
-        with pytest.raises(ScoreTypeLocked) as error:
-            await _cambio(session, admin.id, b.id, score_type="reps")
-        assert error.value.status == 422 and error.value.field == "score_type"
-        # El mismo valor no es un cambio; y lo demás sí se edita aunque haya WODs.
-        igual = await _cambio(session, admin.id, b.id, score_type="time", description="nueva")
-        assert igual.description == "nueva" and igual.wod_count == 2
+async def test_sin_wods_el_score_type_cambia(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    admin = await usuario_real("admin")
+    b = await _alta(session, admin.id)
     libre = await _cambio(session, admin.id, b.id, score_type="reps")
-    assert libre.score_type == "reps"
+    assert libre.score_type == "reps" and libre.wod_count == 0
 
 
 async def test_lista_filtra_busca_pagina_y_ordena_por_nombre_normalizado(

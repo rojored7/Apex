@@ -1559,6 +1559,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Wods */
+        get: operations["list_wods_api_v1_wods_get"];
+        put?: never;
+        /** Create Wod */
+        post: operations["create_wod_api_v1_wods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wods/{wod_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wod */
+        get: operations["get_wod_api_v1_wods__wod_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Wod */
+        patch: operations["update_wod_api_v1_wods__wod_id__patch"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -3334,6 +3370,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[WodRowOut] */
+        Page_WodRowOut_: {
+            /** Items */
+            items: components["schemas"]["WodRowOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /**
          * PaymentDetail
          * @description `GET /payments/{payment_id}` (S3-B8, US-099; L-2).
@@ -4569,6 +4616,197 @@ export interface components {
              * Format: date
              */
             week_start: string;
+        };
+        /**
+         * WodCreate
+         * @description `POST /wods`. `time_cap_s` y `movements` se validan en `validate_wod` (422 con `field`).
+         */
+        WodCreate: {
+            /** Benchmark Id */
+            benchmark_id?: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Movements */
+            movements: components["schemas"]["WodMovementIn"][];
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s?: number | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WodMovementIn
+         * @description Un movimiento del WOD. `position` de 1 a n (lo comprueba `validate_wod`); las cargas son
+         *     gramos enteros de 0 a 1.000.000 (S8-D41).
+         */
+        WodMovementIn: {
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /** Load Rx F G */
+            load_rx_f_g?: number | null;
+            /** Load Rx M G */
+            load_rx_m_g?: number | null;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Position */
+            position: number;
+            /**
+             * Reps
+             * @default
+             */
+            reps: string;
+        };
+        /** WodMovementOut */
+        WodMovementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Load Rx F G */
+            load_rx_f_g: number | null;
+            /** Load Rx M G */
+            load_rx_m_g: number | null;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /** Movement Name */
+            movement_name: string;
+            /** Notes */
+            notes: string;
+            /** Position */
+            position: number;
+            /** Reps */
+            reps: string;
+        };
+        /** WodOut */
+        WodOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movements */
+            movements: components["schemas"]["WodMovementOut"][];
+            /** Result Count */
+            result_count: number;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WodPatch
+         * @description `PATCH /wods/{id}`: un campo ausente no es un cambio. `time_cap_s` y `benchmark_id`
+         *     admiten `null` (quitarlos); los demás no.
+         */
+        WodPatch: {
+            /** Benchmark Id */
+            benchmark_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Movements */
+            movements?: components["schemas"]["WodMovementIn"][] | null;
+            /** Score Type */
+            score_type?: ("time" | "rounds_reps" | "reps" | "load" | "none") | null;
+            /** Time Cap S */
+            time_cap_s?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * WodRowOut
+         * @description Fila de la lista y del calendario: sin la lista de movimientos.
+         */
+        WodRowOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Benchmark */
+            is_benchmark: boolean;
+            /** Movement Count */
+            movement_count: number;
+            /** Movement Names */
+            movement_names: string[];
+            /** Result Count */
+            result_count: number;
+            /**
+             * Score Type
+             * @enum {string}
+             */
+            score_type: "time" | "rounds_reps" | "reps" | "load" | "none";
+            /** Time Cap S */
+            time_cap_s: number | null;
+            /** Title */
+            title: string;
         };
     };
     responses: never;
@@ -14078,6 +14316,357 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_wods_api_v1_wods_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+                week?: string | null;
+                benchmark?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WodRowOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_wod_api_v1_wods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_wod_api_v1_wods__wod_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_wod_api_v1_wods__wod_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wod_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WodPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WodOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -70,6 +70,7 @@ ALWAYS_DE_0014 = {
         "classes.attendance",
         "wods.movements",  # S8-A1 (0032)
         "wods.benchmarks",  # S8-A2 (0033)
+        "wods.wods",  # S8-A3 (0034)
     }
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)

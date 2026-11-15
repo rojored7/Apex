@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Final
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "app"
 MODELOS = (
@@ -40,6 +41,7 @@ MODELOS = (
     "Attendance",  # S7-C1 (RN-14): la asistencia se quita con removed_*, no se borra
     "Movement",  # S8-A1 (RN-14): los movimientos se desactivan
     "Benchmark",  # S8-A2 (RN-14): los benchmarks no se borran
+    "Wod",  # S8-A3 (RN-14): los WODs no se borran (`WodMovement` sí: reemplazo de lista, E6)
     "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
 )
 TABLAS = (
@@ -62,6 +64,7 @@ TABLAS = (
     "classes.attendance",  # S7-C1
     "wods.movements",  # S8-A1
     "wods.benchmarks",  # S8-A2
+    "wods.wods",  # S8-A3
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -76,11 +79,21 @@ def violaciones_en(fuente: str) -> list[str]:
     return [m.group(0) for patron in PATRONES for m in patron.finditer(fuente)]
 
 
+# S8-A3 (E6, regla de datos 4): `wods.wod_movements` no es una tabla de borrado prohibido; `POST` y
+# `PATCH /wods` reemplazan la lista completa y el reemplazo se audita fila a fila, por eso se borra
+# por la sesión (el hook `after_flush` ve `session.deleted`; un `DELETE` de Core no se auditaría).
+# Es la única excepción a `session.delete(`, por archivo.
+EXENTO_SESSION_DELETE: Final = frozenset({"modules/wods/programming.py"})
+
+
 def _violaciones() -> list[str]:
     salida: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         texto = path.read_text(encoding="utf-8")
+        relativa = path.relative_to(SRC).as_posix()
         for patron in PATRONES:
+            if patron is PATRONES[0] and relativa in EXENTO_SESSION_DELETE:
+                continue
             for m in patron.finditer(texto):
                 linea = texto.count("\n", 0, m.start()) + 1
                 salida.append(f"{path.relative_to(SRC).as_posix()}:{linea}: {m.group(0)}")

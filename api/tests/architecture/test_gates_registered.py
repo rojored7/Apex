@@ -148,3 +148,22 @@ async def test_sin_gate_register_falla_cerrado_no_escribe_y_se_restaura(
     )
     assert (pagos, auditoria) == (0, 0)
     assert issubclass(MembershipGateNotRegistered, RuntimeError)
+
+
+def test_tras_create_app_el_puerto_de_resultados_de_wods_esta_registrado(
+    settings_prueba: Settings,
+) -> None:
+    """S8-A3 (S8-D4): `wods` registra `NoResultsYet` (provisional hasta B1, que lo reemplaza con el
+    puerto real de `results`); sin puerto, `results_probe()` falla cerrado."""
+    from app.modules.wods import service as wods_service
+    from app.modules.wods.exceptions import ResultsProbeNotRegistered
+
+    create_app(settings_prueba, run_migrations_on_startup=False)
+    anterior = wods_service.current_results_probe()
+    assert anterior is not None and wods_service.results_probe() is anterior
+    wods_service.set_results_probe(None)
+    try:
+        with pytest.raises(ResultsProbeNotRegistered):
+            wods_service.results_probe()
+    finally:
+        wods_service.set_results_probe(anterior)

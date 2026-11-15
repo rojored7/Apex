@@ -40,7 +40,7 @@ def _cuerpo(**cambios: Any) -> dict[str, Any]:
 
 
 def test_el_router_publica_las_rutas_de_movimientos_y_ningun_delete() -> None:
-    """A2 suma las tres de benchmarks al mismo router plano (S2-D3)."""
+    """A2 suma las de benchmarks y A3 las de WODs al mismo router plano (S2-D3)."""
     publicadas = {
         (metodo, ruta.path)
         for ruta in router.routes
@@ -54,6 +54,10 @@ def test_el_router_publica_las_rutas_de_movimientos_y_ningun_delete() -> None:
         ("GET", "/benchmarks"),
         ("POST", "/benchmarks"),
         ("PATCH", "/benchmarks/{benchmark_id}"),
+        ("GET", "/wods"),
+        ("POST", "/wods"),
+        ("GET", "/wods/{wod_id}"),
+        ("PATCH", "/wods/{wod_id}"),
     }
     assert not any(m == "DELETE" for m, _ in publicadas)
 

@@ -76,7 +76,9 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     ),
     # S8-A1 (S8-D5): `wods` nace partido tras la fachada; A2 a A4 suman `benchmarks`, `catalog`
     # y `seed`.
-    "wods": frozenset({"rules", "movements", "benchmarks", "catalog", "seed", "events"}),
+    "wods": frozenset(
+        {"rules", "movements", "benchmarks", "catalog", "seed", "events", "programming", "probe"}
+    ),
 }
 
 Rule = Literal[

@@ -166,6 +166,11 @@ CON_LIMITE = {
     ("get", "/api/v1/benchmarks"),
     ("post", "/api/v1/benchmarks"),
     ("patch", "/api/v1/benchmarks/{benchmark_id}"),
+    # S8-A3 (US-166, US-167): WODs; `GET /wods/today` llega en A4.
+    ("get", "/api/v1/wods"),
+    ("post", "/api/v1/wods"),
+    ("get", "/api/v1/wods/{wod_id}"),
+    ("patch", "/api/v1/wods/{wod_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

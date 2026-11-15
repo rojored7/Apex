@@ -1,6 +1,8 @@
 """Lecturas de catálogo para los WODs (S8-A3). Privado del módulo: lo usa `programming.py`.
 
-- `movements_by_id(session, ids)`: los movimientos del catálogo por id (una consulta).
+- `movements_by_id(session, ids)`: los movimientos del catálogo por id (una consulta), con
+  `FOR SHARE` y datos frescos: un `PATCH /movements` concurrente (que los bloquea `FOR UPDATE`)
+  espera a que el WOD confirme y luego ve el uso (revisión de A4, M-1).
 - `ensure_wod`, `day_wod_ids` y `wod_date` (S8-A4, S8-D9): lo que `classes` pide por `service.py`.
 - `benchmark_for_share(session, benchmark_id)`: el benchmark con `FOR SHARE`,
   para que un `PATCH /benchmarks/{id}` del `score_type` concurrente espere a que el WOD confirme.
@@ -23,7 +25,12 @@ from app.modules.wods.models import Benchmark, Movement, Wod, WodMovement
 async def movements_by_id(session: AsyncSession, ids: Sequence[UUID]) -> dict[UUID, Movement]:
     if not ids:
         return {}
-    filas = await session.scalars(select(Movement).where(Movement.id.in_(set(ids))))
+    filas = await session.scalars(
+        select(Movement)
+        .where(Movement.id.in_(set(ids)))
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
     return {m.id: m for m in filas}
 
 

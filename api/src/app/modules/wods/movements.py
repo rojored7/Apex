@@ -148,6 +148,11 @@ async def update_movement(
     cambios = {c: v for c, v in valores.items() if getattr(mov, c) != v}
     if not cambios:
         return (await _outs(session, [mov]))[0]
+    if "unit" in cambios and (await usage_counts(session, [mov.id]))[mov.id] > 0:
+        raise WodsValidationError(  # revisión de A4, M-1
+            message="La unidad no se puede cambiar: hay WODs que usan este movimiento.",
+            field="unit",
+        )
     norm = mov.name_norm
     if "name" in cambios:
         norm = normalize_movement_name(cambios["name"])

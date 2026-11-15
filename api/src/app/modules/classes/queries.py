@@ -4,7 +4,8 @@
   rango de fechas de Bogotá (`from`/`to`, hasta 62 días), por hora de inicio; sin fechas, la
   semana actual. Filtra por `q` (nombre, sin tildes), `coach_id` y `status` (`done` se calcula:
   programada cuya hora de fin ya pasó).
-  `wod_id` filtra por el WOD efectivo (S8-A4): el asignado o, sin asignar, el del día de ese WOD.
+  `wod_id` filtra por el WOD efectivo (S8-A4): el asignado o, sin asignar, el del día de ese WOD;
+  con `wod_id` y sin `week`, `from` ni `to`, la ventana es el día del WOD (S8-A4b, L-1).
 - `get_session(session, session_id)`: una sesión con sus asistentes vivos (C1, US-159).
 - `session_out(...)`: arma `SessionOut` con el estado calculado y el nombre del coach.
 `attendance_count` cuenta las asistencias vivas (`removed_at` nulo) de cada sesión.
@@ -176,7 +177,16 @@ async def list_sessions(
 ) -> Page[SessionOut]:
     """`GET /class-sessions` (docstring del módulo)."""
     reloj = current_clock()
-    desde, hasta = _window(query, reloj.today_bogota())
+    fecha_wod: date | None = None
+    if query.wod_id is not None:  # semántica efectiva (S8-D9): asignado, o heredado del día de X
+        fecha_wod = await wods_service.wod_date(session, query.wod_id)
+        if fecha_wod is None:
+            return to_page([], 0, page)
+    sin_ventana = query.week is None and query.from_date is None and query.to_date is None
+    if fecha_wod is not None and sin_ventana:  # S8-A4b (L-1): sin ventana, el día del WOD
+        desde, hasta = date_range_utc(fecha_wod, fecha_wod)
+    else:
+        desde, hasta = _window(query, reloj.today_bogota())
     consulta = select(ClassSession).where(
         ClassSession.starts_at >= desde, ClassSession.starts_at < hasta
     )
@@ -190,14 +200,11 @@ async def list_sessions(
         consulta = consulta.where(ClassSession.coach_id == query.coach_id)
     if query.status is not None:
         consulta = consulta.where(_status_filter(query.status, reloj.now_utc()))
-    if query.wod_id is not None:  # semántica efectiva (S8-D9): asignado, o heredado del día de X
-        fecha = await wods_service.wod_date(session, query.wod_id)
-        if fecha is None:
-            return to_page([], 0, page)
+    if query.wod_id is not None and fecha_wod is not None:
         consulta = consulta.where(
             or_(
                 ClassSession.wod_id == query.wod_id,
-                and_(ClassSession.wod_id.is_(None), ClassSession.session_date == fecha),
+                and_(ClassSession.wod_id.is_(None), ClassSession.session_date == fecha_wod),
             )
         )
     filas, total = await paginate(

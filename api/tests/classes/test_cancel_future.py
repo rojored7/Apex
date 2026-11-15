@@ -192,15 +192,14 @@ async def test_toma_el_candado_de_generacion_antes_de_bloquear(
     finally:
         event.remove(motor, "before_cursor_execute", anotar)
     candado = [i for i, s in enumerate(vistas) if "pg_advisory_xact_lock" in s]
-    bloqueos = [
-        i for i, s in enumerate(vistas) if "FOR UPDATE" in s and "class_sessions" in s
-    ]
+    bloqueos = [i for i, s in enumerate(vistas) if "FOR UPDATE" in s and "class_sessions" in s]
     cambios = [i for i, s in enumerate(vistas) if s.startswith("UPDATE classes.class_sessions")]
     assert candado and len(bloqueos) == 1 and cambios
     assert candado[0] < bloqueos[0] < cambios[0]
-    assert "ORDER BY classes.class_sessions.starts_at, classes.class_sessions.id" in vistas[
-        bloqueos[0]
-    ]
+    assert (
+        "ORDER BY classes.class_sessions.starts_at, classes.class_sessions.id"
+        in vistas[bloqueos[0]]
+    )
 
 
 async def test_concurrente_con_generate_sessions_sin_quedar_scheduled(

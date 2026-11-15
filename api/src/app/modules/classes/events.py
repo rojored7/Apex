@@ -4,7 +4,7 @@
   una franja crearon una sesión. Los eventos se exportan desde `service.py`.
 
 `SessionCancelled(session_id, slot_id, starts_at)` (S7-B2, US-157) no lleva el motivo (L-2).
-`MemberCheckedIn` y `AttendanceRemoved` con C1 y C3.
+`MemberCheckedIn` (C1, US-159) y `AttendanceRemoved` (C3).
 """
 
 from __future__ import annotations
@@ -30,3 +30,18 @@ class SessionCancelled(DomainEvent):
     session_id: UUID
     slot_id: UUID | None
     starts_at: datetime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MemberCheckedIn(DomainEvent):
+    """Un socio hizo check-in (S7-D12). Sin nombres ni texto libre (S3-D70).
+
+    `membership_id` es la membresía que decidió (nula sin membresía vigente ese día, S7-D25).
+    Memberships descuenta la clase (US-160)."""
+
+    attendance_id: UUID
+    session_id: UUID
+    member_id: UUID
+    membership_id: UUID | None
+    membership_status: str
+    flags: tuple[str, ...]

@@ -21,6 +21,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attendance */
+        get: operations["list_attendance_api_v1_attendance_get"];
+        put?: never;
+        /** Check In */
+        post: operations["check_in_api_v1_attendance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit": {
         parameters: {
             query?: never;
@@ -1463,6 +1481,69 @@ export interface components {
             uploaded_by: string;
         };
         /**
+         * AttendanceCreate
+         * @description `POST /attendance`: solo la sesión y el socio. `extra="forbid"` (L-1): el cliente nunca
+         *     manda `membership_id`, `flags` ni `checked_in_at`; los decide el servidor.
+         */
+        AttendanceCreate: {
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /**
+         * AttendanceRowOut
+         * @description Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados.
+         */
+        AttendanceRowOut: {
+            /**
+             * Checked In At
+             * Format: date-time
+             */
+            checked_in_at: string;
+            /** First Name */
+            first_name: string | null;
+            /** Flagged */
+            flagged: boolean;
+            /** Flags */
+            flags: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Name */
+            last_name: string | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Membership Status At Checkin */
+            membership_status_at_checkin: string;
+            /**
+             * Session Date
+             * Format: date
+             */
+            session_date: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Session Starts At
+             * Format: date-time
+             */
+            session_starts_at: string;
+        };
+        /**
          * AttendeeOut
          * @description Un asistente de la sesión (llega con C1; hoy la lista va vacía).
          */
@@ -1637,6 +1718,27 @@ export interface components {
         ChannelsPatch: {
             /** Items */
             items: components["schemas"]["ChannelItem"][];
+        };
+        /**
+         * CheckinOut
+         * @description 201 del check-in. `flagged` se deriva de `flags` (`len(flags) > 0`).
+         */
+        CheckinOut: {
+            /** Attendance Count */
+            attendance_count: number;
+            /** Capacity */
+            capacity: number;
+            /** Flagged */
+            flagged: boolean;
+            /** Flags */
+            flags: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Membership Status At Checkin */
+            membership_status_at_checkin: string;
         };
         /** ClassesPatchIn */
         ClassesPatchIn: {
@@ -2680,6 +2782,17 @@ export interface components {
         Page_AttachmentOut_: {
             /** Items */
             items: components["schemas"]["AttachmentOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[AttendanceRowOut] */
+        Page_AttendanceRowOut_: {
+            /** Items */
+            items: components["schemas"]["AttendanceRowOut"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -4065,6 +4178,186 @@ export interface operations {
             };
             /** @description No encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_attendance_api_v1_attendance_get: {
+        parameters: {
+            query?: {
+                member_id?: string | null;
+                session_id?: string | null;
+                flagged?: boolean | null;
+                from?: string | null;
+                to?: string | null;
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AttendanceRowOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    check_in_api_v1_attendance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckinOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -15,6 +15,12 @@ Sesiones (S7-B2, US-157), admin y coach (`StaffDep`; el socio recibe 403):
   sí mismo o a nadie (L-3).
 - `GET /class-sessions/{session_id}`: `SessionDetail` con asistentes (vacía hasta C1). `staff-read`.
 - `POST /class-sessions/{session_id}/cancel`: `SessionOut`; motivo obligatorio; `classes-write`.
+Asistencia (S7-C1, US-159), admin y coach:
+- `POST /attendance`: 201 `CheckinOut`; `attendance-write`. Siempre registra y devuelve `flags`
+  (nunca 409 ni 422 por cupo, hora, día o membresía, N-38/N-39); los únicos 409 son
+  `already_checked_in` y `session_cancelled`. Códigos 201, 401, 403, 404, 409, 422 y 429.
+- `GET /attendance`: `Page[AttendanceRowOut]` (`member_id`, `session_id`, `flagged`, `from`, `to`
+  sobre `checked_in_at`); `staff-read`. Códigos 200, 401, 403, 422 y 429.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
 """
 
@@ -25,6 +31,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import AwareDatetime
 
 from app.core.db import SessionDep
 from app.core.errors import responses_for
@@ -34,7 +41,11 @@ from app.core.ratelimit import enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.classes import service
 from app.modules.classes.schemas import (
+    AttendanceCreate,
+    AttendanceListQuery,
+    AttendanceRowOut,
     CancelFutureOut,
+    CheckinOut,
     SessionCancel,
     SessionCreate,
     SessionDetail,
@@ -160,3 +171,41 @@ async def cancel_session(
 ) -> SessionOut:
     await enforce_user_limit(request, "classes-write", principal.user_id)
     return await service.cancel_session(session, session_id, body, by=principal.user_id)
+
+
+@router.post(
+    "/attendance",
+    status_code=201,
+    response_model=CheckinOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def check_in(
+    request: Request, body: AttendanceCreate, principal: StaffDep, session: Session
+) -> CheckinOut:
+    await enforce_user_limit(request, "attendance-write", principal.user_id)
+    return await service.check_in(session, body, by=principal.user_id)
+
+
+@router.get("/attendance", response_model=Page[AttendanceRowOut], responses=responses_for(422, 429))
+async def list_attendance(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    member_id: UUID | None = None,
+    session_id: UUID | None = None,
+    flagged: bool | None = None,
+    from_: Annotated[AwareDatetime | None, Query(alias="from")] = None,
+    to: AwareDatetime | None = None,
+    q: SearchQuery = None,
+) -> Page[AttendanceRowOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    filters = AttendanceListQuery(
+        member_id=member_id,
+        session_id=session_id,
+        flagged=flagged,
+        from_at=from_,
+        to_at=to,
+        q=q,
+    )
+    return await service.list_attendance(session, filters, page)

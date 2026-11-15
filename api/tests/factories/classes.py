@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from typing import Any
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import BOGOTA
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.modules.classes.models import ClassSession, ClassSlot
+from app.modules.classes.schemas import CheckinMembership
 
 
 async def make_slot(session: AsyncSession, **cambios: Any) -> ClassSlot:
@@ -64,3 +66,29 @@ async def make_session(session: AsyncSession, **cambios: Any) -> ClassSession:
         await session.flush()
         await session.commit()
     return sesion
+
+
+class FakeMembershipPort:
+    """Doble del puerto de membresías de `classes` (S7-D6): devuelve el estado que se le pida y
+    anota las llamadas. `status="none"` no trae `membership_id` (sin membresía vigente)."""
+
+    def __init__(self, status: str = "active", *, with_membership: bool = True) -> None:
+        self.status = status
+        self.membership_id: UUID | None = uuid4() if with_membership and status != "none" else None
+        self.views: list[tuple[UUID, date]] = []
+        self.locked: list[UUID] = []
+
+    async def checkin_view(
+        self, session: AsyncSession, member_id: UUID, *, on_date: date
+    ) -> CheckinMembership:
+        self.views.append((member_id, on_date))
+        return CheckinMembership(
+            membership_id=self.membership_id,
+            status=self.status,
+            plan_name="Plan de prueba" if self.membership_id else None,
+            end_date=None,
+            classes_remaining=None,
+        )
+
+    async def lock(self, session: AsyncSession, membership_id: UUID) -> None:
+        self.locked.append(membership_id)

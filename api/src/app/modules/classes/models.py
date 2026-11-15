@@ -109,6 +109,10 @@ class ClassSession(CommonColumnsMixin, Base):
             "AND cancelled_by IS NULL AND cancelled_at IS NULL)",
             name="cancel_trio",
         ),
+        CheckConstraint(
+            "session_date = (starts_at AT TIME ZONE 'America/Bogota')::date",
+            name="session_date_bogota",
+        ),
         Index(
             "uq_class_sessions_slot_starts_at",
             "slot_id",
@@ -138,3 +142,91 @@ class ClassSession(CommonColumnsMixin, Base):
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_by: Mapped[UUID | None] = mapped_column(nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+MEMBERSHIP_STATUS_AT_CHECKIN: Final = (
+    "active",
+    "expiring",
+    "expired",
+    "frozen",
+    "pending_payment",
+    "none",
+)
+ATTENDANCE_FLAGS: Final = (
+    "expired",
+    "no_membership",
+    "frozen",
+    "pending_payment",
+    "over_capacity",
+    "out_of_window",
+    "other_day",
+)
+ATTENDANCE_UNIQUE_ALIVE: Final = "uq_attendance_session_member_alive"
+
+
+def _en_lista(valores: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in valores)
+
+
+class Attendance(CommonColumnsMixin, Base):
+    """Asistencia de un socio a una sesión (S7-C1, US-159; migración `0028_attendance`; S7-D13).
+
+    `member_id` sin FK entre esquemas; `membership_id` es la membresía que decidió (para devolver
+    la clase, US-160); `flags` son las siete banderas; `flagged` se deriva (`len(flags) > 0`) y no
+    se guarda. Borrado lógico: `removed_at`, `removed_by`, `removed_reason` (US-161); la guarda de
+    la base solo deja pasar `removed_*` y `updated_at`, una vez. Sujeto: `member_id`."""
+
+    __tablename__ = "attendance"
+    __table_args__ = (
+        CheckConstraint(
+            f"membership_status_at_checkin IN ({_en_lista(MEMBERSHIP_STATUS_AT_CHECKIN)})",
+            name="status_at_checkin",
+        ),
+        CheckConstraint(
+            f"flags <@ ARRAY[{_en_lista(ATTENDANCE_FLAGS)}]::text[]",
+            name="flags",
+        ),
+        CheckConstraint(
+            "removed_reason IS NULL OR char_length(removed_reason) BETWEEN 1 AND 200",
+            name="removed_reason_length",
+        ),
+        CheckConstraint(
+            "(removed_at IS NULL AND removed_by IS NULL AND removed_reason IS NULL) "
+            "OR (removed_at IS NOT NULL AND removed_by IS NOT NULL)",
+            name="removed_pair",
+        ),
+        Index(
+            ATTENDANCE_UNIQUE_ALIVE,
+            "session_id",
+            "member_id",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        Index(
+            "ix_attendance_member_checked_in",
+            "member_id",
+            text("checked_in_at DESC"),
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        Index(
+            "ix_attendance_checked_in",
+            "checked_in_at",
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        {"schema": SCHEMA},
+    )
+    __audited__: ClassVar[bool] = True
+    __audit_subject__: ClassVar[str] = "member_id"
+
+    session_id: Mapped[UUID] = mapped_column(
+        ForeignKey("classes.class_sessions.id", ondelete="RESTRICT"), nullable=False
+    )
+    member_id: Mapped[UUID] = mapped_column(nullable=False)
+    membership_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    membership_status_at_checkin: Mapped[str] = mapped_column(Text, nullable=False)
+    flags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    checked_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    checked_in_by: Mapped[UUID] = mapped_column(nullable=False)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by: Mapped[UUID | None] = mapped_column(nullable=True)
+    removed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

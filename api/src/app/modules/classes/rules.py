@@ -16,7 +16,7 @@ import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol
 from uuid import UUID
 
 from app.core.clock import BOGOTA
@@ -243,3 +243,86 @@ def validate_extra_start(starts_at: datetime, now: datetime) -> None:
     ayer = _midnight_utc(local_date(now) - timedelta(days=1))
     if starts_at < ayer or starts_at > now + timedelta(days=EXTRA_MAX_AHEAD_DAYS):
         raise _invalido("starts_at")
+
+
+# Check-in (S7-C1, US-159; S7-D12, S7-D25, S7-D27) ---------------------------------------------
+MEMBERSHIP_STATUSES: Final = (
+    "active",
+    "expiring",
+    "expired",
+    "frozen",
+    "pending_payment",
+    "none",
+)
+CHECKIN_FLAGS: Final = (
+    "expired",
+    "no_membership",
+    "frozen",
+    "pending_payment",
+    "over_capacity",
+    "out_of_window",
+    "other_day",
+)
+"""Las siete banderas (la séptima, `other_day`, es S7-D27; la sexta de N-38 es `pending_payment`).
+El orden es el de `checkin_flags`; el CHECK de `0028` acepta exactamente estos valores."""
+CapacityOutcome = Literal["available", "over_capacity"]
+_FLAG_DE_ESTADO: Final = {
+    "active": None,
+    "expiring": None,
+    "expired": "expired",
+    "none": "no_membership",
+    "frozen": "frozen",
+    "pending_payment": "pending_payment",
+}
+
+
+def membership_flag(status: str) -> str | None:
+    """La bandera del estado de la membresía; `active` y `expiring` no llevan (RN-09). Un estado
+    desconocido es un error de programación (`ValueError`), no un bloqueo."""
+    if status not in _FLAG_DE_ESTADO:
+        raise ValueError("estado de membresía desconocido")
+    return _FLAG_DE_ESTADO[status]
+
+
+def capacity_outcome(count: int, capacity: int) -> CapacityOutcome:
+    """`over_capacity` si ya hay `count >= capacity` asistentes: el 16.º de un cupo de 15."""
+    return "over_capacity" if count >= capacity else "available"
+
+
+def within_checkin_window(starts_at: datetime, now: datetime, window_min: int) -> bool:
+    """`now` está en `[starts_at - window_min, starts_at + window_min]`, bordes incluidos."""
+    margen = timedelta(minutes=window_min)
+    return starts_at - margen <= now <= starts_at + margen
+
+
+def is_other_day(session_date: date, today: date) -> bool:
+    """La fecha de la sesión no es hoy ni ayer (fechas civiles de Bogotá; S7-D27)."""
+    return session_date not in (today, today - timedelta(days=1))
+
+
+def checkin_on_date(session_date: date, today: date) -> date:
+    """`min(session_date, hoy)`: la fecha con la que se elige la membresía (S7-D25, H-3)."""
+    return min(session_date, today)
+
+
+def checkin_flags(
+    status: str,
+    count: int,
+    capacity: int,
+    starts_at: datetime,
+    now: datetime,
+    window_min: int,
+    session_date: date,
+) -> tuple[str, ...]:
+    """Las banderas del check-in, en el orden de `CHECKIN_FLAGS`. Nunca bloquea (N-38, N-39)."""
+    flags: list[str] = []
+    de_estado = membership_flag(status)
+    if de_estado is not None:
+        flags.append(de_estado)
+    if capacity_outcome(count, capacity) == "over_capacity":
+        flags.append("over_capacity")
+    if not within_checkin_window(starts_at, now, window_min):
+        flags.append("out_of_window")
+    if is_other_day(session_date, local_date(now)):
+        flags.append("other_day")
+    return tuple(flags)

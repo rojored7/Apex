@@ -261,3 +261,45 @@ def test_crear_y_editar_una_franja_como_apex_api_usa_el_update_por_columna(
         assert _como_api(apex_roles, editar) == (9, False)
     finally:
         propietario(apex_roles, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)
+
+
+def test_check_in_como_apex_api_inserta_asistencia_y_lee_lo_que_necesita(
+    apex_roles: RolesDb,
+) -> None:
+    """S7-C1 (S7-D13, P-ROL): `classes.service.check_in` con los privilegios reales de `apex_api`:
+    `SELECT` de socios y ajustes, `SELECT ... FOR UPDATE` de la sesión (exige `UPDATE` de columna),
+    `INSERT` en `classes.attendance` y en `audit.audit_log`. El puerto de membresías es un doble."""
+    from app.modules.classes import service as classes_service
+    from app.modules.classes.schemas import AttendanceCreate
+    from tests.conftest import LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
+    from tests.factories.classes import FakeMembershipPort
+
+    socio, sesion_id = uuid4(), uuid4()
+    propietario(
+        apex_roles,
+        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
+        f"document_idx) VALUES ('{socio}', '{SYSTEM}', 'Ana', 'Check', 'apx1.doc', 'idx-{socio}')",
+        "INSERT INTO classes.class_sessions (id, created_by, session_date, starts_at, "
+        f"duration_min, capacity) VALUES ('{sesion_id}', '{SYSTEM}', "
+        "(now() AT TIME ZONE 'America/Bogota')::date, now(), 60, 15)",
+    )
+    anterior = classes_service.membership_port()
+    classes_service.set_membership_port(FakeMembershipPort("expired"))
+
+    async def registrar(sesion: AsyncSession) -> tuple[list[str], int]:
+        datos = AttendanceCreate.model_validate({"session_id": sesion_id, "member_id": socio})
+        with actor_scope(SYSTEM_USER_ID):
+            salida = await classes_service.check_in(sesion, datos, by=SYSTEM_USER_ID)
+        return salida.flags, salida.attendance_count
+
+    try:
+        assert _como_api(apex_roles, registrar) == (["expired"], 1)
+        filas = consultar(
+            apex_roles.dsn(),
+            "SELECT count(*) AS n FROM classes.attendance WHERE session_id = $1",
+            sesion_id,
+        )
+        assert filas[0]["n"] == 1
+    finally:
+        classes_service.set_membership_port(anterior)
+        propietario(apex_roles, LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)

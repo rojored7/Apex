@@ -235,3 +235,32 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - Rojo: `test_extra_duplicate.py` (4) + 3 parámetros de rango y `test_sesion_extra_duplicada_409_por_http` en `test_router_sessions.py`: 5 failed (OverflowError en `9999-12-31`; sin `SessionDuplicate`/409), 7 passed.
 - Verde: `queries._window` acota años 2020-2100 (`from`/`to`); `create_extra` toma 4_270_006 y comprueba duplicado (409 `session_duplicate`); `test_router_slots` ahora filtra `/class-slots*` e incluye `cancel-future-sessions` (estaba roto por B2 y B3, fuera de los gates de esos slices). `tests/classes`: 184 passed.
 - P-API regenerado.
+
+## S7-B3b · Correcciones de la revisión de B3 (LOW de B2b/B3)
+
+- Rojo: 4 failed (`test_extra_duplicate.py` 2 y `test_week_range_pure.py` 2: 06:00:30 y 1 microsegundo no daban 422) y 39 passed (las pruebas nuevas de orden de sentencias y de sesión en curso ya cumplían).
+- Verde: `rules.validate_extra_start` rechaza segundos y microsegundos distintos de cero (422 `field=starts_at`); así 06:00:30 ya no esquiva el 409 `session_duplicate`. `test_cancel_future` suma una sesión en curso (09:30, 60 min, reloj 10:00) que sigue `scheduled`; `test_extra_duplicate` afirma `pg_advisory_xact_lock` antes del SELECT de duplicado y del INSERT. `core/locks.py` documenta el orden ampliado y que los suscriptores de `SessionCancelled`, `SessionGenerated` y `MemberCheckedIn` no toman candados (la cadena 002 ya está tomada); la prueba de concurrencia de C1 lo cubre (`test_los_suscriptores_de_sesion_no_toman_candados` y los dos cruces cancelación/check-in).
+- Gate `slice-gate.sh classes` (3 pruebas): 866 passed, exit 0. Checkpoint `a98164e`.
+
+## S7-C1 · Check-in (US-159, S7-D12, S7-D13, S7-D25, S7-D27, M-3, L-1, L-4)
+
+### Rojo
+- Stubs: reglas puras (`membership_flag`, `capacity_outcome`, `within_checkin_window`, `is_other_day`, `checkin_on_date`, `checkin_flags`), `attendance.check_in` y `list_attendance` con `NotImplementedError`; modelo, excepciones, evento, esquemas y rutas reales; sin migración.
+- 5 archivos nuevos (93 pruebas): 57 failed (31 `NotImplementedError`, 26 `Can't locate revision '0028_attendance'`), 25 errors (tabla `classes.attendance` inexistente en los fixtures) y 12 passed (las que no llegan a la lógica).
+
+### Verde
+- Migración `0028_attendance` (id de 15 caracteres; padre `0027`): tabla `classes.attendance` (FK `RESTRICT` a sesiones, 4 CHECK, único parcial `(session_id, member_id) WHERE removed_at IS NULL` e índices parciales de ficha y semana), guarda `classes.guard_attendance()` (solo `removed_*` y `updated_at`, una vez; nunca se «desborra»), triggers `attendance_forbid_delete/_truncate`, los tres `ENABLE ALWAYS`; y el CHECK `ck_class_sessions_session_date_bogota` de S7-D37 (2). Downgrade lo quita todo.
+- `rules`: siete banderas en orden fijo (`expired|no_membership|frozen|pending_payment`, `over_capacity`, `out_of_window`, `other_day`); `other_day` = `session_date` ni hoy ni ayer (Bogotá); `on_date = min(session_date, hoy)` (S7-D25).
+- `attendance.py` (privado): puerto `MembershipPort` (`checkin_view`, `lock`), `set_membership_port`/`membership_port`, `MembershipPortNotRegistered`; `check_in` en una transacción: `ensure_exists`, `lock_member`, `ensure_exists` otra vez (L-4), sesión `FOR UPDATE` con `populate_existing`, puerto (bloquea la membresía antes del primer flush), duplicado, conteo de vivas, banderas, `INSERT` en savepoint (23505 a 409 `already_checked_in`), `MemberCheckedIn`. `list_attendance` (`GET /attendance`: `member_id`, `session_id`, `flagged`, `from`, `to` con `check_instant_range`, `q` por socio con `members.service.search_ids`; nombre y apellido por `names_for`, sin campos cifrados).
+- `queries.py` y `sessions.py`: `attendance_count` real y `attendees` del detalle de la sesión (antes 0 y `[]`).
+- Router: `POST /attendance` (201, `attendance-write`, `StaffDep`) y `GET /attendance` (`staff-read`).
+- P-ROL: `infra/db/grants.sql` (`classes.attendance` S I U(`removed_at`, `removed_by`, `removed_reason`, `updated_at`) para `apex_api`; el worker no la toca; 25 tablas clasificadas), `test_db_grants.py`, `test_api_role_paths.py::test_check_in_como_apex_api_...`. `tests/conftest.py`: `LIMPIAR_ATTENDANCE` y `LIMPIAR_CLASS_SESSIONS` borran primero la asistencia (hallazgo 6); `triggers.py` suma los tres triggers.
+- Arquitectura: `PRIVATE_HELPERS["classes"]` suma `attendance`; arista `classes -> members` en `ALLOWED_EDGES`; `classes.attendance` en las tablas auditadas, en `AUDITABLE_TABLES` y excluida de `recent`; `attendance-write` ya tiene ruta (`CLAVES_SIN_RUTA_TODAVIA` vacío).
+- Hallazgos en el camino: (1) `SELECT ... FOR UPDATE` de la sesión devolvía el estado viejo si la identidad ya estaba cargada en la sesión de SQLAlchemy; `populate_existing=True` lo corrige (lo detectó `test_check_in_tras_la_cancelacion_masiva_da_409_sin_interbloqueo`). (2) Las pruebas con `dos_sesiones` no pueden usar `bus_listo` (su savepoint retiene `crypto_keys` y cuelga el `ALTER TABLE` de la limpieza): usan `bus_confirmado` de `tests/members`.
+- Pruebas: 94 passed en los cinco archivos nuevos. Gate `slice-gate.sh classes` (flags_pure, service, concurrency, router_checkin, 0028, db_grants + `tests/architecture`): 1181 passed, exit 0.
+- P-API: `docs/openapi.json` idéntico en dos corridas y `types.ts` regenerado; `types.contract.test.ts` 6 passed.
+
+### Evidencia (Docker, sin llamar `POST /attendance`: el puerto no está registrado hasta C2, hallazgo 10)
+- Volcado `docs/scratch/sprint-07-antes-0028.dump` (2,2 MB, ignorado por git). `$DC stop api worker` antes de escribir; `$DC start api` migró `apex-db-1`: `alembic current` = `0028_attendance (head)`; `downgrade -1` y `upgrade head` bien; el CHECK de la fecha de Bogotá aceptó las 10 sesiones existentes.
+- Esquema: `\d classes.attendance` (columnas, 3 índices, 4 CHECK, FK `RESTRICT`), los seis triggers de `classes.attendance` y `class_sessions` en `tgenabled = 'A'`, 0 triggers de guarda fuera de `A`, `guard_attendance` `SECURITY INVOKER`.
+- Smoke 8181: `/health` ok (`migrations: ok`, `crypto: ok`); `POST /attendance` y `GET /attendance` sin token: 401. **Ventana C1 a C2:** con token, `POST /attendance` daría 500 `MembershipPortNotRegistered` hasta que C2 registre el puerto; el primer check-in real es la evidencia de C2. Sin token de admin en esta sesión no se llamó `GET /class-sessions/{id}` con rol.

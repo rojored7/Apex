@@ -17,6 +17,8 @@
 --                                     deleted_at, locked_at, last_login_at,
 --                                     must_change_password, failed_login_count,
 --                                     tokens_valid_after, updated_at)
+--   classes.attendance              S I U(removed_at, removed_by,     -
+--                                     removed_reason, updated_at)
 --   classes.class_sessions          S I U(status, cancel_reason,      S I
 --                                     cancelled_by, cancelled_at,
 --                                     updated_at)
@@ -58,6 +60,7 @@
 -- clasificada: auth.one_time_tokens
 -- clasificada: auth.refresh_tokens
 -- clasificada: auth.users
+-- clasificada: classes.attendance
 -- clasificada: classes.class_sessions
 -- clasificada: classes.class_slots
 -- clasificada: crypto.crypto_jobs
@@ -114,6 +117,11 @@ GRANT SELECT, INSERT ON classes.class_slots TO apex_api;
 -- S7-B1 (S7-D18, US-156): sesiones; el api crea extras (INSERT) y las cancela por columna; sin DELETE
 -- ni TRUNCATE (los triggers tambien los prohiben) y la guarda impide des-cancelar o reescribir.
 GRANT SELECT, INSERT ON classes.class_sessions TO apex_api;
+-- S7-C1 (S7-D13, US-159, US-161): asistencia; el api registra (INSERT) y la quita por columna
+-- (removed_*); sin DELETE ni TRUNCATE (los triggers tambien los prohiben) y la guarda impide
+-- reescribir lo registrado o des-quitar. El worker no la toca.
+GRANT SELECT, INSERT ON classes.attendance TO apex_api;
+GRANT UPDATE (removed_at, removed_by, removed_reason, updated_at) ON classes.attendance TO apex_api;
 GRANT UPDATE (status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON classes.class_sessions TO apex_api;
 GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, name, valid_from, is_active, updated_at) ON classes.class_slots TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
@@ -186,7 +194,7 @@ DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
         'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
-        'auth.users', 'classes.class_sessions', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
+        'auth.users', 'classes.attendance', 'classes.class_sessions', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
         'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',
         'memberships.membership_freezes', 'memberships.memberships',

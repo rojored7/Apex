@@ -470,8 +470,30 @@ TRIGGERS_DE_CLASS_SESSIONS = (
     "class_sessions_forbid_delete",
     "class_sessions_forbid_truncate",
 )
+# S7-C1 (hallazgo 6): `classes.attendance` (migración `0028_attendance`) hace FK RESTRICT a las
+# sesiones: se borra PRIMERO, dentro del mismo bloque que las sesiones (un solo statement), con sus
+# tres triggers apagados y vueltos a `ENABLE ALWAYS` UNO POR UNO. Mientras no exista, no se toca.
+TRIGGERS_DE_ATTENDANCE = (
+    "attendance_guard_update",
+    "attendance_forbid_delete",
+    "attendance_forbid_truncate",
+)
+_BORRAR_ATTENDANCE = (
+    "IF to_regclass('classes.attendance') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE classes.attendance DISABLE TRIGGER USER; "
+    "DELETE FROM classes.attendance; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE classes.attendance ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_ATTENDANCE
+    )
+    + " END IF; "
+)
+LIMPIAR_ATTENDANCE = "DO $$ BEGIN " + _BORRAR_ATTENDANCE + "END $$"
 LIMPIAR_CLASS_SESSIONS = (
-    "DO $$ BEGIN IF to_regclass('classes.class_sessions') IS NOT NULL THEN "  # noqa: S608
+    "DO $$ BEGIN "  # noqa: S608
+    + _BORRAR_ATTENDANCE
+    + "IF to_regclass('classes.class_sessions') IS NOT NULL THEN "
     "ALTER TABLE classes.class_sessions DISABLE TRIGGER USER; "
     "DELETE FROM classes.class_sessions; "
     + " ".join(

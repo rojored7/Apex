@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Annotated, Final, Literal
 from uuid import UUID
@@ -168,3 +169,70 @@ class SessionListQuery(BaseModel):
     to_date: date | None = None
     coach_id: UUID | None = None
     status: SessionStatus | None = None
+
+
+# Check-in (S7-C1, US-159; S7-D6, S7-D12, L-1) -----------------------------------------------
+
+
+class AttendanceCreate(BaseModel):
+    """`POST /attendance`: solo la sesión y el socio. `extra="forbid"` (L-1): el cliente nunca
+    manda `membership_id`, `flags` ni `checked_in_at`; los decide el servidor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: UUID
+    member_id: UUID
+
+
+class CheckinOut(BaseModel):
+    """201 del check-in. `flagged` se deriva de `flags` (`len(flags) > 0`)."""
+
+    id: UUID
+    flags: list[str]
+    flagged: bool
+    membership_status_at_checkin: str
+    attendance_count: int
+    capacity: int
+
+
+class AttendanceRowOut(BaseModel):
+    """Una fila de `GET /attendance`: nombre y apellido en claro, nunca campos cifrados."""
+
+    id: UUID
+    session_id: UUID
+    session_date: date
+    session_starts_at: datetime
+    member_id: UUID
+    first_name: str | None
+    last_name: str | None
+    membership_status_at_checkin: str
+    flags: list[str]
+    flagged: bool
+    checked_in_at: datetime
+
+
+class AttendanceListQuery(BaseModel):
+    """Filtros de `GET /attendance` ya validados por el router."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    member_id: UUID | None = None
+    session_id: UUID | None = None
+    flagged: bool | None = None
+    from_at: AwareDatetime | None = None
+    to_at: AwareDatetime | None = None
+    q: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CheckinMembership:
+    """Lo que `classes` sabe de la membresía del socio en `on_date` (puerto de S7-D6).
+
+    `status` es uno de `rules.MEMBERSHIP_STATUSES`; `membership_id` es nulo sin membresía vigente
+    (estado `none`)."""
+
+    membership_id: UUID | None
+    status: str
+    plan_name: str | None
+    end_date: date | None
+    classes_remaining: int | None

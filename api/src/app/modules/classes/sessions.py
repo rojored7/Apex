@@ -35,7 +35,7 @@ from app.modules.classes.exceptions import (
     SlotNotFound,
 )
 from app.modules.classes.models import ClassSession, ClassSlot
-from app.modules.classes.queries import session_out
+from app.modules.classes.queries import attendance_counts, session_out
 from app.modules.classes.rules import (
     PlannedSession,
     local_date,
@@ -201,7 +201,8 @@ async def create_extra(
 
 async def _one_out(session: AsyncSession, fila: ClassSession, ahora: datetime) -> SessionOut:
     nombres = await auth_service.user_names_for(session, [fila.coach_id]) if fila.coach_id else {}
-    return session_out(fila, nombres, ahora)
+    cuentas = await attendance_counts(session, [fila.id])
+    return session_out(fila, nombres, ahora, cuentas.get(fila.id, 0))
 
 
 async def cancel_session(

@@ -92,3 +92,23 @@ class SessionDuplicate(ClassError):
     status = 409
     code = "session_duplicate"
     default_message = "Ya existe una sesión extra con ese horario y ese coach."
+
+
+class AlreadyCheckedIn(ClassError):
+    """El socio ya tiene asistencia viva en la sesión (RN-10, US-159 CA4): 409."""
+
+    status = 409
+    code = "already_checked_in"
+    default_message = "El socio ya registró asistencia en esta clase."
+
+
+class CheckinSessionCancelled(ClassError):
+    """No hay check-in en una sesión cancelada (US-159 CA5): 409."""
+
+    status = 409
+    code = "session_cancelled"
+    default_message = "La sesión está cancelada."
+
+
+class MembershipPortNotRegistered(RuntimeError):
+    """Nadie registró el puerto de membresías (S7-D6): el check-in falla cerrado y no escribe."""

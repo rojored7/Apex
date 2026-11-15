@@ -6,13 +6,22 @@ Reexporta lo público de los archivos privados del módulo:
   `planned_sessions`, `PlannedSession` y `SlotSpec`; y `events.py`: `SessionGenerated`.
 - `queries.py` y `sessions.py` (S7-B2, US-157): `list_sessions`, `get_session`, `create_extra`,
   `cancel_session`; `rules.py`: `parse_week`, `week_range`, `week_of`, `session_status`.
-En C1 y siguientes suma asistencia y reportes, más el puerto de membresías
-(`MembershipPort`, S7-D6).
+- `attendance.py` (S7-C1, US-159): `check_in`, `list_attendance`, el puerto de membresías
+  (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`.
+Los reportes llegan con R1.
 """
 
 from __future__ import annotations
 
-from app.modules.classes.events import SessionCancelled, SessionGenerated
+from app.modules.classes.attendance import (
+    MembershipPort,
+    check_in,
+    list_attendance,
+    membership_port,
+    set_membership_port,
+)
+from app.modules.classes.events import MemberCheckedIn, SessionCancelled, SessionGenerated
+from app.modules.classes.exceptions import MembershipPortNotRegistered
 from app.modules.classes.queries import get_session, list_sessions
 from app.modules.classes.rules import (
     PlannedSession,
@@ -34,22 +43,29 @@ from app.modules.classes.slots import create_slot, get_slot, list_slots, update_
 
 __all__ = [
     "GenerateResult",
+    "MemberCheckedIn",
+    "MembershipPort",
+    "MembershipPortNotRegistered",
     "PlannedSession",
     "SessionCancelled",
     "SessionGenerated",
     "SlotSpec",
     "cancel_future_sessions",
     "cancel_session",
+    "check_in",
     "create_extra",
     "create_slot",
     "generate_sessions",
     "get_session",
     "get_slot",
+    "list_attendance",
     "list_sessions",
     "list_slots",
+    "membership_port",
     "parse_week",
     "planned_sessions",
     "session_status",
+    "set_membership_port",
     "update_slot",
     "week_of",
     "week_range",

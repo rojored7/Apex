@@ -63,6 +63,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "attachments.attachments",  # S6-C1 (S6-D25)
         "classes.class_slots",  # S7-A2 (US-155)
         "classes.class_sessions",  # S7-B1 (US-156)
+        "classes.attendance",  # S7-C1 (US-159)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -308,6 +309,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "attachments.attachments",  # S6-C1: adjuntos y foto no son actividad reciente
         "classes.class_slots",  # S7-A2: configuración del horario (S7-D17)
         "classes.class_sessions",  # S7-B1: las crea el job cada día (S7-D17)
+        "classes.attendance",  # S7-C1: ruido para el tablero; la ve la ficha (S7-D17)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

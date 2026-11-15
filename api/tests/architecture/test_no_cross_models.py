@@ -368,9 +368,9 @@ def _importados_de_modulos(archivo: Path) -> list[tuple[int, str]]:
 
 
 def test_los_privados_de_classes_son_los_de_a2() -> None:
-    """S7-A2/B1/B2 (hallazgo 12): `rules`, `slots`, `sessions`, `queries` y `events` son privados
-    de `classes`; `attendance` y `reports` se suman en su slice."""
-    privados = frozenset({"rules", "slots", "sessions", "queries", "events"})
+    """S7-A2/B1/B2/C1 (hallazgo 12): `rules`, `slots`, `sessions`, `queries`, `events` y
+    `attendance` son privados de `classes`; `reports` se suma en su slice."""
+    privados = frozenset({"rules", "slots", "sessions", "queries", "events", "attendance"})
     assert privados == PRIVATE_HELPERS.get("classes")
     for archivo in PRIVATE_HELPERS["classes"]:
         assert (MODULES_DIR / "classes" / f"{archivo}.py").is_file(), archivo

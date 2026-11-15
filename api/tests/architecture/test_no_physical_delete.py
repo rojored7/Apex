@@ -37,6 +37,7 @@ MODELOS = (
     "NotificationTemplate",  # S5-B7: las plantillas no se borran
     "ClassSlot",  # S7-B1: las franjas se pausan
     "ClassSession",  # S7-B1: las sesiones se cancelan
+    "Attendance",  # S7-C1 (RN-14): la asistencia se quita con removed_*, no se borra
     "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
 )
 TABLAS = (
@@ -56,6 +57,7 @@ TABLAS = (
     "attachments.attachments",  # S6-C1
     "classes.class_slots",  # S7-B1
     "classes.class_sessions",  # S7-B1
+    "classes.attendance",  # S7-C1
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (
@@ -155,3 +157,13 @@ def test_el_patron_detecta_el_borrado_de_franjas_y_sesiones() -> None:
         "SQL = 'TRUNCATE classes.class_slots'\n"
     )
     assert len(violaciones_en(fuente)) == 4
+
+
+def test_el_patron_detecta_el_borrado_de_asistencias() -> None:
+    """S7-C1 (S7-D13, RN-14): una asistencia se quita con `removed_*`; nunca se borra."""
+    fuente = (
+        "stmt = delete(Attendance)\n"
+        "SQL = 'DELETE FROM classes.attendance'\n"
+        "SQL = 'TRUNCATE classes.attendance'\n"
+    )
+    assert len(violaciones_en(fuente)) == 3

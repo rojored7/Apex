@@ -4,9 +4,9 @@
   rango de fechas de Bogotá (`from`/`to`, hasta 62 días), por hora de inicio; sin fechas, la
   semana actual. Filtra por `q` (nombre, sin tildes), `coach_id` y `status` (`done` se calcula:
   programada cuya hora de fin ya pasó).
-- `get_session(session, session_id)`: una sesión con sus asistentes (llegan con C1; hoy `[]`).
+- `get_session(session, session_id)`: una sesión con sus asistentes vivos (C1, US-159).
 - `session_out(...)`: arma `SessionOut` con el estado calculado y el nombre del coach.
-`attendance_count` es 0 hasta C1 (la tabla de asistencia no existe todavía).
+`attendance_count` cuenta las asistencias vivas (`removed_at` nulo) de cada sesión.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.auth import service as auth_service
 from app.modules.classes.exceptions import ClassValidationError, RangeTooLong, SessionNotFound
-from app.modules.classes.models import ClassSession
+from app.modules.classes.models import Attendance, ClassSession
 from app.modules.classes.rules import (
     MAX_RANGE_DAYS,
     WEEK_YEAR_MAX,
@@ -34,10 +34,18 @@ from app.modules.classes.rules import (
     week_of,
     week_range,
 )
-from app.modules.classes.schemas import SessionDetail, SessionListQuery, SessionOut
+from app.modules.classes.schemas import (
+    AttendeeOut,
+    SessionDetail,
+    SessionListQuery,
+    SessionOut,
+)
+from app.modules.members import service as members_service
 
 
-def session_out(row: ClassSession, names: dict[UUID, str], now: datetime) -> SessionOut:
+def session_out(
+    row: ClassSession, names: dict[UUID, str], now: datetime, attendance_count: int = 0
+) -> SessionOut:
     """`SessionOut` de una fila; `status` es el calculado (`done` incluido)."""
     coach = row.coach_id
     return SessionOut.model_validate(
@@ -52,18 +60,31 @@ def session_out(row: ClassSession, names: dict[UUID, str], now: datetime) -> Ses
             "coach_name": names.get(coach) if coach is not None else None,
             "name": row.name,
             "status": session_status(row.status, row.starts_at, row.duration_min, now),
-            "attendance_count": 0,
+            "attendance_count": attendance_count,
             "cancel_reason": row.cancel_reason,
             "cancelled_at": row.cancelled_at,
         }
     )
 
 
+async def attendance_counts(session: AsyncSession, ids: list[UUID]) -> dict[UUID, int]:
+    """Asistencias vivas por sesión, en una consulta."""
+    if not ids:
+        return {}
+    filas = await session.execute(
+        select(Attendance.session_id, func.count())
+        .where(Attendance.session_id.in_(ids), Attendance.removed_at.is_(None))
+        .group_by(Attendance.session_id)
+    )
+    return {sid: int(n) for sid, n in filas.all()}
+
+
 async def _outs(session: AsyncSession, rows: list[ClassSession]) -> list[SessionOut]:
     ids = [r.coach_id for r in rows if r.coach_id is not None]
     nombres = await auth_service.user_names_for(session, ids) if ids else {}
     ahora = current_clock().now_utc()
-    return [session_out(r, nombres, ahora) for r in rows]
+    cuentas = await attendance_counts(session, [r.id for r in rows])
+    return [session_out(r, nombres, ahora, cuentas.get(r.id, 0)) for r in rows]
 
 
 def _range_error(field: str, message: str) -> ClassValidationError:
@@ -133,9 +154,31 @@ async def list_sessions(
 
 
 async def get_session(session: AsyncSession, session_id: UUID) -> SessionDetail:
-    """`GET /class-sessions/{id}`: la sesión y sus asistentes (vacía hasta C1)."""
+    """`GET /class-sessions/{id}`: la sesión y sus asistentes vivos, por hora de llegada."""
     fila = await session.get(ClassSession, session_id)
     if fila is None:
         raise SessionNotFound()
     (salida,) = await _outs(session, [fila])
-    return SessionDetail(**salida.model_dump(), attendees=[])
+    presentes = list(
+        (
+            await session.scalars(
+                select(Attendance)
+                .where(Attendance.session_id == session_id, Attendance.removed_at.is_(None))
+                .order_by(Attendance.checked_in_at, Attendance.id)
+            )
+        ).all()
+    )
+    socios = await members_service.names_for(session, [a.member_id for a in presentes])
+    asistentes = [
+        AttendeeOut(
+            id=a.id,
+            member_id=a.member_id,
+            first_name=socios[a.member_id].first_name if a.member_id in socios else "",
+            last_name=socios[a.member_id].last_name if a.member_id in socios else "",
+            flagged=len(a.flags) > 0,
+            flags=list(a.flags),
+            checked_in_at=a.checked_in_at,
+        )
+        for a in presentes
+    ]
+    return SessionDetail(**salida.model_dump(), attendees=asistentes)

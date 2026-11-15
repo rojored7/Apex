@@ -55,9 +55,10 @@ PREFIX: Final = "app.modules."
 ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("audit", "auth"),
-        # S7-A2 (S7-D7, S7-D9): `classes` valida el coach (`is_active_staff`) y toma el cupo por
-        # defecto de `settings.classes`; `classes -> members` llega con C1 (check-in).
+        # S7-A2/C1 (S7-D6, S7-D7, S7-D9): `classes` valida el coach (`is_active_staff`), toma el
+        # cupo por defecto de `settings.classes` y, desde el check-in, verifica al socio.
         ("classes", "auth"),
+        ("classes", "members"),
         ("classes", "settings"),
         ("auth", "settings"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.

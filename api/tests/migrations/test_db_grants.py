@@ -117,6 +117,12 @@ COLUMNAS_API_CLASS_SLOTS_UPDATE: tuple[str, ...] = (
     "is_active",
     "updated_at",
 )
+COLUMNAS_API_ATTENDANCE_UPDATE: tuple[str, ...] = (
+    "removed_at",
+    "removed_by",
+    "removed_reason",
+    "updated_at",
+)
 COLUMNAS_API_CLASS_SESSIONS_UPDATE: tuple[str, ...] = (
     "status",
     "cancel_reason",
@@ -179,6 +185,14 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     # S7-B1 (S7-D18, US-156): el api crea sesiones extra y las cancela por columna; el worker las
     # genera (INSERT) y nunca las actualiza; sin DELETE ni TRUNCATE para nadie.
+    # S7-C1 (S7-D13, US-159, US-161): el api registra y quita por columna; el worker no la toca.
+    "classes.attendance": {
+        "apex_api": (
+            frozenset({"SELECT", "INSERT"}),
+            frozenset(COLUMNAS_API_ATTENDANCE_UPDATE),
+        ),
+        "apex_worker": (frozenset(), frozenset()),
+    },
     "classes.class_sessions": {
         "apex_api": (
             frozenset({"SELECT", "INSERT"}),
@@ -742,6 +756,10 @@ PROHIBIDAS_API = [
     "TRUNCATE classes.class_slots",  # S7-A2
     "UPDATE classes.class_slots SET created_by = created_by",  # S7-A2: columna sin UPDATE
     "DELETE FROM classes.class_sessions",  # S7-B1: las sesiones se cancelan
+    "DELETE FROM classes.attendance",  # S7-C1: se quita con removed_*
+    "TRUNCATE classes.attendance",  # S7-C1
+    "UPDATE classes.attendance SET flags = flags",  # S7-C1: columna sin UPDATE
+    "UPDATE classes.attendance SET member_id = member_id",  # S7-C1
     "TRUNCATE classes.class_sessions",  # S7-B1
     "UPDATE classes.class_sessions SET starts_at = starts_at",  # S7-B1: columna sin UPDATE
     "UPDATE classes.class_sessions SET capacity = 1",  # S7-B1
@@ -822,6 +840,8 @@ PROHIBIDAS_WORKER = [
     "INSERT INTO classes.class_slots (id) VALUES (gen_random_uuid())",  # S7-A2: solo lee
     "UPDATE classes.class_slots SET is_active = false",  # S7-A2
     "UPDATE classes.class_sessions SET status = 'cancelled'",  # S7-B1: el worker solo inserta
+    "SELECT count(*) FROM classes.attendance",  # S7-C1: el worker no lee asistencia
+    "INSERT INTO classes.attendance (id) VALUES (gen_random_uuid())",  # S7-C1
     "DELETE FROM classes.class_sessions",  # S7-B1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",

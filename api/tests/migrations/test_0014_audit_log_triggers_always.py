@@ -66,6 +66,7 @@ ALWAYS_DE_0014 = {
         "attachments.attachments",
         "classes.class_slots",
         "classes.class_sessions",
+        "classes.attendance",
     }
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)

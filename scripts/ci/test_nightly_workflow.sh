@@ -28,6 +28,10 @@ if grep -Eq '^permissions:' "$WF" && grep -Eq '^\s+contents:\s+read\s*$' "$WF"; 
 if grep -Eq '^\s+tv-soak:' "$WF"; then ok "define el job tv-soak"; else falla "falta el job tv-soak"; fi
 sin_sha="$(grep -E '^\s*-?\s*uses:' "$WF" | grep -Ev 'uses:\s+\S+@[0-9a-f]{40}(\s|$)' || true)"
 if [ -z "$sin_sha" ]; then ok "toda acción va fijada por SHA"; else falla "acción sin SHA de commit: $sin_sha"; fi
+# S8-W0b (L5): ningún permiso de escritura en todo el archivo y nada de `workflow_run` (encadenaría
+# este flujo a otro con permisos distintos).
+if grep -Eq ':[[:space:]]*write([[:space:]]|$)' "$WF"; then falla "no debe declarar ningún permiso write"; else ok "sin permisos write"; fi
+if grep -Eq '^[[:space:]]+workflow_run:' <<< "$on_block"; then falla "no debe dispararse con workflow_run"; else ok "sin workflow_run"; fi
 if grep -Eq 'secrets\.' "$WF"; then falla "el flujo nocturno no debe usar secretos"; else ok "sin secretos"; fi
 
 echo "test_nightly_workflow: $fallas fallas"

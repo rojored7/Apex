@@ -447,7 +447,7 @@ jobs:
             -e 's/^(TV_IP_LIMIT|TV_TOKEN_LIMIT)=.*/\1=120/' .env
           # S8-D33 (hallazgo 8): `TV_IP_LIMIT` y `TV_TOKEN_LIMIT` tienen cota de 1 a 120; van en su
           # propia línea (un `=1000` rompería la cota y el api no arrancaría).
-          grep -E '^TV_(IP|TOKEN)_LIMIT=120$' .env
+          [ "$(grep -cE '^TV_(IP|TOKEN)_LIMIT=120$' .env)" = 2 ] || exit 1
           grep -E '^(LOGIN|REFRESH|RESET|FORGOT|LOGOUT)_[A-Z_]*(LIMIT|AFTER)=' .env
           # E15 (Fase 4 del Sprint 3, H1) y E9 (S4A-B3) y S5-D98: las veintiséis variables USER_* con los valores
           # x100 del plan (sprint-03-plan.md, sección 7 V4; sprint-04a-plan.md, B3.8). Falla si

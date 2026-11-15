@@ -288,6 +288,9 @@ def rate_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "forgot": (settings.FORGOT_IP_LIMIT, DEFAULT_WINDOW_S),
         "logout": (settings.LOGOUT_IP_LIMIT, DEFAULT_WINDOW_S),
         # S8-D33: la TV; `tv-fail` es por IP (token inválido) y `tv` por token (`KeyKind account`).
+        # `tv` solo guarda aquí su tope: NUNCA con `rate_limit("tv")` (contaría por IP; lo vigila
+        # `tests/architecture/test_tv_bucket_not_by_ip.py`). C2 usa `enforce(..., kind="account")`
+        # con `hash_opaque_token(token)[:16]`.
         "tv-fail": (settings.TV_IP_LIMIT, DEFAULT_WINDOW_S),
         "tv": (settings.TV_TOKEN_LIMIT, DEFAULT_WINDOW_S),
     }

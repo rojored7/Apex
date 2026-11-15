@@ -3240,7 +3240,7 @@ Fuentes: `docs/ddd/blueprints/sprint-08-blueprint.md` (S8-D1 a D29), `sprint-08-
    - (c) S8-D11: el orden de los pasos es el de S8-D36 (M-6), con las reglas de L-3 y de quiosco (S8-D31).
    - (d) S8-D13: el leaderboard del panel lee como máximo `LEADERBOARD_MAX_ROWS = 1.000` filas; con más, 422 `leaderboard_too_large` (nunca trunca un ranking; L-6). El orden lo da la función pura sobre el conjunto completo.
    - (e) S8-D17: lo corrigen S8-D30 (H-1), S8-D32 (M-2), S8-D33 (`refresh_seconds` de 15 a 300) y S8-D37 (L-1 y L-7: `POST /settings/tv/revoke-token`).
-   - (f) S8-D18: lo corrigen S8-D33 (dos cubetas en lugar de `TV_IP_LIMIT` único) y S8-D34 (exclusiones de la TV).
+   - (f) S8-D18: lo corrigen S8-D33 (dos cubetas en lugar de `TV_IP_LIMIT` único), S8-D34 (exclusiones de la TV) y S8-D32 (W0-2 no suma `location = /tv`: la ruta cae por `location /` y `try_files`, sin `location` nuevo; hallazgo 12).
    - (g) S8-D19 (P1 del orquestador, resuelta): un solo ranking «Todos» en la TV, sin grupos por sexo, con `// DESIGN-GAP:` en `TvPage.tsx`.
    - (h) S8-D20: la TV lee el token del fragmento (S8-D32) y llama `POST /auth/logout` al montar (L-4).
    - (i) S8-D22: 27 cubetas por usuario y 26 variables `USER_*`, más las cubetas `tv-fail` (por IP) y `tv` (por token) con `TV_IP_LIMIT` y `TV_TOKEN_LIMIT`; todas las variables entran en W0-3; `ci.yml` cambia dos veces: W0-3 (límites del `sed`) y A2 (paso `seed-benchmarks`).

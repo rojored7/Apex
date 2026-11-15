@@ -501,3 +501,51 @@ def test_redact_text_recorta_x_device_token_en_texto_libre(texto: str) -> None:
     """Rojo S8-W0-2: un registro de texto libre con la cabecera tampoco deja el valor."""
     salida = redact_text(texto)
     assert "tvtokensecreto" not in salida, salida
+
+
+# S8-W0b (L1 de la revisión de la Wave 0): `device_token`, `?token=` y las tuplas de cabeceras -----
+
+
+def test_sensitive_keys_suma_device_token_y_x_device_token() -> None:
+    """Rojo S8-W0b L1: las claves `device_token` y `x_device_token` (kwargs de un log, `extra`)."""
+    for clave in ("device_token", "x_device_token", "X_Device_Token"):
+        assert redact({clave: "token-de-tv-no-real"}) == {clave: "[redacted]"}
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "GET /tv?token=tvtokensecreto123456 HTTP/1.1",
+        "GET /tv?x=1&token=tvtokensecreto123456",
+        "https://apex.example/tv#token=tvtokensecreto123456",
+        "redirect a /tv?TOKEN=tvtokensecreto123456&y=2",
+    ],
+)
+def test_redact_text_recorta_token_en_consulta_y_fragmento(texto: str) -> None:
+    """Rojo S8-W0b L1: el enlace antiguo `?token=` y el nuevo `#token=` no dejan el valor."""
+    salida = redact_text(texto)
+    assert "tvtokensecreto" not in salida, salida
+    assert "token=[redacted]" in salida.lower() or "token=" + "[redacted]" in salida, salida
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "(b'x-device-token', b'tvtokensecreto123456')",
+        "[(b'X-Device-Token', b'tvtokensecreto123456'), (b'accept', b'json')]",
+        "('x-device-token', 'tvtokensecreto123456')",
+        "x_device_token=tvtokensecreto123456",
+        "X_DEVICE_TOKEN: tvtokensecreto123456",
+        "(b'x-vault-token', b'tvtokensecreto123456')",
+    ],
+)
+def test_redact_text_recorta_cabeceras_en_tuplas_bytes_y_guion_bajo(texto: str) -> None:
+    """Rojo S8-W0b L1: el scope ASGI trae `(b'x-device-token', b'...')`; y `x_device_token`."""
+    salida = redact_text(texto)
+    assert "tvtokensecreto" not in salida, salida
+
+
+def test_redact_text_no_toca_texto_sin_token() -> None:
+    assert redact_text("GET /tv?refresh=30 y un token cualquiera") == (
+        "GET /tv?refresh=30 y un token cualquiera"
+    )

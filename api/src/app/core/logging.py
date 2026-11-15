@@ -72,6 +72,9 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "s3_secret_access_key",
         # S8-W0-2 (S8-D18, E2): token de dispositivo de la TV (cabecera `X-Device-Token`).
         "x-device-token",
+        # S8-W0b (L1): los mismos tokens como kwargs de un log (`extra={"device_token": ...}`).
+        "device_token",
+        "x_device_token",
     }
 )
 REDACTED = "[redacted]"
@@ -83,10 +86,14 @@ _TELEGRAM_BOT = re.compile(r"\bbot\d+:[A-Za-z0-9_-]{20,}")
 # El mismo token sin el prefijo `bot` (un cuerpo de error citado aparte): `<id>:<35 caracteres>`.
 _TELEGRAM_TOKEN_SUELTO = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{30,}")
 # Cabecera de OpenBao y token de la TV en texto libre (repr de un dict, JSON, `clave=valor`),
-# S5-D58, S8-D18.
+# S5-D58, S8-D18; también la tupla del scope ASGI `(b'x-device-token', b'valor')` y el guion bajo
+# entre palabras (S8-W0b, L1).
 _VAULT_HEADER = re.compile(
-    r"(x-(?:vault|device)-token[\"']?\s*[:=]\s*[\"']?)[^\s\"',}]+", re.IGNORECASE
+    r"(x[-_](?:vault|device)[-_]token[\"']?\s*[:=,]\s*b?[\"']?)[^\s\"',})\]]+", re.IGNORECASE
 )
+# `token=` en una consulta o en un fragmento: el enlace antiguo `/tv?token=` y el nuevo
+# `/tv#token=` (S8-D32) en texto libre (S8-W0b, L1).
+_TOKEN_PARAM = re.compile(r"([?#&]token=)[^\s&#\"'<>]+", re.IGNORECASE)
 # Enlace de un solo uso: el segmento que sigue a `/restablecer/` es el token (blueprint 7.2).
 _RESET_LINK = re.compile(r"(/restablecer/|%2Frestablecer%2F)[^\s/?#\"'&<>%]+", re.IGNORECASE)
 # Valor de la cookie del refresh, hasta el primer separador de atributos.
@@ -112,6 +119,7 @@ def redact_text(text: str) -> str:
     limpio = _TELEGRAM_BOT.sub(REDACTED, limpio)
     limpio = _TELEGRAM_TOKEN_SUELTO.sub(REDACTED, limpio)
     limpio = _VAULT_HEADER.sub(rf"\g<1>{REDACTED}", limpio)
+    limpio = _TOKEN_PARAM.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _RESET_LINK.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _REFRESH_COOKIE.sub(rf"\g<1>{REDACTED}", limpio)
     limpio = _PG_DETAIL.sub(f"DETAIL: {REDACTED}", limpio)

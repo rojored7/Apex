@@ -444,3 +444,9 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - Token ausente de los logs: `grep -cF` del token vigente y del anterior en api, web y worker = 0 (las 6 combinaciones); tampoco están los tokens de acceso de admin, coach y quiosco. Archivos temporales de token borrados.
 - Datos creados: 18 socios, 1 plan, 2 movimientos, 1 WOD y 2 sesiones «Prueba S8 …», más los 12 benchmarks ya sembrados. No se corrigió nada del producto; sin defectos.
 - Incidente de higiene: al mirar el formato del archivo de la contraseña del coach de desarrollo (`desarrollo-coach-v8.txt`) mi `sed` no la ocultó y quedó en la salida de esta sesión; conviene rotarla (la del admin no se mostró).
+
+## S8-V7b · correcciones de la revisión final
+- Rojo medido: 5 failed (2 api: `test_cancelar_futuras_con_resultado_vigente_da_409...` «DID NOT RAISE» y `test_puerto_sessions_with_current_results` AttributeError; 3 de `test_0041_results_session_index`: no existe la revisión). Control positivo (anular y cancelar) y pin L-4 pasan antes y después.
+- Verde: 20 passed en las tres rutas nuevas. Gates: `results` 1013 passed y 1 failed (función de 50 líneas en `cancel_future_sessions`; se extrajo `_lock_future_scheduled`); `classes` 1291 passed, exit 0. `ruff check`, `ruff format` y `mypy src` limpios. P-API: `export-openapi` y `gen:api` (409 en `cancel-future-sessions`).
+- P-MIG en `apex-db-1`: volcado `docs/scratch/sprint-08-antes-0041.dump` (ignorado); `$DC stop api worker`, archivo movido, `$DC start api` → `alembic current` = `0041_results_session_index (head)`; `downgrade -1` y `upgrade head` sin error; `\d` muestra el índice parcial.
+- EXPLAIN (20 filas de demo; con `enable_seqscan=off` porque la tabla es diminuta): `Index Scan using ix_wod_results_session_current ... Index Cond: (session_id = $0)`.

@@ -13,7 +13,7 @@ import { useGymHeader } from "../../../shared/hooks/gymContext";
 import { Button } from "../../../shared/ui/Button";
 import { useSaveResult, useSessionAttendance } from "../api";
 import { AddWalkIn } from "../components/AddWalkIn";
-import { AttendeeResults } from "../components/AttendeeResults";
+import { AttendeeResults, OTHER_SESSION_LABEL, isElsewhere } from "../components/AttendeeResults";
 import { ScoreForm } from "../components/ScoreForm";
 import { attendeesLoadError, saveMessage } from "../resultErrors";
 import { attendeeName, type AttendeeResultView, type ScoreValues, type ScoringType } from "../schemas";
@@ -112,11 +112,15 @@ export default function ResultsEntryPage() {
   return (
     <div className={styles.columns}>
       <section className={styles.left} aria-label="Asistentes">
-        {items.length === 0 ? <p className={styles.notice}>{EMPTY_MESSAGE}</p> : <AttendeeResults attendees={items} scoreType={scoreType} selectedId={effectiveId} onSelect={choose} />}
+        {items.length === 0 ? <p className={styles.notice}>{EMPTY_MESSAGE}</p> : <AttendeeResults attendees={items} scoreType={scoreType} selectedId={effectiveId} sessionId={id} onSelect={choose} />}
         <AddWalkIn sessionId={id} presentIds={present} onReady={choose} />
       </section>
       <section className={styles.right} aria-label="Registrar resultado">
-        {selected !== null ? (
+        {selected !== null && selected.result !== null && isElsewhere(selected.result.session_id, id) ? (
+          <p role="status" className={styles.notice}>
+            {OTHER_SESSION_LABEL}: {attendeeName(selected)} ya tiene su marca de este WOD en otra clase. Se corrige desde esa clase.
+          </p>
+        ) : selected !== null ? (
           <ScoreForm
             key={`${selected.member_id}:${selected.result?.id ?? "nuevo"}`}
             wod={wod}

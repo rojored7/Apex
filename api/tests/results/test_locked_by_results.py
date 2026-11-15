@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -20,9 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.context import actor_scope
 from app.core.errors import DomainError
 from app.modules.classes import service as classes_service
+from app.modules.classes.results_port import results_port as classes_results_port
 from app.modules.classes.schemas import SessionCancel
+from app.modules.results import service as results_service
+from app.modules.results.schemas import VoidIn
 from app.modules.wods import service as wods_service
-from tests.factories.classes import make_attendance
+from tests.factories.classes import make_attendance, make_session, make_slot
 from tests.factories.members import make_members
 from tests.results._apoyo import Escena, escena, registrar
 
@@ -107,6 +111,72 @@ async def test_cancelar_una_sesion_sin_resultados_pasa(session: AsyncSession) ->
         text("SELECT status FROM classes.class_sessions WHERE id = :s"), {"s": e.clase_id}
     )
     assert estado == "cancelled"
+
+
+# M-1 (V7) · la cancelación masiva respeta S8-D46 -----------------------------------------------
+
+FUTURA = datetime(2026, 10, 28, 11, 0, tzinfo=UTC)  # miércoles 28, 06:00 Bogotá; el reloj es el 21
+
+
+async def _franja_con_futuras(session: AsyncSession, e: Escena) -> tuple[UUID, UUID, UUID]:
+    """Franja con dos futuras (28 y 29): el resultado se registra en la primera, por recepción."""
+    franja = await make_slot(session)
+    con = await make_session(session, slot_id=franja.id, starts_at=FUTURA)
+    sin = await make_session(
+        session, slot_id=franja.id, starts_at=datetime(2026, 10, 29, 11, 0, tzinfo=UTC)
+    )
+    await make_attendance(session, con, e.socio_id)
+    await registrar(session, e, session_id=con.id)
+    return franja.id, con.id, sin.id
+
+
+async def _cancelar_futuras(session: AsyncSession, e: Escena, slot_id: UUID) -> Any:
+    with actor_scope(e.coach):
+        return await classes_service.cancel_future_sessions(
+            session, slot_id, SessionCancel(reason="Festivo"), by=e.coach
+        )
+
+
+async def test_cancelar_futuras_con_resultado_vigente_da_409_y_no_cancela_ninguna(
+    session: AsyncSession,
+) -> None:
+    e = await escena(session, fecha="2026-10-28", con_clase=False)
+    franja, con, sin = await _franja_con_futuras(session, e)
+    error = await _falla(_cancelar_futuras(session, e, franja))
+    assert (error.status, error.code) == (409, "locked_by_results")
+    estados = (
+        await session.execute(
+            text("SELECT status FROM classes.class_sessions WHERE id IN (:a, :b)"),
+            {"a": con, "b": sin},
+        )
+    ).all()
+    assert {fila.status for fila in estados} == {"scheduled"}
+
+
+async def test_cancelar_futuras_sin_resultados_cancela_todas(session: AsyncSession) -> None:
+    e = await escena(session, fecha="2026-10-28", con_clase=False)
+    franja = await make_slot(session)
+    await make_session(session, slot_id=franja.id, starts_at=FUTURA)
+    salida = await _cancelar_futuras(session, e, franja.id)
+    assert salida.cancelled_count == 1
+
+
+async def test_cancelar_futuras_tras_anular_el_resultado_pasa(session: AsyncSession) -> None:
+    e = await escena(session, fecha="2026-10-28", con_clase=False)
+    franja, _, _ = await _franja_con_futuras(session, e)
+    vigente = await session.scalar(text("SELECT id FROM results.wod_results WHERE is_current"))
+    with actor_scope(e.coach):
+        await results_service.void_result(session, vigente, VoidIn(reason="Equivocado"), by=e.coach)
+    salida = await _cancelar_futuras(session, e, franja)
+    assert salida.cancelled_count == 2
+
+
+async def test_puerto_sessions_with_current_results(session: AsyncSession) -> None:
+    e = await escena(session, fecha="2026-10-28", con_clase=False)
+    _, con, sin = await _franja_con_futuras(session, e)
+    hallado = await classes_results_port().sessions_with_current_results(session, [con, sin])
+    assert hallado == {con}
+    assert await classes_results_port().sessions_with_current_results(session, []) == set()
 
 
 # M-3 · la corrección conserva su sesión ------------------------------------------------------

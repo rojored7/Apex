@@ -103,3 +103,18 @@ async def test_pagina_con_page_params(session: AsyncSession) -> None:
 
 def _pagina(*, limit: int, offset: int) -> PageParams:
     return PageParams(limit=limit, offset=offset)
+
+
+async def test_resultado_de_otra_clase_trae_su_session_id(session: AsyncSession) -> None:
+    """L-4 (V7): el resultado vigente del WOD puede ser de OTRA clase del mismo socio; la tablet
+    lo distingue por `result.session_id` (la fila de esta clase no lo puede corregir)."""
+    e = await escena(session)
+    otra = await make_session(session, starts_at=datetime(2026, 10, 21, 20, 0, tzinfo=UTC))
+    await make_attendance(session, otra, e.socio_id)
+    registrado = await registrar(session, e, session_id=otra.id)
+    assert e.clase_id is not None
+    salida = await service.session_attendance(session, e.clase_id, PageParams())
+    (fila,) = salida.items
+    assert fila.has_result is True and fila.result is not None
+    assert fila.result.id == registrado.id
+    assert fila.result.session_id == otra.id != e.clase_id

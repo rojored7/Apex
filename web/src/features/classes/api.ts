@@ -13,7 +13,7 @@ import { todayBogota } from "../../core/i18n/format";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
-import { ATTENDANCE_QUERY_KEY } from "./attendanceApi";
+import { invalidateSessionViews } from "../../shared/data/attendance";
 import { hhmm, type SessionCreateBody, type SlotCreateBody, type SlotPatchBody } from "./schemas";
 
 export const slotSchema = z.object({
@@ -91,7 +91,7 @@ export function useCancelFutureSessions(): UseMutationResult<number, Error, Canc
   return useSensitiveMutation<number, Error, CancelFutureVariables>({
     mutationFn: async ({ id, reason }) => parseResponse(cancelFutureSchema, await api.post<unknown>(`${slotPath(id)}/cancel-future-sessions`, { body: { reason } })).cancelled_count,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+      invalidateSessionViews(queryClient);
     },
   });
 }
@@ -183,7 +183,7 @@ export function useCancelSession(): UseMutationResult<SessionView, Error, Cancel
   return useSensitiveMutation<SessionView, Error, CancelSessionVariables>({
     mutationFn: async ({ id, reason }) => parseResponse(sessionSchema, await api.post<unknown>(`/class-sessions/${encodeURIComponent(id)}/cancel`, { body: { reason } })),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+      invalidateSessionViews(queryClient);
     },
   });
 }
@@ -233,9 +233,7 @@ export function useRemoveAttendance(): UseMutationResult<null, Error, RemoveAtte
       try {
         await (reason === undefined ? api.delete<unknown>(path) : api.delete<unknown>(path, { body: { reason } }));
       } finally {
-        void queryClient.invalidateQueries({ queryKey: CLASS_SESSION_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: ATTENDANCE_QUERY_KEY });
+        invalidateSessionViews(queryClient);
       }
       return null;
     },

@@ -222,7 +222,8 @@ def test_downgrade_aborta_con_anulados(alembic_config: Config, base: str) -> Non
     with pytest.raises(Exception):  # noqa: B017 - el tipo lo decide el driver
         command.downgrade(alembic_config, PADRE)
     revision = consultar(base, "SELECT version_num FROM public.alembic_version")
-    assert [r["version_num"] for r in revision] == [REVISION]
+    cabeza = ScriptDirectory.from_config(alembic_config).get_current_head()
+    assert [r["version_num"] for r in revision] == [cabeza]  # DDL transaccional: nada se deshizo
     (anulado,) = consultar(
         base, "SELECT status, is_current FROM results.wod_results WHERE id = $1", rid
     )

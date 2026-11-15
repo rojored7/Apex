@@ -118,7 +118,7 @@ async def update_slot(
 @router.post(
     "/class-slots/{slot_id}/cancel-future-sessions",
     response_model=CancelFutureOut,
-    responses=responses_for(404, 422, 429),
+    responses=responses_for(404, 409, 422, 429),
 )
 async def cancel_future_sessions(
     request: Request, slot_id: UUID, body: SessionCancel, principal: AdminDep, session: Session

@@ -30,6 +30,7 @@ from app.modules.results.record import (
     member_has_current_result_in_session,
     record_result,
     session_has_current_results,
+    sessions_with_current_results,
 )
 from app.modules.results.void import void_result
 from app.modules.wods import service as wods_service
@@ -67,6 +68,11 @@ class _SessionPort:
     async def session_has_current_results(self, session: AsyncSession, session_id: UUID) -> bool:
         return await session_has_current_results(session, session_id)
 
+    async def sessions_with_current_results(
+        self, session: AsyncSession, session_ids: Sequence[UUID]
+    ) -> set[UUID]:
+        return await sessions_with_current_results(session, session_ids)
+
     async def member_has_current_result_in_session(
         self, session: AsyncSession, session_id: UUID, member_id: UUID
     ) -> bool:
@@ -93,5 +99,6 @@ __all__ = [
     "results_probe",
     "session_attendance",
     "session_has_current_results",
+    "sessions_with_current_results",
     "void_result",
 ]

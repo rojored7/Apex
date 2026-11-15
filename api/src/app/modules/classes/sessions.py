@@ -246,6 +246,23 @@ async def cancel_session(
     return await _one_out(session, fila, ahora)
 
 
+async def _lock_future_scheduled(
+    session: AsyncSession, slot_id: UUID, ahora: datetime
+) -> list[ClassSession]:
+    """Las `scheduled` de la franja que aún no empiezan, con `FOR UPDATE` en orden (S7-D37)."""
+    filas = await session.scalars(
+        select(ClassSession)
+        .where(
+            ClassSession.slot_id == slot_id,
+            ClassSession.status == "scheduled",
+            ClassSession.starts_at > ahora,
+        )
+        .order_by(ClassSession.starts_at, ClassSession.id)
+        .with_for_update()
+    )
+    return list(filas.all())
+
+
 async def cancel_future_sessions(
     session: AsyncSession, slot_id: UUID, data: SessionCancel, *, by: UUID
 ) -> CancelFutureOut:
@@ -260,20 +277,14 @@ async def cancel_future_sessions(
     if await session.scalar(select(ClassSlot.id).where(ClassSlot.id == slot_id)) is None:
         raise SlotNotFound()
     ahora = current_clock().now_utc()
-    filas = list(
-        (
-            await session.scalars(
-                select(ClassSession)
-                .where(
-                    ClassSession.slot_id == slot_id,
-                    ClassSession.status == "scheduled",
-                    ClassSession.starts_at > ahora,
-                )
-                .order_by(ClassSession.starts_at, ClassSession.id)
-                .with_for_update()
-            )
-        ).all()
-    )
+    filas = await _lock_future_scheduled(session, slot_id, ahora)
+    # V7 (M-1, S8-D46): una futura con resultados vigentes (recepción los registra antes de que
+    # empiece) no se cancela; la franja entera queda intacta (409, no se salta en silencio).
+    if filas and await results_port().sessions_with_current_results(session, [f.id for f in filas]):
+        raise LockedByResults(
+            "Una de las clases futuras ya tiene resultados registrados: no se puede cancelar.",
+            field=None,
+        )
     for fila in filas:
         fila.status = "cancelled"
         fila.cancel_reason = data.reason

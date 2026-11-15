@@ -10,7 +10,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { axe } from "vitest-axe";
 import { SessionRoleProvider } from "../../../core/auth";
 import { apiError, MEMBER_ROWS, membersPage } from "../../../test/classes";
-import { ATTENDEE_ROWS, attendanceResults, mid, resultOut, scoringWod, SESSION_ID, WOD_ID } from "../../../test/results";
+import { ATTENDEE_ROWS, attendanceResults, attendeeRow, mid, resultOut, scoringWod, SESSION_ID, WOD_ID } from "../../../test/results";
 import { mockApi, testQueryClient, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import { GymLayout } from "../../../layouts/GymLayout";
@@ -152,6 +152,17 @@ describe("ResultsEntryPage · guardar", () => {
       expect(puts(mock)).toHaveLength(1);
     });
     expect(puts(mock)[0]).toMatchObject({ member_id: mid(1), session_id: SESSION_ID, seconds: 630, supersedes_id: ATTENDEE_ROWS[0]?.result?.id });
+  });
+
+  it("un resultado registrado en OTRA clase se rotula así y no se corrige desde esta tablet (L-4, V7)", async () => {
+    const OTRA = "99999999-9999-4999-8999-999999999999";
+    const rows = [attendeeRow(1, "Diego", "Mora", resultOut(mid(1), { session_id: OTRA })), attendeeRow(3, "Laura", "Gómez")];
+    const { user, mock } = renderPage({ [ATTENDANCE]: attendanceResults(rows) });
+    await user.click(await screen.findByRole("button", { name: /Diego Mora/ }));
+    expect(attendeeButton("Diego Mora")).toHaveTextContent("Registrado en otra clase");
+    expect(screen.queryByRole("button", { name: /Guardar y siguiente/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Registrar resultado" })).toHaveTextContent("Se corrige desde esa clase");
+    expect(mock.callsTo("PUT /results")).toHaveLength(0);
   });
 
   it("403 `kiosk_mode` al corregir uno de escritorio lo explica y deja la pantalla", async () => {

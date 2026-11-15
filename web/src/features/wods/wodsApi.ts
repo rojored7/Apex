@@ -7,6 +7,7 @@ import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import { invalidateSessionViews } from "../../shared/data/attendance";
 import { wodRowSchema, wodSchema, type WodCreateBody, type WodPatchBody, type WodRowView, type WodView } from "./wodSchemas";
 
 const wodsPageSchema = pageSchema(wodRowSchema);
@@ -57,6 +58,7 @@ export function useUpdateWod(id: string): UseMutationResult<WodView, Error, WodP
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: WODS_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: [...WOD_QUERY_KEY, id] });
+      invalidateSessionViews(queryClient);
     },
   });
 }

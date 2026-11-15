@@ -97,6 +97,13 @@ class WodResult(CommonColumnsMixin, Base):
             text("wod_date DESC"),
             postgresql_where=text("is_current"),
         ),
+        # 0041 (M-2, revisión final): las tres consultas del puerto de `classes` por sesión.
+        Index(
+            "ix_wod_results_session_current",
+            "session_id",
+            "member_id",
+            postgresql_where=text("is_current AND session_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
     __audited__: ClassVar[bool] = True

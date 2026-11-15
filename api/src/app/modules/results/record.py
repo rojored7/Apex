@@ -20,6 +20,7 @@ el admin. `source` es `desk` o `kiosk` (M-1); lo decide el router, nunca el cuer
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
@@ -225,6 +226,20 @@ async def session_has_current_results(session: AsyncSession, session_id: UUID) -
         .limit(1)
     )
     return hallado is not None
+
+
+async def sessions_with_current_results(
+    session: AsyncSession, session_ids: Sequence[UUID]
+) -> set[UUID]:
+    """El puerto de `classes` (V7, M-1): de esas sesiones, las que tienen resultados vigentes."""
+    if not session_ids:
+        return set()
+    filas = await session.scalars(
+        select(WodResult.session_id)
+        .where(WodResult.session_id.in_(list(session_ids)), WodResult.is_current.is_(True))
+        .distinct()
+    )
+    return {fila for fila in filas.all() if fila is not None}
 
 
 async def member_has_current_result_in_session(

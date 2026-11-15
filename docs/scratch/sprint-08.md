@@ -217,3 +217,14 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - Gate `slice-gate.sh results <17 archivos>`: 1 337 passed en 195 s, exit 0 (sello escrito). Antes, `tests/migrations tests/core tests/wods tests/classes tests/results` + `tests/architecture`: 3 084 y 868 passed; los 3 fallos de esa corrida eran de esta tanda (`openapi.json` sin regenerar, el renombre de `alive_attendance_id` en `test_checkin_service` y `CAMPOS` de `test_router_sessions` sin `wod_id`/`effective_wod_id`, que A4 no cubrió en su gate): corregidos.
 - P-API: `openapi.json` idéntico en dos corridas (+442 líneas), `types.ts` regenerado (+227), `types.contract.test.ts` 6 passed, `tsc --noEmit` limpio.
 - Checkpoint `0447dbc`.
+
+## S8-A4b · Correcciones de la revisión de A4 (M-1, L-1 a L-4; M-2 y M-3 entraron en B1) · sin migración
+
+### Rojo
+- Pruebas nuevas (7): 3 failed y 4 passed. Rojos: `test_filtro_wod_id_sin_ventana_usa_la_fecha_del_wod` (L-1: lista vacía, la ventana era la semana actual), `test_con_wods_la_unidad_no_cambia_422_unit` (M-1: el `PATCH` cambiaba la unidad, 200) y `test_el_wod_toma_el_movimiento_for_share_y_el_patch_espera` (M-1: el `PATCH` no esperaba, DID NOT RAISE). Verdes desde el principio (L-2 y L-3 ya estaban hechos en B1; L-4 son pruebas más fuertes sobre comportamiento correcto): actor de la auditoría y del log, asignar en sesión terminada (200), quiosco 403 y la carrera cancelar contra asignar con dos sesiones reales.
+
+### Verde
+- `wods/movements.py` (422 `unit` con uso), `wods/catalog.movements_by_id` (`FOR SHARE` y datos frescos), `classes/queries.list_sessions` (ventana = día del WOD sin `week`/`from`/`to`). Decisión S8-D45.
+
+### Evidencia
+- Gate `slice-gate.sh classes <4 archivos de classes + tests/wods + test_session_wod_lock>`: 1 036 passed en 170 s, exit 0; `test_openapi_export` 6 passed (sin cambio de contrato); `ruff` y `mypy` limpios. Checkpoint `50beea7`.

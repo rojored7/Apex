@@ -195,3 +195,25 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - `rules.validate_wod` (L-4), `schemas.py` (`WodDate` 2020-2100 y `max_length = 30`), `programming._primary_id` y la comprobación de M-2 tras leer los movimientos, y la excepción exacta `session.delete(vieja)` en `test_no_physical_delete.py`. DECISIONES: S8-D7 (ajustes de A3b). M-1 queda para B1.
 - Hallazgo de A4: `tests/wods/test_router_movements.py` fija el conjunto de rutas del router y no estaba en el gate de A4 (`GET /wods/today` lo rompía); se corrige aquí.
 - P-API: `openapi.json` idéntico en dos corridas (+2 líneas: `maxItems`), `types.ts` regenerado, contract 6 passed, `tsc` limpio.
+
+## S8-B1 · Registrar resultados (US-169, S8-D10, S8-D11, S8-D35, S8-D36, S8-D41, M-5, M-6, L-2, L-3) · migraciones 0036 y 0037
+
+### Rojo
+- DESVIACIÓN: el rojo NO se midió antes del verde. El orquestador pidió además, en pleno slice, las correcciones M-2 y M-3 de la revisión de A4 y el entorno impidió el ciclo estándar de stubs; el código de `results`, las migraciones y las pruebas se escribieron en el mismo bloque. Las pruebas que sí pueden demostrar que no son vacuas: `test_la_clase_provisional_no_existe_en_el_codigo` y `test_tras_create_app_el_puerto_de_resultados_de_wods_es_el_de_results` habrían fallado con A4 (existía `NoResultsYet`); la corrida con `monkeypatch` de `_current` (`test_23505_traducido`) fuerza el camino de la base.
+
+### Verde
+- Migraciones `0036_results_wod_results` (esquema, tabla, 12 CHECK incluido `capped_shape`, único `(id, wod_id, member_id)` y FK compuesta de la corrección, cuatro índices) y `0037_results_immutability` (guardas de INSERT y UPDATE, DELETE/TRUNCATE prohibidos, trigger diferido de sucesor; los cinco `tgenabled = 'A'`).
+- `modules/results/{models,schemas,exceptions,events,rules,record,service,router}.py`; `wods.scoring_for` (WOD `FOR SHARE`); `classes/result_link.py` (`session_for_result`, `ResultsPort`); `assign_wod` con `locked_by_results`; `NoResultsYet` borrada.
+- P-ROL: `grants.sql` (matriz, `-- clasificada`, `ARRAY clasificadas`, REVOKE de 93-95 y 98-99, USAGE), `APP_SCHEMAS`, `test_db_grants.py`, `test_db_apply.py`, `test_api_role_paths.py::test_apex_api_inserta_y_apaga_sin_delete`, `test_worker_role_paths.py::test_apex_worker_sin_acceso_a_wods_ni_results`.
+- P-CAT: `CON_LIMITE` (+`PUT /results`), `results-write` fuera de `CLAVES_SIN_RUTA_TODAVIA` (ahora `frozenset()`), `test_audit_module`, `test_audited_tables` (requeridas, excluida de recientes y fuera de `PENDING_AUDITED`), `test_no_physical_delete`, `test_no_cross_schema_sql` (`MODULOS_PENDIENTES` vacío), `_imports.PRIVATE_HELPERS`, grafo de imports (+3 aristas), `LIMPIAR_WOD_RESULTS` en las dos limpiezas, `ALWAYS_TRIGGERS`. Grep de conftest propios que borran socios o clases: solo `tests/conftest.py`.
+- Pruebas nuevas: 11 puras, 16 de service, 5 de concurrencia (M-6, M-2/M-3, doble registro, 23505), 6 de router, 2 de bloqueo de sesión, 20 de `0036` y 21 de `0037` (con COMMIT real para el trigger diferido), 3 de arquitectura de `results` más 5 de puertos (api, CLI, worker en proceso limpio) y la ausencia de `NoResultsYet`.
+
+### Pendiente (el stack de desarrollo no está disponible)
+- P-MIG pasos 5 a 7 en `apex-db-1`: `$DC start api`, `alembic current` = `0037_results_immutability (head)`, `downgrade -1` y `upgrade head`, `\d results.wod_results`, `\df+` de las cuatro funciones y `tgenabled` de los cinco triggers. No se creó `apex-migracion.flag` y el volcado `sprint-08-antes-0036.dump` no se hizo.
+- Evidencia por curl: un `PUT /results` sobre un socio ficticio con check-in y su `$PSQL` de `status, is_current, source` (smoke con rol).
+
+### Evidencia
+- `ruff check .`, `ruff format --check .` (1 022) y `mypy src` (269) limpios.
+- Gate `slice-gate.sh results <17 archivos>`: 1 337 passed en 195 s, exit 0 (sello escrito). Antes, `tests/migrations tests/core tests/wods tests/classes tests/results` + `tests/architecture`: 3 084 y 868 passed; los 3 fallos de esa corrida eran de esta tanda (`openapi.json` sin regenerar, el renombre de `alive_attendance_id` en `test_checkin_service` y `CAMPOS` de `test_router_sessions` sin `wod_id`/`effective_wod_id`, que A4 no cubrió en su gate): corregidos.
+- P-API: `openapi.json` idéntico en dos corridas (+442 líneas), `types.ts` regenerado (+227), `types.contract.test.ts` 6 passed, `tsc --noEmit` limpio.
+- Checkpoint `0447dbc`.

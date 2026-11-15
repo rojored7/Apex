@@ -53,7 +53,7 @@ test("sin sesión /socios lleva a /login?next=/socios", async ({ page }) => {
 
 test("una ruta de una versión futura da No encontrada", async ({ page }) => {
   await sessionAs(page, "admin");
-  await page.goto("/wods");
+  await page.goto("/socios/00000000-0000-0000-0000-000000000099/atleta");
 
   await expect(page.getByRole("heading", { level: 1, name: "No encontrada" })).toBeVisible();
 });

@@ -46,6 +46,8 @@ test.describe("movimientos y benchmarks contra el stack", () => {
     await again.getByRole("button", { name: "Crear movimiento" }).click();
     await expect(again.getByText("Ya existe un movimiento con ese nombre.")).toBeVisible();
     await again.getByRole("button", { name: "Cancelar" }).click();
+    // El panel tiene cambios sin guardar: pide confirmar el descarte (SidePanel).
+    await page.getByRole("dialog", { name: "¿Descartar los cambios?" }).getByRole("button", { name: "Descartar cambios" }).click();
 
     // Limpieza: el movimiento queda inactivo (no hay DELETE).
     await page.getByRole("button", { name: `Editar ${NAME}` }).click();

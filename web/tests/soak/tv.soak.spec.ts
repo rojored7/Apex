@@ -23,6 +23,7 @@ function board(): unknown {
   return {
     date: "2026-10-20",
     refresh_seconds: 30,
+    show_leaderboard: true,
     wod: {
       title: "Helen",
       description: "3 rondas por tiempo",

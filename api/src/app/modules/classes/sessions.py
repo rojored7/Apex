@@ -29,6 +29,7 @@ from app.modules.classes.events import SessionCancelled, SessionGenerated
 from app.modules.classes.exceptions import (
     CoachInvalid,
     SessionAlreadyCancelled,
+    SessionDuplicate,
     SessionFinished,
     SessionNotFound,
     SlotNotFound,
@@ -164,10 +165,23 @@ async def create_extra(
         raise CoachInvalid()
     if coach is not None and coach != by and not await auth_service.is_active_staff(session, coach):
         raise CoachInvalid()
+    await take_generate_lock(session)  # S7-D38: serializa dos altas iguales antes de comprobar
+    inicio = data.starts_at.astimezone(UTC)
+    repetida = await session.scalar(
+        select(ClassSession.id)
+        .where(
+            ClassSession.slot_id.is_(None),
+            ClassSession.status == "scheduled",
+            ClassSession.starts_at == inicio,
+            ClassSession.coach_id.is_(None) if coach is None else ClassSession.coach_id == coach,
+        )
+        .limit(1)
+    )
+    if repetida is not None:
+        raise SessionDuplicate()
     capacidad = data.capacity
     if capacidad is None:
         capacidad = (await settings_service.classes(session)).default_capacity
-    inicio = data.starts_at.astimezone(UTC)
     fila = ClassSession(
         slot_id=None,
         session_date=local_date(inicio),

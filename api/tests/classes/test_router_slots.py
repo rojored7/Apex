@@ -49,13 +49,14 @@ def test_el_router_publica_tres_rutas_y_ningun_delete() -> None:
     publicadas = {
         (metodo, ruta.path)
         for ruta in router.routes
-        if isinstance(ruta, APIRoute)
+        if isinstance(ruta, APIRoute) and ruta.path.startswith("/class-slots")
         for metodo in ruta.methods
     }
     assert publicadas == {
         ("GET", "/class-slots"),
         ("POST", "/class-slots"),
         ("PATCH", "/class-slots/{slot_id}"),
+        ("POST", "/class-slots/{slot_id}/cancel-future-sessions"),  # S7-B3
     }
 
 

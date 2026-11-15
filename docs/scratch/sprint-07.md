@@ -229,3 +229,9 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - Concurrencia: `test_concurrente_con_generate_sessions_sin_quedar_scheduled` (job con 006 y sleep, cancelación espera): creadas 2, canceladas 2, ninguna scheduled, sin 40P01.
 - Catálogo `test_error_codes_per_route.py` suma la ruta (`classes-write`). P-API: openapi idéntico en dos corridas, types.contract 6 passed.
 - Gate `slice-gate.sh classes ...`: 840 passed, exit 0.
+
+## S7-B2b · Correcciones de la revisión de B2 (S7-D38)
+
+- Rojo: `test_extra_duplicate.py` (4) + 3 parámetros de rango y `test_sesion_extra_duplicada_409_por_http` en `test_router_sessions.py`: 5 failed (OverflowError en `9999-12-31`; sin `SessionDuplicate`/409), 7 passed.
+- Verde: `queries._window` acota años 2020-2100 (`from`/`to`); `create_extra` toma 4_270_006 y comprueba duplicado (409 `session_duplicate`); `test_router_slots` ahora filtra `/class-slots*` e incluye `cancel-future-sessions` (estaba roto por B2 y B3, fuera de los gates de esos slices). `tests/classes`: 184 passed.
+- P-API regenerado.

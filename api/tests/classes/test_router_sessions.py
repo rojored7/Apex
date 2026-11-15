@@ -132,6 +132,9 @@ async def test_errores_422_404_y_409(
         ({"week": "2026-W43", "from": "2026-10-19", "to": "2026-10-25"}, None),
         ({"from": "2026-10-01", "to": "2026-12-31"}, "to"),
         ({"from": "no-es-fecha", "to": "2026-12-31"}, "from"),
+        ({"from": "9999-12-31", "to": "9999-12-31"}, "from"),  # S7-B2b: antes 500 (overflow)
+        ({"from": "0001-01-01", "to": "0001-01-02"}, "from"),
+        ({"from": "2100-12-31", "to": "2101-01-01"}, "to"),
         ({"status": "otra"}, "status"),
     ):
         r = await app_http.get(SESIONES, params=params, headers=h)
@@ -196,3 +199,14 @@ async def test_cubeta_classes_write(
         assert r.status_code == 404
     r = await app_http.post(f"{SESIONES}/{uuid4()}/cancel", json={"reason": "x"}, headers=h)
     assert r.status_code == 429
+
+
+async def test_sesion_extra_duplicada_409_por_http(
+    app_http: AsyncClient, usuario_real: CrearUsuario, cabeceras: Cabeceras
+) -> None:
+    admin = await usuario_real("admin")
+    h = cabeceras(admin)
+    primera = await app_http.post(SESIONES, json=_cuerpo(), headers=h)
+    segunda = await app_http.post(SESIONES, json=_cuerpo(), headers=h)
+    assert primera.status_code == 201 and segunda.status_code == 409, segunda.text
+    assert segunda.json()["error"]["code"] == "session_duplicate"

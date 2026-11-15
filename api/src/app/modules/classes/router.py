@@ -125,7 +125,7 @@ async def list_sessions(
     "/class-sessions",
     status_code=201,
     response_model=SessionOut,
-    responses=responses_for(422, 429),
+    responses=responses_for(409, 422, 429),
 )
 async def create_session(
     request: Request, body: SessionCreate, principal: StaffDep, session: Session

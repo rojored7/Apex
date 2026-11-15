@@ -8227,6 +8227,16 @@
             },
             "description": "Sin permiso"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
           "422": {
             "content": {
               "application/json": {

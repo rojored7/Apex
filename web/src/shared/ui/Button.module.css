@@ -77,11 +77,13 @@
   color: var(--white);
 }
 
+/* S8-V5b: el ghost usa --ink; --blue-deep no llega a 4,5:1 sobre --surface ni --blue-tint en claro. */
+
 /* DESIGN-GAP: variante ghost no definida en DESIGN.md */
 .ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--blue-deep);
+  color: var(--ink);
 }
 
 .ghost:hover:not(:disabled) {

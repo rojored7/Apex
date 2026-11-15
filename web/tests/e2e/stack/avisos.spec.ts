@@ -47,11 +47,29 @@ test.describe("por avisar hoy contra el stack", () => {
     }
     expect(await axeViolations(page)).toEqual([]);
 
-    const primero = await botones.first().getAttribute("aria-label");
-    const nombre = (primero ?? "").replace("Abrir WhatsApp de ", "");
-    const respuesta = page.waitForResponse((r) => r.url().includes("/wa-link") && r.request().method() === "POST");
-    await botones.first().click();
-    expect((await respuesta).status()).toBe(200);
+    // V5b: un socio sin teléfono da 422 member_without_phone (el aviso no trae el teléfono, que va cifrado): la pantalla
+    // muestra el motivo y la acción, el aviso sigue pendiente y se prueba con el siguiente hasta uno con teléfono.
+    const total = await botones.count();
+    let nombre = "";
+    let abierto = false;
+    for (let i = 0; i < total && !abierto; i += 1) {
+      const boton = botones.nth(i);
+      const etiqueta = (await boton.getAttribute("aria-label")) ?? "";
+      const respuesta = page.waitForResponse((r) => r.url().includes("/wa-link") && r.request().method() === "POST");
+      await boton.click();
+      const status = (await respuesta).status();
+      if (status === 200) {
+        nombre = etiqueta.replace("Abrir WhatsApp de ", "");
+        abierto = true;
+      } else {
+        expect(status).toBe(422);
+        await expect(page.getByRole("alert").filter({ hasText: "Este socio no tiene teléfono registrado. Agrégalo en su ficha o omite el aviso." }).first()).toBeVisible();
+      }
+    }
+    if (!abierto) {
+      test.info().annotations.push({ type: "sin-telefono", description: "Ningún aviso de WhatsApp pendiente tiene un socio con teléfono (las corridas anteriores los enviaron): corre `tools notify --generate-only`." });
+      test.skip(true, "sin avisos de WhatsApp pendientes con teléfono");
+    }
     await expect(page.getByText(`WhatsApp abierto para ${nombre}. El aviso quedó marcado como enviado.`)).toBeVisible();
     const opened = (await page.evaluate(() => (window as unknown as { __opened: unknown[][] }).__opened)) as [string, string, string][];
     expect(opened).toHaveLength(1);

@@ -4,6 +4,7 @@
 //   `wrong_channel`, `notification_closed`) traen su mensaje en español desde el api y se muestran
 //   tal cual; el 429 le suma la espera.
 // - skipError: omitir; 409 y 404 (el aviso ya no está pendiente), 422 bajo el campo, 429 con la espera.
+import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
 import { HTTP_BAD_REQUEST, HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
@@ -18,6 +19,7 @@ export const WA_MESSAGES = {
   forbidden: "No tienes permiso para abrir WhatsApp. Si lo necesitas, pídeselo a un administrador.",
   tooMany: "Hiciste muchas aperturas seguidas.",
   failed: "No pudimos abrir WhatsApp. Intenta de nuevo en un momento.",
+  withoutPhone: "Este socio no tiene teléfono registrado. Agrégalo en su ficha o omite el aviso.",
 } as const;
 
 export const SKIP_MESSAGES = {
@@ -43,6 +45,7 @@ export function waLinkMessage(error: unknown): string {
   const connection = connectionMessage(error);
   if (connection) return connection;
   const text = error.message.trim();
+  if (error.code === API_ERROR_CODES.memberWithoutPhone) return WA_MESSAGES.withoutPhone;
   if (error.status === HTTP_FORBIDDEN) return WA_MESSAGES.forbidden;
   if (error.status === HTTP_TOO_MANY) {
     const base = text === "" ? WA_MESSAGES.tooMany : text;

@@ -67,7 +67,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--blue-deep);
   border-radius: var(--radius-pill);
-  color: var(--blue-deep);
+  color: var(--ink); /* S8-V5b: --blue-deep no llega a 4,5:1 sobre el día de hoy (--blue-tint) */
   font-weight: 600;
 }
 

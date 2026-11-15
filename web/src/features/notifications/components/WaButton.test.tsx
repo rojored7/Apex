@@ -102,6 +102,18 @@ describe("WaButton", () => {
     expect(button()).toBeEnabled();
   });
 
+  it("un 422 member_without_phone dice que falta el teléfono y qué hacer, sin abrir nada", async () => {
+    mockApi({ [WA_KEY]: apiError(422, "member_without_phone", {}, undefined, "El socio no tiene teléfono.") });
+    const user = userEvent.setup();
+    mount();
+
+    await user.click(button());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Este socio no tiene teléfono registrado. Agrégalo en su ficha o omite el aviso.");
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(button()).toBeEnabled();
+  });
+
   it("un 429 muestra el mensaje del api con la espera", async () => {
     mockApi({ [WA_KEY]: apiError(429, "rate_limited", {}, { "Retry-After": "30" }, "Hiciste muchas aperturas seguidas.") });
     const user = userEvent.setup();

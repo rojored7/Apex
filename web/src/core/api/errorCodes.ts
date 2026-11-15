@@ -33,6 +33,8 @@ export const API_ERROR_CODES = {
   // configuración
   versionConflict: "version_conflict",
   sectionNotAvailable: "section_not_available",
+  // avisos (S8-V5b): abrir WhatsApp de un socio sin teléfono (422)
+  memberWithoutPhone: "member_without_phone",
   // socios y planes
   memberDocumentDuplicated: "member_document_duplicated",
   memberNotFound: "member_not_found",

@@ -54,6 +54,7 @@ from app.core.security import (
 )
 from app.modules.auth import rules, tokens
 from app.modules.auth.events import (
+    KioskExited,
     LoginAttempted,
     LoginFailureReason,
     SessionsRevoked,
@@ -528,5 +529,8 @@ async def logout(session: AsyncSession, token: str | None) -> None:
         return
     with actor_scope(fila.user_id):
         fila.revoked_at = current_clock().now_utc()
+        con_marca = fila.kiosk_path is not None
         fila.kiosk_path = None  # S7-D41: el logout borra la marca del quiosco
         await session.flush()
+        if con_marca:  # revisión de C4 (L-2): la salida por logout también queda auditada
+            await events.emit(KioskExited(user_id=fila.user_id, via="logout"), session)

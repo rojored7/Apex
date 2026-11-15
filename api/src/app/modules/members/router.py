@@ -65,6 +65,7 @@ from app.core.security import AdminDep, StaffDep
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import service
+from app.modules.members.exceptions import MemberValidationError
 from app.modules.members.schemas import (
     DEFAULT_MEMBER_SORT,
     ChannelsOut,
@@ -108,6 +109,18 @@ async def create_member(
     return await service.create(session, body)
 
 
+def _check_kiosk_list(q: str | None, **filtros: object) -> None:
+    """Revisión de C4 (M-3): con la marca de quiosco `GET /members` exige `q` y rechaza los
+    filtros de estado, plan, consentimiento y última asistencia (422 con `field`)."""
+    for campo, valor in filtros.items():
+        if valor is not None:
+            raise MemberValidationError(
+                message="En modo quiosco solo se busca por nombre.", field=campo
+            )
+    if not q:
+        raise MemberValidationError(message="En modo quiosco indica la búsqueda.", field="q")
+
+
 @router.get("/members", response_model=Page[MemberRowOut], responses=responses_for(429))
 async def list_members(
     request: Request,
@@ -122,6 +135,15 @@ async def list_members(
     consent: Literal["missing"] | None = None,
     last_attendance: LastAttendanceFilter | None = None,
 ) -> Page[MemberRowOut]:
+    if principal.kiosk:  # el quiosco solo busca por nombre; nada de recorrer la situación (M-3)
+        _check_kiosk_list(
+            q,
+            status=member_status,
+            membership_status=membership_status,
+            plan_id=plan_id,
+            consent=consent,
+            last_attendance=last_attendance,
+        )
     if q:
         await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
     if last_attendance:  # S7-R2 (US-163, S7-D15): consulta a `classes`, cubeta de lecturas caras

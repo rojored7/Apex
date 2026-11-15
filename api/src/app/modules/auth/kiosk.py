@@ -8,8 +8,13 @@ La tablet del check-in queda confinada a una ruta con una marca en la sesión de
   La rotación del refresh copia la marca (`sessions.refresh`); el logout la borra.
 - `exit_kiosk`: verifica la contraseña del usuario con argon2 SIN crear sesión ni rotar el
   refresh y SIN `_register_failure`: un socio frente a la tablet no puede bloquear la cuenta del
-  coach. Los fallos tienen su tope por usuario (`EXIT_LIMIT` cada `EXIT_WINDOW_S`, 429) y
-  dejan una fila de auditoría sin la contraseña.
+  coach. Revisión de C4 (M-1): primero la sesión de la cookie, viva y con marca (sin ella 401
+  `invalid_refresh` sin tocar argon2: ni un access robado sirve de oráculo); luego se RESERVA el
+  cupo (`EXIT_LIMIT` cada `EXIT_WINDOW_S`, 429) de forma atómica ANTES de verificar, y un acierto
+  lo devuelve. La clave es `usuario|inicio de la familia`: cinco fallos en una tablet no bloquean
+  al coach en otras. Cada fallo deja una fila de auditoría sin la contraseña.
+- S7-D42: con la marca ya puesta, `enter_kiosk` solo acepta el check-in de sesiones de hoy o de
+  ayer en Bogotá (403 `kiosk_mode`); sin marca previa entra a cualquier ruta.
 - `kiosk_path_of`: la marca de la sesión de la cookie para `GET /auth/me`.
 Orden de candados igual al de `refresh` (usuario y luego token): la marca y la rotación se
 serializan y la marca no se pierde en una carrera.
@@ -18,16 +23,17 @@ serializan y la marca no se pierde en una carrera.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Date, Uuid, column, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events, ratelimit
 from app.core.clock import current_clock
 from app.core.context import actor_scope
+from app.core.errors import ForbiddenError
 from app.core.security import Principal, TokenInvalid, create_access_token, hash_opaque_token
 from app.modules.auth import sessions, tokens
 from app.modules.auth.events import KioskEntered, KioskExited, KioskExitFailed
@@ -41,6 +47,16 @@ logger = logging.getLogger("app.auth")
 EXIT_BUCKET: Final = "kiosk-exit-user"
 EXIT_LIMIT: Final = 5
 EXIT_WINDOW_S: Final = 900
+SWITCH_MESSAGE: Final = "Solo puedes pasar al check-in de una clase de hoy o de ayer."
+
+# Lectura por nombre de tabla (sin importar `classes`, que ya importa `auth`: `classes -> auth`);
+# solo la fecha civil de la sesión, para S7-D42.
+_CLASS_SESSIONS = table(
+    "class_sessions",
+    column("id", Uuid()),
+    column("session_date", Date()),
+    schema="classes",
+)
 
 
 def _usable(fila: RefreshToken, user_id: UUID, now: datetime) -> bool:
@@ -69,6 +85,21 @@ def _out(principal: Principal, policy: AuthPolicy, path: str | None) -> KioskSes
     return KioskSessionOut(access_token=acceso, expires_in=policy.access_ttl_s, kiosk_path=path)
 
 
+def _session_id_of(path: str) -> UUID:
+    """El id de la ruta `/clases/<uuid>/checkin` (ya validada por `KIOSK_PATH_PATTERN`)."""
+    return UUID(path.split("/")[2])
+
+
+async def _ensure_switchable(session: AsyncSession, path: str) -> None:
+    """S7-D42: con la marca puesta, la clase destino debe existir y ser de hoy o de ayer."""
+    dia = await session.scalar(
+        select(_CLASS_SESSIONS.c.session_date).where(_CLASS_SESSIONS.c.id == _session_id_of(path))
+    )
+    hoy: date = current_clock().today_bogota()
+    if dia is None or dia not in (hoy, hoy - timedelta(days=1)):
+        raise ForbiddenError("kiosk_mode", SWITCH_MESSAGE)
+
+
 async def enter_kiosk(
     session: AsyncSession,
     principal: Principal,
@@ -78,6 +109,8 @@ async def enter_kiosk(
     policy: AuthPolicy,
 ) -> KioskSessionOut:
     fila = await _own_session(session, principal, token)
+    if fila.kiosk_path is not None:  # cambio de clase dentro del quiosco (S7-D42)
+        await _ensure_switchable(session, path)
     with actor_scope(principal.user_id):
         fila.kiosk_path = path
         await session.flush()
@@ -94,26 +127,28 @@ async def exit_kiosk(
     *,
     policy: AuthPolicy,
 ) -> KioskSessionOut:
-    clave = str(principal.user_id)
-    await ratelimit.enforce(  # antes de argon2 y sin sumar: solo cuentan los fallos
-        EXIT_BUCKET, clave, limit=EXIT_LIMIT, window_s=EXIT_WINDOW_S, kind="user", count=False
+    fila = await _own_session(session, principal, token)  # antes de argon2 (M-1)
+    if fila.kiosk_path is None:
+        raise InvalidRefresh
+    clave = f"{principal.user_id}|{fila.family_started_at}"
+    reserva = await ratelimit.reserve(  # atómica y antes de argon2: una ráfaga no la salta
+        EXIT_BUCKET, clave, limit=EXIT_LIMIT, window_s=EXIT_WINDOW_S, kind="user"
     )
     usuario = await session.scalar(
         select(User).where(User.id == principal.user_id).execution_options(populate_existing=True)
     )
     if not await sessions.verify_password_or_dummy(usuario, password):
-        await ratelimit.record(EXIT_BUCKET, clave, window_s=EXIT_WINDOW_S, kind="user")
         with actor_scope(principal.user_id):
             await events.emit(KioskExitFailed(user_id=principal.user_id), session)
             await tokens.commit_failure(session)
-        logger.info("salida de quiosco rechazada", extra={"user_id": clave})
+        logger.info("salida de quiosco rechazada", extra={"user_id": str(principal.user_id)})
         raise InvalidPassword
-    fila = await _own_session(session, principal, token)
+    await ratelimit.release(EXIT_BUCKET, clave, reserva, kind="user")  # el acierto no cuenta
     with actor_scope(principal.user_id):
         fila.kiosk_path = None
         await session.flush()
         await events.emit(KioskExited(user_id=principal.user_id), session)
-    logger.info("quiosco desactivado", extra={"user_id": clave})
+    logger.info("quiosco desactivado", extra={"user_id": str(principal.user_id)})
     return _out(principal, policy, None)
 
 

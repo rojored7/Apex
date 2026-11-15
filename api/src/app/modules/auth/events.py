@@ -86,9 +86,11 @@ class KioskEntered(DomainEvent):
 
 @dataclass(frozen=True, kw_only=True)
 class KioskExited(DomainEvent):
-    """Salida del quiosco con la contraseña (S7-D41)."""
+    """Salida del quiosco (S7-D41): `via` es `password` (la contraseña del coach) o `logout` (el
+    cierre de sesión borró la marca, revisión de C4 L-2)."""
 
     user_id: UUID
+    via: Literal["password", "logout"] = "password"
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -230,4 +230,6 @@ async def member_attendance(
 ) -> Page[AttendanceRowOut]:
     """`GET /members/{id}/attendance`: 404 si no existe; uno dado de baja se ve (N-20)."""
     await members_service.get_ref(session, member_id)
-    return await list_attendance(session, AttendanceListQuery(member_id=member_id, q=q), page)
+    return await list_attendance(
+        session, AttendanceListQuery(member_id=member_id, q=q), page, include_deleted=True
+    )

@@ -228,3 +228,14 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### Evidencia
 - Gate `slice-gate.sh classes <4 archivos de classes + tests/wods + test_session_wod_lock>`: 1 036 passed en 170 s, exit 0; `test_openapi_export` 6 passed (sin cambio de contrato); `ruff` y `mypy` limpios. Checkpoint `50beea7`.
+
+## S8-B2 · Corregir un resultado (US-170, Q18, S8-D11) · sin migración
+
+### Rojo
+- Medido: 0 failed y 7 passed de las 7 pruebas nuevas. B1 ya implementaba `supersedes_id` bajo `FOR UPDATE`, la traducción del 23505 y `invalid_supersedes`; B2 no necesitó código de producción. Para que no sean vacuas se hizo una mutación (el chequeo `vigente.id != supersedes_id` quitado en `record.py`): 1 failed (`test_409_invalid_supersedes_...`, IntegrityError); se restauró el archivo.
+
+### Verde
+- Sin cambios en `src`. Pruebas: `test_correct_service.py` (5) y `test_correct_concurrency.py` (2: dos coaches a la vez con dos conexiones; 23505 de `uq_wod_results_supersedes` aislado apagando antes el vigente).
+
+### Evidencia
+- Gate `slice-gate.sh results <3 archivos>`: 907 passed en 136 s, exit 0 (sello escrito).

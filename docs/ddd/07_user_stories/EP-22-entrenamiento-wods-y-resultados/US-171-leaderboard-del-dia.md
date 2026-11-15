@@ -80,6 +80,11 @@ Característica: Leaderboard del WOD
 - Supuesto: en un WOD `time`, un resultado sin terminar dentro del time cap se registra con `seconds = time_cap_s` y reps logradas, y ordena después de todos los que terminaron; el dominio no lo define (pregunta abierta).
 - Supuesto: `rx_plus` y `rx` comparten grupo y se ordenan solo por marca; el dominio solo dice que `scaled` va después.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- Los nombres salen de `members.service.names_for` (no existe `public_names`). El ranking es de competencia (1, 2, 2, 4) dentro del grupo, y un resultado `capped` va después de los terminados, ordenado por rondas y repeticiones («DNF · 2 + 15»; S8-D13).
+- El leaderboard del panel lee como máximo `LEADERBOARD_MAX_ROWS = 1.000` filas; con más responde 422 `leaderboard_too_large` y nunca trunca un ranking. La carga se devuelve en gramos (`load_g`).
+
 ## Dependencias
 
 - US-169 · Registrar resultados en tablet

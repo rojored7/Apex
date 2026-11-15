@@ -80,6 +80,11 @@ Característica: Endpoint público de la TV
 - Supuesto: rate limit de 12 por minuto (refresco cada 30 s más margen); no está fijado en los documentos.
 - Supuesto: se acepta el token por parámetro de URL porque `ROUTES.md` abre la TV con `/tv?token=…`; Nginx no debe registrar la query string en el log de acceso para esta ruta.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- Solo cabecera `X-Device-Token`: un `?token=` da 401 y se ignoran `Authorization` y cookies. Se valida primero el token (tiempo constante contra el hash de la fila, sin caché); si es válido aplica solo la cubeta `tv` por token (30/min, `TV_TOKEN_LIMIT`); si no, la cubeta `tv-fail` por IP (12/min, `TV_IP_LIMIT`) y 401 uniforme (S8-D33). 12 fallos de un cliente no dejan en 429 a una TV válida de la misma IP.
+- La proyección usa lista blanca: `description` del WOD, `refresh_seconds`, cargas `load_rx_m_g` y `load_rx_f_g`, `score.load_g`; sin bajas ni socios sin autorización de datos vigente, y las posiciones se calculan después de excluirlos (S8-D34). Un solo ranking «Todos» (S8-D19).
+
 ## Dependencias
 
 - US-175 · Token de dispositivo de TV

@@ -79,6 +79,11 @@ Característica: Token de la TV
 - Supuesto: se guarda el hash del token (no el token) para que no quede en claro en la base ni en la auditoría; el dominio dice "se genera, no se escribe" pero no fija cómo se guarda.
 - Supuesto: `refresh_seconds` es configurable (por defecto 30, el valor de `ROUTES.md`).
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- La sección `tv` solo se escribe por sus rutas propias (S8-D30): `PATCH /settings/tv` cambia únicamente `refresh_seconds` (de 15 a 300, por defecto 30) y `show_leaderboard`, bajo `FOR UPDATE`, y las rutas genéricas de secciones responden 404 `section_not_available` para `tv`.
+- `POST /settings/tv/regenerate-token` devuelve `url` con el token en el fragmento (`/tv#token=…`, S8-D32), y `POST /settings/tv/revoke-token` lo anula (`has_token = false`, la TV responde 401; S8-D37). Ambas toman el mismo candado y suben `version`. El hash, nunca el token, queda en la auditoría.
+
 ## Dependencias
 
 - US-054 · Secciones de configuración validadas

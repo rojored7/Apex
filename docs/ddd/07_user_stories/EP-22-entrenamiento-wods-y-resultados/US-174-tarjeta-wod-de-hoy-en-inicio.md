@@ -73,6 +73,10 @@ Característica: WOD de hoy en Inicio
 
 - Ninguno.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- `DashboardOut.wod_today` cambia de `null` a `WodTodayOut | None` (`id`, `title`, `score_type`, `is_benchmark`): cambio de tipo, api y web en el mismo checkpoint (S8-D16). CA2 se corrige: la prueba de contrato admite cambio solo en `wod_today`. Las sesiones canceladas pasan al final y plegadas en Inicio (S8-D25).
+
 ## Dependencias
 
 - US-168 · WOD del día

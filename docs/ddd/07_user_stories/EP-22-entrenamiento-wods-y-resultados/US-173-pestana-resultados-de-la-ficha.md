@@ -73,6 +73,10 @@ Característica: Resultados en la ficha del socio
 
 - Supuesto: la ruta vive en el router de `results` aunque cuelgue de `/members/{id}`, para no hacer que Members dependa de Training.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- La ficha ordena por `wod_date` descendente (copiado del WOD al insertar, sin JOIN) y filtra por `benchmark` con `benchmark_id` copiado (S8-D10). Un socio dado de baja se ve; un resultado `pending` se muestra como «por validar» (en v0.5 todo nace `validated`). Ruta hija `/socios/:id/resultados`.
+
 ## Dependencias
 
 - US-169 · Registrar resultados en tablet

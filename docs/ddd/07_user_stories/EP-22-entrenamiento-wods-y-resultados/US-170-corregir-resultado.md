@@ -76,6 +76,11 @@ Característica: Corregir resultado
 
 - Ninguno.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- Corregir es `PUT /results` con `supersedes_id`: solo apunta al resultado vigente del mismo socio y WOD (409 `invalid_supersedes`); en quiosco, además, de la misma sesión y origen `kiosk` (S8-D31). El orden de candados es el de S8-D36 (socio, sesión, WOD, resultado, cadena).
+- Los triggers de `0037` solo dejan pasar `pending -> validated` con sus marcas y `is_current` de `true` a `false`; un `CONSTRAINT TRIGGER` diferido exige que todo resultado no vigente tenga sucesor (S8-D35). La ficha y «Todos los resultados» muestran «en tablet» según `source`.
+
 ## Dependencias
 
 - US-169 · Registrar resultados en tablet

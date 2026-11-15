@@ -96,8 +96,8 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 - Front pide `POST /notifications/:id/skip {reason}` y que `GET /notifications/:id/wa-link` marque el aviso como enviado. Precisar ambos en la descripción de v0.2.
 
 ### Resultados y portal (v0.5 y v1.0)
-- **Resuelto (gate del 21 de octubre de 2026):** `POST /results/{id}/validate` en v0.5; en el portal el socio edita teléfono, correo, contacto de emergencia, preferencias de canal y contraseña, nunca documento, nombres, sexo ni fecha de nacimiento (Q24).
-- `POST /results/:id/validate` (coach valida lo que envió el socio): v1.0 menciona el estado `pending` pero no el endpoint. Agregarlo.
+- **Movido a EP-25 (S8-D29 (4), 2026-11-14):** `POST /results/{id}/validate` ya no entra en v0.5: nada produce `pending` hasta el portal (EP-25) y no se podría ver ni probar antes. En v0.5 el coach registra y el resultado nace `validated` (N-42). **Resuelto (gate del 21 de octubre de 2026):** en el portal el socio edita teléfono, correo, contacto de emergencia, preferencias de canal y contraseña, nunca documento, nombres, sexo ni fecha de nacimiento (Q24).
+- `POST /results/:id/validate` (coach valida lo que envió el socio): se construye en v1.0 (EP-25), junto con el envío del socio; v0.5 solo deja la columna y la restricción (S8-D35).
 - Portal: `POST /me/password`, `PATCH /me` (definir qué campos puede editar el socio: teléfono, correo, contacto de emergencia; nunca documento), `PATCH /me/channels`, `GET /me/summary`. Precisar en v1.0.
 
 ## 3. Datos que el diseño muestra y el modelo no tiene
@@ -210,7 +210,7 @@ Cada fila es un `// DESIGN-GAP:` de `web/src/` (listado en `docs/scratch/sprint-
 |---|---|---|
 | Panel · `SideNav.tsx` | Cajón y modo plegado no dibujados | Sin sprint en el plan |
 | Panel · `SideNav.module.css` | Velo sin token; usa `--black` al 45 % como `SidePanel` | Sin sprint en el plan |
-| Panel · `nav.ts` | "Pantalla · Abrir pantalla TV" no entra; la TV se abre con token | Sprint 8 / EP-23 (US-175) |
+| Panel · `nav.ts` | "Pantalla · Abrir pantalla TV" no entra; la TV se abre con token | Sprint 8 / EP-23 (US-175); cerrada en S8: no hay botón, la TV se abre con el enlace de un solo uso del token (S8-D32) |
 | Portal · `PortalLayout.tsx` y `.module.css` | Contador de avisos; sin token de 600 px ni del alto del menú inferior | Sprint 10 / EP-25 |
 | Tablet · `GymLayout.module.css`, `ZoneShells.tsx` | Sin token de texto ampliado; la salida de la tablet va a `/` | Sin sprint en el plan |
 | Rutas · `routeTable.ts`, `routes.reference.ts`, `ChangePasswordPage` | `/cambiar-clave` sin pantalla en el diseño | Sin sprint; resuelto en código (S2-F2, S2-F4a) |
@@ -636,3 +636,19 @@ El Sprint 7 (v0.4) construye en el front Horario, Sesiones, CheckIn (en `GymLayo
 | 15.8 | `Socio_Ficha.html`, «racha» | El backend no calcula rachas: `// DESIGN-GAP:` en la pestaña Asistencia (S7-D15). | S7-F5 | resuelta en F5 (`features/classes/tabs/MemberAttendanceTab.tsx`, sin racha) |
 | 15.9 | `Inicio.html`, gráfico por día, promedio y socios distintos | `attendance_week` trae solo `count` y `flagged_count` (S7-D16): el gráfico, el promedio y los socios distintos quedan `// DESIGN-GAP:`. | S7-F6 | cerrada en F6 (tarjeta con `count` y las marcadas; gráfico, promedio y socios distintos siguen como DESIGN-GAP, dueño: backlog de EP-21) |
 | 15.10 | Filas 22, 23, 30 y 45 del §11.6 y 13.17 del §13 | Inicio: «Hoy en el box» y «Asistencia de la semana» (22, 23); «Check-in» en el encabezado (30); última asistencia y «12 clases · quedan 2» en la lista de socios (45); «Por avisar hoy» visible sin esperar a `wods` (13.17, S7-D21). Se cierran en F6, F4, F5 y F1 respectivamente. | S7-F1 a F6 | cerrada (F6 cerró 22, 23 y 30) |
+
+## 16. Sprint 8: brechas con el diseño
+
+El Sprint 8 (v0.5) construye Movimientos, Benchmarks, WOD_Lista, WOD_Form, WOD_Detalle, Resultados_Registro, la pestaña Resultados de la ficha, la tarjeta «WOD de hoy», la pestaña TV de Configuración y la pantalla TV. Cada brecha lleva `// DESIGN-GAP:` en el código del slice que la toca. Fuentes: `docs/ddd/blueprints/sprint-08-blueprint.md`, `sprint-08-plan.md` y `DECISIONES.md`, sección «Sprint 8».
+
+| # | Pantalla | Brecha | Decisión | Estado |
+|---|----------|--------|----------|--------|
+| 16.1 | `Movimientos.html` | Alias, «lb» y «Tipos de récord»: todo se guarda en kg (N-45); los récords son de EP-24. La pestaña Benchmarks no está dibujada. | S8-D5, S8-D6 | resuelta en el plan (F1) |
+| 16.2 | `WOD_Form.html` | «Guardar borrador», «Publicar antes del día», «Agregar bloque» y «Duplicar un WOD anterior»: todo WOD guardado está publicado; la TV solo muestra el de hoy. | S8-D7 | resuelta en el plan (F2) |
+| 16.3 | `WOD_Lista.html` | «2 sesiones faltan»: el contador no tiene contrato. | S8-D8 | resuelta en el plan (F2) |
+| 16.4 | `WOD_Detalle.html` | «vs. anterior», el récord automático (EP-24) y «Nota (opcional)» (un texto libre del coach sobre un socio puede ser dato de salud). | S8-D12, S8-D14 | resuelta en el plan (F3, F4) |
+| 16.5 | `TV.html` | El diseño rota tres grupos por sexo y nivel; por privacidad y Q22 la TV muestra un ranking único «Todos» con la etiqueta de nivel por fila. | S8-D19 | resuelta en el plan (F6) |
+| 16.6 | `TV.html` | Sin conexión: conserva lo último con «Sin conexión»; el diseño no lo dibuja. | S8-D20 | resuelta en el plan (F6) |
+| 16.7 | `Config.html`, pestaña TV | «Abrir» sin token guardado: el enlace solo se ve tras regenerar. | S8-D32 | resuelta en el plan (F5) |
+| 16.8 | Panel · `nav.ts` | «Pantalla · Abrir pantalla TV» no entra; la TV se abre con el enlace `/tv#token=…` (S8-D32). | S8-D32 | resuelta en el plan (F5) |
+| 16.9 | Resultados | `POST /results/{id}/validate` pasa a EP-25 (sección 4). | S8-D29 (4) | movida |

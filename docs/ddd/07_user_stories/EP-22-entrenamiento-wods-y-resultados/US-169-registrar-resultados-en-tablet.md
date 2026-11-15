@@ -86,6 +86,13 @@ Característica: Registro de resultados en la tablet
 - Supuesto: un resultado registrado por coach o admin nace `validated` y, además de `WodResultRecorded`, emite `WodResultValidated` en la misma transacción, para que RN-12 (récord derivado, EP-24) aplique también a los resultados registrados en la tablet y no solo a los validados desde el portal.
 - Supuesto: `PUT /results` registra solo socios con asistencia en la sesión cuando trae `session_id`; sin `session_id` (resultado fuera de clase) se permite a coach y admin.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- El resultado de tiempo con `capped` guarda `seconds = time_cap_s` fijado por el servidor y `reps` (rondas opcionales); fuera de `time`, `capped` da 422 (S8-D12). Las cargas van en gramos enteros, `load_g` de 0 a 1.000.000 (S8-D41).
+- Con `session_id` se exige asistencia viva y que el WOD efectivo de la sesión sea el del resultado (422 `field = "session_id"`); una sesión cancelada da 409 `session_cancelled` aunque tenga asistencias (S8-D36).
+- La tablet usa `/clases/:id/resultados` en el quiosco (S8-D15, `0038_kiosk_results_path`): `GET /class-sessions/{id}/attendance` y `PUT /results` entran en las 12 rutas del quiosco. En quiosco el resultado lleva `source = kiosk` y `session_id` obligatorio, y las correcciones solo apuntan a resultados de la misma sesión y origen (403 `kiosk_mode`; S8-D31).
+- La base protege la forma del resultado (CHECK de `0036` y triggers de `0037`, S8-D35). La prueba de uso de la tablet se cumple sin paso humano (S8-D40): el E2E de F4 registra 15 resultados en menos de 5 minutos y V8 corre una clase completa por la interfaz real.
+
 ## Dependencias
 
 - US-168 · WOD del día y asignación a sesiones (WOD efectivo de la sesión)

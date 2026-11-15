@@ -80,6 +80,11 @@ Característica: Pantalla de TV
 - Supuesto: con más filas de las que caben se rota por páginas de 15; el diseño y la épica no lo definen.
 - Supuesto: tras un 401 se reintenta cada 5 minutos para que la TV se recupere sola si se le cambia la URL.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- El enlace lleva el token en el fragmento: `TvPage` lee `location.hash` (y, por compatibilidad, `?token=`), lo guarda en `localStorage` (`apex.tv.token`), hace `history.replaceState(null, "", "/tv")` antes de la primera petición y llama `POST /auth/logout` al montar (S8-D20, S8-D32, L-4).
+- Un solo ranking «Todos» con la etiqueta de nivel por fila y 15 filas por página que rotan en cada refresco; los grupos por sexo, los deltas, «PR» y «Próxima clase» quedan como `// DESIGN-GAP:` (S8-D19). La respuesta de `regenerate-token` no se persiste en el panel (`gcTime: 0`).
+
 ## Dependencias
 
 - US-176 · Endpoint público de TV

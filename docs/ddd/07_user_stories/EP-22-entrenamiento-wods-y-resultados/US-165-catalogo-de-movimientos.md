@@ -82,6 +82,12 @@ Característica: Catálogo de movimientos
 
 - Supuesto: el coach puede crear y editar movimientos (`ROUTES.md` lo incluye en lo que el coach "ve y usa"; no hay regla que lo limite a solo lectura).
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- Unidad y etiquetas (S8-D5): `unit` es la unidad en que se mide el movimiento (`kg|reps|m|cal|s`); el front muestra Fuerza, Gimnástico, Mono-estructural y Otro, y habilita la carga solo con `unit = kg`.
+- `name_norm` (NFKC, recorte, espacios internos colapsados, minúsculas) tiene índice único; 409 `movement_exists` con `field = "name"` y `existing_id`. `GET /movements` trae `wod_count` por página.
+- Sin alias, sin «lb» (todo se guarda en kg, N-45) y sin «Tipos de récord» (EP-24): `// DESIGN-GAP:`. Migración `0032_wods_movements`.
+
 ## Dependencias
 
 - US-016 · Hook de auditoría (auditar el catálogo)

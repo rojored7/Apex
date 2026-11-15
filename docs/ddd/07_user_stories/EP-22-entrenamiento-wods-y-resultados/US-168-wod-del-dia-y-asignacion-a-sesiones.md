@@ -77,6 +77,11 @@ Característica: WOD del día y asignación a sesiones
 
 - Supuesto: la asignación se expone como `PATCH /class-sessions/{id}` con `wod_id`; el contrato de EP-21 no la nombra explícitamente.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- `SessionOut` gana `wod_id` (asignado) y `effective_wod_id` (el asignado o, si es nulo, el WOD del día de la sesión), calculado con una llamada por página (S8-D9).
+- El filtro `GET /class-sessions?wod_id=X` usa la semántica efectiva: `wod_id = X OR (wod_id IS NULL AND session_date = fecha de X)`. Asignar a una sesión `cancelled` da 409 `session_cancelled`, bajo el mismo `FOR UPDATE` de la cancelación. `class_sessions.wod_id` sigue sin FK (S8-D3).
+
 ## Dependencias
 
 - US-166 · Crear y editar WOD

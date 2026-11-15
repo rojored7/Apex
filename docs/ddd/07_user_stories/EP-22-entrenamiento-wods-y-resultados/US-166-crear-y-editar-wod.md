@@ -85,6 +85,13 @@ Característica: Crear y editar WOD
 - Supuesto: "un WOD principal por fecha" se implementa como unicidad de `wods.wods.date`. Con esa unicidad, el WOD distinto que se asigna a una sesión concreta (US-168) tiene que ser un WOD existente de otra fecha (por ejemplo, un benchmark). Si el box necesita dos WODs nuevos el mismo día, hay que relajar la unicidad con un campo `is_main` (pregunta abierta).
 - Supuesto: no se permite cambiar `score_type` de un WOD con resultados, porque invalidaría el `Score` ya validado.
 
+## Correcciones del Sprint 8 (T-DOC, 2026-11-15)
+
+- El WOD lleva `benchmark_id` (FK dentro de `wods`); si viene, `score_type` debe ser el del benchmark (422 `score_type_mismatch`) y `is_benchmark` se deriva (S8-D7).
+- `score_type = none` («Sin puntaje») existe y no admite resultados (422 `wod_not_scored`). `time_cap_s` de 1 a 14.400, solo con `time` o `rounds_reps`.
+- `wod_movements.movement_name` copia el nombre al escribir: renombrar el catálogo no cambia un WOD pasado. Las cargas son enteros en gramos, `load_rx_m_g` y `load_rx_f_g` de 0 a 1.000.000 (S8-D41); el front las pide y muestra en kg con dos decimales.
+- Con resultados registrados no cambian `score_type` (422 `score_type_locked`) ni `date`, `time_cap_s` y `benchmark_id` (422 `locked_by_results`). Benchmarks: `GET/POST /benchmarks` y `PATCH /benchmarks/{id}`, con `PageParams` y `staff-read`; `seed-benchmarks` idempotente con `ON CONFLICT (name_norm) DO NOTHING` (S8-D6, S8-D37 L-6). Migraciones `0033`, `0034` y `0035`.
+
 ## Dependencias
 
 - US-165 · Catálogo de movimientos (selector)

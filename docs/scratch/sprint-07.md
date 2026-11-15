@@ -445,3 +445,24 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (V7b)
 - classes, dashboard, members, kiosk de auth y architecture: 2.236 passed tras el ajuste de `test_kiosk_routes`. `ruff check .`, `ruff format --check .` y `mypy src` de todo el api en verde; `types.contract.test.ts` 6 passed.
+
+## V2 y V4 · Datos de `apex-db-1` y demos 1 y 2 en desarrollo (2026-11-15, HEAD a157e9e)
+
+### V2
+- Volcado previo: `docs/scratch/sprint-07-antes-V2.dump` (2,2 MB, ignorado por git; se borra en V9).
+- Consultas previas de `0025` sobre `apex-db-1`: `fk_attachments_key_id` 0, `sign_iff_public_key` 0, `photo_not_sensitive` 0.
+- Conteo P3 (S7-D30): membresías con `classes_remaining = 0`, `end_date > hoy` y estado distinto de `cancelled`: 0.
+- `alembic current`: `0031_refresh_kiosk_path (head)` (el plan decía 0029; el sprint llegó a 0031).
+- `\d`: existen `classes.class_slots`, `classes.class_sessions`, `classes.attendance` y `memberships.memberships` (con `original_end_date` y sus dos CHECK).
+- `tgenabled` = `A` en las 13 guardas de `classes.*` y `memberships.*` (3 en sesiones, 2 en franjas, 3 en asistencia, 3 en membresías, 2 en pausas).
+- `dbsetup` único (`--profile prod-init run --rm --no-deps dbsetup`): exit 0, «roles aplicados; 25 tablas clasificadas».
+
+### V4
+- `GET /settings/classes`: `default_capacity = 15`. `PATCH /settings/hours` (lunes a viernes 06:00-20:00): 200.
+- Franja «Lunes 6:00 CrossFit» (lunes, 06:00, 60 min, coach vivo con contraseña, capacidad 15 por defecto): 201. Había una franja previa activa «Prueba S7 CrossFit» (lunes a viernes 06:00) que daba 409 `slot_conflict`; se le quitó el lunes (PATCH 200) para poder crear la nueva. No hubo que crear coach: hay 2 coaches activos con contraseña en desarrollo.
+- Segunda franja de prueba «Prueba S7 sabado cancelar futuras» (sábado 07:00): 201.
+- Crear una franja ya genera sus sesiones de 14 días (2 por franja); `class_sessions WHERE slot_id IS NOT NULL` = 14 antes de las corridas.
+- `--run-once generate_sessions` dos veces el mismo día: `creadas = 0` en ambas, conteo 14 → 14 → 14; `--status generate_sessions`: `result ok`, `creadas 0`, `franjas 3`.
+- Cancelar una sesión (`POST /class-sessions/{id}/cancel`): `status = cancelled`. `POST /class-slots/{id}/cancel-future-sessions` de la franja del sábado: 200, `cancelled_count = 2`. Estado final de las dos franjas nuevas: 3 `cancelled`, 1 `scheduled`; otra corrida del job: `creadas = 0` (no recrea las canceladas); total con franja 14.
+- `GET /class-sessions?week=2026-W47&limit=100`: 200, total 7 (5 `scheduled`, 2 `cancelled`). `week=bad`: 422 `validation_error` en el campo `week`.
+- Hallazgos de uso: el login por curl exige la cabecera `Origin: http://localhost:8180` (sin ella, 403); el coach válido necesita `password_hash` (3 coaches vivos, 1 sin activar da `coach_invalid`).

@@ -39,6 +39,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attendance/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Attendance Summary */
+        get: operations["attendance_summary_api_v1_attendance_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attendance/{attendance_id}": {
         parameters: {
             query?: never;
@@ -571,6 +588,23 @@ export interface paths {
          *     `Content-Length`, cubeta y recién entonces se lee el cuerpo.
          */
         post: operations["attach_to_member_api_v1_members__member_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{member_id}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Member Attendance */
+        get: operations["member_attendance_api_v1_members__member_id__attendance_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1568,6 +1602,14 @@ export interface components {
              * Format: date-time
              */
             session_starts_at: string;
+        };
+        /**
+         * AttendanceSummary
+         * @description `GET /attendance/summary`: una entrada por semana del rango, también las vacías.
+         */
+        AttendanceSummary: {
+            /** Weeks */
+            weeks: components["schemas"]["WeekBucket"][];
         };
         /**
          * AttendeeOut
@@ -3867,6 +3909,30 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * SlotBucket
+         * @description Una franja dentro de una semana del resumen. Las sesiones extra (`slot_id` nulo) se juntan
+         *     en una sola con `label = "Extra"`. `occupancy_pct` es entero (asistencias / cupo, redondeo
+         *     al más cercano) y vale 0 con cupo 0.
+         */
+        SlotBucket: {
+            /** Attendance */
+            attendance: number;
+            /** Capacity Sum */
+            capacity_sum: number;
+            /** Flagged */
+            flagged: number;
+            /** Label */
+            label: string;
+            /** Occupancy Pct */
+            occupancy_pct: number;
+            /** Sessions */
+            sessions: number;
+            /** Slot Id */
+            slot_id: string | null;
+            /** Start Time */
+            start_time: string | null;
+        };
         /** SlotCreate */
         SlotCreate: {
             /** Capacity */
@@ -4155,6 +4221,25 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * WeekBucket
+         * @description Una semana ISO de Bogotá (lunes a domingo): total de asistencias, marcadas y franjas.
+         */
+        WeekBucket: {
+            /** Flagged */
+            flagged: number;
+            /** Slots */
+            slots: components["schemas"]["SlotBucket"][];
+            /** Total */
+            total: number;
+            /** Week */
+            week: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -4384,6 +4469,83 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    attendance_summary_api_v1_attendance_summary_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceSummary"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7212,6 +7374,96 @@ export interface operations {
                 };
             };
             /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    member_attendance_api_v1_members__member_id__attendance_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AttendanceRowOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;

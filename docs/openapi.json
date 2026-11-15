@@ -225,6 +225,23 @@
         "title": "AttendanceRowOut",
         "type": "object"
       },
+      "AttendanceSummary": {
+        "description": "`GET /attendance/summary`: una entrada por semana del rango, también las vacías.",
+        "properties": {
+          "weeks": {
+            "items": {
+              "$ref": "#/components/schemas/WeekBucket"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weeks"
+        ],
+        "title": "AttendanceSummary",
+        "type": "object"
+      },
       "AttendeeOut": {
         "description": "Un asistente de la sesión (llega con C1; hoy la lista va vacía).",
         "properties": {
@@ -6213,6 +6230,70 @@
         "title": "SkipIn",
         "type": "object"
       },
+      "SlotBucket": {
+        "description": "Una franja dentro de una semana del resumen. Las sesiones extra (`slot_id` nulo) se juntan\nen una sola con `label = \"Extra\"`. `occupancy_pct` es entero (asistencias / cupo, redondeo\nal más cercano) y vale 0 con cupo 0.",
+        "properties": {
+          "attendance": {
+            "title": "Attendance",
+            "type": "integer"
+          },
+          "capacity_sum": {
+            "title": "Capacity Sum",
+            "type": "integer"
+          },
+          "flagged": {
+            "title": "Flagged",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "occupancy_pct": {
+            "title": "Occupancy Pct",
+            "type": "integer"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Id"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          }
+        },
+        "required": [
+          "slot_id",
+          "label",
+          "start_time",
+          "sessions",
+          "attendance",
+          "flagged",
+          "capacity_sum",
+          "occupancy_pct"
+        ],
+        "title": "SlotBucket",
+        "type": "object"
+      },
       "SlotCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7038,6 +7119,44 @@
         ],
         "title": "WaLinkOut",
         "type": "object"
+      },
+      "WeekBucket": {
+        "description": "Una semana ISO de Bogotá (lunes a domingo): total de asistencias, marcadas y franjas.",
+        "properties": {
+          "flagged": {
+            "title": "Flagged",
+            "type": "integer"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotBucket"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "week": {
+            "title": "Week",
+            "type": "string"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week",
+          "week_start",
+          "total",
+          "flagged",
+          "slots"
+        ],
+        "title": "WeekBucket",
+        "type": "object"
       }
     }
   },
@@ -7461,6 +7580,109 @@
           }
         },
         "summary": "Check In",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/attendance/summary": {
+      "get": {
+        "operationId": "attendance_summary_api_v1_attendance_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Attendance Summary",
         "tags": [
           "classes"
         ]
@@ -11737,6 +11959,153 @@
         "summary": "Attach To Member",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/attendance": {
+      "get": {
+        "operationId": "member_attendance_api_v1_members__member_id__attendance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AttendanceRowOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Member Attendance",
+        "tags": [
+          "classes"
         ]
       }
     },

@@ -152,6 +152,9 @@ CON_LIMITE = {
     ("post", "/api/v1/attendance"),
     ("delete", "/api/v1/attendance/{attendance_id}"),
     ("get", "/api/v1/attendance"),
+    # S7-R1 (US-162): el resumen y la asistencia de la ficha consumen `staff-read`.
+    ("get", "/api/v1/attendance/summary"),
+    ("get", "/api/v1/members/{member_id}/attendance"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

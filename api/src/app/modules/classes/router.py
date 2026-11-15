@@ -23,6 +23,11 @@ Asistencia (S7-C1, US-159), admin y coach:
   lógico auditado como `update`; el coach solo de hoy o ayer (403 `attendance_locked`). S7-C3.
 - `GET /attendance`: `Page[AttendanceRowOut]` (`member_id`, `session_id`, `flagged`, `from`, `to`
   sobre `checked_in_at`); `staff-read`. Códigos 200, 401, 403, 422 y 429.
+- `GET /attendance/summary?from&to`: `AttendanceSummary` (fechas de Bogotá, hasta 26 semanas; 422
+  `field = "from"` si `from > to` o el rango pasa de 26 semanas); agrega en SQL; `staff-read`.
+  Declarada antes de `/attendance/{id}`. S7-R1, US-162.
+- `GET /members/{member_id}/attendance`: `Page[AttendanceRowOut]` de un socio (uno dado de baja
+  se ve; 404 si no existe); `staff-read`. S7-R1.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
 """
 
@@ -47,6 +52,7 @@ from app.modules.classes.schemas import (
     AttendanceListQuery,
     AttendanceRemove,
     AttendanceRowOut,
+    AttendanceSummary,
     CancelFutureOut,
     CheckinOut,
     SessionCancel,
@@ -212,6 +218,37 @@ async def list_attendance(
         q=q,
     )
     return await service.list_attendance(session, filters, page)
+
+
+@router.get(
+    "/attendance/summary", response_model=AttendanceSummary, responses=responses_for(422, 429)
+)
+async def attendance_summary(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    date_from: Annotated[date, Query(alias="from")],
+    date_to: Annotated[date, Query(alias="to")],
+) -> AttendanceSummary:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.attendance_summary(session, date_from, date_to)
+
+
+@router.get(
+    "/members/{member_id}/attendance",
+    response_model=Page[AttendanceRowOut],
+    responses=responses_for(404, 429),
+)
+async def member_attendance(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+) -> Page[AttendanceRowOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.member_attendance(session, member_id, page, q=q)
 
 
 @router.delete(

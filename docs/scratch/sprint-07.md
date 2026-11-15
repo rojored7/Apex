@@ -323,3 +323,18 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C2b)
 - P-MIG: `$DC start api` migró `0029` a `0030` (`alembic current` = `0030_memberships_end_guard (head)`, api `healthy`); `downgrade -1` deja `0029_memberships_orig_end_date` y quita el CHECK (0 filas en `pg_constraint`); `upgrade head` vuelve a `0030 (head)`. `pg_get_constraintdef`: `CHECK (((original_end_date IS NULL) OR (original_end_date > end_date)))`. Triggers de `memberships.memberships`: los tres en `tgenabled = A`; `guard_identity()` contiene `original_end_date`. Sin cambio de grants (P-ROL no aplica).
+
+## S7-R1 · Reportes de asistencia (US-162, S7-D15, M-5, L-1)
+
+### Rojo
+- Stubs: `classes/reports.py` (`check_summary_range`, `week_starts`, `weekly_summary`, `summary_rows`, `attendance_summary`, `member_attendance` con `NotImplementedError`), schemas `SlotBucket`, `WeekBucket`, `AttendanceSummary` y las dos rutas. Pruebas nuevas: `test_weekly_summary_pure.py`, `test_attendance_list.py` (la lista ya existía desde C1), `test_attendance_summary.py`, `test_member_attendance.py` y `test_perf_summary.py` (`perf`): 45 failed (todas `NotImplementedError`) y 10 passed (lista existente, 401/403) de 55.
+
+### Verde
+- `reports.py`: el resumen se agrega en UNA consulta SQL (subconsulta de asistencias vivas por sesión, `date_trunc('week')` sobre `session_date` de Bogotá, `GROUP BY` semana y franja); `weekly_summary` pura solo arma grupos y rellena semanas vacías; `occupancy_pct` entero con cupo 0 = 0; extras bajo «Extra». Rango: `from > to`, año fuera de 2020 a 2100 o más de 26 semanas (182 días) dan 422 `field = "from"`. `GET /members/{id}/attendance` por `members.service.get_ref` (baja visible, 404 si no existe), con `q` por el contrato de listas (lo exigió `test_list_routes_use_page_params`). Ambas rutas consumen `staff-read`; `test_error_codes_per_route` las suma.
+- [ASUNCIÓN] El resumen cuenta solo sesiones `scheduled` que ya empezaron (`starts_at <= ahora`): las futuras o canceladas diluirían la ocupación.
+- Desvío: `list_attendance` sigue en `attendance.py` (C1); `reports.member_attendance` lo reutiliza. Un `summary_rows` de más de 50 líneas rompió `test_ninguna_funcion_supera_50_lineas`: se extrajo `_live_by_session`.
+
+### Evidencia (R1)
+- Pruebas nuevas: 55 passed (+1 perf: 26 semanas con 1.170 asistencias, bajo 500 ms). Sello `slice-gate.sh classes` (4 archivos + `tests/architecture`): 886 passed, exit 0 (primer intento falló por `q` ausente y por la lista de `staff-read`; segundo, 2 pasos corregidos). Nota: el gate necesita `TEST_DATABASE_URL` exportada (sin ella 118 errores de fixture).
+- P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- Prueba viva (admin de desarrollo, token en `$TMPDIR` con `umask 077`, borrado): `GET /attendance/summary` 200 (semana 2026-W46: total 1, marcadas 1), 422 con `from > to` y con más de 26 semanas, 401 sin token; `GET /members/{id}/attendance` del socio «Prueba S7 Tiquetera» 200 con `total` 2, 404 con un id inexistente.

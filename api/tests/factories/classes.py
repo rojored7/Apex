@@ -1,6 +1,7 @@
 """Fábrica de `classes.class_slots` (S7-A2, US-155).
 
 - `make_session(session, **cambios)`: inserta una sesión extra (ver su docstring).
+- `make_attendance(session, clase, member_id, **cambios)`: inserta una asistencia viva (reportes).
 - `make_slot(session, **cambios)`: inserta una franja activa (lunes y miércoles 06:00, 60 min,
   cupo 15, sin coach) con los `cambios` que se pidan, bajo `actor_scope(SYSTEM_USER_ID)`; hace
   `flush` y confirma el savepoint. No pasa por el service: no comprueba choques ni coach.
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import BOGOTA
 from app.core.context import SYSTEM_USER_ID, actor_scope
-from app.modules.classes.models import ClassSession, ClassSlot
+from app.modules.classes.models import Attendance, ClassSession, ClassSlot
 from app.modules.classes.schemas import CheckinMembership
 
 
@@ -99,3 +100,35 @@ class FakeMembershipPort:
 
     async def lock(self, session: AsyncSession, membership_id: UUID) -> None:
         self.locked.append(membership_id)
+
+
+async def make_attendance(
+    session: AsyncSession,
+    class_session: ClassSession,
+    member_id: UUID,
+    **cambios: Any,
+) -> Attendance:
+    """Inserta una asistencia viva sin pasar por `check_in` (S7-R1): estado `active`, sin banderas,
+    `checked_in_at` = inicio de la sesión. Con `removed_at` se completa `removed_by` (el par). Sirve
+    para sembrar reportes; no emite eventos ni toca membresías."""
+    valores: dict[str, Any] = {
+        "session_id": class_session.id,
+        "member_id": member_id,
+        "membership_id": uuid4(),
+        "membership_status_at_checkin": "active",
+        "flags": [],
+        "checked_in_at": class_session.starts_at,
+        "checked_in_by": SYSTEM_USER_ID,
+        "created_by": SYSTEM_USER_ID,
+    }
+    valores.update(cambios)
+    if valores["membership_status_at_checkin"] == "none":
+        valores["membership_id"] = None
+    if valores.get("removed_at") is not None:
+        valores.setdefault("removed_by", SYSTEM_USER_ID)
+    fila = Attendance(**valores)
+    with actor_scope(SYSTEM_USER_ID):
+        session.add(fila)
+        await session.flush()
+        await session.commit()
+    return fila

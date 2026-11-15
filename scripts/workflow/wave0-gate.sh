@@ -17,7 +17,7 @@ usage() {
 Uso: wave0-gate.sh <slice> [archivos de prueba de Python...]
 
   1. bash -n de cada .sh bajo infra/, scripts/ci/, scripts/workflow/ y scripts/dev/
-  2. scripts/ci: test_check_key_files, test_images_pinned, test_nginx_conf,
+  2. scripts/ci: test_check_key_files, test_images_pinned, test_nightly_workflow (S8), test_nginx_conf,
      test_compose_config, test_infra_scripts, test_openbao_infra, infra/caddy/tests/test_caddyfile.sh
      (S6-W0-4; caddy validate en un contenedor desechable) y test_api_image.sh apex-api:local
   3. docker compose config --quiet (con .env y .env.ops, o los dos ejemplos): compose.yml, con
@@ -48,7 +48,7 @@ while IFS= read -r f; do
   bash -n "$f" || fallo "bash -n $f"
 done < <(find infra scripts/ci scripts/workflow scripts/dev -name '*.sh' -not -path '*/tmp/*' -not -path '*/node_modules/*' 2> /dev/null | sort)
 
-for prueba in test_check_key_files test_images_pinned test_nginx_conf test_compose_config test_infra_scripts test_openbao_infra; do
+for prueba in test_check_key_files test_images_pinned test_nightly_workflow test_nginx_conf test_compose_config test_infra_scripts test_openbao_infra; do
   if [ -f "scripts/ci/$prueba.sh" ]; then
     echo "wave0-gate: [$SLICE] $prueba"
     bash "scripts/ci/$prueba.sh" || fallo "$prueba"

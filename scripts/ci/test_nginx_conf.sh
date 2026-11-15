@@ -20,6 +20,7 @@
 # server en 64k y CSP con blob: (bloque «Rojo S6-W0-2» al final).
 # Rojo S6-W0-4 (S6-D48, D64, D82, O5, E11): real_ip desde Caddy, map del protocolo, real-ip.conf.in y real-ip.conf,
 # sin HSTS en Nginx y funcional con la IP de Caddy y con otra IP (bloque «Rojo S6-W0-4» al final).
+# Rojo S8-W0-2 (S8-D18, S8-D32): /tv sin location propio, comentario en location /, log sin consulta y funcional de /tv (bloque «Rojo S8-W0-2» al final).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -421,6 +422,35 @@ esperar "$sal_b" T4 "XFF=127.0.0.1 PROTO=http" "desde otra IP sin X-Forwarded-Pr
 n429_a="$(grep -c '^RL9 429$' <<< "$sal_a" || true)"
 if [ "$n429_a" -ge 1 ] && grep -q '^RL10 \(200\|502\)$' <<< "$sal_a"; then ok "funcional: el limitador cuenta al cliente real (203.0.113.9 recibe $n429_a 429 y 203.0.113.10 sigue pasando)"; else falla "funcional: el limitador no separa a los clientes reales detrás de Caddy (429 del primero: $n429_a; segundo: '$(grep '^RL10' <<< "$sal_a" || true)')"; fi
 if grep -q '^RL10 429$' <<< "$sal_b"; then ok "funcional: sin Caddy de confianza el X-Forwarded-For no separa clientes (el par es el mismo)"; else falla "funcional: desde otra IP el segundo cliente no debía librarse del limitador (X-Forwarded-For ignorado)"; fi
+
+
+# --- Rojo S8-W0-2 (S8-D18, S8-D32, E4, hallazgo 12): /tv sin location propio y sin consulta en el log ----
+# El enlace de la TV lleva el token en el fragmento (`/tv#token=...`), que nunca sale en una petición; por
+# compatibilidad `/tv?token=...` también funciona. `/tv` cae por `location /` y `try_files` en
+# `location = /index.html`, que da no-store, no-referrer y la CSP con nonce. Un `location = /tv` con
+# `rewrite ... last` no aplicaría sus `add_header` (rigen los de `= /index.html`): no debe existir.
+if grep -Eq '^\s*location\s+(=\s+|~\*?\s+|\^~\s+)?"?\^?/tv' "$CONF"; then falla "no debe existir un location de /tv (hallazgo 12: sus add_header no aplicarían tras el rewrite)"; else ok "sin location propio de /tv"; fi
+antes_raiz="$(awk '/^\s*location \/ \{/ { exit } { print }' "$CONF" | tail -6)"
+if grep -Eq '^\s*#.*/tv' <<< "$antes_raiz"; then ok "comentario junto a location / que dice que /tv pasa por ahí"; else falla "falta el comentario junto a location / que diga que /tv pasa por ahí (S8-D32)"; fi
+fmt_apex="$(awk '/^log_format apex/ { d=1 } d { print } d && /;\s*$/ { exit }' "$CONF")"
+if grep -Fq '"uri":"$uri"' <<< "$fmt_apex" && ! grep -Eq '\$request\b|\$request_uri|\$args|\$query_string|\$arg_' <<< "$fmt_apex"; then ok "log_format apex usa \$uri y ni \$request, \$request_uri, \$args ni \$query_string"; else falla "log_format apex debe usar \$uri y no \$request, \$request_uri, \$args ni \$query_string"; fi
+indice_s8="$(bloque "= /index.html")"
+if grep -Fq 'Referrer-Policy "no-referrer"' <<< "$indice_s8" && grep -Fq 'Cache-Control "no-store"' <<< "$indice_s8" && grep -Fq "'nonce-\$request_id'" <<< "$indice_s8"; then ok "= /index.html: no-referrer, no-store y CSP con nonce (lo que recibe /tv)"; else falla "= /index.html sin no-referrer, no-store o CSP con nonce"; fi
+
+TOKEN_TV="TVTOKEN${RANDOM}$$"
+FUNC_TV="$PREPARA && mkdir -p /usr/share/nginx/html && printf '<!doctype html><script nonce=\"__CSP_NONCE__\"></script>' > /usr/share/nginx/html/index.html && nginx && sleep 0.3"
+FUNC_TV+=" && curl -s -D - -o /tmp/tvbody 'http://127.0.0.1/tv?token=$TOKEN_TV' | sed 's/^/TVH /' && sed 's/^/TVB /' /tmp/tvbody && echo"
+FUNC_TV+=" && curl -s -o /dev/null -w 'TVCODE %{http_code}\n' http://127.0.0.1/tv"
+FUNC_TV+=" && sleep 0.3 && nginx -s quit; sleep 0.3"
+sal_tv="$(tar -C "$DIR" -c default.conf snippets | docker run --rm -i --add-host api:127.0.0.1 "$NGINX_IMAGE" sh -c "$FUNC_TV" 2>&1 | tr -d '\r' || true)"
+if grep -q '^TVH HTTP/1.1 200' <<< "$sal_tv"; then ok "funcional: /tv?token=... responde 200 con el documento del SPA"; else falla "funcional: /tv?token=... no respondió 200"; fi
+if grep -qi '^TVH Cache-Control: no-store$' <<< "$sal_tv"; then ok "funcional: /tv responde Cache-Control no-store"; else falla "funcional: /tv sin Cache-Control no-store"; fi
+if grep -qi '^TVH Referrer-Policy: no-referrer$' <<< "$sal_tv"; then ok "funcional: /tv responde Referrer-Policy no-referrer"; else falla "funcional: /tv sin Referrer-Policy no-referrer"; fi
+nonce_tv="$(sed -n "s/^TVH Content-Security-Policy:.*'nonce-\([^']*\)'.*/\1/Ip" <<< "$sal_tv" | head -1)"
+if [ -n "$nonce_tv" ] && grep -Fq "TVB <!doctype html><script nonce=\"$nonce_tv\">" <<< "$sal_tv"; then ok "funcional: /tv lleva la CSP con nonce y el mismo nonce en el documento"; else falla "funcional: /tv sin CSP con nonce coherente (nonce '${nonce_tv:-<ausente>}')"; fi
+if grep -q '"uri":"/index.html"' <<< "$sal_tv"; then ok "funcional: /tv queda en el log como /index.html"; else falla "funcional: no apareció la línea de /tv en el access log"; fi
+if grep -Eq "token=|$TOKEN_TV" <<< "$(grep '^{' <<< "$sal_tv" || true)"; then falla "funcional: el token de /tv aparece en el log"; else ok "funcional: el token de /tv no aparece en el log (0 coincidencias de token=)"; fi
+if grep -q '^TVCODE 200$' <<< "$sal_tv"; then ok "funcional: /tv sin consulta responde 200"; else falla "funcional: /tv sin consulta no respondió 200"; fi
 
 echo "test_nginx_conf: $fallas fallas"
 [ "$fallas" -eq 0 ]

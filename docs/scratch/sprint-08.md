@@ -25,3 +25,24 @@ Rama `feat/sprint-08-wods-resultados-tv`, HEAD de partida `4859031` (sobre `8b2d
 ### Evidencia
 
 - Gate `bash scripts/workflow/slice-gate.sh architecture`: exit 0, 847 passed en 110,9 s (igual que la línea base).
+
+## W0-2 · Nginx, redacción del log y job nocturno (2026-11-15)
+
+### Rojo
+
+- `tests/core/test_logging_redact.py` (en el archivo existente): `test_redacta_x_device_token_en_cualquier_mayuscula` y `test_redact_text_recorta_x_device_token_en_texto_libre` (4 casos): 5 failed (la clave no estaba en `SENSITIVE_KEYS` y el texto libre dejaba el valor).
+- `scripts/ci/test_nightly_workflow.sh` (nuevo): exit 1, `nightly.yml` no existía.
+- `scripts/ci/test_nginx_conf.sh` (bloque «Rojo S8-W0-2»): 1 falla, falta el comentario junto a `location /` que diga que `/tv` pasa por ahí. Las comprobaciones funcionales de `/tv` (200, `no-store`, `no-referrer`, CSP con nonce, log sin consulta) ya pasaban con la configuración vigente (hallazgo 12: no hace falta `location` nuevo) y quedan como guarda.
+
+### Verde
+
+- `infra/nginx/default.conf`: solo el comentario junto a `location /` (sin `location` nuevo).
+- `api/src/app/core/logging.py`: `x-device-token` en `SENSITIVE_KEYS` y en la expresión de cabecera de texto libre (`x-(vault|device)-token`).
+- `.github/workflows/nightly.yml` (nuevo): `schedule` (07:17 UTC) y `workflow_dispatch`, permisos de lectura, acciones por SHA, job `tv-soak` con un paso que pasa (la spec real llega en F6). `ci.yml` (job `scripts`), `run-gates.sh` y `wave0-gate.sh` corren `test_nightly_workflow.sh`.
+- Resultado: `test_logging_redact.py` 49 passed; `test_nginx_conf.sh` 0 fallas; `test_nightly_workflow.sh` 0 fallas; `test_images_pinned.sh` 0 fallas.
+
+### Evidencia
+
+- P-REBUILD 3: `docker buildx build --load --network host --allow network.host -t apex-web:local -f web/Dockerfile .` y `$DC up -d --no-build --force-recreate web` (con `apex-migracion.flag` tomada y soltada); `nginx -t` ok.
+- `curl -s -D - -o /dev/null 'http://127.0.0.1:8180/tv?token=prueba-sin-valor'`: 200, `Cache-Control: no-store`, `Referrer-Policy: no-referrer` y CSP con `nonce-` por petición. `$DC logs web --tail 20 | grep -c 'token='`: 0.
+- Gate: `wave0-gate.sh S8-W0-2` quedó colgado ~20 min en `test_infra_scripts.sh` (`test_restore_guard.sh`: fallos de `fork` de Cygwin en Windows, `Win32 error 299`), ajeno al slice; se cortó y no se cuenta. Corridos aparte, en verde: `test_nginx_conf.sh` 0 fallas, `test_nightly_workflow.sh` 0 fallas, `test_images_pinned.sh` 0 fallas, `bash -n` de `run-gates.sh` y `wave0-gate.sh`. Sello con `slice-gate.sh core/logging tests/core/test_logging_redact.py` (ruff, mypy y pruebas del módulo).

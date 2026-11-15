@@ -583,6 +583,8 @@ jobs:
         run: bash scripts/workflow/tests/run.sh
       - name: imágenes base por digest (S3-D62)
         run: bash scripts/ci/test_images_pinned.sh
+      - name: flujo nocturno de la TV (S8-W0-2)
+        run: bash scripts/ci/test_nightly_workflow.sh
       - name: scripts de respaldo (S4B-W0-1)
         run: bash scripts/ci/test_infra_scripts.sh
       - name: infraestructura de OpenBao (políticas, bootstrap y configuración, S5-W0-2)

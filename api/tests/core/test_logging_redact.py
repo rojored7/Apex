@@ -474,3 +474,30 @@ def test_sensitive_keys_suma_la_clave_secreta_de_s3() -> None:
     assert "s3_secret_access_key" in app_logging.SENSITIVE_KEYS
     for clave in ("s3_secret_access_key", "S3_SECRET_ACCESS_KEY"):
         assert redact({clave: "secreto-s3-no-real"}) == {clave: "[redacted]"}
+
+
+# S8-W0-2 (S8-D18, E2): el token de dispositivo de la TV viaja en `X-Device-Token` ---
+
+
+def test_redacta_x_device_token_en_cualquier_mayuscula() -> None:
+    """Rojo S8-W0-2: `x-device-token` se oculta por clave, sin distinguir mayúsculas."""
+    assert "x-device-token" in app_logging.SENSITIVE_KEYS
+    for clave in ("x-device-token", "X-Device-Token", "X-DEVICE-TOKEN"):
+        assert redact({clave: "token-de-tv-no-real"}) == {clave: "[redacted]"}
+    anidado = {"headers": {"X-Device-Token": "token-de-tv-no-real", "accept": "json"}}
+    assert redact(anidado) == {"headers": {"X-Device-Token": "[redacted]", "accept": "json"}}
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "cabecera X-Device-Token: tvtokensecreto123456",
+        "headers={'X-Device-Token': 'tvtokensecreto123456'}",
+        "x-device-token=tvtokensecreto123456",
+        'X-DEVICE-TOKEN":"tvtokensecreto123456"',
+    ],
+)
+def test_redact_text_recorta_x_device_token_en_texto_libre(texto: str) -> None:
+    """Rojo S8-W0-2: un registro de texto libre con la cabecera tampoco deja el valor."""
+    salida = redact_text(texto)
+    assert "tvtokensecreto" not in salida, salida

@@ -70,6 +70,8 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "bot_token",
         # S6-W0-5 (S6-D21): clave secreta del almacén S3.
         "s3_secret_access_key",
+        # S8-W0-2 (S8-D18, E2): token de dispositivo de la TV (cabecera `X-Device-Token`).
+        "x-device-token",
     }
 )
 REDACTED = "[redacted]"
@@ -80,8 +82,11 @@ _DSN = re.compile(r"://[^@/\s]+@")  # credenciales dentro de una URL: usuario:cl
 _TELEGRAM_BOT = re.compile(r"\bbot\d+:[A-Za-z0-9_-]{20,}")
 # El mismo token sin el prefijo `bot` (un cuerpo de error citado aparte): `<id>:<35 caracteres>`.
 _TELEGRAM_TOKEN_SUELTO = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{30,}")
-# Cabecera de OpenBao en texto libre (repr de un dict, JSON, `clave=valor`), S5-D58.
-_VAULT_HEADER = re.compile(r"(x-vault-token[\"']?\s*[:=]\s*[\"']?)[^\s\"',}]+", re.IGNORECASE)
+# Cabecera de OpenBao y token de la TV en texto libre (repr de un dict, JSON, `clave=valor`),
+# S5-D58, S8-D18.
+_VAULT_HEADER = re.compile(
+    r"(x-(?:vault|device)-token[\"']?\s*[:=]\s*[\"']?)[^\s\"',}]+", re.IGNORECASE
+)
 # Enlace de un solo uso: el segmento que sigue a `/restablecer/` es el token (blueprint 7.2).
 _RESET_LINK = re.compile(r"(/restablecer/|%2Frestablecer%2F)[^\s/?#\"'&<>%]+", re.IGNORECASE)
 # Valor de la cookie del refresh, hasta el primer separador de atributos.

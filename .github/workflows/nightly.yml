@@ -1,0 +1,40 @@
+# Pruebas nocturnas de APEX (S8-W0-2, S8-D20; US-177).
+#
+# Corre a diario y a mano. NO corre en pull_request ni en push: no es gate de PR ni de rama, y por eso
+# la prueba de resistencia de 12 horas de la pantalla de TV (con reloj acelerado) vive aquí y no en
+# ci.yml. Sin permisos de escritura, sin secretos y sin imágenes propias del registro.
+#
+# `tv-soak`: en W0-2 solo deja el flujo cableado y en verde; el slice F6 pone la spec real
+# (Playwright con `page.clock`, respuestas fijas por `page.route` y el heap por CDP del último cuarto
+# frente al primero, con un margen del 20 %). Lo vigila scripts/ci/test_nightly_workflow.sh.
+#
+# Toda acción va fijada por el SHA de su commit (versión en el comentario; mismas que ci.yml).
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tv-soak:
+    name: tv-soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: spec de resistencia de la TV (la real llega en S8-F6)
+        run: echo "tv-soak: sin spec todavía; el slice S8-F6 la agrega"

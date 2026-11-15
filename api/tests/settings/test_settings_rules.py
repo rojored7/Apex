@@ -115,7 +115,7 @@ def test_defaults_for_devuelve_una_copia() -> None:
     assert defaults_for(SectionKey.gym)["name"] == "APEX"
 
 
-def test_las_habilitadas_son_exactamente_siete() -> None:
+def test_las_habilitadas_son_exactamente_ocho() -> None:
     assert (
         frozenset(
             {
@@ -126,6 +126,7 @@ def test_las_habilitadas_son_exactamente_siete() -> None:
                 SectionKey.channels,
                 SectionKey.hours,
                 SectionKey.classes,
+                SectionKey.tv,  # S8-C1
             }
         )
         == ENABLED_SECTIONS

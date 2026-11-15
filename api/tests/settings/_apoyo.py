@@ -75,7 +75,7 @@ PAYMENT_METHODS_DEFAULTS: dict[str, Any] = {
 
 # Secciones que existen en el CHECK pero no están habilitadas (S2-D15; S3-B3 habilita
 # `payment_methods` y S5-B4 `channels`: quedan tres), más una clave inexistente y una en mayúscula.
-NO_HABILITADAS = ("tv",)  # S5-B4 habilita `channels`; S7-A1 (US-154) `hours` y `classes`
+NO_HABILITADAS: tuple[str, ...] = ()  # S8-C1 habilita `tv`: ya no queda ninguna
 DESCONOCIDAS = ("inexistente", "GYM")
 
 # Las diez rutas del router (S2-D15; S3-B3 suma las dos tipadas de `payment_methods`): tipadas y
@@ -89,7 +89,7 @@ RUTAS = (
     ("PATCH", "/settings/memberships"),
     ("GET", "/settings/payment_methods"),
     ("PATCH", "/settings/payment_methods"),
-    ("GET", "/settings/tv"),  # genérica `/settings/{section}`
+    ("GET", "/settings/tv"),  # S8-C1: ruta propia, la genérica la rechaza
     ("PATCH", "/settings/tv"),
 )
 CUERPOS = {
@@ -97,7 +97,7 @@ CUERPOS = {
     "/settings/privacy": {"value": PRIVACY_OK, "version": 0},
     "/settings/memberships": {"value": MEMBERSHIPS_OK, "version": 0},
     "/settings/payment_methods": {"value": PAYMENT_METHODS_OK, "version": 0},
-    "/settings/tv": {"value": {}, "version": 0},
+    "/settings/tv": {"value": {"refresh_seconds": 30, "show_leaderboard": True}, "version": 0},
 }
 
 

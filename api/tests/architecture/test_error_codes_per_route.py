@@ -73,6 +73,10 @@ CON_LIMITE = {
     ("patch", "/api/v1/settings/payment_methods"),
     ("patch", "/api/v1/settings/hours"),  # S7-A1 (US-154)
     ("patch", "/api/v1/settings/classes"),
+    # S8-C1 (US-175, S8-D30): la TV, con `admin-write` (token y revocación incluidos).
+    ("patch", "/api/v1/settings/tv"),
+    ("post", "/api/v1/settings/tv/regenerate-token"),
+    ("post", "/api/v1/settings/tv/revoke-token"),
     ("patch", "/api/v1/settings/{section}"),
     ("post", "/api/v1/users"),
     ("post", "/api/v1/users/{user_id}/resend-link"),

@@ -557,3 +557,15 @@ def test_redact_text_no_toca_la_lista_de_cabeceras_de_cors() -> None:
     texto = "Access-Control-Allow-Headers: x-device-token, content-type"
     assert redact_text(texto) == texto
     assert redact_text("(b'x-device-token', b'tvtokensecreto123456')").count("tvtokensecreto") == 0
+
+
+def test_respuesta_de_regenerate_redacta_token_y_url() -> None:
+    """S8-C1 (S8-D32): la respuesta de `regenerate-token` (token y enlace con `#token=`) no pasa
+    a un log: por clave y, si llega como texto libre, por la forma `#token=`."""
+    token = "Zx9" + "a" * 40
+    cuerpo = {"token": token, "url": f"https://apex.example/tv#token={token}", "version": 3}
+    limpio = redact(cuerpo)
+    assert limpio == {"token": "[redacted]", "url": "[redacted]", "version": 3}
+    assert redact_text(f"https://apex.example/tv#token={token}") == (
+        "https://apex.example/tv#token=[redacted]"
+    )

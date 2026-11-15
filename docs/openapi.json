@@ -8191,6 +8191,184 @@
         "title": "TimeRange",
         "type": "object"
       },
+      "TvEditable": {
+        "additionalProperties": false,
+        "description": "Lo único que el admin edita de la TV (S8-D30): refresco y si muestra el leaderboard.",
+        "properties": {
+          "refresh_seconds": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 15.0,
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "show_leaderboard": {
+            "default": true,
+            "title": "Show Leaderboard",
+            "type": "boolean"
+          }
+        },
+        "title": "TvEditable",
+        "type": "object"
+      },
+      "TvPatchIn": {
+        "additionalProperties": false,
+        "description": "`PATCH /settings/tv`: solo `refresh_seconds` y `show_leaderboard`; un token o un hash en\n`value` es 422 (S8-D30).",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/TvEditable"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "TvPatchIn",
+        "type": "object"
+      },
+      "TvSectionOut": {
+        "additionalProperties": false,
+        "description": "`GET/PATCH /settings/tv`: la vista, nunca el hash (S8-D30).",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SectionKey"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TvView"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "updated_at",
+          "updated_by",
+          "value"
+        ],
+        "title": "TvSectionOut",
+        "type": "object"
+      },
+      "TvTokenOut": {
+        "additionalProperties": false,
+        "description": "`POST /settings/tv/regenerate-token` (S8-D32): el token y el enlace se ven UNA vez.",
+        "properties": {
+          "rotated_at": {
+            "format": "date-time",
+            "title": "Rotated At",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "token_last4": {
+            "title": "Token Last4",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "token",
+          "url",
+          "token_last4",
+          "rotated_at",
+          "version"
+        ],
+        "title": "TvTokenOut",
+        "type": "object"
+      },
+      "TvView": {
+        "additionalProperties": false,
+        "description": "La vista de la TV para el panel (S8-D30): sin el hash; `has_token` dice si hay token.",
+        "properties": {
+          "has_token": {
+            "title": "Has Token",
+            "type": "boolean"
+          },
+          "refresh_seconds": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 15.0,
+            "title": "Refresh Seconds",
+            "type": "integer"
+          },
+          "rotated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated At"
+          },
+          "show_leaderboard": {
+            "default": true,
+            "title": "Show Leaderboard",
+            "type": "boolean"
+          },
+          "token_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Last4"
+          }
+        },
+        "required": [
+          "has_token",
+          "token_last4",
+          "rotated_at"
+        ],
+        "title": "TvView",
+        "type": "object"
+      },
       "UpdateUserIn": {
         "additionalProperties": false,
         "description": "`PATCH /users/{user_id}`: correo y rol; un campo ausente o nulo no cambia (US-049).",
@@ -22364,6 +22542,308 @@
           }
         },
         "summary": "Patch Privacy",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/tv": {
+      "get": {
+        "operationId": "get_tv_api_v1_settings_tv_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Get Tv",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_tv_api_v1_settings_tv_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Patch Tv",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/tv/regenerate-token": {
+      "post": {
+        "operationId": "regenerate_tv_token_api_v1_settings_tv_regenerate_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Regenerate Tv Token",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/tv/revoke-token": {
+      "post": {
+        "operationId": "revoke_tv_token_api_v1_settings_tv_revoke_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvSectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Revoke Tv Token",
         "tags": [
           "settings"
         ]

@@ -398,7 +398,8 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
 def test_dashboard_importa_ocho_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
     """S4A-B8 (S4A-D27, C9), S5-B10 (S5-D47) y S7-R3 (US-164): `dashboard` importa
     arriba exactamente `audit`, `auth`, `classes`, `members`, `memberships`, `notifications`,
-    `payments` y `wods` (S8-B5; nunca `plans`, ni perezosas), y ningún módulo lo importa (va al final de
+    `payments` y `wods` (S8-B5; nunca `plans`, ni perezosas), y ningún módulo lo importa (va al
+    final de
     `MODULES`); `plans` sigue importado solo por `memberships`."""
     arriba, perezosas = _grafo_real()
     assert arriba["dashboard"] == {

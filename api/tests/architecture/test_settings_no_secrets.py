@@ -35,6 +35,11 @@ SECRETO = re.compile(
 
 CONTIENE_SECRETO = re.compile(r"token|secret|password", re.IGNORECASE)
 
+# S8-C1 (S8-D17, S8-D30): la sección `tv` guarda el SHA-256 del token del dispositivo y sus
+# últimos cuatro caracteres, nunca el token; por eso son los únicos nombres con `token` permitidos
+# y solo en `tv`. Ninguna respuesta del api devuelve el hash (`TvView` no lo tiene).
+TV_CAMPOS_PERMITIDOS: frozenset[str] = frozenset({"device_token_hash", "token_last4"})
+
 
 def _modelos_anidados(anotacion: Any) -> list[type[BaseModel]]:
     if isinstance(anotacion, type) and issubclass(anotacion, BaseModel):
@@ -139,9 +144,21 @@ def test_ninguna_seccion_registrada_tiene_un_campo_que_contenga_token_secret_o_p
     modelos.update({f"r:{k}": m for k, m in SECTION_VIEWS.items()})
     assert len(modelos) >= 2 * len(ENABLED_SECTIONS)
     hallados = [
-        f"{clave}.{campo}" for clave, m in modelos.items() for campo in campos_con_secreto(m)
+        f"{clave}.{campo}"
+        for clave, m in modelos.items()
+        for campo in campos_con_secreto(m)
+        if not (clave.endswith(":tv") and campo in TV_CAMPOS_PERMITIDOS)
     ]
     assert hallados == []
+
+
+def test_la_vista_de_tv_no_tiene_el_hash_ni_el_token() -> None:
+    """S8-C1: `TvView`/`TvSectionOut`/`TvPatchIn` (lo que cruza el api) no declaran el hash."""
+    from app.modules.settings.schemas import TvPatchIn, TvSectionOut, TvView
+
+    for modelo in (TvView, TvSectionOut, TvPatchIn):
+        assert "device_token_hash" not in modelo.model_fields
+        assert "device_token" not in modelo.model_fields
 
 
 def test_el_detector_de_contiene_ve_nombres_que_los_sufijos_no_ven() -> None:

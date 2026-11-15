@@ -41,9 +41,7 @@ async def test_objeto_con_id_title_score_type_is_benchmark(
     }
 
 
-async def test_wod_sin_benchmark_no_es_benchmark(
-    session: AsyncSession, reloj: FrozenClock
-) -> None:
+async def test_wod_sin_benchmark_no_es_benchmark(session: AsyncSession, reloj: FrozenClock) -> None:
     reloj.set(MARTES)
     admin = await make_user(session, role="admin", email="wod.admin2@test.apex")
     mov = await make_movement(session, admin.id)

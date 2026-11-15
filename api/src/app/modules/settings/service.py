@@ -30,7 +30,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Final
 from uuid import UUID
 
@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.clock import current_clock
 from app.core.config import Settings
 from app.core.db import violated_constraint
+from app.core.security import hash_opaque_token, new_opaque_token, opaque_token_matches
 from app.modules.settings.exceptions import (
     SectionNotAvailable,
     SettingsValidationError,
@@ -54,6 +55,7 @@ from app.modules.settings.schemas import (
     SECTION_DEFAULTS,
     SECTION_REGISTRY,
     SECTION_VIEWS,
+    TV_TOKEN_LAST_CHARS,
     ChannelsSettings,
     ClassesSettings,
     GymView,
@@ -66,6 +68,12 @@ from app.modules.settings.schemas import (
     SectionKey,
     SectionOut,
     SectionValue,
+    TvConfig,
+    TvEditable,
+    TvSectionOut,
+    TvStored,
+    TvTokenOut,
+    TvView,
 )
 
 GYM_NAME_FALLBACK: Final[str] = "APEX"
@@ -116,6 +124,14 @@ def ensure_enabled(key: str) -> SectionKey:
     return seccion
 
 
+def _generic(key: str) -> SectionKey:
+    """`ensure_enabled` para las funciones genéricas: `tv` queda fuera (S8-D30)."""
+    seccion = ensure_enabled(key)
+    if seccion is SectionKey.tv:
+        raise SectionNotAvailable()
+    return seccion
+
+
 # Lectura y escritura ----------------------------------------------------------------------
 
 
@@ -139,8 +155,9 @@ def _out(fila: SettingsSection) -> SectionOut:
 
 
 async def get_section(session: AsyncSession, key: str) -> SectionOut:
-    """La sección guardada o sus defaults con `version = 0` (leer no siembra)."""
-    seccion = ensure_enabled(key)
+    """La sección guardada o sus defaults con `version = 0` (leer no siembra). `tv` se lee solo
+    por `get_tv` (S8-D30, L-1): aquí es 404."""
+    seccion = _generic(key)
     fila = await _row(session, seccion)
     if fila is None:
         return SectionOut(
@@ -150,9 +167,9 @@ async def get_section(session: AsyncSession, key: str) -> SectionOut:
 
 
 async def _insert_first(
-    session: AsyncSession, key: SectionKey, value: dict[str, Any], by: UUID
+    session: AsyncSession, key: SectionKey, value: dict[str, Any], by: UUID, *, version: int = 1
 ) -> SettingsSection:
-    fila = SettingsSection(key=key.value, value=value, version=1, updated_by=by)
+    fila = SettingsSection(key=key.value, value=value, version=version, updated_by=by)
     try:
         async with session.begin_nested():
             session.add(fila)
@@ -168,8 +185,9 @@ async def _insert_first(
 async def update_section(
     session: AsyncSession, key: str, value: Mapping[str, Any], version: int, by: UUID
 ) -> SectionOut:
-    """Guarda la sección completa con control de versión (N-17, flujo 7.3)."""
-    seccion = ensure_enabled(key)
+    """Guarda la sección completa con control de versión (N-17, flujo 7.3). `tv` solo se escribe
+    por `update_tv`, `regenerate_tv_token` y `revoke_tv_token` (S8-D30): aquí es 404."""
+    seccion = _generic(key)
     nuevo = validate_section(seccion, value).model_dump(mode="json")
     fila = await _row(session, seccion, lock=True)
     if fila is None:
@@ -186,6 +204,148 @@ async def update_section(
         extra={"settings_key": seccion.value, "settings_version": fila.version},
     )
     return _out(fila)
+
+
+# Sección `tv` (S8-C1; S8-D17, S8-D30, S8-D32): solo por estas funciones --------------------------
+
+
+_TV: Final = SectionKey.tv
+
+
+def _tv_view(fila: SettingsSection | None) -> TvSectionOut:
+    """La vista (sin hash) de la fila, o de los defaults con `version = 0`."""
+    if fila is None:
+        guardado = TvStored.model_validate(defaults_for(_TV))
+        return _tv_out(guardado, 0, None, None)
+    return _tv_out(
+        TvStored.model_validate(dict(fila.value)), fila.version, fila.updated_at, fila.updated_by
+    )
+
+
+def _tv_out(
+    guardado: TvStored, version: int, updated_at: datetime | None, updated_by: UUID | None
+) -> TvSectionOut:
+    return TvSectionOut(
+        key=_TV,
+        version=version,
+        updated_at=updated_at,
+        updated_by=updated_by,
+        value=TvView(
+            refresh_seconds=guardado.refresh_seconds,
+            show_leaderboard=guardado.show_leaderboard,
+            has_token=guardado.device_token_hash is not None,
+            token_last4=guardado.token_last4,
+            rotated_at=guardado.rotated_at,
+        ),
+    )
+
+
+async def get_tv(session: AsyncSession) -> TvSectionOut:
+    """La vista de la TV (sin hash): la fila o los defaults con `version = 0`."""
+    return _tv_view(await _row(session, _TV))
+
+
+async def _tv_locked(session: AsyncSession, by: UUID) -> SettingsSection:
+    """La fila `tv` bloqueada `FOR UPDATE`; si no existe la crea con los defaults (dentro de
+    `begin_nested`) y la vuelve a tomar bloqueada. Si otra sesión la creó a la vez, toma la suya."""
+    fila = await _row(session, _TV, lock=True)
+    if fila is not None:
+        return fila
+    try:
+        # versión 0: el primer guardado real la sube a 1 (como `get_tv` sin fila)
+        await _insert_first(session, _TV, defaults_for(_TV), by, version=0)
+    except VersionConflict:
+        pass
+    fila = await _row(session, _TV, lock=True)
+    if fila is None:  # pragma: no cover - la fila existe tras el insert o el conflicto
+        raise VersionConflict()
+    return fila
+
+
+async def _tv_save(
+    session: AsyncSession, fila: SettingsSection, nuevo: TvStored, by: UUID
+) -> SettingsSection:
+    fila.value = nuevo.model_dump(mode="json")  # dict nuevo: el hook ve el cambio
+    fila.version = fila.version + 1
+    fila.updated_by = by
+    await session.flush()
+    logger.info(
+        "settings: tv guardada",
+        extra={"settings_key": "tv", "settings_version": fila.version},
+    )
+    return fila
+
+
+async def update_tv(
+    session: AsyncSession, patch: TvEditable, version: int, by: UUID
+) -> TvSectionOut:
+    """`PATCH`: `FOR UPDATE`, `check_version` y el hash, `token_last4` y `rotated_at` de LA FILA
+    BLOQUEADA (H-1); solo cambian `refresh_seconds` y `show_leaderboard`."""
+    fila = await _tv_locked(session, by)
+    check_version(fila.version, version)
+    actual = TvStored.model_validate(dict(fila.value))
+    nuevo = actual.model_copy(
+        update={
+            "refresh_seconds": patch.refresh_seconds,
+            "show_leaderboard": patch.show_leaderboard,
+        }
+    )
+    return _tv_view(await _tv_save(session, fila, nuevo, by))
+
+
+async def regenerate_tv_token(session: AsyncSession, by: UUID, *, origin: str) -> TvTokenOut:
+    """Token nuevo: guarda su SHA-256, sube `version` bajo el mismo candado (crea la fila si no
+    existe) y devuelve el token y `origin/tv#token=<token>` una sola vez (S8-D32)."""
+    fila = await _tv_locked(session, by)
+    token = new_opaque_token()
+    ahora = current_clock().now_utc()
+    ultimos = token[-TV_TOKEN_LAST_CHARS:]
+    nuevo = TvStored.model_validate(dict(fila.value)).model_copy(
+        update={
+            "device_token_hash": hash_opaque_token(token),
+            "token_last4": ultimos,
+            "rotated_at": ahora,
+        }
+    )
+    guardada = await _tv_save(session, fila, nuevo, by)
+    return TvTokenOut(
+        token=token,
+        url=f"{origin.rstrip('/')}/tv#token={token}",
+        token_last4=ultimos,
+        rotated_at=ahora,
+        version=guardada.version,
+    )
+
+
+async def revoke_tv_token(session: AsyncSession, by: UUID) -> TvSectionOut:
+    """Deja `device_token_hash = None` (L-7), bajo el mismo candado, y sube `version`."""
+    fila = await _tv_locked(session, by)
+    nuevo = TvStored.model_validate(dict(fila.value)).model_copy(
+        update={"device_token_hash": None, "token_last4": None, "rotated_at": None}
+    )
+    return _tv_view(await _tv_save(session, fila, nuevo, by))
+
+
+async def verify_tv_token(session: AsyncSession, token: str | None) -> TvConfig | None:
+    """`TvConfig` si `token` es el vigente; `None` sin fila, sin hash, cabecera vacía o valor no
+    válido, o fila que ya no valida (L-1): nunca 500 y registra solo la clave."""
+    if not token:
+        return None
+    fila = await _row(session, _TV)
+    if fila is None:
+        return None
+    try:
+        guardado = TvStored.model_validate(dict(fila.value))
+    except ValidationError:
+        logger.warning("settings: la sección guardada no valida", extra={"settings_key": "tv"})
+        return None
+    if guardado.device_token_hash is None:
+        return None
+    if not opaque_token_matches(token, guardado.device_token_hash):
+        return None
+    return TvConfig(
+        refresh_seconds=guardado.refresh_seconds, show_leaderboard=guardado.show_leaderboard
+    )
 
 
 # API interna para otros módulos (S2-D45) ---------------------------------------------------

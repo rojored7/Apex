@@ -1,0 +1,16 @@
+/* S8-F4: «+ Alguien que no hizo check-in». Solo variables de tokens.css. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}

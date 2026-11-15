@@ -5,7 +5,8 @@
 // - Modo tablet (S7-D24): solo se lee la sesión, la búsqueda (nombre, estado y foto) y se escribe la asistencia; jamás /members/{id},
 //   /reveal ni /attachments salvo la foto. «Vender» sale del modo con la contraseña.
 // - Estados: cargando, error con Reintentar (403, 404, 429, 5xx), sesión cancelada, sin asistentes, cupo lleno.
-// DESIGN-GAP: el WOD del encabezado («WOD "Helen"») llega con v0.5 (wods).
+// S8-F4: «Registrar resultados» pasa a /clases/:id/resultados (la misma clase) sin salir del modo tablet.
+// DESIGN-GAP: el WOD del encabezado («WOD "Helen"») no está en el contrato de la sesión.
 import { useRef, useState } from "react";
 import { useParams } from "react-router";
 import { formatLongDate, formatTime24 } from "../../../core/i18n/format";
@@ -30,11 +31,13 @@ export const FULL_NOTE = "Cupo lleno: la llegada se registra igual. El coach dec
 const coachLabel = (session: SessionDetailView): string => (session.coach_name ? `Coach ${session.coach_name}` : OPEN_BOX);
 
 function CheckInContent({ session }: { session: SessionDetailView }) {
-  const { requestLeave } = useGym();
+  const { requestLeave, switchSession } = useGym();
   const checkIn = useCheckIn();
   const [text, setText] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [resultsError, setResultsError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
   const arrived = new Set(session.attendees.map((attendee) => attendee.member_id));
   const cancelled = session.status === "cancelled";
   const full = session.attendance_count >= session.capacity;
@@ -51,6 +54,18 @@ function CheckInContent({ session }: { session: SessionDetailView }) {
     } catch (error) {
       setOutcome({ kind: "error", message: checkInMessage(error) });
     }
+  };
+
+  // S8-F4 (S8-D15): pasar a los resultados de la misma clase es un cambio de clase del quiosco (S7-D42): sin contraseña.
+  const openResults = (): void => {
+    if (opening) return;
+    setOpening(true);
+    setResultsError(null);
+    void switchSession(`/clases/${session.id}/resultados`)
+      .then(setResultsError)
+      .finally(() => {
+        setOpening(false);
+      });
   };
 
   return (
@@ -89,6 +104,14 @@ function CheckInContent({ session }: { session: SessionDetailView }) {
               </p>
             ) : null}
             {full ? <p className={styles.warn}>{FULL_NOTE}</p> : null}
+            <Button size="lg" variant="secondary" loading={opening} onClick={openResults}>
+              Registrar resultados
+            </Button>
+            {resultsError !== null ? (
+              <p role="alert" className={styles.error}>
+                {resultsError}
+              </p>
+            ) : null}
             <p className={styles.note}>Vencida o sin plan: entra igual, queda marcado y el coach lo ve en rojo. Nunca se bloquea la puerta desde la app.</p>
           </>
         )}

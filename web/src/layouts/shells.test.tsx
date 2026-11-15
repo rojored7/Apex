@@ -116,7 +116,7 @@ describe("PortalShell, GymShell y TvShell", () => {
 
   it("GymShell fuera del check-in toma el título del handle de la ruta y sale al panel", () => {
     signInAs("coach");
-    inRouter(<GymShell />, "/clases/1/resultados");
+    inRouter(<GymShell />, "/clases/1/otra");
 
     expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "Check-in" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Salir" })).toHaveAttribute("href", "/");
@@ -233,7 +233,7 @@ describe("PortalShell, GymShell y TvShell", () => {
   it("el modo tablet se deriva de la sesión: con kioskPath sigue en otra pantalla y no vuelve a llamar al api", () => {
     signInAs("coach", { kioskPath: CHECKIN });
     const mock = mockApi({});
-    inRouter(<GymShell />, "/clases/1/resultados");
+    inRouter(<GymShell />, "/clases/1/otra");
 
     expect(screen.queryAllByRole("link")).toHaveLength(0);
     expect(mock.calls).toHaveLength(0);
@@ -241,7 +241,7 @@ describe("PortalShell, GymShell y TvShell", () => {
 
   it("sin marca fuera del check-in no hay modo tablet", () => {
     signInAs("coach");
-    inRouter(<GymShell />, "/clases/1/resultados");
+    inRouter(<GymShell />, "/clases/1/otra");
 
     expect(screen.getByRole("link", { name: "Salir" })).toBeInTheDocument();
   });

@@ -57,3 +57,26 @@ DESIGN-GAP en código: «vs. su anterior», «PR», «Buscar atleta» (el endpoi
 «Veces hecho en el box» y «Escalado sugerido». E2E `web/tests/e2e/stack/wod-detail.spec.ts` ESCRITO, sin correr.
 Gates: `slice-gate web/wods` verde (185 pruebas con permisos y rutas); lint 0, tsc 0, build 0; vitest completo 4396 verdes antes de mi
 edición de F4 (la única falla de esa corrida fue `features.test.ts` editado a mitad de corrida para F4).
+
+## S8-F4 · Registro de resultados en la tablet (US-169, US-170, S8-D15, S8-D27, S8-D31, S8-D40, L-2)
+
+Rojo medido (antes del código): 6 archivos fallidos. Tres sin resolver el import (0 pruebas): `ScaledChips.test`, `ScoreForm.test`,
+`ResultsEntryPage.test`. Doce pruebas rojas: `features.test` (1, falta `results`), `tabletMode.test` (9, no existía `TABLET_PATH`),
+`ZoneShells.test` (2, `GymShell` no confinaba `/resultados`); `CheckInPage.test`: 2 rojas («Registrar resultados»).
+Verde:
+- `layouts/tabletMode.ts` (`TABLET_PATH` con las dos rutas; reemplaza `CHECKIN_PATH`), `ZoneShells.tsx` la usa, `GymLayout` rotula el contador
+  con su propio `label` («Registrados 2 de 4»; antes decía siempre «Llegaron»).
+- `features/results/{schemas,api,resultErrors}.ts`, `components/{AttendeeResults,ScoreForm,ScaledChips,AddWalkIn}.tsx`,
+  `pages/ResultsEntryPage.tsx`; `CheckInPage` suma «Registrar resultados» por `switchSession` (cambio de clase S7-D42, sin contraseña;
+  un `Link` habría abierto el diálogo de salida).
+- `config/features.ts` habilita `results`; `routeTable.ts` carga `/clases/:id/resultados`; `routes.test.ts` la suma.
+- Corrección: `PUT /results` con `supersedes_id` y el MISMO `session_id`; no hay «mover a otra sesión» (S8-B1d M-3); lo equivocado lo anula el
+  admin desde el detalle del WOD (F3). 403 `kiosk_mode` al corregir un resultado de escritorio se explica; 409 relee la lista.
+- «+ Alguien que no hizo check-in»: búsqueda por nombre (3 letras) y `POST /attendance`; hook propio en `features/results/api.ts` (no se importa de `classes`).
+- Tres pruebas viejas de `shells.test.tsx` usaban `/clases/1/resultados` como «otra pantalla» del quiosco; ahora usan `/clases/1/otra`.
+DESIGN-GAP en código: «anterior en <WOD>», récord automático (EP-24), «Nota (opcional)», «+ otro» de los chips (el contrato solo admite movimientos del WOD).
+E2E `web/tests/e2e/stack/results.spec.ts` ESCRITO, SIN CORRER (stack roto): 15 resultados con pausas de tecleo de 120 ms, uno «No terminó»,
+una corrección, tiempo total medido y anotado como `tiempo-15-resultados` (tope 5 min), leaderboard del WOD en un contexto de admin aparte,
+ninguna petición a `/reveal` ni a `/members/{id}`. El valor medido queda pendiente de la primera corrida real.
+Cierre F4: vitest completo 249 archivos / 4451 pruebas (una falla: `errorCodes.test` prohíbe `code: "..."` suelto; el `"custom"` de Zod pasó a la constante
+`ISSUE_CODE`, verde después); lint 0, tsc 0, build 0; `slice-gate web/layouts` y `web/results` verdes (239 pruebas con las vecinas).

@@ -8,7 +8,7 @@ import { enterKiosk, exitKiosk, logoutDevice, normalizeKioskPath } from "../core
 import { Button } from "../shared/ui/Button";
 import { GymLayout, type TabletOptions } from "./GymLayout";
 import { PortalLayout } from "./PortalLayout";
-import { CHECKIN_PATH } from "./tabletMode";
+import { TABLET_PATH } from "./tabletMode";
 import { TvLayout } from "./TvLayout";
 
 export function PortalShell() {
@@ -40,7 +40,7 @@ export function GymShell() {
   const navigate = useNavigate();
   const { user } = useSession();
   const hasUser = user !== null;
-  const onCheckIn = CHECKIN_PATH.test(pathname);
+  const onCheckIn = TABLET_PATH.test(pathname);
   const wanted = normalizeKioskPath(pathname);
   const kioskPath = user?.kioskPath ?? null;
   const [enterError, setEnterError] = useState<string | null>(null);

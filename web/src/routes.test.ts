@@ -95,6 +95,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/clases/horario",
       "/clases/asistencia",
       "/clases/:id/checkin",
+      "/clases/:id/resultados",
       "/movimientos",
       "/wods",
       "/wods/nuevo",

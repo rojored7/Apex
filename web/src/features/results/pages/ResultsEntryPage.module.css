@@ -1,0 +1,57 @@
+/* S8-F4: Resultados_Registro.html (tablet 1024 x 768, tema oscuro): asistentes a la izquierda, formulario a la derecha. Solo tokens.css. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.left,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.right {
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+  font: var(--text-body);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font: var(--text-body);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+@media (width < 720px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

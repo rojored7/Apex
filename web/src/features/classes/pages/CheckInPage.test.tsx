@@ -346,3 +346,36 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
     expect(screen.queryByRole("combobox", { name: "Clases de hoy" })).not.toBeInTheDocument();
   });
 });
+
+describe("CheckInPage · «Registrar resultados» (S8-F4, S8-D15)", () => {
+  function renderTabletResults(switchSession: (path: string) => Promise<string | null>) {
+    mockApi({ [DETAIL]: { status: 200, body: sessionDetail() }, "GET /members": searchReply, "GET /class-sessions": sessionsPage([SESSIONS.hoy17]) });
+    render(
+      <QueryClientProvider client={testQueryClient()}>
+        <SessionRoleProvider>
+          <MemoryRouter initialEntries={[`/clases/${ID}/checkin`]}>
+            <Routes>
+              <Route element={<GymLayout title="Check-in" exitTo="/clases" exitLabel="Clases" tablet={{ verifyPassword: () => Promise.resolve(null), onLeave: () => undefined, onIdle: () => undefined, switchSession }} />}>
+                <Route path="/clases/:id/checkin" element={<CheckInPage />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </SessionRoleProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("el botón pasa a los resultados de la misma clase por el cambio de clase del quiosco, sin contraseña", async () => {
+    const switchSession = vi.fn(() => Promise.resolve<string | null>(null));
+    renderTabletResults(switchSession);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Registrar resultados" }));
+    expect(switchSession).toHaveBeenCalledWith(`/clases/${ID}/resultados`);
+  });
+
+  it("si el servidor rechaza el cambio, lo dice", async () => {
+    const switchSession = vi.fn(() => Promise.resolve<string | null>(KIOSK_MESSAGES.notToday));
+    renderTabletResults(switchSession);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Registrar resultados" }));
+    expect(await screen.findByText(KIOSK_MESSAGES.notToday)).toBeInTheDocument();
+  });
+});

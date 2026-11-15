@@ -379,3 +379,32 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 ### Evidencia (R1b)
 - Las cuatro suites de `tests/classes` tocadas: 41 passed (incluye `perf`). ruff y mypy limpios.
 - Sello `slice-gate.sh classes` (todos los `tests/classes` salvo perf + `tests/architecture`): 1193 passed, exit 0. El api de desarrollo recarga solo (sin migración).
+
+## S7-R2 · Filtro de última asistencia (US-163)
+
+### Rojo
+- Sin migración (no hubo `$DC stop`): el filtro usa `ix_attendance_checked_in` y `ix_attendance_member_checked_in`, ya existentes. Primer paso (C5): `tests/architecture/test_service_import_graph.py` suma `(members, classes)` a `LAZY_IMPORT_WHITELIST`, el par en subproceso limpio en ambos órdenes y la prueba de que la perezosa vive solo en `service.py`/`filters.py`; `test_audit_subject.py` admite `classes` entre las perezosas de `members`.
+- Pruebas nuevas: `tests/members/test_attendance_cutoff_pure.py` (corte `hoy - N`, `never` = `None`, cruces de mes/año/bisiesto, valores inválidos), `test_filter_last_attendance.py` (23 casos: cada valor con bordes de Bogotá 05:00Z/04:59Z, quitadas no cuentan, bajas, combinado con `q`/`status`/`membership_status`, total y paginación, 422 con `field`, 403/401, `staff-read` solo con el filtro, `last_attendance_at` en UTC, `membership_classes_remaining` solo en tiquetera, una consulta de asistencias por página y dos con filtro, página vacía sin consulta), `tests/classes/test_last_attendance_queries.py`, `tests/memberships/test_status_for_classes_remaining.py`, `tests/members/test_perf_last_attendance.py` (`perf`).
+- Con stubs `NotImplementedError` y sin la columna: 34 failed, 92 passed (NotImplementedError en la regla y las consultas; `classes_remaining` nulo).
+
+### Verde
+- `members/{rules,schemas,service,router}.py` (`attendance_cutoff`, `LastAttendanceFilter`, `_por_asistencia` con `Member.id != ALL(uuid[])` como `none`, `_filas` decora con UNA llamada a `classes.service.last_attendance_for`; ambas perezosas con `# lazy: G-03`), `classes/{queries,service}.py` (`attended_member_ids`, `last_attendance_for`), `memberships/{queries,schemas}.py` (`MemberMembership.classes_remaining` aditivo). No hizo falta `members/filters.py` (`service.py` ~690 líneas). Decisión: el corte es el día civil de Bogotá `hoy - N` (asistir ese día sigue siendo reciente); la exportación CSV no lleva el filtro.
+- P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+
+### Evidencia (R2)
+- `perf`: 1.000 socios y 20.000 asistencias, `GET /members?last_attendance=30d&limit=50` en 21 ms (límite 500 ms).
+- Sello `slice-gate.sh members` (archivos de R2 + `tests/architecture`): 876 passed, exit 0. Gate `architecture` con `test_service_import_graph.py`: 838 passed, exit 0.
+- Corrida amplia (`tests/members tests/memberships tests/classes tests/dashboard tests/notifications`, sin `perf`): 2538 passed. ruff y mypy limpios por el gate.
+
+## S7-C4b · Correcciones de la revisión de C4 (M-1, M-2, M-3, L-2) y S7-D42
+
+### Rojo
+- Sin migración (no hubo `$DC stop`). Pruebas nuevas: `tests/auth/test_kiosk_review_c4.py` (salir sin cookie o sin marca no verifica la contraseña; el cupo ya cuenta cuando argon2 corre [1, 2, 3]; un acierto devuelve su cupo; el tope es por usuario y sesión; logout con marca deja `KioskExited` `via = logout` y sin marca nada; la salida con contraseña deja `via = password`; S7-D42: hoy y ayer pasan, anteayer, mañana y una sesión inexistente dan 403 `kiosk_mode`, sin marca previa entra a cualquier ruta) y `tests/classes/test_kiosk_review_c4.py` (un admin en quiosco no quita una asistencia de hace tres días; `q` de las dos rutas de asistencias consume `PII_SEARCH_BUCKET`; la lista general no incluye bajas aunque se pida `member_id`, la ficha sí; en quiosco `GET /attendance` exige `session_id` y `GET /members` exige `q` y rechaza los cinco filtros con `field`).
+- Sin el código: 20 failed, 6 passed (los 6 son los controles de que fuera del quiosco nada cambia y los casos de hoy y ayer de D42 que ya pasaban).
+
+### Verde
+- `auth/{kiosk,events,sessions}.py`, `audit/service.py` (`via` en el `after` de `KioskExited`), `classes/{router,attendance,reports}.py` (`include_deleted` explícito), `members/router.py` (`_check_kiosk_list`). La fecha de D42 se lee por nombre de tabla (`classes.class_sessions`) porque `classes` ya importa `auth`. Contrato OpenAPI sin cambios (`openapi.json` idéntico). DECISIONES: S7-D41 puntos 8 a 12 y S7-D42; `docs/operacion/clases.md`.
+- Desvío del orquestador: en una prueba el `FrozenClock` deja iguales los `family_started_at` de dos logins; la prueba por sesión avanza un minuto entre ellos.
+
+### Evidencia (C4b)
+- Pruebas nuevas: 26 passed (`test_kiosk_review_c4.py` de auth y de classes). Corrida amplia (`tests/classes tests/members tests/audit tests/core`, sin `perf`): 3002 passed, 2 skipped. Sello `slice-gate.sh auth` (todos los `tests/auth` + `tests/architecture`): 1516 passed, exit 0. ruff y mypy limpios. `docs/openapi.json` sin cambios.

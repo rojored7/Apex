@@ -11,6 +11,8 @@ Reexporta lo público de los archivos privados del módulo:
   `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba) y
   `remove_attendance` (C3, US-161), que lo emite.
 `reports.py` (S7-R1, US-162): `attendance_summary`, `member_attendance` y la pura `weekly_summary`.
+`queries.py` (S7-R2, US-163): `attended_member_ids` y `last_attendance_for`, que `members` pide por
+import perezoso (`# lazy: G-03`) para el filtro y la columna de última asistencia.
 """
 
 from __future__ import annotations
@@ -30,7 +32,12 @@ from app.modules.classes.events import (
     SessionGenerated,
 )
 from app.modules.classes.exceptions import MembershipPortNotRegistered
-from app.modules.classes.queries import get_session, list_sessions
+from app.modules.classes.queries import (
+    attended_member_ids,
+    get_session,
+    last_attendance_for,
+    list_sessions,
+)
 from app.modules.classes.reports import attendance_summary, member_attendance, weekly_summary
 from app.modules.classes.rules import (
     PlannedSession,
@@ -61,6 +68,7 @@ __all__ = [
     "SessionGenerated",
     "SlotSpec",
     "attendance_summary",
+    "attended_member_ids",
     "cancel_future_sessions",
     "cancel_session",
     "check_in",
@@ -69,6 +77,7 @@ __all__ = [
     "generate_sessions",
     "get_session",
     "get_slot",
+    "last_attendance_for",
     "list_attendance",
     "list_sessions",
     "list_slots",

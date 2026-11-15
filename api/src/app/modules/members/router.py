@@ -8,8 +8,10 @@
   (`SearchQuery`, hasta 100; nunca se registra), `status` y `sort`. Solo cuando hay `q`, límite
   por usuario de búsquedas (`PII_SEARCH_BUCKET`, por defecto 60 por minuto,
   `USER_SEARCH_LIMIT_PER_MIN`; L-1); sin `q` no cuenta. S3-B9b (US-071, D22): `membership_status`
-  y `plan_id` (422 con `field`; un plan inexistente da la lista vacía). Códigos 200, 401, 403,
-  422 y 429.
+  y `plan_id` (422 con `field`; un plan inexistente da la lista vacía). S7-R2 (US-163, S7-D15):
+  `last_attendance` (`7d|14d|30d|60d|never`, 422 con `field`; consume `staff-read` solo con el
+  filtro) y las columnas `last_attendance_at` y `membership_classes_remaining`. Códigos 200, 401,
+  403, 422 y 429.
 - `GET /members/{member_id}` (admin y coach, también sobre un dado de baja, N-20; S3-B9b,
   US-073): `MemberDetailOut` con los cinco campos enmascarados (D20). Límite por usuario
   `members-detail` (M-2, S3-D45; por defecto 120 por minuto, `USER_DETAIL_LIMIT_PER_MIN`).
@@ -63,10 +65,12 @@ from app.core.security import AdminDep, StaffDep
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.audit.schemas import MemberHistoryItem
 from app.modules.members import service
+from app.modules.members.exceptions import MemberValidationError
 from app.modules.members.schemas import (
     DEFAULT_MEMBER_SORT,
     ChannelsOut,
     ChannelsPatch,
+    LastAttendanceFilter,
     MemberCreate,
     MemberDetailOut,
     MemberExportQuery,
@@ -105,6 +109,18 @@ async def create_member(
     return await service.create(session, body)
 
 
+def _check_kiosk_list(q: str | None, **filtros: object) -> None:
+    """Revisión de C4 (M-3): con la marca de quiosco `GET /members` exige `q` y rechaza los
+    filtros de estado, plan, consentimiento y última asistencia (422 con `field`)."""
+    for campo, valor in filtros.items():
+        if valor is not None:
+            raise MemberValidationError(
+                message="En modo quiosco solo se busca por nombre.", field=campo
+            )
+    if not q:
+        raise MemberValidationError(message="En modo quiosco indica la búsqueda.", field="q")
+
+
 @router.get("/members", response_model=Page[MemberRowOut], responses=responses_for(429))
 async def list_members(
     request: Request,
@@ -117,9 +133,21 @@ async def list_members(
     membership_status: MembershipFilterStatus | None = None,
     plan_id: UUID | None = None,
     consent: Literal["missing"] | None = None,
+    last_attendance: LastAttendanceFilter | None = None,
 ) -> Page[MemberRowOut]:
+    if principal.kiosk:  # el quiosco solo busca por nombre; nada de recorrer la situación (M-3)
+        _check_kiosk_list(
+            q,
+            status=member_status,
+            membership_status=membership_status,
+            plan_id=plan_id,
+            consent=consent,
+            last_attendance=last_attendance,
+        )
     if q:
         await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
+    if last_attendance:  # S7-R2 (US-163, S7-D15): consulta a `classes`, cubeta de lecturas caras
+        await enforce_user_limit(request, "staff-read", principal.user_id)
     filtros = MemberListQuery(
         q=q,
         status=member_status,
@@ -127,6 +155,7 @@ async def list_members(
         membership_status=membership_status,
         plan_id=plan_id,
         consent=consent,
+        last_attendance=last_attendance,
     )
     return await service.list(session, filtros, page)
 

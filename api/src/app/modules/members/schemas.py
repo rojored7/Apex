@@ -46,6 +46,8 @@ DocumentType = Literal["CC", "CE", "TI", "PA"]
 Sex = Literal["f", "m", "x"]
 MemberStatus = Literal["active", "inactive"]
 MemberStatusFilter = Literal["active", "inactive", "deleted"]
+# S7-R2 (US-163, S7-D15): `Nd` = sin asistir en más de N días; `never` = nunca asistió.
+LastAttendanceFilter = Literal["7d", "14d", "30d", "60d", "never"]
 # S3-B9b (US-071, D22): estado de membresía por el que se filtra la lista; `none` es "sin
 # membresía" (complemento de los otros cinco).
 MembershipFilterStatus = Literal[
@@ -143,6 +145,10 @@ class MemberRowOut(BaseModel):
     plan_name: str | None = None
     membership_end_date: date | None = None  # S3-B9b (D22, D35): "Vence" de la lista
     photo_attachment_id: UUID | None = None  # S6-C2 (S6-D20)
+    # S7-R2 (US-163, S7-D15): la última asistencia viva (UTC) y las clases que quedan de la
+    # membresía que decide (solo tiquetera); aditivos, nulos si no aplican.
+    last_attendance_at: datetime | None = None
+    membership_classes_remaining: int | None = None
 
 
 class MemberListQuery(BaseModel):
@@ -157,6 +163,7 @@ class MemberListQuery(BaseModel):
     membership_status: MembershipFilterStatus | None = None
     plan_id: UUID | None = None
     consent: Literal["missing"] | None = None  # S6-C5 (US-151): solo los sin autorización
+    last_attendance: LastAttendanceFilter | None = None  # S7-R2 (US-163, S7-D15)
 
 
 class MemberExportQuery(BaseModel):

@@ -2870,9 +2870,32 @@
             "title": "Id",
             "type": "string"
           },
+          "last_attendance_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attendance At"
+          },
           "last_name": {
             "title": "Last Name",
             "type": "string"
+          },
+          "membership_classes_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Classes Remaining"
           },
           "membership_end_date": {
             "anyOf": [
@@ -11231,6 +11254,29 @@
                 }
               ],
               "title": "Consent"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last_attendance",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "7d",
+                    "14d",
+                    "30d",
+                    "60d",
+                    "never"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Attendance"
             }
           },
           {

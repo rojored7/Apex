@@ -2637,8 +2637,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Last Attendance At */
+            last_attendance_at?: string | null;
             /** Last Name */
             last_name: string;
+            /** Membership Classes Remaining */
+            membership_classes_remaining?: number | null;
             /** Membership End Date */
             membership_end_date?: string | null;
             /** Membership Status */
@@ -6912,6 +6916,7 @@ export interface operations {
                 membership_status?: ("active" | "expiring" | "expired" | "frozen" | "pending_payment" | "none") | null;
                 plan_id?: string | null;
                 consent?: "missing" | null;
+                last_attendance?: ("7d" | "14d" | "30d" | "60d" | "never") | null;
                 limit?: number;
                 offset?: number;
             };

@@ -231,7 +231,7 @@ async def remove_attendance(
     await lock_member(session, previa)
     fila = await _lock_alive_attendance(session, attendance_id)
     reloj = current_clock()
-    if role != "admin":
+    if role != "admin":  # con la marca de quiosco el router pasa `coach` (revisión de C4, M-2)
         dia = await session.scalar(
             select(ClassSession.session_date).where(ClassSession.id == fila.session_id)
         )
@@ -272,16 +272,16 @@ def _check_range(query: AttendanceListQuery) -> None:
         raise ClassValidationError(message=message, field=str(error.args[0])) from None
 
 
-async def _filtered(session: AsyncSession, query: AttendanceListQuery) -> Select[Any] | None:
+async def _filtered(
+    session: AsyncSession, query: AttendanceListQuery, *, include_deleted: bool = False
+) -> Select[Any] | None:
     """La consulta de asistencias vivas con los filtros; `None` si `q` no coincide con nadie."""
     consulta = select(Attendance).where(Attendance.removed_at.is_(None))
     termino = clean_query(query.q)
     if termino:
-        # R1b L2: en la ficha de un socio (`member_id`) la búsqueda incluye a los dados de baja
-        # (N-20); en la lista general sigue sin ellos.
-        ids = await members_service.search_ids(
-            session, termino, include_deleted=query.member_id is not None
-        )
+        # R1b L2: en la ficha de un socio la búsqueda incluye a los dados de baja (N-20); la
+        # lista general nunca (revisión de C4, M-3: `include_deleted` solo lo pide la ficha).
+        ids = await members_service.search_ids(session, termino, include_deleted=include_deleted)
         if not ids:
             return None
         consulta = consulta.where(Attendance.member_id.in_(ids))
@@ -332,12 +332,16 @@ async def _rows(session: AsyncSession, filas: list[Attendance]) -> list[Attendan
 
 
 async def list_attendance(
-    session: AsyncSession, query: AttendanceListQuery, page: PageParams
+    session: AsyncSession,
+    query: AttendanceListQuery,
+    page: PageParams,
+    *,
+    include_deleted: bool = False,
 ) -> Page[AttendanceRowOut]:
     """`GET /attendance`: asistencias vivas, la más reciente primero (`checked_in_at DESC`);
     `q` busca por socio (`members.service.search_ids`)."""
     _check_range(query)
-    consulta = await _filtered(session, query)
+    consulta = await _filtered(session, query, include_deleted=include_deleted)
     if consulta is None:
         return to_page([], 0, page)
     filas, total = await paginate(

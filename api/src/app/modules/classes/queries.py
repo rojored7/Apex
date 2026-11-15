@@ -19,7 +19,7 @@ from sqlalchemy import Integer, Text, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
-from app.core.pagination import Page, PageParams, paginate, to_page
+from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.auth import service as auth_service
 from app.modules.classes.exceptions import ClassValidationError, RangeTooLong, SessionNotFound
@@ -41,6 +41,31 @@ from app.modules.classes.schemas import (
     SessionOut,
 )
 from app.modules.members import service as members_service
+
+
+async def attended_member_ids(session: AsyncSession, since_day: date | None) -> set[UUID]:
+    """Ids de los socios con alguna asistencia viva (`removed_at` nulo) cuyo `checked_in_at` cae
+    desde el inicio del día civil de Bogotá `since_day`; `None` = en cualquier fecha (US-163)."""
+    consulta = select(Attendance.member_id).where(Attendance.removed_at.is_(None)).distinct()
+    if since_day is not None:
+        desde, _ = date_range_utc(since_day, since_day)
+        consulta = consulta.where(Attendance.checked_in_at >= desde)
+    return set(await session.scalars(consulta))
+
+
+async def last_attendance_for(
+    session: AsyncSession, member_ids: list[UUID]
+) -> dict[UUID, datetime]:
+    """Última asistencia viva (`checked_in_at`, UTC) de cada socio pedido que tenga una, en UNA
+    consulta; sin ids no consulta (US-163)."""
+    if not member_ids:
+        return {}
+    filas = await session.execute(
+        select(Attendance.member_id, func.max(Attendance.checked_in_at))
+        .where(Attendance.member_id == any_uuids(member_ids), Attendance.removed_at.is_(None))
+        .group_by(Attendance.member_id)
+    )
+    return {socio: cuando for socio, cuando in filas.all()}
 
 
 def session_out(

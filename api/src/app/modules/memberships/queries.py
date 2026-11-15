@@ -324,11 +324,13 @@ def _deciding(
 ) -> Subquery:
     """La membresía que decide el estado de cada socio (US-092): `DISTINCT ON (member_id)` sobre
     las no anuladas, ordenado por `member_status_rank_expr` y el fin (y el inicio) más tardío.
-    Columnas `member_id`, `plan_id`, `end_date` y `estado` (el estado efectivo)."""
+    Columnas `member_id`, `plan_id`, `end_date`, `classes_remaining` (S7-R2) y `estado` (el estado
+    efectivo)."""
     consulta = select(
         Membership.member_id,
         Membership.plan_id,
         Membership.end_date,
+        Membership.classes_remaining,
         status_expr(today, expiring_days).label("estado"),
     ).where(Membership.status != MembershipStatus.cancelled.value)
     if member_ids is not None:
@@ -542,6 +544,7 @@ async def status_for(
             plan_id=fila.plan_id,
             plan_name=planes[fila.plan_id],
             end_date=fila.end_date,
+            classes_remaining=fila.classes_remaining,
         )
         for fila in filas
     }

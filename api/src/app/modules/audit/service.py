@@ -203,7 +203,7 @@ async def on_kiosk_entered(event: KioskEntered, session: AsyncSession) -> None:
 
 
 async def on_kiosk_exited(event: KioskExited, session: AsyncSession) -> None:
-    await _record_kiosk(session, event.user_id, {"event": "KioskExited"})
+    await _record_kiosk(session, event.user_id, {"event": "KioskExited", "via": event.via})
 
 
 async def on_kiosk_exit_failed(event: KioskExitFailed, session: AsyncSession) -> None:

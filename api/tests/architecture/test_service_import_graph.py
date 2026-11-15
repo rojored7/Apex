@@ -93,7 +93,15 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
     }
 )
 LAZY_IMPORT_WHITELIST: Final[frozenset[tuple[str, str]]] = frozenset(
-    {("payments", "memberships"), ("members", "memberships"), ("plans", "memberships")}
+    {
+        ("payments", "memberships"),
+        ("members", "memberships"),
+        ("plans", "memberships"),
+        # S7-R2 (S7-D6, S7-D15, C5; US-163): `classes -> members` es el sentido mayoritario (nombres
+        # y existencia del socio, arriba); `members` pide a `classes` la última asistencia de la
+        # lista y el conjunto del filtro `last_attendance` con un import dentro de la función.
+        ("members", "classes"),
+    }
 )
 LAZY_MARK: Final = "# lazy: G-03"
 
@@ -291,7 +299,8 @@ def test_el_par_perezoso_members_memberships_existe_y_esta_permitido() -> None:
     mayoritario). S4A-B5 (S4A-D20, C6): a nivel de módulo `members` importa solo `audit` (el
     historial del socio); nunca `memberships` ni `payments`."""
     arriba, perezosas = _grafo_real()
-    assert perezosas["members"] == {"memberships"}
+    # S7-R2 suma la perezosa `members -> classes` (lista blanca de G-03, US-163).
+    assert perezosas["members"] == {"memberships", "classes"}
     # S6-C2 suma attachments; S6-C3 suma settings (lectura de la politica, sin ciclo)
     assert arriba["members"] == {"audit", "attachments", "settings"}
     assert ("members", "settings") in ALLOWED_EDGES
@@ -309,9 +318,50 @@ def test_la_perezosa_de_members_vive_en_service_y_detail() -> None:
     con_perezosa = sorted(
         archivo.name
         for archivo in (MODULES_DIR / "members").glob("*.py")
-        if service_edges(archivo.read_text(encoding="utf-8"), "members")[1] == {"memberships"}
+        if "memberships" in service_edges(archivo.read_text(encoding="utf-8"), "members")[1]
     )
     assert con_perezosa == ["detail.py", "service.py"]
+
+
+def test_la_perezosa_members_classes_vive_solo_en_service_y_es_lista_blanca() -> None:
+    """S7-R2 (S7-D6, C5; US-163): `members` lee de `classes` la última asistencia por lote y el
+    conjunto del filtro; solo `service.py` (o `filters.py`, si S7-R2 lo parte) lo importa, dentro
+    de una función y con `# lazy: G-03`. El sentido mayoritario `classes -> members` es de nivel
+    de módulo: el grafo sigue acíclico."""
+    arriba, perezosas = _grafo_real()
+    assert "classes" in perezosas["members"]
+    assert "classes" not in arriba["members"]
+    assert "members" in arriba["classes"]
+    assert ("members", "classes") in LAZY_IMPORT_WHITELIST
+    assert ("members", "classes") not in ALLOWED_EDGES
+    assert ("classes", "members") in ALLOWED_EDGES
+    con_perezosa = sorted(
+        archivo.name
+        for archivo in (MODULES_DIR / "members").glob("*.py")
+        if "classes" in service_edges(archivo.read_text(encoding="utf-8"), "members")[1]
+    )
+    assert con_perezosa and set(con_perezosa) <= {"service.py", "filters.py"}, con_perezosa
+
+
+@pytest.mark.parametrize(
+    ("primero", "segundo"),
+    [("members", "classes"), ("classes", "members")],
+    ids=["members-classes", "classes-members"],
+)
+def test_el_par_perezoso_members_classes_se_importa_limpio_en_ambos_ordenes(
+    primero: str, segundo: str
+) -> None:
+    """S7-R2 (C5): el par de la lista blanca se importa en un proceso limpio en los dos órdenes."""
+    orden = f"import app.modules.{primero}.service, app.modules.{segundo}.service"
+    resultado = subprocess.run(  # noqa: S603 - comando fijo armado con nombres de módulo
+        [sys.executable, "-I", "-c", orden],
+        cwd=API_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
 
 
 def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
@@ -432,7 +482,12 @@ def test_ningun_import_perezoso_fuera_de_la_lista_blanca() -> None:
 
 
 def test_la_lista_blanca_es_la_de_g03() -> None:
-    esperada = {("payments", "memberships"), ("members", "memberships"), ("plans", "memberships")}
+    esperada = {
+        ("payments", "memberships"),
+        ("members", "memberships"),
+        ("plans", "memberships"),
+        ("members", "classes"),
+    }
     assert frozenset(esperada) == LAZY_IMPORT_WHITELIST
     assert not LAZY_IMPORT_WHITELIST & ALLOWED_EDGES
 

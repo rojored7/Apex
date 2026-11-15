@@ -44,9 +44,10 @@ from app.core.db import SessionDep
 from app.core.errors import responses_for
 from app.core.http import no_store
 from app.core.pagination import Page, PageParams, SearchQuery
-from app.core.ratelimit import enforce_user_limit
+from app.core.ratelimit import PII_SEARCH_BUCKET, enforce_user_limit
 from app.core.security import AdminDep, StaffDep
 from app.modules.classes import service
+from app.modules.classes.exceptions import ClassValidationError
 from app.modules.classes.schemas import (
     AttendanceCreate,
     AttendanceListQuery,
@@ -209,6 +210,12 @@ async def list_attendance(
     q: SearchQuery = None,
 ) -> Page[AttendanceRowOut]:
     await enforce_user_limit(request, "staff-read", principal.user_id)
+    if q:  # la búsqueda por índice ciego cuesta lo mismo que la de la lista de socios (M-3)
+        await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
+    if principal.kiosk and session_id is None:  # el quiosco solo ve la clase abierta (M-3)
+        raise ClassValidationError(
+            message="En modo quiosco indica la sesión (`session_id`).", field="session_id"
+        )
     filters = AttendanceListQuery(
         member_id=member_id,
         session_id=session_id,
@@ -248,6 +255,8 @@ async def member_attendance(
     q: SearchQuery = None,
 ) -> Page[AttendanceRowOut]:
     await enforce_user_limit(request, "staff-read", principal.user_id)
+    if q:
+        await enforce_user_limit(request, PII_SEARCH_BUCKET, principal.user_id)
     return await service.member_attendance(session, member_id, page, q=q)
 
 
@@ -262,6 +271,6 @@ async def remove_attendance(
     body: Annotated[AttendanceRemove | None, Body()] = None,
 ) -> None:
     await enforce_user_limit(request, "attendance-write", principal.user_id)
-    await service.remove_attendance(
-        session, attendance_id, body, by=principal.user_id, role=principal.role
-    )
+    # Un quiosco abierto por un admin no hereda sus poderes: siempre la regla del coach (M-2).
+    rol = "coach" if principal.kiosk else principal.role
+    await service.remove_attendance(session, attendance_id, body, by=principal.user_id, role=rol)

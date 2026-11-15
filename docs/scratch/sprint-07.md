@@ -408,3 +408,15 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C4b)
 - Pruebas nuevas: 26 passed (`test_kiosk_review_c4.py` de auth y de classes). Corrida amplia (`tests/classes tests/members tests/audit tests/core`, sin `perf`): 3002 passed, 2 skipped. Sello `slice-gate.sh auth` (todos los `tests/auth` + `tests/architecture`): 1516 passed, exit 0. ruff y mypy limpios. `docs/openapi.json` sin cambios.
+
+## S7-R3 · Tablero: attendance_week y sessions_today (US-164, S7-D16)
+
+### Rojo
+- Sin migración. Stubs `week_attendance` y `today_sessions` (`NotImplementedError`) en `classes/queries.py`; `DashboardOut` con el tipo nuevo. Pruebas nuevas: `tests/dashboard/test_classes_kpis.py` (martes 41 y 3 marcadas; día sin clases `[]`; máximo 50; cancelada con su estado), `test_dashboard_contract.py` (solo cambian los dos campos, foto del contrato anterior), `test_perf_classes_kpis.py` (`perf`, 1.000 socios y 20.000 asistencias).
+- Sin el código: 27 failed (5 nuevas + 22 existentes del tablero que llaman al servicio), motivo `NotImplementedError` y el esquema viejo.
+
+### Verde
+- `classes/queries.py` (`week_attendance`: una consulta, lunes 00:00 Bogotá a ahora; `today_sessions`: día de Bogotá, tope 50, canceladas incluidas), fachada `classes/service.py`, `dashboard/{schemas,service}.py` (`AttendanceWeekOut`, `SessionTodayOut`, arista `dashboard -> classes` en `ALLOWED_EDGES` y en el test de grafo). P-API: `docs/openapi.json` (dos exportaciones idénticas) y `types.ts`. Web mínimo: `schemas.ts`, `FutureKpis.tsx`, `test/dashboard.tsx` y sus pruebas (las tarjetas nuevas son de F6).
+
+### Evidencia (R3)
+- Sello `slice-gate.sh dashboard` (3 archivos + `tests/architecture`): 845 passed, exit 0. Gate `web/dashboard`: 19 passed, exit 0. vitest de `src/features/dashboard` y `src/core/api`: 324 passed.

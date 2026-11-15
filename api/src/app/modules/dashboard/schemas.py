@@ -5,9 +5,10 @@
 - `DashboardOut`: `today` (Bogotá), los cinco conteos del resumen de membresías, `income_month`
   (`AAAA-MM`), `income_month_cop` (`null` para el coach, S4A-D118), `last_movements` (máximo
   `LAST_MOVEMENTS_LIMIT`; sin montos para el coach), `notifications_today` y
-  `members_without_consent` (enteros desde S5-B10, US-132; S5-D39, S5-D80) y los tres campos
-  futuros `attendance_week`, `sessions_today` y `wod_today`, siempre presentes y `null` hasta
-  v0.4 y v0.5 (el front los pinta "Disponible en v0.x"; nunca `exclude_none`).
+  `members_without_consent` (enteros desde S5-B10, US-132; S5-D39, S5-D80), `attendance_week`
+  (`AttendanceWeekOut`) y `sessions_today` (lista de `SessionTodayOut`, `[]` sin clases, maximo
+  `SESSIONS_TODAY_LIMIT`), obligatorios y no nulos desde S7-R3 (US-164, S7-D16: cambio de tipo,
+  antes `null`), y `wod_today`, siempre presente y `null` hasta v0.5 (nunca `exclude_none`).
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 LAST_MOVEMENTS_LIMIT: Final = 10
 """Frases de `last_movements` (US-110; el límite se aplica después de excluir al sistema)."""
+SESSIONS_TODAY_LIMIT: Final = 50
+"""Sesiones de hoy del tablero (US-164; igual a `classes.TODAY_SESSIONS_LIMIT`)."""
 MONTH_PATTERN: Final = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 INCOME_MONTH_COP_DESCRIPTION: Final = (
@@ -27,6 +30,7 @@ INCOME_MONTH_COP_DESCRIPTION: Final = (
     "ingresos y montos (S4A-D118)."
 )
 
+SessionStatus = Literal["scheduled", "done", "cancelled"]
 MovementTable = Literal["members.members", "memberships.memberships", "payments.payments"]
 
 
@@ -43,8 +47,31 @@ class MovementOut(BaseModel):
     member_id: UUID | None
 
 
+class AttendanceWeekOut(BaseModel):
+    """Asistencias vivas de lunes 00:00 (Bogotá) a ahora y las que llevan bandera (US-164)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    count: int
+    flagged_count: int
+
+
+class SessionTodayOut(BaseModel):
+    """Una sesión de hoy (Bogotá) con su ocupación (US-164); `status` es el calculado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    starts_at: datetime
+    coach_name: str | None
+    capacity: int
+    attendance_count: int
+    status: SessionStatus
+
+
 class DashboardOut(BaseModel):
-    """`GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`."""
+    """`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;
+    solo `wod_today` sigue en `null` hasta v0.5."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +86,6 @@ class DashboardOut(BaseModel):
     last_movements: list[MovementOut] = Field(max_length=LAST_MOVEMENTS_LIMIT)
     notifications_today: int
     members_without_consent: int
-    attendance_week: int | None = None
-    sessions_today: int | None = None
+    attendance_week: AttendanceWeekOut
+    sessions_today: list[SessionTodayOut] = Field(max_length=SESSIONS_TODAY_LIMIT)
     wod_today: str | None = None

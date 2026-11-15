@@ -1646,6 +1646,16 @@ export interface components {
             weeks: components["schemas"]["WeekBucket"][];
         };
         /**
+         * AttendanceWeekOut
+         * @description Asistencias vivas de lunes 00:00 (Bogotá) a ahora y las que llevan bandera (US-164).
+         */
+        AttendanceWeekOut: {
+            /** Count */
+            count: number;
+            /** Flagged Count */
+            flagged_count: number;
+        };
+        /**
          * AttendeeOut
          * @description Un asistente de la sesión (llega con C1; hoy la lista va vacía).
          */
@@ -2037,11 +2047,11 @@ export interface components {
         };
         /**
          * DashboardOut
-         * @description `GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.
+         * @description `GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;
+         *     solo `wod_today` sigue en `null` hasta v0.5.
          */
         DashboardOut: {
-            /** Attendance Week */
-            attendance_week?: number | null;
+            attendance_week: components["schemas"]["AttendanceWeekOut"];
             /** Income Month */
             income_month: string;
             /**
@@ -2066,7 +2076,7 @@ export interface components {
             /** Notifications Today */
             notifications_today: number;
             /** Sessions Today */
-            sessions_today?: number | null;
+            sessions_today: components["schemas"]["SessionTodayOut"][];
             /**
              * Today
              * Format: date
@@ -3944,6 +3954,33 @@ export interface components {
              * @enum {string}
              */
             status: "scheduled" | "cancelled" | "done";
+        };
+        /**
+         * SessionTodayOut
+         * @description Una sesión de hoy (Bogotá) con su ocupación (US-164); `status` es el calculado.
+         */
+        SessionTodayOut: {
+            /** Attendance Count */
+            attendance_count: number;
+            /** Capacity */
+            capacity: number;
+            /** Coach Name */
+            coach_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "done" | "cancelled";
         };
         /**
          * SignatureInfoOut

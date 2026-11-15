@@ -63,6 +63,8 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("auth", "settings"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
         ("dashboard", "audit"),
+        # S7-R3 (US-164, G-04): el tablero lee `week_attendance` y `today_sessions` de classes.
+        ("dashboard", "classes"),
         ("dashboard", "auth"),
         ("dashboard", "members"),
         ("dashboard", "memberships"),
@@ -380,15 +382,16 @@ def test_plans_no_importa_services_y_solo_memberships_lo_importa() -> None:
     assert importadores == {"memberships"}
 
 
-def test_dashboard_importa_seis_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
-    """S4A-B8 (S4A-D27, C9) y S5-B10 (S5-D47): `dashboard` importa arriba exactamente `audit`,
-    `auth`, `members`, `memberships`, `notifications` y `payments` (nunca `plans`, ni perezosas;
-    # Rojo B10), y ningún módulo lo importa (va
-    al final de `MODULES`); `plans` sigue importado solo por `memberships`."""
+def test_dashboard_importa_siete_services_a_nivel_de_modulo_y_nadie_lo_importa() -> None:
+    """S4A-B8 (S4A-D27, C9), S5-B10 (S5-D47) y S7-R3 (US-164): `dashboard` importa
+    arriba exactamente `audit`, `auth`, `classes`, `members`, `memberships`, `notifications` y
+    `payments` (nunca `plans`, ni perezosas), y ningún módulo lo importa (va al final de
+    `MODULES`); `plans` sigue importado solo por `memberships`."""
     arriba, perezosas = _grafo_real()
     assert arriba["dashboard"] == {
         "audit",
         "auth",
+        "classes",
         "members",
         "memberships",
         "notifications",

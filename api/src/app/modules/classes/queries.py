@@ -11,8 +11,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import Integer, Text, and_, func, literal, select
@@ -29,6 +30,7 @@ from app.modules.classes.rules import (
     WEEK_YEAR_MAX,
     WEEK_YEAR_MIN,
     date_range_utc,
+    local_date,
     parse_week,
     session_status,
     week_of,
@@ -207,3 +209,47 @@ async def get_session(session: AsyncSession, session_id: UUID) -> SessionDetail:
         for a in presentes
     ]
     return SessionDetail(**salida.model_dump(), attendees=asistentes)
+
+
+TODAY_SESSIONS_LIMIT: Final = 50
+"""Tope de `today_sessions` (US-164): el tablero nunca pinta más de 50 sesiones de un día."""
+
+
+@dataclass(frozen=True, slots=True)
+class WeekAttendance:
+    """Asistencias vivas de la semana en curso y cuántas llevan alguna bandera (US-164)."""
+
+    count: int
+    flagged_count: int
+
+
+async def week_attendance(session: AsyncSession, now: datetime) -> WeekAttendance:
+    """Asistencias vivas de la semana en curso: del lunes 00:00 de Bogotá a `now` (US-164, Q28),
+    y cuántas llevan alguna bandera; UNA consulta."""
+    desde, _ = week_range(*parse_week(week_of(local_date(now))))
+    fila = (
+        await session.execute(
+            select(
+                func.count(),
+                func.count().filter(func.cardinality(Attendance.flags) > 0),
+            ).where(
+                Attendance.removed_at.is_(None),
+                Attendance.checked_in_at >= desde,
+                Attendance.checked_in_at <= now,
+            )
+        )
+    ).one()
+    return WeekAttendance(count=int(fila[0]), flagged_count=int(fila[1]))
+
+
+async def today_sessions(session: AsyncSession, today: date) -> list[SessionOut]:
+    """Las sesiones del día civil de Bogotá `today`, por hora (máximo `TODAY_SESSIONS_LIMIT`),
+    con coach, ocupación y estado calculado, incluidas las canceladas (US-164)."""
+    desde, hasta = date_range_utc(today, today)
+    filas = await session.scalars(
+        select(ClassSession)
+        .where(ClassSession.starts_at >= desde, ClassSession.starts_at < hasta)
+        .order_by(ClassSession.starts_at, ClassSession.id)
+        .limit(TODAY_SESSIONS_LIMIT)
+    )
+    return await _outs(session, list(filas))

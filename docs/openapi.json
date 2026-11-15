@@ -242,6 +242,26 @@
         "title": "AttendanceSummary",
         "type": "object"
       },
+      "AttendanceWeekOut": {
+        "additionalProperties": false,
+        "description": "Asistencias vivas de lunes 00:00 (Bogotá) a ahora y las que llevan bandera (US-164).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "flagged_count": {
+            "title": "Flagged Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "flagged_count"
+        ],
+        "title": "AttendanceWeekOut",
+        "type": "object"
+      },
       "AttendeeOut": {
         "description": "Un asistente de la sesión (llega con C1; hoy la lista va vacía).",
         "properties": {
@@ -1198,18 +1218,10 @@
       },
       "DashboardOut": {
         "additionalProperties": false,
-        "description": "`GET /dashboard` (US-108; S4A-D27): KPI de v0.1 y los cinco futuros en `null`.",
+        "description": "`GET /dashboard` (US-108, US-164; S4A-D27, S7-D16): KPI de v0.1, de avisos y de clases;\nsolo `wod_today` sigue en `null` hasta v0.5.",
         "properties": {
           "attendance_week": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attendance Week"
+            "$ref": "#/components/schemas/AttendanceWeekOut"
           },
           "income_month": {
             "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
@@ -1265,15 +1277,12 @@
             "type": "integer"
           },
           "sessions_today": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessions Today"
+            "items": {
+              "$ref": "#/components/schemas/SessionTodayOut"
+            },
+            "maxItems": 50,
+            "title": "Sessions Today",
+            "type": "array"
           },
           "today": {
             "format": "date",
@@ -1303,7 +1312,9 @@
           "income_month_cop",
           "last_movements",
           "notifications_today",
-          "members_without_consent"
+          "members_without_consent",
+          "attendance_week",
+          "sessions_today"
         ],
         "title": "DashboardOut",
         "type": "object"
@@ -6236,6 +6247,60 @@
           "cancelled_at"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SessionTodayOut": {
+        "additionalProperties": false,
+        "description": "Una sesión de hoy (Bogotá) con su ocupación (US-164); `status` es el calculado.",
+        "properties": {
+          "attendance_count": {
+            "title": "Attendance Count",
+            "type": "integer"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "coach_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "scheduled",
+              "done",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "starts_at",
+          "coach_name",
+          "capacity",
+          "attendance_count",
+          "status"
+        ],
+        "title": "SessionTodayOut",
         "type": "object"
       },
       "SignatureInfoOut": {

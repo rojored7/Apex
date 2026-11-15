@@ -37,17 +37,21 @@ from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID
 from app.core.security import Role
 
-# Aristas de lectura del tablero (S4A-D27, C9; S5-D47): seis services a nivel de módulo, con
-# `notifications`; nunca `plans` (el nombre del plan llega por `memberships.service.refs_for`)
+# Aristas de lectura del tablero (S4A-D27, C9; S5-D47): siete services a nivel de módulo, con
+# `notifications` y `classes` (S7-R3, US-164); nunca `plans` (el nombre del plan llega por
+# `memberships.service.refs_for`)
 # y nadie importa `dashboard`.
 from app.modules.audit import service as audit_service
 from app.modules.audit.schemas import AuditEntryView
 from app.modules.auth import service as auth_service
+from app.modules.classes import service as classes_service
 from app.modules.dashboard.schemas import (
     LAST_MOVEMENTS_LIMIT,
+    AttendanceWeekOut,
     DashboardOut,
     MovementOut,
     MovementTable,
+    SessionTodayOut,
 )
 from app.modules.members import service as members_service
 from app.modules.memberships import service as memberships_service
@@ -239,7 +243,10 @@ def can_see_finances(role: Role) -> bool:
 async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut:
     """El tablero completo (ver el docstring del módulo); sin `with_finances` (coach),
     `income_month_cop` es `None` y no se consulta, y las frases de pagos no llevan monto."""
-    hoy = current_clock().today_bogota()
+    reloj = current_clock()
+    hoy = reloj.today_bogota()
+    semana = await classes_service.week_attendance(session, reloj.now_utc())
+    sesiones = await classes_service.today_sessions(session, hoy)
     membresias = await memberships_service.summary(session, today=hoy)
     mes = month_of(hoy)
     ingresos = None
@@ -257,4 +264,16 @@ async def summary(session: AsyncSession, *, with_finances: bool) -> DashboardOut
         last_movements=await last_movements(session, with_finances=with_finances),
         notifications_today=await notifications_service.today_count(session, hoy),
         members_without_consent=await members_service.count_without_consent(session),
+        attendance_week=AttendanceWeekOut(count=semana.count, flagged_count=semana.flagged_count),
+        sessions_today=[
+            SessionTodayOut(
+                id=s.id,
+                starts_at=s.starts_at,
+                coach_name=s.coach_name,
+                capacity=s.capacity,
+                attendance_count=s.attendance_count,
+                status=s.status,
+            )
+            for s in sesiones
+        ],
     )

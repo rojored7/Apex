@@ -33,10 +33,14 @@ from app.modules.classes.events import (
 )
 from app.modules.classes.exceptions import MembershipPortNotRegistered
 from app.modules.classes.queries import (
+    TODAY_SESSIONS_LIMIT,
+    WeekAttendance,
     attended_member_ids,
     get_session,
     last_attendance_for,
     list_sessions,
+    today_sessions,
+    week_attendance,
 )
 from app.modules.classes.reports import attendance_summary, member_attendance, weekly_summary
 from app.modules.classes.rules import (
@@ -58,6 +62,7 @@ from app.modules.classes.sessions import (
 from app.modules.classes.slots import create_slot, get_slot, list_slots, update_slot
 
 __all__ = [
+    "TODAY_SESSIONS_LIMIT",
     "AttendanceRemoved",
     "GenerateResult",
     "MemberCheckedIn",
@@ -67,6 +72,7 @@ __all__ = [
     "SessionCancelled",
     "SessionGenerated",
     "SlotSpec",
+    "WeekAttendance",
     "attendance_summary",
     "attended_member_ids",
     "cancel_future_sessions",
@@ -88,7 +94,9 @@ __all__ = [
     "remove_attendance",
     "session_status",
     "set_membership_port",
+    "today_sessions",
     "update_slot",
+    "week_attendance",
     "week_of",
     "week_range",
     "weekly_summary",

@@ -2,7 +2,9 @@
 // api/src/app/modules/dashboard/schemas.py), validada con Zod antes de usarla.
 // - Los cinco conteos de membresías son enteros no negativos.
 // - `income_month_cop` es entero o null: null para el coach, que no ve finanzas (S4A-D118).
-// - Los futuros (asistencia, sesiones, avisos, sin consentimiento y WOD) son `nullable()`, no
+// - S7-R3: `attendance_week` (objeto) y `sessions_today` (lista, `[]` sin clases) son obligatorios y no
+//   nulos; ya no son futuros.
+// - Los futuros (avisos, sin consentimiento y WOD) son `nullable()`, no
 //   `optional()` (S4A-D33): el api los manda siempre, en null hasta su versión. Una clave ausente es
 //   una respuesta inválida, no un cero.
 // - Revisión de seguridad de F3 (M1, M2, L5): los dos objetos son `.strict()` (una clave de más, como
@@ -21,6 +23,9 @@ export const LAST_MOVEMENTS_LIMIT = 10;
 
 const count = z.number().int().nonnegative();
 const futureCount = count.nullable();
+/** Tope de `sessions_today` (api: SESSIONS_TODAY_LIMIT). */
+export const SESSIONS_TODAY_LIMIT = 50;
+const SESSION_STATUSES = ["scheduled", "done", "cancelled"] as const;
 const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CIVIL_MONTH = /^\d{4}-\d{2}$/;
 /** Revisión de seguridad de F3 (M2): un id que no es UUID nunca llega a una URL (`/socios/:id`). */
@@ -37,6 +42,21 @@ export const movementSchema = z
   })
   .strict();
 
+/** S7-R3 (US-164, S7-D16): asistencias de la semana en curso y las marcadas. */
+export const attendanceWeekSchema = z.object({ count, flagged_count: count }).strict();
+
+/** S7-R3: una sesión de hoy con su ocupación; el id es UUID (nunca llega a una URL sin validar). */
+export const sessionTodaySchema = z
+  .object({
+    id: z.string().refine(isUuid),
+    starts_at: z.string().min(1),
+    coach_name: z.string().nullable(),
+    capacity: count,
+    attendance_count: count,
+    status: z.enum(SESSION_STATUSES),
+  })
+  .strict();
+
 export const dashboardSchema = z
   .object({
     today: z.string().regex(CIVIL_DATE),
@@ -47,8 +67,8 @@ export const dashboardSchema = z
     members_pending_payment: count,
     income_month: z.string().regex(CIVIL_MONTH),
     income_month_cop: z.number().int().nonnegative().nullable(),
-    attendance_week: futureCount,
-    sessions_today: futureCount,
+    attendance_week: attendanceWeekSchema,
+    sessions_today: z.array(sessionTodaySchema).max(SESSIONS_TODAY_LIMIT),
     notifications_today: futureCount,
     members_without_consent: futureCount,
     wod_today: z.string().nullable(),
@@ -57,4 +77,6 @@ export const dashboardSchema = z
   .strict();
 
 export type MovementView = z.infer<typeof movementSchema>;
+export type AttendanceWeekView = z.infer<typeof attendanceWeekSchema>;
+export type SessionTodayView = z.infer<typeof sessionTodaySchema>;
 export type DashboardView = z.infer<typeof dashboardSchema>;

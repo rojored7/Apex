@@ -15,13 +15,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const SESIONES = [1, 2, 3, 4].map((n) => ({
+  id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa0${String(n)}`,
+  starts_at: "2026-10-21T11:00:00Z",
+  coach_name: null,
+  capacity: 15,
+  attendance_count: n,
+  status: "scheduled" as const,
+}));
+
 const CARDS = [
-  ["Hoy en el box", "Disponible en v0.4"],
-  ["Asistencia de la semana", "Disponible en v0.4"],
   ["WOD de hoy", "Disponible en v0.5"],
 ] as const;
 
 describe("FutureKpis", () => {
+  it("S7-R3: asistencia y sesiones ya no son futuras: sin clases muestran 0 y el conteo de la semana", async () => {
+    mockDashboard(ok());
+    renderDashboard(<FutureKpis />);
+
+    await screen.findByText("41");
+    expect(within(screen.getByRole("group", { name: "Hoy en el box" })).getByText("0")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Asistencia de la semana" })).getByText("41")).toBeInTheDocument();
+  });
+
   it.each(CARDS)("%s en null dice %s y nunca 0", async (label, text) => {
     mockDashboard(ok());
     renderDashboard(<FutureKpis />);
@@ -33,7 +49,7 @@ describe("FutureKpis", () => {
   });
 
   it("con valor, lo muestra", async () => {
-    mockDashboard(ok(dashboardBody({ sessions_today: 4, attendance_week: 1250, wod_today: "Helen" })));
+    mockDashboard(ok(dashboardBody({ sessions_today: SESIONES, attendance_week: { count: 1250, flagged_count: 7 }, wod_today: "Helen" })));
     renderDashboard(<FutureKpis />);
 
     await screen.findByText("Helen");

@@ -62,6 +62,15 @@ export const MOVEMENT_TIMES: readonly string[] = [
   "14 oct 2026, 10:00 a. m.",
 ];
 
+export interface SessionTodayFixture {
+  id: string;
+  starts_at: string;
+  coach_name: string | null;
+  capacity: number;
+  attendance_count: number;
+  status: "scheduled" | "done" | "cancelled";
+}
+
 export interface DashboardFixture {
   today: string;
   members_active: number;
@@ -71,8 +80,8 @@ export interface DashboardFixture {
   members_pending_payment: number;
   income_month: string;
   income_month_cop: number | null;
-  attendance_week: number | null;
-  sessions_today: number | null;
+  attendance_week: { count: number; flagged_count: number };
+  sessions_today: SessionTodayFixture[];
   notifications_today: number | null;
   members_without_consent: number | null;
   wod_today: string | null;
@@ -89,8 +98,8 @@ export function dashboardBody(overrides: Partial<DashboardFixture> = {}): Dashbo
     members_pending_payment: 3,
     income_month: "2026-10",
     income_month_cop: 3_250_000,
-    attendance_week: null,
-    sessions_today: null,
+    attendance_week: { count: 41, flagged_count: 3 },
+    sessions_today: [],
     notifications_today: 9,
     members_without_consent: 2,
     wod_today: null,

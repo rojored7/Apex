@@ -25,6 +25,7 @@ from app.modules.classes.rules import (
 )
 from app.modules.classes.sessions import (
     GenerateResult,
+    cancel_future_sessions,
     cancel_session,
     create_extra,
     generate_sessions,
@@ -37,6 +38,7 @@ __all__ = [
     "SessionCancelled",
     "SessionGenerated",
     "SlotSpec",
+    "cancel_future_sessions",
     "cancel_session",
     "create_extra",
     "create_slot",

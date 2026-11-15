@@ -120,6 +120,12 @@ class SessionCancel(BaseModel):
     reason: CancelReason
 
 
+class CancelFutureOut(BaseModel):
+    """`POST /class-slots/{id}/cancel-future-sessions`: cuántas sesiones se cancelaron."""
+
+    cancelled_count: int
+
+
 class AttendeeOut(BaseModel):
     """Un asistente de la sesión (llega con C1; hoy la lista va vacía)."""
 

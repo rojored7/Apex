@@ -221,3 +221,11 @@ Siete hallazgos de seguridad (0 CRITICAL, 0 HIGH, 3 MEDIUM, 4 LOW). Rojo primero
 - Router: `GET/POST /class-sessions`, `GET /class-sessions/{id}`, `POST /class-sessions/{id}/cancel` con `StaffDep` (socio 403), `staff-read` y `classes-write`. `PRIVATE_HELPERS["classes"]` suma `queries`.
 - [ASUNCIÓN] `attendance_count` es 0 y `attendees` va vacía hasta C1 (la tabla de asistencia no existe).
 - P-API: `docs/openapi.json` (dos exportaciones idénticas; 75 → 78 rutas; además cambian `SlotCreate`, `SlotPatch` y `TimeRange` por el patrón ASCII de A1b, que no se había regenerado) y `web/src/core/api/types.ts`; `types.contract.test.ts` 6 passed.
+
+## S7-B3 · Cancelar sesiones futuras (US-158, S7-D26)
+
+- Rojo: stubs con `NotImplementedError`; `test_cancel_future.py` + `test_router_cancel_future.py` = 17 pruebas, 11 failed (NotImplementedError; 403/404/200 del router y 7 del service) y 6 passed (422 y ruta publicada, que no llegan al service).
+- Verde: `sessions.cancel_future_sessions` (candado 4_270_006, comprobación de franja, un `SELECT ... FOR UPDATE ORDER BY starts_at, id`, UPDATE por ORM en un flush, un `SessionCancelled` por sesión); 17 passed. Futura = `starts_at > ahora`; solo `scheduled` de esa franja (extras y pasadas intactas).
+- Concurrencia: `test_concurrente_con_generate_sessions_sin_quedar_scheduled` (job con 006 y sleep, cancelación espera): creadas 2, canceladas 2, ninguna scheduled, sin 40P01.
+- Catálogo `test_error_codes_per_route.py` suma la ruta (`classes-write`). P-API: openapi idéntico en dos corridas, types.contract 6 passed.
+- Gate `slice-gate.sh classes ...`: 840 passed, exit 0.

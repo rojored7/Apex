@@ -22,7 +22,7 @@
 // literal (tests/lint/restricted-config.ts).
 import { useSyncExternalStore } from "react";
 import { z } from "zod";
-import { api, registerOnUnauthorized, setAccessTokenGetter, type UnauthorizedHandler } from "../api/client";
+import { api, registerOnKioskMode, registerOnUnauthorized, setAccessTokenGetter, type UnauthorizedHandler } from "../api/client";
 import { isApiError } from "../api/errors";
 import { queryClient } from "../api/queryClient";
 import { API_ERROR_CODES } from "../api/errorCodes";
@@ -39,6 +39,8 @@ export interface SessionUser {
   memberId: string | null;
   gymName: string;
   mustChangePassword: boolean;
+  /** S7-D41: la ruta del check-in a la que el servidor confinó esta sesión (modo quiosco); null si no hay. */
+  kioskPath: string | null;
 }
 
 export type SessionStatus = "loading" | "anonymous" | "authenticated";
@@ -79,6 +81,7 @@ const meOutSchema = z.object({
   member_id: z.string().nullable(),
   gym_name: z.string(),
   must_change_password: z.boolean(),
+  kiosk_path: z.string().nullish().transform((path) => path ?? null),
 });
 
 /**
@@ -183,6 +186,7 @@ function toSessionUser(me: z.infer<typeof meOutSchema>): SessionUser {
     memberId: me.member_id,
     gymName: me.gym_name,
     mustChangePassword: me.must_change_password,
+    kioskPath: me.kiosk_path,
   };
 }
 
@@ -254,7 +258,7 @@ export function restoreSession(): Promise<boolean> {
 }
 
 const sameUser = (a: SessionUser, b: SessionUser): boolean =>
-  a.id === b.id && a.email === b.email && a.role === b.role && a.memberId === b.memberId && a.gymName === b.gymName && a.mustChangePassword === b.mustChangePassword;
+  a.id === b.id && a.email === b.email && a.role === b.role && a.memberId === b.memberId && a.gymName === b.gymName && a.mustChangePassword === b.mustChangePassword && a.kioskPath === b.kioskPath;
 
 /**
  * Aplica una lectura de me que empezó en `startedAt`/`revision` con `user` en la sesión.
@@ -327,6 +331,20 @@ export function refreshAccessToken(): Promise<boolean> {
 export function adoptAccessToken(token: string, expiresIn: number): void {
   if (state.status !== "authenticated") return;
   accessToken = token;
+  publish({ type: "token", accessToken: token, expiresIn });
+}
+
+/**
+ * S7-D41: el api entregó un access nuevo al entrar o salir del modo quiosco (POST /auth/kiosk y /auth/kiosk/exit).
+ * Reemplaza al actual (el viejo no lleva la marca o la lleva de más), lo reparte a las demás pestañas y deja
+ * `kioskPath` en el usuario de la sesión. Sin sesión no hace nada.
+ */
+export function applyKioskAccess(token: string, expiresIn: number, kioskPath: string | null): void {
+  const { status, user } = state;
+  if (status !== "authenticated" || user === null) return;
+  accessToken = token;
+  userRevision += 1;
+  emit({ status, user: { ...user, kioskPath } });
   publish({ type: "token", accessToken: token, expiresIn });
 }
 
@@ -416,11 +434,16 @@ export function installSessionBridge(): () => void {
   if (bridge) return bridge.uninstall;
   connectClient();
   registerOnUnauthorized(onUnauthorized);
+  // S7-D41: un 403 `kiosk_mode` es que el servidor confinó esta sesión: se relee me y RequireAuth lleva al check-in.
+  registerOnKioskMode(() => {
+    void refreshCurrentUser();
+  });
   tabSync = openTabSync(onTabMessage);
   const installed = {
     uninstall: (): void => {
       if (bridge !== installed) return;
       registerOnUnauthorized(null);
+      registerOnKioskMode(null);
       tabSync?.close();
       tabSync = null;
       bridge = null;

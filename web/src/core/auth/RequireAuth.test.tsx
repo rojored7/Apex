@@ -121,3 +121,58 @@ describe("RequireAuth tras cerrar la sesión (S2-F3)", () => {
     expect(router.state.location.search).toBe(`?next=${encodeURIComponent("/socios?estado=activo")}`);
   });
 });
+
+describe("RequireAuth · modo quiosco (S7-D41, S7-F4b)", () => {
+  const KIOSK = "/clases/22222222-2222-4222-8222-222222222222/checkin";
+
+  function setupKiosk(path: string) {
+    const router = createMemoryRouter(
+      [
+        { path: "/login", element: <h1>Pantalla de login</h1> },
+        {
+          element: <RequireAuth />,
+          children: [
+            { path: "/socios", element: <h1>Socios</h1> },
+            { path: KIOSK, element: <h1>Check-in</h1> },
+          ],
+        },
+      ],
+      { initialEntries: [path] },
+    );
+    render(<RouterProvider router={router} />);
+    return router;
+  }
+
+  it("con kioskPath en la sesión, otra ruta lleva al check-in", async () => {
+    signInAs("coach", { kioskPath: KIOSK });
+    const router = setupKiosk("/socios");
+
+    expect(await screen.findByRole("heading", { name: "Check-in" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(KIOSK);
+  });
+
+  it("en el check-in de la marca se queda (sin bucle)", () => {
+    signInAs("coach", { kioskPath: KIOSK });
+    setupKiosk(KIOSK);
+
+    expect(screen.getByRole("heading", { name: "Check-in" })).toBeInTheDocument();
+  });
+
+  it("recarga: /auth/me trae kiosk_path y la barra de direcciones en /socios vuelve al check-in", async () => {
+    mockApi({
+      "POST /auth/refresh": { status: 200, body: REFRESH },
+      "GET /auth/me": { status: 200, body: { ...ME, kiosk_path: KIOSK } },
+    });
+    const router = setupKiosk("/socios");
+
+    expect(await screen.findByRole("heading", { name: "Check-in" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(KIOSK);
+  });
+
+  it("sin marca no redirige", () => {
+    signInAs("coach");
+    setupKiosk("/socios");
+
+    expect(screen.getByRole("heading", { name: "Socios" })).toBeInTheDocument();
+  });
+});

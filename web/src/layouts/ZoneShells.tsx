@@ -1,13 +1,14 @@
 // S2-F2: contenedores de las zonas que no son el panel. Leen de la sesión o de la ruta lo que
 // su layout presentacional necesita.
-import { useEffect, useMemo } from "react";
-import { Outlet, useLocation, useMatches, useNavigate } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Outlet, useBlocker, useLocation, useMatches, useNavigate } from "react-router";
 import { CustodyNoticeHost } from "../core/custody/CustodyNoticeHost";
-import { logout, useSession } from "../core/auth";
-import { confirmPassword } from "../core/auth/confirmPassword";
+import { useSession } from "../core/auth";
+import { enterKiosk, exitKiosk, logoutDevice } from "../core/auth/kiosk";
+import { Button } from "../shared/ui/Button";
 import { GymLayout, type TabletOptions } from "./GymLayout";
 import { PortalLayout } from "./PortalLayout";
-import { CHECKIN_PATH, enterTabletMode, isTabletMode, leaveTabletMode } from "./tabletMode";
+import { CHECKIN_PATH } from "./tabletMode";
 import { TvLayout } from "./TvLayout";
 
 export function PortalShell() {
@@ -26,42 +27,82 @@ function titleOf(handle: unknown): string | null {
   return typeof title === "string" ? title : null;
 }
 
-const NO_SESSION_MESSAGE = "Tu sesión ya no está abierta. Vuelve a iniciar sesión.";
-
 /**
- * La tablet del box toma el título de la ruta (handle.title). S7-F4 (S7-D24): al entrar a /clases/:id/checkin marca el modo tablet
- * (marca en memoria); mientras rija, la barra no lleva enlaces al panel, salir pide la contraseña de la cuenta y 10 minutos sin
- * actividad cierran la sesión.
+ * La tablet del box toma el título de la ruta (handle.title). S7-D41: el modo tablet lo manda el servidor. Al entrar a
+ * /clases/:id/checkin llama POST /auth/kiosk (la sesión queda confinada y trae un access nuevo); mientras la sesión tenga
+ * `kioskPath` la barra no lleva enlaces, «atrás» y toda navegación fuera abren el diálogo de salida con contraseña
+ * (POST /auth/kiosk/exit) y 10 minutos sin actividad cierran la sesión. Recargar o escribir otra dirección lo resuelve
+ * RequireAuth con el kiosk_path de /auth/me.
  */
 export function GymShell() {
   const matches = useMatches();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useSession();
-  const email = user?.email;
   const onCheckIn = CHECKIN_PATH.test(pathname);
+  const kioskPath = user?.kioskPath ?? null;
+  const [enterError, setEnterError] = useState<string | null>(null);
+  const entering = useRef(false);
+  const leaving = useRef(false);
+
+  const enter = useCallback((path: string): void => {
+    if (entering.current) return;
+    entering.current = true;
+    setEnterError(null);
+    void enterKiosk(path)
+      .then(setEnterError)
+      .finally(() => {
+        entering.current = false;
+      });
+  }, []);
+  const needsEntry = onCheckIn && user !== null && kioskPath === null;
   useEffect(() => {
-    if (onCheckIn) enterTabletMode();
-  }, [onCheckIn]);
-  const isTablet = onCheckIn || isTabletMode();
+    if (needsEntry) enter(pathname);
+  }, [needsEntry, pathname, enter]);
+
+  // Optimista en el check-in: sin esperar al servidor la barra ya no trae enlaces.
+  const isTablet = kioskPath !== null || (onCheckIn && user !== null);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => isTablet && !leaving.current && nextLocation.pathname !== currentLocation.pathname);
   const title = matches.map((m) => titleOf(m.handle)).findLast((t): t is string => t !== null) ?? "APEX";
 
   const tablet = useMemo<TabletOptions>(
     () => ({
-      verifyPassword: (password) => (email === undefined ? Promise.resolve(NO_SESSION_MESSAGE) : confirmPassword(email, password)),
+      verifyPassword: exitKiosk,
       onLeave: (to) => {
-        leaveTabletMode();
-        void navigate(to);
+        leaving.current = true;
+        if (blocker.state === "blocked") blocker.proceed();
+        else void navigate(to);
       },
       onIdle: () => {
-        leaveTabletMode();
-        void logout();
+        void logoutDevice();
+      },
+      blockedTo: blocker.state === "blocked" ? `${blocker.location.pathname}${blocker.location.search}` : null,
+      onCancelLeave: () => {
+        if (blocker.state === "blocked") blocker.reset();
       },
     }),
-    [email, navigate],
+    [blocker, navigate],
   );
   // DESIGN-GAP: cada pantalla de tablet fijará su salida cuando exista; el check-in sale a «‹ Clases» y las demás, por ahora, al inicio del panel.
-  return <GymLayout title={title} exitTo={onCheckIn ? "/clases" : "/"} exitLabel={onCheckIn ? "Clases" : "Salir"} tablet={isTablet ? tablet : undefined} />;
+  return (
+    <GymLayout title={title} exitTo={onCheckIn ? "/clases" : "/"} exitLabel={onCheckIn ? "Clases" : "Salir"} tablet={isTablet ? tablet : undefined}>
+      {enterError !== null ? (
+        <div role="alert">
+          <p>{enterError}</p>
+          <Button
+            size="lg"
+            variant="secondary"
+            onClick={() => {
+              enter(pathname);
+            }}
+          >
+            Reintentar
+          </Button>
+        </div>
+      ) : null}
+      <Outlet />
+    </GymLayout>
+  );
 }
 
 export function TvShell() {

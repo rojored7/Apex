@@ -21,14 +21,13 @@ export interface MemberSearchOption {
 }
 
 /** idle: sin texto; short (S7-F4): faltan letras para buscar; pending: buscando; error: falló; done: llegaron `options`. */
-export type MemberSearchStatus =
-  "idle" | "short" | "pending" | "error" | "done";
+export type MemberSearchStatus = "idle" | "short" | "pending" | "error" | "done";
 
 export interface MemberSearchProps {
   name: string;
   value: string;
   onChange: (text: string) => void;
-  inputRef?: Ref<HTMLInputElement>;
+  inputRef?: Ref<HTMLInputElement> | undefined;
   /** El error del formulario (por ejemplo "Elige el socio"). */
   error?: string | undefined;
   status: MemberSearchStatus;
@@ -37,7 +36,8 @@ export interface MemberSearchProps {
   emptyText: string;
   /** Lo que se dice cuando la búsqueda falló. */
   failedText: string;
-  onSelect: (option: MemberSearchOption) => void;
+  /** Se llama al tocar la fila por defecto; con `renderOption` la fila trae sus propias acciones y no hace falta. */
+  onSelect?: (option: MemberSearchOption) => void;
   /** S7-F4: `gym` es la tablet del box (campo de 56 px). */
   size?: "md" | "gym";
   /** Lo que se dice en estado `short`. */
@@ -49,9 +49,7 @@ export interface MemberSearchProps {
 
 /** "1 socio encontrado", "3 socios encontrados". */
 export function foundText(count: number): string {
-  return count === 1
-    ? "1 socio encontrado"
-    : `${String(count)} socios encontrados`;
+  return count === 1 ? "1 socio encontrado" : `${String(count)} socios encontrados`;
 }
 
 interface Announcement {
@@ -59,55 +57,20 @@ interface Announcement {
   tone: "note" | "error" | "hidden";
 }
 
-function announcementOf(
-  status: MemberSearchStatus,
-  count: number,
-  {
-    emptyText,
-    failedText,
-    shortText,
-  }: Pick<MemberSearchProps, "emptyText" | "failedText" | "shortText">,
-): Announcement | null {
+function announcementOf(status: MemberSearchStatus, count: number, { emptyText, failedText, shortText }: Pick<MemberSearchProps, "emptyText" | "failedText" | "shortText">): Announcement | null {
   if (status === "idle") return null;
-  if (status === "short")
-    return {
-      text: shortText ?? "Escribe más letras para buscar.",
-      tone: "note",
-    };
+  if (status === "short") return { text: shortText ?? "Escribe más letras para buscar.", tone: "note" };
   if (status === "error") return { text: failedText, tone: "error" };
   if (status === "pending") return { text: "Buscando…", tone: "note" };
   if (count === 0) return { text: emptyText, tone: "note" };
   return { text: foundText(count), tone: "hidden" };
 }
 
-const TONE_CLASS = {
-  note: styles.note,
-  error: styles.fieldError,
-  hidden: styles.srOnly,
-} as const;
+const TONE_CLASS = { note: styles.note, error: styles.fieldError, hidden: styles.srOnly } as const;
 
-export function MemberSearch({
-  name,
-  value,
-  onChange,
-  inputRef,
-  error,
-  status,
-  options,
-  emptyText,
-  failedText,
-  onSelect,
-  size = "md",
-  shortText,
-  placeholder = "Buscar por nombre, documento o teléfono",
-  renderOption,
-}: MemberSearchProps) {
+export function MemberSearch({ name, value, onChange, inputRef, error, status, options, emptyText, failedText, onSelect, size = "md", shortText, placeholder = "Buscar por nombre, documento o teléfono", renderOption }: MemberSearchProps) {
   const shown = status === "done" ? options : [];
-  const announcement = announcementOf(status, shown.length, {
-    emptyText,
-    failedText,
-    shortText,
-  });
+  const announcement = announcementOf(status, shown.length, { emptyText, failedText, shortText });
   return (
     <>
       <Field
@@ -128,9 +91,7 @@ export function MemberSearch({
         }}
       />
       <div role="status" aria-label="Resultado de la búsqueda">
-        {announcement ? (
-          <p className={TONE_CLASS[announcement.tone]}>{announcement.text}</p>
-        ) : null}
+        {announcement ? <p className={TONE_CLASS[announcement.tone]}>{announcement.text}</p> : null}
       </div>
       {shown.length > 0 ? (
         <ul className={styles.results} aria-label="Socios encontrados">
@@ -144,7 +105,7 @@ export function MemberSearch({
                   className={styles.option}
                   disabled={option.disabled === true}
                   onClick={() => {
-                    onSelect(option);
+                    onSelect?.(option);
                   }}
                 >
                   <span className={styles.optionText}>

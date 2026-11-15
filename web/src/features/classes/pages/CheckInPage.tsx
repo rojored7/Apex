@@ -6,7 +6,7 @@
 //   /reveal ni /attachments salvo la foto. «Vender» sale del modo con la contraseña.
 // - Estados: cargando, error con Reintentar (403, 404, 429, 5xx), sesión cancelada, sin asistentes, cupo lleno.
 // DESIGN-GAP: el WOD del encabezado («WOD "Helen"») llega con v0.5 (wods).
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router";
 import { formatLongDate, formatTime24 } from "../../../core/i18n/format";
 import { useGym, useGymHeader } from "../../../shared/hooks/gymContext";
@@ -33,6 +33,7 @@ function CheckInContent({ session }: { session: SessionDetailView }) {
   const checkIn = useCheckIn();
   const [text, setText] = useState("");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const arrived = new Set(session.attendees.map((attendee) => attendee.member_id));
   const cancelled = session.status === "cancelled";
   const full = session.attendance_count >= session.capacity;
@@ -44,6 +45,8 @@ function CheckInContent({ session }: { session: SessionDetailView }) {
       const result = await checkIn.mutateAsync({ sessionId: session.id, memberId: member.id });
       setOutcome({ kind: "ok", name, flags: result.flags });
       setText("");
+      // LOW a: la tablet queda lista para el siguiente (el botón «Llegó» desaparece con la búsqueda).
+      searchRef.current?.focus();
     } catch (error) {
       setOutcome({ kind: "error", message: checkInMessage(error) });
     }
@@ -61,6 +64,7 @@ function CheckInContent({ session }: { session: SessionDetailView }) {
               onTextChange={setText}
               arrived={arrived}
               pending={checkIn.isPending}
+              inputRef={searchRef}
               onArrive={(member) => {
                 void arrive(member);
               }}

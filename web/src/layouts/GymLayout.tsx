@@ -27,6 +27,10 @@ export interface TabletOptions {
   /** Pasó el tiempo sin actividad. */
   onIdle: () => void;
   idleMs?: number;
+  /** S7-D41: una navegación fuera del check-in (por ejemplo «atrás») quedó retenida; abre el mismo diálogo de salida hacia ahí. */
+  blockedTo?: string | null;
+  /** Se cerró el diálogo de una navegación retenida sin salir. */
+  onCancelLeave?: () => void;
 }
 
 export interface GymLayoutProps {
@@ -64,6 +68,7 @@ export function GymLayout({ title, subtitle, exitTo, exitLabel = "Salir", counte
     isTablet,
   );
 
+  const target = leaveTo ?? tablet?.blockedTo ?? null;
   const requestLeave = useCallback(
     (to: string): void => {
       if (isTablet) setLeaveTo(to);
@@ -106,15 +111,15 @@ export function GymLayout({ title, subtitle, exitTo, exitLabel = "Salir", counte
         <main className={styles.content}>{children ?? <Outlet />}</main>
         {tablet ? (
           <LeaveTabletDialog
-            open={leaveTo !== null}
+            open={target !== null}
             verifyPassword={tablet.verifyPassword}
             onConfirmed={() => {
-              const to = leaveTo;
               setLeaveTo(null);
-              if (to !== null) tablet.onLeave(to);
+              if (target !== null) tablet.onLeave(target);
             }}
             onClose={() => {
               setLeaveTo(null);
+              tablet.onCancelLeave?.();
             }}
           />
         ) : null}

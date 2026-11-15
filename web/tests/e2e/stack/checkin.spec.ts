@@ -1,137 +1,302 @@
-// S7-F4 (US-159, US-161, S7-D24, S7-D27) contra el stack de Compose: el check-in en modo tablet. Corre en V5, no en F4.
-// Cubre: socio al día y socio vencido en la misma sesión, el duplicado (409), una sesión de otro día que registra con la bandera
-// «Otro día» y sin 409, la tiquetera de 10 clases (10 → 9 al registrar → 10 al quitar), que durante la prueba no sale ninguna
-// petición a /reveal ni /members/{id}, y la salida del modo tablet con la contraseña. axe en cada paso.
-// Necesita C1 a C3 y la cuenta del admin del seed (E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD). Sin E2E_BASE_URL se omite.
+// S7-F4 / S7-F4b (US-159, US-161, S7-D24, S7-D27, S7-D41) contra el stack de Compose: el check-in en modo tablet con la CUENTA DE UN COACH.
+// Cubre: las siete banderas con su dato (vencido, sin plan, congelado, pendiente de pago, cupo lleno, fuera de horario, otro día),
+// el 409 `already_checked_in` por el api, «atrás» y la barra de direcciones que vuelven al check-in, la recarga que sigue en él,
+// la salida con contraseña, la tiquetera de 10 clases (10 → 9 → 10) y que nunca sale una petición a /reveal. axe en cada paso.
+// La inactividad de 10 minutos la cubre la prueba unitaria de GymShell (no se espera en el stack).
+// Necesita C1 a C4, la cuenta del admin del seed (E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD) y crea su propio coach. Sin E2E_BASE_URL se omite. Corre en V5.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import {
+  borrarUsuario,
+  congelarPorApi,
+  crearCoach,
   crearPlan,
   crearSocio,
   darDeBajaSocio,
-  datosDeBase,
   esperarTransiciones,
   fechaBogota,
   loginComo,
   sameOriginHeaders,
   venderMembresia,
   venderMembresiaDesde,
+  type CoachCreado,
   type SocioCreado,
 } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const API = "/api/v1";
+const CHECKIN = /\/clases\/[^/]+\/checkin$/;
 
 async function axeViolations(page: Page): Promise<string[]> {
   await esperarTransiciones(page);
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  return result.violations.map((v) => `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+  return result.violations.map(
+    (v) =>
+      `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+  );
 }
 
 interface SesionCreada {
   id: string;
 }
 
-/** Sesión extra por el api (POST /class-sessions, S7-D11) a una hora de Bogotá dada; `dias` la mueve respecto de hoy. */
-async function crearSesion(page: Page, token: string, dias: number): Promise<SesionCreada> {
-  const headers = { Authorization: `Bearer ${token}` };
+/** Sesión extra por el api (POST /class-sessions, S7-D11) a las 17:00 de Bogotá; `dias` la mueve respecto de hoy. */
+async function crearSesion(
+  page: Page,
+  token: string,
+  dias: number,
+  capacity: number,
+): Promise<SesionCreada> {
+  const headers = { Authorization: `Bearer ${token}`, ...sameOriginHeaders() };
   const dia = fechaBogota(dias);
-  const response = await page.request.post(`${API}/class-sessions`, { headers, data: { starts_at: `${dia}T17:00:00-05:00`, duration_min: 60, capacity: 12, name: `E2E ${String(Date.now())}` } });
-  if (!response.ok()) throw new Error(`POST /class-sessions respondió ${String(response.status())}.`);
+  const response = await page.request.post(`${API}/class-sessions`, {
+    headers,
+    data: {
+      starts_at: `${dia}T17:00:00-05:00`,
+      duration_min: 60,
+      capacity,
+      name: `E2E ${String(Date.now())}`,
+    },
+  });
+  if (!response.ok())
+    throw new Error(
+      `POST /class-sessions respondió ${String(response.status())}.`,
+    );
   return (await response.json()) as SesionCreada;
 }
 
-async function clasesQuedan(page: Page, token: string, socioId: string): Promise<number | null> {
-  const response = await page.request.get(`${API}/members/${socioId}/memberships`, { headers: { Authorization: `Bearer ${token}` } });
-  const body = (await response.json()) as { items: { classes_remaining: number | null }[] };
+async function clasesQuedan(
+  page: Page,
+  token: string,
+  socioId: string,
+): Promise<number | null> {
+  const response = await page.request.get(
+    `${API}/members/${socioId}/memberships`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const body = (await response.json()) as {
+    items: { classes_remaining: number | null }[];
+  };
   return body.items[0]?.classes_remaining ?? null;
 }
 
 async function buscar(page: Page, nombre: string): Promise<void> {
   await page.getByRole("searchbox", { name: "Buscar socio" }).fill(nombre);
-  await expect(page.getByRole("list", { name: "Socios encontrados" })).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Socios encontrados" }),
+  ).toBeVisible();
+}
+
+/** Busca al socio y toca «Llegó» o «Llegó igual»; espera a que figure en «Asistentes». */
+async function llegar(page: Page, socio: SocioCreado): Promise<void> {
+  await buscar(page, socio.nombre);
+  await page
+    .getByRole("list", { name: "Socios encontrados" })
+    .getByRole("button", { name: /^Llegó/ })
+    .click();
+  await expect(
+    page.getByRole("list", { name: "Asistentes" }).getByText(socio.nombre),
+  ).toBeVisible();
+}
+
+function filaAsistente(page: Page, socio: SocioCreado) {
+  return page
+    .getByRole("list", { name: "Asistentes" })
+    .getByRole("listitem")
+    .filter({ hasText: socio.nombre });
 }
 
 test.describe("check-in en modo tablet contra el stack", () => {
-  test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL) con C1 a C3");
+  test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL) con C1 a C4");
 
   const socios: SocioCreado[] = [];
-
   test.afterEach(async ({ page }) => {
     for (const socio of socios.splice(0)) await darDeBajaSocio(page, socio.id);
   });
 
-  test("al día, vencido, duplicado, otro día, tiquetera y salida con contraseña", async ({ page }) => {
+  test("siete banderas, 409, atrás y recarga vuelven al check-in, tiquetera y salida con contraseña", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    const token = await loginComo(page);
+    const adminToken = await loginComo(page);
     const llamadas: string[] = [];
-    page.on("request", (request) => llamadas.push(new URL(request.url()).pathname));
+    page.on("request", (request) =>
+      llamadas.push(new URL(request.url()).pathname),
+    );
 
+    // Datos de las siete banderas (todo con la cuenta del admin; el coach entra al final).
     const alDia = await crearSocio(page);
     const vencido = await crearSocio(page);
+    const sinPlan = await crearSocio(page);
+    const congelado = await crearSocio(page);
+    const pendiente = await crearSocio(page);
     const tiquetera = await crearSocio(page);
-    socios.push(alDia, vencido, tiquetera);
+    socios.push(alDia, vencido, sinPlan, congelado, pendiente, tiquetera);
     const plan = await crearPlan(page);
-    await venderMembresia(page, alDia.id, plan.id, { amount_cop: plan.precio, method: "cash" });
-    await venderMembresiaDesde(page, vencido.id, plan.id, fechaBogota(-60), { amount_cop: plan.precio, method: "cash" });
-    const headers = { Authorization: `Bearer ${token}`, ...sameOriginHeaders() };
-    const diez = await page.request.post(`${API}/plans`, { headers, data: { name: `0 E2E diez ${String(Date.now())}`, price_cop: 150_000, kind: "classes", duration_days: 60, class_count: 10 } });
+    await venderMembresia(page, alDia.id, plan.id, {
+      amount_cop: plan.precio,
+      method: "cash",
+    });
+    await venderMembresiaDesde(page, vencido.id, plan.id, fechaBogota(-60), {
+      amount_cop: plan.precio,
+      method: "cash",
+    });
+    const aCongelar = await venderMembresiaDesde(
+      page,
+      congelado.id,
+      plan.id,
+      fechaBogota(-7),
+      { amount_cop: plan.precio, method: "cash" },
+    );
+    expect(
+      await congelarPorApi(page, aCongelar.id, fechaBogota(-1), fechaBogota(5)),
+    ).toBe(200);
+    expect((await venderMembresia(page, pendiente.id, plan.id)).status).toBe(
+      "pending_payment",
+    );
+    const diez = await page.request.post(`${API}/plans`, {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        ...sameOriginHeaders(),
+      },
+      data: {
+        name: `0 E2E diez ${String(Date.now())}`,
+        price_cop: 150_000,
+        kind: "classes",
+        duration_days: 60,
+        class_count: 10,
+      },
+    });
     const planDiez = (await diez.json()) as { id: string };
-    await venderMembresia(page, tiquetera.id, planDiez.id, { amount_cop: 150_000, method: "cash" });
-    const hoy = await crearSesion(page, token, 0);
-    const otroDia = await crearSesion(page, token, 7);
+    await venderMembresia(page, tiquetera.id, planDiez.id, {
+      amount_cop: 150_000,
+      method: "cash",
+    });
+    // Hoy con cupo 3 (el cuarto llega con «Cupo lleno»), ayer (fuera de horario) y dentro de 7 días (otro día).
+    const hoy = await crearSesion(page, adminToken, 0, 3);
+    const ayer = await crearSesion(page, adminToken, -1, 12);
+    const otroDia = await crearSesion(page, adminToken, 7, 12);
 
-    await page.goto(`/clases/${hoy.id}/checkin`);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Check-in");
-    expect(await axeViolations(page)).toEqual([]);
-    // Modo tablet: ningún enlace al panel.
-    await expect(page.getByRole("link")).toHaveCount(0);
+    // La tablet usa una cuenta de coach propia.
+    const coach: CoachCreado = await crearCoach(page);
+    try {
+      const coachToken = await loginComo(page, coach);
 
-    // Al día: «Llegó», sin bandera.
-    await buscar(page, alDia.nombre);
-    await page.getByRole("button", { name: "Llegó", exact: true }).click();
-    await expect(page.getByRole("status", { name: "Resultado del check-in" })).toContainText(`${alDia.nombre} llegó.`);
-    // Duplicado: 409 con su mensaje.
-    await buscar(page, alDia.nombre);
-    await expect(page.getByRole("button", { name: "Ya llegó" })).toBeDisabled();
+      await page.goto(`/clases/${hoy.id}/checkin`);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(
+        "Check-in",
+      );
+      // Modo tablet: ningún enlace al panel.
+      await expect(page.getByRole("link")).toHaveCount(0);
+      expect(await axeViolations(page)).toEqual([]);
 
-    // Vencido: entra igual y queda marcado.
-    await buscar(page, vencido.nombre);
-    await page.getByRole("button", { name: "Llegó igual" }).click();
-    await expect(page.getByRole("list", { name: "Asistentes" }).getByText("Vencido")).toBeVisible();
-    expect(await axeViolations(page)).toEqual([]);
+      // Banderas de membresía: vencido, sin plan, congelado y pendiente de pago entran igual y quedan marcados.
+      await llegar(page, alDia);
+      await llegar(page, vencido);
+      await expect(
+        filaAsistente(page, vencido).getByText("Vencido"),
+      ).toBeVisible();
+      await llegar(page, sinPlan);
+      await expect(
+        filaAsistente(page, sinPlan).getByText("Sin plan"),
+      ).toBeVisible();
+      // Cupo lleno: con tres dentro, el cuarto llega con la bandera «Cupo lleno» (y la de su estado).
+      await llegar(page, congelado);
+      await expect(
+        filaAsistente(page, congelado).getByText("Congelado"),
+      ).toBeVisible();
+      await expect(
+        filaAsistente(page, congelado).getByText("Cupo lleno"),
+      ).toBeVisible();
+      await llegar(page, pendiente);
+      await expect(
+        filaAsistente(page, pendiente).getByText("Pendiente de pago"),
+      ).toBeVisible();
+      expect(await axeViolations(page)).toEqual([]);
 
-    // Tiquetera: 10 → 9 al registrar → 10 al quitar.
-    expect(await clasesQuedan(page, token, tiquetera.id)).toBe(10);
-    await buscar(page, tiquetera.nombre);
-    await page.getByRole("button", { name: "Llegó", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Asistentes" }).getByText(tiquetera.nombre)).toBeVisible();
-    expect(await clasesQuedan(page, token, tiquetera.id)).toBe(9);
-    await page.getByRole("button", { name: `Quitar a ${tiquetera.nombre}` }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Quitar asistencia" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(await clasesQuedan(page, token, tiquetera.id)).toBe(10);
+      // 409 already_checked_in: el mismo registro repetido por el api.
+      const headers = {
+        Authorization: `Bearer ${coachToken}`,
+        ...sameOriginHeaders(),
+      };
+      const repetido = await page.request.post(`${API}/attendance`, {
+        headers,
+        data: { session_id: hoy.id, member_id: alDia.id },
+      });
+      expect(repetido.status()).toBe(409);
+      expect(
+        ((await repetido.json()) as { error: { code: string } }).error.code,
+      ).toBe("already_checked_in");
+      // En pantalla el socio que ya llegó no se puede registrar otra vez.
+      await buscar(page, alDia.nombre);
+      await expect(
+        page.getByRole("button", { name: "Ya llegó" }),
+      ).toBeDisabled();
 
-    // Otra fecha: 201 con la bandera «Otro día», sin 409 y sin error.
-    await page.goto(`/clases/${otroDia.id}/checkin`);
-    await buscar(page, alDia.nombre);
-    await page.getByRole("button", { name: "Llegó", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Asistentes" }).getByText("Otro día")).toBeVisible();
-    await expect(page.getByRole("alert")).toHaveCount(0);
+      // Tiquetera: 10 → 9 al registrar → 10 al quitar.
+      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(10);
+      await llegar(page, tiquetera);
+      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(9);
+      await page
+        .getByRole("button", { name: `Quitar a ${tiquetera.nombre}` })
+        .click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Quitar asistencia" })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(await clasesQuedan(page, coachToken, tiquetera.id)).toBe(10);
 
-    // La tablet nunca revela datos cifrados ni lee la ficha.
-    expect(llamadas.filter((ruta) => ruta.includes("/reveal"))).toEqual([]);
-    expect(llamadas.filter((ruta) => /\/members\/[^/]+$/.test(ruta) && !ruta.endsWith("/members/export"))).toEqual([]);
+      // La marca es de esta sesión de clase: las de ayer y de dentro de 7 días se prueban por el api (otra sesión exige salir del modo).
+      for (const [sesion, bandera] of [
+        [ayer, "out_of_window"],
+        [otroDia, "other_day"],
+      ] as const) {
+        const respuesta = await page.request.post(`${API}/attendance`, {
+          headers,
+          data: { session_id: sesion.id, member_id: alDia.id },
+        });
+        expect(respuesta.status()).toBe(201);
+        expect(
+          ((await respuesta.json()) as { flags: string[] }).flags,
+        ).toContain(bandera);
+      }
 
-    // Salir del modo tablet exige la contraseña.
-    await page.getByRole("button", { name: "Clases" }).click();
-    const dialogo = page.getByRole("dialog", { name: "¿Salir del modo tablet?" });
-    await dialogo.getByLabel(/Contraseña/).fill("contraseña-equivocada");
-    await dialogo.getByRole("button", { name: "Salir del modo tablet" }).click();
-    await expect(dialogo.getByRole("alert")).toContainText("Contraseña incorrecta");
-    await dialogo.getByLabel(/Contraseña/).fill(datosDeBase().password);
-    await dialogo.getByRole("button", { name: "Salir del modo tablet" }).click();
-    await expect(page).toHaveURL(/\/clases$/);
+      // «Atrás», la barra de direcciones y la recarga no sacan de la tablet (el servidor tiene la marca).
+      await page.goBack();
+      await expect(page).toHaveURL(CHECKIN);
+      await expect(page.getByRole("link")).toHaveCount(0);
+      await page.goto("/socios");
+      await expect(page).toHaveURL(CHECKIN);
+      await page.reload();
+      await expect(page).toHaveURL(CHECKIN);
+      await expect(page.getByRole("link")).toHaveCount(0);
+      // La tablet nunca revela datos cifrados ni lee la ficha desde la pantalla.
+      expect(llamadas.filter((ruta) => ruta.includes("/reveal"))).toEqual([]);
+
+      // Salir del modo tablet exige la contraseña del coach.
+      await page.getByRole("button", { name: "Clases" }).click();
+      const dialogo = page.getByRole("dialog", {
+        name: "¿Salir del modo tablet?",
+      });
+      await dialogo.getByLabel(/Contraseña/).fill("contraseña-equivocada");
+      await dialogo
+        .getByRole("button", { name: "Salir del modo tablet" })
+        .click();
+      await expect(dialogo.getByRole("alert")).toContainText(
+        "Contraseña incorrecta",
+      );
+      await dialogo.getByLabel(/Contraseña/).fill(coach.password);
+      await dialogo
+        .getByRole("button", { name: "Salir del modo tablet" })
+        .click();
+      await expect(page).toHaveURL(/\/clases$/);
+      // Ya sin la marca, la barra de direcciones deja ir al panel.
+      await page.goto("/socios");
+      await expect(page).toHaveURL(/\/socios$/);
+    } finally {
+      await borrarUsuario(page, coach.id);
+    }
   });
 });

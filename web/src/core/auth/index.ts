@@ -18,6 +18,7 @@ export {
   AUTH_CHANNEL,
   REFRESH_LOCK,
   adoptAccessToken,
+  applyKioskAccess,
   clearSession,
   endSession,
   getAccessToken,

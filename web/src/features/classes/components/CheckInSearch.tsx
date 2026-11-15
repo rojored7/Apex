@@ -5,6 +5,7 @@
 //   «Llegó igual» (queda marcado, nunca se bloquea la puerta); sin plan suma «Vender».
 // DESIGN-GAP: CheckIn.html busca también por «los últimos 4 del documento»; el documento va cifrado (N-02) y la tablet no lo
 // revela, así que solo se busca por nombre.
+import type { Ref } from "react";
 import { useMemberPhoto } from "../../../shared/data/memberPhoto";
 import { memberFullName, memberSearchNote, useMemberSearch, type MemberOption } from "../../../shared/data/members";
 import { Button } from "../../../shared/ui/Button";
@@ -27,6 +28,8 @@ export interface CheckInSearchProps {
   onArrive: (member: MemberOption) => void;
   /** «Vender» (sin plan): sale del modo tablet hacia la venta. */
   onSell: (member: MemberOption) => void;
+  /** El buscador de la tablet: la pantalla le devuelve el foco tras cada llegada. */
+  inputRef?: Ref<HTMLInputElement> | undefined;
 }
 
 function statusOf(member: MemberOption): MembershipStatusView {
@@ -94,7 +97,7 @@ function Row({ member, arrived, pending, onArrive, onSell }: RowProps) {
   );
 }
 
-export function CheckInSearch({ text, onTextChange, arrived, pending, onArrive, onSell }: CheckInSearchProps) {
+export function CheckInSearch({ text, onTextChange, arrived, pending, onArrive, onSell, inputRef }: CheckInSearchProps) {
   const search = useMemberSearch(text, CHECKIN_SEARCH_DELAY_MS, CHECKIN_MIN_CHARS);
   const length = text.trim().length;
   let status: MemberSearchStatus = search.status;
@@ -108,6 +111,7 @@ export function CheckInSearch({ text, onTextChange, arrived, pending, onArrive, 
     <div className={styles.search}>
       <MemberSearch
         name="checkin-search"
+        inputRef={inputRef}
         size="gym"
         placeholder="Escribe el nombre del socio"
         value={text}
@@ -117,10 +121,6 @@ export function CheckInSearch({ text, onTextChange, arrived, pending, onArrive, 
         emptyText="No encontramos a nadie con ese nombre. Revisa cómo está escrito."
         failedText={memberSearchFailedText(search.error)}
         shortText={`Escribe al menos ${String(CHECKIN_MIN_CHARS)} letras para buscar.`}
-        onSelect={(option) => {
-          const member = byId.get(option.id);
-          if (member) onArrive(member);
-        }}
         renderOption={(option) => {
           const member = byId.get(option.id);
           return member ? <Row member={member} arrived={arrived.has(member.id)} pending={pending} onArrive={onArrive} onSell={onSell} /> : null;

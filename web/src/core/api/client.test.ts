@@ -10,6 +10,7 @@ import {
   UPLOAD_TIMEOUT_MS,
   UPLOAD_TOO_LARGE_MESSAGE,
   api,
+  registerOnKioskMode,
   registerOnUnauthorized,
   setAccessTokenGetter,
   type UnauthorizedHandler,
@@ -49,6 +50,7 @@ beforeEach(() => {
 afterEach(() => {
   setAccessTokenGetter(null);
   registerOnUnauthorized(null);
+  registerOnKioskMode(null);
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -869,5 +871,25 @@ describe("tipos públicos: el cuerpo crudo solo lo usa api.upload (revisión V11
       void api.blob("/x", { file });
     };
     expect(typeof compileOnly).toBe("function");
+  });
+});
+
+describe("403 kiosk_mode (S7-D41, S7-F4b)", () => {
+  it("avisa al gancho del quiosco y propaga el ApiError", async () => {
+    const handler = vi.fn();
+    registerOnKioskMode(handler);
+    fetchMock.mockResolvedValue(envelope(403, "kiosk_mode", "No disponible en modo tablet."));
+
+    await expect(api.get("/members/1")).rejects.toMatchObject({ status: 403, code: "kiosk_mode" });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("un 403 común no lo activa", async () => {
+    const handler = vi.fn();
+    registerOnKioskMode(handler);
+    fetchMock.mockResolvedValue(envelope(403, "forbidden", "No tienes permiso."));
+
+    await expect(api.get("/members/1")).rejects.toMatchObject({ status: 403 });
+    expect(handler).not.toHaveBeenCalled();
   });
 });

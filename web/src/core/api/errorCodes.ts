@@ -13,6 +13,9 @@ export const API_ERROR_CODES = {
   notFound: "not_found",
   validationError: "validation_error",
   rateLimited: "rate_limited",
+  // S7-D41: el modo quiosco del servidor niega la ruta (403).
+  kioskMode: "kiosk_mode",
+  invalidPassword: "invalid_password",
   internalError: "internal_error",
   passwordChangeRequired: "password_change_required",
   tooLong: "too_long",

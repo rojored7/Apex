@@ -102,3 +102,19 @@ DESIGN-GAP anotados: búsqueda por «últimos 4 del documento» (N-02), WOD del 
 Desviación: la marca del modo vive en memoria del módulo, no en sessionStorage (la regla de lint S4B-D51 lo reserva a RouteError.tsx; no se tocó la configuración). Un F5 en el check-in la restablece por la ruta.
 Decisiones: «Vender» (sin plan) sale del modo con la contraseña; etiquetas de bandera «Vencido» y «Congelado» (igual que el estado de membresía).
 Tropiezos del entorno: los heredocs de Git Bash con comillas fallaron en bloque otra vez (se usó Write); no hay Python en el PATH.
+
+## S7-F4b · Modo quiosco del servidor en el front (S7-D41 punto 6) y correcciones de la revisión de F4
+
+Merge previo: el backend de C4 (hasta 1057451) con un conflicto en `docs/operacion/clases.md`; se fundieron las dos guías (manda el backend en lo del quiosco).
+
+Rojo medido (pruebas escritas antes del código): 6 archivos, 106 failed / 49 passed (kiosk.test.ts sin módulo, shells.test.tsx sin `registerOnKioskMode` ni marca por sesión,
+RequireAuth.test.tsx, client.test.ts, useIdleTimeout.test.tsx, CheckInPage.test.tsx foco).
+
+Verde:
+- `core/auth/kiosk.ts` (`enterKiosk`, `exitKiosk`, `logoutDevice` con 3 intentos) reemplaza a `confirmPassword.ts` (borrado, ya no usa `/auth/login`); `exitKiosk` renueva el access si venció y repite una vez.
+- `session.ts`: `SessionUser.kioskPath` (de `/auth/me`, `kiosk_path`), `applyKioskAccess` (access nuevo + marca + canal entre pestañas), el puente registra `registerOnKioskMode` (403 `kiosk_mode` relee me).
+- `RequireAuth` redirige a `kioskPath` desde cualquier otra ruta (recarga, barra de direcciones). `tabletMode.ts` ya no guarda estado: solo `CHECKIN_PATH` e `isTabletSession`.
+- `GymShell`: entra con POST /auth/kiosk (con error y Reintentar), `useBlocker` abre el diálogo de salida para «atrás» y toda navegación fuera; `GymLayout` suma `blockedTo`/`onCancelLeave`.
+- LOW a foco al buscador tras «Llegó»; b `useIdleTimeout` con instante límite y `visibilitychange`; c reintento del cierre por inactividad; d `MemberSearch` vuelve al formato original (solo líneas del slice); e `onSelect` muerto fuera de `CheckInSearch` (opcional en `MemberSearch`).
+- MEDIUM-3: `web/tests/e2e/stack/checkin.spec.ts` reescrito con cuenta coach (siete banderas, 409 por api, atrás/recarga/barra, salida con contraseña, tiquetera 10-9-10, sin /reveal). Sin correr (V5).
+Nota: el quiosco confina a UNA sesión de clase; otra sesión exige salir con la contraseña (las banderas de ayer y +7 días se prueban por el api).

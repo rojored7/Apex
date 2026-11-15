@@ -147,6 +147,15 @@ describe("CheckInPage · registrar la llegada", () => {
     await waitFor(() => { expect(mock.callsTo(DETAIL).length).toBeGreaterThan(1); });
   });
 
+  it("LOW a: tras «Llegó» el foco vuelve al buscador (la tablet sigue lista para el siguiente)", async () => {
+    const { user } = renderPage();
+    await search(user, "Laura");
+
+    await user.click(within(row("Laura Gómez")).getByRole("button", { name: "Llegó" }));
+
+    await waitFor(() => { expect(searchBox()).toHaveFocus(); });
+  });
+
   it("vencida: marca «Vencido» y el botón dice «Llegó igual»; sin plan suma «Vender»", async () => {
     const { user } = renderPage();
     await search(user, "Cam");

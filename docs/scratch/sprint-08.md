@@ -257,3 +257,27 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 ### Pendiente (el api de desarrollo está roto; no se tocaron contenedores ni banderas)
 - P-MIG de `0038` en `apex-db-1`: volcado `sprint-08-antes-0038.dump` (`$DC exec -T db pg_dump -U apex -Fc apex`), `$DC start api`, `alembic current` = `0038_kiosk_results_path (head)`, `downgrade -1` + `upgrade head`, `\d auth.refresh_tokens` (el CHECK con `(checkin|resultados)`). Misma tanda pendiente que `0036` y `0037`.
 - Smoke con rol: login del admin de desarrollo, `POST /auth/kiosk` con `/clases/<id>/resultados`, `GET /class-sessions/<id>/attendance` y un `PUT /results` en quiosco (solo códigos HTTP).
+
+## S8-B1d · Correcciones de la revisión de B1 (M-1 a M-3, L-4 a L-9; S8-D46) · migración 0039
+
+### Rojo (medido por punto)
+- M-2/M-3 (`test_locked_by_results.py`, 7 pruebas): 5 failed y 2 passed (las dos que no deben bloquear): quitar asistencia y cancelar con resultado daban 204/200 en vez de 409 `locked_by_results`; corregir sin `session_id` no daba 422; registrar contra quitar y contra cancelar: `DID NOT RAISE` tras esperar.
+- M-1 y L-4: son pruebas reescritas sobre código correcto (0 failed, 5 passed). Rojo por mutación: sin `lock_member` en `record.py`, `test_doble_registro_simultaneo_uno_409` falla (1 failed); sin `FOR SHARE` en `session_for_result`, `test_reasignar_wod_y_registrar_a_la_vez...` falla (1 failed). Archivos restaurados.
+- L-5: aserción exacta `(P0001, None)` (antes `{GUARDA, 23514}`); ya pasaba, ahora no admite que falte la guarda. Sin rojo posible sin quitar la guarda de la migración.
+- L-6: el detector viejo no veía `from app.core import crypto`, `importlib.import_module` ni `__import__` (3 de 3 sin hallazgo, medido contra la versión del HEAD); la prueba de ejecución (`reveal` prohibido, `crypto_ops` sin filas nuevas) pasa.
+- L-7: docstring ya alineado a 60 en B3.
+- L-8: 4 failed (`test_privilegios_de_tabla_y_columna_exactos[apex_api-results.wod_results]` y tres `UPDATE` de `status`, `validated_by`, `validated_at` que el api aún podía).
+- L-9: `test_0039` 1 failed y 3 errors (revisión inexistente); `test_scaled_refs_lock.py` 1 failed y 2 passed (quitar un movimiento citado por `scaled_movement_ids` pasaba).
+
+### Verde
+- `classes/results_port.py` (puerto con `member_has_current_result_in_session`, sin ciclo con `attendance.py`), `LockedByResults(field=None)`, `remove_attendance` (`_ensure_no_result`) y `cancel_session`; `results/record.py` (misma `session_id` en la corrección, 422 `field = "session_id"`; la regla de quiosco va antes), `results/service.py`; `wods/probe.py` + `programming.update_wod` (422 `locked_by_results`, `field = "movements"`); `infra/db/grants.sql` (`UPDATE (is_current, updated_at)`); migración `0039_results_updated_guard` (`CREATE OR REPLACE` de la guarda, `downgrade` repone el cuerpo de `0037`); `DELETE /attendance` documenta 409.
+- Corrección propia: el gate encontró `remove_attendance` con más de 50 líneas (`test_ninguna_funcion_supera_50_lineas`); se extrajo `_ensure_no_result`.
+- No se tocó la cancelación masiva `cancel_future_sessions` (sesiones futuras: sin resultados posibles por ventana de quiosco y WOD futuro).
+
+### Evidencia
+- Gate `slice-gate.sh results <results, classes, wods, migrations completos + 5 de auth/core>`: 2 713 passed en 460 s, exit 0; `ruff`, `mypy src` (271) limpios. P-API: `openapi.json` idéntico en dos corridas (+10 líneas), `types.ts` regenerado, contract 6 passed, `tsc` limpio.
+
+### Pendiente en desarrollo (api roto; nada tocado)
+- P-MIG de `0038` y `0039` (y las de `0036`/`0037`): volcado previo, `$DC start api`, `alembic current` = `0039_results_updated_guard (head)`, `downgrade -1`/`upgrade head`, `\df+ results.guard_wod_results_update` y `tgenabled = 'A'`.
+- P-ROL: `grants.sql` cambió (L-8): el `dbsetup` debe volver a correr sobre `apex-db-1` (`\dp results.wod_results`: solo `UPDATE (is_current, updated_at)`).
+- Smoke con rol (admin de desarrollo): `POST /auth/kiosk` con `/clases/<id>/resultados`, `GET /class-sessions/<id>/attendance`, `PUT /results` en quiosco y su corrección, y `DELETE /attendance/<id>` de un socio con resultado (espera 409).

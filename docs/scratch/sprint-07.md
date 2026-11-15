@@ -347,3 +347,23 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Verde
 - `rules.apply_freeze(..., original_end_date=)` y `FreezeOutcome.new_original_end_date`; `lifecycle._apply` lo pasa y `_store_freeze` lo guarda; CHECK `original_end_date_after_end` en `memberships/models.py`; `test_0030` compara la función de `0029` con la que deja el `downgrade`. DECISIONES (17) a (20) y la nota de R1.
+
+### Evidencia (C3b)
+- Sello `slice-gate.sh memberships` (todos los `tests/memberships` + `test_remove_attendance` + `test_0030` + `tests/architecture`): 1594 passed, exit 0. Checkpoint `65991d5`. El api de desarrollo recarga solo (sin migración).
+
+## S7-C4 · Modo quiosco del lado del servidor (S7-D41; revisión de F4: HIGH-1, MEDIUM-1, MEDIUM-2)
+
+### Rojo
+- `$DC stop api worker` antes de escribir (hay migración); volcado `docs/scratch/sprint-07-antes-0031.dump` (2,2 MB, ignorado por git; se borra en V9). `alembic_version` en desarrollo: `0030_memberships_end_guard`.
+- Pruebas nuevas: `tests/auth/test_kiosk.py` (17 casos: marca en la sesión y access con la marca; ruta fuera de `/clases/<uuid>/checkin` 422 ×6; sin cookie 401, origen ajeno 403, socio 403; la marca sobrevive a la rotación del refresh; sin marca el refresh no inventa una; la salida no crea sesión ni rota ni toca la cookie; los fallos de salida no suman a `failed_login_count` ni bloquean; 429 propio tras 5 fallos y por usuario; la salida exige cookie, origen y cuerpo; el logout borra la marca; `reveal` 403 `kiosk_mode` con la marca y 404 sin ella; `/auth/me` con la marca abierto), `tests/architecture/test_kiosk_routes.py` (la lista blanca exacta, existe y exige rol, no abre nada sensible; toda ruta con rol fuera de la lista da 403 `kiosk_mode`; las de la lista no; prefijo de core igual al de main) y `tests/migrations/test_0031_refresh_kiosk_path.py`. Con un stub vacío de `KIOSK_ALLOWED_ROUTES` y sin código: 20 failed, 1 passed (`TypeError: create_access_token() got an unexpected keyword argument 'kiosk'`, `AttributeError` de la columna, 404 de las rutas nuevas, la lista vacía).
+
+### Verde
+- `core/security.py` (claim `kiosk`, `Principal.kiosk`, `KIOSK_ALLOWED_ROUTES`, guardia en `current_user` antes de leer la base), `auth/{kiosk,exceptions,events,models,schemas,service,router,sessions,users}.py`, `audit/service.py` (tres suscriptores), `attachments/router.py` (solo la foto en quiosco), migración `0031_refresh_kiosk_path`. Desvío: la salida responde 200 con un access sin la marca en lugar de 204 (S7-D41 punto 4). `docs/operacion/clases.md` nace aquí (en la rama del front existe una versión de F4; al unir hay que fundirlas).
+- Primera corrida: la ruta de `scope["route"]` no lleva el prefijo `/api/v1` (router incluido de forma perezosa); `API_V1_PREFIX` en `core/security.py` y su prueba contra `main.API_PREFIX`. Tras la corrida amplia fallaron dos pruebas esperadas: `test_me_router` (clave nueva `kiosk_path`) y `test_openapi_export` (P-API).
+
+### Evidencia (C4)
+- Corrida amplia (`tests/architecture tests/core tests/auth` + 0030): 2829 passed, 2 failed (las dos esperadas, corregidas), 2 skipped.
+- P-MIG: `$DC start api` migró `0030` a `0031` (`alembic current` = `0031_refresh_kiosk_path (head)`, api `healthy`); `downgrade -1` deja `0030` y `upgrade head` vuelve a `0031 (head)`; `\d auth.refresh_tokens`: `kiosk_path text` y `ck_refresh_tokens_kiosk_path_shape`. Sin cambio de grants (P-ROL: `apex_api` ya tiene los cuatro permisos de tabla; `test_db_grants` y `test_api_role_paths` en verde).
+- P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
+- Sello `slice-gate.sh auth` (todos los `tests/auth` + `test_openapi_export` + `test_jwt` + `test_require_role` + `test_0031` + `test_db_grants` + `test_api_role_paths` + `test_router_reveal` + `tests/architecture`): 1846 passed, 1 skipped, exit 0. ruff y mypy limpios.
+- Prueba viva (8181; sin la contraseña del admin de desarrollo se acuñaron dos access desde el contenedor del api, con y sin `kiosk`, en archivos con `umask 077`, borrados; nunca impresos): `POST /members/{id}/reveal` 404 sin la marca (llega al service) y 403 con ella; `GET /members/export` 403; `GET /members?q=` 200; `GET /auth/me` 200; `POST /auth/kiosk` con ruta mala 422, sin cookie 401; `POST /auth/kiosk/exit` sin cookie 401; sin token 401. El flujo con cookie (entrar, rotar, salir, 429) lo cubren las 17 pruebas de `test_kiosk.py`.

@@ -11,6 +11,10 @@ decorador (S2-D3).
 - `GET /auth/me` y `POST /auth/me/password` (S2-B3; los tres roles con
   `allow_pending_password=True`, `no_store`): el segundo responde 200 `AccessTokenOut` con un
   access nuevo (S2-D37) y lee la cookie `apex_refresh` para dejar viva esa sesión.
+- S7-C4 (S7-D41): `POST /auth/kiosk` y `POST /auth/kiosk/exit` (admin o coach, por la cookie;
+  `require_same_origin`, `no_store`): marcar la sesión como quiosco y salir con la contraseña sin
+  crear sesión ni sumar al bloqueo (tope propio, 429). `GET /auth/me` lee la cookie y trae
+  `kiosk_path`.
 - `GET /users` (admin, `PageParams`, `q`, `role`, `status`; `no_store`) y `POST /users`
   (admin, 201 `CreateUserOut` con `activation_url`; `no_store`).
 - S2-B4: `POST /auth/forgot` (público, `rate_limit("forgot")`, siempre 204 sin cuerpo; H-2),
@@ -63,6 +67,9 @@ from app.modules.auth.schemas import (
     CreateUserOut,
     ForgotIn,
     IssuedLinkOut,
+    KioskExitIn,
+    KioskIn,
+    KioskSessionOut,
     LoginIn,
     LoginOut,
     MeOut,
@@ -86,6 +93,8 @@ Pending = Annotated[
     Principal, Depends(require_role("admin", "coach", "member", allow_pending_password=True))
 ]
 Admin = Annotated[Principal, Depends(require_role("admin"))]
+Staff = Annotated[Principal, Depends(require_role("admin", "coach"))]
+KIOSK_IP_LIMIT: Final = 30  # entradas al quiosco por IP y minuto
 
 # M7 (revisión general): cada ruta publica solo los errores que puede devolver.
 _ADMIN = responses_for(401, 403)  # sin sesión; rol ajeno o `password_change_required`
@@ -175,8 +184,48 @@ async def logout(request: Request, session: Session) -> Response:
 @router.get(
     "/auth/me", response_model=MeOut, responses=responses_for(401), dependencies=[Depends(no_store)]
 )
-async def me(principal: Pending, session: Session) -> MeOut:
-    return await service.me(session, principal)
+async def me(principal: Pending, request: Request, session: Session) -> MeOut:
+    return await service.me(session, principal, read_refresh_cookie(request))
+
+
+@router.post(
+    "/auth/kiosk",
+    response_model=KioskSessionOut,
+    responses=responses_for(401, 403, 422, 429),
+    dependencies=[
+        Depends(rate_limit("kiosk", KIOSK_IP_LIMIT)),
+        Depends(require_same_origin),
+        Depends(no_store),
+    ],
+)
+async def enter_kiosk(
+    body: KioskIn, request: Request, principal: Staff, session: Session
+) -> KioskSessionOut:
+    return await service.enter_kiosk(
+        session,
+        principal,
+        read_refresh_cookie(request),
+        body.path,
+        policy=policy_from(_settings(request)),
+    )
+
+
+@router.post(
+    "/auth/kiosk/exit",
+    response_model=KioskSessionOut,
+    responses=responses_for(401, 403, 422, 429),
+    dependencies=[Depends(require_same_origin), Depends(no_store)],
+)
+async def exit_kiosk(
+    body: KioskExitIn, request: Request, principal: Staff, session: Session
+) -> KioskSessionOut:
+    return await service.exit_kiosk(
+        session,
+        principal,
+        read_refresh_cookie(request),
+        body.password.get_secret_value(),
+        policy=policy_from(_settings(request)),
+    )
 
 
 @router.post(

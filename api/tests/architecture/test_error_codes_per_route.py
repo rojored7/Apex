@@ -30,6 +30,9 @@ CON_LIMITE = {
     ("post", "/api/v1/auth/forgot"),
     ("post", "/api/v1/auth/reset"),
     ("post", "/api/v1/auth/me/password"),
+    # S7-C4 (S7-D41): entrar al quiosco (por IP) y salir con la contraseña (tope por usuario).
+    ("post", "/api/v1/auth/kiosk"),
+    ("post", "/api/v1/auth/kiosk/exit"),
     ("post", "/api/v1/members"),
     ("get", "/api/v1/members"),
     # S3-B1 (E2, H-2): vender consume `memberships-write`.

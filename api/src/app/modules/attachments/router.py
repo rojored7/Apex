@@ -4,7 +4,8 @@ ADR-007):
 
 Roles `admin` y `coach`; el service decide el 403 de `consent` y `other` para el coach (después de
 leer la fila y antes de cobrar la cubeta y de descifrar). La cubeta se elige con la fila: sensibles
-`attachments-download` y `-hour`, foto `attachments-photo`. El sensible se sirve en memoria
+`attachments-download` y `-hour`, foto `attachments-photo`. Con la marca de quiosco (S7-D41) solo
+se sirve la foto: otro tipo da 403 `kiosk_mode`. El sensible se sirve en memoria
 (`file_download`, con su fila `download` ya confirmada); la foto por streaming (`file_stream`), sin
 fila por vista. El nombre de descarga nunca es el del objeto. Errores: 404 `attachment_not_found`,
 503 `busy` (cupos llenos) y 503 `crypto_unavailable` (custodio sellado).
@@ -17,10 +18,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response
 
 from app.core.db import SessionDep
-from app.core.errors import responses_for
+from app.core.errors import ForbiddenError, responses_for
 from app.core.http import file_download, file_stream, no_store
 from app.core.ratelimit import enforce_user_limit
-from app.core.security import StaffDep
+from app.core.security import KIOSK_MODE_MESSAGE, StaffDep
 from app.modules.attachments import rules, service
 from app.modules.attachments.exceptions import StorageUnavailable
 
@@ -39,6 +40,8 @@ async def download_attachment(
     request: Request, attachment_id: UUID, principal: StaffDep, session: SessionDep
 ) -> Response:
     meta = await service.authorize(session, attachment_id, role=principal.role)
+    if principal.kiosk and meta.kind != "photo":  # S7-D41: el quiosco solo sirve la foto
+        raise ForbiddenError("kiosk_mode", KIOSK_MODE_MESSAGE)
     if meta.sensitive:
         await enforce_user_limit(request, "attachments-download", principal.user_id)
         await enforce_user_limit(request, "attachments-download-hour", principal.user_id)

@@ -472,6 +472,9 @@ async def _locked_refresh_and_owner(
     return fila, usuario
 
 
+locked_refresh_and_owner = _locked_refresh_and_owner  # lo usa `kiosk.py` (mismo orden de candados)
+
+
 async def refresh(
     session: AsyncSession, token: str | None, *, user_agent: str | None, policy: AuthPolicy
 ) -> RefreshResult:
@@ -500,6 +503,7 @@ async def refresh(
             expires_at=now + policy.refresh_ttl,
             user_agent=truncate(user_agent, USER_AGENT_ROW_MAX),
             family_started_at=fila.family_started_at,
+            kiosk_path=fila.kiosk_path,  # S7-D41: la marca del quiosco sobrevive a la rotación
             created_by=usuario.id,
         )
         session.add(sucesor)
@@ -507,7 +511,13 @@ async def refresh(
         fila.revoked_at = now
         fila.replaced_by_id = sucesor.id
         await session.flush()
-    acceso = create_access_token(usuario.id, usuario.role, usuario.member_id, current_clock())
+    acceso = create_access_token(
+        usuario.id,
+        usuario.role,
+        usuario.member_id,
+        current_clock(),
+        kiosk=fila.kiosk_path is not None,
+    )
     return RefreshResult(access_token=acceso, expires_in=policy.access_ttl_s, refresh_token=claro)
 
 
@@ -518,4 +528,5 @@ async def logout(session: AsyncSession, token: str | None) -> None:
         return
     with actor_scope(fila.user_id):
         fila.revoked_at = current_clock().now_utc()
+        fila.kiosk_path = None  # S7-D41: el logout borra la marca del quiosco
         await session.flush()

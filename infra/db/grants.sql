@@ -62,9 +62,7 @@
 --                                     time_cap_s, benchmark_id,
 --                                     description, updated_at)
 --   wods.wod_movements              S I D                             -
---   results.wod_results             S I U(status, validated_by,       -
---                                     validated_at, is_current,
---                                     updated_at)
+--   results.wod_results             S I U(is_current, updated_at)     -
 --   worker.job_runs                 S                                 S I U
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
@@ -159,7 +157,7 @@ GRANT UPDATE (date, title, score_type, time_cap_s, benchmark_id, description, up
 GRANT SELECT, INSERT, DELETE ON wods.wod_movements TO apex_api;
 -- S8-B1 (US-169, S8-D35): el api inserta resultados y solo los valida o los apaga; sin DELETE.
 GRANT SELECT, INSERT ON results.wod_results TO apex_api;
-GRANT UPDATE (status, validated_by, validated_at, is_current, updated_at) ON results.wod_results TO apex_api;
+GRANT UPDATE (is_current, updated_at) ON results.wod_results TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;

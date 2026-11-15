@@ -150,7 +150,8 @@ def test_pending_a_validated_en_el_mismo_update(base: str) -> None:
                              SYSTEM_USER_ID)],
         ],
     )  # fmt: skip
-    assert salidas[0][0] == "23514" and salidas[1][0] in {GUARDA, "23514"}
+    assert salidas[0][0] == "23514"  # sin las marcas el CHECK falla
+    assert salidas[1] == (GUARDA, None)  # L-5: las marcas solas, sin pasar a validated, no valen
     assert salidas[2] == ("", None)
 
 

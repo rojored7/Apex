@@ -116,14 +116,15 @@ CheckinSessionCancelled = SessionCancelledError
 
 
 class LockedByResults(ClassError):
-    """La sesión ya tiene resultados vigentes: su WOD efectivo no cambia (S8-A4, M-2): 409."""
+    """La sesión (o la asistencia) ya tiene resultados vigentes: no cambia su WOD efectivo, no se
+    cancela ni se quita la asistencia de quien tiene resultado (S8-A4 M-2; S8-D46): 409."""
 
     status = 409
     code = "locked_by_results"
     default_message = "La sesión ya tiene resultados: su WOD no se puede cambiar."
 
-    def __init__(self) -> None:
-        super().__init__(field="wod_id")
+    def __init__(self, message: str = "", *, field: str | None = "wod_id") -> None:
+        super().__init__(None, message, field=field)
 
 
 class ResultsPortNotRegistered(RuntimeError):

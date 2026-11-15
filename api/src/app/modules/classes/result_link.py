@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -26,11 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.classes.attendance import alive_attendance_id
 from app.modules.classes.exceptions import (
     ClassValidationError,
-    ResultsPortNotRegistered,
     SessionCancelledError,
     SessionNotFound,
 )
 from app.modules.classes.models import ClassSession
+from app.modules.classes.results_port import ResultsPort, results_port, set_results_port
 from app.modules.wods import service as wods_service
 
 
@@ -67,22 +66,10 @@ async def session_for_result(
     return ResultSession(fila.id, fila.session_date, del_dia.get(fila.session_date), inherited=True)
 
 
-class ResultsPort(Protocol):
-    async def session_has_current_results(self, session: AsyncSession, session_id: UUID) -> bool:
-        """¿Hay resultados vigentes registrados desde esa sesión?"""
-        ...
-
-
-_port: ResultsPort | None = None
-
-
-def set_results_port(port: ResultsPort | None) -> None:
-    """Registra (o quita, con `None`) el puerto; solo lo llama `results/service.py`."""
-    global _port
-    _port = port
-
-
-def results_port() -> ResultsPort:
-    if _port is None:
-        raise ResultsPortNotRegistered("classes: ResultsPort sin registrar")
-    return _port
+__all__ = [
+    "ResultSession",
+    "ResultsPort",
+    "results_port",
+    "session_for_result",
+    "set_results_port",
+]

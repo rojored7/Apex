@@ -295,7 +295,7 @@ async def member_attendance(
 
 
 @router.delete(
-    "/attendance/{attendance_id}", status_code=204, responses=responses_for(404, 422, 429)
+    "/attendance/{attendance_id}", status_code=204, responses=responses_for(404, 409, 422, 429)
 )
 async def remove_attendance(
     request: Request,

@@ -64,6 +64,11 @@ class _Sonda:
         self.llamadas.append(list(wod_ids))
         return {w: self.cuentas.get(w, 0) for w in wod_ids}
 
+    async def referenced_scaled_movements(
+        self, session: AsyncSession, wod_id: UUID
+    ) -> frozenset[UUID]:
+        return frozenset()
+
 
 @pytest.fixture
 def sonda() -> Iterator[_Sonda]:

@@ -26,6 +26,7 @@ from app.modules.wods import service as wods_service
 from app.modules.wods.schemas import WodPatch
 from tests.factories.wods import make_movement, make_wod
 from tests.results._apoyo import Escena, escena, registrar
+from tests.results.test_locked_by_results import Pausa, _registrar_pausado
 
 pytestmark = pytest.mark.usefixtures("reloj", "bus_confirmado")
 
@@ -46,32 +47,34 @@ async def _otro_wod(session: AsyncSession, e: Escena) -> UUID:
 
 
 async def test_reasignar_wod_y_registrar_a_la_vez_no_deja_resultado_de_otro_wod(
-    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    dos_sesiones: tuple[AsyncSession, AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """M-6: el registro toma la sesión `FOR SHARE`; el `PATCH` pide `FOR UPDATE` y espera. Cuando el
-    resultado confirma, el `PATCH` ve resultados vigentes y da 409 (M-2): el resultado queda con el
-    WOD que la clase tenía."""
+    """M-6 (y M-1 de la revisión de B1): el registro toma la sesión `FOR SHARE` por sí mismo
+    (`session_for_result`); se pausa dentro de `scoring_for`, ya con la sesión tomada. El `PATCH`
+    pide `FOR UPDATE` y espera; cuando el resultado confirma ve resultados vigentes y da 409
+    (M-2): el resultado queda con el WOD que la clase tenía."""
     una, otra = dos_sesiones
     e = await escena(una)
     assert e.clase is not None
     nuevo = await _otro_wod(una, e)
-    with actor_scope(e.coach):
-        await classes_service.session_for_result(una, e.clase.id, e.socio_id)  # FOR SHARE tomado
+    pausa = Pausa(monkeypatch)
+    registro = await _registrar_pausado(una, e, pausa)
 
-        async def reasignar() -> Any:
-            datos = SessionPatch.model_validate({"wod_id": nuevo})
-            try:
+    async def reasignar() -> Any:
+        datos = SessionPatch.model_validate({"wod_id": nuevo})
+        try:
+            with actor_scope(e.coach):
                 return await classes_service.assign_wod(otra, e.clase.id, datos, by=e.coach)  # type: ignore[union-attr]
-            finally:
-                await otra.commit()
+        finally:
+            await otra.rollback()
 
-        tarea = asyncio.create_task(reasignar())
-        await asyncio.sleep(0.5)
-        assert not tarea.done(), "el PATCH debe esperar al FOR SHARE de la sesión"
-        salida = await registrar(una, e)
-        await una.commit()
-        with pytest.raises(LockedByResults):
-            await asyncio.wait_for(tarea, timeout=30)
+    tarea = asyncio.create_task(reasignar())
+    await asyncio.sleep(0.5)
+    assert not tarea.done(), "el PATCH debe esperar al FOR SHARE que toma el registro"
+    pausa.seguir.set()
+    salida = await asyncio.wait_for(registro, timeout=30)
+    with pytest.raises(LockedByResults):
+        await asyncio.wait_for(tarea, timeout=30)
     assert salida.wod_id == e.wod_id
     asignado = await una.scalar(
         text("SELECT wod_id FROM classes.class_sessions WHERE id = :s"), {"s": e.clase.id}
@@ -96,20 +99,21 @@ async def test_registrar_despues_de_reasignar_da_422_session_id(
 
 
 async def test_doble_registro_simultaneo_uno_409(
-    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    dos_sesiones: tuple[AsyncSession, AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """L-4: el primer registro se pausa con el candado del socio tomado; el segundo ESPERA (sin
+    `lock_member` ni `FOR UPDATE` correría en paralelo) y al confirmar el primero recibe 409."""
     una, otra = dos_sesiones
     e = await escena(una)
-    resultados = await asyncio.wait_for(
-        asyncio.gather(
-            _registrar_y_confirmar(una, e, seconds=300),
-            _registrar_y_confirmar(otra, e, seconds=290),
-            return_exceptions=True,
-        ),
-        timeout=30,
-    )
-    errores = [r for r in resultados if isinstance(r, ResultExists)]
-    assert len(errores) == 1 and sum(1 for r in resultados if not isinstance(r, BaseException)) == 1
+    pausa = Pausa(monkeypatch)
+    primero = await _registrar_pausado(una, e, pausa, seconds=300)
+    segundo = asyncio.create_task(_registrar_y_confirmar(otra, e, seconds=290))
+    await asyncio.sleep(0.5)
+    assert not segundo.done(), "el segundo registro debe esperar al candado del socio"
+    pausa.seguir.set()
+    await asyncio.wait_for(primero, timeout=30)
+    with pytest.raises(ResultExists):
+        await asyncio.wait_for(segundo, timeout=30)
     vigentes = await una.scalar(text("SELECT count(*) FROM results.wod_results WHERE is_current"))
     assert vigentes == 1
 

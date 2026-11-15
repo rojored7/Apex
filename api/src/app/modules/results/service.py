@@ -20,7 +20,11 @@ from app.modules.classes import service as classes_service
 from app.modules.results.attendance import session_attendance
 from app.modules.results.events import WodResultRecorded, WodResultValidated
 from app.modules.results.models import WodResult
-from app.modules.results.record import record_result, session_has_current_results
+from app.modules.results.record import (
+    member_has_current_result_in_session,
+    record_result,
+    session_has_current_results,
+)
 from app.modules.wods import service as wods_service
 
 
@@ -39,12 +43,27 @@ class _Probe:
         )
         return {wod_id: int(total) for wod_id, total in filas.all()}
 
+    async def referenced_scaled_movements(
+        self, session: AsyncSession, wod_id: UUID
+    ) -> frozenset[UUID]:
+        filas = await session.scalars(
+            select(func.unnest(WodResult.scaled_movement_ids))
+            .where(WodResult.wod_id == wod_id, WodResult.is_current.is_(True))
+            .distinct()
+        )
+        return frozenset(filas.all())
+
 
 class _SessionPort:
     """`classes.ResultsPort`."""
 
     async def session_has_current_results(self, session: AsyncSession, session_id: UUID) -> bool:
         return await session_has_current_results(session, session_id)
+
+    async def member_has_current_result_in_session(
+        self, session: AsyncSession, session_id: UUID, member_id: UUID
+    ) -> bool:
+        return await member_has_current_result_in_session(session, session_id, member_id)
 
 
 results_probe = _Probe()

@@ -17,19 +17,41 @@ RESULTS = Path(app.__file__).resolve().parent / "modules" / "results"
 PROHIBIDOS = frozenset({"reveal", "decrypt", "Encrypted", "blind_index", "encrypt"})
 
 
+def _importa_el_bus(nodo: ast.AST, nombre: str) -> list[str]:
+    """Imports estáticos del bus: `from app.core.crypto...`, `from app.core import crypto` e
+    `import app.core.crypto...`."""
+    if isinstance(nodo, ast.ImportFrom):
+        modulo = nodo.module or ""
+        if modulo.startswith("app.core.crypto"):
+            return [f"{nombre}:{nodo.lineno} importa {modulo}"]
+        if modulo == "app.core" and any(a.name == "crypto" for a in nodo.names):
+            return [f"{nombre}:{nodo.lineno} importa app.core.crypto"]
+    if isinstance(nodo, ast.Import):
+        return [
+            f"{nombre}:{nodo.lineno} importa {a.name}"
+            for a in nodo.names
+            if a.name.startswith("app.core.crypto")
+        ]
+    return []
+
+
+def _import_dinamico(nodo: ast.AST, nombre: str) -> list[str]:
+    """`importlib.import_module(...)` y `__import__(...)`: la puerta dinámica."""
+    if not isinstance(nodo, ast.Call):
+        return []
+    f = nodo.func
+    llamada = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+    if llamada in {"import_module", "__import__"}:
+        return [f"{nombre}:{nodo.lineno} importa de forma dinámica"]
+    return []
+
+
 def _hallazgos(fuente: str, nombre: str) -> list[str]:
     arbol = ast.parse(fuente)
     salida: list[str] = []
     for nodo in ast.walk(arbol):
-        if isinstance(nodo, ast.ImportFrom) and (nodo.module or "").startswith("app.core.crypto"):
-            salida.append(f"{nombre}:{nodo.lineno} importa {nodo.module}")
-        elif isinstance(nodo, ast.Import):
-            salida += [
-                f"{nombre}:{nodo.lineno} importa {a.name}"
-                for a in nodo.names
-                if a.name.startswith("app.core.crypto")
-            ]
-        elif isinstance(nodo, ast.Name | ast.Attribute):
+        salida += _importa_el_bus(nodo, nombre) + _import_dinamico(nodo, nombre)
+        if isinstance(nodo, ast.Name | ast.Attribute):
             usado = nodo.id if isinstance(nodo, ast.Name) else nodo.attr
             if usado in PROHIBIDOS:
                 salida.append(f"{nombre}:{nodo.lineno} nombra {usado}")

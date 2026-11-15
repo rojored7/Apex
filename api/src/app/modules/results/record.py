@@ -135,6 +135,11 @@ async def _turn_off_previous(session: AsyncSession, data: ResultIn, source: str)
         raise InvalidSupersedes()
     if source == "kiosk" and (vigente.source != "kiosk" or vigente.session_id != data.session_id):
         raise ForbiddenError("kiosk_mode", KIOSK_CORRECTION_MESSAGE)  # S8-D31
+    if data.session_id != vigente.session_id:  # M-3: la corrección conserva su clase
+        raise ResultValidationError(
+            message="La corrección debe ser de la misma clase que el resultado.",
+            field="session_id",
+        )
     vigente.is_current = False
     await session.flush()
 
@@ -217,6 +222,22 @@ async def session_has_current_results(session: AsyncSession, session_id: UUID) -
     hallado = await session.scalar(
         select(WodResult.id)
         .where(WodResult.session_id == session_id, WodResult.is_current.is_(True))
+        .limit(1)
+    )
+    return hallado is not None
+
+
+async def member_has_current_result_in_session(
+    session: AsyncSession, session_id: UUID, member_id: UUID
+) -> bool:
+    """El puerto de `classes` (S8-D46): ¿ese socio tiene un resultado vigente de esa sesión?"""
+    hallado = await session.scalar(
+        select(WodResult.id)
+        .where(
+            WodResult.session_id == session_id,
+            WodResult.member_id == member_id,
+            WodResult.is_current.is_(True),
+        )
         .limit(1)
     )
     return hallado is not None

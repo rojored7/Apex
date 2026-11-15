@@ -26,6 +26,12 @@ class ResultsProbe(Protocol):
         """Resultados vigentes de cada WOD (los ids sin resultados pueden faltar)."""
         ...
 
+    async def referenced_scaled_movements(
+        self, session: AsyncSession, wod_id: UUID
+    ) -> frozenset[UUID]:
+        """Movimientos que algún resultado VIGENTE del WOD cita en `scaled_movement_ids` (L-9)."""
+        ...
+
 
 _probe: ResultsProbe | None = None
 

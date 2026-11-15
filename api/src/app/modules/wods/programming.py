@@ -371,6 +371,11 @@ async def update_wod(session: AsyncSession, wod_id: UUID, patch: WodPatch, by: U
     if resultados > 0 and patch.movements is not None:  # S8-A3b (M-2)
         if _primary_id(actuales) != _primary_id(patch.movements):
             raise LockedByResults("movements")
+        quitados = {m.movement_id for m in actuales} - {m.movement_id for m in patch.movements}
+        if quitados and quitados & await results_probe().referenced_scaled_movements(  # L-9
+            session, wod.id
+        ):
+            raise LockedByResults("movements")
     catalogo = await _validate_update(session, wod, cambios, patch, actuales)
     nueva_lista = patch.movements if patch.movements is not None else None
     reemplaza = nueva_lista is not None and not _same_list(actuales, nueva_lista)

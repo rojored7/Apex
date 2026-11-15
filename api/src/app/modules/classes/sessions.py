@@ -229,6 +229,10 @@ async def cancel_session(
         raise SessionFinished()
     if fila.status == "cancelled":
         raise SessionAlreadyCancelled()
+    if await results_port().session_has_current_results(session, fila.id):  # S8-D46
+        raise LockedByResults(
+            "La clase ya tiene resultados registrados: no se puede cancelar.", field=None
+        )
     fila.status = "cancelled"
     fila.cancel_reason = data.reason
     fila.cancelled_by = by

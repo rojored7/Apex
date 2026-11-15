@@ -139,10 +139,8 @@ COLUMNAS_API_WODS_UPDATE: tuple[str, ...] = (
 )
 # S8-B1 (S8-D35): lo único que el api puede cambiar de un resultado (la guarda de `0037` lo limita
 # aún más: `pending` a `validated`, `is_current` de `true` a `false`).
+# S8-B1d (L-8): el api solo apaga el vigente; validar un `pending` llega con EP-25.
 COLUMNAS_API_WOD_RESULTS_UPDATE: tuple[str, ...] = (
-    "status",
-    "validated_by",
-    "validated_at",
     "is_current",
     "updated_at",
 )
@@ -843,6 +841,9 @@ PROHIBIDAS_API = [
     "UPDATE results.wod_results SET source = source",  # S8-B1: columna sin UPDATE
     "UPDATE results.wod_results SET load_g = load_g",  # S8-B1
     "UPDATE results.wod_results SET supersedes_id = supersedes_id",  # S8-B1
+    "UPDATE results.wod_results SET status = status",  # S8-B1d (L-8): sin UPDATE hasta EP-25
+    "UPDATE results.wod_results SET validated_by = validated_by",  # S8-B1d
+    "UPDATE results.wod_results SET validated_at = validated_at",  # S8-B1d
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",

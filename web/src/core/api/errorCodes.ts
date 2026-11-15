@@ -113,6 +113,14 @@ export const API_ERROR_CODES = {
   wodDateTaken: "wod_date_taken",
   scoreTypeMismatch: "score_type_mismatch",
   lockedByResults: "locked_by_results",
+  // S8-F3 y S8-F4: resultados (results/exceptions.py).
+  wodNotScored: "wod_not_scored",
+  resultExists: "result_exists",
+  invalidSupersedes: "invalid_supersedes",
+  leaderboardTooLarge: "leaderboard_too_large",
+  resultNotFound: "result_not_found",
+  resultAlreadyVoided: "result_already_voided",
+  resultNotVoidable: "result_not_voidable",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

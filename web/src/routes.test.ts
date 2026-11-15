@@ -98,6 +98,7 @@ describe("tabla de rutas (routeTable.ts)", () => {
       "/movimientos",
       "/wods",
       "/wods/nuevo",
+      "/wods/:id",
       "/wods/:id/editar",
       "/avisos/hoy",
       "/avisos/reglas",

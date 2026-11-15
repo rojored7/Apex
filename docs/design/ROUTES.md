@@ -73,7 +73,7 @@ Movimientos (módulo 6)
 WODs (módulo 7)
 - `/wods` → `WOD_Lista.html`. GET `/wods?week` o `/wods?q&benchmark&limit&offset`.
 - `/wods/nuevo`, `/wods/:id/editar` → `WOD_Form.html`. POST / PATCH `/wods` (con sus `movements`).
-- `/wods/:id` → `WOD_Detalle.html`. GET `/wods/:id`, GET `/wods/:id/leaderboard?level&sex`, GET `/wods/:id/results`.
+- `/wods/:id` → `WOD_Detalle.html`. GET `/wods/:id`, GET `/wods/:id/leaderboard?level&sex`, GET `/wods/:id/results`. Implementación S8-F3 (US-171, US-172; `features/wods/pages/WodDetailPage.tsx`): «El WOD», sesiones que lo usan (`GET /class-sessions?wod_id`) y pestañas `?tab=`: Leaderboard (nivel y sexo en el servidor), Todos los resultados (`include_superseded`; «Anular» solo admin con `POST /results/:id/void`, sin «mover de sesión») e Historial (`GET /audit?table=wods.wods&record_id=`, solo `audit.view`).
 
 Resultados (módulo 8)
 - `/clases/:id/resultados` → `Resultados_Registro.html` (tema oscuro, tablet). GET `/class-sessions/:id/attendance`, GET/PUT `/results` {wod, member, …}. Validar los enviados por socios: POST `/results/:id/validate`.

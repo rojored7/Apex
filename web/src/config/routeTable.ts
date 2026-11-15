@@ -166,7 +166,7 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   route("/movimientos", "Movimientos", "wods", "movements.view", "panel", { load: () => import("../features/wods/pages/MovementsPage") }),
   route("/wods", "WODs", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodListPage") }),
   route("/wods/nuevo", "Nuevo WOD", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodFormPage") }),
-  route("/wods/:id", "WOD", "wods", "wods.view", "panel"),
+  route("/wods/:id", "WOD", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodDetailPage") }),
   route("/wods/:id/editar", "Editar WOD", "wods", "wods.view", "panel", { load: () => import("../features/wods/pages/WodFormPage") }),
   // S5-F1: por avisar hoy, abrir WhatsApp y omitir con motivo (US-127 a US-129).
   route("/avisos/hoy", "Por avisar hoy", "notifications", "notifications.view", "panel", { load: () => import("../features/notifications/pages/TodayPage") }),

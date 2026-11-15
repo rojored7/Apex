@@ -13,6 +13,7 @@ const ADMIN_ONLY = [
   "plans.manage",
   "memberships.cancel",
   "payments.void",
+  "results.void",
   "payments.export",
   "audit.view",
   "users.manage",

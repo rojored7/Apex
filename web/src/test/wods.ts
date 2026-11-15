@@ -162,3 +162,132 @@ export function wodFull(row: WodRowFixture = WODS.fran, overrides: Record<string
     ...overrides,
   };
 }
+
+// S8-F3: LeaderboardRow, WodResultRow y sesiones del WOD del contrato (B4).
+export interface LeaderboardFixture {
+  position: number;
+  result_id: string;
+  member_id: string;
+  first_name: string;
+  last_initial: string;
+  level: "rx" | "rx_plus" | "scaled";
+  seconds: number | null;
+  rounds: number | null;
+  reps: number | null;
+  load_g: number | null;
+  capped: boolean;
+}
+
+export function boardRow(position: number, first: string, seconds: number | null, overrides: Partial<LeaderboardFixture> = {}): LeaderboardFixture {
+  return {
+    position,
+    result_id: `b0b0b0b0-0000-4000-8000-0000000000${String(position).padStart(2, "0")}${String(first.length)}`,
+    member_id: `a0a0a0a0-0000-4000-8000-0000000000${String(position).padStart(2, "0")}${String(first.length)}`,
+    first_name: first,
+    last_initial: "R",
+    level: "rx",
+    seconds,
+    rounds: null,
+    reps: null,
+    load_g: null,
+    capped: false,
+    ...overrides,
+  };
+}
+
+/** Empates: 1, 2, 2, 4. */
+export const BOARD_ROWS: LeaderboardFixture[] = [boardRow(1, "Valentina", 598), boardRow(2, "Mariana", 644), boardRow(2, "Laura", 644), boardRow(4, "Paula", 750)];
+
+export const boardPage = (rows: LeaderboardFixture[] = BOARD_ROWS, total = rows.length): MockReply => ({ status: 200, body: { items: rows, total, limit: 50, offset: 0 } });
+
+export interface ResultRowFixture {
+  id: string;
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  level: "rx" | "rx_plus" | "scaled";
+  seconds: number | null;
+  rounds: number | null;
+  reps: number | null;
+  load_g: number | null;
+  capped: boolean;
+  is_current: boolean;
+  status: "validated" | "pending" | "voided";
+  source: "desk" | "kiosk";
+  recorded_by: string;
+  recorded_by_name: string | null;
+  created_at: string;
+  session_id: string | null;
+  supersedes_id: string | null;
+}
+
+export function resultRow(id: string, first: string, overrides: Partial<ResultRowFixture> = {}): ResultRowFixture {
+  return {
+    id,
+    member_id: `a0a0a0a0-0000-4000-8000-${id.slice(-12)}`,
+    first_name: first,
+    last_name: "Ríos",
+    level: "rx",
+    seconds: 598,
+    rounds: null,
+    reps: null,
+    load_g: null,
+    capped: false,
+    is_current: true,
+    status: "validated",
+    source: "desk",
+    recorded_by: "c0c0c0c0-0000-4000-8000-0000000000c1",
+    recorded_by_name: "Carlos",
+    created_at: "2026-10-21T12:48:00Z",
+    session_id: null,
+    supersedes_id: null,
+    ...overrides,
+  };
+}
+
+export const RESULT_ROWS: ResultRowFixture[] = [
+  resultRow("c1c1c1c1-0000-4000-8000-000000000001", "Valentina", { source: "kiosk" }),
+  resultRow("c1c1c1c1-0000-4000-8000-000000000002", "Mariana", { seconds: 644 }),
+];
+
+export const resultsPage = (rows: ResultRowFixture[] = RESULT_ROWS, total = rows.length): MockReply => ({ status: 200, body: { items: rows, total, limit: 50, offset: 0 } });
+
+export const auditPage = (): MockReply => ({
+  status: 200,
+  body: {
+    items: [
+      { seq: 12, at: "2026-10-21T13:00:00Z", user_id: "c0c0c0c0-0000-4000-8000-0000000000c1", user_email: "carlos@ejemplo.local", user_name: "Carlos", action: "update", table_name: "wods.wods", record_id: WODS.fran.id, subject_member_id: null },
+    ],
+    total: 1,
+    limit: 25,
+    offset: 0,
+  },
+});
+
+export const sessionsOfWod = (): MockReply => ({
+  status: 200,
+  body: {
+    items: [
+      {
+        id: "d2d2d2d2-0000-4000-8000-000000000001",
+        slot_id: null,
+        session_date: "2026-10-21",
+        starts_at: "2026-10-21T12:00:00Z",
+        duration_min: 60,
+        capacity: 20,
+        coach_id: null,
+        coach_name: "Carlos",
+        name: null,
+        status: "scheduled",
+        attendance_count: 11,
+        cancel_reason: null,
+        cancelled_at: null,
+        wod_id: WODS.fran.id,
+        effective_wod_id: WODS.fran.id,
+      },
+    ],
+    total: 1,
+    limit: 50,
+    offset: 0,
+  },
+});

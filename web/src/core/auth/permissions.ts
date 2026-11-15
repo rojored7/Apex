@@ -29,6 +29,8 @@ const TABLE = {
   "plans.manage": ADMIN,
   "memberships.cancel": ADMIN,
   "payments.void": ADMIN,
+  // S8-F3 (S8-D46 b): anular un resultado puesto en el socio o la clase equivocados.
+  "results.void": ADMIN,
   "payments.export": ADMIN,
   "audit.view": ADMIN,
   "users.manage": ADMIN,

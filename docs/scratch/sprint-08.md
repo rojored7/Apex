@@ -239,3 +239,21 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### Evidencia
 - Gate `slice-gate.sh results <3 archivos>`: 907 passed en 136 s, exit 0 (sello escrito).
+
+## S8-B3 · Resultados en el quiosco (S8-D14 parcial, S8-D15, S8-D31, M-1, L-5) · migración 0038
+
+### Rojo
+- Con `session_attendance` en stub (`NotImplementedError`), ruta y esquemas cableados y sin migración ni cambios en auth/security/record: 20 failed y 40 passed de 60 pruebas (5 de asistencia por el stub; 5 de `test_kiosk_record` por no haber origen quiosco ni ventana; 3 de `test_kiosk_results_path` por el patrón; 6 de `test_0038` por la revisión inexistente; 1 de `test_kiosk_routes` por la lista de 10).
+- Honestidad: `test_ventana_hoy_o_ayer[19/22]`, `test_corregir_resultado_de_escritorio/otra_sesion_403` y `test_ruta_con_otro_sufijo_422` pasaban en rojo por el motivo equivocado (la lista blanca daba 403 `kiosk_mode` a `PUT /results`; el patrón ya rechazaba otros sufijos). Tras el verde son reales (las de 403 ahora prueban la regla de S8-D31 con un `PUT /results` permitido).
+
+### Verde
+- `0038_kiosk_results_path` (DROP + ADD del CHECK conservando `ck_refresh_tokens_kiosk_path_shape`; `downgrade` reescribe `/resultados` a `/checkin`), `auth/models.py`, `auth/schemas.KIOSK_PATH_PATTERN`, `core/security.KIOSK_ALLOWED_ROUTES` (12), `results/attendance.py` (`GET /class-sessions/{session_id}/attendance`, paginada en memoria sobre los asistentes vivos, un solo SELECT de vigentes), `results/router.py` (`source = kiosk` con la marca), `results/record.py` (quiosco: `session_id` obligatorio, ventana de `classes.ensure_kiosk_session`, `supersedes_id` solo de un resultado `kiosk` de la misma sesión, si no 403 `kiosk_mode`).
+- Desviación: el «detalle `kiosk: true` en la auditoría» se cumple con `after.source = 'kiosk'` (la auditoría guarda la fila completa; `audit_log` no tiene columna `details`). `auth/kiosk.py` no cambió de lógica (`_session_id_of` ya sirve a las dos rutas). L-7 de la revisión de B1 (docstring 30/min) quedó alineado a 60 en `router.py`.
+- P-CAT: `CON_LIMITE` (+`GET /class-sessions/{session_id}/attendance`), `test_kiosk_routes` (12 rutas y ventana), P-API: `openapi.json` idéntico en dos corridas, `types.ts` regenerado, contract 6 passed, `tsc --noEmit` limpio.
+
+### Evidencia
+- Gate `slice-gate.sh results <11 archivos>`: 1 240 passed en 183 s, exit 0; `ruff check`, `ruff format`, `mypy src` (270) limpios; `alembic heads` = `0038_kiosk_results_path (head)`.
+
+### Pendiente (el api de desarrollo está roto; no se tocaron contenedores ni banderas)
+- P-MIG de `0038` en `apex-db-1`: volcado `sprint-08-antes-0038.dump` (`$DC exec -T db pg_dump -U apex -Fc apex`), `$DC start api`, `alembic current` = `0038_kiosk_results_path (head)`, `downgrade -1` + `upgrade head`, `\d auth.refresh_tokens` (el CHECK con `(checkin|resultados)`). Misma tanda pendiente que `0036` y `0037`.
+- Smoke con rol: login del admin de desarrollo, `POST /auth/kiosk` con `/clases/<id>/resultados`, `GET /class-sessions/<id>/attendance` y un `PUT /results` en quiosco (solo códigos HTTP).

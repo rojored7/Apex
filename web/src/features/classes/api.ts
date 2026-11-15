@@ -13,7 +13,7 @@ import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
 import { can } from "../../core/auth";
-import { hhmm, type SlotCreateBody, type SlotPatchBody } from "./schemas";
+import { hhmm, type SessionCreateBody, type SlotCreateBody, type SlotPatchBody } from "./schemas";
 
 export const slotSchema = z.object({
   id: z.string().min(1),
@@ -115,5 +115,69 @@ export function useCoachCandidates(enabled: boolean): UseQueryResult<CoachCandid
       return page.items.filter((user) => can(user.role, "classes.view")).map(({ id, email }) => ({ id, email }));
     },
     enabled,
+  });
+}
+
+// S7-F3 · US-157: sesiones de una semana (GET /class-sessions?week), sesión extra (POST) y cancelar (POST .../cancel).
+// Crear o cancelar invalida todas las semanas leídas.
+export const sessionSchema = z.object({
+  id: z.string().min(1),
+  slot_id: z.string().nullable(),
+  session_date: z.string(),
+  starts_at: z.string(),
+  duration_min: z.number().int(),
+  capacity: z.number().int(),
+  coach_id: z.string().nullable(),
+  coach_name: z.string().nullable(),
+  name: z.string().nullable(),
+  status: z.enum(["scheduled", "cancelled", "done"]),
+  attendance_count: z.number().int().nonnegative(),
+  cancel_reason: z.string().nullable(),
+  cancelled_at: z.string().nullable(),
+});
+export type SessionView = z.infer<typeof sessionSchema>;
+
+export const sessionsPageSchema = pageSchema(sessionSchema);
+
+/** Una semana de un gimnasio cabe en una página (el api topa en 200); si no, la pantalla lo avisa. */
+export const WEEK_SESSIONS_LIMIT = 200;
+
+export function sessionsQueryKey(week: string): readonly ["class-sessions", { week: string }] {
+  return ["class-sessions", { week }];
+}
+
+export function useSessions(week: string, enabled = true): UseQueryResult<Page<SessionView>> {
+  return useQuery({
+    queryKey: sessionsQueryKey(week),
+    queryFn: async ({ signal }) => parseResponse(sessionsPageSchema, await api.get<unknown>("/class-sessions", { query: listParams({ limit: WEEK_SESSIONS_LIMIT, offset: 0, week }), signal })),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** POST /class-sessions: sesión extra (sin franja). */
+export function useCreateSession(): UseMutationResult<SessionView, Error, SessionCreateBody> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<SessionView, Error, SessionCreateBody>({
+    mutationFn: async (body) => parseResponse(sessionSchema, await api.post<unknown>("/class-sessions", { body })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+    },
+  });
+}
+
+export interface CancelSessionVariables {
+  id: string;
+  reason: string;
+}
+
+/** POST /class-sessions/{id}/cancel con el motivo. */
+export function useCancelSession(): UseMutationResult<SessionView, Error, CancelSessionVariables> {
+  const queryClient = useQueryClient();
+  return useSensitiveMutation<SessionView, Error, CancelSessionVariables>({
+    mutationFn: async ({ id, reason }) => parseResponse(sessionSchema, await api.post<unknown>(`/class-sessions/${encodeURIComponent(id)}/cancel`, { body: { reason } })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
+    },
   });
 }

@@ -44,3 +44,22 @@ correo (GET /users no trae nombre).
 
 Tropiezo: la regla de lint `no-role-literals` frenó `user.role !== "member"` en `useCoachCandidates`; ahora filtra con `can(role, "classes.view")`.
 Tropiezo del entorno: los heredocs de Git Bash con comillas fallaron en bloque; los archivos se escribieron con la herramienta Write.
+
+## S7-F3 · Sesiones: semana, sesión extra y cancelar (US-157, S7-D11)
+
+Rojo (antes del código): `weeks.test.ts`, `SessionsPage.test.tsx`, `ExtraSessionPanel.test.tsx` y `CancelSessionModal.test.tsx` no resolvían el
+import (4 archivos fallidos, 0 pruebas ejecutadas).
+
+Verde:
+- `features/classes/weeks.ts` (semana ISO `AAAA-Www` 2020 a 2100, jueves decide el año, `shiftWeek`, `weekLabel`, hora de Bogotá fija UTC-5).
+- `api.ts` suma `useSessions(week)`, `useCreateSession`, `useCancelSession`; `schemas.ts` el formulario de sesión extra (fecha de Bogotá a UTC,
+  cupo opcional); `classErrors.ts` los 409 `session_duplicate`, `session_finished` y `session_already_cancelled`, y el 422 `starts_at`.
+- `components/{WeekGrid,SessionDetail,ExtraSessionPanel,CancelSessionModal}.tsx`, `pages/SessionsPage.tsx`; `routeTable.ts` carga `/clases`.
+- La URL manda: `?semana=AAAA-Www`; sin ella, inválida o con `?dia=hoy` es la semana de hoy. El filtro de coach es local.
+- El coach de la sesión extra: el admin elige (GET /users); el coach solo «Yo» o nadie y no lee la lista de usuarios.
+- Encabezados de día en `h2` (axe `heading-order`).
+
+DESIGN-GAP anotados: resultados y WOD (v0.5), editar sesión (el api no tiene endpoint), «cada noche» pasa a «cada mañana a las 7:00» (S7-D10),
+cada sesión es un botón que abre su detalle (no un enlace directo al check-in) para separar abrir check-in de cancelar.
+
+Tropiezo del entorno: dos heredocs de Git Bash con comillas y acentos fallaron enteros (sin escribir nada); se aplicaron con Edit.

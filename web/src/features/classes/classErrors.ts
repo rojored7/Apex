@@ -7,7 +7,7 @@ import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
 import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
 import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
-import { SLOT_MESSAGES, type SlotFormValues } from "./schemas";
+import { EXTRA_MESSAGES, SLOT_MESSAGES, type ExtraSessionFormValues, type SlotFormValues } from "./schemas";
 
 export const COACH_INVALID_MESSAGE = "Ese usuario ya no puede ser coach. Elige otro o deja la franja sin coach.";
 export const SLOT_CONFLICT_MESSAGE = "Ya hay una franja activa a esa hora en alguno de esos días. Cambia la hora o quita esos días.";
@@ -70,6 +70,83 @@ export function slotSaveMessage(error: unknown): string {
 /** El error de cancelar sesiones futuras con el mensaje de la pantalla (ConfirmModal). */
 export function cancelFutureError(error: unknown): ApiError {
   return toFormError(error, (e) => statusMessage(e, CANCEL_FUTURE_MESSAGES), CANCEL_FUTURE_MESSAGES.generic);
+}
+
+// S7-F3 · US-157: sesión extra, cancelar una sesión y leer una semana.
+export const SESSION_DUPLICATE_MESSAGE = "Ya existe una sesión extra con ese horario y ese coach. Cambia la hora o el coach.";
+export const SESSION_COACH_INVALID_MESSAGE = "Ese usuario ya no puede ser coach. Elige otro o deja la sesión sin coach.";
+
+export const EXTRA_SAVE_MESSAGES = {
+  forbidden: "No tienes permiso para crear sesiones. Si lo necesitas, pídeselo a un administrador.",
+  tooMany,
+  server: "No pudimos crear la sesión. Intenta de nuevo en un momento.",
+  generic: "No pudimos crear la sesión. Revisa los datos e intenta de nuevo.",
+} as const;
+
+export const CANCEL_SESSION_MESSAGES = {
+  forbidden: "No tienes permiso para cancelar sesiones. Si lo necesitas, pídeselo a un administrador.",
+  notFound: "Esta sesión ya no existe. Cierra este aviso y actualiza la semana.",
+  unprocessable: "Escribe un motivo de 3 a 200 caracteres.",
+  tooMany,
+  server: "No pudimos cancelar la sesión. Intenta de nuevo en un momento.",
+  generic: "No pudimos cancelar la sesión. Intenta de nuevo en un momento.",
+  finished: "Esta sesión ya terminó y no se puede cancelar.",
+  alreadyCancelled: "Otra persona ya canceló esta sesión. Actualizamos la semana.",
+} as const;
+
+export const SESSIONS_LIST_MESSAGES = {
+  forbidden: "No tienes permiso para ver las sesiones. Si lo necesitas, pídeselo a un administrador.",
+  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  failed: "No pudimos cargar las sesiones. Intenta de nuevo en un momento.",
+} as const;
+
+const EXTRA_FIELDS: Readonly<Record<string, { path: FieldPath<ExtraSessionFormValues>; message: string }>> = {
+  starts_at: { path: "starts_at", message: EXTRA_MESSAGES.startsAtRange },
+  duration_min: { path: "duration_min", message: SLOT_MESSAGES.duration },
+  capacity: { path: "capacity", message: EXTRA_MESSAGES.capacity },
+  name: { path: "name", message: SLOT_MESSAGES.name },
+};
+
+export interface ExtraSessionFieldError {
+  path: FieldPath<ExtraSessionFormValues>;
+  message: string;
+}
+
+/** El error que va bajo un campo del formulario de sesión extra, o null si es general. */
+export function extraSessionFieldError(error: unknown): ExtraSessionFieldError | null {
+  if (!isApiError(error)) return null;
+  if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.sessionDuplicate) return { path: "starts_at", message: SESSION_DUPLICATE_MESSAGE };
+  if (error.code === API_ERROR_CODES.coachInvalid) return { path: "coach_id", message: SESSION_COACH_INVALID_MESSAGE };
+  if (error.status !== HTTP_UNPROCESSABLE || !error.field) return null;
+  return EXTRA_FIELDS[error.field] ?? null;
+}
+
+/** Mensaje general de una sesión extra que no se pudo crear. */
+export function extraSessionSaveMessage(error: unknown): string {
+  if (!isApiError(error)) return EXTRA_SAVE_MESSAGES.generic;
+  return connectionMessage(error) ?? statusMessage(error, EXTRA_SAVE_MESSAGES);
+}
+
+/** El error de cancelar una sesión con el mensaje de la pantalla (ConfirmModal). */
+export function cancelSessionError(error: unknown): ApiError {
+  return toFormError(
+    error,
+    (e) => {
+      if (e.status === HTTP_CONFLICT && e.code === API_ERROR_CODES.sessionFinished) return CANCEL_SESSION_MESSAGES.finished;
+      if (e.status === HTTP_CONFLICT && e.code === API_ERROR_CODES.sessionAlreadyCancelled) return CANCEL_SESSION_MESSAGES.alreadyCancelled;
+      return statusMessage(e, CANCEL_SESSION_MESSAGES);
+    },
+    CANCEL_SESSION_MESSAGES.generic,
+  );
+}
+
+/** El error de la semana como ApiError con el mensaje de la pantalla. */
+export function sessionsListError(error: unknown): ApiError | null {
+  return toScreenError(
+    error,
+    (e) => (e.status === HTTP_FORBIDDEN ? SESSIONS_LIST_MESSAGES.forbidden : e.status === HTTP_TOO_MANY ? SESSIONS_LIST_MESSAGES.tooMany(waitText(e.retryAfterS)) : SESSIONS_LIST_MESSAGES.failed),
+    SESSIONS_LIST_MESSAGES.failed,
+  );
 }
 
 /** El error de la lista de franjas como ApiError con el mensaje de la pantalla (lo pinta DataTable). */

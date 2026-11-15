@@ -5,6 +5,7 @@
 // - toSlotCreate y toSlotPatch arman el cuerpo; el PATCH lleva solo lo que cambió (un campo ausente no es un cambio).
 import { z } from "zod";
 import type { components } from "../../core/api/types";
+import { bogotaInputToUtc, nowBogotaInput } from "../../core/i18n/format";
 
 export const WEEKDAY_VALUES = [0, 1, 2, 3, 4, 5, 6] as const;
 export const WEEKDAY_LETTERS = ["L", "M", "X", "J", "V", "S", "D"] as const;
@@ -139,6 +140,58 @@ export function toSlotPatch(values: SlotFormValues, initial: SlotFormValues): Sl
 export const cancelReasonSchema = z.object({
   reason: z.string().trim().min(CANCEL_REASON_MIN).max(CANCEL_REASON_MAX),
 });
+
+// S7-F3 · US-157: sesión extra.
+export const EXTRA_MESSAGES = {
+  startsAt: "Indica la fecha y la hora de inicio.",
+  startsAtRange: "La sesión debe empezar entre ayer y los próximos 90 días.",
+  capacity: "El cupo debe estar entre 1 y 100, o déjalo vacío para usar el de Configuración.",
+} as const;
+
+/** Lo que el usuario escribe al crear una sesión extra (los números como texto). */
+export interface ExtraSessionFormValues {
+  starts_at: string;
+  duration_min: string;
+  capacity: string;
+  coach_id: string;
+  name: string;
+}
+
+export const extraSessionSchema: z.ZodType<ExtraSessionFormValues, ExtraSessionFormValues> = z.object({
+  starts_at: z.string().refine((value) => bogotaInputToUtc(value) !== null, EXTRA_MESSAGES.startsAt),
+  duration_min: integerInRange(DURATION_MIN, DURATION_MAX, SLOT_MESSAGES.duration),
+  capacity: z.string().refine((value) => {
+    const text = value.trim();
+    if (text === "") return true;
+    if (!DIGITS.test(text)) return false;
+    const n = Number(text);
+    return n >= CAPACITY_MIN && n <= CAPACITY_MAX;
+  }, EXTRA_MESSAGES.capacity),
+  coach_id: z.string(),
+  name: z.string().trim().max(NAME_MAX, SLOT_MESSAGES.name),
+});
+
+/** Valores iniciales: ahora mismo en Bogotá y una hora de duración. */
+export function emptyExtraSessionForm(): ExtraSessionFormValues {
+  return { starts_at: nowBogotaInput(), duration_min: "60", capacity: "", coach_id: "", name: "" };
+}
+
+export type SessionCreateBody = components["schemas"]["SessionCreate"];
+
+export function toSessionCreate(values: ExtraSessionFormValues): SessionCreateBody {
+  const startsAt = bogotaInputToUtc(values.starts_at);
+  /* v8 ignore next -- el esquema ya rechazó una fecha inválida */
+  if (startsAt === null) throw new Error("toSessionCreate: la fecha no pasó por extraSessionSchema");
+  const capacity = values.capacity.trim();
+  const name = values.name.trim();
+  return {
+    starts_at: startsAt,
+    duration_min: Number(values.duration_min),
+    ...(capacity === "" ? {} : { capacity: Number(capacity) }),
+    coach_id: values.coach_id === "" ? null : values.coach_id,
+    ...(name === "" ? {} : { name }),
+  };
+}
 
 /** «L M X J V» de los días de una franja, de lunes a domingo. */
 export function weekdaysText(days: readonly number[]): string {

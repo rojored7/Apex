@@ -1,0 +1,94 @@
+/* S7-F3: rejilla de la semana de Sesiones.html. Solo variables de tokens.css. */
+.scroller {
+  overflow-x: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
+  gap: var(--space-2);
+  min-width: 980px;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.header {
+  margin: 0;
+  padding: var(--space-2);
+  border-bottom: 2px solid var(--ink);
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+/* Hoy: fondo de tinta y texto de la tarjeta (se invierten solos en el tema oscuro). */
+.today {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--ink);
+  color: var(--card);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control);
+  padding: var(--space-2);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: var(--text-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session:hover {
+  border-color: var(--ink);
+}
+
+.session:focus-visible {
+  outline: 2px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.session b {
+  font: var(--text-label);
+}
+
+.full {
+  background: var(--surface);
+}
+
+/* Cancelada: borde punteado y el texto «Cancelada · motivo» (nunca solo el estilo). */
+.cancelled {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.selected {
+  border-color: var(--blue-deep);
+  border-width: 2px;
+  background: var(--blue-tint);
+}
+
+.note {
+  color: var(--muted);
+}

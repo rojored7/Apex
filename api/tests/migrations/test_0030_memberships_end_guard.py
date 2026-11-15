@@ -215,3 +215,23 @@ def _ejecutar_pasos(url: str, pasos: list[Paso]) -> None:
             await conexion.close()
 
     asyncio.run(correr())
+
+
+FUNCION = "SELECT pg_get_functiondef('memberships.guard_identity()'::regprocedure) AS definicion"
+
+
+def test_downgrade_restaura_la_funcion_exacta_de_0029(alembic_config: Config, base: str) -> None:
+    """S7-C3b: la definición tras bajar es la que dejó `0029` (antes de `0030`), carácter a
+    carácter; no solo «deja mover `original_end_date` en una anulada»."""
+    try:
+        command.downgrade(alembic_config, "0028_attendance")
+        command.upgrade(alembic_config, PADRE)
+        de_0029 = consultar(base, FUNCION)[0]["definicion"]
+        command.upgrade(alembic_config, "head")
+        de_0030 = consultar(base, FUNCION)[0]["definicion"]
+        command.downgrade(alembic_config, PADRE)
+        tras_bajar = consultar(base, FUNCION)[0]["definicion"]
+    finally:
+        command.upgrade(alembic_config, "head")
+    assert de_0030 != de_0029
+    assert tras_bajar == de_0029

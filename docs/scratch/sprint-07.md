@@ -338,3 +338,12 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Pruebas nuevas: 55 passed (+1 perf: 26 semanas con 1.170 asistencias, bajo 500 ms). Sello `slice-gate.sh classes` (4 archivos + `tests/architecture`): 886 passed, exit 0 (primer intento falló por `q` ausente y por la lista de `staff-read`; segundo, 2 pasos corregidos). Nota: el gate necesita `TEST_DATABASE_URL` exportada (sin ella 118 errores de fixture).
 - P-API: `docs/openapi.json` idéntico en dos corridas, `types.ts` regenerado, `types.contract.test.ts` 6 passed.
 - Prueba viva (admin de desarrollo, token en `$TMPDIR` con `umask 077`, borrado): `GET /attendance/summary` 200 (semana 2026-W46: total 1, marcadas 1), 422 con `from > to` y con más de 26 semanas, 401 sin token; `GET /members/{id}/attendance` del socio «Prueba S7 Tiquetera» 200 con `total` 2, 404 con un id inexistente.
+
+## S7-C3b · Correcciones de la revisión de C3 (S7-D40 (17) a (20))
+
+### Rojo
+- `tests/memberships/test_review_c3_freeze.py` (4): con el camino real resumido (tiquetera `active`, fin = hoy, `original_end_date` 4 días después, 3 clases) congelar 10 días da `IntegrityError` por `ck_memberships_original_end_date_after_end` (el 500); la regla pura no acepta `original_end_date` ni devuelve `new_original_end_date`. Sin código: 3 failed (el `IntegrityError` y 2 `TypeError`) y 1 passed (sin original, igual que antes).
+- Borde de las 04:30Z en `test_remove_attendance.py` y comparación de `pg_get_functiondef` en `test_0030`: pasan de entrada (la implementación ya era correcta; son pruebas de borde, sin rojo).
+
+### Verde
+- `rules.apply_freeze(..., original_end_date=)` y `FreezeOutcome.new_original_end_date`; `lifecycle._apply` lo pasa y `_store_freeze` lo guarda; CHECK `original_end_date_after_end` en `memberships/models.py`; `test_0030` compara la función de `0029` con la que deja el `downgrade`. DECISIONES (17) a (20) y la nota de R1.

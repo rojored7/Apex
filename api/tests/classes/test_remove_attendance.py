@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
+from app.core.clock import FrozenClock
 from app.core.context import actor_scope
 from app.modules.classes import service
 from app.modules.classes.exceptions import (
@@ -270,3 +271,26 @@ async def test_la_quitada_deja_de_contar_en_el_cupo(
     with actor_scope(coach.id):
         salida = await service.check_in(session, datos, by=coach.id)
     assert salida.flags == [] and salida.attendance_count == 1
+
+
+async def test_borde_de_medianoche_utc_el_coach_cuenta_dias_de_bogota(
+    session: AsyncSession,
+    usuario_real: CrearUsuario,
+    puerto: FakeMembershipPort,
+    reloj: FrozenClock,
+) -> None:
+    """S7-C3b: a las 04:30Z del 22 son las 23:30 del 21 en Bogotá. «Ayer» es el 20 (204) y
+    «anteayer» el 19 (403); contar días en UTC invertiría los dos resultados."""
+    reloj.advance(hours=13, minutes=30)  # de 15:00Z a 04:30Z del día siguiente
+    assert reloj.now_utc() == datetime(2026, 10, 22, 4, 30, tzinfo=UTC)
+    coach = await usuario_real("coach")
+    coach_id = coach.id
+    uno, otro = await make_members(session, 2)
+    ayer = await make_session(session, starts_at=datetime(2026, 10, 20, 15, 10, tzinfo=UTC))
+    anteayer = await make_session(session, starts_at=datetime(2026, 10, 19, 15, 10, tzinfo=UTC))
+    de_ayer = await _registrar(session, coach_id, ayer.id, uno.id)
+    de_anteayer = await _registrar(session, coach_id, anteayer.id, otro.id)
+    await _quitar(session, coach_id, de_ayer, role="coach")
+    assert (await _fila(session, de_ayer)).removed_at is not None
+    with pytest.raises(AttendanceLocked):
+        await _quitar(session, coach_id, de_anteayer, role="coach")

@@ -206,6 +206,7 @@ def _apply(
             limites,
             ctx.today,
             ctx.policy.expiring_days,
+            original_end_date=membresia.original_end_date,
         )
     except FreezeError as error:
         raise FreezeRejected(
@@ -244,6 +245,7 @@ async def _store_freeze(
     corrida = replace(snapshot(membresia), end_date=salida.new_end_date)
     estado = compute_status(corrida, ctx.today, ctx.policy.expiring_days, [*ctx.windows, ventana])
     membresia.end_date = salida.new_end_date
+    membresia.original_end_date = salida.new_original_end_date
     membresia.status = estado.value
     try:
         await session.flush()

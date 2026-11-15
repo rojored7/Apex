@@ -170,6 +170,8 @@ CON_LIMITE = {
     # `PATCH /class-sessions/{session_id}` (`classes-write`).
     ("get", "/api/v1/wods/today"),
     ("patch", "/api/v1/class-sessions/{session_id}"),
+    # S8-B1 (US-169): `PUT /results` consume `results-write`.
+    ("put", "/api/v1/results"),
     ("get", "/api/v1/wods"),
     ("post", "/api/v1/wods"),
     ("get", "/api/v1/wods/{wod_id}"),

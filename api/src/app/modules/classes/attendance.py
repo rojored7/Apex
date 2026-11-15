@@ -89,7 +89,7 @@ def membership_port() -> MembershipPort | None:
     return _port
 
 
-async def _alive_attendance_id(
+async def alive_attendance_id(
     session: AsyncSession, session_id: UUID, member_id: UUID
 ) -> UUID | None:
     """La asistencia viva del socio en la sesión, si la hay."""
@@ -154,7 +154,7 @@ async def check_in(session: AsyncSession, data: AttendanceCreate, *, by: UUID) -
     ahora = reloj.now_utc()
     on_date = checkin_on_date(clase.session_date, reloj.today_bogota())
     vista = await port.checkin_view(session, data.member_id, on_date=on_date)
-    if await _alive_attendance_id(session, clase.id, data.member_id) is not None:
+    if await alive_attendance_id(session, clase.id, data.member_id) is not None:
         raise AlreadyCheckedIn()
     presentes = await _alive_count(session, clase.id)
     ventana = (await settings_service.classes(session)).checkin_window_min

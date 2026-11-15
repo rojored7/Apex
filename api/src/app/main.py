@@ -75,6 +75,7 @@ MODULES: Final[tuple[str, ...]] = (
     "notifications",  # S5-B6 (S5-D23): plantillas y reglas de aviso
     "classes",  # S7-A2 (S7-D20): franjas del horario; tras memberships y antes de dashboard
     "wods",  # S8-A1 (S8-D5): catálogo de movimientos; tras classes (sin aristas salientes)
+    "results",  # S8-B1 (US-169): resultados; tras wods y classes, de los que depende
     "dashboard",  # S4A-B8 (S4A-D27): lectura; nadie lo importa, importa a los demás
 )
 API_PREFIX = "/api/v1"

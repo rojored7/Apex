@@ -52,6 +52,7 @@ ESQUEMAS = (
     "plans",
     "settings",
     "wods",  # S8-A1 (0032)
+    "results",  # S8-B1 (0036)
     "worker",
     "public",
 )
@@ -134,6 +135,15 @@ COLUMNAS_API_WODS_UPDATE: tuple[str, ...] = (
     "time_cap_s",
     "benchmark_id",
     "description",
+    "updated_at",
+)
+# S8-B1 (S8-D35): lo único que el api puede cambiar de un resultado (la guarda de `0037` lo limita
+# aún más: `pending` a `validated`, `is_current` de `true` a `false`).
+COLUMNAS_API_WOD_RESULTS_UPDATE: tuple[str, ...] = (
+    "status",
+    "validated_by",
+    "validated_at",
+    "is_current",
     "updated_at",
 )
 # S8-A1 (S8-D21): lo que el api puede cambiar de un movimiento; `id`, `created_*` quedan fijos.
@@ -245,6 +255,11 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     },
     "wods.benchmarks": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_BENCHMARKS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    # S8-B1 (S8-D35, P-ROL): el api inserta y solo valida o apaga; nadie borra; el worker no ve.
+    "results.wod_results": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_WOD_RESULTS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -823,6 +838,11 @@ PROHIBIDAS_API = [
     "UPDATE wods.wods SET created_by = created_by",  # S8-A3: columna sin UPDATE
     "TRUNCATE wods.wod_movements",  # S8-A3: solo DELETE por fila
     "UPDATE wods.wod_movements SET reps = reps",  # S8-A3: se reemplaza, no se edita
+    "DELETE FROM results.wod_results",  # S8-B1: los resultados no se borran
+    "TRUNCATE results.wod_results",  # S8-B1
+    "UPDATE results.wod_results SET source = source",  # S8-B1: columna sin UPDATE
+    "UPDATE results.wod_results SET load_g = load_g",  # S8-B1
+    "UPDATE results.wod_results SET supersedes_id = supersedes_id",  # S8-B1
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -908,6 +928,8 @@ PROHIBIDAS_WORKER = [
     "SELECT count(*) FROM wods.benchmarks",  # S8-A2: el worker no ve el esquema `wods`
     "SELECT count(*) FROM wods.wods",  # S8-A3: el worker no ve el esquema `wods`
     "SELECT count(*) FROM wods.wod_movements",  # S8-A3
+    "SELECT count(*) FROM results.wod_results",  # S8-B1: el worker no ve `results`
+    "INSERT INTO results.wod_results (id) VALUES (gen_random_uuid())",  # S8-B1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

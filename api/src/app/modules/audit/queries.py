@@ -77,6 +77,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "wods.benchmarks",  # S8-A2
         "wods.wods",  # S8-A3
         "wods.wod_movements",  # S8-A3
+        "results.wod_results",  # S8-B1
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -102,6 +103,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "wods.movements": "catálogo; se ve en Movimientos (S8-D23)",
     "wods.benchmarks": "catálogo; se ve en Movimientos, pestaña Benchmarks (S8-D23)",
     "wods.wod_movements": "detalle del WOD; se ve en el WOD (S8-D23)",
+    "results.wod_results": "volumen de la clase: se ve en el WOD y en la ficha (S8-D23)",
     "classes.attendance": "una fila por socio y clase: ruido para el tablero (S7-D17)",
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",

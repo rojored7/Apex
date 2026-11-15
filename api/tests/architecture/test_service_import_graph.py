@@ -64,6 +64,12 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         # cada día (`day_wod_ids`) y la fecha de un WOD (`wod_date`). Nunca `wods -> classes`.
         ("classes", "wods"),
         ("auth", "settings"),
+        # S8-B1 (US-169, S8-D36): `results` valida contra el WOD, el socio y la sesion; los puertos
+        # inversos (`ResultsProbe`, `ResultsPort`) los registra `results`: nunca
+        # `wods`/`classes -> results`.
+        ("results", "classes"),
+        ("results", "members"),
+        ("results", "wods"),
         # S4A-B8 (S4A-D27, C9): el tablero compone resumen, ingresos, `recent` y nombres.
         ("dashboard", "audit"),
         # S7-R3 (US-164, G-04): el tablero lee `week_attendance` y `today_sessions` de classes.

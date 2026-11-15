@@ -10,6 +10,7 @@ Reexporta lo público de los archivos privados del módulo:
   (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`;
   `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba) y
   `remove_attendance` (C3, US-161), que lo emite.
+`result_link.py` (S8-B1): `session_for_result` y el puerto de resultados (`set_results_port`).
 `reports.py` (S7-R1, US-162): `attendance_summary`, `member_attendance` y la pura `weekly_summary`.
 `queries.py` (S7-R2, US-163): `attended_member_ids` y `last_attendance_for`, que `members` pide por
 import perezoso (`# lazy: G-03`) para el filtro y la columna de última asistencia.
@@ -46,6 +47,13 @@ from app.modules.classes.queries import (
     week_attendance,
 )
 from app.modules.classes.reports import attendance_summary, member_attendance, weekly_summary
+from app.modules.classes.result_link import (
+    ResultSession,
+    ResultsPort,
+    results_port,
+    session_for_result,
+    set_results_port,
+)
 from app.modules.classes.rules import (
     PlannedSession,
     SlotSpec,
@@ -77,6 +85,8 @@ __all__ = [
     "MembershipPort",
     "MembershipPortNotRegistered",
     "PlannedSession",
+    "ResultSession",
+    "ResultsPort",
     "SessionCancelled",
     "SessionGenerated",
     "SlotSpec",
@@ -103,8 +113,11 @@ __all__ = [
     "parse_week",
     "planned_sessions",
     "remove_attendance",
+    "results_port",
+    "session_for_result",
     "session_status",
     "set_membership_port",
+    "set_results_port",
     "today_sessions",
     "update_slot",
     "week_attendance",

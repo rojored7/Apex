@@ -102,12 +102,32 @@ class AlreadyCheckedIn(ClassError):
     default_message = "El socio ya registró asistencia en esta clase."
 
 
-class CheckinSessionCancelled(ClassError):
-    """No hay check-in en una sesión cancelada (US-159 CA5): 409."""
+class SessionCancelledError(ClassError):
+    """La sesión está cancelada: no admite check-in (US-159 CA5), resultados (S8-D36) ni cambio de
+    WOD (S8-D9): 409 `session_cancelled`."""
 
     status = 409
     code = "session_cancelled"
     default_message = "La sesión está cancelada."
+
+
+CheckinSessionCancelled = SessionCancelledError
+"""Nombre histórico (S7-C1): el mismo error, antes solo del check-in."""
+
+
+class LockedByResults(ClassError):
+    """La sesión ya tiene resultados vigentes: su WOD efectivo no cambia (S8-A4, M-2): 409."""
+
+    status = 409
+    code = "locked_by_results"
+    default_message = "La sesión ya tiene resultados: su WOD no se puede cambiar."
+
+    def __init__(self) -> None:
+        super().__init__(field="wod_id")
+
+
+class ResultsPortNotRegistered(RuntimeError):
+    """Nadie registró el puerto de resultados de `classes`: lo que lo necesita falla cerrado."""
 
 
 class AttendanceNotFound(ClassError):

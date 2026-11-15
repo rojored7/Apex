@@ -62,6 +62,9 @@
 --                                     time_cap_s, benchmark_id,
 --                                     description, updated_at)
 --   wods.wod_movements              S I D                             -
+--   results.wod_results             S I U(status, validated_by,       -
+--                                     validated_at, is_current,
+--                                     updated_at)
 --   worker.job_runs                 S                                 S I U
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
@@ -86,6 +89,7 @@
 -- clasificada: payments.payments
 -- clasificada: plans.plans
 -- clasificada: public.alembic_version
+-- clasificada: results.wod_results
 -- clasificada: settings.settings_sections
 -- clasificada: wods.benchmarks
 -- clasificada: wods.movements
@@ -103,19 +107,19 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, wods, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
 GRANT USAGE ON SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
--- S8-A1 (P-ROL): el worker no ve el esquema `wods` (ni `results`): sin USAGE.
-GRANT USAGE ON SCHEMA wods TO apex_api, apex_backup;
+-- S8-A1/B1 (P-ROL): el worker no ve los esquemas `wods` ni `results`: sin USAGE.
+GRANT USAGE ON SCHEMA wods, results TO apex_api, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
@@ -153,6 +157,9 @@ GRANT UPDATE (name, name_norm, description, score_type, updated_at) ON wods.benc
 GRANT SELECT, INSERT ON wods.wods TO apex_api;
 GRANT UPDATE (date, title, score_type, time_cap_s, benchmark_id, description, updated_at) ON wods.wods TO apex_api;
 GRANT SELECT, INSERT, DELETE ON wods.wod_movements TO apex_api;
+-- S8-B1 (US-169, S8-D35): el api inserta resultados y solo los valida o los apaga; sin DELETE.
+GRANT SELECT, INSERT ON results.wod_results TO apex_api;
+GRANT UPDATE (status, validated_by, validated_at, is_current, updated_at) ON results.wod_results TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -231,7 +238,7 @@ DECLARE
         'notifications.notification_rules', 'notifications.notification_templates',
         'notifications.notifications',
         'payments.payments', 'plans.plans', 'public.alembic_version',
-        'settings.settings_sections', 'wods.benchmarks', 'wods.movements', 'wods.wod_movements',
+        'results.wod_results', 'settings.settings_sections', 'wods.benchmarks', 'wods.movements', 'wods.wod_movements',
         'wods.wods', 'worker.job_runs'];
     sin_clasificar text;
 BEGIN

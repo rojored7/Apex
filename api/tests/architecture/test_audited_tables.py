@@ -68,6 +68,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "wods.benchmarks",  # S8-A2 (US-166)
         "wods.wods",  # S8-A3 (US-166)
         "wods.wod_movements",  # S8-A3 (US-166)
+        "results.wod_results",  # S8-B1 (US-169)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -80,7 +81,6 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
 PENDING_AUDITED: dict[str, str] = {
     # S8-W0-3 (E3): las cinco tablas de v0.5 se declaran antes de existir; cada slice la mueve a
     # las requeridas. `athletes.personal_records` (EP-24, US-180) mantiene viva la lista.
-    "results.wod_results": "v0.5",
     "athletes.personal_records": "v0.6",
 }
 
@@ -322,6 +322,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "wods.movements",  # S8-A1: catálogo (S8-D23)
         "wods.benchmarks",  # S8-A2: catálogo (S8-D23)
         "wods.wod_movements",  # S8-A3: detalle del WOD (S8-D23)
+        "results.wod_results",  # S8-B1: volumen de la clase (S8-D23)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

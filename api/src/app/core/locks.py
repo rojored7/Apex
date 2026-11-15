@@ -28,6 +28,12 @@ MEMBRESÍA (la bloquea el puerto `checkin_view`, antes del primer flush) y, al h
 cadena. Fuera de `core/locks.py`, el orden de los candados asesores de `classes` es 4_270_005
 (franjas), 4_270_006 (generación) y, al primer flush auditado, 4_270_002 (cadena; S7-D37).
 
+Orden del registro de resultados (S8-B1, S8-D36, M-6): socio (`lock_member`), SESIÓN (`FOR SHARE`,
+con `status = scheduled`), WOD (`FOR SHARE`), resultado vigente (`FOR UPDATE`) y, al hacer flush,
+la cadena. `PATCH /class-sessions/{id}` pide la sesión `FOR UPDATE` y lee el WOD después; `PATCH
+/wods/{id}` pide el WOD `FOR UPDATE`: ambos esperan a que el resultado confirme. Nunca se toma el
+WOD antes que la sesión ni el resultado antes que el WOD.
+
 Los suscriptores de `SessionCancelled`, `SessionGenerated` y `MemberCheckedIn` se ejecutan con
 la cadena de auditoría (4_270_002) YA tomada (el evento se emite después del flush): no pueden
 pedir candados de socio, de membresía, de sesión ni asesores, porque invertirían este orden y

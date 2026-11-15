@@ -329,7 +329,7 @@ async def test_23505_traducido_a_already_checked_in(
     async def nadie(*_: Any, **__: Any) -> None:
         return None
 
-    monkeypatch.setattr(attendance, "_alive_attendance_id", nadie)
+    monkeypatch.setattr(attendance, "alive_attendance_id", nadie)
     with pytest.raises(AlreadyCheckedIn):
         await _check_in(session, coach.id, sesion.id, socio.id)
     await session.rollback()

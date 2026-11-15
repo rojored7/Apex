@@ -1,0 +1,59 @@
+"""Fachada del service de `results` (S8-B1). Lo único que importan los demás módulos.
+
+- `record.py` (S8-B1, US-169, US-170): `record_result` (registra y corrige) y el puerto de
+  `classes` (`session_has_current_results`).
+- `events.py`: `WodResultRecorded` y `WodResultValidated`.
+Al importarse registra dos puertos (sentido minoritario, regla 2 bis): `wods.set_results_probe`
+(cuántos resultados vigentes tiene un WOD) y `classes.set_results_port` (si una sesión tiene
+resultados vigentes). Lo importan `create_app`, el CLI y el worker con `load_module_services()`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.classes import service as classes_service
+from app.modules.results.events import WodResultRecorded, WodResultValidated
+from app.modules.results.models import WodResult
+from app.modules.results.record import record_result, session_has_current_results
+from app.modules.wods import service as wods_service
+
+
+class _Probe:
+    """`wods.ResultsProbe`: resultados vigentes por WOD, en UNA consulta."""
+
+    async def result_counts(
+        self, session: AsyncSession, wod_ids: Sequence[UUID]
+    ) -> dict[UUID, int]:
+        if not wod_ids:
+            return {}
+        filas = await session.execute(
+            select(WodResult.wod_id, func.count())
+            .where(WodResult.wod_id.in_(list(wod_ids)), WodResult.is_current.is_(True))
+            .group_by(WodResult.wod_id)
+        )
+        return {wod_id: int(total) for wod_id, total in filas.all()}
+
+
+class _SessionPort:
+    """`classes.ResultsPort`."""
+
+    async def session_has_current_results(self, session: AsyncSession, session_id: UUID) -> bool:
+        return await session_has_current_results(session, session_id)
+
+
+results_probe = _Probe()
+wods_service.set_results_probe(results_probe)
+classes_service.set_results_port(_SessionPort())
+
+__all__ = [
+    "WodResultRecorded",
+    "WodResultValidated",
+    "record_result",
+    "results_probe",
+    "session_has_current_results",
+]

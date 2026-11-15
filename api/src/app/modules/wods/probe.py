@@ -5,8 +5,7 @@ los campos que se bloquean) sin importar `results` (sentido minoritario, regla d
 `results` registra el puerto real con `set_results_probe` al importarse (B1). Sin puerto, lo que
 depende de resultados FALLA CERRADO (`ResultsProbeNotRegistered`).
 
-Mientras `results` no existe (A3 y A4) `service.py` registra `NoResultsYet`: sin la tabla de
-resultados, cero es la verdad. B1 lo reemplaza con el real y lo quita.
+Desde B1 no hay puerto provisional: `results/service.py` registra el real y el resto falla cerrado.
 """
 
 from __future__ import annotations
@@ -26,15 +25,6 @@ class ResultsProbe(Protocol):
     ) -> dict[UUID, int]:
         """Resultados vigentes de cada WOD (los ids sin resultados pueden faltar)."""
         ...
-
-
-class NoResultsYet:
-    """Provisional de A3: la tabla de resultados nace en B1, así que ningún WOD tiene resultados."""
-
-    async def result_counts(
-        self, session: AsyncSession, wod_ids: Sequence[UUID]
-    ) -> dict[UUID, int]:
-        return dict.fromkeys(wod_ids, 0)
 
 
 _probe: ResultsProbe | None = None

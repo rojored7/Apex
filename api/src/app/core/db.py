@@ -60,6 +60,7 @@ APP_SCHEMAS: tuple[str, ...] = (
     "attachments",
     "classes",
     "wods",  # S8-A1 (0032)
+    "results",  # S8-B1 (0036)
     "worker",
 )
 

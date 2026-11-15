@@ -416,3 +416,72 @@ def test_apex_api_escribe_wod_id(apex_roles: RolesDb) -> None:
             LIMPIAR_CLASS_SLOTS,
             LIMPIAR_WODS,
         )
+
+
+def test_apex_api_inserta_y_apaga_sin_delete(apex_roles: RolesDb) -> None:
+    """S8-B1 (S8-D35, P-ROL): `results.service.record_result` con los privilegios reales de
+    `apex_api`: `SELECT` del WOD y del socio, `INSERT` del resultado y `UPDATE (is_current)` al
+    corregir; `DELETE` y `UPDATE` de otras columnas siguen negados."""
+    from sqlalchemy.exc import DBAPIError
+
+    from app.modules.results import service as results_service
+    from app.modules.results.schemas import ResultIn
+    from tests.conftest import LIMPIAR_WOD_RESULTS, LIMPIAR_WODS
+
+    socio, wod_id = uuid4(), uuid4()
+    propietario(
+        apex_roles,
+        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
+        "document_idx, phone, phone_idx, email, email_idx) "
+        f"VALUES ('{socio}', '{SYSTEM}', 'Ana', 'Api', "
+        f"'apx1.doc', 'idx-{socio}', 'apx1.fono', 'pidx-{socio}', 'apx1.correo', 'eidx-{socio}')",
+        "INSERT INTO wods.wods (id, created_by, date, title, score_type) "
+        f"VALUES ('{wod_id}', '{SYSTEM}', '2026-01-05', 'Fran', 'time')",
+    )
+
+    async def registrar_y_corregir(sesion: AsyncSession) -> tuple[UUID, UUID]:
+        primero = await results_service.record_result(
+            sesion,
+            ResultIn.model_validate(
+                {"wod_id": wod_id, "member_id": socio, "level": "rx", "seconds": 300}
+            ),
+            by=SYSTEM_USER_ID,
+        )
+        segundo = await results_service.record_result(
+            sesion,
+            ResultIn.model_validate(
+                {
+                    "wod_id": wod_id,
+                    "member_id": socio,
+                    "level": "rx",
+                    "seconds": 280,
+                    "supersedes_id": primero.id,
+                }
+            ),
+            by=SYSTEM_USER_ID,
+        )
+        return primero.id, segundo.id
+
+    async def intentar_borrar(sesion: AsyncSession) -> str:
+        try:
+            await sesion.execute(text("DELETE FROM results.wod_results"))
+        except DBAPIError as error:
+            return str(getattr(error.orig, "sqlstate", ""))
+        return ""
+
+    from app.core.crypto import oplog
+
+    oplog.reset_buffer()  # filas de `crypto_ops` que una prueba anterior dejó pendientes
+    try:
+        primero, segundo = _como_api(apex_roles, registrar_y_corregir)
+        filas = consultar(
+            apex_roles.dsn(),
+            "SELECT id, is_current, source, status FROM results.wod_results ORDER BY created_at",
+        )
+        assert [(r["id"], r["is_current"], r["source"], r["status"]) for r in filas] == [
+            (primero, False, "desk", "validated"),
+            (segundo, True, "desk", "validated"),
+        ]
+        assert _como_api(apex_roles, intentar_borrar) == "42501"
+    finally:
+        propietario(apex_roles, LIMPIAR_WOD_RESULTS, LIMPIAR_WODS)

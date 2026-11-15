@@ -9,14 +9,15 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.wods.exceptions import WodsValidationError
-from app.modules.wods.models import Benchmark, Movement, Wod
+from app.modules.wods.exceptions import WodNotFound, WodsValidationError
+from app.modules.wods.models import Benchmark, Movement, Wod, WodMovement
 
 
 async def movements_by_id(session: AsyncSession, ids: Sequence[UUID]) -> dict[UUID, Movement]:
@@ -54,3 +55,42 @@ async def day_wod_ids(session: AsyncSession, dates: Collection[date]) -> dict[da
 async def wod_date(session: AsyncSession, wod_id: UUID) -> date | None:
     """La fecha de un WOD, o `None` si no existe (S8-D9)."""
     return await session.scalar(select(Wod.date).where(Wod.id == wod_id))
+
+
+@dataclass(frozen=True, slots=True)
+class WodScoring:
+    """Lo que `results` necesita de un WOD para validar una marca (S8-D36)."""
+
+    wod_id: UUID
+    date: date
+    score_type: str
+    time_cap_s: int | None
+    benchmark_id: UUID | None
+    movement_ids: frozenset[UUID]
+    primary_movement_id: UUID | None
+
+
+async def scoring_for(session: AsyncSession, wod_id: UUID) -> WodScoring:
+    """El WOD con `FOR SHARE` y datos frescos (S8-D36, M-6): un `PATCH /wods` concurrente espera a
+    que el resultado confirme. `WodNotFound` (404) si no existe."""
+    wod = await session.scalar(
+        select(Wod)
+        .where(Wod.id == wod_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if wod is None:
+        raise WodNotFound()
+    filas = await session.execute(
+        select(WodMovement.movement_id, WodMovement.is_primary).where(WodMovement.wod_id == wod_id)
+    )
+    pares = filas.all()
+    return WodScoring(
+        wod_id=wod.id,
+        date=wod.date,
+        score_type=wod.score_type,
+        time_cap_s=wod.time_cap_s,
+        benchmark_id=wod.benchmark_id,
+        movement_ids=frozenset(m for m, _ in pares),
+        primary_movement_id=next((m for m, principal in pares if principal), None),
+    )

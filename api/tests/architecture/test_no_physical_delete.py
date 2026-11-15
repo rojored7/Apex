@@ -65,6 +65,7 @@ TABLAS = (
     "wods.movements",  # S8-A1
     "wods.benchmarks",  # S8-A2
     "wods.wods",  # S8-A3
+    "results.wod_results",  # S8-B1
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (

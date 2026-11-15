@@ -8,7 +8,8 @@ Reexporta lo público de los archivos privados del módulo:
 - `seed.py` (S8-A2, N-46): `seed_benchmarks` (la usa `cli_ops/seed_benchmarks.py`).
 - `programming.py` (S8-A3, US-166, US-167): `create_wod`, `update_wod`, `get_wod` y `list_wods`.
 - `probe.py` (S8-A3): el puerto `ResultsProbe` (`set_results_probe`, `results_probe`); `results`
-  lo registra (B1). Mientras no exista, esta fachada registra `NoResultsYet` (cero resultados).
+  lo registra al importarse (B1). Sin puerto, lo que depende de resultados falla cerrado.
+- `catalog.py` (S8-B1): `scoring_for` (el WOD `FOR SHARE` y lo que `results` valida).
 - `events.py`: `WodPublished`. `rules.py`: `normalize_movement_name`.
 """
 
@@ -20,7 +21,7 @@ from app.modules.wods.benchmarks import (
     list_benchmarks,
     update_benchmark,
 )
-from app.modules.wods.catalog import day_wod_ids, ensure_wod, wod_date
+from app.modules.wods.catalog import WodScoring, day_wod_ids, ensure_wod, scoring_for, wod_date
 from app.modules.wods.events import WodPublished
 from app.modules.wods.movements import (
     create_movement,
@@ -29,7 +30,6 @@ from app.modules.wods.movements import (
     update_movement,
 )
 from app.modules.wods.probe import (
-    NoResultsYet,
     ResultsProbe,
     current_results_probe,
     results_probe,
@@ -39,13 +39,10 @@ from app.modules.wods.programming import create_wod, get_wod, list_wods, today_c
 from app.modules.wods.rules import normalize_movement_name
 from app.modules.wods.seed import seed_benchmarks
 
-if current_results_probe() is None:  # B1 (results) lo reemplaza con el puerto real
-    set_results_probe(NoResultsYet())
-
 __all__ = [
-    "NoResultsYet",
     "ResultsProbe",
     "WodPublished",
+    "WodScoring",
     "create_benchmark",
     "create_movement",
     "create_wod",
@@ -60,6 +57,7 @@ __all__ = [
     "list_wods",
     "normalize_movement_name",
     "results_probe",
+    "scoring_for",
     "seed_benchmarks",
     "set_results_probe",
     "today_card",

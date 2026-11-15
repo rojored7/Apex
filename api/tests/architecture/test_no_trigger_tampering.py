@@ -120,3 +120,17 @@ def test_classes_esta_barrido_y_no_apaga_triggers() -> None:
         for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
     ]
     assert encontrados == [], "\n".join(encontrados)
+
+
+def test_results_esta_barrido_y_no_apaga_triggers() -> None:
+    """S8-B1: el módulo de resultados (cinco guardas de `0037`, una diferida) está dentro del
+    barrido de `app/` y ninguna de sus cadenas apaga o salta triggers."""
+    carpeta = APP / "modules" / "results"
+    archivos = sorted(carpeta.rglob("*.py"))
+    assert (carpeta / "record.py").is_file() and archivos
+    encontrados = [
+        h
+        for path in archivos
+        for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
+    ]
+    assert encontrados == [], "\n".join(encontrados)

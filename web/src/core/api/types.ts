@@ -1329,6 +1329,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Result */
+        put: operations["put_result_api_v1_results_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/classes": {
         parameters: {
             query?: never;
@@ -3874,6 +3891,120 @@ export interface components {
             new_password: string;
             /** Token */
             token: string;
+        };
+        /** ResultIn */
+        ResultIn: {
+            /**
+             * Capped
+             * @default false
+             */
+            capped: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g?: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Reps */
+            reps?: number | null;
+            /** Rounds */
+            rounds?: number | null;
+            /** Scaled Movement Ids */
+            scaled_movement_ids?: string[];
+            /** Seconds */
+            seconds?: number | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+        };
+        /** ResultOut */
+        ResultOut: {
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Scaled Movement Ids */
+            scaled_movement_ids: string[];
+            /** Seconds */
+            seconds: number | null;
+            /** Session Id */
+            session_id: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "validated" | "pending";
+            /** Supersedes Id */
+            supersedes_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Validated At */
+            validated_at: string | null;
+            /** Validated By */
+            validated_by: string | null;
+            /**
+             * Wod Date
+             * Format: date
+             */
+            wod_date: string;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
         };
         /** RevealIn */
         RevealIn: {
@@ -12635,6 +12766,102 @@ export interface operations {
             };
             /** @description No encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_result_api_v1_results_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

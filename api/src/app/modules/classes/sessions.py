@@ -27,9 +27,10 @@ from app.core.context import get_actor
 from app.modules.auth import service as auth_service
 from app.modules.classes.events import SessionCancelled, SessionGenerated
 from app.modules.classes.exceptions import (
-    CheckinSessionCancelled,
     CoachInvalid,
+    LockedByResults,
     SessionAlreadyCancelled,
+    SessionCancelledError,
     SessionDuplicate,
     SessionFinished,
     SessionNotFound,
@@ -37,6 +38,7 @@ from app.modules.classes.exceptions import (
 )
 from app.modules.classes.models import ClassSession, ClassSlot
 from app.modules.classes.queries import attendance_counts, session_out
+from app.modules.classes.result_link import results_port
 from app.modules.classes.rules import (
     PlannedSession,
     local_date,
@@ -295,7 +297,9 @@ async def assign_wod(
     Orden de candados (M-6): la sesión `FOR UPDATE` ANTES de leer el WOD y de escribir, el mismo
     candado que toman las cancelaciones, el check-in y el registro de resultados. Una sesión
     cancelada da 409 `session_cancelled`; un `wod_id` inexistente, 422 `field = "wod_id"`. Sin
-    cambio no hay `flush` ni fila de auditoría."""
+    cambio no hay `flush` ni fila de auditoría. Con resultados vigentes de la sesión, cambiar el WOD
+    efectivo da 409 `locked_by_results` (M-2 de la revisión de A4); asignar en una sesión ya
+    terminada (`done`) sí se permite mientras no tenga resultados."""
     fila = await session.scalar(
         select(ClassSession)
         .where(ClassSession.id == session_id)
@@ -305,11 +309,21 @@ async def assign_wod(
     if fila is None:
         raise SessionNotFound()
     if fila.status == "cancelled":
-        raise CheckinSessionCancelled()
+        raise SessionCancelledError()
     if data.wod_id is not None:
         await wods_service.ensure_wod(session, data.wod_id)
     if fila.wod_id != data.wod_id:
+        del_dia = (await wods_service.day_wod_ids(session, {fila.session_date})).get(
+            fila.session_date
+        )
+        if (fila.wod_id or del_dia) != (
+            data.wod_id or del_dia
+        ) and await results_port().session_has_current_results(session, fila.id):
+            raise LockedByResults()
         fila.wod_id = data.wod_id
         await session.flush()
-        logger.info("classes: wod de la sesión asignado", extra={"session_id": str(fila.id)})
+        logger.info(
+            "classes: wod de la sesión asignado",
+            extra={"session_id": str(fila.id), "actor": str(by)},
+        )
     return await _one_out(session, fila, current_clock().now_utc())

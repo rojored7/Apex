@@ -69,7 +69,7 @@ describe("InicioPage", () => {
   });
 
   it("S7-F6: el encabezado tiene Check-in hacia la próxima clase de hoy", async () => {
-    const sesion = (n: number, startsAt: string) => ({ id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa0${String(n)}`, starts_at: startsAt, coach_name: null, capacity: 12, attendance_count: 0, status: "scheduled" as const });
+    const sesion = (n: number, startsAt: string) => ({ id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa0${String(n)}`, starts_at: startsAt, coach_name: null, capacity: 12, attendance_count: 0, duration_min: 60, status: "scheduled" as const });
     mockDashboard(ok(dashboardBody({ sessions_today: [sesion(1, "2026-10-20T11:00:00Z"), sesion(2, "2026-10-20T19:00:00Z"), sesion(3, "2026-10-20T22:00:00Z")] })));
     renderDashboard(<InicioPage />);
 

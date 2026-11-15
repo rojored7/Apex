@@ -68,6 +68,7 @@ export interface SessionTodayFixture {
   coach_name: string | null;
   capacity: number;
   attendance_count: number;
+  duration_min: number;
   status: "scheduled" | "done" | "cancelled";
 }
 

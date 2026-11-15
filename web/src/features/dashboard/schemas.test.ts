@@ -49,7 +49,7 @@ describe("dashboardSchema y movementSchema (revisión de seguridad de F3)", () =
   });
 
   it("S7-R3: attendance_week null o sessions_today con más de 50 o un id que no es UUID son invalid_response", () => {
-    const sesion = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01", starts_at: "2026-10-21T11:00:00Z", coach_name: null, capacity: 15, attendance_count: 1, status: "scheduled" as const };
+    const sesion = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01", starts_at: "2026-10-21T11:00:00Z", coach_name: null, capacity: 15, attendance_count: 1, duration_min: 60, status: "scheduled" as const };
     expect(invalid(() => parseResponse(dashboardSchema, { ...dashboardBody(), attendance_week: null })).code).toBe(CLIENT_ERROR_CODES.invalidResponse);
     expect(invalid(() => parseResponse(dashboardSchema, dashboardBody({ sessions_today: Array.from({ length: 51 }, () => sesion) }))).code).toBe(CLIENT_ERROR_CODES.invalidResponse);
     expect(invalid(() => parseResponse(dashboardSchema, dashboardBody({ sessions_today: [{ ...sesion, id: "../x" }] }))).code).toBe(CLIENT_ERROR_CODES.invalidResponse);

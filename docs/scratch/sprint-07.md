@@ -484,3 +484,9 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Preview (`npm run e2e`): 219 passed, 0 failed; 199 PNG en `web/test-results/`. No existe captura de check-in en preview (solo hay spec de stack, bloqueada por el defecto).
 - Incidente propio: el `trap` restauraba `.env` desde `web/` (cwd) y escribió `web/.env`; la raíz quedó con el perfil E2E. Se reconstruyó: se quitaron las 21 líneas añadidas y las 11 `USER_*` previas volvieron a los valores de `.env.example` (confirmados con el entorno del worker, creado antes de V5). `web/.env` borrado; api y web recreados sin overlay (USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN=30, sin LOGIN_*).
 - Residuo: sesiones extra `E2E ...` de corridas fallidas, canceladas por api (las pasadas no se pueden cancelar).
+
+### V5 tras el arreglo de la ruta del check-in (d1fa18b)
+
+- Suite `stack` completa, dos corridas seguidas (`--workers=1`, `E2E_BASE_URL=http://localhost:8180`, perfil E2E de límites): 52 passed, 0 failed, 3 skipped, 0 flaky, 1,5 min cada una. `checkin.spec.ts` pasa las dos veces (el defecto de la ruta quedó resuelto).
+- `.env` restaurado con `cmp` correcto (trap con `cd` a la raíz); api y web recreados sin overlay y `healthy`; sin `web/.env`.
+- Residuos: sesiones extra `E2E …` futuras canceladas con el admin (21 antes de las corridas y las de las corridas al final); las de días pasados no se pueden cancelar.

@@ -6,7 +6,7 @@
 //   pantalla lo explica (`rangeError`).
 // - Nada desconocido viaja: una fecha que no es real se ignora y un `flagged` que no es "true" ni "false" también.
 import { useMemo } from "react";
-import { addDaysCivil, bogotaInputToUtc, civilDaysBetween, todayBogota } from "../../core/i18n/format";
+import { addDaysCivil, bogotaDayEndUtc, bogotaDayStartUtc, civilDaysBetween, todayBogota } from "../../core/i18n/format";
 import { useListParams, type ListParamsApi } from "../../shared/hooks/useListParams";
 import type { DateRange } from "../../shared/ui/FilterBar";
 import type { AttendanceParams, SummaryRange } from "./attendanceApi";
@@ -28,17 +28,6 @@ export const MAX_YEAR = 2100;
 
 const civilOrEmpty = (value: string | undefined): string => (value !== undefined && addDaysCivil(value, 0) === value ? value : "");
 const flaggedOf = (value: string | undefined): FlaggedFilter => (value === "true" || value === "false" ? value : "");
-
-/** El inicio (UTC) de un día civil de Bogotá. */
-export function bogotaDayStartUtc(day: string): string | null {
-  return bogotaInputToUtc(`${day}T00:00`);
-}
-
-/** El fin exclusivo (UTC) de un día civil de Bogotá: el inicio del día siguiente. */
-export function bogotaDayEndUtc(day: string): string | null {
-  const next = addDaysCivil(day, 1);
-  return next === null ? null : bogotaInputToUtc(`${next}T00:00`);
-}
 
 const yearOf = (day: string): number => Number(day.slice(0, 4));
 

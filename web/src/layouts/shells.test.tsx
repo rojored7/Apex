@@ -187,6 +187,8 @@ describe("PortalShell, GymShell y TvShell", () => {
 
     await waitFor(() => { expect(router.state.location.pathname).toBe(otra); });
     expect(mock.callsTo("POST /auth/kiosk")[0]?.body).toEqual({ path: otra });
+    // L-10: cambiar de clase reemplaza la entrada del historial («atrás» no vuelve a la clase anterior).
+    expect(router.state.historyAction).toBe("REPLACE");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(getSession().user?.kioskPath).toBe(otra);
   });

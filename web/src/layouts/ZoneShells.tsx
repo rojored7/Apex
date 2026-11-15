@@ -110,7 +110,7 @@ export function GymShell() {
           setLeaving(false);
           return failure;
         }
-        await navigate(target);
+        await navigate(target, { replace: true });
         return null;
       },
     }),

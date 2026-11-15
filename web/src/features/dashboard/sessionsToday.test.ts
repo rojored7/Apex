@@ -8,6 +8,7 @@ const session = (n: number, startsAt: string, status: SessionTodayView["status"]
   coach_name: null,
   capacity: 12,
   attendance_count: 0,
+  duration_min: 60,
   status,
 });
 
@@ -24,7 +25,7 @@ describe("nextCheckInSession", () => {
     expect(nextCheckInSession(sessions, AT("2026-10-20T10:00:00Z"))?.id).toBe(sessions[0]?.id);
   });
 
-  it("una clase empezada hace menos de una hora sigue siendo la próxima (se hace check-in en curso)", () => {
+  it("una clase empezada hace menos de su duración sigue siendo la próxima (se hace check-in en curso)", () => {
     expect(nextCheckInSession(sessions, AT("2026-10-20T19:30:00Z"))?.id).toBe(sessions[1]?.id);
   });
 
@@ -44,5 +45,19 @@ describe("nextCheckInSession", () => {
   it("no depende del orden en que llegan", () => {
     const shuffled = [...sessions].reverse();
     expect(nextCheckInSession(shuffled, AT("2026-10-20T10:00:00Z"))?.id).toBe(sessions[0]?.id);
+  });
+});
+
+describe("nextCheckInSession con duration_min", () => {
+  const withDuration = (s: SessionTodayView, duration_min: number): SessionTodayView => ({ ...s, duration_min });
+
+  it("una clase de 90 minutos sigue siendo la próxima a los 75 minutos de empezar", () => {
+    const list = [withDuration(session(1, "2026-10-20T11:00:00Z"), 90), session(2, "2026-10-20T22:00:00Z")];
+    expect(nextCheckInSession(list, AT("2026-10-20T12:15:00Z"))?.id).toBe(list[0]?.id);
+  });
+
+  it("una clase de 45 minutos ya no es la próxima a los 50 minutos de empezar", () => {
+    const list = [withDuration(session(1, "2026-10-20T11:00:00Z"), 45), session(2, "2026-10-20T22:00:00Z")];
+    expect(nextCheckInSession(list, AT("2026-10-20T11:50:00Z"))?.id).toBe(list[1]?.id);
   });
 });

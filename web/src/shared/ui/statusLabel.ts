@@ -206,8 +206,9 @@ export const FLAG_LABELS = Object.freeze({
 export const FLAG_TONES = Object.freeze({
   expired: "danger",
   no_membership: "danger",
-  frozen: "danger",
-  pending_payment: "danger",
+  // S7-V7f (M-6): congelado y pendiente de pago llevan el mismo tono que como estado de membresía (STATUS_TONES).
+  frozen: "neutral",
+  pending_payment: "warning",
   over_capacity: "warning",
   out_of_window: "warning",
   other_day: "warning",

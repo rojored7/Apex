@@ -8,7 +8,7 @@
 //   rango invertido no viaja. `record_id` sin `table` tampoco (el api da 422, S4A-D106 a).
 // - `offset` es múltiplo de `limit` y no pasa de MAX_AUDIT_OFFSET (S4A-D45).
 // - parseSeq: `?seq=` solo vale si es un entero seguro >= 1 escrito en decimal (S4A-D58).
-import { addDaysCivil, bogotaInputToUtc } from "../../core/i18n/format";
+import { addDaysCivil, bogotaDayEndUtc, bogotaDayStartUtc } from "../../core/i18n/format";
 import { clampLimit } from "../../core/api/query";
 import { SYSTEM_USER_ID } from "../../shared/lib/audit-labels";
 import { isUuid } from "../../shared/lib/ids";
@@ -84,15 +84,6 @@ export function readAuditFilters(search: string | URLSearchParams): AuditUrlFilt
   };
 }
 
-/** Inicio (UTC) de un día civil de Bogotá. */
-const dayStartUtc = (day: string): string | null => bogotaInputToUtc(`${day}T00:00`);
-
-/** Fin exclusivo (UTC) de un día civil de Bogotá: el inicio del día siguiente. */
-function dayEndUtc(day: string): string | null {
-  const next = addDaysCivil(day, 1);
-  return next === null ? null : dayStartUtc(next);
-}
-
 function offsetFor(raw: string | null, limit: number): number {
   const value = raw !== null && /^\d+$/.test(raw) ? Number(raw) : 0;
   const capped = Math.min(value, MAX_AUDIT_OFFSET);
@@ -108,8 +99,8 @@ export function toApiParams(search: string | URLSearchParams, q = ""): URLSearch
   const text = q.trim();
   if (text) out.set("q", text);
   const inverted = filters.from !== "" && filters.to !== "" && filters.to < filters.from;
-  const from = filters.from && !inverted ? dayStartUtc(filters.from) : null;
-  const to = filters.to && !inverted ? dayEndUtc(filters.to) : null;
+  const from = filters.from && !inverted ? bogotaDayStartUtc(filters.from) : null;
+  const to = filters.to && !inverted ? bogotaDayEndUtc(filters.to) : null;
   if (from) out.set("from", from);
   if (to) out.set("to", to);
   if (filters.table) out.set("table", filters.table);

@@ -40,23 +40,45 @@ async function axeViolations(page: Page): Promise<string[]> {
 interface SesionCreada {
   id: string;
   name: string;
+  /** HH:MM de Bogotá. */
+  hora: string;
 }
 
-/** Sesión extra por el api (POST /class-sessions, S7-D11) a las 17:00 de Bogotá; `dias` la mueve respecto de hoy. */
+const MS_MINUTO = 60_000;
+const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1_000;
+
+/** Ahora más `minutos`, redondeado al minuto (V7 M-2: las sesiones de hoy quedan a futuro y siguen «programadas»). */
+const ahoraMas = (minutos: number): Date =>
+  new Date(Math.floor((Date.now() + minutos * MS_MINUTO) / MS_MINUTO) * MS_MINUTO);
+
+/** El día civil de Bogotá de un instante ("AAAA-MM-DD"). */
+const diaBogota = (instante: Date): string =>
+  new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
+
+/** La hora de Bogotá de un instante ("HH:MM"), como la rotula el selector «Clases de hoy». */
+const horaBogota = (instante: Date): string =>
+  new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(11, 16);
+
+/** Un día de Bogotá a las 17:MM, con MM del reloj: dos corridas no chocan por la misma hora (409 session_duplicate). */
+const diaALas17 = (dias: number): Date => {
+  const minuto = String(new Date().getMinutes()).padStart(2, "0");
+  return new Date(`${fechaBogota(dias)}T17:${minuto}:00-05:00`);
+};
+
+/** Sesión extra por el api (POST /class-sessions, S7-D11) en el instante dado (V7 HIGH-1: un instante distinto por sesión y por corrida). */
 async function crearSesion(
   page: Page,
   token: string,
-  dias: number,
+  inicio: Date,
   capacity: number,
-  marca = "",
+  marca: string,
 ): Promise<SesionCreada> {
   const headers = { Authorization: `Bearer ${token}`, ...sameOriginHeaders() };
-  const dia = fechaBogota(dias);
-  const name = `E2E ${String(Date.now())}-${String(dias)}${marca}`;
+  const name = `E2E ${String(Date.now())}-${marca}`;
   const response = await page.request.post(`${API}/class-sessions`, {
     headers,
     data: {
-      starts_at: `${dia}T17:00:00-05:00`,
+      starts_at: inicio.toISOString(),
       duration_min: 60,
       capacity,
       name,
@@ -66,7 +88,7 @@ async function crearSesion(
     throw new Error(
       `POST /class-sessions respondió ${String(response.status())}.`,
     );
-  return { ...((await response.json()) as { id: string }), name };
+  return { ...((await response.json()) as { id: string }), name, hora: horaBogota(inicio) };
 }
 
 async function clasesQuedan(
@@ -121,6 +143,11 @@ test.describe("check-in en modo tablet contra el stack", () => {
   test("siete banderas, 409, atrás y recarga vuelven al check-in, tiquetera y salida con contraseña", async ({
     page,
   }) => {
+    // V7 M-2: las clases de hoy empiezan dentro de 2 y 2,5 horas; pasadas las 21:00 de Bogotá cruzarían la medianoche.
+    test.skip(
+      diaBogota(ahoraMas(150)) !== fechaBogota(0),
+      "después de las 21:00 de Bogotá las clases de hoy no caben en el día",
+    );
     await page.setViewportSize({ width: 1024, height: 768 });
     const adminToken = await loginComo(page);
     const llamadas: string[] = [];
@@ -177,11 +204,12 @@ test.describe("check-in en modo tablet contra el stack", () => {
       method: "cash",
     });
     // Hoy con cupo 3 (el cuarto llega con «Cupo lleno»), ayer (fuera de horario) y dentro de 7 días (otro día).
-    const hoy = await crearSesion(page, adminToken, 0, 3);
-    const ayer = await crearSesion(page, adminToken, -1, 12);
-    const otroDia = await crearSesion(page, adminToken, 7, 12);
-    // Otra clase de hoy para el selector «Clases de hoy» (S7-D42).
-    const hoyOtra = await crearSesion(page, adminToken, 0, 12, "-b");
+    const hoy = await crearSesion(page, adminToken, ahoraMas(120), 3, "hoy");
+    const ayer = await crearSesion(page, adminToken, diaALas17(-1), 12, "ayer");
+    const otroDia = await crearSesion(page, adminToken, diaALas17(7), 12, "mas7");
+    // Otra clase de hoy para el selector «Clases de hoy» (S7-D42), media hora después.
+    const hoyOtra = await crearSesion(page, adminToken, ahoraMas(150), 12, "hoy-b");
+    const sesiones = [hoy, ayer, otroDia, hoyOtra];
 
     // La tablet usa una cuenta de coach propia.
     const coach: CoachCreado = await crearCoach(page);
@@ -268,10 +296,12 @@ test.describe("check-in en modo tablet contra el stack", () => {
 
       // S7-D42: el selector «Clases de hoy» pasa a otra clase de hoy sin contraseña y deja volver; el servidor mantiene la marca.
       const selector = page.getByRole("combobox", { name: "Clases de hoy" });
-      await selector.selectOption({ label: `17:00 · ${hoyOtra.name}` });
+      await selector.selectOption({ label: `${hoyOtra.hora} · ${hoyOtra.name}` });
+      await page.getByRole("button", { name: "Cambiar de clase" }).click();
       await expect(page).toHaveURL(`/clases/${hoyOtra.id}/checkin`);
       await expect(page.getByRole("link")).toHaveCount(0);
-      await selector.selectOption({ label: `17:00 · ${hoy.name}` });
+      await selector.selectOption({ label: `${hoy.hora} · ${hoy.name}` });
+      await page.getByRole("button", { name: "Cambiar de clase" }).click();
       await expect(page).toHaveURL(CHECKIN);
       // La clase de dentro de 7 días no es de hoy: POST /auth/kiosk responde 403 kiosk_mode y la marca sigue.
       const rechazo = await page.request.post(`${API}/auth/kiosk`, {
@@ -286,8 +316,9 @@ test.describe("check-in en modo tablet contra el stack", () => {
         [ayer, "out_of_window"],
         [otroDia, "other_day"],
       ] as const) {
+        // V7 M-3: con el admin; el access del coach ya es el del quiosco y no depende del residuo de 15 minutos del access previo.
         const respuesta = await page.request.post(`${API}/attendance`, {
-          headers,
+          headers: { Authorization: `Bearer ${adminToken}`, ...sameOriginHeaders() },
           data: { session_id: sesion.id, member_id: alDia.id },
         });
         expect(respuesta.status()).toBe(201);
@@ -355,13 +386,21 @@ test.describe("check-in en modo tablet contra el stack", () => {
       await expect(page).toHaveURL(/\/socios$/);
     } finally {
       await borrarUsuario(page, coach.id);
+      // V7 M-3: el access del admin tiene 15 minutos; se renueva antes de limpiar.
+      const limpieza = {
+        Authorization: `Bearer ${await loginComo(page)}`,
+        ...sameOriginHeaders(),
+      };
       // LOW-3: las asistencias de ayer y de +7 días se quitan con el admin; el coach solo puede quitar las de hoy o ayer.
       for (const id of asistenciasExtra)
         await page.request.delete(`${API}/attendance/${id}`, {
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-            ...sameOriginHeaders(),
-          },
+          headers: limpieza,
+          data: { reason: "limpieza E2E" },
+        });
+      // V7 HIGH-1: las cuatro sesiones se cancelan para que la siguiente corrida no choque (la de ayer ya terminó: el api puede negarlo).
+      for (const sesion of sesiones)
+        await page.request.post(`${API}/class-sessions/${sesion.id}/cancel`, {
+          headers: limpieza,
           data: { reason: "limpieza E2E" },
         });
     }

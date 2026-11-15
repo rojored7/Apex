@@ -166,3 +166,12 @@ Verde:
 - L5: `rangeErrorOf` suma `out_of_range` (años fuera de 2020 a 2100) con su mensaje. L6: ROUTES.md, BRECHAS fila 43 y `clases.md` (S7-D42 una sola vez, con la regla del servidor).
 - Exportar: sin `delete filters.last_attendance` ni nota; `ExportButton` envía `last_attendance` (types.ts ya lo traía). Prueba: el filtro llega.
 - Quiosco (C4c): `CHECKIN_MIN_CHARS = 3` contando sin espacios; `useMemberSearch` igual; `limit=10` (tope 20) y sin `sort`.
+
+## S7-V7f · Correcciones de la revisión final del front (HIGH-1, M-2 a M-8, L-9 a L-11, L-13 a L-15)
+
+Rojo medido (cambios de código revertidos con parche, pruebas nuevas en su sitio): 13 failed de 284 pruebas en 7 archivos (kiosk 401, tonos de bandera, GymLayout contador y contraseña vacía, selector con botón, classErrors, format).
+Verde:
+- HIGH-1, M-2, M-3 (E2E, sin correr): cada sesión con instante propio (hoy = ahora + 2 h y +2,5 h al minuto; ayer y +7 días a las 17:MM del reloj), la prueba se salta después de las 21:00 de Bogotá, las asistencias de ayer y +7 días se registran con el admin, el token del admin se renueva antes de limpiar y las cuatro sesiones se cancelan en el `finally`; el selector usa la hora real y el botón.
+- M-4: un 401 que no es `invalid_password` en la salida cierra la sesión del dispositivo y dice «La sesión de esta tablet terminó…». M-5: el selector cambia con el botón «Cambiar de clase». M-6: `FLAG_TONES` alineado. M-7: «antes y después del inicio». M-8: `LeaveTabletDialog` con RHF + Zod (vacío dice «Escribe la contraseña.»; el botón ya no se deshabilita).
+- L-9: `bogotaDayStartUtc`/`bogotaDayEndUtc` en `core/i18n/format.ts` (classes, audit, crypto y pagos los usan). L-10: `navigate(..., { replace: true })`. L-11: 403 → bloqueada solo con `attendance_locked`; 404 `session_not_found` habla de la sesión; un solo `tooManyReads`. L-13: contador con `role="status"`. L-14: sin `as unknown as`. L-15: BRECHAS 15.6 y 15.9.
+- L-12: `types.ts` aún no trae `duration_min` en `SessionTodayOut`; queda la ventana de 60 min con su DESIGN-GAP.

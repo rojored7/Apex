@@ -55,6 +55,8 @@ export function attendancePageReply(call: RecordedCall, rows: readonly unknown[]
   return { status: 200, body: { items: rows, total, limit: Number(params.get("limit")), offset: Number(params.get("offset")) } };
 }
 
+import type { WeekBucketView } from "../features/classes/attendanceApi";
+
 export interface SlotBucketFixture {
   slot_id: string | null;
   label: string;
@@ -72,7 +74,7 @@ export const SLOT_BUCKETS: SlotBucketFixture[] = [
   { slot_id: null, label: "Extra", start_time: null, sessions: 1, attendance: 4, capacity_sum: 20, occupancy_pct: 20, flagged: 0 },
 ];
 
-export const WEEK_BUCKETS = [
+export const WEEK_BUCKETS: WeekBucketView[] = [
   { week: "2026-W42", week_start: "2026-10-12", total: 0, flagged: 0, slots: [] },
   { week: "2026-W43", week_start: "2026-10-19", total: 49, flagged: 2, slots: SLOT_BUCKETS },
 ];

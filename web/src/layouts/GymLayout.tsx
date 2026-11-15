@@ -47,7 +47,7 @@ export interface GymLayoutProps {
 
 function Counter({ counter }: { counter: GymCounter }) {
   return (
-    <div className={styles.counter} aria-label={`Llegaron ${String(counter.value)} de ${String(counter.of)}`}>
+    <div className={styles.counter} role="status" aria-live="polite" aria-label={`Llegaron ${String(counter.value)} de ${String(counter.of)}`}>
       <p className={styles.counterValue}>
         {String(counter.value)} <span className={styles.counterOf}>{`/ ${String(counter.of)}`}</span> <span className={styles.counterLabel}>{counter.label}</span>
       </p>

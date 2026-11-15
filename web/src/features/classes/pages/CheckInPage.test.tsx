@@ -290,8 +290,19 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
     expect(within(select).getAllByRole("option")).toHaveLength(2);
 
     await user.selectOptions(select, OTRA.id);
+    // M-5: elegir en la lista no cambia de clase; lo hace el botón.
+    expect(switchSession).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Cambiar de clase" }));
 
     expect(switchSession).toHaveBeenCalledWith(`/clases/${OTRA.id}/checkin`);
+  });
+
+  it("M-5: «Cambiar de clase» está deshabilitado mientras la elegida sea la clase actual", async () => {
+    renderTablet(() => Promise.resolve(null));
+
+    await screen.findByRole("combobox", { name: "Clases de hoy" });
+
+    expect(screen.getByRole("button", { name: "Cambiar de clase" })).toBeDisabled();
   });
 
   it("si el servidor no deja cambiar, lo dice y la sesión actual sigue", async () => {
@@ -299,6 +310,7 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
     const user = userEvent.setup();
 
     await user.selectOptions(await screen.findByRole("combobox", { name: "Clases de hoy" }), OTRA.id);
+    await user.click(screen.getByRole("button", { name: "Cambiar de clase" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(KIOSK_MESSAGES.notToday);
   });
@@ -314,6 +326,7 @@ describe("CheckInPage · selector «Clases de hoy» (S7-D42)", () => {
     expect(within(select).getByRole("option", { name: "Elige otra clase" })).toBeInTheDocument();
     expect(select).toHaveValue("");
     await user.selectOptions(select, lejana.id);
+    await user.click(screen.getByRole("button", { name: "Cambiar de clase" }));
 
     expect(switchSession).toHaveBeenCalledWith(`/clases/${lejana.id}/checkin`);
   });

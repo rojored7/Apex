@@ -16,7 +16,9 @@ import {
   todayBogota,
   addDaysCivil,
   civilDaysBetween,
+  bogotaDayEndUtc,
   bogotaDayOf,
+  bogotaDayStartUtc,
   bogotaInputToUtc,
   nowBogotaInput,
   formatLongDate,
@@ -312,5 +314,18 @@ describe("bogotaDayOf (L3)", () => {
 
   it("un texto que no es un instante da null", () => {
     expect(bogotaDayOf("hoy")).toBeNull();
+  });
+});
+
+describe("bogotaDayStartUtc y bogotaDayEndUtc (L-9)", () => {
+  it("el día de Bogotá va de las 05:00Z al día siguiente a las 05:00Z (fin exclusivo)", () => {
+    expect(bogotaDayStartUtc("2026-10-28")).toBe("2026-10-28T05:00:00.000Z");
+    expect(bogotaDayEndUtc("2026-10-28")).toBe("2026-10-29T05:00:00.000Z");
+    expect(bogotaDayEndUtc("2026-12-31")).toBe("2027-01-01T05:00:00.000Z");
+  });
+
+  it("un día que no es real da null", () => {
+    expect(bogotaDayStartUtc("2026-02-30")).toBeNull();
+    expect(bogotaDayEndUtc("2026-02-30")).toBeNull();
   });
 });

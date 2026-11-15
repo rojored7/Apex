@@ -13,6 +13,7 @@ export const COACH_INVALID_MESSAGE = "Ese usuario ya no puede ser coach. Elige o
 export const SLOT_CONFLICT_MESSAGE = "Ya hay una franja activa a esa hora en alguno de esos días. Cambia la hora o quita esos días.";
 
 const tooMany = (wait: string): string => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`;
+const tooManyReads = (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`;
 
 export const SLOT_SAVE_MESSAGES = {
   forbidden: "Solo un administrador puede crear franjas. Si lo necesitas, pídeselo a uno.",
@@ -33,7 +34,7 @@ export const CANCEL_FUTURE_MESSAGES = {
 
 export const SLOTS_LIST_MESSAGES = {
   forbidden: "No tienes permiso para ver el horario. Si lo necesitas, pídeselo a un administrador.",
-  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  tooMany: tooManyReads,
   failed: "No pudimos cargar el horario. Intenta de nuevo en un momento.",
 } as const;
 
@@ -96,7 +97,7 @@ export const CANCEL_SESSION_MESSAGES = {
 
 export const SESSIONS_LIST_MESSAGES = {
   forbidden: "No tienes permiso para ver las sesiones. Si lo necesitas, pídeselo a un administrador.",
-  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  tooMany: tooManyReads,
   failed: "No pudimos cargar las sesiones. Intenta de nuevo en un momento.",
 } as const;
 
@@ -180,7 +181,7 @@ export const REMOVE_ATTENDANCE_MESSAGES = {
 export const SESSION_LOAD_MESSAGES = {
   notFound: "Esta sesión ya no existe. Vuelve a Clases y elige otra.",
   forbidden: "No tienes permiso para registrar asistencia en esta clase.",
-  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  tooMany: tooManyReads,
   server: "No pudimos cargar la sesión. Intenta de nuevo en un momento.",
   generic: "No pudimos cargar la sesión. Intenta de nuevo en un momento.",
 } as const;
@@ -197,6 +198,7 @@ export function checkInMessage(error: unknown): string {
   if (connection !== null) return connection;
   if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.alreadyCheckedIn) return CHECKIN_MESSAGES.alreadyCheckedIn;
   if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.sessionCancelled) return CHECKIN_MESSAGES.sessionCancelled;
+  if (error.status === HTTP_NOT_FOUND && error.code === API_ERROR_CODES.sessionNotFound) return SESSION_LOAD_MESSAGES.notFound;
   return statusMessage(error, CHECKIN_MESSAGES);
 }
 
@@ -204,7 +206,7 @@ export function checkInMessage(error: unknown): string {
 export function removeAttendanceError(error: unknown): ApiError {
   return toFormError(
     error,
-    (e) => (e.status === HTTP_FORBIDDEN ? REMOVE_ATTENDANCE_MESSAGES.locked : statusMessage(e, REMOVE_ATTENDANCE_MESSAGES)),
+    (e) => (e.status === HTTP_FORBIDDEN && e.code === API_ERROR_CODES.attendanceLocked ? REMOVE_ATTENDANCE_MESSAGES.locked : statusMessage(e, REMOVE_ATTENDANCE_MESSAGES)),
     REMOVE_ATTENDANCE_MESSAGES.generic,
   );
 }
@@ -222,7 +224,7 @@ export function memberSearchFailedText(error: unknown): string {
 // S7-F5 · US-162: leer la asistencia (lista, resumen semanal y pestaña de la ficha).
 export const ATTENDANCE_LIST_MESSAGES = {
   forbidden: "No tienes permiso para ver la asistencia. Si lo necesitas, pídeselo a un administrador.",
-  tooMany: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  tooMany: tooManyReads,
   failed: "No pudimos cargar las asistencias. Intenta de nuevo en un momento.",
 } as const;
 

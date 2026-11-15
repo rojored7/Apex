@@ -53,6 +53,7 @@ export const sessionTodaySchema = z
     coach_name: z.string().nullable(),
     capacity: count,
     attendance_count: count,
+    duration_min: z.number().int().positive(),
     status: z.enum(SESSION_STATUSES),
   })
   .strict();

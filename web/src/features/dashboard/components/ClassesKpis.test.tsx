@@ -19,10 +19,10 @@ const ID_3 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa03";
 const ID_4 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa04";
 
 const SESIONES = [
-  { id: ID_1, starts_at: "2026-10-20T11:00:00Z", coach_name: "Carlos", capacity: 12, attendance_count: 8, status: "done" as const },
-  { id: ID_2, starts_at: "2026-10-20T12:00:00Z", coach_name: "Carlos", capacity: 12, attendance_count: 12, status: "scheduled" as const },
-  { id: ID_3, starts_at: "2026-10-20T22:00:00Z", coach_name: null, capacity: 15, attendance_count: 0, status: "scheduled" as const },
-  { id: ID_4, starts_at: "2026-10-20T23:00:00Z", coach_name: "María", capacity: 12, attendance_count: 0, status: "cancelled" as const },
+  { id: ID_1, starts_at: "2026-10-20T11:00:00Z", coach_name: "Carlos", capacity: 12, attendance_count: 8, duration_min: 60, status: "done" as const },
+  { id: ID_2, starts_at: "2026-10-20T12:00:00Z", coach_name: "Carlos", capacity: 12, attendance_count: 12, duration_min: 60, status: "scheduled" as const },
+  { id: ID_3, starts_at: "2026-10-20T22:00:00Z", coach_name: null, capacity: 15, attendance_count: 0, duration_min: 60, status: "scheduled" as const },
+  { id: ID_4, starts_at: "2026-10-20T23:00:00Z", coach_name: "María", capacity: 12, attendance_count: 0, duration_min: 60, status: "cancelled" as const },
 ];
 
 function rowAt(rows: readonly HTMLElement[], index: number): HTMLElement {

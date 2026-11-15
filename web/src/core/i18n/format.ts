@@ -164,6 +164,17 @@ export function bogotaDayOf(instant: number | string): string | null {
   return new Date(ms - BOGOTA_OFFSET_HOURS * 3_600_000).toISOString().slice(0, 10);
 }
 
+/** El inicio (UTC) de un día civil de Bogotá ("AAAA-MM-DD"); null si el día no es real. */
+export function bogotaDayStartUtc(day: string): string | null {
+  return bogotaInputToUtc(`${day}T00:00`);
+}
+
+/** El fin exclusivo (UTC) de un día civil de Bogotá: el inicio del día siguiente; null si el día no es real. */
+export function bogotaDayEndUtc(day: string): string | null {
+  const next = addDaysCivil(day, 1);
+  return next === null ? null : bogotaInputToUtc(`${next}T00:00`);
+}
+
 /** "octubre 2026" a partir de "AAAA-MM", "AAAA-MM-DD" o un instante UTC (en Bogotá). */
 export function formatMonth(value: string): string {
   const monthMatch = CIVIL_MONTH.exec(value);

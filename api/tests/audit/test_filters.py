@@ -96,6 +96,7 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "wods.benchmarks",  # S8-A2 (US-166)
                 "wods.wods",  # S8-A3 (US-166)
                 "wods.wod_movements",  # S8-A3 (US-166)
+                "results.wod_results",  # S8-B1 (US-169)
             }
         )
         == AUDITABLE_TABLES

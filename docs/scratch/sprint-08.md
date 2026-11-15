@@ -131,3 +131,10 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - `seed-benchmarks --as admin@ejemplo.local` dos veces: «creados 12» y «creados 0»; `count(*) wods.benchmarks` = 12 y 12; filas `audit_log` de `wods.benchmarks` = 12 y 12.
 - Smoke con rol (admin de desarrollo): `GET /api/v1/benchmarks?q=fra` = 200 (total 1, Fran, time, wod_count 0); sin token = 401.
 - Checkpoint `31850e9`.
+
+## S8-A1b · Correcciones de la revisión de A1
+
+- Rojo: 3 failed (2 de la carrera 23505 con `PendingRollbackError` y 1 de `x-device-token, content-type` redactado de más).
+- Hallazgo real: `begin_nested()` vacía lo pendiente al abrirse, así que el `INSERT` fallaba FUERA del savepoint y dejaba la sesión inservible (un 500 en vez del 409). `_flush_unico` pasó a `_guardar_unico(session, norm, exclude, aplicar)`: el cambio se aplica dentro del savepoint (movimientos y benchmarks).
+- `_VAULT_HEADER`: la coma solo vale tras comilla de cierre. DECISIONES: S8-D21 (USAGE sin el worker) y S8-D5 (unicidad sin pliegue de tildes; `seed-benchmarks` usa el mismo `name_norm`).
+- Verde: gate sellante `slice-gate.sh wods <6 archivos>` 966 passed, exit 0; `ruff` y `mypy` limpios. `docker cp` no necesario: el api recarga con `--reload` (dev).

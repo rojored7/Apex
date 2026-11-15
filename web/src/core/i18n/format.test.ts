@@ -11,6 +11,7 @@ import {
   formatDateTime,
   formatMonth,
   formatTime,
+  formatTime24,
   parseCop,
   todayBogota,
   addDaysCivil,
@@ -127,6 +128,13 @@ describe.each(ZONES)("fechas con TZ=%s", (zone) => {
   it("formatTime da solo la hora de Bogotá", () => {
     expect(formatTime("2026-10-21T02:30:00Z")).toBe("9:30 p. m.");
     expect(formatTime("2026-10-21T14:07:00.123Z")).toBe("9:07 a. m.");
+  });
+
+  it("formatTime24 da la hora de Bogotá de 24 horas con ceros", () => {
+    expect(formatTime24("2026-10-19T11:00:00Z")).toBe("06:00");
+    expect(formatTime24("2026-10-21T05:00:00Z")).toBe("00:00");
+    expect(formatTime24("2026-10-21T03:30:00Z")).toBe("22:30");
+    expect(formatTime24("basura")).toBe("—");
   });
 
   it("formatMonth da el mes largo y el año", () => {

@@ -1,0 +1,35 @@
+/* S7-F3: detalle de la sesión elegida (Sesiones.html). Solo variables de tokens.css. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.title {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-h2);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.cancelled {
+  margin: 0;
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

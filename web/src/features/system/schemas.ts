@@ -142,6 +142,76 @@ export const channelsSettingsSchema = z.object({
 });
 export type ChannelsSettingsForm = z.infer<typeof channelsSettingsSchema>;
 
+// S7-F1 · US-154 (S7-D8): pestaña Horario. Por día: «Cerrado» o un rango y, opcional, un segundo.
+// Las horas son `HH:MM` de Bogotá (lo que da un <input type="time">). Mismas reglas que HoursSettings del api:
+// cada rango abre antes de cerrar y el segundo empieza donde o después de donde termina el primero.
+export const WEEK_DAY_LABELS = {
+  monday: "Lunes",
+  tuesday: "Martes",
+  wednesday: "Miércoles",
+  thursday: "Jueves",
+  friday: "Viernes",
+  saturday: "Sábado",
+  sunday: "Domingo",
+} as const;
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export const HOURS_MESSAGES = {
+  missing: "Escribe la hora de apertura y la de cierre.",
+  invalid: "Escribe la hora con formato HH:MM, por ejemplo 05:30.",
+  order: (day: string): string => `La hora de apertura debe ser anterior a la de cierre. Corrige los horarios del ${day}.`,
+  overlap: (day: string): string => `Los dos rangos del ${day} se solapan. El segundo debe empezar cuando o después de que termina el primero.`,
+} as const;
+
+const timeText = z.string().trim();
+
+const dayHoursSchema = (dayName: string) =>
+  z
+  .object({ closed: z.boolean(), open1: timeText, close1: timeText, second: z.boolean(), open2: timeText, close2: timeText })
+  .superRefine((day, ctx) => {
+    if (day.closed) return;
+    const issue = (path: "open1" | "close1" | "open2" | "close2", message: string): void => {
+      ctx.addIssue({ code: CUSTOM_ISSUE, path: [path], message });
+    };
+    const rangeOk = (openPath: "open1" | "open2", closePath: "close1" | "close2", open: string, close: string): boolean => {
+      if (open === "" || close === "") {
+        if (open === "") issue(openPath, HOURS_MESSAGES.missing);
+        if (close === "") issue(closePath, HOURS_MESSAGES.missing);
+        return false;
+      }
+      if (!HHMM.test(open)) issue(openPath, HOURS_MESSAGES.invalid);
+      if (!HHMM.test(close)) issue(closePath, HOURS_MESSAGES.invalid);
+      return HHMM.test(open) && HHMM.test(close);
+    };
+    const first = rangeOk("open1", "close1", day.open1, day.close1);
+    if (first && day.open1 >= day.close1) issue("close1", HOURS_MESSAGES.order(dayName));
+    if (!day.second) return;
+    const second = rangeOk("open2", "close2", day.open2, day.close2);
+    if (!second) return;
+    if (day.open2 >= day.close2) issue("close2", HOURS_MESSAGES.order(dayName));
+    else if (first && day.open2 < day.close1) issue("open2", HOURS_MESSAGES.overlap(dayName));
+  });
+
+export const hoursSettingsSchema = z.object({
+  monday: dayHoursSchema("lunes"),
+  tuesday: dayHoursSchema("martes"),
+  wednesday: dayHoursSchema("miércoles"),
+  thursday: dayHoursSchema("jueves"),
+  friday: dayHoursSchema("viernes"),
+  saturday: dayHoursSchema("sábado"),
+  sunday: dayHoursSchema("domingo"),
+});
+export type DayHoursForm = HoursSettingsForm["monday"];
+export type HoursSettingsForm = z.infer<typeof hoursSettingsSchema>;
+
+// S7-F1 · US-154: pestaña Clases (ClassesSettings del api: cupo 1 a 100, ventana 0 a 240).
+export const classesSettingsSchema = z.object({
+  default_capacity: integerText(1, 100),
+  checkin_window_min: integerText(0, 240),
+});
+export type ClassesSettingsForm = z.infer<typeof classesSettingsSchema>;
+
 const VALUE_PREFIX = "value.";
 const UNPROCESSABLE = 422;
 

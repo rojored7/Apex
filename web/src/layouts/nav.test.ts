@@ -11,8 +11,23 @@ describe("buildNavItems", () => {
   it("admin con las features habilitadas ve Inicio, Socios, Membresías (S3-F3), Pagos (S3-F4), Planes, Avisos (S5-F1), Usuarios, Auditoría (S4A-F1), Llaves de cifrado (S6-F2) y Configuración", () => {
     const groups = buildNavItems("admin", ENABLED_FEATURES);
 
-    expect(labels(groups)).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Planes", "Reglas y plantillas", "Historial de envíos", "Usuarios y roles", "Auditoría", "Llaves de cifrado", "Configuración"]);
-    expect(groups.map((g) => g.id)).toEqual(["inicio", "gestion", "avisos", "sistema"]);
+    expect(labels(groups)).toEqual([
+      "Inicio",
+      "Clases de hoy",
+      "Por avisar hoy",
+      "Socios",
+      "Membresías",
+      "Pagos",
+      "Planes",
+      "Clases",
+      "Reglas y plantillas",
+      "Historial de envíos",
+      "Usuarios y roles",
+      "Auditoría",
+      "Llaves de cifrado",
+      "Configuración",
+    ]);
+    expect(groups.map((g) => g.id)).toEqual(["inicio", "hoy", "gestion", "entrenamiento", "avisos", "sistema"]);
     expect(groups.find((g) => g.id === "sistema")?.title).toBe("Sistema");
     expect(groups.find((g) => g.id === "inicio")?.title).toBeNull();
   });
@@ -58,12 +73,19 @@ describe("buildNavItems", () => {
     ]);
   });
 
-  it("una feature no habilitada no aparece: con classes aparece Clases y el grupo Hoy necesita las tres", () => {
-    const base = new Set<Feature>([...ENABLED_FEATURES, "classes"]);
+  it("S7-F1 (S7-D21, BRECHAS 13.17): cada entrada de Hoy depende de su propia feature; sin classes ni wods ya se ve «Por avisar hoy»", () => {
+    const sinClasesSet = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "classes"));
+    const sinClases = buildNavItems("admin", sinClasesSet).find((g) => g.id === "hoy");
+    expect(sinClases?.items.map((i) => i.label)).toEqual(["Por avisar hoy"]);
+    expect(buildNavItems("coach", sinClasesSet).find((g) => g.id === "hoy")?.items.map((i) => i.label)).toEqual(["Por avisar hoy"]);
 
-    expect(labels(buildNavItems("admin", base))).toContain("Clases");
-    expect(labels(buildNavItems("admin", base))).not.toContain("Clases de hoy");
-    expect(buildNavItems("admin", ENABLED_FEATURES).some((g) => g.id === "hoy")).toBe(false);
+    const conClases = new Set<Feature>([...ENABLED_FEATURES, "classes"]);
+    expect(labels(buildNavItems("admin", conClases))).toEqual(expect.arrayContaining(["Clases", "Clases de hoy", "Por avisar hoy"]));
+    expect(labels(buildNavItems("admin", conClases))).not.toContain("WOD de hoy");
+
+    const sinAvisos = new Set<Feature>(([...ENABLED_FEATURES, "classes"] as Feature[]).filter((f) => f !== "notifications"));
+    expect(labels(buildNavItems("admin", sinAvisos))).not.toContain("Por avisar hoy");
+    expect(labels(buildNavItems("admin", sinAvisos))).toContain("Clases de hoy");
   });
 
   it("el grupo Hoy son tres enlaces a pantallas existentes y no hay ninguna ruta /hoy (Q25)", () => {
@@ -102,7 +124,7 @@ describe("buildNavItems", () => {
 
 describe("menú y rutas hijas (S3-F3, E14)", () => {
   it("el coach también ve Membresías y Pagos con las features habilitadas (memberships.view y payments.view son de admin y coach)", () => {
-    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Socios", "Membresías", "Pagos", "Reglas y plantillas", "Historial de envíos"]);
+    expect(labels(buildNavItems("coach", ENABLED_FEATURES))).toEqual(["Inicio", "Clases de hoy", "Por avisar hoy", "Socios", "Membresías", "Pagos", "Clases", "Reglas y plantillas", "Historial de envíos"]);
   });
 
   it("S3-F4: Pagos lleva a /pagos con la feature payments", () => {

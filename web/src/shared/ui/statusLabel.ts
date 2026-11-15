@@ -163,3 +163,25 @@ export function cryptoLabel(status: CryptoStatusView): string {
 export function cryptoTone(status: CryptoStatusView): StatusTone {
   return CRYPTO_TONES[status];
 }
+
+/** S7-F3b (M3): estado de una franja del horario (Horario.html, w-tag «Activa» o «Pausada»). */
+export type SlotStateView = "active" | "paused";
+
+export const SLOT_LABELS = Object.freeze({
+  active: "Activa",
+  paused: "Pausada",
+} as const satisfies Record<SlotStateView, string>);
+
+/** Activa es «al día»; pausada es neutra (no genera sesiones nuevas, pero no es un error). */
+export const SLOT_TONES = Object.freeze({
+  active: "ok",
+  paused: "neutral",
+} as const satisfies Record<SlotStateView, StatusTone>);
+
+export function slotLabel(state: SlotStateView): string {
+  return SLOT_LABELS[state];
+}
+
+export function slotTone(state: SlotStateView): StatusTone {
+  return SLOT_TONES[state];
+}

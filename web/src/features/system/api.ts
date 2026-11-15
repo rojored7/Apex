@@ -51,7 +51,8 @@ import {
 
 // S3-F4 (US-056, D24): `payment_methods` se suma a las tres del Sprint 2.
 // S5-F2 (US-122, S5-D30): `channels` suma los canales de aviso y trae `credentials_present` (S5-D204).
-export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels";
+// S7-F1 (US-154, S7-D8): `hours` y `classes`.
+export type SettingsKey = "gym" | "privacy" | "memberships" | "payment_methods" | "channels" | "hours" | "classes";
 
 export const CONFLICT_MESSAGE = "Otra persona cambió esta sección. Recarga para ver los cambios.";
 const NOT_LOADED_MESSAGE = "La sección todavía no se ha cargado. Espera un momento e intenta de nuevo.";
@@ -100,6 +101,25 @@ const channelsValueSchema = z.object({
   telegram: z.object({ enabled: z.boolean() }),
 });
 
+// S7-F1 (US-154): de 0 a 2 rangos `HH:MM` por día; lista vacía = cerrado. Un día ausente es cerrado.
+const timeRangeSchema = z.object({ open: z.string(), close: z.string() });
+const dayRangesSchema = z.array(timeRangeSchema).default([]);
+
+export const WEEK_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+export type WeekDay = (typeof WEEK_DAYS)[number];
+
+const hoursValueSchema = z.object({
+  monday: dayRangesSchema,
+  tuesday: dayRangesSchema,
+  wednesday: dayRangesSchema,
+  thursday: dayRangesSchema,
+  friday: dayRangesSchema,
+  saturday: dayRangesSchema,
+  sunday: dayRangesSchema,
+});
+
+const classesValueSchema = z.object({ default_capacity: integer, checkin_window_min: integer });
+
 const credentialsPresentSchema = z.object({ email: z.boolean(), telegram: z.boolean() });
 
 function sectionSchema<K extends SettingsKey, V extends z.ZodType>(key: K, value: V) {
@@ -118,6 +138,8 @@ const SECTION_SCHEMAS = {
   memberships: sectionSchema("memberships", membershipsValueSchema),
   payment_methods: sectionSchema("payment_methods", paymentMethodsValueSchema),
   channels: sectionSchema("channels", channelsValueSchema).extend({ credentials_present: credentialsPresentSchema }),
+  hours: sectionSchema("hours", hoursValueSchema),
+  classes: sectionSchema("classes", classesValueSchema),
 } as const;
 
 export type GymSettings = z.infer<typeof gymValueSchema>;
@@ -126,6 +148,8 @@ export type PrivacyView = z.infer<typeof privacyValueSchema>;
 export type MembershipsSettings = z.infer<typeof membershipsValueSchema>;
 export type PaymentMethodsSettings = z.infer<typeof paymentMethodsValueSchema>;
 export type ChannelsSettings = z.infer<typeof channelsValueSchema>;
+export type HoursSettings = z.infer<typeof hoursValueSchema>;
+export type ClassesSettings = z.infer<typeof classesValueSchema>;
 export type CredentialsPresent = z.infer<typeof credentialsPresentSchema>;
 
 /** Lo que se escribe en `privacy`: publicar exige versión y texto. */
@@ -142,6 +166,8 @@ interface SectionInputs {
   memberships: MembershipsSettings;
   payment_methods: PaymentMethodsSettings;
   channels: ChannelsSettings;
+  hours: HoursSettings;
+  classes: ClassesSettings;
 }
 
 export type SettingsSection<K extends SettingsKey> = z.infer<(typeof SECTION_SCHEMAS)[K]>;

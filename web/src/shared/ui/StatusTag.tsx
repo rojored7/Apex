@@ -6,6 +6,8 @@ import {
   paymentLabel,
   paymentTone,
   signatureLabel,
+  slotLabel,
+  slotTone,
   signatureTone,
   statusLabel,
   statusTone,
@@ -14,6 +16,7 @@ import {
   type MembershipStatusView,
   type PaymentStatusView,
   type SignatureStateView,
+  type SlotStateView,
 } from "./statusLabel";
 import styles from "./StatusTag.module.css";
 import { cx } from "./cx";
@@ -23,11 +26,12 @@ import { cx } from "./cx";
  * pago (`payment`); nunca más de uno.
  */
 export type StatusTagProps =
-  | { status: MembershipStatusView; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined }
-  | { account: AccountStatusView; status?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined }
-  | { payment: PaymentStatusView; status?: never; account?: never; signature?: never; crypto?: never; className?: string | undefined }
-  | { signature: SignatureStateView; status?: never; account?: never; payment?: never; crypto?: never; className?: string | undefined }
-  | { crypto: CryptoStatusView; status?: never; account?: never; payment?: never; signature?: never; className?: string | undefined };
+  | { status: MembershipStatusView; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never }
+  | { account: AccountStatusView; status?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never }
+  | { payment: PaymentStatusView; status?: never; account?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never }
+  | { signature: SignatureStateView; status?: never; account?: never; payment?: never; crypto?: never; className?: string | undefined; slot?: never }
+  | { crypto: CryptoStatusView; status?: never; account?: never; payment?: never; signature?: never; className?: string | undefined; slot?: never }
+  | { slot: SlotStateView; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined };
 
 /** Píldora de estado: el texto siempre visible lleva el significado, el color lo refuerza. */
 export function StatusTag(props: StatusTagProps) {
@@ -52,6 +56,14 @@ export function StatusTag(props: StatusTagProps) {
     return (
       <span className={cx(styles.tag, styles[cryptoTone(crypto)], className)} data-crypto={crypto}>
         {cryptoLabel(crypto)}
+      </span>
+    );
+  }
+  if (props.slot !== undefined) {
+    const { slot, className } = props;
+    return (
+      <span className={cx(styles.tag, styles[slotTone(slot)], className)} data-slot={slot}>
+        {slotLabel(slot)}
       </span>
     );
   }

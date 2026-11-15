@@ -86,6 +86,14 @@ export const API_ERROR_CODES = {
   unsupportedType: "unsupported_type",
   uploadTimeout: "upload_timeout",
   privacyVersionMissing: "privacy_version_missing",
+  // S7-F2 y S7-F3: franjas y sesiones de clases (classes/exceptions.py).
+  slotConflict: "slot_conflict",
+  coachInvalid: "coach_invalid",
+  slotNotFound: "slot_not_found",
+  sessionNotFound: "session_not_found",
+  sessionAlreadyCancelled: "session_already_cancelled",
+  sessionFinished: "session_finished",
+  sessionDuplicate: "session_duplicate",
 } as const;
 
 /** S3-F3: mensaje genérico del 503 `busy` (S3-D67); toda pantalla lo muestra igual. */

@@ -147,8 +147,10 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
   // S3-F3: vender, primer pago y renovar (US-084, US-085, US-088).
   route("/membresias/vender", "Vender membresía", "memberships", "memberships.sell", "panel", { load: () => import("../features/memberships/pages/SellPage") }),
   route("/pagos", "Pagos", "payments", "payments.view", "panel", { load: () => import("../features/payments/pages/PaymentsPage") }),
-  route("/clases", "Clases", "classes", "classes.view", "panel"),
-  route("/clases/horario", "Horario", "classes", "classes.schedule", "panel"),
+  // S7-F3 (US-157): sesiones de la semana, admin y coach.
+  route("/clases", "Clases", "classes", "classes.view", "panel", { load: () => import("../features/classes/pages/SessionsPage") }),
+  // S7-F2 (US-155, US-158): horario semanal, solo admin.
+  route("/clases/horario", "Horario", "classes", "classes.schedule", "panel", { load: () => import("../features/classes/pages/SchedulePage") }),
   route("/clases/asistencia", "Asistencia", "classes", "classes.view", "panel"),
   route("/clases/:id/checkin", "Check-in", "classes", "classes.view", "gym"),
   route("/clases/:id/resultados", "Registro de resultados", "results", "results.record", "gym"),

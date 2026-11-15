@@ -500,3 +500,11 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Filtro, última asistencia de 50 socios (`last_attendance_for`): `Bitmap Index Scan on ix_attendance_member_checked_in`, 1.001 filas, 0,319 ms, 124 buffers.
 - Filtro, socios con asistencia desde 30 días (`attended_member_ids`): `Bitmap Index Scan on ix_attendance_checked_in`, 3.069 filas, 0,728 ms, 290 buffers.
 - Resumen de 26 semanas (`summary_rows`, subconsulta acotada por `IN` de sesiones): 5,7 ms, 427 buffers. Con la base pequeña usa `Seq Scan` de `class_sessions` (603 filas, 10 buffers) y de `attendance` (407 buffers, filtra `removed_at IS NULL`); es lo esperado con tablas de este tamaño, y el rango acota las sesiones antes de agrupar (arreglo M1 de R1b).
+
+## V9 · Release 0.4.0 y limpieza (2026-11-15)
+
+- Commit del release `e38b65b431b1` (`chore(release): cierre del Sprint 7, v0.4.0`); etiqueta anotada `v0.4.0` sobre ese commit, local.
+- `check-release-version.sh --check v0.4.0`: api, web y CHANGELOG ok (0.4.0); `test_check_release_version.sh`: 19 ok, 0 fallas. `openapi.json` solo cambia `info.version`; `gen:api` no cambió `types.ts`.
+- Imágenes `apex-api:local`, `apex-web:local` y `apex-backup:local` reconstruidas con `GIT_SHA=e38b65b431b1`; las tres con `org.opencontainers.image.revision = e38b65b431b1` (la de V3 con `v99.0.0` ya no existe). `up -d --no-build --force-recreate api worker web backup`: todos healthy; `/health` 8181 = `ok` (db, migrations y crypto ok; `backup: attention` es el estado conocido de desarrollo; `version: dev` porque `compose.dev.yml` fija la versión del entorno).
+- Limpieza: borrados los `sprint-07-antes-*.dump`; worktrees `gates` y `sprint-07-front` desregistrados (sin cambios propios; del directorio ignorado `.claude/worktrees/gates/web` queda una carpeta vacía que Windows no deja borrar, «Device or resource busy») y rama `feat/sprint-07-front` borrada (ya fusionada); sin `apex_sim`; sin contenedores de prueba ni auxiliares; `dian-*` y `apex-ensayo` sin tocar.
+- Pendiente de una persona: `git push -u origin feat/sprint-07-clases-horario-checkin`, `git checkout main && git merge --ff-only feat/sprint-07-clases-horario-checkin && git push origin main`, `git push origin v0.4.0`.

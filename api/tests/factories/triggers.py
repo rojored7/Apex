@@ -25,6 +25,7 @@ CLASS_SLOTS_TABLE: Final = "classes.class_slots"
 CLASS_SESSIONS_TABLE: Final = "classes.class_sessions"
 ATTENDANCE_TABLE: Final = "classes.attendance"
 MOVEMENTS_TABLE: Final = "wods.movements"
+BENCHMARKS_TABLE: Final = "wods.benchmarks"
 
 AUDIT_LOG_TRIGGERS: Final = ("audit_log_forbid_mutation", "audit_log_forbid_truncate")
 VERIFICATIONS_TRIGGERS: Final = ("verifications_forbid_mutation", "verifications_forbid_truncate")
@@ -46,6 +47,7 @@ ATTENDANCE_TRIGGERS: Final = (
     "attendance_forbid_truncate",
 )
 MOVEMENTS_TRIGGERS: Final = ("movements_forbid_delete", "movements_forbid_truncate")
+BENCHMARKS_TRIGGERS: Final = ("benchmarks_forbid_delete", "benchmarks_forbid_truncate")
 CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     "crypto.crypto_ops": ("crypto_ops_forbid_mutation", "crypto_ops_forbid_truncate"),
     "crypto.crypto_keys": ("crypto_keys_guard", "crypto_keys_forbid_truncate"),
@@ -66,6 +68,7 @@ ALWAYS_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     CLASS_SESSIONS_TABLE: CLASS_SESSIONS_TRIGGERS,  # S7-B1 (0027)
     ATTENDANCE_TABLE: ATTENDANCE_TRIGGERS,  # S7-C1 (0028)
     MOVEMENTS_TABLE: MOVEMENTS_TRIGGERS,  # S8-A1 (0032)
+    BENCHMARKS_TABLE: BENCHMARKS_TRIGGERS,  # S8-A2 (0033)
     **{t: (*n, *ROTACION_TRIGGERS.get(t, ())) for t, n in CRYPTO_TRIGGERS.items()},
 }
 """Los quince triggers inmutables por tabla (`tgenabled = 'A'`; S6-A1 suma `audit.signatures`, S6-C1

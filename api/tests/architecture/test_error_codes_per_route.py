@@ -162,6 +162,10 @@ CON_LIMITE = {
     ("get", "/api/v1/movements"),
     ("post", "/api/v1/movements"),
     ("patch", "/api/v1/movements/{movement_id}"),
+    # S8-A2 (US-166, S8-D6): benchmarks; `wods-write` en las escrituras, `staff-read` en la lista.
+    ("get", "/api/v1/benchmarks"),
+    ("post", "/api/v1/benchmarks"),
+    ("patch", "/api/v1/benchmarks/{benchmark_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

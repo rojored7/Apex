@@ -39,7 +39,8 @@ def _cuerpo(**cambios: Any) -> dict[str, Any]:
     return valores
 
 
-def test_el_router_publica_tres_rutas_y_ningun_delete() -> None:
+def test_el_router_publica_las_rutas_de_movimientos_y_ningun_delete() -> None:
+    """A2 suma las tres de benchmarks al mismo router plano (S2-D3)."""
     publicadas = {
         (metodo, ruta.path)
         for ruta in router.routes
@@ -50,7 +51,11 @@ def test_el_router_publica_tres_rutas_y_ningun_delete() -> None:
         ("GET", "/movements"),
         ("POST", "/movements"),
         ("PATCH", "/movements/{movement_id}"),
+        ("GET", "/benchmarks"),
+        ("POST", "/benchmarks"),
+        ("PATCH", "/benchmarks/{benchmark_id}"),
     }
+    assert not any(m == "DELETE" for m, _ in publicadas)
 
 
 @pytest.mark.parametrize("rol", ["admin", "coach"])

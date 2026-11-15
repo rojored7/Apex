@@ -524,6 +524,24 @@ LIMPIAR_MOVEMENTS = (
     + " END IF; END $$"
 )
 
+# S8-A2 (S8-D6): los benchmarks que una prueba con commit real o la CLI (`seed-benchmarks`) hayan
+# dejado en `wods.benchmarks`. La tabla nace en `0033_wods_benchmarks`. Sin FK todavía (A3 la
+# referencia desde `wods.wods`, que se limpia ANTES): va antes que `wods.movements` y que
+# `classes.*`. Mismo patrón que los movimientos: triggers apagados y rearmados UNO POR UNO con
+# `ENABLE ALWAYS` (S3-D49).
+TRIGGERS_DE_BENCHMARKS = ("benchmarks_forbid_delete", "benchmarks_forbid_truncate")
+LIMPIAR_BENCHMARKS = (
+    "DO $$ BEGIN IF to_regclass('wods.benchmarks') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE wods.benchmarks DISABLE TRIGGER USER; "
+    "DELETE FROM wods.benchmarks; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}') THEN "  # noqa: S608
+        f"ALTER TABLE wods.benchmarks ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_BENCHMARKS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
@@ -537,6 +555,7 @@ LIMPIEZA_DE_SESION = (
     "DELETE FROM audit.audit_log",
     rearm_always_sql("audit.audit_log"),
     LIMPIAR_SETTINGS,  # E6: lo que `dos_sesiones` o una corrida cortada hayan confirmado
+    LIMPIAR_BENCHMARKS,  # S8-A2: catálogo de benchmarks (A3: tras `wods.wods`)
     LIMPIAR_MOVEMENTS,  # S8-A1: catálogo de movimientos (sin FK), antes que `classes.*`
     LIMPIAR_CLASS_SESSIONS,  # S7-B1: sesiones, antes que las franjas (FK RESTRICT)
     LIMPIAR_CLASS_SLOTS,  # S7-A2: franjas, antes que auth (sin FK)
@@ -947,6 +966,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_BENCHMARKS))  # S8-A2: catálogo, sin FK
         await conexion.execute(text(LIMPIAR_MOVEMENTS))  # S8-A1: catálogo, sin FK
         await conexion.execute(text(LIMPIAR_CLASS_SESSIONS))  # S7-B1: antes que las franjas
         await conexion.execute(text(LIMPIAR_CLASS_SLOTS))  # S7-A2

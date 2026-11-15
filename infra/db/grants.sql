@@ -55,6 +55,9 @@
 --   settings.settings_sections      S I U                             S
 --   wods.movements                  S I U(name, name_norm, category,  -
 --                                     unit, is_active, updated_at)
+--   wods.benchmarks                 S I U(name, name_norm,            -
+--                                     description, score_type,
+--                                     updated_at)
 --   worker.job_runs                 S                                 S I U
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
@@ -80,6 +83,7 @@
 -- clasificada: plans.plans
 -- clasificada: public.alembic_version
 -- clasificada: settings.settings_sections
+-- clasificada: wods.benchmarks
 -- clasificada: wods.movements
 -- clasificada: worker.job_runs
 --
@@ -135,6 +139,9 @@ GRANT UPDATE (weekdays, start_time, duration_min, capacity, default_coach_id, na
 -- ve el esquema.
 GRANT SELECT, INSERT ON wods.movements TO apex_api;
 GRANT UPDATE (name, name_norm, category, unit, is_active, updated_at) ON wods.movements TO apex_api;
+-- S8-A2 (S8-D6, US-166): catalogo de benchmarks; mismo reparto que los movimientos.
+GRANT SELECT, INSERT ON wods.benchmarks TO apex_api;
+GRANT UPDATE (name, name_norm, description, score_type, updated_at) ON wods.benchmarks TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -213,7 +220,7 @@ DECLARE
         'notifications.notification_rules', 'notifications.notification_templates',
         'notifications.notifications',
         'payments.payments', 'plans.plans', 'public.alembic_version',
-        'settings.settings_sections', 'wods.movements', 'worker.job_runs'];
+        'settings.settings_sections', 'wods.benchmarks', 'wods.movements', 'worker.job_runs'];
     sin_clasificar text;
 BEGIN
     SELECT string_agg(n.nspname || '.' || c.relname, ', ' ORDER BY n.nspname, c.relname)

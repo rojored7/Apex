@@ -14,6 +14,7 @@ from typing import Final
 from app.modules.wods.exceptions import WodsValidationError
 
 NAME_MAX_LENGTH: Final = 60
+DESCRIPTION_MAX_LENGTH: Final = 2000
 CATEGORIES: Final = ("weightlifting", "gymnastics", "monostructural", "other")
 UNITS: Final = ("kg", "reps", "m", "cal", "s")
 _ESPACIOS: Final = re.compile(r"\s+")

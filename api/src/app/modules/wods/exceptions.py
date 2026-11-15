@@ -43,3 +43,33 @@ class MovementNotFound(WodsError):
     status = 404
     code = "movement_not_found"
     default_message = "No se encontró el movimiento."
+
+
+class BenchmarkExists(WodsError):
+    """Ya hay un benchmark con ese nombre normalizado (US-166): 409 con `existing_id`."""
+
+    status = 409
+    code = "benchmark_exists"
+    default_message = "Ya existe un benchmark con ese nombre."
+
+    def __init__(self, existing_id: UUID | None) -> None:
+        super().__init__(field="name", existing_id=existing_id)
+
+
+class BenchmarkNotFound(WodsError):
+    """El benchmark no existe."""
+
+    status = 404
+    code = "benchmark_not_found"
+    default_message = "No se encontró el benchmark."
+
+
+class ScoreTypeLocked(WodsError):
+    """El benchmark ya lo usan WODs: su tipo de marca no cambia (S8-D6): 422 con `field`."""
+
+    status = 422
+    code = "score_type_locked"
+    default_message = "El tipo de marca no se puede cambiar: ya hay WODs que usan este benchmark."
+
+    def __init__(self) -> None:
+        super().__init__(field="score_type")

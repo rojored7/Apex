@@ -41,3 +41,33 @@ class Movement(CommonColumnsMixin, Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+
+
+BENCHMARK_SCORE_CHECK: Final = "score_type IN ('time', 'rounds_reps', 'reps', 'load')"
+
+
+class Benchmark(CommonColumnsMixin, Base):
+    """Tabla `wods.benchmarks` (S8-A2, US-166, N-46; migración `0033_wods_benchmarks`; S8-D6).
+
+    Un WOD de referencia con nombre propio (Fran, Murph...): `name`, `name_norm` (la misma
+    normalización que los movimientos; índice único), `description` (0 a 2.000) y `score_type`
+    (`time|rounds_reps|reps|load`). Auditada; no se borra (RN-14): los triggers lo prohíben.
+    """
+
+    __tablename__ = "benchmarks"
+    __table_args__ = (
+        CheckConstraint(BENCHMARK_SCORE_CHECK, name="score_type"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 60", name="name_length"),
+        CheckConstraint("char_length(name_norm) BETWEEN 1 AND 60", name="name_norm_length"),
+        CheckConstraint("char_length(description) <= 2000", name="description_length"),
+        Index("uq_benchmarks_name_norm", "name_norm", unique=True),
+        {"schema": SCHEMA},
+    )
+    __audited__: ClassVar[bool] = True
+
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name_norm: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
+    score_type: Mapped[str] = mapped_column(Text, nullable=False)

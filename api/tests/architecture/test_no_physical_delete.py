@@ -39,6 +39,7 @@ MODELOS = (
     "ClassSession",  # S7-B1: las sesiones se cancelan
     "Attendance",  # S7-C1 (RN-14): la asistencia se quita con removed_*, no se borra
     "Movement",  # S8-A1 (RN-14): los movimientos se desactivan
+    "Benchmark",  # S8-A2 (RN-14): los benchmarks no se borran
     "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
 )
 TABLAS = (
@@ -60,6 +61,7 @@ TABLAS = (
     "classes.class_sessions",  # S7-B1
     "classes.attendance",  # S7-C1
     "wods.movements",  # S8-A1
+    "wods.benchmarks",  # S8-A2
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (

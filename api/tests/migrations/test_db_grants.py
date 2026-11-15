@@ -118,6 +118,14 @@ COLUMNAS_API_CLASS_SLOTS_UPDATE: tuple[str, ...] = (
     "is_active",
     "updated_at",
 )
+# S8-A2 (S8-D6, P-ROL): lo que el api puede cambiar de un benchmark.
+COLUMNAS_API_BENCHMARKS_UPDATE: tuple[str, ...] = (
+    "name",
+    "name_norm",
+    "description",
+    "score_type",
+    "updated_at",
+)
 # S8-A1 (S8-D21): lo que el api puede cambiar de un movimiento; `id`, `created_*` quedan fijos.
 COLUMNAS_API_MOVEMENTS_UPDATE: tuple[str, ...] = (
     "name",
@@ -214,6 +222,10 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     # worker no ve el esquema.
     "wods.movements": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_MOVEMENTS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    "wods.benchmarks": {
+        "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_BENCHMARKS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -783,6 +795,9 @@ PROHIBIDAS_API = [
     "DELETE FROM wods.movements",  # S8-A1: se desactivan
     "TRUNCATE wods.movements",  # S8-A1
     "UPDATE wods.movements SET created_by = created_by",  # S8-A1: columna sin UPDATE
+    "DELETE FROM wods.benchmarks",  # S8-A2
+    "TRUNCATE wods.benchmarks",  # S8-A2
+    "UPDATE wods.benchmarks SET created_by = created_by",  # S8-A2: columna sin UPDATE
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -865,6 +880,7 @@ PROHIBIDAS_WORKER = [
     "DELETE FROM classes.class_sessions",  # S7-B1
     "SELECT count(*) FROM wods.movements",  # S8-A1: el worker no ve el esquema `wods`
     "INSERT INTO wods.movements (id) VALUES (gen_random_uuid())",  # S8-A1
+    "SELECT count(*) FROM wods.benchmarks",  # S8-A2: el worker no ve el esquema `wods`
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",

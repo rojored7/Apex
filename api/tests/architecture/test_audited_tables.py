@@ -65,6 +65,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "classes.class_sessions",  # S7-B1 (US-156)
         "classes.attendance",  # S7-C1 (US-159)
         "wods.movements",  # S8-A1 (US-165)
+        "wods.benchmarks",  # S8-A2 (US-166)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -77,7 +78,6 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
 PENDING_AUDITED: dict[str, str] = {
     # S8-W0-3 (E3): las cinco tablas de v0.5 se declaran antes de existir; cada slice la mueve a
     # las requeridas. `athletes.personal_records` (EP-24, US-180) mantiene viva la lista.
-    "wods.benchmarks": "v0.5",
     "wods.wods": "v0.5",
     "wods.wod_movements": "v0.5",
     "results.wod_results": "v0.5",
@@ -318,6 +318,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "classes.class_sessions",  # S7-B1: las crea el job cada día (S7-D17)
         "classes.attendance",  # S7-C1: ruido para el tablero; la ve la ficha (S7-D17)
         "wods.movements",  # S8-A1: catálogo (S8-D23)
+        "wods.benchmarks",  # S8-A2: catálogo (S8-D23)
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

@@ -92,6 +92,8 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "classes.class_slots",  # S7-A2 (US-155)
                 "classes.class_sessions",  # S7-B1 (US-156)
                 "classes.attendance",  # S7-C1 (US-159)
+                "wods.movements",  # S8-A1 (US-165)
+                "wods.benchmarks",  # S8-A2 (US-166)
             }
         )
         == AUDITABLE_TABLES

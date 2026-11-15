@@ -74,6 +74,7 @@ AUDITABLE_TABLES: Final[frozenset[str]] = frozenset(
         "classes.class_sessions",  # S7-B1
         "classes.attendance",  # S7-C1
         "wods.movements",  # S8-A1
+        "wods.benchmarks",  # S8-A2
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -97,6 +98,7 @@ AUDIT_TABLES_EXCLUDED_FROM_RECENT: Final[Mapping[str, str]] = {
     "classes.class_slots": "configuración del horario; se ve en Horario (S7-D17)",
     "classes.class_sessions": "las crea el job cada día; se ven en Sesiones (S7-D17)",
     "wods.movements": "catálogo; se ve en Movimientos (S8-D23)",
+    "wods.benchmarks": "catálogo; se ve en Movimientos, pestaña Benchmarks (S8-D23)",
     "classes.attendance": "una fila por socio y clase: ruido para el tablero (S7-D17)",
     "notifications.notification_templates": "configuración de avisos, no es negocio",
     "notifications.notification_rules": "configuración de avisos, no es negocio",

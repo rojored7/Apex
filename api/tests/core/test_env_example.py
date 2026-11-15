@@ -735,3 +735,13 @@ def test_el_comentario_de_front_base_url_explica_que_con_dominio_es_https_del_do
 def test_el_comentario_de_apex_domain_cita_cookie_y_cors() -> None:
     comentario = _comentario_previo("APEX_DOMAIN", 6)
     assert "COOKIE_SECURE" in comentario and "CORS_ORIGINS" in comentario
+
+
+def test_ci_siembra_benchmarks_tras_el_admin() -> None:
+    """S8-A2 (hallazgo 9): el job e2e-stack siembra los benchmarks justo después del seed del
+    primer admin y antes de las dependencias del front, para que la spec de F1 encuentre «Fran»."""
+    texto = CI_YML.read_text(encoding="utf-8")
+    orden = "$DC --profile tools run --rm tools seed-benchmarks"
+    assert texto.count(orden) == 1
+    seed = texto.index("tools seed --no-force-change")
+    assert seed < texto.index(orden) < texto.index("name: dependencias del front")

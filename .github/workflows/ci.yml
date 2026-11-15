@@ -520,6 +520,9 @@ jobs:
         # --no-force-change (S2-B2) solo se acepta con ENV=dev, el valor de .env.example: las
         # specs no pasan por el cambio obligatorio de contraseña.
         run: $DC --profile tools run --rm tools seed --no-force-change
+      - name: benchmarks de demostración (S8-A2, US-166)
+        # Idempotente. La spec de F1 (Movimientos y benchmarks) espera encontrar «Fran».
+        run: $DC --profile tools run --rm tools seed-benchmarks
       - name: dependencias del front
         working-directory: web
         run: |

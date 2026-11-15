@@ -21,6 +21,7 @@ from app.cli_ops import (
     retire_local_kek,
     rotate_kek,
     rotate_key,
+    seed_benchmarks,
     seed_notifications,
     sign_audit,
 )
@@ -40,3 +41,4 @@ def register_ops(app: typer.Typer) -> None:
     sign_audit.register(app)  # S6-A2
     attachments_check.register(app)  # S6-C1
     generate_sessions.register(app)  # S7-B1 (S7-D10)
+    seed_benchmarks.register(app)  # S8-A2 (US-166, S8-D6)

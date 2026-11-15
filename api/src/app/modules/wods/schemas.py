@@ -13,10 +13,10 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool
 
-from app.core.validators import SafeText
-from app.modules.wods.rules import NAME_MAX_LENGTH
+from app.core.validators import SafeText, check_multiline_text
+from app.modules.wods.rules import DESCRIPTION_MAX_LENGTH, NAME_MAX_LENGTH
 
 MovementCategory = Literal["weightlifting", "gymnastics", "monostructural", "other"]
 MovementUnit = Literal["kg", "reps", "m", "cal", "s"]
@@ -60,3 +60,56 @@ class MovementListQuery(BaseModel):
 
     category: MovementCategory | None = None
     active: bool | None = None
+
+
+# S8-A2 (US-166, S8-D6): benchmarks -------------------------------------------------------------
+
+BenchmarkScoreType = Literal["time", "rounds_reps", "reps", "load"]
+
+
+def _check_description(value: str) -> str:
+    """Vacía vale (0 a 2.000); si trae algo, `SafeMultilineText` (admite saltos de línea)."""
+    return check_multiline_text(value) if value.strip() else ""
+
+
+BenchmarkDescription = Annotated[
+    str, AfterValidator(_check_description), Field(max_length=DESCRIPTION_MAX_LENGTH)
+]
+
+
+class BenchmarkCreate(BaseModel):
+    """`POST /benchmarks`: `description` es opcional (vacía por defecto)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: MovementName
+    description: BenchmarkDescription = ""
+    score_type: BenchmarkScoreType
+
+
+class BenchmarkPatch(BaseModel):
+    """`PATCH /benchmarks/{id}`: un campo ausente no es un cambio; ninguno admite `null`."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: MovementName | None = None
+    description: BenchmarkDescription | None = None
+    score_type: BenchmarkScoreType | None = None
+
+
+class BenchmarkOut(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    score_type: BenchmarkScoreType
+    wod_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BenchmarkListQuery(BaseModel):
+    """Filtro de la lista: por tipo de marca."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    score_type: BenchmarkScoreType | None = None

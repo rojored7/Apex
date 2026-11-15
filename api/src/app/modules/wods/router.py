@@ -7,6 +7,12 @@ Movimientos, admin y coach (`StaffDep`; el socio recibe 403):
   201, 401, 403, 409, 422 y 429.
 - `PATCH /movements/{movement_id}`: `CatalogMovementOut`; `wods-write`. Códigos 200, 401, 403, 404,
   409, 422 y 429. No existe `DELETE`: se desactivan con `is_active`.
+Benchmarks (S8-A2, US-166, S8-D6), mismo reparto de roles y cubetas:
+- `GET /benchmarks`: `Page[BenchmarkOut]` con `PageParams`, `q` y `score_type`; `staff-read`.
+  Códigos 200, 401, 403, 422 y 429.
+- `POST /benchmarks`: 201 `BenchmarkOut`; `wods-write`. Códigos 201, 401, 403, 409, 422 y 429.
+- `PATCH /benchmarks/{benchmark_id}`: `BenchmarkOut`; `wods-write`. Códigos 200, 401, 403, 404, 409,
+  422 (incluye `score_type_locked`) y 429. Tampoco existe `DELETE`.
 Las rutas no hacen `select`: validan, llaman al service y devuelven.
 """
 
@@ -25,6 +31,10 @@ from app.core.ratelimit import enforce_user_limit
 from app.core.security import StaffDep
 from app.modules.wods import service
 from app.modules.wods.schemas import (
+    BenchmarkCreate,
+    BenchmarkListQuery,
+    BenchmarkOut,
+    BenchmarkPatch,
     CatalogMovementOut,
     MovementCreate,
     MovementListQuery,
@@ -80,3 +90,45 @@ async def update_movement(
 ) -> CatalogMovementOut:
     await enforce_user_limit(request, "wods-write", principal.user_id)
     return await service.update_movement(session, movement_id, body, principal.user_id)
+
+
+@router.get("/benchmarks", response_model=Page[BenchmarkOut], responses=responses_for(422, 429))
+async def list_benchmarks(
+    request: Request,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    filters: Annotated[BenchmarkListQuery, Depends()],
+    q: SearchQuery = None,
+) -> Page[BenchmarkOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_benchmarks(session, filters, page, q=q)
+
+
+@router.post(
+    "/benchmarks",
+    status_code=201,
+    response_model=BenchmarkOut,
+    responses=responses_for(409, 422, 429),
+)
+async def create_benchmark(
+    request: Request, body: BenchmarkCreate, principal: StaffDep, session: Session
+) -> BenchmarkOut:
+    await enforce_user_limit(request, "wods-write", principal.user_id)
+    return await service.create_benchmark(session, body, principal.user_id)
+
+
+@router.patch(
+    "/benchmarks/{benchmark_id}",
+    response_model=BenchmarkOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def update_benchmark(
+    request: Request,
+    benchmark_id: UUID,
+    body: BenchmarkPatch,
+    principal: StaffDep,
+    session: Session,
+) -> BenchmarkOut:
+    await enforce_user_limit(request, "wods-write", principal.user_id)
+    return await service.update_benchmark(session, benchmark_id, body, principal.user_id)

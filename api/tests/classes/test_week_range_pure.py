@@ -137,3 +137,18 @@ def test_la_sesion_extra_va_de_ayer_a_90_dias() -> None:
         with pytest.raises(ClassValidationError) as error:
             validate_extra_start(mala, AHORA)
         assert error.value.field == "starts_at"
+
+
+@pytest.mark.parametrize(
+    "inicio",
+    [
+        AHORA + timedelta(days=1, seconds=30),
+        AHORA + timedelta(days=1, microseconds=1),
+    ],
+)
+def test_la_sesion_extra_no_admite_segundos_ni_microsegundos(inicio: datetime) -> None:
+    """S7-B3b (LOW 1): 06:00:30 esquivaba el 409 `session_duplicate` (mismo `starts_at` exacto)."""
+    with pytest.raises(ClassValidationError) as error:
+        validate_extra_start(inicio, AHORA)
+    assert error.value.field == "starts_at"
+    validate_extra_start(AHORA + timedelta(days=1), AHORA)

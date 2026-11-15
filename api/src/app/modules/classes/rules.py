@@ -38,7 +38,7 @@ _MENSAJES: Final = {
     "duration_min": "La duración debe estar entre 15 y 240 minutos.",
     "capacity": "El cupo debe estar entre 1 y 100.",
     "week": "La semana debe ser AAAA-Www, de 2020 a 2100, y existir en el calendario ISO.",
-    "starts_at": "La sesión debe empezar entre ayer y los próximos 90 días.",
+    "starts_at": "La sesión debe empezar entre ayer y los próximos 90 días, sin segundos.",
     "from": "Indica `from` y `to` juntos, y no los mezcles con `week`.",
 }
 
@@ -235,7 +235,11 @@ def session_status(status: str, starts_at: datetime, duration_min: int, now: dat
 
 
 def validate_extra_start(starts_at: datetime, now: datetime) -> None:
-    """Una sesión extra empieza entre el inicio de ayer (Bogotá) y 90 días adelante."""
+    """Una sesión extra empieza entre el inicio de ayer (Bogotá) y 90 días adelante, en un minuto
+    exacto: con segundos o microsegundos el 409 `session_duplicate` (mismo `starts_at`) se
+    esquivaría (S7-B3b)."""
+    if starts_at.second or starts_at.microsecond:
+        raise _invalido("starts_at")
     ayer = _midnight_utc(local_date(now) - timedelta(days=1))
     if starts_at < ayer or starts_at > now + timedelta(days=EXTRA_MAX_AHEAD_DAYS):
         raise _invalido("starts_at")

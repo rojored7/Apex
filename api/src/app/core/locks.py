@@ -21,6 +21,18 @@ interbloquearse con otra que siga el orden correcto. Regla: toda unidad que escr
 socio pide `lock_member` antes de su primer flush auditado, y un proceso por lotes (la importación
 del CLI, por ejemplo) confirma una transacción por socio en lugar de encadenar socios en la misma.
 Si igual ocurre, PostgreSQL corta el ciclo (40P01) y `get_session` responde 503 `busy`.
+
+Orden ampliado con el check-in (S7-C1, S7-D12): socio (`lock_member`), SESIÓN (`SELECT ... FOR
+UPDATE` de `classes.class_sessions`, el mismo candado de fila que toman las cancelaciones),
+MEMBRESÍA (la bloquea el puerto `checkin_view`, antes del primer flush) y, al hacer flush, la
+cadena. Fuera de `core/locks.py`, el orden de los candados asesores de `classes` es 4_270_005
+(franjas), 4_270_006 (generación) y, al primer flush auditado, 4_270_002 (cadena; S7-D37).
+
+Los suscriptores de `SessionCancelled`, `SessionGenerated` y `MemberCheckedIn` se ejecutan con
+la cadena de auditoría (4_270_002) YA tomada (el evento se emite después del flush): no pueden
+pedir candados de socio, de membresía, de sesión ni asesores, porque invertirían este orden y
+abrirían un ciclo (S7-B3b). Lo que necesiten bloquear lo bloquea el emisor o un puerto ANTES del
+primer flush, como hace el check-in con la membresía.
 """
 
 from __future__ import annotations

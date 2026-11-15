@@ -57,6 +57,10 @@ async def test_pasadas_canceladas_y_extras_intactas(
     franja = await make_slot(session)
     otra = await make_slot(session, name="Otra")
     pasada = await make_session(session, slot_id=franja.id, starts_at=PASADA)
+    # S7-B3b (LOW 2): en curso (09:30 Bogotá, 60 min, reloj 10:00): ya empezó, sigue `scheduled`.
+    en_curso = await make_session(
+        session, slot_id=franja.id, starts_at=datetime(2026, 10, 21, 14, 30, tzinfo=UTC)
+    )
     ya_cancelada = await make_session(
         session,
         slot_id=franja.id,
@@ -80,6 +84,7 @@ async def test_pasadas_canceladas_y_extras_intactas(
     assert salida.cancelled_count == 2
     estados = await _estados(session)
     assert estados[pasada.starts_at] == "scheduled"
+    assert estados[en_curso.starts_at] == "scheduled"
     assert estados[extra.starts_at] == "scheduled" and estados[de_otra.starts_at] == "scheduled"
     assert estados[ya_cancelada.starts_at] == "cancelled"
     assert all(estados[f.starts_at] == "cancelled" for f in futuras)

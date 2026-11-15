@@ -13,12 +13,12 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import actor_scope
 from app.modules.classes import service
-from app.modules.classes.exceptions import SessionDuplicate
+from app.modules.classes.exceptions import ClassValidationError, SessionDuplicate
 from app.modules.classes.schemas import SessionCancel, SessionCreate
 from tests.conftest import CrearUsuario
 from tests.factories.users import make_user
@@ -95,3 +95,50 @@ async def test_dos_altas_simultaneas_solo_una_pasa(
         text("SELECT count(*) FROM classes.class_sessions WHERE slot_id IS NULL")
     )
     assert filas == 1
+
+
+@pytest.mark.parametrize(
+    "inicio",
+    [
+        datetime(2026, 10, 22, 11, 0, 30, tzinfo=UTC),
+        datetime(2026, 10, 22, 11, 0, 0, 1, tzinfo=UTC),
+    ],
+)
+async def test_segundos_o_microsegundos_dan_422_y_no_esquivan_el_duplicado(
+    session: AsyncSession, usuario_real: CrearUsuario, inicio: datetime
+) -> None:
+    """S7-B3b (LOW 1): 06:00:30 es 422 `starts_at`; 06:00 dos veces sigue siendo 409."""
+    admin = await usuario_real("admin")
+    await _alta(session, admin.id)
+    with pytest.raises(ClassValidationError) as error:
+        await _alta(session, admin.id, starts_at=inicio)
+    assert error.value.field == "starts_at"
+    with pytest.raises(SessionDuplicate):
+        await _alta(session, admin.id)
+
+
+async def test_el_candado_va_antes_de_la_comprobacion_del_duplicado(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    """S7-B3b (LOW 2): `pg_advisory_xact_lock` antes del SELECT de duplicado y del INSERT."""
+    admin = await usuario_real("admin")
+    vistas: list[str] = []
+    motor = session.get_bind()
+
+    def anotar(_c: Any, _cur: Any, sentencia: str, *_: Any) -> None:
+        vistas.append(sentencia)
+
+    event.listen(motor, "before_cursor_execute", anotar)
+    try:
+        await _alta(session, admin.id)
+    finally:
+        event.remove(motor, "before_cursor_execute", anotar)
+    candado = [i for i, s in enumerate(vistas) if "pg_advisory_xact_lock" in s]
+    duplicado = [
+        i
+        for i, s in enumerate(vistas)
+        if s.startswith("SELECT classes.class_sessions.id") and "slot_id IS NULL" in s
+    ]
+    alta = [i for i, s in enumerate(vistas) if s.startswith("INSERT INTO classes.class_sessions")]
+    assert candado and duplicado and alta
+    assert candado[0] < duplicado[0] < alta[0]

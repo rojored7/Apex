@@ -5,6 +5,38 @@ compara la etiqueta con el encabezado de la primera sección, con `api/pyproject
 `web/package.json`. El SHA de cierre vive en el cuerpo de la sección (no lo exige ningún script) y
 es el que se pasa a `infra/deploy.sh --expect-sha`.
 
+## [0.4.0]
+
+Fecha de cierre: 2026-11-15. SHA de cierre: el del commit etiquetado `v0.4.0` (`git rev-parse v0.4.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta es local: el push, el PR, el merge y el Release los hace una persona.
+
+Cuarta versión desplegable: clases con horario semanal, sesiones generadas cada día, check-in desde la tablet del coach, tiqueteras que descuentan y devuelven clases, reportes de asistencia y tablero con las clases de hoy. Cierra la deuda aceptada del Sprint 6.
+
+### Sprint 7 · Clases, horario y check-in (EP-21)
+- Módulo `classes` (esquema `classes`, migraciones 0026 a 0028): franjas semanales, sesiones (el job `generate_sessions` las crea a las 07:00 para los próximos 14 días y es idempotente; cancelar una sesión o las futuras de una franja) y asistencia con guardas append-only (`tgenabled = A`); secciones `hours` y `classes` de `/settings/{section}`.
+- Check-in (US-159): siete banderas informativas (vencido, sin membresía, congelada, pendiente de pago, sobre cupo, fuera de ventana, otro día) que nunca bloquean; quitar una asistencia con motivo (`DELETE /attendance/{id}`), todo auditado.
+- Tiqueteras (US-160, migraciones 0029 y 0030): el check-in descuenta una clase de la tiquetera vigente, quitar la devuelve, y agotar una recorta `end_date` guardando `original_end_date`; la membresía futura no descuenta (S7-D25).
+- Reportes (US-161, US-163): `GET /attendance/summary` por semana y franja, asistencia por socio, filtro `last_attendance` en `GET /members` y `attendance_week` más `sessions_today` en el tablero.
+- Front: Horario, Sesiones, Asistencia, Hoy y pantalla de check-in en modo tablet (sin enlaces ni `reveal`), pestaña Asistencia en la ficha del socio y tarjetas de clases en Inicio.
+
+### Sprint 7 · Modo quiosco del servidor (S7-D41, S7-D42)
+- Migración 0031: la sesión de refresh guarda la ruta de check-in de la tablet (`kiosk_path`); `POST /auth/kiosk` y `exit_kiosk` con contraseña; con la marca, el access solo alcanza lo necesario del check-in y `GET /members?q=` busca solo por nombre. Cambiar de clase dentro del quiosco solo acepta sesiones de hoy o de ayer.
+
+### Sprint 7 · Deuda del Sprint 6 cerrada
+- Migración 0025: FK `attachments.key_id → crypto_keys`, guarda de jobs solo para `rotate`, `public_key` inmutable también para el propietario y `CHECK` bidireccional de `public_key` (S6-D81, S6-D130, S6-D133).
+- Layout del volumen `keys` con `custody/`, `sign/` y `jwt/`: el api monta solo `custody/` y `jwt/`, y ya no ve la llave privada de firma local (S7-D23; `init-keys --migrate-layout`).
+
+### Sprint 7 · Validación (V1 a V9)
+- Gates completos (V1): api 10.375 pasan, 103 omitidas (Windows, solo Linux), cobertura 95,39 %; web 4.261 pasan, 98,19 % de líneas con 2 hilos.
+- Stack de producción en Linux (V3, `prod-smoke`): 233 y 252 comprobaciones ok. E2E `stack`: 52 pasan, 0 fallan, 3 omitidas, dos veces seguidas; `preview`: 219.
+- Demos 1 y 2 en desarrollo (V4, job idempotente), verify-delivery en vivo con la interfaz real (V8): 57 de 58 requisitos con evidencia; el parcial (imagen `apex-api:local` sin el SHA del árbol) se cerró en V9.
+- Rendimiento (V6, `perf`): check-in entre 15 y 121 ms con 1.000 socios y 15 asistentes (límite 2 s), filtro `last_attendance=30d` 19 ms, tablero 18 ms con 20.000 asistencias, resumen de 26 semanas bajo 500 ms; `EXPLAIN (ANALYZE, BUFFERS)` de las tres consultas en `docs/scratch/sprint-07.md` (todas por índice, menos de 6 ms).
+- Defecto hallado por el E2E de V5: la ruta `/clases/:id/checkin` no montaba la pantalla del check-in (corregido en `d1fa18b`).
+
+### Deuda aceptada con dueño (v0.5, Sprint 8)
+- Token de dispositivo para la tablet: hoy el modo quiosco es una sesión de una cuenta coach (S7-D24); la inactividad de 10 minutos solo tiene prueba unitaria.
+- Residual de `finish_rotation` con una subida de adjunto a medio confirmar en una llave `decrypt_only` (S7-D36): no pierde datos, `attachments-check` lo detecta.
+- Inicio lista todas las sesiones canceladas del día; con un horario real no se nota.
+
 ## [0.3.0]
 
 Fecha de cierre: 2026-11-14. SHA de cierre: el del commit etiquetado `v0.3.0` (`git rev-parse v0.3.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta es local: el push, el PR, el merge y el Release los hace una persona (después de fusionar el Sprint 5).

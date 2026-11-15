@@ -490,3 +490,13 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 - Suite `stack` completa, dos corridas seguidas (`--workers=1`, `E2E_BASE_URL=http://localhost:8180`, perfil E2E de límites): 52 passed, 0 failed, 3 skipped, 0 flaky, 1,5 min cada una. `checkin.spec.ts` pasa las dos veces (el defecto de la ruta quedó resuelto).
 - `.env` restaurado con `cmp` correcto (trap con `cd` a la raíz); api y web recreados sin overlay y `healthy`; sin `web/.env`.
 - Residuos: sesiones extra `E2E …` futuras canceladas con el admin (21 antes de las corridas y las de las corridas al final); las de días pasados no se pueden cancelar.
+
+## V9 · Evidencia previa al release (EXPLAIN de V6)
+
+`EXPLAIN (ANALYZE, BUFFERS)` en `db_test` dentro de una transacción revertida (`ROLLBACK`; la tabla quedó en 0 filas después). Datos: 603 sesiones, 19.899 asistencias vivas, 1.000 socios; `ANALYZE` previo. Sin secretos.
+
+- Check-in, asistencia viva del socio en la sesión: `Index Scan using uq_attendance_session_member_alive`, 0,025 ms, 5 buffers.
+- Check-in, conteo de vivas de la sesión (cupo): `Bitmap Index Scan` sobre el mismo índice único parcial, 33 filas, 0,034 ms, 21 buffers.
+- Filtro, última asistencia de 50 socios (`last_attendance_for`): `Bitmap Index Scan on ix_attendance_member_checked_in`, 1.001 filas, 0,319 ms, 124 buffers.
+- Filtro, socios con asistencia desde 30 días (`attended_member_ids`): `Bitmap Index Scan on ix_attendance_checked_in`, 3.069 filas, 0,728 ms, 290 buffers.
+- Resumen de 26 semanas (`summary_rows`, subconsulta acotada por `IN` de sesiones): 5,7 ms, 427 buffers. Con la base pequeña usa `Seq Scan` de `class_sessions` (603 filas, 10 buffers) y de `attendance` (407 buffers, filtra `removed_at IS NULL`); es lo esperado con tablas de este tamaño, y el rango acota las sesiones antes de agrupar (arreglo M1 de R1b).

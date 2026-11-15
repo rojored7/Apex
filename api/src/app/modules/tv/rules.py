@@ -61,6 +61,7 @@ def to_public_board(
     return TvBoard(
         date=day,
         refresh_seconds=config.refresh_seconds,
+        show_leaderboard=config.show_leaderboard,
         wod=_wod(wod) if wod is not None else None,
         leaderboard=[_row(f) for f in visibles],
     )

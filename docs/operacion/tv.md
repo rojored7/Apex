@@ -50,6 +50,21 @@ panel en la TV; usa el perfil `tls` (HTTPS) para que el token no viaje en claro 
 - Con token inválido cuenta `tv-fail`, por IP: 12 por minuto (`TV_IP_LIMIT`); la petición 13 responde
   429 con `Retry-After`. Los fallos de un equipo no bloquean a la TV válida que sale por la misma IP.
 - Ambas variables aceptan de 1 a 120.
+- Además, Nginx limita `/api/v1/tv/` a 120 peticiones por minuto por IP (ráfaga de 60; zona `apex_tv` en
+  `infra/nginx/snippets/tv-zone.conf`): corta los sondeos antes de que lleguen a la base. Es holgado para una
+  o varias pantallas por IP; el 429 sale en el mismo envelope del api.
+
+## Reparar la sección de la TV
+
+Si la fila guardada de la sección `tv` ya no valida (por ejemplo, tras una edición manual en la base),
+el panel la lee con los valores por defecto y «Generar enlace nuevo» o «Revocar» la reparan. Al
+repararla, `refresh_seconds` y `show_leaderboard` vuelven a sus valores por defecto (30 segundos y
+ranking visible) y se pierde el token vigente: revisa esos dos ajustes y vuelve a generar el enlace.
+
+## Si el ranking es demasiado grande
+
+Un WOD con más de 1.000 resultados vigentes no arma ranking (422 `leaderboard_too_large` en el panel).
+La TV no cae: muestra el WOD con el ranking vacío y el api deja un aviso `tv: ranking omitido` en el log.
 
 ## Comprobaciones
 

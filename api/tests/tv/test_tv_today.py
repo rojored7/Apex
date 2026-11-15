@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
+from uuid import UUID
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.context import actor_scope
 from app.modules.members.models import Member
+from app.modules.results import reads
+from app.modules.results import service as results_service
+from app.modules.results.models import WodResult
+from app.modules.results.schemas import VoidIn
 from app.modules.tv import service
+from tests.factories.members import make_members
+from tests.factories.results import make_result
 from tests.factories.users import make_user
 from tests.tv._apoyo import (
+    CONSENTIDO,
     config,
     dar_de_baja,
     emitir_token,
@@ -34,6 +44,13 @@ async def test_show_leaderboard_false(session: AsyncSession) -> None:
     salida = await service.today(session, config(show_leaderboard=False))
     assert salida.wod is not None and salida.wod.title == "Fran"
     assert salida.leaderboard == []
+    assert salida.show_leaderboard is False
+
+
+async def test_show_leaderboard_true_viaja_en_el_tablero(session: AsyncSession) -> None:
+    await tablero(session, 2)
+    salida = await service.today(session, config(show_leaderboard=True))
+    assert salida.show_leaderboard is True and len(salida.leaderboard) == 2
 
 
 async def test_wod_sin_resultados_trae_wod_y_lista_vacia(session: AsyncSession) -> None:
@@ -100,3 +117,56 @@ async def test_authenticate_solo_acepta_el_vigente(session: AsyncSession) -> Non
     assert await service.authenticate(session, "inventado") is None
     assert await service.authenticate(session, None) is None
     assert await service.authenticate(session, "") is None
+
+
+async def _vigente(session: AsyncSession, wod_id: UUID, socio: Member) -> UUID:
+    consulta = select(WodResult.id).where(
+        WodResult.wod_id == wod_id, WodResult.member_id == socio.id, WodResult.is_current
+    )
+    return (await session.scalars(consulta)).one()
+
+
+async def test_excluye_pendientes_anulados_y_superados(session: AsyncSession) -> None:
+    """Solo el resultado vigente y validado de cada socio llega a la TV (S8-D34)."""
+    datos = await tablero(session, 4)
+    coach, wod_id = datos.coach, datos.wod_id
+    a, b = datos.socios[0], datos.socios[1]
+    (e,) = await make_members(session, 1, data_consent_at=CONSENTIDO)
+    # `a` corrige su marca (200 -> 150): la anterior queda superada y no cuenta.
+    await make_result(
+        session, coach, wod_id, a.id, seconds=150, supersedes_id=await _vigente(session, wod_id, a)
+    )
+    # `b` queda anulado.
+    vigente_b = await _vigente(session, wod_id, b)
+    with actor_scope(coach):
+        await results_service.void_result(session, vigente_b, VoidIn(reason="error"), by=coach)
+        # `e` solo tiene un resultado pendiente (nace sin validar) y sería el primero si contara.
+        session.add(
+            WodResult(
+                wod_id=wod_id,
+                member_id=e.id,
+                wod_date=date(2026, 10, 21),
+                level="rx",
+                seconds=100,
+                status="pending",
+                recorded_by=coach,
+                source="desk",
+            )
+        )
+        await session.commit()
+    salida = await service.today(session, config())
+    assert [f.score.seconds for f in salida.leaderboard] == [150, 202, 203]
+    assert [f.position for f in salida.leaderboard] == [1, 2, 3]
+
+
+async def test_ranking_demasiado_grande_deja_el_tablero_sin_ranking(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """L-1: si el WOD supera el tope del ranking, la TV muestra el WOD con la lista vacía."""
+    await tablero(session, 3)
+    monkeypatch.setattr(reads, "LEADERBOARD_MAX_ROWS", 2)
+    with caplog.at_level(logging.WARNING):
+        salida = await service.today(session, config())
+    assert salida.wod is not None and salida.wod.title == "Fran"
+    assert salida.leaderboard == []
+    assert any("ranking" in r.getMessage().lower() for r in caplog.records)

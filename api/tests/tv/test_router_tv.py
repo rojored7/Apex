@@ -30,7 +30,7 @@ async def test_200_con_token_y_forma_exacta(
     r = await app_http.get(URL, headers={CABECERA: token})
     assert r.status_code == 200
     cuerpo = r.json()
-    assert set(cuerpo) == {"date", "refresh_seconds", "wod", "leaderboard"}
+    assert set(cuerpo) == {"date", "refresh_seconds", "show_leaderboard", "wod", "leaderboard"}
     assert len(cuerpo["leaderboard"]) == 2 and cuerpo["leaderboard"][0]["position"] == 1
 
 

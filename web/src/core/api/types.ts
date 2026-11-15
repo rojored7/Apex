@@ -4948,6 +4948,8 @@ export interface components {
             leaderboard: components["schemas"]["TvRow"][];
             /** Refresh Seconds */
             refresh_seconds: number;
+            /** Show Leaderboard */
+            show_leaderboard: boolean;
             wod: components["schemas"]["TvWod"] | null;
         };
         /**

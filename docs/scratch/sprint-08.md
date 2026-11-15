@@ -397,3 +397,21 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 
 ### Evidencia
 - `tests/settings tests/dashboard tests/migrations/test_0040_guard_lock.py`: 506 passed. `ruff`, `ruff format`, `mypy src` limpios. Gate `slice-gate.sh settings <settings, dashboard, wods, tv, migraciones 0036/0037/0040 y guard_lock, core/test_migrations, board_names>` (con `tests/architecture`): 1627 passed en 304 s, exit 0. Checkpoint `2e967ee` (C2: `5960e8f`). Smoke y P-REBUILD pendientes (api roto).
+
+## S8-C2b · Correcciones de la revisión de C2 (L-1 a L-4) · sin migración
+
+### Rojo (medido)
+- `tests/tv/test_tv_today.py` nuevas contra el código anterior: 1 failed (`test_ranking_demasiado_grande_deja_el_tablero_sin_ranking`: `LeaderboardTooLarge` escapa de `tv.service.today`) y 11 passed (`test_excluye_pendientes_anulados_y_superados` ya pasaba: es cobertura que faltaba, L-4).
+- `test_nginx_conf.sh` con el bloque «Rojo S8-C2b»: 4 fallas (zona `apex_tv`, `limit_req` del location, `error_page 429`, include de `tv-zone.conf`).
+
+### Verde
+- L-1: `tv/service.today` captura `LeaderboardTooLarge`, deja el ranking vacío y registra un warning (`app.tv`). L-2: `infra/nginx/snippets/tv-zone.conf` (120r/m por IP) incluida en `default.conf`; `location /api/v1/tv/` con `limit_req zone=apex_tv burst=60 nodelay` y `error_page 429 = @rate_limited`. L-3: `docs/operacion/tv.md` (reparar la sección: vuelve a los defaults; ranking demasiado grande; tope del borde). L-4: dos pruebas.
+
+### Evidencia
+- `tests/tv` + hardening + leaderboard + board_names: 936 passed en 210 s con `tests/architecture`, gate exit 0. `ruff`, `ruff format`, `mypy src` (279) limpios. `test_nginx_conf.sh`: 0 fallas. Contrato web 6 passed y `tsc` limpio.
+
+### Pendiente
+- Prueba con curl del 429 del borde (ráfaga de >180 peticiones a `/api/v1/tv/today` desde una IP) y recarga de `web` con la imagen nueva: al reparar el stack (la imagen web copia `snippets/`; hace falta rebuild de `web`).
+
+### C2b · `TvBoard.show_leaderboard` (M-3 de la revisión del front)
+- Rojo: 2 failed (`test_show_leaderboard_false`, `test_show_leaderboard_true_viaja_en_el_tablero`: sin el campo). Verde: `tv/schemas.TvBoard` y `rules.to_public_board` (del config); claves exactas de dos pruebas actualizadas; `openapi.json` idéntico en dos corridas y `types.ts` regenerado; contrato web y `tsc` ver evidencia del checkpoint.

@@ -105,7 +105,7 @@ def test_members_service_no_importa_memberships_ni_payments_arriba() -> None:
     assert not (arriba & PROHIBIDOS_ARRIBA), f"imports de nivel de módulo: {sorted(arriba)}"
     assert "audit" in arriba, "el historial delega en audit.service (S4A-D20)"
     assert "payments" not in perezosos
-    assert perezosos <= {"memberships"}
+    assert perezosos <= {"memberships", "classes"}  # S7-R2 (US-163): lista blanca de G-03
 
 
 def test_el_detector_de_imports_ve_arriba_y_perezosos() -> None:

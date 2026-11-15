@@ -76,6 +76,8 @@ CAMPOS_FILA = frozenset(
         "plan_name",
         "membership_end_date",
         "photo_attachment_id",
+        "last_attendance_at",
+        "membership_classes_remaining",
     }
 )
 

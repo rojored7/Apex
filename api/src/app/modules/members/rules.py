@@ -35,7 +35,7 @@ import builtins
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from sqlalchemy import ColumnElement
@@ -281,6 +281,24 @@ def chip_to_filter(chip: str) -> MemberChipFilter:
     if estado is None:
         raise ValueError("chip de socios desconocido")
     return MemberChipFilter(status=None, membership_status=estado)
+
+
+# Filtro de última asistencia (S7-R2, US-163; S7-D15) -----------------------------------------
+
+LAST_ATTENDANCE_DAYS: Final[Mapping[str, int]] = {"7d": 7, "14d": 14, "30d": 30, "60d": 60}
+
+
+def attendance_cutoff(value: str, today: date) -> date | None:
+    """Primer día civil de Bogotá que cuenta como asistencia "reciente" para `value` (`Nd`):
+    `today - N`. Un socio entra al filtro si no asistió desde ese día (su última asistencia es
+    anterior) o nunca asistió. `never` devuelve `None` (cualquier asistencia cuenta). `ValueError`
+    si `value` no es uno de `7d`, `14d`, `30d`, `60d` o `never`."""
+    if value == "never":
+        return None
+    dias = LAST_ATTENDANCE_DAYS.get(value)
+    if dias is None:
+        raise ValueError("last_attendance desconocido")
+    return today - timedelta(days=dias)
 
 
 # Editar (S3-B10, US-075; D21, M-3, S3-D46) ---------------------------------------------

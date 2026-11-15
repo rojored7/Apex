@@ -195,6 +195,9 @@ class MemberMembership:
     plan_id: UUID
     plan_name: str
     end_date: date
+    # S7-R2 (US-163, S7-D15): las clases que quedan de la membresía que decide; `None` si no es
+    # una tiquetera. Aditivo y al final: los constructores existentes no lo pasan.
+    classes_remaining: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

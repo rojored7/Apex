@@ -59,7 +59,7 @@ import logging
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
@@ -135,6 +135,7 @@ from app.modules.members.rules import (
     PHONE_DATA_CLASS,
     MemberChipFilter,
     QueryPlan,
+    attendance_cutoff,
     chip_to_filter,
     classify_query,
     compute_warnings,
@@ -472,7 +473,10 @@ _ORDEN: Final[Mapping[str, tuple[ColumnElement[Any], ...]]] = {
 
 
 def _fila(
-    socio: Member, membresia: MemberMembership | None, foto: UUID | None = None
+    socio: Member,
+    membresia: MemberMembership | None,
+    foto: UUID | None = None,
+    ultima_asistencia: datetime | None = None,
 ) -> MemberRowOut:
     """Solo columnas en claro (N-01): ni el blob ni la máscara. Sin membresía que decida,
     `none` y plan y fin nulos (blueprint B7)."""
@@ -488,22 +492,46 @@ def _fila(
             "plan_name": None if membresia is None else membresia.plan_name,
             "membership_end_date": None if membresia is None else membresia.end_date,
             "photo_attachment_id": foto,
+            "last_attendance_at": ultima_asistencia,  # S7-R2 (US-163)
+            "membership_classes_remaining": (
+                None if membresia is None else membresia.classes_remaining
+            ),
         }
     )
 
 
 async def _filas(session: AsyncSession, socios: Sequence[Member]) -> builtins.list[MemberRowOut]:
-    """Decora la página con UNA llamada a `memberships.service.status_for` (G-04); una página
-    vacía no consulta nada."""
+    """Decora la página con UNA llamada a `memberships.service.status_for` y UNA a
+    `classes.service.last_attendance_for` (G-04); una página vacía no consulta nada."""
     if not socios:
         return []
+    # lazy: G-03 (members -> classes)
+    from app.modules.classes import service as classes_service
+
     # lazy: G-03 (members -> memberships)
     from app.modules.memberships import service as memberships_service
 
     ids = [s.id for s in socios]
     estados = await memberships_service.status_for(session, ids)
     fotos = await current_photo(session, ids)  # S6-C2 (E8): UNA consulta por página
-    return [_fila(s, estados.get(s.id), fotos.get(s.id)) for s in socios]
+    asistencias = await classes_service.last_attendance_for(session, ids)  # S7-R2 (US-163)
+    return [_fila(s, estados.get(s.id), fotos.get(s.id), asistencias.get(s.id)) for s in socios]
+
+
+async def _por_asistencia(
+    session: AsyncSession, last_attendance: str | None
+) -> ColumnElement[bool] | None:
+    """Condición de `last_attendance` (US-163): `None` sin filtro. `classes` da el conjunto de
+    socios con asistencia reciente (`Nd`) o con alguna (`never`) y la lista excluye ese conjunto,
+    como `none` en `_por_membresia`: un solo parámetro `uuid[]` y sin join entre esquemas."""
+    if last_attendance is None:
+        return None
+    # lazy: G-03 (members -> classes)
+    from app.modules.classes import service as classes_service
+
+    desde = attendance_cutoff(last_attendance, current_clock().today_bogota())
+    con_asistencia = await classes_service.attended_member_ids(session, desde)
+    return Member.id != all_(uuid_array(con_asistencia))
 
 
 async def _por_membresia(
@@ -534,6 +562,7 @@ async def _consulta(
     membership_status: str | None,
     plan_id: UUID | None,
     consent: str | None = None,
+    last_attendance: str | None = None,
 ) -> Select[Member] | None:
     """Los socios que cumplen los filtros (sin columnas, orden ni página); la comparten la lista y
     la exportación CSV (S5-B12). `None` si el resultado es vacío por construcción: sin membresía
@@ -550,6 +579,9 @@ async def _consulta(
     por_membresia = await _por_membresia(session, membership_status, plan_id)
     if por_membresia is not None:
         consulta = consulta.where(por_membresia)
+    por_asistencia = await _por_asistencia(session, last_attendance)
+    if por_asistencia is not None:
+        consulta = consulta.where(por_asistencia)
     return consulta
 
 
@@ -564,6 +596,7 @@ async def list(  # nombre del contrato del blueprint B8 (las anotaciones usan bu
         membership_status=filters.membership_status,
         plan_id=filters.plan_id,
         consent=filters.consent,
+        last_attendance=filters.last_attendance,
     )
     if consulta is None:
         return to_page([], 0, page)

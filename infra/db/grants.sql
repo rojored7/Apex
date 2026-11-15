@@ -39,7 +39,8 @@
 --                                                                       data_consent_at, created_at, updated_at)
 --   memberships.membership_freezes  S I                               S
 --   memberships.memberships         S I U(end_date, classes_remaining, S U(status, updated_at)
---                                     status, cancel_reason, cancelled_by,
+--                                     original_end_date, status,
+--                                     cancel_reason, cancelled_by,
 --                                     cancelled_at, updated_at)
 --   notifications.notification_rules     S I U                        S
 --   notifications.notification_templates S I U                        S
@@ -155,7 +156,8 @@ GRANT SELECT, INSERT, UPDATE ON notifications.notification_rules, notifications.
 GRANT SELECT, INSERT ON notifications.notifications TO apex_api;
 -- S5-D256: UPDATE por columna; skip y wa-link solo cambian estado, motivo de omision y marca de envio.
 GRANT UPDATE (status, skip_reason, sent_at, sent_by, updated_at) ON notifications.notifications TO apex_api;
-GRANT UPDATE (end_date, classes_remaining, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
+-- S7-D29: original_end_date (el fin antes del recorte de la ultima clase) tambien lo escribe apex_api.
+GRANT UPDATE (end_date, classes_remaining, original_end_date, status, cancel_reason, cancelled_by, cancelled_at, updated_at) ON memberships.memberships TO apex_api;
 -- S5-D202: INSERT de pagos por columna; void_reason, voided_by y voided_at solo por la anulacion.
 GRANT SELECT ON payments.payments TO apex_api;
 GRANT INSERT (id, created_at, updated_at, created_by, membership_id, member_id, amount_cop, method, reference, paid_at, registered_by, voided) ON payments.payments TO apex_api;

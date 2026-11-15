@@ -75,6 +75,9 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         ("members", "attachments"),
         # S6-C3 (S6-D46, S6-D60): el alta y la autorizacion tardia leen la politica vigente.
         ("members", "settings"),
+        # S7-C2 (S7-D6): memberships se suscribe a `MemberCheckedIn`/`AttendanceRemoved` y registra
+        # el puerto de `classes`; nunca al revés (`classes` no importa `memberships`).
+        ("memberships", "classes"),
         ("memberships", "members"),
         ("memberships", "payments"),
         ("memberships", "plans"),
@@ -255,7 +258,7 @@ def test_memberships_depende_de_members_payments_plans_y_settings() -> None:
     `memberships` registra el gate, se suscribe a `PaymentRegistered` y registra el primer pago
     por `payments.service`, a nivel de módulo (sentido mayoritario de G-03)."""
     arriba, perezosas = _grafo_real()
-    assert arriba["memberships"] == {"members", "payments", "plans", "settings"}
+    assert arriba["memberships"] == {"classes", "members", "payments", "plans", "settings"}
     assert perezosas["memberships"] == set()
 
 

@@ -9,6 +9,8 @@
   `cancel_fields_only_when_cancelled`).
 - `ex_memberships_member_dates` (D8): dos membresías no canceladas del mismo socio no se solapan
   con `daterange(start_date, end_date, '[]')`; adyacentes (fin el 28, inicio el 29) sí caben.
+- `original_end_date` (S7-C2, `0029`, S7-D29): el fin que tenía una tiquetera antes de que su
+  última clase la recortara; `NULL` = no recortada (CHECK: solo planes por clases).
 - Sin `relationship()` (D6) y sin columnas diferidas (el hook lee `history.deleted`).
 - `__audited__` con `__audit_subject__ = "member_id"` (G-05): la fila de auditoría lleva
   `subject_member_id` del socio.
@@ -87,6 +89,10 @@ class Membership(CommonColumnsMixin, Base):
             name="cancel_fields_only_when_cancelled",
         ),
         CheckConstraint(
+            "original_end_date IS NULL OR classes_total IS NOT NULL",
+            name="original_end_date_needs_classes",
+        ),
+        CheckConstraint(
             "cancel_reason IS NULL OR char_length(cancel_reason) BETWEEN 5 AND 500",
             name="cancel_reason_length",
         ),
@@ -113,6 +119,7 @@ class Membership(CommonColumnsMixin, Base):
     classes_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     classes_remaining: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    original_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_by: Mapped[UUID | None] = mapped_column(nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(nullable=True)

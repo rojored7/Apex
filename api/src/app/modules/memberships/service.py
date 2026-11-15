@@ -35,9 +35,12 @@ from __future__ import annotations
 import builtins
 
 from app.core import events
+from app.modules.classes import service as classes_service
 from app.modules.members import service as members_service
 from app.modules.memberships import summary as summary_cache
 from app.modules.memberships.events import (
+    ClassConsumed,
+    ClassReturned,
     MembershipActivated,
     MembershipActivationReverted,
     MembershipCancelled,
@@ -50,6 +53,8 @@ from app.modules.memberships.expirations import RecomputeSummary, recompute_stat
 from app.modules.memberships.lifecycle import (
     cancel,
     freeze,
+    on_attendance_removed,
+    on_member_checked_in,
     on_payment_registered,
     on_payment_voided,
 )
@@ -67,6 +72,7 @@ from app.modules.memberships.queries import (
 )
 from app.modules.memberships.schemas import MemberMembership, NotificationCandidate
 from app.modules.memberships.sell import (
+    ClassesPort,
     membership_payability,
     renewal_preview,
     sell,
@@ -75,6 +81,8 @@ from app.modules.memberships.summary import summary
 from app.modules.payments import service as payments_service
 
 __all__: builtins.list[str] = [
+    "ClassConsumed",
+    "ClassReturned",
     "MemberMembership",
     "MembershipActivated",
     "MembershipActivationReverted",
@@ -96,6 +104,8 @@ __all__: builtins.list[str] = [
     "member_ids_by_status",
     "membership_payability",
     "notification_candidates",
+    "on_attendance_removed",
+    "on_member_checked_in",
     "on_payment_registered",
     "on_payment_voided",
     "recompute_statuses",
@@ -109,6 +119,11 @@ __all__: builtins.list[str] = [
 payments_service.set_membership_gate(membership_payability)
 events.subscribe(payments_service.PaymentRegistered, on_payment_registered)
 events.subscribe(payments_service.PaymentVoided, on_payment_voided)
+# S7-C2 (S7-D6, S7-D14): el sentido minoritario de memberships <-> classes es un puerto que se
+# registra al importarse (como el gate de pagos); el mayoritario, dos suscripciones.
+classes_service.set_membership_port(ClassesPort())
+events.subscribe(classes_service.MemberCheckedIn, on_member_checked_in)
+events.subscribe(classes_service.AttendanceRemoved, on_attendance_removed)
 
 # S3-B7 (S3-D53, E11): el resumen cambia con estos eventos; el handler solo marca la sesión.
 for _evento in (
@@ -119,6 +134,8 @@ for _evento in (
     MembershipCancelled,
     payments_service.PaymentRegistered,
     payments_service.PaymentVoided,
+    ClassConsumed,
+    ClassReturned,
     # Fase 4 del Sprint 3 (M1, PM1; S3-D89; cierra B7 LOW-1): el resumen solo cuenta socios no
     # dados de baja, así que la baja y la reactivación también lo cambian.
     members_service.MemberDeactivated,

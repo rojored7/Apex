@@ -75,6 +75,7 @@ COLUMNAS: dict[str, tuple[str, str]] = {
     "end_date": ("date", "NO"),
     "classes_total": ("integer", "YES"),
     "classes_remaining": ("integer", "YES"),
+    "original_end_date": ("date", "YES"),  # S7-C2 (0029)
     "status": ("text", "NO"),
     "cancel_reason": ("text", "YES"),
     "cancelled_by": ("uuid", "YES"),

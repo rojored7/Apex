@@ -191,6 +191,10 @@ class Attendance(CommonColumnsMixin, Base):
             name="removed_reason_length",
         ),
         CheckConstraint(
+            "(membership_status_at_checkin = 'none') = (membership_id IS NULL)",
+            name="membership_pair",
+        ),
+        CheckConstraint(
             "(removed_at IS NULL AND removed_by IS NULL AND removed_reason IS NULL) "
             "OR (removed_at IS NOT NULL AND removed_by IS NOT NULL)",
             name="removed_pair",

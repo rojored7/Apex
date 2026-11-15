@@ -398,10 +398,20 @@ class RenewalPlan:
 
 
 def plan_renewal(
-    current: MembershipSnapshot | None, plan: PlanTerms, price_cop: int, today: date
+    current: MembershipSnapshot | None,
+    plan: PlanTerms,
+    price_cop: int,
+    today: date,
+    *,
+    after: date | None = None,
 ) -> RenewalPlan:
-    """Fechas y precio de la renovación (S3-B6, Q1; docstring del módulo). Pura."""
+    """Fechas y precio de la renovación (S3-B6, Q1; docstring del módulo). Pura.
+
+    `after` (S7-C2, S7-D14): el fin de una tiquetera agotada que aún no termina (recortada a hoy
+    por su última clase). La renovación empieza el día siguiente, no se cruza con ella."""
     inicio = next_start_for_renewal(current, today)
+    if after is not None:
+        inicio = max(inicio, after + timedelta(days=1))
     return RenewalPlan(
         start_date=inicio, end_date=compute_end_date(inicio, plan), agreed_price_cop=price_cop
     )
@@ -491,3 +501,60 @@ def transition_event(
     if new is MembershipStatus.expired:
         return "expired"
     return None
+
+
+# Descontar y devolver clases (S7-C2, US-160, S7-D14, S7-D25, S7-D29) -----------------------------
+
+
+_DESCUENTAN: Final = frozenset({MembershipStatus.active.value, MembershipStatus.expiring.value})
+
+
+@dataclass(frozen=True, slots=True)
+class ClassBalance:
+    """Lo que `consume_class` y `return_class` saben de una tiquetera (nunca el ORM)."""
+
+    start_date: date
+    end_date: date
+    classes_total: int
+    classes_remaining: int
+    original_end_date: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class ClassUsage:
+    """El resultado de descontar o devolver una clase: lo único que cambia de la fila."""
+
+    classes_remaining: int
+    end_date: date
+    original_end_date: date | None
+
+
+def consumes_class(status_at_checkin: str, classes_total: int | None) -> bool:
+    """Solo `active` o `expiring` con plan por clases descuentan (CA4): por días, congelada,
+    vencida, `pending_payment`, anulada o sin membresía no cambian nada."""
+    return classes_total is not None and status_at_checkin in _DESCUENTAN
+
+
+def consume_class(balance: ClassBalance, today: date) -> ClassUsage:
+    """Resta una clase, nunca por debajo de 0 (CA7). Al llegar a 0 recorta el fin a
+    `min(end_date, max(start_date, today))` (S7-D29): respeta `start_date <= end_date`, no alarga
+    una tiquetera que ya venció y guarda `original_end_date` solo si el fin cambió."""
+    restantes = max(0, balance.classes_remaining - 1)
+    if restantes > 0:
+        return ClassUsage(restantes, balance.end_date, balance.original_end_date)
+    recortado = min(balance.end_date, max(balance.start_date, today))
+    original = balance.original_end_date
+    if original is None and recortado != balance.end_date:
+        original = balance.end_date
+    return ClassUsage(0, recortado, original)
+
+
+def return_class(balance: ClassBalance, *, overlaps: bool) -> ClassUsage:
+    """Suma una clase sin pasar de `classes_total` (CA3). Si la tiquetera había sido recortada y el
+    rango original no se cruza con otra membresía del socio (`overlaps`), restaura el fin y
+    borra `original_end_date`; con solape deja el recorte (y el original) como están."""
+    restantes = min(balance.classes_total, balance.classes_remaining + 1)
+    original = balance.original_end_date
+    if original is None or overlaps:
+        return ClassUsage(restantes, balance.end_date, original)
+    return ClassUsage(restantes, original, None)

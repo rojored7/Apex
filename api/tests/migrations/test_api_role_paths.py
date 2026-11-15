@@ -303,3 +303,51 @@ def test_check_in_como_apex_api_inserta_asistencia_y_lee_lo_que_necesita(
     finally:
         classes_service.set_membership_port(anterior)
         propietario(apex_roles, LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)
+
+
+def test_apex_api_escribe_original_end_date(apex_roles: RolesDb) -> None:
+    """S7-C2 (`0029`): la última clase de una tiquetera recorta el fin y guarda `original_end_date`
+    con el `UPDATE` por columna de `apex_api`; el puerto REAL de memberships lee la membresía."""
+    from app.modules.classes import service as classes_service
+    from app.modules.classes.schemas import AttendanceCreate
+    from tests.conftest import LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS
+
+    socio, plan, membresia, sesion_id = uuid4(), uuid4(), uuid4(), uuid4()
+    hoy = date.today()
+    propietario(
+        apex_roles,
+        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
+        f"document_idx) VALUES ('{socio}', '{SYSTEM}', 'Ana', 'Tiquetera', 'apx1.doc', "
+        f"'idx-{socio}')",
+        "INSERT INTO plans.plans (id, created_by, name, price_cop, kind, duration_days, "
+        f"class_count) VALUES ('{plan}', '{SYSTEM}', 'Plan {plan}', 100000, 'classes', 60, 4)",
+        "INSERT INTO memberships.memberships (id, created_by, member_id, plan_id, "
+        "agreed_price_cop, start_date, end_date, classes_total, classes_remaining, status) "
+        f"VALUES ('{membresia}', '{SYSTEM}', '{socio}', '{plan}', 100000, "
+        f"'{hoy - timedelta(days=5)}', '{hoy + timedelta(days=50)}', 4, 1, 'active')",
+        "INSERT INTO classes.class_sessions (id, created_by, session_date, starts_at, "
+        f"duration_min, capacity) VALUES ('{sesion_id}', '{SYSTEM}', "
+        "(now() AT TIME ZONE 'America/Bogota')::date, now(), 60, 15)",
+    )
+
+    async def registrar(sesion: AsyncSession) -> list[str]:
+        datos = AttendanceCreate.model_validate({"session_id": sesion_id, "member_id": socio})
+        with actor_scope(SYSTEM_USER_ID):
+            salida = await classes_service.check_in(sesion, datos, by=SYSTEM_USER_ID)
+        return salida.flags
+
+    try:
+        assert _como_api(apex_roles, registrar) == []
+        fila = consultar(
+            apex_roles.dsn(),
+            "SELECT classes_remaining, status, end_date, original_end_date "
+            "FROM memberships.memberships WHERE id = $1",
+            membresia,
+        )[0]
+        assert fila["classes_remaining"] == 0 and fila["status"] == "expired"
+        assert fila["original_end_date"] == hoy + timedelta(days=50)
+        assert (
+            fila["end_date"] <= hoy
+        )  # recortado al día del consumo (Bogotá puede ir un día atrás)
+    finally:
+        propietario(apex_roles, LIMPIAR_ATTENDANCE, LIMPIAR_CLASS_SESSIONS, LIMPIAR_CLASS_SLOTS)

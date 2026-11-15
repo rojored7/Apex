@@ -23,10 +23,19 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 LIFECYCLE = (
     Path(__file__).resolve().parents[2] / "src" / "app" / "modules" / "memberships" / "lifecycle.py"
 )
-HANDLERS_ESPERADOS: frozenset[str] = frozenset({"on_payment_registered", "on_payment_voided"})
+HANDLERS_ESPERADOS: frozenset[str] = frozenset(
+    {
+        "on_attendance_removed",  # S7-C2 (S7-D14)
+        "on_member_checked_in",  # S7-C2 (S7-D14)
+        "on_payment_registered",
+        "on_payment_voided",
+    }
+)
 CASOS_DE_USO_ESPERADOS: frozenset[str] = frozenset({"freeze"})  # B2; B6 agrega `cancel`
 
 
@@ -150,6 +159,23 @@ def test_on_payment_voided_solo_bloquea_la_fila_del_evento() -> None:
     evento = _primer_parametro(funcion)
     sesion = funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
     assert candados_del_handler(fuente, "on_payment_voided") == [
+        f"lock_membership({sesion}, {evento}.membership_id)"
+    ]
+
+
+@pytest.mark.parametrize("nombre", ["on_member_checked_in", "on_attendance_removed"])
+def test_handlers_de_clases_solo_bloquean_la_fila_del_evento(nombre: str) -> None:
+    """S7-C2 (S7-D14): el emisor (`classes`) ya tiene el socio, la sesión y la membresía
+    bloqueados; el handler pide `lock_membership(session, event.membership_id)` una sola vez."""
+    fuente = LIFECYCLE.read_text(encoding="utf-8")
+    funcion = next(
+        n
+        for n in ast.parse(fuente).body
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == nombre
+    )
+    evento = _primer_parametro(funcion)
+    sesion = funcion.args.args[1].arg if len(funcion.args.args) > 1 else None
+    assert candados_del_handler(fuente, nombre) == [
         f"lock_membership({sesion}, {evento}.membership_id)"
     ]
 

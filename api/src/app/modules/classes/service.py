@@ -7,7 +7,8 @@ Reexporta lo público de los archivos privados del módulo:
 - `queries.py` y `sessions.py` (S7-B2, US-157): `list_sessions`, `get_session`, `create_extra`,
   `cancel_session`; `rules.py`: `parse_week`, `week_range`, `week_of`, `session_status`.
 - `attendance.py` (S7-C1, US-159): `check_in`, `list_attendance`, el puerto de membresías
-  (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`.
+  (`MembershipPort`, `set_membership_port`, `membership_port`, S7-D6) y `MemberCheckedIn`;
+  `AttendanceRemoved` (el evento nace en C2 para que memberships lo suscriba; lo emite C3).
 Los reportes llegan con R1.
 """
 
@@ -20,7 +21,12 @@ from app.modules.classes.attendance import (
     membership_port,
     set_membership_port,
 )
-from app.modules.classes.events import MemberCheckedIn, SessionCancelled, SessionGenerated
+from app.modules.classes.events import (
+    AttendanceRemoved,
+    MemberCheckedIn,
+    SessionCancelled,
+    SessionGenerated,
+)
 from app.modules.classes.exceptions import MembershipPortNotRegistered
 from app.modules.classes.queries import get_session, list_sessions
 from app.modules.classes.rules import (
@@ -42,6 +48,7 @@ from app.modules.classes.sessions import (
 from app.modules.classes.slots import create_slot, get_slot, list_slots, update_slot
 
 __all__ = [
+    "AttendanceRemoved",
     "GenerateResult",
     "MemberCheckedIn",
     "MembershipPort",

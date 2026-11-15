@@ -22,7 +22,7 @@ La renovación (`renew=True`, S3-B6) se prueba en `test_renew_service.py`; la ve
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -37,6 +37,8 @@ from app.core.context import actor_scope
 from app.core.crypto.keyring import Keyring
 from app.core.db import violated_constraint
 from app.core.errors import DomainError
+from app.modules.classes import service as classes_service
+from app.modules.classes.schemas import AttendanceCreate
 from app.modules.members.exceptions import MemberNotFound
 from app.modules.memberships import sell as sell_module
 from app.modules.memberships import service
@@ -51,7 +53,8 @@ from app.modules.memberships.exceptions import (
 )
 from app.modules.memberships.models import EXCLUDE_NAME
 from app.modules.memberships.service import MembershipSold
-from tests.conftest import CapturarEventos
+from tests.conftest import CapturarEventos, CrearUsuario
+from tests.factories.classes import make_session
 from tests.factories.members import make_member, unique_document
 from tests.factories.memberships import make_membership
 from tests.factories.plans import make_plan
@@ -120,15 +123,43 @@ async def test_vender_una_tiquetera_copia_las_clases(
     assert fila is not None and (fila["classes_total"], fila["classes_remaining"]) == (12, 12)
 
 
-async def test_una_tiquetera_agotada_con_fin_futuro_hoy_bloquea_la_compra(
+async def test_una_tiquetera_agotada_por_check_in_no_bloquea_la_compra(
+    session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock, usuario_real: CrearUsuario
+) -> None:
+    """S7-D14 (invierte la prueba de PM2, S3-D92): la última clase recorta `end_date` al día del
+    consumo (hoy, 2026-10-21) y guarda `original_end_date`. La renovación que calcula el servidor
+    empieza al día siguiente (2026-10-22): ya no choca con la tiquetera agotada."""
+    coach = await usuario_real("coach")
+    socio = await make_member(session)
+    plan = await make_plan(
+        session, name="Tiquetera agotada", kind="classes", class_count=4, duration_days=60
+    )
+    agotada = await make_membership(
+        session,
+        socio,
+        plan,
+        status="active",
+        start=date(2026, 10, 1),
+        end=date(2026, 11, 30),
+        classes_remaining=1,
+    )
+    clase = await make_session(session, starts_at=datetime(2026, 10, 21, 15, 10, tzinfo=UTC))
+    datos = AttendanceCreate.model_validate({"session_id": clase.id, "member_id": socio.id})
+    with actor_scope(coach.id):
+        await classes_service.check_in(session, datos, by=coach.id)
+        await session.commit()
+    fila = await leer_membresia(session, agotada.id)
+    assert fila is not None and fila["classes_remaining"] == 0
+    assert fila["end_date"] == date(2026, 10, 21)
+    nueva = await vender(session, ACTOR, member_id=socio.id, plan_id=plan.id, renew=True)
+    assert nueva.start_date == date(2026, 10, 22)
+
+
+async def test_una_tiquetera_agotada_sin_recorte_heredada_sigue_bloqueando(
     session: AsyncSession, bus_listo: Keyring, reloj: FrozenClock
 ) -> None:
-    """PM2 de la revisión de Fase 4 del Sprint 3 (S3-D92): comportamiento ACTUAL, aceptado con
-    dueño v0.4. Con `classes_remaining = 0` la tiquetera está `expired` (D15) y no cuenta como
-    vigente (`classify_open`), pero su rango sigue hasta `end_date` y `find_overlap` (y la
-    `EXCLUDE`) lo cruzan: vender hoy da `MembershipOverlap` con su `existing_id`. Hoy nada
-    descuenta clases; la regla de v0.4 (módulo `classes`) recorta `end_date` al día en que se
-    agota la última clase, y ahí esta prueba cambia a "vende sin choque"."""
+    """Caracterización (S3-D92, S7-D30): una fila heredada con `classes_remaining = 0` y fin
+    futuro, sembrada sin recorte, sigue cruzándose con la compra de hoy (`MembershipOverlap`)."""
     socio = await make_member(session)
     plan = await make_plan(
         session, name="Tiquetera agotada", kind="classes", class_count=4, duration_days=60

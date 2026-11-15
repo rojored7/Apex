@@ -155,3 +155,20 @@ def test_los_suscriptores_de_sesion_no_toman_candados() -> None:
         for handler in events.subscribers_for(tipo):
             fuente = inspect.getsource(handler)
             assert not [p for p in prohibidos if p in fuente], f"{tipo.__name__}: {handler}"
+
+
+def test_los_handlers_de_check_in_y_de_quitar_solo_bloquean_la_fila_del_emisor() -> None:
+    """Revisión de C1 (punto 2, S7-D14): `MemberCheckedIn` y `AttendanceRemoved` se emiten con el
+    socio, la sesión y la fila de la membresía ya bloqueados. Sus suscriptores solo pueden volver
+    a pedir `lock_membership` de ESA fila (la prueba de arquitectura la ata a el id del evento);
+    nunca `lock_member`, `FOR UPDATE` propio ni candados de aviso."""
+    prohibidos = ("with_for_update", "advisory", "lock_member(", "FOR UPDATE")
+    # El módulo de memberships se importa para que sus handlers estén suscritos.
+    from app.modules.memberships import service as _memberships  # noqa: F401
+
+    for tipo in (service.MemberCheckedIn, service.AttendanceRemoved):
+        handlers = [h for h in events.subscribers_for(tipo) if "memberships" in h.__module__]
+        assert handlers, f"{tipo.__name__}: memberships no está suscrito"
+        for handler in handlers:
+            fuente = inspect.getsource(handler)
+            assert not [p for p in prohibidos if p in fuente], f"{tipo.__name__}: {handler}"

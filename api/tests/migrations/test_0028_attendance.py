@@ -10,11 +10,13 @@ cambia `removed_*` y `updated_at`, una vez; nunca se «desborra») y los trigger
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -75,7 +77,7 @@ ALTA_SESION = (
 ALTA_ASISTENCIA = (
     "INSERT INTO classes.attendance (id, created_by, session_id, member_id, membership_id, "
     "membership_status_at_checkin, flags, checked_in_at, checked_in_by, removed_at, removed_by, "
-    "removed_reason) VALUES ($1, $2, $3, $4, NULL, $5, $6::text[], $7, $2, $8, $9, $10)"
+    "removed_reason) VALUES ($1, $2, $3, $4, $11, $5, $6::text[], $7, $2, $8, $9, $10)"
 )
 
 
@@ -94,6 +96,8 @@ def _asistencia(sid: UUID, **cambios: Any) -> Paso:
         "reason": None,
     }
     v.update(cambios)
+    # `0029` (revisión de C1): sin membresía solo con estado `none`; con otro estado, con id.
+    v.setdefault("membership", None if v["status"] == "none" else uuid4())
     return ALTA_ASISTENCIA, [
         v["id"],
         SYSTEM_USER_ID,
@@ -105,6 +109,7 @@ def _asistencia(sid: UUID, **cambios: Any) -> Paso:
         v["removed_at"],
         v["removed_by"],
         v["reason"],
+        v["membership"],
     ]
 
 
@@ -388,3 +393,37 @@ def test_downgrade_a_0027_quita_asistencia_y_el_check_y_deja_las_sesiones(
     finally:
         command.upgrade(alembic_config, "head")
     assert existe(base, TABLA)
+
+
+def test_upgrade_desde_0027_falla_y_revierte_con_una_sesion_desfasada(
+    alembic_config: Config, base: str
+) -> None:
+    """Revisión de C1 (punto 4): si una sesión de `0027` tiene `session_date` distinta de la
+    fecha de Bogotá de `starts_at`, `0028` no se aplica: falla el CHECK y la transacción
+    transaccional de Alembic deja todo como en `0027` (sin tabla de asistencia, sin CHECK)."""
+    # 2026-10-26 03:00Z es el 25 a las 22:00 en Bogotá: la fecha 26 no cuadra.
+    desfasada = datetime(2026, 10, 26, 3, 0, tzinfo=UTC)
+    try:
+        command.downgrade(alembic_config, PADRE)
+        _ejecutar_con_commit(base, [(ALTA_SESION, [uuid4(), SYSTEM_USER_ID, desfasada])])
+        with pytest.raises(Exception, match="ck_class_sessions_session_date_bogota"):
+            command.upgrade(alembic_config, REVISION)
+        assert not existe(base, TABLA)
+        version = consultar(base, "SELECT version_num FROM public.alembic_version")
+        assert [f["version_num"] for f in version] == [PADRE]
+    finally:
+        _ejecutar(base, LIMPIAR_CLASS_SESSIONS)
+        command.upgrade(alembic_config, "head")
+    assert existe(base, TABLA)
+
+
+def _ejecutar_con_commit(url: str, pasos: list[Paso]) -> None:
+    async def correr() -> None:
+        conexion = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://", 1))
+        try:
+            for sql, args in pasos:
+                await conexion.execute(sql, *args)
+        finally:
+            await conexion.close()
+
+    asyncio.run(correr())

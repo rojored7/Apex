@@ -75,6 +75,7 @@ from app.core.errors import DomainError
 from app.core.events import emit
 from app.core.locks import lock_member
 from app.core.security import Role
+from app.modules.classes.schemas import CheckinMembership
 from app.modules.members import service as members_service
 from app.modules.members.schemas import MemberRef
 from app.modules.memberships.events import MembershipSold
@@ -95,10 +96,12 @@ from app.modules.memberships.rules import (
     RenewalPlan,
     classify_open,
     compute_end_date,
+    compute_status,
     effective,
     find_overlap,
     plan_renewal,
     prefix_field,
+    resolve_member_membership,
     snapshot,
     validate_start_date,
 )
@@ -273,7 +276,18 @@ async def _renewal_for(
     clasificadas = classify_open(abiertas, ctx.today)
     if clasificadas.future is not None:
         raise FutureMembershipExists(existing_id=clasificadas.future.id)
-    renovacion = plan_renewal(clasificadas.current, _terms(ctx.plan), ctx.plan.price_cop, ctx.today)
+    agotadas = [
+        m.end_date
+        for m in abiertas
+        if m.status is MembershipStatus.expired and m.end_date >= ctx.today
+    ]
+    renovacion = plan_renewal(
+        clasificadas.current,
+        _terms(ctx.plan),
+        ctx.plan.price_cop,
+        ctx.today,
+        after=max(agotadas, default=None),
+    )
     choque = find_overlap(renovacion.start_date, renovacion.end_date, abiertas)
     if choque is not None:
         raise MembershipOverlap(existing_id=choque)
@@ -413,3 +427,45 @@ def reraise_with_prefix(error: DomainError, prefix: str) -> NoReturn:
     copia.headers = dict(error.headers)
     copia.field = prefix_field(prefix, error.field)
     raise copia from error
+
+
+_SIN_MEMBRESIA = CheckinMembership(
+    membership_id=None, status="none", plan_name=None, end_date=None, classes_remaining=None
+)
+
+
+class ClassesPort:
+    """El puerto que `classes` usa para leer y bloquear la membresía del socio (S7-D6, S7-D25).
+
+    `checkin_view`: entre las no anuladas con `start_date <= on_date` (con `on_date =
+    min(session_date, hoy)` una sesión futura nunca usa una tiquetera que no empezó), la que
+    decide el estado del socio (`rules.resolve_member_membership`), BLOQUEADA con
+    `lock_membership` antes de que `classes` haga su primer flush; el estado se recalcula con la
+    fila ya bloqueada. Sin membresía utilizable, estado `none`."""
+
+    async def checkin_view(
+        self, session: AsyncSession, member_id: UUID, *, on_date: date
+    ) -> CheckinMembership:
+        politica = await settings_service.memberships_policy(session)
+        abiertas = await open_memberships(session, member_id, on_date, politica.expiring_days)
+        empezadas = [m for m in abiertas if m.start_date <= on_date]
+        _, decide = resolve_member_membership(empezadas, on_date)
+        if decide is None:
+            return _SIN_MEMBRESIA
+        fila = await lock_membership(session, decide.id)
+        if fila is None or fila.status == MembershipStatus.cancelled.value:
+            return _SIN_MEMBRESIA
+        ventanas = (await _load_freezes_for(session, [fila.id]))[fila.id]
+        estado = compute_status(snapshot(fila), on_date, politica.expiring_days, ventanas)
+        planes = await plans_service.names_for(session, [fila.plan_id])
+        return CheckinMembership(
+            membership_id=fila.id,
+            status=estado.value,
+            plan_name=planes.get(fila.plan_id),
+            end_date=fila.end_date,
+            classes_remaining=fila.classes_remaining,
+        )
+
+    async def lock(self, session: AsyncSession, membership_id: UUID) -> None:
+        """Bloquea la fila de la membresía (C3 la pide antes de emitir `AttendanceRemoved`)."""
+        await lock_membership(session, membership_id)

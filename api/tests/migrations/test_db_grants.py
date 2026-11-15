@@ -236,6 +236,7 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
                 {
                     "end_date",
                     "classes_remaining",
+                    "original_end_date",  # S7-C2 (0029, S7-D29)
                     "status",
                     "cancel_reason",
                     "cancelled_by",

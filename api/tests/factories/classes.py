@@ -74,9 +74,16 @@ class FakeMembershipPort:
 
     def __init__(self, status: str = "active", *, with_membership: bool = True) -> None:
         self.status = status
-        self.membership_id: UUID | None = uuid4() if with_membership and status != "none" else None
+        self._with_membership = with_membership
+        self._membership_id = uuid4()
         self.views: list[tuple[UUID, date]] = []
         self.locked: list[UUID] = []
+
+    @property
+    def membership_id(self) -> UUID | None:
+        """Sin membresía con estado `none` (el par de `ck_attendance_membership_pair`, `0029`):
+        la prueba puede cambiar `.status` después de crear el doble."""
+        return self._membership_id if self._with_membership and self.status != "none" else None
 
     async def checkin_view(
         self, session: AsyncSession, member_id: UUID, *, on_date: date

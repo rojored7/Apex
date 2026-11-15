@@ -59,6 +59,14 @@ sujeto); `emit(MembershipCancelled(membership_id, member_id, reason_len))` (el l
 texto, S3-D70). No toca pagos ni congelaciones. Una anulada es terminal: `guard_identity` rechaza
 cualquier cambio posterior (S3-D48).
 
+`on_member_checked_in(event, session)` y `on_attendance_removed(event, session)` (S7-C2, US-160;
+S7-D14, S7-D25, S7-D29, L-5): descuentan y devuelven una clase de la tiquetera que decidió el
+check-in (`event.membership_id`; la fila que `classes` ya bloqueó por el puerto). Solo `active` o
+`expiring` con plan por clases descuentan (`rules.consumes_class`); `rules.consume_class` recorta
+el fin al agotar y `rules.return_class` lo restaura si no hay solape. Recalculan `status` con
+`compute_status` y emiten `ClassConsumed`, `ClassReturned` y, al llegar a 0, `MembershipExpired`.
+Sobre una membresía anulada no hacen nada.
+
 Regla de candados (S3-D43, `tests/architecture/test_handlers_no_new_locks.py`): un handler `on_*`
 solo vuelve a pedir la fila que el emisor ya tiene (`sell.lock_membership` con
 `event.membership_id`); nunca el candado del socio ni otro `FOR UPDATE`. `freeze` no es handler:
@@ -81,11 +89,15 @@ from app.core.context import get_actor
 from app.core.db import violated_constraint
 from app.core.events import emit
 from app.core.locks import lock_member
+from app.modules.classes import service as classes_service
 from app.modules.members import service as members_service
 from app.modules.memberships.events import (
+    ClassConsumed,
+    ClassReturned,
     MembershipActivated,
     MembershipActivationReverted,
     MembershipCancelled,
+    MembershipExpired,
     MembershipFrozen,
 )
 from app.modules.memberships.exceptions import (
@@ -103,6 +115,8 @@ from app.modules.memberships.models import (
 )
 from app.modules.memberships.queries import _freeze_rows_for, _load_freezes_for, membership_out
 from app.modules.memberships.rules import (
+    ClassBalance,
+    ClassUsage,
     FreezeError,
     FreezeLimits,
     FreezeOutcome,
@@ -110,9 +124,12 @@ from app.modules.memberships.rules import (
     MembershipStatus,
     apply_freeze,
     compute_status,
+    consume_class,
+    consumes_class,
     covers,
     find_overlap,
     normalize_cancel_reason,
+    return_class,
     should_revert,
     snapshot,
 )
@@ -320,3 +337,110 @@ async def cancel(session: AsyncSession, *, membership_id: UUID, reason: str) -> 
         await emit(evento, session)
     filas = (await _freeze_rows_for(session, [membresia.id]))[membresia.id]
     return await membership_out(session, membresia, filas)
+
+
+def _usable_class_row(membresia: Membership | None, status_at_checkin: str) -> Membership | None:
+    """La tiquetera del evento (ya bloqueada por el handler con `lock_membership`) si descuenta o
+    devuelve una clase: existe, no está anulada (L-5), es por clases y su estado del check-in era
+    `active` o `expiring` (CA4)."""
+    if membresia is None or membresia.status == MembershipStatus.cancelled.value:
+        return None
+    if membresia.classes_remaining is None or membresia.classes_total is None:
+        return None
+    if not consumes_class(status_at_checkin, membresia.classes_total):
+        return None
+    return membresia
+
+
+def _balance(membresia: Membership) -> ClassBalance:
+    """El `ClassBalance` de una tiquetera (`classes_total` y `classes_remaining` no nulos)."""
+    return ClassBalance(
+        start_date=membresia.start_date,
+        end_date=membresia.end_date,
+        classes_total=membresia.classes_total or 0,
+        classes_remaining=membresia.classes_remaining or 0,
+        original_end_date=membresia.original_end_date,
+    )
+
+
+async def _store_usage(
+    session: AsyncSession, membresia: Membership, uso: ClassUsage, hoy: date
+) -> MembershipStatus:
+    """Aplica `uso` a la fila, recalcula el estado con `compute_status` a `hoy` (devolver una
+    clase reactiva una vencida cuyo fin no pasó, N-40) y hace `flush` (auditoría `update` del
+    socio). El 23P01 de la `EXCLUDE` se traduce como en la venta."""
+    politica = await settings_service.memberships_policy(session)
+    ventanas = (await _load_freezes_for(session, [membresia.id]))[membresia.id]
+    membresia.classes_remaining = uso.classes_remaining
+    membresia.end_date = uso.end_date
+    membresia.original_end_date = uso.original_end_date
+    estado = compute_status(snapshot(membresia), hoy, politica.expiring_days, ventanas)
+    membresia.status = estado.value
+    try:
+        await session.flush()
+    except IntegrityError as error:
+        _translate_flush_error(error)
+    return estado
+
+
+async def on_member_checked_in(
+    event: classes_service.MemberCheckedIn, session: AsyncSession
+) -> None:
+    """Descuenta una clase de la tiquetera que decidió el check-in (S7-C2, US-160, S7-D14).
+
+    Sin fila utilizable no hace nada (por días, congelada, vencida, `pending_payment`, anulada o
+    sin membresía). Al llegar a 0 recorta el fin (`rules.consume_class`, S7-D29) y emite
+    `MembershipExpired(on_date=hoy)`. Un fallo revierte el check-in completo (CA5)."""
+    if event.membership_id is None:
+        return
+    fila = await lock_membership(session, event.membership_id)
+    membresia = _usable_class_row(fila, event.membership_status)
+    if membresia is None or membresia.classes_remaining == 0:
+        return
+    hoy = current_clock().today_bogota()
+    uso = consume_class(_balance(membresia), hoy)
+    estado = await _store_usage(session, membresia, uso, hoy)
+    consumida = ClassConsumed(
+        membership_id=membresia.id,
+        member_id=membresia.member_id,
+        classes_remaining=uso.classes_remaining,
+    )
+    await emit(consumida, session)
+    if uso.classes_remaining == 0 and estado is MembershipStatus.expired:
+        vencida = MembershipExpired(
+            membership_id=membresia.id,
+            member_id=membresia.member_id,
+            end_date=membresia.end_date,
+            on_date=hoy,
+        )
+        await emit(vencida, session)
+
+
+async def on_attendance_removed(
+    event: classes_service.AttendanceRemoved, session: AsyncSession
+) -> None:
+    """Devuelve la clase que descontó la asistencia quitada (S7-C2, US-160, S7-D14).
+
+    Sin pasar de `classes_total`. Si la tiquetera estaba recortada y su rango original no se
+    cruza con otra membresía del socio, restaura el fin; con solape deja el recorte."""
+    if event.membership_id is None:
+        return
+    fila = await lock_membership(session, event.membership_id)
+    membresia = _usable_class_row(fila, event.membership_status)
+    if membresia is None or membresia.classes_remaining == membresia.classes_total:
+        return
+    hoy = current_clock().today_bogota()
+    solapa = False
+    if membresia.original_end_date is not None:
+        politica = await settings_service.memberships_policy(session)
+        abiertas = await open_memberships(session, membresia.member_id, hoy, politica.expiring_days)
+        otras = [m for m in abiertas if m.id != membresia.id]
+        solapa = find_overlap(membresia.start_date, membresia.original_end_date, otras) is not None
+    uso = return_class(_balance(membresia), overlaps=solapa)
+    await _store_usage(session, membresia, uso, hoy)
+    devuelta = ClassReturned(
+        membership_id=membresia.id,
+        member_id=membresia.member_id,
+        classes_remaining=uso.classes_remaining,
+    )
+    await emit(devuelta, session)

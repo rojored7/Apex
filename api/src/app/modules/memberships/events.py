@@ -103,3 +103,22 @@ class MembershipExpired(DomainEvent):
     member_id: UUID
     end_date: date
     on_date: date
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ClassConsumed(DomainEvent):
+    """Un check-in descontó una clase de una tiquetera (S7-C2, US-160, S7-D14). Solo ids y el
+    saldo que queda."""
+
+    membership_id: UUID
+    member_id: UUID
+    classes_remaining: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ClassReturned(DomainEvent):
+    """Quitar una asistencia devolvió la clase que había descontado (S7-C2, US-160, S7-D14)."""
+
+    membership_id: UUID
+    member_id: UUID
+    classes_remaining: int

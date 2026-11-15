@@ -45,3 +45,18 @@ class MemberCheckedIn(DomainEvent):
     membership_id: UUID | None
     membership_status: str
     flags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AttendanceRemoved(DomainEvent):
+    """Una asistencia se quitó (S7-D13, US-161): memberships devuelve la clase que descontó.
+
+    `membership_id` es la membresía que decidió el check-in (nula si no había) y
+    `membership_status` el estado que tenía entonces: solo `active` o `expiring` descontaron
+    (S7-D14). Sin nombres ni el motivo, que es texto libre (S3-D70)."""
+
+    attendance_id: UUID
+    session_id: UUID
+    member_id: UUID
+    membership_id: UUID | None
+    membership_status: str

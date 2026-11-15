@@ -9,7 +9,7 @@ import { axe } from "vitest-axe";
 import { ENABLED_FEATURES, type Feature } from "../../../config/features";
 import { SessionRoleProvider } from "../../../core/auth/SessionRole";
 import { createAppRouter } from "../../../routes";
-import { NOW, coachDashboardBody, mockDashboard, ok, renderDashboard } from "../../../test/dashboard";
+import { NOW, coachDashboardBody, dashboardBody, mockDashboard, ok, renderDashboard } from "../../../test/dashboard";
 import { testQueryClient } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import InicioPage from "./InicioPage";
@@ -52,6 +52,7 @@ describe("InicioPage", () => {
     expect(await screen.findByRole("link", { name: "Socios al día: 120" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Membresías e ingresos" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Próximamente en Inicio" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Clases" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Avisos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Por avisar hoy: 9" })).toHaveAttribute("href", "/avisos/hoy");
     expect(within(screen.getByRole("list", { name: "Últimos movimientos" })).getAllByRole("listitem")).toHaveLength(10);
@@ -65,6 +66,24 @@ describe("InicioPage", () => {
     await screen.findByRole("link", { name: "Socios al día: 120" });
     expect(screen.getByRole("link", { name: "+ Nuevo socio" })).toHaveAttribute("href", "/socios/nuevo");
     expect(screen.getByRole("link", { name: "Vender membresía" })).toHaveAttribute("href", "/membresias/vender");
+  });
+
+  it("S7-F6: el encabezado tiene Check-in hacia la próxima clase de hoy", async () => {
+    const sesion = (n: number, startsAt: string) => ({ id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa0${String(n)}`, starts_at: startsAt, coach_name: null, capacity: 12, attendance_count: 0, status: "scheduled" as const });
+    mockDashboard(ok(dashboardBody({ sessions_today: [sesion(1, "2026-10-20T11:00:00Z"), sesion(2, "2026-10-20T19:00:00Z"), sesion(3, "2026-10-20T22:00:00Z")] })));
+    renderDashboard(<InicioPage />);
+
+    // NOW = 2:32 p. m. en Bogotá: la de las 2:00 p. m. sigue en curso.
+    const link = await screen.findByRole("link", { name: "Check-in" });
+    expect(link).toHaveAttribute("href", "/clases/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02/checkin");
+  });
+
+  it("S7-F6: sin clases pendientes hoy el encabezado no ofrece Check-in", async () => {
+    mockDashboard(ok());
+    renderDashboard(<InicioPage />);
+
+    await screen.findByRole("link", { name: "Socios al día: 120" });
+    expect(screen.queryByRole("link", { name: "Check-in" })).not.toBeInTheDocument();
   });
 
   it("el coach también vende y registra socios, y ve ingresos como Solo administración", async () => {
@@ -96,7 +115,7 @@ describe("InicioPage", () => {
     expect(api.callsTo("GET /dashboard")).toHaveLength(0);
   });
 
-  it("el código nombra el DESIGN-GAP del saludo y de los accesos que faltan", () => {
+  it("el código nombra el DESIGN-GAP del saludo y de Registrar pago", () => {
     const gaps = Object.values(SOURCE)
       .join("\n")
       .split("\n")
@@ -104,7 +123,8 @@ describe("InicioPage", () => {
       .join("\n");
 
     expect(gaps).toContain("Hola, Ana");
-    expect(gaps).toContain("Check-in");
+    expect(gaps).toContain("Registrar pago");
+    expect(gaps).not.toContain("Check-in");
   });
 
   it("es accesible", async () => {

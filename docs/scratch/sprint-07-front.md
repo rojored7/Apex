@@ -145,3 +145,12 @@ Verde:
 DESIGN-GAP: la pantalla de Asistencia no tiene diseño (se arma con FilterBar, DataTable y Pagination); «racha»; «Esta semana» y «Hace más de 10 días» del select (el api filtra 7/14/30/60 días o nunca).
 Decisión: la pestaña de la ficha lee la última asistencia y el conteo de 30 días con `GET /attendance?member_id` (`limit=1`, el `total` es el conteo) porque `/members/{id}/attendance` no filtra por fecha.
 Tropiezos del entorno: heredocs de Git Bash con comillas fallaron otra vez (se usó Write); sin Python en el PATH.
+
+## S7-F6 · Inicio con clases de hoy y asistencia de la semana (US-164, BRECHAS 22, 23, 30 y 15.10)
+
+Rojo medido (stubs con NotImplementedError): 2 archivos nuevos (ClassesKpis y sessionsToday), 19 failed; InicioPage 3 failed (región Clases, botón Check-in, DESIGN-GAP).
+Verde:
+- `features/dashboard/components/ClassesKpis.tsx`: «Hoy en el box» (hora de Bogotá, coach u «Open box», `n / cap`, «Llena», Check-in por sesión programada, «Terminó»/«Cancelada») y «Asistencia de la semana» (conteo, nota de marcadas, enlace a `/clases/asistencia`).
+- `sessionsToday.ts`: `nextCheckInSession` (programada, hasta 60 min después de empezar). `InicioPage`: acción «Check-in» hacia esa sesión, oculta si no queda ninguna.
+- `shared/lib/routes.ts` suma `checkInPath` (la feature classes lo reexporta como `checkInHref`). `FutureKpis` queda solo con el WOD.
+DESIGN-GAP: gráfico por día, promedio por clase y socios distintos; la duración no viene en `sessions_today` (ventana fija de 60 min).

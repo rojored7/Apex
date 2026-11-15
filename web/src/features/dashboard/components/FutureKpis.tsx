@@ -2,28 +2,13 @@
 // hoy" y "Sin consentimiento" ya tienen dato y viven en NotificationKpis. GET /dashboard
 // las manda en null y KpiCard (del kit, sin cambios) dice "Disponible en v0.x", nunca 0 (EP-12,
 // S4A-D33); cuando llegue el dato, la misma tarjeta lo muestra.
-// DESIGN-GAP: "Hoy en el box" (clases de hoy con cupos y Check-in) llega con clases en v0.4; aquí solo
-// la tarjeta con el conteo de `sessions_today` (S7-R3: lista; el detalle lo hace F6).
-// DESIGN-GAP: "Asistencia de la semana" (gráfico por día, promedio y socios distintos) llega en v0.4;
-// aquí solo `attendance_week.count` (S7-R3: objeto con `count` y `flagged_count`).
+// S7-F6: "Hoy en el box" y "Asistencia de la semana" ya tienen dato y viven en ClassesKpis.
 // DESIGN-GAP: "WOD de hoy" (nombre, Ver y Registrar resultados) llega en v0.5; aquí solo `wod_today`.
 // Si GET /dashboard falla, las tarjetas dicen "No se pudo cargar" sin reintento propio: el aviso y el
 // botón "Reintentar" están en KpiGrid (una sola petición para toda la pantalla).
 import { KpiCard } from "../../../shared/ui/KpiCard";
 import { useDashboard } from "../api";
-import type { DashboardView } from "../schemas";
 import styles from "./FutureKpis.module.css";
-
-interface FutureCount {
-  label: string;
-  version: string;
-  value: (data: DashboardView) => number | null;
-}
-
-const COUNTS: readonly FutureCount[] = [
-  { label: "Hoy en el box", version: "v0.4", value: (d) => d.sessions_today.length },
-  { label: "Asistencia de la semana", version: "v0.4", value: (d) => d.attendance_week.count },
-];
 
 const WOD = { label: "WOD de hoy", version: "v0.5" } as const;
 
@@ -47,9 +32,6 @@ export function FutureKpis() {
         Próximamente en Inicio
       </h2>
       <div className={styles.grid}>
-        {COUNTS.map((card) => (
-          <KpiCard key={card.label} label={card.label} kind="count" value={data ? card.value(data) : null} availableIn={card.version} isLoading={loading} error={failed} />
-        ))}
         {data?.wod_today ? (
           <WodCard name={data.wod_today} />
         ) : (

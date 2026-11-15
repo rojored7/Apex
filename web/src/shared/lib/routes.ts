@@ -30,3 +30,8 @@ export function sellHref(memberId: string): string {
 export function renewHref(memberId: string): string {
   return `${SELL_PATH}?${new URLSearchParams({ [SELL_MEMBER_PARAM]: memberId, [SELL_RENEW_PARAM]: "1" }).toString()}`;
 }
+
+/** /clases/:id/checkin: el check-in de una sesión (S7-F6: lo usan Inicio y la feature de clases). */
+export function checkInPath(sessionId: string): string {
+  return `/clases/${encodeURIComponent(sessionId)}/checkin`;
+}

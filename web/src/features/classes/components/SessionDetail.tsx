@@ -4,6 +4,7 @@
 // (coach, cupo, hora)»: el api no tiene editar sesión (solo cancelar y crear extra), así que ninguno de los tres se dibuja.
 import { Link } from "react-router";
 import { useId } from "react";
+import { checkInPath } from "../../../shared/lib/routes";
 import buttonStyles from "../../../shared/ui/Button.module.css";
 import { Button } from "../../../shared/ui/Button";
 import { cx } from "../../../shared/ui/cx";
@@ -21,7 +22,7 @@ export interface SessionDetailProps {
 export const detailTitle = (session: SessionView): string =>
   `Sesión · ${shortDate(session.session_date)} · ${formatTime24(session.starts_at)} · ${session.coach_name ?? OPEN_BOX}`;
 
-export const checkInHref = (id: string): string => `/clases/${encodeURIComponent(id)}/checkin`;
+export const checkInHref = checkInPath;
 
 export function SessionDetail({ session, onCancel }: SessionDetailProps) {
   const titleId = useId();

@@ -15,29 +15,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const SESIONES = [1, 2, 3, 4].map((n) => ({
-  id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa0${String(n)}`,
-  starts_at: "2026-10-21T11:00:00Z",
-  coach_name: null,
-  capacity: 15,
-  attendance_count: n,
-  status: "scheduled" as const,
-}));
-
+// S7-F6: Hoy en el box y Asistencia de la semana viven en ClassesKpis.
 const CARDS = [
   ["WOD de hoy", "Disponible en v0.5"],
 ] as const;
 
 describe("FutureKpis", () => {
-  it("S7-R3: asistencia y sesiones ya no son futuras: sin clases muestran 0 y el conteo de la semana", async () => {
-    mockDashboard(ok());
-    renderDashboard(<FutureKpis />);
-
-    await screen.findByText("41");
-    expect(within(screen.getByRole("group", { name: "Hoy en el box" })).getByText("0")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Asistencia de la semana" })).getByText("41")).toBeInTheDocument();
-  });
-
   it.each(CARDS)("%s en null dice %s y nunca 0", async (label, text) => {
     mockDashboard(ok());
     renderDashboard(<FutureKpis />);
@@ -49,12 +32,10 @@ describe("FutureKpis", () => {
   });
 
   it("con valor, lo muestra", async () => {
-    mockDashboard(ok(dashboardBody({ sessions_today: SESIONES, attendance_week: { count: 1250, flagged_count: 7 }, wod_today: "Helen" })));
+    mockDashboard(ok(dashboardBody({ wod_today: "Helen" })));
     renderDashboard(<FutureKpis />);
 
     await screen.findByText("Helen");
-    expect(within(screen.getByRole("group", { name: "Hoy en el box" })).getByText("4")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Asistencia de la semana" })).getByText("1.250")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "WOD de hoy" })).getByText("Helen")).toBeInTheDocument();
     expect(screen.queryByText(/Disponible en/)).not.toBeInTheDocument();
   });
@@ -64,14 +45,15 @@ describe("FutureKpis", () => {
     renderDashboard(<FutureKpis />);
 
     const region = await screen.findByRole("region", { name: "Próximamente en Inicio" });
-    expect(within(region).getAllByRole("group")).toHaveLength(3);
+    expect(within(region).getAllByRole("group")).toHaveLength(1);
   });
 
   it("S5-F3: ya no trae Por avisar hoy ni Sin autorización (viven en Avisos)", async () => {
     mockDashboard(ok());
     renderDashboard(<FutureKpis />);
 
-    await screen.findByRole("group", { name: "Hoy en el box" });
+    await screen.findByRole("group", { name: "WOD de hoy" });
+    expect(screen.queryByRole("group", { name: "Hoy en el box" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Por avisar hoy" })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Sin autorización" })).not.toBeInTheDocument();
   });
@@ -80,7 +62,7 @@ describe("FutureKpis", () => {
     mockDashboard(serverError);
     renderDashboard(<FutureKpis />);
 
-    expect(await screen.findAllByText("No se pudo cargar")).toHaveLength(3);
+    expect(await screen.findAllByText("No se pudo cargar")).toHaveLength(1);
     expect(screen.queryByText(/Disponible en/)).not.toBeInTheDocument();
   });
 
@@ -91,7 +73,7 @@ describe("FutureKpis", () => {
       .filter((line) => line.includes("DESIGN-GAP:"))
       .join("\n");
 
-    for (const topic of ["Hoy en el box", "Asistencia", "WOD de hoy"]) {
+    for (const topic of ["WOD de hoy"]) {
       expect(gaps).toContain(topic);
     }
   });
@@ -99,7 +81,7 @@ describe("FutureKpis", () => {
   it("es accesible", async () => {
     mockDashboard(ok());
     const { container } = renderDashboard(<FutureKpis />);
-    await screen.findByRole("group", { name: "Hoy en el box" });
+    await screen.findByText("Disponible en v0.5");
     expect(await axe(container)).toHaveNoViolations();
   });
 });

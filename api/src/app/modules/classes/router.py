@@ -216,6 +216,8 @@ async def list_attendance(
         raise ClassValidationError(
             message="En modo quiosco indica la sesión (`session_id`).", field="session_id"
         )
+    if principal.kiosk and session_id is not None:  # solo hoy o ayer (S7-D42, L-2)
+        await service.ensure_kiosk_session(session, session_id)
     filters = AttendanceListQuery(
         member_id=member_id,
         session_id=session_id,

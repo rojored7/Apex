@@ -29,7 +29,12 @@ from app.modules.auth.events import (
     UserCreated,
     UserLocked,
 )
-from app.modules.auth.kiosk import enter_kiosk, exit_kiosk, kiosk_path_of
+from app.modules.auth.kiosk import (
+    enter_kiosk,
+    exit_kiosk,
+    kiosk_path_of,
+    set_kiosk_session_info,
+)
 from app.modules.auth.links import (
     FORGOT_ACCOUNT_BUCKET,
     FORGOT_ACCOUNT_LIMIT,
@@ -128,6 +133,7 @@ __all__ = [
     "revoke_sessions",
     "search_user_ids",
     "seed_admin",
+    "set_kiosk_session_info",
     "unlock",
     "update_user",
     "user_names_for",

@@ -8,6 +8,8 @@ proyecto), no nombra `<esquema>.<tabla>` de otro esquema de módulo (`members`, 
 `memberships`, `payments`, `auth`, `settings`). El esquema propio sí: el de un módulo es su
 nombre. La resolución de nombres y estados entre módulos va por el `service.py` del dueño (por
 ejemplo `members.service.names_for`, `payments.service.sums_not_voided`), nunca por un `JOIN`.
+S7-C4c (M-1): tampoco se declara una tabla de otro esquema con `table("t", schema="otro")`
+(o `Table`): `auth/kiosk.py` leía `classes.class_sessions` así, sin SQL literal.
 Control con fuentes falsas: una cadena con `FROM members.members` en `memberships` falla; la
 misma en `members`, o un `select(...)` del ORM, pasa.
 """
@@ -66,10 +68,31 @@ def _cadenas_sql(arbol: ast.AST) -> list[tuple[int, str]]:
     return salida
 
 
+def _esquemas_declarados(arbol: ast.AST) -> list[tuple[int, str]]:
+    """`(línea, esquema)` de cada llamada con `schema="<esquema de módulo>"` (`table`, `Table`)."""
+    salida: list[tuple[int, str]] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Call):
+            for palabra in nodo.keywords:
+                valor = palabra.value
+                if (
+                    palabra.arg == "schema"
+                    and isinstance(valor, ast.Constant)
+                    and valor.value in ESQUEMAS
+                ):
+                    salida.append((nodo.lineno, str(valor.value)))
+    return salida
+
+
 def hallazgos(fuente: str, modulo: str, archivo: str) -> list[str]:
-    """`archivo:línea: esquema.tabla` por cada tabla de otro esquema nombrada en SQL literal."""
+    """`archivo:línea: esquema.tabla` por cada tabla de otro esquema nombrada en SQL literal o
+    declarada con `schema=` (en ese caso `esquema.*`; S7-C4c, M-1)."""
     salida: list[str] = []
-    for linea, cadena in _cadenas_sql(ast.parse(fuente, filename=archivo)):
+    arbol = ast.parse(fuente, filename=archivo)
+    for linea, esquema in _esquemas_declarados(arbol):
+        if esquema != modulo:
+            salida.append(f"{archivo}:{linea}: {esquema}.*")
+    for linea, cadena in _cadenas_sql(arbol):
         for esquema, tabla in _TABLA.findall(cadena):
             if esquema != modulo:
                 salida.append(f"{archivo}:{linea}: {esquema}.{tabla}")
@@ -139,3 +162,20 @@ def test_la_fuente_buena_pasa_y_el_esquema_propio_tambien() -> None:
     propia = 'X = "SELECT id FROM members.members"\n'
     assert hallazgos(propia, "members", "propia.py") == []
     assert hallazgos(propia, "memberships", "ajena.py") == ["ajena.py:1: members.members"]
+
+
+DECLARADA = """
+from sqlalchemy import Uuid, column, table
+_T = table("class_sessions", column("id", Uuid()), schema="classes")
+_PROPIA = table("members", column("id", Uuid()), schema="members")
+_LIBRE = table("x", column("id", Uuid()), schema="otro")
+"""
+
+
+def test_una_tabla_declarada_con_schema_ajeno_es_un_hallazgo() -> None:
+    """S7-C4c (M-1): `table(..., schema="classes")` dentro de `auth` no lleva SQL literal."""
+    assert hallazgos(DECLARADA, "auth", "kiosk.py") == [
+        "kiosk.py:3: classes.*",
+        "kiosk.py:4: members.*",
+    ]
+    assert hallazgos(DECLARADA, "classes", "q.py") == ["q.py:4: members.*"]

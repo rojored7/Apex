@@ -177,6 +177,7 @@ class MemberExportQuery(BaseModel):
     membership_status: MembershipFilterStatus | None = None
     plan_id: UUID | None = None
     consent: Literal["missing"] | None = None  # S6-C5 (US-151): solo los sin autorización
+    last_attendance: LastAttendanceFilter | None = None  # S7-C4c (M-3): igual que la lista
 
 
 @dataclass(frozen=True)

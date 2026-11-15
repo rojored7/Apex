@@ -11,14 +11,16 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Any
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import Integer, Text, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import current_clock
+from app.core.errors import ForbiddenError
 from app.core.pagination import Page, PageParams, any_uuids, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.auth import service as auth_service
@@ -29,6 +31,7 @@ from app.modules.classes.rules import (
     WEEK_YEAR_MAX,
     WEEK_YEAR_MIN,
     date_range_utc,
+    local_date,
     parse_week,
     session_status,
     week_of,
@@ -207,3 +210,72 @@ async def get_session(session: AsyncSession, session_id: UUID) -> SessionDetail:
         for a in presentes
     ]
     return SessionDetail(**salida.model_dump(), attendees=asistentes)
+
+
+KIOSK_SESSION_MESSAGE: Final = "En modo quiosco solo ves las clases de hoy o de ayer."
+
+TODAY_SESSIONS_LIMIT: Final = 50
+"""Tope de `today_sessions` (US-164): el tablero nunca pinta más de 50 sesiones de un día."""
+
+
+@dataclass(frozen=True, slots=True)
+class WeekAttendance:
+    """Asistencias vivas de la semana en curso y cuántas llevan alguna bandera (US-164)."""
+
+    count: int
+    flagged_count: int
+
+
+async def week_attendance(session: AsyncSession, now: datetime) -> WeekAttendance:
+    """Asistencias vivas de la semana en curso: del lunes 00:00 de Bogotá a `now` (US-164, Q28),
+    y cuántas llevan alguna bandera; UNA consulta."""
+    desde, _ = week_range(*parse_week(week_of(local_date(now))))
+    fila = (
+        await session.execute(
+            select(
+                func.count(),
+                func.count().filter(func.cardinality(Attendance.flags) > 0),
+            ).where(
+                Attendance.removed_at.is_(None),
+                Attendance.checked_in_at >= desde,
+                Attendance.checked_in_at <= now,
+            )
+        )
+    ).one()
+    return WeekAttendance(count=int(fila[0]), flagged_count=int(fila[1]))
+
+
+async def today_sessions(session: AsyncSession, today: date) -> list[SessionOut]:
+    """Las sesiones del día civil de Bogotá `today`, por hora (máximo `TODAY_SESSIONS_LIMIT`),
+    con coach, ocupación y estado calculado, incluidas las canceladas (US-164)."""
+    desde, hasta = date_range_utc(today, today)
+    filas = await session.scalars(
+        select(ClassSession)
+        .where(ClassSession.starts_at >= desde, ClassSession.starts_at < hasta)
+        .order_by(ClassSession.starts_at, ClassSession.id)
+        .limit(TODAY_SESSIONS_LIMIT)
+    )
+    return await _outs(session, list(filas))
+
+
+async def kiosk_session_info(session: AsyncSession, session_id: UUID) -> tuple[date, str] | None:
+    """`(session_date, status)` de una sesión, o `None` si no existe (S7-C4c, M-1): el puerto que
+    `classes` registra en `auth` para la regla de cambio de clase del quiosco (S7-D42). `status`
+    es el guardado (`scheduled` o `cancelled`), no el calculado."""
+    fila = (
+        await session.execute(
+            select(ClassSession.session_date, ClassSession.status).where(
+                ClassSession.id == session_id
+            )
+        )
+    ).first()
+    return None if fila is None else (fila[0], fila[1])
+
+
+async def ensure_kiosk_session(session: AsyncSession, session_id: UUID) -> None:
+    """S7-D42 (L-2): en quiosco solo se ve la lista de una sesión de hoy o de ayer en Bogotá; otra
+    o inexistente da 403 `kiosk_mode`."""
+    info = await kiosk_session_info(session, session_id)
+    hoy = current_clock().today_bogota()
+    if info is None or info[0] not in (hoy, hoy - timedelta(days=1)):
+        raise ForbiddenError("kiosk_mode", KIOSK_SESSION_MESSAGE)

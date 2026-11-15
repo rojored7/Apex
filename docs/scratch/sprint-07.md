@@ -408,3 +408,28 @@ Tras corregirlas, la corrida única `tests/audit tests/core tests/migrations tes
 
 ### Evidencia (C4b)
 - Pruebas nuevas: 26 passed (`test_kiosk_review_c4.py` de auth y de classes). Corrida amplia (`tests/classes tests/members tests/audit tests/core`, sin `perf`): 3002 passed, 2 skipped. Sello `slice-gate.sh auth` (todos los `tests/auth` + `tests/architecture`): 1516 passed, exit 0. ruff y mypy limpios. `docs/openapi.json` sin cambios.
+
+## S7-R3 · Tablero: attendance_week y sessions_today (US-164, S7-D16)
+
+### Rojo
+- Sin migración. Stubs `week_attendance` y `today_sessions` (`NotImplementedError`) en `classes/queries.py`; `DashboardOut` con el tipo nuevo. Pruebas nuevas: `tests/dashboard/test_classes_kpis.py` (martes 41 y 3 marcadas; día sin clases `[]`; máximo 50; cancelada con su estado), `test_dashboard_contract.py` (solo cambian los dos campos, foto del contrato anterior), `test_perf_classes_kpis.py` (`perf`, 1.000 socios y 20.000 asistencias).
+- Sin el código: 27 failed (5 nuevas + 22 existentes del tablero que llaman al servicio), motivo `NotImplementedError` y el esquema viejo.
+
+### Verde
+- `classes/queries.py` (`week_attendance`: una consulta, lunes 00:00 Bogotá a ahora; `today_sessions`: día de Bogotá, tope 50, canceladas incluidas), fachada `classes/service.py`, `dashboard/{schemas,service}.py` (`AttendanceWeekOut`, `SessionTodayOut`, arista `dashboard -> classes` en `ALLOWED_EDGES` y en el test de grafo). P-API: `docs/openapi.json` (dos exportaciones idénticas) y `types.ts`. Web mínimo: `schemas.ts`, `FutureKpis.tsx`, `test/dashboard.tsx` y sus pruebas (las tarjetas nuevas son de F6).
+
+### Evidencia (R3)
+- Sello `slice-gate.sh dashboard` (3 archivos + `tests/architecture`): 845 passed, exit 0. Gate `web/dashboard`: 19 passed, exit 0. vitest de `src/features/dashboard` y `src/core/api`: 324 passed.
+
+## S7-C4c · Correcciones de la revisión de R2 y C4b (M-1..M-3, L-1, L-2, L-3, L-5; L-4 anotado)
+
+### Rojo
+- Sin migración. Pruebas nuevas: `tests/architecture/test_no_cross_schema_sql.py` (detecta `table(..., schema=<otro módulo>)`; el real marcó `auth/kiosk.py:54`), `tests/auth/test_kiosk_review_c4.py` (puerto sin registrar falla explícito, `classes` lo registra, una sesión cancelada de hoy da 403), `tests/auth/test_kiosk_exit_concurrency.py` (L-5: diez salidas erradas en paralelo con sesiones de base separadas), `tests/classes/test_kiosk_review_c4.py` (L-2: `GET /attendance?session_id=` en quiosco solo hoy y ayer; M-2: `q` de 3 letras, sin `sort`, `limit` acotado a 20), `tests/members/test_export_last_attendance.py` (M-3) y `tests/members/test_perf_never_antijoin.py` (`perf`, L-1, 8 ejecuciones).
+- Sin el código: 15 failed, 33 passed (la concurrencia ya pasaba: el cupo ya era atómico; quedó como prueba de regresión).
+
+### Verde
+- `auth/{kiosk,exceptions,service}.py` (puerto `set_kiosk_session_info`, `KioskSessionInfoNotRegistered`, solo `scheduled`), `classes/{queries,service,router}.py` (`kiosk_session_info`, `ensure_kiosk_session`, registro del puerto al importarse), `members/{router,schemas,service}.py` (`_check_kiosk_list` con `q` >= 3 y sin `sort`, `limit` acotado a 20, `last_attendance` en la exportación, anti-join `_ausente_de`). P-API: `docs/openapi.json` (dos exportaciones idénticas) y `types.ts`: solo el parámetro `last_attendance` de `GET /members/export`. DECISIONES: S7-D41 (13 a 16) y S7-D42; `docs/operacion/clases.md`.
+- Aviso al front (F5): en quiosco la búsqueda de socios pide `q` de 3 letras o más, sin `sort`, y la página es de 20 como máximo.
+
+### Evidencia (C4c)
+- 71 passed en las pruebas nuevas y las vecinas (`test_filter_last_attendance`). Perf: `never` con 1.000 socios y 20.000 asistencias, 8 ejecuciones, 21 a 86 ms (primera); tablero de R3 20 ms.

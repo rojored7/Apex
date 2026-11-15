@@ -13,8 +13,9 @@ La tablet del check-in queda confinada a una ruta con una marca en la sesión de
   cupo (`EXIT_LIMIT` cada `EXIT_WINDOW_S`, 429) de forma atómica ANTES de verificar, y un acierto
   lo devuelve. La clave es `usuario|inicio de la familia`: cinco fallos en una tablet no bloquean
   al coach en otras. Cada fallo deja una fila de auditoría sin la contraseña.
-- S7-D42: con la marca ya puesta, `enter_kiosk` solo acepta el check-in de sesiones de hoy o de
-  ayer en Bogotá (403 `kiosk_mode`); sin marca previa entra a cualquier ruta.
+- S7-D42: con la marca ya puesta, `enter_kiosk` solo acepta el check-in de sesiones programadas de
+  hoy o de ayer en Bogotá (403 `kiosk_mode`); sin marca previa entra a cualquier ruta. La fecha y
+  el estado llegan por el puerto `set_kiosk_session_info` que registra `classes` (S7-C4c, M-1, L-3).
 - `kiosk_path_of`: la marca de la sesión de la cookie para `GET /auth/me`.
 Orden de candados igual al de `refresh` (usuario y luego token): la marca y la rotación se
 serializan y la marca no se pierde en una carrera.
@@ -23,11 +24,12 @@ serializan y la marca no se pierde en una carrera.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import Date, Uuid, column, select, table
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events, ratelimit
@@ -37,7 +39,11 @@ from app.core.errors import ForbiddenError
 from app.core.security import Principal, TokenInvalid, create_access_token, hash_opaque_token
 from app.modules.auth import sessions, tokens
 from app.modules.auth.events import KioskEntered, KioskExited, KioskExitFailed
-from app.modules.auth.exceptions import InvalidPassword, InvalidRefresh
+from app.modules.auth.exceptions import (
+    InvalidPassword,
+    InvalidRefresh,
+    KioskSessionInfoNotRegistered,
+)
 from app.modules.auth.models import RefreshToken, User
 from app.modules.auth.rules import AuthPolicy
 from app.modules.auth.schemas import KioskSessionOut
@@ -49,14 +55,22 @@ EXIT_LIMIT: Final = 5
 EXIT_WINDOW_S: Final = 900
 SWITCH_MESSAGE: Final = "Solo puedes pasar al check-in de una clase de hoy o de ayer."
 
-# Lectura por nombre de tabla (sin importar `classes`, que ya importa `auth`: `classes -> auth`);
-# solo la fecha civil de la sesión, para S7-D42.
-_CLASS_SESSIONS = table(
-    "class_sessions",
-    column("id", Uuid()),
-    column("session_date", Date()),
-    schema="classes",
-)
+SessionInfo = Callable[[AsyncSession, UUID], Awaitable[tuple[date, str] | None]]
+"""`(session_date, status)` de una sesión de clase, o `None` si no existe."""
+_session_info: SessionInfo | None = None
+
+
+def set_kiosk_session_info(info: SessionInfo | None) -> None:
+    """Registra (o quita, con `None`) el puerto que lee la fecha y el estado de una sesión de
+    clase (S7-C4c, M-1). Lo llama `classes/service.py` al importarse: `auth` no lee tablas
+    ajenas ni importa `classes`."""
+    global _session_info
+    _session_info = info
+
+
+def kiosk_session_info_port() -> SessionInfo | None:
+    """El puerto registrado, o `None`."""
+    return _session_info
 
 
 def _usable(fila: RefreshToken, user_id: UUID, now: datetime) -> bool:
@@ -91,12 +105,13 @@ def _session_id_of(path: str) -> UUID:
 
 
 async def _ensure_switchable(session: AsyncSession, path: str) -> None:
-    """S7-D42: con la marca puesta, la clase destino debe existir y ser de hoy o de ayer."""
-    dia = await session.scalar(
-        select(_CLASS_SESSIONS.c.session_date).where(_CLASS_SESSIONS.c.id == _session_id_of(path))
-    )
+    """S7-D42: con la marca puesta, la clase destino debe existir, estar programada (L-3: una
+    cancelada no vale) y ser de hoy o de ayer; la lee del puerto de `classes` (M-1)."""
+    if _session_info is None:
+        raise KioskSessionInfoNotRegistered
+    info = await _session_info(session, _session_id_of(path))
     hoy: date = current_clock().today_bogota()
-    if dia is None or dia not in (hoy, hoy - timedelta(days=1)):
+    if info is None or info[1] != "scheduled" or info[0] not in (hoy, hoy - timedelta(days=1)):
         raise ForbiddenError("kiosk_mode", SWITCH_MESSAGE)
 
 

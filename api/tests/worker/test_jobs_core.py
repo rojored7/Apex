@@ -338,6 +338,9 @@ async def test_detail_keys_es_el_conjunto_cerrado_del_plan() -> None:
                 "reintentos",
                 "atrasada",
                 "cadena_rota",
+                # S7-B1 (S7-D10): `generate_sessions`; enteros
+                "creadas",
+                "franjas",
             }
         )
         == DETAIL_KEYS

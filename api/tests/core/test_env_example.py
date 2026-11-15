@@ -502,11 +502,13 @@ def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() ->
         "keys-rotate",  # S6-R1: `POST /crypto/keys/{key_id}/rotate`
         "keys-rotate-hour",
     }
-    # S7-D19: las dos de S7 se registran en W0-4 sin ruta (la dan B1/B2 y C3).
-    assert CLAVES_SIN_RUTA_TODAVIA == (frozenset(SIETE_BUCKETS_S6) - con_ruta) | {
-        "classes-write",
-        "attendance-write",
-    }
+    # S7-D19: las dos de S7 se registraron en W0-4 sin ruta; `classes-write` la tiene desde A2
+    # (`/class-slots`) y `attendance-write` desde C1 (`POST /attendance`): no queda ninguna.
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6) - con_ruta
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset()
+    from app.core.ratelimit import USER_LIMITS
+
+    assert {"classes-write", "attendance-write"} <= set(USER_LIMITS)
     assert not set(CUATRO_BUCKETS_S5) & CLAVES_SIN_RUTA_TODAVIA
 
 

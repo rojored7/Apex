@@ -31,6 +31,7 @@ REVISION = "0026_class_slots"
 PADRE = "0025_s6_hardening"
 TABLA = "classes.class_slots"
 INMUTABLE = "P0001"
+FEATURE_NOT_SUPPORTED = "0A000"  # TRUNCATE de una tabla referenciada por una FK
 SYSTEM_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 TRIGGERS = ("class_slots_forbid_delete", "class_slots_forbid_truncate")
 
@@ -136,15 +137,20 @@ def test_check_de_duracion_cupo_y_nombre(base: str) -> None:
 
 
 def test_delete_y_truncate_estan_prohibidos(base: str) -> None:
+    """Desde `0027` un `TRUNCATE` solo de `class_slots` choca antes con la FK de
+    `class_sessions` (0A000, `feature_not_supported`) y ya no llega al trigger. Se prueba
+    la guarda con `CASCADE` (incluye a las tablas que referencian la franja), que sí la
+    ejecuta y da P0001; el `TRUNCATE` a secas sigue rechazado, ahora por la FK."""
     paso = _paso()
     salidas = resultados(
         base,
         [
             [paso, ("DELETE FROM classes.class_slots", [])],
+            [paso, ("TRUNCATE classes.class_slots CASCADE", [])],
             [paso, ("TRUNCATE classes.class_slots", [])],
         ],
     )
-    assert [s for s, _ in salidas] == [INMUTABLE, INMUTABLE]
+    assert [s for s, _ in salidas] == [INMUTABLE, INMUTABLE, FEATURE_NOT_SUPPORTED]
 
 
 def test_los_dos_triggers_estan_en_always(base: str) -> None:

@@ -310,10 +310,13 @@ def test_delete_y_truncate_estan_prohibidos(base: str) -> None:
         base,
         [
             [paso, ("DELETE FROM classes.class_sessions", [])],
+            [paso, ("TRUNCATE classes.class_sessions CASCADE", [])],
             [paso, ("TRUNCATE classes.class_sessions", [])],
         ],
     )
-    assert [s for s, _ in salidas] == [INMUTABLE, INMUTABLE]
+    # Desde `0028` `classes.attendance` referencia a las sesiones: el `TRUNCATE` a secas choca con
+    # esa FK (0A000) antes del trigger; con `CASCADE` la guarda corre y da P0001.
+    assert [s for s, _ in salidas] == [INMUTABLE, INMUTABLE, "0A000"]
 
 
 def test_los_tres_triggers_estan_en_always_y_la_guarda_es_invoker(base: str) -> None:

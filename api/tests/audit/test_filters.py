@@ -89,6 +89,9 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "settings.settings_sections",
                 "audit.verifications",
                 "crypto.crypto_keys",  # S6-R1 (S6-D61): la rotación desde la pantalla
+                "classes.class_slots",  # S7-A2 (US-155)
+                "classes.class_sessions",  # S7-B1 (US-156)
+                "classes.attendance",  # S7-C1 (US-159)
             }
         )
         == AUDITABLE_TABLES

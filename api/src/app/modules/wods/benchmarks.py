@@ -14,6 +14,7 @@ No hay borrado (RN-14; los triggers de la base también lo prohíben).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any, Final
 from uuid import UUID
 
@@ -78,10 +79,15 @@ async def _id_by_norm(session: AsyncSession, norm: str, *, exclude: UUID | None)
     return await session.scalar(consulta)
 
 
-async def _flush_unico(session: AsyncSession, norm: str, exclude: UUID | None) -> None:
-    """`flush` en un savepoint: el 23505 del índice único es 409 `benchmark_exists`."""
+async def _guardar_unico(
+    session: AsyncSession, norm: str, exclude: UUID | None, aplicar: Callable[[], None]
+) -> None:
+    """Aplica el cambio y hace `flush` DENTRO de un savepoint: `begin_nested()` vacía lo pendiente
+    antes de abrirlo, así que el cambio se aplica ya dentro. El 23505 del índice único (la
+    carrera de dos altas) es 409 `benchmark_exists` y la sesión sigue usable (S8-A1b)."""
     try:
         async with session.begin_nested():
+            aplicar()
             await session.flush()
     except IntegrityError as error:
         if violated_constraint(error) != UQ_NAME_NORM:
@@ -102,8 +108,7 @@ async def create_benchmark(session: AsyncSession, data: BenchmarkCreate, by: UUI
         score_type=data.score_type,
         created_by=by,
     )
-    session.add(bench)
-    await _flush_unico(session, norm, None)
+    await _guardar_unico(session, norm, None, lambda: session.add(bench))
     logger.info("wods: benchmark creado", extra={"benchmark_id": str(bench.id)})
     return (await _outs(session, [bench]))[0]
 
@@ -142,10 +147,14 @@ async def update_benchmark(
         otro = await _id_by_norm(session, norm, exclude=bench.id)
         if otro is not None:
             raise BenchmarkExists(otro)
-        bench.name_norm = norm
-    for campo, valor in cambios.items():
-        setattr(bench, campo, valor)
-    await _flush_unico(session, norm, bench.id)
+
+    def aplicar() -> None:
+        if "name" in cambios:
+            bench.name_norm = norm
+        for campo, valor in cambios.items():
+            setattr(bench, campo, valor)
+
+    await _guardar_unico(session, norm, bench.id, aplicar)
     logger.info(
         "wods: benchmark editado",
         extra={"benchmark_id": str(bench.id), "changed_fields": sorted(cambios), "actor": str(by)},

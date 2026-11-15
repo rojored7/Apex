@@ -213,3 +213,52 @@ async def test_wod_count_en_una_consulta_por_pagina(
     assert len(llamadas) == 1 and set(llamadas[0]) == set(ids)
     cuentas = {m.id: m.wod_count for m in pagina.items}
     assert cuentas == {ids[0]: 4, ids[1]: 0, ids[2]: 0}
+
+
+def _carrera_en_la_primera_llamada() -> Any:
+    """Parche de `_id_by_norm`: la primera llamada (la comprobación previa) no ve a nadie, como si
+    el otro alta aún no hubiera confirmado; las siguientes consultan de verdad."""
+    original = movements_module._id_by_norm
+    llamadas: list[int] = []
+
+    async def parcheada(session: AsyncSession, norm: str, *, exclude: UUID | None) -> UUID | None:
+        llamadas.append(1)
+        if len(llamadas) == 1:
+            return None
+        return await original(session, norm, exclude=exclude)
+
+    return mock.patch.object(movements_module, "_id_by_norm", parcheada)
+
+
+async def test_la_carrera_23505_del_alta_da_409_con_existing_id_y_la_sesion_sigue_viva(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    """S8-A1b: la comprobación previa pasa y el índice único decide: 409 `movement_exists`."""
+    admin = await usuario_real("admin")
+    primero = await _alta(session, admin.id, name="Snatch")
+    with _carrera_en_la_primera_llamada():
+        with pytest.raises(MovementExists) as error:
+            await _alta(session, admin.id, name="  SNATCH ")
+    assert error.value.code == "movement_exists" and error.value.field == "name"
+    assert error.value.existing_id == primero.id
+    # El savepoint se deshizo: la sesión sigue usable y no quedó la fila repetida.
+    lista = await service.list_movements(session, SIN_FILTROS, PAGINA)
+    assert [m.id for m in lista.items] == [primero.id]
+    otro = await _alta(session, admin.id, name="Clean")
+    assert otro.name == "Clean"
+
+
+async def test_la_carrera_23505_del_patch_da_409_con_existing_id_y_la_sesion_sigue_viva(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    admin = await usuario_real("admin")
+    a = await _alta(session, admin.id, name="Snatch")
+    b = await _alta(session, admin.id, name="Clean")
+    with _carrera_en_la_primera_llamada():
+        with pytest.raises(MovementExists) as error:
+            await _cambio(session, admin.id, b.id, name="snatch")
+    assert error.value.existing_id == a.id
+    sigue = await service.get_movement(session, b.id)
+    assert sigue.name == "Clean"
+    ok = await _cambio(session, admin.id, b.id, category="other")
+    assert ok.category == "other"

@@ -14,6 +14,7 @@ No hay borrado: se desactivan con `is_active = false` (RN-14; los triggers tambi
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any, Final
 from uuid import UUID
 
@@ -75,10 +76,15 @@ async def _id_by_norm(session: AsyncSession, norm: str, *, exclude: UUID | None)
     return await session.scalar(consulta)
 
 
-async def _flush_unico(session: AsyncSession, norm: str, exclude: UUID | None) -> None:
-    """`flush` en un savepoint: el 23505 del índice único es 409 `movement_exists`."""
+async def _guardar_unico(
+    session: AsyncSession, norm: str, exclude: UUID | None, aplicar: Callable[[], None]
+) -> None:
+    """Aplica el cambio y hace `flush` DENTRO de un savepoint: `begin_nested()` vacía lo pendiente
+    antes de abrirlo, así que el cambio se aplica ya dentro. El 23505 del índice único (la
+    carrera de dos altas) es 409 `movement_exists` y la sesión sigue usable (S8-A1b)."""
     try:
         async with session.begin_nested():
+            aplicar()
             await session.flush()
     except IntegrityError as error:
         if violated_constraint(error) != UQ_NAME_NORM:
@@ -102,8 +108,9 @@ async def create_movement(
         is_active=True,
         created_by=by,
     )
-    session.add(mov)
-    await _flush_unico(session, norm, None)  # `eager_defaults`: fechas ya cargadas
+    await _guardar_unico(
+        session, norm, None, lambda: session.add(mov)
+    )  # `eager_defaults`: fechas ya cargadas
     logger.info("wods: movimiento creado", extra={"movement_id": str(mov.id)})
     return (await _outs(session, [mov]))[0]
 
@@ -140,10 +147,14 @@ async def update_movement(
         otro = await _id_by_norm(session, norm, exclude=mov.id)
         if otro is not None:
             raise MovementExists(otro)
-        mov.name_norm = norm
-    for campo, valor in cambios.items():
-        setattr(mov, campo, valor)
-    await _flush_unico(session, norm, mov.id)
+
+    def aplicar() -> None:
+        if "name" in cambios:
+            mov.name_norm = norm
+        for campo, valor in cambios.items():
+            setattr(mov, campo, valor)
+
+    await _guardar_unico(session, norm, mov.id, aplicar)
     logger.info(
         "wods: movimiento editado",
         extra={"movement_id": str(mov.id), "changed_fields": sorted(cambios), "actor": str(by)},

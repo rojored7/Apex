@@ -87,9 +87,11 @@ _TELEGRAM_BOT = re.compile(r"\bbot\d+:[A-Za-z0-9_-]{20,}")
 _TELEGRAM_TOKEN_SUELTO = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{30,}")
 # Cabecera de OpenBao y token de la TV en texto libre (repr de un dict, JSON, `clave=valor`),
 # S5-D58, S8-D18; también la tupla del scope ASGI `(b'x-device-token', b'valor')` y el guion bajo
-# entre palabras (S8-W0b, L1).
+# entre palabras (S8-W0b, L1). La coma solo vale tras la comilla de cierre (forma de tupla):
+# `Access-Control-Allow-Headers: x-device-token, content-type` no se redacta (S8-A1b).
 _VAULT_HEADER = re.compile(
-    r"(x[-_](?:vault|device)[-_]token[\"']?\s*[:=,]\s*b?[\"']?)[^\s\"',})\]]+", re.IGNORECASE
+    r"(x[-_](?:vault|device)[-_]token(?:[\"']\s*,|[\"']?\s*[:=])\s*b?[\"']?)[^\s\"',})\]]+",
+    re.IGNORECASE,
 )
 # `token=` en una consulta o en un fragmento: el enlace antiguo `/tv?token=` y el nuevo
 # `/tv#token=` (S8-D32) en texto libre (S8-W0b, L1).

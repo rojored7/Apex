@@ -549,3 +549,11 @@ def test_redact_text_no_toca_texto_sin_token() -> None:
     assert redact_text("GET /tv?refresh=30 y un token cualquiera") == (
         "GET /tv?refresh=30 y un token cualquiera"
     )
+
+
+def test_redact_text_no_toca_la_lista_de_cabeceras_de_cors() -> None:
+    """S8-A1b (LOW de la revisión de A1): una coma sin comilla de cierre delante no es la forma de
+    tupla; `Access-Control-Allow-Headers: x-device-token, content-type` deja `content-type`."""
+    texto = "Access-Control-Allow-Headers: x-device-token, content-type"
+    assert redact_text(texto) == texto
+    assert redact_text("(b'x-device-token', b'tvtokensecreto123456')").count("tvtokensecreto") == 0

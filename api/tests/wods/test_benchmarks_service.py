@@ -192,3 +192,31 @@ async def test_wod_count_en_una_consulta_por_pagina(
         pagina = await service.list_benchmarks(session, SIN_FILTROS, PAGINA)
     assert len(llamadas) == 1 and set(llamadas[0]) == set(ids)
     assert {b.id: b.wod_count for b in pagina.items} == {ids[0]: 4, ids[1]: 0, ids[2]: 0}
+
+
+async def test_la_carrera_23505_da_409_con_existing_id_y_la_sesion_sigue_viva(
+    session: AsyncSession, usuario_real: CrearUsuario
+) -> None:
+    """El índice único decide cuando la comprobación previa no ve al otro alta (S8-A1b)."""
+    admin = await usuario_real("admin")
+    primero = await _alta(session, admin.id, name="Fran")
+    otro = await _alta(session, admin.id, name="Grace")
+    original = benchmarks_module._id_by_norm
+    llamadas: list[int] = []
+
+    async def parcheada(s: AsyncSession, norm: str, *, exclude: UUID | None) -> UUID | None:
+        llamadas.append(1)
+        return None if len(llamadas) == 1 else await original(s, norm, exclude=exclude)
+
+    with mock.patch.object(benchmarks_module, "_id_by_norm", parcheada):
+        with pytest.raises(BenchmarkExists) as alta:
+            await _alta(session, admin.id, name=" FRAN ")
+    assert alta.value.existing_id == primero.id
+    llamadas.clear()
+    with mock.patch.object(benchmarks_module, "_id_by_norm", parcheada):
+        with pytest.raises(BenchmarkExists) as cambio:
+            await _cambio(session, admin.id, otro.id, name="fran")
+    assert cambio.value.existing_id == primero.id
+    lista = await service.list_benchmarks(session, SIN_FILTROS, PAGINA)
+    assert lista.total == 2
+    assert (await _cambio(session, admin.id, otro.id, description="ok")).description == "ok"

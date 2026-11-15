@@ -218,6 +218,9 @@ def test_rate_limits_from_settings_por_defecto() -> None:
         "reset": (10, 60),
         "forgot": (5, 60),
         "logout": (30, 60),
+        # S8-D22, S8-D33: la TV, por IP (solo token inválido) y por token.
+        "tv-fail": (12, 60),
+        "tv": (30, 60),
     }
 
 
@@ -406,6 +409,9 @@ CATALOGO = {
     # S7-D19 (S7-W0-4): dos cubetas más, 25 en total.
     "classes-write": (30, 60),
     "attendance-write": (60, 60),
+    # S8-D22 (S8-W0-3): dos cubetas más, 27 en total.
+    "wods-write": (30, 60),
+    "results-write": (60, 60),
 }
 
 
@@ -473,6 +479,8 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_CBOM_EXPORT_LIMIT_PER_MIN": 32,
             "USER_CLASSES_WRITE_LIMIT_PER_MIN": 33,
             "USER_ATTENDANCE_WRITE_LIMIT_PER_MIN": 34,
+            "USER_WODS_WRITE_LIMIT_PER_MIN": 35,
+            "USER_RESULTS_WRITE_LIMIT_PER_MIN": 36,
         }
     )
     assert user_limits_from(ajustes) == {
@@ -504,6 +512,9 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         # S7-D19 (S7-W0-4): dos cubetas más, 25 en total.
         "classes-write": (33, 60),
         "attendance-write": (34, 60),
+        # S8-D22 (S8-W0-3): dos cubetas más, 27 en total.
+        "wods-write": (35, 60),
+        "results-write": (36, 60),
     }
 
 
@@ -517,19 +528,38 @@ def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventan
     topes = user_limits_from(
         export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
     )
-    assert len(topes) == 25  # 12 de S4A, 4 de S5 (S5-D81), 7 de S6 (S6-D57) y 2 de S7 (S7-D19)
+    assert len(topes) == 27  # 12 de S4A, 4 de S5, 7 de S6, 2 de S7 (S7-D19) y 2 de S8 (S8-D22)
     assert topes["audit-verify-hour"] == (7, 3600)
     assert topes["audit-verify"][1] == 60
     assert topes["staff-read"][1] == 60
 
 
-def test_hay_25_cubetas() -> None:
-    """S7-D19: `classes-write` (30/min) y `attendance-write` (60/min) suman 25 cubetas."""
+def test_hay_27_cubetas() -> None:
+    """S7-D19: 25 cubetas; S8-D22: `wods-write` (30/min) y `results-write` (60/min) suman 27."""
     from app.core.ratelimit import USER_LIMITS
 
-    assert len(USER_LIMITS) == 25
+    assert len(USER_LIMITS) == 27
     assert USER_LIMITS["classes-write"] == (30, 60)
     assert USER_LIMITS["attendance-write"] == (60, 60)
+    assert USER_LIMITS["wods-write"] == (30, 60)
+    assert USER_LIMITS["results-write"] == (60, 60)
+
+
+def test_tv_fail_y_tv_existen_con_su_ventana() -> None:
+    """S8-D22, S8-D33: `tv-fail` (por IP, solo token inválido) y `tv` (por token) salen de
+    `TV_IP_LIMIT` y `TV_TOKEN_LIMIT`, con ventana de 60 s; no son cubetas por usuario."""
+    from app.cli import export_settings
+    from app.core.ratelimit import USER_LIMITS, rate_limits_from
+
+    por_defecto = rate_limits_from(export_settings())
+    assert por_defecto["tv-fail"] == (12, 60)
+    assert por_defecto["tv"] == (30, 60)
+    ajustados = rate_limits_from(
+        export_settings().model_copy(update={"TV_IP_LIMIT": 7, "TV_TOKEN_LIMIT": 9})
+    )
+    assert ajustados["tv-fail"] == (7, 60)
+    assert ajustados["tv"] == (9, 60)
+    assert "tv" not in USER_LIMITS and "tv-fail" not in USER_LIMITS
 
 
 async def test_la_cuarta_verificacion_del_minuto_da_429_y_las_lecturas_no_la_consumen(

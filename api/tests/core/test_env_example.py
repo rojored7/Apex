@@ -183,7 +183,7 @@ def test_las_tres_variables_de_s4a_b3_van_activas_con_sus_valores() -> None:
 
 def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
     """E9: el comentario del bloque dice de dónde vienen (S4A-B3, M-1 y M-3) y el conteo nuevo
-    del catálogo (25 cubetas y 24 variables `USER_*` desde S7-D19; antes 16 y 15 de S5-D81)."""
+    del catálogo (27 cubetas y 26 variables `USER_*` desde S8-D22; antes 16 y 15 de S5-D81)."""
     lineas = EJEMPLO.read_text(encoding="utf-8").splitlines()
     indices = [i for i, linea in enumerate(lineas) if linea.startswith("USER_READ_LIMIT_PER_MIN=")]
     assert len(indices) == 1, "USER_READ_LIMIT_PER_MIN debe ir una vez como línea activa"
@@ -191,9 +191,9 @@ def test_el_comentario_de_s4a_b3_cita_m1_m3_y_el_conteo_de_cubetas() -> None:
         linea for linea in lineas[max(0, indices[0] - 4) : indices[0]] if linea.startswith("#")
     )
     assert "S4A-B3, M-1 y M-3" in comentario
-    assert "25 cubetas" in comentario and "24 variables" in comentario  # S7-D19
+    assert "27 cubetas" in comentario and "26 variables" in comentario  # S8-D22
     activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 24, activas  # 11 de S4A, 4 de S5-D81, 7 de S6-D57 y 2 de S7-D19
+    assert len(activas) == 26, activas  # 11 de S4A, 4 de S5, 7 de S6, 2 de S7 y 2 de S8-D22
 
 
 def test_los_tiempos_de_espera_documentan_que_cero_solo_es_del_cli() -> None:
@@ -444,16 +444,17 @@ def test_el_reparto_s5_no_repite_claves_entre_los_dos_ejemplos() -> None:
     assert todas <= set(_claves()) | set(_claves(EJEMPLO_OPS))
 
 
-def test_el_comentario_del_catalogo_dice_25_cubetas_y_24_variables() -> None:
-    """S7-D19: el catálogo pasa a 25 cubetas y 24 variables `USER_*` (antes 23 y 22, S6-D57)."""
+def test_el_comentario_del_catalogo_dice_27_cubetas_y_26_variables() -> None:
+    """S8-D22: el catálogo pasa a 27 cubetas y 26 variables `USER_*` (antes 25 y 24, S7-D19)."""
     texto = EJEMPLO.read_text(encoding="utf-8")
     comentario = " ".join(linea for linea in texto.splitlines() if linea.startswith("#"))
-    assert "25 cubetas" in comentario and "24 variables" in comentario
+    assert "27 cubetas" in comentario and "26 variables" in comentario
+    assert "25 cubetas" not in comentario and "24 variables" not in comentario
     assert "23 cubetas" not in comentario and "22 variables" not in comentario
     assert "16 cubetas" not in comentario and "15 variables" not in comentario
     assert "12 cubetas" not in comentario and "11 variables" not in comentario
     activas = [n for n in _claves() if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 24, activas
+    assert len(activas) == 26, activas
     assert set(CUATRO_USER_S5) <= set(activas)
     assert set(SIETE_USER_S6) <= set(activas)
 
@@ -464,14 +465,24 @@ DOS_USER_S7: tuple[str, ...] = (
 )
 
 
-def test_24_variables_user() -> None:
-    """S7-D19: `.env.example` documenta las dos variables nuevas (30 y 60) y el total es 24."""
+DOS_USER_S8: tuple[str, ...] = (
+    "USER_WODS_WRITE_LIMIT_PER_MIN",
+    "USER_RESULTS_WRITE_LIMIT_PER_MIN",
+)
+
+
+def test_26_variables_user() -> None:
+    """S7-D19 y S8-D22: `.env.example` documenta las variables de S7 (30 y 60) y de S8 (30 y 60);
+    el total es 26."""
     claves = _claves()
     assert [n for n in DOS_USER_S7 if n not in claves] == []
     assert claves["USER_CLASSES_WRITE_LIMIT_PER_MIN"] == "30"
     assert claves["USER_ATTENDANCE_WRITE_LIMIT_PER_MIN"] == "60"
+    assert [n for n in DOS_USER_S8 if n not in claves] == []
+    assert claves["USER_WODS_WRITE_LIMIT_PER_MIN"] == "30"
+    assert claves["USER_RESULTS_WRITE_LIMIT_PER_MIN"] == "60"
     activas = [n for n in claves if n.startswith("USER_") and "_LIMIT_PER_" in n]
-    assert len(activas) == 24, activas
+    assert len(activas) == 26, activas
 
 
 def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> None:
@@ -482,7 +493,7 @@ def test_las_cuatro_cubetas_nuevas_estan_en_user_limits_con_sus_ventanas() -> No
     assert USER_LIMITS["export"] == (2, 60)
     assert USER_LIMITS["export-hour"] == (6, 3600)
     assert USER_LIMITS["export-day"] == (20, 86400)
-    assert len(USER_LIMITS) == 25  # 16 de S5, 7 de S6-D57 y 2 de S7-D19
+    assert len(USER_LIMITS) == 27  # 16 de S5, 7 de S6-D57, 2 de S7-D19 y 2 de S8-D22
 
 
 def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() -> None:
@@ -504,8 +515,12 @@ def test_las_cuatro_cubetas_nuevas_ya_tienen_ruta_en_el_catalogo_de_pruebas() ->
     }
     # S7-D19: las dos de S7 se registraron en W0-4 sin ruta; `classes-write` la tiene desde A2
     # (`/class-slots`) y `attendance-write` desde C1 (`POST /attendance`): no queda ninguna.
-    assert CLAVES_SIN_RUTA_TODAVIA == frozenset(SIETE_BUCKETS_S6) - con_ruta
-    assert CLAVES_SIN_RUTA_TODAVIA == frozenset()
+    assert (
+        CLAVES_SIN_RUTA_TODAVIA & frozenset(SIETE_BUCKETS_S6)
+        == frozenset(SIETE_BUCKETS_S6) - con_ruta
+    )
+    # S8-D22: las dos de S8 se registran sin ruta; A1 y B1 les dan la suya.
+    assert CLAVES_SIN_RUTA_TODAVIA == frozenset({"wods-write", "results-write"})
     from app.core.ratelimit import USER_LIMITS
 
     assert {"classes-write", "attendance-write"} <= set(USER_LIMITS)
@@ -523,16 +538,41 @@ def test_user_limits_from_alimenta_las_cuatro_cubetas_desde_settings() -> None:
     assert topes["export-day"] == (20, 86400)
 
 
-def test_ci_sube_las_veinticuatro_variables_user_y_cuenta_veinticuatro() -> None:
-    """S5-D98, S6-D57, S7-D19: el `sed` del job e2e-stack sube también las siete de S6 y las dos
-    de S7; el conteo es 24."""
+def test_ci_sube_las_veintiseis_variables_user_y_cuenta_veintiseis() -> None:
+    """S5-D98, S6-D57, S7-D19, S8-D22: el `sed` del job e2e-stack sube también las siete de S6, las
+    dos de S7 y las dos de S8; el conteo es 26."""
     texto = CI_YML.read_text(encoding="utf-8")
-    assert '[ "$subidas" = "24" ]' in texto, "el conteo de subidas debe ser 24"
-    assert "se esperaban 24 cubetas USER_* subidas" in texto
+    assert '[ "$subidas" = "26" ]' in texto, "el conteo de subidas debe ser 26"
+    assert "se esperaban 26 cubetas USER_* subidas" in texto
+    assert "USER_WODS_WRITE_LIMIT_PER_MIN=3000" in texto
+    assert "USER_RESULTS_WRITE_LIMIT_PER_MIN=6000" in texto
     assert "USER_CLASSES_WRITE_LIMIT_PER_MIN=3000" in texto
     assert "USER_ATTENDANCE_WRITE_LIMIT_PER_MIN=6000" in texto
-    for nombre in (*CUATRO_USER_S5, *SIETE_USER_S6, *DOS_USER_S7):
+    for nombre in (*CUATRO_USER_S5, *SIETE_USER_S6, *DOS_USER_S7, *DOS_USER_S8):
         assert texto.count(nombre) >= 2, f"{nombre} debe estar en el sed y en la regex del conteo"
+
+
+def test_tv_ip_y_token_documentadas() -> None:
+    """S8-D33: `.env.example` documenta `TV_IP_LIMIT` (12) y `TV_TOKEN_LIMIT` (30) como líneas
+    activas, y las dos son campos de `Settings` con esos valores por defecto."""
+    from app.core.config import Settings
+
+    claves = _claves()
+    assert claves["TV_IP_LIMIT"] == "12"
+    assert claves["TV_TOKEN_LIMIT"] == "30"  # noqa: S105 (un tope, no una contraseña)
+    assert Settings.model_fields["TV_IP_LIMIT"].default == 12
+    assert Settings.model_fields["TV_TOKEN_LIMIT"].default == 30
+
+
+def test_ci_fija_tv_ip_y_token_en_120_dentro_de_la_cota() -> None:
+    """Hallazgo 8 de la crítica 1: `TV_IP_LIMIT` y `TV_TOKEN_LIMIT` tienen cota de 1 a 120; el
+    job e2e-stack los fija en 120 con una línea de `sed` propia, no dentro de la línea de los
+    límites por IP (`=1000` rompería la cota y el api no arrancaría)."""
+    texto = CI_YML.read_text(encoding="utf-8")
+    assert "-e 's/^(TV_IP_LIMIT|TV_TOKEN_LIMIT)=.*/\\1=120/'" in texto
+    for linea in texto.splitlines():
+        if "TV_IP_LIMIT" in linea and "s/^" in linea:
+            assert "=1000" not in linea, linea
 
 
 # --- S5-W0-4: apex_owner NOSUPERUSER (S5-D6, D89, D96; M-12) ------------------------------------

@@ -287,6 +287,9 @@ def rate_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "reset": (settings.RESET_IP_LIMIT, DEFAULT_WINDOW_S),
         "forgot": (settings.FORGOT_IP_LIMIT, DEFAULT_WINDOW_S),
         "logout": (settings.LOGOUT_IP_LIMIT, DEFAULT_WINDOW_S),
+        # S8-D33: la TV; `tv-fail` es por IP (token inválido) y `tv` por token (`KeyKind account`).
+        "tv-fail": (settings.TV_IP_LIMIT, DEFAULT_WINDOW_S),
+        "tv": (settings.TV_TOKEN_LIMIT, DEFAULT_WINDOW_S),
     }
 
 
@@ -341,9 +344,12 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "keys-rotate-hour": (10, 3600),
     "cbom-export": (2, 60),
     # S7-D19: escrituras de clases (franjas, sesiones) y de asistencia (rutas en A2/B2 y C3).
-    # 25 cubetas, 24 variables `USER_*`.
     "classes-write": (30, 60),
     "attendance-write": (60, 60),
+    # S8-D22: movimientos, benchmarks, WODs y asignación (`wods-write`, rutas desde A1) y
+    # resultados (`results-write`, desde B1). 27 cubetas y 26 variables `USER_*`.
+    "wods-write": (30, 60),
+    "results-write": (60, 60),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -381,6 +387,8 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "cbom-export": settings.USER_CBOM_EXPORT_LIMIT_PER_MIN,
         "classes-write": settings.USER_CLASSES_WRITE_LIMIT_PER_MIN,
         "attendance-write": settings.USER_ATTENDANCE_WRITE_LIMIT_PER_MIN,
+        "wods-write": settings.USER_WODS_WRITE_LIMIT_PER_MIN,
+        "results-write": settings.USER_RESULTS_WRITE_LIMIT_PER_MIN,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

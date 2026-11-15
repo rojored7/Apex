@@ -1053,6 +1053,31 @@ def test_limites_de_clases_y_asistencia(tmp_path: Path) -> None:
     )
 
 
+def test_limites_de_wods_resultados_y_tv(tmp_path: Path) -> None:
+    """S8-D22, S8-D33: topes por defecto 30 y 60 por minuto, y 12 y 30 para la TV."""
+    s = _cargar(tmp_path)
+    assert s.USER_WODS_WRITE_LIMIT_PER_MIN == 30
+    assert s.USER_RESULTS_WRITE_LIMIT_PER_MIN == 60
+    assert s.TV_IP_LIMIT == 12
+    assert s.TV_TOKEN_LIMIT == 30
+    _rechaza_alguna(tmp_path, ("USER_WODS_WRITE_LIMIT_PER_MIN",), USER_WODS_WRITE_LIMIT_PER_MIN="0")
+    _rechaza_alguna(
+        tmp_path, ("USER_RESULTS_WRITE_LIMIT_PER_MIN",), USER_RESULTS_WRITE_LIMIT_PER_MIN="-1"
+    )
+    s = _cargar(tmp_path, **{"TV_IP_LIMIT": "120", "TV_TOKEN_LIMIT": "1"})
+    assert s.TV_IP_LIMIT == 120 and s.TV_TOKEN_LIMIT == 1
+
+
+@pytest.mark.parametrize("nombre", ["TV_IP_LIMIT", "TV_TOKEN_LIMIT"])
+@pytest.mark.parametrize("valor", ["0", "-1", "121", "1000"])
+def test_tv_limit_fuera_de_1_a_120_falla_nombrando_la_variable(
+    tmp_path: Path, nombre: str, valor: str
+) -> None:
+    """S8-D33: cota de 1 a 120; el error nombra la variable y nunca el valor."""
+    error = _rechaza(tmp_path, nombre, **{nombre: valor})
+    assert valor not in " ".join(error.invalid)
+
+
 def test_storage_provider_por_defecto_es_local_y_s3_queda_apagado(tmp_path: Path) -> None:
     s = _cargar(tmp_path)
     assert s.STORAGE_PROVIDER == "local"

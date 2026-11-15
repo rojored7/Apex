@@ -42,67 +42,10 @@ from pydantic_settings import (
 )
 
 from app.core import config_origin as _origin
+from app.core.config_non_api import NON_API_ENV_VARS
 from app.core.config_ops import ops_secret_names
 from app.core.config_signing import DEFAULT_SIGNING_KEY_PATH, signing_path_problems
 from app.core.config_storage import S3_REQUIRED, domain_problems, s3_problems
-
-# Variables del .env que no son del api: las lee Compose (POSTGRES_*, puertos),
-# pytest en el host (TEST_DATABASE_URL) o el CLI (admin inicial, US-041: vive en `.env.seed`
-# y solo lo lee `SeedSettings` en el servicio tools; M-8).
-NON_API_ENV_VARS: frozenset[str] = frozenset(
-    {
-        "ADMIN_EMAIL",
-        "ADMIN_INITIAL_PASSWORD",
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_DB",
-        "TEST_DATABASE_URL",
-        "WEB_PORT",
-        "API_PORT",
-        "DB_PORT",
-        "DB_TEST_PORT",
-        # S4B-W0-1 (S4B-D79): variables de operación de .env.ops.example; las lee Compose o el
-        # servicio backup, nunca Settings. Los nombres son exactamente los de ese archivo.
-        "BACKUP_KEEP_DAYS",
-        "BACKUP_CRON",
-        "BACKUP_AGE_RECIPIENT",
-        "BACKUP_AGE_VERIFY_RECIPIENT",
-        "BACKUP_RCLONE_REMOTE",
-        "RCLONE_CONFIG_APEX_TYPE",
-        "RCLONE_CONFIG_APEX_PROVIDER",
-        "RCLONE_CONFIG_APEX_ENDPOINT",
-        "RCLONE_CONFIG_APEX_ACCESS_KEY_ID",
-        "RCLONE_CONFIG_APEX_SECRET_ACCESS_KEY",
-        "BACKUP_SIGN_KEY_FILE",
-        "BACKUP_VERIFY_IDENTITY_FILE",
-        "DEPLOY_HEALTH_TIMEOUT",
-        "APEX_API_DB_PASSWORD",
-        "APEX_WORKER_DB_PASSWORD",
-        "APEX_BACKUP_DB_PASSWORD",
-        # S5-W0-4 (S5-D89, D141): contraseña de apex_owner y las de migrate/tools; solo Compose.
-        "APEX_OWNER_DB_PASSWORD",
-        "MIGRATE_DB_PASSWORD",
-        "TOOLS_DB_PASSWORD",
-        "APEX_SUBNET",
-        "APEX_IP_RANGE",
-        "APEX_WEB_IP",
-        # S5-W0-2: red de custodia de OpenBao (S5-D77) y rol de migraciones (S5-D96); solo Compose.
-        "APEX_CUSTODY_SUBNET",
-        "MIGRATE_DB_USER",
-        # S5-W0-3 (S5-D96): rol del servicio `tools`; solo Compose.
-        "TOOLS_DB_USER",
-        # S6-W0-5 (S6-D65, D77 final): variables de Caddy y del perfil `tls`; solo Compose y el
-        # servicio `caddy`. El api no lee el emisor ACME (`APEX_TLS_ISSUER`).
-        "APEX_CADDY_IP",
-        "APEX_TLS_ISSUER",
-        "APEX_ACME_EMAIL",
-        "APEX_ACME_CA",
-        "APEX_HSTS_MAX_AGE",
-        "TLS_PORT",
-        # S6-W0-4 (S6-D82): snippet real-ip.conf que monta web; solo Compose y deploy.sh.
-        "APEX_REAL_IP_CONF",
-    }
-)
 
 _DSN = TypeAdapter(PostgresDsn)
 TELEGRAM_OFFICIAL_API: Final[str] = "https://api.telegram.org"
@@ -335,6 +278,14 @@ class Settings(BaseSettings):
     USER_CBOM_EXPORT_LIMIT_PER_MIN: int = Field(default=2, gt=0)
     USER_CLASSES_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
     USER_ATTENDANCE_WRITE_LIMIT_PER_MIN: int = Field(default=60, gt=0)
+    # S8-D22 (S8-W0-3): dos cubetas más, 27 en total y 26 variables `USER_*` (rutas en A1 y B1).
+    USER_WODS_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
+    USER_RESULTS_WRITE_LIMIT_PER_MIN: int = Field(default=60, gt=0)
+    # S8-D33: `GET /tv/today` (v0.5). `tv-fail` cuenta por IP solo los intentos con token
+    # inválido y `tv` por token válido, ambos por minuto; cota de 1 a 120 (un valor mayor es un
+    # error de arranque, no un tope silencioso).
+    TV_IP_LIMIT: int = Field(default=12, ge=1, le=120)
+    TV_TOKEN_LIMIT: int = Field(default=30, ge=1, le=120)
 
     @field_validator(
         "OPENBAO_TOKEN_FILE",

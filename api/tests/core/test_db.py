@@ -38,6 +38,7 @@ def test_los_once_esquemas_de_v03() -> None:
         "payments",
         "notifications",
         "attachments",  # S6-C1 (S6-D25)
+        "classes",  # S7: deuda saldada en S8-W0-3
         "worker",
     )
 

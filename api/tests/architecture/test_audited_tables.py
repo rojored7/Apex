@@ -74,7 +74,14 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
     }
 )
 PENDING_AUDITED: dict[str, str] = {
-    "results.results": "v0.5",  # S7-D17: mantiene viva la parametrización
+    # S8-W0-3 (E3): las cinco tablas de v0.5 se declaran antes de existir; cada slice la mueve a
+    # las requeridas. `athletes.personal_records` (EP-24, US-180) mantiene viva la lista.
+    "wods.movements": "v0.5",
+    "wods.benchmarks": "v0.5",
+    "wods.wods": "v0.5",
+    "wods.wod_movements": "v0.5",
+    "results.wod_results": "v0.5",
+    "athletes.personal_records": "v0.6",
 }
 
 
@@ -166,7 +173,7 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    tablas = {**_requeridas_auditadas(), "results.results": _Auditada}
+    tablas = {**_requeridas_auditadas(), "athletes.personal_records": _Auditada}
     assert _incumplidas(tablas) == []
 
 

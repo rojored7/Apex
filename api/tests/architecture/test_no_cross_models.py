@@ -369,9 +369,19 @@ def _importados_de_modulos(archivo: Path) -> list[tuple[int, str]]:
 
 def test_los_privados_de_classes_son_los_de_a2() -> None:
     """S7-A2/B1/B2/C1/R2 (hallazgo 12; V7, L-1): `rules`, `slots`, `sessions`, `queries`, `events`,
-    `attendance` y `reports` son privados de `classes`."""
+    `attendance` y `reports` son privados de `classes`; S8 suma `result_link` y `results_port`."""
     privados = frozenset(
-        {"rules", "slots", "sessions", "queries", "events", "attendance", "reports", "result_link"}
+        {
+            "rules",
+            "slots",
+            "sessions",
+            "queries",
+            "events",
+            "attendance",
+            "reports",
+            "result_link",
+            "results_port",
+        }
     )
     assert privados == PRIVATE_HELPERS.get("classes")
     for archivo in PRIVATE_HELPERS["classes"]:
@@ -381,3 +391,17 @@ def test_los_privados_de_classes_son_los_de_a2() -> None:
     assert [
         (v.imported, v.rule) for v in find_forbidden_imports(falso, module="members", source=fuente)
     ] == [("app.modules.classes.slots", "private_helper")]
+
+
+PUBLIC_FILES = frozenset({"__init__", "router", "schemas", "service", "models", "exceptions"})
+
+
+@pytest.mark.parametrize("modulo", ["classes", "wods", "results", "tv"])
+def test_los_privados_de_los_modulos_nuevos_son_exactamente_sus_archivos(modulo: str) -> None:
+    """V9 del Sprint 8 (S8-D51): en `classes`, `wods`, `results` y `tv` todo archivo que no es de la
+    fachada es privado y está en `PRIVATE_HELPERS`, y todo lo listado existe. Así un archivo nuevo
+    no queda fuera de la regla `private_helper` sin que una prueba lo diga."""
+    en_disco = frozenset(
+        p.stem for p in (MODULES_DIR / modulo).glob("*.py") if p.stem not in PUBLIC_FILES
+    )
+    assert en_disco == PRIVATE_HELPERS[modulo]

@@ -72,15 +72,28 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     # S7-A2 (hallazgo 12): `classes` nace partido tras la fachada `service.py`; cada slice suma el
     # suyo (`sessions`, `attendance`, `queries`, `reports`) cuando crea el archivo (V7, L-1).
     "classes": frozenset(
-        {"rules", "slots", "sessions", "queries", "events", "attendance", "reports", "result_link"}
+        {
+            "rules",
+            "slots",
+            "sessions",
+            "queries",
+            "events",
+            "attendance",
+            "reports",
+            "result_link",
+            "results_port",
+        }
     ),
     # S8-A1 (S8-D5): `wods` nace partido tras la fachada; A2 a A4 suman `benchmarks`, `catalog`
     # y `seed`.
     "wods": frozenset(
         {"rules", "movements", "benchmarks", "catalog", "seed", "events", "programming", "probe"}
     ),
-    # S8-B1 (US-169): `results` nace partido tras la fachada; B4 suma `queries` y `leaderboard`.
-    "results": frozenset({"rules", "record", "queries", "leaderboard", "events"}),
+    # S8-B1 (US-169): `results` nace partido tras la fachada; B4 suma `reads` y `leaderboard`, B3b
+    # `void` y B1d `attendance` (V9: la lista nombraba un `queries` que no existe, S8-D51).
+    "results": frozenset(
+        {"rules", "record", "reads", "leaderboard", "events", "void", "attendance"}
+    ),
     "tv": frozenset({"rules"}),  # S8-C2
 }
 

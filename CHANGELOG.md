@@ -5,6 +5,54 @@ compara la etiqueta con el encabezado de la primera sección, con `api/pyproject
 `web/package.json`. El SHA de cierre vive en el cuerpo de la sección (no lo exige ningún script) y
 es el que se pasa a `infra/deploy.sh --expect-sha`.
 
+## [0.5.0]
+
+Fecha de cierre: 2026-11-15. SHA de cierre: el del commit etiquetado `v0.5.0` (`git rev-parse v0.5.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta se publica en GitHub junto con `main`; el Release en borrador lo arma la CI (`release.yml`).
+
+Quinta versión desplegable: catálogo de movimientos y benchmarks, WODs con calendario semanal, resultados registrados desde la tablet del coach, leaderboard por nivel y sexo, y una pantalla de TV con token de dispositivo. Cierra la deuda aceptada del Sprint 7.
+
+### Sprint 8 · WODs (EP-22)
+- Módulo `wods` (esquema `wods`, migraciones 0032 a 0035): movimientos con nombre normalizado único, benchmarks (`seed-benchmarks` siembra 12, idempotente por nombre normalizado), WODs con lista de movimientos y calendario semanal (`GET /wods?week=`), y el WOD del día.
+- Las cargas son gramos enteros (S8-D41); el front las muestra y las pide en kilos.
+- Asignación del WOD a una sesión (`PATCH /class-sessions/{id}` con `wod_id`): la sesión de hoy hereda el WOD del día; cambiar el WOD efectivo de una sesión con resultados vigentes da 409 `locked_by_results`.
+- Con resultados vigentes quedan bloqueados la unidad de un movimiento, el `score_type` de un benchmark y el principal del WOD.
+
+### Sprint 8 · Resultados y leaderboard (EP-23, EP-24)
+- Módulo `results` (esquema `results`, migraciones 0036 a 0041): `PUT /results` registra un resultado de tiempo, rondas y repeticiones, repeticiones o carga, con corte por time cap, y lo corrige con `supersedes_id` (el anterior queda `is_current = false`). La forma de los datos la protegen CHECK y triggers de la base.
+- Leaderboard por nivel (Rx y Rx+ juntos, scaled después) y posición de competencia, con filtro Mujeres, Hombres y Todos; resultados del WOD, del socio y pestaña Resultados en la ficha.
+- Anulación por admin (`POST /results/{id}/void`, con motivo, migración 0040): sin sucesor y fuera del leaderboard. Con un resultado vigente, quitar la asistencia, cancelar la clase o cancelar las futuras da 409 `locked_by_results` (0039 y revisión final).
+- Índice parcial por sesión (0041) y predicados que usan los índices parciales (S8-D50).
+
+### Sprint 8 · Pantalla de TV (EP-25)
+- Token de dispositivo en la sección `tv` de `/settings`: se genera, se rota y se revoca; solo se guarda su hash y viaja en el fragmento de la URL (`/tv#token=`), nunca en la consulta ni en los logs (Nginx y el api lo redactan).
+- `GET /tv/today` con `X-Device-Token`: nombres cortos («Ana P.»), sin documento, teléfono, correo ni sexo; excluye socios dados de baja o sin autorización de datos. Dos cubetas, `tv-fail` por IP (token inválido) y `tv` por token, con tope también en Nginx.
+
+### Sprint 8 · Quiosco y front
+- Migración 0038: el quiosco suma `GET /class-sessions/{id}/attendance` y `PUT /results` (origen `kiosk`; solo clases de hoy o de ayer; 12 rutas permitidas en total).
+- Front: Movimientos, Benchmarks, calendario y detalle de WOD (leaderboard, sesiones e historial), registro de resultados en la tablet, tarjeta «WOD de hoy» en Inicio, pestaña TV de Configuración y la pantalla de TV en oscuro.
+- Cubetas `wods-write` y `results-write`: 27 cubetas y 26 variables `USER_*`.
+
+### Sprint 8 · Deuda del Sprint 7 cerrada
+- Token de dispositivo para la tablet (S8-D24): se cierra sin código; el quiosco con cuenta coach auditada ya da rutas mínimas, ventana de hoy o ayer y salida con contraseña, y un token en la tablet sería peor. Solo la TV lleva token.
+- Residual de `finish_rotation` (S8-D26): sigue aceptado; v0.5 no suma escritores cifrados, así que no crece.
+- Inicio con sesiones canceladas (S8-D25): las vivas van primero y las canceladas quedan en una línea plegada.
+
+### Sprint 8 · Validación (V1 a V8)
+- Gates completos (V1): api 11.006 pasan, 103 omitidas (Windows, solo Linux), cobertura 95,70 %; web 4.537 pruebas en 261 archivos.
+- Datos y demos en desarrollo (V2, V4): migraciones hasta la 0041 con ciclo `downgrade`/`upgrade`, 19 guardas con `tgenabled = A`, `dbsetup` con 30 tablas clasificadas; cinco demos por curl, topes de Nginx y token ausente de los logs.
+- E2E (V5): `stack` 61 pasan, 2 fallos reales corregidos en V5b (contraste del calendario y WhatsApp sin teléfono); `preview` 219 pasan; 15 resultados en la tablet en 10 s (tope 5 minutos); resistencia de la TV con reloj acelerado de 12 h, heap +3,4 % (tope 20 %).
+- Rendimiento (V6, `perf`): leaderboard, resultados del socio y TV entre 4 y 16 ms con 30 WODs y unos 3.300 resultados (tope 300 ms), todos por índice. Hallazgo S8-D50: `is_current IS TRUE` no usaba el índice parcial; corregido en 12 sitios.
+- Revisión final (V7, S8-D49): cancelación masiva con resultados, índice 0041, invalidaciones del front y textos.
+- verify-delivery en vivo (V8): 51 de 53 puntos entregados y los dos parciales cerrados: «Sesiones con este WOD» paginado en el servidor y con las próximas por defecto (`4c05107`, `85f4cc1`) y el prod-smoke (V3). Una clase completa por la interfaz real: 15 resultados en el quiosco en 9 s, una corrección y la TV al día.
+- Stack de producción en Linux (V3, prod-smoke, imágenes de `85f4cc1`): proveedor local 238 comprobaciones ok y OpenBao 257 ok, 0 fallas en ambas.
+- La lista de privados de `tests/architecture` (`PRIVATE_HELPERS`) quedó exacta para `classes`, `wods`, `results` y `tv`, con una prueba que la compara con los archivos en disco.
+
+### Deuda aceptada con dueño (Sprint 9 o posterior)
+- El cierre por inactividad de 10 minutos del quiosco solo tiene prueba unitaria; no se ejercitó en vivo ni en E2E (dueño Sprint 9).
+- La TV se probó con reloj acelerado de 12 h, no con 12 h reales (dueño Sprint 9, job nocturno `tv-soak`).
+- `NotificationOut` no trae el teléfono, así que «Abrir WhatsApp» se ofrece también a un socio sin teléfono y el 422 `member_without_phone` se explica en pantalla (dueño Sprint 9).
+- Contraseña de desarrollo de un coach impresa una vez en la salida de V4: la cuenta está dada de baja y no se rota por orden del usuario.
+
 ## [0.4.0]
 
 Fecha de cierre: 2026-11-15. SHA de cierre: el del commit etiquetado `v0.4.0` (`git rev-parse v0.4.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta es local: el push, el PR, el merge y el Release los hace una persona.

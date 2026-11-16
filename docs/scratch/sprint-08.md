@@ -477,3 +477,11 @@ Rojo medido sobre los 8 archivos: 26 failed, 379 passed (campos y cubetas inexis
 - TV `/tv/today` (antes de S8-D50): las dos consultas usan `Bitmap Index Scan on ix_wod_results_wod_created`, sin Seq Scan.
 - Resultados del socio (antes): plan natural `Seq Scan on wod_results`; con `enable_seqscan=off` usaba `uq_wod_results_id_wod_member`, no `ix_wod_results_member_date`. Causa: `WodResult.is_current.is_(True)` genera `is_current IS TRUE`, que PostgreSQL no da por implicado por el `WHERE is_current` del indice parcial.
 - CORREGIDO (S8-D50): 12 apariciones de `.is_(True)` sustituidas por la columna desnuda en `results/{reads,record,service,attendance}.py` (sin `ON CONFLICT` ni `IS TRUE` en texto sobre `wod_results`). Planes nuevos, dos corridas (3 passed): socio `Index ... ix_wod_results_member_date` (0,03 a 0,13 ms), leaderboard `ix_wod_results_leaderboard` (0,10 ms) y TV `ix_wod_results_leaderboard`, sin Seq Scan. Tiempos: corrida 1 leaderboard 6,6 / socio 4,2 / TV 9,6 ms; corrida 2 7,6 / 4,4 / 8,0 ms. La prueba exige ahora `ix_wod_results_member_date` sin apagar el planificador (rojo antes del cambio).
+
+## V3 · Stack de producción en Linux (prod-smoke)
+
+- Imágenes `apex-api:local` y `apex-web:local` construidas con `GIT_SHA=85f4cc1d2b4a`.
+- Auxiliar `docker:cli` con el socket y `--network host`; el árbol se copió con `git clone` dentro del volumen `apex-b4-work`. El primer intento con `rsync` desde la carpeta de Windows trajo CRLF (`set: pipefail: invalid option name`) y `git archive` no deja repositorio, que el guion necesita.
+- `SMOKE_DOWN=1 SMOKE_WEB_PORT=8380 prod-smoke.sh --no-build`: EXIT 0, 238 ok, 0 FALLA (00:41 a 00:46 UTC).
+- `... --no-build --provider openbao`: EXIT 0, 257 ok, 0 FALLA (00:46 a 00:52 UTC).
+- Limpieza: `apex-smoke` bajado por el guion, auxiliar borrado, ningún contenedor `*smoke*` vivo.

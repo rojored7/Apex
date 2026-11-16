@@ -379,3 +379,11 @@ Sin migración: api y worker arriba, sin banderas. Stubs: `MetricRevealIn/Out` (
 | L-4 | aceptado (S9-D49) | sin código |
 
 **Pendiente de A3:** la anulación toma la fila de la medición antes que el candado de la cadena de auditoría (mismo orden que el `reveal`).
+
+### Evidencia (S9-A2, tras el sello y el checkpoint `97b6b6d`)
+
+- Gates: no sellante `audit` (904 passed, exit 0); sello `athletes` con los tres archivos del plan: 951 passed, exit 0. `ruff check .`, `ruff format --check .` (todo `api/`) y `mypy src` (288) limpios; el contrato no cambió tras las correcciones (`export-openapi` idéntico al del checkpoint).
+- Curl con el admin de desarrollo (token sin imprimir; el api recarga con `--reload`, sin migración). El valor de la medición de A1 (`3afd6b6b-80ad-45e6-ac04-4e100c6de1ba`) no quedó anotado en A1, así que se creó una medición nueva en el mismo socio (`27c8e28b-...`) con un peso conocido: `reveal` 200 y el valor **coincide**. Sobre la de A1: `reveal` 200 con valor numérico presente.
+- Conteos (`audit_log` `reveal` de `athletes.body_metrics` | `crypto_ops` `decrypt` de `athlete.metric`): antes 0 | 0; después de los dos `reveal` 2 | 2; las filas `reveal` llevan solo `field` e `ip`.
+- `metric_id` de A1 pedido con el socio `eca92e11-...` (otro): 404 `metric_not_found`; los conteos siguen en 2 | 2 (sin filas).
+- Archivos temporales borrados. La medición nueva queda como dato de prueba de desarrollo (sin DELETE por diseño).

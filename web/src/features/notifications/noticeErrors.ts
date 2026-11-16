@@ -24,6 +24,7 @@ export const WA_MESSAGES = {
 
 export const SKIP_MESSAGES = {
   closed: "Este aviso ya no está pendiente. La lista se actualiza sola; cierra este diálogo.",
+  inFlight: "Este aviso se está enviando en este momento. Espera unos segundos e intenta de nuevo.",
   notFound: "Este aviso ya no existe. La lista se actualiza sola; cierra este diálogo.",
   forbidden: "No tienes permiso para omitir avisos. Si lo necesitas, pídeselo a un administrador.",
   tooMany: (wait: string) => `Hiciste muchos cambios seguidos. Espera ${wait} e intenta de nuevo.`,
@@ -59,7 +60,9 @@ export function skipError(error: unknown): ApiError {
   return toFormError(
     error,
     (e) => {
-      if (e.status === HTTP_CONFLICT) return SKIP_MESSAGES.closed;
+      if (e.status === HTTP_CONFLICT) {
+        return e.code === "notification_in_flight" ? SKIP_MESSAGES.inFlight : SKIP_MESSAGES.closed;
+      }
       if (e.status === HTTP_UNPROCESSABLE && e.message.trim() !== "") return e.message;
       return statusMessage(e, SKIP_MESSAGES);
     },

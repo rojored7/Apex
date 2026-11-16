@@ -554,9 +554,10 @@ async def test_dos_pasadas_en_paralelo_no_envian_el_mismo_aviso_dos_veces(
 
 async def test_una_pasada_no_reenvia_un_aviso_que_otra_tiene_en_vuelo(fabrica: Fabrica) -> None:
     """S9-D44 (corrige S5-D228): el candado de fila solo cubre la fase (a); durante el envío la
-    fila no tiene candado, así que otra pasada que la listó antes la volvería a tomar. Lo evita la
-    comprobación de `attempts` al tomarla. Determinista: la pasada A se detiene dentro del canal
-    (aviso 1 en vuelo) mientras B corre completa."""
+    fila no tiene candado. Lo cubre el candado de aviso en vuelo (defensa 1): B no obtiene el aviso
+    que A tiene en el canal y lo deja intacto. La defensa 2 (`attempts`) la prueba
+    `test_sending_candado.py`. Determinista: A se detiene dentro del canal mientras B corre
+    completa."""
     await habilitar_correo(fabrica)
     regla = await regla_correo(fabrica)
     for i in range(4):

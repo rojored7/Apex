@@ -115,6 +115,18 @@ describe("SkipModal", () => {
     expect(onSkipped).not.toHaveBeenCalled();
   });
 
+  it("un 409 de aviso en vuelo pide esperar unos segundos", async () => {
+    mockApi({ [SKIP_KEY]: apiError(409, "notification_in_flight") });
+    const user = userEvent.setup();
+    const { onClose } = mount();
+
+    await user.type(reason(), "Ya pagó");
+    await user.click(confirm());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Este aviso se está enviando en este momento. Espera unos segundos e intenta de nuevo.");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("un 429 pide esperar", async () => {
     mockApi({ [SKIP_KEY]: apiError(429, "rate_limited", {}, { "Retry-After": "10" }) });
     const user = userEvent.setup();

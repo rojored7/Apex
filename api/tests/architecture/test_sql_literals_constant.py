@@ -292,6 +292,35 @@ def test_s6_r1_rotate_job_no_define_candados_nuevos_ni_sql_propio() -> None:
     assert "pg_try_advisory_lock" not in fuente
 
 
+def test_el_candado_de_aviso_en_vuelo_es_try_de_dos_claves_y_esta_documentado() -> None:
+    """S9-D44, S9-D45: `NOTIFY_LOCK_NS == 4_270_010` (primera de dos claves `int4`), distinta de
+    los candados de una clave; el SQL es constante, es un TRY y la llave viaja ligada; el orden de
+    candados de `core/locks.py` lo documenta."""
+    from app.core import locks
+    from app.modules.notifications.sending import (
+        IN_FLIGHT_LOCK_SQL,
+        NOTIFY_LOCK_NS,
+    )
+
+    assert NOTIFY_LOCK_NS == 4_270_010
+    unicas = {
+        AUDIT_CHAIN_LOCK_KEY,
+        AUDIT_VERIFY_LOCK_KEY,
+        MIGRATION_LOCK_KEY,
+        MAIN_LOCK_KEY,
+        4_270_004,
+        4_270_005,
+        4_270_006,
+    }
+    assert NOTIFY_LOCK_NS not in unicas
+    assert IN_FLIGHT_LOCK_SQL == "SELECT pg_try_advisory_xact_lock(:ns, :k)"
+    ruta = SRC / "app" / "modules" / "notifications" / "sending.py"
+    fuente = ruta.read_text(encoding="utf-8")
+    assert "IN_FLIGHT_LOCK_SQL" in _constantes_de_modulo(ast.parse(fuente))
+    assert hallazgos(fuente, "app/modules/notifications/sending.py") == []
+    assert "NOTIFY_LOCK_NS" in (locks.__doc__ or "")
+
+
 def test_los_candados_de_clases_son_el_quinto_y_el_sexto_y_distintos() -> None:
     """S7-A2 y S7-B1 (S7-D9, S7-D10): franjas `4_270_005`, generación `4_270_006`; la llave viaja
     ligada (`:k`) y el SQL del candado es una constante del módulo."""

@@ -34,6 +34,14 @@ la cadena. `PATCH /class-sessions/{id}` pide la sesión `FOR UPDATE` y lee el WO
 /wods/{id}` pide el WOD `FOR UPDATE`: ambos esperan a que el resultado confirme. Nunca se toma el
 WOD antes que la sesión ni el resultado antes que el WOD.
 
+Candado de aviso en vuelo (S9-D44, S9-D45): `NOTIFY_LOCK_NS` (4_270_010, en
+`modules/notifications/sending.py`) es la primera de DOS claves `int4` de
+`pg_try_advisory_xact_lock(ns, k)`; `k` son los 32 bits bajos del id del aviso. Invariantes: es
+siempre un TRY (nunca espera), vive en su propia sesión y transacción (sin filas ni otros candados),
+y esa sesión nunca pide otro candado, así que no puede entrar en un ciclo. `skip` lo prueba en la
+transacción del admin ANTES de bloquear la fila; si no lo obtiene responde 409
+`notification_in_flight`.
+
 Los suscriptores de `SessionCancelled`, `SessionGenerated` y `MemberCheckedIn` se ejecutan con
 la cadena de auditoría (4_270_002) YA tomada (el evento se emite después del flush): no pueden
 pedir candados de socio, de membresía, de sesión ni asesores, porque invertirían este orden y

@@ -30,6 +30,10 @@ SELECT format('ALTER ROLE apex_worker WITH NOSUPERUSER NOCREATEDB NOCREATEROLE N
 SELECT format('ALTER ROLE apex_backup WITH NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION LOGIN CONNECTION LIMIT 2 PASSWORD %L', :'backup_pw')
 \gexec
 
+-- `notify` usa 2 conexiones por aviso a la vez (S9-D45): la del candado de aviso en vuelo
+-- (abierta durante todo el envío) y la de las fases de datos; con CONNECTION LIMIT 5 del worker
+-- caben dos avisos en paralelo (el job los procesa de a uno y el CLI `notify` comparte el límite).
+
 -- Mismos valores por defecto que Settings (DB_STATEMENT_TIMEOUT_MS y DB_IDLE_IN_TX_TIMEOUT_MS).
 ALTER ROLE apex_api SET statement_timeout = 30000;
 ALTER ROLE apex_api SET idle_in_transaction_session_timeout = 60000;

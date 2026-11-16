@@ -90,6 +90,17 @@ class NotificationClosed(NotificationError):
     default_message = "El aviso ya está cerrado."
 
 
+class NotificationInFlight(NotificationError):
+    """El aviso se está enviando en este momento (otra pasada del job lo tiene en vuelo): no se
+    puede omitir hasta que termine; reintentar en unos segundos (S9-D45)."""
+
+    status = 409
+    code = "notification_in_flight"
+    default_message = (
+        "El aviso se está enviando en este momento. Intenta de nuevo en unos segundos."
+    )
+
+
 class WrongChannel(NotificationError):
     """Se pidió el enlace de WhatsApp de un aviso que no es de ese canal (S5-D27)."""
 

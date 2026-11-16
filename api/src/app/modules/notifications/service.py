@@ -45,6 +45,7 @@ from app.modules.notifications.exceptions import (
     InvalidPhone,
     MemberWithoutPhone,
     NotificationClosed,
+    NotificationInFlight,
     NotificationNotFound,
     SeedInProgress,
     WrongChannel,
@@ -238,7 +239,11 @@ async def skip(
     session: AsyncSession, notification_id: UUID, reason: str, by: UUID
 ) -> NotificationOut:
     """Omite un aviso `pending` o `failed` con motivo (US-129). 409 `notification_closed` si ya
-    está `sent` o `skipped`; emite `NotificationSkipped` sin el motivo."""
+    está `sent` o `skipped`; 409 `notification_in_flight` si una pasada del job lo está enviando
+    (S9-D45: se prueba el candado de aviso, que esta transacción conserva hasta confirmar, así
+    ningún envío empieza mientras se omite); emite `NotificationSkipped` sin el motivo."""
+    if not await sending.try_in_flight_lock(session, notification_id):
+        raise NotificationInFlight()
     aviso = await _locked(session, notification_id)
     if not can_skip(aviso.status):
         raise NotificationClosed()

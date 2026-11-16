@@ -100,7 +100,7 @@ Es **idempotente**: la segunda corrida imprime `plantillas creadas 0, reglas cre
 
 **Teléfono inválido.** Con indicativo `57`, si el teléfono guardado no es un celular colombiano (10 dígitos que empiezan por 3, o 12 que empiezan por 57), o con otro `whatsapp.country_code` si no tiene entre 8 y 15 dígitos (el indicativo se antepone si el número no lo trae), `wa-link` da 422 `invalid_phone` y el aviso sigue pendiente; la revelación queda auditada porque el teléfono ya se descifró. Corrija el teléfono en la ficha.
 
-**Omitir** (`POST /notifications/{id}/skip` con `{"reason": "..."}` de 3 a 500 caracteres). Solo `pending` y `failed`; un aviso `sent` u `omitido` da 409 `notification_closed` y conserva el primer motivo. El cambio queda en `audit_log`.
+**Omitir** (`POST /notifications/{id}/skip` con `{"reason": "..."}` de 3 a 500 caracteres). Solo `pending` y `failed`; un aviso `sent` u `omitido` da 409 `notification_closed` y conserva el primer motivo. Si una pasada del job lo está enviando en ese instante, da 409 `notification_in_flight`: espere unos segundos y repita (S9-D45). El cambio queda en `audit_log`.
 
 **Historial** (`GET /notifications` con `status`, `channel`, `rule_id`, `from`, `to`, `q`) y la **pestaña del socio** (`GET /members/{id}/notifications`, también para socios dados de baja). Ninguna respuesta lleva teléfono ni correo.
 
@@ -110,7 +110,7 @@ Es **idempotente**: la segunda corrida imprime `plantillas creadas 0, reglas cre
 
 **Entrega "al menos una vez".** Cada aviso lleva el intento contado ANTES de enviar; si el proceso se corta justo entre el envío y la marca `sent`, la corrida siguiente lo repite una vez como máximo. Tope: 3 intentos por aviso; al tercer fallo queda `failed` para siempre (aparece en "por avisar hoy" hasta que el equipo lo omita). Los `pending` se reintentan durante 15 días.
 
-**Casos que no se reintentan** (`skipped` con motivo): `canal_no_configurado` (canal de correo apagado en Ajustes; con el canal activo pero sin `SMTP_*` los avisos esperan y se alerta `mail_unconfigured`), `canal_desactivado_socio` (el socio apagó el correo), `sin_consentimiento` (el socio no autorizó el tratamiento) y `sin_correo`.
+**Casos que no se reintentan** (`skipped` con motivo): `canal_no_configurado` (canal de correo apagado en Ajustes; con el canal activo pero sin `SMTP_*` los avisos esperan y se alerta `mail_unconfigured`), `canal_desactivado_socio` (el socio apagó el correo, incluso después de generado el aviso: el envío lo vuelve a comprobar, S9-D45), `sin_consentimiento` (el socio no autorizó el tratamiento) y `sin_correo`.
 
 **Proveedor SMTP = encargado del tratamiento (Ley 1581, L-5).** El correo del socio, su nombre y el texto del aviso viajan al proveedor SMTP que se configure; el gimnasio debe tener con él el contrato de encargado y elegir uno que cifre en tránsito (STARTTLS). El correo se descifra solo en el momento del envío, con rastro `reveal`/`decrypt` (`purpose=notify`).
 

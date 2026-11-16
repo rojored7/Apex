@@ -387,3 +387,36 @@ Sin migración: api y worker arriba, sin banderas. Stubs: `MetricRevealIn/Out` (
 - Conteos (`audit_log` `reveal` de `athletes.body_metrics` | `crypto_ops` `decrypt` de `athlete.metric`): antes 0 | 0; después de los dos `reveal` 2 | 2; las filas `reveal` llevan solo `field` e `ip`.
 - `metric_id` de A1 pedido con el socio `eca92e11-...` (otro): 404 `metric_not_found`; los conteos siguen en 2 | 2 (sin filas).
 - Archivos temporales borrados. La medición nueva queda como dato de prueba de desarrollo (sin DELETE por diseño).
+
+## S9-A3
+
+Anular una medición (ruta 11, S9-D13, S9-D33; M-3, L-3). Sin migración (la guarda de `0042` ya permite anular, terminal).
+
+### Rojo
+
+- Stubs: `void_metric` y `can_void` con `NotImplementedError`; ruta, fachada y `MetricAlreadyVoided` reales. `tests/athletes/conftest.py` nuevo (`bus_confirmado`).
+- `test_void_metric.py` (10), `test_router_void_metric.py` (13), `test_void_rules_pure.py` (18), `test_void_concurrency.py` (1): **37 failed, 4 passed** (exit 1). Los 4 que ya pasaban son los que no llegan al service (socio 403, 401, quiosco, 422 de ids); los 37 fallan por `NotImplementedError` (en los de ruta, 500).
+- Incidente de prueba: la prueba de concurrencia en el mismo módulo que `bus_listo` se colgó 6 min (`bus_confirmado` commitea llaves y choca con la transacción de `bus_listo`); se movió a su módulo.
+
+### Verde
+
+- `athletes/metrics.py::void_metric(session, member_id, metric_id, *, by, role)`: `lock_member`, `ensure_exists` (baja = 404 `member_not_found`), fila `FOR UPDATE` + `populate_existing` (404 `metric_not_found`), `can_void` (403 `forbidden` con aviso `user_id`/`metric_id`), 409 `metric_already_voided`, `voided_at` (reloj) y `voided_by`, flush. La auditoría `update` sale del listener de `__audited__`.
+- `rules.py`: `SELF_UNDO_WINDOW_H = 24`, `can_void` pura (admin todo; coach lo suyo hasta la hora 24 exacta). `exceptions.py`: `MetricAlreadyVoided`. `router.py`: `POST .../void`, `athletes-write`, `no-store`. `service.py` exporta `void_metric`.
+- P-CAT: la ruta en `CON_LIMITE` de `test_error_codes_per_route.py`. P-API: dos exportaciones idénticas; `gen:api`; `types.contract.test.ts` 6 passed.
+- Nuevas: 42 passed. `tests/athletes` + `test_0042` + `tests/audit`: 817 passed (exit 0). `tests/architecture`: 899 passed (exit 0). `ruff check .`, `ruff format --check .` (1109) y `mypy src` (288) limpios.
+- Nota: `test_la_auditoria_guarda_el_blob_y_el_sujeto_nunca_el_valor` (A1) falló UNA vez por azar (la subcadena `165` apareció dentro de un blob base64 aleatorio); 4 corridas posteriores pasan. Es una prueba de A1 con falso positivo raro, no de A3.
+
+### Revisiones
+
+`security-reviewer`: 0 CRITICAL/HIGH/MEDIUM y 4 LOW. `database-reviewer`: 0 CRITICAL/HIGH, 1 MEDIUM y 4 LOW. Decisión **S9-D50** en `docs/ddd/DECISIONES.md`. El código estaba bien; se corrigieron las pruebas.
+
+| Hallazgo | Tratamiento | Prueba |
+|---|---|---|
+| DB M-1, DB L-1, Seg L-1 | prueba por protección | `test_void_concurrency.py`: `..._for_update_...` y `..._copia_vieja_...`. Rojo medido quitando la protección: sin `with_for_update`, 1 failed (la de `FOR UPDATE`) y 2 passed; sin `populate_existing`, 1 failed (la de la copia vieja) y 2 passed; restauradas, 3 passed |
+| DB L-2 | `try/finally` anidado | misma prueba de dos anulaciones |
+| DB L-3 | espera de `pg_locks granted = false` con tope de 10 s | misma prueba |
+| DB L-4 | sello con los 5 archivos de A3 y `test_0042` | gate |
+| Seg L-2 | 403 antes que 409 | `test_sobre_una_ya_anulada_el_permiso_manda_sobre_el_409` |
+| Seg L-3 | `extra` exactos del `warning` y del `info` | `test_el_403_deja_un_warning_...`, `test_la_anulacion_deja_un_info_...` |
+| Seg L-4 | aceptado sin código (S9-D50) | sin código |
+| Prueba inestable A1 | `claros_en` salta blobs | `test_metrics_service.py` y `test_claros_en_ignora_los_blobs_...` |

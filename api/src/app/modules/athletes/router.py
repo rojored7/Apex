@@ -5,6 +5,8 @@ Plano, con la ruta completa en el decorador (S2-D3). Admin y coach (`StaffDep`).
 - `GET /athletes/{member_id}/metrics`: `Page[MetricOut]`; `staff-read`.
 - `POST /athletes/{member_id}/metrics/{metric_id}/reveal` (S9-A2, US-179): `MetricRevealOut`;
   las tres cubetas `members-reveal*` de la ficha y `warn_reveal_volume` (S9-D15, S9-D35).
+- `POST /athletes/{member_id}/metrics/{metric_id}/void` (S9-A3, S9-D13): `MetricOut`;
+  `athletes-write`. Sin cuerpo; el coach solo anula lo suyo y dentro de 24 h (S9-D33).
 """
 
 from __future__ import annotations
@@ -89,4 +91,18 @@ async def reveal_metric(
         body.field,
         ip=client_ip(request, redes),
         role=principal.role,
+    )
+
+
+@router.post(
+    "/athletes/{member_id}/metrics/{metric_id}/void",
+    response_model=MetricOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def void_metric(
+    request: Request, member_id: UUID, metric_id: UUID, principal: StaffDep, session: Session
+) -> MetricOut:
+    await enforce_user_limit(request, "athletes-write", principal.user_id)
+    return await service.void_metric(
+        session, member_id, metric_id, by=principal.user_id, role=principal.role
     )

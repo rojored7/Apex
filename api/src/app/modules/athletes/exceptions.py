@@ -46,3 +46,11 @@ class MetricVoided(AthletesError):
     status = 409
     code = "metric_voided"
     default_message = "La medición está anulada."
+
+
+class MetricAlreadyVoided(AthletesError):
+    """La medición ya estaba anulada (terminal; S9-D13, L-3): 409 `metric_already_voided`."""
+
+    status = 409
+    code = "metric_already_voided"
+    default_message = "La medición ya estaba anulada."

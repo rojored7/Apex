@@ -4,6 +4,7 @@
   `consent_required` ANTES de codificar y cifrar: cero filas `encrypt`, H-1) y guarda un blob
   `athlete.metric` por columna con el claro de ancho fijo de `rules.encode_metric`.
 - `list_metrics`: solo las marcas `has_*`; no descifra ni audita (funciona con el custodio sellado).
+- `void_metric` (S9-A3): anulación terminal con candado de fila y la regla M-3 del coach.
 - `_decrypt_metric_field`: la ÚNICA llamada de `athletes` a `types.reveal` (tercera puerta, S9-D15,
   L-2): un solo campo de la tupla de cuatro, `purpose: Literal["reveal"]` y rechazo de la fila
   anulada dentro de la puerta; un blob que no decodifica lanza `MetricDecodeError` (opaco).
@@ -26,9 +27,20 @@ from app.core.crypto.secret import Secret
 from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.core.pagination import Page, PageParams, paginate, to_page
-from app.modules.athletes.exceptions import ConsentRequired, MetricNotFound, MetricVoided
+from app.modules.athletes.exceptions import (
+    ConsentRequired,
+    MetricAlreadyVoided,
+    MetricNotFound,
+    MetricVoided,
+)
 from app.modules.athletes.models import BodyMetric
-from app.modules.athletes.rules import METRIC_FIELDS, decode_metric, encode_metric, validate_metric
+from app.modules.athletes.rules import (
+    METRIC_FIELDS,
+    can_void,
+    decode_metric,
+    encode_metric,
+    validate_metric,
+)
 from app.modules.athletes.schemas import MetricIn, MetricOut, MetricRevealOut
 from app.modules.auth import service as auth_service
 from app.modules.members import service as members_service
@@ -183,3 +195,51 @@ async def reveal_metric(
         subject_member_id=member_id,
     )
     return MetricRevealOut(field=field, value=valor)
+
+
+async def void_metric(
+    session: AsyncSession, member_id: UUID, metric_id: UUID, *, by: UUID, role: str
+) -> MetricOut:
+    """Anula una medición (US-178; S9-D13, S9-D33, L-3). Terminal: llena `voided_at` y
+    `voided_by`, no borra ni descifra nada. `MemberNotFound` si el socio no existe o está dado de
+    baja (S9-D14); `MetricNotFound` (404) si la medición no existe o es de otro socio;
+    `ForbiddenError` (403) si el coach no la registró él o pasaron más de `SELF_UNDO_WINDOW_H`
+    horas (M-3; el admin anula todo); `MetricAlreadyVoided` (409) si ya estaba anulada.
+    Orden de candados (S9-D49, igual que `reveal_metric`): socio (`lock_member`), la fila de la
+    medición `FOR UPDATE` releída con datos frescos y, al vaciar el `flush`, la cadena de la
+    auditoría. Con el candado de fila, una segunda anulación concurrente espera, ve la fila ya
+    anulada y recibe 409 (nunca el 500 del trigger, L-3). La auditoría deja una fila `update` por
+    el listener de `__audited__` (blobs intactos, sin valores). Sin evento ni `commit()`."""
+    await lock_member(session, member_id)
+    await members_service.ensure_exists(session, member_id)
+    metric = await session.scalar(
+        select(BodyMetric)
+        .where(BodyMetric.id == metric_id, BodyMetric.member_id == member_id)
+        .with_for_update(of=BodyMetric)
+        .execution_options(populate_existing=True)
+    )
+    if metric is None:
+        raise MetricNotFound()
+    ahora = current_clock().now_utc()
+    if not can_void(
+        role=role,
+        caller=by,
+        recorded_by=metric.recorded_by,
+        created_at=metric.created_at,
+        now=ahora,
+    ):
+        # M-3: el 403 no deja fila de auditoría; el aviso lleva usuario y medición (S9-D35), sin
+        # socio, campo ni valores.
+        logger.warning(
+            "athletes: anulación denegada",
+            extra={"user_id": str(by), "metric_id": str(metric.id)},
+        )
+        raise ForbiddenError()
+    if metric.voided_at is not None:
+        raise MetricAlreadyVoided()
+    metric.voided_at = ahora
+    metric.voided_by = by
+    await session.flush()
+    logger.info("athletes: medición anulada", extra={"metric_id": str(metric.id)})
+    names = await auth_service.user_names_for(session, [metric.recorded_by])
+    return _to_out(metric, names)

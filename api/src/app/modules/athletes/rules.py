@@ -10,8 +10,9 @@ nunca repiten el texto recibido ni encadenan la causa.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Final
+from uuid import UUID
 
 from app.modules.athletes.exceptions import MetricValidationError
 
@@ -32,6 +33,9 @@ NOTES_MAX_CHARS: Final = 500
 NOTES_BLOCK_BYTES: Final = 128
 NOTES_HEADER_BYTES: Final = 5  # `n` + 4 dígitos
 EARLIEST_MEASURED_ON: Final = date(2000, 1, 1)
+SELF_UNDO_WINDOW_H: Final = 24  # S9-D33 (M-3): ventana en la que el coach deshace lo suyo
+ADMIN_ROLE: Final = "admin"
+COACH_ROLE: Final = "coach"
 
 # Campo -> (mínimo, máximo, dígitos del ancho fijo).
 _NUMERIC: Final[dict[str, tuple[int, int, int]]] = {
@@ -149,3 +153,21 @@ def validate_metric(
         raise MetricValidationError(
             message="Registra al menos una medida: peso, estatura o grasa.", field="weight_g"
         )
+
+
+def can_void(
+    *,
+    role: str,
+    caller: UUID,
+    recorded_by: UUID,
+    created_at: datetime,
+    now: datetime,
+) -> bool:
+    """M-3 (S9-D33): el admin anula todo; el coach solo lo que registró él y hasta
+    `SELF_UNDO_WINDOW_H` horas después de crearlo (la hora 24 exacta aún cuenta). Un `now`
+    anterior a `created_at` (reloj desfasado) cuenta como dentro de la ventana."""
+    if role == ADMIN_ROLE:
+        return True
+    if role != COACH_ROLE or recorded_by != caller:
+        return False
+    return now - created_at <= timedelta(hours=SELF_UNDO_WINDOW_H)

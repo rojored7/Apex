@@ -195,6 +195,8 @@ CON_LIMITE = {
     ("get", "/api/v1/athletes/{member_id}/metrics"),
     # S9-A2 (US-179): `reveal` de una medida consume `members-reveal`, `-hour` y `-day`.
     ("post", "/api/v1/athletes/{member_id}/metrics/{metric_id}/reveal"),
+    # S9-A3 (US-178): anular una medición consume `athletes-write`.
+    ("post", "/api/v1/athletes/{member_id}/metrics/{metric_id}/void"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

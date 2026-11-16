@@ -131,3 +131,58 @@ async def revelar(
 async def reveals_de(session: AsyncSession, metric_id: UUID) -> list[dict[str, Any]]:
     """Filas `reveal` de la auditoría de la medición, en orden de `seq`."""
     return [f for f in await auditoria_de(session, metric_id) if f["action"] == "reveal"]
+
+
+# S9-A3 (US-178): anular una medición -----------------------------------------------------------
+
+
+def ruta_anular(member_id: UUID | str, metric_id: UUID | str) -> str:
+    return f"{ATHLETES}/{member_id}/metrics/{metric_id}/void"
+
+
+async def anular(
+    session: AsyncSession,
+    actor: UUID,
+    member_id: UUID,
+    metric_id: UUID,
+    *,
+    role: str = "admin",
+) -> MetricOut:
+    """`service.void_metric` como una petición: sesión vacía, `actor_scope`, `commit` si sale bien
+    y `rollback` si no. Los ids se pasan ya leídos (un rollback expira los objetos)."""
+    session.expunge_all()
+    with actor_scope(actor):
+        try:
+            salida = await service.void_metric(session, member_id, metric_id, by=actor, role=role)
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+    return salida
+
+
+async def actualizaciones_de(session: AsyncSession, metric_id: UUID) -> list[dict[str, Any]]:
+    """Filas `update` de la auditoría de la medición, en orden de `seq`."""
+    return [f for f in await auditoria_de(session, metric_id) if f["action"] == "update"]
+
+
+# Búsqueda de claros sin falsos positivos (S9-A3, D50) ---------------------------------------
+
+
+def claros_en(valores: dict[str, Any], claros: tuple[str, ...]) -> list[str]:
+    """Los `claros` que aparecen en los valores de una fila o de un `before`/`after` de auditoría.
+
+    Un blob `apx1.…` es base64 aleatorio y un id o una marca de tiempo llevan dígitos: `"165"`
+    buscado como subcadena de todo eso falla al azar. Así que se saltan los blobs, los números y los
+    textos solo se comparan por IGUALDAD si el claro son dígitos, y por subcadena solo si el claro
+    lleva letras (un UUID en hexadecimal no puede contener, por ejemplo, `Primera`)."""
+    halladas: list[str] = []
+    for claro in claros:
+        for valor in valores.values():
+            texto = str(valor)
+            if texto.startswith("apx1."):
+                continue
+            if texto == claro or (not claro.isdigit() and claro in texto):
+                halladas.append(claro)
+                break
+    return halladas

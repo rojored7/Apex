@@ -35,6 +35,7 @@ from tests.athletes._apoyo import (
     ENCRIPTADAS,
     alta,
     auditoria_de,
+    claros_en,
     encripts_de_la_clase,
     fila_cruda,
     ops_de,
@@ -74,8 +75,7 @@ async def test_el_alta_guarda_un_blob_apx1_en_las_cuatro_columnas(
     for campo in ENCRIPTADAS:
         assert fila[campo].startswith("apx1."), campo
         assert fila[campo].split(".")[2] == "A256GCM"
-    for claro in ("62500", "062500", "165", "Primera"):
-        assert not any(claro in str(valor) for valor in fila.values()), claro
+    assert claros_en(fila, ("62500", "062500", "165", "22", "Primera")) == []
 
 
 async def test_el_claro_cifrado_es_el_de_ancho_fijo_con_marca_y_aad_es_el_id(
@@ -168,9 +168,9 @@ async def test_la_auditoria_guarda_el_blob_y_el_sujeto_nunca_el_valor(
     assert (fila["user_id"], fila["subject_member_id"]) == (coach.id, miembro.id)
     for campo in ENCRIPTADAS:
         assert fila["after"][campo].startswith("apx1."), campo
-    texto = str(fila["after"]) + str(fila["before"])
-    for claro in ("62500", "062500", "165", "Primera"):
-        assert claro not in texto
+    # Solo se buscan los valores que no son blobs (un blob base64 puede llevar "165" por azar).
+    assert claros_en(fila["after"], ("62500", "062500", "165", "22", "Primera")) == []
+    assert fila["before"] is None
 
 
 async def test_todos_los_blobs_de_un_campo_miden_lo_mismo(

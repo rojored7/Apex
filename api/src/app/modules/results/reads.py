@@ -98,7 +98,7 @@ async def leaderboard(
         return to_page([], 0, page)
     consulta = select(WodResult).where(
         WodResult.wod_id == wod_id,
-        WodResult.is_current.is_(True),
+        WodResult.is_current,
         WodResult.status == "validated",
     )
     if level is not None:
@@ -128,7 +128,7 @@ async def public_leaderboard(session: AsyncSession, wod_id: UUID, limit: int) ->
         return []
     consulta = select(WodResult).where(
         WodResult.wod_id == wod_id,
-        WodResult.is_current.is_(True),
+        WodResult.is_current,
         WodResult.status == "validated",
     )
     filas = list(
@@ -161,7 +161,7 @@ async def wod_results(
     await _score_type(session, wod_id)
     consulta = select(WodResult).where(WodResult.wod_id == wod_id)
     if not include_superseded:
-        consulta = consulta.where(WodResult.is_current.is_(True))
+        consulta = consulta.where(WodResult.is_current)
     filas, total = await paginate(
         session, consulta.order_by(WodResult.created_at.desc(), WodResult.id), page
     )
@@ -197,9 +197,7 @@ async def member_results(
     session: AsyncSession, member_id: UUID, page: PageParams, *, benchmark: bool | None = None
 ) -> Page[MemberResultRow]:
     await members_service.ensure_exists(session, member_id, include_deleted=True)
-    consulta = select(WodResult).where(
-        WodResult.member_id == member_id, WodResult.is_current.is_(True)
-    )
+    consulta = select(WodResult).where(WodResult.member_id == member_id, WodResult.is_current)
     if benchmark:
         consulta = consulta.where(WodResult.benchmark_id.is_not(None))
     filas, total = await paginate(

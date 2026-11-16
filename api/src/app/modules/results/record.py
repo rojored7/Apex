@@ -63,7 +63,7 @@ async def _current(session: AsyncSession, wod_id: UUID, member_id: UUID) -> WodR
         .where(
             WodResult.wod_id == wod_id,
             WodResult.member_id == member_id,
-            WodResult.is_current.is_(True),
+            WodResult.is_current,
         )
         .with_for_update()
         .execution_options(populate_existing=True)
@@ -83,7 +83,7 @@ async def _insert(session: AsyncSession, fila: WodResult) -> None:
                 select(WodResult.id).where(
                     WodResult.wod_id == fila.wod_id,
                     WodResult.member_id == fila.member_id,
-                    WodResult.is_current.is_(True),
+                    WodResult.is_current,
                 )
             )
             raise ResultExists(vigente) from None
@@ -222,7 +222,7 @@ async def session_has_current_results(session: AsyncSession, session_id: UUID) -
     """El puerto de `classes` (M-2): ¿hay resultados vigentes registrados desde esa sesión?"""
     hallado = await session.scalar(
         select(WodResult.id)
-        .where(WodResult.session_id == session_id, WodResult.is_current.is_(True))
+        .where(WodResult.session_id == session_id, WodResult.is_current)
         .limit(1)
     )
     return hallado is not None
@@ -236,7 +236,7 @@ async def sessions_with_current_results(
         return set()
     filas = await session.scalars(
         select(WodResult.session_id)
-        .where(WodResult.session_id.in_(list(session_ids)), WodResult.is_current.is_(True))
+        .where(WodResult.session_id.in_(list(session_ids)), WodResult.is_current)
         .distinct()
     )
     return {fila for fila in filas.all() if fila is not None}
@@ -251,7 +251,7 @@ async def member_has_current_result_in_session(
         .where(
             WodResult.session_id == session_id,
             WodResult.member_id == member_id,
-            WodResult.is_current.is_(True),
+            WodResult.is_current,
         )
         .limit(1)
     )

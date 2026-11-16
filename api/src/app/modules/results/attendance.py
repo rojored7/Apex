@@ -30,7 +30,7 @@ async def _current_by_member(
         select(WodResult).where(
             WodResult.wod_id == wod_id,
             WodResult.member_id.in_(member_ids),
-            WodResult.is_current.is_(True),
+            WodResult.is_current,
         )
     )
     return {f.member_id: ResultOut.model_validate(f) for f in filas.all()}

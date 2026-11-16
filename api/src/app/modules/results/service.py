@@ -46,7 +46,7 @@ class _Probe:
             return {}
         filas = await session.execute(
             select(WodResult.wod_id, func.count())
-            .where(WodResult.wod_id.in_(list(wod_ids)), WodResult.is_current.is_(True))
+            .where(WodResult.wod_id.in_(list(wod_ids)), WodResult.is_current)
             .group_by(WodResult.wod_id)
         )
         return {wod_id: int(total) for wod_id, total in filas.all()}
@@ -56,7 +56,7 @@ class _Probe:
     ) -> frozenset[UUID]:
         filas = await session.scalars(
             select(func.unnest(WodResult.scaled_movement_ids))
-            .where(WodResult.wod_id == wod_id, WodResult.is_current.is_(True))
+            .where(WodResult.wod_id == wod_id, WodResult.is_current)
             .distinct()
         )
         return frozenset(filas.all())

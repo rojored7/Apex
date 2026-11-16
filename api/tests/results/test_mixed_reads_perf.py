@@ -124,18 +124,8 @@ async def test_lecturas_con_datos_mezclados(session: AsyncSession) -> None:
     assert ms_a < TOPE_MS and ms_b < TOPE_MS and ms_c < TOPE_MS
     for plan in planes_a:
         assert not SEQ_SCAN_WOD_RESULTS.search(plan), f"leaderboard: Seq Scan: {plan}"
-    # HALLAZGO V6: con ~3300 filas el planificador elige Seq Scan natural para la lectura del
-    # socio. Con el Seq Scan apagado tampoco usa `ix_wod_results_member_date` (parcial, `WHERE
-    # is_current`): la consulta renderiza `is_current IS TRUE`, que PostgreSQL no da por implicado
-    # por el predicado del indice, y cae a `uq_wod_results_id_wod_member`. Aqui solo se exige que
-    # exista una ruta por indice; el indice parcial usado queda en la salida con `-s`.
-    natural = any(SEQ_SCAN_WOD_RESULTS.search(p) for p in planes_b)
-    print(f"plan natural del socio con Seq Scan: {natural}")
-    await session.execute(text("SET LOCAL enable_seqscan = off"))
-    try:
-        _, forzados = await _medir(session, "resultados del socio (sin Seq Scan)", del_socio)
-    finally:
-        await session.execute(text("SET LOCAL enable_seqscan = on"))
-    for plan in forzados:
+    # V6 (corregido, S8-D50): la lectura del socio usa `ix_wod_results_member_date`
+    # sin tocar el planificador (el filtro es la columna desnuda `is_current`, no `IS TRUE`).
+    for plan in planes_b:
         assert not SEQ_SCAN_WOD_RESULTS.search(plan), f"socio: Seq Scan: {plan}"
-        assert "Index" in plan, plan
+        assert "ix_wod_results_member_date" in plan, plan

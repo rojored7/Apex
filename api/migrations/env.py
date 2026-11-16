@@ -33,6 +33,7 @@ from app.core import (
 from app.core.db import APP_SCHEMAS, MIGRATION_LOCK_KEY, Base
 
 # Models de cada módulo (se agregan en su historia):
+from app.modules.athletes import models as _athletes  # noqa: F401  (US-178, 0042, S9-D3)
 from app.modules.attachments import models as _attachments  # noqa: F401  (US-147, 0023, S6-D25)
 from app.modules.auth import models as _auth  # noqa: F401  (US-041 0004_auth, S2-B2 0005b)
 from app.modules.classes import models as _classes  # noqa: F401  (US-155, 0026)

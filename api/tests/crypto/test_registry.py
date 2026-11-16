@@ -29,11 +29,12 @@ SIN_LLAVE = {"kek.backup"}
 DE_FIRMA = {"audit.signature"}
 """S6-D40: clase de firma de la cadena; su fila `sign` la crea `init-keys` (D72)."""
 DE_ADJUNTOS = {"attachment.sensitive"}
+DE_MEDIDAS = {"athlete.metric"}
 """S6-C1 (S6-D25): cifrado de los adjuntos sensibles; el blob vive en el objeto, sin columnas."""
 
 
 def test_las_cinco_clases_de_v01() -> None:
-    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE | DE_FIRMA | DE_ADJUNTOS
+    assert set(REGISTRY) == set(ESPERADAS) | SIN_LLAVE | DE_FIRMA | DE_ADJUNTOS | DE_MEDIDAS
     for nombre, (tipo, indice) in ESPERADAS.items():
         spec = get_spec(nombre)
         assert spec.name == nombre and spec.encrypt is True and spec.sign is False
@@ -67,7 +68,7 @@ def test_kek_backup_es_una_clase_sin_llave() -> None:
 def test_kek_backup_no_entra_en_las_listas_que_crean_llaves() -> None:
     for lista in (encrypting_specs(), indexing_specs(), signing_specs()):
         assert "kek.backup" not in {s.name for s in lista}
-    assert {s.name for s in encrypting_specs()} == set(ESPERADAS) | DE_ADJUNTOS
+    assert {s.name for s in encrypting_specs()} == set(ESPERADAS) | DE_ADJUNTOS | DE_MEDIDAS
 
 
 def test_audit_signature_es_una_clase_de_firma_sin_columnas_ni_cifrado() -> None:
@@ -89,3 +90,20 @@ def test_attachment_sensitive_cifra_sin_indice_sin_firma_y_sin_columnas() -> Non
     assert "attachment.sensitive" in {s.name for s in encrypting_specs()}
     assert "attachment.sensitive" not in {s.name for s in indexing_specs()}
     assert "attachment.sensitive" not in {s.name for s in signing_specs()}
+
+
+def test_athlete_metric_cifra_cuatro_columnas_sin_indice_sin_firma() -> None:
+    """S9-A1 (S9-D4, S9-D5): `encrypt=True`, `index_kind=None`, `sign=False`, `value_type="str"` y
+    las cuatro columnas de `athletes.body_metrics` (en el orden del contrato). Entra a
+    `encrypting_specs` (su DEK la crea `ensure_keys`) y no a las de índice ni firma."""
+    spec = get_spec("athlete.metric")
+    assert (spec.encrypt, spec.index_kind, spec.sign, spec.value_type) == (True, None, False, "str")
+    assert spec.columns == (
+        "athletes.body_metrics.weight_g",
+        "athletes.body_metrics.height_cm",
+        "athletes.body_metrics.body_fat_pct",
+        "athletes.body_metrics.notes",
+    )
+    assert "athlete.metric" in {s.name for s in encrypting_specs()}
+    assert "athlete.metric" not in {s.name for s in indexing_specs()}
+    assert "athlete.metric" not in {s.name for s in signing_specs()}

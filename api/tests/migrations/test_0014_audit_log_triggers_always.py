@@ -72,6 +72,7 @@ ALWAYS_DE_0014 = {
         "wods.benchmarks",  # S8-A2 (0033)
         "wods.wods",  # S8-A3 (0034)
         "results.wod_results",  # S8-B1 (0037)
+        "athletes.body_metrics",  # S9-A1 (0042)
     }
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)
@@ -492,6 +493,7 @@ POSTERIORES_A_0014 = (
     "classes.",  # S7-A2 (0026): tabla e índice de franjas
     "wods.",  # S8-A1 (0032): tabla e índice de movimientos
     "results.",  # S8-B1 (0036): tabla, índices y esquema de resultados
+    "athletes.",  # S9-A1 (0042): tabla, índice y esquema de medidas
     "ix_crypto_ops_user_id_at",  # S6-C1 (0023, S6-D108)
 )
 

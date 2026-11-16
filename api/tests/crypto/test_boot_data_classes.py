@@ -68,3 +68,36 @@ async def test_las_clases_sin_cifrado_no_reciben_fila_encrypt(
     for nombre, spec in REGISTRY.items():
         if not spec.encrypt:
             assert await _activas(sin_llaves, "encrypt", nombre) == 0, nombre
+
+
+REAL = "athlete.metric"
+
+
+async def test_la_clase_real_athlete_metric_esta_registrada_y_tiene_su_llave_tras_ensure_keys(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    """S9-A1 (S9-D5): el api crea la DEK de `athlete.metric` al arrancar; no hay paso `init-keys`.
+    Con la clase REAL (sin `override_registry`): registrada, con una sola fila `encrypt` activa y
+    ninguna de índice ni de firma (sin índice ciego ni firma, S9-D4)."""
+    assert REAL in REGISTRY
+    spec = REGISTRY[REAL]
+    assert (spec.encrypt, spec.index_kind, spec.sign) == (True, None, False)
+    with actor_scope(SYSTEM_USER_ID):
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+
+    assert await _activas(sin_llaves, "encrypt", REAL) == 1
+    assert await _activas(sin_llaves, "index", REAL) == 0
+    assert await _activas(sin_llaves, "sign", REAL) == 0
+
+
+async def test_la_segunda_llamada_no_crea_otra_llave_de_athlete_metric(
+    sin_llaves: AsyncSession, proveedor_local: LocalFileProvider
+) -> None:
+    with actor_scope(SYSTEM_USER_ID):
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+        antes = await sin_llaves.scalar(select(func.count()).select_from(CryptoKey))
+        await ensure_keys(sin_llaves, proveedor_local, lambda _n: proveedor_local)
+        despues = await sin_llaves.scalar(select(func.count()).select_from(CryptoKey))
+
+    assert antes == despues
+    assert await _activas(sin_llaves, "encrypt", REAL) == 1

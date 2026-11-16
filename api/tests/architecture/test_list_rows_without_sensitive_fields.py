@@ -30,7 +30,20 @@ from app.main import create_app
 
 PREFIJO = "/api/v1/members"
 SCHEMA_REF = "#/components/schemas/"
-SENSIBLES = frozenset({"document", "phone", "email", "birth_date", "emergency_contact"})
+# S9-A1: las cuatro columnas cifradas de las medidas (`athletes`) tampoco salen en una lista.
+SENSIBLES = frozenset(
+    {
+        "document",
+        "phone",
+        "email",
+        "birth_date",
+        "emergency_contact",
+        "weight_g",
+        "height_cm",
+        "body_fat_pct",
+        "notes",
+    }
+)
 SUFIJOS_SENSIBLES = ("_idx", "_hint", "_email")
 PREFIJOS_COMERCIALES = ("/api/v1/memberships", "/api/v1/payments")
 
@@ -216,3 +229,16 @@ def test_el_control_detecta_una_fila_falsa_con_campos_sensibles() -> None:
         "GET /api/v1/members/falsa: la fila declara phone_idx",
     ]
     assert sorted(listas) == ["GET /api/v1/members/falsa", "GET /api/v1/members/limpia"]
+
+
+def test_la_lista_de_medidas_no_declara_los_cuatro_campos_cifrados(
+    settings_prueba: Settings,
+) -> None:
+    """S9-A1: `GET /athletes/{member_id}/metrics` devuelve `has_*`, nunca el valor."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app, "/api/v1/athletes")
+    assert problemas == [], chr(10).join(problemas)
+    assert "GET /api/v1/athletes/{member_id}/metrics" in listas
+    fila = app.openapi()["components"]["schemas"]["MetricOut"]["properties"]
+    assert {"has_weight", "has_height", "has_body_fat", "has_notes"} <= set(fila)
+    assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "value"}

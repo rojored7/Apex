@@ -93,8 +93,8 @@ async def test_un_cbom_real_con_llaves_local_y_openbao_no_trae_material(
         tls_declared=False,
     )
 
-    # 13 en B3; S6-C1 suma la DEK de `attachment.sensitive` (clase nueva del registro): 14.
-    assert len(cbom["keys"]) == 14
+    # 14 tras S6-C1; S9-A1 suma la DEK de `athlete.metric` (clase nueva del registro): 15.
+    assert len(cbom["keys"]) == 15
     assert problemas_en_cbom(cbom) == []
 
 

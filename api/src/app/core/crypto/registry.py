@@ -49,6 +49,21 @@ _V01: tuple[DataClassSpec, ...] = (
     # S6-D25: cifrado de los adjuntos sensibles; el blob textual se guarda en el objeto del
     # almacenamiento (no hay columna), por eso `columns=()`; sin índice ciego y sin firma.
     DataClassSpec("attachment.sensitive", True, None, False, "str", ()),
+    # S9-D4, S9-D5: medidas corporales (`athletes.body_metrics`); claro de ancho fijo con marca de
+    # campo (S9-D32); sin índice ciego ni firma. La DEK la crea `ensure_keys` al arrancar el api.
+    DataClassSpec(
+        "athlete.metric",
+        True,
+        None,
+        False,
+        "str",
+        (
+            "athletes.body_metrics.weight_g",
+            "athletes.body_metrics.height_cm",
+            "athletes.body_metrics.body_fat_pct",
+            "athletes.body_metrics.notes",
+        ),
+    ),
 )
 
 REGISTRY: Mapping[str, DataClassSpec] = {spec.name: spec for spec in _V01}

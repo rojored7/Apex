@@ -284,3 +284,24 @@ def test_apex_worker_sin_acceso_a_wods_ni_results(apex_roles: RolesDb) -> None:
         "wods.wods",
         "wods.wod_movements",
     ]
+
+
+def test_apex_worker_sin_acceso_al_esquema_athletes(apex_roles: RolesDb) -> None:
+    """S9-A1 (S9-D18, P-ROL): el worker no tiene `USAGE` en `athletes`: ni `SELECT` ni `INSERT`."""
+    import asyncpg
+
+    from tests.migrations.test_db_grants import _correr
+
+    async def intentar(c: asyncpg.Connection) -> list[str]:
+        negadas: list[str] = []
+        for sql in (
+            "SELECT count(*) FROM athletes.body_metrics",
+            "INSERT INTO athletes.body_metrics (id) VALUES (gen_random_uuid())",
+        ):
+            try:
+                await c.execute(sql)
+            except asyncpg.InsufficientPrivilegeError:
+                negadas.append(sql.split()[0])
+        return negadas
+
+    assert _correr(apex_roles.dsn("apex_worker"), intentar) == ["SELECT", "INSERT"]

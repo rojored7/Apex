@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/v1/athletes/{member_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Metrics */
+        get: operations["list_metrics_api_v1_athletes__member_id__metrics_get"];
+        put?: never;
+        /** Add Metric */
+        post: operations["add_metric_api_v1_athletes__member_id__metrics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -3349,6 +3367,60 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** MetricIn */
+        MetricIn: {
+            /** Body Fat Pct */
+            body_fat_pct?: number | null;
+            /** Height Cm */
+            height_cm?: number | null;
+            /**
+             * Measured On
+             * Format: date
+             */
+            measured_on: string;
+            /**
+             * Notes
+             * @description Texto de 1 a 500 caracteres.
+             */
+            notes?: string | null;
+            /** Weight G */
+            weight_g?: number | null;
+        };
+        /** MetricOut */
+        MetricOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Has Body Fat */
+            has_body_fat: boolean;
+            /** Has Height */
+            has_height: boolean;
+            /** Has Notes */
+            has_notes: boolean;
+            /** Has Weight */
+            has_weight: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Measured On
+             * Format: date
+             */
+            measured_on: string;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Recorded By Name */
+            recorded_by_name: string | null;
+            /** Voided At */
+            voided_at: string | null;
+        };
         /** MovementCreate */
         MovementCreate: {
             /**
@@ -3605,6 +3677,17 @@ export interface components {
         Page_MembershipRow_: {
             /** Items */
             items: components["schemas"]["MembershipRow"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[MetricOut] */
+        Page_MetricOut_: {
+            /** Items */
+            items: components["schemas"]["MetricOut"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -5554,6 +5637,193 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_metrics_api_v1_athletes__member_id__metrics_get: {
+        parameters: {
+            query?: {
+                include_voided?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MetricOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_metric_api_v1_athletes__member_id__metrics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetricIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     download_attachment_api_v1_attachments__attachment_id__get: {
         parameters: {
             query?: never;

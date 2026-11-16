@@ -88,7 +88,7 @@ def test_apply_sh_aplica_roles_y_grants_y_cuenta_las_tablas(
         "AND table_schema IN ('attachments','audit','auth','classes','crypto','members',"
         "'memberships',"
         "'notifications','payments',"
-        "'plans','results','settings','wods','worker','public')",
+        "'plans','results','athletes','settings','wods','worker','public')",
     )  # fmt: skip
     assert int(coincide.group(1)) == int(consulta.stdout.strip())
     assert all(clave not in salida for clave in CLAVES.values()), "no imprime contraseñas"

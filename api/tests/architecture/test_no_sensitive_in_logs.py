@@ -354,3 +354,49 @@ def test_s6_a2_el_job_y_el_cli_de_firma_no_emiten_firmas_ni_hashes() -> None:
             if _SALIDAS.search(linea) and _SENSIBLE.search(linea)
         ]
         assert malas == []
+
+
+# S9-A1 (S9-D4, S9-D36 L-2): las medidas del atleta no dejan valores en los logs ----------
+
+NOTA_DE_MEDIDA = "Nota privada de la medicion de prueba"
+CAMPOS_DE_MEDIDA = ("value", "weight_g", "height_cm", "body_fat_pct", "notes")
+
+
+async def test_alta_y_lista_de_medidas_no_dejan_valores_ni_blobs_en_los_logs(
+    app_http: AsyncClient,
+    api_prueba: FastAPI,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    session: AsyncSession,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """El peso, la estatura, la grasa y la nota (en claro, en su forma de ancho fijo o como blob
+    `apx1.`) no salen en el stdout JSON ni en `caplog`; los registros de `app.athletes` no llevan
+    `value` ni los nombres de las cuatro columnas en sus `extra` (L-2)."""
+    from tests.athletes._apoyo import cuerpo, ruta_metricas
+    from tests.notifications._apoyo_avisos import socio
+
+    configure_logging(api_prueba.state.settings)
+    caplog.set_level(logging.DEBUG)
+    coach = await usuario_real("coach")
+    miembro = await socio(session, consentido=True)
+    h = cabeceras(coach)
+    ruta = ruta_metricas(miembro.id)  # una vez: el 422 revierte la sesión y expira `miembro`
+
+    alta = await app_http.post(ruta, json=cuerpo(weight_g=73_450, notes=NOTA_DE_MEDIDA), headers=h)
+    assert alta.status_code == 201, alta.text
+    invalida = await app_http.post(ruta, json=cuerpo(weight_g=19_999), headers=h)
+    assert invalida.status_code == 422, invalida.text
+    lista = await app_http.get(ruta, headers=h)
+    assert lista.status_code == 200, lista.text
+
+    salida = capsys.readouterr()
+    stdout = salida.out + salida.err
+    assert "http_request" in stdout, "no se capturó el log JSON de acceso"
+    texto = stdout + caplog.text + " ".join(str(r.__dict__) for r in caplog.records)
+    for valor in ("73450", "073450", "w073450", "19999", NOTA_DE_MEDIDA, "apx1."):
+        assert valor not in texto, valor
+    for registro in caplog.records:
+        if registro.name.startswith("app.athletes"):
+            assert not [c for c in CAMPOS_DE_MEDIDA if c in registro.__dict__], registro.name

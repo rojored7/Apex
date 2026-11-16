@@ -126,3 +126,18 @@ def test_attachment_sensitive_esta_en_el_registro_y_no_tiene_columnas() -> None:
     load_module_services()
 
     assert encrypted_columns(Base.metadata, "attachment.sensitive") == []
+
+
+def test_athlete_metric_descubre_sus_cuatro_columnas_encrypted() -> None:
+    """S9-A1 (S9-D4): las cuatro columnas del registro son `Encrypted("athlete.metric")` de
+    `athletes.body_metrics`, en el orden del contrato."""
+    load_module_services()
+
+    refs = encrypted_columns(Base.metadata, "athlete.metric")
+
+    assert [r.qualified for r in refs] == [
+        "athletes.body_metrics.weight_g",
+        "athletes.body_metrics.height_cm",
+        "athletes.body_metrics.body_fat_pct",
+        "athletes.body_metrics.notes",
+    ]

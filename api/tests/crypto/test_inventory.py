@@ -155,7 +155,7 @@ async def test_cada_llave_trae_los_campos_de_d13_y_ninguno_mas(
 ) -> None:
     items = await _todas(session)
 
-    assert len(items) == 11  # S6-C1: +1 por la DEK de `attachment.sensitive` (antes 10)
+    assert len(items) == 12  # S9-A1: +1 por la DEK de `athlete.metric` (antes 11)
     for item in items:
         assert set(item.model_dump()) == CAMPOS_D13
         assert item.age_days >= 0
@@ -275,8 +275,8 @@ async def test_el_puerto_gana_sobre_las_columnas_del_registro(
 
 
 async def test_filtra_por_purpose(session: AsyncSession, llaves: dict[str, CryptoKey]) -> None:
-    # S6-C1: 7 encrypt (antes 6) por la DEK de `attachment.sensitive`
-    for purpose, cuantas in (("encrypt", 7), ("index", 3), ("sign", 1)):
+    # S9-A1: 8 encrypt (antes 7) por la DEK de `athlete.metric`
+    for purpose, cuantas in (("encrypt", 8), ("index", 3), ("sign", 1)):
         items = await _todas(session, KeysFilters(purpose=purpose))
         assert len(items) == cuantas, purpose
         assert {i.purpose for i in items} == {purpose}
@@ -287,7 +287,7 @@ async def test_filtra_por_state(session: AsyncSession, llaves: dict[str, CryptoK
     activas = await _todas(session, KeysFilters(state="active"))
 
     assert [i.id for i in anteriores] == [llaves["decrypt_only"].id]
-    assert len(activas) == 10  # S6-C1: +1 (antes 9)
+    assert len(activas) == 11  # S9-A1: +1 por `athlete.metric` (antes 10)
     assert await _todas(session, KeysFilters(state="retired")) == []
 
 
@@ -302,7 +302,7 @@ async def test_filtra_por_provider(
     en_local = await _todas(session, KeysFilters(provider="local"))
 
     assert [i.id for i in en_openbao] == [abierta.id]
-    assert len(en_local) == 11  # S6-C1: +1 (antes 10)
+    assert len(en_local) == 12  # S9-A1: +1 (antes 11)
 
 
 async def test_filtra_por_data_class_exacta(
@@ -365,7 +365,7 @@ async def test_la_pagina_por_defecto_es_de_25_y_devuelve_limit_y_offset(
 ) -> None:
     pagina = await inventory.list_keys(session, KeysFilters(), PageParams())
 
-    assert (pagina.limit, pagina.offset, pagina.total, len(pagina.items)) == (25, 0, 11, 11)
+    assert (pagina.limit, pagina.offset, pagina.total, len(pagina.items)) == (25, 0, 12, 12)
 
 
 async def test_un_offset_pasado_el_final_da_pagina_vacia_con_el_total(
@@ -373,7 +373,7 @@ async def test_un_offset_pasado_el_final_da_pagina_vacia_con_el_total(
 ) -> None:
     pagina = await inventory.list_keys(session, KeysFilters(), PageParams(limit=5, offset=40))
 
-    assert (pagina.items, pagina.total, pagina.offset) == ([], 11, 40)
+    assert (pagina.items, pagina.total, pagina.offset) == ([], 12, 40)
 
 
 async def test_el_orden_es_data_class_purpose_y_version_descendente(
@@ -400,7 +400,7 @@ async def test_paginar_de_a_tres_recorre_el_mismo_orden_sin_repetir_ni_omitir(
         recorrido.extend(i.id for i in pagina.items)
 
     assert recorrido == completo
-    assert len(set(recorrido)) == len(recorrido) == 11
+    assert len(set(recorrido)) == len(recorrido) == 12
 
 
 # Solo lectura y columnas explícitas ------------------------------------------------------------
@@ -458,8 +458,8 @@ async def test_active_count_cuenta_las_activas_de_todo_el_inventario(
 ) -> None:
     resumen = await inventory.summary(session)
 
-    # 6 encrypt (S6-C1: +attachment.sensitive) + 3 index + 1 sign; la decrypt_only no cuenta
-    assert resumen.active_count == 10
+    # 7 encrypt (S9-A1: +athlete.metric) + 3 index + 1 sign; la decrypt_only no cuenta
+    assert resumen.active_count == 11
     assert resumen.active_count == await _sql(
         session, "SELECT count(*) FROM crypto.crypto_keys WHERE state = 'active'"
     )

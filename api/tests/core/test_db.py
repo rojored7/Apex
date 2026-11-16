@@ -41,6 +41,7 @@ def test_los_once_esquemas_de_v03() -> None:
         "classes",  # S7: deuda saldada en S8-W0-3
         "wods",  # S8-A1 (0032)
         "results",  # S8-B1 (0036)
+        "athletes",  # S9-A1 (0042)
         "worker",
     )
 

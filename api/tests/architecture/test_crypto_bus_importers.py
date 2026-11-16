@@ -46,6 +46,8 @@ IMPORTADORES_REALES: Final = frozenset(
         "worker/jobs/notify.py",
         "worker/jobs/sign_audit.py",  # S6-A2: error objetivo del Rojo (faltaba en el conjunto)
         "worker/runtime.py",
+        "modules/athletes/metrics.py",  # S9-A1 (S9-D15): puerta de `reveal` de las medidas
+        "modules/athletes/models.py",  # S9-A1: `Encrypted("athlete.metric")` y `Secret`
         "modules/attachments/files.py",  # S6-C1 (S6-D60): tercera puerta, única del módulo
         "modules/members/changes.py",
         "modules/members/detail.py",

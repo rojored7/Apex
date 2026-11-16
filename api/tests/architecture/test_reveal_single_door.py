@@ -23,6 +23,10 @@ PUERTA = ("modules/members/detail.py", "_decrypt_fields")
 # S5-B12 (S5-D60, M-10): la exportación descifra por lote con propósito `export`; es la SEGUNDA
 # y última puerta permitida (Rojo B12).
 PUERTA_EXPORTACION = ("modules/members/exports.py", "_decrypt_batch")
+# S9-A1 (S9-D15, L-2): la TERCERA puerta de `reveal` es la de las medidas del atleta; recibe UN
+# campo de la tupla de cuatro y `purpose: Literal["reveal"]` y rechaza la fila anulada.
+PUERTA_MEDIDAS = ("modules/athletes/metrics.py", "_decrypt_metric_field")
+PUERTAS = {PUERTA, PUERTA_EXPORTACION, PUERTA_MEDIDAS}
 TYPES_MODULE = "app.core.crypto.types"
 BUS_MODULE = "app.core.crypto.bus"
 
@@ -93,18 +97,19 @@ def test_reveal_solo_se_llama_en_decrypt_fields_de_members_detail() -> None:
         relativo = archivo.relative_to(APP).as_posix()
         encontradas.extend((relativo, funcion) for funcion, _ in de_reveal)
     assert PUERTA in encontradas
-    assert set(encontradas) <= {PUERTA, PUERTA_EXPORTACION}, encontradas
+    assert set(encontradas) <= PUERTAS, encontradas
 
 
-def test_la_exportacion_es_la_segunda_puerta_de_reveal_y_solo_una_vez() -> None:
-    """S5-B12 (S5-D60): `members/exports.py::_decrypt_batch` llama a `types.reveal` (un lote, una
-    fila de `crypto_ops` por clase) y es la única llamada fuera de `_decrypt_fields`."""
+def test_las_tres_puertas_de_reveal_y_solo_una_vez_cada_una() -> None:
+    """S5-B12 (S5-D60): `members/exports.py::_decrypt_batch` es la segunda puerta (un lote, una
+    fila de `crypto_ops` por clase). S9-A1 (S9-D15): `athletes/metrics.py::_decrypt_metric_field`
+    es la tercera; la de adjuntos (`bus.decrypt`) sigue aparte."""
     encontradas: list[tuple[str, str | None]] = []
     for archivo in _fuera_de_core():
         de_reveal, _ = llamadas(archivo.read_text(encoding="utf-8"))
         relativo = archivo.relative_to(APP).as_posix()
         encontradas.extend((relativo, funcion) for funcion, _ in de_reveal)
-    assert sorted(encontradas, key=str) == sorted([PUERTA, PUERTA_EXPORTACION], key=str)
+    assert sorted(encontradas, key=str) == sorted(PUERTAS, key=str)
 
 
 # S6-C1 (S6-D53, S6-D60): la TERCERA puerta de descifrado es la de los adjuntos. No es `reveal` (los
@@ -259,3 +264,38 @@ def test_el_router_de_attachments_no_abre_puertas_de_descifrado() -> None:
     }
     assert not [m for m in importados if "crypto" in m or m.endswith(".files")], importados
     assert "decrypt" not in fuente and "reveal" not in fuente
+
+
+# S9-A1 (S9-D15, L-2): la tercera puerta, la de las medidas del atleta ----------------------
+
+
+def test_athletes_solo_descifra_en_la_puerta_de_metrics_y_no_llama_a_bus_decrypt() -> None:
+    """Ningún archivo de `modules/athletes/` salvo `metrics.py` llama a `types.reveal`, y ninguno
+    llama a `bus.decrypt`; en `metrics.py` la única llamada está en `_decrypt_metric_field`."""
+    archivos = sorted((APP / "modules" / "athletes").rglob("*.py"))
+    assert archivos, "el módulo athletes debe existir"
+    for archivo in archivos:
+        de_reveal, de_decrypt = llamadas(archivo.read_text(encoding="utf-8"))
+        relativo = archivo.relative_to(APP).as_posix()
+        assert de_decrypt == [], relativo
+        if relativo == PUERTA_MEDIDAS[0]:
+            assert [f for f, _ in de_reveal] == [PUERTA_MEDIDAS[1]], de_reveal
+        else:
+            assert de_reveal == [], relativo
+
+
+def test_control_un_reveal_en_otro_archivo_de_athletes_no_es_una_puerta() -> None:
+    fuente = (
+        "from app.core.crypto import types"
+        + chr(10)
+        + chr(10)
+        + "async def reveal_metric(metric):"
+        + chr(10)
+        + "    return types.reveal(metric, 'weight_g', 'reveal')"
+        + chr(10)
+    )
+    de_reveal, _ = llamadas(fuente)
+    assert de_reveal == [("reveal_metric", 4)]
+    assert ("modules/athletes/service.py", "reveal_metric") not in PUERTAS
+    assert ("modules/athletes/metrics.py", "reveal_metric") not in PUERTAS
+    assert PUERTA_MEDIDAS in PUERTAS

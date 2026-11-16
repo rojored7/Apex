@@ -34,7 +34,13 @@ RUTAS_SIN_Q_S8: frozenset[str] = frozenset(
 """S8-B4 (US-171 a US-173): el leaderboard y las dos listas de resultados paginan con `limit` y
 `offset` y filtran por parámetros tipados (`level`, `sex`, `include_superseded`, `benchmark`): no
 hay texto que buscar, así que no aceptan `q` (exclusión anotada)."""
-SIN_Q: frozenset[str] = frozenset({"GET /api/v1/members/{member_id}/attachments"}) | RUTAS_SIN_Q_S8
+RUTAS_SIN_Q_S9: frozenset[str] = frozenset({"GET /api/v1/athletes/{member_id}/metrics"})
+"""S9-A1 (US-178): la lista de mediciones de un socio pagina con `limit` y `offset` y filtra por el
+parámetro tipado `include_voided`; no hay texto que buscar (los cuatro campos van cifrados y
+`has_*` no se busca), así que no acepta `q` (exclusión anotada)."""
+SIN_Q: frozenset[str] = (
+    frozenset({"GET /api/v1/members/{member_id}/attachments"}) | RUTAS_SIN_Q_S8 | RUTAS_SIN_Q_S9
+)
 """S6-C2 (S6-D57): el listado de adjuntos de un socio pagina sin `q`; S8-B4 suma las tres
 lecturas de resultados (exclusión anotada)."""
 
@@ -330,4 +336,4 @@ def test_s6_c2_el_listado_de_adjuntos_pagina_sin_q(settings_prueba: Settings) ->
     assert _usa_page_params(rutas[ruta_attachments].dependant)
     assert _query_params(rutas[ruta_attachments].dependant) == {"limit", "offset"}
     assert _limite_maximo(app.openapi()["paths"][ruta_attachments]["get"]) == MAX_LIMIT
-    assert SIN_Q == {f"GET {ruta_attachments}"} | RUTAS_SIN_Q_S8
+    assert SIN_Q == {f"GET {ruta_attachments}"} | RUTAS_SIN_Q_S8 | RUTAS_SIN_Q_S9

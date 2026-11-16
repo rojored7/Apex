@@ -37,18 +37,18 @@ async def test_admin_recibe_200_con_la_forma_de_page_mas_summary(
     cuerpo = r.json()
     assert set(cuerpo) == {"items", "total", "limit", "offset", "summary"}
     assert (cuerpo["total"], cuerpo["limit"], cuerpo["offset"]) == (
-        11,
+        12,
         25,
         0,
-    )  # S6-C1: +1 por `attachment.sensitive` (antes 10)
-    assert len(cuerpo["items"]) == 11
+    )  # S9-A1: +1 por `athlete.metric` (antes 11)
+    assert len(cuerpo["items"]) == 12
     assert set(cuerpo["summary"]) == {
         "active_count",
         "operations_today",
         "running_jobs",
         "provider",
     }
-    assert cuerpo["summary"]["active_count"] == 10  # S6-C1: +1 (antes 9)
+    assert cuerpo["summary"]["active_count"] == 11  # S9-A1: +1 (antes 10)
     assert cuerpo["summary"]["provider"]["names"] == ["local"]
 
 

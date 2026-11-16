@@ -95,6 +95,9 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
         {"rules", "record", "reads", "leaderboard", "events", "void", "attendance"}
     ),
     "tv": frozenset({"rules"}),  # S8-C2
+    # S9-A1 (S9-D20): `athletes` nace partido tras la fachada; B1, B3 y C1 suman `records`,
+    # `derive` y `reads` cuando crean el archivo.
+    "athletes": frozenset({"rules", "metrics", "events"}),
 }
 
 Rule = Literal[

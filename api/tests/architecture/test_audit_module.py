@@ -66,6 +66,7 @@ def test_modules_de_v01_incluye_audit_despues_de_auth() -> None:
         "wods",  # S8-A1 (S8-D5): después de `classes`
         "results",  # S8-B1 (US-169): después de `wods`
         "tv",  # S8-C2 (US-176): después de `results`
+        "athletes",  # S9-A1 (EP-24): después de `tv`, antes de `dashboard`
         "dashboard",
     )
 

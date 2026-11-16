@@ -37,6 +37,8 @@ export const API_ERROR_CODES = {
   memberWithoutPhone: "member_without_phone",
   // S9-D45: omitir un aviso que una pasada del job está enviando (409).
   notificationInFlight: "notification_in_flight",
+  // S9-D29: registrar medidas de un socio sin autorización de datos (409; athletes/exceptions.py).
+  consentRequired: "consent_required",
   // socios y planes
   memberDocumentDuplicated: "member_document_duplicated",
   memberNotFound: "member_not_found",

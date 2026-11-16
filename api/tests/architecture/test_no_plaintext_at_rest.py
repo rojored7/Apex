@@ -216,3 +216,14 @@ def test_ningun_archivo_del_modulo_attachments_escribe_el_cuerpo_sin_pasar_por_f
         encoding="utf-8"
     )
     assert "_encrypt_file" in fuente or "files." in fuente, "service debe cifrar por files"
+
+
+def test_descubre_las_cuatro_columnas_cifradas_de_las_medidas_con_su_fabrica() -> None:
+    """S9-A1 (S9-D4): `athletes.body_metrics` tiene sus cuatro columnas `Encrypted` y su fábrica."""
+    assert _cifradas().get("athletes.body_metrics") == [
+        "body_fat_pct",
+        "height_cm",
+        "notes",
+        "weight_g",
+    ]
+    assert "athletes.body_metrics" in FACTORIES

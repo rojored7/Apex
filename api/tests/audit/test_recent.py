@@ -438,3 +438,17 @@ async def test_recent_con_5_mil_escrituras_recientes_del_sistema_sin_seq_scan_y_
     assert len(vistas) == 10
     assert all(v.user_id == ana.id for v in vistas)
     assert statistics.median(tiempos) < TOPE_MS, tiempos
+
+
+def test_las_medidas_son_auditables_y_no_entran_en_recientes_con_su_motivo() -> None:
+    """S9-A1 (S9-D19): se ven en la ficha del socio; el blob no es legible en el tablero."""
+    from app.modules.audit.queries import (
+        AUDIT_TABLES_EXCLUDED_FROM_RECENT,
+        AUDITABLE_TABLES,
+        RECENT_TABLES_ALLOWED,
+    )
+
+    tabla = "athletes.body_metrics"
+    assert tabla in AUDITABLE_TABLES
+    assert AUDIT_TABLES_EXCLUDED_FROM_RECENT[tabla].strip()
+    assert tabla not in RECENT_TABLES_ALLOWED

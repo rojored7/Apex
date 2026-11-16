@@ -69,6 +69,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "wods.wods",  # S8-A3 (US-166)
         "wods.wod_movements",  # S8-A3 (US-166)
         "results.wod_results",  # S8-B1 (US-169)
+        "athletes.body_metrics",  # S9-A1 (US-178)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -323,6 +324,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "wods.benchmarks",  # S8-A2: catálogo (S8-D23)
         "wods.wod_movements",  # S8-A3: detalle del WOD (S8-D23)
         "results.wod_results",  # S8-B1: volumen de la clase (S8-D23)
+        "athletes.body_metrics",  # S9-A1 (S9-D19): se ve en la ficha; el blob no es legible
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

@@ -190,6 +190,9 @@ CON_LIMITE = {
     ("post", "/api/v1/wods"),
     ("get", "/api/v1/wods/{wod_id}"),
     ("patch", "/api/v1/wods/{wod_id}"),
+    # S9-A1 (US-178): `athletes-write` en el alta de una medida y `staff-read` en la lista.
+    ("post", "/api/v1/athletes/{member_id}/metrics"),
+    ("get", "/api/v1/athletes/{member_id}/metrics"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

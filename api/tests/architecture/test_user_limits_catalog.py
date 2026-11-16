@@ -48,8 +48,9 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S7-C3 (US-161): `DELETE /attendance/{id}` también la consume.
 # S8-D22 (S8-W0-3): `wods-write` y `results-write` se registran sin ruta; A1 saca la primera
 # (`POST /movements`) y B1 la segunda (`PUT /results`).
-# S9-D17 (S9-W0-2): `athletes-write` sin ruta todavía; A1 la saca (`POST /members/{id}/metrics`).
-CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"athletes-write"})
+# S9-D17 (S9-W0-2): `athletes-write` se registró sin ruta; S9-A1 la saca con
+# `POST /athletes/{member_id}/metrics` y el catálogo entero vuelve a tener ruta.
+CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset()
 
 
 def test_las_dos_ventanas_de_verificacion_viven_en_post_audit_verify() -> None:
@@ -467,8 +468,8 @@ def test_las_dos_cubetas_de_s7_estan_en_el_catalogo_con_sus_ventanas() -> None:
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (sin ruta)."""
     """S7-D19: 30 por minuto para clases (ruta desde A2) y 60 para asistencia (ruta desde C1)."""
     assert USER_LIMITS["attendance-write"] == (60, 60)
-    # S8-B1: wods-write y results-write con ruta; S9-D17: solo athletes-write espera la suya (A1).
-    assert frozenset({"athletes-write"}) == CLAVES_SIN_RUTA_TODAVIA
+    # S8-B1: wods-write y results-write con ruta; S9-A1 le da la suya a athletes-write.
+    assert frozenset() == CLAVES_SIN_RUTA_TODAVIA
 
 
 def test_las_dos_cubetas_de_s8_estan_en_el_catalogo_con_sus_ventanas() -> None:
@@ -477,12 +478,13 @@ def test_las_dos_cubetas_de_s8_estan_en_el_catalogo_con_sus_ventanas() -> None:
     assert USER_LIMITS["results-write"] == (60, 60)
 
 
-def test_la_cubeta_de_s9_esta_en_el_catalogo_sin_ruta_todavia() -> None:
+def test_la_cubeta_de_s9_esta_en_el_catalogo_con_su_primera_ruta() -> None:
     """S9-D17: `athletes-write` (30 por minuto) con su variable; A1 le da la primera ruta."""
     from app.core.config import Settings
 
     assert USER_LIMITS["athletes-write"] == (30, 60)
-    assert "athletes-write" in CLAVES_SIN_RUTA_TODAVIA
+    assert "athletes-write" not in CLAVES_SIN_RUTA_TODAVIA
+    assert "athletes-write" in _routers().buckets
     assert Settings.model_fields["USER_ATHLETES_WRITE_LIMIT_PER_MIN"].default == 30
 
 

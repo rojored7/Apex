@@ -53,6 +53,7 @@ ESQUEMAS = (
     "settings",
     "wods",  # S8-A1 (0032)
     "results",  # S8-B1 (0036)
+    "athletes",  # S9-A1 (0042)
     "worker",
     "public",
 )
@@ -146,6 +147,31 @@ COLUMNAS_API_WOD_RESULTS_UPDATE: tuple[str, ...] = (
     "is_current",
     "status",
     "void_reason",
+    "voided_at",
+    "voided_by",
+    "updated_at",
+)
+# S9-A1 (S9-D18, S9-D31): el api inserta mediciones por columna SIN `voided_*` (una medición no nace
+# anulada) y solo actualiza los cuatro blobs (rotación desde la pantalla), la anulación y
+# `updated_at`; `measured_on`, `member_id`, `recorded_by` y `created_*` quedan fijos.
+COLUMNAS_API_BODY_METRICS_INSERT: tuple[str, ...] = (
+    "id",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "member_id",
+    "measured_on",
+    "recorded_by",
+    "weight_g",
+    "height_cm",
+    "body_fat_pct",
+    "notes",
+)
+COLUMNAS_API_BODY_METRICS_UPDATE: tuple[str, ...] = (
+    "weight_g",
+    "height_cm",
+    "body_fat_pct",
+    "notes",
     "voided_at",
     "voided_by",
     "updated_at",
@@ -264,6 +290,12 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     # S8-B1 (S8-D35, P-ROL): el api inserta y solo valida o apaga; nadie borra; el worker no ve.
     "results.wod_results": {
         "apex_api": (frozenset({"SELECT", "INSERT"}), frozenset(COLUMNAS_API_WOD_RESULTS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    # S9-A1 (S9-D18, P-ROL): el `INSERT` es por columna; solo blobs, anulación y `updated_at`
+    # se actualizan; nadie borra; el worker no ve el esquema `athletes`.
+    "athletes.body_metrics": {
+        "apex_api": (frozenset({"SELECT"}), frozenset(COLUMNAS_API_BODY_METRICS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -849,6 +881,12 @@ PROHIBIDAS_API = [
     "UPDATE results.wod_results SET supersedes_id = supersedes_id",  # S8-B1
     "UPDATE results.wod_results SET validated_by = validated_by",  # S8-B1d
     "UPDATE results.wod_results SET validated_at = validated_at",  # S8-B1d
+    "DELETE FROM athletes.body_metrics",  # S9-A1: las medidas no se borran
+    "TRUNCATE athletes.body_metrics",  # S9-A1
+    "UPDATE athletes.body_metrics SET measured_on = measured_on",  # S9-A1: columna sin UPDATE
+    "UPDATE athletes.body_metrics SET member_id = member_id",  # S9-A1
+    "UPDATE athletes.body_metrics SET recorded_by = recorded_by",  # S9-A1
+    "UPDATE athletes.body_metrics SET created_by = created_by",  # S9-A1
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -936,6 +974,8 @@ PROHIBIDAS_WORKER = [
     "SELECT count(*) FROM wods.wod_movements",  # S8-A3
     "SELECT count(*) FROM results.wod_results",  # S8-B1: el worker no ve `results`
     "INSERT INTO results.wod_results (id) VALUES (gen_random_uuid())",  # S8-B1
+    "SELECT count(*) FROM athletes.body_metrics",  # S9-A1: el worker no ve el esquema `athletes`
+    "INSERT INTO athletes.body_metrics (id) VALUES (gen_random_uuid())",  # S9-A1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",
@@ -1417,6 +1457,8 @@ def test_las_listas_de_columnas_coinciden_en_el_plan_grants_sql_y_la_base(
         ("SELECT", "members.members", "apex_worker"): set(COLUMNAS_WORKER_MEMBERS),
         ("UPDATE", "auth.users", "apex_api"): set(COLUMNAS_API_USERS_UPDATE),
         ("INSERT", "payments.payments", "apex_api"): set(COLUMNAS_API_PAYMENTS_INSERT),
+        ("INSERT", "athletes.body_metrics", "apex_api"): set(COLUMNAS_API_BODY_METRICS_INSERT),
+        ("UPDATE", "athletes.body_metrics", "apex_api"): set(COLUMNAS_API_BODY_METRICS_UPDATE),
         ("UPDATE", "notifications.notifications", "apex_api"): set(
             COLUMNAS_API_NOTIFICATIONS_UPDATE
         ),
@@ -1724,3 +1766,68 @@ def test_attachments_apex_api_inserta_y_actualiza_key_id_y_apex_backup_lee(
         assert not columna("apex_api", prohibida), prohibida
     assert not any(verbo("apex_worker", v) for v in ("SELECT", "INSERT", "DELETE", "TRUNCATE"))
     assert verbo("apex_backup", "SELECT") and not verbo("apex_backup", "INSERT")
+
+
+# S9-A1 (S9-D18, P-ROL): el esquema `athletes` y sus 31 tablas clasificadas --------------------
+
+
+def test_son_31_las_tablas_clasificadas_y_athletes_esta_entre_ellas() -> None:
+    """P-ROL 5: 30 antes de `0042`, 31 con `athletes.body_metrics` (32 tras `0043`)."""
+    assert len(PRIVILEGIOS) == 31
+    assert "athletes.body_metrics" in PRIVILEGIOS
+
+
+def test_grants_sql_nombra_el_esquema_athletes_en_las_cuatro_sentencias() -> None:
+    texto = _leer("grants.sql")
+    revoke = r"^REVOKE ALL ON ALL {} IN SCHEMA ([^;]*?) FROM PUBLIC;"
+    sentencias = {
+        "REVOKE TABLES": revoke.format("TABLES"),
+        "REVOKE SEQUENCES": revoke.format("SEQUENCES"),
+        "REVOKE FUNCTIONS": revoke.format("FUNCTIONS"),
+        "GRANT USAGE ON SCHEMA": r"^GRANT USAGE ON SCHEMA ([^;]*?) TO apex_api",
+    }
+    for nombre, patron in sentencias.items():
+        encontradas = list(re.finditer(patron, texto, re.M))
+        assert encontradas, nombre
+        esquemas = {e.strip() for m in encontradas for e in m.group(1).split(",")}
+        assert "athletes" in esquemas, nombre
+    # El worker no ve `athletes`: ninguna sentencia que le dé USAGE lo nombra (S9-A1, P-ROL).
+    for m in re.finditer(r"^GRANT USAGE ON SCHEMA ([^;]*?) TO ([^;]*);", texto, re.M):
+        if "apex_worker" in m.group(2):
+            assert "athletes" not in {e.strip() for e in m.group(1).split(",")}
+    assert "-- clasificada: athletes.body_metrics" in texto
+
+
+def test_athletes_usage_para_apex_api_y_apex_backup_y_no_para_el_worker(
+    apex_roles: RolesDb,
+) -> None:
+    def usage(rol: str) -> bool:
+        return bool(
+            consultar(
+                apex_roles.dsn(), "SELECT has_schema_privilege($1, 'athletes', 'USAGE') AS v", rol
+            )[0]["v"]
+        )
+
+    assert usage("apex_api") and usage("apex_backup")
+    assert not usage("apex_worker")
+
+
+def test_apex_api_inserta_medidas_por_columna_sin_voided(apex_roles: RolesDb) -> None:
+    """S9-D31: el `INSERT` no incluye `voided_at` ni `voided_by`: una medición no nace anulada."""
+    con_insert = _con_privilegio_de_columna(
+        apex_roles, "apex_api", "athletes.body_metrics", "INSERT"
+    )
+    assert con_insert == set(COLUMNAS_API_BODY_METRICS_INSERT)
+    assert not con_insert & {"voided_at", "voided_by"}
+
+
+def test_ningun_rol_puede_borrar_ni_truncar_medidas(apex_roles: RolesDb) -> None:
+    for rol in ROLES:
+        for verbo in ("DELETE", "TRUNCATE"):
+            tiene = consultar(
+                apex_roles.dsn(),
+                "SELECT has_table_privilege($1, 'athletes.body_metrics', $2) AS v",
+                rol,
+                verbo,
+            )[0]["v"]
+            assert not tiene, f"{rol} tiene {verbo} en athletes.body_metrics"

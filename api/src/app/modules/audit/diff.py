@@ -46,6 +46,7 @@ __all__ = [
     "BLOB_PREFIX",
     "BLOB_SEPARATOR",
     "HIDDEN_HISTORY_FIELDS",
+    "HIDDEN_HISTORY_FIELDS_BY_TABLE",
     "MALFORMED_BLOB_MARKER",
     "MAX_DEPTH",
     "READ_ACTIONS",
@@ -185,6 +186,11 @@ def diff(
 HIDDEN_HISTORY_FIELDS: Final[frozenset[str]] = frozenset({"reference", "void_reason"})
 """Nombres que el historial del socio nunca muestra (S4A-D20: de `payments.payments` no salen
 `reference` ni `void_reason`, ni su nombre)."""
+HIDDEN_HISTORY_FIELDS_BY_TABLE: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {"athletes.body_metrics": frozenset({"weight_g", "height_cm", "body_fat_pct", "notes"})}
+)
+"""Nombres ocultos SOLO de esa tabla (S9-D19, L-C de la revisión de A1): los cuatro campos de salud
+de las medidas; `notes` de otra tabla sí se muestra."""
 
 
 def history_fields(entry: AuditEntry) -> list[str]:
@@ -195,7 +201,8 @@ def history_fields(entry: AuditEntry) -> list[str]:
     `[after["field"]]` (nunca `ip` ni `purpose`); cualquier otra acción -> `[]`. Pura."""
     if entry.action == "update":
         claves = {*(entry.before or {}), *(entry.after or {})}
-        return sorted(clave for clave in claves if _shown_in_history(clave))
+        ocultos = HIDDEN_HISTORY_FIELDS_BY_TABLE.get(entry.table_name, frozenset())
+        return sorted(c for c in claves if _shown_in_history(c) and c not in ocultos)
     if entry.action == "reveal":
         campo = (entry.after or {}).get("field")
         return [campo] if isinstance(campo, str) and campo else []

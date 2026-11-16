@@ -134,3 +134,17 @@ def test_results_esta_barrido_y_no_apaga_triggers() -> None:
         for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
     ]
     assert encontrados == [], "\n".join(encontrados)
+
+
+def test_athletes_esta_barrido_y_no_apaga_triggers() -> None:
+    """S9-A1: el módulo de medidas (cuatro guardas de `0042`) está dentro del barrido de `app/` y
+    ninguna de sus cadenas apaga o salta triggers."""
+    carpeta = APP / "modules" / "athletes"
+    archivos = sorted(carpeta.rglob("*.py"))
+    assert (carpeta / "metrics.py").is_file() and archivos
+    encontrados = [
+        h
+        for path in archivos
+        for h in hallazgos(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
+    ]
+    assert encontrados == [], chr(10).join(encontrados)

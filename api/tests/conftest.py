@@ -585,7 +585,31 @@ LIMPIAR_WOD_RESULTS = (
     + " END IF; END $$"
 )
 
+# S9-A1 (US-178, S9-D18, P-CAT 4): las medidas que una prueba con commit real haya dejado en
+# `athletes.body_metrics` (migración `0042`). Sin FK entre esquemas: va ANTES de la limpieza de las
+# llaves y de los resultados. Sus cuatro triggers se apagan, se borra y se rearman UNO POR UNO con
+# `ENABLE ALWAYS` (S3-D49).
+TRIGGERS_DE_BODY_METRICS = (
+    "body_metrics_guard_insert",
+    "body_metrics_guard_update",
+    "body_metrics_forbid_delete",
+    "body_metrics_forbid_truncate",
+)
+LIMPIAR_ATHLETES = (
+    "DO $$ BEGIN IF to_regclass('athletes.body_metrics') IS NOT NULL THEN "  # noqa: S608
+    "ALTER TABLE athletes.body_metrics DISABLE TRIGGER USER; "
+    "DELETE FROM athletes.body_metrics; "
+    + " ".join(
+        f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}' "  # noqa: S608
+        f"AND tgrelid = 'athletes.body_metrics'::regclass) THEN "
+        f"ALTER TABLE athletes.body_metrics ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in TRIGGERS_DE_BODY_METRICS
+    )
+    + " END IF; END $$"
+)
+
 LIMPIEZA_DE_SESION = (
+    LIMPIAR_ATHLETES,  # S9-A1: antes que las llaves (sin FK)
     # Las llaves se envuelven con la KEK temporal de esta sesión: las de sesiones previas
     # no se abren. Solo en db_test y con los triggers apagados.
     *LIMPIAR_LLAVES,
@@ -1012,6 +1036,7 @@ async def limpiar_tras_dos_sesiones(engine: AsyncEngine, ultima_seq: int) -> Non
         await conexion.execute(text(LIMPIAR_MEMBERS))
         await conexion.execute(text(LIMPIAR_PLANS))
         await conexion.execute(text(LIMPIAR_JOB_RUNS))  # S4A-D70
+        await conexion.execute(text(LIMPIAR_ATHLETES))  # S9-A1: antes que los resultados
         await conexion.execute(text(LIMPIAR_WOD_RESULTS))  # S8-B1: antes que los WODs
         await conexion.execute(text(LIMPIAR_WODS))  # S8-A3: antes que los catálogos
         await conexion.execute(text(LIMPIAR_BENCHMARKS))  # S8-A2: catálogo, sin FK

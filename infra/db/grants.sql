@@ -64,7 +64,11 @@
 --   wods.wod_movements              S I D                             -
 --   results.wod_results             S I U(is_current, status, void_*, -
 --                                     updated_at)
+--   athletes.body_metrics           S I(sin voided_*) U(weight_g,     -
+--                                     height_cm, body_fat_pct, notes,
+--                                     voided_at, voided_by, updated_at)
 --   worker.job_runs                 S                                 S I U
+-- clasificada: athletes.body_metrics
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
 -- clasificada: audit.signatures
@@ -106,19 +110,21 @@ BEGIN;
 -- 1. Nada para PUBLIC: base, esquema public y todo objeto de la aplicacion.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, athletes, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, athletes, worker, public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, athletes, worker FROM PUBLIC;
 
 -- 2. Reiniciar lo que pudieran tener los tres roles (idempotencia ante cambios de la matriz).
-REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL TABLES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, athletes, worker, public FROM apex_api, apex_worker, apex_backup;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, results, wods, athletes, worker, public FROM apex_api, apex_worker, apex_backup;
 
 -- 3. Conectar y recorrer los esquemas (sin CREATE en ninguno).
 SELECT format('GRANT CONNECT ON DATABASE %I TO apex_api, apex_worker, apex_backup', current_database()) \gexec
 GRANT USAGE ON SCHEMA attachments, audit, auth, classes, crypto, members, memberships, notifications, payments, plans, settings, worker TO apex_api, apex_worker, apex_backup;
 -- S8-A1/B1 (P-ROL): el worker no ve los esquemas `wods` ni `results`: sin USAGE.
 GRANT USAGE ON SCHEMA wods, results TO apex_api, apex_backup;
+-- S9-A1 (P-ROL): el worker tampoco ve `athletes` (medidas cifradas): sin USAGE.
+GRANT USAGE ON SCHEMA athletes TO apex_api, apex_backup;
 
 -- 4. apex_backup: solo lectura de todo, por membresia con herencia (el rol es NOINHERIT; PG16 exige
 --    WITH INHERIT TRUE para que la membresia sirva).
@@ -163,6 +169,13 @@ GRANT SELECT, INSERT ON results.wod_results TO apex_api;
 -- que el api no puede escribir).
 GRANT UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)
   ON results.wod_results TO apex_api;
+-- S9-A1 (S9-D18, S9-D31): el api registra mediciones (INSERT por columna, SIN voided_*: una medicion
+-- no nace anulada), las anula y la rotacion recifra los cuatro blobs; las guardas de `0042` dejan
+-- el recifrado solo con la llave activa y distinta. Sin DELETE ni UPDATE de measured_on, member_id,
+-- recorded_by ni created_*.
+GRANT SELECT ON athletes.body_metrics TO apex_api;
+GRANT INSERT (id, created_at, updated_at, created_by, member_id, measured_on, recorded_by, weight_g, height_cm, body_fat_pct, notes) ON athletes.body_metrics TO apex_api;
+GRANT UPDATE (weight_g, height_cm, body_fat_pct, notes, voided_at, voided_by, updated_at) ON athletes.body_metrics TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -233,7 +246,7 @@ GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
-        'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
+        'athletes.body_metrics', 'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
         'auth.users', 'classes.attendance', 'classes.class_sessions', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
         'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',

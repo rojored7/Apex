@@ -207,3 +207,40 @@ def test_con_sujeto_la_clave_entra_al_hash() -> None:
     assert chain_hash(ZERO_HASH, fila) == esperado
     assert chain_hash(ZERO_HASH, fila) != chain_hash(ZERO_HASH, _fila())
     assert f'"subject_member_id":"{SOCIA}"'.encode() in canonical(con_clave)
+
+
+# S9-A1 (S9-D19): los cuatro campos cifrados de las medidas no salen en el historial -------------
+
+CAMPOS_DE_MEDIDA = frozenset({"weight_g", "height_cm", "body_fat_pct", "notes"})
+
+
+def test_los_cuatro_campos_de_las_medidas_son_ocultos_solo_de_su_tabla() -> None:
+    """L-C de la revisión de A1: ocultos por TABLA, no por nombre de columna global."""
+    assert diff.HIDDEN_HISTORY_FIELDS_BY_TABLE["athletes.body_metrics"] == CAMPOS_DE_MEDIDA
+    assert not CAMPOS_DE_MEDIDA & diff.HIDDEN_HISTORY_FIELDS
+    assert {"reference", "void_reason"} <= diff.HIDDEN_HISTORY_FIELDS
+
+
+def test_notes_de_otra_tabla_no_se_oculta() -> None:
+    entrada = AuditEntry(
+        action="update",
+        table_name="wods.wod_movements",
+        before={"notes": "a", "weight_g": 1},
+        after={"notes": "b", "weight_g": 2},
+    )
+    assert diff.history_fields(entrada) == ["notes", "weight_g"]
+
+
+def test_un_update_de_medicion_no_muestra_los_nombres_de_las_columnas_cifradas() -> None:
+    """La anulación toca `voided_at` y `voided_by`; el recifrado de una rotación no pasa por la
+    auditoría. Si un `update` trae los blobs, el historial nombra solo lo que no es salud."""
+    antes = {**dict.fromkeys(CAMPOS_DE_MEDIDA, BLOB), "voided_at": None, "voided_by": None}
+    despues = {**dict.fromkeys(CAMPOS_DE_MEDIDA, OTRO_BLOB), "voided_at": "2026-10-20T10:00:00"}
+    entrada = AuditEntry(
+        action="update", table_name="athletes.body_metrics", before=antes, after=despues
+    )
+
+    campos = diff.history_fields(entrada)
+
+    assert not set(campos) & CAMPOS_DE_MEDIDA
+    assert "voided_at" in campos

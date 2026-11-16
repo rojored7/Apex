@@ -198,9 +198,12 @@ def validation_field(errors: Sequence[Mapping[str, Any]]) -> str | None:
 
 
 def _responder(status: int, body: ErrorBody) -> JSONResponse:
+    """Todo error del envelope sale con `Cache-Control: no-store` (L-B de la revisión de S9-A1):
+    una respuesta de error de una ruta con rol nunca se guarda."""
     return JSONResponse(
         status_code=status,
         content=ErrorResponse(error=body).model_dump(mode="json", exclude_none=True),
+        headers={"Cache-Control": "no-store"},
     )
 
 

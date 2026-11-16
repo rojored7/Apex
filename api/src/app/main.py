@@ -77,6 +77,7 @@ MODULES: Final[tuple[str, ...]] = (
     "wods",  # S8-A1 (S8-D5): catálogo de movimientos; tras classes (sin aristas salientes)
     "results",  # S8-B1 (US-169): resultados; tras wods y classes, de los que depende
     "tv",  # S8-C2 (US-176): lectura pública por token; tras results, antes de dashboard
+    "athletes",  # S9-A1 (EP-24): medidas y récords; tras tv, antes de dashboard
     "dashboard",  # S4A-B8 (S4A-D27): lectura; nadie lo importa, importa a los demás
 )
 API_PREFIX = "/api/v1"

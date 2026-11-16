@@ -55,6 +55,10 @@ PREFIX: Final = "app.modules."
 ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("audit", "auth"),
+        # S9-A1 (S9-D20): `athletes` valida el socio (`ensure_exists`, `consent_missing_for`) y
+        # pide «Registró» a `auth` (`user_names_for`); nadie importa `athletes`.
+        ("athletes", "members"),
+        ("athletes", "auth"),
         # S7-A2/C1 (S7-D6, S7-D7, S7-D9): `classes` valida el coach (`is_active_staff`), toma el
         # cupo por defecto de `settings.classes` y, desde el check-in, verifica al socio.
         ("classes", "auth"),

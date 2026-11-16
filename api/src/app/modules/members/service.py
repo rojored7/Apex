@@ -187,6 +187,7 @@ __all__ = [
     "chip_to_filter",
     "classify_query",
     "compute_warnings",
+    "consent_missing_for",
     "contact_for_notification",
     "count",
     "create",
@@ -385,6 +386,18 @@ async def count_without_consent(session: AsyncSession) -> int:
         .where(Member.deleted_at.is_(None), CONSENT_MISSING_CONDITION)
     )
     return int(await session.scalar(consulta) or 0)
+
+
+async def consent_missing_for(session: AsyncSession, ids: Iterable[UUID]) -> set[UUID]:
+    """De `ids`, los socios SIN autorización de datos vigente (S9-D29, H-1): la misma
+    `CONSENT_MISSING_CONDITION` de `count_without_consent`, sin descifrar. Una sola consulta y
+    ninguna si no hay ids; un id inexistente no aparece y no se mira `deleted_at` (el 404 de la
+    baja lo decide antes quien escribe)."""
+    pedidos = set(ids)
+    if not pedidos:
+        return set()
+    consulta = select(Member.id).where(Member.id == any_uuids(pedidos), CONSENT_MISSING_CONDITION)
+    return set((await session.scalars(consulta)).all())
 
 
 async def active_ids(session: AsyncSession) -> frozenset[UUID]:

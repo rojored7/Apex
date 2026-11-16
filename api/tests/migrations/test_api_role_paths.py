@@ -485,3 +485,216 @@ def test_apex_api_inserta_y_apaga_sin_delete(apex_roles: RolesDb) -> None:
         assert _como_api(apex_roles, intentar_borrar) == "42501"
     finally:
         propietario(apex_roles, LIMPIAR_WOD_RESULTS, LIMPIAR_WODS)
+
+
+# S9-A1 (S9-D18, S9-D31, P-ROL): las medidas corren como `apex_api` ------------------------------
+
+
+def _llaves_como_api(apex: RolesDb, proveedor: LocalFileProvider) -> None:
+    """`ensure_keys` con las sesiones de `apex_api` (crea la DEK de `athlete.metric`, S9-D5)."""
+
+    async def correr() -> None:
+        motor = create_async_engine(url_por_rol(apex, "apex_api"))
+        try:
+            with actor_scope(SYSTEM_USER_ID):
+                fabrica = async_sessionmaker(motor, expire_on_commit=False)
+                async with fabrica() as sesion, sesion.begin():
+                    await ensure_keys(sesion, proveedor, lambda _n: proveedor)
+        finally:
+            await motor.dispose()
+
+    configure_provider(proveedor)
+    asyncio.run(correr())
+
+
+def _sembrar_socio_con_autorizacion(apex: RolesDb) -> UUID:
+    socio = uuid4()
+    propietario(
+        apex,
+        "INSERT INTO members.members (id, created_by, first_name, last_name, document, "
+        "document_idx, data_consent_at) "
+        f"VALUES ('{socio}', '{SYSTEM}', 'Ana', 'Medidas', 'apx1.doc', 'idx-{socio}', now())",
+    )
+    return socio
+
+
+def test_apex_api_registra_una_medida_y_la_anula_pero_no_borra_ni_cambia_lo_fijo(
+    apex_roles: RolesDb, proveedor_local: LocalFileProvider
+) -> None:
+    """`add_metric` con los privilegios reales: `INSERT` por columna (sin `voided_*`) y blobs de la
+    llave de la clase; `UPDATE (voided_at, voided_by)` permitido; `DELETE`, `UPDATE` de
+    `measured_on` o `member_id` y un `INSERT` con `voided_*` siguen negados (42501)."""
+    from sqlalchemy.exc import DBAPIError
+
+    from app.modules.athletes import service as athletes_service
+    from app.modules.athletes.schemas import MetricIn
+    from tests.conftest import LIMPIAR_ATHLETES, LIMPIAR_MEMBERS
+
+    socio = _sembrar_socio_con_autorizacion(apex_roles)
+    _llaves_como_api(apex_roles, proveedor_local)
+
+    async def alta(sesion: AsyncSession) -> UUID:
+        salida = await athletes_service.add_metric(
+            sesion,
+            socio,
+            MetricIn.model_validate(
+                {"measured_on": "2026-01-05", "weight_g": 62_500, "height_cm": 165}
+            ),
+            by=SYSTEM_USER_ID,
+        )
+        return salida.id
+
+    async def sqlstates(sesion: AsyncSession) -> list[str]:
+        sentencias = (
+            "DELETE FROM athletes.body_metrics",
+            "UPDATE athletes.body_metrics SET measured_on = measured_on",
+            "UPDATE athletes.body_metrics SET member_id = member_id",
+            "INSERT INTO athletes.body_metrics (id, created_by, member_id, measured_on, "
+            f"recorded_by, weight_g, voided_at, voided_by) VALUES (gen_random_uuid(), '{SYSTEM}', "
+            f"'{socio}', '2026-01-05', '{SYSTEM}', 'apx1.x', now(), '{SYSTEM}')",
+        )
+        salida: list[str] = []
+        for sql in sentencias:
+            try:
+                async with sesion.begin_nested():
+                    await sesion.execute(text(sql))
+            except DBAPIError as error:
+                salida.append(str(getattr(error.orig, "sqlstate", "")))
+            else:
+                salida.append("")
+        return salida
+
+    async def anular(sesion: AsyncSession, metric_id: UUID) -> None:
+        await sesion.execute(
+            text(
+                "UPDATE athletes.body_metrics SET voided_at = now(), voided_by = :u WHERE id = :i"
+            ),
+            {"u": SYSTEM_USER_ID, "i": metric_id},
+        )
+
+    try:
+        metric_id = _como_api(apex_roles, alta)
+        fila = consultar(
+            apex_roles.dsn(),
+            "SELECT left(weight_g, 5) AS peso, left(height_cm, 5) AS estatura, body_fat_pct, "
+            "notes, voided_at, voided_by, member_id FROM athletes.body_metrics WHERE id = $1",
+            metric_id,
+        )[0]
+        assert (fila["peso"], fila["estatura"]) == ("apx1.", "apx1.")
+        assert (fila["body_fat_pct"], fila["notes"]) == (None, None)
+        assert (fila["voided_at"], fila["voided_by"], fila["member_id"]) == (None, None, socio)
+        assert _como_api(apex_roles, sqlstates) == ["42501"] * 4
+
+        _como_api(apex_roles, lambda s: anular(s, metric_id))
+
+        anulada = consultar(
+            apex_roles.dsn(),
+            "SELECT voided_at, voided_by FROM athletes.body_metrics WHERE id = $1",
+            metric_id,
+        )[0]
+        assert anulada["voided_at"] is not None and anulada["voided_by"] == SYSTEM_USER_ID
+    finally:
+        propietario(apex_roles, LIMPIAR_ATHLETES, LIMPIAR_MEMBERS)
+        configure_provider(None)
+        configure_keyring(None)
+
+
+def test_apex_api_rota_la_clase_athlete_metric_desde_la_pantalla(
+    apex_roles: RolesDb, proveedor_local: LocalFileProvider
+) -> None:
+    """S9-D31 (M-1), E3: `start_from_screen` + `run_rotation` como `apex_api` recifran las
+    columnas de `athletes.body_metrics` pasando las guardas de `0042`: llave activa y distinta,
+    mismo ancho y sin tocar `voided_*`."""
+    from app.modules.athletes import service as athletes_service
+    from app.modules.athletes.schemas import MetricIn
+    from tests.conftest import LIMPIAR_ATHLETES, LIMPIAR_MEMBERS
+
+    socio = _sembrar_socio_con_autorizacion(apex_roles)
+    _llaves_como_api(apex_roles, proveedor_local)
+    # El job de rotación exige un usuario real como autor (`crypto.guard_jobs_insert`, 0024).
+    propietario(
+        apex_roles,
+        "INSERT INTO auth.users (id, created_by, email, role) VALUES "
+        f"('{USUARIO_ROTADOR}', '{SYSTEM}', 'rol-{socio}@test.apex', 'admin')",
+    )
+
+    async def alta(sesion: AsyncSession) -> UUID:
+        salida = await athletes_service.add_metric(
+            sesion,
+            socio,
+            MetricIn.model_validate({"measured_on": "2026-01-05", "weight_g": 62_500}),
+            by=SYSTEM_USER_ID,
+        )
+        return salida.id
+
+    async def rotar() -> tuple[str, int]:
+        motor = create_async_engine(url_por_rol(apex_roles, "apex_api"))
+        try:
+            with actor_scope(SYSTEM_USER_ID):
+                fabrica = async_sessionmaker(motor, expire_on_commit=False)
+                async with fabrica() as sesion, sesion.begin():
+                    activa = await sesion.scalar(
+                        select(CryptoKey.id).where(
+                            CryptoKey.data_class == "athlete.metric",
+                            CryptoKey.purpose == "encrypt",
+                            CryptoKey.state == "active",
+                        )
+                    )
+                    assert activa is not None
+                    inicio = await inventory.start_from_screen(
+                        sesion, activa, reason="prueba de roles", by=USUARIO_ROTADOR
+                    )
+                await rotate_job.run_rotation(fabrica, inicio.job_id)
+                async with fabrica() as sesion:
+                    job = await sesion.get(CryptoJob, inicio.job_id)
+                    assert job is not None
+                    return job.status, job.done
+        finally:
+            await motor.dispose()
+
+    try:
+        metric_id = _como_api(apex_roles, alta)
+        antes = consultar(
+            apex_roles.dsn(), "SELECT weight_g FROM athletes.body_metrics WHERE id = $1", metric_id
+        )[0]["weight_g"]
+        assert asyncio.run(rotar()) == ("done", 1)
+        despues = consultar(
+            apex_roles.dsn(), "SELECT weight_g FROM athletes.body_metrics WHERE id = $1", metric_id
+        )[0]["weight_g"]
+        assert despues != antes and len(despues) == len(antes)
+        assert despues.split(".")[1] != antes.split(".")[1]
+        assert bus.decrypt(despues, bus.aad_for(metric_id)).decode("utf-8") == "w062500"
+    finally:
+        propietario(
+            apex_roles,
+            LIMPIAR_ATHLETES,
+            LIMPIAR_MEMBERS,
+            f"DELETE FROM auth.users WHERE id = '{USUARIO_ROTADOR}'",
+            *LIMPIAR_JOBS_Y_LLAVES,
+        )
+        configure_provider(None)
+        configure_keyring(None)
+
+
+def test_apex_api_toma_for_share_de_las_llaves_como_lo_hacen_las_guardas_de_0042(
+    apex_roles: RolesDb, proveedor_local: LocalFileProvider
+) -> None:
+    """M-1 de la revisión de A1: las guardas leen la llave con `FOR SHARE OF k` bajo los
+    privilegios de `apex_api`; `FOR SHARE` exige `UPDATE` de alguna columna (`state`, ...)."""
+    _llaves_como_api(apex_roles, proveedor_local)
+
+    async def compartir(sesion: AsyncSession) -> int:
+        filas = await sesion.execute(
+            text(
+                "SELECT k.state FROM crypto.crypto_keys k "
+                "WHERE k.data_class = 'athlete.metric' AND k.purpose = 'encrypt' FOR SHARE OF k"
+            )
+        )
+        return len(filas.all())
+
+    try:
+        assert _como_api(apex_roles, compartir) == 1
+    finally:
+        propietario(apex_roles, *LIMPIAR_JOBS_Y_LLAVES)
+        configure_provider(None)
+        configure_keyring(None)

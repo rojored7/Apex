@@ -63,7 +63,7 @@ async def test_admin_recibe_200_con_el_cbom(
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert cuerpo["format"] == "apex-cbom/1"
-    assert len(cuerpo["keys"]) == 11  # S6-C1: +1 por `attachment.sensitive` (antes 10)
+    assert len(cuerpo["keys"]) == 12  # S9-A1: +1 por `athlete.metric` (antes 11)
     assert set(cuerpo) == {
         "format",
         "generated_at",
@@ -208,7 +208,7 @@ async def test_la_descarga_deja_una_fila_export_sobre_crypto_keys(
     filas = await filas_export(session)
     assert len(filas) == 1
     fila = filas[0]
-    assert fila["after"] == {"count": 11, "format": "apex-cbom/1"}  # S6-C1: antes 10
+    assert fila["after"] == {"count": 12, "format": "apex-cbom/1"}  # S9-A1: antes 11
     assert fila["before"] is None
     assert fila["record_id"] is None
     assert fila["user_id"] == cliente_admin.admin.id
@@ -247,7 +247,7 @@ async def test_la_auditoria_pasa_por_el_escritor_registrado_en_la_misma_sesion(
     assert kwargs["table_name"] == "crypto.crypto_keys"
     assert kwargs["record_id"] is None
     assert kwargs["before"] is None
-    assert kwargs["after"] == {"count": 11, "format": "apex-cbom/1"}  # S6-C1: antes 10
+    assert kwargs["after"] == {"count": 12, "format": "apex-cbom/1"}  # S9-A1: antes 11
     assert kwargs["user_id"] == cliente_admin.admin.id
 
 

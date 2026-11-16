@@ -37,12 +37,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.audit import AuditEntry
 from tests.conftest import (
+    LIMPIAR_ATHLETES,
     LIMPIAR_MEMBERS,
     LIMPIAR_MEMBERSHIPS,
     LIMPIAR_PAYMENTS,
     LIMPIAR_SIGNATURES,
     LIMPIAR_VERIFICATIONS,
+    LIMPIAR_WOD_RESULTS,
     LIMPIEZA_DE_SESION,
+    TRIGGERS_DE_BODY_METRICS,
     TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
     TRIGGERS_DE_PAGOS,
@@ -296,3 +299,56 @@ async def test_con_0021_los_dos_triggers_de_firmas_existen_y_siguen_en_always(
 
 def test_always_triggers_incluye_los_dos_de_firmas() -> None:
     assert ALWAYS_TRIGGERS["audit.signatures"] == TRIGGERS_FIRMAS
+
+
+# S9-A1 (S9-D18, P-CAT 4) · `athletes.body_metrics` ---------------------------------------------
+
+TRIGGERS_DE_MEDIDAS = (
+    "body_metrics_guard_insert",
+    "body_metrics_guard_update",
+    "body_metrics_forbid_delete",
+    "body_metrics_forbid_truncate",
+)
+
+
+def test_la_limpieza_de_medidas_enciende_sus_triggers_con_enable_always() -> None:
+    assert tuple(TRIGGERS_DE_BODY_METRICS) == TRIGGERS_DE_MEDIDAS
+    assert "to_regclass('athletes.body_metrics')" in LIMPIAR_ATHLETES
+    assert "ALTER TABLE athletes.body_metrics DISABLE TRIGGER USER;" in LIMPIAR_ATHLETES
+    assert "DELETE FROM athletes.body_metrics;" in LIMPIAR_ATHLETES
+    for nombre in TRIGGERS_DE_MEDIDAS:
+        assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_ATHLETES, nombre
+        assert f"tgname = '{nombre}'" in LIMPIAR_ATHLETES, nombre
+    assert "ENABLE TRIGGER USER" not in LIMPIAR_ATHLETES
+
+
+def test_las_medidas_se_borran_antes_que_las_llaves_y_los_resultados_en_las_dos_limpiezas() -> None:
+    """P-CAT 4: `LIMPIAR_ATHLETES` va ANTES de la limpieza de llaves (el primer elemento de la
+    limpieza de sesión) y de `LIMPIAR_WOD_RESULTS`, en `LIMPIEZA_DE_SESION` y en `dos_sesiones`."""
+    orden = list(LIMPIEZA_DE_SESION)
+    assert LIMPIAR_ATHLETES in orden
+    assert orden.index(LIMPIAR_ATHLETES) < orden.index("DELETE FROM crypto.crypto_keys")
+    assert orden.index(LIMPIAR_ATHLETES) < orden.index(LIMPIAR_WOD_RESULTS)
+    fuente = inspect.getsource(limpiar_tras_dos_sesiones)
+    assert "text(LIMPIAR_ATHLETES)" in fuente
+    assert fuente.index("text(LIMPIAR_ATHLETES)") < fuente.index("text(LIMPIAR_WOD_RESULTS)")
+
+
+async def test_con_0042_los_cuatro_triggers_de_medidas_existen_y_siguen_en_always(
+    engine: AsyncEngine,
+) -> None:
+    """Obligatorios: existen en `'A'` antes y después de `LIMPIAR_ATHLETES` y de la limpieza de
+    `dos_sesiones` (apagar, borrar y rearmar por nombre no deja `'O'`)."""
+    esperados = dict.fromkeys(TRIGGERS_DE_MEDIDAS, "A")
+    assert await _estados(engine, TRIGGERS_DE_MEDIDAS) == esperados
+    async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_ATHLETES))
+    assert await _estados(engine, TRIGGERS_DE_MEDIDAS) == esperados
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
+    assert await _estados(engine, TRIGGERS_DE_MEDIDAS) == esperados
+
+
+def test_always_triggers_incluye_los_cuatro_de_medidas() -> None:
+    assert ALWAYS_TRIGGERS["athletes.body_metrics"] == TRIGGERS_DE_MEDIDAS

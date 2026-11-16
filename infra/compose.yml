@@ -270,6 +270,9 @@ services:
     # Sin perfil desde S4A-W0-2 (CRITICA-2 N-3): `up -d` lo arranca con el resto del stack,
     # siempre después de db y api healthy. Corridas a mano y estado: `run --rm worker python
     # -m app.worker.main --run-once <job>` / `--status <job>` (docs/RUNBOOK.md §9, "Worker").
+    # S9-D47: más que el drenaje de la pasada de `notify` (NOTIFY_DRAIN_TIMEOUT_S = 30 s); con los 10 s
+    # por omisión un SIGKILL cortaría un envío en curso antes del cierre del aviso.
+    stop_grace_period: 45s
     restart: unless-stopped
 
   tools:

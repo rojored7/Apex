@@ -8,7 +8,8 @@
    el job queda `ok` (`recovery` ya emitió `crypto_sealed` al cambiar el estado, sin repetirlo).
    `forbidden` y `unwrap_failed` no se tragan: el job falla (M-4);
 3. `summary`: `alert("notify_summary", ...)` solo con enteros.
-`ok = fallidos == 0` (los omitidos no son error). `run_send_only(ctx)`: solo las fases 2 y 3 (CLI
+`ok = fallidos == 0 and sin_conexion == 0` (los omitidos no son error; los avisos sin conexión
+sí, S9-D47: el runner alerta `job_failed`). `run_send_only(ctx)`: solo las fases 2 y 3 (CLI
 `notify --send-only`). Solo importa `service` de `notifications` (sin SQL ni privados).
 """
 
@@ -61,11 +62,13 @@ async def _run(ctx: JobContext, *, generate: bool) -> JobResult:
         ctx.session_factory, settings, create_missing=False, classes=_classes()
     )
     fallidos = 0
+    sin_conexion = 0
     if estado == "ok":
         enviado = await notifications_service.send_pending(
             ctx.session_factory, ctx.today, settings=settings
         )
         fallidos = enviado.fallidos
+        sin_conexion = enviado.sin_conexion
         if enviado.sin_credenciales:
             alert("mail_unconfigured")  # S5-D231: una vez por corrida, sin datos
         details.update(
@@ -74,6 +77,8 @@ async def _run(ctx: JobContext, *, generate: bool) -> JobResult:
             omitidos=enviado.omitidos,
             pendientes=enviado.pendientes,
         )
+        if sin_conexion:  # como `sellado`: solo aparece cuando hubo (S9-D47)
+            details["sin_conexion"] = sin_conexion
     else:
         logger.warning(
             "notify: %s, se omite el envío", SEALED_ALERT, extra={"crypto_state": estado}
@@ -88,7 +93,7 @@ async def _run(ctx: JobContext, *, generate: bool) -> JobResult:
         fallidos=details["fallidos"],
         omitidos=details["omitidos"],
     )
-    return JobResult(ok=fallidos == 0, details=details)
+    return JobResult(ok=fallidos == 0 and sin_conexion == 0, details=details)
 
 
 async def run(ctx: JobContext) -> JobResult:

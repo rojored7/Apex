@@ -204,10 +204,12 @@ class GenerateResult:
 class SendResult:
     """Resultado de una pasada de `sending.send_pending` (B8). `fallidos`: los que fallaron en esta
     pasada; `pendientes`: avisos `email` aún elegibles (`pending` o `failed` con intentos
-    disponibles) al terminar."""
+    disponibles) al terminar. `sin_conexion`: avisos que esta pasada dejó intactos
+    porque no pudo abrir una conexión con la base (S9-D47); no gasta intento."""
 
     enviados: int
     fallidos: int
     omitidos: int
     pendientes: int
     sin_credenciales: bool = False
+    sin_conexion: int = 0

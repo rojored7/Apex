@@ -352,3 +352,38 @@ async def test_run_send_only_no_genera_pero_envia_lo_pendiente(
     assert resultado.details["enviados"] == 1
     assert "generados" not in resultado.details
     assert len(smtp.mensajes) == 1 and len(await todos(session_factory)) == 1
+
+
+async def test_con_avisos_intactos_por_conexion_el_job_sale_no_ok_y_lo_cuenta(
+    session_factory: Fabrica,
+    reloj_worker: FrozenClock,
+    settings_prueba: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    alertas: GrabadoraDeAlertas,
+) -> None:
+    """S9-D47 (MEDIUM 2): saturación parcial = `fallidos 0` pero avisos sin tocar por la
+    conexión; el job no puede cerrar `ok`. `sin_conexion` es un entero y el resumen no cambia."""
+    from app.modules.notifications.schemas import SendResult
+
+    monkeypatch.setattr(notify, "get_settings", lambda: settings_prueba)
+
+    async def _saturado(*_a: object, **_k: object) -> SendResult:
+        return SendResult(enviados=1, fallidos=0, omitidos=0, pendientes=2, sin_conexion=2)
+
+    monkeypatch.setattr(notify.notifications_service, "send_pending", _saturado)
+    await escenario_job(session_factory)
+
+    salida = await _correr(session_factory, reloj_worker)
+
+    detalles = (await _fila(session_factory)).details
+    assert salida.result == "error"
+    assert detalles["sin_conexion"] == 2 and detalles["fallidos"] == 0
+    resumenes = [ctx for codigo, ctx in alertas.enviadas if codigo == "notify_summary"]
+    assert len(resumenes) == 1 and set(resumenes[0]) <= {
+        "generados",
+        "pendientes",
+        "enviados",
+        "fallidos",
+        "omitidos",
+    }
+    assert "job_failed" in alertas.codigos

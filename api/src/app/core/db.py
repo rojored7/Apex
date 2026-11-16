@@ -25,6 +25,7 @@ de auditoría los registra `core/audit.py` sobre la clase de sesión (US-016).
 from __future__ import annotations
 
 import logging
+import socket
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any, ClassVar, Final
@@ -227,20 +228,28 @@ CONNECTION_SQLSTATES: Final[frozenset[str]] = frozenset({"53300", "57P01", "57P0
 base (`57P01/2/3`); toda la clase `08` (excepción de conexión) se reconoce además por prefijo."""
 
 
+def _is_socket_failure(error: object) -> bool:
+    """Fallo de socket de CONEXIÓN: rechazo, reinicio, tubería rota o nombre sin resolver."""
+    return isinstance(error, (ConnectionError, socket.gaierror))
+
+
 def is_connection_error(error: BaseException) -> bool:
     """`True` si `error` es un fallo de CONEXIÓN (no se pudo hablar con la base), no de una
     sentencia (S9-D46). Medido con asyncpg: un puerto cerrado sale como `ConnectionRefusedError`
     pelado (un `OSError`, sin envolver); un rol sin cupo, como `DBAPIError` con `orig.sqlstate`
-    `53300`. Reconoce: `OSError` (también como causa del `orig`), `DBAPIError` con
-    `connection_invalidated` y SQLSTATE de clase `08` o de `CONNECTION_SQLSTATES`. Un fallo de
-    autenticación (`28xxx`) NO lo es: es de configuración y no se debe ocultar."""
-    if isinstance(error, OSError):
+    `53300`. Reconoce: `ConnectionError` y `socket.gaierror` (también como causa del `orig`),
+    `DBAPIError` con `connection_invalidated` y SQLSTATE de clase `08` o de `CONNECTION_SQLSTATES`.
+    NO reconoce un `OSError` cualquiera (`FileNotFoundError`, `PermissionError`, `TimeoutError`):
+    puede ser un fallo determinista ligado a una fila y tratarlo como caída de la base dejaría esa
+    fila intacta para siempre (S9-D47). Un fallo de autenticación (`28xxx`) tampoco lo es: es de
+    configuración y no se debe ocultar."""
+    if _is_socket_failure(error):
         return True
     if not isinstance(error, DBAPIError):
         return False
     if error.connection_invalidated:
         return True
-    if isinstance(getattr(error.orig, "__cause__", None), OSError):
+    if _is_socket_failure(getattr(error.orig, "__cause__", None)):
         return True
     sqlstate = sqlstate_of(error)
     return sqlstate is not None and (sqlstate.startswith("08") or sqlstate in CONNECTION_SQLSTATES)

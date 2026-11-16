@@ -814,11 +814,11 @@ async def test_canal_apagado_sigue_omitiendo_sin_marcar_credenciales(fabrica: Fa
     assert resultado.sin_credenciales is False and resultado.omitidos == 1
 
 
-def test_los_topes_por_corrida_son_500_avisos_y_420_segundos() -> None:
-    assert (sending.NOTIFY_MAX_PER_RUN, sending.NOTIFY_SOFT_DEADLINE_S) == (500, 420)
+def test_los_topes_por_corrida_son_500_avisos_y_330_segundos() -> None:
+    assert (sending.NOTIFY_MAX_PER_RUN, sending.NOTIFY_SOFT_DEADLINE_S) == (500, 330)
     parametros = inspect.signature(send_pending).parameters
     assert parametros["max_per_run"].default == 500
-    assert parametros["soft_deadline_s"].default == 420
+    assert parametros["soft_deadline_s"].default == 330
 
 
 async def test_el_plazo_blando_corta_el_lote_y_lo_restante_sigue_pendiente(

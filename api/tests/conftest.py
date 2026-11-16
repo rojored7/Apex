@@ -99,6 +99,7 @@ from tests.factories.triggers import disable_user_sql, rearm_always_sql
 # antes de registrar el doble; así `register_principal_loader(principal_double)` queda último.
 load_module_services()
 
+from tests.core._apoyo_conexion import barrer_roles_huerfanos  # noqa: E402
 from tests.core._principal_double import principal_double  # noqa: E402
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -625,6 +626,7 @@ def migrated_database(alembic_config: Config, test_database_url: str) -> str:
             async with motor.begin() as conn:
                 for sql in LIMPIEZA_DE_SESION:
                     await conn.execute(text(sql))
+            await barrer_roles_huerfanos(motor)  # S9-D47: roles de prueba de una corrida muerta
         finally:
             await motor.dispose()
 

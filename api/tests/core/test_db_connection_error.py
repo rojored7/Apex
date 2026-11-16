@@ -7,6 +7,8 @@ asyncpg deja salir de verdad y NO confunde un error de la sentencia con uno de c
 
 from __future__ import annotations
 
+import socket
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -46,3 +48,33 @@ def test_un_error_cualquiera_no_es_un_error_de_conexion(error: BaseException) ->
 def test_una_conexion_invalidada_es_un_error_de_conexion() -> None:
     error = OperationalError("SELECT 1", {}, Exception("caída"), connection_invalidated=True)
     assert is_connection_error(error)
+
+
+# S9-W0-4d (MEDIUM 1): `OSError` genérico NO es un error de conexión ----------------------------
+
+
+@pytest.mark.parametrize(
+    "error",
+    [FileNotFoundError("x"), PermissionError("x"), TimeoutError("x"), OSError("x")],
+)
+def test_un_oserror_que_no_es_de_conexion_no_cuenta(error: OSError) -> None:
+    assert not is_connection_error(error)
+
+
+@pytest.mark.parametrize(
+    "error", [ConnectionRefusedError("x"), ConnectionResetError("x"), socket.gaierror(-2, "x")]
+)
+def test_un_error_de_socket_de_conexion_si_cuenta(error: OSError) -> None:
+    assert is_connection_error(error)
+
+
+def test_un_dbapierror_cuya_causa_es_un_oserror_ajeno_no_cuenta() -> None:
+    orig = Exception("fallo")
+    orig.__cause__ = FileNotFoundError("x")
+    assert not is_connection_error(OperationalError("SELECT 1", {}, orig))
+
+
+def test_un_dbapierror_cuya_causa_es_un_rechazo_de_conexion_cuenta() -> None:
+    orig = Exception("fallo")
+    orig.__cause__ = ConnectionRefusedError("x")
+    assert is_connection_error(OperationalError("SELECT 1", {}, orig))

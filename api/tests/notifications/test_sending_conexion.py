@@ -92,12 +92,14 @@ async def test_puerto_cerrado_al_abrir_la_preparacion_no_gasta_intento(
 ) -> None:
     aviso = await _un_aviso(fabrica)
 
-    async def _sin_servidor(*_a: object, **_k: object) -> None:
+    async def _sin_servidor(_sesion: AsyncSession) -> None:
         await conectar_a_puerto_cerrado()
 
-    monkeypatch.setattr(sending, "_lock_eligible", _sin_servidor)
+    monkeypatch.setattr(sending, "_open_connection", _sin_servidor)
     canal = CanalFalso()
-    await _intacto(fabrica, canal, aviso.id, await _pasar(fabrica, canal))
+    resultado = await _pasar(fabrica, canal)
+    await _intacto(fabrica, canal, aviso.id, resultado)
+    assert resultado.sin_conexion == 1
 
 
 async def test_demasiadas_conexiones_en_la_segunda_conexion_no_gasta_intento(
@@ -229,15 +231,17 @@ async def test_una_unidad_que_revienta_tras_cancelar_no_deja_excepcion_sin_leer(
     loop = asyncio.get_running_loop()
     loop.set_exception_handler(lambda _l, ctx: perdidas.append(ctx))
     soltar = asyncio.Event()
+    entro = asyncio.Event()
 
     async def _revienta(*_a: object, **_k: object) -> str:
+        entro.set()
         await soltar.wait()
         raise RuntimeError("bug")
 
     monkeypatch.setattr(sending, "_send_and_close", _revienta)
     try:
         tarea = asyncio.create_task(_pasar(fabrica, CanalFalso()))
-        await asyncio.sleep(0.5)
+        await asyncio.wait_for(entro.wait(), timeout=5)
         tarea.cancel()
         soltar.set()
         with pytest.raises(asyncio.CancelledError):

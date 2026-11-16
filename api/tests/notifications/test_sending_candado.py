@@ -199,7 +199,9 @@ def test_el_tope_total_mas_el_plazo_blando_y_el_cierre_caben_en_el_plazo_del_job
     conteo_s = campos["DB_STATEMENT_TIMEOUT_MS"].default / 1000  # `_count_eligible`
     assert sending.NOTIFY_CLOSE_MARGIN_S >= cierre_s + conteo_s
     total = (
-        sending.NOTIFY_SOFT_DEADLINE_S
+        sending.NOTIFY_PRE_MARGIN_S
+        + sending.NOTIFY_SOFT_DEADLINE_S
+        + sending.NOTIFY_PREPARE_MARGIN_S
         + sending.NOTIFY_SEND_TIMEOUT_S
         + sending.NOTIFY_CLOSE_MARGIN_S
     )

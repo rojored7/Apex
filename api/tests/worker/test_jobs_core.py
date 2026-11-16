@@ -332,6 +332,7 @@ async def test_detail_keys_es_el_conjunto_cerrado_del_plan() -> None:
                 "omitidos",
                 "pendientes",
                 "sellado",
+                "sin_conexion",
                 # S6-A2 (S6-D60): `sign_audit`; todos enteros
                 "firmadas",
                 "nada_nuevo",

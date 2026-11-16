@@ -34,6 +34,7 @@ CLAVES_DE_NOTIFY: Final = frozenset(
         "omitidos",
         "pendientes",
         "sellado",
+        "sin_conexion",
     }
 )
 PALABRAS_DE_PERSONA: Final = ("nombre", "name", "correo", "email", "telefono", "phone", "documento")

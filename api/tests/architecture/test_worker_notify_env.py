@@ -34,3 +34,13 @@ def test_control_el_bloque_de_un_servicio_inexistente_falla() -> None:
     except AssertionError:
         return
     raise AssertionError("debió fallar")
+
+
+def test_el_worker_da_mas_gracia_de_parada_que_el_drenaje_de_la_pasada() -> None:
+    """S9-D47 (LOW 5c): con los 10 s por omisión de Compose, un SIGKILL cortaría el drenaje de
+    `NOTIFY_DRAIN_TIMEOUT_S` en pleno envío; `stop_grace_period` debe superarlo."""
+    from app.modules.notifications.sending import NOTIFY_DRAIN_TIMEOUT_S
+
+    coincide = re.search(r"^\s+stop_grace_period:\s*(\d+)s\s*(?:#.*)?$", bloque_de("worker"), re.M)
+    assert coincide is not None, "el worker no declara stop_grace_period"
+    assert int(coincide.group(1)) > NOTIFY_DRAIN_TIMEOUT_S

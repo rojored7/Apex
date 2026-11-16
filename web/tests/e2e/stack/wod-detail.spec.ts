@@ -34,6 +34,9 @@ test.describe("Detalle de WOD contra el stack", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Detalle E2E" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Leaderboard" })).toBeVisible();
     await expect(page.getByText(/Todavía no hay resultados|Atleta/).first()).toBeVisible();
+    // S8-V8b: las sesiones del WOD abren en «Próximas» (paginadas en el servidor) y un WOD nuevo no tiene ninguna.
+    await expect(page.getByRole("button", { name: "Próximas" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("No hay clases próximas con este WOD.")).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
 
     await page.getByRole("tab", { name: "Historial" }).click();

@@ -12,9 +12,11 @@ export interface PaginationProps {
   offset: number;
   onPageChange: (page: number) => void;
   onLimitChange: (limit: number) => void;
+  /** Nombre del landmark; distinto cuando hay más de una paginación en la pantalla. */
+  label?: string;
 }
 
-export function Pagination({ total, limit, offset, onPageChange, onLimitChange }: PaginationProps) {
+export function Pagination({ total, limit, offset, onPageChange, onLimitChange, label = "Paginación" }: PaginationProps) {
   const sizeId = useId();
   const page = offsetToPage(offset, limit);
   const pages = totalPages(total, limit);
@@ -22,7 +24,7 @@ export function Pagination({ total, limit, offset, onPageChange, onLimitChange }
   const sizes = [...new Set<number>([...PAGE_SIZES, limit])].sort((a, b) => a - b);
 
   return (
-    <nav aria-label="Paginación" className={styles.pagination}>
+    <nav aria-label={label} className={styles.pagination}>
       <div className={styles.size}>
         <label htmlFor={sizeId} className={styles.label}>
           Mostrar

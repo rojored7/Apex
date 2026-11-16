@@ -117,13 +117,20 @@ export function useWodResults(wodId: string, params: WodResultsParams): UseQuery
   });
 }
 
-const SESSIONS_LIMIT = 50;
+export interface WodSessionsParams {
+  limit: number;
+  offset: number;
+  /** Ventana de fechas civiles (AAAA-MM-DD, Bogotá): el api exige `from` y `to` juntos (máx. 62 días); sin ellas, las del día del WOD. */
+  from?: string;
+  to?: string;
+}
 
-export function useWodSessions(wodId: string): UseQueryResult<Page<WodSessionView>> {
+export function useWodSessions(wodId: string, params: WodSessionsParams): UseQueryResult<Page<WodSessionView>> {
   return useQuery({
-    queryKey: [...WOD_SESSIONS_QUERY_KEY, wodId],
+    queryKey: [...WOD_SESSIONS_QUERY_KEY, wodId, params],
     queryFn: async ({ signal }) =>
-      parseResponse(pageSchema(wodSessionSchema), await api.get<unknown>("/class-sessions", { query: listParams({ limit: SESSIONS_LIMIT, offset: 0, wod_id: wodId }), signal })),
+      parseResponse(pageSchema(wodSessionSchema), await api.get<unknown>("/class-sessions", { query: listParams({ ...params, wod_id: wodId }), signal })),
+    placeholderData: keepPreviousData,
     enabled: wodId !== "",
   });
 }

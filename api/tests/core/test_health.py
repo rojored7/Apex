@@ -74,10 +74,12 @@ async def test_base_caida_da_503_en_menos_de_3_segundos(
         encoding="utf-8",
     )
     caida = load_settings(env_file=env)
-    inicio = time.perf_counter()
-    async with _cliente(caida) as c:
+    cliente = _cliente(caida)  # `create_app` queda fuera del cronómetro: solo se mide el `get`
+    async with cliente as c:
+        inicio = time.perf_counter()
         r = await c.get("/health")
-    assert time.perf_counter() - inicio < 3
+        duracion = time.perf_counter() - inicio
+    assert duracion < 3
     assert r.status_code == 503
     assert r.json()["status"] == "degraded"
     assert r.json()["db"] == "down"

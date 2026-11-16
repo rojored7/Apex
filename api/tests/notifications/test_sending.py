@@ -547,7 +547,47 @@ async def test_dos_pasadas_en_paralelo_no_envian_el_mismo_aviso_dos_veces(
 
     assert a.enviados + b.enviados == 4
     assert len(canal.enviados) == 4
+    destinatarios = [p.to for p in canal.enviados]
+    assert len(set(destinatarios)) == 4
     assert {f["attempts"] for f in await todos(fabrica)} == {1}
+
+
+async def test_una_pasada_no_reenvia_un_aviso_que_otra_tiene_en_vuelo(fabrica: Fabrica) -> None:
+    """S9-D44 (corrige S5-D228): el candado de fila solo cubre la fase (a); durante el envío la
+    fila no tiene candado, así que otra pasada que la listó antes la volvería a tomar. Lo evita la
+    comprobación de `attempts` al tomarla. Determinista: la pasada A se detiene dentro del canal
+    (aviso 1 en vuelo) mientras B corre completa."""
+    await habilitar_correo(fabrica)
+    regla = await regla_correo(fabrica)
+    for i in range(4):
+        await aviso_correo(
+            fabrica, regla, await socio_con_correo(fabrica, f"p{i}@example.com", nombre=f"P{i}")
+        )
+    entro = asyncio.Event()
+    libre = asyncio.Event()
+    canal_a = CanalFalso()
+    canal_b = CanalFalso()
+
+    async def _detener(_p: ChannelPayload) -> None:
+        entro.set()
+        await libre.wait()
+
+    canal_a.espia = _detener
+    tarea_a = asyncio.create_task(_pasar(fabrica, canal_a, max_per_run=1))
+    await entro.wait()
+    b = await _pasar(fabrica, canal_b)
+    libre.set()
+    a = await tarea_a
+
+    correos = [p.to for p in canal_a.enviados + canal_b.enviados]
+    assert len(correos) == 4
+    assert len(set(correos)) == 4
+    assert (a.enviados, b.enviados) == (1, 3)
+    assert {f["attempts"] for f in await todos(fabrica)} == {1}
+    assert {f["status"] for f in await todos(fabrica)} == {"sent"}
+    # `pendientes` cuenta lo que sigue elegible al terminar la pasada: el aviso que la otra
+    # pasada tenía en vuelo (pending, 1 intento) todavía cuenta cuando B termina.
+    assert b.pendientes == 1
 
 
 async def test_una_fila_whatsapp_pending_no_se_modifica_aunque_el_canal_este_apagado(

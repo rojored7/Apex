@@ -13,6 +13,14 @@
   cerrado). Todo por ORM, así `__audited__` deja las filas `update` (M-6). Un corte entre (b) y
   (c) deja el aviso con el intento contado: la corrida siguiente lo repite una vez como máximo
   (entrega "al menos una vez", tope `NOTIFY_MAX_ATTEMPTS`);
+- exclusión entre pasadas paralelas (S9-D44, corrige S5-D228): el candado de fila solo vale durante
+  la fase (a); en (b) la fila no tiene candado y sigue siendo elegible. Dos defensas: (1) mientras
+  un aviso está en vuelo (de antes de (a) a después de (c)) su proceso sostiene
+  `pg_try_advisory_xact_lock(NOTIFY_LOCK_NS, <clave del id>)` en una transacción aparte sin filas
+  bloqueadas: otra pasada que lo toma no lo obtiene y lo deja intacto; se libera sola si el proceso
+  muere (un corte sigue repitiendo una vez); (2) cada pasada lista `(id, attempts)` y toma la fila
+  solo si `attempts` sigue igual (control optimista): una lista vieja no reenvía lo que otra pasada
+  ya procesó. `pendientes` sí cuenta un aviso que otra pasada tiene en vuelo (sigue `pending`);
 - sin canal configurado o con `channels.email.enabled` falso (sin fila = apagado) cada aviso queda
   `skipped` con `skip_reason = "canal_no_configurado"`, sin descifrar nada (S5-D222);
 - socio sin autorización de datos o sin correo al momento del envío: `skipped` con
@@ -42,7 +50,7 @@ from datetime import date, timedelta
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -94,6 +102,10 @@ NOTIFY_MAX_PER_RUN: Final = 500
 """Avisos que toma una corrida (S5-D232); lo demás sigue mañana."""
 NOTIFY_SOFT_DEADLINE_S: Final = 480
 """Plazo blando con reloj monotónico: pasado, no se toma ninguna fila más (el job tiene 600 s)."""
+NOTIFY_LOCK_NS: Final = 4_270_010
+"""Primera clave del candado de aviso en vuelo (`pg_try_advisory_xact_lock(int, int)`; no choca con
+los candados de una sola clave bigint de otros módulos)."""
+IN_FLIGHT_LOCK_SQL: Final = "SELECT pg_try_advisory_xact_lock(:ns, :k)"
 _LINE_BREAKS: Final = ("\r", "\n", chr(0x2028), chr(0x2029), chr(0x85))
 
 
@@ -108,6 +120,38 @@ class _Prepared:
     notification_id: UUID
     member_id: UUID
     payload: ChannelPayload
+
+
+def _lock_key(notification_id: UUID) -> int:
+    """32 bits del id como `int4` con signo; una colisión solo deja un aviso para la corrida
+    siguiente (queda intacto)."""
+    bajo = notification_id.int & 0xFFFFFFFF
+    return bajo - (1 << 32) if bajo >= (1 << 31) else bajo
+
+
+@asynccontextmanager
+async def _in_flight(sf: SessionFactory, notification_id: UUID) -> AsyncIterator[bool]:
+    """Candado de «aviso en vuelo» (S9-D44): `True` si esta pasada lo obtuvo. Vive en una
+    transacción propia, sin filas bloqueadas, abierta hasta que el aviso se cierra; muere con la
+    conexión. Quien no lo obtiene debe dejar el aviso intacto."""
+    async with sf() as session:
+        try:
+            obtenido = await session.scalar(
+                text(IN_FLIGHT_LOCK_SQL),
+                {"ns": NOTIFY_LOCK_NS, "k": _lock_key(notification_id)},
+            )
+            yield bool(obtenido)
+        finally:
+            try:
+                await session.rollback()
+            except SQLAlchemyError as error:  # p. ej. `idle_in_transaction_session_timeout`
+                logger.warning(
+                    "notifications: no se pudo soltar el candado de aviso en vuelo",
+                    extra={
+                        "notification_id": str(notification_id),
+                        "error_type": type(error).__name__,
+                    },
+                )
 
 
 @asynccontextmanager
@@ -133,14 +177,17 @@ def _eligible(today: date, max_attempts: int) -> ColumnElement[bool]:
     )
 
 
-async def _eligible_ids(sf: SessionFactory, today: date, max_attempts: int) -> list[UUID]:
+async def _eligible_ids(
+    sf: SessionFactory, today: date, max_attempts: int
+) -> list[tuple[UUID, int]]:
+    """`(id, attempts)` de lo elegible: `attempts` es la versión que `_lock_eligible` exige."""
     async with sf() as session:
-        filas = await session.scalars(
-            select(Notification.id)
+        filas = await session.execute(
+            select(Notification.id, Notification.attempts)
             .where(_eligible(today, max_attempts))
             .order_by(Notification.target_date, Notification.created_at, Notification.id)
         )
-        return list(filas)
+        return [(fila.id, fila.attempts) for fila in filas]
 
 
 async def _count_eligible(sf: SessionFactory, today: date, max_attempts: int) -> int:
@@ -160,12 +207,21 @@ async def _channels_config(sf: SessionFactory) -> ChannelsSettings:
 
 
 async def _lock_eligible(
-    session: AsyncSession, notification_id: UUID, today: date, max_attempts: int
+    session: AsyncSession,
+    notification_id: UUID,
+    expected_attempts: int,
+    today: date,
+    max_attempts: int,
 ) -> Notification | None:
-    """La fila, si sigue elegible y nadie más la tiene (`SKIP LOCKED`); `None` si no."""
+    """La fila, si sigue elegible, nadie más la tiene (`SKIP LOCKED`) y ninguna otra pasada ya
+    contó un intento (`attempts == expected_attempts`, S9-D44); `None` si no."""
     return await session.scalar(
         select(Notification)
-        .where(Notification.id == notification_id, _eligible(today, max_attempts))
+        .where(
+            Notification.id == notification_id,
+            Notification.attempts == expected_attempts,
+            _eligible(today, max_attempts),
+        )
         .with_for_update(skip_locked=True)
         .execution_options(populate_existing=True)
     )
@@ -186,11 +242,18 @@ async def _close_as_skipped(session: AsyncSession, aviso: Notification, reason: 
 
 
 async def _skip(
-    sf: SessionFactory, notification_id: UUID, reason: str, today: date, max_attempts: int
+    sf: SessionFactory,
+    notification_id: UUID,
+    expected_attempts: int,
+    reason: str,
+    today: date,
+    max_attempts: int,
 ) -> str:
     """Omite el aviso sin descifrar nada (canal apagado o sin credenciales)."""
     async with _tx(sf) as session:
-        aviso = await _lock_eligible(session, notification_id, today, max_attempts)
+        aviso = await _lock_eligible(
+            session, notification_id, expected_attempts, today, max_attempts
+        )
         if aviso is None:
             return UNTOUCHED
         await _close_as_skipped(session, aviso, reason)
@@ -212,6 +275,7 @@ async def _fail_for_good(session: AsyncSession, aviso: Notification, max_attempt
 async def _prepare(
     sf: SessionFactory,
     notification_id: UUID,
+    expected_attempts: int,
     today: date,
     max_attempts: int,
     load_contact: LoadContact,
@@ -219,7 +283,9 @@ async def _prepare(
 ) -> _Prepared | str:
     """Fase (a): candado, contacto y `attempts += 1`, todo confirmado antes de enviar."""
     async with _tx(sf) as session:
-        aviso = await _lock_eligible(session, notification_id, today, max_attempts)
+        aviso = await _lock_eligible(
+            session, notification_id, expected_attempts, today, max_attempts
+        )
         if aviso is None:
             return UNTOUCHED
         if _has_line_break(aviso.rendered_subject):
@@ -340,28 +406,40 @@ async def _send_and_close(
 async def _process_one(
     sf: SessionFactory,
     notification_id: UUID,
+    expected_attempts: int,
     today: date,
     max_attempts: int,
     load_contact: LoadContact,
     channel: NotificationChannel,
     config: ChannelsSettings,
 ) -> str:
-    preparado = await _prepare(sf, notification_id, today, max_attempts, load_contact, config)
-    if isinstance(preparado, str):
-        return preparado
-    # El envío (`to_thread`) no se cancela: bajo `shield` el cierre ocurre aunque el job caiga.
-    unidad = asyncio.ensure_future(_send_and_close(sf, channel, preparado, max_attempts))
-    return await asyncio.shield(unidad)
+    async with _in_flight(sf, notification_id) as obtenido:
+        if not obtenido:
+            return UNTOUCHED  # otra pasada lo tiene en vuelo (S9-D44)
+        preparado = await _prepare(
+            sf, notification_id, expected_attempts, today, max_attempts, load_contact, config
+        )
+        if isinstance(preparado, str):
+            return preparado
+        # El envío (`to_thread`) no se cancela: bajo `shield` el cierre ocurre aunque el job caiga.
+        unidad = asyncio.ensure_future(_send_and_close(sf, channel, preparado, max_attempts))
+        return await asyncio.shield(unidad)
 
 
 async def _mark_failed(
-    sf: SessionFactory, notification_id: UUID, today: date, max_attempts: int
+    sf: SessionFactory,
+    notification_id: UUID,
+    expected_attempts: int,
+    today: date,
+    max_attempts: int,
 ) -> str:
     """Un aviso cuya preparación falló (fila ilegible, bug de un suscriptor): `failed`/`unknown`
     con el intento contado, para que acumule hasta el tope y no bloquee la cola (S5-D230)."""
     try:
         async with _tx(sf) as session:
-            aviso = await _lock_eligible(session, notification_id, today, max_attempts)
+            aviso = await _lock_eligible(
+                session, notification_id, expected_attempts, today, max_attempts
+            )
             if aviso is None:
                 return FAILED
             aviso.attempts += 1
@@ -386,6 +464,7 @@ async def _mark_failed(
 async def _handle(
     sf: SessionFactory,
     notification_id: UUID,
+    expected_attempts: int,
     today: date,
     max_attempts: int,
     load_contact: LoadContact,
@@ -395,10 +474,19 @@ async def _handle(
     """Un aviso de la pasada: apagado por el admin → `skipped`; si no, las tres fases. Un fallo
     no sistémico lo deja `failed`/`unknown` (S5-D230); lo sistémico (custodio) relanza (M-4)."""
     if not config.email.enabled:
-        return await _skip(sf, notification_id, SKIP_NOT_CONFIGURED, today, max_attempts)
+        return await _skip(
+            sf, notification_id, expected_attempts, SKIP_NOT_CONFIGURED, today, max_attempts
+        )
     try:
         return await _process_one(
-            sf, notification_id, today, max_attempts, load_contact, channel, config
+            sf,
+            notification_id,
+            expected_attempts,
+            today,
+            max_attempts,
+            load_contact,
+            channel,
+            config,
         )
     except Exception as error:
         if _is_systemic(error):
@@ -407,7 +495,7 @@ async def _handle(
             "notifications: un aviso falló al prepararse",
             extra={"notification_id": str(notification_id), "error_type": type(error).__name__},
         )
-        return await _mark_failed(sf, notification_id, today, max_attempts)
+        return await _mark_failed(sf, notification_id, expected_attempts, today, max_attempts)
 
 
 async def send_pending(
@@ -429,12 +517,13 @@ async def send_pending(
     conteos = {SENT: 0, FAILED: 0, SKIPPED: 0, UNTOUCHED: 0}
     inicio = monotonic()
     # S5-D231: habilitado sin credenciales no es una omisión definitiva; esperan y se avisa.
-    for notification_id in [] if sin_credenciales else ids[:max_per_run]:
+    for notification_id, expected_attempts in [] if sin_credenciales else ids[:max_per_run]:
         if monotonic() - inicio >= soft_deadline_s:
             break  # S5-D232: lo que falta sigue mañana; los intentos solo se gastan al enviar
         resultado = await _handle(
             session_factory,
             notification_id,
+            expected_attempts,
             today,
             max_attempts,
             load_contact,

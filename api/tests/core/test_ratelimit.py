@@ -412,6 +412,8 @@ CATALOGO = {
     # S8-D22 (S8-W0-3): dos cubetas más, 27 en total.
     "wods-write": (30, 60),
     "results-write": (60, 60),
+    # S9-D17 (S9-W0-2): `athletes-write` (30/min), 28 en total.
+    "athletes-write": (30, 60),
 }
 
 
@@ -481,6 +483,7 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
             "USER_ATTENDANCE_WRITE_LIMIT_PER_MIN": 34,
             "USER_WODS_WRITE_LIMIT_PER_MIN": 35,
             "USER_RESULTS_WRITE_LIMIT_PER_MIN": 36,
+            "USER_ATHLETES_WRITE_LIMIT_PER_MIN": 37,
         }
     )
     assert user_limits_from(ajustes) == {
@@ -515,6 +518,8 @@ def test_user_limits_from_sigue_la_correspondencia_de_e15_y_conserva_las_ventana
         # S8-D22 (S8-W0-3): dos cubetas más, 27 en total.
         "wods-write": (35, 60),
         "results-write": (36, 60),
+        # S9-D17 (S9-W0-2): una cubeta más, 28 en total.
+        "athletes-write": (37, 60),
     }
 
 
@@ -528,17 +533,19 @@ def test_user_limits_from_da_doce_cubetas_y_audit_verify_hour_conserva_su_ventan
     topes = user_limits_from(
         export_settings().model_copy(update={"USER_AUDIT_VERIFY_LIMIT_PER_HOUR": 7})
     )
-    assert len(topes) == 27  # 12 de S4A, 4 de S5, 7 de S6, 2 de S7 (S7-D19) y 2 de S8 (S8-D22)
+    assert len(topes) == 28  # 12 de S4A, 4 de S5, 7 de S6, 2 de S7, 2 de S8 y 1 de S9 (S9-D17)
     assert topes["audit-verify-hour"] == (7, 3600)
     assert topes["audit-verify"][1] == 60
     assert topes["staff-read"][1] == 60
 
 
-def test_hay_27_cubetas() -> None:
-    """S7-D19: 25 cubetas; S8-D22: `wods-write` (30/min) y `results-write` (60/min) suman 27."""
+def test_hay_28_cubetas() -> None:
+    """S7-D19: 25 cubetas; S8-D22: `wods-write` y `results-write` suman 27; S9-D17: `athletes-write`
+    (30/min) suma 28."""
     from app.core.ratelimit import USER_LIMITS
 
-    assert len(USER_LIMITS) == 27
+    assert len(USER_LIMITS) == 28
+    assert USER_LIMITS["athletes-write"] == (30, 60)
     assert USER_LIMITS["classes-write"] == (30, 60)
     assert USER_LIMITS["attendance-write"] == (60, 60)
     assert USER_LIMITS["wods-write"] == (30, 60)

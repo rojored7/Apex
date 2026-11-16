@@ -1053,6 +1053,18 @@ def test_limites_de_clases_y_asistencia(tmp_path: Path) -> None:
     )
 
 
+def test_limite_de_atletas(tmp_path: Path) -> None:
+    """S9-D17: `USER_ATHLETES_WRITE_LIMIT_PER_MIN` vale 30 por defecto y rechaza 0 y negativos."""
+    s = _cargar(tmp_path)
+    assert s.USER_ATHLETES_WRITE_LIMIT_PER_MIN == 30
+    _rechaza_alguna(
+        tmp_path, ("USER_ATHLETES_WRITE_LIMIT_PER_MIN",), USER_ATHLETES_WRITE_LIMIT_PER_MIN="0"
+    )
+    _rechaza_alguna(
+        tmp_path, ("USER_ATHLETES_WRITE_LIMIT_PER_MIN",), USER_ATHLETES_WRITE_LIMIT_PER_MIN="-1"
+    )
+
+
 def test_limites_de_wods_resultados_y_tv(tmp_path: Path) -> None:
     """S8-D22, S8-D33: topes por defecto 30 y 60 por minuto, y 12 y 30 para la TV."""
     s = _cargar(tmp_path)

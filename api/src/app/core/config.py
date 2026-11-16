@@ -281,6 +281,8 @@ class Settings(BaseSettings):
     # S8-D22 (S8-W0-3): dos cubetas más, 27 en total y 26 variables `USER_*` (rutas en A1 y B1).
     USER_WODS_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
     USER_RESULTS_WRITE_LIMIT_PER_MIN: int = Field(default=60, gt=0)
+    # S9-D17 (S9-W0-2): una cubeta más, 28 en total y 27 variables `USER_*` (ruta en A1).
+    USER_ATHLETES_WRITE_LIMIT_PER_MIN: int = Field(default=30, gt=0)
     # S8-D33: `GET /tv/today` (v0.5). `tv-fail` cuenta por IP solo los intentos con token
     # inválido y `tv` por token válido, ambos por minuto; cota de 1 a 120 (un valor mayor es un
     # error de arranque, no un tope silencioso).

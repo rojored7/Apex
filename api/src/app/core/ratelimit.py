@@ -350,9 +350,11 @@ USER_LIMITS: Final[dict[str, tuple[int, int]]] = {
     "classes-write": (30, 60),
     "attendance-write": (60, 60),
     # S8-D22: movimientos, benchmarks, WODs y asignación (`wods-write`, rutas desde A1) y
-    # resultados (`results-write`, desde B1). 27 cubetas y 26 variables `USER_*`.
+    # resultados (`results-write`, desde B1). 27 cubetas y 26 variables `USER_*` (S8-D22).
     "wods-write": (30, 60),
     "results-write": (60, 60),
+    # S9-D17: perfil del atleta (medidas y récords; ruta desde S9-A1). 28 cubetas y 27 variables.
+    "athletes-write": (30, 60),
 }
 """Catálogo de buckets por usuario: `{bucket: (tope por defecto, ventana_s)}`. Los topes
 vigentes salen de `Settings` con `user_limits_from` y viven en `app.state.user_limits`."""
@@ -392,6 +394,7 @@ def user_limits_from(settings: Settings) -> dict[str, tuple[int, int]]:
         "attendance-write": settings.USER_ATTENDANCE_WRITE_LIMIT_PER_MIN,
         "wods-write": settings.USER_WODS_WRITE_LIMIT_PER_MIN,
         "results-write": settings.USER_RESULTS_WRITE_LIMIT_PER_MIN,
+        "athletes-write": settings.USER_ATHLETES_WRITE_LIMIT_PER_MIN,
     }
     return {bucket: (topes[bucket], ventana) for bucket, (_, ventana) in USER_LIMITS.items()}
 

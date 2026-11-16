@@ -83,27 +83,27 @@ describe("WodSessions", () => {
     expect(lastQuery(api).get("from")).toBe("2026-11-15");
   });
 
-  it("Todas quita from y vuelve a la página 1", async () => {
+  it("Día del WOD quita from y vuelve a la página 1", async () => {
     const api = renderSessions(page([1], 60));
     await screen.findByText(/Clase 1/);
     fireEvent.click(screen.getByRole("button", { name: /Siguiente/ }));
     await vi.waitFor(() => {
       expect(lastQuery(api).get("offset")).toBe("25");
     });
-    fireEvent.click(screen.getByRole("button", { name: /Todas/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Día del WOD/ }));
     await vi.waitFor(() => {
       expect(lastQuery(api).get("from")).toBeNull();
     });
     expect(lastQuery(api).get("to")).toBeNull();
     expect(lastQuery(api).get("offset")).toBe("0");
-    expect(screen.getByRole("button", { name: /Todas/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Día del WOD/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("vacío en Próximas y vacío en Todas dicen cosas distintas", async () => {
+  it("vacío en Próximas y vacío en Día del WOD dicen cosas distintas", async () => {
     renderSessions((url) => (url.searchParams.has("from") ? page([], 0) : page([], 0)));
     expect(await screen.findByText(SESSIONS_EMPTY_UPCOMING)).toBeInTheDocument();
     expect(SESSIONS_EMPTY_UPCOMING).toBe("No hay clases próximas con este WOD.");
-    fireEvent.click(screen.getByRole("button", { name: /Todas/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Día del WOD/ }));
     expect(await screen.findByText(SESSIONS_EMPTY)).toBeInTheDocument();
   });
 });

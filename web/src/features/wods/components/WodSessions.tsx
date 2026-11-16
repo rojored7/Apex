@@ -16,10 +16,10 @@ const UPCOMING_DAYS = 61;
 export const SESSIONS_EMPTY_UPCOMING = "No hay clases próximas con este WOD.";
 
 type SessionsScope = "upcoming" | "all";
-// «Todas» no manda ventana: el api devuelve las sesiones del día del WOD (S8-A4b, L-1).
+// «Día del WOD» no manda ventana: el api devuelve las sesiones del día del WOD (S8-A4b, L-1).
 const SCOPE_OPTIONS = [
   { value: "upcoming", label: "Próximas" },
-  { value: "all", label: "Todas" },
+  { value: "all", label: "Día del WOD" },
 ];
 
 const STATUS_LABELS: Readonly<Record<WodSessionView["status"], string>> = { scheduled: "Programada", cancelled: "Cancelada", done: "Realizada" };

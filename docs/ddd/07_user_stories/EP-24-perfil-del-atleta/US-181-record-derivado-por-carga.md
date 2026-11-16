@@ -104,3 +104,13 @@ Característica: Récord derivado por carga
 - [ ] Migración aplicada con `alembic upgrade head` y reversible
 - [ ] Auditoría verificada para las tablas tocadas
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Evento nuevo (S9-D7): `results` emite `WodResultSuperseded(old_result_id, new_result_id, member_id, wod_id)` al corregir, antes de `WodResultRecorded` y `WodResultValidated`. Ningún evento lleva la marca: el handler la lee con `results.service.get_mark`.
+- Tres handlers (S9-D7): validar, corregir y anular un resultado; todos corren en la transacción del emisor y sin candados propios (el emisor ya tiene `lock_member`).
+- CA8 corregido (S9-D30, S9-D42): invalidar falla cerrado (si falla, se revierte la corrección o la anulación); derivar y reponer fallan en blando dentro de un savepoint (se omite, se alerta sin ids y `derive-records` lo repara); «base ocupada» sale como 503 `busy` y el resultado no se confirma.
+- Invalidación auditada (S9-D42): `_invalidate` escribe por ORM (cuatro columnas) para que cada fila deje su `update` en `audit_log` con el actor del contexto.
+- Reponer el mejor (S9-D11, S9-D30): tras invalidar se repone el mejor que quede, solo si se invalidó algo, con filtro en SQL y tope `RESTORE_MAX_MARKS = 200` (si se alcanza: alerta `athletes_restore_capped` con el conteo y no repone).
+- Idempotencia (S9-D8): índice único parcial `(result_id, kind)`; un 23505 es un no-op, nunca un 500. La anulación de un resultado también invalida.
+- Resultados anteriores a v0.6 (S9-D21): comando `derive-records [--as <email>] [--dry-run]`, idempotente, auditado, paso de despliegue de v0.6.

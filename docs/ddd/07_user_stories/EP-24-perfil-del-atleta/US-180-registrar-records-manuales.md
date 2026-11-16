@@ -108,3 +108,12 @@ Característica: Registrar récords manuales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada para las tablas tocadas
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Benchmark (S9-D8): el récord manual de benchmark lleva `benchmark_id` y la marca validada con `results.validate_score` del `score_type` del benchmark; no hay `capped` manual.
+- Unidades (S9-D8): el RM es `value_g` en gramos enteros (1 a 1.000.000) sobre un movimiento activo con `unit = kg`; la fecha es `achieved_on` (fecha civil de Bogotá).
+- Histórico (S9-D8): un récord menor o igual que el vigente se guarda con `is_current = false`; `PersonalRecordSet` se emite solo si queda vigente y no lleva valor (S9-D12).
+- Socio dado de baja (S9-D14): la escritura responde 404 `member_not_found`. Corrige CA9.
+- Invalidar (S9-D13, S9-D33): `POST /records/{record_id}/invalidate` solo para récords manuales vivos (`record_is_derived` y `record_already_invalidated` dan 409), sin texto libre; el coach solo invalida lo que registró él y dentro de 24 h (el admin, todo); corre `lock_member` y repone el mejor (S9-D11).
+- Base (S9-D18, S9-D31): migración `0043_athletes_personal_records`, tabla auditada, sin `DELETE`, con `UPDATE` solo de las columnas de invalidación; sin columnas cifradas (un récord no es dato de salud).

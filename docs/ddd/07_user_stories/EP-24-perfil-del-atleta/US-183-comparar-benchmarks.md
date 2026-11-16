@@ -98,3 +98,10 @@ Característica: Comparar benchmarks
 - [ ] Front: pruebas de componente y página; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Dos rutas (S9-D27): `GET /athletes/{member_id}/benchmarks` (benchmarks con al menos un intento vigente y validado, paginada) y `GET /athletes/{member_id}/benchmarks/{benchmark_id}` (la serie). Desaparece `?wod=` y el 422 de «wod que no es benchmark» (N-46).
+- Serie: máximo 200 intentos (los más recientes), por fecha ascendente, sin paginar; exactamente un `is_best` (el primero en fecha si hay empate); sin intentos, lista vacía con 200; id fuera del catálogo, 404 `benchmark_not_found`.
+- Lectura (S9-D6): por `results.service.member_marks(only_benchmarks=True)`, función nueva que usa `ix_wod_results_member_date`; `list_member_results` no cambia.
+- Cada intento trae `level_changed`; el front rotula la fuente «Automático (tablet)» (S9-D36 L-4).

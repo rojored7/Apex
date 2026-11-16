@@ -3,7 +3,7 @@
 - Versión: v0.6.
 - Épica: EP-24 (perfil del atleta).
 - Tamaño: 7 historias, 26 puntos y 109 h relativas.
-- Nivel de detalle: bloques en orden de ejecución, sin slices. Se refina al llegar.
+- Nivel de detalle: 29 slices con su plan en `docs/ddd/blueprints/sprint-09-plan.md` (decisiones S9-D1 a D42 en `DECISIONES.md`, bloque «Sprint 9»). Las enmiendas de la sección 10 del plan mandan.
 - Historias del sprint: US-178, US-179, US-180, US-181, US-182, US-183, US-184.
 
 ## Objetivo
@@ -17,11 +17,11 @@ Que la ficha del socio tenga un perfil de atleta con:
 
 ## Demo al final del sprint
 
-1. **Medidas.** Registrar peso, estatura y porcentaje de grasa de un socio. En la base, las cuatro columnas son blobs `apx1.`; solo `measured_at` y `member_id` quedan en claro. "Mostrar" el peso deja una fila `reveal` y otra `decrypt`.
+1. **Medidas.** Registrar peso (gramos), estatura (cm) y porcentaje de grasa de un socio, con la fecha `measured_on`. Sin autorización de datos del socio, el alta da 409 `consent_required` (S9-D29). En la base, las cuatro columnas (`weight_g`, `height_cm`, `body_fat_pct`, `notes`) son blobs `apx1.`; solo `measured_on` y `member_id` quedan en claro. "Mostrar" el peso deja una fila `reveal` y otra `decrypt`.
 2. **RM derivado por carga.**
    - Validar un resultado de 100 kg en un WOD con `score_type = load` crea un RM derivado sobre el movimiento principal.
    - Un resultado `scaled` no deriva (N-45).
-   - Corregir ese resultado marca el RM como `invalidated_at` y no lo borra (refinamiento de US-181).
+   - Corregir o anular ese resultado marca el RM como `invalidated_at` y no lo borra (refinamiento de US-181; se repone el mejor que quede, S9-D11).
 3. **Benchmark.** Un mejor tiempo en "Fran" crea un `PersonalRecord(kind = benchmark)`, agrupado por `benchmark_id`. La comparación muestra la serie del socio.
 4. **Ficha.** La pestaña Atleta tiene cinco subpestañas, con el resumen y los RM vigentes. Ninguna de ellas descifra medidas para listarlas.
 
@@ -50,31 +50,38 @@ Que la ficha del socio tenga un perfil de atleta con:
    - US-184 · Perfil del atleta en la ficha: resumen y RM vigentes, sin descifrar.
 
 Waves:
-- **Wave 0:** paso de despliegue de v0.6. `init-keys --data-class athlete.metric` corre antes de la primera alta, con una prueba de arranque que verifica las `data_class` registradas.
-- **Waves 3a y 3b:** los bloques A, B y C, en ese orden.
+- **Wave 0:** documentos y decisiones (W0-1), cubeta `athletes-write` y línea base (W0-2), claves de alerta, prueba de arranque de las clases de dato y alerta por volumen de `reveal` (W0-3). No hay paso `init-keys`: el api crea la DEK de `athlete.metric` al arrancar (S9-D5).
+- **Waves 3a y 3b:** los bloques A (A1 a A3), B y C (B1 a B6, C1, C2), en ese orden.
+- **Wave D:** deuda de v0.5 (X1 WhatsApp con teléfono, X2 inactividad del quiosco, X3 TV en tiempo real).
 - **Waves 5a y 5b:** `Atleta_Perfil` y la pestaña Atleta de `Socio_Ficha`, con cinco subpestañas.
 
 ## Migraciones que aplica
 
 En orden ascendente:
-- `0085_athletes_schema_body_metrics` (US-178).
-- `0086_athletes_personal_records` (US-180).
-- `0087_athletes_personal_records_invalidated` (US-181).
+- `0042_athletes_body_metrics` (US-178): crea el esquema `athletes`, la tabla y sus guardas.
+- `0043_athletes_personal_records` (US-180 a US-182): tabla, guardas e invalidación en una sola migración.
+
+Los números `0085` a `0089` del plan original y la `0044` de la exploración quedan sin usar (S9-D2).
 
 ## Endpoints que expone
 
-Todos con el prefijo `/api/v1/athletes/{member_id}`:
+11 rutas, todas con el prefijo `/api/v1/athletes/{member_id}`, solo admin y coach, `Cache-Control: no-store`:
 - `POST` y `GET /metrics`.
-- `POST /metrics/{metric_id}/reveal`.
+- `POST /metrics/{metric_id}/reveal` (cubetas de `members-reveal`, compartidas con la ficha).
+- `POST /metrics/{metric_id}/void` (S9-D13).
 - `POST` y `GET /records`.
+- `POST /records/{record_id}/invalidate` (S9-D13).
 - `GET /rms`.
-- `GET /benchmarks`.
+- `GET /benchmarks` y `GET /benchmarks/{benchmark_id}` (la serie).
 - `GET /summary`.
+
+Cubeta nueva `athletes-write` (30/min; `USER_ATHLETES_WRITE_LIMIT_PER_MIN`): 28 cubetas y 27 variables `USER_*` (S9-D17). Comando nuevo: `derive-records` (S9-D21).
 
 ## Tests de arquitectura que deben pasar
 
 - Toda la suite anterior.
 - `test_no_plaintext_at_rest.py`, ampliada a `athlete.metric`.
+- `test_reveal_single_door.py` (tres puertas de `reveal`), `test_audited_tables.py`, `test_service_import_graph.py` (cuatro aristas nuevas), `test_no_cross_schema_sql.py` (suma `athletes`).
 - `test_no_cross_models.py`: `athletes` lee `results` y `wods` solo por sus services.
 - `test_banned_imports.py`.
 - `test_every_route_has_role.py`.
@@ -93,7 +100,7 @@ Todos con el prefijo `/api/v1/athletes/{member_id}`:
 ## Definición de hecho del sprint
 
 - Definición de hecho común del README.
-- E2E:
+- E2E (`web/tests/e2e/stack/`):
   - registrar una medida y revelarla;
   - validar un resultado de carga y ver el RM;
   - corregir el resultado y ver el RM invalidado.

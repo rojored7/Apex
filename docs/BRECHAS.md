@@ -107,7 +107,7 @@ Este archivo es la lista de trabajo para alinear los tres documentos. Cada punto
 - **Resuelto:** `auth.users.member_id` nulo desde v0.1 y obligatorio con `role = member`. Detalle original: el portal (v1.0) filtra "lo mío" por el `member_id` del token, pero la tabla `users` de la Tarea 3 no tiene esa columna. Agregarla nula desde v0.1; obligatoria cuando `role = member`.
 - **Resuelto:** enum fijo en v0.1 (S8), etiquetas desde Settings. Detalle original: el plan usa el enum fijo `cash | nequi | breb`; `Config.html` permite configurar medios. Decidir: enum fijo en código (más simple) o lista en `settings.payment_methods`. Recomendación: enum fijo en v0.1; si el gimnasio pide otro medio, se agrega con migración.
 - **Resuelto:** `class_slots`. Detalle original: front `class-slots`, plan `schedule_templates`. Mismo concepto, unificar el nombre (recomendación: `class_slots`, es el que usa el diseño).
-- **Resuelto:** `personal_records.kind` (`rm` con `movement_id`, `benchmark` con `benchmark_id`, N-46), un endpoint con filtro `kind`. Detalle original: front separa `/athletes/:id/rms` y `/athletes/:id/records`; plan solo tiene `personal_records` (manuales y derivados). Definir: un RM es un `personal_record` con `kind = rm` y `movement_id`; un récord de benchmark es `kind = benchmark` con `wod_id`. Un solo endpoint con filtro `kind`.
+- **Resuelto:** `personal_records.kind` (`rm` con `movement_id`, `benchmark` con `benchmark_id`, N-46), un endpoint con filtro `kind`. Detalle original: front separa `/athletes/:id/rms` y `/athletes/:id/records`; plan solo tiene `personal_records` (manuales y derivados). Definir: un RM es un `personal_record` con `kind = rm` y `movement_id`; un récord de benchmark es `kind = benchmark` con `benchmark_id` (no `wod_id`, N-46). Un solo endpoint con filtro `kind`; v0.6 (S9-D8, S9-D27): `GET /athletes/{id}/records?kind=` más `GET /rms` para el vigente por movimiento.
 - **Resuelto:** `plan` en v0.1 vía `status_for` (G-04); `last_attendance` en v0.4 con import perezoso (G-10). Detalle original: ROUTES pide `plan` y `last_attendance`; Tarea 4 solo tiene búsqueda y estado. `plan` se puede en v0.1 (consulta vía service de memberships); `last_attendance` solo desde v0.4.
 - **Resuelto:** `membership_status` lo calcula `memberships.service.status_for` y se expone en la lista; chips con "Pendiente de pago" (Q3) y "Dados de baja" visibles para admin y coach (N-20). Detalle original: estados derivados de socio en los chips ("Al día", "Por vencer", "Vencidos", "Congelados", "Sin membresía", "Dados de baja"): el socio no tiene estado de membresía propio. Definir en el service de members cómo se calcula (última membresía no cancelada) y exponerlo como `membership_status` en la respuesta de la lista, sin join cruzado fuera del service.
 
@@ -652,3 +652,15 @@ El Sprint 8 (v0.5) construye Movimientos, Benchmarks, WOD_Lista, WOD_Form, WOD_D
 | 16.7 | `Config.html`, pestaña TV | «Abrir» sin token guardado: el enlace solo se ve tras regenerar. | S8-D32 | resuelta en el plan (F5) |
 | 16.8 | Panel · `nav.ts` | «Pantalla · Abrir pantalla TV» no entra; la TV se abre con el enlace `/tv#token=…` (S8-D32). | S8-D32 | resuelta en el plan (F5) |
 | 16.9 | Resultados | `POST /results/{id}/validate` pasa a EP-25 (sección 4). | S8-D29 (4) | movida |
+
+## 17. Sprint 9: brechas con el diseño
+
+El Sprint 9 (v0.6) construye `Atleta_Perfil` (pestaña Atleta de la ficha, `/socios/:id/atleta`) con las subpestañas Resumen, Medidas, RMs, Récords y Benchmarks. Cada brecha lleva `// DESIGN-GAP:` en el código del slice que la toca. Fuentes: `docs/ddd/blueprints/sprint-09-blueprint.md`, `sprint-09-plan.md` y `DECISIONES.md`, sección «Sprint 9».
+
+| # | Pantalla | Brecha | Decisión | Estado |
+|---|----------|--------|----------|--------|
+| 17.1 | `Atleta_Perfil.html` | La tabla de medidas con valores en claro y la gráfica de peso exigen descifrar N filas; las listas y el resumen muestran «•••» (`has_*`). «Cintura» y las medidas configurables no existen. | S9-D16 | difiere a EP-25 (`list_metrics_revealed`, US-191) |
+| 17.2 | `WOD_Detalle`, `Resultados_Registro`, TV | «PR», «vs. su anterior» y «récord automático»: exigirían `results -> athletes` o `tv -> athletes` y el quiosco no llama a `/athletes/*`. | S9-D25 (2) | backlog, sin historia |
+| 17.3 | `Movimientos.html` | «Unidad preferida» (lb), «Tipos de récord», 3RM, 5RM y «máx. reps»: RM = 1RM en kg sobre movimientos con `unit = kg` (N-45). | S9-D25 (3) | `DESIGN-GAP` |
+| 17.4 | `Socio_Ficha` | `members.hide_on_tv`: quien decide ocultarse es el socio desde el portal; la TV ya excluye bajas y socios sin autorización. | S9-D25 (1), S9-D37 P4 | movida a EP-25 |
+| 17.5 | `Atleta_Perfil.html` | «Registrar medidas» se deshabilita, con enlace a la ficha, si el socio no tiene autorización de datos vigente (409 `consent_required`). | S9-D29 | resuelta en el plan (F1) |

@@ -110,3 +110,14 @@ Característica: Registrar medidas corporales cifradas
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada para las tablas tocadas
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Unidades enteras (S9-D3): `weight_g` en gramos (20.000 a 400.000), `height_cm` (50 a 250) y `body_fat_pct` entero (1 a 75); `notes` `SafeText` de 1 a 500. Sustituyen a `weight_kg` del modelo.
+- Fecha (S9-D3): `measured_on` es una fecha civil de Bogotá (de `2000-01-01` a hoy), no un instante; corrige CA4 (`measured_at` con zona).
+- Autorización de datos (S9-D29, H-1): sin autorización vigente del socio el alta responde 409 `consent_required` antes de codificar y cifrar (cero filas `encrypt`). El front deshabilita «Registrar medidas» con enlace a la ficha.
+- Formato del claro (S9-D32, S9-D36 L-1): marca de campo (`w`, `h`, `f`, `n`) dentro del claro y `notes` rellenado a un múltiplo de 128 bytes antes de cifrar.
+- Socio dado de baja (S9-D14): la escritura responde 404 `member_not_found`; la lectura sigue. Corrige CA7.
+- Anular una medición (S9-D13, S9-D33): `POST /metrics/{metric_id}/void`, sin texto libre; el coach solo anula lo que registró él y dentro de 24 h.
+- Lista (S9-D16): las filas traen `has_weight`, `has_height`, `has_body_fat` y `has_notes`, nunca valores ni máscaras.
+- Llave y base (S9-D5, S9-D18, S9-D31): el api crea la DEK de `athlete.metric` al arrancar (no hay paso `init-keys`); migración `0042_athletes_body_metrics` con guardas que protegen las medidas también frente a `apex_api`; cubeta `athletes-write`.

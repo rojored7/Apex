@@ -10,6 +10,7 @@ La épica crea el módulo `athletes` (esquema `athletes`) con dos entidades: `Bo
 
 ## Correcciones aplicadas por DECISIONES.md
 
+- Sprint 9 (S9-D1 a D42, bloque «Sprint 9» de `DECISIONES.md`): migraciones reales `0042` y `0043`; 11 rutas; unidades enteras (gramos, cm, %) y `measured_on`/`achieved_on` como fechas civiles; 409 `consent_required` sin autorización de datos (S9-D29); `WodResultSuperseded` real y anulación invalidan (S9-D7, S9-D30); anular una medición e invalidar un récord manual (S9-D13, S9-D33); puerto `RecordsProbe` (S9-D9); comando `derive-records` (S9-D21); cubeta `athletes-write` (S9-D17).
 - US-178: todas las medidas (`weight_kg`, `height_cm`, `body_fat_pct` y `notes`) cifradas bajo `athlete.metric`; solo `id`, `member_id`, `measured_at` y columnas comunes en claro: confirmado por DECISIONES Q21 (corrige el `02_domain_model.md` 2.9, que solo cifraba el peso).
 - US-178, US-180 y US-181: rangos de medidas (peso 20 a 400 kg, estatura 50 a 250 cm, grasa 1 a 75 %), RM en kg, empate conserva el más antiguo y `scaled` no deriva RM: supuestos aceptados por DECISIONES N-45.
 - US-179: `reveal` de una medida para admin y coach, siempre auditado con campo y usuario: confirmado por DECISIONES Q6.
@@ -33,10 +34,9 @@ La épica crea el módulo `athletes` (esquema `athletes`) con dos entidades: `Bo
 
 ## Tablas y migraciones
 
-- `0085_athletes_schema_body_metrics` (US-178): `CREATE SCHEMA athletes`; `athletes.body_metrics` (`member_id` uuid sin FK entre esquemas, `measured_at` timestamptz, `weight_kg` text nulo, `height_cm` text nulo, `body_fat_pct` text nulo, `notes` text nulo — las cuatro como blob `apx1.*` —, `recorded_by` uuid, columnas comunes); índice `(member_id, measured_at DESC)`; CHECK de que al menos una de las tres medidas no es nula.
-- `0086_athletes_personal_records` (US-180, US-181): `athletes.personal_records` (`member_id`, `kind` CHECK en `rm`/`benchmark`, `movement_id` uuid nulo, `benchmark_id` uuid nulo, `wod_id` uuid nulo, `value_kg` numeric(6,2) nulo, `level`, `seconds`, `rounds`, `reps`, `load_kg`, `capped` para la marca de benchmark, `achieved_at` timestamptz, `source` CHECK en `manual`/`derived`, `result_id` uuid nulo, columnas comunes); CHECK de coherencia (`kind = rm` exige `movement_id` y `value_kg`, `kind = benchmark` exige `benchmark_id`; `source = derived` exige `result_id`); índices `(member_id, kind, movement_id)` y `(member_id, kind, benchmark_id)`; índice único parcial `(result_id) WHERE result_id IS NOT NULL` (idempotencia de US-181 y US-182).
-- Si se acepta la propuesta de US-181: `0087_athletes_personal_records_invalidated` agrega `invalidated_at` timestamptz nulo e `invalidated_by_result_id` uuid nulo (columnas nulas, sin datos que llenar).
-- Números 0088 y 0089 libres.
+- `0042_athletes_body_metrics` (US-178, S9-D2, S9-D3, S9-D18, S9-D31): `CREATE SCHEMA athletes`; `athletes.body_metrics` (`member_id` uuid sin FK entre esquemas, `measured_on` date, `weight_g`, `height_cm`, `body_fat_pct` y `notes` como blob `apx1.*` (`TEXT NULL`), `recorded_by`, `voided_at` y `voided_by`, columnas comunes); índice `(member_id, measured_on DESC, created_at DESC)`; CHECK de que al menos una de las tres medidas no es nula y de `(voided_at IS NULL) = (voided_by IS NULL)`; guardas `ENABLE ALWAYS` con `athletes.forbid_mutation()` (sin `DELETE` ni `TRUNCATE`; el `UPDATE` solo recifra, anula o toca `updated_at`); grants por columna; `USAGE` del esquema a `apex_api` y `apex_backup`.
+- `0043_athletes_personal_records` (US-180 a US-182, S9-D2, S9-D8): `athletes.personal_records` (`member_id`, `kind` `rm|benchmark`, `movement_id`, `benchmark_id`, `wod_id`, `value_g` INT, `level`, `seconds`, `rounds`, `reps`, `load_g`, `capped`, `achieved_on` date, `source` `manual|derived`, `result_id`, `invalidated_at`, `invalidated_reason`, `invalidated_by`, `invalidated_by_result_id`, columnas comunes); CHECK de forma por `kind` y `source`; índices parciales (`uq_personal_records_result_kind`, `ix_personal_records_rm`, `ix_personal_records_bench`, `ix_personal_records_member_date`, `ix_personal_records_movement`, `ix_personal_records_benchmark`); guardas: sin `DELETE`, `UPDATE` solo de las columnas de invalidación, una vez. La invalidación va fundida aquí: tabla nueva sin datos, una migración menos.
+- Los números `0085` a `0089` del plan original y la `0044` de la exploración quedan sin usar.
 
 ## Services y eventos
 
@@ -65,7 +65,7 @@ La épica crea el módulo `athletes` (esquema `athletes`) con dos entidades: `Bo
 
 ## Worker, CLI e infraestructura
 
-- CLI: `cli init-keys --data-class athlete.metric` (comando existente de US-023 con `--data-class`, requisito de US-140) para crear la DEK; documentado en el runbook de despliegue de v0.6.
+- CLI: `derive-records [--as <email>] [--dry-run]` (`cli_ops/derive_records.py`, S9-D21): deriva los récords de los resultados anteriores a v0.6; idempotente y auditado; paso de despliegue después del `up`. No hay `init-keys --data-class athlete.metric`: el api crea la DEK al arrancar (S9-D5).
 - Worker: nada.
 - Pruebas de arquitectura: `api/tests/architecture/test_no_plaintext_columns.py` ampliada a `athletes.body_metrics` (ninguna fila con un número en claro en las cuatro columnas); `test_no_cross_models.py` verde con `athletes`; `test_banned_imports.py` verde.
 
@@ -83,7 +83,7 @@ La épica crea el módulo `athletes` (esquema `athletes`) con dos entidades: `Bo
 - Front condicionado a D1: si el gate no aprueba S1, salen las subpestañas (unas 35 h).
 - Un error tipográfico en la tablet (por ejemplo 1000 kg en vez de 100) crea un RM derivado que nunca se borra (RN-14) y queda vigente para siempre aunque se corrija el resultado — mitigación: pregunta de US-181.
 - Catálogo de benchmarks sin mantenimiento definido (pregunta de US-166 en EP-22): sin catálogo no hay récords de benchmark ni comparación — mitigación: la propuesta por defecto de US-166.
-- La DEK de `athlete.metric` debe existir antes del primer alta; si falta, el alta falla con 503 — mitigación: paso de despliegue de v0.6 y prueba de arranque que verifica las `data_class` registradas.
+- La DEK de `athlete.metric` la crea el arranque del api (S9-D5); con el custodio sellado el alta responde 503 `crypto_unavailable` — mitigación: prueba de arranque de las clases de dato (W0-3).
 - Volumen de descifrados en `/me/metrics` (EP-25) y en la gráfica de peso: cada lectura descifra N filas — mitigación: paginación y `crypto_ops.count` por lote (N-05).
 - Coherencia de unidades: un RM manual sobre un movimiento con `unit` distinta de kg se rechaza (422); los movimientos de gimnasia no tienen RM en v0.6.
 

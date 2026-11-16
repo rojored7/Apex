@@ -101,3 +101,11 @@ Característica: Perfil del atleta en la ficha
 - [ ] Front: pruebas de componente y página; sin colores literales
 - [ ] `docs/openapi.json` regenerado
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Resumen sin descifrar (S9-D16): `GET /summary` y `GET /metrics` nunca llaman a la puerta de `reveal`; las filas traen `has_*` y el front pinta «•••» con `MaskedValue` o «—». `// DESIGN-GAP:` para la tabla con valores en claro, la gráfica de peso, «Cintura» y las medidas configurables (llegan con `list_metrics_revealed` de EP-25).
+- Contrato (S9-D27): `AthleteSummaryOut {last_metric_on, metrics_count, current_rms, benchmarks_with_attempts, recent_records}` con a lo sumo seis consultas; `GET /rms` sale de SQL (`DISTINCT ON (movement_id)`).
+- Ruta del front: la pestaña es `/socios/:id/atleta` (`ROUTES.md`).
+- Socio dado de baja (S9-D14): pestaña en solo lectura; con un socio sin autorización de datos, «Registrar medidas» queda deshabilitado con enlace a la ficha (S9-D29).
+- `members.hide_on_tv` pasa a EP-25 (S9-D25).

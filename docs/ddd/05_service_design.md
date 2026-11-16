@@ -110,7 +110,8 @@ api/
       classes/     router schemas models service exceptions
       wods/        router schemas models service
       results/     router schemas models service exceptions
-      athletes/    router schemas models service
+      athletes/    router schemas models service exceptions events; privados: rules metrics records derive reads
+                   (service.py es la fachada, registra el puerto RecordsProbe y las tres suscripciones; S9-D20)
       tv/          router schemas service          (sin models)
       portal/      router schemas service          (sin models)
     worker/

@@ -100,3 +100,13 @@ Característica: Mostrar en claro una medida auditada
 - [ ] `docs/openapi.json` regenerado
 - [ ] Auditoría verificada para las tablas tocadas
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Sin evento (S9-D15): `SensitiveFieldRevealed` no existe; el rastro es la fila `reveal` en `audit_log` (campo e IP, nunca el valor) y la fila `decrypt` en `crypto_ops`.
+- Campo vacío (S9-D15, S9-D37 P6): devuelve `value = null`, no descifra y SÍ deja la fila `reveal` (sondear campos deja rastro). Corrige CA7.
+- Única puerta (S9-D15, S9-D36 L-2): `athletes/metrics.py::_decrypt_metric_field` es la tercera puerta de `reveal`; acepta un solo campo y `purpose: Literal["reveal"]`, y rechaza la fila anulada (409 `metric_voided`); un blob que no decodifica da 500 `internal_error` sin el texto.
+- Cupo compartido (S9-D15, S9-D37 P5): usa las tres ventanas de `members-reveal` (30/min, 200/h, 600/día).
+- Socio dado de baja (S9-D34): el `reveal` de una medición suya es solo del admin (el coach recibe 403 `forbidden`, sin fila `decrypt`).
+- Alerta de volumen (S9-D35): `warn_reveal_volume` conserva su aviso en el log (con el usuario) y alerta `reveal_volume` con solo el conteo `revelados`, sin id de usuario, una vez por usuario y hora.
+- Auditoría (S9-D36 L-8): `GET /audit/{id}` sustituye los blobs de `athletes.body_metrics` por «cifrado».

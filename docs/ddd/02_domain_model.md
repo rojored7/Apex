@@ -104,10 +104,10 @@ Cada aggregate lista su raíz, sus entidades internas, sus value objects, sus in
 
 ### 2.9 AthleteProfile (raíz lógica: Member; dos entidades, v0.6)
 
-- **Entidad `BodyMetric`:** `member_id`, `measured_at`, `weight_kg` (cifrado, `athlete.metric`), `height_cm`, `body_fat_pct`, `notes`, `recorded_by`.
-- **Entidad `PersonalRecord`:** `member_id`, `kind` (`rm` | `benchmark`), `movement_id` (si `rm`), `benchmark_id` (si `benchmark`, N-46), `value` (carga en kg o Score), `achieved_at`, `source` (`manual` | `derived`), `result_id` (si derivado), `invalidated_at` (US-181).
-- **Invariantes:** RN-12: un `WodResultValidated` con `load_kg` mayor al RM vigente del movimiento principal (`is_primary`, Q19) y `score_type = load` crea un `PersonalRecord(kind = rm)` derivado; `scaled` no deriva RM y un empate conserva el más antiguo (N-45). Un resultado validado en un WOD con `benchmark_id` que mejora la marca anterior del socio crea un `PersonalRecord(kind = benchmark)` derivado; "mejor" lo decide `leaderboard_order(score_type)` (Q20). Los manuales los registra coach o admin. Nunca se borran: corregir el resultado origen llena `invalidated_at` (evento `WodResultSuperseded`).
-- **Eventos:** `PersonalRecordSet`.
+- **Entidad `BodyMetric`:** `member_id`, `measured_on` (fecha civil de Bogotá, S9-D3), `weight_g`, `height_cm`, `body_fat_pct` y `notes` (las cuatro cifradas bajo `athlete.metric`, con marca de campo y relleno antes de cifrar, S9-D32), `recorded_by`, `voided_at` y `voided_by` (anular, S9-D13). Sin autorización de datos del socio no se guardan medidas (S9-D29).
+- **Entidad `PersonalRecord`:** `member_id`, `kind` (`rm` | `benchmark`), `movement_id` (si `rm`), `benchmark_id` (si `benchmark`, N-46), `value_g` (RM en gramos) o la marca de benchmark (`level`, `seconds`, `rounds`, `reps`, `load_g`, `capped`), `achieved_on` (fecha civil), `source` (`manual` | `derived`), `result_id` y `wod_id` (si derivado), `invalidated_at`, `invalidated_reason` (`superseded` | `voided` | `manual_error`), `invalidated_by` e `invalidated_by_result_id` (S9-D8). Sin columnas cifradas.
+- **Invariantes:** RN-12: un `WodResultValidated` con `load_kg` mayor al RM vigente del movimiento principal (`is_primary`, Q19) y `score_type = load` crea un `PersonalRecord(kind = rm)` derivado; `scaled` no deriva RM y un empate conserva el más antiguo (N-45). Un resultado validado en un WOD con `benchmark_id` que mejora la marca anterior del socio crea un `PersonalRecord(kind = benchmark)` derivado; "mejor" lo decide `results.score_key(score_type)` (Q20). Los manuales los registra coach o admin. Nunca se borran: corregir o anular el resultado origen llena `invalidated_at` (evento `WodResultSuperseded` real, S9-D7) y se repone el mejor que quede (S9-D11); un manual se invalida con `manual_error` (S9-D13). Invalidar falla cerrado; derivar y reponer fallan en blando (S9-D30).
+- **Eventos:** `PersonalRecordSet(record_id, member_id, kind, movement_id, benchmark_id, source, achieved_on)`, sin valor (S9-D12).
 
 ### 2.10 Notification (raíces: NotificationRule, NotificationTemplate, Notification; v0.2)
 
@@ -165,7 +165,9 @@ Cada aggregate lista su raíz, sus entidades internas, sus value objects, sus in
 | `MemberCheckedIn` | classes | memberships (descontar clase si aplica) |
 | `AttendanceRemoved` | classes | memberships (devolver clase) |
 | `WodResultValidated` | results | athletes (RN-12) |
-| `PersonalRecordSet` | athletes | notifications (v1.0, push al socio) |
+| `WodResultSuperseded` | results | athletes (invalida el récord derivado del resultado anterior, S9-D7) |
+| `WodResultVoided` | results | athletes (invalida el récord derivado y repone el mejor, S9-D7) |
+| `PersonalRecordSet` | athletes | ninguno en v0.6; notifications (v1.0, push al socio, EP-25 US-195) |
 | `NotificationSent` / `Failed` / `Skipped` | notifications | audit |
 | `UserLocked` / `SessionsRevoked` | auth | audit |
 
@@ -186,7 +188,7 @@ Cada una se implementa en el `service.py` de su módulo sin tocar la base, y tie
 - `classes.checkin_outcome(membership_status) -> (allowed=True, flagged: bool)`
 - `results.validate_score(score_type, seconds, rounds, reps, load_kg) -> None | ScoreError`
 - `results.leaderboard_order(score_type) -> key function`
-- `athletes.derive_record(result, current_rm) -> PersonalRecord | None`
+- `athletes.derive_rm(mark, meta, current)`, `derive_benchmark(mark, meta, current)`, `pick_current(records)`, `encode_metric(field, value)` y `decode_metric(field, text)` (S9-D4, S9-D10)
 - `notifications.target_dates(rule, membership) -> list[date]`
 - `notifications.render(template, context) -> str`
 - `audit.chain_hash(prev_hash, row) -> str`
@@ -202,7 +204,7 @@ Cada una se implementa en el `service.py` de su módulo sin tocar la base, y tie
 | `member.email` | `members.email` | sí | v0.1 |
 | `member.birth_date` | `members.birth_date` | no | v0.1 |
 | `member.emergency_contact` | `members.emergency_contact` | no | v0.1 |
-| `athlete.metric` | `body_metrics.weight_kg` y medidas | no | v0.6 |
+| `athlete.metric` | `body_metrics.weight_g`, `height_cm`, `body_fat_pct` y `notes` | no | v0.6 |
 | `attachment.sensitive` | archivos marcados sensibles | no | v0.3 |
 | `audit.signature` | llave de firma de auditoría (sign) | no aplica | v0.3 |
 | `backup.signature` | llave de firma de backups (sign) | no aplica | v1.0 |

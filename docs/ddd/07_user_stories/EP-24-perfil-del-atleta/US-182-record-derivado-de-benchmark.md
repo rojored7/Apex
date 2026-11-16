@@ -94,3 +94,10 @@ Característica: Récord derivado de benchmark
 - [ ] Pruebas de reglas puras y de service con PostgreSQL real en verde; cobertura de 80 % o más en lo tocado
 - [ ] Auditoría verificada para las tablas tocadas
 - [ ] Revisión de PR aprobada
+
+## Correcciones del Sprint 9 (T-DOC, 2026-11-15)
+
+- Orden de «mejor» (S9-D6, S9-D10): lo da `results.service.score_key(score_type)` (pública, sobre `_tie_key_of`); estrictamente menor es mejor, el empate no crea récord y un `scaled` nunca gana a un `rx`.
+- `capped` (S9-D10): solo existe en `time`; un `capped` puede ser el primer récord y queda después de todo el que terminó.
+- Dos récords (S9-D10): un benchmark de tipo `load` con movimiento principal deriva el RM y el récord de benchmark, cada uno con su comparación y su fila (`uq_personal_records_result_kind`).
+- Mismos límites de S9-D30 y S9-D42 que US-181: derivar falla en blando; la invalidación y la reposición usan las mismas reglas.

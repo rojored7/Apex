@@ -612,7 +612,7 @@ async def test_el_resto_de_codigos_sigue_deduplicando_tras_excluir_reveal_volume
 
 
 @pytest.mark.parametrize("codigo", ["athletes_derive_skipped", "job_failed", "audit_sign_failed"])
-@pytest.mark.parametrize("tipo", ["Erroré", "E" * 41, "Error١", "a b"])
+@pytest.mark.parametrize("tipo", ["Erroré", "E" * 41, "Error\u0661", "a b"])
 def test_error_type_fuera_de_ascii_o_de_mas_de_40_no_pasa_a_telegram(
     codigo: str, tipo: str
 ) -> None:

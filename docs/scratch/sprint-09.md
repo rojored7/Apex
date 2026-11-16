@@ -197,3 +197,10 @@ Rama `feat/sprint-09-perfil-atleta`, HEAD de partida `b8c9255` (sobre `cd0cc0b`,
 - `tests/notifications tests/worker tests/cli tests/core` completos tras el sello: 2963 passed, 39 skipped (enlaces simbólicos y `mkfifo` de Windows), 7 deselected (`perf`), exit 0 (491 s).
 - Repetición (orquestador, tras el sello): `test_sending.py`, `test_sending_candado.py`, `test_sending_conexion.py` y `test_sending_apertura.py` tres veces seguidas: 87 passed, 87 passed, 87 passed (exit 0).
 - Worker recreado con `$DC up -d --no-build worker`: `StopTimeout` = 45. `/health`: `status ok`, `db ok`, `migrations ok`, `crypto ok` (`backup attention`, informativo en desarrollo). La pasada real de `notify` va tras la P-REBUILD del cierre de la Wave 0 (la imagen del worker aún no lleva el código nuevo).
+
+## S9-W0-4e · Código `notification_in_flight` en el catálogo del front
+
+- Origen: P-GATES de cierre de la Wave 0 sobre `5cabb36` (worktree limpio, `gates-w0c.log`): api completo en verde (ruff, formato, mypy; pytest 11126 passed, 103 skipped, 47 deselected, cobertura 96 %; scripts, caddy, lint y `tsc` del web en verde). Falló 1 prueba del web: `errorCodes.test.ts` «fuera de core/api nadie compara un code con un literal»: `features/notifications/noticeErrors.ts` (W0-4b) comparaba `e.code === "notification_in_flight"`.
+- Rojo: esa misma prueba del gate (1 failed de 4540), medida antes del cambio.
+- Verde: `web/src/core/api/errorCodes.ts` suma `notificationInFlight: "notification_in_flight"` (S9-D45; la prueba de contexto lo encuentra en `notifications/exceptions.py:98`, `code = "notification_in_flight"`); `noticeErrors.ts` usa `API_ERROR_CODES.notificationInFlight`.
+- Gates: `web/core` (`errorCodes.test.ts`) 104 passed, verde (no sellante).

@@ -35,6 +35,8 @@ export const API_ERROR_CODES = {
   sectionNotAvailable: "section_not_available",
   // avisos (S8-V5b): abrir WhatsApp de un socio sin teléfono (422)
   memberWithoutPhone: "member_without_phone",
+  // S9-D45: omitir un aviso que una pasada del job está enviando (409).
+  notificationInFlight: "notification_in_flight",
   // socios y planes
   memberDocumentDuplicated: "member_document_duplicated",
   memberNotFound: "member_not_found",

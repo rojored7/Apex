@@ -61,7 +61,7 @@ export function skipError(error: unknown): ApiError {
     error,
     (e) => {
       if (e.status === HTTP_CONFLICT) {
-        return e.code === "notification_in_flight" ? SKIP_MESSAGES.inFlight : SKIP_MESSAGES.closed;
+        return e.code === API_ERROR_CODES.notificationInFlight ? SKIP_MESSAGES.inFlight : SKIP_MESSAGES.closed;
       }
       if (e.status === HTTP_UNPROCESSABLE && e.message.trim() !== "") return e.message;
       return statusMessage(e, SKIP_MESSAGES);

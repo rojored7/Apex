@@ -184,7 +184,8 @@ _stores: dict[KeyKind, SlidingWindowStore] = {}
 def reset_store() -> None:
     """Vacía todos los almacenes (pruebas; en el api lo hace recrear el contenedor)."""
     _stores.clear()
-    _reveal_alertado.clear()
+    global _reveal_alertas
+    _reveal_alertas = None
 
 
 def configure_store_limits(limits: Mapping[KeyKind, int]) -> None:
@@ -420,9 +421,19 @@ async def usage(bucket: str, key: str, *, window_s: int, kind: KeyKind = "user")
 REVEAL_HOUR_BUCKET: Final = "members-reveal-hour"
 """La ventana del aviso `reveal volume` (S3-D44; S9-D5 lo mueve aquí desde `members/router.py`)."""
 
-_reveal_alertado: dict[str, float] = {}
-"""Usuario -> instante de su última alerta `reveal_volume` (una por usuario y hora); del proceso,
-como los almacenes: `reset_store` la vacía."""
+REVEAL_ALERT_MAX_KEYS: Final = DEFAULT_MAX_KEYS
+"""Tope de usuarios recordados por la alerta `reveal_volume`; el almacén expulsa el menos usado."""
+
+_reveal_alertas: SlidingWindowStore | None = None
+"""Memoria de «una alerta por usuario y hora»: un `SlidingWindowStore` (tope de claves y expulsión)
+con tope 1 y ventana de una hora; del proceso, `reset_store` lo suelta."""
+
+
+def _reveal_alertas_store() -> SlidingWindowStore:
+    global _reveal_alertas
+    if _reveal_alertas is None:
+        _reveal_alertas = SlidingWindowStore(REVEAL_ALERT_MAX_KEYS)
+    return _reveal_alertas
 
 
 async def warn_reveal_volume(request: Request, user_id: UUID) -> None:
@@ -441,10 +452,11 @@ async def warn_reveal_volume(request: Request, user_id: UUID) -> None:
     logger.warning("reveal volume", extra={"user_id": str(user_id), "count": conteo})
     ahora = _ahora()
     clave = str(user_id)
-    anterior = _reveal_alertado.get(clave)
-    if anterior is not None and ahora - anterior < REVEAL_ALERT_WINDOW_S:
+    permitido, _ = await _reveal_alertas_store().hit(
+        ("reveal-alert", clave), ahora, 1, REVEAL_ALERT_WINDOW_S
+    )
+    if not permitido:
         return
-    _reveal_alertado[clave] = ahora
     try:
         alert("reveal_volume", revelados=conteo)
     except Exception as error:

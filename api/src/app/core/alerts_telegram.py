@@ -43,6 +43,9 @@ _NOMBRE: Final = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 _FECHA: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 _CONTEOS: Final[tuple[str, ...]] = ("generados", "enviados", "fallidos", "omitidos", "pendientes")
 _MAX_TEXTO: Final = 4096
+_SIN_DEDUP: Final[frozenset[str]] = frozenset({"reveal_volume"})
+"""Códigos sin deduplicar por `(código, job)`: no llevan `job` y ya traen su propia regla (una vez
+por usuario y hora, en `core/ratelimit.py`); deduplicarlos callaría a un segundo usuario."""
 EnabledGate = Callable[[], Awaitable[bool]]
 """Puerta async que dice si Telegram está encendido por el admin (S5-D265d)."""
 _gate: EnabledGate | None = None
@@ -77,6 +80,15 @@ def _nombre(contexto: Mapping[str, object], clave: str, defecto: str = "desconoc
     return defecto
 
 
+def _tipo_error(contexto: Mapping[str, object]) -> str | None:
+    """El `error_type` solo si cumple `_NOMBRE` (ASCII, hasta 40): `str.isidentifier()` admite
+    Unicode y largo libre (S9-W0-3b)."""
+    tipo = contexto.get("error_type")
+    if isinstance(tipo, str) and _NOMBRE.fullmatch(tipo):
+        return tipo
+    return None
+
+
 def _job_failed(contexto: Mapping[str, object]) -> str:
     partes = [f"APEX · el job {_nombre(contexto, 'job')} falló"]
     intentos = _entero(contexto, "attempts")
@@ -85,8 +97,8 @@ def _job_failed(contexto: Mapping[str, object]) -> str:
     fecha = contexto.get("run_date")
     if isinstance(fecha, str) and _FECHA.fullmatch(fecha):
         partes.append(f"(corrida del {fecha})")
-    tipo = contexto.get("error_type")
-    if isinstance(tipo, str) and tipo.isidentifier():
+    tipo = _tipo_error(contexto)
+    if tipo is not None:
         partes.append(f"[{tipo}]")
     return " ".join(partes) + "."
 
@@ -102,8 +114,8 @@ def _audit_sign_failed(contexto: Mapping[str, object]) -> str:
     intentos = _entero(contexto, "attempts")
     if intentos:
         texto += f" tras {intentos} intentos"
-    tipo = contexto.get("error_type")
-    if isinstance(tipo, str) and tipo.isidentifier():
+    tipo = _tipo_error(contexto)
+    if tipo is not None:
         texto += f" [{tipo}]"
     return texto + "."
 
@@ -135,8 +147,8 @@ def _athletes_derive_skipped(contexto: Mapping[str, object]) -> str:
     marcas = _entero(contexto, "marcas")
     if marcas:
         texto += f" ({marcas} marcas afectadas)"
-    tipo = contexto.get("error_type")
-    if isinstance(tipo, str) and tipo.isidentifier():
+    tipo = _tipo_error(contexto)
+    if tipo is not None:
         texto += f" [{tipo}]"
     return texto + "."
 
@@ -231,6 +243,8 @@ class TelegramAlertSink:
         """Misma alerta (código y job) dentro de `DEDUP_WINDOW`: no crea tarea (S5-D206)."""
         ahora = current_clock().now_utc()
         self._recientes = {k: t for k, t in self._recientes.items() if ahora - t < DEDUP_WINDOW}
+        if code in _SIN_DEDUP:
+            return False
         clave = (code, _nombre(context, "job", ""))
         if clave in self._recientes:
             return True

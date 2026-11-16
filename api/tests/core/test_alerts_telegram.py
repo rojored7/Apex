@@ -578,3 +578,51 @@ def test_los_codigos_de_s9_ignoran_claves_ajenas_y_valores_sucios(codigo: str) -
     texto = render_message(codigo, sucio, FRONT)
 
     assert "Laura" not in texto and "1020304417" not in texto and "no es un tipo" not in texto
+
+
+# S9-W0-3b (revisión de seguridad de W0-3: MEDIUM 1 y LOW 3) ------------------------------------
+
+
+async def test_reveal_volume_de_dos_usuarios_en_el_mismo_minuto_envia_dos_mensajes(
+    telegram_transport: TelegramFalso, reloj: FrozenClock
+) -> None:
+    """`reveal_volume` no lleva `job`: la deduplicación por `(código, job)` callaba al segundo
+    usuario; su regla propia (una vez por usuario y hora) vive en `core/ratelimit.py`."""
+    sink = _sink()
+
+    sink.send("reveal_volume", {"revelados": 101})
+    sink.send("reveal_volume", {"revelados": 150})
+    await sink.flush()
+
+    assert len(telegram_transport.peticiones) == 2
+
+
+async def test_el_resto_de_codigos_sigue_deduplicando_tras_excluir_reveal_volume(
+    telegram_transport: TelegramFalso, reloj: FrozenClock
+) -> None:
+    sink = _sink()
+
+    sink.send("athletes_restore_capped", {"marcas": 200})
+    sink.send("athletes_restore_capped", {"marcas": 200})
+    sink.send("athletes_derive_skipped", {"marcas": 1})
+    sink.send("athletes_derive_skipped", {"marcas": 1})
+    await sink.flush()
+
+    assert len(telegram_transport.peticiones) == 2
+
+
+@pytest.mark.parametrize("codigo", ["athletes_derive_skipped", "job_failed", "audit_sign_failed"])
+@pytest.mark.parametrize("tipo", ["Erroré", "E" * 41, "Error١", "a b"])
+def test_error_type_fuera_de_ascii_o_de_mas_de_40_no_pasa_a_telegram(
+    codigo: str, tipo: str
+) -> None:
+    texto = render_message(codigo, {"error_type": tipo, "job": "notify"}, FRONT)
+
+    assert tipo not in texto and "[" not in texto
+
+
+@pytest.mark.parametrize("codigo", ["athletes_derive_skipped", "job_failed", "audit_sign_failed"])
+def test_error_type_ascii_de_40_caracteres_si_pasa(codigo: str) -> None:
+    tipo = "E" * 40
+
+    assert f"[{tipo}]" in render_message(codigo, {"error_type": tipo, "job": "notify"}, FRONT)

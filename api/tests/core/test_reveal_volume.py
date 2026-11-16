@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -185,9 +185,39 @@ async def test_alert_que_lanza_value_error_no_propaga(
     )
 
 
-def test_reset_store_olvida_las_alertas_ya_emitidas() -> None:
+async def test_reset_store_olvida_las_alertas_ya_emitidas() -> None:
     """La memoria de «una vez por usuario y hora» es del proceso, como los almacenes: la vacía
     `reset_store` (las pruebas y el reinicio del contenedor)."""
-    ratelimit._reveal_alertado["x"] = 1.0
+    await ratelimit._reveal_alertas_store().add(("reveal-alert", "x"), 1.0, 3600)
     ratelimit.reset_store()
-    assert ratelimit._reveal_alertado == {}
+    assert len(ratelimit._reveal_alertas_store()) == 0
+
+
+async def test_las_marcas_de_alerta_respetan_el_tope_de_claves(
+    reloj: FrozenClock, espia: SinkEspia, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S9-W0-3b: la memoria de «una vez por usuario y hora» ya no crece sin cota: es un
+    `SlidingWindowStore` con tope de claves y expulsión del menos usado."""
+    monkeypatch.setattr(ratelimit, "REVEAL_ALERT_MAX_KEYS", 3)
+    ratelimit.reset_store()
+    for _ in range(6):
+        usuario = uuid4()
+        await _cargar(usuario, AVISO + 1)
+        await warn_reveal_volume(_peticion(), usuario)
+
+    assert len(espia.llamadas) == 6
+    assert len(ratelimit._reveal_alertas_store()) <= 3
+
+
+async def test_pasada_la_hora_la_marca_vence_y_el_usuario_vuelve_a_alertar_sin_acumular(
+    reloj: FrozenClock, espia: SinkEspia
+) -> None:
+    usuario = uuid4()
+    await _cargar(usuario, AVISO + 1)
+    await warn_reveal_volume(_peticion(), usuario)
+    reloj.set(reloj.now_utc() + timedelta(seconds=VENTANA + 1))
+    await _cargar(usuario, AVISO + 1)
+    await warn_reveal_volume(_peticion(), usuario)
+
+    assert len(espia.llamadas) == 2
+    assert len(ratelimit._reveal_alertas_store()) == 1

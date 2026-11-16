@@ -420,3 +420,10 @@ Anular una medición (ruta 11, S9-D13, S9-D33; M-3, L-3). Sin migración (la gua
 | Seg L-3 | `extra` exactos del `warning` y del `info` | `test_el_403_deja_un_warning_...`, `test_la_anulacion_deja_un_info_...` |
 | Seg L-4 | aceptado sin código (S9-D50) | sin código |
 | Prueba inestable A1 | `claros_en` salta blobs | `test_metrics_service.py` y `test_claros_en_ignora_los_blobs_...` |
+
+### Evidencia (S9-A3, tras el sello y el checkpoint `b987d41`)
+
+- Gate sellante `slice-gate.sh athletes` con los 5 archivos (4 de A3 y `test_0042`): 1045 passed, exit 0. `ruff check .`, `ruff format --check .` (1109) y `mypy src` (288) limpios.
+- Curl con el admin de desarrollo (token sin imprimir; api con `--reload`, sin migración) sobre el socio ficticio `27c8e28b-...` con 2 mediciones vivas: anular la más reciente (`0316cd8d-...`, la de A2) 200; repetir 409 `metric_already_voided`; `reveal` 409 `metric_voided`; la lista sin `include_voided` da total 1 y no la trae; con `include_voided=true` total 2 y sí la trae.
+- Conteos `audit_log` (`update` de `athletes.body_metrics` de esa medición): antes 0, después 1.
+- Archivos temporales borrados. La medición anulada queda como dato de prueba de desarrollo (sin DELETE por diseño).

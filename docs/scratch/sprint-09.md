@@ -350,3 +350,32 @@ Prueba corregida en esta ronda: `tests/core/test_env_example.py` (`CLAVES_SIN_RU
 - Curl con el admin de desarrollo (login por cookie y token sin imprimir): socios ficticios `27c8e28b-e87d-4bd8-808e-ec40e2a47279` (CON autorización) y `eca92e11-55e8-48ee-99b1-cab5ba32abc4` (SIN autorización). `POST /athletes/{con}/metrics` → 201 (id de la medición `3afd6b6b-80ad-45e6-ac04-4e100c6de1ba`; la respuesta trae solo `has_*`, el valor no aparece); `POST /athletes/{sin}/metrics` → 409 `consent_required` con `cache-control: no-store` y 0 filas en `athletes.body_metrics` para ese socio; `GET /athletes/{con}/metrics` → 200.
 - `$PSQL`: `left(weight_g, 5) = apx1.`, `length` 98 / 94 / 93 / 259 (peso, estatura, grasa, notas), `voided_at` nulo; `crypto.crypto_keys`: `athlete.metric`, `encrypt`, `active`, versión 1, `local`; `crypto_ops` de la medición: 4 filas `encrypt`; `audit.audit_log`: una fila `insert` de `athletes.body_metrics`.
 - Archivos temporales de la evidencia (cookie, token) borrados. Los dos socios y la medición quedan como datos de prueba de desarrollo (sin DELETE por diseño).
+
+## S9-A2 · Mostrar una medida (2026-11-16)
+
+### Rojo
+
+Sin migración: api y worker arriba, sin banderas. Stubs: `MetricRevealIn/Out` (schemas), `reveal_metric` (`NotImplementedError`) en `metrics.py` y `service.py`, y la ruta 3 solo con la llamada al service (sin cubetas ni IP). Pruebas nuevas: `tests/athletes/test_reveal_service.py` (20), `tests/athletes/test_router_reveal.py` (30 con parametrizaciones), `tests/audit/test_detail_hides_metric_blobs.py` (5); P-CAT: `CON_LIMITE` con la ruta nueva y `test_el_reveal_de_medidas_consume_las_tres_ventanas_de_la_ficha` en `test_user_limits_catalog.py`. Valores derivados a mano del alta por omisión (62.500 g, 165 cm, 22 %).
+
+**Rojo medido** (`-m "not perf"`, un pytest a la vez): sobre esos cinco archivos más `test_error_codes_per_route` y `test_user_limits_catalog`: **40 failed / 55 passed**. 35 por `NotImplementedError` (service y rutas que lo llaman), 2 de L-8 (el detalle devolvía el marcador `{encrypted, key_id, alg}` y no «cifrado»; una tercera de la fila `reveal`/HTTP por el mismo motivo), 1 del catálogo (`test_las_rutas_con_enforce_user_limit_son_con_limite_menos_auth`: la ruta nueva sin `enforce_user_limit`) y 1 de la prueba nueva de las tres ventanas. Pasaron en rojo las que solo dependen de roles, 401, quiosco y 422 (ya cubiertos por el router y los esquemas).
+
+### Verde
+
+- `athletes/metrics.py::reveal_metric(session, member_id, metric_id, field, *, ip, role)`: `members.get_ref` (404 `member_not_found`), lectura de la medición por `id` Y `member_id` con `FOR SHARE OF` y `populate_existing` (404 `metric_not_found` sin delatar; releer `voided_at` dentro de la transacción y bloquear contra una anulación concurrente), socio dado de baja y `role != admin` -> `ForbiddenError` antes de descifrar (M-4), la puerta `_decrypt_metric_field` (409 si anulada), `audit.record("reveal", after={"field", "ip"})`. Un `MetricDecodeError` sube sin capturar: lo vuelve 500 `internal_error` el handler genérico (L-2); no queda fila `reveal` (la `decrypt` ya salió del bus, como en `members`). Campo vacío: `None`, `reveal` sí, `decrypt` no.
+- `schemas.py` (`MetricRevealIn` con `extra="forbid"` y `Literal` de cuatro campos; `MetricRevealOut`), `service.py` (fachada), `router.py` (`POST /athletes/{member_id}/metrics/{metric_id}/reveal`: `members-reveal`, `-hour`, `-day` como literales, `warn_reveal_volume`, IP con `client_ip` y los proxies de confianza; admin y coach por `StaffDep`).
+- L-8: `audit/diff.py` (`mask_health_fields`, `mask_health_changes`, `ENCRYPTED_MARK = "cifrado"`) y `audit/queries.get`: por tabla y campo (`HIDDEN_HISTORY_FIELDS_BY_TABLE`), no por forma de blob; `changes` con `encrypted = True`; `notes` de otra tabla intacto.
+- P-API: `export-openapi` idéntico en dos corridas; `npm run gen:api`; `types.contract.test.ts` 6 passed. `docs/openapi.json` y `web/src/core/api/types.ts` cambian.
+- Conteos: nuevas 95 passed junto con los dos catálogos; `tests/athletes` 216 passed (exit 0); `tests/audit` 459 passed (exit 0); `tests/architecture` 899 passed (exit 0); gate no sellante `slice-gate.sh audit tests/audit/test_detail_hides_metric_blobs.py` 904 passed, exit 0. `ruff check .`, `ruff format --check .` (todo `api/`) y `mypy src` (288) limpios. Valores revelados: nunca en esta nota (solo «coincide»).
+
+### Revisiones
+
+`security-reviewer`: 0 CRITICAL/HIGH/MEDIUM y 4 LOW; decisión **S9-D49** en `docs/ddd/DECISIONES.md`.
+
+| Hallazgo | Corrección | Prueba (rojo medido: 2 failed antes del arreglo) |
+|---|---|---|
+| L-1 | `lock_member` antes de `get_ref` en `reveal_metric` | `test_el_reveal_toma_el_candado_del_socio_antes_de_leer_si_esta_de_baja` |
+| L-2 | `logger.warning` en `app.athletes` con `user_id` y `metric_id` en el 403 de la baja | `test_el_403_de_la_baja_deja_un_aviso_con_usuario_y_medicion_sin_valores` |
+| L-3 | orden por `lineno` en el catálogo | `test_el_reveal_de_medidas_consume_las_tres_ventanas_de_la_ficha` (hueco de prueba: ya pasaba) |
+| L-4 | aceptado (S9-D49) | sin código |
+
+**Pendiente de A3:** la anulación toma la fila de la medición antes que el candado de la cadena de auditoría (mismo orden que el `reveal`).

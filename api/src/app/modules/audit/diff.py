@@ -45,6 +45,7 @@ __all__ = [
     "BLOB_PARTS",
     "BLOB_PREFIX",
     "BLOB_SEPARATOR",
+    "ENCRYPTED_MARK",
     "HIDDEN_HISTORY_FIELDS",
     "HIDDEN_HISTORY_FIELDS_BY_TABLE",
     "MALFORMED_BLOB_MARKER",
@@ -57,6 +58,8 @@ __all__ = [
     "diff",
     "history_fields",
     "history_purpose",
+    "mask_health_changes",
+    "mask_health_fields",
     "redact_blobs",
     "reduce_entry",
 ]
@@ -258,3 +261,43 @@ def _reduced(values: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     if values is None:
         return None
     return MappingProxyType({k: v for k, v in values.items() if k in REDUCED_FIELDS})
+
+
+# Detalle de una entrada: campos de salud (S9-A2, L-8) ---------------------------------------
+
+ENCRYPTED_MARK: Final = "cifrado"
+"""Lo que el detalle muestra en lugar del valor de un campo de salud (sin llave, algoritmo ni
+largo del blob)."""
+
+
+def mask_health_fields(table_name: str, mapping: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Copia de `mapping` con los campos de `HIDDEN_HISTORY_FIELDS_BY_TABLE[table_name]` que
+    tengan valor sustituidos por `ENCRYPTED_MARK`, tenga o no forma de blob (se decide por tabla y
+    campo). Un `None` sigue `None`; las demás tablas pasan sin cambio."""
+    if mapping is None:
+        return None
+    ocultos = HIDDEN_HISTORY_FIELDS_BY_TABLE.get(table_name, frozenset())
+    return {
+        clave: ENCRYPTED_MARK if clave in ocultos and valor is not None else valor
+        for clave, valor in mapping.items()
+    }
+
+
+def mask_health_changes(table_name: str, cambios: list[FieldChange]) -> list[FieldChange]:
+    """Los `changes` con los campos de salud de la tabla marcados `ENCRYPTED_MARK` a cada lado
+    (con valor) y `encrypted = True`."""
+    ocultos = HIDDEN_HISTORY_FIELDS_BY_TABLE.get(table_name, frozenset())
+    if not ocultos:
+        return cambios
+    return [
+        c.model_copy(
+            update={
+                "before": ENCRYPTED_MARK if c.before is not None else None,
+                "after": ENCRYPTED_MARK if c.after is not None else None,
+                "encrypted": True,
+            }
+        )
+        if c.field in ocultos
+        else c
+        for c in cambios
+    ]

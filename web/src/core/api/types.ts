@@ -22,6 +22,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/athletes/{member_id}/metrics/{metric_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reveal Metric */
+        post: operations["reveal_metric_api_v1_athletes__member_id__metrics__metric_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -3421,6 +3438,32 @@ export interface components {
             /** Voided At */
             voided_at: string | null;
         };
+        /**
+         * MetricRevealIn
+         * @description `POST .../metrics/{metric_id}/reveal`: UN campo por petición; claves de más dan 422.
+         */
+        MetricRevealIn: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "weight_g" | "height_cm" | "body_fat_pct" | "notes";
+        };
+        /**
+         * MetricRevealOut
+         * @description El valor en claro de UN campo (`int` para peso en gramos, estatura en cm y grasa en %;
+         *     `str` para las notas; `None` si el campo está vacío). Viaja solo en esta respuesta, con
+         *     `Cache-Control: no-store`; nunca se guarda ni se registra.
+         */
+        MetricRevealOut: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "weight_g" | "height_cm" | "body_fat_pct" | "notes";
+            /** Value */
+            value: number | string | null;
+        };
         /** MovementCreate */
         MovementCreate: {
             /**
@@ -5748,6 +5791,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reveal_metric_api_v1_athletes__member_id__metrics__metric_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+                metric_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetricRevealIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricRevealOut"];
                 };
             };
             /** @description Sin sesión válida */

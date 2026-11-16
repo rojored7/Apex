@@ -488,6 +488,53 @@ def test_la_cubeta_de_s9_esta_en_el_catalogo_con_su_primera_ruta() -> None:
     assert Settings.model_fields["USER_ATHLETES_WRITE_LIMIT_PER_MIN"].default == 30
 
 
+def test_el_reveal_de_medidas_consume_las_tres_ventanas_de_la_ficha() -> None:
+    """S9-A2 (S9-D15): `POST /athletes/{member_id}/metrics/{metric_id}/reveal` llama
+    `enforce_user_limit` con `members-reveal`, `-hour` y `-day`, en ese orden, y ninguna cubeta
+    propia (un cupo aparte duplicaría lo que una persona ve en claro por día)."""
+    fuente = (MODULES / "athletes" / "router.py").read_text(encoding="utf-8")
+    ruta = f"{API_PREFIX}/athletes/{{member_id}}/metrics/{{metric_id}}/reveal"
+    funciones = [
+        f
+        for f in ast.walk(ast.parse(fuente))
+        if isinstance(f, ast.AsyncFunctionDef) and _ruta_de(f) == ("post", ruta)
+    ]
+    assert len(funciones) == 1
+    llamadas = [
+        nodo.args[1].value
+        for nodo in ast.walk(funciones[0])
+        if isinstance(nodo, ast.Call)
+        and _nombre_llamado(nodo) == "enforce_user_limit"
+        and isinstance(nodo.args[1], ast.Constant)
+    ]
+    assert llamadas == ["members-reveal", "members-reveal-hour", "members-reveal-day"]
+    nombres = [_nombre_llamado(n) for n in ast.walk(funciones[0]) if isinstance(n, ast.Call)]
+    assert "warn_reveal_volume" in nombres
+    # L-3 (S9-D49): el orden importa: cupo y aviso ANTES de descifrar y auditar.
+    lineas = {
+        "enforce_user_limit": [
+            n.lineno
+            for n in ast.walk(funciones[0])
+            if isinstance(n, ast.Call) and _nombre_llamado(n) == "enforce_user_limit"
+        ],
+        "warn_reveal_volume": [
+            n.lineno
+            for n in ast.walk(funciones[0])
+            if isinstance(n, ast.Call) and _nombre_llamado(n) == "warn_reveal_volume"
+        ],
+        "reveal_metric": [
+            n.lineno
+            for n in ast.walk(funciones[0])
+            if isinstance(n, ast.Call) and _nombre_llamado(n) == "reveal_metric"
+        ],
+    }
+    assert len(lineas["enforce_user_limit"]) == 3
+    assert len(lineas["warn_reveal_volume"]) == len(lineas["reveal_metric"]) == 1
+    assert lineas["enforce_user_limit"] == sorted(lineas["enforce_user_limit"])
+    assert max(lineas["enforce_user_limit"]) < lineas["warn_reveal_volume"][0]
+    assert lineas["warn_reveal_volume"][0] < lineas["reveal_metric"][0]
+
+
 def test_el_cbom_consume_solo_la_cubeta_cbom_export() -> None:
     """S6-B3 (S6-D57): `GET /crypto/cbom`, en `core/crypto/router.py`, llama una vez a
     `enforce_user_limit` con `cbom-export` (2 por minuto) y con ninguna otra cubeta (Rojo B3)."""

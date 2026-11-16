@@ -11,25 +11,33 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Final, Literal
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import audit
 from app.core.clock import current_clock
+from app.core.context import get_actor
 from app.core.crypto import types
 from app.core.crypto.secret import Secret
+from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.core.pagination import Page, PageParams, paginate, to_page
-from app.modules.athletes.exceptions import ConsentRequired, MetricVoided
+from app.modules.athletes.exceptions import ConsentRequired, MetricNotFound, MetricVoided
 from app.modules.athletes.models import BodyMetric
 from app.modules.athletes.rules import METRIC_FIELDS, decode_metric, encode_metric, validate_metric
-from app.modules.athletes.schemas import MetricIn, MetricOut
+from app.modules.athletes.schemas import MetricIn, MetricOut, MetricRevealOut
 from app.modules.auth import service as auth_service
 from app.modules.members import service as members_service
 
+logger = logging.getLogger("app.athletes")
+
 REVEAL_PURPOSE: Final = "reveal"
+ADMIN_ROLE: Final = "admin"
+METRICS_TABLE: Final = "athletes.body_metrics"
 
 
 def _seal(field: str, value: int | str | None) -> Secret | None:
@@ -124,3 +132,54 @@ def _decrypt_metric_field(
     if not isinstance(claro, str):
         raise ValueError("campo de medida inválido")
     return decode_metric(field, claro)
+
+
+async def reveal_metric(
+    session: AsyncSession,
+    member_id: UUID,
+    metric_id: UUID,
+    field: str,
+    *,
+    ip: str,
+    role: str,
+) -> MetricRevealOut:
+    """El valor en claro de UN campo de una medición (US-179; S9-D15, S9-D34).
+
+    `MemberNotFound` si el socio no existe; `MetricNotFound` (404) si la medición no existe o es de
+    otro socio, sin delatar que existe; `ForbiddenError` (403) si el socio está dado de baja y quien
+    llama no es admin (M-4), sin descifrar; `MetricVoided` (409) si está anulada. La fila se relee
+    con `populate_existing` y `FOR SHARE` DENTRO de la transacción: una copia vieja de la sesión no
+    engaña y una anulación concurrente espera a que este `reveal` confirme (o cae en 503 `busy`).
+    Deja una fila `reveal` en la auditoría (`after = {"field", "ip"}`, nunca el valor) y, si el
+    campo tiene valor, una `decrypt` de `crypto_ops`; un campo vacío da `None`, audita y no
+    descifra. Un blob que no decodifica sube como `MetricDecodeError` (500 opaco, L-2). Sin evento
+    y sin `commit()` propio: el valor solo sale si la auditoría quedó en la misma transacción."""
+    await lock_member(session, member_id)  # L-1: orden único de candados; una baja no se cuela
+    socio = await members_service.get_ref(session, member_id)
+    metric = await session.scalar(
+        select(BodyMetric)
+        .where(BodyMetric.id == metric_id, BodyMetric.member_id == member_id)
+        .with_for_update(read=True, of=BodyMetric)
+        .execution_options(populate_existing=True)
+    )
+    if metric is None:
+        raise MetricNotFound()
+    if socio.is_deleted and role != ADMIN_ROLE:
+        # L-2: el 403 no deja fila de auditoría; el aviso lleva usuario y medición (S9-D35: el
+        # usuario va al log, no a la alerta), nunca campo, valor ni datos del socio.
+        logger.warning(
+            "athletes: reveal denegado de un socio dado de baja",
+            extra={"user_id": str(get_actor()), "metric_id": str(metric.id)},
+        )
+        raise ForbiddenError()
+    valor = _decrypt_metric_field(metric, field, REVEAL_PURPOSE)
+    await audit.record(
+        session,
+        action="reveal",
+        table_name=METRICS_TABLE,
+        record_id=metric.id,
+        before=None,
+        after={"field": field, "ip": ip},
+        subject_member_id=member_id,
+    )
+    return MetricRevealOut(field=field, value=valor)

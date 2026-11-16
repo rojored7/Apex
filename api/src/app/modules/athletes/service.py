@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from app.modules.athletes.metrics import add_metric, list_metrics
+from app.modules.athletes.metrics import add_metric, list_metrics, reveal_metric
 
-__all__ = ["add_metric", "list_metrics"]
+__all__ = ["add_metric", "list_metrics", "reveal_metric"]

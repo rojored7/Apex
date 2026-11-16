@@ -9,6 +9,7 @@
   como están en la base).
 - `ops_de(session, metric_id, verb)`: filas de `crypto.crypto_ops` del registro con ese verbo.
 - `auditoria_de(session, metric_id)`: filas de `audit.audit_log` de la medición, en orden de `seq`.
+- `ruta_reveal`, `revelar` (service como una petición), `reveals_de` y `IP` (S9-A2).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import actor_scope
 from app.modules.athletes import service
-from app.modules.athletes.schemas import MetricIn, MetricOut
+from app.modules.athletes.schemas import MetricIn, MetricOut, MetricRevealOut
 
 ATHLETES: Final = "/api/v1/athletes"
 ENCRIPTADAS: Final[tuple[str, ...]] = ("weight_g", "height_cm", "body_fat_pct", "notes")
@@ -89,3 +90,44 @@ async def auditoria_de(session: AsyncSession, metric_id: UUID) -> list[dict[str,
     return [
         dict(f) for f in (await session.execute(consulta, {"t": TABLA, "id": metric_id})).mappings()
     ]
+
+
+# S9-A2 (US-179): reveal de una medida ---------------------------------------------------------
+
+IP: Final = "198.51.100.9"
+"""La IP que el service recibe y la auditoría guarda en las pruebas de `reveal`."""
+
+
+def ruta_reveal(member_id: UUID | str, metric_id: UUID | str) -> str:
+    return f"{ATHLETES}/{member_id}/metrics/{metric_id}/reveal"
+
+
+async def revelar(
+    session: AsyncSession,
+    actor: UUID,
+    member_id: UUID,
+    metric_id: UUID,
+    field: str,
+    *,
+    role: str = "coach",
+    ip: str = IP,
+) -> MetricRevealOut:
+    """`service.reveal_metric` como una petición: sesión vacía, `actor_scope`, `commit` si sale
+    bien y `rollback` si no (el `get_session` real). Los ids se pasan ya leídos: un rollback
+    expira los objetos de la sesión compartida."""
+    session.expunge_all()
+    with actor_scope(actor):
+        try:
+            salida = await service.reveal_metric(
+                session, member_id, metric_id, field, ip=ip, role=role
+            )
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+    return salida
+
+
+async def reveals_de(session: AsyncSession, metric_id: UUID) -> list[dict[str, Any]]:
+    """Filas `reveal` de la auditoría de la medición, en orden de `seq`."""
+    return [f for f in await auditoria_de(session, metric_id) if f["action"] == "reveal"]

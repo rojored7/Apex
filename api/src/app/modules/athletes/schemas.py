@@ -10,7 +10,7 @@ llaman sin HTTP) y salen como 422 con `field`. `MetricOut` nunca trae un valor: 
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,3 +43,24 @@ class MetricOut(BaseModel):
     recorded_by_name: str | None
     voided_at: datetime | None
     created_at: datetime
+
+
+RevealField = Literal["weight_g", "height_cm", "body_fat_pct", "notes"]
+"""Los cuatro campos cifrados de una medición: lo único que `reveal` acepta (S9-D15)."""
+
+
+class MetricRevealIn(BaseModel):
+    """`POST .../metrics/{metric_id}/reveal`: UN campo por petición; claves de más dan 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: RevealField
+
+
+class MetricRevealOut(BaseModel):
+    """El valor en claro de UN campo (`int` para peso en gramos, estatura en cm y grasa en %;
+    `str` para las notas; `None` si el campo está vacío). Viaja solo en esta respuesta, con
+    `Cache-Control: no-store`; nunca se guarda ni se registra."""
+
+    field: RevealField
+    value: int | str | None

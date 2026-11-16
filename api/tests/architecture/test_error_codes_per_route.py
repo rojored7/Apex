@@ -193,6 +193,8 @@ CON_LIMITE = {
     # S9-A1 (US-178): `athletes-write` en el alta de una medida y `staff-read` en la lista.
     ("post", "/api/v1/athletes/{member_id}/metrics"),
     ("get", "/api/v1/athletes/{member_id}/metrics"),
+    # S9-A2 (US-179): `reveal` de una medida consume `members-reveal`, `-hour` y `-day`.
+    ("post", "/api/v1/athletes/{member_id}/metrics/{metric_id}/reveal"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

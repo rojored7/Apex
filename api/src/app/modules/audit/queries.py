@@ -236,7 +236,8 @@ async def list(  # nombre del contrato del plan B4 (las anotaciones usan builtin
 
 
 async def get(session: AsyncSession, seq: int) -> AuditDetail:
-    """Detalle de la fila `seq` con el diff y sin blobs (ver el docstring del módulo)."""
+    """Detalle de la fila `seq` con el diff y sin blobs; los campos de salud de las medidas salen
+    como `cifrado` (S9-A2, L-8)."""
     entrada = await session.scalar(select(AuditEntry).where(AuditEntry.seq == seq))
     if entrada is None:
         raise AuditEntryNotFound()
@@ -244,11 +245,15 @@ async def get(session: AsyncSession, seq: int) -> AuditDetail:
     return AuditDetail.model_validate(
         {
             **_row(entrada, refs),
-            "before": diff.redact_blobs(entrada.before),
-            "after": diff.redact_blobs(entrada.after),
+            "before": diff.redact_blobs(
+                diff.mask_health_fields(entrada.table_name, entrada.before)
+            ),
+            "after": diff.redact_blobs(diff.mask_health_fields(entrada.table_name, entrada.after)),
             "prev_hash": entrada.prev_hash,
             "hash": entrada.hash,
-            "changes": diff.diff(entrada.before, entrada.after, entrada.action),
+            "changes": diff.mask_health_changes(
+                entrada.table_name, diff.diff(entrada.before, entrada.after, entrada.action)
+            ),
         }
     )
 

@@ -4010,6 +4010,62 @@
         "title": "MetricOut",
         "type": "object"
       },
+      "MetricRevealIn": {
+        "additionalProperties": false,
+        "description": "`POST .../metrics/{metric_id}/reveal`: UN campo por petición; claves de más dan 422.",
+        "properties": {
+          "field": {
+            "enum": [
+              "weight_g",
+              "height_cm",
+              "body_fat_pct",
+              "notes"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "MetricRevealIn",
+        "type": "object"
+      },
+      "MetricRevealOut": {
+        "description": "El valor en claro de UN campo (`int` para peso en gramos, estatura en cm y grasa en %;\n`str` para las notas; `None` si el campo está vacío). Viaja solo en esta respuesta, con\n`Cache-Control: no-store`; nunca se guarda ni se registra.",
+        "properties": {
+          "field": {
+            "enum": [
+              "weight_g",
+              "height_cm",
+              "body_fat_pct",
+              "notes"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ],
+        "title": "MetricRevealOut",
+        "type": "object"
+      },
       "MovementCreate": {
         "additionalProperties": false,
         "properties": {
@@ -10207,6 +10263,139 @@
           }
         },
         "summary": "Add Metric",
+        "tags": [
+          "athletes"
+        ]
+      }
+    },
+    "/api/v1/athletes/{member_id}/metrics/{metric_id}/reveal": {
+      "post": {
+        "operationId": "reveal_metric_api_v1_athletes__member_id__metrics__metric_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "metric_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Metric Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricRevealIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricRevealOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicto con el estado actual"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Reveal Metric",
         "tags": [
           "athletes"
         ]

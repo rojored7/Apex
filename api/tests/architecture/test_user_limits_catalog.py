@@ -48,7 +48,7 @@ METODOS = frozenset({"get", "post", "put", "patch", "delete"})
 # S7-C3 (US-161): `DELETE /attendance/{id}` también la consume.
 # S8-D22 (S8-W0-3): `wods-write` y `results-write` se registran sin ruta; A1 saca la primera
 # (`POST /movements`) y B1 la segunda (`PUT /results`).
-# S9-D17 (S9-W0-2): `athletes-write` se registra sin ruta; A1 la saca (`POST /members/{id}/metrics`).
+# S9-D17 (S9-W0-2): `athletes-write` sin ruta todavía; A1 la saca (`POST /members/{id}/metrics`).
 CLAVES_SIN_RUTA_TODAVIA: frozenset[str] = frozenset({"athletes-write"})
 
 

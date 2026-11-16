@@ -123,7 +123,35 @@ def _audit_chain_broken(contexto: Mapping[str, object]) -> str:
     )
 
 
+def _reveal_volume(contexto: Mapping[str, object]) -> str:
+    return (
+        "APEX · volumen alto de reveal: un usuario pasó de la mitad de su cupo horario "
+        f"({_entero(contexto, 'revelados')} datos revelados en la última hora)."
+    )
+
+
+def _athletes_derive_skipped(contexto: Mapping[str, object]) -> str:
+    texto = "APEX · el perfil del atleta omitió derivar un récord"
+    marcas = _entero(contexto, "marcas")
+    if marcas:
+        texto += f" ({marcas} marcas afectadas)"
+    tipo = contexto.get("error_type")
+    if isinstance(tipo, str) and tipo.isidentifier():
+        texto += f" [{tipo}]"
+    return texto + "."
+
+
+def _athletes_restore_capped(contexto: Mapping[str, object]) -> str:
+    return (
+        "APEX · el perfil del atleta alcanzó el tope al restaurar récords "
+        f"({_entero(contexto, 'marcas')} marcas procesadas)."
+    )
+
+
 _DINAMICOS: Final[dict[str, Callable[[Mapping[str, object]], str]]] = {
+    "reveal_volume": _reveal_volume,
+    "athletes_derive_skipped": _athletes_derive_skipped,
+    "athletes_restore_capped": _athletes_restore_capped,
     "audit_sign_failed": _audit_sign_failed,
     "audit_sign_late": _audit_sign_late,
     "audit_chain_broken": _audit_chain_broken,

@@ -43,6 +43,7 @@ from uuid import UUID
 
 from fastapi import Request
 
+from app.core.alerts import alert
 from app.core.clock import current_clock
 from app.core.errors import TooManyRequestsError
 
@@ -183,6 +184,7 @@ _stores: dict[KeyKind, SlidingWindowStore] = {}
 def reset_store() -> None:
     """Vacía todos los almacenes (pruebas; en el api lo hace recrear el contenedor)."""
     _stores.clear()
+    _reveal_alertado.clear()
 
 
 def configure_store_limits(limits: Mapping[KeyKind, int]) -> None:
@@ -413,3 +415,42 @@ async def enforce_user_limit(request: Request, bucket: str, user_id: UUID) -> No
 async def usage(bucket: str, key: str, *, window_s: int, kind: KeyKind = "user") -> int:
     """Intentos registrados de `(bucket, key)` dentro de la ventana (S3-D44); no crea la clave."""
     return await store_for(kind).count((bucket, key), _ahora(), window_s)
+
+
+REVEAL_HOUR_BUCKET: Final = "members-reveal-hour"
+"""La ventana del aviso `reveal volume` (S3-D44; S9-D5 lo mueve aquí desde `members/router.py`)."""
+
+_reveal_alertado: dict[str, float] = {}
+"""Usuario -> instante de su última alerta `reveal_volume` (una por usuario y hora); del proceso,
+como los almacenes: `reset_store` la vacía."""
+
+
+async def warn_reveal_volume(request: Request, user_id: UUID) -> None:
+    """S3-D44 (M-1): `reveal volume` cuando el usuario pasa de la mitad de su cupo horario. El
+    conteo incluye la petición actual (con un tope de 200, la 101 avisa y la 100 no); el registro
+    lleva el usuario y el conteo, nunca el socio ni el valor.
+
+    S9-D5: además alerta al equipo con `alert("reveal_volume", revelados=N)` una vez por usuario y
+    hora; el contexto lleva solo el conteo (nunca el id del usuario, `core/alerts.py`). La alerta va
+    en su propio `try`: un fallo del canal o del contexto nunca vuelve 500 a un `reveal`."""
+    topes: Mapping[str, tuple[int, int]] = getattr(request.app.state, "user_limits", USER_LIMITS)
+    tope, ventana = topes[REVEAL_HOUR_BUCKET]
+    conteo = await usage(REVEAL_HOUR_BUCKET, str(user_id), window_s=ventana)
+    if conteo * 2 <= tope:
+        return
+    logger.warning("reveal volume", extra={"user_id": str(user_id), "count": conteo})
+    ahora = _ahora()
+    clave = str(user_id)
+    anterior = _reveal_alertado.get(clave)
+    if anterior is not None and ahora - anterior < REVEAL_ALERT_WINDOW_S:
+        return
+    _reveal_alertado[clave] = ahora
+    try:
+        alert("reveal_volume", revelados=conteo)
+    except Exception as error:
+        # Solo el tipo: el contexto y el usuario no se registran aquí.
+        logger.warning("reveal volume alert failed", extra={"error_type": type(error).__name__})
+
+
+REVEAL_ALERT_WINDOW_S: Final = 3600
+"""Una alerta `reveal_volume` por usuario y hora (S9-D5)."""

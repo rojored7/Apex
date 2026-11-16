@@ -552,7 +552,13 @@ def test_ci_sube_las_veintisiete_variables_user_y_cuenta_veintisiete() -> None:
     assert "USER_RESULTS_WRITE_LIMIT_PER_MIN=6000" in texto
     assert "USER_CLASSES_WRITE_LIMIT_PER_MIN=3000" in texto
     assert "USER_ATTENDANCE_WRITE_LIMIT_PER_MIN=6000" in texto
-    for nombre in (*CUATRO_USER_S5, *SIETE_USER_S6, *DOS_USER_S7, *DOS_USER_S8, "USER_ATHLETES_WRITE_LIMIT_PER_MIN"):
+    for nombre in (
+        *CUATRO_USER_S5,
+        *SIETE_USER_S6,
+        *DOS_USER_S7,
+        *DOS_USER_S8,
+        "USER_ATHLETES_WRITE_LIMIT_PER_MIN",
+    ):
         assert texto.count(nombre) >= 2, f"{nombre} debe estar en el sed y en la regex del conteo"
 
 

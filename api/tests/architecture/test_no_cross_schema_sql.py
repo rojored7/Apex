@@ -34,9 +34,10 @@ ESQUEMAS = (
     "attachments",
     "wods",  # S8-A1: el módulo llega en A1
     "results",
+    "athletes",  # S9-W0-3: el módulo llega en A1 (S9-A1)
 )
 # `classes` ya existe desde S7-A2; `wods` llega en S8-A1 y `results` en S8-B1 (cada slice lo saca).
-MODULOS_PENDIENTES: frozenset[str] = frozenset()
+MODULOS_PENDIENTES: frozenset[str] = frozenset({"athletes"})  # S9-A1 lo saca
 EXCLUIDOS = frozenset({"audit"})
 FUNCIONES_SQL = frozenset({"text", "literal_column", "exec_driver_sql"})
 _SQL = re.compile(r"\b(FROM|JOIN)\b", re.IGNORECASE)

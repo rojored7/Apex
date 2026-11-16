@@ -21,7 +21,8 @@ S3-B10 (US-074, US-075, US-076; D19, D21, M-1, M-3, S3-D44, S3-D46):
   Tres ventanas por usuario: `members-reveal` (30 por minuto), `members-reveal-hour` (200 por
   hora) y `members-reveal-day` (600 por día). La IP de `client_ip` va a la auditoría (L-12).
   Códigos 200, 401, 403, 404, 422 y 429. Al pasar de la mitad del cupo horario (la 101 de 200)
-  registra `logger.warning("reveal volume", extra={"user_id", "count"})` (S3-D44, M-1).
+  `core.ratelimit.warn_reveal_volume` registra `logger.warning("reveal volume", extra={"user_id",
+  "count"})` (S3-D44, M-1) y alerta al equipo con solo el conteo (S9-D5).
 - `PATCH /members/{member_id}` (admin y coach): `MemberDetailOut` enmascarado; consume
   `members-write` (compartido con `POST /members`). Códigos 200, 401, 403, 404, 409, 422 y 429.
 - `DELETE /members/{member_id}` (solo admin): 204. Códigos 204, 401, 403, 404, 409, 422 y 429.
@@ -40,8 +41,7 @@ validan, llaman al service y devuelven.
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from ipaddress import IPv4Network, IPv6Network
 from typing import Annotated, Final, Literal
 from uuid import UUID
@@ -56,10 +56,9 @@ from app.core.http import csv_download, no_store
 from app.core.pagination import Page, PageParams, SearchQuery
 from app.core.ratelimit import (
     PII_SEARCH_BUCKET,
-    USER_LIMITS,
     client_ip,
     enforce_user_limit,
-    usage,
+    warn_reveal_volume,
 )
 from app.core.search import clean_query
 from app.core.security import AdminDep, StaffDep
@@ -91,10 +90,6 @@ router = APIRouter(
 )
 
 Session = SessionDep  # N-1: commit antes de responder; un solo alias en todo el api
-
-logger = logging.getLogger("app.members")
-
-REVEAL_HOUR_BUCKET = "members-reveal-hour"  # la ventana del aviso `reveal volume` (S3-D44)
 
 
 @router.post(
@@ -304,17 +299,6 @@ def _ip(request: Request) -> str:
     return client_ip(request, redes)
 
 
-async def _avisar_volumen_de_reveal(request: Request, user_id: UUID) -> None:
-    """S3-D44 (M-1): `reveal volume` cuando el usuario pasa de la mitad de su cupo horario. El
-    conteo incluye la petición actual (con un tope de 200, la 101 avisa y la 100 no); el registro
-    lleva el usuario y el conteo, nunca el socio ni el valor."""
-    topes: Mapping[str, tuple[int, int]] = getattr(request.app.state, "user_limits", USER_LIMITS)
-    tope, ventana = topes[REVEAL_HOUR_BUCKET]
-    conteo = await usage(REVEAL_HOUR_BUCKET, str(user_id), window_s=ventana)
-    if conteo * 2 > tope:
-        logger.warning("reveal volume", extra={"user_id": str(user_id), "count": conteo})
-
-
 @router.post(
     "/members/{member_id}/reveal",
     response_model=RevealOut,
@@ -327,7 +311,7 @@ async def reveal_member_field(
     await enforce_user_limit(request, "members-reveal", principal.user_id)
     await enforce_user_limit(request, "members-reveal-hour", principal.user_id)
     await enforce_user_limit(request, "members-reveal-day", principal.user_id)
-    await _avisar_volumen_de_reveal(request, principal.user_id)
+    await warn_reveal_volume(request, principal.user_id)
     return await service.reveal(session, member_id, body.field, ip=_ip(request))
 
 

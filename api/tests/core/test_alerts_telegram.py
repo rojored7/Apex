@@ -537,3 +537,44 @@ def test_las_tres_alertas_de_firma_tienen_textos_distintos() -> None:
     textos = {c: render_message(c, ctx, FRONT) for c, ctx, _ in CASOS_FIRMA}
 
     assert len(set(textos.values())) == 3
+
+
+# S9-W0-3 (S9-D5, S9-D35; enmienda 1 de la crítica 2): los tres códigos de EP-24 dan contexto.
+
+
+def test_reveal_volume_muestra_los_revelados_sin_datos_de_personas() -> None:
+    texto = render_message("reveal_volume", {"revelados": 101}, FRONT)
+
+    assert "101" in texto and "reveal" in texto.casefold()
+    assert texto != render_message("codigo_desconocido_xx", {}, FRONT)
+
+
+def test_athletes_derive_skipped_muestra_el_tipo_de_error_y_las_marcas() -> None:
+    texto = render_message(
+        "athletes_derive_skipped", {"error_type": "RuntimeError", "marcas": 7}, FRONT
+    )
+
+    assert "RuntimeError" in texto and "7" in texto
+    assert texto != render_message("codigo_desconocido_xx", {}, FRONT)
+
+
+def test_athletes_restore_capped_muestra_las_marcas() -> None:
+    texto = render_message("athletes_restore_capped", {"marcas": 200}, FRONT)
+
+    assert "200" in texto
+
+
+@pytest.mark.parametrize(
+    "codigo", ["reveal_volume", "athletes_derive_skipped", "athletes_restore_capped"]
+)
+def test_los_codigos_de_s9_ignoran_claves_ajenas_y_valores_sucios(codigo: str) -> None:
+    sucio = {
+        "revelados": "Laura Gómez",
+        "marcas": "1020304417",
+        "error_type": "no es un tipo!",
+        "nombre": "Laura Gómez",
+    }
+
+    texto = render_message(codigo, sucio, FRONT)
+
+    assert "Laura" not in texto and "1020304417" not in texto and "no es un tipo" not in texto

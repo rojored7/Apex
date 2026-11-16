@@ -37,14 +37,27 @@ ALERT_CONTEXT_KEYS: Final[frozenset[str]] = frozenset(
         # S6-A2 (S6-D60): firma de la cadena, solo enteros.
         "through_seq",
         "age_h",
+        # S9-D5 (S9-W0-3): volumen de reveal y marcas derivadas, solo enteros.
+        "revelados",
+        "marcas",
     }
 )
 """Únicas claves de contexto admitidas (S4A-D7, precisión de S4A-D56 a D7)."""
 
 COUNT_KEYS: Final[frozenset[str]] = frozenset(
-    {"generados", "enviados", "fallidos", "omitidos", "pendientes", "through_seq", "age_h"}
+    {
+        "generados",
+        "enviados",
+        "fallidos",
+        "omitidos",
+        "pendientes",
+        "through_seq",
+        "age_h",
+        "revelados",
+        "marcas",
+    }
 )
-"""Claves que solo admiten enteros (S5-B4)."""
+"""Claves que solo admiten enteros (S5-B4; `revelados` y `marcas`, S9-D5)."""
 
 
 class AlertSink(Protocol):

@@ -73,6 +73,9 @@ def test_las_claves_de_contexto_son_las_del_plan() -> None:
                 # S6-A2 (S6-D60): firma de la cadena
                 "through_seq",
                 "age_h",
+                # S9-D5 (S9-W0-3): conteos de reveal y de marcas, solo enteros
+                "revelados",
+                "marcas",
             }
         )
         == ALERT_CONTEXT_KEYS
@@ -247,5 +250,49 @@ def test_unregister_sink_quita_el_sink_y_es_idempotente(sinks_aislados: None) ->
     alerts.unregister_sink(sink)
     alerts.unregister_sink(sink)  # ya no está: no falla
     alert("job_failed", job="expirations")
+
+    assert bitacora == []
+
+
+@pytest.mark.parametrize("clave", ["revelados", "marcas"])
+def test_las_claves_de_s9_admiten_enteros(sinks_aislados: None, clave: str) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    alert("reveal_volume", **{clave: 101})
+
+    assert bitacora == [("a", "reveal_volume", {clave: 101})]
+
+
+@pytest.mark.parametrize("clave", ["revelados", "marcas"])
+@pytest.mark.parametrize("valor", ["Laura Gómez", "101", True, ["a"]])
+def test_las_claves_de_s9_rechazan_todo_lo_que_no_sea_entero(
+    sinks_aislados: None, clave: str, valor: object
+) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    with pytest.raises(ValueError, match="debe ser un entero"):
+        alert("reveal_volume", **{clave: valor})
+
+    assert bitacora == []
+
+
+def test_athletes_derive_skipped_pasa_con_las_claves_de_hoy(sinks_aislados: None) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    alert("athletes_derive_skipped", error_type="RuntimeError")
+
+    assert bitacora == [("a", "athletes_derive_skipped", {"error_type": "RuntimeError"})]
+
+
+@pytest.mark.parametrize("clave", ["user_id", "member_id", "result_id"])
+def test_las_claves_de_personas_siguen_prohibidas(sinks_aislados: None, clave: str) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    with pytest.raises(ValueError, match="no admitidas"):
+        alert("reveal_volume", **{clave: "00000000-0000-0000-0000-000000000001"})
 
     assert bitacora == []

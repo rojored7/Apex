@@ -204,3 +204,12 @@ Rama `feat/sprint-09-perfil-atleta`, HEAD de partida `b8c9255` (sobre `cd0cc0b`,
 - Rojo: esa misma prueba del gate (1 failed de 4540), medida antes del cambio.
 - Verde: `web/src/core/api/errorCodes.ts` suma `notificationInFlight: "notification_in_flight"` (S9-D45; la prueba de contexto lo encuentra en `notifications/exceptions.py:98`, `code = "notification_in_flight"`); `noticeErrors.ts` usa `API_ERROR_CODES.notificationInFlight`.
 - Gates: `web/core` (`errorCodes.test.ts`) 104 passed, verde (no sellante).
+- Sello `web/notifications` (`SkipModal.test.tsx`, `api.test.ts`, `errorCodes.test.ts`): verde. Checkpoint `04791bc`.
+
+## Cierre de la Wave 0
+
+- P-GATES sobre `5cabb36`: api completo en verde (ruff, formato, mypy; 11126 passed, 103 skipped, 47 deselected, cobertura 96 %), scripts y caddy en verde; web: 1 failed (corregido en W0-4e).
+- **Desviación anotada:** tras `04791bc` no se repitió la mitad del api. `git diff --quiet 5cabb36 04791bc -- api infra scripts` confirma que api, infra y scripts son idénticos (solo cambiaron dos archivos de `web/` y este cuaderno). Mitad web sobre `04791bc` (alias 14): lint, `tsc`, vitest con 2 hilos 4541 passed (261 archivos, cobertura 95,86 %), build, exit 0.
+- P-REBUILD: `apex-api:local` con `GIT_SHA=04791bc`, `up -d --no-build --force-recreate api worker`. `/health`: `status ok`, `db ok`, `migrations ok`, `crypto ok`, `version 04791bc` (`backup attention`, informativo en desarrollo).
+- `notify` real dos veces (`--run-once notify`): `result ok` las dos (0 generados, 0 pendientes, 0 enviados, 0 fallidos).
+- Worktree `gates` revisado antes de borrarlo: HEAD `04791bc` contenido en la rama, sin cambios ni stash; ignorados solo cachés, `.venv`, `node_modules`, `coverage`, `dist` y un `.env` idéntico a `.env.example` (lo copia `scripts/ci/compose-smoke.sh`). Borrado con `git worktree remove --force`. `drop_caches` hecho.

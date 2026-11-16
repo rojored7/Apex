@@ -71,10 +71,14 @@ async def cargar_correo(session: AsyncSession, member_id: UUID) -> Any:
     )
 
 
-async def habilitar_correo(fabrica: Fabrica, valor: dict[str, Any] | None = None) -> None:
+async def habilitar_correo(
+    fabrica: Fabrica, valor: dict[str, Any] | None = None, version: int = 0
+) -> None:
     async with fabrica() as sesion:
         with actor_scope(SYSTEM_USER_ID):
-            await update_section(sesion, "channels", valor or CANALES_CON_CORREO, 0, SYSTEM_USER_ID)
+            await update_section(
+                sesion, "channels", valor or CANALES_CON_CORREO, version, SYSTEM_USER_ID
+            )
             await sesion.commit()
 
 

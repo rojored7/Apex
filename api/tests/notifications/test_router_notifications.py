@@ -27,9 +27,10 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from httpx import AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.clock import FrozenClock
+from app.modules.notifications import sending
 from app.modules.notifications.router import router
 from tests.conftest import Cabeceras, CrearUsuario
 from tests.factories.notifications import make_notification, make_rule, make_template
@@ -473,6 +474,31 @@ async def test_skip_de_un_aviso_cerrado_da_409_y_de_uno_inexistente_404(
     assert (r.status_code, r.json()["error"]["code"]) == (409, "notification_closed")
     r = await app_http.post(ruta_omitir(uuid4()), json={"reason": "No existe"}, headers=cab)
     assert (r.status_code, r.json()["error"]["code"]) == (404, "notification_not_found")
+
+
+async def test_skip_de_un_aviso_en_vuelo_da_409_notification_in_flight(
+    app_http: AsyncClient,
+    usuario_real: CrearUsuario,
+    cabeceras: Cabeceras,
+    session: AsyncSession,
+    engine: AsyncEngine,
+) -> None:
+    """Una pasada del job tiene el aviso en vuelo (candado tomado desde OTRA conexión): la ruta
+    responde 409 `notification_in_flight` y el aviso no cambia (S9-D46, LOW 7)."""
+    admin = await usuario_real("admin")
+    aviso = (await _datos(session))["avisos"][0]
+    async with async_sessionmaker(engine)() as otra:
+        assert await sending.try_in_flight_lock(otra, aviso.id)
+        r = await app_http.post(
+            ruta_omitir(aviso.id), json={"reason": "Ya pagó en caja"}, headers=cabeceras(admin)
+        )
+        await otra.rollback()
+
+    assert (r.status_code, r.json()["error"]["code"]) == (409, "notification_in_flight")
+    estado = await session.scalar(
+        text("SELECT status FROM notifications.notifications WHERE id = :i"), {"i": aviso.id}
+    )
+    assert estado == "pending"
 
 
 # Topes ------------------------------------------------------------------------------------------

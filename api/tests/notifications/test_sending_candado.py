@@ -9,18 +9,21 @@ cerrados, el `skip` frente a un envío en vuelo y el opt-in de correo al enviar.
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import Settings
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.modules.notifications import sending, service
 from app.modules.notifications.channels.base import ChannelPayload
 from app.modules.notifications.schemas import SendResult
 from app.modules.notifications.sending import send_pending
+from app.worker.registry import get_registry
 from tests.notifications._apoyo_avisos import HOY, canales
 from tests.notifications._apoyo_envio import (
     OK,
@@ -186,30 +189,48 @@ async def test_el_tope_total_corta_un_canal_que_no_responde(
     assert await _candado_libre(fabrica, aviso.id)
 
 
-def test_el_tope_total_es_menor_que_el_plazo_del_job() -> None:
-    assert 0 < sending.NOTIFY_SEND_TIMEOUT_S < 600
+def test_el_tope_total_mas_el_plazo_blando_y_el_cierre_caben_en_el_plazo_del_job() -> None:
+    """S9-D46 (LOW 5): el peor caso de una corrida es el plazo blando (la última unidad empieza
+    justo antes), su envío, el cierre y el conteo final; todo debe caber en el `timeout_s`
+    REGISTRADO del job `notify`, no en un literal."""
+    spec = next(s for s in get_registry() if s.name == "notify")
+    campos = Settings.model_fields
+    cierre_s = 2 * campos["DB_LOCK_TIMEOUT_MS"].default / 1000  # `_finish` y su reintento
+    conteo_s = campos["DB_STATEMENT_TIMEOUT_MS"].default / 1000  # `_count_eligible`
+    assert sending.NOTIFY_CLOSE_MARGIN_S >= cierre_s + conteo_s
+    total = (
+        sending.NOTIFY_SOFT_DEADLINE_S
+        + sending.NOTIFY_SEND_TIMEOUT_S
+        + sending.NOTIFY_CLOSE_MARGIN_S
+    )
+    assert 0 < sending.NOTIFY_SEND_TIMEOUT_S < sending.NOTIFY_SOFT_DEADLINE_S
+    assert total < spec.timeout_s
 
 
-# 3. Fallo al tomar el candado ---------------------------------------------------------------------
-
-
-async def test_un_fallo_al_tomar_el_candado_no_gasta_un_intento_ni_envia(
+async def test_el_tope_total_corta_un_envio_bloqueado_en_un_hilo(
     fabrica: Fabrica, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """El SMTP real corre en `asyncio.to_thread`: el hilo NO se puede cancelar y aun así la pasada
+    sigue a los `NOTIFY_SEND_TIMEOUT_S` (S9-D46, LOW 7). El evento se libera al final."""
     aviso = await _un_aviso(fabrica)
+    monkeypatch.setattr(sending, "NOTIFY_SEND_TIMEOUT_S", 0.3)
+    hilo_libre = threading.Event()
 
-    async def _sin_conexion(_s: AsyncSession, _n: UUID) -> bool:
-        raise OperationalError("SELECT 1", {}, Exception("pool agotado"))
+    async def _smtp_lento(_p: ChannelPayload) -> None:
+        await asyncio.to_thread(hilo_libre.wait, 20)
 
-    monkeypatch.setattr(sending, "try_in_flight_lock", _sin_conexion)
-    canal = CanalFalso()
+    try:
+        resultado = await asyncio.wait_for(
+            _pasar(fabrica, CanalFalso(espia=_smtp_lento)), timeout=10
+        )
+        assert not hilo_libre.is_set(), "la pasada esperó al hilo en vez de cortarlo"
+    finally:
+        hilo_libre.set()
 
-    resultado = await _pasar(fabrica, canal)
-
-    assert canal.enviados == []
-    assert (resultado.enviados, resultado.fallidos, resultado.omitidos) == (0, 0, 0)
     fila = await estado_de(fabrica, aviso.id)
-    assert (fila["status"], fila["attempts"], fila["last_error"]) == ("pending", 0, None)
+    assert (fila["status"], fila["last_error"], fila["attempts"]) == ("failed", "timeout", 1)
+    assert resultado.fallidos == 1
+    assert await _candado_libre(fabrica, aviso.id)
 
 
 # 4. Cancelación -----------------------------------------------------------------------------------
@@ -218,6 +239,8 @@ async def test_un_fallo_al_tomar_el_candado_no_gasta_un_intento_ni_envia(
 async def test_cancelar_la_pasada_no_suelta_el_candado_hasta_cerrar_el_aviso(
     fabrica: Fabrica,
 ) -> None:
+    """Desde S9-D46 la pasada cancelada además ESPERA (con tope) a su unidad antes de salir; el
+    candado se suelta solo cuando el cierre terminó."""
     aviso = await _un_aviso(fabrica)
     entro = asyncio.Event()
     libre = asyncio.Event()
@@ -230,16 +253,18 @@ async def test_cancelar_la_pasada_no_suelta_el_candado_hasta_cerrar_el_aviso(
     tarea = asyncio.create_task(_pasar(fabrica, canal_a))
     await asyncio.wait_for(entro.wait(), timeout=5)
     tarea.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await tarea
+    await asyncio.sleep(0.05)
 
     canal_b = CanalFalso()
     b = await _pasar(fabrica, canal_b)
     assert canal_b.enviados == [], "otra pasada obtuvo el candado con la unidad aún enviando"
     assert (b.enviados, b.fallidos) == (0, 0)
+    assert not tarea.done(), "la pasada cancelada no esperó a su unidad"
 
     libre.set()
-    await _esperar(fabrica, aviso.id, "sent")
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(tarea, timeout=10)
+    assert (await estado_de(fabrica, aviso.id))["status"] == "sent"
     assert len(canal_a.enviados) == 1
     assert await asyncio.wait_for(_libera_pronto(fabrica, aviso.id), timeout=5)
 
@@ -296,12 +321,17 @@ async def test_omitir_un_aviso_en_vuelo_da_409_notification_in_flight(fabrica: F
     assert (await estado_de(fabrica, aviso.id))["status"] == "sent"
 
 
-async def test_una_pasada_no_envia_un_aviso_que_el_admin_esta_omitiendo(fabrica: Fabrica) -> None:
+async def test_skip_conserva_el_candado_de_aviso_hasta_confirmar(fabrica: Fabrica) -> None:
+    """MEDIUM 2 (S9-D46). La versión anterior pasaba aunque se quitara el try-lock de `skip`: el
+    `FOR UPDATE ... SKIP LOCKED` de la pasada ya la dejaba fuera. Lo que solo el try-lock da es el
+    candado de aviso: mientras `skip` no confirma, otra conexión NO lo obtiene (así ningún envío
+    empieza y, si lo hubiera en vuelo, `skip` respondería 409)."""
     aviso = await _un_aviso(fabrica)
     canal = CanalFalso()
     async with fabrica() as sesion:
         with actor_scope(SYSTEM_USER_ID):
             await service.skip(sesion, aviso.id, "Motivo de prueba", SYSTEM_USER_ID)
+            assert not await _candado_libre(fabrica, aviso.id), "skip no tomó el candado de aviso"
             resultado = await _pasar(fabrica, canal)  # el `skip` aún no confirma
             await sesion.commit()
 
@@ -309,6 +339,7 @@ async def test_una_pasada_no_envia_un_aviso_que_el_admin_esta_omitiendo(fabrica:
     assert resultado.enviados == 0
     fila = await estado_de(fabrica, aviso.id)
     assert (fila["status"], fila["attempts"]) == ("skipped", 0)
+    assert await _candado_libre(fabrica, aviso.id)
 
 
 async def test_omitir_un_aviso_que_no_esta_en_vuelo_sigue_funcionando(fabrica: Fabrica) -> None:
@@ -344,3 +375,55 @@ async def test_si_el_socio_desactiva_el_correo_despues_de_generado_no_se_envia(
         "canal_desactivado_socio",
         0,
     )
+
+
+# 9. El correo apagado no se descifra (S9-D46, LOW 6) ----------------------------------------------
+
+
+async def _descifrados(fabrica: Fabrica, miembro_id: UUID) -> int:
+    async with fabrica() as sesion:
+        total = await sesion.scalar(
+            text(
+                "SELECT count(*) FROM crypto.crypto_ops WHERE record_id = :r AND verb = 'decrypt'"
+            ),
+            {"r": miembro_id},
+        )
+    return int(total or 0)
+
+
+async def test_un_correo_apagado_se_omite_sin_descifrar_nada(fabrica: Fabrica) -> None:
+    await habilitar_correo(fabrica)
+    miembro = await socio_con_correo(fabrica)
+    aviso = await aviso_correo(fabrica, await regla_correo(fabrica), miembro)
+    async with fabrica() as sesion:
+        await canales(sesion, miembro, email=False)
+    antes = await _descifrados(fabrica, miembro.id)
+
+    resultado = await _pasar(fabrica, CanalFalso())
+
+    fila = await estado_de(fabrica, aviso.id)
+    assert (fila["status"], fila["skip_reason"]) == ("skipped", "canal_desactivado_socio")
+    assert resultado.omitidos == 1
+    assert await _descifrados(fabrica, miembro.id) == antes, "descifró a un socio apagado"
+
+
+async def test_un_socio_sin_consentimiento_se_omite_sin_descifrar_nada(fabrica: Fabrica) -> None:
+    await habilitar_correo(fabrica)
+    miembro = await socio_con_correo(fabrica, consentido=False)
+    aviso = await aviso_correo(fabrica, await regla_correo(fabrica), miembro)
+    antes = await _descifrados(fabrica, miembro.id)
+
+    await _pasar(fabrica, CanalFalso())
+
+    fila = await estado_de(fabrica, aviso.id)
+    assert (fila["status"], fila["skip_reason"]) == ("skipped", "sin_consentimiento")
+    assert await _descifrados(fabrica, miembro.id) == antes
+
+
+async def test_con_el_correo_activo_si_se_descifra_una_vez(fabrica: Fabrica) -> None:
+    aviso = await _un_aviso(fabrica)
+    antes = await _descifrados(fabrica, aviso.member_id)
+
+    await _pasar(fabrica, CanalFalso())
+
+    assert await _descifrados(fabrica, aviso.member_id) == antes + 1

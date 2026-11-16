@@ -222,6 +222,30 @@ def sqlstate_of(error: BaseException) -> str | None:
     return sqlstate if isinstance(sqlstate, str) else None
 
 
+CONNECTION_SQLSTATES: Final[frozenset[str]] = frozenset({"53300", "57P01", "57P02", "57P03"})
+"""`too_many_connections` (53300, p. ej. `CONNECTION LIMIT` del rol) y el apagado o reinicio de la
+base (`57P01/2/3`); toda la clase `08` (excepción de conexión) se reconoce además por prefijo."""
+
+
+def is_connection_error(error: BaseException) -> bool:
+    """`True` si `error` es un fallo de CONEXIÓN (no se pudo hablar con la base), no de una
+    sentencia (S9-D46). Medido con asyncpg: un puerto cerrado sale como `ConnectionRefusedError`
+    pelado (un `OSError`, sin envolver); un rol sin cupo, como `DBAPIError` con `orig.sqlstate`
+    `53300`. Reconoce: `OSError` (también como causa del `orig`), `DBAPIError` con
+    `connection_invalidated` y SQLSTATE de clase `08` o de `CONNECTION_SQLSTATES`. Un fallo de
+    autenticación (`28xxx`) NO lo es: es de configuración y no se debe ocultar."""
+    if isinstance(error, OSError):
+        return True
+    if not isinstance(error, DBAPIError):
+        return False
+    if error.connection_invalidated:
+        return True
+    if isinstance(getattr(error.orig, "__cause__", None), OSError):
+        return True
+    sqlstate = sqlstate_of(error)
+    return sqlstate is not None and (sqlstate.startswith("08") or sqlstate in CONNECTION_SQLSTATES)
+
+
 def translate_busy(error: BaseException) -> DatabaseBusy | None:
     """`DatabaseBusy` si el SQLSTATE está en `BUSY_SQLSTATES`; `None` en otro caso."""
     return DatabaseBusy() if sqlstate_of(error) in BUSY_SQLSTATES else None

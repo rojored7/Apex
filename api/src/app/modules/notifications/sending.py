@@ -18,13 +18,21 @@
   (1) mientras un aviso está en vuelo (de antes de (a) a después de (c)) su proceso sostiene
   `pg_try_advisory_xact_lock(NOTIFY_LOCK_NS, <clave del id>)` en una transacción aparte sin filas
   bloqueadas, con `idle_in_transaction_session_timeout` local en 0. Candado, preparación, envío y
-  cierre son una sola tarea blindada: la cancelación del job no lo suelta antes del cierre. Otra
+  cierre son una sola tarea blindada: la cancelación del job no lo suelta antes del cierre, y la
+  pasada cancelada espera a sus unidades (`drain_units`, tope `NOTIFY_DRAIN_TIMEOUT_S`; solo a las
+  suyas) antes de salir, para que `asyncio.run` no las corte en pleno envío (S9-D46). Toda
+  escritura de la pasada sobre el aviso (omisión por canal apagado, `failed` de una preparación
+  rota, el cierre) ocurre dentro de esa unidad, bajo el candado. Un error de CONEXIÓN real
+  (`core.db.is_connection_error`: puerto cerrado, `CONNECTION LIMIT`) al tomar el candado o al
+  abrir la preparación deja el aviso intacto y sin gastar intento. Otra
   pasada que no lo obtiene (o que no pudo tomarlo, sin gastar intento) deja el aviso intacto; se
   libera solo si el proceso muere (un corte sigue repitiendo una vez). `skip` lo prueba antes de
   bloquear la fila y responde 409 `notification_in_flight`. (2) cada pasada lista `(id, attempts)`
   y toma la fila solo si `attempts` sigue igual (control optimista): una lista vieja no reenvía lo
   que otra pasada ya procesó. `pendientes` sí cuenta un aviso que otra pasada tiene en vuelo
   (sigue `pending`);
+- el opt-in se mira ANTES de descifrar (`channels_for` no descifra): un socio sin autorización o con
+  el correo apagado se omite sin dejar filas `decrypt` (S9-D46);
 - sin canal configurado o con `channels.email.enabled` falso (sin fila = apagado) cada aviso queda
   `skipped` con `skip_reason = "canal_no_configurado"`, sin descifrar nada (S5-D222);
 - socio sin autorización de datos o sin correo al momento del envío: `skipped` con
@@ -36,7 +44,9 @@
   (`code == "crypto_unavailable"`) sube y hace fallar el job (M-4);
 - el cierre tras un envío exitoso corre bajo `shield` y se reintenta una vez (S5-D229); una corrida
   toma como máximo `NOTIFY_MAX_PER_RUN` avisos y no empieza ninguno pasado
-  `NOTIFY_SOFT_DEADLINE_S` (S5-D232);
+  `NOTIFY_SOFT_DEADLINE_S` (S5-D232); plazo blando + `NOTIFY_SEND_TIMEOUT_S` +
+  `NOTIFY_CLOSE_MARGIN_S`
+  < `timeout_s` del job (420 + 90 + 50 < 600, S9-D46);
 - `NotificationFailed` solo al agotar los intentos. Ningún log lleva correo, nombre ni cuerpo:
   solo `notification_id` y, como mucho, el tipo del error.
 
@@ -51,6 +61,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Final
@@ -63,6 +74,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core import events
 from app.core.clock import current_clock
 from app.core.context import SYSTEM_USER_ID, actor_scope
+from app.core.db import is_connection_error
 from app.modules.members import service as members_service
 from app.modules.members.exceptions import MemberNotContactable
 from app.modules.members.service import Contact
@@ -108,14 +120,21 @@ CLOSE_ATTEMPTS: Final = 2
 """Intentos del cierre tras un envío exitoso: el primero y UN reintento (S5-D229)."""
 NOTIFY_MAX_PER_RUN: Final = 500
 """Avisos que toma una corrida (S5-D232); lo demás sigue mañana."""
-NOTIFY_SOFT_DEADLINE_S: Final = 480
-"""Plazo blando con reloj monotónico: pasado, no se toma ninguna fila más (el job tiene 600 s)."""
+NOTIFY_SOFT_DEADLINE_S: Final = 420
+"""Plazo blando con reloj monotónico: pasado, no se toma ninguna fila más. Con
+`NOTIFY_SEND_TIMEOUT_S` y `NOTIFY_CLOSE_MARGIN_S` debe caber en el `timeout_s` del job (600 s;
+S9-D46: antes 480, que con el envío y el cierre no cabía)."""
 NOTIFY_LOCK_NS: Final = 4_270_010
 """Primera clave del candado de aviso en vuelo (`pg_try_advisory_xact_lock(int, int)`; no choca con
 los candados de una sola clave bigint de otros módulos)."""
 IN_FLIGHT_LOCK_SQL: Final = "SELECT pg_try_advisory_xact_lock(:ns, :k)"
 NOTIFY_SEND_TIMEOUT_S: Final = 90
 """Tope total de `channel.send` por aviso (S9-D45); menor que el plazo del job (600 s)."""
+NOTIFY_CLOSE_MARGIN_S: Final = 50
+"""Holgura tras el último envío: el cierre (`_finish` y su reintento, 2 x `DB_LOCK_TIMEOUT_MS` =
+20 s) y el conteo final (`DB_STATEMENT_TIMEOUT_MS` = 30 s)."""
+NOTIFY_DRAIN_TIMEOUT_S: Final = 30
+"""Cuánto espera una pasada cancelada a que sus unidades en vuelo cierren (S9-D46)."""
 _LINE_BREAKS: Final = ("\r", "\n", chr(0x2028), chr(0x2029), chr(0x85))
 
 
@@ -161,7 +180,10 @@ async def _in_flight(sf: SessionFactory, notification_id: UUID) -> AsyncIterator
                 select(func.set_config("idle_in_transaction_session_timeout", "0", True))
             )
             obtenido = await try_in_flight_lock(session, notification_id)
-        except SQLAlchemyError as error:  # pool agotado, CONNECTION LIMIT, corte: no se envió nada
+        except Exception as error:
+            if not (isinstance(error, SQLAlchemyError) or is_connection_error(error)):
+                raise
+            # pool agotado, CONNECTION LIMIT, puerto cerrado, corte: no se envió nada (S9-D46)
             logger.warning(
                 "notifications: no se pudo tomar el candado de aviso en vuelo",
                 extra={"notification_id": str(notification_id), "error_type": type(error).__name__},
@@ -172,7 +194,7 @@ async def _in_flight(sf: SessionFactory, notification_id: UUID) -> AsyncIterator
         finally:
             try:
                 await session.rollback()
-            except SQLAlchemyError as error:  # p. ej. `idle_in_transaction_session_timeout`
+            except (SQLAlchemyError, OSError) as error:  # p. ej. el timeout de inactividad
                 logger.warning(
                     "notifications: no se pudo soltar el candado de aviso en vuelo",
                     extra={
@@ -303,8 +325,17 @@ async def _fail_for_good(session: AsyncSession, aviso: Notification, max_attempt
 async def _deliverable_contact(
     session: AsyncSession, aviso: Notification, load_contact: LoadContact
 ) -> str | None:
-    """El correo si el aviso aún se puede enviar; si no (sin autorización, sin correo o con el
-    correo apagado por el socio, S5-D31, S9-D45) lo cierra `skipped` y devuelve `None`."""
+    """El correo si el aviso aún se puede enviar; si no (sin autorización, correo apagado por el
+    socio, S5-D31, o sin correo guardado) lo cierra `skipped` y devuelve `None`. Primero la
+    consulta que NO descifra (`channels_for`) y solo si el correo sigue activo se descifra
+    (S9-D46: un socio apagado no deja filas `decrypt`)."""
+    estado = (await members_service.channels_for(session, [aviso.member_id])).get(aviso.member_id)
+    if estado is None or not estado.has_consent:
+        await _close_as_skipped(session, aviso, SKIP_NO_CONSENT)
+        return None
+    if "email" not in estado.channels:
+        await _close_as_skipped(session, aviso, SKIP_MEMBER_CHANNEL_OFF)
+        return None
     try:
         contacto = await load_contact(session, aviso.member_id)
     except MemberNotContactable:
@@ -312,10 +343,6 @@ async def _deliverable_contact(
         return None
     if not contacto.email:
         await _close_as_skipped(session, aviso, SKIP_NO_EMAIL)
-        return None
-    estado = (await members_service.channels_for(session, [aviso.member_id])).get(aviso.member_id)
-    if estado is None or "email" not in estado.channels:
-        await _close_as_skipped(session, aviso, SKIP_MEMBER_CHANNEL_OFF)
         return None
     return contacto.email
 
@@ -396,6 +423,11 @@ async def _finish(
         )
         if aviso is None or aviso.status in ("sent", "skipped"):
             # No se borran avisos; y uno ya cerrado por otro camino no se pisa (S9-D45).
+            if result.ok:
+                logger.warning(
+                    "notifications: el correo salió pero el aviso ya estaba cerrado",
+                    extra={"notification_id": str(prepared.notification_id)},
+                )
             return UNTOUCHED
         if result.ok:
             aviso.status = "sent"
@@ -463,8 +495,8 @@ async def _process_one(
     channel: NotificationChannel,
     config: ChannelsSettings,
 ) -> str:
-    # Candado, preparación, envío y cierre son UNA unidad bajo `shield` (S9-D45): si el job se
-    # cancela, el candado se suelta solo cuando el cierre terminó, no antes.
+    # Candado, escritura previa, envío y cierre son UNA unidad bajo `shield` (S9-D45): si el job
+    # se cancela, el candado se suelta solo cuando el cierre terminó, no antes.
     unidad = asyncio.ensure_future(
         _locked_unit(
             sf,
@@ -478,18 +510,89 @@ async def _process_one(
         )
     )
     _UNITS.add(unidad)
+    propias = _PASS_UNITS.get()
+    if propias is not None:
+        propias.add(unidad)
     unidad.add_done_callback(_unit_done)
     return await asyncio.shield(unidad)
 
 
 _UNITS: set[asyncio.Future[str]] = set()
 """Referencias fuertes a las unidades en vuelo (el bucle solo guarda referencias débiles)."""
+_PASS_UNITS: ContextVar[set[asyncio.Future[str]] | None] = ContextVar("pass_units", default=None)
+"""Las unidades de ESTA pasada: `send_pending` solo espera a las suyas al cancelarse, no a las de
+otra pasada del mismo proceso (S9-D46)."""
+
+
+async def drain_units(
+    units: set[asyncio.Future[str]] | None = None, *, timeout_s: float = NOTIFY_DRAIN_TIMEOUT_S
+) -> None:
+    """Espera (con tope) a que terminen `units` (por omisión todas las del proceso) sin relanzar
+    su resultado: lo que falle ya lo registró `_unit_done`. Sin esto, `asyncio.run` cancela una
+    unidad que aún envía y suelta el candado sin cerrar el aviso (S9-D46)."""
+    pendientes = {u for u in (_UNITS if units is None else units) if not u.done()}
+    if pendientes:
+        await asyncio.wait(pendientes, timeout=timeout_s)
 
 
 def _unit_done(unidad: asyncio.Future[str]) -> None:
     _UNITS.discard(unidad)
     if not unidad.cancelled():
         unidad.exception()  # marca la excepción como leída si nadie esperaba el resultado
+
+
+async def _prepare_or_skip(
+    sf: SessionFactory,
+    notification_id: UUID,
+    expected_attempts: int,
+    today: date,
+    max_attempts: int,
+    load_contact: LoadContact,
+    config: ChannelsSettings,
+) -> _Prepared | str:
+    """Canal apagado por el admin: `skipped` sin descifrar; si no, la fase (a)."""
+    if not config.email.enabled:
+        return await _skip(
+            sf, notification_id, expected_attempts, SKIP_NOT_CONFIGURED, today, max_attempts
+        )
+    return await _prepare(
+        sf, notification_id, expected_attempts, today, max_attempts, load_contact, config
+    )
+
+
+async def _guarded_prepare(
+    sf: SessionFactory,
+    notification_id: UUID,
+    expected_attempts: int,
+    today: date,
+    max_attempts: int,
+    load_contact: LoadContact,
+    config: ChannelsSettings,
+) -> _Prepared | str:
+    """Todo lo previo al envío, con el candado de aviso ya tomado. Un fallo del custodio sube
+    (M-4); un error de CONEXIÓN deja el aviso intacto y sin gastar intento (nada salió, S9-D46);
+    cualquier otro lo deja `failed`/`unknown` con el intento contado (S5-D230)."""
+    try:
+        return await _prepare_or_skip(
+            sf, notification_id, expected_attempts, today, max_attempts, load_contact, config
+        )
+    except Exception as error:
+        if _is_systemic(error):
+            raise
+        if is_connection_error(error):
+            logger.warning(
+                "notifications: sin conexión al preparar un aviso, queda intacto",
+                extra={
+                    "notification_id": str(notification_id),
+                    "error_type": type(error).__name__,
+                },
+            )
+            return UNTOUCHED
+        logger.error(
+            "notifications: un aviso falló al prepararse",
+            extra={"notification_id": str(notification_id), "error_type": type(error).__name__},
+        )
+        return await _mark_failed(sf, notification_id, expected_attempts, today, max_attempts)
 
 
 async def _locked_unit(
@@ -505,7 +608,7 @@ async def _locked_unit(
     async with _in_flight(sf, notification_id) as obtenido:
         if not obtenido:
             return UNTOUCHED  # otra pasada lo tiene en vuelo, o no se pudo tomar (S9-D44)
-        preparado = await _prepare(
+        preparado = await _guarded_prepare(
             sf, notification_id, expected_attempts, today, max_attempts, load_contact, config
         )
         if isinstance(preparado, str):
@@ -540,7 +643,7 @@ async def _mark_failed(
                     ),
                     session,
                 )
-    except SQLAlchemyError as error:
+    except (SQLAlchemyError, OSError) as error:
         logger.error(
             "notifications: no se pudo marcar el aviso como fallido",
             extra={"notification_id": str(notification_id), "error_type": type(error).__name__},
@@ -558,31 +661,19 @@ async def _handle(
     channel: NotificationChannel,
     config: ChannelsSettings,
 ) -> str:
-    """Un aviso de la pasada: apagado por el admin → `skipped`; si no, las tres fases. Un fallo
-    no sistémico lo deja `failed`/`unknown` (S5-D230); lo sistémico (custodio) relanza (M-4)."""
-    if not config.email.enabled:
-        return await _skip(
-            sf, notification_id, expected_attempts, SKIP_NOT_CONFIGURED, today, max_attempts
-        )
-    try:
-        return await _process_one(
-            sf,
-            notification_id,
-            expected_attempts,
-            today,
-            max_attempts,
-            load_contact,
-            channel,
-            config,
-        )
-    except Exception as error:
-        if _is_systemic(error):
-            raise
-        logger.error(
-            "notifications: un aviso falló al prepararse",
-            extra={"notification_id": str(notification_id), "error_type": type(error).__name__},
-        )
-        return await _mark_failed(sf, notification_id, expected_attempts, today, max_attempts)
+    """Un aviso de la pasada: todo ocurre dentro de su unidad bajo el candado de aviso, también la
+    omisión por canal apagado y el `failed` de un fallo de preparación (S9-D46). Solo un fallo
+    del custodio (sistémico) sube y hace fallar el job (M-4)."""
+    return await _process_one(
+        sf,
+        notification_id,
+        expected_attempts,
+        today,
+        max_attempts,
+        load_contact,
+        channel,
+        config,
+    )
 
 
 async def send_pending(
@@ -603,21 +694,27 @@ async def send_pending(
     sin_credenciales = config.email.enabled and not channel.configured
     conteos = {SENT: 0, FAILED: 0, SKIPPED: 0, UNTOUCHED: 0}
     inicio = monotonic()
-    # S5-D231: habilitado sin credenciales no es una omisión definitiva; esperan y se avisa.
-    for notification_id, expected_attempts in [] if sin_credenciales else ids[:max_per_run]:
-        if monotonic() - inicio >= soft_deadline_s:
-            break  # S5-D232: lo que falta sigue mañana; los intentos solo se gastan al enviar
-        resultado = await _handle(
-            session_factory,
-            notification_id,
-            expected_attempts,
-            today,
-            max_attempts,
-            load_contact,
-            channel,
-            config,
-        )
-        conteos[resultado] += 1
+    propias: set[asyncio.Future[str]] = set()
+    token = _PASS_UNITS.set(propias)
+    try:
+        # S5-D231: habilitado sin credenciales no es una omisión definitiva; esperan y se avisa.
+        for notification_id, expected_attempts in [] if sin_credenciales else ids[:max_per_run]:
+            if monotonic() - inicio >= soft_deadline_s:
+                break  # S5-D232: lo que falta sigue mañana; los intentos solo se gastan al enviar
+            resultado = await _handle(
+                session_factory,
+                notification_id,
+                expected_attempts,
+                today,
+                max_attempts,
+                load_contact,
+                channel,
+                config,
+            )
+            conteos[resultado] += 1
+    finally:
+        _PASS_UNITS.reset(token)
+        await drain_units(propias)  # cancelada (job, SIGTERM, `asyncio.run`): no soltar a medias
     return SendResult(
         enviados=conteos[SENT],
         fallidos=conteos[FAILED],

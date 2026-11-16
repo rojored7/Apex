@@ -34,7 +34,7 @@ from app.modules.notifications.schemas import SendResult
 from app.modules.notifications.sending import NOTIFY_MAX_ATTEMPTS, send_pending
 from app.modules.notifications.service import NotificationFailed, NotificationSent
 from tests.factories.notifications import make_rule
-from tests.notifications._apoyo_avisos import HOY, eventos_de
+from tests.notifications._apoyo_avisos import HOY, canales, eventos_de
 from tests.notifications._apoyo_envio import (
     CORREO,
     OK,
@@ -310,6 +310,8 @@ async def test_socio_sin_correo_queda_omitido_sin_correo_sin_llamar_al_canal(
 ) -> None:
     await habilitar_correo(fabrica)
     miembro = await socio_con_correo(fabrica, None)
+    async with fabrica() as sesion:  # correo activo en sus preferencias, pero sin correo guardado
+        await canales(sesion, miembro, email=True)
     aviso = await aviso_correo(fabrica, await regla_correo(fabrica), miembro)
     canal = CanalFalso()
 
@@ -812,11 +814,11 @@ async def test_canal_apagado_sigue_omitiendo_sin_marcar_credenciales(fabrica: Fa
     assert resultado.sin_credenciales is False and resultado.omitidos == 1
 
 
-def test_los_topes_por_corrida_son_500_avisos_y_480_segundos() -> None:
-    assert (sending.NOTIFY_MAX_PER_RUN, sending.NOTIFY_SOFT_DEADLINE_S) == (500, 480)
+def test_los_topes_por_corrida_son_500_avisos_y_420_segundos() -> None:
+    assert (sending.NOTIFY_MAX_PER_RUN, sending.NOTIFY_SOFT_DEADLINE_S) == (500, 420)
     parametros = inspect.signature(send_pending).parameters
     assert parametros["max_per_run"].default == 500
-    assert parametros["soft_deadline_s"].default == 480
+    assert parametros["soft_deadline_s"].default == 420
 
 
 async def test_el_plazo_blando_corta_el_lote_y_lo_restante_sigue_pendiente(

@@ -704,3 +704,8 @@ Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos
 - Rojo medido de las correcciones: 6 failed (4 en `tests/cli/test_derive_records.py`: sin tope con página chica, simulacro no alerta, bajas, conexión con conteos parciales; 2 en `tests/athletes/test_rederive_member.py`: sentencias constantes y un solo flush), 13 passed.
 - Verde: `test_derive_records.py` (18) + `test_rederive_member.py` (3) = 21 passed; ruff, format y mypy limpios. bd L7: el `ResultsProbe` ya bloquea principal, tipo, fecha y benchmark con resultados; sin cambio.
 - Verde completo (tests/cli tests/athletes tests/results tests/wods tests/core/test_env_example.py tests/architecture): 2603 passed, 33 skipped, 0 failed; ruff, format, mypy limpios.
+
+### Evidencia (S9-B6, tras el sello y el checkpoint 29d268e)
+- Sello: `slice-gate.sh athletes tests/cli/test_derive_records.py tests/core/test_env_example.py tests/athletes/test_rederive_member.py` verde; no sellante `cli` (+ `test_cli_base.py`): 1023 passed.
+- `$DC restart worker`: healthy.
+- `$DC exec -T api python -m app.cli derive-records --dry-run --as admin@ejemplo.local` (api de desarrollo con el código montado; la imagen `tools` no tiene el comando hasta el cierre de la wave): `socios 33, creados 32, ocupados 0, fallidos 0`, simulacro, exit 0. La corrida real es de V2.

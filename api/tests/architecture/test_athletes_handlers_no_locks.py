@@ -16,7 +16,9 @@ import ast
 from pathlib import Path
 
 DERIVE = Path(__file__).resolve().parents[2] / "src" / "app" / "modules" / "athletes" / "derive.py"
-HANDLERS_ESPERADOS: frozenset[str] = frozenset({"on_wod_result_validated"})
+HANDLERS_ESPERADOS: frozenset[str] = frozenset(
+    {"on_wod_result_validated", "on_wod_result_superseded", "on_wod_result_voided"}
+)
 LLAMADAS_PROHIBIDAS: frozenset[str] = frozenset(
     {"lock_member", "lock_membership", "with_for_update"}
 )

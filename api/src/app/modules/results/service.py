@@ -18,12 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes import service as classes_service
 from app.modules.results.attendance import session_attendance
-from app.modules.results.events import WodResultRecorded, WodResultValidated, WodResultVoided
+from app.modules.results.events import (
+    WodResultRecorded,
+    WodResultSuperseded,
+    WodResultValidated,
+    WodResultVoided,
+)
 from app.modules.results.leaderboard import score_key
 from app.modules.results.models import WodResult
 from app.modules.results.reads import (
+    MEMBER_MARKS_MAX,
     get_mark,
     leaderboard,
+    member_marks,
     member_results,
     public_leaderboard,
     result_sources,
@@ -93,14 +100,17 @@ list_wod_results = wod_results
 list_member_results = member_results
 
 __all__ = [
+    "MEMBER_MARKS_MAX",
     "ResultMark",
     "WodResultRecorded",
+    "WodResultSuperseded",
     "WodResultValidated",
     "WodResultVoided",
     "get_mark",
     "leaderboard",
     "list_member_results",
     "list_wod_results",
+    "member_marks",
     "public_leaderboard",
     "record_result",
     "result_sources",

@@ -70,3 +70,28 @@ class RecordValidationError(AthletesError):
     status = 422
     code = "validation_error"
     default_message = "Los datos del récord no son válidos."
+
+
+class RecordNotFound(AthletesError):
+    """El récord no existe o es de otro socio (S9-D13): 404 `record_not_found`."""
+
+    status = 404
+    code = "record_not_found"
+    default_message = "No se encontró el récord."
+
+
+class RecordIsDerived(AthletesError):
+    """Un récord derivado no se invalida a mano (S9-D13): 409 `record_is_derived`; se corrige
+    corrigiendo o anulando el resultado."""
+
+    status = 409
+    code = "record_is_derived"
+    default_message = "Ese récord viene de un resultado: corrige o anula el resultado."
+
+
+class RecordAlreadyInvalidated(AthletesError):
+    """El récord ya estaba invalidado (terminal; S9-D13, L-3): 409 `record_already_invalidated`."""
+
+    status = 409
+    code = "record_already_invalidated"
+    default_message = "El récord ya estaba invalidado."

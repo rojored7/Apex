@@ -14,6 +14,7 @@ Un récord no es dato de salud: no pide autorización de datos ni cifra nada.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -21,23 +22,44 @@ from datetime import date
 from typing import Any, Final, Literal
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Select, and_, literal_column, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    Select,
+    and_,
+    any_,
+    bindparam,
+    func,
+    literal_column,
+    or_,
+    select,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
 from app.core.clock import current_clock
+from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.modules.athletes.events import PersonalRecordSet
-from app.modules.athletes.exceptions import RecordDuplicate, RecordValidationError
+from app.modules.athletes.exceptions import (
+    RecordAlreadyInvalidated,
+    RecordDuplicate,
+    RecordIsDerived,
+    RecordNotFound,
+    RecordValidationError,
+)
 from app.modules.athletes.models import PersonalRecord
-from app.modules.athletes.rules import EARLIEST_MEASURED_ON, RecordRow, pick_current
+from app.modules.athletes.rules import EARLIEST_MEASURED_ON, RecordRow, can_void, pick_current
 from app.modules.athletes.schemas import RecordIn, RecordOut
 from app.modules.auth import service as auth_service
 from app.modules.members import service as members_service
 from app.modules.results import service as results_service
 from app.modules.results.exceptions import ResultValidationError
 from app.modules.wods import service as wods_service
+
+logger = logging.getLogger("app.athletes")
 
 VALUE_MIN_G: Final = 1
 VALUE_MAX_G: Final = 1_000_000
@@ -215,6 +237,25 @@ async def current_benchmark(
     `score_key` del tipo de marca. Lo usa el handler de derivación (B4)."""
     filas = await session.scalars(current_query(member_id, set(), {benchmark_id}))
     return pick_current([_row_of(f) for f in filas], score_type=score_type)
+
+
+async def result_ids_with_record(
+    session: AsyncSession, member_id: UUID, kind: str, result_ids: Sequence[UUID]
+) -> set[UUID]:
+    """Los resultados de esa lista que ya tienen un récord de ese `kind`, vivo o no (UNA consulta
+    por `uq_personal_records_result_kind`, sin candados): la reposición no los toca (un segundo
+    récord del mismo `(result_id, kind)` lo rechaza la base)."""
+    if not result_ids:
+        return set()
+    filas = await session.scalars(
+        select(PersonalRecord.result_id).where(
+            PersonalRecord.member_id == member_id,
+            PersonalRecord.kind == _KIND_SQL[kind],
+            PersonalRecord.result_id
+            == any_(bindparam("ids", list(set(result_ids)), type_=ARRAY(PG_UUID(as_uuid=True)))),
+        )
+    )
+    return {f for f in filas if f is not None}
 
 
 def _to_out(
@@ -423,3 +464,94 @@ async def _present(
             )
         )
     return salida
+
+
+async def _manual_to_invalidate(
+    session: AsyncSession, member_id: UUID, record_id: UUID, *, by: UUID, role: str
+) -> PersonalRecord:
+    """Candado del socio, socio vivo y el récord `FOR UPDATE`, con las reglas M-3, derivado y ya
+    invalidado en ese orden (S9-D13)."""
+    await lock_member(session, member_id)
+    await members_service.ensure_exists(session, member_id)
+    record = await session.scalar(
+        select(PersonalRecord)
+        .where(PersonalRecord.id == record_id, PersonalRecord.member_id == member_id)
+        .with_for_update(of=PersonalRecord)
+        .execution_options(populate_existing=True)
+    )
+    if record is None:
+        raise RecordNotFound()
+    permitido = can_void(
+        role=role,
+        caller=by,
+        recorded_by=record.created_by,
+        created_at=record.created_at,
+        now=current_clock().now_utc(),
+    )
+    if not permitido:
+        # M-3: el 403 no deja fila de auditoría; el aviso lleva usuario y récord, sin socio.
+        logger.warning(
+            "athletes: invalidación denegada",
+            extra={"user_id": str(by), "record_id": str(record.id)},
+        )
+        raise ForbiddenError()
+    if record.source != "manual":
+        raise RecordIsDerived()
+    if record.invalidated_at is not None:
+        raise RecordAlreadyInvalidated()
+    return record
+
+
+async def invalidate_manual_record(
+    session: AsyncSession, member_id: UUID, record_id: UUID, *, by: UUID, role: str
+) -> RecordOut:
+    """Invalida un récord MANUAL vivo (S9-B5, US-181; S9-D13, S9-D33; M-3, L-3). Sin cuerpo.
+
+    Orden: `lock_member`, socio vivo (404 `member_not_found`, S9-D14), el récord `FOR UPDATE`
+    releído con datos frescos y de ESE socio (404 `record_not_found`), la regla M-3 (`can_void` con
+    `created_by` y `created_at`: el coach solo lo suyo y en 24 h, 403 `forbidden`; el admin todo),
+    409 `record_is_derived` (un derivado se corrige corrigiendo o anulando el resultado) y 409
+    `record_already_invalidated`. Luego, por ORM (auditoría `update` con el actor), pone
+    `invalidated_reason = manual_error`, `invalidated_at` y `updated_at` con `clock_timestamp()`
+    (S9-D52) e `invalidated_by`, y repone el mejor con la misma regla que la derivación (S9-D11).
+    Devuelve el `RecordOut` invalidado. Sin evento nuevo ni texto libre."""
+    record = await _manual_to_invalidate(session, member_id, record_id, by=by, role=role)
+    ahora = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    record.invalidated_at = ahora
+    record.updated_at = ahora
+    record.invalidated_reason = "manual_error"
+    record.invalidated_by = by
+    await session.flush()
+    objetivo = _objective_of(record)
+    # Import perezoso: `derive` importa este módulo (`current_rm`, `current_benchmark`).
+    from app.modules.athletes import derive
+
+    await derive.restore_after_manual(
+        session,
+        member_id,
+        kind="rm" if objetivo.kind == "rm" else "benchmark",
+        target_id=objetivo.target_id,
+    )
+    logger.info("athletes: récord manual invalidado", extra={"record_id": str(record.id)})
+    return await _invalidated_out(session, record)
+
+
+async def _invalidated_out(session: AsyncSession, record: PersonalRecord) -> RecordOut:
+    """El `RecordOut` de un récord recién invalidado, con los nombres del catálogo y del autor."""
+    movimientos = await wods_service.movement_refs(
+        session, {record.movement_id} if record.movement_id else set()
+    )
+    benchmarks = await wods_service.benchmark_refs(
+        session, {record.benchmark_id} if record.benchmark_id else set()
+    )
+    movimiento = movimientos.get(record.movement_id) if record.movement_id else None
+    benchmark = benchmarks.get(record.benchmark_id) if record.benchmark_id else None
+    names = await auth_service.user_names_for(session, [record.created_by])
+    return _to_out(
+        record,
+        is_current=False,
+        movement_name=movimiento.name if movimiento else None,
+        benchmark_name=benchmark.name if benchmark else None,
+        score_type=benchmark.score_type if benchmark else None,
+        names=names,
+    )

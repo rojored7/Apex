@@ -27,6 +27,7 @@ from app.modules.wods.benchmarks import (
     update_benchmark,
 )
 from app.modules.wods.catalog import (
+    WOD_IDS_MAX,
     BenchmarkRef,
     MovementRef,
     WodRecordMeta,
@@ -43,6 +44,7 @@ from app.modules.wods.catalog import (
     titles_for,
     today_title,
     wod_date,
+    wod_ids_with_primary,
 )
 from app.modules.wods.events import WodPublished
 from app.modules.wods.movements import (
@@ -81,6 +83,7 @@ async def benchmark_for_record(session: AsyncSession, benchmark_id: UUID) -> Ben
 
 
 __all__ = [
+    "WOD_IDS_MAX",
     "BenchmarkRef",
     "MovementRef",
     "RecordsProbe",
@@ -121,4 +124,5 @@ __all__ = [
     "update_movement",
     "update_wod",
     "wod_date",
+    "wod_ids_with_primary",
 ]

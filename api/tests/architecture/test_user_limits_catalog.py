@@ -626,3 +626,24 @@ def test_los_records_consumen_athletes_write_al_escribir_y_staff_read_al_leer() 
             and isinstance(nodo.args[1], ast.Constant)
         ]
         assert literales == [cubeta], (metodo, literales)
+
+
+def test_invalidar_un_record_consume_athletes_write_antes_del_service() -> None:
+    """S9-B5 (S9-D13): `POST .../records/{record_id}/invalidate` llama `enforce_user_limit` con
+    `athletes-write` como literal, una sola vez, y antes de llamar al service."""
+    fuente = (MODULES / "athletes" / "router.py").read_text(encoding="utf-8")
+    ruta = f"{API_PREFIX}/athletes/{{member_id}}/records/{{record_id}}/invalidate"
+    funciones = [
+        f
+        for f in ast.walk(ast.parse(fuente))
+        if isinstance(f, ast.AsyncFunctionDef) and _ruta_de(f) == ("post", ruta)
+    ]
+    assert len(funciones) == 1, ruta
+    llamadas = [n for n in ast.walk(funciones[0]) if isinstance(n, ast.Call)]
+    limites = [n for n in llamadas if _nombre_llamado(n) == "enforce_user_limit"]
+    assert [n.args[1].value for n in limites if isinstance(n.args[1], ast.Constant)] == [
+        "athletes-write"
+    ]
+    services = [n for n in llamadas if _nombre_llamado(n) == "invalidate_manual_record"]
+    assert len(services) == 1
+    assert limites[0].lineno < services[0].lineno

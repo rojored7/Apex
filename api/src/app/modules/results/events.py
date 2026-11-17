@@ -37,3 +37,15 @@ class WodResultVoided(DomainEvent):
     result_id: UUID
     member_id: UUID
     wod_id: UUID
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WodResultSuperseded(DomainEvent):
+    """Una corrección reemplazó un resultado (S9-D7, S9-B5). Solo ids: se emite tras el `INSERT`
+    del nuevo y ANTES de `WodResultRecorded` y `WodResultValidated` (el récord del anterior se
+    invalida antes de que el nuevo derive)."""
+
+    old_result_id: UUID
+    new_result_id: UUID
+    member_id: UUID
+    wod_id: UUID

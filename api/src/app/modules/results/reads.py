@@ -16,9 +16,12 @@ Todas leen sin candados ni escrituras.
 from __future__ import annotations
 
 from collections.abc import Collection
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import any_, bindparam, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import Page, PageParams, paginate, to_page
@@ -39,6 +42,7 @@ from app.modules.wods import service as wods_service
 from app.modules.wods.exceptions import WodNotFound
 
 LEADERBOARD_MAX_ROWS = 1_000
+MEMBER_MARKS_MAX = 2_000  # S9-B5: tope de `member_marks` (las más recientes)
 
 
 async def _score_type(session: AsyncSession, wod_id: UUID) -> str:
@@ -238,34 +242,27 @@ async def member_results(
     return to_page(items, total, page)
 
 
-async def get_mark(session: AsyncSession, result_id: UUID) -> ResultMark | None:
-    """La marca de un resultado por id (S9-B3, S9-D6): UNA consulta por la clave primaria, sin
-    candados ni JOIN, como dato plano (no el ORM); `None` si no existe. NO filtra por socio:
-    quien la llame responde del alcance (riesgo del portal v1.0, donde un socio ve lo suyo)."""
-    fila = (
-        await session.execute(
-            select(
-                WodResult.id,
-                WodResult.member_id,
-                WodResult.wod_id,
-                WodResult.wod_date,
-                WodResult.benchmark_id,
-                WodResult.level,
-                WodResult.seconds,
-                WodResult.rounds,
-                WodResult.reps,
-                WodResult.load_g,
-                WodResult.capped,
-                WodResult.status,
-                WodResult.is_current,
-                WodResult.supersedes_id,
-                WodResult.validated_by,
-                WodResult.source,
-            ).where(WodResult.id == result_id)
-        )
-    ).one_or_none()
-    if fila is None:
-        return None
+_MARK_COLUMNS = (
+    WodResult.id,
+    WodResult.member_id,
+    WodResult.wod_id,
+    WodResult.wod_date,
+    WodResult.benchmark_id,
+    WodResult.level,
+    WodResult.seconds,
+    WodResult.rounds,
+    WodResult.reps,
+    WodResult.load_g,
+    WodResult.capped,
+    WodResult.status,
+    WodResult.is_current,
+    WodResult.supersedes_id,
+    WodResult.validated_by,
+    WodResult.source,
+)
+
+
+def _to_mark(fila: Any) -> ResultMark:
     return ResultMark(
         result_id=fila.id,
         member_id=fila.member_id,
@@ -286,6 +283,18 @@ async def get_mark(session: AsyncSession, result_id: UUID) -> ResultMark | None:
     )
 
 
+async def get_mark(session: AsyncSession, result_id: UUID) -> ResultMark | None:
+    """La marca de un resultado por id (S9-B3, S9-D6): UNA consulta por la clave primaria, sin
+    candados ni JOIN, como dato plano (no el ORM); `None` si no existe. NO filtra por socio:
+    quien la llame responde del alcance (riesgo del portal v1.0, donde un socio ve lo suyo)."""
+    fila = (
+        await session.execute(select(*_MARK_COLUMNS).where(WodResult.id == result_id))
+    ).one_or_none()
+    if fila is None:
+        return None
+    return _to_mark(fila)
+
+
 async def result_sources(session: AsyncSession, result_ids: Collection[UUID]) -> dict[UUID, str]:
     """El origen (`desk|kiosk`) de varios resultados, en UNA consulta por lote (S9-B3, L-4): lo que
     `athletes` muestra como «Automático (tablet)». Los ids que no existen faltan. NO filtra por
@@ -296,3 +305,47 @@ async def result_sources(session: AsyncSession, result_ids: Collection[UUID]) ->
         select(WodResult.id, WodResult.source).where(WodResult.id.in_(set(result_ids)))
     )
     return {f.id: f.source for f in filas}
+
+
+async def member_marks(
+    session: AsyncSession,
+    member_id: UUID,
+    *,
+    benchmark_id: UUID | None = None,
+    wod_ids: Collection[UUID] | None = None,
+    only_benchmarks: bool = False,
+    only_load: bool = False,
+    limit: int = MEMBER_MARKS_MAX,
+) -> list[ResultMark]:
+    """Las marcas VIGENTES y VALIDADAS del socio como dato plano (S9-B5, S9-D11, S9-D30).
+
+    Contrato (lo fija el Rojo; el Verde lo implementa con UNA consulta por
+    `ix_wod_results_member_date`): filtros `benchmark_id`, `wod_ids` (colección vacía da `[]`;
+    `None` no filtra), `only_benchmarks` (`benchmark_id IS NOT NULL`) y `only_load`
+    (`load_g IS NOT NULL`); con `limit` devuelve las `limit` MÁS RECIENTES, pero en orden
+    ascendente por `wod_date`, `created_at` e `id`. Sin candados ni escrituras;
+    no filtra por socio activo (un socio dado de baja también se lee).
+    """
+    if wod_ids is not None and not wod_ids:
+        return []
+    consulta = select(*_MARK_COLUMNS).where(
+        WodResult.member_id == member_id,
+        WodResult.is_current,
+        WodResult.status == "validated",
+    )
+    if benchmark_id is not None:
+        consulta = consulta.where(WodResult.benchmark_id == benchmark_id)
+    if only_benchmarks:
+        consulta = consulta.where(WodResult.benchmark_id.is_not(None))
+    if only_load:
+        consulta = consulta.where(WodResult.load_g.is_not(None))
+    if wod_ids is not None:
+        # Un solo parámetro de arreglo (S9-B5, revisión): `IN` expandía uno por id.
+        ids = bindparam("wod_ids", list(set(wod_ids)), type_=ARRAY(PG_UUID(as_uuid=True)))
+        consulta = consulta.where(WodResult.wod_id == any_(ids))
+    filas = await session.execute(
+        consulta.order_by(
+            WodResult.wod_date.desc(), WodResult.created_at.desc(), WodResult.id.desc()
+        ).limit(max(1, min(limit, MEMBER_MARKS_MAX)))
+    )
+    return [_to_mark(f) for f in reversed(filas.all())]

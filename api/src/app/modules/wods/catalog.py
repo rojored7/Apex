@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -220,3 +221,24 @@ async def record_meta_for(
         )
         for f in filas
     }
+
+
+WOD_IDS_MAX: Final = 2_000  # S9-B5 (revisión): tope de `wod_ids_with_primary`
+
+
+async def wod_ids_with_primary(session: AsyncSession, movement_id: UUID) -> frozenset[UUID]:
+    """Los ids de los WODs de tipo `load` que tienen ese movimiento como PRINCIPAL (S9-B5, S9-D11,
+    S9-D30): el filtro en SQL de `_restore_best` para un RM. UNA consulta por `wod_movements`, sin
+    candados; un movimiento sin WODs da el conjunto vacío."""
+    filas = await session.scalars(
+        select(WodMovement.wod_id)
+        .join(Wod, Wod.id == WodMovement.wod_id)
+        .where(
+            WodMovement.movement_id == movement_id,
+            WodMovement.is_primary,
+            Wod.score_type == "load",
+        )
+        .order_by(Wod.date.desc())
+        .limit(WOD_IDS_MAX)
+    )
+    return frozenset(filas)

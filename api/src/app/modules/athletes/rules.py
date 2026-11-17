@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 from uuid import UUID
 
 from app.modules.athletes.exceptions import MetricValidationError
@@ -356,3 +356,58 @@ def derive_benchmark(
         result_id=mark.result_id,
         wod_id=mark.wod_id,
     )
+
+
+# S9-B5 (US-181, S9-D11): la reposición del mejor tras invalidar ---------------------------------
+
+
+def best_candidate(
+    candidates: Sequence[ResultMark],
+    *,
+    kind: Literal["rm", "benchmark"],
+    score_type: str | None,
+    current: RecordRow | None,
+) -> ResultMark | None:
+    """La marca que debe reponerse como récord, o `None` (S9-D11; pura, sin ORM).
+
+    `candidates` son marcas vigentes y validadas del MISMO objetivo SIN récord vivo (el filtro lo
+    hace quien llama). Contrato:
+    - `kind="rm"`: elegibles las que no son `scaled` y traen `load_g` mayor que 0; gana el mayor
+      `load_g`; vuelve solo si es ESTRICTAMENTE mayor que `current.value_g` (o sin vigente).
+    - `kind="benchmark"` (`score_type` obligatorio: `ValueError` si falta): elegibles las que traen
+      el campo de su tipo (la regla de `derive_benchmark`); gana la de menor `score_key`; vuelve
+      solo si es ESTRICTAMENTE mejor que la del vigente.
+    - Empate entre candidatas: la de `wod_date` más antigua y, luego, el `result_id` menor (N-45).
+    - Sin candidatas elegibles: `None`. No muta la entrada.
+    """
+    if kind == "rm":
+        elegibles = [
+            m for m in candidates if m.level != "scaled" and m.load_g is not None and m.load_g > 0
+        ]
+        if not elegibles:
+            return None
+        mejor = min(elegibles, key=lambda m: (-(m.load_g or 0), m.wod_date, m.result_id))
+        if current is not None and (mejor.load_g or 0) <= (current.value_g or 0):
+            return None
+        return mejor
+    if score_type is None:
+        raise ValueError("score_type es obligatorio con kind benchmark")
+    if score_type not in _BENCHMARK_FIELDS:
+        return None
+    clave = score_key(score_type)
+    elegibles = [m for m in candidates if _has_score(m, score_type)]
+    if not elegibles:
+        return None
+    mejor = min(elegibles, key=lambda m: (clave(m), m.wod_date, m.result_id))
+    if current is not None:
+        vigente = _Score(
+            current.level or "rx",
+            current.seconds,
+            current.rounds,
+            current.reps,
+            current.load_g,
+            current.capped,
+        )
+        if not clave(mejor) < clave(vigente):
+            return None
+    return mejor

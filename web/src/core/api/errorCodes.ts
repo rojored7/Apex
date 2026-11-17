@@ -41,6 +41,10 @@ export const API_ERROR_CODES = {
   consentRequired: "consent_required",
   // S9-B1 (L1): el mismo récord manual dos veces (409; athletes/exceptions.py).
   recordDuplicate: "record_duplicate",
+  // S9-B5 (S9-D13): invalidar un récord manual (athletes/exceptions.py).
+  recordNotFound: "record_not_found",
+  recordIsDerived: "record_is_derived",
+  recordAlreadyInvalidated: "record_already_invalidated",
   // socios y planes
   memberDocumentDuplicated: "member_document_duplicated",
   memberNotFound: "member_not_found",

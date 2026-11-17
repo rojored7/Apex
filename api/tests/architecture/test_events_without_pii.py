@@ -305,3 +305,24 @@ def test_personal_record_set_solo_lleva_ids_codigos_cerrados_y_fecha() -> None:
     assert violaciones(evento) == []
     assert evento in eventos_de_la_app()
     assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]
+
+
+# S9-B5 (S9-D7): el evento de una corrección ---------------------------------------------------
+
+
+def test_wod_result_superseded_solo_lleva_ids() -> None:
+    """Sin marcas, nombres ni motivo: `old_result_id`, `new_result_id`, `member_id` y `wod_id`; se
+    exporta desde `results.service` y es de la app (el bus lo conoce)."""
+    from app.modules.results import service as results_service
+
+    evento = results_service.WodResultSuperseded
+    campos = {campo.name for campo in dataclasses.fields(evento)}
+    assert campos == {"occurred_at", "old_result_id", "new_result_id", "member_id", "wod_id"}
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+    assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]
+    assert "__slots__" in vars(evento)
+    tipos = typing.get_type_hints(evento)
+    from uuid import UUID
+
+    assert all(tipos[c] is UUID for c in campos - {"occurred_at"})

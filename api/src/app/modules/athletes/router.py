@@ -130,6 +130,21 @@ async def add_record(
     return await service.add_record(session, member_id, body, by=principal.user_id)
 
 
+@router.post(
+    "/athletes/{member_id}/records/{record_id}/invalidate",
+    response_model=RecordOut,
+    responses=responses_for(403, 404, 409, 422, 429),
+)
+async def invalidate_record(
+    request: Request, member_id: UUID, record_id: UUID, principal: StaffDep, session: Session
+) -> RecordOut:
+    """S9-B5 (S9-D13, S9-D33): invalida un récord manual; el coach solo lo suyo y en 24 h."""
+    await enforce_user_limit(request, "athletes-write", principal.user_id)
+    return await service.invalidate_manual_record(
+        session, member_id, record_id, by=principal.user_id, role=principal.role
+    )
+
+
 @router.get(
     "/athletes/{member_id}/records",
     response_model=Page[RecordOut],

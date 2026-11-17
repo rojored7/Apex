@@ -36,7 +36,11 @@ from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.modules.classes import service as classes_service
 from app.modules.members import service as members_service
-from app.modules.results.events import WodResultRecorded, WodResultValidated
+from app.modules.results.events import (
+    WodResultRecorded,
+    WodResultSuperseded,
+    WodResultValidated,
+)
 from app.modules.results.exceptions import (
     InvalidSupersedes,
     ResultExists,
@@ -192,6 +196,16 @@ async def record_result(
     await _turn_off_previous(session, data, source)
     fila = _new_row(data, wod, score, by=by, source=source)
     await _insert(session, fila)
+    if data.supersedes_id is not None:
+        # S9-D7: el récord del anterior se invalida ANTES de que el nuevo derive (Recorded y
+        # Validated vienen después). Solo ids.
+        superseded = WodResultSuperseded(
+            old_result_id=data.supersedes_id,
+            new_result_id=fila.id,
+            member_id=fila.member_id,
+            wod_id=fila.wod_id,
+        )
+        await events.emit(superseded, session)
     recorded = WodResultRecorded(
         result_id=fila.id,
         member_id=fila.member_id,

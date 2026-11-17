@@ -635,3 +635,7 @@ Rojo medido: **14 failed, 42 passed** en `test_derive_benchmark_pure.py`, `test_
 - LOW-7: docstring de `derive.py` al día (tres tramos, `current_benchmark`, S9-D59). Condición para EP-25 anotada en S9-D59 (`_guarded` traga un `DomainError` de un suscriptor de `PersonalRecordSet`).
 
 Verde tras las revisiones: `tests/athletes tests/results tests/wods tests/architecture tests/core/test_alerts.py` = **1790 passed** (3 perf deseleccionados); ruff, format y mypy limpios. Sin cambio de contrato.
+
+### Evidencia (S9-B4, tras el sello y el checkpoint d4af13f)
+
+Sello de `athletes` (gate: 987 passed, exit 0) y checkpoint `d4af13f`. Worker reiniciado (`apex-worker-1` healthy). En desarrollo ya existía un WOD con benchmark utilizable (`372d44af-...`, 2026-11-15, `time`, cap 600, con `benchmark_id`); no se creó ningún dato nuevo salvo el resultado. Login admin 200 (token de 334 caracteres, sin mostrarlo). `PUT /results` del socio ficticio `27c8e28b-...`, rx, 245 s = **201**. `$PSQL` de `athletes.personal_records` del socio, `kind = benchmark`: `source=derived, seconds=245, level=rx, capped=f, result_id presente=t, vivo=t`.

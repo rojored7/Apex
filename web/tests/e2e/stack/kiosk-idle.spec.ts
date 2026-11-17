@@ -52,10 +52,10 @@ async function entrarAlQuiosco(page: Page, p: Preparado): Promise<void> {
   await expect(page.getByRole("link")).toHaveCount(0);
 }
 
-async function limpiar(page: Page, p: Preparado): Promise<void> {
-  await borrarUsuario(page, p.coach.id);
+/** Cancela la clase del caso (las sesiones no se borran). El coach se borra aparte, en el `finally` de cada caso. */
+async function cancelarClase(page: Page, sesionId: string): Promise<void> {
   const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
-  await page.request.post(`${API}/class-sessions/${p.sesionId}/cancel`, { headers, data: { reason: "limpieza E2E" } });
+  await page.request.post(`${API}/class-sessions/${sesionId}/cancel`, { headers, data: { reason: "limpieza E2E" } });
 }
 
 test.describe("cierre del modo tablet por inactividad contra el stack", () => {
@@ -95,7 +95,8 @@ test.describe("cierre del modo tablet por inactividad contra el stack", () => {
       const marca = await page.request.post(`${API}/auth/kiosk`, { headers, data: { path: `/clases/${p.sesionId}/checkin` } });
       expect(marca.status()).toBe(401);
     } finally {
-      await limpiar(page, p);
+      await borrarUsuario(page, p.coach.id);
+      await cancelarClase(page, p.sesionId);
     }
   });
 
@@ -131,7 +132,8 @@ test.describe("cierre del modo tablet por inactividad contra el stack", () => {
       expect((await logout).status()).toBe(204);
       await expect(page).toHaveURL(/\/login/);
     } finally {
-      await limpiar(page, p);
+      await borrarUsuario(page, p.coach.id);
+      await cancelarClase(page, p.sesionId);
     }
   });
 });

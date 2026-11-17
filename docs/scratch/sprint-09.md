@@ -599,3 +599,7 @@ Rojo medido (`tests/athletes/test_derive_review_b3.py`, 12 pruebas, antes del ar
 - LOW 6: `validated_by` nulo deja `logger.warning` con ids.
 - LOW 7: `EXPLAIN EXECUTE` genérico con `enable_seqscan = off`: `current_rm` usa `ix_personal_records_rm`; `record_meta_for` usa `uq_wod_movements_primary`; sin Seq Scan.
 Nota: un `except A, B:` sin paréntesis es sintaxis de 3.14; el proyecto es 3.12, se usó la tupla.
+
+### Evidencia (S9-B3, tras el sello y el checkpoint 09a4134)
+
+Worker reiniciado (`apex-worker-1` healthy a los 25 s). No había WOD `load` con principal en desarrollo: creé por la API, con el admin, un movimiento ficticio «Back Squat ficticio S9B3» (kg, `POST /movements` 201) y un WOD ficticio del 2026-11-14 de tipo `load` con ese principal (`POST /wods` 201). Login 200. `PUT /results` (socio ficticio `27c8e28b-...`, rx, 100000 g) = **201**. `$PSQL` de `athletes.personal_records` del socio: `kind=rm, source=derived, value_g=100000, result_id presente = t` (coincide con el id devuelto por el PUT); la otra fila, `manual 123000` (ya existía), queda como vigente por ser mayor (N-45).

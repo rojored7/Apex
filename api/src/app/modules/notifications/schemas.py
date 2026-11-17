@@ -156,6 +156,7 @@ class NotificationOut(BaseModel):
     rule_id: UUID
     member_id: UUID
     member_name: str
+    can_whatsapp: bool
     membership_id: UUID
     target_date: date
     channel: Channel

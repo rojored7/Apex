@@ -35,6 +35,8 @@ export const API_ERROR_CODES = {
   sectionNotAvailable: "section_not_available",
   // avisos (S8-V5b): abrir WhatsApp de un socio sin teléfono (422)
   memberWithoutPhone: "member_without_phone",
+  // S9-X1 (L4): teléfono que no es un celular (p. ej. un fijo con indicativo) aunque can_whatsapp sea true (422).
+  invalidPhone: "invalid_phone",
   // S9-D45: omitir un aviso que una pasada del job está enviando (409).
   notificationInFlight: "notification_in_flight",
   // S9-D29: registrar medidas de un socio sin autorización de datos (409; athletes/exceptions.py).

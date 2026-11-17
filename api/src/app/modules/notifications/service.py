@@ -21,6 +21,7 @@ from datetime import date
 from typing import Final
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -29,9 +30,10 @@ from app.core import events
 from app.core.clock import current_clock
 from app.core.config import Settings, get_settings
 from app.core.context import get_actor
+from app.core.pagination import Page, PageParams
 from app.modules.members import service as members_service
 from app.modules.members.service import Contact
-from app.modules.notifications import sending
+from app.modules.notifications import queries, sending
 from app.modules.notifications.channels.base import NotificationChannel
 from app.modules.notifications.channels.email import EmailChannel
 from app.modules.notifications.events import (
@@ -56,8 +58,7 @@ from app.modules.notifications.models import (
     NotificationRule,
     NotificationTemplate,
 )
-from app.modules.notifications.queries import get, list_for_member, today_count, today_list
-from app.modules.notifications.queries import list_ as list
+from app.modules.notifications.queries import today_count
 from app.modules.notifications.rules import (
     DEFAULT_CHANNEL,
     DEFAULT_RULES,
@@ -70,7 +71,13 @@ from app.modules.notifications.rules_crud import (
     list_rules,
     update_rule,
 )
-from app.modules.notifications.schemas import NotificationOut, SeedResult, SendResult, WaLinkOut
+from app.modules.notifications.schemas import (
+    NotificationFilters,
+    NotificationOut,
+    SeedResult,
+    SendResult,
+    WaLinkOut,
+)
 from app.modules.notifications.sending import NOTIFY_MAX_ATTEMPTS
 from app.modules.notifications.templates import (
     create_template,
@@ -214,6 +221,53 @@ async def wa_link(session: AsyncSession, notification_id: UUID, by: UUID) -> WaL
         )
     await session.commit()
     return WaLinkOut(url=url)
+
+
+async def _whatsapp_enabled(session: AsyncSession) -> bool:
+    """`channels.whatsapp.enabled`, leído UNA vez por página con la lectura de `wa_link`.
+
+    Para las LISTAS falla cerrado (S9-X1, revisión M1): una sección guardada que ya no valida da
+    `False` y un aviso sin datos, nunca un 500 (en `skip` deshacería la omisión). `wa_link` sigue
+    estricta."""
+    try:
+        return (await _whatsapp_config(session)).enabled
+    except (ValidationError, TypeError):
+        logger.warning("notifications: la sección channels guardada no valida")
+        return False
+
+
+async def get(session: AsyncSession, notification_id: UUID) -> NotificationOut:
+    """Un aviso con `can_whatsapp` (S9-X1)."""
+    return await queries.get(
+        session, notification_id, whatsapp_enabled=await _whatsapp_enabled(session)
+    )
+
+
+async def list(
+    session: AsyncSession, filters: NotificationFilters, page: PageParams
+) -> Page[NotificationOut]:
+    """El historial con `can_whatsapp` (S9-X1)."""
+    return await queries.list_(
+        session, filters, page, whatsapp_enabled=await _whatsapp_enabled(session)
+    )
+
+
+async def today_list(
+    session: AsyncSession, today: date, page: PageParams, q: str | None = None
+) -> Page[NotificationOut]:
+    """«Por avisar hoy» con `can_whatsapp` (S9-X1)."""
+    return await queries.today_list(
+        session, today, page, q, whatsapp_enabled=await _whatsapp_enabled(session)
+    )
+
+
+async def list_for_member(
+    session: AsyncSession, member_id: UUID, page: PageParams
+) -> Page[NotificationOut]:
+    """La pestaña de avisos del socio con `can_whatsapp` (S9-X1)."""
+    return await queries.list_for_member(
+        session, member_id, page, whatsapp_enabled=await _whatsapp_enabled(session)
+    )
 
 
 async def _whatsapp_config(session: AsyncSession) -> WhatsappChannel:

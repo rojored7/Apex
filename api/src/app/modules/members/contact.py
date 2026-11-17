@@ -26,6 +26,7 @@ from sqlalchemy.orm import load_only
 
 from app.core import audit
 from app.core.crypto.errors import CryptoError
+from app.core.pagination import any_uuids
 from app.modules.members.detail import MEMBERS_TABLE, _decrypt_fields
 from app.modules.members.exceptions import (
     InvalidField,
@@ -34,6 +35,7 @@ from app.modules.members.exceptions import (
     MemberNotContactable,
 )
 from app.modules.members.models import Member
+from app.modules.members.rules import CONSENT_MISSING_CONDITION
 
 ContactPurpose = Literal["notify", "auth_link"]
 CONTACT_PURPOSES: Final[frozenset[str]] = frozenset({"notify", "auth_link"})
@@ -172,3 +174,21 @@ async def _load_member_for_contact(session: AsyncSession, member_id: UUID) -> Me
 def _texto(claro: object) -> str | None:
     """El claro de un campo de texto como `str`; un campo vacío da `None`."""
     return None if claro is None else str(claro)
+
+
+async def whatsapp_ready(session: AsyncSession, ids: Collection[UUID]) -> dict[UUID, bool]:
+    """S9-X1 (S9-D22): de `ids`, quién puede recibir un enlace de WhatsApp (vivo, con autorización
+    de datos y con teléfono), en UNA consulta y sin descifrar: ni `reveal` ni `crypto_ops`.
+    Un id inexistente es falso; con `ids` vacío no consulta. No registra ids. El llamador pasa una
+    página (máximo 200 ids, `ID_BATCH`), no una lista sin tope."""
+    pedidos = set(ids)
+    if not pedidos:
+        return {}
+    consulta = select(Member.id).where(
+        Member.id == any_uuids(pedidos),
+        Member.deleted_at.is_(None),
+        ~CONSENT_MISSING_CONDITION,
+        Member.phone.is_not(None),
+    )
+    listos = set((await session.scalars(consulta)).all())
+    return {i: i in listos for i in pedidos}

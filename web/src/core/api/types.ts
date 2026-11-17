@@ -3774,6 +3774,8 @@ export interface components {
         NotificationOut: {
             /** Attempts */
             attempts: number;
+            /** Can Whatsapp */
+            can_whatsapp: boolean;
             /**
              * Channel
              * @enum {string}

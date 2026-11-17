@@ -27,6 +27,7 @@ export const notificationRowSchema = z
     sent_at: z.string().nullable(),
     sent_by: z.string().nullable(),
     skip_reason: z.string().nullable(),
+    can_whatsapp: z.boolean(),
     created_at: z.string(),
     updated_at: z.string(),
   })

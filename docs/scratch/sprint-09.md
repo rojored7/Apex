@@ -770,3 +770,48 @@ Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos
   - `PATCH /movements/{id}` con `unit` sobre el Back Squat del socio: 422 `validation_error` en `unit`, porque ese movimiento lo usa un WOD y esa regla (A4, M-1) va antes. Para probar S9-B2 se creó el movimiento ficticio «Front Squat ficticio S9W3b» sin WOD: récord manual 201; `PATCH unit` 422 `locked_by_records` con `field unit`; `PATCH name` 200; tras invalidar el récord, `PATCH unit` 200.
   - Datos de prueba que quedan (sin DELETE por diseño): el movimiento «Front Squat ficticio S9W3b bis» (unidad `reps`), dos récords manuales invalidados y una medida anulada.
 - Worktree `gates` revisado antes de borrarlo: HEAD `0d80959` (ya en la rama), sin cambios, sin stash, ignorados solo cachés, `.venv`, `node_modules`, cobertura, `dist` y un `.env` igual a `.env.example`. Se borró.
+
+## S9-X1 · can_whatsapp (2026-11-17)
+
+### Rojo
+- Stubs: `members/contact.py::whatsapp_ready` (NotImplementedError) y reexport en `members/service.py`; `NotificationOut.can_whatsapp: bool = False`; `notifications/queries.py` lo excluye del armado por `getattr`.
+- `api/tests/members/test_whatsapp_ready.py`: 8 pruebas, 8 failed (NotImplementedError del stub).
+- `api/tests/notifications/test_can_whatsapp.py`: 21 pruebas (7 por condicion, 6 coherencia con wa_link, 4 lecturas, skip, una llamada por pagina); 6 failed (can_whatsapp queda False donde debe ser True; el espia de `whatsapp_ready` no ve llamadas); 15 pasan por el valor por defecto False y por los errores reales de wa_link (esperado en el Rojo).
+- `web/src/features/notifications/components/WaButton.test.tsx`: +4 pruebas, 3 failed (WaButton aun no recibe `canWhatsapp`/`memberId`: sin «Sin teléfono», sin enlace a la ficha, el clic llama al api); 1 pasa (409 con canWhatsapp verdadero). Props fijadas por el Rojo: `memberId`, `canWhatsapp`.
+- Verdes que siguen: `tests/architecture` + test_wa_link + test_today_and_skip + test_history_and_member_tab = 994 passed; WaButton previo 12/12.
+
+### Verde
+- `members/contact.py::whatsapp_ready`: una consulta (`id = ANY`, `deleted_at IS NULL`, `NOT CONSENT_MISSING_CONDITION`, `phone IS NOT NULL`), sin descifrar; vacío no consulta; id inexistente = falso.
+- `notifications/service.py`: `get`, `list`, `today_list`, `list_for_member` son envoltorios que leen `channels.whatsapp.enabled` UNA vez (`_whatsapp_enabled` sobre `_whatsapp_config`, la lectura de `wa_link`) y la pasan a `queries` como `whatsapp_enabled`. `skip` devuelve `get` (siempre falso: omitido). `queries._outputs` hace UNA llamada a `whatsapp_ready` solo con los avisos no omitidos, canal `whatsapp_link` y canal habilitado. `queries` no importa `service`. `today_count` usa `queries` directo (sin `can_whatsapp`, solo cuenta).
+- `NotificationOut.can_whatsapp: bool` sin valor por defecto (nadie más construye `NotificationOut`).
+- Pruebas: rojo 8+6 failed -> verde 27/27; +2 pruebas de endurecimiento (página mezclada con cada caso falso rompiendo UNA condición; canal apagado). Las 15 que pasaban por defecto ya tenían las otras cuatro condiciones cumplidas (`_escenario`). `CAMPOS_AVISO` suma `can_whatsapp` (3 pruebas de router actualizadas).
+- Gates (no sellantes): members 930 passed exit 0; notifications 951 passed exit 0. Completos `tests/notifications tests/members tests/architecture`: 2355 passed, 3 failed por `CAMPOS_AVISO` (corregido; test_router_notifications 55 passed). ruff y mypy src limpios.
+- P-API: `export-openapi` x2 idéntico (sha 1dc1f62c...), +5 líneas en `docs/openapi.json` (`can_whatsapp` requerido); `gen:api` +2 líneas en `types.ts`; `types.contract.test.ts` 6/6. `tsc --noEmit` falla solo por front: `notificationRowSchema` (features/notifications/schemas.ts) sin `can_whatsapp` (types.contract.test.ts:79,82) y `WaButton` sin `memberId`/`canWhatsapp` (WaButton.test.tsx). Del Verde del front.
+
+### Verde del front
+- Archivos (web/): features/notifications/schemas.ts (can_whatsapp), components/WaButton.tsx y .module.css (memberId, canWhatsapp; deshabilitado con "Sin teléfono" y enlace a /socios/:id), components/TodayRow.tsx (único uso de WaButton), noticeErrors.ts (422 invalid_phone y 503 crypto_unavailable con mensaje fijo), core/api/errorCodes.ts (invalidPhone), test/notifications.tsx (fixture can_whatsapp), WaButton.test.tsx y TodayPage.test.tsx (mensaje de invalid_phone).
+- Rojo previo: tsc fallaba en types.contract.test.ts y WaButton.test.tsx; 3 pruebas en rojo de WaButton.
+- Verde: tsc limpio, lint limpio, vitest notifications + core/api 18 archivos, 464 pruebas en verde (incluye +1: 503 crypto_unavailable). slice-gate web/notifications WaButton.test.tsx: verde, 17 pruebas.
+
+### Revisión del front (S9-D65)
+Rojo medido antes del código: 5 failed (4 en `WaButton.test.tsx`, 1 en `TodayPage.test.tsx`) de 471; la prueba de `api.test.ts` ya pasaba (el esquema estricto lo cubría) y queda como guarda. Verde: 18 archivos, 471 pruebas; `tsc` y `lint` limpios; `slice-gate.sh web/notifications WaButton.test.tsx` exit 0.
+- HIGH: «Sin teléfono» falso en 4 de 5 condiciones -> «No se puede abrir WhatsApp» + enlace «Revisar la ficha» (WaButton.tsx).
+- M2: `actualizar.md` (sección v0.6) dice que api y web se despliegan juntos y que hay que recargar; esquema sin relajar.
+- M3: enlace con `aria-label` «Revisar la ficha de <nombre>». M4: `memberId` y `canWhatsapp` requeridos; `mount()` actualizado.
+- M5: pruebas nuevas: fila bloqueada en `TodayPage`, fila sin `can_whatsapp` rechazada en `api.test.ts`, `axe` (claro y oscuro) y descripción accesible del bloqueado, y 422 `invalid_phone` con `can_whatsapp` verdadero.
+- LOW: `.reasonLink` con `min-height` de 48 px y `:focus-visible` (tokens); fixtures con `can_whatsapp` falso en correo y en el `skipped` del historial; error previo oculto cuando la fila queda bloqueada (derivado en el render, el lint prohíbe setState en efecto); comentarios de `noticeErrors.ts` y `WaButton.tsx` corregidos.
+
+### Revisiones (security-reviewer: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 5 LOW)
+Rojo medido: `tests/notifications/test_can_whatsapp_review.py` 15 pruebas, 2 failed (M1, ValidationError) y 13 passed (L2, L3, L4, L6 fijan comportamiento ya correcto); luego 15/15.
+- **M1:** `_whatsapp_enabled` (listas) captura `ValidationError` y `TypeError`, avisa sin datos y devuelve `False`; `wa_link` sigue estricto con `_whatsapp_config`. Pruebas: sección `channels` inválida da 200 y `can_whatsapp=False` en las cuatro lecturas HTTP y `skip` queda guardado.
+- **L2:** `sent` y `failed` (parametrizada): `can_whatsapp` verdadero y `wa_link` responde 200.
+- **L3:** `list`, `get` y `today_list` no suman filas en `crypto_ops` ni `audit_log`; control positivo con `wa_link`.
+- **L4 (caso ACEPTADO, S9-D36 L-5):** un fijo (`(601) 234 5678` o `123 4567`) da `can_whatsapp=True` y `wa_link` responde 422 `invalid_phone`; validar el formato exigiría descifrar. El manejo del 422 en el front es del Verde del front.
+- **L5:** el docstring de `members/contact.py::whatsapp_ready` dice que el llamador pasa una página (máximo 200 ids).
+- **L6:** coherencia por HTTP, `POST /notifications/{id}/wa-link` con los seis casos falsos (409 `notification_closed`, `wrong_channel`, `channel_disabled`; `member_not_contactable` x2 por autorización y baja; 422 `member_without_phone`) y 200 con verdadero; `skip` por HTTP devuelve `can_whatsapp=false`.
+- Gates: members exit 0, notifications exit 0; completa `tests/notifications tests/members tests/architecture`: 2373 passed (a la primera). ruff y mypy limpios. `docs/openapi.json` sin cambios (sin P-API nueva).
+- Ajuste del orquestador a L6: `member_not_contactable` hereda 400 de `MemberError`, y `POST /notifications/{id}/wa-link` lo declara (`responses_for(400, ...)`). Los dos casos (sin autorización y baja) fijan ahora `400` y la prueba compara el status siempre; `test_can_whatsapp_review.py` da 15 passed.
+- Decisión S9-D65: el botón bloqueado dice «No se puede abrir WhatsApp», con el enlace «Revisar la ficha»; el api no devuelve el motivo.
+
+### Sello
+- Gates no sellantes: `slice-gate.sh web/notifications src/features/notifications/components/WaButton.test.tsx` y `slice-gate.sh members tests/members/test_whatsapp_ready.py`. Sello: `slice-gate.sh notifications tests/notifications/test_can_whatsapp.py tests/notifications/test_can_whatsapp_review.py tests/members/test_whatsapp_ready.py` (exit codes en la evidencia).

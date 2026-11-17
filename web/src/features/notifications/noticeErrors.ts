@@ -1,8 +1,8 @@
 // S5-F1: errores del api de avisos en palabras de la pantalla ("qué pasó y qué hacer").
 // - todayError: la lista (403, 429 con la espera, 5xx, red, respuesta inválida).
-// - waLinkMessage: abrir WhatsApp. Los 400, 404, 409 y 422 (`invalid_phone`, `member_without_phone`,
-//   `wrong_channel`, `notification_closed`) traen su mensaje en español desde el api y se muestran
-//   tal cual; el 429 le suma la espera.
+// - waLinkMessage: abrir WhatsApp. `member_without_phone`, `invalid_phone` y `crypto_unavailable` llevan
+//   texto fijo de aquí; el resto de los 400, 404, 409 y 422 (`wrong_channel`, `notification_closed`) trae
+//   su mensaje en español desde el api y se muestra tal cual; el 429 le suma la espera.
 // - skipError: omitir; 409 y 404 (el aviso ya no está pendiente), 422 bajo el campo, 429 con la espera.
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
@@ -19,6 +19,8 @@ export const WA_MESSAGES = {
   forbidden: "No tienes permiso para abrir WhatsApp. Si lo necesitas, pídeselo a un administrador.",
   tooMany: "Hiciste muchas aperturas seguidas.",
   failed: "No pudimos abrir WhatsApp. Intenta de nuevo en un momento.",
+  invalidPhone: "El teléfono de este socio no es un celular válido para WhatsApp. Corrígelo en su ficha o omite el aviso.",
+  cryptoUnavailable: "No pudimos leer el teléfono del socio por ahora. Intenta de nuevo en unos segundos.",
   withoutPhone: "Este socio no tiene teléfono registrado. Agrégalo en su ficha o omite el aviso.",
 } as const;
 
@@ -47,6 +49,8 @@ export function waLinkMessage(error: unknown): string {
   if (connection) return connection;
   const text = error.message.trim();
   if (error.code === API_ERROR_CODES.memberWithoutPhone) return WA_MESSAGES.withoutPhone;
+  if (error.code === API_ERROR_CODES.invalidPhone) return WA_MESSAGES.invalidPhone;
+  if (error.code === API_ERROR_CODES.cryptoUnavailable) return WA_MESSAGES.cryptoUnavailable;
   if (error.status === HTTP_FORBIDDEN) return WA_MESSAGES.forbidden;
   if (error.status === HTTP_TOO_MANY) {
     const base = text === "" ? WA_MESSAGES.tooMany : text;

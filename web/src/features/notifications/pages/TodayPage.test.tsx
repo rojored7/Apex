@@ -177,6 +177,23 @@ describe("TodayPage · chips de canal", () => {
   });
 });
 
+describe("TodayPage · fila sin posibilidad de WhatsApp (S9-X1)", () => {
+  it("bloquea el botón, enlaza la ficha y no llama a wa-link", async () => {
+    const blocked = { ...juan, can_whatsapp: false };
+    const { user, mock } = renderToday("/avisos/hoy", { rows: [blocked, camila] });
+    await screen.findByRole("link", { name: "Juan Pérez" });
+    const row = rowOf("Juan Pérez");
+
+    const button = within(row).getByRole("button", { name: "Abrir WhatsApp de Juan Pérez" });
+    expect(button).toBeDisabled();
+    expect(within(row).getByText("No se puede abrir WhatsApp")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "Revisar la ficha de Juan Pérez" })).toHaveAttribute("href", `/socios/${juan.member_id}`);
+    await user.click(button);
+    expect(mock.callsTo(`POST /notifications/${juan.id}/wa-link`)).toHaveLength(0);
+    expect(within(rowOf("Camila Torres")).getByRole("button", { name: "Abrir WhatsApp de Camila Torres" })).toBeEnabled();
+  });
+});
+
 describe("TodayPage · estados", () => {
   it("mientras carga dice 'Cargando avisos'", () => {
     renderToday("/avisos/hoy", { handlers: { "GET /notifications/today": () => new Promise(() => undefined) } });
@@ -269,7 +286,7 @@ describe("TodayPage · abrir WhatsApp (US-127)", () => {
 
     await user.click(screen.getByRole("button", { name: "Abrir WhatsApp de Juan Pérez" }));
 
-    expect(await within(rowOf("Juan Pérez")).findByRole("alert")).toHaveTextContent("El teléfono de este socio no es un celular válido.");
+    expect(await within(rowOf("Juan Pérez")).findByRole("alert")).toHaveTextContent("El teléfono de este socio no es un celular válido para WhatsApp. Corrígelo en su ficha o omite el aviso.");
     expect(openSpy).not.toHaveBeenCalled();
   });
 });

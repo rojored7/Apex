@@ -4479,6 +4479,10 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "can_whatsapp": {
+            "title": "Can Whatsapp",
+            "type": "boolean"
+          },
           "channel": {
             "enum": [
               "email",
@@ -4596,6 +4600,7 @@
           "rule_id",
           "member_id",
           "member_name",
+          "can_whatsapp",
           "membership_id",
           "target_date",
           "channel",

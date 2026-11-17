@@ -122,6 +122,11 @@ anteriores con `rollback-<fecha>.txt` y, solo si el esquema nuevo lo exige, rest
 
 ## Paso de despliegue de v0.6: derivar los récords de los resultados anteriores
 
+Desde v0.6 `GET /notifications` y `GET /notifications/today` devuelven `can_whatsapp` en cada aviso, y el
+front lo exige (el esquema es estricto). El api y el web de v0.6 se despliegan juntos: una pestaña que
+quedó abierta con el bundle anterior (v0.5) o, al revés, un web nuevo contra un api viejo, ven la lista
+como respuesta inválida. Tras el `up`, quien tenga el panel abierto debe recargar la página.
+
 Al pasar de v0.5 a v0.6 los resultados ya guardados no tienen récords personales. Si no se derivan,
 el primer resultado que se cargue en v0.6 de cada socio quedaría como su «RM» aunque tenga marcas
 mejores de antes. Una vez que `deploy.sh` termine con 0 (después del `up`), corre:

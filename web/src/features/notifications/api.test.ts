@@ -28,6 +28,17 @@ afterEach(() => {
 });
 
 describe("useToday", () => {
+  it("una fila sin can_whatsapp se rechaza (api y web de v0.6 van juntos)", async () => {
+    const withoutField: Record<string, unknown> = { ...NOTIFICATIONS.juan };
+    delete withoutField.can_whatsapp;
+    mockApi({ "GET /notifications/today": { status: 200, body: { items: [withoutField], total: 1, limit: 25, offset: 0 } } });
+    const { result } = renderHook(() => useToday({ limit: 25, offset: 0 }), { wrapper: wrapper(testQueryClient()) });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+  });
+
   it("pide GET /notifications/today con limit y offset y guarda la página bajo su clave", async () => {
     const mock = mockApi({ "GET /notifications/today": (call) => todayPage(call) });
     const queryClient = testQueryClient();

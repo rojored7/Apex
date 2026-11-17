@@ -54,6 +54,7 @@ CAMPOS_AVISO: Final = frozenset(
         "rule_id",
         "member_id",
         "member_name",
+        "can_whatsapp",
         "membership_id",
         "target_date",
         "channel",

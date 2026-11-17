@@ -25,6 +25,7 @@ export interface NotificationFixture {
   sent_at: string | null;
   sent_by: string | null;
   skip_reason: string | null;
+  can_whatsapp: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +48,7 @@ const notification = (n: number, overrides: Partial<NotificationFixture>): Notif
   sent_at: null,
   sent_by: null,
   skip_reason: null,
+  can_whatsapp: true,
   created_at: "2026-10-20T12:00:00Z",
   updated_at: "2026-10-20T12:00:00Z",
   ...overrides,
@@ -67,6 +69,7 @@ export const NOTIFICATIONS = {
   andres: notification(3, {
     member_name: "Andrés Ruiz",
     channel: "email",
+    can_whatsapp: false,
     status: "failed",
     attempts: 3,
     last_error: "timeout",
@@ -76,6 +79,7 @@ export const NOTIFICATIONS = {
   laura: notification(4, {
     member_name: "Laura Gómez",
     channel: "email",
+    can_whatsapp: false,
     rendered_subject: "Tu plan vence en 8 días",
     rendered_body: "Hola Laura, tu plan Mensual vence el 28 de octubre.",
   }),

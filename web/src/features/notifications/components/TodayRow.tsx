@@ -56,6 +56,8 @@ export function TodayRow({ row, onOpened, onSkip }: TodayRowProps) {
         {row.channel === "whatsapp_link" ? (
           <WaButton
             notificationId={row.id}
+            memberId={row.member_id}
+            canWhatsapp={row.can_whatsapp}
             memberName={row.member_name}
             onOpened={() => {
               onOpened(row.member_name);

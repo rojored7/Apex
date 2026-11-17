@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { axe } from "vitest-axe";
 import { apiError, NOTIFICATIONS, WA_URL } from "../../../test/notifications";
 import { mockApi, testQueryClient, type MockReply } from "../../../test/server";
+import { MemoryRouter } from "react-router";
 import { WaButton } from "./WaButton";
 
 const JUAN = NOTIFICATIONS.juan;
@@ -21,7 +22,7 @@ let openSpy: ReturnType<typeof vi.fn>;
 function mount(queryClient: QueryClient = testQueryClient(), onOpened?: () => void) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <WaButton notificationId={JUAN.id} memberName={JUAN.member_name} {...(onOpened ? { onOpened } : {})} />
+      <WaButton notificationId={JUAN.id} memberName={JUAN.member_name} memberId={JUAN.member_id} canWhatsapp {...(onOpened ? { onOpened } : {})} />
     </QueryClientProvider>,
   );
 }
@@ -97,7 +98,7 @@ describe("WaButton", () => {
 
     await user.click(button());
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("El teléfono de este socio no es un celular válido. Corrígelo en su ficha.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("El teléfono de este socio no es un celular válido para WhatsApp. Corrígelo en su ficha o omite el aviso.");
     expect(openSpy).not.toHaveBeenCalled();
     expect(button()).toBeEnabled();
   });
@@ -110,6 +111,18 @@ describe("WaButton", () => {
     await user.click(button());
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Este socio no tiene teléfono registrado. Agrégalo en su ficha o omite el aviso.");
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(button()).toBeEnabled();
+  });
+
+  it("un 503 crypto_unavailable pide reintentar, sin abrir nada", async () => {
+    mockApi({ [WA_KEY]: apiError(503, "crypto_unavailable", {}, { "Retry-After": "30" }, "Servicio de llaves no disponible.") });
+    const user = userEvent.setup();
+    mount();
+
+    await user.click(button());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos leer el teléfono del socio por ahora. Intenta de nuevo en unos segundos.");
     expect(openSpy).not.toHaveBeenCalled();
     expect(button()).toBeEnabled();
   });
@@ -177,5 +190,114 @@ describe("WaButton", () => {
     const { container } = mount();
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// S9-X1 (S9-D22, L-5): con can_whatsapp = false el botón no se ofrece; se explica y se enlaza la ficha.
+describe("WaButton sin posibilidad de abrir WhatsApp (S9-X1)", () => {
+  const mountDisabled = () =>
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={testQueryClient()}>
+          <WaButton notificationId={JUAN.id} memberId={JUAN.member_id} memberName={JUAN.member_name} canWhatsapp={false} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+  it("queda deshabilitado con el texto 'No se puede abrir WhatsApp'", () => {
+    mockApi({});
+    mountDisabled();
+
+    expect(button()).toBeDisabled();
+    expect(screen.getByText("No se puede abrir WhatsApp")).toBeInTheDocument();
+    expect(screen.queryByText("Sin teléfono")).not.toBeInTheDocument();
+    expect(button()).toHaveAccessibleDescription(/No se puede abrir WhatsApp/);
+  });
+
+  it("ofrece un enlace a la ficha del socio", () => {
+    mockApi({});
+    mountDisabled();
+
+    const link = screen.getByRole("link", { name: `Revisar la ficha de ${JUAN.member_name}` });
+    expect(link).toHaveAttribute("href", `/socios/${JUAN.member_id}`);
+    expect(link).toHaveTextContent("Revisar la ficha");
+  });
+
+  it("no llama al api ni abre nada al hacer clic", async () => {
+    const mock = mockApi({ [WA_KEY]: { status: 200, body: { url: WA_URL } } });
+    const user = userEvent.setup();
+    mountDisabled();
+
+    await user.click(button());
+
+    expect(mock.callsTo(WA_KEY)).toHaveLength(0);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([["claro", null], ["oscuro", "dark"]])("el estado bloqueado no tiene violaciones de accesibilidad en tema %s", async (_name, theme) => {
+    if (theme) document.documentElement.dataset.theme = theme;
+    mockApi({});
+    const { container } = mountDisabled();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("el enlace de la ficha tiene objetivo táctil de 48 px y la regla solo usa tokens", () => {
+    const rule = /\.reasonLink\s*\{[^}]*\}/.exec(css)?.[0] ?? "";
+    expect(rule).toMatch(/min-height:\s*calc\(var\(--control\)/);
+    expect(css).toMatch(/\.reasonLink:focus-visible/);
+  });
+
+  it("el error previo se limpia cuando la fila pasa a bloqueada", async () => {
+    mockApi({ [WA_KEY]: apiError(429, "rate_limited") });
+    const user = userEvent.setup();
+    const client = testQueryClient();
+    const view = (can: boolean) => (
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <WaButton notificationId={JUAN.id} memberId={JUAN.member_id} memberName={JUAN.member_name} canWhatsapp={can} />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    const { rerender } = render(view(true));
+    await user.click(button());
+    await screen.findByRole("alert");
+
+    rerender(view(false));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("con can_whatsapp verdadero sigue abriendo y maneja el 409", async () => {
+    mockApi({ [WA_KEY]: apiError(409, "notification_closed", {}, undefined, "Este aviso ya fue omitido.") });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={testQueryClient()}>
+          <WaButton notificationId={JUAN.id} memberId={JUAN.member_id} memberName={JUAN.member_name} canWhatsapp />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    await user.click(button());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Este aviso ya fue omitido.");
+  });
+
+  it("con can_whatsapp verdadero un 422 invalid_phone (fijo con indicativo) muestra el mensaje fijo", async () => {
+    mockApi({ [WA_KEY]: apiError(422, "invalid_phone", {}, undefined, "texto del api") });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={testQueryClient()}>
+          <WaButton notificationId={JUAN.id} memberId={JUAN.member_id} memberName={JUAN.member_name} canWhatsapp />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    await user.click(button());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("El teléfono de este socio no es un celular válido para WhatsApp. Corrígelo en su ficha o omite el aviso.");
+    expect(openSpy).not.toHaveBeenCalled();
   });
 });

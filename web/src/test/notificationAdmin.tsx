@@ -63,7 +63,7 @@ export const HISTORY_ROWS = [
   { ...NOTIFICATIONS.juan, rule_id: RULE_IDS.venceHoy, status: "sent", sent_at: "2026-10-20T13:12:00Z", sent_by: "11111111-1111-4111-8111-111111111111" },
   { ...NOTIFICATIONS.laura, rule_id: RULE_IDS.porVencer, status: "sent", sent_at: "2026-10-20T12:00:00Z", sent_by: null },
   { ...NOTIFICATIONS.andres, rule_id: RULE_IDS.porVencer, status: "failed", last_error: "timeout" },
-  { ...NOTIFICATIONS.camila, rule_id: RULE_IDS.vencido, status: "skipped", skip_reason: "pidió no contactar", sent_by: null },
+  { ...NOTIFICATIONS.camila, rule_id: RULE_IDS.vencido, status: "skipped", can_whatsapp: false, skip_reason: "pidió no contactar", sent_by: null },
 ];
 
 export function defaultHandlers(): Record<string, MockHandler> {

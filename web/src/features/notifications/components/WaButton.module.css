@@ -17,10 +17,36 @@
   color: var(--card);
 }
 
+.wa:disabled {
+  border-color: var(--line);
+  background: var(--card);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .wa:hover:not(:disabled) {
   border-color: var(--blue-deep);
   background: var(--blue-deep);
   color: var(--card);
+}
+
+.reason {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.reasonLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--control) + var(--space-1));
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.reasonLink:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .error {

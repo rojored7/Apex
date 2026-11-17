@@ -45,22 +45,39 @@ def _ordered(consulta: Select[Any]) -> Select[Any]:
     return consulta.order_by(Notification.target_date.desc(), Notification.id)
 
 
-async def _outputs(session: AsyncSession, filas: Sequence[Notification]) -> list[NotificationOut]:
+def _offers_whatsapp(fila: Notification, whatsapp_enabled: bool) -> bool:
+    """Las tres condiciones de `wa_link` que se ven en el aviso y en la configuración (S9-D22)."""
+    return whatsapp_enabled and fila.status != "skipped" and fila.channel == "whatsapp_link"
+
+
+async def _outputs(
+    session: AsyncSession, filas: Sequence[Notification], whatsapp_enabled: bool
+) -> list[NotificationOut]:
+    """`can_whatsapp` (S9-X1): `whatsapp_enabled` lo lee el service UNA vez por página; aquí una
+    sola llamada a `members.whatsapp_ready` para los avisos que pasan las otras condiciones, sin
+    descifrar (con la lista vacía no consulta)."""
     nombres = await members_service.names_for(session, (f.member_id for f in filas))
+    candidatos = {f.member_id for f in filas if _offers_whatsapp(f, whatsapp_enabled)}
+    listos = await members_service.whatsapp_ready(session, candidatos) if candidatos else {}
     salida: list[NotificationOut] = []
     for fila in filas:
         socio = nombres.get(fila.member_id)
         nombre = f"{socio.first_name} {socio.last_name}" if socio else ""
-        campos = {c: getattr(fila, c) for c in NotificationOut.model_fields if c != "member_name"}
-        salida.append(NotificationOut(member_name=nombre, **campos))
+        campos = {
+            c: getattr(fila, c)
+            for c in NotificationOut.model_fields
+            if c not in {"member_name", "can_whatsapp"}
+        }
+        puede = _offers_whatsapp(fila, whatsapp_enabled) and listos.get(fila.member_id, False)
+        salida.append(NotificationOut(member_name=nombre, can_whatsapp=puede, **campos))
     return salida
 
 
 async def _page(
-    session: AsyncSession, consulta: Select[Any], page: PageParams
+    session: AsyncSession, consulta: Select[Any], page: PageParams, whatsapp_enabled: bool
 ) -> Page[NotificationOut]:
     filas, total = await paginate(session, _ordered(consulta), page)
-    return to_page(await _outputs(session, filas), total, page)
+    return to_page(await _outputs(session, filas, whatsapp_enabled), total, page)
 
 
 async def _by_name(session: AsyncSession, q: str | None) -> set[UUID] | None:
@@ -70,7 +87,12 @@ async def _by_name(session: AsyncSession, q: str | None) -> set[UUID] | None:
 
 
 async def today_list(
-    session: AsyncSession, today: date, page: PageParams, q: str | None = None
+    session: AsyncSession,
+    today: date,
+    page: PageParams,
+    q: str | None = None,
+    *,
+    whatsapp_enabled: bool = False,
 ) -> Page[NotificationOut]:
     consulta = select(Notification).where(_today_condition(today))
     vivos = await members_service.active_ids(session)  # S5-D225: sin socios dados de baja
@@ -80,7 +102,7 @@ async def today_list(
         if not socios:
             return to_page([], 0, page)
         consulta = consulta.where(Notification.member_id == any_uuids(socios))
-    return await _page(session, consulta, page)
+    return await _page(session, consulta, page, whatsapp_enabled)
 
 
 async def today_count(session: AsyncSession, today: date) -> int:
@@ -89,7 +111,11 @@ async def today_count(session: AsyncSession, today: date) -> int:
 
 
 async def list_(
-    session: AsyncSession, filters: NotificationFilters, page: PageParams
+    session: AsyncSession,
+    filters: NotificationFilters,
+    page: PageParams,
+    *,
+    whatsapp_enabled: bool = False,
 ) -> Page[NotificationOut]:
     consulta = select(Notification)
     if filters.status is not None:
@@ -107,19 +133,21 @@ async def list_(
         if not socios:
             return to_page([], 0, page)
         consulta = consulta.where(Notification.member_id == any_uuids(socios))
-    return await _page(session, consulta, page)
+    return await _page(session, consulta, page, whatsapp_enabled)
 
 
-async def get(session: AsyncSession, notification_id: UUID) -> NotificationOut:
+async def get(
+    session: AsyncSession, notification_id: UUID, *, whatsapp_enabled: bool = False
+) -> NotificationOut:
     fila = await session.get(Notification, notification_id)
     if fila is None:
         raise NotificationNotFound()
-    return (await _outputs(session, [fila]))[0]
+    return (await _outputs(session, [fila], whatsapp_enabled))[0]
 
 
 async def list_for_member(
-    session: AsyncSession, member_id: UUID, page: PageParams
+    session: AsyncSession, member_id: UUID, page: PageParams, *, whatsapp_enabled: bool = False
 ) -> Page[NotificationOut]:
     await members_service.ensure_exists(session, member_id, include_deleted=True)
     consulta = select(Notification).where(Notification.member_id == member_id)
-    return await _page(session, consulta, page)
+    return await _page(session, consulta, page, whatsapp_enabled)

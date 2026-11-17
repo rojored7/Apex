@@ -115,7 +115,12 @@ from app.modules.members.changes import (
     update,
 )
 from app.modules.members.channels import channels_for, get_channels, set_channels
-from app.modules.members.contact import Contact, contact_for_notification, validate_purpose
+from app.modules.members.contact import (
+    Contact,
+    contact_for_notification,
+    validate_purpose,
+    whatsapp_ready,
+)
 from app.modules.members.detail import SIN_MEMBRESIA, get, reveal
 from app.modules.members.exceptions import (
     InvalidField,
@@ -216,6 +221,7 @@ __all__ = [
     "update",
     "validate_member_input",
     "validate_purpose",
+    "whatsapp_ready",
 ]
 
 logger = logging.getLogger("app.members")

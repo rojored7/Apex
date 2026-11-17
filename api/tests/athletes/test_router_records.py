@@ -53,6 +53,7 @@ CAMPOS = {
     "achieved_on",
     "source",
     "result_id",
+    "result_source",
     "wod_id",
     "is_current",
     "invalidated_at",

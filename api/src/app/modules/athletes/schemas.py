@@ -114,6 +114,7 @@ class RecordOut(BaseModel):
     achieved_on: date
     source: Literal["manual", "derived"]
     result_id: UUID | None
+    result_source: Literal["desk", "kiosk"] | None = None
     wod_id: UUID | None
     is_current: bool
     invalidated_at: datetime | None

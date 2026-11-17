@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.wods.exceptions import WodNotFound, WodsValidationError
@@ -183,3 +183,40 @@ async def benchmark_refs(session: AsyncSession, ids: Collection[UUID]) -> dict[U
         select(Benchmark.id, Benchmark.name, Benchmark.score_type).where(Benchmark.id.in_(set(ids)))
     )
     return {f.id: BenchmarkRef(f.id, f.name, f.score_type) for f in filas}
+
+
+# S9-B3 (S9-D6, US-181): lo que el handler de `athletes` pide de un WOD ---------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class WodRecordMeta:
+    """Tipo de marca, movimiento principal, benchmark y fecha de un WOD como dato plano."""
+
+    score_type: str
+    primary_movement_id: UUID | None
+    benchmark_id: UUID | None
+    date: date
+
+
+async def record_meta_for(
+    session: AsyncSession, wod_ids: Collection[UUID]
+) -> dict[UUID, WodRecordMeta]:
+    """Por lote y SIN candado (el handler suscrito no pide candados, S9-D7; `scoring_for` toma
+    `FOR SHARE` y es de un solo WOD): los WODs existentes por id, en UNA consulta con el principal
+    (`LEFT JOIN` a `wod_movements` con `is_primary`, a lo sumo uno por WOD). Los ausentes faltan."""
+    if not wod_ids:
+        return {}
+    filas = await session.execute(
+        select(Wod.id, Wod.score_type, Wod.benchmark_id, Wod.date, WodMovement.movement_id)
+        .outerjoin(WodMovement, and_(WodMovement.wod_id == Wod.id, WodMovement.is_primary))
+        .where(Wod.id.in_(set(wod_ids)))
+    )
+    return {
+        f.id: WodRecordMeta(
+            score_type=f.score_type,
+            primary_movement_id=f.movement_id,
+            benchmark_id=f.benchmark_id,
+            date=f.date,
+        )
+        for f in filas
+    }

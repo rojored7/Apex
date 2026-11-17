@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date as date_type
 from datetime import datetime
 from typing import Annotated, Literal
@@ -182,3 +183,27 @@ class MemberResultRow(BaseModel):
     source: ResultSource
     session_id: UUID | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ResultMark:
+    """La marca de UN resultado como dato plano, sin ORM (S9-B3, S9-D6): lo que `athletes` lee con
+    `results.service.get_mark` para derivar récords. `source` (`desk|kiosk`) permite decir
+    «Automático (tablet)» (L-4); `validated_by` es quien validó (el actor del récord)."""
+
+    result_id: UUID
+    member_id: UUID
+    wod_id: UUID
+    wod_date: date_type
+    benchmark_id: UUID | None
+    level: ResultLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    status: ResultStatus
+    is_current: bool
+    supersedes_id: UUID | None
+    validated_by: UUID | None
+    source: ResultSource

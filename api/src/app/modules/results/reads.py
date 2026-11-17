@@ -15,6 +15,7 @@ Todas leen sin candados ni escrituras.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,7 +28,13 @@ from app.modules.members.schemas import MemberName
 from app.modules.results.exceptions import LeaderboardTooLarge
 from app.modules.results.leaderboard import Mark, rank_rows
 from app.modules.results.models import WodResult
-from app.modules.results.schemas import LeaderboardRow, MemberResultRow, PublicRow, WodResultRow
+from app.modules.results.schemas import (
+    LeaderboardRow,
+    MemberResultRow,
+    PublicRow,
+    ResultMark,
+    WodResultRow,
+)
 from app.modules.wods import service as wods_service
 from app.modules.wods.exceptions import WodNotFound
 
@@ -229,3 +236,63 @@ async def member_results(
         for f in filas
     ]
     return to_page(items, total, page)
+
+
+async def get_mark(session: AsyncSession, result_id: UUID) -> ResultMark | None:
+    """La marca de un resultado por id (S9-B3, S9-D6): UNA consulta por la clave primaria, sin
+    candados ni JOIN, como dato plano (no el ORM); `None` si no existe. NO filtra por socio:
+    quien la llame responde del alcance (riesgo del portal v1.0, donde un socio ve lo suyo)."""
+    fila = (
+        await session.execute(
+            select(
+                WodResult.id,
+                WodResult.member_id,
+                WodResult.wod_id,
+                WodResult.wod_date,
+                WodResult.benchmark_id,
+                WodResult.level,
+                WodResult.seconds,
+                WodResult.rounds,
+                WodResult.reps,
+                WodResult.load_g,
+                WodResult.capped,
+                WodResult.status,
+                WodResult.is_current,
+                WodResult.supersedes_id,
+                WodResult.validated_by,
+                WodResult.source,
+            ).where(WodResult.id == result_id)
+        )
+    ).one_or_none()
+    if fila is None:
+        return None
+    return ResultMark(
+        result_id=fila.id,
+        member_id=fila.member_id,
+        wod_id=fila.wod_id,
+        wod_date=fila.wod_date,
+        benchmark_id=fila.benchmark_id,
+        level=fila.level,
+        seconds=fila.seconds,
+        rounds=fila.rounds,
+        reps=fila.reps,
+        load_g=fila.load_g,
+        capped=fila.capped,
+        status=fila.status,
+        is_current=fila.is_current,
+        supersedes_id=fila.supersedes_id,
+        validated_by=fila.validated_by,
+        source=fila.source,
+    )
+
+
+async def result_sources(session: AsyncSession, result_ids: Collection[UUID]) -> dict[UUID, str]:
+    """El origen (`desk|kiosk`) de varios resultados, en UNA consulta por lote (S9-B3, L-4): lo que
+    `athletes` muestra como «Automático (tablet)». Los ids que no existen faltan. NO filtra por
+    socio: el llamador responde del alcance (riesgo del portal v1.0)."""
+    if not result_ids:
+        return {}
+    filas = await session.execute(
+        select(WodResult.id, WodResult.source).where(WodResult.id.in_(set(result_ids)))
+    )
+    return {f.id: f.source for f in filas}

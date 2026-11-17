@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import ColumnElement, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.athletes import derive
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.athletes.metrics import add_metric, list_metrics, reveal_metric, void_metric
 from app.modules.athletes.models import PersonalRecord
@@ -37,6 +38,8 @@ class _RecordsProbe:
 
 records_probe = _RecordsProbe()
 wods_service.set_records_probe(records_probe)
+# S9-D7: los handlers de `results` se suscriben al importarse la fachada.
+derive.subscribe_handlers()
 
 __all__ = [
     "PersonalRecordSet",

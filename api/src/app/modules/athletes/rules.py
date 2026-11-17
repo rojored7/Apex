@@ -13,11 +13,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from app.modules.athletes.exceptions import MetricValidationError
 from app.modules.results.service import score_key
+
+if TYPE_CHECKING:
+    from app.modules.results.schemas import ResultMark
+    from app.modules.wods.service import WodRecordMeta
 
 METRIC_FIELDS: Final[tuple[str, ...]] = ("weight_g", "height_cm", "body_fat_pct", "notes")
 FIELD_MARKS: Final[dict[str, str]] = {
@@ -239,3 +243,56 @@ def pick_current(
             return (-(r.value_g or 0), r.achieved_on, r.created_at, r.id)
 
     return min(vivos, key=orden)
+
+
+# S9-B3 (US-181, S9-D10): derivar un RM de una marca de carga ------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RecordDraft:
+    """Un récord derivado listo para insertar (puro, sin ORM): el objetivo, la marca y de qué
+    resultado y WOD nace. `kind = "rm"` lleva `movement_id` y `value_g`; `kind = "benchmark"`
+    (B4) lleva `benchmark_id` y las marcas. `achieved_on` es la fecha del WOD."""
+
+    kind: str
+    movement_id: UUID | None
+    benchmark_id: UUID | None
+    value_g: int | None
+    level: str | None
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    achieved_on: date
+    result_id: UUID
+    wod_id: UUID
+
+
+def derive_rm(
+    mark: ResultMark, meta: WodRecordMeta, current: RecordRow | None
+) -> RecordDraft | None:
+    """RM derivado (S9-D10): solo `meta.score_type == "load"` con movimiento principal, nivel
+    distinto de `scaled`, `load_g` mayor que 0 y ESTRICTAMENTE mayor que el vigente (o sin
+    vigente). `rx_plus` deriva igual que `rx`."""
+    if meta.score_type != "load" or meta.primary_movement_id is None:
+        return None
+    if mark.level == "scaled" or mark.load_g is None or mark.load_g <= 0:
+        return None
+    if current is not None and mark.load_g <= (current.value_g or 0):
+        return None
+    return RecordDraft(
+        kind="rm",
+        movement_id=meta.primary_movement_id,
+        benchmark_id=None,
+        value_g=mark.load_g,
+        level=None,
+        seconds=None,
+        rounds=None,
+        reps=None,
+        load_g=None,
+        capped=False,
+        achieved_on=mark.wod_date,
+        result_id=mark.result_id,
+        wod_id=mark.wod_id,
+    )

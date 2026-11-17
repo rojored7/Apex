@@ -6566,6 +6566,21 @@
             ],
             "title": "Result Id"
           },
+          "result_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "desk",
+                  "kiosk"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Source"
+          },
           "rounds": {
             "anyOf": [
               {

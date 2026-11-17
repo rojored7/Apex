@@ -22,9 +22,11 @@ from app.modules.results.events import WodResultRecorded, WodResultValidated, Wo
 from app.modules.results.leaderboard import score_key
 from app.modules.results.models import WodResult
 from app.modules.results.reads import (
+    get_mark,
     leaderboard,
     member_results,
     public_leaderboard,
+    result_sources,
     wod_results,
 )
 from app.modules.results.record import (
@@ -34,6 +36,7 @@ from app.modules.results.record import (
     sessions_with_current_results,
 )
 from app.modules.results.rules import validate_score
+from app.modules.results.schemas import ResultMark
 from app.modules.results.void import void_result
 from app.modules.wods import service as wods_service
 
@@ -90,14 +93,17 @@ list_wod_results = wod_results
 list_member_results = member_results
 
 __all__ = [
+    "ResultMark",
     "WodResultRecorded",
     "WodResultValidated",
     "WodResultVoided",
+    "get_mark",
     "leaderboard",
     "list_member_results",
     "list_wod_results",
     "public_leaderboard",
     "record_result",
+    "result_sources",
     "results_probe",
     "score_key",
     "session_attendance",

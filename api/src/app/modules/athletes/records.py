@@ -201,6 +201,13 @@ async def _current_ids(
     return vigentes
 
 
+async def current_rm(session: AsyncSession, member_id: UUID, movement_id: UUID) -> RecordRow | None:
+    """El RM vigente del socio para un movimiento (UNA consulta, sin candados; N-45). Lo usa el
+    handler de derivación (`derive.py`), que corre bajo el `lock_member` del emisor."""
+    filas = await session.scalars(current_query(member_id, {movement_id}, set()))
+    return pick_current([_row_of(f) for f in filas])
+
+
 def _to_out(
     record: PersonalRecord,
     *,
@@ -209,6 +216,7 @@ def _to_out(
     benchmark_name: str | None,
     score_type: str | None,
     names: dict[UUID, str],
+    result_source: str | None = None,
 ) -> RecordOut:
     return RecordOut(
         id=record.id,
@@ -228,6 +236,7 @@ def _to_out(
         achieved_on=record.achieved_on,
         source=record.source,
         result_id=record.result_id,
+        result_source=result_source,
         wod_id=record.wod_id,
         is_current=is_current and record.invalidated_at is None,
         invalidated_at=record.invalidated_at,
@@ -385,6 +394,10 @@ async def _present(
     tipos = {b.id: b.score_type for b in benchmarks.values()}
     vigentes = await _current_ids(session, member_id, {_objective_of(f) for f in filas}, tipos)
     names = await auth_service.user_names_for(session, list({f.created_by for f in filas}))
+    # L-4: el origen del resultado (escritorio o tablet), por lote y solo de los derivados.
+    origenes = await results_service.result_sources(
+        session, {f.result_id for f in filas if f.result_id}
+    )
     salida: list[RecordOut] = []
     for fila in filas:
         movimiento = movimientos.get(fila.movement_id) if fila.movement_id else None
@@ -397,6 +410,7 @@ async def _present(
                 benchmark_name=benchmark.name if benchmark else None,
                 score_type=benchmark.score_type if benchmark else None,
                 names=names,
+                result_source=origenes.get(fila.result_id) if fila.result_id else None,
             )
         )
     return salida

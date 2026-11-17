@@ -4419,6 +4419,8 @@ export interface components {
             reps: number | null;
             /** Result Id */
             result_id: string | null;
+            /** Result Source */
+            result_source?: ("desk" | "kiosk") | null;
             /** Rounds */
             rounds: number | null;
             /** Score Type */

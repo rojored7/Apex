@@ -28,10 +28,12 @@ from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
 from app.modules.wods.exceptions import (
     BenchmarkExists,
     BenchmarkNotFound,
+    LockedByRecords,
     ScoreTypeLocked,
     WodsValidationError,
 )
 from app.modules.wods.models import Benchmark, Wod
+from app.modules.wods.probe import records_probe
 from app.modules.wods.rules import clean_movement_name, normalize_movement_name
 from app.modules.wods.schemas import (
     BenchmarkCreate,
@@ -146,6 +148,8 @@ async def update_benchmark(
     cambios = {c: v for c, v in valores.items() if getattr(bench, c) != v}
     if "score_type" in cambios and (await wod_counts(session, [bench.id])).get(bench.id, 0) > 0:
         raise ScoreTypeLocked()
+    if "score_type" in cambios and await records_probe().benchmark_has_records(session, bench.id):
+        raise LockedByRecords("score_type")  # S9-D9: récords vivos
     if not cambios:
         return (await _outs(session, [bench]))[0]
     norm = bench.name_norm

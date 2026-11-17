@@ -116,6 +116,8 @@ export const API_ERROR_CODES = {
   benchmarkExists: "benchmark_exists",
   benchmarkNotFound: "benchmark_not_found",
   scoreTypeLocked: "score_type_locked",
+  // S9-B2: récords personales vivos bloquean la unidad y el tipo de marca (wods/exceptions.py).
+  lockedByRecords: "locked_by_records",
   // S8-F2: WODs (wods/exceptions.py).
   wodNotFound: "wod_not_found",
   wodDateTaken: "wod_date_taken",

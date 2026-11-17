@@ -116,5 +116,21 @@ class LockedByResults(WodsError):
         super().__init__(field=field)
 
 
+class LockedByRecords(WodsError):
+    """Hay récords personales vivos: la unidad del movimiento y el tipo de marca del benchmark no
+    cambian (S9-D9): 422 con `field`."""
+
+    status = 422
+    code = "locked_by_records"
+    default_message = "Hay récords personales de este elemento: este campo no se puede cambiar."
+
+    def __init__(self, field: str) -> None:
+        super().__init__(field=field)
+
+
+class RecordsProbeNotRegistered(RuntimeError):
+    """Nadie registró el puerto `RecordsProbe`: lo que depende de récords falla cerrado."""
+
+
 class ResultsProbeNotRegistered(RuntimeError):
     """Nadie registró el puerto `ResultsProbe`: lo que depende de resultados falla cerrado."""

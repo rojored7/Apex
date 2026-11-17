@@ -16,7 +16,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.wods.exceptions import ResultsProbeNotRegistered
+from app.modules.wods.exceptions import RecordsProbeNotRegistered, ResultsProbeNotRegistered
 
 
 class ResultsProbe(Protocol):
@@ -51,3 +51,35 @@ def results_probe() -> ResultsProbe:
     if _probe is None:
         raise ResultsProbeNotRegistered("nadie registró el puerto ResultsProbe")
     return _probe
+
+
+class RecordsProbe(Protocol):
+    """Sentido minoritario `wods -> athletes` (S9-D9): ¿hay récords vivos de este elemento?"""
+
+    async def movement_has_records(self, session: AsyncSession, movement_id: UUID) -> bool:
+        """Hay un récord NO invalidado del movimiento."""
+        ...
+
+    async def benchmark_has_records(self, session: AsyncSession, benchmark_id: UUID) -> bool:
+        """Hay un récord NO invalidado del benchmark."""
+        ...
+
+
+_records_probe: RecordsProbe | None = None
+
+
+def set_records_probe(probe: RecordsProbe | None) -> None:
+    """Registra (o quita, con `None`) el puerto. Lo llama `athletes` al importarse."""
+    global _records_probe
+    _records_probe = probe
+
+
+def current_records_probe() -> RecordsProbe | None:
+    return _records_probe
+
+
+def records_probe() -> RecordsProbe:
+    """El puerto registrado; sin él, `RecordsProbeNotRegistered` (falla cerrado)."""
+    if _records_probe is None:
+        raise RecordsProbeNotRegistered("nadie registró el puerto RecordsProbe")
+    return _records_probe

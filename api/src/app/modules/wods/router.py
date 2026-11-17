@@ -6,13 +6,13 @@ Movimientos, admin y coach (`StaffDep`; el socio recibe 403):
 - `POST /movements`: 201 `CatalogMovementOut`; `wods-write` (30 por minuto por usuario). Códigos
   201, 401, 403, 409, 422 y 429.
 - `PATCH /movements/{movement_id}`: `CatalogMovementOut`; `wods-write`. Códigos 200, 401, 403, 404,
-  409, 422 y 429. No existe `DELETE`: se desactivan con `is_active`.
+  409, 422 (incluye `locked_by_records`) y 429. No existe `DELETE`: se desactivan con `is_active`.
 Benchmarks (S8-A2, US-166, S8-D6), mismo reparto de roles y cubetas:
 - `GET /benchmarks`: `Page[BenchmarkOut]` con `PageParams`, `q` y `score_type`; `staff-read`.
   Códigos 200, 401, 403, 422 y 429.
 - `POST /benchmarks`: 201 `BenchmarkOut`; `wods-write`. Códigos 201, 401, 403, 409, 422 y 429.
 - `PATCH /benchmarks/{benchmark_id}`: `BenchmarkOut`; `wods-write`. Códigos 200, 401, 403, 404, 409,
-  422 (incluye `score_type_locked`) y 429. Tampoco existe `DELETE`.
+  422 (incluye `score_type_locked` y `locked_by_records`) y 429. Tampoco existe `DELETE`.
 WODs (S8-A3, US-166, US-167): `GET /wods` (`week` o `q`/`benchmark`), `POST /wods`,
 `GET /wods/{id}` y `PATCH /wods/{id}`; `wods-write` y `staff-read`.
 `GET /wods/today` (S8-A4, US-168, S8-D9): el WOD de hoy en Bogotá con sus movimientos, o 200 con

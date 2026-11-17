@@ -25,8 +25,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import violated_constraint
 from app.core.pagination import Page, PageParams, paginate, to_page
 from app.core.search import LIKE_ESCAPE, clean_query, contains_pattern, sql_fold
-from app.modules.wods.exceptions import MovementExists, MovementNotFound, WodsValidationError
+from app.modules.wods.exceptions import (
+    LockedByRecords,
+    MovementExists,
+    MovementNotFound,
+    WodsValidationError,
+)
 from app.modules.wods.models import Movement, WodMovement
+from app.modules.wods.probe import records_probe
 from app.modules.wods.rules import clean_movement_name, normalize_movement_name
 from app.modules.wods.schemas import (
     CatalogMovementOut,
@@ -153,6 +159,8 @@ async def update_movement(
             message="La unidad no se puede cambiar: hay WODs que usan este movimiento.",
             field="unit",
         )
+    if "unit" in cambios and await records_probe().movement_has_records(session, mov.id):
+        raise LockedByRecords("unit")  # S9-D9: récords vivos
     norm = mov.name_norm
     if "name" in cambios:
         norm = normalize_movement_name(cambios["name"])

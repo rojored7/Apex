@@ -50,9 +50,13 @@ from app.modules.wods.movements import (
     update_movement,
 )
 from app.modules.wods.probe import (
+    RecordsProbe,
     ResultsProbe,
+    current_records_probe,
     current_results_probe,
+    records_probe,
     results_probe,
+    set_records_probe,
     set_results_probe,
 )
 from app.modules.wods.programming import create_wod, get_wod, list_wods, today_card, update_wod
@@ -77,6 +81,7 @@ async def benchmark_for_record(session: AsyncSession, benchmark_id: UUID) -> Ben
 __all__ = [
     "BenchmarkRef",
     "MovementRef",
+    "RecordsProbe",
     "ResultsProbe",
     "WodPublished",
     "WodScoring",
@@ -86,6 +91,7 @@ __all__ = [
     "create_benchmark",
     "create_movement",
     "create_wod",
+    "current_records_probe",
     "current_results_probe",
     "day_wod_ids",
     "ensure_wod",
@@ -98,9 +104,11 @@ __all__ = [
     "movement_for_record",
     "movement_refs",
     "normalize_movement_name",
+    "records_probe",
     "results_probe",
     "scoring_for",
     "seed_benchmarks",
+    "set_records_probe",
     "set_results_probe",
     "titles_for",
     "today_card",

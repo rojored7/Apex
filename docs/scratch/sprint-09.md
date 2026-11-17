@@ -525,3 +525,32 @@ Paso 0: `apex-migracion.flag` tomada por el orquestador; `api` y `worker` parado
 - P-MIG 5 a 7 sobre `apex-db-1`: `start api` healthy; `alembic current` = `0043_athletes_personal_records (head)`; `start worker`; ciclo `downgrade 0042` / `upgrade head` sin error (tabla vacía) y de nuevo `current` = 0043 head. `\d athletes.personal_records`: 23 columnas, `created_at` y `updated_at` con `DEFAULT clock_timestamp()`, 6 índices (los dos de vigentes con `kind = '...' AND invalidated_at IS NULL`, columna desnuda), 19 CHECK `ck_personal_records_*`, cuatro triggers «firing always»; `tgenabled` = A en los cuatro (`forbid_delete`, `forbid_truncate`, `guard_insert`, `guard_update`); `\df+`: las dos guardas nuevas y `forbid_mutation` `SECURITY INVOKER` (`prosecdef = f`) con `search_path=pg_catalog`.
 - Smoke con el admin de desarrollo sobre el socio ficticio `27c8e28b-...` (solo códigos): login 200; `POST /athletes/{id}/records` (RM manual) 201; el mismo cuerpo otra vez 409 `record_duplicate`; `GET /athletes/{id}/records` 200 (1 ítem, `total` 1, `is_current` true); `POST` sin `value_g` 422 con `field = value_g`. Queda UNA fila de prueba en `apex-db-1` (la tabla prohíbe DELETE; es de un socio ficticio de desarrollo). Temporales borrados; sin secretos en pantalla ni aquí.
 - Pendiente de despliegue (no de este slice): `dbsetup` con `--no-deps` para las 32 tablas clasificadas y `derive-records` (V2, cierre de v0.6).
+
+## S9-B2 · Puerto RecordsProbe (2026-11-16)
+
+### Rojo
+
+Stubs con `NotImplementedError` (`wods/probe.records_probe`, `athletes/service._RecordsProbe`), `LockedByRecords` y `RecordsProbeNotRegistered` ya definidas, el cableado en `movements.update_movement` y `benchmarks.update_benchmark`. Pruebas nuevas: `tests/wods/test_locked_by_records.py` (5), `tests/athletes/test_records_probe.py` (6) y 6 casos nuevos en `tests/architecture/test_gates_registered.py` (create_app, CLI y proceso limpio main/cli/worker). Corrida de los tres archivos: **10 failed, 19 passed** (los 19 incluyen los ya existentes de gates y los casos de registro, que pasan con el stub registrado). Los 10 fallos: `NotImplementedError: S9-B2: stub` (puerto sin implementar: 4 de wods, 5 de athletes, y el de «sin puerto falla cerrado» en gates).
+
+### Verde
+
+- `wods/probe.py`: `RecordsProbe` (Protocol), `set_records_probe`, `current_records_probe`, `records_probe()` (falla cerrado con `RecordsProbeNotRegistered`); reexportados en `wods/service.py`. `wods/exceptions.py`: `LockedByRecords` (422 `locked_by_records`, `field`) y `RecordsProbeNotRegistered`.
+- `movements.update_movement` (`unit`) y `benchmarks.update_benchmark` (`score_type`) consultan el puerto bajo el `FOR UPDATE` que ya toman, tras la comprobación de WODs.
+- `athletes/service.py`: `_RecordsProbe` con `SELECT EXISTS (SELECT * FROM athletes.personal_records WHERE movement_id = :id AND invalidated_at IS NULL)` (y `benchmark_id`), columna desnuda (S8-D50); se registra al importarse.
+- P-API: 422 ya estaba declarado en las dos rutas PATCH; `locked_by_records` en `web/src/core/api/errorCodes.ts`. `export-openapi` x2 idéntico y sin diferencia con `docs/openapi.json` (no cambia el contrato, no hace falta `gen:api`); `tsc --noEmit` limpio; vitest `src/core/api` 285 passed.
+- Desviación menor: el plan dice «`LIMIT 1`»; se usa `EXISTS` (S9-D54), que corta en la primera fila; la prueba afirma `EXISTS` y la columna desnuda.
+- **EXPLAIN (S9-D54)** sobre `db_test`, sentencia preparada con `plan_cache_mode = force_generic_plan` y `enable_seqscan = off` (tabla vacía): movimiento = `Index Scan using ix_personal_records_movement`, `Index Cond: (movement_id = $1)`, `Filter: (invalidated_at IS NULL)`; benchmark = `Index Scan using ix_personal_records_benchmark`, `Index Cond: (benchmark_id = $1)`. Con `enable_seqscan = on` y tabla vacía el plan también eligió el índice. El índice sirve: 0043 no se toca.
+
+- Corrida: `tests/wods tests/athletes tests/results tests/architecture` 1612 passed, 3 deselected (exit 0); ruff check, ruff format y mypy limpios. Gate no sellante `slice-gate.sh athletes tests/athletes/test_records_probe.py` abajo. Sin commit, sin sello de `wods`.
+- Gate `slice-gate.sh athletes tests/athletes/test_records_probe.py`: 917 passed, exit 0 (el script escribe su sello de `athletes` aunque el plan lo llame no sellante; el sello de `wods` queda pendiente). Árbol sin commit.
+
+### Revisiones
+
+`security-reviewer`: APROBADO, 0 CRITICAL/HIGH/MEDIUM, 5 LOW (decisión S9-D56).
+- **LOW-1** (TOCTOU depende de READ COMMITTED): la prueba de la carrera afirma `SHOW transaction_isolation = read committed` en las dos sesiones y `_has_live` lo documenta.
+- **LOW-2** (puerto permisivo desde otro módulo): `tests/architecture/test_probe_registration_sites.py`, barrido por AST de `src`; caso sintético dentro de la prueba demuestra que detecta una llamada indebida (`modules/members/service.py` llamando `set_records_probe`). Sin rojo posible: protege un invariante que ya se cumple; el caso sintético es la prueba de que el detector no está vacío.
+- **LOW-3** (derivados sin `FOR SHARE` del catálogo): ACEPTADO. Condición para B3 en S9-D56: dejarlo escrito y probar que con un derivado vivo el `PATCH` de `unit` da 422 (por uso o por el puerto), nunca pasa.
+- **LOW-4**: docstring de `wods/router.py` cita `locked_by_records` también en `PATCH /movements`.
+- **LOW-5**: docstring de `athletes/service.py` corregido a `EXISTS`; prueba `test_los_dos_indices_parciales_sirven_a_la_consulta_del_puerto` (plan genérico, sin Seq Scan) afirma los dos índices.
+
+**Corrida tras las revisiones:** `tests/wods tests/athletes tests/results tests/architecture` 1615 passed, 3 deselected (exit 0); ruff, format y mypy limpios; contrato sin cambios (P-API no aplica de nuevo). Sello: `slice-gate.sh wods tests/wods/test_locked_by_records.py tests/athletes/test_records_probe.py tests/architecture/test_probe_registration_sites.py`.

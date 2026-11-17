@@ -237,3 +237,78 @@ def test_en_un_proceso_limpio_el_puerto_de_wods_lo_registra_la_carga_de_modulos(
         check=False,
     )
     assert resultado.returncode == 0, resultado.stderr[-2000:]
+
+
+def test_tras_create_app_el_puerto_de_records_de_wods_es_el_de_athletes(
+    settings_prueba: Settings,
+) -> None:
+    """S9-B2 (S9-D9): tras `create_app` el puerto es el de `athletes`; sin puerto, falla cerrado."""
+    from app.modules.athletes import service as athletes_service
+    from app.modules.wods import service as wods_service
+    from app.modules.wods.exceptions import RecordsProbeNotRegistered
+
+    create_app(settings_prueba, run_migrations_on_startup=False)
+    anterior = wods_service.current_records_probe()
+    assert anterior is athletes_service.records_probe
+    wods_service.set_records_probe(None)
+    try:
+        with pytest.raises(RecordsProbeNotRegistered):
+            wods_service.records_probe()
+    finally:
+        wods_service.set_records_probe(anterior)
+
+
+def test_tras_cargar_los_services_del_cli_el_puerto_de_records_es_el_de_athletes() -> None:
+    from app.modules.athletes import service as athletes_service
+    from app.modules.wods import service as wods_service
+
+    _load_module_services()
+    assert wods_service.current_records_probe() is athletes_service.records_probe
+
+
+_SOLO_WODS_RECORDS = chr(10).join(
+    [
+        "from app.modules.wods import service as w",
+        "assert w.current_records_probe() is None, 'wods no registra puerto solo'",
+    ]
+)
+_PUERTO_ATHLETES = chr(10).join(
+    [
+        "from app.modules.athletes import service as a",
+        "assert w.current_records_probe() is a.records_probe",
+    ]
+)
+_RECORDS_CON_MAIN = chr(10).join(
+    [_SOLO_WODS_RECORDS, "from app import main", "main.load_module_services()", _PUERTO_ATHLETES]
+)
+_RECORDS_CON_CLI = chr(10).join(
+    [_SOLO_WODS_RECORDS, "from app import cli", "cli._load_module_services()", _PUERTO_ATHLETES]
+)
+_RECORDS_CON_WORKER = chr(10).join(
+    [
+        _SOLO_WODS_RECORDS,
+        "from app.worker import runtime",
+        "runtime._install_listeners()",
+        _PUERTO_ATHLETES,
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "programa",
+    [_RECORDS_CON_MAIN, _RECORDS_CON_CLI, _RECORDS_CON_WORKER],
+    ids=["main", "cli", "worker"],
+)
+def test_en_un_proceso_limpio_el_puerto_de_records_lo_registra_la_carga_de_modulos(
+    programa: str,
+) -> None:
+    """S9-B2: el puerto de `athletes` queda registrado en el api, el CLI y el worker."""
+    resultado = subprocess.run(  # noqa: S603 - programa fijo de la prueba
+        [sys.executable, "-I", "-c", programa],
+        cwd=API_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]

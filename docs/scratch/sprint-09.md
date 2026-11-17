@@ -684,3 +684,23 @@ Verde tras las revisiones: `tests/athletes tests/results tests/wods tests/archit
 
 Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos) exit 0. Checkpoint `0a6bc08`. Worker reiniciado (healthy). Sin datos nuevos: socio ficticio `27c8e28b-...`, admin de desarrollo. Login 200. `PUT /results` corrigiendo el de carga (100 kg) a 105 kg con `supersedes_id` = **201**; `POST /results/{id}/void` del de benchmark (245 s) = **200**. `$PSQL` de `athletes.personal_records` del socio: RM derivado de 100.000 g `invalidated_reason = superseded` (no vivo); benchmark derivado de 245 s `voided` (no vivo); RM derivado de 105.000 g vivo; el manual de 123.000 g sigue vigente (mayor). Filas `update` de `athletes.personal_records` en `audit_log` del socio: **2** (una por récord invalidado).
 - Orquestador (tras la evidencia): el L4 de seguridad de B5 (reloj de la ventana de 24 h) queda aceptado en S9-D61, igual que el Seg L-4 de A3 en S9-D50.
+
+## S9-B6 · derive-records (2026-11-17)
+
+### Rojo
+- Stubs con NotImplementedError: `cli_ops/derive_records.py`, `athletes/derive.py::rederive_member`, `results/reads.py::member_ids_with_marks`.
+- `tests/cli/test_derive_records.py` (14 pruebas) + `tests/core/test_env_example.py::test_ci_deriva_records_tras_los_benchmarks`.
+- Medido: 14 failed (13 del comando por NotImplementedError + 1 de CI sin el paso), 55 passed.
+
+### Verde
+- `rederive_member` (derive.py, fachada en service.py): reglas puras en orden de `wod_date` por objetivo (RM por principal, benchmark), sin `PersonalRecordSet`, tope `RESTORE_MAX_MARKS` con `athletes_restore_capped`; `strict=False` usa `_guarded` por objetivo.
+- `results.service.member_ids_with_marks` (lotes de 200 por id). `cli_ops/derive_records.py`: una transacción por socio, `lock_member` primero, 3 intentos con espera 1 s ante base ocupada, `--dry-run` = revertir cada socio, fila resumen solo con conteos, salida 1 con ocupados/fallidos/topes.
+- Docs: `docs/operacion/atleta.md` (nueva), `actualizar.md` (paso v0.6), paso en `ci.yml`. `CLAUDE.md` ya coincidía (flags y código de salida): sin cambios.
+- `tests/cli/test_derive_records.py`: 14 passed. ruff, format, mypy src: limpios.
+- tests/cli/test_cli_base.py: tope de derive_records.py en 200 líneas (precedente kek/rotate_*). Corrida verde completa: 2241 passed, 1 failed (ese tope, ya corregido).
+
+### Revisiones
+- Seguridad 2 MEDIUM + 6 LOW, base de datos 2 MEDIUM + 5 LOW; decisión S9-D62 (A, B, C, LOW, tope de líneas).
+- Rojo medido de las correcciones: 6 failed (4 en `tests/cli/test_derive_records.py`: sin tope con página chica, simulacro no alerta, bajas, conexión con conteos parciales; 2 en `tests/athletes/test_rederive_member.py`: sentencias constantes y un solo flush), 13 passed.
+- Verde: `test_derive_records.py` (18) + `test_rederive_member.py` (3) = 21 passed; ruff, format y mypy limpios. bd L7: el `ResultsProbe` ya bloquea principal, tipo, fecha y benchmark con resultados; sin cambio.
+- Verde completo (tests/cli tests/athletes tests/results tests/wods tests/core/test_env_example.py tests/architecture): 2603 passed, 33 skipped, 0 failed; ruff, format, mypy limpios.

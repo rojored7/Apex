@@ -406,6 +406,16 @@ async def active_ids(session: AsyncSession) -> frozenset[UUID]:
     return frozenset(await session.scalars(select(Member.id).where(Member.deleted_at.is_(None))))
 
 
+async def live_ids_among(session: AsyncSession, ids: Iterable[UUID]) -> set[UUID]:
+    """De esos ids, los socios NO dados de baja (`deleted_at IS NULL`), en UNA consulta por lote
+    (S9-D62: `derive-records` no deriva récords de una baja)."""
+    pedidos = set(ids)
+    if not pedidos:
+        return set()
+    consulta = select(Member.id).where(Member.id == any_uuids(pedidos), Member.deleted_at.is_(None))
+    return set((await session.scalars(consulta)).all())
+
+
 # Buscar y listar (S2-B8) --------------------------------------------------------------
 
 

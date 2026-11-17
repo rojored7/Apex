@@ -119,3 +119,18 @@ volver a la imagen vieja no deshace el esquema. Decide con `docs/RUNBOOK.md` sec
 el api solo necesitaba más tiempo: `curl` al `/health` otra vez); si no, vuelve al código y las imágenes
 anteriores con `rollback-<fecha>.txt` y, solo si el esquema nuevo lo exige, restaura el respaldo
 `pre-deploy` con `restore.sh` (`respaldo-y-restauracion.md`).
+
+## Paso de despliegue de v0.6: derivar los récords de los resultados anteriores
+
+Al pasar de v0.5 a v0.6 los resultados ya guardados no tienen récords personales. Si no se derivan,
+el primer resultado que se cargue en v0.6 de cada socio quedaría como su «RM» aunque tenga marcas
+mejores de antes. Una vez que `deploy.sh` termine con 0 (después del `up`), corre:
+
+```
+docker compose --profile tools run --rm tools derive-records --dry-run --as <correo de un admin>
+docker compose --profile tools run --rm tools derive-records --as <correo de un admin>
+```
+
+El primero solo cuenta lo que crearía y no escribe nada. El segundo lo hace. Repetirlo no duplica:
+la segunda corrida debe decir `creados 0` y salir con 0. Si sale con 1, el resumen dice cuántos
+socios quedaron `ocupados` o `fallidos`: repite el comando (guía en `atleta.md`).

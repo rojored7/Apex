@@ -8,6 +8,7 @@ from sqlalchemy import ColumnElement, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.athletes import derive
+from app.modules.athletes.derive import RederiveResult
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.athletes.metrics import add_metric, list_metrics, reveal_metric, void_metric
 from app.modules.athletes.models import PersonalRecord
@@ -36,6 +37,13 @@ class _RecordsProbe:
         return await _has_live(session, PersonalRecord.benchmark_id == benchmark_id)
 
 
+async def rederive_member(
+    session: AsyncSession, member_id: UUID, *, strict: bool
+) -> RederiveResult:
+    """Deriva los récords que falten de un socio (S9-D21): ver `derive.rederive_member`."""
+    return await derive.rederive_member(session, member_id, strict=strict)
+
+
 records_probe = _RecordsProbe()
 wods_service.set_records_probe(records_probe)
 # S9-D7: los handlers de `results` se suscriben al importarse la fachada.
@@ -43,12 +51,14 @@ derive.subscribe_handlers()
 
 __all__ = [
     "PersonalRecordSet",
+    "RederiveResult",
     "add_metric",
     "add_record",
     "invalidate_manual_record",
     "list_metrics",
     "list_records",
     "records_probe",
+    "rederive_member",
     "reveal_metric",
     "void_metric",
 ]

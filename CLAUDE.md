@@ -258,7 +258,7 @@ docker compose --profile tools run --rm tools migrate-provider [--dry-run] --as 
 docker compose --profile tools run --rm tools rotate-kek [--trim] --as <email>   # reanudable; --trim retira la versión anterior de apex-kek solo tras re-envolver todo (S5-D19, D184)
 docker compose --profile tools run --rm tools retire-local-kek --as <email>   # irreversible; exige manifiesto reciente (S5-B2)
 docker compose --profile tools run --rm tools seed-notifications --as <email>   # plantillas y reglas por defecto, idempotente (S5-B6)
-docker compose --profile tools run --rm tools derive-records [--dry-run] --as <email>   # Sprint 9, S9-D21: paso de despliegue de v0.6 tras el `up`; idempotente, también sirve de reparación; código 1 si hubo socios ocupados o fallidos o se alcanzó el tope
+docker compose --profile tools run --rm tools derive-records [--dry-run] --as <email>   # Sprint 9, S9-D21: paso de despliegue de v0.6 tras el `up`; idempotente, también sirve de reparación; código 1 si hubo socios ocupados o fallidos (recorre todas las marcas, sin topes; no deriva bajas; S9-D62)
 docker compose --profile tools run --rm tools seed-benchmarks [--as <email>]   # Fran, Grace, Helen y los demás benchmarks, idempotente por nombre normalizado (Sprint 8, S8-D6)
 docker compose run --rm tools notify [--generate-only | --send-only] [--as <email>]   # mismo reclamo que el worker (S5-D226)
 docker compose run --rm worker python -m app.worker.main --run-once notify

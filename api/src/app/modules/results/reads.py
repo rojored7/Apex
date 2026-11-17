@@ -16,10 +16,11 @@ Todas leen sin candados ni escrituras.
 from __future__ import annotations
 
 from collections.abc import Collection
+from datetime import date as date_type
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import any_, bindparam, select
+from sqlalchemy import any_, bindparam, select, tuple_
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -349,3 +350,41 @@ async def member_marks(
         ).limit(max(1, min(limit, MEMBER_MARKS_MAX)))
     )
     return [_to_mark(f) for f in reversed(filas.all())]
+
+
+async def member_ids_with_marks(
+    session: AsyncSession, *, after: UUID | None, limit: int
+) -> list[UUID]:
+    """Los socios con al menos una marca vigente y validada, por id y de a `limit` (S9-D21).
+
+    Paginación por llave (`after` es el último id del lote anterior). Sin candados ni escrituras;
+    no filtra por socio activo. La usa `derive-records`."""
+    consulta = (
+        select(WodResult.member_id)
+        .where(WodResult.is_current, WodResult.status == "validated")
+        .distinct()
+        .order_by(WodResult.member_id)
+        .limit(max(1, limit))
+    )
+    if after is not None:
+        consulta = consulta.where(WodResult.member_id > after)
+    return list((await session.scalars(consulta)).all())
+
+
+async def member_marks_after(
+    session: AsyncSession, member_id: UUID, *, after: tuple[date_type, UUID] | None, limit: int
+) -> list[ResultMark]:
+    """Una PÁGINA de las marcas vigentes y validadas del socio, en orden ascendente por
+    `(wod_date, id)` y por llave (S9-D62 B): `after` es `(wod_date, result_id)` de la última marca
+    de la página anterior. Sin tope total: quien la usa recorre todas. Sin candados."""
+    consulta = select(*_MARK_COLUMNS).where(
+        WodResult.member_id == member_id,
+        WodResult.is_current,
+        WodResult.status == "validated",
+    )
+    if after is not None:
+        consulta = consulta.where(tuple_(WodResult.wod_date, WodResult.id) > tuple_(*after))
+    filas = await session.execute(
+        consulta.order_by(WodResult.wod_date, WodResult.id).limit(max(1, limit))
+    )
+    return [_to_mark(f) for f in filas.all()]

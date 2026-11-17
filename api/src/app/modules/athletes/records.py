@@ -243,8 +243,8 @@ async def result_ids_with_record(
     session: AsyncSession, member_id: UUID, kind: str, result_ids: Sequence[UUID]
 ) -> set[UUID]:
     """Los resultados de esa lista que ya tienen un récord de ese `kind`, vivo o no (UNA consulta
-    por `uq_personal_records_result_kind`, sin candados): la reposición no los toca (un segundo
-    récord del mismo `(result_id, kind)` lo rechaza la base)."""
+    por `ix_personal_records_member_date`; el filtro por socio es defensa, sin candados): la
+    reposición no los toca (un segundo récord del mismo `(result_id, kind)` lo rechaza la base)."""
     if not result_ids:
         return set()
     filas = await session.scalars(

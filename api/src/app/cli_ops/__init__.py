@@ -12,6 +12,7 @@ import typer
 
 from app.cli_ops import (
     attachments_check,
+    derive_records,
     generate_sessions,
     import_members,
     kek,
@@ -42,3 +43,4 @@ def register_ops(app: typer.Typer) -> None:
     attachments_check.register(app)  # S6-C1
     generate_sessions.register(app)  # S7-B1 (S7-D10)
     seed_benchmarks.register(app)  # S8-A2 (US-166, S8-D6)
+    derive_records.register(app)  # S9-B6 (S9-D21)

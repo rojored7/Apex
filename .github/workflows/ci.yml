@@ -524,6 +524,9 @@ jobs:
       - name: benchmarks de demostración (S8-A2, US-166)
         # Idempotente. La spec de F1 (Movimientos y benchmarks) espera encontrar «Fran».
         run: $DC --profile tools run --rm tools seed-benchmarks
+      - name: récords derivados de resultados previos (S9-B6, S9-D21)
+        # Idempotente; sobre una base vacía no crea nada. Sale con 1 si quedó algún socio sin derivar.
+        run: $DC --profile tools run --rm tools derive-records
       - name: dependencias del front
         working-directory: web
         run: |

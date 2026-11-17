@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import Final, Literal
 from uuid import UUID
 
@@ -52,6 +53,7 @@ from app.modules.athletes.records import (
 )
 from app.modules.athletes.rules import (
     RecordDraft,
+    RecordRow,
     best_candidate,
     derive_benchmark,
     derive_rm,
@@ -344,6 +346,12 @@ async def _candidate_marks(
     limite = RESTORE_MAX_MARKS + 1
     if target.kind == "rm":
         wod_ids = await wods_service.wod_ids_with_primary(session, target.target_id)
+        if len(wod_ids) >= wods_service.WOD_IDS_MAX:  # recortó: no es silencioso (S9-D62 B)
+            _alert_capped(len(wod_ids))
+            logger.warning(
+                "athletes: WODs del movimiento recortados; corrija con derive-records",
+                extra={"member_id": str(member_id)},
+            )
         if not wod_ids:
             return [], None
         marcas = await results_service.member_marks(
@@ -364,6 +372,10 @@ async def _restore(session: AsyncSession, member_id: UUID, target: _Target) -> N
     marcas, score_type = await _candidate_marks(session, member_id, target)
     if len(marcas) > RESTORE_MAX_MARKS:
         _alert_capped(len(marcas))
+        logger.warning(
+            "athletes: reposición con tope; corrija con derive-records",
+            extra={"member_id": str(member_id)},
+        )
         return
     con_record = await result_ids_with_record(
         session, member_id, target.kind, [m.result_id for m in marcas]
@@ -478,3 +490,123 @@ def subscribe_handlers() -> None:
     events.subscribe(WodResultValidated, on_wod_result_validated)
     events.subscribe(WodResultSuperseded, on_wod_result_superseded)
     events.subscribe(WodResultVoided, on_wod_result_voided)
+
+
+# S9-D21, S9-D62 (S9-B6): `derive-records` ------------------------------------------------------
+
+REDERIVE_PAGE: Final = 500  # marcas por página del recorrido de `derive-records` (sin tope total)
+_NEVER: Final = datetime.min.replace(tzinfo=UTC)  # `created_at` de un vigente solo en memoria
+
+
+@dataclass(frozen=True, slots=True)
+class RederiveResult:
+    """Lo que hizo `rederive_member`: los récords creados."""
+
+    created: int
+
+
+def _row_of_draft(draft: RecordDraft) -> RecordRow:
+    """El vigente EN MEMORIA tras un borrador (lo que `derive_*` lee del vigente)."""
+    return RecordRow(
+        id=draft.result_id,
+        kind=draft.kind,
+        movement_id=draft.movement_id,
+        benchmark_id=draft.benchmark_id,
+        value_g=draft.value_g,
+        level=draft.level,
+        seconds=draft.seconds,
+        rounds=draft.rounds,
+        reps=draft.reps,
+        load_g=draft.load_g,
+        capped=draft.capped,
+        achieved_on=draft.achieved_on,
+        created_at=_NEVER,
+    )
+
+
+async def _page_drafts(
+    session: AsyncSession,
+    member_id: UUID,
+    marcas: list[ResultMark],
+    metas: dict[UUID, WodRecordMeta],
+    vigentes: dict[tuple[str, UUID], RecordRow | None],
+) -> list[RecordDraft]:
+    """Borradores de UNA página: reglas puras en orden, con el vigente leído UNA vez por objetivo
+    y actualizado en memoria tras cada borrador."""
+    ids = [m.result_id for m in marcas]
+    con = {
+        "rm": await result_ids_with_record(session, member_id, "rm", ids),
+        "benchmark": await result_ids_with_record(session, member_id, "benchmark", ids),
+    }
+    borradores: list[RecordDraft] = []
+    for marca in marcas:
+        meta = metas.get(marca.wod_id)
+        if meta is None:
+            continue
+        objetivos: list[tuple[str, UUID]] = []
+        if meta.score_type == "load" and meta.primary_movement_id is not None:
+            objetivos.append(("rm", meta.primary_movement_id))
+        if meta.benchmark_id is not None and marca.benchmark_id == meta.benchmark_id:
+            objetivos.append(("benchmark", meta.benchmark_id))
+        for kind, destino in objetivos:
+            if marca.result_id in con[kind]:
+                continue
+            if (kind, destino) not in vigentes:
+                vigentes[(kind, destino)] = (
+                    await current_rm(session, member_id, destino)
+                    if kind == "rm"
+                    else await current_benchmark(session, member_id, destino, meta.score_type)
+                )
+            actual = vigentes[(kind, destino)]
+            draft = (
+                derive_rm(marca, meta, actual)
+                if kind == "rm"
+                else derive_benchmark(marca, meta, actual)
+            )
+            if draft is not None:
+                borradores.append(draft)
+                vigentes[(kind, destino)] = _row_of_draft(draft)
+    return borradores
+
+
+async def _rederive(session: AsyncSession, member_id: UUID) -> int:
+    """Recorre TODAS las marcas del socio por páginas, calcula los borradores en memoria y escribe
+    con un solo `add_all` + `flush` al final (un solo candado de la cadena de auditoría)."""
+    metas: dict[UUID, WodRecordMeta] = {}
+    vigentes: dict[tuple[str, UUID], RecordRow | None] = {}
+    borradores: list[RecordDraft] = []
+    cursor: tuple[date, UUID] | None = None
+    while True:
+        marcas = await results_service.member_marks_after(
+            session, member_id, after=cursor, limit=REDERIVE_PAGE
+        )
+        if not marcas:
+            break
+        nuevos = {m.wod_id for m in marcas} - metas.keys()
+        metas.update(await wods_service.record_meta_for(session, nuevos))
+        borradores += await _page_drafts(session, member_id, marcas, metas, vigentes)
+        cursor = (marcas[-1].wod_date, marcas[-1].result_id)
+    if borradores:
+        by = get_actor()
+        session.add_all(_record_of(d, member_id, by) for d in borradores)
+        await session.flush()
+    return len(borradores)
+
+
+async def rederive_member(
+    session: AsyncSession, member_id: UUID, *, strict: bool
+) -> RederiveResult:
+    """Deriva los récords que falten de un socio con las MISMAS reglas puras (S9-D21, S9-D62).
+
+    El llamador ya tiene `lock_member` y su transacción. Recorre todas las marcas vigentes y
+    validadas en orden de `wod_date` (páginas por llave, sin topes: el vigente de cada objetivo
+    queda en el máximo real, M-6), así que puede crear históricos que la vía en vivo no creó.
+    Sin `PersonalRecordSet`; `created_by` es el actor del contexto. `strict=True` no traga errores
+    (decide el comando); `strict=False` corre todo en UN savepoint con el fallo blando de
+    `_guarded`."""
+    if strict:
+        return RederiveResult(await _rederive(session, member_id))
+    creados = await _guarded(
+        _ManualSource(member_id), session, lambda: _rederive(session, member_id)
+    )
+    return RederiveResult(creados or 0)

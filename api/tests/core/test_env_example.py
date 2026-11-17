@@ -756,3 +756,12 @@ def test_ci_siembra_benchmarks_tras_el_admin() -> None:
     assert texto.count(orden) == 1
     seed = texto.index("tools seed --no-force-change")
     assert seed < texto.index(orden) < texto.index("name: dependencias del front")
+
+
+def test_ci_deriva_records_tras_los_benchmarks() -> None:
+    """S9-B6 (S9-D21): el job e2e-stack corre derive-records una vez, tras sembrar benchmarks."""
+    texto = CI_YML.read_text(encoding="utf-8")
+    orden = "$DC --profile tools run --rm tools derive-records"
+    assert texto.count(orden) == 1
+    sembrado = texto.index("$DC --profile tools run --rm tools seed-benchmarks")
+    assert sembrado < texto.index(orden) < texto.index("name: dependencias del front")

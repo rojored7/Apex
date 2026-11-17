@@ -863,3 +863,15 @@ Método: por cada regla nueva del guion, una copia alterada de `nightly.yml` en 
 - **L-4** (`tv.md`). Nota de NTFS (la `umask` no cambia permisos) y token fino con solo «Actions: write» (más «Metadata: read»).
 - **L-5.** `SOAK_SUMMARY_FILE` no lleva acción: es una ruta de salida que solo el job fija (`runner.temp`); queda sin cambio.
 - Resultado: guion 0 fallas sobre el workflow real; `test_images_pinned.sh` exit 0; `tsc` y `lint` exit 0; corrida local corta del modo real: 4 muestras 3,59 / 3,72 / 3,77 / 3,85 MiB, último/primero 1,072, 0 errores de consola, exit 0.
+
+## Cierre de la Wave D (2026-11-17)
+
+**P-GATES** (worktree limpio `.claude/worktrees/gates`):
+- Corrida completa sobre `46b9c14`: api lint, formato y mypy en verde; pytest 12.304 passed, 103 skipped, 47 deselected (1 h 9 min), cobertura 96 %; scripts y Caddy en verde. **Web pruebas falló**: 1 de 4.560, `e2e-stack-guard.test.ts` («toda spec que crea un coach lo borra al terminar»): `kiosk-idle.spec.ts` (S9-X2) borraba el coach dentro del ayudante `limpiar`, y el guardián busca `borrarUsuario(` en el texto del `finally`.
+- Arreglo `5e46be2`: cada `finally` llama `borrarUsuario(page, p.coach.id)` y luego `cancelarClase(page, p.sesionId)`. El guardián pasa (16/16). P-E2E de `kiosk-idle` otra vez: 2 passed (2,0 s), `.env` restaurado (cmp OK).
+- Mitad web repetida sobre `5e46be2` en el mismo worktree (el cambio solo toca una spec de `web/tests/e2e`; api y scripts quedan con la corrida de `46b9c14`): lint y tsc OK, Vitest 261 archivos y 4.560 pruebas en verde, cobertura 95,86 % de líneas, build OK, exit 0.
+- Lección: el slice-gate de X2 no corrió `tests/unit/e2e-stack-guard.test.ts`; una spec nueva de `e2e/stack` debe correr ese guardián en su slice.
+
+**P-REBUILD 2, 3 y 4** (desde el árbol principal, `GIT_SHA=5e46be2`): imágenes `apex-api:local` y `apex-web:local` reconstruidas, `up -d --no-build --force-recreate api worker web`. `/health` 8181: `status ok`, `db ok`, `migrations ok`, `crypto ok`, `version 5e46be2` (`backup: attention`, como antes). api, worker y web `healthy`; web 8180 responde 200.
+
+**Smoke 8181** (`x1_smoke.py`): admin y coach, `GET /notifications/today` 200 (2 filas, todas con `can_whatsapp`) y `GET /notifications` 200 (5 filas, todas con el campo, 2 en `true`, ninguna `true` fuera de `whatsapp_link`); `crypto_ops` y `audit_log` sin cambio tras leer.

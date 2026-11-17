@@ -679,3 +679,7 @@ Rojo medido: **10 failed, 23 passed** en `test_invalidation_review_b5.py` (nuevo
 - NO aplicado: L4 seg (reloj de la base para la ventana de 24 h): las pruebas de la hora 24 exacta usan `FrozenClock` y la regla usa el reloj inyectable; lo guardado sí sale de `clock_timestamp()` (S9-D52). Anotado en S9-D60; el orquestador decide.
 
 Verde tras las revisiones: `tests/athletes tests/results tests/wods tests/architecture tests/audit tests/core/test_alerts.py` = **2382 passed** (17 perf deseleccionados); ruff, format y mypy limpios; contrato OpenAPI sin cambio.
+
+### Evidencia (S9-B5, tras el sello y el checkpoint 0a6bc08)
+
+Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos) exit 0. Checkpoint `0a6bc08`. Worker reiniciado (healthy). Sin datos nuevos: socio ficticio `27c8e28b-...`, admin de desarrollo. Login 200. `PUT /results` corrigiendo el de carga (100 kg) a 105 kg con `supersedes_id` = **201**; `POST /results/{id}/void` del de benchmark (245 s) = **200**. `$PSQL` de `athletes.personal_records` del socio: RM derivado de 100.000 g `invalidated_reason = superseded` (no vivo); benchmark derivado de 245 s `voided` (no vivo); RM derivado de 105.000 g vivo; el manual de 123.000 g sigue vigente (mayor). Filas `update` de `athletes.personal_records` en `audit_log` del socio: **2** (una por récord invalidado).

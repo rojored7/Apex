@@ -296,3 +296,63 @@ def derive_rm(
         result_id=mark.result_id,
         wod_id=mark.wod_id,
     )
+
+
+# Los campos que exige cada tipo de marca (la misma forma de `results/rules.validate_score`).
+_BENCHMARK_FIELDS: Final[dict[str, tuple[str, ...]]] = {
+    "time": ("seconds",),
+    "rounds_reps": ("rounds", "reps"),
+    "reps": ("reps",),
+    "load": ("load_g",),
+}
+
+
+def _has_score(mark: ResultMark, score_type: str) -> bool:
+    """La marca trae el campo de su `score_type` (`capped` suma `reps`); una carga de 0 g no es
+    récord (coherente con `derive_rm`, S9-D59)."""
+    campos = _BENCHMARK_FIELDS[score_type] + (("reps",) if mark.capped else ())
+    if any(getattr(mark, c) is None for c in campos):
+        return False
+    return score_type != "load" or (mark.load_g or 0) > 0
+
+
+def derive_benchmark(
+    mark: ResultMark, meta: WodRecordMeta, current: RecordRow | None
+) -> RecordDraft | None:
+    """Récord de benchmark derivado (S9-D10, US-182): solo si el WOD es de un benchmark, la marca
+    es de ESE benchmark y es ESTRICTAMENTE mejor que la vigente según `score_key` (el orden del
+    leaderboard): el empate no crea, un `scaled` nunca gana a un `rx`, `rx_plus` compite con `rx`
+    y un `capped` puede ser el primero pero va detrás de todo el que terminó. No derivan un tipo
+    sin leaderboard, una marca sin el campo de su tipo (la forma de la tabla exige uno) ni una
+    carga de 0 g."""
+    if meta.benchmark_id is None or mark.benchmark_id != meta.benchmark_id:
+        return None
+    if meta.score_type not in _BENCHMARK_FIELDS or not _has_score(mark, meta.score_type):
+        return None
+    clave = score_key(meta.score_type)
+    if current is not None:
+        vigente = _Score(
+            current.level or "rx",
+            current.seconds,
+            current.rounds,
+            current.reps,
+            current.load_g,
+            current.capped,
+        )
+        if not clave(mark) < clave(vigente):
+            return None
+    return RecordDraft(
+        kind="benchmark",
+        movement_id=None,
+        benchmark_id=meta.benchmark_id,
+        value_g=None,
+        level=mark.level,
+        seconds=mark.seconds,
+        rounds=mark.rounds,
+        reps=mark.reps,
+        load_g=mark.load_g,
+        capped=mark.capped,
+        achieved_on=mark.wod_date,
+        result_id=mark.result_id,
+        wod_id=mark.wod_id,
+    )

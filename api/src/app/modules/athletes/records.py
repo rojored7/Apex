@@ -208,6 +208,15 @@ async def current_rm(session: AsyncSession, member_id: UUID, movement_id: UUID) 
     return pick_current([_row_of(f) for f in filas])
 
 
+async def current_benchmark(
+    session: AsyncSession, member_id: UUID, benchmark_id: UUID, score_type: str
+) -> RecordRow | None:
+    """El récord de benchmark vigente del socio (UNA consulta, sin candados; N-45): el de menor
+    `score_key` del tipo de marca. Lo usa el handler de derivación (B4)."""
+    filas = await session.scalars(current_query(member_id, set(), {benchmark_id}))
+    return pick_current([_row_of(f) for f in filas], score_type=score_type)
+
+
 def _to_out(
     record: PersonalRecord,
     *,

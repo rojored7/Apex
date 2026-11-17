@@ -313,3 +313,84 @@ async def test_base_ocupada_da_503_busy_sin_resultado_y_sin_alerta(
     assert alertas.de("athletes_derive_skipped") == []
     assert "derivación omitida" not in _ids_en_el_log(caplog)
     await una.rollback()
+
+
+async def test_base_ocupada_en_el_tramo_benchmark_da_503_y_no_guarda_ni_el_rm(
+    app_real: Any,
+    engine: AsyncEngine,
+    dos_sesiones: tuple[AsyncSession, AsyncSession],
+    reloj: FrozenClock,
+    alertas: AlertasCapturadas,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """S9-D58/D59: un benchmark `load` con principal deriva RM y benchmark. Otra conexión retiene,
+    sin confirmar, un récord `benchmark` con el mismo `(result_id, kind)`: el RM se inserta bien y
+    el INSERT del benchmark recibe un 55P03 real. `PUT /results` responde 503 `busy`; no se guarda
+    nada (ni el RM ya insertado ni el resultado) y no hay alerta de derivación."""
+    from tests.athletes.test_derive_benchmark_service import _benchmark, _wod_de
+
+    una, _otra = dos_sesiones
+    e = await escena(una, score_type="load", time_cap_s=None, con_clase=False)
+    bench = await _benchmark(una, e, "load")
+    wod_id = await _wod_de(una, e, bench, "2026-10-18", "load")
+    coach = await make_user(una, role="coach", password=CLAVE_PRUEBA)
+    token = create_access_token(coach.id, "coach", coach.member_id, reloj)
+    headers = {"Authorization": f"Bearer {token}", "Origin": ORIGEN}
+    socio_id = e.socio_id
+    una.expunge_all()
+    insertado: list[UUID] = []
+
+    async with engine.connect() as ajena:
+
+        async def ocupar(evento: WodResultRecorded, sesion: AsyncSession) -> None:
+            await sesion.execute(text("SET LOCAL lock_timeout = '300ms'"))
+            await ajena.execute(
+                text(
+                    "INSERT INTO athletes.personal_records (id, created_by, member_id, kind, "
+                    "benchmark_id, level, load_g, achieved_on, source, result_id, wod_id) VALUES "
+                    "(:i, :c, :m, 'benchmark', :b, 'rx', 50000, DATE '2026-10-21', 'derived', "
+                    ":r, :w)"
+                ),
+                {
+                    "i": uuid4(),
+                    "c": SYSTEM_USER_ID,
+                    "m": evento.member_id,
+                    "b": bench,
+                    "r": evento.result_id,
+                    "w": evento.wod_id,
+                },
+            )
+            insertado.append(evento.result_id)
+
+        events.subscribe(WodResultRecorded, ocupar)
+        transporte = ASGITransport(app=app_real, raise_app_exceptions=False)
+        try:
+            async with AsyncClient(transport=transporte, base_url="http://t") as http:
+                with caplog.at_level(logging.INFO):
+                    r = await asyncio.wait_for(
+                        http.put(
+                            "/api/v1/results",
+                            json={
+                                "wod_id": str(wod_id),
+                                "member_id": str(socio_id),
+                                "level": "rx",
+                                "load_g": 100_000,
+                            },
+                            headers=headers,
+                        ),
+                        timeout=30,
+                    )
+        finally:
+            await ajena.rollback()
+            handlers = events._subscribers.get(WodResultRecorded, [])
+            if ocupar in handlers:
+                handlers.remove(ocupar)
+
+    assert insertado, (r.status_code, r.text)
+    assert r.status_code == 503, r.text
+    assert r.json()["error"]["code"] == "busy"
+    assert r.headers["retry-after"] == "1"
+    assert await _resultados(una, socio_id) == 0, "el resultado no se confirmó"
+    assert await records_de(una, socio_id) == [], "ni el RM ya insertado"
+    assert alertas.de("athletes_derive_skipped") == []
+    await una.rollback()

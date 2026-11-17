@@ -603,3 +603,35 @@ Nota: un `except A, B:` sin paréntesis es sintaxis de 3.14; el proyecto es 3.12
 ### Evidencia (S9-B3, tras el sello y el checkpoint 09a4134)
 
 Worker reiniciado (`apex-worker-1` healthy a los 25 s). No había WOD `load` con principal en desarrollo: creé por la API, con el admin, un movimiento ficticio «Back Squat ficticio S9B3» (kg, `POST /movements` 201) y un WOD ficticio del 2026-11-14 de tipo `load` con ese principal (`POST /wods` 201). Login 200. `PUT /results` (socio ficticio `27c8e28b-...`, rx, 100000 g) = **201**. `$PSQL` de `athletes.personal_records` del socio: `kind=rm, source=derived, value_g=100000, result_id presente = t` (coincide con el id devuelto por el PUT); la otra fila, `manual 123000` (ya existía), queda como vigente por ser mayor (N-45).
+
+## S9-B4 · Récord de benchmark derivado (2026-11-16)
+
+### Rojo
+
+Stub con `NotImplementedError`: `athletes/rules.py::derive_benchmark`. La rama del handler NO se cableó en el Rojo (un stub cableado caería en el fallo blando y alertaría en todo `PUT /results` de WOD con benchmark de las pruebas viejas); se cablea en el Verde.
+
+Pruebas nuevas (valores a mano): `tests/athletes/test_derive_benchmark_pure.py` (30 casos: los cuatro tipos de marca, empate, `scaled` contra `rx`, `rx_plus`, `capped` primero y detrás de quien terminó, sin benchmark, tipo `none`, marca sin valores) y `tests/athletes/test_derive_benchmark_service.py` (14, por `PUT /results` real: 245 s sobre 260 crea y 270 no, empate, dos WODs del mismo benchmark y otro benchmark, capped, benchmark `load` con principal = dos récords, cada uno contra su vigente, fallo blando en benchmark, fallo en el segundo récord sin deshacer el primero, fallo en el primero sin impedir el segundo, base ocupada en benchmark = 503 sin RM ni resultado, doble emisión no-op, presupuesto 4 y 6 sentencias).
+
+Corrida: **43 failed, 1 passed**. Motivos: 30 `NotImplementedError: derive_benchmark` (puras); 13 del service porque la rama no existe (no hay récord de benchmark, ni alerta, ni 503). El verde es la doble emisión (no-op ya cierto). Ajuste de pruebas durante el Rojo: un WOD por fecha (`WodDateTaken`), los WODs de benchmark usan fechas distintas del WOD de la escena.
+
+### Verde
+
+Implementado: `athletes/rules.py::derive_benchmark` (pura: `score_key` del leaderboard, estrictamente menor; tipo sin leaderboard o marca sin valores no derivan), `athletes/records.py::current_benchmark` (desviación menor: el plan solo nombraba `rules` y `derive`; la lectura vive junto a `current_rm`), `athletes/derive.py` reestructurado con un savepoint por tramo (`_guarded`, `_plan`, `_derive_rm`, `_derive_benchmark`, `_insert`) = decisión nueva **S9-D58** en `DECISIONES.md`. Sin migración ni cambio de contrato (sin P-API).
+
+Resultados: los 5 archivos de derivación (`test_derive_benchmark_pure`, `_service`, `test_derive_rm_service`, `test_derive_soft_fail`, `test_derive_review_b3`) = 76 passed (antes 43 failed, 1 passed en los dos nuevos). `tests/athletes tests/results tests/wods tests/architecture tests/core/test_alerts.py` = **1770 passed** (3 perf deseleccionados). Presupuesto de sentencias de S9-D30 intacto: 2 y 4 (RM), y 4 (benchmark de tiempo) y 6 (benchmark de carga con principal) en la prueba nueva. `ruff check`, `ruff format --check` y `mypy src` limpios. Pendiente: revisión de seguridad; sin sellar ni commit.
+
+### Revisiones
+
+Revisión de seguridad: APROBADO, 0 CRITICAL/HIGH, 1 MEDIUM y 6 LOW; decisión nueva S9-D59 en `DECISIONES.md`.
+
+Rojo medido: **14 failed, 42 passed** en `test_derive_benchmark_pure.py`, `test_derive_benchmark_review.py` (nuevo) y `test_derive_soft_fail.py`. Los 14 rojos: 9 puros (0 g, otro benchmark, marca sin el campo de su tipo x6, capped sin reps) y 5 de service (regla que lanza omitía el RM, otro benchmark sin aviso, 0 g, y dos de conexión caída). Los 42 verdes incluyen toda la cobertura MEDIUM-1, que ya era cierta con el código de B4 y ahora queda fijada.
+
+- MEDIUM-1: pruebas (a) `DBAPIError` real (42P01) y 23514 solo en el tramo benchmark con el RM ya creado: 201, el RM queda, sesión usable y commit; (b) `EventDepthExceeded` re-lanzada y 55P03 real en el tramo benchmark (app real, otra conexión retiene un `benchmark` con el mismo `(result_id, kind)`): 503 `busy` con `Retry-After: 1`, ni resultado ni RM, sin alerta; (c) tras un fallo blando del benchmark, una sola fila `insert` de `personal_records` (la del RM) y `run_verification` ok; (d) con dos récords el handler no pide `FOR UPDATE`, `FOR SHARE` ni más de un asesor distinto (el de la cadena).
+- LOW-2: `_possible` evalúa cada regla en su propio `try`; una `derive_benchmark` que lanza deja el RM y una alerta `ValueError`.
+- LOW-3: `derive_benchmark` exige el campo de su tipo (`_BENCHMARK_FIELDS`, `capped` suma `reps`).
+- LOW-4: no deriva con `mark.benchmark_id != meta.benchmark_id`; `warning` con ids.
+- LOW-5: un benchmark `load` con 0 g no crea récord (la prueba que lo aceptaba se invirtió con motivo: coherente con `derive_rm`).
+- LOW-6: un error de conexión (`is_connection_error`, incluido un `ConnectionRefusedError` pelado) se re-lanza sin alertas ni más tramos.
+- LOW-7: docstring de `derive.py` al día (tres tramos, `current_benchmark`, S9-D59). Condición para EP-25 anotada en S9-D59 (`_guarded` traga un `DomainError` de un suscriptor de `PersonalRecordSet`).
+
+Verde tras las revisiones: `tests/athletes tests/results tests/wods tests/architecture tests/core/test_alerts.py` = **1790 passed** (3 perf deseleccionados); ruff, format y mypy limpios. Sin cambio de contrato.

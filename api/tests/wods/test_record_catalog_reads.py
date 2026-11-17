@@ -168,3 +168,23 @@ async def test_refs_con_coleccion_vacia_no_consultan(session: AsyncSession) -> N
         assert await service.movement_refs(session, []) == {}
         assert await service.benchmark_refs(session, set()) == {}
     assert sentencias == []
+
+
+async def test_benchmark_refs_viaja_como_un_solo_parametro_de_arreglo(
+    session: AsyncSession, staff: UsuarioPrueba
+) -> None:
+    """S9-C1 (base de datos LOW-4, como S9-D60): los ids son UN parámetro `= ANY(:ids)`."""
+    a = await make_benchmark(session, staff.id, "Barbara", "rounds_reps")
+    pocos = {a.id}
+    muchos = {uuid4() for _ in range(80)} | pocos
+    session.expunge_all()
+
+    with capturar_sql(session, "wods.benchmarks") as vistas:
+        r1 = await service.benchmark_refs(session, pocos)
+        r2 = await service.benchmark_refs(session, muchos)
+
+    (sql_a, par_a), (sql_b, par_b) = vistas
+    assert "ANY" in sql_a.upper() and "ANY" in sql_b.upper()
+    assert len(tuple(par_a)) == len(tuple(par_b)), "los parámetros no crecen con los ids"
+    assert any(isinstance(p, list | tuple) and len(p) == len(muchos) for p in tuple(par_b))
+    assert set(r1) == set(r2) == {a.id}

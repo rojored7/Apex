@@ -202,6 +202,9 @@ CON_LIMITE = {
     ("get", "/api/v1/athletes/{member_id}/records"),
     # S9-B5 (S9-D13): invalidar un récord manual consume `athletes-write`.
     ("post", "/api/v1/athletes/{member_id}/records/{record_id}/invalidate"),
+    # S9-C1 (US-183): los benchmarks del socio y su serie consumen `staff-read`.
+    ("get", "/api/v1/athletes/{member_id}/benchmarks"),
+    ("get", "/api/v1/athletes/{member_id}/benchmarks/{benchmark_id}"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

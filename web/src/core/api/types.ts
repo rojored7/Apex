@@ -4,6 +4,47 @@
  */
 
 export interface paths {
+    "/api/v1/athletes/{member_id}/benchmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Benchmarks
+         * @description S9-C1 (US-183): benchmarks con al menos un intento vigente y validado, por nombre; `q`
+         *     busca por el nombre del benchmark (sin tildes ni mayúsculas).
+         */
+        get: operations["list_benchmarks_api_v1_athletes__member_id__benchmarks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/athletes/{member_id}/benchmarks/{benchmark_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Benchmark Series
+         * @description S9-C1 (US-183): la serie de un benchmark (máximo 200 intentos, fecha ascendente).
+         */
+        get: operations["benchmark_series_api_v1_athletes__member_id__benchmarks__benchmark_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/athletes/{member_id}/metrics": {
         parameters: {
             query?: never;
@@ -1951,6 +1992,53 @@ export interface components {
             uploaded_by: string;
         };
         /**
+         * AttemptOut
+         * @description Un intento de la serie. `is_best`: exactamente uno por serie (el primero en fecha si hay
+         *     empate, `results.score_key`). `level_changed`: el nivel difiere del intento anterior (el
+         *     primero nunca). `source`: `kiosk` se rotula «Automático (tablet)» en el front (S9-D36, L-4).
+         */
+        AttemptOut: {
+            /** Capped */
+            capped: boolean;
+            /** Is Best */
+            is_best: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Level Changed */
+            level_changed: boolean;
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "desk" | "kiosk";
+            /**
+             * Wod Date
+             * Format: date
+             */
+            wod_date: string;
+            /**
+             * Wod Id
+             * Format: uuid
+             */
+            wod_id: string;
+        };
+        /**
          * AttendanceCreate
          * @description `POST /attendance`: solo la sesión y el socio. `extra="forbid"` (L-1): el cliente nunca
          *     manda `membership_id`, `flags` ni `checked_in_at`; los decide el servidor.
@@ -2228,6 +2316,50 @@ export interface components {
             name?: string | null;
             /** Score Type */
             score_type?: ("time" | "rounds_reps" | "reps" | "load") | null;
+        };
+        /**
+         * BenchmarkRowOut
+         * @description Un benchmark en el que el socio tiene al menos un intento vigente y validado.
+         */
+        BenchmarkRowOut: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Benchmark Id
+             * Format: uuid
+             */
+            benchmark_id: string;
+            best: components["schemas"]["ScoreOut"];
+            /**
+             * Last On
+             * Format: date
+             */
+            last_on: string;
+            /** Name */
+            name: string;
+            /** Score Type */
+            score_type: string;
+        };
+        /**
+         * BenchmarkSeriesOut
+         * @description La serie de un benchmark: a lo sumo 200 intentos (los más recientes), por fecha
+         *     ascendente; sin intentos, lista vacía. `truncated`: había más intentos que los devueltos;
+         *     entonces `is_best` es el mejor de los intentos MOSTRADOS (S9-D63).
+         */
+        BenchmarkSeriesOut: {
+            /** Attempts */
+            attempts: components["schemas"]["AttemptOut"][];
+            /**
+             * Benchmark Id
+             * Format: uuid
+             */
+            benchmark_id: string;
+            /** Name */
+            name: string;
+            /** Score Type */
+            score_type: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * CancelFutureOut
@@ -3683,6 +3815,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[BenchmarkRowOut] */
+        Page_BenchmarkRowOut_: {
+            /** Items */
+            items: components["schemas"]["BenchmarkRowOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[CatalogMovementOut] */
         Page_CatalogMovementOut_: {
             /** Items */
@@ -4763,6 +4906,27 @@ export interface components {
             template_id?: string | null;
             /** Trigger */
             trigger?: ("membership_expiring" | "membership_expired") | null;
+        };
+        /**
+         * ScoreOut
+         * @description La marca de un intento o la mejor de un benchmark (los campos de `ResultMark`).
+         */
+        ScoreOut: {
+            /** Capped */
+            capped: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "rx" | "rx_plus" | "scaled";
+            /** Load G */
+            load_g: number | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Seconds */
+            seconds: number | null;
         };
         /**
          * SectionKey
@@ -5859,6 +6023,182 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_benchmarks_api_v1_athletes__member_id__benchmarks_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_BenchmarkRowOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    benchmark_series_api_v1_athletes__member_id__benchmarks__benchmark_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+                benchmark_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkSeriesOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_metrics_api_v1_athletes__member_id__metrics_get: {
         parameters: {
             query?: {

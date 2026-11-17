@@ -95,6 +95,115 @@
         "title": "AttachmentOut",
         "type": "object"
       },
+      "AttemptOut": {
+        "description": "Un intento de la serie. `is_best`: exactamente uno por serie (el primero en fecha si hay\nempate, `results.score_key`). `level_changed`: el nivel difiere del intento anterior (el\nprimero nunca). `source`: `kiosk` se rotula «Automático (tablet)» en el front (S9-D36, L-4).",
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "is_best": {
+            "title": "Is Best",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "level_changed": {
+            "title": "Level Changed",
+            "type": "boolean"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "source": {
+            "enum": [
+              "desk",
+              "kiosk"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "wod_date": {
+            "format": "date",
+            "title": "Wod Date",
+            "type": "string"
+          },
+          "wod_id": {
+            "format": "uuid",
+            "title": "Wod Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped",
+          "result_id",
+          "wod_id",
+          "wod_date",
+          "source",
+          "is_best",
+          "level_changed"
+        ],
+        "title": "AttemptOut",
+        "type": "object"
+      },
       "AttendanceCreate": {
         "additionalProperties": false,
         "description": "`POST /attendance`: solo la sesión y el socio. `extra=\"forbid\"` (L-1): el cliente nunca\nmanda `membership_id`, `flags` ni `checked_in_at`; los decide el servidor.",
@@ -725,6 +834,84 @@
           }
         },
         "title": "BenchmarkPatch",
+        "type": "object"
+      },
+      "BenchmarkRowOut": {
+        "description": "Un benchmark en el que el socio tiene al menos un intento vigente y validado.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "benchmark_id": {
+            "format": "uuid",
+            "title": "Benchmark Id",
+            "type": "string"
+          },
+          "best": {
+            "$ref": "#/components/schemas/ScoreOut"
+          },
+          "last_on": {
+            "format": "date",
+            "title": "Last On",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score_type": {
+            "title": "Score Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "benchmark_id",
+          "name",
+          "score_type",
+          "attempts",
+          "best",
+          "last_on"
+        ],
+        "title": "BenchmarkRowOut",
+        "type": "object"
+      },
+      "BenchmarkSeriesOut": {
+        "description": "La serie de un benchmark: a lo sumo 200 intentos (los más recientes), por fecha\nascendente; sin intentos, lista vacía. `truncated`: había más intentos que los devueltos;\nentonces `is_best` es el mejor de los intentos MOSTRADOS (S9-D63).",
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptOut"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "benchmark_id": {
+            "format": "uuid",
+            "title": "Benchmark Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score_type": {
+            "title": "Score Type",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "benchmark_id",
+          "name",
+          "score_type",
+          "attempts",
+          "truncated"
+        ],
+        "title": "BenchmarkSeriesOut",
         "type": "object"
       },
       "CancelFutureOut": {
@@ -4504,6 +4691,38 @@
         "title": "Page[BenchmarkOut]",
         "type": "object"
       },
+      "Page_BenchmarkRowOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[BenchmarkRowOut]",
+        "type": "object"
+      },
       "Page_CatalogMovementOut_": {
         "additionalProperties": false,
         "properties": {
@@ -7458,6 +7677,78 @@
           }
         },
         "title": "RulePatch",
+        "type": "object"
+      },
+      "ScoreOut": {
+        "description": "La marca de un intento o la mejor de un benchmark (los campos de `ResultMark`).",
+        "properties": {
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "rx",
+              "rx_plus",
+              "scaled"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "required": [
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped"
+        ],
+        "title": "ScoreOut",
         "type": "object"
       },
       "SectionKey": {
@@ -10446,6 +10737,268 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/athletes/{member_id}/benchmarks": {
+      "get": {
+        "description": "S9-C1 (US-183): benchmarks con al menos un intento vigente y validado, por nombre; `q`\nbusca por el nombre del benchmark (sin tildes ni mayúsculas).",
+        "operationId": "list_benchmarks_api_v1_athletes__member_id__benchmarks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_BenchmarkRowOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Benchmarks",
+        "tags": [
+          "athletes"
+        ]
+      }
+    },
+    "/api/v1/athletes/{member_id}/benchmarks/{benchmark_id}": {
+      "get": {
+        "description": "S9-C1 (US-183): la serie de un benchmark (máximo 200 intentos, fecha ascendente).",
+        "operationId": "benchmark_series_api_v1_athletes__member_id__benchmarks__benchmark_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "benchmark_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Benchmark Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkSeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Benchmark Series",
+        "tags": [
+          "athletes"
+        ]
+      }
+    },
     "/api/v1/athletes/{member_id}/metrics": {
       "get": {
         "operationId": "list_metrics_api_v1_athletes__member_id__metrics_get",

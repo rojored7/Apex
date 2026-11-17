@@ -122,3 +122,53 @@ class RecordOut(BaseModel):
     recorded_by: UUID
     recorded_by_name: str | None
     created_at: datetime
+
+
+# S9-C1 (US-183; contrato del blueprint §3, rutas 8 y 9) --------------------------------------
+
+
+class ScoreOut(BaseModel):
+    """La marca de un intento o la mejor de un benchmark (los campos de `ResultMark`)."""
+
+    level: RecordLevel
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+
+
+class BenchmarkRowOut(BaseModel):
+    """Un benchmark en el que el socio tiene al menos un intento vigente y validado."""
+
+    benchmark_id: UUID
+    name: str
+    score_type: str
+    attempts: int
+    best: ScoreOut
+    last_on: date
+
+
+class AttemptOut(ScoreOut):
+    """Un intento de la serie. `is_best`: exactamente uno por serie (el primero en fecha si hay
+    empate, `results.score_key`). `level_changed`: el nivel difiere del intento anterior (el
+    primero nunca). `source`: `kiosk` se rotula «Automático (tablet)» en el front (S9-D36, L-4)."""
+
+    result_id: UUID
+    wod_id: UUID
+    wod_date: date
+    source: Literal["desk", "kiosk"]
+    is_best: bool
+    level_changed: bool
+
+
+class BenchmarkSeriesOut(BaseModel):
+    """La serie de un benchmark: a lo sumo 200 intentos (los más recientes), por fecha
+    ascendente; sin intentos, lista vacía. `truncated`: había más intentos que los devueltos;
+    entonces `is_best` es el mejor de los intentos MOSTRADOS (S9-D63)."""
+
+    benchmark_id: UUID
+    name: str
+    score_type: str
+    attempts: list[AttemptOut]
+    truncated: bool

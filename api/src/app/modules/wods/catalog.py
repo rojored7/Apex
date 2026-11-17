@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import any_uuids
 from app.modules.wods.exceptions import WodNotFound, WodsValidationError
 from app.modules.wods.models import Benchmark, Movement, Wod, WodMovement
 
@@ -177,11 +178,16 @@ async def movement_refs(session: AsyncSession, ids: Collection[UUID]) -> dict[UU
 
 
 async def benchmark_refs(session: AsyncSession, ids: Collection[UUID]) -> dict[UUID, BenchmarkRef]:
-    """Nombre y tipo de marca de cada benchmark existente, en UNA consulta y SIN candados."""
+    """Nombre y tipo de marca de cada benchmark existente, en UNA consulta y SIN candados.
+
+    No filtra por estado a propósito: si un benchmark se retira algún día, la historia de un socio
+    debe seguir mostrando su nombre. Los ids viajan como UN parámetro `= ANY(:ids)` (S9-D63)."""
     if not ids:
         return {}
     filas = await session.execute(
-        select(Benchmark.id, Benchmark.name, Benchmark.score_type).where(Benchmark.id.in_(set(ids)))
+        select(Benchmark.id, Benchmark.name, Benchmark.score_type).where(
+            Benchmark.id == any_uuids(ids)
+        )
     )
     return {f.id: BenchmarkRef(f.id, f.name, f.score_type) for f in filas}
 

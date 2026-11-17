@@ -12,6 +12,7 @@ from app.modules.athletes.derive import RederiveResult
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.athletes.metrics import add_metric, list_metrics, reveal_metric, void_metric
 from app.modules.athletes.models import PersonalRecord
+from app.modules.athletes.reads import benchmark_series, list_benchmarks
 from app.modules.athletes.records import add_record, invalidate_manual_record, list_records
 from app.modules.wods import service as wods_service
 
@@ -54,7 +55,9 @@ __all__ = [
     "RederiveResult",
     "add_metric",
     "add_record",
+    "benchmark_series",
     "invalidate_manual_record",
+    "list_benchmarks",
     "list_metrics",
     "list_records",
     "records_probe",

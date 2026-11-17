@@ -10,7 +10,7 @@ nunca repiten el texto recibido ni encadenan la causa.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -411,3 +411,75 @@ def best_candidate(
         if not clave(mejor) < clave(vigente):
             return None
     return mejor
+
+
+# S9-C1 (US-183, S9-D6): la serie de un benchmark -----------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Attempt:
+    """Un intento de la serie: la marca y lo que la serie decide sobre ella."""
+
+    mark: ResultMark
+    is_best: bool
+    level_changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkSummary:
+    """Un benchmark con intentos: cuántos, el mejor y la fecha del último."""
+
+    benchmark_id: UUID
+    attempts: int
+    best: ResultMark
+    last_on: date
+
+
+def _best_index(marks: Sequence[ResultMark], score_type: str) -> int:
+    """Posición de la mejor marca: menor `score_key`; en empate, la primera de la entrada."""
+    clave = score_key(score_type)
+    return min(range(len(marks)), key=lambda i: (clave(marks[i]), i))
+
+
+def benchmark_series(marks: Sequence[ResultMark], score_type: str) -> list[Attempt]:
+    """La serie de intentos de UN benchmark (pura).
+
+    `marks` llega en orden cronológico ascendente y ese orden se conserva. Exactamente un
+    `is_best` (el de menor `results.score_key(score_type)`; en empate, el primero de la entrada);
+    `level_changed` es verdadero si el nivel difiere del intento anterior (el primero, falso).
+    Entrada vacía, salida vacía. No muta la entrada.
+    """
+    if not marks:
+        return []
+    mejor = _best_index(marks, score_type)
+    return [
+        Attempt(
+            mark=m,
+            is_best=i == mejor,
+            level_changed=i > 0 and m.level != marks[i - 1].level,
+        )
+        for i, m in enumerate(marks)
+    ]
+
+
+def summarize_benchmarks(
+    marks: Sequence[ResultMark], score_types: Mapping[UUID, str]
+) -> list[BenchmarkSummary]:
+    """Agrupa marcas de varios benchmarks (pura).
+
+    `marks` llega en orden cronológico ascendente. Por `benchmark_id`: número de intentos, el
+    mejor (misma regla de `benchmark_series`) y la mayor `wod_date`. Una marca sin `benchmark_id`
+    o cuyo benchmark falta en `score_types` se ignora. Orden de salida: primera aparición."""
+    grupos: dict[UUID, list[ResultMark]] = {}
+    for m in marks:
+        if m.benchmark_id is not None and m.benchmark_id in score_types:
+            grupos.setdefault(m.benchmark_id, []).append(m)
+    return [
+        BenchmarkSummary(
+            benchmark_id=bid,
+            attempts=len(grupo),
+            best=grupo[_best_index(grupo, score_types[bid])],
+            last_on=max(m.wod_date for m in grupo),
+        )
+        for bid, grupo in grupos.items()
+    ]

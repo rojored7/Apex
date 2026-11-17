@@ -256,3 +256,15 @@ def test_la_lista_de_records_no_declara_campos_sensibles_ni_el_valor_cifrado(
     fila = app.openapi()["components"]["schemas"]["RecordOut"]["properties"]
     assert {"value_g", "is_current", "source", "invalidated_at"} <= set(fila)
     assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "document", "phone"}
+
+
+def test_la_lista_de_benchmarks_no_declara_campos_sensibles(settings_prueba: Settings) -> None:
+    """S9-C1: `GET /athletes/{member_id}/benchmarks` solo trae nombre, tipo, conteo y la mejor
+    marca; ningún campo cifrado ni dato del socio."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app, "/api/v1/athletes")
+    assert problemas == [], chr(10).join(problemas)
+    assert "GET /api/v1/athletes/{member_id}/benchmarks" in listas
+    fila = app.openapi()["components"]["schemas"]["BenchmarkRowOut"]["properties"]
+    assert {"benchmark_id", "name", "attempts", "best", "last_on"} <= set(fila)
+    assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "document", "phone"}

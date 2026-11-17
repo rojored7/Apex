@@ -709,3 +709,24 @@ Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos
 - Sello: `slice-gate.sh athletes tests/cli/test_derive_records.py tests/core/test_env_example.py tests/athletes/test_rederive_member.py` verde; no sellante `cli` (+ `test_cli_base.py`): 1023 passed.
 - `$DC restart worker`: healthy.
 - `$DC exec -T api python -m app.cli derive-records --dry-run --as admin@ejemplo.local` (api de desarrollo con el código montado; la imagen `tools` no tiene el comando hasta el cierre de la wave): `socios 33, creados 32, ocupados 0, fallidos 0`, simulacro, exit 0. La corrida real es de V2.
+
+## S9-C1 · Benchmarks y serie (2026-11-17)
+
+### Rojo
+- Stubs con `NotImplementedError`: `athletes/reads.py` (nuevo: `list_benchmarks`, `benchmark_series`, `SERIES_MAX = 200`), `rules.benchmark_series` y `rules.summarize_benchmarks` (`Attempt`, `BenchmarkSummary`), esquemas (`ScoreOut`, `BenchmarkRowOut`, `AttemptOut`, `BenchmarkSeriesOut`), dos rutas en `router.py` (`staff-read`), fachada `service.py`, `tests/architecture/_imports.py` (helper privado `reads`).
+- P-CAT: `CON_LIMITE` (dos GET) en `test_error_codes_per_route.py`; exclusión de `q` de `GET .../benchmarks` en `test_list_routes_use_page_params.py`; prueba de columnas sensibles en `test_list_rows_without_sensitive_fields.py`.
+- Pruebas nuevas: `tests/athletes/test_benchmark_series_pure.py` (20), `test_benchmarks_service.py` (14), `test_router_benchmarks.py` (7 funciones, 8 casos). `tests/results/test_member_marks.py` ya existía (B5) y cubre `member_marks(benchmark_id|only_benchmarks)`; no se toca.
+- Medido: `41 failed, 48 passed` (las 6 pruebas de arquitectura nuevas o ajustadas ya pasan con los stubs). Los 41 fallan todos por `NotImplementedError: S9-C1: ...` (pura 20, service 14, router 7); ninguno por fixtures.
+
+### Verde
+- `rules.benchmark_series` / `summarize_benchmarks` (puras, `score_key`, empate = primero de la entrada); `reads.py` (`list_benchmarks` agrupa en memoria sobre `member_marks(only_benchmarks=True)` y pagina; `benchmark_series` con `member_marks(benchmark_id, limit=SERIES_MAX=200)`, 404 `benchmark_not_found` por `wods.benchmark_refs` sin candado, socio dado de baja se lee). Contrato: `AttemptOut` suma `source` (US-183 corregida, S9-D36 L-4); la diferencia con el anterior la calcula el front (`formatScoreDelta`).
+- Nuevas: 46 pruebas en verde (pura 20, service 14, router 12 casos). Suite `tests/athletes tests/results tests/wods tests/architecture`: 1925 passed, 3 deselected. ruff check/format y mypy src limpios.
+- P-API: `export-openapi` dos veces idéntico; `npm run gen:api` (solo `types.ts`); `types.contract.test.ts` 6 passed; `tsc --noEmit` sin errores; `errorCodes.ts` sin cambios (`benchmark_not_found` ya existía).
+- Sin sellar ni commit (pendientes revisiones de seguridad y base de datos).
+
+### Revisiones
+- Seguridad (2 MEDIUM, 4 LOW) y base de datos (1 MEDIUM, 4 LOW); decisión S9-D63 en `DECISIONES.md`.
+- Rojo de las correcciones: 15 failed (`truncated` ausente, `q` no aceptado, alerta/log del tope y de benchmarks fuera del catálogo, `benchmark_refs` con `IN` expandido, y las 6 pruebas de arquitectura de listas por la ruta sin `q`). La prueba nueva del plan genérico con `benchmark_id` ya pasaba (el índice se usaba).
+- Verde: lista con `q` (sin tildes ni mayúsculas, filtra antes de paginar, `total` refleja el filtro; `%` literal), alerta `athletes_restore_capped {marcas}` y warning al tope, warning con el conteo de marcas fuera del catálogo, `BenchmarkSeriesOut.truncated` (pide `SERIES_MAX + 1`; `is_best` del tramo mostrado), `benchmark_refs` con `= ANY(:ids)` (un parámetro) y docstring de estado.
+- Contrato: `truncated` y `q`; `export-openapi` x2 idéntico, `gen:api`, `types.contract.test.ts` 6 passed, `tsc` limpio.
+- Suite `tests/athletes tests/results tests/wods tests/architecture`: 1934 passed, 3 deselected; ruff, format y mypy limpios.

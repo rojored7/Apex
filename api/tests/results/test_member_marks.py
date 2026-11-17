@@ -245,8 +245,8 @@ async def _plan_generico(session: AsyncSession, sql: str, parametros: Any) -> st
 
 @pytest.mark.parametrize(
     "filtros",
-    [{}, {"only_load": True}, {"only_benchmarks": True}],
-    ids=["sin-filtros", "only-load", "only-benchmarks"],
+    [{}, {"only_load": True}, {"only_benchmarks": True}, {"benchmark_id": UUID(int=7)}],
+    ids=["sin-filtros", "only-load", "only-benchmarks", "benchmark-id"],
 )
 async def test_usa_ix_wod_results_member_date_con_plan_generico(
     session: AsyncSession, filtros: dict[str, Any]

@@ -815,3 +815,11 @@ Rojo medido: `tests/notifications/test_can_whatsapp_review.py` 15 pruebas, 2 fai
 
 ### Sello
 - Gates no sellantes: `slice-gate.sh web/notifications src/features/notifications/components/WaButton.test.tsx` y `slice-gate.sh members tests/members/test_whatsapp_ready.py`. Sello: `slice-gate.sh notifications tests/notifications/test_can_whatsapp.py tests/notifications/test_can_whatsapp_review.py tests/members/test_whatsapp_ready.py` (exit codes en la evidencia).
+
+### Evidencia (S9-X1, tras el sello y el checkpoint 39ff8d0)
+- Gates: `web/notifications` exit 0; `members` exit 0; sello `notifications` (con `test_can_whatsapp.py`, `test_can_whatsapp_review.py` y `test_whatsapp_ready.py`) exit 0, 966 passed.
+- P-REBUILD 2, 3 y 4 con `GIT_SHA=39ff8d0`: `/health` `status ok`, `migrations ok`, `crypto ok`, `version 39ff8d0`; web 200.
+- Curl en 8181, con el admin y el coach de desarrollo (claves leídas de archivo, nunca impresas):
+  - `GET /notifications/today`: 200, 2 filas, las 2 con `can_whatsapp`, 0 verdaderas. Las dos son avisos `pending` de `whatsapp_link` de socios con autorización, vivos y SIN teléfono: exactamente el caso de S9-D22.
+  - `GET /notifications`: 200, 5 filas, todas con el campo y 2 verdaderas (avisos `sent` de `whatsapp_link` de socios con teléfono, L2). Ninguna fila verdadera tiene otro canal.
+  - Leer las dos listas no suma filas a `crypto.crypto_ops` ni a `audit.audit_log` (conteo antes y después igual, con los dos roles).

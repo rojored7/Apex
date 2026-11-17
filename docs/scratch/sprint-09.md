@@ -823,3 +823,16 @@ Rojo medido: `tests/notifications/test_can_whatsapp_review.py` 15 pruebas, 2 fai
   - `GET /notifications/today`: 200, 2 filas, las 2 con `can_whatsapp`, 0 verdaderas. Las dos son avisos `pending` de `whatsapp_link` de socios con autorización, vivos y SIN teléfono: exactamente el caso de S9-D22.
   - `GET /notifications`: 200, 5 filas, todas con el campo y 2 verdaderas (avisos `sent` de `whatsapp_link` de socios con teléfono, L2). Ninguna fila verdadera tiene otro canal.
   - Leer las dos listas no suma filas a `crypto.crypto_ops` ni a `audit.audit_log` (conteo antes y después igual, con los dos roles).
+
+## S9-X2 · E2E de la inactividad del quiosco (2026-11-17)
+
+**Respuesta a E6.** El servidor NO tiene plazo propio de inactividad del quiosco: `auth/kiosk.py` solo guarda la marca `refresh_tokens.kiosk_path` en la sesión de refresh y `enter_kiosk`/`exit_kiosk` no miden tiempo; la sesión vive lo que viva el refresh (TTL de la política, no ligado al quiosco). El único plazo es el del front: `TABLET_IDLE_MS = 10 min` (`GymLayout.tsx:20`) -> `useIdleTimeout` (puntero, teclado, toque y rueda reinician la cuenta; además revisa el instante límite al volver a verse la pestaña) -> `onIdle` de `ZoneShells.tsx` -> `logoutDevice()` -> `POST /auth/logout` por la cookie: revoca el refresh, borra la marca y la cookie, publica `logout` y la tablet vuelve a `/login` (hasta 3 intentos si el api no confirma). El access de 15 min sigue siendo válido por JWT hasta vencer, pero ya no se puede renovar. Un solo plazo efectivo: la prueba cubre el del front y comprueba la revocación en el servidor.
+
+**Spec.** `web/tests/e2e/stack/kiosk-idle.spec.ts` (2 casos, `page.clock.install()` antes de navegar; coach y clase de hoy propios por caso, limpiados al final):
+1. Sin tocar 10 min + 1 s: `POST /auth/logout` 204, URL `/login`, cookie `apex_refresh` borrada, ningún `/auth/refresh` previo, y con la cookie vieja `POST /auth/refresh` y `POST /auth/kiosk` dan 401.
+2. Toque (pointermove) al minuto 9: al minuto 10 sigue en el check-in sin `/auth/logout` y con cookie; contraprueba: 10 min sin tocar desde el toque sí cierra.
+Datos: la base tenía 1 clase de hoy y 376 coaches (acumulación de otras specs); no se reutilizan ids, cada caso crea su coach y su clase (`POST /class-sessions` a +40 y +41 min).
+
+**Rojo por mutación.** `TABLET_IDLE_MS = 10 * 60 * 1000 * 1000` en `GymLayout.tsx`, imagen web reconstruida, caso 1: falla con `TimeoutError: page.waitForResponse: Timeout 15000ms exceeded` esperando `/auth/logout` (1 failed). Mutación revertida con `git checkout`; `git diff -- web/src` = 0 líneas; imagen reconstruida desde el árbol limpio. (Dos intentos previos no cuentan: login 403 por usar `127.0.0.1` en vez de `localhost:8180` como origen, y un timeout opaco de 90 s que llevó a poner `timeout` explícito a la espera del logout.)
+
+**Verde, P-E2E (pasos 1 a 7).** Corrida 1: 2 passed (1.8 s), exit 0. Corrida 2: 2 passed (1.9 s), exit 0. `.env` restaurado (cmp OK), api y web recreados sin el overlay e2e, `/health` 8181 ok (version 4a08810), `USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN` con su valor de desarrollo. Sin bug de producto.

@@ -10,6 +10,8 @@ Plano, con la ruta completa en el decorador (S2-D3). Admin y coach (`StaffDep`).
   `athletes-write`. Sin cuerpo; el coach solo anula lo suyo y dentro de 24 h (S9-D33).
 - `GET /athletes/{member_id}/benchmarks` y `.../benchmarks/{benchmark_id}` (S9-C1, US-183; rutas 8
   y 9): los benchmarks con intentos del socio (paginada) y la serie de uno; `staff-read`.
+- `GET /athletes/{member_id}/rms` y `.../summary` (S9-C2, US-184; rutas 6 y 7): los RM vigentes por
+  movimiento (paginada, con `q`) y el resumen del atleta, sin descifrar nada; `staff-read`.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from app.core.ratelimit import client_ip, enforce_user_limit, warn_reveal_volume
 from app.core.security import StaffDep
 from app.modules.athletes import service
 from app.modules.athletes.schemas import (
+    AthleteSummaryOut,
     BenchmarkRowOut,
     BenchmarkSeriesOut,
     MetricIn,
@@ -38,6 +41,7 @@ from app.modules.athletes.schemas import (
     RecordIn,
     RecordKind,
     RecordOut,
+    RmOut,
 )
 
 router = APIRouter(
@@ -199,3 +203,34 @@ async def benchmark_series(
     """S9-C1 (US-183): la serie de un benchmark (máximo 200 intentos, fecha ascendente)."""
     await enforce_user_limit(request, "staff-read", principal.user_id)
     return await service.benchmark_series(session, member_id, benchmark_id)
+
+
+@router.get(
+    "/athletes/{member_id}/rms",
+    response_model=Page[RmOut],
+    responses=responses_for(404, 422, 429),
+)
+async def list_rms(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    q: SearchQuery = None,
+) -> Page[RmOut]:
+    """S9-C2 (US-184): un RM vigente por movimiento, por nombre; `q` busca por el nombre."""
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_rms(session, member_id, page, q=q)
+
+
+@router.get(
+    "/athletes/{member_id}/summary",
+    response_model=AthleteSummaryOut,
+    responses=responses_for(404, 422, 429),
+)
+async def summary(
+    request: Request, member_id: UUID, principal: StaffDep, session: Session
+) -> AthleteSummaryOut:
+    """S9-C2 (US-184): resumen del atleta; no descifra medidas ni deja filas `reveal`."""
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.summary(session, member_id)

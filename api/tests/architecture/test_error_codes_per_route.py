@@ -205,6 +205,9 @@ CON_LIMITE = {
     # S9-C1 (US-183): los benchmarks del socio y su serie consumen `staff-read`.
     ("get", "/api/v1/athletes/{member_id}/benchmarks"),
     ("get", "/api/v1/athletes/{member_id}/benchmarks/{benchmark_id}"),
+    # S9-C2 (US-184): los RM vigentes y el resumen del atleta consumen `staff-read`.
+    ("get", "/api/v1/athletes/{member_id}/rms"),
+    ("get", "/api/v1/athletes/{member_id}/summary"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

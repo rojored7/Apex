@@ -135,6 +135,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/athletes/{member_id}/rms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rms
+         * @description S9-C2 (US-184): un RM vigente por movimiento, por nombre; `q` busca por el nombre.
+         */
+        get: operations["list_rms_api_v1_athletes__member_id__rms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/athletes/{member_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description S9-C2 (US-184): resumen del atleta; no descifra medidas ni deja filas `reveal`.
+         */
+        get: operations["summary_api_v1_athletes__member_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -1951,6 +1991,29 @@ export interface components {
              * @constant
              */
             token_type: "bearer";
+        };
+        /**
+         * AthleteSummaryOut
+         * @description El resumen de la pestaña Atleta. Sin medidas, ni enmascaradas (S9-D16): solo la fecha de
+         *     la última medición vigente y cuántas hay. `recent_records`: los tres récords vigentes más
+         *     recientes. `truncated`: algún tope de lectura se alcanzó (récords vivos o marcas de
+         *     benchmarks); entonces `benchmarks_with_attempts` puede quedar corto y los benchmarks no se
+         *     ofrecen como recientes (no se puede asegurar cuál es el vigente); los RM salen de SQL y no
+         *     dependen del tope.
+         */
+        AthleteSummaryOut: {
+            /** Benchmarks With Attempts */
+            benchmarks_with_attempts: number;
+            /** Current Rms */
+            current_rms: number;
+            /** Last Metric On */
+            last_metric_on: string | null;
+            /** Metrics Count */
+            metrics_count: number;
+            /** Recent Records */
+            recent_records: components["schemas"]["SummaryRecordOut"][];
+            /** Truncated */
+            truncated: boolean;
         };
         /** AttachmentOut */
         AttachmentOut: {
@@ -3980,6 +4043,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[RmOut] */
+        Page_RmOut_: {
+            /** Items */
+            items: components["schemas"]["RmOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[RuleOut] */
         Page_RuleOut_: {
             /** Items */
@@ -4797,6 +4871,37 @@ export interface components {
             revoked: number;
         };
         /**
+         * RmOut
+         * @description El RM vigente de UN movimiento (kg, en gramos). `movement_name` es `None` solo si el
+         *     movimiento ya no está en el catálogo.
+         */
+        RmOut: {
+            /**
+             * Achieved On
+             * Format: date
+             */
+            achieved_on: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /** Movement Name */
+            movement_name: string | null;
+            /**
+             * Record Id
+             * Format: uuid
+             */
+            record_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "derived";
+            /** Value G */
+            value_g: number;
+        };
+        /**
          * RotateIn
          * @description Cuerpo de `POST /crypto/keys/{id}/rotate` (S6-R1, US-145): `confirm` es exactamente
          *     `ROTAR` y `reason` de 1 a 200 caracteres sin correos ni números largos, la misma regla que el
@@ -5350,6 +5455,61 @@ export interface components {
             valid_from?: string | null;
             /** Weekdays */
             weekdays?: number[] | null;
+        };
+        /**
+         * SummaryRecordOut
+         * @description Un récord VIGENTE reciente del resumen (US-184; pantalla «Récords recientes»): fecha,
+         *     movimiento o benchmark con su nombre, la marca y el origen (`source`: `derived` se rotula
+         *     «automático del WOD»; `wod_id` es el enlace «ver»). Sin quién lo registró ni datos de
+         *     invalidación: el resumen no consulta usuarios ni resultados (M-1 de S9-C2, S9-D64).
+         */
+        SummaryRecordOut: {
+            /**
+             * Achieved On
+             * Format: date
+             */
+            achieved_on: string;
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rm" | "benchmark";
+            /** Level */
+            level: ("rx" | "rx_plus" | "scaled") | null;
+            /** Load G */
+            load_g: number | null;
+            /** Movement Id */
+            movement_id: string | null;
+            /** Movement Name */
+            movement_name: string | null;
+            /** Reps */
+            reps: number | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Score Type */
+            score_type: string | null;
+            /** Seconds */
+            seconds: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "derived";
+            /** Value G */
+            value_g: number | null;
+            /** Wod Id */
+            wod_id: string | null;
         };
         /** TemplateCreate */
         TemplateCreate: {
@@ -6818,6 +6978,181 @@ export interface operations {
             };
             /** @description Conflicto con el estado actual */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_rms_api_v1_athletes__member_id__rms_get: {
+        parameters: {
+            query?: {
+                /** @description Búsqueda libre sin caracteres de control; nunca se registra en logs */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RmOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    summary_api_v1_athletes__member_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AthleteSummaryOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

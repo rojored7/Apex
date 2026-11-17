@@ -160,10 +160,18 @@ def _athletes_restore_capped(contexto: Mapping[str, object]) -> str:
     )
 
 
+def _athletes_summary_capped(contexto: Mapping[str, object]) -> str:
+    return (
+        "APEX · el resumen del atleta alcanzó un tope de lectura "
+        f"({_entero(contexto, 'marcas')} filas leídas); la cifra puede quedar corta."
+    )
+
+
 _DINAMICOS: Final[dict[str, Callable[[Mapping[str, object]], str]]] = {
     "reveal_volume": _reveal_volume,
     "athletes_derive_skipped": _athletes_derive_skipped,
     "athletes_restore_capped": _athletes_restore_capped,
+    "athletes_summary_capped": _athletes_summary_capped,
     "audit_sign_failed": _audit_sign_failed,
     "audit_sign_late": _audit_sign_late,
     "audit_chain_broken": _audit_chain_broken,

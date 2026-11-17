@@ -119,7 +119,7 @@ def _check_shape(data: RecordIn, today: date) -> None:
         raise _fail("value_g", "Un récord de benchmark no lleva carga de RM.")
 
 
-def _row_of(record: PersonalRecord) -> RecordRow:
+def row_of(record: PersonalRecord) -> RecordRow:
     return RecordRow(
         id=record.id,
         kind=record.kind,
@@ -149,7 +149,7 @@ def _objective_of(record: PersonalRecord) -> _Objective:
 # Literales SQL (S8-D50): con `kind = $1` el plan genérico no casa con los índices parciales
 # `ix_personal_records_rm` / `_bench` (cuyo predicado lleva `kind = 'rm'`). Solo estos dos textos
 # constantes; nunca un valor del cliente.
-_KIND_SQL: Final[dict[str, ColumnElement[Any]]] = {
+KIND_SQL: Final[dict[str, ColumnElement[Any]]] = {
     "rm": literal_column("'rm'"),
     "benchmark": literal_column("'benchmark'"),
 }
@@ -163,14 +163,12 @@ def current_query(
     condiciones = []
     if movimientos:
         condiciones.append(
-            and_(
-                PersonalRecord.kind == _KIND_SQL["rm"], PersonalRecord.movement_id.in_(movimientos)
-            )
+            and_(PersonalRecord.kind == KIND_SQL["rm"], PersonalRecord.movement_id.in_(movimientos))
         )
     if benchmarks:
         condiciones.append(
             and_(
-                PersonalRecord.kind == _KIND_SQL["benchmark"],
+                PersonalRecord.kind == KIND_SQL["benchmark"],
                 PersonalRecord.benchmark_id.in_(benchmarks),
             )
         )
@@ -187,7 +185,7 @@ def list_query(
     """La lista del socio con orden total: fecha, alta e id descendentes."""
     consulta = select(PersonalRecord).where(PersonalRecord.member_id == member_id)
     if kind is not None:
-        consulta = consulta.where(PersonalRecord.kind == _KIND_SQL[kind])
+        consulta = consulta.where(PersonalRecord.kind == KIND_SQL[kind])
     if not include_invalidated:
         consulta = consulta.where(PersonalRecord.invalidated_at.is_(None))
     return consulta.order_by(
@@ -211,7 +209,7 @@ async def _current_ids(
     filas = await session.scalars(current_query(member_id, movimientos, benchmarks))
     grupos: dict[_Objective, list[RecordRow]] = defaultdict(list)
     for fila in filas:
-        grupos[_objective_of(fila)].append(_row_of(fila))
+        grupos[_objective_of(fila)].append(row_of(fila))
     vigentes: set[UUID] = set()
     for objetivo, registros in grupos.items():
         tipo = score_types.get(objetivo.target_id) if objetivo.kind == "benchmark" else None
@@ -227,7 +225,7 @@ async def current_rm(session: AsyncSession, member_id: UUID, movement_id: UUID) 
     """El RM vigente del socio para un movimiento (UNA consulta, sin candados; N-45). Lo usa el
     handler de derivación (`derive.py`), que corre bajo el `lock_member` del emisor."""
     filas = await session.scalars(current_query(member_id, {movement_id}, set()))
-    return pick_current([_row_of(f) for f in filas])
+    return pick_current([row_of(f) for f in filas])
 
 
 async def current_benchmark(
@@ -236,7 +234,7 @@ async def current_benchmark(
     """El récord de benchmark vigente del socio (UNA consulta, sin candados; N-45): el de menor
     `score_key` del tipo de marca. Lo usa el handler de derivación (B4)."""
     filas = await session.scalars(current_query(member_id, set(), {benchmark_id}))
-    return pick_current([_row_of(f) for f in filas], score_type=score_type)
+    return pick_current([row_of(f) for f in filas], score_type=score_type)
 
 
 async def result_ids_with_record(
@@ -250,7 +248,7 @@ async def result_ids_with_record(
     filas = await session.scalars(
         select(PersonalRecord.result_id).where(
             PersonalRecord.member_id == member_id,
-            PersonalRecord.kind == _KIND_SQL[kind],
+            PersonalRecord.kind == KIND_SQL[kind],
             PersonalRecord.result_id
             == any_(bindparam("ids", list(set(result_ids)), type_=ARRAY(PG_UUID(as_uuid=True)))),
         )
@@ -338,7 +336,7 @@ async def _reject_duplicate(session: AsyncSession, member_id: UUID, data: Record
     consulta = select(PersonalRecord.id).where(
         PersonalRecord.member_id == member_id,
         PersonalRecord.invalidated_at.is_(None),
-        PersonalRecord.kind == _KIND_SQL[data.kind],
+        PersonalRecord.kind == KIND_SQL[data.kind],
         PersonalRecord.achieved_on == data.achieved_on,
         PersonalRecord.movement_id.is_not_distinct_from(data.movement_id),
         PersonalRecord.benchmark_id.is_not_distinct_from(data.benchmark_id),

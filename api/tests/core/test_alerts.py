@@ -296,3 +296,12 @@ def test_las_claves_de_personas_siguen_prohibidas(sinks_aislados: None, clave: s
         alert("reveal_volume", **{clave: "00000000-0000-0000-0000-000000000001"})
 
     assert bitacora == []
+
+
+def test_athletes_summary_capped_pasa_con_marcas_y_sin_ids(sinks_aislados: None) -> None:
+    bitacora: list[tuple[str, str, dict[str, object]]] = []
+    register_sink(SinkEspia("a", bitacora))
+
+    alert("athletes_summary_capped", marcas=2000)
+
+    assert bitacora == [("a", "athletes_summary_capped", {"marcas": 2000})]

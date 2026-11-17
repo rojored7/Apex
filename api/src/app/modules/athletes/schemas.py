@@ -172,3 +172,59 @@ class BenchmarkSeriesOut(BaseModel):
     score_type: str
     attempts: list[AttemptOut]
     truncated: bool
+
+
+# S9-C2 (US-184; contrato del blueprint §3, rutas 6 y 7) --------------------------------------
+
+
+class RmOut(BaseModel):
+    """El RM vigente de UN movimiento (kg, en gramos). `movement_name` es `None` solo si el
+    movimiento ya no está en el catálogo."""
+
+    movement_id: UUID
+    movement_name: str | None
+    record_id: UUID
+    value_g: int
+    source: Literal["manual", "derived"]
+    achieved_on: date
+
+
+class SummaryRecordOut(BaseModel):
+    """Un récord VIGENTE reciente del resumen (US-184; pantalla «Récords recientes»): fecha,
+    movimiento o benchmark con su nombre, la marca y el origen (`source`: `derived` se rotula
+    «automático del WOD»; `wod_id` es el enlace «ver»). Sin quién lo registró ni datos de
+    invalidación: el resumen no consulta usuarios ni resultados (M-1 de S9-C2, S9-D64)."""
+
+    id: UUID
+    kind: RecordKind
+    movement_id: UUID | None
+    movement_name: str | None
+    benchmark_id: UUID | None
+    benchmark_name: str | None
+    score_type: str | None
+    value_g: int | None
+    level: RecordLevel | None
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    achieved_on: date
+    source: Literal["manual", "derived"]
+    wod_id: UUID | None
+
+
+class AthleteSummaryOut(BaseModel):
+    """El resumen de la pestaña Atleta. Sin medidas, ni enmascaradas (S9-D16): solo la fecha de
+    la última medición vigente y cuántas hay. `recent_records`: los tres récords vigentes más
+    recientes. `truncated`: algún tope de lectura se alcanzó (récords vivos o marcas de
+    benchmarks); entonces `benchmarks_with_attempts` puede quedar corto y los benchmarks no se
+    ofrecen como recientes (no se puede asegurar cuál es el vigente); los RM salen de SQL y no
+    dependen del tope."""
+
+    last_metric_on: date | None
+    metrics_count: int
+    current_rms: int
+    benchmarks_with_attempts: int
+    recent_records: list[SummaryRecordOut]
+    truncated: bool

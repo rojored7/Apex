@@ -734,3 +734,24 @@ Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos
 ### Evidencia (S9-C1, tras el sello y el checkpoint e98a10c)
 - Sello: `slice-gate.sh athletes` (pura, service, router, `test_member_marks`): 994 passed, exit 0; no sellante `wods` (`test_record_catalog_reads`): 931 passed.
 - Curl con el admin de desarrollo sobre el socio ficticio `27c8e28b-...` (api con `--reload`): `GET /benchmarks` 200 (total 0), `?q=fran` 200 (total 0), `GET /benchmarks/{id}` 200 (0 intentos, `truncated` false), benchmark inexistente 404 `benchmark_not_found`. Sin intentos de benchmark reales en ese socio; la lógica con datos la cubren las pruebas con base real.
+
+## S9-C2 · RMs vigentes y resumen (2026-11-17)
+
+### Rojo
+- Stubs con `NotImplementedError`: `rules.current_records` y `rules.summarize_records` (`RecordsDigest`, `RECENT_RECORDS = 3`), `reads.current_rms_query`, `reads.list_rms`, `reads.summary` (`LIVE_RECORDS_MAX`), fachada `service.py`, dos rutas en `router.py` (`staff-read`), esquemas `RmOut` y `AthleteSummaryOut`.
+- P-CAT: `CON_LIMITE` (dos GET) en `test_error_codes_per_route.py`; `/rms` ya cumple `PageParams` + `q` (sin exclusión). Prueba de columnas sensibles de `RmOut` y `AthleteSummaryOut` en `test_list_rows_without_sensitive_fields.py`.
+- Pruebas nuevas: `test_summary_pure.py` (15), `test_rms_service.py` (14), `test_summary_service.py` (12), `test_router_profile.py` (10 funciones, 11 casos).
+- Medido: `48 failed` entre las cuatro y `tests/architecture` (923 passed). Los 48 fallan todos por `NotImplementedError: S9-C2: ...` (`list_rms` 39 líneas, `summary` 27, `current_records` 20, `summarize_records` 12; en el router se ven como 500 por el mismo error); ninguno por fixtures. Pasan con los stubs las de 401/403/quiosco y la de rutas publicadas.
+
+### Verde
+- `rules.current_records`/`summarize_records` (pura, `pick_current` por objetivo; recientes por `achieved_on`, `created_at`, id descendentes). `reads.current_rms_query`: `DISTINCT ON (movement_id)` (`postgresql.distinct_on`), `kind` literal, `invalidated_at IS NULL` desnudo, usa `ix_personal_records_rm` con plan genérico. `list_rms`: SQL + nombres por lote, orden por nombre (sin nombre al final), `q` sin tildes antes de paginar. `summary`: seis consultas (socio, agregado de medidas vigentes, marcas de benchmarks, récords vivos con tope 2.000 y alerta `athletes_restore_capped`, benchmark_refs, movement_refs); sin descifrar, sin auditoría, funciona con el keyring sin cargar.
+- Contrato (decisión local): `recent_records` son RecordOut de los vigentes (uno por objetivo); `recorded_by_name` y `result_source` van vacíos para no pasar de seis consultas; `benchmarks_with_attempts` cuenta ids distintos de las marcas vigentes y validadas (igual al `total` de la lista).
+- Nuevas: 51 en verde (4 archivos + arquitectura). Suite `tests/athletes tests/results tests/wods tests/architecture`: 1986 passed, 3 deselected. ruff check/format y mypy src limpios.
+- P-API: `export-openapi` x2 idéntico; `npm run gen:api`; `types.contract.test.ts` 6 passed; `tsc --noEmit` sin errores; `errorCodes.ts` sin cambios (sin códigos nuevos).
+- Sin sellar ni commit (pendiente la revisión de seguridad).
+
+### Revisiones
+- Seguridad: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 5 LOW; decisión S9-D64 en `DECISIONES.md`. Camino de M-1: pantalla `Atleta_Perfil.html` revisada; «Récords recientes» no muestra «Registró» ni «Automático (tablet)» (solo fecha, nombre, marca, «automático del WOD» y «ver»), así que se quitaron los campos (`SummaryRecordOut`, con `wod_id` para el «ver») y el tope de seis consultas no cambia.
+- Rojo medido de las correcciones: 20 failed (summary_service, router_profile y `render_message` de `athletes_summary_capped`; `truncated` ausente, `SummaryRecordOut` sin llenar, tope sin aviso propio); el resto de las 188 pruebas de los archivos tocados ya pasaba.
+- Verde: `SummaryRecordOut` y `truncated`; RM por SQL sin tope y benchmarks vivos en la misma consulta (`UNION ALL`, 15 columnas, tope `LIVE_RECORDS_MAX`; al alcanzarlo `truncated` y ningún benchmark como reciente); aviso por tope de marcas; alerta `athletes_summary_capped {marcas}` (+ texto Telegram y su prueba); RM sin valor se omite con aviso (también en `/rms`); `KIND_SQL` y `row_of` sin guion bajo; caso HTTP con el keyring sin cargar (200 en `/summary` y `/rms`); el `summary` se partió (`_summary_record`) por el tope de 50 líneas por función.
+- P-API: `export-openapi` x2 idéntico, `gen:api`, `types.contract.test.ts` 6 passed, `tsc --noEmit` limpio.

@@ -268,3 +268,36 @@ def test_la_lista_de_benchmarks_no_declara_campos_sensibles(settings_prueba: Set
     fila = app.openapi()["components"]["schemas"]["BenchmarkRowOut"]["properties"]
     assert {"benchmark_id", "name", "attempts", "best", "last_on"} <= set(fila)
     assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "document", "phone"}
+
+
+def test_la_lista_de_rms_y_el_resumen_no_declaran_campos_sensibles(
+    settings_prueba: Settings,
+) -> None:
+    """S9-C2: `GET /athletes/{member_id}/rms` y `/summary` no traen medidas (ni enmascaradas)."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app, "/api/v1/athletes")
+    assert problemas == [], chr(10).join(problemas)
+    assert "GET /api/v1/athletes/{member_id}/rms" in listas
+    esquemas = app.openapi()["components"]["schemas"]
+    prohibidos = {"weight_g", "height_cm", "body_fat_pct", "notes", "has_weight", "has_notes"}
+    assert not set(esquemas["RmOut"]["properties"]) & prohibidos
+    assert not set(esquemas["AthleteSummaryOut"]["properties"]) & prohibidos
+
+
+def test_los_recientes_del_resumen_no_declaran_quien_registro_ni_invalidacion(
+    settings_prueba: Settings,
+) -> None:
+    """S9-C2 (M-1): `SummaryRecordOut` lleva solo lo que el resumen necesita."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    fila = set(app.openapi()["components"]["schemas"]["SummaryRecordOut"]["properties"])
+    assert {"id", "kind", "achieved_on", "source", "wod_id"} <= fila
+    assert not fila & {
+        "recorded_by",
+        "recorded_by_name",
+        "result_source",
+        "result_id",
+        "is_current",
+        "invalidated_at",
+        "invalidated_reason",
+        "created_at",
+    }

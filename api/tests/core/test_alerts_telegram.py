@@ -626,3 +626,18 @@ def test_error_type_ascii_de_40_caracteres_si_pasa(codigo: str) -> None:
     tipo = "E" * 40
 
     assert f"[{tipo}]" in render_message(codigo, {"error_type": tipo, "job": "notify"}, FRONT)
+
+
+def test_athletes_summary_capped_muestra_las_filas_leidas() -> None:
+    texto = render_message("athletes_summary_capped", {"marcas": 2000}, FRONT)
+
+    assert "2000" in texto and "resumen" in texto
+    assert texto != render_message("codigo_desconocido_xx", {}, FRONT)
+
+
+def test_athletes_summary_capped_ignora_claves_ajenas_y_valores_sucios() -> None:
+    sucio = {"marcas": "1020304417", "member_id": "Laura Gómez", "nombre": "Laura Gómez"}
+
+    texto = render_message("athletes_summary_capped", sucio, FRONT)
+
+    assert "Laura" not in texto and "1020304417" not in texto

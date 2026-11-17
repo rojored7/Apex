@@ -483,3 +483,59 @@ def summarize_benchmarks(
         )
         for bid, grupo in grupos.items()
     ]
+
+
+# S9-C2 (US-184, S9-D10, S9-D27): el resumen del atleta -------------------------------------------
+
+RECENT_RECORDS: Final = 3  # US-184 CA1: los últimos tres récords
+
+
+@dataclass(frozen=True, slots=True)
+class RecordsDigest:
+    """Lo que el resumen saca de los récords vivos: cuántos RM vigentes y los más recientes."""
+
+    current_rms: int
+    recent: tuple[RecordRow, ...]
+
+
+def current_records(
+    records: Sequence[RecordRow], score_types: Mapping[UUID, str]
+) -> list[RecordRow]:
+    """El récord vigente de cada objetivo (pura): `pick_current` por movimiento o benchmark.
+
+    Un benchmark cuyo tipo de marca falta en `score_types` se ignora (no se puede ordenar). Los
+    invalidados no cuentan. Sin orden garantizado en la salida."""
+    grupos: dict[tuple[str, UUID], list[RecordRow]] = {}
+    for fila in records:
+        destino = fila.movement_id if fila.kind == "rm" else fila.benchmark_id
+        if destino is not None:
+            grupos.setdefault((fila.kind, destino), []).append(fila)
+    vigentes: list[RecordRow] = []
+    for (tipo, destino), grupo in grupos.items():
+        if tipo == "benchmark":
+            if destino not in score_types:
+                continue
+            elegido = pick_current(grupo, score_type=score_types[destino])
+        else:
+            elegido = pick_current(grupo)
+        if elegido is not None:
+            vigentes.append(elegido)
+    return vigentes
+
+
+def summarize_records(
+    records: Sequence[RecordRow],
+    score_types: Mapping[UUID, str],
+    *,
+    recent_limit: int = RECENT_RECORDS,
+) -> RecordsDigest:
+    """Resumen de los récords (pura): RM vigentes y los más recientes entre los vigentes.
+
+    `recent`: por `achieved_on`, `created_at` e id descendentes (orden total), a lo sumo
+    `recent_limit`."""
+    vigentes = current_records(records, score_types)
+    recientes = sorted(vigentes, key=lambda r: (r.achieved_on, r.created_at, r.id), reverse=True)
+    return RecordsDigest(
+        current_rms=sum(1 for r in vigentes if r.kind == "rm"),
+        recent=tuple(recientes[: max(recent_limit, 0)]),
+    )

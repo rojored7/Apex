@@ -27,6 +27,56 @@
         "title": "AccessTokenOut",
         "type": "object"
       },
+      "AthleteSummaryOut": {
+        "description": "El resumen de la pestaña Atleta. Sin medidas, ni enmascaradas (S9-D16): solo la fecha de\nla última medición vigente y cuántas hay. `recent_records`: los tres récords vigentes más\nrecientes. `truncated`: algún tope de lectura se alcanzó (récords vivos o marcas de\nbenchmarks); entonces `benchmarks_with_attempts` puede quedar corto y los benchmarks no se\nofrecen como recientes (no se puede asegurar cuál es el vigente); los RM salen de SQL y no\ndependen del tope.",
+        "properties": {
+          "benchmarks_with_attempts": {
+            "title": "Benchmarks With Attempts",
+            "type": "integer"
+          },
+          "current_rms": {
+            "title": "Current Rms",
+            "type": "integer"
+          },
+          "last_metric_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Metric On"
+          },
+          "metrics_count": {
+            "title": "Metrics Count",
+            "type": "integer"
+          },
+          "recent_records": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRecordOut"
+            },
+            "title": "Recent Records",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "last_metric_on",
+          "metrics_count",
+          "current_rms",
+          "benchmarks_with_attempts",
+          "recent_records",
+          "truncated"
+        ],
+        "title": "AthleteSummaryOut",
+        "type": "object"
+      },
       "AttachmentOut": {
         "additionalProperties": false,
         "properties": {
@@ -5171,6 +5221,38 @@
         "title": "Page[RecordOut]",
         "type": "object"
       },
+      "Page_RmOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RmOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[RmOut]",
+        "type": "object"
+      },
       "Page_RuleOut_": {
         "additionalProperties": false,
         "properties": {
@@ -7426,6 +7508,59 @@
         "title": "RevokeSessionsOut",
         "type": "object"
       },
+      "RmOut": {
+        "description": "El RM vigente de UN movimiento (kg, en gramos). `movement_name` es `None` solo si el\nmovimiento ya no está en el catálogo.",
+        "properties": {
+          "achieved_on": {
+            "format": "date",
+            "title": "Achieved On",
+            "type": "string"
+          },
+          "movement_id": {
+            "format": "uuid",
+            "title": "Movement Id",
+            "type": "string"
+          },
+          "movement_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Name"
+          },
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "manual",
+              "derived"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value_g": {
+            "title": "Value G",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "movement_id",
+          "movement_name",
+          "record_id",
+          "value_g",
+          "source",
+          "achieved_on"
+        ],
+        "title": "RmOut",
+        "type": "object"
+      },
       "RotateIn": {
         "additionalProperties": false,
         "description": "Cuerpo de `POST /crypto/keys/{id}/rotate` (S6-R1, US-145): `confirm` es exactamente\n`ROTAR` y `reason` de 1 a 200 caracteres sin correos ni números largos, la misma regla que el\nCLI (S6-D122; `inventory.validate_rotation_request`).",
@@ -9003,6 +9138,202 @@
           }
         },
         "title": "SlotPatch",
+        "type": "object"
+      },
+      "SummaryRecordOut": {
+        "description": "Un récord VIGENTE reciente del resumen (US-184; pantalla «Récords recientes»): fecha,\nmovimiento o benchmark con su nombre, la marca y el origen (`source`: `derived` se rotula\n«automático del WOD»; `wod_id` es el enlace «ver»). Sin quién lo registró ni datos de\ninvalidación: el resumen no consulta usuarios ni resultados (M-1 de S9-C2, S9-D64).",
+        "properties": {
+          "achieved_on": {
+            "format": "date",
+            "title": "Achieved On",
+            "type": "string"
+          },
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "benchmark_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Name"
+          },
+          "capped": {
+            "title": "Capped",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rm",
+              "benchmark"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rx",
+                  "rx_plus",
+                  "scaled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "load_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load G"
+          },
+          "movement_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Id"
+          },
+          "movement_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Name"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "score_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Type"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "source": {
+            "enum": [
+              "manual",
+              "derived"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value G"
+          },
+          "wod_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wod Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "movement_id",
+          "movement_name",
+          "benchmark_id",
+          "benchmark_name",
+          "score_type",
+          "value_g",
+          "level",
+          "seconds",
+          "rounds",
+          "reps",
+          "load_g",
+          "capped",
+          "achieved_on",
+          "source",
+          "wod_id"
+        ],
+        "title": "SummaryRecordOut",
         "type": "object"
       },
       "TemplateCreate": {
@@ -11910,6 +12241,258 @@
           }
         },
         "summary": "Invalidate Record",
+        "tags": [
+          "athletes"
+        ]
+      }
+    },
+    "/api/v1/athletes/{member_id}/rms": {
+      "get": {
+        "description": "S9-C2 (US-184): un RM vigente por movimiento, por nombre; `q` busca por el nombre.",
+        "operationId": "list_rms_api_v1_athletes__member_id__rms_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Búsqueda libre sin caracteres de control; nunca se registra en logs",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RmOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "List Rms",
+        "tags": [
+          "athletes"
+        ]
+      }
+    },
+    "/api/v1/athletes/{member_id}/summary": {
+      "get": {
+        "description": "S9-C2 (US-184): resumen del atleta; no descifra medidas ni deja filas `reveal`.",
+        "operationId": "summary_api_v1_athletes__member_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AthleteSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin sesión válida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Sin permiso"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No encontrado"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Petición inválida"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Demasiados intentos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error inesperado"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable)"
+          }
+        },
+        "summary": "Summary",
         "tags": [
           "athletes"
         ]

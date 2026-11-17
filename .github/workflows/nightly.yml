@@ -9,6 +9,8 @@
 # margen del 20 %). Sirve el build con `vite preview`: no necesita el stack. Lo vigila
 # scripts/ci/test_nightly_workflow.sh.
 #
+# `tv-soak-real` (S9-X3): la misma spec en tiempo real (hasta 5,5 h), solo por workflow_dispatch con real_hours distinto de 0.
+#
 # Toda acción va fijada por el SHA de su commit (versión en el comentario; mismas que ci.yml).
 name: nightly
 
@@ -16,12 +18,18 @@ on:
   schedule:
     - cron: "17 7 * * *"
   workflow_dispatch:
+    inputs:
+      real_hours:
+        description: "Horas de la prueba de la TV en tiempo real (tv-soak-real); 0 la omite; tope 5,5"
+        required: false
+        default: "0"
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: nightly-${{ github.ref }}
+  group: nightly-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
 
 defaults:
@@ -51,3 +59,57 @@ jobs:
       - name: spec de resistencia de la TV (12 horas con reloj acelerado)
         working-directory: web
         run: npm run soak
+
+  # S9-X3 (S9-D24, L-6): la misma spec en TIEMPO REAL (sin `page.clock`): temporizadores, recolección de memoria y
+  # repintado reales durante `real_hours` horas (por defecto 0, así que el disparo nocturno y uno manual sin entrada no la corren; V5 la dispara con 5; un runner alojado corta a las 6 h). Solo por
+  # `workflow_dispatch` y solo si `real_hours` es distinto de 0: NO corre con `schedule`. El valor entra por `env:` y
+  # se valida como número con tope 5,5 antes de usarlo; nunca se interpola dentro de `run:`. El heap va a
+  # $GITHUB_STEP_SUMMARY.
+  tv-soak-real:
+    name: tv-soak-real
+    if: github.event_name == 'workflow_dispatch' && inputs.real_hours != '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      REAL_HOURS: ${{ inputs.real_hours }}
+    concurrency:
+      group: nightly-real-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: validar real_hours
+        run: |
+          if ! [[ "$REAL_HOURS" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+            || ! awk -v h="$REAL_HOURS" 'BEGIN { exit !(h > 0 && h <= 5.5) }'; then
+            echo "real_hours debe ser un número mayor que 0 y como máximo 5,5" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: dependencias
+        working-directory: web
+        run: npm ci
+      - name: navegador
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: spec de la TV en tiempo real
+        working-directory: web
+        env:
+          SOAK_REAL_HOURS: ${{ env.REAL_HOURS }}
+          SOAK_SUMMARY_FILE: ${{ runner.temp }}/tv-soak-real-heap.md
+        run: npm run soak
+      - name: heap al resumen del job
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/tv-soak-real-heap.md" ]; then
+            cat "$RUNNER_TEMP/tv-soak-real-heap.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "tv-soak-real: la spec no dejó muestras del heap" >> "$GITHUB_STEP_SUMMARY"
+          fi

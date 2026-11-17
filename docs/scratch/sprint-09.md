@@ -837,3 +837,29 @@ Datos: la base tenía 1 clase de hoy y 376 coaches (acumulación de otras specs)
 
 **Verde, P-E2E (pasos 1 a 7).** Corrida 1: 2 passed (1.8 s), exit 0. Corrida 2: 2 passed (1.9 s), exit 0. `.env` restaurado (cmp OK), api y web recreados sin el overlay e2e, `/health` 8181 ok (version 4a08810), `USER_NOTIFICATIONS_WRITE_LIMIT_PER_MIN` con su valor de desarrollo. Sin bug de producto.
 - Limpieza del orquestador tras X2: un intento de rojo fallido (antes del `finally`) dejó un coach `coach-…@apex.test` activo y una clase «E2E idle …» programada. Por el api, con el admin de desarrollo: `DELETE /users/{id}` 204 y `POST /class-sessions/{id}/cancel` 200. Después, 0 coaches sin baja de las últimas 2 horas y 0 clases «E2E idle» sin cancelar. Los dos `node` vivos eran los servidores MCP de Playwright del harness, no de la corrida.
+
+## S9-X3 · TV en tiempo real (2026-11-17)
+
+**Rojo.** `scripts/ci/test_nightly_workflow.sh` ampliado antes de tocar el workflow (8 comprobaciones nuevas: job `tv-soak-real`, entrada `real_hours`, `if` con `workflow_dispatch` y `real_hours`, `timeout-minutes: 350`, `permissions: contents: read` del job, `REAL_HOURS` por `env:`, `inputs.` solo en `env:`/`if:`, ningún `inputs.` dentro de `run:`). Corrida: `test_nightly_workflow: 6 fallas`, exit 1 (las dos últimas ya pasaban sobre el workflow viejo, que no menciona `inputs.`); `bash -n` exit 0.
+
+**Verde.** `nightly.yml`: entrada `real_hours` (por defecto `"5"`), job `tv-soak-real` (`if: github.event_name == 'workflow_dispatch' && inputs.real_hours != '0'`, `timeout-minutes: 350`, `permissions: contents: read`, `REAL_HOURS` por `env:` validado como número con tope 5,5 en un paso propio, mismos SHA que `tv-soak`, sin secretos, heap a `$GITHUB_STEP_SUMMARY` con `if: always()`). Spec: modo `SOAK_REAL_HOURS` (0 < h <= 5,5), `SOAK_SAMPLE_MINUTES` (por defecto 10, mínimo 4 muestras) y `SOAK_SUMMARY_FILE`; el modo acelerado se omite en modo real y sigue igual sin la variable. `test_nightly_workflow.sh`: 0 fallas, exit 0. `test_images_pinned.sh`: exit 0.
+
+**Corrida local** (`SOAK_REAL_HOURS=0.03 SOAK_SAMPLE_MINUTES=0.4 npm run soak`, 1,8 min): 4 muestras de heap = 3,59 / 3,72 / 3,77 / 3,87 MiB; último/primero 1,076 (tope 1,2); 4 peticiones al tablero; 0 errores de consola; 1 passed, 1 skipped, exit 0.
+**Modo acelerado** (`npm run soak` sin variable): 1 passed (39,6 s la spec, 52 s con build), 1 skipped, exit 0.
+`npx tsc --noEmit` exit 0; `npm run lint` exit 0.
+
+**Docs.** `docs/operacion/tv.md`: 12 h aceleradas más 5 h reales (ambas automáticas), corrida local, disparo por REST sin `gh` (S9-D38) y la observación en la TV como comprobación de operación.
+**Desviación.** Ninguna: `real_hours` vale `"0"` por defecto (S9-D38, ajuste del orquestador tras la revisión); la primera versión tenía 5.
+
+### Revisiones (revisión de seguridad de S9-X3: 0 CRITICAL, 0 HIGH, 3 MEDIUM, 5 LOW)
+
+Método: por cada regla nueva del guion, una copia alterada de `nightly.yml` en el scratchpad (`.../scratchpad/alt/`) que el guion de antes daba como `0 fallas` (rojo medido); luego la regla; luego la copia da falla.
+- **M-1** (`${{ }}` en `run:`). Rojo: `m1a` (`npm run soak -- ${{ env.REAL_HOURS }}`), `m1b` (`${{ inputs['real_hours'] }}`), `m1c` (`${{ toJSON(inputs) }}`) y `m1d` (`${{ github.ref_name }}` en `run:`) daban `0 fallas`. Arreglo: el awk prohíbe cualquier `${{` dentro de un bloque `run:` de todo el archivo y el grep de `inputs` suma `inputs[` y `toJSON(inputs|github)`. Ahora las 4 copias fallan; `nightly.yml` real y el job `tv-soak` siguen pasando.
+- **M-2** (controles de L-6). Rojo: `m2a` (validación reemplazada por `true`), `m2d` (tope 5,5 cambiado a 50), `m2b` (un `persist-credentials: false` menos: 2 checkout, 1) y `m2c` (`&&` cambiado por `||` en el `if:`) daban `0 fallas`. Arreglo: el guion fija el paso «validar real_hours» con la regex numérica y `h <= 5.5`, tantos `persist-credentials: false` como `actions/checkout` y el `if:` literal con `&&` y `!= '0'`. Las 4 copias fallan ahora.
+- **M-3** (`tv.md`, token en archivo fijo). Subshell con `umask 077`, `mktemp` y `trap 'rm -f "$F"' EXIT`; no deja la umask cambiada ni el archivo si `curl` falla (el bloque pasa `bash -n`).
+- **L-1** (validar primero). Rojo: la regla nueva dio 1 falla sobre el workflow real (el primer paso era checkout). Arreglo: «validar real_hours» pasó a primer paso, antes de checkout.
+- **L-2** (concurrencia). Rojo: 2 fallas sobre el workflow real (sin `concurrency:` en el job y grupo del flujo sin evento). Arreglo: el job lleva `group: nightly-real-${{ github.ref }}` y el grupo del flujo pasó a `nightly-${{ github.ref }}-${{ github.event_name }}`; sin esto último el grupo del flujo, que cubre toda la corrida, igual dejaba en espera al nocturno de la misma rama. El guion exige ambos.
+- **L-3** (spec). `envNumber` aplica `^\d+(\.\d+)?$` antes de `Number()`: `SOAK_REAL_HOURS=1e1` falla con «debe ser un número» y `6` con el tope.
+- **L-4** (`tv.md`). Nota de NTFS (la `umask` no cambia permisos) y token fino con solo «Actions: write» (más «Metadata: read»).
+- **L-5.** `SOAK_SUMMARY_FILE` no lleva acción: es una ruta de salida que solo el job fija (`runner.temp`); queda sin cambio.
+- Resultado: guion 0 fallas sobre el workflow real; `test_images_pinned.sh` exit 0; `tsc` y `lint` exit 0; corrida local corta del modo real: 4 muestras 3,59 / 3,72 / 3,77 / 3,85 MiB, último/primero 1,072, 0 errores de consola, exit 0.

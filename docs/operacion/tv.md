@@ -85,3 +85,49 @@ tres comprobaciones sobre el stack de producción desechable.
   y se recupera sola en la siguiente lectura.
 - **«Sin WOD publicado»**: hoy no hay WOD. Publícalo desde el panel (`/wods/nuevo`).
 - **«Falta el enlace de la pantalla»**: no hay token en la URL ni guardado.
+
+## Prueba de resistencia de la pantalla (US-177)
+
+La TV se prueba con dos corridas automáticas en GitHub Actions (`.github/workflows/nightly.yml`), sin que nadie mire una pared:
+
+- **12 h aceleradas (`tv-soak`)**: la spec `web/tests/soak/tv.soak.spec.ts` con `page.clock` simula 12 horas, mide el heap por CDP al final de cada cuarto y exige que el último no pase del primero en más de 20 %. Corre a diario y a mano.
+- **5 h reales (`tv-soak-real`)**: la misma spec sin `page.clock` (`SOAK_REAL_HOURS`), con temporizadores, recolección de memoria y repintado reales. Toma una muestra del heap cada 10 minutos, aplica el mismo criterio del 20 % entre el primer y el último cuarto y exige cero errores de consola. El heap queda en el resumen del job (`$GITHUB_STEP_SUMMARY`). Solo corre por `workflow_dispatch` con `real_hours` distinto de 0 (por defecto 0: un disparo manual sin entrada no la corre, y se dispara con `real_hours=5`; tope 5,5; un runner alojado corta a las 6 h); nunca con `schedule`.
+
+Ambas son automáticas. Una corrida de 12 h reales seguidas no se prueba así: se descartó por el corte del runner y por no dejar procesos de fondo en el equipo local.
+
+### Correr la prueba a mano (local)
+
+```
+cd web
+SOAK_REAL_HOURS=0.03 SOAK_SAMPLE_MINUTES=0.4 npm run soak   # unos 2 minutos reales, 4 muestras
+```
+
+`SOAK_REAL_HOURS` debe ser un número mayor que 0 y como máximo 5,5. `SOAK_SAMPLE_MINUTES` (por defecto 10) acorta el intervalo entre muestras en corridas cortas: debe dar al menos 4 muestras (`horas * 60 / minutos >= 4`) o la spec falla con ese mensaje. `SOAK_SUMMARY_FILE` cambia dónde se escribe el resumen (por defecto `web/test-results/soak-real-heap.md`).
+
+### Dispararla por la API REST (sin `gh`)
+
+El token de GitHub va en un archivo `curlrc` temporal (`mktemp`, nombre único) que un subshell crea con `umask 077` y borra al salir aunque `curl` falle (`trap`); el subshell no deja la `umask` cambiada. El token nunca se imprime ni va en la línea de comandos. `mktemp` resuelve la carpeta aunque `TMPDIR` no esté definida.
+
+```
+# <dueño>/<repo> salen de `git remote get-url origin`
+(
+  umask 077; F="$(mktemp)"; trap 'rm -f "$F"' EXIT
+  printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git credential fill \
+    | sed -n 's/^password=//p' | { read -r T; [ -n "$T" ] && printf 'header = "Authorization: Bearer %s"\n' "$T" > "$F"; }
+  [ -s "$F" ] || { echo "sin credencial guardada" >&2; exit 1; }
+  curl -sS -K "$F" -X POST -H "Accept: application/vnd.github+json" \
+    https://api.github.com/repos/<dueño>/<repo>/actions/workflows/nightly.yml/dispatches \
+    -d '{"ref":"<rama>","inputs":{"real_hours":"5"}}'
+  # seguimiento
+  curl -sS -K "$F" "https://api.github.com/repos/<dueño>/<repo>/actions/workflows/nightly.yml/runs?event=workflow_dispatch&per_page=1"
+)
+```
+
+Notas:
+- En NTFS (Windows) `umask` no cambia los permisos del archivo: ahí el archivo queda legible por tu usuario según las ACL de la carpeta temporal; lo que protege es que se borra al salir. Prefiere correrlo en Linux o WSL.
+- Si el token es tuyo y no el de git, usa uno de alcance fino (fine-grained) limitado a este repositorio con solo el permiso «Actions: write» (y «Metadata: read»).
+- `real_hours` vale `0` por defecto: un disparo sin entrada corre solo `tv-soak`; con `real_hours=5` corre los dos jobs (`tv-soak` y `tv-soak-real`). `tv-soak-real` tiene su propio grupo de concurrencia: no deja en espera al `tv-soak` nocturno.
+
+### Observación en la TV del gimnasio
+
+Mirar la pantalla instalada en la pared durante una jornada es una comprobación de operación (que el enlace sigue vigente, que el tablero rota y que no queda congelado), no una deuda de código: la evidencia de memoria y de errores de consola ya la dan las dos corridas automáticas.

@@ -554,3 +554,9 @@ Stubs con `NotImplementedError` (`wods/probe.records_probe`, `athletes/service._
 - **LOW-5**: docstring de `athletes/service.py` corregido a `EXISTS`; prueba `test_los_dos_indices_parciales_sirven_a_la_consulta_del_puerto` (plan genérico, sin Seq Scan) afirma los dos índices.
 
 **Corrida tras las revisiones:** `tests/wods tests/athletes tests/results tests/architecture` 1615 passed, 3 deselected (exit 0); ruff, format y mypy limpios; contrato sin cambios (P-API no aplica de nuevo). Sello: `slice-gate.sh wods tests/wods/test_locked_by_records.py tests/athletes/test_records_probe.py tests/architecture/test_probe_registration_sites.py`.
+
+### Evidencia (S9-B2, tras el sello y el checkpoint 62d947f)
+
+- Gate no sellante `slice-gate.sh athletes tests/athletes/test_records_probe.py`: 920 passed, exit 0. Sello `slice-gate.sh wods tests/wods/test_locked_by_records.py tests/athletes/test_records_probe.py tests/architecture/test_probe_registration_sites.py`: 925 passed, exit 0. Checkpoint `62d947f`.
+- `$DC restart worker` (carga `athletes`): arrancó; `/health` 200.
+- Smoke 8181 con el admin de desarrollo sobre el movimiento del récord RM vivo del socio ficticio de B1: login 200; `PATCH /movements/{id}` con `{"unit":"reps"}` = 422 (`validation_error`, `field = unit`: respondió la guarda de uso por WODs, que va antes que el puerto; el camino del puerto lo cubren las pruebas con base real). No cambió nada. Temporales borrados.

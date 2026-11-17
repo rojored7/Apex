@@ -203,9 +203,10 @@ def history_fields(entry: AuditEntry) -> list[str]:
     sin las técnicas (`core.audit.TECHNICAL_COLUMNS`) y sin `HIDDEN_HISTORY_FIELDS`; `reveal` ->
     `[after["field"]]` (nunca `ip` ni `purpose`); cualquier otra acción -> `[]`. Pura."""
     if entry.action == "update":
-        claves = {*(entry.before or {}), *(entry.after or {})}
+        antes, despues = entry.before or {}, entry.after or {}
+        cambiadas = {c for c in {*antes, *despues} if antes.get(c) != despues.get(c)}
         ocultos = HIDDEN_HISTORY_FIELDS_BY_TABLE.get(entry.table_name, frozenset())
-        return sorted(c for c in claves if _shown_in_history(c) and c not in ocultos)
+        return sorted(c for c in cambiadas if _shown_in_history(c) and c not in ocultos)
     if entry.action == "reveal":
         campo = (entry.after or {}).get("field")
         return [campo] if isinstance(campo, str) and campo else []

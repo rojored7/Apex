@@ -67,8 +67,11 @@
 --   athletes.body_metrics           S I(sin voided_*) U(weight_g,     -
 --                                     height_cm, body_fat_pct, notes,
 --                                     voided_at, voided_by, updated_at)
+--   athletes.personal_records       S I(sin invalidated_*) U(los    -
+--                                     cuatro invalidated_*, updated_at)
 --   worker.job_runs                 S                                 S I U
 -- clasificada: athletes.body_metrics
+-- clasificada: athletes.personal_records
 -- clasificada: attachments.attachments
 -- clasificada: audit.audit_log
 -- clasificada: audit.signatures
@@ -176,6 +179,12 @@ GRANT UPDATE (is_current, status, voided_by, voided_at, void_reason, updated_at)
 GRANT SELECT ON athletes.body_metrics TO apex_api;
 GRANT INSERT (id, created_at, updated_at, created_by, member_id, measured_on, recorded_by, weight_g, height_cm, body_fat_pct, notes) ON athletes.body_metrics TO apex_api;
 GRANT UPDATE (weight_g, height_cm, body_fat_pct, notes, voided_at, voided_by, updated_at) ON athletes.body_metrics TO apex_api;
+-- S9-B1 (S9-D18, S9-D31): el api registra records (INSERT por columna, SIN invalidated_*: un record
+-- no nace invalidado) y solo actualiza la invalidacion (de NULL a valor, una vez; la guarda de
+-- `0043` lo impone) y updated_at. Sin DELETE ni TRUNCATE para nadie.
+GRANT SELECT ON athletes.personal_records TO apex_api;
+GRANT INSERT (id, created_at, updated_at, created_by, member_id, kind, movement_id, benchmark_id, wod_id, value_g, level, seconds, rounds, reps, load_g, capped, achieved_on, source, result_id) ON athletes.personal_records TO apex_api;
+GRANT UPDATE (invalidated_at, invalidated_reason, invalidated_by, invalidated_by_result_id, updated_at) ON athletes.personal_records TO apex_api;
 -- S6-A1 (S6-D7): el api solo lee las firmas (verifica con la clave publica); firma el worker.
 GRANT SELECT ON audit.signatures TO apex_api;
 GRANT SELECT, INSERT, UPDATE ON auth.one_time_tokens TO apex_api;
@@ -246,7 +255,7 @@ GRANT SELECT, INSERT, UPDATE ON worker.job_runs TO apex_worker;
 DO $$
 DECLARE
     clasificadas constant text[] := ARRAY[
-        'athletes.body_metrics', 'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
+        'athletes.body_metrics', 'athletes.personal_records', 'attachments.attachments', 'audit.audit_log', 'audit.signatures', 'audit.verifications', 'auth.one_time_tokens', 'auth.refresh_tokens',
         'auth.users', 'classes.attendance', 'classes.class_sessions', 'classes.class_slots', 'crypto.crypto_jobs', 'crypto.crypto_keys',
         'crypto.crypto_ops',
         'members.member_channel_preferences', 'members.members',

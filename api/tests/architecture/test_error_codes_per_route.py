@@ -197,6 +197,9 @@ CON_LIMITE = {
     ("post", "/api/v1/athletes/{member_id}/metrics/{metric_id}/reveal"),
     # S9-A3 (US-178): anular una medición consume `athletes-write`.
     ("post", "/api/v1/athletes/{member_id}/metrics/{metric_id}/void"),
+    # S9-B1 (US-180): el récord manual consume `athletes-write`; la lista, `staff-read`.
+    ("post", "/api/v1/athletes/{member_id}/records"),
+    ("get", "/api/v1/athletes/{member_id}/records"),
 }
 PLANES_B7 = {
     ("patch", "/api/v1/plans/{plan_id}"): {"200", "401", "403", "404", "409", "422", "429"},

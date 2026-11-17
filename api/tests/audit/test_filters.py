@@ -98,6 +98,7 @@ def test_auditable_tables_es_la_lista_unica_de_las_doce_tablas() -> None:
                 "wods.wod_movements",  # S8-A3 (US-166)
                 "results.wod_results",  # S8-B1 (US-169)
                 "athletes.body_metrics",  # S9-A1 (US-178)
+                "athletes.personal_records",  # S9-B1 (US-180)
             }
         )
         == AUDITABLE_TABLES

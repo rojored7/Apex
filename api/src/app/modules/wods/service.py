@@ -16,6 +16,10 @@ Reexporta lo público de los archivos privados del módulo:
 
 from __future__ import annotations
 
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.wods.benchmarks import (
     create_benchmark,
     get_benchmark,
@@ -23,10 +27,16 @@ from app.modules.wods.benchmarks import (
     update_benchmark,
 )
 from app.modules.wods.catalog import (
+    BenchmarkRef,
+    MovementRef,
     WodScoring,
     WodTitle,
+    benchmark_for_share,
+    benchmark_refs,
     day_wod_ids,
     ensure_wod,
+    movement_refs,
+    movements_by_id,
     scoring_for,
     titles_for,
     today_title,
@@ -49,11 +59,30 @@ from app.modules.wods.programming import create_wod, get_wod, list_wods, today_c
 from app.modules.wods.rules import normalize_movement_name
 from app.modules.wods.seed import seed_benchmarks
 
+
+async def movement_for_record(session: AsyncSession, movement_id: UUID) -> MovementRef | None:
+    """El movimiento con `FOR SHARE` y datos frescos, como dato plano (S9-D6, S9-D9, US-180).
+    Envoltura pública de `catalog.movements_by_id`; `None` si no existe."""
+    mov = (await movements_by_id(session, [movement_id])).get(movement_id)
+    return None if mov is None else MovementRef(mov.id, mov.name, mov.unit, mov.is_active)
+
+
+async def benchmark_for_record(session: AsyncSession, benchmark_id: UUID) -> BenchmarkRef | None:
+    """El benchmark con `FOR SHARE` y datos frescos, como dato plano (S9-D6, S9-D9, US-180).
+    Envoltura pública de `catalog.benchmark_for_share`; `None` si no existe."""
+    bm = await benchmark_for_share(session, benchmark_id)
+    return None if bm is None else BenchmarkRef(bm.id, bm.name, bm.score_type)
+
+
 __all__ = [
+    "BenchmarkRef",
+    "MovementRef",
     "ResultsProbe",
     "WodPublished",
     "WodScoring",
     "WodTitle",
+    "benchmark_for_record",
+    "benchmark_refs",
     "create_benchmark",
     "create_movement",
     "create_wod",
@@ -66,6 +95,8 @@ __all__ = [
     "list_benchmarks",
     "list_movements",
     "list_wods",
+    "movement_for_record",
+    "movement_refs",
     "normalize_movement_name",
     "results_probe",
     "scoring_for",

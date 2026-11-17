@@ -139,3 +139,47 @@ async def titles_for(session: AsyncSession, wod_ids: Collection[UUID]) -> dict[U
         )
     )
     return {f.id: WodTitle(f.id, f.title, f.date, f.score_type, f.benchmark_id) for f in filas}
+
+
+# S9-B1 (S9-D6, S9-D9, US-180): lecturas del catálogo para `athletes` ----------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class MovementRef:
+    """Un movimiento del catálogo como dato plano (un service no entrega ORM a otro módulo)."""
+
+    id: UUID
+    name: str
+    unit: str
+    is_active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkRef:
+    """Un benchmark del catálogo como dato plano."""
+
+    id: UUID
+    name: str
+    score_type: str
+
+
+async def movement_refs(session: AsyncSession, ids: Collection[UUID]) -> dict[UUID, MovementRef]:
+    """Nombre, unidad y estado de cada movimiento existente, en UNA consulta y SIN candados."""
+    if not ids:
+        return {}
+    filas = await session.execute(
+        select(Movement.id, Movement.name, Movement.unit, Movement.is_active).where(
+            Movement.id.in_(set(ids))
+        )
+    )
+    return {f.id: MovementRef(f.id, f.name, f.unit, f.is_active) for f in filas}
+
+
+async def benchmark_refs(session: AsyncSession, ids: Collection[UUID]) -> dict[UUID, BenchmarkRef]:
+    """Nombre y tipo de marca de cada benchmark existente, en UNA consulta y SIN candados."""
+    if not ids:
+        return {}
+    filas = await session.execute(
+        select(Benchmark.id, Benchmark.name, Benchmark.score_type).where(Benchmark.id.in_(set(ids)))
+    )
+    return {f.id: BenchmarkRef(f.id, f.name, f.score_type) for f in filas}

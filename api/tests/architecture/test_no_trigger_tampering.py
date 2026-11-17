@@ -142,6 +142,7 @@ def test_athletes_esta_barrido_y_no_apaga_triggers() -> None:
     carpeta = APP / "modules" / "athletes"
     archivos = sorted(carpeta.rglob("*.py"))
     assert (carpeta / "metrics.py").is_file() and archivos
+    assert (carpeta / "records.py").is_file()  # S9-B1: también el archivo de los récords
     encontrados = [
         h
         for path in archivos

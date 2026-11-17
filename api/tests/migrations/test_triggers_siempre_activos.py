@@ -49,6 +49,7 @@ from tests.conftest import (
     TRIGGERS_DE_CONGELACIONES,
     TRIGGERS_DE_MEMBERSHIPS,
     TRIGGERS_DE_PAGOS,
+    TRIGGERS_DE_PERSONAL_RECORDS,
     TRIGGERS_DE_SIGNATURES,
     TRIGGERS_DE_VERIFICATIONS,
     limpiar_tras_dos_sesiones,
@@ -352,3 +353,43 @@ async def test_con_0042_los_cuatro_triggers_de_medidas_existen_y_siguen_en_alway
 
 def test_always_triggers_incluye_los_cuatro_de_medidas() -> None:
     assert ALWAYS_TRIGGERS["athletes.body_metrics"] == TRIGGERS_DE_MEDIDAS
+
+
+# S9-B1 (US-180, P-CAT 4) · `athletes.personal_records` -----------------------------------------
+
+TRIGGERS_DE_RECORDS = (
+    "personal_records_guard_insert",
+    "personal_records_guard_update",
+    "personal_records_forbid_delete",
+    "personal_records_forbid_truncate",
+)
+
+
+def test_la_limpieza_de_records_enciende_sus_triggers_con_enable_always() -> None:
+    assert tuple(TRIGGERS_DE_PERSONAL_RECORDS) == TRIGGERS_DE_RECORDS
+    assert "to_regclass('athletes.personal_records')" in LIMPIAR_ATHLETES
+    assert "ALTER TABLE athletes.personal_records DISABLE TRIGGER USER;" in LIMPIAR_ATHLETES
+    assert "DELETE FROM athletes.personal_records;" in LIMPIAR_ATHLETES
+    for nombre in TRIGGERS_DE_RECORDS:
+        assert f"ENABLE ALWAYS TRIGGER {nombre};" in LIMPIAR_ATHLETES, nombre
+        assert f"tgname = '{nombre}'" in LIMPIAR_ATHLETES, nombre
+    assert "ENABLE TRIGGER USER" not in LIMPIAR_ATHLETES
+
+
+def test_always_triggers_incluye_los_cuatro_de_records() -> None:
+    assert ALWAYS_TRIGGERS["athletes.personal_records"] == TRIGGERS_DE_RECORDS
+
+
+async def test_con_0043_los_cuatro_triggers_de_records_existen_y_siguen_en_always(
+    engine: AsyncEngine,
+) -> None:
+    """Existen en `'A'` antes y después de `LIMPIAR_ATHLETES` y de la limpieza de `dos_sesiones`."""
+    esperados = dict.fromkeys(TRIGGERS_DE_RECORDS, "A")
+    assert await _estados(engine, TRIGGERS_DE_RECORDS) == esperados
+    async with engine.begin() as conexion:
+        await conexion.execute(text(LIMPIAR_ATHLETES))
+    assert await _estados(engine, TRIGGERS_DE_RECORDS) == esperados
+    async with engine.connect() as conexion:
+        ultima = await conexion.scalar(select(func.coalesce(func.max(AuditEntry.seq), 0)))
+    await limpiar_tras_dos_sesiones(engine, int(ultima or 0))
+    assert await _estados(engine, TRIGGERS_DE_RECORDS) == esperados

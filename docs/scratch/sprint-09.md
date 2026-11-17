@@ -435,3 +435,86 @@ Anular una medición (ruta 11, S9-D13, S9-D33; M-3, L-3). Sin migración (la gua
 - P-REBUILD: `apex-api:local` y `apex-web:local` con `GIT_SHA=508f57f` (etiqueta `org.opencontainers.image.revision` = `508f57f`); `up -d --no-build --force-recreate api worker web`; los tres `healthy`; `nginx -t` ok. El web se construye con `docker buildx build --network host --allow network.host` (con `up --build` buildx pide el permiso y falla). `/health`: `status ok`, `db ok`, `migrations ok`, `crypto ok`, `version 508f57f` (`backup attention`, informativo en desarrollo); web 200.
 - Smoke en vivo en 8181 con el admin de desarrollo (clave leída del archivo, nunca impresa; cabecera `Origin` del front) sobre el socio ficticio `27c8e28b-...`: lista 200; alta 201; `reveal` de `weight_g` 200 con el valor enviado y `Cache-Control: no-store`; anular 200; anular otra vez 409 `metric_already_voided`; `reveal` de la anulada 409 `metric_voided`; la lista sigue en total 1. Medición nueva `0f2e75e1-...` (queda anulada como dato de prueba, sin DELETE por diseño).
 - `audit_log` de esa medición: `insert` 1, `reveal` 1, `update` 1; ninguna fila contiene el valor en claro.
+
+## S9-B1 · Récords manuales (2026-11-16)
+
+### Rojo
+
+Paso 0: `apex-migracion.flag` tomada por el orquestador; `api` y `worker` parados; volcado `docs/scratch/sprint-09-antes-0043.dump`.
+
+**Stubs** (todos importan; fallan con `NotImplementedError` o con aserción):
+- `api/src/app/modules/athletes/records.py` (`add_record`, `list_records`; importa `wods.service` y `results.service`), `rules.py` (`RecordRow` y `pick_current`),
+  `schemas.py` (`RecordIn` con `extra="forbid"` y `RecordOut`, sin rangos: son del Verde), `events.py` (`PersonalRecordSet`: es solo forma, ya es real),
+  `exceptions.py` (`RecordValidationError`), `service.py` (fachada), `router.py` (rutas 4 y 5 que lanzan `NotImplementedError`; sin `enforce_user_limit` todavía).
+- `models.py`: `PersonalRecord` (solo columnas y marcas de auditoría; las `invalidated_*` con `FetchedValue`; sin CHECK ni índices del modelo). Registrarlo SIN
+  migración no rompió ninguna prueba vieja (se midió), así que quedó en el Rojo.
+- `wods/catalog.py` (`MovementRef`, `BenchmarkRef`, `movement_refs`, `benchmark_refs`) y `wods/service.py` (`movement_for_record`, `benchmark_for_record`, más las
+  reexportaciones). `results/leaderboard.py` (`ScoreLike`, `score_key`) y `results/service.py` (`score_key` y `validate_score` en el `__all__`).
+- `api/migrations/versions/0043_athletes_personal_records.py`: stub VACÍO (`upgrade` y `downgrade` con `pass`), hijo de `0042`; cabeza única.
+- `tests/factories/athletes.py` (`make_record`, stub con el contrato) y entrada `athletes.personal_records` en `FACTORIES`.
+
+**Pruebas nuevas** (valores a mano):
+- `tests/athletes/test_pick_current_pure.py` (23), `test_manual_records_service.py` (54), `test_router_records.py` (31), `test_records_concurrency.py` (2, dos altas a
+  la vez con `pg_locks`), `tests/results/test_score_key_pure.py` (20), `tests/wods/test_record_catalog_reads.py` (10),
+  `tests/migrations/test_0043_athletes_personal_records.py` (104: cada CHECK, rangos, los seis índices con la columna desnuda, cada columna fija del trigger
+  parametrizada, terminal, INSERT con `invalidated_*`, DELETE/TRUNCATE, replica, `tgenabled = 'A'`, funciones, downgrade que deja `forbid_mutation` de `0042`).
+- Apoyo: `tests/athletes/_apoyo.py` (`ruta_records`, `cuerpo_rm`, `cuerpo_benchmark`, `alta_record`, `filas_de_records`, `auditoria_de_records`).
+- Ampliadas: `test_db_grants.py` (32 tablas, listas por columna, DELETE/TRUNCATE negados, worker sin acceso, `-- clasificada:`), `test_api_role_paths.py` (alta
+  con `FOR SHARE` del catálogo, invalidación y negados), `test_worker_role_paths.py`, `test_triggers_siempre_activos.py` y `test_0014_*` (`ALWAYS_TRIGGERS`),
+  `tests/conftest.py` (`LIMPIAR_ATHLETES` con las dos tablas) y `tests/factories/triggers.py`.
+- Arquitectura y catálogos (P-CAT 1 y 4): `test_audited_tables.py` (E4: `athletes.personal_records` pasa a requerida; pendiente `members.push_subscriptions`),
+  `test_events_without_pii.py`, `test_service_import_graph.py` (aristas `athletes -> wods` y `athletes -> results`), `test_error_codes_per_route.py`,
+  `test_user_limits_catalog.py` (literales `athletes-write` y `staff-read`), `test_list_routes_use_page_params.py`, `test_list_rows_without_sensitive_fields.py`,
+  `test_no_physical_delete.py`, `test_no_trigger_tampering.py`, `_imports.py`; `tests/audit/{test_filters,test_recent,test_history_fields}.py`.
+- P-CAT 4: `grep` de conftests propios que borren socios: ninguno distinto de los de A1 (sin cambios).
+
+**Rojo medido** (`LC_ALL=C.UTF-8`, `TEST_DATABASE_URL` a `db_test`, un pytest a la vez):
+- Nuevas: 240 failed / 4 passed (los 4 son estructurales: rutas publicadas, 403 sin cupo, `service` exporta `score_key` y la cadena de `0043`).
+  Motivos: `NotImplementedError` en `add_record` 48, `pick_current` 23, `score_key` 19, ruta POST 10, `make_record` 8 y `movement_for_record`/`benchmark_for_record` 10;
+  `42P01` (tabla ausente) en la migración (103) y en las pruebas que cuentan filas.
+- Ampliadas: 31 failed (`test_db_grants` 21, `test_triggers_siempre_activos` 3, `test_api_role_paths` 1, `test_audited_tables` 1, `test_user_limits_catalog` 2,
+  `tests/audit` 3). Todas por la tabla, el grant, la cubeta o `AUDITABLE_TABLES` que faltan.
+- Resto: `tests/athletes tests/wods tests/architecture tests/audit tests/core/test_db.py`: 124 failed / 1774 passed; `tests/results tests/migrations
+  tests/core/test_migrations.py`: 147 failed / 1451 passed. **Cero pruebas viejas rotas por los stubs**; todos los fallos son de este slice.
+- `ruff check`, `ruff format --check` (1072 archivos) y `mypy src` (289) limpios; `alembic heads` = `0043_athletes_personal_records`.
+
+**Para el Verde:** CHECK, índices, guardas y funciones de `0043` (nombres fijados por las pruebas: `guard_personal_records_insert`/`_update`, triggers
+`personal_records_*`, índices `uq_personal_records_result_kind`, `ix_personal_records_{rm,bench,member_date,movement,benchmark}`); `grants.sql` (tres listas y `USAGE`);
+`audit/queries.py` (`AUDITABLE_TABLES`, excluida de recientes); `ratelimit` literales en el router; CHECK e índices del modelo; la fábrica `make_record`.
+**Estado:** `apex-migracion.flag` puesta; `api` y `worker` parados; sin commit.
+
+### Verde
+
+**Archivos (Verde):**
+- Migración `api/migrations/versions/0043_athletes_personal_records.py`: tabla, 15 CHECK (forma, rangos, origen, razón de invalidación), seis índices (los dos de vigentes con la columna desnuda `invalidated_at IS NULL`, S8-D50), funciones `guard_personal_records_insert/_update`, cuatro triggers `personal_records_*` `ENABLE ALWAYS`; el downgrade no borra `athletes.forbid_mutation()`.
+- `athletes/records.py` (`add_record`, `list_records`), `rules.pick_current` (+ `_Score`), `models.PersonalRecord` (CHECK e índices espejo), `router.py` (rutas 4 y 5 con `athletes-write` y `staff-read`).
+- `wods/catalog.py` (`movement_refs`, `benchmark_refs`) y `wods/service.py` (`movement_for_record`, `benchmark_for_record`, `FOR SHARE`, dataclasses planas); `results/leaderboard.py` (`ScoreLike` solo lectura, `score_key` = `_tie_key_of`; las claves aceptan cualquier `ScoreLike`).
+- `infra/db/grants.sql` (tres listas: comentario, INSERT por columna sin `invalidated_*`, UPDATE de las cuatro de invalidación y `updated_at`, `clasificada`), `audit/queries.py` (`AUDITABLE_TABLES` y excluida de recientes), `core/locks.py` (docstring del orden), `tests/factories/athletes.py` (`make_record`), `docs/ddd/DECISIONES.md` (S9-D51, S9-D52), `docs/openapi.json` y `web/src/core/api/types.ts` regenerados.
+
+**Desviaciones:** (1) la guarda de UPDATE rechaza cualquier UPDATE de una fila ya invalidada, incluso uno sin cambio de valores (la prueba «terminal» lo exige; S9-D52). (2) `created_at` del récord manual y de `make_record` usa `clock_timestamp()` (S9-D52; el desempate N-45 con `now()` de inicio de transacción daba el orden invertido bajo concurrencia). (3) `db_test` estaba estampada en `0043` por el stub vacío del Rojo: se devolvió a `0042` y se subió con la migración real. Arista `athletes -> results` en B1 (S9-D51). Ningún cambio a pruebas del Rojo.
+
+**Medido:** `0043` 104/104; `pick_current` + `score_key` + `record_catalog_reads` 53/53; `athletes` (3 archivos nuevos) 87/87 + factory 6; `athletes+wods+results` 678 passed. `ruff check`, `ruff format --check` (1118) y `mypy src` (289) limpios. `export-openapi` dos veces idéntico (cmp), `npm run gen:api`, `types.contract.test.ts` 6/6 (`--maxWorkers=2`), `tsc --noEmit` exit 0.
+
+**Ronda de corrección tras la primera corrida completa (3 fallos, todos de este slice):** (a) `test_audited_tables::test_recent_permite_las_seis...`: el conjunto esperado de excluidas no incluía `athletes.personal_records`; es la prueba la que estaba mal (S9-D19 la excluye de recientes), se le añadió la entrada. (b) `test_file_and_function_size`: `add_record` pasaba de 50 líneas; se extrajo `_new_record`. (c) `test_history_fields::test_la_invalidacion_de_un_record...`: `diff.history_fields` devolvía todas las claves de `before` y `after` y su docstring dice «las columnas que cambiaron»; ahora devuelve solo las que difieren (código, no prueba; sin efecto en las pruebas ya existentes).
+
+**Corridas finales (un pytest a la vez, `db_test`, `-m "not perf"`):** `tests/athletes tests/wods tests/results tests/architecture tests/audit tests/core/test_db.py tests/migrations/test_0043_...` 2155 passed, 17 deselected (exit 0); `tests/migrations tests/core/test_migrations.py` 1445 passed (exit 0; corrida previa a (a)-(c), que no tocan migraciones). Una sola cabeza de Alembic: `0043_athletes_personal_records`.
+
+**Gates no sellantes:** `slice-gate.sh wods tests/wods/test_record_catalog_reads.py` verde (916 passed, exit 0); `slice-gate.sh results tests/results/test_score_key_pure.py` verde (926 passed, exit 0). Sin commit, sin gate sellante de `athletes`, api/worker sin arrancar, bandera intacta.
+
+### Revisiones
+
+`security-reviewer`: 0 CRITICAL/HIGH/MEDIUM, 4 LOW. `database-reviewer`: 3 MEDIUM, 6 LOW. `0043` no estaba aplicada en ningún servidor: se editó en sitio (db_test: bajada a `0042` y vuelta a subir). Rojo medido antes del arreglo: 20 failed (9 de migración, 11 de las pruebas nuevas `tests/athletes/test_records_review_b1.py`); luego verde.
+
+- **BD M1** (`kind` como parámetro no casa con el índice parcial): `current_query`, `list_query` y la comprobación del duplicado usan `literal_column("'rm'")` / `'benchmark'` (S8-D50). Pruebas que compilan las consultas y afirman `kind = 'rm'` y ningún `kind = %(`. Revisadas las demás comparaciones contra columnas de predicado parcial: `invalidated_at IS NULL` ya iba desnuda; `source`, `result_id` y `movement_id IS NOT NULL` no se consultan en B1 (B2 en S9-D54).
+- **BD M2** (`created_at` con `clock_timestamp()` solo en el alta manual): ahora es el `DEFAULT` de la columna en la migración y el modelo; `_new_record` y `make_record` ya no lo ponen. Cubre a B3. Prueba de la base: dos altas en la misma transacción quedan en orden y el default es `clock_timestamp()`. S9-D52 reescrita.
+- **BD M3** (`updated_at < created_at` al nacer): mismo default y `CHECK updated_at >= created_at` (`ck_personal_records_updated_after_created`, probado).
+- **Seg L1** (sin tope de manuales): 409 `record_duplicate` ante el idéntico vivo (mismo socio, objetivo, marca y fecha), bajo `lock_member`; la misma marca otro día no lo es. Código en `errorCodes.ts` y 409 declarado en la ruta; OpenAPI y tipos regenerados (dos exportaciones idénticas). Efecto sobre pruebas del Rojo: las tres que repetían EXACTAMENTE un récord para probar «igual queda histórico» (`test_un_rm_menor_o_igual...`, `test_un_benchmark_mas_rapido...` y la de concurrencia) usan ahora la misma marca un día después (empata y gana el más antiguo); la intención de cada una se conserva. `_current_ids` y la lista tienen orden total (id).
+- **Seg L2** (el INSERT del api lleva `source`, `result_id`, `wod_id`, `capped`): aceptado, S9-D53.
+- **Seg L3** (`validate_score` filtraba «WOD» y campos ajenos): se captura `ResultValidationError` y sale `RecordValidationError` con un `field` de `RecordIn` (`wod_id` -> `benchmark_id`; `capped` y `scaled_movement_ids` -> `level`) y mensaje propio. Prueba parametrizada con `monkeypatch`.
+- **Seg L4** (CHECK `source <> 'manual' OR NOT capped`) y **BD L6** (`benchmark_shape` con `num_nonnulls(seconds, rounds, reps, load_g) >= 1`): hechos y probados. Las pruebas del Rojo que usaban un manual `capped` válido pasaron a derivado.
+- **BD L4/L5** (desempate por id): `pick_current` (prueba: mismo resultado con tres órdenes de entrada) y lista `(achieved_on, created_at, id)` descendentes (prueba sobre el SQL compilado).
+- **BD L7**: `invalidated_by_pair`, `invalidated_result_superseded` (verificado contra S9-D10/D11: solo la corrección, `superseded`, tiene resultado nuevo; anular no; la prueba que invalidaba un `voided` con resultado nuevo ahora espera CHECK) e `invalidated_after_created`. Los CHECK que la guarda tapa se prueban saltando SOLO la guarda de INSERT dentro de la transacción de la prueba (se revierte). Los ayudantes de invalidación usan `clock_timestamp()` (S9-D52).
+- **BD L8**: la guarda rechaza cambiar `updated_at` sin invalidar (la prueba que lo avanzaba suelto pasó de `OK` a `GUARDA`).
+- **BD L9** (índices `_movement` y `_benchmark` sin consulta): aceptado, S9-D54. **CONDICIÓN PARA B2:** `RecordsProbe` usará `EXISTS ... WHERE movement_id = :id AND invalidated_at IS NULL` (y `benchmark_id`), columna desnuda, verificado con `EXPLAIN`.
+
+**Corrida completa tras las revisiones:** `tests/athletes tests/wods tests/results tests/architecture tests/audit tests/migrations tests/core/test_migrations.py tests/core/test_db.py` 3516 passed, 17 deselected (exit 0); ruff, ruff format y mypy limpios; `export-openapi` x2 idéntico, `gen:api`, vitest `src/core/api` y `tsc --noEmit` verdes.

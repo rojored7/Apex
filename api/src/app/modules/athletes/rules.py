@@ -10,11 +10,14 @@ nunca repiten el texto recibido ni encadenan la causa.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 from app.modules.athletes.exceptions import MetricValidationError
+from app.modules.results.service import score_key
 
 METRIC_FIELDS: Final[tuple[str, ...]] = ("weight_g", "height_cm", "body_fat_pct", "notes")
 FIELD_MARKS: Final[dict[str, str]] = {
@@ -171,3 +174,68 @@ def can_void(
     if role != COACH_ROLE or recorded_by != caller:
         return False
     return now - created_at <= timedelta(hours=SELF_UNDO_WINDOW_H)
+
+
+# S9-B1 (US-180; S9-D10, N-45): el récord vigente ------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RecordRow:
+    """Lo que `pick_current` necesita de un récord: sin ORM ni nombres (pura)."""
+
+    id: UUID
+    kind: str
+    movement_id: UUID | None
+    benchmark_id: UUID | None
+    value_g: int | None
+    level: str | None
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    achieved_on: date
+    created_at: datetime
+    invalidated_at: datetime | None = None
+    source: str = "manual"
+
+
+@dataclass(frozen=True, slots=True)
+class _Score:
+    """La marca de un récord con la forma de `results.ScoreLike`."""
+
+    level: str
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+
+
+def pick_current(
+    records: Sequence[RecordRow], *, score_type: str | None = None
+) -> RecordRow | None:
+    """El récord vigente entre los NO invalidados de UN mismo objetivo (S9-D10, N-45).
+
+    RM: el mayor `value_g`. Benchmark: el de menor `results.service.score_key(score_type)`
+    (`score_type` es obligatorio con filas `benchmark`: `ValueError` si falta). Empate: el
+    `achieved_on` más antiguo, luego el `created_at` más antiguo y, al final, el id menor (orden
+    total, sin depender del orden de entrada). Vacía o solo invalidados: `None`.
+    """
+    vivos = [r for r in records if r.invalidated_at is None]
+    if not vivos:
+        return None
+    if any(r.kind == "benchmark" for r in vivos):
+        if score_type is None:
+            raise ValueError("score_type es obligatorio con récords de benchmark")
+        clave = score_key(score_type)
+
+        def orden(r: RecordRow) -> tuple[Any, ...]:
+            marca = _Score(r.level or "rx", r.seconds, r.rounds, r.reps, r.load_g, r.capped)
+            return (clave(marca), r.achieved_on, r.created_at, r.id)
+    else:
+
+        def orden(r: RecordRow) -> tuple[Any, ...]:
+            return (-(r.value_g or 0), r.achieved_on, r.created_at, r.id)
+
+    return min(vivos, key=orden)

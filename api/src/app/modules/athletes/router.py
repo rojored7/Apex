@@ -5,6 +5,7 @@ Plano, con la ruta completa en el decorador (S2-D3). Admin y coach (`StaffDep`).
 - `GET /athletes/{member_id}/metrics`: `Page[MetricOut]`; `staff-read`.
 - `POST /athletes/{member_id}/metrics/{metric_id}/reveal` (S9-A2, US-179): `MetricRevealOut`;
   las tres cubetas `members-reveal*` de la ficha y `warn_reveal_volume` (S9-D15, S9-D35).
+- `POST` y `GET /athletes/{member_id}/records` (S9-B1, US-180; rutas 4 y 5): `RecordOut`.
 - `POST /athletes/{member_id}/metrics/{metric_id}/void` (S9-A3, S9-D13): `MetricOut`;
   `athletes-write`. Sin cuerpo; el coach solo anula lo suyo y dentro de 24 h (S9-D33).
 """
@@ -25,7 +26,15 @@ from app.core.pagination import Page, PageParams
 from app.core.ratelimit import client_ip, enforce_user_limit, warn_reveal_volume
 from app.core.security import StaffDep
 from app.modules.athletes import service
-from app.modules.athletes.schemas import MetricIn, MetricOut, MetricRevealIn, MetricRevealOut
+from app.modules.athletes.schemas import (
+    MetricIn,
+    MetricOut,
+    MetricRevealIn,
+    MetricRevealOut,
+    RecordIn,
+    RecordKind,
+    RecordOut,
+)
 
 router = APIRouter(
     tags=["athletes"], dependencies=[Depends(no_store)], responses=responses_for(401, 403)
@@ -105,4 +114,37 @@ async def void_metric(
     await enforce_user_limit(request, "athletes-write", principal.user_id)
     return await service.void_metric(
         session, member_id, metric_id, by=principal.user_id, role=principal.role
+    )
+
+
+@router.post(
+    "/athletes/{member_id}/records",
+    status_code=201,
+    response_model=RecordOut,
+    responses=responses_for(404, 409, 422, 429),
+)
+async def add_record(
+    request: Request, member_id: UUID, body: RecordIn, principal: StaffDep, session: Session
+) -> RecordOut:
+    await enforce_user_limit(request, "athletes-write", principal.user_id)
+    return await service.add_record(session, member_id, body, by=principal.user_id)
+
+
+@router.get(
+    "/athletes/{member_id}/records",
+    response_model=Page[RecordOut],
+    responses=responses_for(404, 422, 429),
+)
+async def list_records(
+    request: Request,
+    member_id: UUID,
+    principal: StaffDep,
+    session: Session,
+    page: Annotated[PageParams, Depends()],
+    kind: RecordKind | None = None,
+    include_invalidated: bool = False,
+) -> Page[RecordOut]:
+    await enforce_user_limit(request, "staff-read", principal.user_id)
+    return await service.list_records(
+        session, member_id, page, kind=kind, include_invalidated=include_invalidated
     )

@@ -39,6 +39,8 @@ export const API_ERROR_CODES = {
   notificationInFlight: "notification_in_flight",
   // S9-D29: registrar medidas de un socio sin autorización de datos (409; athletes/exceptions.py).
   consentRequired: "consent_required",
+  // S9-B1 (L1): el mismo récord manual dos veces (409; athletes/exceptions.py).
+  recordDuplicate: "record_duplicate",
   // socios y planes
   memberDocumentDuplicated: "member_document_duplicated",
   memberNotFound: "member_not_found",

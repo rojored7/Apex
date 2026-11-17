@@ -595,17 +595,36 @@ TRIGGERS_DE_BODY_METRICS = (
     "body_metrics_forbid_delete",
     "body_metrics_forbid_truncate",
 )
-LIMPIAR_ATHLETES = (
-    "DO $$ BEGIN IF to_regclass('athletes.body_metrics') IS NOT NULL THEN "  # noqa: S608
-    "ALTER TABLE athletes.body_metrics DISABLE TRIGGER USER; "
-    "DELETE FROM athletes.body_metrics; "
-    + " ".join(
+TRIGGERS_DE_PERSONAL_RECORDS = (  # S9-B1 (0043)
+    "personal_records_guard_insert",
+    "personal_records_guard_update",
+    "personal_records_forbid_delete",
+    "personal_records_forbid_truncate",
+)
+
+
+def _limpiar_tabla_athletes(tabla: str, triggers: tuple[str, ...]) -> str:
+    """Apaga los triggers de usuario de `tabla`, la vacía y los rearma UNO POR UNO con
+    `ENABLE ALWAYS`. Si la tabla no existe (la prueba bajó la base) no hace nada."""
+    rearmar = " ".join(
         f"IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = '{nombre}' "  # noqa: S608
-        f"AND tgrelid = 'athletes.body_metrics'::regclass) THEN "
-        f"ALTER TABLE athletes.body_metrics ENABLE ALWAYS TRIGGER {nombre}; END IF;"
-        for nombre in TRIGGERS_DE_BODY_METRICS
+        f"AND tgrelid = '{tabla}'::regclass) THEN "
+        f"ALTER TABLE {tabla} ENABLE ALWAYS TRIGGER {nombre}; END IF;"
+        for nombre in triggers
     )
-    + " END IF; END $$"
+    return (
+        f"IF to_regclass('{tabla}') IS NOT NULL THEN "  # noqa: S608
+        f"ALTER TABLE {tabla} DISABLE TRIGGER USER; DELETE FROM {tabla}; {rearmar} END IF;"
+    )
+
+
+# `personal_records` (S9-B1, P-CAT 4) y `body_metrics` (S9-A1): sin FK entre esquemas.
+LIMPIAR_ATHLETES = (
+    "DO $$ BEGIN "
+    + _limpiar_tabla_athletes("athletes.personal_records", TRIGGERS_DE_PERSONAL_RECORDS)
+    + " "
+    + _limpiar_tabla_athletes("athletes.body_metrics", TRIGGERS_DE_BODY_METRICS)
+    + " END $$"
 )
 
 LIMPIEZA_DE_SESION = (

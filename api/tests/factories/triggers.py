@@ -29,6 +29,7 @@ BENCHMARKS_TABLE: Final = "wods.benchmarks"
 WODS_TABLE: Final = "wods.wods"
 WOD_RESULTS_TABLE: Final = "results.wod_results"
 BODY_METRICS_TABLE: Final = "athletes.body_metrics"
+PERSONAL_RECORDS_TABLE: Final = "athletes.personal_records"
 
 AUDIT_LOG_TRIGGERS: Final = ("audit_log_forbid_mutation", "audit_log_forbid_truncate")
 VERIFICATIONS_TRIGGERS: Final = ("verifications_forbid_mutation", "verifications_forbid_truncate")
@@ -65,6 +66,12 @@ BODY_METRICS_TRIGGERS: Final = (
     "body_metrics_forbid_delete",
     "body_metrics_forbid_truncate",
 )
+PERSONAL_RECORDS_TRIGGERS: Final = (
+    "personal_records_guard_insert",
+    "personal_records_guard_update",
+    "personal_records_forbid_delete",
+    "personal_records_forbid_truncate",
+)
 CRYPTO_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     "crypto.crypto_ops": ("crypto_ops_forbid_mutation", "crypto_ops_forbid_truncate"),
     "crypto.crypto_keys": ("crypto_keys_guard", "crypto_keys_forbid_truncate"),
@@ -89,6 +96,7 @@ ALWAYS_TRIGGERS: Final[dict[str, tuple[str, ...]]] = {
     WODS_TABLE: WODS_TRIGGERS,  # S8-A3 (0034)
     WOD_RESULTS_TABLE: WOD_RESULTS_TRIGGERS,  # S8-B1 (0037)
     BODY_METRICS_TABLE: BODY_METRICS_TRIGGERS,  # S9-A1 (0042)
+    PERSONAL_RECORDS_TABLE: PERSONAL_RECORDS_TRIGGERS,  # S9-B1 (0043)
     **{t: (*n, *ROTACION_TRIGGERS.get(t, ())) for t, n in CRYPTO_TRIGGERS.items()},
 }
 """Los quince triggers inmutables por tabla (`tgenabled = 'A'`; S6-A1 suma `audit.signatures`, S6-C1

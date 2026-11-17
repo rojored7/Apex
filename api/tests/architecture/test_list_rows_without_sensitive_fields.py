@@ -242,3 +242,17 @@ def test_la_lista_de_medidas_no_declara_los_cuatro_campos_cifrados(
     fila = app.openapi()["components"]["schemas"]["MetricOut"]["properties"]
     assert {"has_weight", "has_height", "has_body_fat", "has_notes"} <= set(fila)
     assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "value"}
+
+
+def test_la_lista_de_records_no_declara_campos_sensibles_ni_el_valor_cifrado(
+    settings_prueba: Settings,
+) -> None:
+    """S9-B1: `GET /athletes/{member_id}/records` es una lista sin columnas cifradas (un récord no
+    es dato de salud) y no trae ningún campo de los sensibles del socio."""
+    app = create_app(settings_prueba, run_migrations_on_startup=False)
+    problemas, listas = filas_con_sensibles(app, "/api/v1/athletes")
+    assert problemas == [], chr(10).join(problemas)
+    assert "GET /api/v1/athletes/{member_id}/records" in listas
+    fila = app.openapi()["components"]["schemas"]["RecordOut"]["properties"]
+    assert {"value_g", "is_current", "source", "invalidated_at"} <= set(fila)
+    assert not set(fila) & {"weight_g", "height_cm", "body_fat_pct", "notes", "document", "phone"}

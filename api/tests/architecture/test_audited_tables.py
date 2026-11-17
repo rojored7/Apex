@@ -70,6 +70,7 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
         "wods.wod_movements",  # S8-A3 (US-166)
         "results.wod_results",  # S8-B1 (US-169)
         "athletes.body_metrics",  # S9-A1 (US-178)
+        "athletes.personal_records",  # S9-B1 (US-180; E4)
         "notifications.notification_templates",
         "notifications.notification_rules",
         "notifications.notifications",
@@ -80,9 +81,10 @@ REQUIRED_AUDITED_TABLES_V01: frozenset[str] = frozenset(
     }
 )
 PENDING_AUDITED: dict[str, str] = {
-    # S8-W0-3 (E3): las cinco tablas de v0.5 se declaran antes de existir; cada slice la mueve a
-    # las requeridas. `athletes.personal_records` (EP-24, US-180) mantiene viva la lista.
-    "athletes.personal_records": "v0.6",
+    # S8-W0-3 (E3): las tablas de cada versión se declaran antes de existir; cada slice la mueve a
+    # las requeridas. S9-B1 (E4) movió `athletes.personal_records` a las requeridas; la primera
+    # tabla de EP-25 (`0090_members_push_subscriptions`, SPRINT-10.md) mantiene viva la lista.
+    "members.push_subscriptions": "v1.0",
 }
 
 
@@ -174,7 +176,7 @@ def test_una_pendiente_que_no_existe_no_falla() -> None:
 
 
 def test_una_pendiente_que_existe_auditada_no_falla() -> None:
-    tablas = {**_requeridas_auditadas(), "athletes.personal_records": _Auditada}
+    tablas = {**_requeridas_auditadas(), "members.push_subscriptions": _Auditada}
     assert _incumplidas(tablas) == []
 
 
@@ -325,6 +327,7 @@ def test_recent_permite_las_seis_tablas_de_s4a_d28_y_excluye_tres_con_motivo() -
         "wods.wod_movements",  # S8-A3: detalle del WOD (S8-D23)
         "results.wod_results",  # S8-B1: volumen de la clase (S8-D23)
         "athletes.body_metrics",  # S9-A1 (S9-D19): se ve en la ficha; el blob no es legible
+        "athletes.personal_records",  # S9-B1 (S9-D19): se ve en la ficha del socio
         "notifications.notification_templates",  # S5-B6
         "notifications.notification_rules",  # S5-B6
         "notifications.notifications",  # S5-B7

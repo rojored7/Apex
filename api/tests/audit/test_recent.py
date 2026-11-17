@@ -452,3 +452,17 @@ def test_las_medidas_son_auditables_y_no_entran_en_recientes_con_su_motivo() -> 
     assert tabla in AUDITABLE_TABLES
     assert AUDIT_TABLES_EXCLUDED_FROM_RECENT[tabla].strip()
     assert tabla not in RECENT_TABLES_ALLOWED
+
+
+def test_los_records_son_auditables_y_no_entran_en_recientes_con_su_motivo() -> None:
+    """S9-B1 (S9-D19): se ven en la ficha del socio; los derivados siguen el volumen de la clase."""
+    from app.modules.audit.queries import (
+        AUDIT_TABLES_EXCLUDED_FROM_RECENT,
+        AUDITABLE_TABLES,
+        RECENT_TABLES_ALLOWED,
+    )
+
+    tabla = "athletes.personal_records"
+    assert tabla in AUDITABLE_TABLES
+    assert AUDIT_TABLES_EXCLUDED_FROM_RECENT[tabla].strip()
+    assert tabla not in RECENT_TABLES_ALLOWED

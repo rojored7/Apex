@@ -244,3 +244,39 @@ def test_un_update_de_medicion_no_muestra_los_nombres_de_las_columnas_cifradas()
 
     assert not set(campos) & CAMPOS_DE_MEDIDA
     assert "voided_at" in campos
+
+
+# S9-B1 (S9-D19): el historial del socio con los récords ---------------------------------------
+
+
+def test_la_invalidacion_de_un_record_nombra_sus_columnas_sin_valores() -> None:
+    """Un récord no es dato de salud: el `update` de la invalidación nombra las columnas (sin las
+    técnicas); el alta (`insert`) no nombra ninguna."""
+    antes = {
+        "value_g": 100_000,
+        "invalidated_at": None,
+        "invalidated_reason": None,
+        "invalidated_by": None,
+        "invalidated_by_result_id": None,
+        "updated_at": "2026-10-20T10:00:00",
+    }
+    despues = {
+        **antes,
+        "invalidated_at": "2026-10-21T10:00:00",
+        "invalidated_reason": "manual_error",
+        "invalidated_by": str(SOCIA),
+        "updated_at": "2026-10-21T10:00:00",
+    }
+    entrada = AuditEntry(
+        action="update", table_name="athletes.personal_records", before=antes, after=despues
+    )
+    alta = AuditEntry(
+        action="insert", table_name="athletes.personal_records", before=None, after=antes
+    )
+
+    assert diff.history_fields(entrada) == [
+        "invalidated_at",
+        "invalidated_by",
+        "invalidated_reason",
+    ]
+    assert diff.history_fields(alta) == []

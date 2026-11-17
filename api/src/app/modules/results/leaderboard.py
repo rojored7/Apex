@@ -14,7 +14,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 _SCALED = "scaled"
@@ -40,42 +40,60 @@ class Ranked:
     mark: Mark
 
 
+class ScoreLike(Protocol):
+    """Lo que `score_key` lee de una marca: sin nombres de socio (S9-D6). Solo lectura: acepta
+    tanto un `Mark` congelado como un récord."""
+
+    @property
+    def level(self) -> str: ...
+    @property
+    def seconds(self) -> int | None: ...
+    @property
+    def rounds(self) -> int | None: ...
+    @property
+    def reps(self) -> int | None: ...
+    @property
+    def load_g(self) -> int | None: ...
+    @property
+    def capped(self) -> bool: ...
+
+
 def _fold(text: str) -> str:
     """Minúsculas y sin diacríticos, solo para comparar nombres."""
     base = unicodedata.normalize("NFKD", text)
     return "".join(c for c in base if not unicodedata.combining(c)).casefold()
 
 
-def _time_key(m: Mark) -> tuple[Any, ...]:
+def _time_key(m: ScoreLike) -> tuple[Any, ...]:
     if m.capped:
         return (1, -(m.rounds or 0), -(m.reps or 0))
     return (0, m.seconds or 0)
 
 
-def _tie_key_of(score_type: str) -> Callable[[Mark], tuple[Any, ...]]:
+def _tie_key_of(score_type: str) -> Callable[[ScoreLike], tuple[Any, ...]]:
     """Grupo y marca: lo que decide el empate."""
     match score_type:
         case "time":
             mark_key = _time_key
         case "rounds_reps":
 
-            def mark_key(m: Mark) -> tuple[Any, ...]:
+            def mark_key(m: ScoreLike) -> tuple[Any, ...]:
                 return (-(m.rounds or 0), -(m.reps or 0))
 
         case "reps":
 
-            def mark_key(m: Mark) -> tuple[Any, ...]:
+            def mark_key(m: ScoreLike) -> tuple[Any, ...]:
                 return (-(m.reps or 0),)
 
         case "load":
 
-            def mark_key(m: Mark) -> tuple[Any, ...]:
+            def mark_key(m: ScoreLike) -> tuple[Any, ...]:
                 return (-(m.load_g or 0),)
 
         case _:
             raise ValueError(f"score_type sin leaderboard: {score_type}")
 
-    def key(m: Mark) -> tuple[Any, ...]:
+    def key(m: ScoreLike) -> tuple[Any, ...]:
         return (1 if m.level == _SCALED else 0, mark_key(m))
 
     return key
@@ -103,3 +121,10 @@ def rank_rows(score_type: str, marks: Sequence[Mark]) -> list[Ranked]:
             posicion = indice + 1
         salida.append(Ranked(posicion, marca))
     return salida
+
+
+def score_key(score_type: str) -> Callable[[ScoreLike], tuple[Any, ...]]:
+    """Clave pública «grupo y marca» (menor es mejor): la misma de `_tie_key_of` pero sobre
+    cualquier objeto con la forma de `ScoreLike`, sin armar un `Mark` con nombres vacíos
+    (S9-D6, US-180). `ValueError` con un `score_type` sin leaderboard."""
+    return _tie_key_of(score_type)

@@ -297,6 +297,8 @@ def test_apex_worker_sin_acceso_al_esquema_athletes(apex_roles: RolesDb) -> None
         for sql in (
             "SELECT count(*) FROM athletes.body_metrics",
             "INSERT INTO athletes.body_metrics (id) VALUES (gen_random_uuid())",
+            "SELECT count(*) FROM athletes.personal_records",  # S9-B1
+            "INSERT INTO athletes.personal_records (id) VALUES (gen_random_uuid())",
         ):
             try:
                 await c.execute(sql)
@@ -304,4 +306,4 @@ def test_apex_worker_sin_acceso_al_esquema_athletes(apex_roles: RolesDb) -> None
                 negadas.append(sql.split()[0])
         return negadas
 
-    assert _correr(apex_roles.dsn("apex_worker"), intentar) == ["SELECT", "INSERT"]
+    assert _correr(apex_roles.dsn("apex_worker"), intentar) == ["SELECT", "INSERT"] * 2

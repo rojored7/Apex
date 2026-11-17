@@ -34,7 +34,12 @@ RUTAS_SIN_Q_S8: frozenset[str] = frozenset(
 """S8-B4 (US-171 a US-173): el leaderboard y las dos listas de resultados paginan con `limit` y
 `offset` y filtran por parámetros tipados (`level`, `sex`, `include_superseded`, `benchmark`): no
 hay texto que buscar, así que no aceptan `q` (exclusión anotada)."""
-RUTAS_SIN_Q_S9: frozenset[str] = frozenset({"GET /api/v1/athletes/{member_id}/metrics"})
+RUTAS_SIN_Q_S9: frozenset[str] = frozenset(
+    {
+        "GET /api/v1/athletes/{member_id}/metrics",
+        "GET /api/v1/athletes/{member_id}/records",  # S9-B1: filtra por `kind`, sin búsqueda
+    }
+)
 """S9-A1 (US-178): la lista de mediciones de un socio pagina con `limit` y `offset` y filtra por el
 parámetro tipado `include_voided`; no hay texto que buscar (los cuatro campos van cifrados y
 `has_*` no se busca), así que no acepta `q` (exclusión anotada)."""

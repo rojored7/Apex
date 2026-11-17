@@ -176,6 +176,36 @@ COLUMNAS_API_BODY_METRICS_UPDATE: tuple[str, ...] = (
     "voided_by",
     "updated_at",
 )
+# S9-B1 (S9-D18, S9-D31): el api inserta récords por columna SIN `invalidated_*` (un récord no nace
+# invalidado) y solo actualiza las cuatro columnas de invalidación y `updated_at`; lo demás es fijo.
+COLUMNAS_API_PERSONAL_RECORDS_INSERT: tuple[str, ...] = (
+    "id",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "member_id",
+    "kind",
+    "movement_id",
+    "benchmark_id",
+    "wod_id",
+    "value_g",
+    "level",
+    "seconds",
+    "rounds",
+    "reps",
+    "load_g",
+    "capped",
+    "achieved_on",
+    "source",
+    "result_id",
+)
+COLUMNAS_API_PERSONAL_RECORDS_UPDATE: tuple[str, ...] = (
+    "invalidated_at",
+    "invalidated_reason",
+    "invalidated_by",
+    "invalidated_by_result_id",
+    "updated_at",
+)
 # S8-A1 (S8-D21): lo que el api puede cambiar de un movimiento; `id`, `created_*` quedan fijos.
 COLUMNAS_API_MOVEMENTS_UPDATE: tuple[str, ...] = (
     "name",
@@ -296,6 +326,12 @@ PRIVILEGIOS: dict[str, dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     # se actualizan; nadie borra; el worker no ve el esquema `athletes`.
     "athletes.body_metrics": {
         "apex_api": (frozenset({"SELECT"}), frozenset(COLUMNAS_API_BODY_METRICS_UPDATE)),
+        "apex_worker": (frozenset(), frozenset()),
+    },
+    # S9-B1 (S9-D18, P-ROL): `INSERT` por columna sin `invalidated_*`; solo la invalidación se
+    # actualiza; nadie borra; el worker no ve el esquema `athletes`.
+    "athletes.personal_records": {
+        "apex_api": (frozenset({"SELECT"}), frozenset(COLUMNAS_API_PERSONAL_RECORDS_UPDATE)),
         "apex_worker": (frozenset(), frozenset()),
     },
     "crypto.crypto_jobs": {
@@ -887,6 +923,14 @@ PROHIBIDAS_API = [
     "UPDATE athletes.body_metrics SET member_id = member_id",  # S9-A1
     "UPDATE athletes.body_metrics SET recorded_by = recorded_by",  # S9-A1
     "UPDATE athletes.body_metrics SET created_by = created_by",  # S9-A1
+    "DELETE FROM athletes.personal_records",  # S9-B1: los récords no se borran
+    "TRUNCATE athletes.personal_records",  # S9-B1
+    "UPDATE athletes.personal_records SET value_g = value_g",  # S9-B1: columna sin UPDATE
+    "UPDATE athletes.personal_records SET member_id = member_id",  # S9-B1
+    "UPDATE athletes.personal_records SET source = source",  # S9-B1
+    "UPDATE athletes.personal_records SET result_id = result_id",  # S9-B1
+    "UPDATE athletes.personal_records SET achieved_on = achieved_on",  # S9-B1
+    "UPDATE athletes.personal_records SET created_by = created_by",  # S9-B1
     # S5-D256: UPDATE por columna en avisos y preferencias de canal (V8).
     "UPDATE notifications.notifications SET rendered_body = 'x'",
     "UPDATE notifications.notifications SET rendered_subject = 'x'",
@@ -976,6 +1020,8 @@ PROHIBIDAS_WORKER = [
     "INSERT INTO results.wod_results (id) VALUES (gen_random_uuid())",  # S8-B1
     "SELECT count(*) FROM athletes.body_metrics",  # S9-A1: el worker no ve el esquema `athletes`
     "INSERT INTO athletes.body_metrics (id) VALUES (gen_random_uuid())",  # S9-A1
+    "SELECT count(*) FROM athletes.personal_records",  # S9-B1: el worker no ve `athletes`
+    "INSERT INTO athletes.personal_records (id) VALUES (gen_random_uuid())",  # S9-B1
     "SELECT count(*) FROM payments.payments",
     "SELECT document FROM members.members",
     "SELECT count(*) FROM auth.refresh_tokens",
@@ -1459,6 +1505,12 @@ def test_las_listas_de_columnas_coinciden_en_el_plan_grants_sql_y_la_base(
         ("INSERT", "payments.payments", "apex_api"): set(COLUMNAS_API_PAYMENTS_INSERT),
         ("INSERT", "athletes.body_metrics", "apex_api"): set(COLUMNAS_API_BODY_METRICS_INSERT),
         ("UPDATE", "athletes.body_metrics", "apex_api"): set(COLUMNAS_API_BODY_METRICS_UPDATE),
+        ("INSERT", "athletes.personal_records", "apex_api"): set(
+            COLUMNAS_API_PERSONAL_RECORDS_INSERT
+        ),
+        ("UPDATE", "athletes.personal_records", "apex_api"): set(
+            COLUMNAS_API_PERSONAL_RECORDS_UPDATE
+        ),
         ("UPDATE", "notifications.notifications", "apex_api"): set(
             COLUMNAS_API_NOTIFICATIONS_UPDATE
         ),
@@ -1771,10 +1823,12 @@ def test_attachments_apex_api_inserta_y_actualiza_key_id_y_apex_backup_lee(
 # S9-A1 (S9-D18, P-ROL): el esquema `athletes` y sus 31 tablas clasificadas --------------------
 
 
-def test_son_31_las_tablas_clasificadas_y_athletes_esta_entre_ellas() -> None:
-    """P-ROL 5: 30 antes de `0042`, 31 con `athletes.body_metrics` (32 tras `0043`)."""
-    assert len(PRIVILEGIOS) == 31
+def test_son_32_las_tablas_clasificadas_y_athletes_esta_entre_ellas() -> None:
+    """P-ROL 5: 30 antes de `0042`, 31 con `athletes.body_metrics`, 32 con `0043`
+    (`athletes.personal_records`)."""
+    assert len(PRIVILEGIOS) == 32
     assert "athletes.body_metrics" in PRIVILEGIOS
+    assert "athletes.personal_records" in PRIVILEGIOS
 
 
 def test_grants_sql_nombra_el_esquema_athletes_en_las_cuatro_sentencias() -> None:
@@ -1796,6 +1850,7 @@ def test_grants_sql_nombra_el_esquema_athletes_en_las_cuatro_sentencias() -> Non
         if "apex_worker" in m.group(2):
             assert "athletes" not in {e.strip() for e in m.group(1).split(",")}
     assert "-- clasificada: athletes.body_metrics" in texto
+    assert "-- clasificada: athletes.personal_records" in texto
 
 
 def test_athletes_usage_para_apex_api_y_apex_backup_y_no_para_el_worker(
@@ -1831,3 +1886,46 @@ def test_ningun_rol_puede_borrar_ni_truncar_medidas(apex_roles: RolesDb) -> None
                 verbo,
             )[0]["v"]
             assert not tiene, f"{rol} tiene {verbo} en athletes.body_metrics"
+
+
+def test_apex_api_inserta_records_por_columna_sin_invalidated(apex_roles: RolesDb) -> None:
+    """S9-D31: el `INSERT` no incluye ninguna `invalidated_*`: un récord no nace invalidado."""
+    con_insert = _con_privilegio_de_columna(
+        apex_roles, "apex_api", "athletes.personal_records", "INSERT"
+    )
+    assert con_insert == set(COLUMNAS_API_PERSONAL_RECORDS_INSERT)
+    assert not {c for c in con_insert if c.startswith("invalidated_")}
+
+
+def test_apex_api_actualiza_solo_la_invalidacion_y_updated_at(apex_roles: RolesDb) -> None:
+    con_update = _con_privilegio_de_columna(
+        apex_roles, "apex_api", "athletes.personal_records", "UPDATE"
+    )
+    assert con_update == set(COLUMNAS_API_PERSONAL_RECORDS_UPDATE)
+
+
+def test_ningun_rol_puede_borrar_ni_truncar_records(apex_roles: RolesDb) -> None:
+    for rol in ROLES:
+        for verbo in ("DELETE", "TRUNCATE"):
+            tiene = consultar(
+                apex_roles.dsn(),
+                "SELECT has_table_privilege($1, 'athletes.personal_records', $2) AS v",
+                rol,
+                verbo,
+            )[0]["v"]
+            assert not tiene, f"{rol} tiene {verbo} en athletes.personal_records"
+
+
+def test_apex_backup_solo_lee_los_records_y_el_worker_nada(apex_roles: RolesDb) -> None:
+    def tiene(rol: str, verbo: str) -> bool:
+        return bool(
+            consultar(
+                apex_roles.dsn(),
+                "SELECT has_table_privilege($1, 'athletes.personal_records', $2) AS v",
+                rol,
+                verbo,
+            )[0]["v"]
+        )
+
+    assert tiene("apex_backup", "SELECT") and not tiene("apex_backup", "INSERT")
+    assert not any(tiene("apex_worker", v) for v in ("SELECT", "INSERT", "UPDATE"))

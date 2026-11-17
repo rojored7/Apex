@@ -59,6 +59,12 @@ ALLOWED_EDGES: Final[frozenset[tuple[str, str]]] = frozenset(
         # pide «Registró» a `auth` (`user_names_for`); nadie importa `athletes`.
         ("athletes", "members"),
         ("athletes", "auth"),
+        # S9-B1 (S9-D20): el récord manual lee el movimiento y el benchmark (`FOR SHARE`) por
+        # `wods.service` y nombra el catálogo por lote; `wods` nunca importa `athletes`.
+        ("athletes", "wods"),
+        # S9-B1 (S9-D6): el récord de benchmark compara con `results.service.score_key` y valida la
+        # marca con `validate_score`; `results` nunca importa `athletes`.
+        ("athletes", "results"),
         # S7-A2/C1 (S7-D6, S7-D7, S7-D9): `classes` valida el coach (`is_active_staff`), toma el
         # cupo por defecto de `settings.classes` y, desde el check-in, verifica al socio.
         ("classes", "auth"),

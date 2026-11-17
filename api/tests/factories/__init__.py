@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from tests.factories.athletes import make_metric
+from tests.factories.athletes import make_metric, make_record
 from tests.factories.job_runs import make_job_run
 from tests.factories.members import make_member
 from tests.factories.memberships import make_freeze, make_membership
@@ -24,6 +24,7 @@ from tests.factories.users import make_one_time_token, make_user
 
 FACTORIES: dict[str, Callable[..., Awaitable[Any]]] = {
     "athletes.body_metrics": make_metric,
+    "athletes.personal_records": make_record,
     "auth.users": make_user,
     "auth.one_time_tokens": make_one_time_token,
     "members.members": make_member,

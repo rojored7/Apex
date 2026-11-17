@@ -56,6 +56,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/athletes/{member_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Records */
+        get: operations["list_records_api_v1_athletes__member_id__records_get"];
+        put?: never;
+        /** Add Record */
+        post: operations["add_record_api_v1_athletes__member_id__records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -3788,6 +3806,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[RecordOut] */
+        Page_RecordOut_: {
+            /** Items */
+            items: components["schemas"]["RecordOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[RuleOut] */
         Page_RuleOut_: {
             /** Items */
@@ -4294,6 +4323,117 @@ export interface components {
              * @enum {string}
              */
             state: "ok" | "sealed" | "unreachable" | "unknown";
+        };
+        /**
+         * RecordIn
+         * @description `POST /athletes/{member_id}/records`: un récord manual. `extra="forbid"` (nada de `capped`,
+         *     `source`, `result_id` ni `invalidated_*`). Los RANGOS y las combinaciones de campos por `kind`
+         *     (RM: `movement_id` y `value_g`; benchmark: `benchmark_id` y `level`) los valida el service y
+         *     salen como 422 con `field`.
+         */
+        RecordIn: {
+            /**
+             * Achieved On
+             * Format: date
+             */
+            achieved_on: string;
+            /** Benchmark Id */
+            benchmark_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rm" | "benchmark";
+            /** Level */
+            level?: ("rx" | "rx_plus" | "scaled") | null;
+            /** Load G */
+            load_g?: number | null;
+            /** Movement Id */
+            movement_id?: string | null;
+            /** Reps */
+            reps?: number | null;
+            /** Rounds */
+            rounds?: number | null;
+            /** Seconds */
+            seconds?: number | null;
+            /**
+             * Value G
+             * @description Gramos, 1 a 1000000 (solo `rm`).
+             */
+            value_g?: number | null;
+        };
+        /**
+         * RecordOut
+         * @description Un récord con los nombres del catálogo. `is_current`: el mejor no invalidado de su objetivo
+         *     (movimiento o benchmark) del socio; se calcula por página con UNA consulta.
+         */
+        RecordOut: {
+            /**
+             * Achieved On
+             * Format: date
+             */
+            achieved_on: string;
+            /** Benchmark Id */
+            benchmark_id: string | null;
+            /** Benchmark Name */
+            benchmark_name: string | null;
+            /** Capped */
+            capped: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invalidated At */
+            invalidated_at: string | null;
+            /** Invalidated Reason */
+            invalidated_reason: ("superseded" | "voided" | "manual_error") | null;
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rm" | "benchmark";
+            /** Level */
+            level: ("rx" | "rx_plus" | "scaled") | null;
+            /** Load G */
+            load_g: number | null;
+            /** Movement Id */
+            movement_id: string | null;
+            /** Movement Name */
+            movement_name: string | null;
+            /**
+             * Recorded By
+             * Format: uuid
+             */
+            recorded_by: string;
+            /** Recorded By Name */
+            recorded_by_name: string | null;
+            /** Reps */
+            reps: number | null;
+            /** Result Id */
+            result_id: string | null;
+            /** Rounds */
+            rounds: number | null;
+            /** Score Type */
+            score_type: string | null;
+            /** Seconds */
+            seconds: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "derived";
+            /** Value G */
+            value_g: number | null;
+            /** Wod Id */
+            wod_id: string | null;
         };
         /** RefreshOut */
         RefreshOut: {
@@ -6002,6 +6142,194 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricOut"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicto con el estado actual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_records_api_v1_athletes__member_id__records_get: {
+        parameters: {
+            query?: {
+                kind?: ("rm" | "benchmark") | null;
+                include_invalidated?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RecordOut_"];
+                };
+            };
+            /** @description Sin sesión válida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Sin permiso */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Petición inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Demasiados intentos */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error inesperado */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Base de datos ocupada (busy) o custodio de llaves no disponible (crypto_unavailable) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_record_api_v1_athletes__member_id__records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
                 };
             };
             /** @description Sin sesión válida */

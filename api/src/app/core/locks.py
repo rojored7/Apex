@@ -34,6 +34,11 @@ la cadena. `PATCH /class-sessions/{id}` pide la sesión `FOR UPDATE` y lee el WO
 /wods/{id}` pide el WOD `FOR UPDATE`: ambos esperan a que el resultado confirme. Nunca se toma el
 WOD antes que la sesión ni el resultado antes que el WOD.
 
+Orden único completo del Sprint 9 (S9-D7, S9-B1): socio (`lock_member`), sesión, WOD, movimiento o
+benchmark (`FOR SHARE`), resultado, récord y, al hacer flush, la cadena. El alta manual de un récord
+toma el socio y luego lee el movimiento o el benchmark `FOR SHARE`; un `PATCH` del catálogo nunca
+pide el socio, así que no hay ciclo.
+
 Candado de aviso en vuelo (S9-D44, S9-D45): `NOTIFY_LOCK_NS` (4_270_010, en
 `modules/notifications/sending.py`) es la primera de DOS claves `int4` de
 `pg_try_advisory_xact_lock(ns, k)`; `k` son los 32 bits bajos del id del aviso. Invariantes: es

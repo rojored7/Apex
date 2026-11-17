@@ -73,6 +73,7 @@ ALWAYS_DE_0014 = {
         "wods.wods",  # S8-A3 (0034)
         "results.wod_results",  # S8-B1 (0037)
         "athletes.body_metrics",  # S9-A1 (0042)
+        "athletes.personal_records",  # S9-B1 (0043)
     }
 }
 TODOS = tuple(nombre for nombres in ALWAYS_DE_0014.values() for nombre in nombres)

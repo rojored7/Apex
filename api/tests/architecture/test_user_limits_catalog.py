@@ -603,3 +603,26 @@ def test_la_rotacion_desde_la_pantalla_consume_keys_rotate_y_su_hora_con_constan
                 and isinstance(nodo.args[1], ast.Constant)
             }
     assert cubetas == {"keys-rotate", "keys-rotate-hour"}
+
+
+def test_los_records_consumen_athletes_write_al_escribir_y_staff_read_al_leer() -> None:
+    """S9-B1 (US-180): `POST .../records` llama `enforce_user_limit` con `athletes-write` y
+    `GET .../records` con `staff-read`, como literales y ANTES de llamar al service."""
+    fuente = (MODULES / "athletes" / "router.py").read_text(encoding="utf-8")
+    ruta = f"{API_PREFIX}/athletes/{{member_id}}/records"
+    esperado = {"post": "athletes-write", "get": "staff-read"}
+    for metodo, cubeta in esperado.items():
+        funciones = [
+            f
+            for f in ast.walk(ast.parse(fuente))
+            if isinstance(f, ast.AsyncFunctionDef) and _ruta_de(f) == (metodo, ruta)
+        ]
+        assert len(funciones) == 1, (metodo, ruta)
+        literales = [
+            nodo.args[1].value
+            for nodo in ast.walk(funciones[0])
+            if isinstance(nodo, ast.Call)
+            and _nombre_llamado(nodo) == "enforce_user_limit"
+            and isinstance(nodo.args[1], ast.Constant)
+        ]
+        assert literales == [cubeta], (metodo, literales)

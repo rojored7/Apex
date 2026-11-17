@@ -64,3 +64,60 @@ class MetricRevealOut(BaseModel):
 
     field: RevealField
     value: int | str | None
+
+
+# S9-B1 (US-180; contrato del blueprint §3, rutas 4 y 5) --------------------------------------
+
+RecordKind = Literal["rm", "benchmark"]
+RecordLevel = Literal["rx", "rx_plus", "scaled"]
+Whole = Annotated[int, Field(strict=True)]
+
+
+class RecordIn(BaseModel):
+    """`POST /athletes/{member_id}/records`: un récord manual. `extra="forbid"` (nada de `capped`,
+    `source`, `result_id` ni `invalidated_*`). Los RANGOS y las combinaciones de campos por `kind`
+    (RM: `movement_id` y `value_g`; benchmark: `benchmark_id` y `level`) los valida el service y
+    salen como 422 con `field`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: RecordKind
+    achieved_on: date
+    movement_id: UUID | None = None
+    value_g: Whole | None = Field(default=None, description="Gramos, 1 a 1000000 (solo `rm`).")
+    benchmark_id: UUID | None = None
+    level: RecordLevel | None = None
+    seconds: Whole | None = None
+    rounds: Whole | None = None
+    reps: Whole | None = None
+    load_g: Whole | None = None
+
+
+class RecordOut(BaseModel):
+    """Un récord con los nombres del catálogo. `is_current`: el mejor no invalidado de su objetivo
+    (movimiento o benchmark) del socio; se calcula por página con UNA consulta."""
+
+    id: UUID
+    kind: RecordKind
+    movement_id: UUID | None
+    movement_name: str | None
+    benchmark_id: UUID | None
+    benchmark_name: str | None
+    score_type: str | None
+    value_g: int | None
+    level: RecordLevel | None
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    achieved_on: date
+    source: Literal["manual", "derived"]
+    result_id: UUID | None
+    wod_id: UUID | None
+    is_current: bool
+    invalidated_at: datetime | None
+    invalidated_reason: Literal["superseded", "voided", "manual_error"] | None
+    recorded_by: UUID
+    recorded_by_name: str | None
+    created_at: datetime

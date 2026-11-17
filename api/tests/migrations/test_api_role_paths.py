@@ -698,3 +698,103 @@ def test_apex_api_toma_for_share_de_las_llaves_como_lo_hacen_las_guardas_de_0042
         propietario(apex_roles, *LIMPIAR_JOBS_Y_LLAVES)
         configure_provider(None)
         configure_keyring(None)
+
+
+def test_apex_api_registra_un_record_y_lo_invalida_pero_no_borra_ni_cambia_lo_fijo(
+    apex_roles: RolesDb,
+) -> None:
+    """S9-B1 (S9-D18, S9-D31, P-ROL): `add_record` con los privilegios reales. El `INSERT` es por
+    columna (sin `invalidated_*`); el movimiento se lee `FOR SHARE` (el api tiene `UPDATE` por
+    columna del catálogo); `UPDATE` de las columnas de invalidación permitido; `DELETE`, `UPDATE`
+    de `value_g` o de `member_id` y un `INSERT` con `invalidated_*` siguen negados (42501)."""
+    from sqlalchemy.exc import DBAPIError
+
+    from app.modules.athletes import service as athletes_service
+    from app.modules.athletes.schemas import RecordIn
+    from tests.conftest import LIMPIAR_ATHLETES, LIMPIAR_MEMBERS, LIMPIAR_MOVEMENTS
+
+    socio = _sembrar_socio_con_autorizacion(apex_roles)
+    movimiento = uuid4()
+    propietario(
+        apex_roles,
+        "INSERT INTO wods.movements (id, created_by, name, name_norm, category, unit) "
+        f"VALUES ('{movimiento}', '{SYSTEM}', 'Back Squat Api', 'back squat api', "
+        "'weightlifting', 'kg')",
+    )
+
+    async def alta(sesion: AsyncSession) -> UUID:
+        salida = await athletes_service.add_record(
+            sesion,
+            socio,
+            RecordIn.model_validate(
+                {
+                    "kind": "rm",
+                    "achieved_on": "2026-01-05",
+                    "movement_id": str(movimiento),
+                    "value_g": 100_000,
+                }
+            ),
+            by=SYSTEM_USER_ID,
+        )
+        return salida.id
+
+    async def sqlstates(sesion: AsyncSession) -> list[str]:
+        sentencias = (
+            "DELETE FROM athletes.personal_records",
+            "UPDATE athletes.personal_records SET value_g = value_g",
+            "UPDATE athletes.personal_records SET member_id = member_id",
+            "INSERT INTO athletes.personal_records (id, created_by, member_id, kind, movement_id, "
+            "value_g, achieved_on, source, invalidated_at, invalidated_reason, invalidated_by) "
+            f"VALUES (gen_random_uuid(), '{SYSTEM}', '{socio}', 'rm', '{movimiento}', 1, "
+            f"'2026-01-05', 'manual', now(), 'manual_error', '{SYSTEM}')",
+        )
+        salida: list[str] = []
+        for sql in sentencias:
+            try:
+                async with sesion.begin_nested():
+                    await sesion.execute(text(sql))
+            except DBAPIError as error:
+                salida.append(str(getattr(error.orig, "sqlstate", "")))
+            else:
+                salida.append("")
+        return salida
+
+    async def invalidar(sesion: AsyncSession, record_id: UUID) -> None:
+        await sesion.execute(
+            text(
+                "UPDATE athletes.personal_records SET invalidated_at = now(), "
+                "invalidated_by = :u, invalidated_reason = 'manual_error', updated_at = now() "
+                "WHERE id = :i"
+            ),
+            {"u": SYSTEM_USER_ID, "i": record_id},
+        )
+
+    try:
+        record_id = _como_api(apex_roles, alta)
+        fila = consultar(
+            apex_roles.dsn(),
+            "SELECT kind, source, value_g, member_id, invalidated_at, invalidated_by "
+            "FROM athletes.personal_records WHERE id = $1",
+            record_id,
+        )[0]
+        assert (fila["kind"], fila["source"], fila["value_g"]) == ("rm", "manual", 100_000)
+        assert (fila["member_id"], fila["invalidated_at"], fila["invalidated_by"]) == (
+            socio,
+            None,
+            None,
+        )
+        assert _como_api(apex_roles, sqlstates) == ["42501"] * 4
+
+        _como_api(apex_roles, lambda s: invalidar(s, record_id))
+
+        invalidado = consultar(
+            apex_roles.dsn(),
+            "SELECT invalidated_at, invalidated_reason, invalidated_by "
+            "FROM athletes.personal_records WHERE id = $1",
+            record_id,
+        )[0]
+        assert invalidado["invalidated_at"] is not None
+        assert invalidado["invalidated_reason"] == "manual_error"
+        assert invalidado["invalidated_by"] == SYSTEM_USER_ID
+    finally:
+        propietario(apex_roles, LIMPIAR_ATHLETES, LIMPIAR_MOVEMENTS, LIMPIAR_MEMBERS)

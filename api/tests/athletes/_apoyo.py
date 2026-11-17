@@ -186,3 +186,73 @@ def claros_en(valores: dict[str, Any], claros: tuple[str, ...]) -> list[str]:
                 halladas.append(claro)
                 break
     return halladas
+
+
+# S9-B1 (US-180): récords manuales ---------------------------------------------------------------
+
+TABLA_RECORDS: Final = "athletes.personal_records"
+HOY: Final = date(2026, 10, 21)  # `T0` de la fixture `reloj` (Bogotá)
+
+
+def ruta_records(member_id: UUID | str) -> str:
+    return f"{ATHLETES}/{member_id}/records"
+
+
+def cuerpo_rm(movement_id: UUID | str, /, **cambios: Any) -> dict[str, Any]:
+    """Cuerpo JSON de un RM válido (100 kg el 20 de octubre); un valor `None` quita la clave."""
+    valores: dict[str, Any] = {
+        "kind": "rm",
+        "achieved_on": FECHA.isoformat(),
+        "movement_id": str(movement_id),
+        "value_g": 100_000,
+    }
+    valores.update(cambios)
+    return {k: v for k, v in valores.items() if v is not None}
+
+
+def cuerpo_benchmark(benchmark_id: UUID | str, /, **cambios: Any) -> dict[str, Any]:
+    """Cuerpo JSON de un récord de benchmark `time` válido (RX, 300 s)."""
+    valores: dict[str, Any] = {
+        "kind": "benchmark",
+        "achieved_on": FECHA.isoformat(),
+        "benchmark_id": str(benchmark_id),
+        "level": "rx",
+        "seconds": 300,
+    }
+    valores.update(cambios)
+    return {k: v for k, v in valores.items() if v is not None}
+
+
+async def alta_record(
+    session: AsyncSession, actor: UUID, member_id: UUID, cuerpo_json: dict[str, Any]
+) -> Any:
+    """`service.add_record` como una petición: sesión vacía, `actor_scope`, commit si sale bien y
+    rollback si no. Devuelve el `RecordOut`."""
+    from app.modules.athletes.schemas import RecordIn
+
+    session.expunge_all()
+    with actor_scope(actor):
+        try:
+            salida = await service.add_record(
+                session, member_id, RecordIn.model_validate(cuerpo_json), by=actor
+            )
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+    return salida
+
+
+async def filas_de_records(session: AsyncSession, member_id: UUID) -> list[dict[str, Any]]:
+    consulta = text(
+        f"SELECT * FROM {TABLA_RECORDS} WHERE member_id = :m ORDER BY created_at, id"  # noqa: S608
+    )
+    return [dict(f) for f in (await session.execute(consulta, {"m": member_id})).mappings()]
+
+
+async def auditoria_de_records(session: AsyncSession, record_id: UUID) -> list[dict[str, Any]]:
+    consulta = text(
+        "SELECT * FROM audit.audit_log WHERE table_name = :t AND record_id = :id ORDER BY seq"
+    )
+    filas = await session.execute(consulta, {"t": TABLA_RECORDS, "id": record_id})
+    return [dict(f) for f in filas.mappings()]

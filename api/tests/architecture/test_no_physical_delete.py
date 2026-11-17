@@ -44,6 +44,7 @@ MODELOS = (
     "Wod",  # S8-A3 (RN-14): los WODs no se borran (`WodMovement` sí: reemplazo de lista, E6)
     "Attachment",  # S6-C1 (S6-D25, RN-14): fila append-only; el objeto se suprime a mano
     "BodyMetric",  # S9-A1 (RN-14): una medición se anula con voided_*, no se borra
+    "PersonalRecord",  # S9-B1 (RN-14): un récord se invalida con invalidated_*, no se borra
 )
 TABLAS = (
     "members.members",
@@ -68,6 +69,7 @@ TABLAS = (
     "wods.wods",  # S8-A3
     "results.wod_results",  # S8-B1
     "athletes.body_metrics",  # S9-A1
+    "athletes.personal_records",  # S9-B1
 )
 _TABLA = "|".join(re.escape(t) for t in TABLAS)
 PATRONES = (

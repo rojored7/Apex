@@ -277,3 +277,31 @@ def test_notifications_emite_exactamente_los_cuatro_eventos() -> None:
         if e.__module__.startswith("app.modules.notifications")
     }
     assert propios == set(EVENTOS_DE_AVISOS)
+
+
+# S9-B1 (S9-D12): el evento de récord personal -----------------------------------------------
+
+
+def test_personal_record_set_solo_lleva_ids_codigos_cerrados_y_fecha() -> None:
+    """Sin `value`, nombres ni texto libre; `kind` y `source` son `Literal` cerrados."""
+    from app.modules.athletes import service as athletes_service
+
+    evento = athletes_service.PersonalRecordSet
+    campos = {campo.name for campo in dataclasses.fields(evento)}
+    assert campos == {
+        "occurred_at",
+        "record_id",
+        "member_id",
+        "kind",
+        "movement_id",
+        "benchmark_id",
+        "source",
+        "achieved_on",
+    }
+    tipos = typing.get_type_hints(evento)
+    assert typing.get_origin(tipos["kind"]) is Literal
+    assert typing.get_origin(tipos["source"]) is Literal
+    assert tipos["achieved_on"] is date
+    assert violaciones(evento) == []
+    assert evento in eventos_de_la_app()
+    assert evento.__dataclass_params__.frozen  # type: ignore[attr-defined]

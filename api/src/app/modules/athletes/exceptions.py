@@ -54,3 +54,19 @@ class MetricAlreadyVoided(AthletesError):
     status = 409
     code = "metric_already_voided"
     default_message = "La medición ya estaba anulada."
+
+
+class RecordDuplicate(AthletesError):
+    """Ya existe un récord vivo idéntico (mismo objetivo, marca y fecha): 409 `record_duplicate`."""
+
+    status = 409
+    code = "record_duplicate"
+    default_message = "Ya registraste ese mismo récord."
+
+
+class RecordValidationError(AthletesError):
+    """Regla de entrada del récord manual incumplida (S9-B1, US-180): 422 con `field`."""
+
+    status = 422
+    code = "validation_error"
+    default_message = "Los datos del récord no son válidos."

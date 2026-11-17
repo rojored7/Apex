@@ -730,3 +730,7 @@ Sellos: `results` y `wods` (no sellantes) exit 0; `athletes` (sello, 12 archivos
 - Verde: lista con `q` (sin tildes ni mayúsculas, filtra antes de paginar, `total` refleja el filtro; `%` literal), alerta `athletes_restore_capped {marcas}` y warning al tope, warning con el conteo de marcas fuera del catálogo, `BenchmarkSeriesOut.truncated` (pide `SERIES_MAX + 1`; `is_best` del tramo mostrado), `benchmark_refs` con `= ANY(:ids)` (un parámetro) y docstring de estado.
 - Contrato: `truncated` y `q`; `export-openapi` x2 idéntico, `gen:api`, `types.contract.test.ts` 6 passed, `tsc` limpio.
 - Suite `tests/athletes tests/results tests/wods tests/architecture`: 1934 passed, 3 deselected; ruff, format y mypy limpios.
+
+### Evidencia (S9-C1, tras el sello y el checkpoint e98a10c)
+- Sello: `slice-gate.sh athletes` (pura, service, router, `test_member_marks`): 994 passed, exit 0; no sellante `wods` (`test_record_catalog_reads`): 931 passed.
+- Curl con el admin de desarrollo sobre el socio ficticio `27c8e28b-...` (api con `--reload`): `GET /benchmarks` 200 (total 0), `?q=fran` 200 (total 0), `GET /benchmarks/{id}` 200 (0 intentos, `truncated` false), benchmark inexistente 404 `benchmark_not_found`. Sin intentos de benchmark reales en ese socio; la lógica con datos la cubren las pruebas con base real.
